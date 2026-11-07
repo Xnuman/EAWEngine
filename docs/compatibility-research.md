@@ -289,3 +289,15 @@ units such as snowspeeders and Kamino's air whales (`Kamino_Aiwha`, which also
 has `Hover_Offset` 250 and `Layer_Z_Adjust` 100). Types without the field
 (birds, space-only types, projectiles) are treated as not walking. Spawned
 flyers start at the surface plus `Hover_Offset`. This is a corpus inference.
+
+Pathfinding: no public source documents the algorithm the original uses to move
+an individual unit. The owner-provided Petroglyph engine reference (GlyphX
+reference code; read-only evidence, not quoted here) does not contain the
+unit-level pathfinder, but it shows a separate AI layer: land task forces plan
+over a graph of AI hint zones with a threat-weighted cost and the task force's
+passability mask, then issue ordinary moves toward each zone's center; galactic
+mode has its own pathfinder between planets. The original therefore plans on at
+least two levels, but its cell-level behavior is unknown. EAWEngine's grid A* is
+an engine-native choice, not a reproduction; behavior that players observe
+(which ground a class may cross, how unreachable orders end, how groups move)
+is what needs black-box comparison with the original, not identical routes.

@@ -175,7 +175,10 @@ it.
   waypoints); the sandbox draws selected units' routes. Searches run inside
   the tick for now (about 1 ms per cross-map path); a per-tick budget or the
   job system takes over before large armies. Next: unit clearance,
-  separation, formations, and turn rates.
+  separation, formations, and turn rates. The staged plan toward large
+  battles (pathfinding audit, clearance, JPS, hierarchy, flow fields for
+  group orders, reciprocal avoidance, budgeted jobs) and its sources are in
+  [pathfinding-research.md](pathfinding-research.md).
 
 - ECS/storage, fixed-step scheduler, job system, transforms, spatial index,
   movement, formations, targeting, projectiles, damage, hardpoints, fog of war.
