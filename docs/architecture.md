@@ -104,6 +104,11 @@ instances (sky domes and star backdrops) are drawn first, centered on the camera
 by transforming them as directions, pinned to the far plane, and without depth
 testing, so they never occlude or parallax against the world.
 
+Terrain is a separate part of the visual scene: independent triangles whose
+vertices repeat their triangle's three corner layers with barycentric weights,
+so one terrain pipeline blends three layer materials per pixel and lights the
+result with the same shared legacy lighting code as meshes.
+
 A visual scene groups draws into meshes (one per model) and places them with
 instances. Each instance carries a world transform, a tint, and a bone-palette
 offset in an immutable structured buffer. Instances are sorted by mesh at load

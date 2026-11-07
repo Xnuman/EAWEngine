@@ -110,11 +110,13 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   Space squadrons expand into their members at their `Squadron_Offsets`, and
   `EAWEngine sandbox --map` renders every placed object of a map as one
   instanced D3D12 scene with its environment sky dome/backdrop and an
-  engine-owned tactical camera (pan, rotate, zoom within the map bounds). Land teams/companies (runtime formations), terrain,
+  engine-owned tactical camera (pan, rotate, zoom within the map bounds). Land maps render their textured terrain heightfield. Land teams/companies (runtime formations), water, decals, tracks,
   transparency sorting, and streaming are not implemented yet.
 - Add production D3D12 tactical-map rendering. Further tool-only map/model
   preview polish is deferred until it can support the renderer and map editor.
-- Deliverable: load and inspect a stock space unit and a tactical map.
+- Deliverable: load and inspect a stock space unit and a tactical map. Both now
+  load in `EAWEngine sandbox` (`--model`, `--map` for space and land); M2 stays
+  open until resource handles, streaming, and the remaining map layers exist.
 
 ## M3 — tactical simulation slice
 

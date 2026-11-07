@@ -112,7 +112,30 @@ struct VisualMaterial
     std::array<float, 3> emissive{0.0F, 0.0F, 0.0F};
     // Texture-coordinate offset per second of scene time.
     std::array<float, 2> uv_scroll{0.0F, 0.0F};
+    // Multiplier applied to texture coordinates (terrain layers tile world X/Y with it).
+    float uv_scale{1.0F};
     float alpha_test_threshold{0.5F};
+};
+
+// One terrain vertex. Terrain is drawn as independent triangles: each vertex repeats its
+// triangle's three corner layers and carries its own barycentric weights, so the pixel shader can
+// blend the corner layers smoothly.
+struct VisualTerrainVertex
+{
+    std::array<float, 3> position{};
+    std::array<float, 3> normal{0.0F, 0.0F, 1.0F};
+    std::array<std::uint32_t, 3> layers{};
+    std::array<float, 3> barycentric{};
+};
+
+// Heightfield terrain in world space. Layer i is scene material first_material + i.
+struct VisualTerrain
+{
+    std::vector<VisualTerrainVertex> vertices;
+    std::uint32_t first_material{};
+    std::uint32_t layer_count{};
+    std::array<float, 3> bounds_minimum{};
+    std::array<float, 3> bounds_maximum{};
 };
 
 struct VisualDraw
@@ -191,6 +214,8 @@ struct VisualScene
     std::vector<VisualDraw> draws;
     std::vector<VisualMesh> meshes;
     std::vector<VisualInstance> instances;
+    // Empty vertices when the scene has no terrain.
+    VisualTerrain terrain;
     // Size of the scene bone palette (every instance's bone_offset + mesh bone_count fits in it).
     std::uint32_t bone_count{};
     std::array<float, 3> bounds_minimum{};

@@ -356,11 +356,16 @@ void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, T
         const auto expected = static_cast<std::size_t>(map.terrain_width) * map.terrain_height;
         const auto count = std::min(available, expected);
         map.elevation_map.reserve(count);
+        map.terrain_samples.reserve(count);
+        map.terrain_layer_map.reserve(count);
         auto minimum = std::numeric_limits<std::int32_t>::max();
         auto maximum = std::numeric_limits<std::int32_t>::min();
         for (std::size_t index = 0; index < count; ++index)
         {
-            const auto value = static_cast<std::int16_t>(read_i32(bytes, elevation->payload + index * 4U));
+            const auto sample = read_u32(bytes, elevation->payload + index * 4U);
+            map.terrain_samples.push_back(sample);
+            map.terrain_layer_map.push_back(static_cast<std::uint8_t>((sample >> 16U) & 0xffU));
+            const auto value = static_cast<std::int16_t>(static_cast<std::uint16_t>(sample & 0xffffU));
             map.elevation_map.push_back(value);
             minimum = std::min(minimum, static_cast<std::int32_t>(value));
             maximum = std::max(maximum, static_cast<std::int32_t>(value));
@@ -388,7 +393,16 @@ void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, T
             TedTerrainLayer layer;
             for (const auto& mini : read_minis(bytes, layer_chunk))
             {
-                if (mini.type == 12)
+                TedEnvironmentField field;
+                field.type = static_cast<std::uint8_t>(mini.type);
+                field.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(mini.payload), bytes.begin() + static_cast<std::ptrdiff_t>(mini.end));
+                layer.fields.push_back(std::move(field));
+                if (mini.type == 6 && mini.end - mini.payload == 4)
+                {
+                    const auto tile_size = read_float(bytes, mini.payload);
+                    layer.tile_size = std::isfinite(tile_size) && tile_size > 0.0F ? tile_size : 0.0F;
+                }
+                else if (mini.type == 12)
                 {
                     layer.color_texture = read_string(bytes, mini.payload, mini.end);
                 }

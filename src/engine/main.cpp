@@ -321,7 +321,11 @@ int main(const int argc, char** argv)
                 }
                 const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
                 const auto& scene = visual_map.scene;
-                std::cout << "Visual map: " << scene.name << (visual_map.land ? " (land; terrain is not rendered yet)" : " (space)") << '\n'
+                std::cout << "Visual map: " << scene.name << (visual_map.land ? " (land)" : " (space)") << '\n'
+                          << "Terrain: "
+                          << (scene.terrain.vertices.empty() ? std::string("none")
+                                                             : std::to_string(scene.terrain.vertices.size() / 3U) + " triangles, " + std::to_string(scene.terrain.layer_count) + " layers")
+                          << '\n'
                           << "Objects: " << scene.instances.size() << " instances of " << scene.meshes.size() << " models | squadron members expanded: " << visual_map.expanded_members << '\n'
                           << "Not drawn: " << visual_map.untyped << " untyped, " << visual_map.without_model << " without model, " << visual_map.missing_model_files << " missing model files, "
                           << visual_map.unexpanded_containers << " land teams/companies, " << visual_map.unrenderable_placements << " unrenderable models\n"

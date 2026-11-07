@@ -552,11 +552,138 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
     return mesh_index;
 }
 
-// Expands the scene bounds by every instance's transformed mesh bounds.
+// Terrain scale established from the stock corpus: vertices are 20 world units apart (column ->
+// +X, row -> +Y) and stored elevation is 20x the world height, which places map objects within a
+// few world units of the interpolated ground.
+constexpr float terrain_sample_spacing = 20.0F;
+constexpr float terrain_elevation_scale = 20.0F;
+// Explicit preview limit (not a format limit): larger grids are skipped with a diagnostic until
+// terrain streaming exists.
+constexpr std::uint32_t maximum_terrain_dimension = 4096;
+
+// Builds the land heightfield as independent triangles whose vertices carry the triangle's corner
+// layers. Each TED layer becomes a material; its texture tiles world X/Y once per tile_size.
+void append_terrain(SceneBuilder& builder, const TedMap& map)
+{
+    auto& scene = builder.scene;
+    const auto width = map.terrain_width;
+    const auto height = map.terrain_height;
+    const auto samples = static_cast<std::size_t>(width) * height;
+    if (width < 2 || height < 2 || map.elevation_map.size() < samples || map.terrain_layer_map.size() < samples || map.terrain_layers.empty())
+    {
+        return;
+    }
+    if (width > maximum_terrain_dimension || height > maximum_terrain_dimension)
+    {
+        scene.warnings.push_back("terrain " + std::to_string(width) + "x" + std::to_string(height) + " exceeds the preview limit of " + std::to_string(maximum_terrain_dimension) +
+                                 " samples per side and is not drawn");
+        return;
+    }
+
+    auto& terrain = scene.terrain;
+    terrain.first_material = static_cast<std::uint32_t>(scene.materials.size());
+    terrain.layer_count = static_cast<std::uint32_t>(map.terrain_layers.size());
+    for (std::size_t index = 0; index < map.terrain_layers.size(); ++index)
+    {
+        const auto& layer = map.terrain_layers[index];
+        VisualMaterial material;
+        material.name = "terrain layer " + std::to_string(index) + (layer.color_texture.empty() ? std::string{} : " (" + layer.color_texture + ")");
+        material.lighting = VisualLightingModel::lit;
+        // Terrain highlights are modest; the reference terrain-mesh shader masks them by base alpha.
+        material.specular = {0.25F, 0.25F, 0.25F};
+        material.uv_scale = 1.0F / (layer.tile_size > 0.0F ? layer.tile_size : 64.0F);
+        if (!layer.color_texture.empty())
+        {
+            material.base_color_texture = scene_texture(builder, layer.color_texture);
+        }
+        if (!layer.normal_texture.empty())
+        {
+            material.normal_texture = scene_texture(builder, layer.normal_texture);
+            if (material.normal_texture != invalid_visual_texture)
+            {
+                material.lighting = VisualLightingModel::normal_mapped;
+            }
+        }
+        scene.materials.push_back(std::move(material));
+    }
+
+    const auto elevation = [&](const std::uint32_t x, const std::uint32_t y)
+    {
+        return static_cast<float>(map.elevation_map[static_cast<std::size_t>(y) * width + x]) / terrain_elevation_scale;
+    };
+    std::size_t invalid_layers = 0;
+    const auto layer_at = [&](const std::uint32_t x, const std::uint32_t y)
+    {
+        const std::uint32_t layer = map.terrain_layer_map[static_cast<std::size_t>(y) * width + x];
+        if (layer >= terrain.layer_count)
+        {
+            ++invalid_layers;
+            return 0U;
+        }
+        return layer;
+    };
+    const auto vertex_position = [&](const std::uint32_t x, const std::uint32_t y)
+    {
+        return std::array<float, 3>{static_cast<float>(x) * terrain_sample_spacing, static_cast<float>(y) * terrain_sample_spacing, elevation(x, y)};
+    };
+    const auto vertex_normal = [&](const std::uint32_t x, const std::uint32_t y)
+    {
+        const auto left = elevation(x == 0 ? 0 : x - 1, y);
+        const auto right = elevation(std::min(x + 1, width - 1), y);
+        const auto down = elevation(x, y == 0 ? 0 : y - 1);
+        const auto up = elevation(x, std::min(y + 1, height - 1));
+        const auto span_x = static_cast<float>(std::min(x + 1, width - 1) - (x == 0 ? 0 : x - 1)) * terrain_sample_spacing;
+        const auto span_y = static_cast<float>(std::min(y + 1, height - 1) - (y == 0 ? 0 : y - 1)) * terrain_sample_spacing;
+        const AloVector3 normal{-(right - left) / span_x, -(up - down) / span_y, 1.0F};
+        const auto length = std::sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+        return std::array<float, 3>{normal.x / length, normal.y / length, normal.z / length};
+    };
+
+    terrain.vertices.reserve(static_cast<std::size_t>(width - 1) * (height - 1) * 6U);
+    terrain.bounds_minimum.fill(std::numeric_limits<float>::max());
+    terrain.bounds_maximum.fill(std::numeric_limits<float>::lowest());
+    const auto emit_triangle = [&](const std::array<std::array<std::uint32_t, 2>, 3>& corners)
+    {
+        const std::array<std::uint32_t, 3> layers{layer_at(corners[0][0], corners[0][1]), layer_at(corners[1][0], corners[1][1]), layer_at(corners[2][0], corners[2][1])};
+        for (std::size_t corner = 0; corner < 3; ++corner)
+        {
+            VisualTerrainVertex vertex;
+            vertex.position = vertex_position(corners[corner][0], corners[corner][1]);
+            vertex.normal = vertex_normal(corners[corner][0], corners[corner][1]);
+            vertex.layers = layers;
+            vertex.barycentric[corner] = 1.0F;
+            for (std::size_t axis = 0; axis < 3; ++axis)
+            {
+                terrain.bounds_minimum[axis] = std::min(terrain.bounds_minimum[axis], vertex.position[axis]);
+                terrain.bounds_maximum[axis] = std::max(terrain.bounds_maximum[axis], vertex.position[axis]);
+            }
+            terrain.vertices.push_back(vertex);
+        }
+    };
+    for (std::uint32_t y = 0; y + 1 < height; ++y)
+    {
+        for (std::uint32_t x = 0; x + 1 < width; ++x)
+        {
+            emit_triangle({{{x, y}, {x + 1, y}, {x + 1, y + 1}}});
+            emit_triangle({{{x, y}, {x + 1, y + 1}, {x, y + 1}}});
+        }
+    }
+    if (invalid_layers != 0)
+    {
+        scene.warnings.push_back(std::to_string(invalid_layers) + " terrain vertex references to layers outside the map's " + std::to_string(terrain.layer_count) + " layers were drawn with layer 0");
+    }
+}
+
+// Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
 void update_scene_bounds(VisualScene& scene)
 {
     scene.bounds_minimum.fill(std::numeric_limits<float>::max());
     scene.bounds_maximum.fill(std::numeric_limits<float>::lowest());
+    if (!scene.terrain.vertices.empty())
+    {
+        scene.bounds_minimum = scene.terrain.bounds_minimum;
+        scene.bounds_maximum = scene.terrain.bounds_maximum;
+    }
     for (const auto& instance : scene.instances)
     {
         // Backgrounds follow the camera, so they do not contribute to the framed world.
@@ -632,6 +759,10 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
     auto& scene = asset.scene;
     scene.name = resolved->virtual_path;
     SceneBuilder builder{vfs, scene, {}};
+    if (asset.land)
+    {
+        append_terrain(builder, map);
+    }
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
     for (const auto& placement : layout.placements)
     {
@@ -751,11 +882,11 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
     {
         scene.warnings.push_back(std::to_string(layout.diagnostics.size() - maximum_reported_diagnostics) + " more object diagnostics omitted");
     }
-    if (std::ranges::none_of(scene.instances,
-                             [](const VisualInstance& instance)
-                             {
-                                 return !instance.background;
-                             }))
+    if (scene.terrain.vertices.empty() && std::ranges::none_of(scene.instances,
+                                                               [](const VisualInstance& instance)
+                                                               {
+                                                                   return !instance.background;
+                                                               }))
     {
         throw std::runtime_error("map has no placed objects with renderable models: " + resolved->virtual_path);
     }

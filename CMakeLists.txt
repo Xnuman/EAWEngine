@@ -63,19 +63,21 @@ if(WIN32)
     function(eaw_compile_shader target compiler source entry profile symbol)
         set(output "${EAW_GENERATED_SHADER_DIR}/${symbol}.h")
         set(input "${CMAKE_CURRENT_SOURCE_DIR}/${source}")
+        get_filename_component(include_dir "${input}" DIRECTORY)
+        file(GLOB shader_headers CONFIGURE_DEPENDS "${include_dir}/*.hlsli")
         if(compiler STREQUAL "dxc")
             add_custom_command(
                 OUTPUT "${output}"
                 COMMAND "${EAW_DXC_EXECUTABLE}" -nologo -T ${profile} -E ${entry} -HV 2021 -WX -O3 -force-rootsig-ver rootsig_1_0 -Qstrip_debug -Qstrip_reflect
-                        -Fh "${output}" -Vn ${symbol} "${input}"
-                DEPENDS "${input}"
+                        -I "${include_dir}" -Fh "${output}" -Vn ${symbol} "${input}"
+                DEPENDS "${input}" ${shader_headers}
                 COMMENT "DXC ${source} (${entry}, ${profile})"
                 VERBATIM)
         else()
             add_custom_command(
                 OUTPUT "${output}"
-                COMMAND "${EAW_FXC_EXECUTABLE}" /nologo /T ${profile} /E ${entry} /WX /O3 /Fh "${output}" /Vn ${symbol} "${input}"
-                DEPENDS "${input}"
+                COMMAND "${EAW_FXC_EXECUTABLE}" /nologo /T ${profile} /E ${entry} /WX /O3 /I "${include_dir}" /Fh "${output}" /Vn ${symbol} "${input}"
+                DEPENDS "${input}" ${shader_headers}
                 COMMENT "FXC ${source} (${entry}, ${profile})"
                 VERBATIM)
         endif()
@@ -160,8 +162,10 @@ if(WIN32)
     target_compile_features(eaw_render_d3d12 PUBLIC cxx_std_20)
     target_compile_definitions(eaw_render_d3d12 PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(eaw_render_d3d12 PRIVATE d3d12 dxgi)
-    target_sources(eaw_render_d3d12 PRIVATE src/render/shaders/sandbox.hlsl)
-    set_source_files_properties(src/render/shaders/sandbox.hlsl PROPERTIES VS_TOOL_OVERRIDE "None")
+    target_sources(eaw_render_d3d12 PRIVATE src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/legacy_common.hlsli)
+    set_source_files_properties(src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/legacy_common.hlsli PROPERTIES VS_TOOL_OVERRIDE "None")
+    eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/terrain.hlsl terrain_vs vs_6_0 g_eaw_terrain_vs)
+    eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/terrain.hlsl terrain_ps ps_6_0 g_eaw_terrain_ps)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/sandbox.hlsl vs_main vs_6_0 g_eaw_sandbox_vs)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/sandbox.hlsl ps_main ps_6_0 g_eaw_sandbox_ps)
 

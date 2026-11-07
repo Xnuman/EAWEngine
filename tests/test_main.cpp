@@ -725,10 +725,14 @@ std::vector<std::byte> make_test_ted()
     value.clear();
     append_u32(value, 1);
     append_mini(terrain_info, 5, value);
+    // Stock samples pack the signed elevation in bits 0-15, the layer index in bits 16-23, and a
+    // small signed value (usually -1) in bits 24-31.
     std::vector<std::byte> elevation;
-    for (const auto height : {-10, 0, 10, 20, 30, 40})
+    const std::array<int, 6> heights{-10, 0, 10, 20, 30, 40};
+    const std::array<std::uint32_t, 6> sample_layers{0, 0, 1, 1, 0, 1};
+    for (std::size_t index = 0; index < heights.size(); ++index)
     {
-        append_u32(elevation, static_cast<std::uint32_t>(height));
+        append_u32(elevation, (static_cast<std::uint32_t>(heights[index]) & 0xffffU) | (sample_layers[index] << 16U) | (0xffU << 24U));
     }
     std::vector<std::byte> layer_data;
     value.clear();
@@ -737,8 +741,16 @@ std::vector<std::byte> make_test_ted()
     value.clear();
     append_string(value, "GROUND_B.TGA");
     append_mini(layer_data, 19, value);
+    value.clear();
+    append_float(value, 64.0F);
+    append_mini(layer_data, 6, value);
     std::vector<std::byte> layers;
     append_chunk(layers, 3, layer_data);
+    std::vector<std::byte> second_layer;
+    value.clear();
+    append_string(value, "ROCK.TGA");
+    append_mini(second_layer, 12, value);
+    append_chunk(layers, 3, second_layer);
     std::vector<std::byte> terrain;
     append_chunk(terrain, 0, terrain_info);
     append_chunk(terrain, 5, elevation);
@@ -806,11 +818,15 @@ void test_ted_map()
             "TED terrain decoding failed");
     require(map.elevation_map == std::vector<std::int16_t>({-10, 0, 10, 20, 30, 40}) && map.passability_map == std::vector<std::uint32_t>({0, 2, 4, 1, 3, 5}),
             "TED terrain sample retention or passability alignment failed");
-    require(map.terrain_layers.size() == 1 && map.terrain_layers[0].color_texture == "GROUND.TGA" && map.environments.size() == 2 && map.environments[0].name == "Noon_Clear" &&
-                map.environments[0].skybox_primary == "DAY_BLUE_SKY" && map.active_environment == 1 && map.environments[0].has_lighting &&
-                map.environments[0].lights[0].color == std::array<float, 3>{1.0F, 0.9F, 0.8F} && map.environments[0].lights[2].intensity == 0.25F && map.environments[0].lights[1].azimuth == 3.0F &&
-                map.environments[0].lights[0].elevation == 0.4F && map.environments[0].ambient[0] == 0.05F && map.environments[0].fields.size() == 17 &&
-                map.environments[0].fields.back().type == 0x12 && map.environments[0].fields.back().payload.size() == 4 && !map.environments[1].has_lighting && map.warnings.size() == 1,
+    require(map.terrain_layer_map == std::vector<std::uint8_t>({0, 0, 1, 1, 0, 1}) && map.terrain_samples.size() == 6 && (map.terrain_samples[0] >> 24U) == 0xffU,
+            "TED terrain layer indices or raw samples were not retained");
+    require(map.terrain_layers.size() == 2 && map.terrain_layers[0].tile_size == 64.0F && map.terrain_layers[0].fields.size() == 3 && map.terrain_layers[1].tile_size == 0.0F,
+            "TED terrain layer tiling or raw fields were not decoded");
+    require(map.terrain_layers[0].color_texture == "GROUND.TGA" && map.environments.size() == 2 && map.environments[0].name == "Noon_Clear" && map.environments[0].skybox_primary == "DAY_BLUE_SKY" &&
+                map.active_environment == 1 && map.environments[0].has_lighting && map.environments[0].lights[0].color == std::array<float, 3>{1.0F, 0.9F, 0.8F} &&
+                map.environments[0].lights[2].intensity == 0.25F && map.environments[0].lights[1].azimuth == 3.0F && map.environments[0].lights[0].elevation == 0.4F &&
+                map.environments[0].ambient[0] == 0.05F && map.environments[0].fields.size() == 17 && map.environments[0].fields.back().type == 0x12 &&
+                map.environments[0].fields.back().payload.size() == 4 && !map.environments[1].has_lighting && map.warnings.size() == 1,
             "TED dependency decoding failed");
     require(map.object_count == 1 && map.object_types.size() == 1 && map.object_types[0].crc == 0x12345678U && map.zone_count == 1, "TED object or zone decoding failed");
     require(map.placed_objects.size() == 1 && map.placed_objects[0].instance_id == 42U && map.placed_objects[0].crc == 0x12345678U && map.placed_objects[0].player == 3U &&
@@ -1219,6 +1235,39 @@ void test_visual_material_translation()
     std::filesystem::remove_all(root, ignored);
 }
 
+void test_visual_terrain()
+{
+    // The synthetic land TED has a 3x2 grid, two layers, and per-vertex layers {0,0,1,1,0,1}.
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-visual-terrain-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::filesystem::create_directories(root / "Data" / "Art" / "Maps");
+    std::filesystem::create_directories(root / "Data" / "XML");
+    {
+        const auto bytes = make_test_ted();
+        std::ofstream file(root / "Data" / "Art" / "Maps" / "TEST.TED", std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    const auto asset = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED");
+    const auto& terrain = asset.scene.terrain;
+    require(asset.land && terrain.layer_count == 2 && terrain.vertices.size() == 12 && terrain.first_material + 2 <= asset.scene.materials.size(), "terrain mesh structure is wrong");
+    require(std::fabs(asset.scene.materials[terrain.first_material].uv_scale - 1.0F / 64.0F) < 1.0e-7F, "terrain layer tiling was not applied");
+    // First triangle: (0,0), (1,0), (1,1) with layers {0, 0, 0} -> sample (1,1) is index 4, layer 0.
+    const auto& first = terrain.vertices[0];
+    const auto& third = terrain.vertices[2];
+    require(first.position == std::array<float, 3>{0.0F, 0.0F, -0.5F} && third.position == std::array<float, 3>{20.0F, 20.0F, 1.5F} && first.layers == std::array<std::uint32_t, 3>{0U, 0U, 0U} &&
+                first.barycentric == std::array<float, 3>{1.0F, 0.0F, 0.0F} && third.barycentric == std::array<float, 3>{0.0F, 0.0F, 1.0F},
+            "terrain vertex positions, layers, or barycentrics are wrong");
+    // Second cell's first triangle uses samples (1,0), (2,0), (2,1): layers {0, 1, 1}.
+    require(terrain.vertices[6].layers == std::array<std::uint32_t, 3>{0U, 1U, 1U}, "terrain corner layers were not taken from the samples");
+    require(terrain.bounds_minimum[2] == -0.5F && terrain.bounds_maximum[0] == 40.0F && terrain.bounds_maximum[2] == 2.0F && asset.scene.bounds_maximum[1] == 20.0F,
+            "terrain bounds were not applied to the scene");
+    require(!asset.lighting, "an environment without lighting fields produced a light rig");
+    std::filesystem::remove_all(root, ignored);
+}
+
 void test_xml_schema_validation()
 {
     const auto root = std::filesystem::temp_directory_path() / "eawengine-xml-schema-test";
@@ -1385,6 +1434,7 @@ int main()
         test_game_object_catalog();
         test_camera_controllers();
         test_visual_material_translation();
+        test_visual_terrain();
         test_xml_schema_validation();
 
         std::error_code ignored;

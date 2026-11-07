@@ -61,7 +61,7 @@ Known limitations are intentional, not invitations to hide special cases:
 - animation choice has no runtime UI and some visibility/complex animation behavior remains incomplete;
 - assets are loaded before rendering; handles, streaming, hot reload, and background scene construction are not implemented;
 - the descriptor and bone capacities are temporary implementation limits, not asset-format limits;
-- the D3D12 renderer does not render TED terrain yet; `--map` shows placed objects only, land teams/companies are not expanded (their formations are runtime behavior), map instances share one bind-pose palette, and transparent draws are not depth-sorted;
+- land terrain renders as a textured heightfield (per-vertex layer index, three-layer blending, layer tiling, normal maps); water, decals, tracks, passability, fog of war, and the unexplained terrain layer fields (two angles, two colors, flags) are not rendered or interpreted yet. Land teams/companies are not expanded (their formations are runtime behavior), map instances share one bind-pose palette, and transparent draws are not depth-sorted;
 - world handedness is unverified: the renderer uses a left-handed look-at over Z-up data, so mirrored text or decals on models would indicate a flipped axis; background parallax and sky-dome scaling are inferred, not measured;
 - `EAWTools` remains on Direct3D 11 and its preview renderer is not the production renderer;
 - a complete renderer-agnostic RHI has not yet been extracted;
@@ -75,7 +75,7 @@ Work in dependency order unless the user explicitly reprioritizes it.
 2. (In progress; the core legacy-mode surface model is implemented.) Implement legacy-mode material rendering in the D3D12 sandbox from `LegacyMaterial` profiles, using newly written HLSL: SH plus key-light lighting, normal/gloss/emissive/team-color channels, UV animation, cull/depth/alpha rules, and special families such as shields and heat where evidence supports them. Keep the material interface engine-native so a PBS path can be added later without changing decoders.
 3. ~~Move modern shader sources out of inline C++ to newly written HLSL. Introduce DXC/offline compilation, stable root-signature layouts, and PSO caching.~~ Done; reflection metadata is deferred until material shaders need generated bindings.
 4. Add animation selection and visibility handling, then selection IDs, debug drawing, and camera polish. The PBS material model and its documented conversion from legacy profiles follow once legacy mode is stable.
-5. Add D3D12 tactical-map rendering. Defer further tool-only model/map preview polish until it can share code with the production renderer and the later map editor.
+5. ~~Add D3D12 tactical-map rendering.~~ Space maps and land terrain render; water, decals, and tracks remain. Defer further tool-only model/map preview polish until it can share code with the production renderer and the later map editor.
 6. Introduce generation-checked asset/resource handles, descriptor allocation, dependency tracking, background loading, upload budgeting, hot reload, and clean retirement across queue timelines.
 7. Finish M2 by loading and inspecting both a stock space unit and a tactical map through the new renderer.
 8. Begin M3 only after the visual/data contracts are stable enough: ECS/storage, fixed-step scheduler, dependency-aware job system, deterministic commands/snapshots, transforms, spatial queries, movement, formations, targeting, damage, hardpoints, fog of war, XML construction, and a minimal Lua host surface.

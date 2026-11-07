@@ -50,10 +50,17 @@ struct TedEnvironment
     std::vector<TedEnvironmentField> fields;
 };
 
+// A terrain texture layer. Only the textures and the tiling scale are interpreted; every
+// mini-chunk is kept in `fields` (the corpus also stores two angles, two RGB colors, flags, and an
+// integer per layer whose meanings are not established yet).
 struct TedTerrainLayer
 {
     std::string color_texture;
     std::string normal_texture;
+    // World units covered by one texture repeat (mini 0x06; 64 in most stock layers). Zero when
+    // absent or malformed.
+    float tile_size{};
+    std::vector<TedEnvironmentField> fields;
 };
 
 struct TedObjectType
@@ -96,6 +103,11 @@ struct TedMap
     std::size_t elevation_sample_count{};
     std::size_t passability_sample_count{};
     std::vector<std::int16_t> elevation_map;
+    // Raw 32-bit terrain samples, one per vertex, row-major. Bits 0-15 are the signed elevation
+    // (elevation_map), bits 16-23 the vertex's terrain layer index (terrain_layer_map), and bits
+    // 24-31 a small signed value whose meaning is not established yet.
+    std::vector<std::uint32_t> terrain_samples;
+    std::vector<std::uint8_t> terrain_layer_map;
     std::vector<std::uint32_t> passability_map;
     std::size_t decal_count{};
     std::vector<TedTerrainLayer> terrain_layers;

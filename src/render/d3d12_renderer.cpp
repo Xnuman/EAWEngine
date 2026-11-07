@@ -30,6 +30,8 @@
 // points embed the root signature, which the renderer creates from the vertex shader blob.
 #include "g_eaw_sandbox_ps.h"
 #include "g_eaw_sandbox_vs.h"
+#include "g_eaw_terrain_ps.h"
+#include "g_eaw_terrain_vs.h"
 
 namespace eaw {
 namespace {
@@ -507,6 +509,13 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12PipelineState> alpha_pipeline;
     ComPtr<ID3D12PipelineState> additive_pipeline;
     ComPtr<ID3D12PipelineState> background_opaque_pipeline;
+    ComPtr<ID3D12PipelineState> terrain_pipeline;
+    ComPtr<ID3D12Resource> terrain_vertex_buffer;
+    D3D12_VERTEX_BUFFER_VIEW terrain_vertex_view{};
+    std::uint32_t terrain_vertex_count{};
+    std::uint32_t terrain_first_material{};
+    // True once load_scene succeeded; before that the validation triangle is drawn.
+    bool scene_loaded{};
     ComPtr<ID3D12PipelineState> background_alpha_pipeline;
     ComPtr<ID3D12PipelineState> background_additive_pipeline;
     ComPtr<ID3D12DescriptorHeap> shader_heap;
@@ -802,6 +811,8 @@ struct D3d12Renderer::Impl
         }
         auto key = fnv1a(1469598103934665603ULL, std::as_bytes(std::span(g_eaw_sandbox_vs)));
         key = fnv1a(key, std::as_bytes(std::span(g_eaw_sandbox_ps)));
+        key = fnv1a(key, std::as_bytes(std::span(g_eaw_terrain_vs)));
+        key = fnv1a(key, std::as_bytes(std::span(g_eaw_terrain_ps)));
         key = fnv1a(key, std::as_bytes(std::span(&pipeline_layout_version, 1)));
         pipeline_cache_key = key;
         pipeline_cache_file = options.pipeline_cache_directory / "d3d12_pipelines.bin";
@@ -1019,6 +1030,20 @@ struct D3d12Renderer::Impl
         description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
         description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
         create_pipeline_state(L"background opaque", description, background_opaque_pipeline);
+
+        // Terrain: opaque, depth-written, with its own vertex layout and shaders.
+        constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 4> terrain_layout{{
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualTerrainVertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualTerrainVertex, normal), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32_UINT, 0, offsetof(VisualTerrainVertex, layers), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualTerrainVertex, barycentric), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        }};
+        description.VS = {g_eaw_terrain_vs, sizeof(g_eaw_terrain_vs)};
+        description.PS = {g_eaw_terrain_ps, sizeof(g_eaw_terrain_ps)};
+        description.InputLayout = {terrain_layout.data(), static_cast<UINT>(terrain_layout.size())};
+        description.DepthStencilState.DepthEnable = TRUE;
+        description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+        create_pipeline_state(L"terrain", description, terrain_pipeline);
 
         D3D12_DESCRIPTOR_HEAP_DESC shader_heap_description{};
         shader_heap_description.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -1239,7 +1264,7 @@ struct D3d12Renderer::Impl
 
     void load_scene(const VisualScene& scene)
     {
-        if (frame_number != 0 || !scene_draws.empty())
+        if (frame_number != 0 || scene_loaded)
         {
             throw std::logic_error("the initial visual scene must be loaded before rendering begins");
         }
@@ -1251,9 +1276,9 @@ struct D3d12Renderer::Impl
         {
             throw std::invalid_argument("visual scene exceeds the D3D12 texture descriptor capacity");
         }
-        if (scene.meshes.empty() || scene.instances.empty())
+        if ((scene.meshes.empty() || scene.instances.empty()) && scene.terrain.vertices.empty())
         {
-            throw std::invalid_argument("visual scene has no meshes or instances");
+            throw std::invalid_argument("visual scene has no meshes, instances, or terrain");
         }
         if (scene.instances.size() > std::numeric_limits<std::uint32_t>::max())
         {
@@ -1322,6 +1347,10 @@ struct D3d12Renderer::Impl
         const auto index_bytes = std::as_bytes(std::span(scene.indices));
         auto new_vertex_buffer = upload_buffer(upload, vertex_bytes, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, L"EAWEngine scene vertex buffer");
         auto new_index_buffer = upload_buffer(upload, index_bytes, D3D12_RESOURCE_STATE_INDEX_BUFFER, L"EAWEngine scene index buffer");
+        if (gpu_instances.empty())
+        {
+            gpu_instances.push_back({visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, {}});
+        }
         auto new_instance_buffer = upload_buffer(upload, std::as_bytes(std::span(gpu_instances)), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"EAWEngine scene instance buffer");
 
         std::vector<ComPtr<ID3D12Resource>> new_textures;
@@ -1342,6 +1371,45 @@ struct D3d12Renderer::Impl
             gpu_materials.emplace_back();
         }
         auto new_material_buffer = upload_buffer(upload, std::as_bytes(std::span(gpu_materials)), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"EAWEngine scene material buffer");
+
+        ComPtr<ID3D12Resource> new_terrain_buffer;
+        const auto& terrain = scene.terrain;
+        if (!terrain.vertices.empty())
+        {
+            if (terrain.vertices.size() % 3U != 0 || terrain.vertices.size() > std::numeric_limits<std::uint32_t>::max() || terrain.layer_count == 0 ||
+                static_cast<std::uint64_t>(terrain.first_material) + terrain.layer_count > scene.materials.size())
+            {
+                throw std::invalid_argument("visual terrain has an invalid triangle count or layer range");
+            }
+            for (std::size_t index = 0; index < terrain.vertices.size(); ++index)
+            {
+                const auto& vertex = terrain.vertices[index];
+                const bool finite = std::ranges::all_of(vertex.position,
+                                                        [](const float value)
+                                                        {
+                                                            return std::isfinite(value);
+                                                        }) &&
+                                    std::ranges::all_of(vertex.normal,
+                                                        [](const float value)
+                                                        {
+                                                            return std::isfinite(value);
+                                                        }) &&
+                                    std::ranges::all_of(vertex.barycentric,
+                                                        [](const float value)
+                                                        {
+                                                            return std::isfinite(value);
+                                                        });
+                if (!finite || std::ranges::any_of(vertex.layers,
+                                                   [&](const std::uint32_t layer)
+                                                   {
+                                                       return layer >= terrain.layer_count;
+                                                   }))
+                {
+                    throw std::invalid_argument("visual terrain vertex " + std::to_string(index) + " has non-finite data or a layer outside the terrain");
+                }
+            }
+            new_terrain_buffer = upload_buffer(upload, std::as_bytes(std::span(terrain.vertices)), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, L"EAWEngine terrain vertex buffer");
+        }
 
         std::vector<GpuDraw> new_draws;
         new_draws.reserve(scene.draws.size());
@@ -1378,6 +1446,16 @@ struct D3d12Renderer::Impl
         scene_index_buffer = std::move(new_index_buffer);
         scene_instance_buffer = std::move(new_instance_buffer);
         scene_material_buffer = std::move(new_material_buffer);
+        terrain_vertex_buffer = std::move(new_terrain_buffer);
+        terrain_vertex_count = static_cast<std::uint32_t>(terrain.vertices.size());
+        terrain_first_material = terrain.first_material;
+        scene_loaded = true;
+        if (terrain_vertex_buffer)
+        {
+            terrain_vertex_view.BufferLocation = terrain_vertex_buffer->GetGPUVirtualAddress();
+            terrain_vertex_view.SizeInBytes = static_cast<UINT>(terrain.vertices.size() * sizeof(VisualTerrainVertex));
+            terrain_vertex_view.StrideInBytes = sizeof(VisualTerrainVertex);
+        }
         scene_textures = std::move(new_textures);
         scene_draws = std::move(new_draws);
         scene_vertex_view.BufferLocation = scene_vertex_buffer->GetGPUVirtualAddress();
@@ -1423,14 +1501,14 @@ struct D3d12Renderer::Impl
                                        });
         };
         if (!finite(material.tint) || !finite(material.diffuse) || !finite(material.specular) || !finite(material.emissive) || !finite(material.uv_scroll) ||
-            !std::isfinite(material.alpha_test_threshold))
+            !std::isfinite(material.alpha_test_threshold) || !std::isfinite(material.uv_scale))
         {
             throw std::invalid_argument("visual material " + std::to_string(index) + " (" + material.name + ") has non-finite parameters");
         }
         GpuMaterial result;
         result.tint = material.tint;
         result.diffuse = material.diffuse;
-        result.specular = {material.specular[0], material.specular[1], material.specular[2], 0.0F};
+        result.specular = {material.specular[0], material.specular[1], material.specular[2], material.uv_scale};
         result.emissive = {material.emissive[0], material.emissive[1], material.emissive[2], 0.0F};
         result.uv_scroll = material.uv_scroll;
         result.alpha_cutoff = material.alpha_test_threshold;
@@ -1606,11 +1684,11 @@ struct D3d12Renderer::Impl
         command_list->SetGraphicsRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
         command_list->SetGraphicsRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
         command_list->SetGraphicsRootShaderResourceView(2, frame.bone_buffer->GetGPUVirtualAddress());
-        command_list->SetGraphicsRootShaderResourceView(3, (scene_draws.empty() ? identity_instance_buffer : scene_instance_buffer)->GetGPUVirtualAddress());
-        command_list->SetGraphicsRootShaderResourceView(4, (scene_draws.empty() ? identity_material_buffer : scene_material_buffer)->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(3, (scene_loaded ? scene_instance_buffer : identity_instance_buffer)->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(4, (scene_loaded ? scene_material_buffer : identity_material_buffer)->GetGPUVirtualAddress());
         command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-        if (scene_draws.empty())
+        if (!scene_loaded)
         {
             command_list->SetPipelineState(opaque_pipeline.Get());
             const std::array<std::uint32_t, 2> draw_constants{0U, 0U};
@@ -1620,10 +1698,25 @@ struct D3d12Renderer::Impl
         }
         else
         {
+            bool terrain_drawn = terrain_vertex_count == 0;
+            const auto draw_terrain = [&]
+            {
+                command_list->SetPipelineState(terrain_pipeline.Get());
+                const std::array<std::uint32_t, 2> terrain_constants{0U, terrain_first_material};
+                command_list->SetGraphicsRoot32BitConstants(5, 2, terrain_constants.data(), 0);
+                command_list->IASetVertexBuffers(0, 1, &terrain_vertex_view);
+                command_list->DrawInstanced(terrain_vertex_count, 1, 0, 0);
+                command_list->IASetVertexBuffers(0, 1, &scene_vertex_view);
+                terrain_drawn = true;
+            };
             command_list->IASetVertexBuffers(0, 1, &scene_vertex_view);
             command_list->IASetIndexBuffer(&scene_index_view);
             for (const auto& draw : scene_draws)
             {
+                if (!terrain_drawn && !draw.background)
+                {
+                    draw_terrain();
+                }
                 ID3D12PipelineState* pipeline = draw.background ? background_opaque_pipeline.Get() : opaque_pipeline.Get();
                 if (draw.blend == VisualBlendMode::alpha_blend)
                 {
@@ -1637,6 +1730,10 @@ struct D3d12Renderer::Impl
                 const std::array<std::uint32_t, 2> draw_constants{draw.first_instance, draw.material};
                 command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
                 command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
+            }
+            if (!terrain_drawn)
+            {
+                draw_terrain();
             }
         }
 

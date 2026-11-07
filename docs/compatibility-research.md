@@ -171,3 +171,19 @@ Faction definitions carry a 0..255 RGBA `Color`. A placed object's owner is a
 player slot chosen at runtime, so previews color team-color masks with the
 type's first `Affiliation` faction instead; types without an affiliation fall
 back to a player-slot palette.
+
+TED terrain samples (terrain chunk child 5, four bytes per vertex, row-major)
+pack more than elevation. Bits 0-15 are the signed elevation. Bits 16-23 are a
+per-vertex terrain layer index: across 894,816 sampled vertices in 188 stock land
+maps it is always below the map's layer count, and horizontally adjacent
+vertices share it 77.5% of the time. Bits 24-31 are a small signed value (mostly
+-1, 0, or -2) whose distribution does not change at layer boundaries, so it is
+not a blend weight; it is preserved raw. The engine places vertices 20 world
+units apart (column to +X, row to +Y) with world height = elevation / 20: under
+that mapping, placed objects on 135 land maps sit a median 1.2 world units from
+the interpolated ground. Terrain layers carry a tiling scale in mini 0x06 (about
+64 world units per repeat in most stock layers), the color and normal textures
+(0x0c, 0x13), and further fields not interpreted yet (angles in 0x08/0x09, RGB
+colors in 0x0a/0x0b, flags, an integer). The public Petrolution format pages
+were unavailable (HTTP 404) when this was researched, so these are corpus
+findings rather than documented facts.
