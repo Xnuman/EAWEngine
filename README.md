@@ -103,7 +103,10 @@ simulation entities and start in an RTS camera: WASD/arrows pan, the wheel
 zooms, left-drag box-selects mobile units, and right-click orders them to the
 clicked point (straight-line movement for now). C switches to the free debug
 camera. `--auto-move` orders every mobile unit to the view center for
-automated runs. F1 toggles the on-screen statistics
+automated runs. `--spawn <XML type>[:count]` (repeatable) makes an object type
+spawnable on maps: the count spawns at the surface under the view center when
+the map appears, N spawns one at the cursor, and Tab cycles through the types,
+for example `--spawn T2B_Tank:9 --spawn AT_AT_Walker`. F1 toggles the on-screen statistics
 panel (FPS, CPU/GPU frame time, draw calls, triangles, video memory, streaming,
 scene, selection, hot reload); `--no-overlay` starts with it hidden. The panel
 can be dragged and resized, and its "-" button minimizes it to a small tab ("+"

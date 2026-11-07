@@ -44,6 +44,8 @@ public:
     [[nodiscard]] const std::array<float, 3>& mesh_maximum(std::uint32_t mesh) const;
     // XML type of a spawned entity (empty when unknown).
     [[nodiscard]] std::string type_name(EntityId id) const;
+    // Spawns an entity of a runtime-spawnable type into `world` and records its template.
+    EntityId spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, float heading, std::uint32_t owner);
 
 private:
     struct Template

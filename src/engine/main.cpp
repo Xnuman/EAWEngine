@@ -72,6 +72,8 @@ struct Options
     bool overlay{true};
     // Once the scene is shown, select every mobile entity and order it to the scene center.
     bool auto_move{};
+    // XML object types made spawnable on maps (--spawn TYPE[:COUNT]); counts spawn when shown.
+    std::vector<std::pair<std::string, std::uint32_t>> spawns;
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};
@@ -104,6 +106,8 @@ void print_usage()
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
               << "  --no-overlay       Start without the on-screen statistics panel (F1 toggles)\n"
               << "  --auto-move        Order every mobile unit to the map center once shown (automation)\n"
+              << "  --spawn <TYPE>[:N] Make an XML object type spawnable on maps (repeatable); N spawn at the view\n"
+              << "                     center when shown, N key spawns one at the cursor, Tab cycles types\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
               << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
@@ -183,6 +187,27 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--auto-move")
         {
             options.auto_move = true;
+        }
+        else if (argument == "--spawn")
+        {
+            const std::string value(require_value(argc, argv, index, argument));
+            const auto colon = value.rfind(':');
+            std::uint32_t count = 0;
+            auto type = value;
+            if (colon != std::string::npos)
+            {
+                type = value.substr(0, colon);
+                count = parse_unsigned(std::string_view(value).substr(colon + 1U), argument);
+                if (count > 1000)
+                {
+                    throw std::invalid_argument("--spawn counts are limited to 1000 per type");
+                }
+            }
+            if (type.empty())
+            {
+                throw std::invalid_argument("--spawn needs an XML object type name");
+            }
+            options.spawns.emplace_back(std::move(type), count);
         }
         else if (argument == "--pick")
         {
@@ -356,7 +381,12 @@ SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Op
     {
         if (options.map)
         {
-            content.map = eaw::build_visual_map(reader, *options.map, cache);
+            std::vector<std::string> spawn_types;
+            for (const auto& [type, count] : options.spawns)
+            {
+                spawn_types.push_back(type);
+            }
+            content.map = eaw::build_visual_map(reader, *options.map, cache, spawn_types);
         }
         else
         {
@@ -495,6 +525,12 @@ int main(const int argc, char** argv)
         // Kept only for --reload-every; otherwise the CPU copy moves into the renderer.
         std::optional<eaw::VisualScene> reload_scene;
         std::vector<std::array<float, 16>> bind_palette;
+        // Runtime-spawnable types of the current map; N spawns `spawn_choice` at the cursor.
+        std::vector<eaw::SpawnableType> spawnable;
+        std::size_t spawn_choice = 0;
+        std::uint32_t pending_spawn_count = 0;
+        std::size_t pending_spawn_type = 0;
+        bool initial_spawns_sent = false;
         // Every shown object is a simulation entity; backdrops stay static. Presentation re-poses the
         // scene's instances from interpolated snapshots each frame.
         std::optional<eaw::SimulationWorld> world;
@@ -638,6 +674,13 @@ int main(const int argc, char** argv)
                     reload_scene = scene;
                 }
                 start_simulation(visual_map.scene, visual_map.entities);
+                spawnable = visual_map.spawnable;
+                spawn_choice = 0;
+                initial_spawns_sent = false;
+                for (const auto& type : spawnable)
+                {
+                    std::cout << "Spawnable: " << type.type_name << " (speed " << format_fixed(type.max_speed, 1) << ")\n";
+                }
                 renderer.load_scene(std::move(visual_map.scene));
                 if (visual_map.lighting)
                 {
@@ -758,6 +801,7 @@ int main(const int argc, char** argv)
         {
             select,
             command,
+            spawn,
         };
         PickPurpose pick_purpose = PickPurpose::select;
         std::uint64_t streaming_since = 0;
@@ -871,6 +915,18 @@ int main(const int argc, char** argv)
                 pick_purpose = PickPurpose::command;
                 renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y));
             }
+            if (input.keys[static_cast<std::size_t>(eaw::Key::tab)].pressed && !spawnable.empty())
+            {
+                spawn_choice = (spawn_choice + 1U) % spawnable.size();
+                std::cout << "Spawn type: " << spawnable[spawn_choice].type_name << '\n';
+            }
+            if (input.keys[static_cast<std::size_t>(eaw::Key::n)].pressed && !spawnable.empty() && world && tactical_camera && scene_mouse && input.mouse_x >= 0 && input.mouse_y >= 0)
+            {
+                pick_purpose = PickPurpose::spawn;
+                pending_spawn_type = spawn_choice;
+                pending_spawn_count = 1;
+                renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y));
+            }
             if (input.keys[static_cast<std::size_t>(eaw::Key::c)].pressed && tactical_camera)
             {
                 free_camera = !free_camera;
@@ -896,7 +952,7 @@ int main(const int argc, char** argv)
                 std::cout << "Move " << movers.size() << " units to " << format_fixed(target.x, 0) << ", " << format_fixed(target.y, 0) << ", " << format_fixed(target.z, 0) << '\n';
             };
             const auto pick = renderer.take_pick();
-            if (pick && pick_purpose == PickPurpose::command && world && tactical_camera)
+            const auto picked_point = [&]() -> std::optional<std::array<float, 3>>
             {
                 const auto stats = renderer.stats();
                 const auto camera = tactical_camera->camera();
@@ -905,16 +961,30 @@ int main(const int argc, char** argv)
                 const auto x = static_cast<float>(pick->pixel[0]);
                 const auto y = static_cast<float>(pick->pixel[1]);
                 // The clicked surface when there is one, otherwise the ground plane z = 0.
-                std::optional<std::array<float, 3>> point;
                 if (pick->depth)
                 {
-                    point = eaw::unproject_screen(camera, width, height, x, y, *pick->depth);
+                    return eaw::unproject_screen(camera, width, height, x, y, *pick->depth);
                 }
-                else
+                return eaw::intersect_ground_plane(camera, width, height, x, y, 0.0F);
+            };
+            if (pick && pick_purpose == PickPurpose::spawn && world && presentation && tactical_camera && pending_spawn_type < spawnable.size())
+            {
+                if (const auto point = picked_point())
                 {
-                    point = eaw::intersect_ground_plane(camera, width, height, x, y, 0.0F);
+                    const auto& type = spawnable[pending_spawn_type];
+                    const auto spots = eaw::grid_targets({(*point)[0], (*point)[1], (*point)[2]}, pending_spawn_count, 40.0F);
+                    for (const auto& spot : spots)
+                    {
+                        (void)presentation->spawn(*world, type, spot, 0.0F, 1);
+                    }
+                    std::cout << "Spawned " << spots.size() << " " << type.type_name << " at " << format_fixed((*point)[0], 0) << ", " << format_fixed((*point)[1], 0) << ", "
+                              << format_fixed((*point)[2], 0) << '\n';
                 }
-                if (point)
+                pick_purpose = PickPurpose::select;
+            }
+            else if (pick && pick_purpose == PickPurpose::command && world && tactical_camera)
+            {
+                if (const auto point = picked_point())
                 {
                     order_move({(*point)[0], (*point)[1], (*point)[2]});
                 }
@@ -1089,7 +1159,33 @@ int main(const int argc, char** argv)
                 renderer.set_instances(frame_instances);
                 update_debug_lines();
             }
-            if (options.auto_move && content_shown_at && world && !automated_move_sent)
+            if (!initial_spawns_sent && world && tactical_camera && content_shown_at && !spawnable.empty())
+            {
+                initial_spawns_sent = true;
+                // Each requested count spawns at the surface under the screen center, one type after
+                // another (later requests replace earlier unrendered picks, so only the first type
+                // with a count is placed this way; the rest use N at the cursor).
+                for (std::size_t index = 0; index < spawnable.size() && index < options.spawns.size(); ++index)
+                {
+                    const auto requested = std::ranges::find(options.spawns, spawnable[index].type_name,
+                                                             [](const auto& entry)
+                                                             {
+                                                                 return entry.first;
+                                                             });
+                    const auto count = requested != options.spawns.end() ? requested->second : 0U;
+                    if (count != 0)
+                    {
+                        const auto stats = renderer.stats();
+                        pick_purpose = PickPurpose::spawn;
+                        pending_spawn_type = index;
+                        pending_spawn_count = count;
+                        renderer.request_pick(stats.width / 2U, stats.height / 2U);
+                        break;
+                    }
+                }
+            }
+            // Waits for the initial spawns so they are part of the order.
+            if (options.auto_move && content_shown_at && world && !automated_move_sent && (spawnable.empty() || (initial_spawns_sent && pick_purpose != PickPurpose::spawn)))
             {
                 automated_move_sent = true;
                 selection.clear();
@@ -1174,6 +1270,10 @@ int main(const int argc, char** argv)
                                     std::to_string(simulation_clock.dropped_ticks()));
                 }
                 lines.push_back("Selected: " + selected_text);
+                if (!spawnable.empty())
+                {
+                    lines.push_back("Spawn: " + spawnable[spawn_choice].type_name + " (N at cursor, Tab next of " + std::to_string(spawnable.size()) + ")");
+                }
                 lines.push_back("Hot reload: " + reload_status);
                 lines.push_back("");
                 lines.push_back(!tactical_camera ? "Click select | B bounds | F1 panel | drag orbit, wheel zoom, P pause, Left/Right animation"

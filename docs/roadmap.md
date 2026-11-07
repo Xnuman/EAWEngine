@@ -161,8 +161,10 @@ it.
   simulation core, entity spawning from map placements and XML types, the
   renderer instance API with snapshot interpolation, and the first interaction
   (RTS camera, click and box selection, right-click move to the clicked surface).
-  Next: terrain following and passability, pathfinding, formations, and turn
-  rates, then targeting and combat.
+  A debug spawn (`--spawn TYPE[:N]`, N at the cursor) places units of any XML
+  type whose model is resolvable. Next: terrain following and passability,
+  pathfinding, formations, and turn rates, then targeting and combat; spawning
+  becomes a deterministic command, and meshes can be registered at runtime.
 
 - ECS/storage, fixed-step scheduler, job system, transforms, spatial index,
   movement, formations, targeting, projectiles, damage, hardpoints, fog of war.

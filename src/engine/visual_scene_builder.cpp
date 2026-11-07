@@ -1090,7 +1090,27 @@ VisualModelAsset build_visual_model(const AssetReader& vfs, const std::string_vi
     return asset;
 }
 
-VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view map_path, AssetCache* cache)
+// Movement speed of an object type from its XML Max_Speed (zero when absent or invalid).
+static float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings)
+{
+    const auto speed = catalog.field(definition, "Max_Speed").field;
+    if (speed == nullptr)
+    {
+        return 0.0F;
+    }
+    try
+    {
+        const auto value = std::stof(speed->text);
+        return std::isfinite(value) && value > 0.0F ? value * provisional_max_speed_scale : 0.0F;
+    }
+    catch (const std::exception&)
+    {
+        warnings.push_back(definition.name + ": Max_Speed '" + speed->text + "' is not a number");
+        return 0.0F;
+    }
+}
+
+VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view map_path, AssetCache* cache, const std::span<const std::string> spawn_types)
 {
     const auto resolved = vfs.resolve(map_path);
     if (!resolved)
@@ -1168,21 +1188,7 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
             spawn.visual = *entry->second;
             if (placement.type != nullptr)
             {
-                if (const auto speed = catalog.field(*placement.type, "Max_Speed").field)
-                {
-                    try
-                    {
-                        const auto value = std::stof(speed->text);
-                        if (std::isfinite(value) && value > 0.0F)
-                        {
-                            spawn.max_speed = value * provisional_max_speed_scale;
-                        }
-                    }
-                    catch (const std::exception&)
-                    {
-                        scene.warnings.push_back(spawn.type_name + ": Max_Speed '" + speed->text + "' is not a number");
-                    }
-                }
+                spawn.max_speed = type_max_speed(catalog, *placement.type, scene.warnings);
             }
             asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size())});
         }
@@ -1261,6 +1267,50 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
             scene.instances.push_back(backdrop);
             asset.backdrops.push_back(definition->name + " (" + *path + ")");
         }
+    }
+
+    // Types requested for runtime spawning: their models join the mesh library without instances.
+    const auto spawn_context = asset.land ? GameModelContext::land : GameModelContext::space;
+    for (const auto& type_name : spawn_types)
+    {
+        const XmlDefinition* definition = nullptr;
+        std::optional<GameObjectModelReference> model;
+        for (const auto* candidate : catalog.find(type_name))
+        {
+            if ((model = catalog.model(*candidate, spawn_context)))
+            {
+                definition = candidate;
+                break;
+            }
+        }
+        const auto path = model ? resolve_model_path(vfs, model->value) : std::nullopt;
+        if (definition == nullptr || !path)
+        {
+            scene.warnings.push_back("spawn type '" + type_name + "' has no resolvable " + std::string(to_string(spawn_context)) + " model");
+            continue;
+        }
+        auto [entry, inserted] = meshes.try_emplace(*path);
+        if (inserted)
+        {
+            try
+            {
+                entry->second = append_model(builder, *cached_model(builder, *path), *path);
+            }
+            catch (const std::exception& error)
+            {
+                scene.warnings.push_back(*path + ": " + error.what());
+            }
+        }
+        if (!entry->second)
+        {
+            continue;
+        }
+        SpawnableType spawnable;
+        spawnable.type_name = definition->name;
+        spawnable.mesh = *entry->second;
+        spawnable.max_speed = type_max_speed(catalog, *definition, scene.warnings);
+        spawnable.team_color = catalog.affiliation_color(*definition).value_or(player_team_color(1));
+        asset.spawnable.push_back(std::move(spawnable));
     }
 
     for (const auto& mesh : scene.meshes)

@@ -1752,6 +1752,28 @@ void test_visual_terrain()
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
     const auto asset = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED");
 
+    // Spawnable types: a type with a land model joins the mesh library with its speed; an unknown
+    // type is reported, not fatal.
+    {
+        std::filesystem::create_directories(root / "Data" / "Art" / "Models");
+        const auto model = make_test_alo();
+        std::ofstream(root / "Data" / "Art" / "Models" / "TANK.ALO", std::ios::binary).write(reinterpret_cast<const char*>(model.data()), static_cast<std::streamsize>(model.size()));
+        std::ofstream(root / "Data" / "XML" / "UNITS.XML", std::ios::binary)
+            << "<Units><GroundVehicle Name=\"Test_Tank\"><Land_Model_Name>TANK.ALO</Land_Model_Name><Max_Speed>2</Max_Speed></GroundVehicle></Units>";
+        const std::array<std::string, 2> types{"Test_Tank", "Missing_Type"};
+        const auto with_spawns = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", nullptr, types);
+        require(with_spawns.spawnable.size() == 1 && with_spawns.spawnable[0].type_name == "Test_Tank" &&
+                    std::fabs(with_spawns.spawnable[0].max_speed - 2.0F * eaw::provisional_max_speed_scale) < 1.0e-4F && with_spawns.spawnable[0].mesh < with_spawns.scene.meshes.size(),
+                "a spawn type must resolve to a mesh and its scaled speed");
+        require(std::ranges::any_of(with_spawns.scene.warnings,
+                                    [](const std::string& warning)
+                                    {
+                                        return warning.find("Missing_Type") != std::string::npos;
+                                    }),
+                "an unknown spawn type must be reported");
+        std::filesystem::remove(root / "Data" / "XML" / "UNITS.XML", ignored);
+    }
+
     // Texture identities: stable across builds served from a cache (so the renderer keeps them on
     // the GPU), fresh for every decode.
     {

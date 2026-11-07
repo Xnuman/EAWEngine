@@ -9,6 +9,7 @@
 #include <array>
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -43,6 +44,15 @@ struct MapEntitySpawn
 // This is a provisional engine assumption, not compatibility evidence.
 inline constexpr float provisional_max_speed_scale = 30.0F;
 
+// An XML object type that can be spawned at runtime: its model is part of the map scene's meshes.
+struct SpawnableType
+{
+    std::string type_name;
+    std::uint32_t mesh{};
+    float max_speed{};
+    std::array<float, 4> team_color{1.0F, 1.0F, 1.0F, 1.0F};
+};
+
 struct VisualMapAsset
 {
     VisualScene scene;
@@ -67,13 +77,17 @@ struct VisualMapAsset
     std::size_t player_colored{};
     // One entity per drawn placed object (not backdrops), in scene instance order.
     std::vector<MapEntitySpawn> entities;
+    // Types requested for runtime spawning that resolved to a model, in request order.
+    std::vector<SpawnableType> spawnable;
 };
 
 // Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file
 // dependencies). With a cache, decoded models, textures, maps, and the XML object catalog are
 // reused across builds until their source files change.
 [[nodiscard]] VisualModelAsset build_visual_model(const AssetReader& reader, std::string_view model_path, AssetCache* cache = nullptr);
-[[nodiscard]] VisualMapAsset build_visual_map(const AssetReader& reader, std::string_view map_path, AssetCache* cache = nullptr);
+// `spawn_types` names XML object types whose models are added to the scene's meshes so they can be
+// spawned at runtime; types without a model for the map's context are reported as warnings.
+[[nodiscard]] VisualMapAsset build_visual_map(const AssetReader& reader, std::string_view map_path, AssetCache* cache = nullptr, std::span<const std::string> spawn_types = {});
 [[nodiscard]] std::optional<std::string> default_model_animation(const AssetReader& reader, std::string_view model_path);
 // Every <MODEL>_*.ALA beside the model, sorted by virtual path.
 [[nodiscard]] std::vector<std::string> model_animations(const AssetReader& reader, std::string_view model_path);

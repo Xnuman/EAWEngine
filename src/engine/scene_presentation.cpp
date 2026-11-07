@@ -93,6 +93,27 @@ const std::array<float, 3>& ScenePresentation::mesh_maximum(const std::uint32_t 
     return mesh_maximum_.at(mesh);
 }
 
+EntityId ScenePresentation::spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, const float heading, const std::uint32_t owner)
+{
+    if (type.mesh >= mesh_names_.size())
+    {
+        throw std::invalid_argument("spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which the scene does not have");
+    }
+    EntitySpawn spawn;
+    spawn.type_name = type.type_name;
+    spawn.owner = owner;
+    spawn.position = position;
+    spawn.heading = heading;
+    spawn.max_speed = type.max_speed;
+    spawn.visual = type.mesh;
+    const auto id = world.spawn(spawn);
+    // The template's transform is the model's own frame; pose_transform turns and places it.
+    VisualInstance instance{type.mesh};
+    instance.team_color = type.team_color;
+    templates_.emplace(entity_key(id), Template{instance, 0.0F, type.type_name});
+    return id;
+}
+
 std::string ScenePresentation::type_name(const EntityId id) const
 {
     const auto found = templates_.find(entity_key(id));
