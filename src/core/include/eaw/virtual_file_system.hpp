@@ -1,6 +1,7 @@
 #pragma once
 
 #include "eaw/meg_archive.hpp"
+#include "eaw/status.hpp"
 
 #include <cstddef>
 #include <filesystem>
@@ -36,7 +37,9 @@ class AssetReader
 public:
     virtual ~AssetReader() = default;
     [[nodiscard]] virtual std::optional<ResolvedAsset> resolve(std::string_view virtual_path) const = 0;
-    [[nodiscard]] virtual std::vector<std::byte> read(std::string_view virtual_path) const = 0;
+    // The winning layer's bytes; an error when the asset is missing or cannot be read.
+    [[nodiscard]] virtual Result<std::vector<std::byte>> read(std::string_view virtual_path) const = 0;
+    // Winning assets under a prefix (an invalid prefix lists nothing).
     [[nodiscard]] virtual std::vector<ResolvedAsset> list(std::string_view prefix = {}) const = 0;
 
 protected:
@@ -56,7 +59,7 @@ public:
     // The loose-file root directory or the archive file this mount reads from.
     [[nodiscard]] virtual const std::filesystem::path& source_path() const noexcept = 0;
     [[nodiscard]] virtual std::optional<ResolvedAsset> resolve(std::string_view virtual_path) const = 0;
-    [[nodiscard]] virtual std::vector<std::byte> read(const ResolvedAsset& asset) const = 0;
+    [[nodiscard]] virtual Result<std::vector<std::byte>> read(const ResolvedAsset& asset) const = 0;
     [[nodiscard]] virtual std::size_t entry_count() const noexcept = 0;
     [[nodiscard]] virtual std::vector<std::string> paths() const = 0;
 };
@@ -69,7 +72,7 @@ public:
     [[nodiscard]] AssetSourceKind kind() const noexcept override;
     [[nodiscard]] const std::filesystem::path& source_path() const noexcept override;
     [[nodiscard]] std::optional<ResolvedAsset> resolve(std::string_view virtual_path) const override;
-    [[nodiscard]] std::vector<std::byte> read(const ResolvedAsset& asset) const override;
+    [[nodiscard]] Result<std::vector<std::byte>> read(const ResolvedAsset& asset) const override;
     [[nodiscard]] std::size_t entry_count() const noexcept override;
     [[nodiscard]] std::vector<std::string> paths() const override;
 
@@ -81,12 +84,14 @@ private:
 class MegMount final : public AssetMount
 {
 public:
-    MegMount(std::string name, std::filesystem::path archive);
+    // Opens the archive's index; the error names the archive and what is malformed.
+    [[nodiscard]] static Result<std::unique_ptr<MegMount>> open(std::string name, std::filesystem::path archive);
+    MegMount(std::string name, MegArchive archive);
     [[nodiscard]] std::string_view name() const noexcept override;
     [[nodiscard]] AssetSourceKind kind() const noexcept override;
     [[nodiscard]] const std::filesystem::path& source_path() const noexcept override;
     [[nodiscard]] std::optional<ResolvedAsset> resolve(std::string_view virtual_path) const override;
-    [[nodiscard]] std::vector<std::byte> read(const ResolvedAsset& asset) const override;
+    [[nodiscard]] Result<std::vector<std::byte>> read(const ResolvedAsset& asset) const override;
     [[nodiscard]] std::size_t entry_count() const noexcept override;
     [[nodiscard]] std::vector<std::string> paths() const override;
 
@@ -105,13 +110,14 @@ public:
     VirtualFileSystem& operator=(VirtualFileSystem&&) = default;
     ~VirtualFileSystem() override = default;
 
-    // Mounts are added from lowest to highest priority.
+    // Mounts are added from lowest to highest priority (a null mount is a programming error).
     void mount(std::unique_ptr<AssetMount> mount);
     // Swaps the mount at `index` (same priority), for example after its archive was rebuilt. The
-    // caller must ensure no other thread is reading through this file system meanwhile.
+    // caller must ensure no other thread is reading through this file system meanwhile. The index
+    // must name an existing mount.
     void replace_mount(std::size_t index, std::unique_ptr<AssetMount> mount);
     [[nodiscard]] std::optional<ResolvedAsset> resolve(std::string_view virtual_path) const override;
-    [[nodiscard]] std::vector<std::byte> read(std::string_view virtual_path) const override;
+    [[nodiscard]] Result<std::vector<std::byte>> read(std::string_view virtual_path) const override;
     [[nodiscard]] std::vector<ResolvedAsset> list(std::string_view prefix = {}) const override;
     [[nodiscard]] std::span<const std::unique_ptr<AssetMount>> mounts() const noexcept;
 

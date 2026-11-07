@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
+#include <optional>
 
 namespace eaw {
 namespace {
@@ -12,12 +12,10 @@ constexpr std::uint32_t fourcc(const char a, const char b, const char c, const c
     return static_cast<std::uint32_t>(a) | (static_cast<std::uint32_t>(b) << 8U) | (static_cast<std::uint32_t>(c) << 16U) | (static_cast<std::uint32_t>(d) << 24U);
 }
 
+// Callers check the header size before reading, so an out-of-range read is a bug.
 std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t offset)
 {
-    if (offset + 4 > bytes.size())
-    {
-        throw std::runtime_error("truncated DDS header");
-    }
+    EAW_ASSERT(offset + 4 <= bytes.size());
     std::uint32_t value = 0;
     for (unsigned shift = 0; shift < 32; shift += 8)
     {
@@ -26,11 +24,12 @@ std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t
     return value;
 }
 
-std::size_t checked_multiply(const std::size_t left, const std::size_t right)
+// Nothing when the product overflows the address space.
+std::optional<std::size_t> checked_multiply(const std::size_t left, const std::size_t right)
 {
     if (right != 0 && left > std::numeric_limits<std::size_t>::max() / right)
     {
-        throw std::runtime_error("DDS dimensions overflow the address space");
+        return std::nullopt;
     }
     return left * right;
 }
@@ -149,11 +148,11 @@ bool alpha_format(const DdsFormat format) noexcept
 
 } // namespace
 
-DdsTexture DdsTexture::parse(const std::span<const std::byte> bytes)
+Result<DdsTexture> DdsTexture::parse(const std::span<const std::byte> bytes)
 {
     if (bytes.size() < 128 || read_u32(bytes, 0) != fourcc('D', 'D', 'S', ' ') || read_u32(bytes, 4) != 124 || read_u32(bytes, 76) != 32)
     {
-        throw std::runtime_error("invalid DDS header");
+        return make_error("invalid DDS header");
     }
 
     DdsTexture result;
@@ -173,7 +172,7 @@ DdsTexture DdsTexture::parse(const std::span<const std::byte> bytes)
 
     if (result.width == 0 || result.height == 0 || result.mip_levels > 32)
     {
-        throw std::runtime_error("invalid DDS dimensions or mip count");
+        return make_error("invalid DDS dimensions or mip count");
     }
 
     if ((pixel_flags & 0x4U) != 0)
@@ -207,7 +206,7 @@ DdsTexture DdsTexture::parse(const std::span<const std::byte> bytes)
         {
             if (bytes.size() < 148)
             {
-                throw std::runtime_error("truncated DDS DX10 header");
+                return make_error("truncated DDS DX10 header");
             }
             result.dxgi_format = read_u32(bytes, 128);
             result.format = dxgi_to_format(result.dxgi_format);
@@ -220,7 +219,7 @@ DdsTexture DdsTexture::parse(const std::span<const std::byte> bytes)
             result.volume = dimension == 4;
             if (dimension < 2 || dimension > 4 || result.array_size == 0 || (result.volume && result.array_size != 1))
             {
-                throw std::runtime_error("invalid DDS DX10 resource description");
+                return make_error("invalid DDS DX10 resource description");
             }
             break;
         }
@@ -271,7 +270,7 @@ DdsTexture DdsTexture::parse(const std::span<const std::byte> bytes)
     }
     if (result.format == DdsFormat::unknown)
     {
-        throw std::runtime_error("unsupported DDS pixel format");
+        return make_error("unsupported DDS pixel format");
     }
 
     result.has_alpha = (pixel_flags & 0x1U) != 0 || alpha_mask != 0 || alpha_format(result.format);
@@ -285,24 +284,30 @@ DdsTexture DdsTexture::parse(const std::span<const std::byte> bytes)
             auto depth = result.volume ? result.depth : 1U;
             for (std::uint32_t mip = 0; mip < result.mip_levels; ++mip)
             {
-                std::size_t row_pitch = 0;
-                std::size_t slice_pitch = 0;
+                std::optional<std::size_t> row_pitch;
+                std::optional<std::size_t> slice_pitch;
                 if (const auto bytes_per_block = block_bytes(result.format); bytes_per_block != 0)
                 {
                     row_pitch = checked_multiply(std::max(1U, (width + 3U) / 4U), bytes_per_block);
-                    slice_pitch = checked_multiply(row_pitch, std::max(1U, (height + 3U) / 4U));
+                    slice_pitch = row_pitch ? checked_multiply(*row_pitch, std::max(1U, (height + 3U) / 4U)) : std::nullopt;
                 }
                 else
                 {
-                    row_pitch = (checked_multiply(width, bits_per_pixel(result.format)) + 7U) / 8U;
-                    slice_pitch = checked_multiply(row_pitch, height);
+                    const auto row_bits = checked_multiply(width, bits_per_pixel(result.format));
+                    row_pitch = row_bits ? std::optional<std::size_t>((*row_bits + 7U) / 8U) : std::nullopt;
+                    slice_pitch = row_pitch ? checked_multiply(*row_pitch, height) : std::nullopt;
                 }
-                const auto size = checked_multiply(slice_pitch, depth);
+                const auto checked_size = slice_pitch ? checked_multiply(*slice_pitch, depth) : std::nullopt;
+                if (!checked_size)
+                {
+                    return make_error("DDS dimensions overflow the address space");
+                }
+                const auto size = *checked_size;
                 if (cursor > bytes.size() || size > bytes.size() - cursor)
                 {
-                    throw std::runtime_error("truncated DDS image data");
+                    return make_error("truncated DDS image data");
                 }
-                result.subresources.push_back({layer, face, mip, width, height, depth, cursor, row_pitch, slice_pitch, size});
+                result.subresources.push_back({layer, face, mip, width, height, depth, cursor, *row_pitch, *slice_pitch, size});
                 cursor += size;
                 width = std::max(1U, width / 2U);
                 height = std::max(1U, height / 2U);

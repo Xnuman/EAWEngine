@@ -1,5 +1,7 @@
 #pragma once
 
+#include "eaw/status.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -173,7 +175,8 @@ struct TedMap
     std::uint32_t preview_height{};
     std::vector<std::string> warnings;
 
-    [[nodiscard]] static TedMap parse(std::span<const std::byte> bytes);
+    // The error names the malformed chunk.
+    [[nodiscard]] static Result<TedMap> parse(std::span<const std::byte> bytes);
 };
 
 [[nodiscard]] const char* to_string(TedMapType type) noexcept;

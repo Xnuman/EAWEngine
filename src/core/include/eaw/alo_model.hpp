@@ -1,5 +1,7 @@
 #pragma once
 
+#include "eaw/status.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -64,7 +66,8 @@ struct AloNameVariant
 
 [[nodiscard]] AloMatrix4 alo_identity_matrix() noexcept;
 [[nodiscard]] AloMatrix4 alo_multiply(const AloMatrix4& left, const AloMatrix4& right) noexcept;
-[[nodiscard]] AloMatrix4 alo_inverse(const AloMatrix4& matrix);
+// An error when the matrix is singular.
+[[nodiscard]] Result<AloMatrix4> alo_inverse(const AloMatrix4& matrix);
 [[nodiscard]] AloVector3 alo_transform_point(const AloVector3& point, const AloMatrix4& matrix) noexcept;
 [[nodiscard]] AloMatrix4 alo_compose_transform(const AloVector3& scale, const AloQuaternion& rotation, const AloVector3& translation) noexcept;
 
@@ -168,7 +171,8 @@ struct AloDazzle
 class AloModel final
 {
 public:
-    [[nodiscard]] static AloModel parse(std::span<const std::byte> bytes);
+    // The error names the malformed chunk.
+    [[nodiscard]] static Result<AloModel> parse(std::span<const std::byte> bytes);
 
     std::vector<AloBone> bones;
     std::vector<AloMesh> meshes;

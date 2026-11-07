@@ -7,7 +7,6 @@
 #include <cctype>
 #include <fstream>
 #include <sstream>
-#include <stdexcept>
 #include <unordered_map>
 
 #ifdef _WIN32
@@ -27,7 +26,7 @@ std::string lower(std::string value)
     return value;
 }
 
-std::vector<std::vector<std::string>> parse_tsv(const std::string& text)
+Result<std::vector<std::vector<std::string>>> parse_tsv(const std::string& text)
 {
     std::string input = text;
     if (input.empty() || input.back() != '\n')
@@ -66,7 +65,7 @@ std::vector<std::vector<std::string>> parse_tsv(const std::string& text)
         }
         if (after_quote && character != '\t' && character != '\r' && character != '\n')
         {
-            throw std::runtime_error("unexpected character after a quoted TSV field");
+            return make_error("unexpected character after a quoted TSV field");
         }
         if (character == '"' && field.empty() && !after_quote)
         {
@@ -100,7 +99,7 @@ std::vector<std::vector<std::string>> parse_tsv(const std::string& text)
     }
     if (quoted)
     {
-        throw std::runtime_error("unterminated quoted TSV field");
+        return make_error("unterminated quoted TSV field");
     }
     return records;
 }
@@ -128,12 +127,12 @@ std::string quote_tsv(const std::string_view value)
     return result;
 }
 
-std::string read_text(const std::filesystem::path& path)
+Result<std::string> read_text(const std::filesystem::path& path)
 {
     std::ifstream stream(path, std::ios::binary);
     if (!stream)
     {
-        throw std::runtime_error("could not open localization workspace: " + path.string());
+        return make_error("could not open localization workspace: " + path.string());
     }
     std::ostringstream contents;
     contents << stream.rdbuf();
@@ -142,12 +141,18 @@ std::string read_text(const std::filesystem::path& path)
 
 } // namespace
 
-std::vector<LocalizationRow> read_localization_workspace(const std::filesystem::path& path)
+Result<std::vector<LocalizationRow>> read_localization_workspace(const std::filesystem::path& path)
 {
-    const auto records = parse_tsv(read_text(path));
+    EAW_TRY_ASSIGN(const auto text, read_text(path));
+    auto parsed = parse_tsv(text);
+    if (!parsed)
+    {
+        return with_context(path.string(), std::move(parsed).error());
+    }
+    const auto records = std::move(parsed).value();
     if (records.empty())
     {
-        throw std::runtime_error("localization workspace is empty");
+        return make_error("localization workspace is empty");
     }
 
     std::unordered_map<std::string, std::size_t> columns;
@@ -157,7 +162,7 @@ std::vector<LocalizationRow> read_localization_workspace(const std::filesystem::
     }
     if (!columns.contains("key") || !columns.contains("text"))
     {
-        throw std::runtime_error("workspace requires Key and Text columns");
+        return make_error("workspace requires Key and Text columns");
     }
 
     const auto field = [&](const std::vector<std::string>& record, const std::string_view name) -> std::string
@@ -180,15 +185,20 @@ std::vector<LocalizationRow> read_localization_workspace(const std::filesystem::
     return rows;
 }
 
-void write_localization_workspace(const std::filesystem::path& path, const std::vector<LocalizationRow>& rows, const bool overwrite)
+Status write_localization_workspace(const std::filesystem::path& path, const std::vector<LocalizationRow>& rows, const bool overwrite)
 {
-    if (std::filesystem::exists(path) && !overwrite)
+    std::error_code filesystem_error;
+    if (std::filesystem::exists(path, filesystem_error) && !overwrite)
     {
-        throw std::runtime_error("workspace already exists; pass --force to replace it: " + path.string());
+        return make_error("workspace already exists; pass --force to replace it: " + path.string());
     }
     if (const auto parent = path.parent_path(); !parent.empty())
     {
-        std::filesystem::create_directories(parent);
+        std::filesystem::create_directories(parent, filesystem_error);
+        if (filesystem_error)
+        {
+            return make_error("could not create localization workspace directory (" + filesystem_error.message() + "): " + parent.string());
+        }
     }
 
     auto temporary = path;
@@ -197,7 +207,7 @@ void write_localization_workspace(const std::filesystem::path& path, const std::
         std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
         if (!stream)
         {
-            throw std::runtime_error("could not create localization workspace: " + temporary.string());
+            return make_error("could not create localization workspace: " + temporary.string());
         }
         stream << "\xef\xbb\xbf"
                << "Key\tText\tGroup\tStatus\tContext\tNotes\r\n";
@@ -209,7 +219,7 @@ void write_localization_workspace(const std::filesystem::path& path, const std::
         stream.flush();
         if (!stream)
         {
-            throw std::runtime_error("could not write localization workspace: " + temporary.string());
+            return make_error("could not write localization workspace: " + temporary.string());
         }
     }
 #ifdef _WIN32
@@ -219,14 +229,21 @@ void write_localization_workspace(const std::filesystem::path& path, const std::
         const auto error = GetLastError();
         std::error_code ignored;
         std::filesystem::remove(temporary, ignored);
-        throw std::runtime_error("could not commit localization workspace (Windows error " + std::to_string(error) + "): " + path.string());
+        return make_error("could not commit localization workspace (Windows error " + std::to_string(error) + "): " + path.string());
     }
 #else
-    std::filesystem::rename(temporary, path);
+    std::filesystem::rename(temporary, path, filesystem_error);
+    if (filesystem_error)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        return make_error("could not commit localization workspace (" + filesystem_error.message() + "): " + path.string());
+    }
 #endif
+    return Status::success();
 }
 
-std::vector<LocalizationRow> diff_localization(const DatFile& base, const DatFile& edited)
+Result<std::vector<LocalizationRow>> diff_localization(const DatFile& base, const DatFile& edited)
 {
     std::vector<LocalizationRow> rows;
     for (const auto& entry : edited.entries())
@@ -234,7 +251,12 @@ std::vector<LocalizationRow> diff_localization(const DatFile& base, const DatFil
         const auto* old = base.find(entry.key);
         if (old == nullptr || old->value != entry.value)
         {
-            rows.push_back({entry.key, utf16_to_utf8(entry.value), {}, old == nullptr ? "new" : "modified", {}, {}});
+            auto text = utf16_to_utf8(entry.value);
+            if (!text)
+            {
+                return with_context("DAT entry " + entry.key, std::move(text).error());
+            }
+            rows.push_back({entry.key, std::move(text).value(), {}, old == nullptr ? "new" : "modified", {}, {}});
         }
     }
     for (const auto& entry : base.entries())
@@ -248,7 +270,7 @@ std::vector<LocalizationRow> diff_localization(const DatFile& base, const DatFil
     return rows;
 }
 
-void apply_localization_workspace(DatFile& target, const std::vector<LocalizationRow>& rows, const bool allow_todo)
+Status apply_localization_workspace(DatFile& target, const std::vector<LocalizationRow>& rows, const bool allow_todo)
 {
     for (const auto& row : rows)
     {
@@ -256,7 +278,7 @@ void apply_localization_workspace(DatFile& target, const std::vector<Localizatio
         const bool unresolved_todo = status == "todo" && row.text.empty();
         if (unresolved_todo && !allow_todo)
         {
-            throw std::runtime_error("unresolved TODO localization entry: " + row.key);
+            return make_error("unresolved TODO localization entry: " + row.key);
         }
         if (unresolved_todo)
         {
@@ -268,9 +290,15 @@ void apply_localization_workspace(DatFile& target, const std::vector<Localizatio
         }
         else
         {
-            target.upsert(row.key, utf8_to_utf16(row.text));
+            auto text = utf8_to_utf16(row.text);
+            if (!text)
+            {
+                return with_context("localization entry " + row.key, std::move(text).error());
+            }
+            EAW_TRY(target.upsert(row.key, std::move(text).value()));
         }
     }
+    return Status::success();
 }
 
 } // namespace eaw

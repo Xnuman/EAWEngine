@@ -63,6 +63,18 @@ void require(const bool condition, const std::string& message)
     }
 }
 
+// The value of a successful result; a failure fails the test with the error message.
+template <class T> T expect_ok(eaw::Result<T> result, const std::string& what)
+{
+    require(result.ok(), what + ": " + (result.ok() ? std::string{} : result.error().message));
+    return std::move(result).value();
+}
+
+void expect_ok(const eaw::Status& status, const std::string& what)
+{
+    require(status.ok(), what + ": " + (status.ok() ? std::string{} : status.error().message));
+}
+
 template <typename Integer> void write_little_endian(std::ostream& stream, Integer value)
 {
     for (std::size_t index = 0; index < sizeof(Integer); ++index)
@@ -115,7 +127,7 @@ std::filesystem::path write_test_meg()
 
 std::string read_vfs_text(const eaw::VirtualFileSystem& vfs, const std::string_view path)
 {
-    const auto bytes = vfs.read(path);
+    const auto bytes = expect_ok(vfs.read(path), std::string(path));
     return {reinterpret_cast<const char*>(bytes.data()), bytes.size()};
 }
 
@@ -163,8 +175,8 @@ void test_foc_inherits_eaw_assets()
     eaw::VirtualFileSystem vfs;
     const auto report = eaw::mount_game_assets(vfs, profile);
     require(report.warnings.empty(), "unexpected inherited-asset mount warning");
-    const auto base_only = vfs.read("Data/Art/Textures/BaseOnly.dds");
-    const auto shared = vfs.read("Data/Art/Textures/Shared.dds");
+    const auto base_only = expect_ok(vfs.read("Data/Art/Textures/BaseOnly.dds"), "reading BaseOnly.dds");
+    const auto shared = expect_ok(vfs.read("Data/Art/Textures/Shared.dds"), "reading Shared.dds");
     require(std::string(reinterpret_cast<const char*>(base_only.data()), base_only.size()) == "eaw-only", "FoC did not inherit a base-game-only asset");
     require(std::string(reinterpret_cast<const char*>(shared.data()), shared.size()) == "foc-shared", "FoC did not override a shared base-game asset");
     std::filesystem::remove_all(root, ignored);
@@ -390,7 +402,7 @@ std::vector<std::byte> make_test_alo(const bool root_visible = true)
 
 void test_alo_model()
 {
-    const auto model = eaw::AloModel::parse(make_test_alo());
+    const auto model = expect_ok(eaw::AloModel::parse(make_test_alo()), "ALO parse");
     require(model.bones.size() == 1 && model.bones[0].name == "ROOT" && model.bones[0].parent == -1, "ALO skeleton decoding failed");
     require(model.meshes.size() == 1 && model.meshes[0].name == "TEST_MESH" && model.meshes[0].attached_bone == 0U, "ALO mesh decoding failed");
     require(model.submesh_count() == 1 && model.vertex_count() == 3 && model.triangle_count() == 1 && model.meshes[0].submeshes[0].vertex_stride == 144 &&
@@ -514,7 +526,7 @@ void test_asset_cache_dependencies()
     // Priority: base directory < archive < mod directory.
     eaw::VirtualFileSystem vfs;
     vfs.mount(std::make_unique<eaw::DirectoryMount>("base", root / "base"));
-    vfs.mount(std::make_unique<eaw::MegMount>("archive", archive));
+    vfs.mount(expect_ok(eaw::MegMount::open("archive", archive), "opening the test archive"));
     vfs.mount(std::make_unique<eaw::DirectoryMount>("mod", root / "mod"));
 
     eaw::AssetCache cache;
@@ -542,7 +554,7 @@ void test_asset_cache_dependencies()
     // Archive entries: a rebuilt archive is detected, remounted, and its assets reload.
     const auto read_text = [](const eaw::AssetReader& reader)
     {
-        const auto bytes = reader.read("Data/XML/A.XML");
+        const auto bytes = expect_ok(reader.read("Data/XML/A.XML"), "reading A.XML");
         return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     };
     const auto text = cache.load<std::string>("text", "Data/XML/A.XML", vfs, read_text);
@@ -551,13 +563,13 @@ void test_asset_cache_dependencies()
     require(watch.changed(vfs).empty(), "an untouched archive must not report a change");
     write_test_meg(archive, {{"DATA\\XML\\A.XML", "<A version='2' />"}});
     require(watch.changed(vfs) == std::vector<std::size_t>{1}, "a rebuilt archive must be reported by mount index");
-    vfs.replace_mount(1, std::make_unique<eaw::MegMount>("archive", archive));
+    vfs.replace_mount(1, expect_ok(eaw::MegMount::open("archive", archive), "reopening the rebuilt archive"));
     watch.accept(vfs, 1);
     require(watch.changed(vfs).empty(), "an accepted remount must clear the change");
     require(cache.invalidate(vfs) == std::vector<std::string>{"text|DATA/XML/A.XML"}, "assets from a rebuilt archive must be invalidated");
     require(*cache.load<std::string>("text", "Data/XML/A.XML", vfs, read_text) == "<A version='2' />", "the remounted archive must serve the new bytes");
 
-    // A failing loader caches nothing, so the next load retries.
+    // A failing (throwing) loader caches nothing, so the next load retries.
     bool threw = false;
     try
     {
@@ -565,7 +577,11 @@ void test_asset_cache_dependencies()
                                       [](const eaw::AssetReader& reader)
                                       {
                                           const auto bytes = reader.read("Data/XML/MISSING.XML");
-                                          return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+                                          if (!bytes)
+                                          {
+                                              throw std::runtime_error(bytes.error().message);
+                                          }
+                                          return std::string(reinterpret_cast<const char*>(bytes->data()), bytes->size());
                                       });
     }
     catch (const std::exception&)
@@ -914,20 +930,12 @@ void test_texture_formats_and_materials()
             bytes[offset + shift / 8] = static_cast<std::byte>((value >> shift) & 0xffU);
         }
     };
-    const auto texture = eaw::DdsTexture::parse(dds);
+    const auto texture = expect_ok(eaw::DdsTexture::parse(dds), "DDS parse");
     require(texture.width == 4 && texture.height == 4 && texture.mip_levels == 1 && texture.format == eaw::DdsFormat::bc1_unorm && texture.data_offset == 128 && texture.data_size == 8 &&
                 texture.subresources.size() == 1 && texture.subresources[0].row_pitch == 8,
             "DDS semantic decoding failed");
-    bool truncated_dds_rejected = false;
-    try
-    {
-        static_cast<void>(eaw::DdsTexture::parse(std::span<const std::byte>(dds).first(dds.size() - 1U)));
-    }
-    catch (const std::runtime_error&)
-    {
-        truncated_dds_rejected = true;
-    }
-    require(truncated_dds_rejected, "truncated DDS data was accepted");
+    const auto truncated_dds = eaw::DdsTexture::parse(std::span<const std::byte>(dds).first(dds.size() - 1U));
+    require(!truncated_dds.ok() && truncated_dds.error().message.find("truncated DDS image data") != std::string::npos, "truncated DDS data was accepted");
 
     std::vector<std::byte> mtd;
     append_u32(mtd, 2);
@@ -947,20 +955,12 @@ void test_texture_formats_and_materials()
     };
     append_mtd_entry("ICON_A.TGA", 0, 0, 32, 16, true);
     append_mtd_entry("ICON_B.TGA", 32, 8, 8, 24, false);
-    const auto directory = eaw::MtdDirectory::parse(mtd);
+    const auto directory = expect_ok(eaw::MtdDirectory::parse(mtd), "MTD parse");
     require(directory.entries.size() == 2 && directory.entries[0].name == "ICON_A.TGA" && directory.entries[0].has_alpha && directory.entries[0].name_crc == eaw::dat_key_crc("ICON_A.TGA") &&
                 directory.atlas_width == 40 && directory.atlas_height == 32 && directory.alpha_entries == 1,
             "MTD semantic decoding failed");
-    bool truncated_mtd_rejected = false;
-    try
-    {
-        static_cast<void>(eaw::MtdDirectory::parse(std::span<const std::byte>(mtd).first(mtd.size() - 1U)));
-    }
-    catch (const std::runtime_error&)
-    {
-        truncated_mtd_rejected = true;
-    }
-    require(truncated_mtd_rejected, "truncated MTD data was accepted");
+    const auto truncated_mtd = eaw::MtdDirectory::parse(std::span<const std::byte>(mtd).first(mtd.size() - 1U));
+    require(!truncated_mtd.ok() && truncated_mtd.error().message.find("invalid MTD entry table size") != std::string::npos, "truncated MTD data was accepted");
 
     eaw::AloSubMesh submesh;
     submesh.shader = "MeshGloss.fx";
@@ -1054,7 +1054,7 @@ void test_lua_inspection()
                                "  Find_First_Object('Executor')\n"
                                "  Controller:Advance()\n"
                                "end\n";
-    const auto source_info = eaw::LuaScriptInfo::inspect(std::as_bytes(std::span(source)));
+    const auto source_info = expect_ok(eaw::LuaScriptInfo::inspect(std::as_bytes(std::span(source))), "Lua source inspection");
     require(source_info.kind == eaw::LuaScriptKind::source && source_info.lines == 7 && source_info.dependencies.size() == 2 && source_info.dependencies[0] == "PGStateMachine" &&
                 source_info.dependencies[1] == "Story/Helper" && source_info.defined_functions.size() == 1 && source_info.defined_functions[0] == "On_Enter_State" &&
                 std::ranges::find(source_info.called_functions, "Find_First_Object") != source_info.called_functions.end() &&
@@ -1089,7 +1089,7 @@ void test_lua_inspection()
     append_u32(bytecode, 1);
     append_u32(bytecode, 0);
 
-    const auto bytecode_info = eaw::LuaScriptInfo::inspect(bytecode);
+    const auto bytecode_info = expect_ok(eaw::LuaScriptInfo::inspect(bytecode), "Lua bytecode inspection");
     require(bytecode_info.kind == eaw::LuaScriptKind::petroglyph_bytecode && bytecode_info.bytecode_header.version == 0x51 && bytecode_info.prototypes == 1 && bytecode_info.instructions == 1 &&
                 bytecode_info.number_constants == 1 && bytecode_info.string_constants == 1 && bytecode_info.persistent_function_ids == std::vector<std::uint64_t>{42},
             "Petroglyph Lua bytecode inspection failed");
@@ -1148,13 +1148,13 @@ std::vector<std::byte> make_test_ala()
 
 void test_ala_animation()
 {
-    const auto animation = eaw::AlaAnimation::parse(make_test_ala());
+    const auto animation = expect_ok(eaw::AlaAnimation::parse(make_test_ala()), "ALA parse");
     require(animation.version == 2 && animation.stored_frame_count == 31 && animation.playable_frame_count() == 30 && animation.frames_per_second == 30.0F && animation.duration_seconds() == 1.0F,
             "ALA animation header decoding failed");
     require(animation.tracks.size() == 1 && animation.tracks[0].name == "ROOT" && animation.tracks[0].translation && animation.tracks[0].rotation && !animation.tracks[0].scale &&
                 animation.tracks[0].visibility && animation.tracks[0].frames.size() == 31,
             "ALA bone track decoding failed");
-    const auto pose = animation.sample_pose(eaw::AloModel::parse(make_test_alo()), 0.5F);
+    const auto pose = animation.sample_pose(expect_ok(eaw::AloModel::parse(make_test_alo()), "ALO parse"), 0.5F);
     require(pose.size() == 1 && pose[0].visible, "ALA sampled pose decoding failed");
 }
 
@@ -1388,7 +1388,7 @@ std::vector<std::byte> make_test_ted()
 
 void test_ted_map()
 {
-    const auto map = eaw::TedMap::parse(make_test_ted());
+    const auto map = expect_ok(eaw::TedMap::parse(make_test_ted()), "TED parse");
     require(map.type == eaw::TedMapType::land && map.players == 2 && map.name == "TEXT_TEST_MAP" && map.planet == "TEST_PLANET", "TED property decoding failed");
     require(map.terrain_width == 3 && map.terrain_height == 2 && map.elevation_sample_count == 6 && map.minimum_elevation == -10 && map.maximum_elevation == 40 && map.passability_sample_count == 6,
             "TED terrain decoding failed");
@@ -1454,40 +1454,34 @@ std::vector<std::byte> make_test_dat()
 void test_dat_and_workspace()
 {
     const auto original = make_test_dat();
-    auto dat = eaw::DatFile::parse(original);
+    auto dat = expect_ok(eaw::DatFile::parse(original), "DAT parse");
     require(dat.entries().size() == 2, "DAT entry count failed");
     require(dat.find("TEXT_UNIT_TEST") != nullptr, "DAT key lookup failed");
-    require(dat.serialize() == original, "DAT byte-identical round trip failed");
+    require(expect_ok(dat.serialize(), "DAT serialize") == original, "DAT byte-identical round trip failed");
     require(dat.validate().empty(), "valid DAT reported issues");
     require(eaw::dat_key_crc("TEXT_SPEECH_EMPIRE_ACT01_MISSION_THREE_62") == 0x0001db80U, "Petroglyph DAT CRC32 failed");
 
-    dat.upsert("TEXT_UNIT_NEW", eaw::utf8_to_utf16("Žluťoučký 🚀"));
-    require(eaw::utf16_to_utf8(dat.find("TEXT_UNIT_NEW")->value) == "Žluťoučký 🚀", "UTF-8/UTF-16 conversion failed");
+    expect_ok(dat.upsert("TEXT_UNIT_NEW", expect_ok(eaw::utf8_to_utf16("Žluťoučký 🚀"), "UTF-8 to UTF-16")), "DAT upsert");
+    require(expect_ok(eaw::utf16_to_utf8(dat.find("TEXT_UNIT_NEW")->value), "UTF-16 to UTF-8") == "Žluťoučký 🚀", "UTF-8/UTF-16 conversion failed");
+    require(!dat.upsert("", u"value").ok(), "an empty DAT key was accepted");
+    require(!eaw::utf8_to_utf16("\xc3").ok() && !eaw::utf16_to_utf8(std::u16string(1, char16_t{0xd800})).ok(), "invalid UTF-8/UTF-16 was accepted");
 
     const auto workspace = std::filesystem::temp_directory_path() / "eawengine-localization-test.tsv";
     std::error_code ignored;
     std::filesystem::remove(workspace, ignored);
     const std::vector<eaw::LocalizationRow> rows{{"TEXT_UNIT_NEW", "Name\twith tab", "unit:new", "ready", "Data/XML/Test.xml:2", "A \"quoted\" note\nwith a new line"}};
-    eaw::write_localization_workspace(workspace, rows);
-    const auto loaded = eaw::read_localization_workspace(workspace);
+    expect_ok(eaw::write_localization_workspace(workspace, rows), "writing the workspace");
+    const auto loaded = expect_ok(eaw::read_localization_workspace(workspace), "reading the workspace");
     require(loaded.size() == 1 && loaded[0].text == rows[0].text && loaded[0].notes == rows[0].notes, "localization TSV round trip failed");
 
-    auto resolved_todo = eaw::DatFile::parse(original);
-    eaw::apply_localization_workspace(resolved_todo, {{"TEXT_UNIT_TEST", "Completed TODO value", "unit:test", "todo", {}, {}}});
-    require(eaw::utf16_to_utf8(resolved_todo.find("TEXT_UNIT_TEST")->value) == "Completed TODO value", "completed TODO localization value was skipped");
+    auto resolved_todo = expect_ok(eaw::DatFile::parse(original), "DAT parse");
+    expect_ok(eaw::apply_localization_workspace(resolved_todo, {{"TEXT_UNIT_TEST", "Completed TODO value", "unit:test", "todo", {}, {}}}), "applying a completed TODO row");
+    require(expect_ok(eaw::utf16_to_utf8(resolved_todo.find("TEXT_UNIT_TEST")->value), "UTF-16 to UTF-8") == "Completed TODO value", "completed TODO localization value was skipped");
 
-    auto unresolved_todo = eaw::DatFile::parse(original);
-    bool unresolved_rejected = false;
-    try
-    {
-        eaw::apply_localization_workspace(unresolved_todo, {{"TEXT_UNIT_EMPTY", {}, "unit:empty", "todo", {}, {}}});
-    }
-    catch (const std::runtime_error&)
-    {
-        unresolved_rejected = true;
-    }
-    require(unresolved_rejected, "empty TODO localization row was not rejected");
-    eaw::apply_localization_workspace(unresolved_todo, {{"TEXT_UNIT_EMPTY", {}, "unit:empty", "todo", {}, {}}}, true);
+    auto unresolved_todo = expect_ok(eaw::DatFile::parse(original), "DAT parse");
+    const auto unresolved = eaw::apply_localization_workspace(unresolved_todo, {{"TEXT_UNIT_EMPTY", {}, "unit:empty", "todo", {}, {}}});
+    require(!unresolved.ok() && unresolved.error().message.find("unresolved TODO localization entry: TEXT_UNIT_EMPTY") != std::string::npos, "empty TODO localization row was not rejected");
+    expect_ok(eaw::apply_localization_workspace(unresolved_todo, {{"TEXT_UNIT_EMPTY", {}, "unit:empty", "todo", {}, {}}}, true), "skipping an empty TODO row");
     require(unresolved_todo.find("TEXT_UNIT_EMPTY") == nullptr, "empty TODO localization row was not skipped");
     std::filesystem::remove(workspace, ignored);
 }
@@ -1508,8 +1502,8 @@ void test_localization_scan()
                "</Units>\n";
     }
 
-    const auto baseline = eaw::DatFile::parse(make_test_dat());
-    const auto result = eaw::scan_mod_localization(root, baseline);
+    const auto baseline = expect_ok(eaw::DatFile::parse(make_test_dat()), "DAT parse");
+    const auto result = expect_ok(eaw::scan_mod_localization(root, baseline), "localization scan");
     require(result.reference_count == 2, "localization scan reference count failed");
     require(result.missing.size() == 1 && result.missing.front().key == "TEXT_UNIT_MISSING" && result.missing.front().context.find("Units.xml:3") != std::string::npos,
             "localization scan missing-key context failed");
@@ -1518,31 +1512,28 @@ void test_localization_scan()
 
 void test_xml_document()
 {
-    const auto document = eaw::XmlDocument::parse("\xef\xbb\xbf<?xml version=\"1.0\"?>\n"
-                                                  "<!-- a Petroglyph file may contain several roots -->\n"
-                                                  "<SpaceUnit Name='Unit_A' Enabled=\"Yes\">\n"
-                                                  "  <Text_ID>TEXT_A &amp; B</Text_ID>\n"
-                                                  "  <Payload><![CDATA[x < y]]></Payload>\n"
-                                                  "</SpaceUnit>\n"
-                                                  "<SpaceUnit Name=\"Unit_B\"><Value>&#x41;&#66;</Value></SpaceUnit>");
+    const auto document = expect_ok(eaw::XmlDocument::parse("\xef\xbb\xbf<?xml version=\"1.0\"?>\n"
+                                                            "<!-- a Petroglyph file may contain several roots -->\n"
+                                                            "<SpaceUnit Name='Unit_A' Enabled=\"Yes\">\n"
+                                                            "  <Text_ID>TEXT_A &amp; B</Text_ID>\n"
+                                                            "  <Payload><![CDATA[x < y]]></Payload>\n"
+                                                            "</SpaceUnit>\n"
+                                                            "<SpaceUnit Name=\"Unit_B\"><Value>&#x41;&#66;</Value></SpaceUnit>"),
+                                    "XML parse");
     require(document.roots.size() == 2, "XML fragment root parsing failed");
     const auto& first = document.roots.front();
     require(first.name == "SpaceUnit" && first.attribute("name") != nullptr && first.attribute("NAME")->value == "Unit_A", "XML case-insensitive attribute lookup failed");
     require(first.child("text_id") != nullptr && first.child("Text_ID")->text == "TEXT_A & B", "XML entity decoding failed");
     require(first.child("Payload") != nullptr && first.child("Payload")->text == "x < y", "XML CDATA parsing failed");
     require(document.roots[1].child("Value")->text == "AB", "XML numeric character decoding failed");
-    require(eaw::XmlDocument::parse("<?xml version=\"1.0\"><A />").roots.size() == 1, "Petroglyph XML declaration compatibility failed");
+    require(expect_ok(eaw::XmlDocument::parse("<?xml version=\"1.0\"><A />"), "XML declaration parse").roots.size() == 1, "Petroglyph XML declaration compatibility failed");
 
-    bool mismatch_rejected = false;
-    try
-    {
-        static_cast<void>(eaw::XmlDocument::parse("<A><B /></C>"));
-    }
-    catch (const std::runtime_error&)
-    {
-        mismatch_rejected = true;
-    }
-    require(mismatch_rejected, "mismatched XML closing element was accepted");
+    const auto mismatch = eaw::XmlDocument::parse("<A><B /></C>");
+    require(!mismatch.ok() && mismatch.error().message.find("closing element </C> does not match <A>") != std::string::npos, "mismatched XML closing element was accepted");
+    // Failures end parsing (no hang) and report the first problem with its line.
+    const auto unterminated = eaw::XmlDocument::parse("<A>\n<B attribute=\"x\"");
+    require(!unterminated.ok() && unterminated.error().message.starts_with("XML line 2:"), "unterminated XML was accepted");
+    require(!eaw::XmlDocument::parse("<A>&#xd800;</A>").ok(), "an invalid XML character reference was accepted");
 }
 
 void test_xml_asset_database()
@@ -2037,7 +2028,7 @@ void test_xml_schema_validation()
     eaw::VirtualFileSystem vfs;
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", game_root));
     const auto database = eaw::XmlAssetDatabase::build(vfs);
-    const auto schema = eaw::XmlSchema::load(root / "schema");
+    const auto schema = expect_ok(eaw::XmlSchema::load(root / "schema"), "XML schema load");
     const auto validation = schema.validate(database);
     require(schema.types().size() == 2 && schema.enums().size() == 1 && schema.kinds().size() == 1 && schema.metafiles().size() == 1, "XML schema loading failed");
     require(validation.definitions_considered == 5 && validation.definitions_validated == 5 && validation.metafile_type_definitions == 4 && validation.structural_type_definitions == 1 &&
@@ -2054,29 +2045,20 @@ int main()
 {
     try
     {
-        require(eaw::normalize_asset_path("data\\xml/./GameObjectFiles.xml") == "DATA/XML/GAMEOBJECTFILES.XML", "asset normalization failed");
+        require(expect_ok(eaw::normalize_asset_path("data\\xml/./GameObjectFiles.xml"), "asset normalization") == "DATA/XML/GAMEOBJECTFILES.XML", "asset normalization failed");
 
-        bool traversal_rejected = false;
-        try
-        {
-            static_cast<void>(eaw::normalize_asset_path("Data/../secret"));
-        }
-        catch (const std::invalid_argument&)
-        {
-            traversal_rejected = true;
-        }
-        require(traversal_rejected, "parent traversal was not rejected");
+        require(!eaw::normalize_asset_path("Data/../secret").ok(), "parent traversal was not rejected");
 
         const auto archive_path = write_test_meg();
-        const eaw::MegArchive archive(archive_path);
+        const auto archive = expect_ok(eaw::MegArchive::open(archive_path), "opening the test MEG archive");
         const auto* entry = archive.find("data/xml/test.xml");
         require(entry != nullptr, "MEG lookup failed");
-        const auto bytes = archive.read(*entry);
+        const auto bytes = expect_ok(archive.read(*entry), "reading the MEG entry");
         const std::string payload(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         require(payload == "<Test />", "MEG payload read failed");
 
         eaw::VirtualFileSystem vfs;
-        vfs.mount(std::make_unique<eaw::MegMount>("test", archive_path));
+        vfs.mount(expect_ok(eaw::MegMount::open("test", archive_path), "mounting the test MEG archive"));
         const auto resolved = vfs.resolve("DATA/XML/TEST.XML");
         require(resolved && resolved->size == 8, "VFS MEG resolution failed");
 

@@ -10,14 +10,7 @@ namespace {
 
 std::string dependency_key(const std::string_view virtual_path)
 {
-    try
-    {
-        return normalize_asset_path(virtual_path);
-    }
-    catch (const std::invalid_argument&)
-    {
-        return std::string(virtual_path);
-    }
+    return normalize_asset_path(virtual_path).value_or(std::string(virtual_path));
 }
 
 std::uint64_t fnv1a(std::uint64_t hash, const void* data, const std::size_t size) noexcept
@@ -171,7 +164,7 @@ std::optional<ResolvedAsset> RecordingAssetReader::resolve(const std::string_vie
     return resolved;
 }
 
-std::vector<std::byte> RecordingAssetReader::read(const std::string_view virtual_path) const
+Result<std::vector<std::byte>> RecordingAssetReader::read(const std::string_view virtual_path) const
 {
     (void)resolve(virtual_path);
     return base_.read(virtual_path);

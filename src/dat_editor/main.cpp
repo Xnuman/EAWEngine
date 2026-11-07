@@ -122,9 +122,9 @@ std::string one_line(std::string value, const std::size_t maximum = 160)
     return value;
 }
 
-std::multiset<std::string> formatting_tokens(const std::u16string& text)
+eaw::Result<std::multiset<std::string>> formatting_tokens(const std::u16string& text)
 {
-    const auto utf8 = eaw::utf16_to_utf8(text);
+    EAW_TRY_ASSIGN(const auto utf8, eaw::utf16_to_utf8(text));
     static const std::regex token(R"((?:%(?:\d+\$)?[-+0# ]*(?:\d+|\*)?(?:\.\d+)?[A-Za-z%]|\\[nr]|\[[^\]\r\n]+\]|<[^>\r\n]+>|\{[^}\r\n]+\}))");
     std::multiset<std::string> result;
     for (auto match = std::sregex_iterator(utf8.begin(), utf8.end(), token); match != std::sregex_iterator(); ++match)
@@ -151,7 +151,14 @@ bool edge_whitespace_matches(const std::u16string& reference, const std::u16stri
     return leading(reference) == leading(translation) && trailing(reference) == trailing(translation);
 }
 
-int validate_dat(const eaw::DatFile& dat, const std::optional<std::filesystem::path>& reference_path)
+// Reports the same way main's handler does: "DAT editor error: ..." and exit code 1.
+int report_error(const eaw::Error& error)
+{
+    std::cerr << "DAT editor error: " << error.message << '\n';
+    return 1;
+}
+
+eaw::Result<int> validate_dat(const eaw::DatFile& dat, const std::optional<std::filesystem::path>& reference_path)
 {
     std::size_t errors = 0;
     std::size_t warnings = 0;
@@ -164,7 +171,7 @@ int validate_dat(const eaw::DatFile& dat, const std::optional<std::filesystem::p
 
     if (reference_path)
     {
-        const auto reference = eaw::DatFile::load(*reference_path);
+        EAW_TRY_ASSIGN(const auto reference, eaw::DatFile::load(*reference_path));
         for (const auto& original : reference.entries())
         {
             const auto* translated = dat.find(original.key);
@@ -174,7 +181,9 @@ int validate_dat(const eaw::DatFile& dat, const std::optional<std::filesystem::p
                 std::cout << "error " << original.key << ": key is missing from translation\n";
                 continue;
             }
-            if (formatting_tokens(original.value) != formatting_tokens(translated->value))
+            EAW_TRY_ASSIGN(const auto original_tokens, formatting_tokens(original.value));
+            EAW_TRY_ASSIGN(const auto translated_tokens, formatting_tokens(translated->value));
+            if (original_tokens != translated_tokens)
             {
                 ++errors;
                 std::cout << "error " << original.key << ": formatting tokens differ from reference\n";
@@ -198,13 +207,18 @@ int validate_dat(const eaw::DatFile& dat, const std::optional<std::filesystem::p
     return errors == 0 ? 0 : 2;
 }
 
-std::vector<eaw::LocalizationRow> export_rows(const eaw::DatFile& dat)
+eaw::Result<std::vector<eaw::LocalizationRow>> export_rows(const eaw::DatFile& dat)
 {
     std::vector<eaw::LocalizationRow> rows;
     rows.reserve(dat.entries().size());
     for (const auto& entry : dat.entries())
     {
-        rows.push_back({entry.key, eaw::utf16_to_utf8(entry.value), {}, "existing", {}, {}});
+        auto text = eaw::utf16_to_utf8(entry.value);
+        if (!text)
+        {
+            return eaw::with_context("DAT entry " + entry.key, std::move(text).error());
+        }
+        rows.push_back({entry.key, std::move(text).value(), {}, "existing", {}, {}});
     }
     std::ranges::sort(rows, {}, &eaw::LocalizationRow::key);
     return rows;
@@ -360,7 +374,12 @@ int main(const int argc, char** argv)
             {
                 throw std::invalid_argument("info requires one DAT path");
             }
-            const auto dat = eaw::DatFile::load(arguments[0]);
+            const auto loaded = eaw::DatFile::load(arguments[0]);
+            if (!loaded)
+            {
+                return report_error(loaded.error());
+            }
+            const auto& dat = *loaded;
             const auto issues = dat.validate();
             const auto errors = std::ranges::count_if(issues,
                                                       [](const auto& issue)
@@ -379,13 +398,23 @@ int main(const int argc, char** argv)
             {
                 throw std::invalid_argument("list requires one DAT path");
             }
-            const auto dat = eaw::DatFile::load(arguments[0]);
+            const auto loaded = eaw::DatFile::load(arguments[0]);
+            if (!loaded)
+            {
+                return report_error(loaded.error());
+            }
+            const auto& dat = *loaded;
             const auto query = filter ? lower(*filter) : std::string{};
             std::size_t matched = 0;
             std::size_t shown = 0;
             for (const auto& entry : dat.entries())
             {
-                const auto value = eaw::utf16_to_utf8(entry.value);
+                const auto converted = eaw::utf16_to_utf8(entry.value);
+                if (!converted)
+                {
+                    return report_error(eaw::with_context("DAT entry " + entry.key, converted.error()));
+                }
+                const auto& value = *converted;
                 if (!query.empty() && lower(entry.key).find(query) == std::string::npos && lower(value).find(query) == std::string::npos)
                 {
                     continue;
@@ -405,14 +434,23 @@ int main(const int argc, char** argv)
             {
                 throw std::invalid_argument("get requires a DAT path and key");
             }
-            const auto dat = eaw::DatFile::load(arguments[0]);
-            const auto* entry = dat.find(arguments[1]);
+            const auto loaded = eaw::DatFile::load(arguments[0]);
+            if (!loaded)
+            {
+                return report_error(loaded.error());
+            }
+            const auto* entry = loaded->find(arguments[1]);
             if (entry == nullptr)
             {
                 std::cerr << "key not found: " << arguments[1] << '\n';
                 return 3;
             }
-            std::cout << eaw::utf16_to_utf8(entry->value) << '\n';
+            const auto value = eaw::utf16_to_utf8(entry->value);
+            if (!value)
+            {
+                return report_error(eaw::with_context("DAT entry " + entry->key, value.error()));
+            }
+            std::cout << *value << '\n';
             return 0;
         }
         if (command == "set")
@@ -421,9 +459,25 @@ int main(const int argc, char** argv)
             {
                 throw std::invalid_argument("set requires input DAT, output DAT, key, and text");
             }
-            auto dat = eaw::DatFile::load(arguments[0]);
-            dat.upsert(arguments[2], eaw::utf8_to_utf16(arguments[3]));
-            dat.save(arguments[1], force);
+            auto loaded = eaw::DatFile::load(arguments[0]);
+            if (!loaded)
+            {
+                return report_error(loaded.error());
+            }
+            auto& dat = *loaded;
+            auto text = eaw::utf8_to_utf16(arguments[3]);
+            if (!text)
+            {
+                return report_error(text.error());
+            }
+            if (const auto status = dat.upsert(arguments[2], std::move(text).value()); !status)
+            {
+                return report_error(status.error());
+            }
+            if (const auto status = dat.save(arguments[1], force); !status)
+            {
+                return report_error(status.error());
+            }
             std::cout << "Wrote " << arguments[1] << " with " << dat.entries().size() << " entries\n";
             return 0;
         }
@@ -433,12 +487,20 @@ int main(const int argc, char** argv)
             {
                 throw std::invalid_argument("remove requires input DAT, output DAT, and key");
             }
-            auto dat = eaw::DatFile::load(arguments[0]);
+            auto loaded = eaw::DatFile::load(arguments[0]);
+            if (!loaded)
+            {
+                return report_error(loaded.error());
+            }
+            auto& dat = *loaded;
             if (!dat.erase(arguments[2]))
             {
                 throw std::runtime_error("key not found: " + arguments[2]);
             }
-            dat.save(arguments[1], force);
+            if (const auto status = dat.save(arguments[1], force); !status)
+            {
+                return report_error(status.error());
+            }
             std::cout << "Wrote " << arguments[1] << " with " << dat.entries().size() << " entries\n";
             return 0;
         }
@@ -448,7 +510,13 @@ int main(const int argc, char** argv)
             {
                 throw std::invalid_argument("validate requires one DAT path");
             }
-            return validate_dat(eaw::DatFile::load(arguments[0]), reference_option ? std::optional<std::filesystem::path>(*reference_option) : std::nullopt);
+            const auto loaded = eaw::DatFile::load(arguments[0]);
+            if (!loaded)
+            {
+                return report_error(loaded.error());
+            }
+            const auto result = validate_dat(*loaded, reference_option ? std::optional<std::filesystem::path>(*reference_option) : std::nullopt);
+            return result ? *result : report_error(result.error());
         }
         if (command == "export")
         {
@@ -456,9 +524,21 @@ int main(const int argc, char** argv)
             {
                 throw std::invalid_argument("export requires a DAT path and workspace path");
             }
-            const auto dat = eaw::DatFile::load(arguments[0]);
-            const auto rows = export_rows(dat);
-            eaw::write_localization_workspace(arguments[1], rows, force);
+            const auto loaded = eaw::DatFile::load(arguments[0]);
+            if (!loaded)
+            {
+                return report_error(loaded.error());
+            }
+            const auto exported = export_rows(*loaded);
+            if (!exported)
+            {
+                return report_error(exported.error());
+            }
+            const auto& rows = *exported;
+            if (const auto status = eaw::write_localization_workspace(arguments[1], rows, force); !status)
+            {
+                return report_error(status.error());
+            }
             std::cout << "Exported " << rows.size() << " entries to " << arguments[1] << '\n';
             return 0;
         }
@@ -468,8 +548,26 @@ int main(const int argc, char** argv)
             {
                 throw std::invalid_argument("diff requires base DAT, edited DAT, and workspace path");
             }
-            const auto rows = eaw::diff_localization(eaw::DatFile::load(arguments[0]), eaw::DatFile::load(arguments[1]));
-            eaw::write_localization_workspace(arguments[2], rows, force);
+            const auto base = eaw::DatFile::load(arguments[0]);
+            if (!base)
+            {
+                return report_error(base.error());
+            }
+            const auto edited = eaw::DatFile::load(arguments[1]);
+            if (!edited)
+            {
+                return report_error(edited.error());
+            }
+            const auto difference = eaw::diff_localization(*base, *edited);
+            if (!difference)
+            {
+                return report_error(difference.error());
+            }
+            const auto& rows = *difference;
+            if (const auto status = eaw::write_localization_workspace(arguments[2], rows, force); !status)
+            {
+                return report_error(status.error());
+            }
             std::cout << "Wrote " << rows.size() << " changed entries to " << arguments[2] << '\n';
             return 0;
         }
@@ -479,9 +577,21 @@ int main(const int argc, char** argv)
             {
                 throw std::invalid_argument("build requires base DAT, workspace, and output DAT");
             }
-            auto dat = eaw::DatFile::load(arguments[0]);
+            auto loaded = eaw::DatFile::load(arguments[0]);
+            if (!loaded)
+            {
+                return report_error(loaded.error());
+            }
+            auto& dat = *loaded;
             const auto rows = eaw::read_localization_workspace(arguments[1]);
-            eaw::apply_localization_workspace(dat, rows, allow_todo);
+            if (!rows)
+            {
+                return report_error(rows.error());
+            }
+            if (const auto status = eaw::apply_localization_workspace(dat, *rows, allow_todo); !status)
+            {
+                return report_error(status.error());
+            }
             const auto issues = dat.validate();
             const auto errors = std::ranges::count_if(issues,
                                                       [](const auto& issue)
@@ -492,7 +602,10 @@ int main(const int argc, char** argv)
             {
                 throw std::runtime_error("built DAT failed validation with " + std::to_string(errors) + " errors");
             }
-            dat.save(arguments[2], force);
+            if (const auto status = dat.save(arguments[2], force); !status)
+            {
+                return report_error(status.error());
+            }
             std::cout << "Built " << arguments[2] << " with " << dat.entries().size() << " entries\n";
             return 0;
         }
@@ -503,11 +616,20 @@ int main(const int argc, char** argv)
                 throw std::invalid_argument("scan-mod requires mod root, base DAT, and workspace path");
             }
             const auto base = eaw::DatFile::load(arguments[1]);
+            if (!base)
+            {
+                return report_error(base.error());
+            }
             auto references = scan_xml_references(arguments[0]);
             std::vector<eaw::LocalizationRow> rows;
             if (std::filesystem::exists(arguments[2]))
             {
-                rows = eaw::read_localization_workspace(arguments[2]);
+                auto existing_rows = eaw::read_localization_workspace(arguments[2]);
+                if (!existing_rows)
+                {
+                    return report_error(existing_rows.error());
+                }
+                rows = std::move(existing_rows).value();
             }
             std::unordered_map<std::string, std::size_t> existing;
             for (std::size_t index = 0; index < rows.size(); ++index)
@@ -517,7 +639,7 @@ int main(const int argc, char** argv)
             std::size_t missing = 0;
             for (const auto& [key, context] : references)
             {
-                if (base.find(key) != nullptr || existing.contains(key))
+                if (base->find(key) != nullptr || existing.contains(key))
                 {
                     continue;
                 }
@@ -529,7 +651,10 @@ int main(const int argc, char** argv)
                               {
                                   return std::tie(left.group, left.key) < std::tie(right.group, right.key);
                               });
-            eaw::write_localization_workspace(arguments[2], rows, force);
+            if (const auto status = eaw::write_localization_workspace(arguments[2], rows, force); !status)
+            {
+                return report_error(status.error());
+            }
             std::cout << "Scanned " << references.size() << " unique XML references; added " << missing << " missing keys to " << arguments[2] << '\n';
             return 0;
         }
@@ -542,7 +667,12 @@ int main(const int argc, char** argv)
             std::vector<eaw::LocalizationRow> rows;
             if (std::filesystem::exists(arguments[0]))
             {
-                rows = eaw::read_localization_workspace(arguments[0]);
+                auto existing_rows = eaw::read_localization_workspace(arguments[0]);
+                if (!existing_rows)
+                {
+                    return report_error(existing_rows.error());
+                }
+                rows = std::move(existing_rows).value();
             }
             const auto id = normalize_unit_id(arguments[1]);
             const std::array additions{eaw::LocalizationRow{"TEXT_UNIT_" + id, arguments[2], "unit:" + id, "ready", "Use in <Text_ID>", "Generated unit display-name key"},
@@ -568,7 +698,10 @@ int main(const int argc, char** argv)
                               {
                                   return std::tie(left.group, left.key) < std::tie(right.group, right.key);
                               });
-            eaw::write_localization_workspace(arguments[0], rows, force);
+            if (const auto status = eaw::write_localization_workspace(arguments[0], rows, force); !status)
+            {
+                return report_error(status.error());
+            }
             std::cout << "Added TEXT_UNIT_" << id << " and TEXT_TOOLTIP_" << id << " to " << arguments[0] << '\n';
             return 0;
         }

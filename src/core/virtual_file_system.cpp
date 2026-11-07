@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
-#include <stdexcept>
+#include <system_error>
 #include <unordered_set>
 
 namespace eaw {
@@ -30,28 +30,37 @@ const std::filesystem::path& DirectoryMount::source_path() const noexcept
 
 std::optional<ResolvedAsset> DirectoryMount::resolve(const std::string_view virtual_path) const
 {
-    const auto normalized = normalize_asset_path(virtual_path);
-    auto relative = std::filesystem::path(normalized);
-    auto candidate = root_ / relative;
-    if (!std::filesystem::is_regular_file(candidate))
+    auto normalized = normalize_asset_path(virtual_path);
+    if (!normalized)
     {
         return std::nullopt;
     }
-    return ResolvedAsset{AssetSourceKind::directory, name_, candidate, normalized, 0, std::filesystem::file_size(candidate)};
+    const auto candidate = root_ / std::filesystem::path(*normalized);
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(candidate, error) || error)
+    {
+        return std::nullopt;
+    }
+    const auto size = std::filesystem::file_size(candidate, error);
+    if (error)
+    {
+        return std::nullopt;
+    }
+    return ResolvedAsset{AssetSourceKind::directory, name_, candidate, std::move(normalized).value(), 0, size};
 }
 
-std::vector<std::byte> DirectoryMount::read(const ResolvedAsset& asset) const
+Result<std::vector<std::byte>> DirectoryMount::read(const ResolvedAsset& asset) const
 {
     std::ifstream stream(asset.container, std::ios::binary);
     if (!stream)
     {
-        throw std::runtime_error("could not open loose asset: " + asset.container.string());
+        return make_error("could not open loose asset: " + asset.container.string());
     }
     std::vector<std::byte> bytes(static_cast<std::size_t>(asset.size));
     stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     if (!stream)
     {
-        throw std::runtime_error("could not read loose asset: " + asset.container.string());
+        return make_error("could not read loose asset: " + asset.container.string());
     }
     return bytes;
 }
@@ -65,7 +74,8 @@ std::vector<std::string> DirectoryMount::paths() const
 {
     std::vector<std::string> result;
     std::error_code error;
-    const auto walk_root = std::filesystem::is_directory(root_ / "Data") ? root_ / "Data" : root_;
+    const auto walk_root = std::filesystem::is_directory(root_ / "Data", error) ? root_ / "Data" : root_;
+    error.clear();
     const std::filesystem::recursive_directory_iterator end;
     for (std::filesystem::recursive_directory_iterator item(walk_root, std::filesystem::directory_options::skip_permission_denied, error); item != end; item.increment(error))
     {
@@ -79,31 +89,34 @@ std::vector<std::string> DirectoryMount::paths() const
             error.clear();
             continue;
         }
-        const auto relative = item->path().lexically_relative(root_).generic_string();
-        try
+        // Host-only files outside the relative Alamo namespace are ignored.
+        auto normalized = normalize_asset_path(item->path().lexically_relative(root_).generic_string());
+        if (!normalized)
         {
-            auto normalized = normalize_asset_path(relative);
-            auto extension = std::filesystem::path(normalized).extension().string();
-            std::ranges::transform(extension, extension.begin(),
-                                   [](const unsigned char character)
-                                   {
-                                       return static_cast<char>(std::tolower(character));
-                                   });
-            if (extension == ".meg" || normalized == "DATA/MEGAFILES.XML")
-            {
-                continue;
-            }
-            result.push_back(std::move(normalized));
+            continue;
         }
-        catch (const std::invalid_argument&)
+        auto extension = std::filesystem::path(*normalized).extension().string();
+        std::ranges::transform(extension, extension.begin(),
+                               [](const unsigned char character)
+                               {
+                                   return static_cast<char>(std::tolower(character));
+                               });
+        if (extension == ".meg" || *normalized == "DATA/MEGAFILES.XML")
         {
-            // Host-only files outside the relative Alamo namespace are ignored.
+            continue;
         }
+        result.push_back(std::move(normalized).value());
     }
     return result;
 }
 
-MegMount::MegMount(std::string name, std::filesystem::path archive) : name_(std::move(name)), archive_(std::move(archive))
+Result<std::unique_ptr<MegMount>> MegMount::open(std::string name, std::filesystem::path archive)
+{
+    EAW_TRY_ASSIGN(auto opened, MegArchive::open(std::move(archive)));
+    return std::make_unique<MegMount>(std::move(name), std::move(opened));
+}
+
+MegMount::MegMount(std::string name, MegArchive archive) : name_(std::move(name)), archive_(std::move(archive))
 {}
 
 std::string_view MegMount::name() const noexcept
@@ -131,12 +144,12 @@ std::optional<ResolvedAsset> MegMount::resolve(const std::string_view virtual_pa
     return ResolvedAsset{AssetSourceKind::meg_archive, name_, archive_.path(), entry->path, entry->offset, entry->size};
 }
 
-std::vector<std::byte> MegMount::read(const ResolvedAsset& asset) const
+Result<std::vector<std::byte>> MegMount::read(const ResolvedAsset& asset) const
 {
     const auto* entry = archive_.find(asset.virtual_path);
     if (entry == nullptr || entry->offset != asset.offset || entry->size != asset.size)
     {
-        throw std::runtime_error("MEG asset no longer matches its resolved entry");
+        return make_error("MEG asset " + asset.virtual_path + " no longer matches its resolved entry in " + archive_.path().string());
     }
     return archive_.read(*entry);
 }
@@ -159,23 +172,14 @@ std::vector<std::string> MegMount::paths() const
 
 void VirtualFileSystem::mount(std::unique_ptr<AssetMount> mount_point)
 {
-    if (!mount_point)
-    {
-        throw std::invalid_argument("cannot add a null asset mount");
-    }
+    EAW_ASSERT_MSG(mount_point != nullptr, "cannot add a null asset mount");
     mounts_.push_back(std::move(mount_point));
 }
 
 void VirtualFileSystem::replace_mount(const std::size_t index, std::unique_ptr<AssetMount> mount_point)
 {
-    if (!mount_point)
-    {
-        throw std::invalid_argument("cannot replace an asset mount with null");
-    }
-    if (index >= mounts_.size())
-    {
-        throw std::out_of_range("asset mount index " + std::to_string(index) + " is out of range");
-    }
+    EAW_ASSERT_MSG(mount_point != nullptr, "cannot replace an asset mount with null");
+    EAW_ASSERT_MSG(index < mounts_.size(), "asset mount index " + std::to_string(index) + " is out of range");
     mounts_[index] = std::move(mount_point);
 }
 
@@ -191,7 +195,7 @@ std::optional<ResolvedAsset> VirtualFileSystem::resolve(const std::string_view v
     return std::nullopt;
 }
 
-std::vector<std::byte> VirtualFileSystem::read(const std::string_view virtual_path) const
+Result<std::vector<std::byte>> VirtualFileSystem::read(const std::string_view virtual_path) const
 {
     for (auto mount = mounts_.rbegin(); mount != mounts_.rend(); ++mount)
     {
@@ -200,7 +204,7 @@ std::vector<std::byte> VirtualFileSystem::read(const std::string_view virtual_pa
             return (*mount)->read(*asset);
         }
     }
-    throw std::runtime_error("asset was not found: " + std::string(virtual_path));
+    return make_error("asset was not found: " + std::string(virtual_path));
 }
 
 std::vector<ResolvedAsset> VirtualFileSystem::list(const std::string_view prefix) const
@@ -208,7 +212,12 @@ std::vector<ResolvedAsset> VirtualFileSystem::list(const std::string_view prefix
     std::string normalized_prefix;
     if (!prefix.empty())
     {
-        normalized_prefix = normalize_asset_path(prefix);
+        auto normalized = normalize_asset_path(prefix);
+        if (!normalized)
+        {
+            return {};
+        }
+        normalized_prefix = std::move(normalized).value();
         if (!normalized_prefix.ends_with('/'))
         {
             normalized_prefix.push_back('/');

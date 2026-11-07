@@ -6,7 +6,7 @@
 #include <charconv>
 #include <cctype>
 #include <cstdint>
-#include <stdexcept>
+#include <optional>
 
 namespace eaw {
 namespace {
@@ -20,11 +20,11 @@ bool equal_ascii(const std::string_view left, const std::string_view right) noex
                                                              });
 }
 
-void append_utf8(std::string& output, const std::uint32_t code_point)
+Status append_utf8(std::string& output, const std::uint32_t code_point)
 {
     if (code_point > 0x10ffffU || (code_point >= 0xd800U && code_point <= 0xdfffU))
     {
-        throw std::runtime_error("XML character reference is out of range");
+        return make_error("XML character reference is out of range");
     }
     if (code_point <= 0x7fU)
     {
@@ -48,9 +48,10 @@ void append_utf8(std::string& output, const std::uint32_t code_point)
         output.push_back(static_cast<char>(0x80U | ((code_point >> 6U) & 0x3fU)));
         output.push_back(static_cast<char>(0x80U | (code_point & 0x3fU)));
     }
+    return Status::success();
 }
 
-std::string decode_entities(const std::string_view input)
+Result<std::string> decode_entities(const std::string_view input)
 {
     std::string output;
     output.reserve(input.size());
@@ -96,9 +97,9 @@ std::string decode_entities(const std::string_view input)
             const auto result = std::from_chars(digits.data(), digits.data() + digits.size(), code_point, hexadecimal ? 16 : 10);
             if (digits.empty() || result.ec != std::errc{} || result.ptr != digits.data() + digits.size())
             {
-                throw std::runtime_error("invalid XML character reference");
+                return make_error("invalid XML character reference");
             }
-            append_utf8(output, code_point);
+            EAW_TRY(append_utf8(output, code_point));
         }
         else
         {
@@ -111,11 +112,11 @@ std::string decode_entities(const std::string_view input)
     return output;
 }
 
-std::string text_from_bytes(const std::span<const std::byte> bytes)
+Result<std::string> text_from_bytes(const std::span<const std::byte> bytes)
 {
     if (bytes.size() >= 3 && std::to_integer<unsigned char>(bytes[0]) == 0xefU && std::to_integer<unsigned char>(bytes[1]) == 0xbbU && std::to_integer<unsigned char>(bytes[2]) == 0xbfU)
     {
-        return {reinterpret_cast<const char*>(bytes.data() + 3), bytes.size() - 3};
+        return std::string(reinterpret_cast<const char*>(bytes.data() + 3), bytes.size() - 3);
     }
     if (bytes.size() >= 2)
     {
@@ -125,7 +126,7 @@ std::string text_from_bytes(const std::span<const std::byte> bytes)
         {
             if ((bytes.size() - 2) % 2 != 0)
             {
-                throw std::runtime_error("UTF-16 XML has an odd byte count");
+                return make_error("UTF-16 XML has an odd byte count");
             }
             const bool little_endian = first == 0xffU;
             std::u16string text;
@@ -140,16 +141,19 @@ std::string text_from_bytes(const std::span<const std::byte> bytes)
             return utf16_to_utf8(text);
         }
     }
-    return {reinterpret_cast<const char*>(bytes.data()), bytes.size()};
+    return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
 }
 
+// Recursive-descent parser. The first failure is recorded and moves the cursor to the end of the
+// source, so every loop that stops at the end terminates; loops that do not consume input on their
+// own check failed() explicitly.
 class Parser final
 {
 public:
     explicit Parser(const std::string_view source) : source_(source)
     {}
 
-    XmlDocument parse()
+    Result<XmlDocument> parse()
     {
         XmlDocument document;
         while (true)
@@ -180,6 +184,10 @@ public:
                 fail("text is not contained by an XML element");
             }
         }
+        if (error_)
+        {
+            return std::move(*error_);
+        }
         return document;
     }
 
@@ -187,6 +195,7 @@ private:
     std::string_view source_;
     std::size_t position_{};
     std::size_t line_{1};
+    std::optional<Error> error_;
 
     [[nodiscard]] bool at_end() const noexcept
     {
@@ -201,9 +210,31 @@ private:
         return source_.substr(position_).starts_with(value);
     }
 
-    [[noreturn]] void fail(const std::string_view message) const
+    [[nodiscard]] bool failed() const noexcept
     {
-        throw std::runtime_error("XML line " + std::to_string(line_) + ": " + std::string(message));
+        return error_.has_value();
+    }
+
+    // Records the first failure and ends parsing.
+    void fail(const std::string_view message)
+    {
+        if (!error_)
+        {
+            error_ = make_error("XML line " + std::to_string(line_) + ": " + std::string(message));
+        }
+        position_ = source_.size();
+    }
+
+    // Decodes entities, recording a failure (and returning nothing) for an invalid reference.
+    std::string decode(const std::string_view input)
+    {
+        auto decoded = decode_entities(input);
+        if (!decoded)
+        {
+            fail(decoded.error().message);
+            return {};
+        }
+        return std::move(decoded).value();
     }
 
     char take()
@@ -211,6 +242,7 @@ private:
         if (at_end())
         {
             fail("unexpected end of file");
+            return '\0';
         }
         const auto value = source_[position_++];
         if (value == '\n')
@@ -262,6 +294,7 @@ private:
         if (end == std::string_view::npos)
         {
             fail(std::string("unterminated ") + std::string(description));
+            return;
         }
         while (position_ < end + terminator.size())
         {
@@ -358,6 +391,7 @@ private:
         if (quote != '\'' && quote != '"')
         {
             fail("attribute value must be quoted");
+            return attribute;
         }
         const auto begin = position_;
         while (!at_end() && peek() != quote)
@@ -367,8 +401,9 @@ private:
         if (at_end())
         {
             fail("unterminated attribute value");
+            return attribute;
         }
-        attribute.value = decode_entities(source_.substr(begin, position_ - begin));
+        attribute.value = decode(source_.substr(begin, position_ - begin));
         expect(quote);
         return attribute;
     }
@@ -376,15 +411,20 @@ private:
     XmlNode parse_node()
     {
         expect('<');
+        XmlNode node;
         if (peek() == '/')
         {
             fail("unexpected closing element");
+            return node;
         }
-        XmlNode node;
         node.line = line_;
         node.name = parse_name();
         while (true)
         {
+            if (failed())
+            {
+                return node;
+            }
             skip_space();
             if (starts_with("/>"))
             {
@@ -402,9 +442,14 @@ private:
 
         while (true)
         {
+            if (failed())
+            {
+                return node;
+            }
             if (at_end())
             {
                 fail("unterminated element <" + node.name + ">");
+                return node;
             }
             if (starts_with("</"))
             {
@@ -436,6 +481,7 @@ private:
                 if (end == std::string_view::npos)
                 {
                     fail("unterminated CDATA section");
+                    return node;
                 }
                 while (position_ < begin)
                 {
@@ -463,7 +509,7 @@ private:
             {
                 take();
             }
-            node.text += decode_entities(source_.substr(begin, position_ - begin));
+            node.text += decode(source_.substr(begin, position_ - begin));
         }
     }
 };
@@ -490,7 +536,7 @@ const XmlNode* XmlNode::child(const std::string_view requested) const noexcept
     return found == children.end() ? nullptr : &*found;
 }
 
-XmlDocument XmlDocument::parse(const std::string_view text)
+Result<XmlDocument> XmlDocument::parse(const std::string_view text)
 {
     auto source = text;
     if (source.starts_with("\xef\xbb\xbf"))
@@ -500,10 +546,10 @@ XmlDocument XmlDocument::parse(const std::string_view text)
     return Parser(source).parse();
 }
 
-XmlDocument XmlDocument::parse(const std::span<const std::byte> bytes)
+Result<XmlDocument> XmlDocument::parse(const std::span<const std::byte> bytes)
 {
-    const auto text = text_from_bytes(bytes);
-    return parse(text);
+    EAW_TRY_ASSIGN(const auto text, text_from_bytes(bytes));
+    return parse(std::string_view(text));
 }
 
 } // namespace eaw

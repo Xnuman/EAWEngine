@@ -81,7 +81,7 @@ public:
     explicit RecordingAssetReader(const AssetReader& base);
 
     [[nodiscard]] std::optional<ResolvedAsset> resolve(std::string_view virtual_path) const override;
-    [[nodiscard]] std::vector<std::byte> read(std::string_view virtual_path) const override;
+    [[nodiscard]] Result<std::vector<std::byte>> read(std::string_view virtual_path) const override;
     [[nodiscard]] std::vector<ResolvedAsset> list(std::string_view prefix = {}) const override;
 
     // Adds dependencies gathered elsewhere (for example by a cached asset this load reused).

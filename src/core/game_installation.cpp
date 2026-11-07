@@ -19,7 +19,8 @@ namespace {
 
 bool looks_like_installation(const std::filesystem::path& root)
 {
-    return std::filesystem::is_directory(root / "GameData" / "Data") && std::filesystem::is_directory(root / "corruption" / "Data");
+    std::error_code error;
+    return std::filesystem::is_directory(root / "GameData" / "Data", error) && std::filesystem::is_directory(root / "corruption" / "Data", error);
 }
 
 std::optional<std::string> environment_value(const char* name)
@@ -134,7 +135,8 @@ std::vector<std::filesystem::path> parse_meg_manifest(const std::filesystem::pat
         auto relative = (*match)[1].str();
         std::replace(relative.begin(), relative.end(), '\\', '/');
         auto archive = runtime_root / relative;
-        if (std::filesystem::is_regular_file(archive))
+        std::error_code error;
+        if (std::filesystem::is_regular_file(archive, error))
         {
             append_if_unique(result, archive);
         }
@@ -232,14 +234,18 @@ std::vector<std::filesystem::path> discover_meg_archives(const std::filesystem::
     std::vector<std::filesystem::path> unlisted;
     std::vector<std::filesystem::path> patches;
     const auto data_root = runtime_root / "Data";
-    if (!std::filesystem::is_directory(data_root))
+    std::error_code error;
+    if (!std::filesystem::is_directory(data_root, error))
     {
         return archives;
     }
 
-    for (const auto& item : std::filesystem::recursive_directory_iterator(data_root))
+    // An unreadable directory ends the scan with what was found so far.
+    for (std::filesystem::recursive_directory_iterator iterator(data_root, error), end; !error && iterator != end; iterator.increment(error))
     {
-        if (!item.is_regular_file())
+        const auto& item = *iterator;
+        std::error_code type_error;
+        if (!item.is_regular_file(type_error))
         {
             continue;
         }

@@ -113,7 +113,8 @@ class XmlSchema final
 public:
     // Accepts either the eaw-schema repository root or one game schema folder.
     // FoC layers its additions over EAW when both directories are available.
-    [[nodiscard]] static XmlSchema load(const std::filesystem::path& root, bool include_foc = true);
+    // Errors name the schema file or folder that is missing or malformed.
+    [[nodiscard]] static Result<XmlSchema> load(const std::filesystem::path& root, bool include_foc = true);
 
     [[nodiscard]] std::span<const XmlTypeSchema> types() const noexcept;
     [[nodiscard]] std::span<const XmlEnumSchema> enums() const noexcept;

@@ -7,7 +7,6 @@
 #include <cmath>
 #include <limits>
 #include <map>
-#include <stdexcept>
 #include <utility>
 
 namespace eaw {
@@ -28,12 +27,11 @@ struct MiniChunk
     std::size_t end{};
 };
 
+// Value readers: every caller checks the enclosing chunk or mini-chunk size first, so an
+// out-of-range read is a bug.
 std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t offset)
 {
-    if (offset + 4 > bytes.size())
-    {
-        throw std::runtime_error("TED ended while reading a 32-bit value");
-    }
+    EAW_ASSERT_MSG(offset + 4 <= bytes.size(), "TED ended while reading a 32-bit value");
     std::uint32_t value = 0;
     for (unsigned index = 0; index < 4; ++index)
     {
@@ -44,10 +42,7 @@ std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t
 
 std::uint16_t read_u16(const std::span<const std::byte> bytes, const std::size_t offset)
 {
-    if (offset + 2 > bytes.size())
-    {
-        throw std::runtime_error("TED ended while reading a 16-bit value");
-    }
+    EAW_ASSERT_MSG(offset + 2 <= bytes.size(), "TED ended while reading a 16-bit value");
     return static_cast<std::uint16_t>(std::to_integer<std::uint8_t>(bytes[offset]) | (std::to_integer<std::uint8_t>(bytes[offset + 1]) << 8U));
 }
 
@@ -63,10 +58,7 @@ float read_float(const std::span<const std::byte> bytes, const std::size_t offse
 
 std::string read_string(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
 {
-    if (begin > end || end > bytes.size())
-    {
-        throw std::runtime_error("TED string range is invalid");
-    }
+    EAW_ASSERT_MSG(begin <= end && end <= bytes.size(), "TED string range is invalid");
     auto finish = begin;
     while (finish < end && bytes[finish] != std::byte{})
     {
@@ -75,11 +67,11 @@ std::string read_string(const std::span<const std::byte> bytes, const std::size_
     return {reinterpret_cast<const char*>(bytes.data() + begin), finish - begin};
 }
 
-std::string read_wide_string(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
+Result<std::string> read_wide_string(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
 {
     if (begin > end || end > bytes.size() || ((end - begin) % 2U) != 0)
     {
-        throw std::runtime_error("TED wide-string range is invalid");
+        return make_error("TED wide-string range is invalid");
     }
     std::u16string value;
     value.reserve((end - begin) / 2U);
@@ -95,11 +87,11 @@ std::string read_wide_string(const std::span<const std::byte> bytes, const std::
     return utf16_to_utf8(value);
 }
 
-std::vector<Chunk> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
+Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
 {
     if (begin > end || end > bytes.size())
     {
-        throw std::runtime_error("TED chunk range is invalid");
+        return make_error("TED chunk range is invalid");
     }
     std::vector<Chunk> result;
     auto cursor = begin;
@@ -107,7 +99,7 @@ std::vector<Chunk> read_chunks(const std::span<const std::byte> bytes, const std
     {
         if (cursor + 8 > end)
         {
-            throw std::runtime_error("TED contains a truncated chunk header");
+            return make_error("TED contains a truncated chunk header");
         }
         const auto type = read_u32(bytes, cursor);
         const auto encoded_size = read_u32(bytes, cursor + 4);
@@ -115,7 +107,7 @@ std::vector<Chunk> read_chunks(const std::span<const std::byte> bytes, const std
         const auto payload = cursor + 8;
         if (payload + size > end)
         {
-            throw std::runtime_error("TED chunk extends past its parent");
+            return make_error("TED chunk extends past its parent");
         }
         result.push_back({type, (encoded_size & 0x80000000U) != 0, payload, payload + size});
         cursor = payload + size;
@@ -123,7 +115,7 @@ std::vector<Chunk> read_chunks(const std::span<const std::byte> bytes, const std
     return result;
 }
 
-std::vector<MiniChunk> read_minis(const std::span<const std::byte> bytes, const Chunk& chunk)
+Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes, const Chunk& chunk)
 {
     std::vector<MiniChunk> result;
     auto cursor = chunk.payload;
@@ -131,14 +123,14 @@ std::vector<MiniChunk> read_minis(const std::span<const std::byte> bytes, const 
     {
         if (cursor + 2 > chunk.end)
         {
-            throw std::runtime_error("TED contains a truncated mini-chunk header");
+            return make_error("TED contains a truncated mini-chunk header");
         }
         const auto type = std::to_integer<std::uint8_t>(bytes[cursor]);
         const auto size = std::to_integer<std::uint8_t>(bytes[cursor + 1]);
         const auto payload = cursor + 2;
         if (payload + size > chunk.end)
         {
-            throw std::runtime_error("TED mini-chunk extends past its parent");
+            return make_error("TED mini-chunk extends past its parent");
         }
         result.push_back({type, payload, payload + size});
         cursor = payload + size;
@@ -152,9 +144,10 @@ const Chunk* find_chunk(const std::vector<Chunk>& chunks, const std::uint32_t ty
     return found == chunks.end() ? nullptr : &*found;
 }
 
-void parse_properties(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
+Status parse_properties(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
 {
-    for (const auto& mini : read_minis(bytes, chunk))
+    EAW_TRY_ASSIGN(const auto minis, read_minis(bytes, chunk));
+    for (const auto& mini : minis)
     {
         switch (mini.type)
         {
@@ -172,11 +165,15 @@ void parse_properties(const std::span<const std::byte> bytes, const Chunk& chunk
             }
             break;
         case 8:
-            map.name = read_wide_string(bytes, mini.payload, mini.end);
+        {
+            EAW_TRY_ASSIGN(map.name, read_wide_string(bytes, mini.payload, mini.end));
             break;
+        }
         case 9:
-            map.planet = read_wide_string(bytes, mini.payload, mini.end);
+        {
+            EAW_TRY_ASSIGN(map.planet, read_wide_string(bytes, mini.payload, mini.end));
             break;
+        }
         case 16:
             if (mini.end - mini.payload >= 4)
             {
@@ -193,16 +190,18 @@ void parse_properties(const std::span<const std::byte> bytes, const Chunk& chunk
             break;
         }
     }
+    return Status::success();
 }
 
-void parse_environments(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
+Status parse_environments(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
 {
-    const auto children = read_chunks(bytes, chunk.payload, chunk.end);
+    EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end));
     for (const auto& child : children)
     {
         if (child.type == 4 && child.container)
         {
-            for (const auto& environment_chunk : read_chunks(bytes, child.payload, child.end))
+            EAW_TRY_ASSIGN(const auto environment_chunks, read_chunks(bytes, child.payload, child.end));
+            for (const auto& environment_chunk : environment_chunks)
             {
                 if (environment_chunk.type != 6)
                 {
@@ -231,7 +230,8 @@ void parse_environments(const std::span<const std::byte> bytes, const Chunk& chu
                     target = read_float(bytes, mini.payload);
                     return true;
                 };
-                for (const auto& mini : read_minis(bytes, environment_chunk))
+                EAW_TRY_ASSIGN(const auto minis, read_minis(bytes, environment_chunk));
+                for (const auto& mini : minis)
                 {
                     TedEnvironmentField field;
                     field.type = static_cast<std::uint8_t>(mini.type);
@@ -303,7 +303,8 @@ void parse_environments(const std::span<const std::byte> bytes, const Chunk& chu
         {
             // The active-environment index is a mini-chunk (stock maps use type 0x25, size 4).
             // Reading the payload as a raw u32 returned the mini header (0x0425 = 1061) instead.
-            for (const auto& mini : read_minis(bytes, child))
+            EAW_TRY_ASSIGN(const auto minis, read_minis(bytes, child));
+            for (const auto& mini : minis)
             {
                 if (mini.end - mini.payload >= 4)
                 {
@@ -313,15 +314,17 @@ void parse_environments(const std::span<const std::byte> bytes, const Chunk& chu
             }
         }
     }
+    return Status::success();
 }
 
-void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
+Status parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
 {
-    const auto children = read_chunks(bytes, chunk.payload, chunk.end);
+    EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end));
     if (const auto* information = find_chunk(children, 0))
     {
         std::uint32_t declared_layers = 0;
-        for (const auto& mini : read_minis(bytes, *information))
+        EAW_TRY_ASSIGN(const auto information_minis, read_minis(bytes, *information));
+        for (const auto& mini : information_minis)
         {
             TedEnvironmentField field;
             field.type = static_cast<std::uint8_t>(mini.type);
@@ -410,14 +413,16 @@ void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, T
 
     if (const auto* textures = find_chunk(children, 2); textures != nullptr && textures->container)
     {
-        for (const auto& layer_chunk : read_chunks(bytes, textures->payload, textures->end))
+        EAW_TRY_ASSIGN(const auto layer_chunks, read_chunks(bytes, textures->payload, textures->end));
+        for (const auto& layer_chunk : layer_chunks)
         {
             if (layer_chunk.type != 3)
             {
                 continue;
             }
             TedTerrainLayer layer;
-            for (const auto& mini : read_minis(bytes, layer_chunk))
+            EAW_TRY_ASSIGN(const auto layer_minis, read_minis(bytes, layer_chunk));
+            for (const auto& mini : layer_minis)
             {
                 TedEnvironmentField field;
                 field.type = static_cast<std::uint8_t>(mini.type);
@@ -442,30 +447,32 @@ void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, T
     }
     if (const auto* decals = find_chunk(children, 6); decals != nullptr && decals->container)
     {
-        for (const auto& decal : read_chunks(bytes, decals->payload, decals->end))
+        EAW_TRY_ASSIGN(const auto decal_chunks, read_chunks(bytes, decals->payload, decals->end));
+        for (const auto& decal : decal_chunks)
         {
             map.decal_count += decal.type == 0x10 ? 1U : 0U;
         }
     }
     if (const auto* tracks = find_chunk(children, 9); tracks != nullptr && tracks->container)
     {
-        for (const auto& track : read_chunks(bytes, tracks->payload, tracks->end))
+        EAW_TRY_ASSIGN(const auto track_list, read_chunks(bytes, tracks->payload, tracks->end));
+        for (const auto& track : track_list)
         {
             if (track.type != 0x100 || !track.container)
             {
                 continue;
             }
-            const auto track_chunks = read_chunks(bytes, track.payload, track.end);
+            EAW_TRY_ASSIGN(const auto track_chunks, read_chunks(bytes, track.payload, track.end));
             TedTrack decoded;
             if (const auto* texture = find_chunk(track_chunks, 0x103))
             {
                 decoded.texture = read_string(bytes, texture->payload, texture->end);
                 map.track_textures.push_back(decoded.texture);
             }
-            const auto raw_fields = [&](const Chunk& source)
+            const auto raw_fields = [&](const std::vector<MiniChunk>& minis)
             {
                 std::vector<TedEnvironmentField> fields;
-                for (const auto& mini : read_minis(bytes, source))
+                for (const auto& mini : minis)
                 {
                     TedEnvironmentField field;
                     field.type = static_cast<std::uint8_t>(mini.type);
@@ -490,8 +497,9 @@ void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, T
             };
             if (const auto* header = find_chunk(track_chunks, 0x101))
             {
-                decoded.header_fields = raw_fields(*header);
-                for (const auto& mini : read_minis(bytes, *header))
+                EAW_TRY_ASSIGN(const auto header_minis, read_minis(bytes, *header));
+                decoded.header_fields = raw_fields(header_minis);
+                for (const auto& mini : header_minis)
                 {
                     if (mini.type == 0x04 || mini.type == 0x05)
                     {
@@ -501,7 +509,8 @@ void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, T
             }
             if (const auto* points = find_chunk(track_chunks, 0x102))
             {
-                for (const auto& mini : read_minis(bytes, *points))
+                EAW_TRY_ASSIGN(const auto point_minis, read_minis(bytes, *points));
+                for (const auto& mini : point_minis)
                 {
                     if (mini.type == 0x07 && mini.end - mini.payload == 12)
                     {
@@ -519,7 +528,8 @@ void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, T
             }
             if (const auto* widths = find_chunk(track_chunks, 0x104))
             {
-                for (const auto& mini : read_minis(bytes, *widths))
+                EAW_TRY_ASSIGN(const auto width_minis, read_minis(bytes, *widths));
+                for (const auto& mini : width_minis)
                 {
                     float width{};
                     if (mini.type == 0x08 && finite_float(mini, width))
@@ -530,9 +540,10 @@ void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, T
             }
             if (const auto* opacity = find_chunk(track_chunks, 0x105))
             {
-                decoded.opacity_fields = raw_fields(*opacity);
+                EAW_TRY_ASSIGN(const auto opacity_minis, read_minis(bytes, *opacity));
+                decoded.opacity_fields = raw_fields(opacity_minis);
                 std::size_t key = 0;
-                for (const auto& mini : read_minis(bytes, *opacity))
+                for (const auto& mini : opacity_minis)
                 {
                     if (mini.type == 0x09 && key < decoded.opacity.size())
                     {
@@ -553,19 +564,23 @@ void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, T
         map.world_width = static_cast<float>(map.terrain_width - 1U) / 31.0F;
         map.world_height = static_cast<float>(map.terrain_height - 1U) / 31.0F;
     }
+    return Status::success();
 }
 
-bool find_object_identity(const std::span<const std::byte> bytes, const Chunk& chunk, TedPlacedObject& object, const unsigned depth = 0)
+// True when the identity chunk was found (and decoded) below `chunk`.
+Result<bool> find_object_identity(const std::span<const std::byte> bytes, const Chunk& chunk, TedPlacedObject& object, const unsigned depth = 0)
 {
     if (!chunk.container || depth > 8)
     {
         return false;
     }
-    for (const auto& child : read_chunks(bytes, chunk.payload, chunk.end))
+    EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end));
+    for (const auto& child : children)
     {
         if (child.type == 0x4b0)
         {
-            for (const auto& mini : read_minis(bytes, child))
+            EAW_TRY_ASSIGN(const auto minis, read_minis(bytes, child));
+            for (const auto& mini : minis)
             {
                 const auto size = mini.end - mini.payload;
                 if (mini.type == 0 && size >= 4)
@@ -602,7 +617,8 @@ bool find_object_identity(const std::span<const std::byte> bytes, const Chunk& c
         }
         else if (child.container)
         {
-            if (find_object_identity(bytes, child, object, depth + 1))
+            EAW_TRY_ASSIGN(const auto found, find_object_identity(bytes, child, object, depth + 1));
+            if (found)
             {
                 return true;
             }
@@ -611,35 +627,38 @@ bool find_object_identity(const std::span<const std::byte> bytes, const Chunk& c
     return false;
 }
 
-void find_object_chunks(const std::span<const std::byte> bytes, const Chunk& chunk, std::map<std::uint32_t, std::uint32_t>& counts, std::vector<TedPlacedObject>& objects, const unsigned depth = 0)
+Status find_object_chunks(const std::span<const std::byte> bytes, const Chunk& chunk, std::map<std::uint32_t, std::uint32_t>& counts, std::vector<TedPlacedObject>& objects, const unsigned depth = 0)
 {
     if (!chunk.container || depth > 12)
     {
-        return;
+        return Status::success();
     }
-    for (const auto& child : read_chunks(bytes, chunk.payload, chunk.end))
+    EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end));
+    for (const auto& child : children)
     {
         if (child.type == 0x44c && child.container)
         {
             TedPlacedObject object;
-            find_object_identity(bytes, child, object);
+            EAW_TRY(find_object_identity(bytes, child, object));
             ++counts[object.crc];
             objects.push_back(object);
         }
         else if (child.container)
         {
-            find_object_chunks(bytes, child, counts, objects, depth + 1);
+            EAW_TRY(find_object_chunks(bytes, child, counts, objects, depth + 1));
         }
     }
+    return Status::success();
 }
 
-void parse_zones(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
+Status parse_zones(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
 {
     if (!chunk.container)
     {
-        return;
+        return Status::success();
     }
-    for (const auto& zone : read_chunks(bytes, chunk.payload, chunk.end))
+    EAW_TRY_ASSIGN(const auto zones, read_chunks(bytes, chunk.payload, chunk.end));
+    for (const auto& zone : zones)
     {
         if (zone.type == 0)
         {
@@ -647,6 +666,7 @@ void parse_zones(const std::span<const std::byte> bytes, const Chunk& chunk, Ted
         }
     }
     map.has_ai_data = map.zone_count != 0;
+    return Status::success();
 }
 
 } // namespace
@@ -665,17 +685,17 @@ const char* to_string(const TedMapType type) noexcept
     return "unknown";
 }
 
-TedMap TedMap::parse(const std::span<const std::byte> bytes)
+Result<TedMap> TedMap::parse(const std::span<const std::byte> bytes)
 {
     TedMap map;
-    const auto chunks = read_chunks(bytes, 0, bytes.size());
+    EAW_TRY_ASSIGN(const auto chunks, read_chunks(bytes, 0, bytes.size()));
     const auto* properties = find_chunk(chunks, 0);
     const auto* root = find_chunk(chunks, 1);
     if (properties == nullptr || root == nullptr || !root->container)
     {
-        throw std::runtime_error("TED is missing its properties or root chunk");
+        return make_error("TED is missing its properties or root chunk");
     }
-    parse_properties(bytes, *properties, map);
+    EAW_TRY(parse_properties(bytes, *properties, map));
 
     if (const auto* preview = find_chunk(chunks, 0x13))
     {
@@ -688,14 +708,14 @@ TedMap TedMap::parse(const std::span<const std::byte> bytes)
         }
     }
 
-    const auto root_chunks = read_chunks(bytes, root->payload, root->end);
+    EAW_TRY_ASSIGN(const auto root_chunks, read_chunks(bytes, root->payload, root->end));
     if (const auto* environments = find_chunk(root_chunks, 0x100))
     {
-        parse_environments(bytes, *environments, map);
+        EAW_TRY(parse_environments(bytes, *environments, map));
     }
     if (const auto* terrain = find_chunk(root_chunks, 0x101))
     {
-        parse_terrain(bytes, *terrain, map);
+        EAW_TRY(parse_terrain(bytes, *terrain, map));
     }
     if (const auto* passability = find_chunk(root_chunks, 0x10a))
     {
@@ -733,7 +753,7 @@ TedMap TedMap::parse(const std::span<const std::byte> bytes)
     if (const auto* objects = find_chunk(root_chunks, 0x102))
     {
         std::map<std::uint32_t, std::uint32_t> counts;
-        find_object_chunks(bytes, *objects, counts, map.placed_objects);
+        EAW_TRY(find_object_chunks(bytes, *objects, counts, map.placed_objects));
         for (const auto [crc, count] : counts)
         {
             map.object_types.push_back({crc, count});
@@ -742,7 +762,7 @@ TedMap TedMap::parse(const std::span<const std::byte> bytes)
     }
     if (const auto* zones = find_chunk(root_chunks, 0x10b))
     {
-        parse_zones(bytes, *zones, map);
+        EAW_TRY(parse_zones(bytes, *zones, map));
     }
     if (map.type == TedMapType::land && map.terrain_width == 0)
     {

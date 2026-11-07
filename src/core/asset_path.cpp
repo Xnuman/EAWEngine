@@ -1,16 +1,15 @@
 #include "eaw/asset_path.hpp"
 
 #include <cctype>
-#include <stdexcept>
 #include <vector>
 
 namespace eaw {
 
-std::string normalize_asset_path(const std::string_view path)
+Result<std::string> normalize_asset_path(const std::string_view path)
 {
     if (path.empty())
     {
-        throw std::invalid_argument("asset path cannot be empty");
+        return make_error("asset path cannot be empty");
     }
 
     std::string input(path);
@@ -24,7 +23,7 @@ std::string normalize_asset_path(const std::string_view path)
 
     if (input.front() == '/' || (input.size() >= 2 && input[1] == ':'))
     {
-        throw std::invalid_argument("asset path must be relative");
+        return make_error("asset path must be relative: " + std::string(path));
     }
 
     std::vector<std::string> parts;
@@ -39,7 +38,7 @@ std::string normalize_asset_path(const std::string_view path)
         {
             if (part == "..")
             {
-                throw std::invalid_argument("asset path cannot traverse to a parent");
+                return make_error("asset path cannot traverse to a parent: " + std::string(path));
             }
             for (char& character : part)
             {
@@ -57,7 +56,7 @@ std::string normalize_asset_path(const std::string_view path)
 
     if (parts.empty())
     {
-        throw std::invalid_argument("asset path has no filename components");
+        return make_error("asset path has no filename components: " + std::string(path));
     }
 
     std::string result;

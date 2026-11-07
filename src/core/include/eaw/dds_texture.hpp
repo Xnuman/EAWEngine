@@ -1,5 +1,7 @@
 #pragma once
 
+#include "eaw/status.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -66,7 +68,7 @@ struct DdsTexture
     bool has_alpha{};
     std::vector<DdsSubresource> subresources;
 
-    [[nodiscard]] static DdsTexture parse(std::span<const std::byte> bytes);
+    [[nodiscard]] static Result<DdsTexture> parse(std::span<const std::byte> bytes);
 };
 
 [[nodiscard]] std::string_view to_string(DdsFormat format) noexcept;

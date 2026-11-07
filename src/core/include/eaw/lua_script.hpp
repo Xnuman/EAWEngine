@@ -1,5 +1,7 @@
 #pragma once
 
+#include "eaw/status.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -46,7 +48,8 @@ struct LuaScriptInfo
     std::vector<std::string> called_functions;
     std::vector<std::string> warnings;
 
-    [[nodiscard]] static LuaScriptInfo inspect(std::span<const std::byte> bytes);
+    // Source never fails; malformed bytecode is an error naming the structure that is broken.
+    [[nodiscard]] static Result<LuaScriptInfo> inspect(std::span<const std::byte> bytes);
 };
 
 [[nodiscard]] std::string_view to_string(LuaScriptKind kind) noexcept;

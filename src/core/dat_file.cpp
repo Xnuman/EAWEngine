@@ -4,7 +4,7 @@
 #include <array>
 #include <fstream>
 #include <limits>
-#include <stdexcept>
+#include <optional>
 #include <unordered_map>
 
 #ifdef _WIN32
@@ -21,11 +21,11 @@ struct IndexRecord
     std::uint32_t key_characters{};
 };
 
-std::uint32_t read_u32(const std::span<const std::byte> bytes, std::size_t& cursor)
+std::optional<std::uint32_t> read_u32(const std::span<const std::byte> bytes, std::size_t& cursor)
 {
     if (cursor + 4 > bytes.size())
     {
-        throw std::runtime_error("truncated DAT file");
+        return std::nullopt;
     }
     std::uint32_t value = 0;
     for (unsigned shift = 0; shift < 32; shift += 8)
@@ -43,24 +43,24 @@ void append_u32(std::vector<std::byte>& bytes, const std::uint32_t value)
     }
 }
 
-std::vector<std::byte> read_binary_file(const std::filesystem::path& path)
+Result<std::vector<std::byte>> read_binary_file(const std::filesystem::path& path)
 {
     std::ifstream stream(path, std::ios::binary | std::ios::ate);
     if (!stream)
     {
-        throw std::runtime_error("could not open DAT file: " + path.string());
+        return make_error("could not open DAT file: " + path.string());
     }
     const auto end = stream.tellg();
     if (end < 0)
     {
-        throw std::runtime_error("could not determine DAT file size: " + path.string());
+        return make_error("could not determine DAT file size: " + path.string());
     }
     std::vector<std::byte> bytes(static_cast<std::size_t>(end));
     stream.seekg(0, std::ios::beg);
     stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     if (!stream)
     {
-        throw std::runtime_error("could not read DAT file: " + path.string());
+        return make_error("could not read DAT file: " + path.string());
     }
     return bytes;
 }
@@ -82,20 +82,25 @@ std::uint32_t dat_key_crc(const std::string_view key) noexcept
     return crc ^ 0xffffffffU;
 }
 
-DatFile DatFile::load(const std::filesystem::path& path)
+Result<DatFile> DatFile::load(const std::filesystem::path& path)
 {
-    const auto bytes = read_binary_file(path);
+    EAW_TRY_ASSIGN(const auto bytes, read_binary_file(path));
     return parse(bytes);
 }
 
-DatFile DatFile::parse(const std::span<const std::byte> bytes)
+Result<DatFile> DatFile::parse(const std::span<const std::byte> bytes)
 {
     std::size_t cursor = 0;
-    const auto count = read_u32(bytes, cursor);
+    const auto stored_count = read_u32(bytes, cursor);
+    if (!stored_count)
+    {
+        return make_error("truncated DAT file");
+    }
+    const auto count = *stored_count;
     constexpr std::uint32_t maximum_reasonable_entries = 5'000'000;
     if (count > maximum_reasonable_entries || static_cast<std::uint64_t>(count) * 12U + 4U > bytes.size())
     {
-        throw std::runtime_error("invalid DAT entry count");
+        return make_error("invalid DAT entry count");
     }
 
     std::vector<IndexRecord> index;
@@ -104,10 +109,14 @@ DatFile DatFile::parse(const std::span<const std::byte> bytes)
     std::uint64_t total_key_characters = 0;
     for (std::uint32_t entry = 0; entry < count; ++entry)
     {
-        IndexRecord record;
-        record.crc = read_u32(bytes, cursor);
-        record.value_characters = read_u32(bytes, cursor);
-        record.key_characters = read_u32(bytes, cursor);
+        const auto crc = read_u32(bytes, cursor);
+        const auto value_characters = read_u32(bytes, cursor);
+        const auto key_characters = read_u32(bytes, cursor);
+        if (!crc || !value_characters || !key_characters)
+        {
+            return make_error("truncated DAT file");
+        }
+        IndexRecord record{*crc, *value_characters, *key_characters};
         total_value_characters += record.value_characters;
         total_key_characters += record.key_characters;
         index.push_back(record);
@@ -116,7 +125,7 @@ DatFile DatFile::parse(const std::span<const std::byte> bytes)
     const std::uint64_t expected_size = cursor + total_value_characters * 2U + total_key_characters;
     if (expected_size != bytes.size())
     {
-        throw std::runtime_error(expected_size > bytes.size() ? "truncated DAT string data" : "unexpected trailing data in DAT file");
+        return make_error(expected_size > bytes.size() ? "truncated DAT string data" : "unexpected trailing data in DAT file");
     }
 
     DatFile result;
@@ -130,7 +139,7 @@ DatFile DatFile::parse(const std::span<const std::byte> bytes)
         {
             if (cursor + 2 > bytes.size())
             {
-                throw std::runtime_error("truncated UTF-16 DAT value");
+                return make_error("truncated UTF-16 DAT value");
             }
             const auto low = std::to_integer<unsigned char>(bytes[cursor++]);
             const auto high = std::to_integer<unsigned char>(bytes[cursor++]);
@@ -186,16 +195,16 @@ DatEntry* DatFile::find(const std::string_view key) noexcept
     return const_cast<DatEntry*>(std::as_const(*this).find(key));
 }
 
-void DatFile::upsert(std::string key, std::u16string value)
+Status DatFile::upsert(std::string key, std::u16string value)
 {
     if (key.empty())
     {
-        throw std::invalid_argument("DAT key cannot be empty");
+        return make_error("DAT key cannot be empty");
     }
     if (auto* existing = find(key))
     {
         existing->value = std::move(value);
-        return;
+        return Status::success();
     }
 
     DatEntry entry{dat_key_crc(key), std::move(key), std::move(value)};
@@ -208,6 +217,7 @@ void DatFile::upsert(std::string key, std::u16string value)
     {
         entries_.push_back(std::move(entry));
     }
+    return Status::success();
 }
 
 bool DatFile::erase(const std::string_view key)
@@ -271,11 +281,11 @@ std::vector<DatIssue> DatFile::validate() const
     return issues;
 }
 
-std::vector<std::byte> DatFile::serialize() const
+Result<std::vector<std::byte>> DatFile::serialize() const
 {
     if (entries_.size() > std::numeric_limits<std::uint32_t>::max())
     {
-        throw std::runtime_error("too many DAT entries");
+        return make_error("too many DAT entries");
     }
     std::uint64_t byte_count = 4U + entries_.size() * 12U;
     for (const auto& entry : entries_)
@@ -283,12 +293,12 @@ std::vector<std::byte> DatFile::serialize() const
         byte_count += entry.value.size() * 2U + entry.key.size();
         if (entry.value.size() > std::numeric_limits<std::uint32_t>::max() || entry.key.size() > std::numeric_limits<std::uint32_t>::max())
         {
-            throw std::runtime_error("DAT string is too long");
+            return make_error("DAT string is too long");
         }
     }
     if (byte_count > std::numeric_limits<std::size_t>::max())
     {
-        throw std::runtime_error("DAT output is too large");
+        return make_error("DAT output is too large");
     }
 
     std::vector<std::byte> bytes;
@@ -318,31 +328,36 @@ std::vector<std::byte> DatFile::serialize() const
     return bytes;
 }
 
-void DatFile::save(const std::filesystem::path& path, const bool overwrite) const
+Status DatFile::save(const std::filesystem::path& path, const bool overwrite) const
 {
-    if (std::filesystem::exists(path) && !overwrite)
+    std::error_code filesystem_error;
+    if (std::filesystem::exists(path, filesystem_error) && !overwrite)
     {
-        throw std::runtime_error("output already exists; pass --force to replace it: " + path.string());
+        return make_error("output already exists; pass --force to replace it: " + path.string());
     }
     if (const auto parent = path.parent_path(); !parent.empty())
     {
-        std::filesystem::create_directories(parent);
+        std::filesystem::create_directories(parent, filesystem_error);
+        if (filesystem_error)
+        {
+            return make_error("could not create DAT output directory (" + filesystem_error.message() + "): " + parent.string());
+        }
     }
 
-    const auto bytes = serialize();
+    EAW_TRY_ASSIGN(const auto bytes, serialize());
     auto temporary = path;
     temporary += ".tmp";
     {
         std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
         if (!stream)
         {
-            throw std::runtime_error("could not create DAT output: " + temporary.string());
+            return make_error("could not create DAT output: " + temporary.string());
         }
         stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         stream.flush();
         if (!stream)
         {
-            throw std::runtime_error("could not write DAT output: " + temporary.string());
+            return make_error("could not write DAT output: " + temporary.string());
         }
     }
 #ifdef _WIN32
@@ -352,11 +367,18 @@ void DatFile::save(const std::filesystem::path& path, const bool overwrite) cons
         const auto error = GetLastError();
         std::error_code ignored;
         std::filesystem::remove(temporary, ignored);
-        throw std::runtime_error("could not commit DAT output (Windows error " + std::to_string(error) + "): " + path.string());
+        return make_error("could not commit DAT output (Windows error " + std::to_string(error) + "): " + path.string());
     }
 #else
-    std::filesystem::rename(temporary, path);
+    std::filesystem::rename(temporary, path, filesystem_error);
+    if (filesystem_error)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        return make_error("could not commit DAT output (" + filesystem_error.message() + "): " + path.string());
+    }
 #endif
+    return Status::success();
 }
 
 } // namespace eaw

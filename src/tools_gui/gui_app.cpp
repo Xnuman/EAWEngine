@@ -126,16 +126,16 @@ std::uint32_t little_u32(const std::span<const std::byte> bytes, const std::size
     return value;
 }
 
-PreviewTexture create_dds_texture(ID3D11Device* device, const std::span<const std::byte> bytes)
+Result<PreviewTexture> create_dds_texture(ID3D11Device* device, const std::span<const std::byte> bytes)
 {
     if (device == nullptr)
     {
-        throw std::runtime_error("DirectX 11 device is unavailable");
+        return make_error("DirectX 11 device is unavailable");
     }
-    const auto texture_info = DdsTexture::parse(bytes);
+    EAW_TRY_ASSIGN(const auto texture_info, DdsTexture::parse(bytes));
     if (texture_info.subresources.empty())
     {
-        throw std::runtime_error("DDS contains no image data");
+        return make_error("DDS contains no image data");
     }
     const auto& image = texture_info.subresources.front();
     DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
@@ -209,14 +209,14 @@ PreviewTexture create_dds_texture(ID3D11Device* device, const std::span<const st
     const void* texture_data = bytes.data() + image.offset;
     if (image.row_pitch > std::numeric_limits<std::uint32_t>::max())
     {
-        throw std::runtime_error("DDS row pitch exceeds DirectX 11 limits");
+        return make_error("DDS row pitch exceeds DirectX 11 limits");
     }
     auto row_pitch = static_cast<std::uint32_t>(image.row_pitch);
     if (texture_info.format == DdsFormat::rgb8_unorm || texture_info.format == DdsFormat::bgr8_unorm || texture_info.format == DdsFormat::rgbx8_unorm)
     {
         if (texture_info.width > std::numeric_limits<std::uint32_t>::max() / 4U)
         {
-            throw std::runtime_error("DDS row pitch exceeds DirectX 11 limits");
+            return make_error("DDS row pitch exceeds DirectX 11 limits");
         }
         const auto source_stride = texture_info.format == DdsFormat::rgbx8_unorm ? 4U : 3U;
         converted_pixels.resize(static_cast<std::size_t>(texture_info.width) * texture_info.height * 4U);
@@ -239,7 +239,7 @@ PreviewTexture create_dds_texture(ID3D11Device* device, const std::span<const st
     }
     if (format == DXGI_FORMAT_UNKNOWN)
     {
-        throw std::runtime_error("DDS pixel format cannot be uploaded to DirectX 11");
+        return make_error("DDS pixel format cannot be uploaded to DirectX 11");
     }
 
     D3D11_TEXTURE2D_DESC description{};
@@ -258,12 +258,12 @@ PreviewTexture create_dds_texture(ID3D11Device* device, const std::span<const st
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
     if (FAILED(device->CreateTexture2D(&description, &initial, &texture)))
     {
-        throw std::runtime_error("DirectX 11 could not create the DDS texture");
+        return make_error("DirectX 11 could not create the DDS texture");
     }
     PreviewTexture result;
     if (FAILED(device->CreateShaderResourceView(texture.Get(), nullptr, &result.view)))
     {
-        throw std::runtime_error("DirectX 11 could not create a texture view");
+        return make_error("DirectX 11 could not create a texture view");
     }
     result.width = texture_info.width;
     result.height = texture_info.height;
@@ -283,7 +283,13 @@ std::string clean_one_line(std::string value, const std::size_t maximum = 90)
     return value;
 }
 
-std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std::byte> bytes)
+Result<AloModel> read_model(const AssetReader& vfs, const std::string& path)
+{
+    EAW_TRY_ASSIGN(const auto bytes, vfs.read(path));
+    return AloModel::parse(bytes);
+}
+
+Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<const std::byte> bytes)
 {
     const auto extension = lower(std::filesystem::path(asset.virtual_path).extension().string());
     std::ostringstream output;
@@ -294,7 +300,7 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
 
     if (extension == ".dat")
     {
-        const auto dat = DatFile::parse(bytes);
+        EAW_TRY_ASSIGN(const auto dat, DatFile::parse(bytes));
         const auto issues = dat.validate();
         output << "Petroglyph localization DAT\nEntries: " << dat.entries().size() << "\nCRC sorted: " << (dat.crc_sorted() ? "yes" : "no") << "\nValidation issues: " << issues.size()
                << "\n\nSample:\n";
@@ -306,14 +312,15 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
                 output << "...\n";
                 break;
             }
-            output << entry.key << " = " << clean_one_line(utf16_to_utf8(entry.value), 110) << '\n';
+            EAW_TRY_ASSIGN(auto value, utf16_to_utf8(entry.value));
+            output << entry.key << " = " << clean_one_line(std::move(value), 110) << '\n';
         }
         return output.str();
     }
 
     if (extension == ".dds")
     {
-        const auto texture = DdsTexture::parse(bytes);
+        EAW_TRY_ASSIGN(const auto texture, DdsTexture::parse(bytes));
         output << "DirectDraw Surface\nPixel format: " << to_string(texture.format) << "\nDimensions: " << texture.width << 'x' << texture.height;
         if (texture.volume)
         {
@@ -326,7 +333,7 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
 
     if (extension == ".mtd")
     {
-        const auto directory = MtdDirectory::parse(bytes);
+        EAW_TRY_ASSIGN(const auto directory, MtdDirectory::parse(bytes));
         output << "Petroglyph mega-texture directory\nEntries: " << directory.entries.size() << "\nAtlas extent: " << directory.atlas_width << 'x' << directory.atlas_height
                << "\nEntries with alpha: " << directory.alpha_entries << "\n\nEntries:\n";
         for (std::size_t index = 0; index < std::min<std::size_t>(directory.entries.size(), 120); ++index)
@@ -339,9 +346,10 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
 
     if (extension == ".alo")
     {
-        try
+        const auto decoded = AloModel::parse(bytes);
+        if (decoded)
         {
-            const auto model = AloModel::parse(bytes);
+            const auto& model = *decoded;
             output << "Alamo semantic model\n"
                    << "Bones: " << model.bones.size() << "\nMeshes: " << model.meshes.size() << "\nSubmeshes: " << model.submesh_count() << "\nVertices: " << model.vertex_count()
                    << "\nTriangles: " << model.triangle_count() << "\nLights: " << model.lights.size() << "\nProxies: " << model.proxies.size() << "\nDazzles: " << model.dazzles.size() << "\n";
@@ -407,17 +415,18 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
             }
             return output.str();
         }
-        catch (const std::exception& error)
+        else
         {
-            output << "Semantic model decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n\n";
+            output << "Semantic model decoding unavailable: " << decoded.error().message << "\nFalling back to the chunk inventory.\n\n";
         }
     }
 
     if (extension == ".ala")
     {
-        try
+        const auto decoded = AlaAnimation::parse(bytes);
+        if (decoded)
         {
-            const auto animation = AlaAnimation::parse(bytes);
+            const auto& animation = *decoded;
             output << "Alamo semantic animation\nVersion: " << animation.version << "\nStored frames: " << animation.stored_frame_count << "\nPlayable frames: " << animation.playable_frame_count()
                    << "\nFrames per second: " << animation.frames_per_second << "\nDuration: " << animation.duration_seconds() << " seconds\nBone tracks: " << animation.tracks.size()
                    << "\nRotation data: " << human_size(animation.rotation_data_bytes) << "\nTranslation data: " << human_size(animation.translation_data_bytes)
@@ -455,17 +464,18 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
             }
             return output.str();
         }
-        catch (const std::exception& error)
+        else
         {
-            output << "Semantic animation decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n\n";
+            output << "Semantic animation decoding unavailable: " << decoded.error().message << "\nFalling back to the chunk inventory.\n\n";
         }
     }
 
     if (extension == ".ted")
     {
-        try
+        const auto decoded = TedMap::parse(bytes);
+        if (decoded)
         {
-            const auto map = TedMap::parse(bytes);
+            const auto& map = *decoded;
             output << "Alamo semantic map\nType: " << to_string(map.type) << "\nName: " << map.name << "\nPlanet: " << map.planet << "\nPlayers: " << map.players
                    << "\nWorld dimensions: " << map.world_width << " x " << map.world_height << "\nTerrain grid: " << map.terrain_width << " x " << map.terrain_height
                    << "\nElevation: " << map.elevation_sample_count << " samples (" << map.minimum_elevation << ".." << map.maximum_elevation << ")\nPassability: " << map.passability_sample_count
@@ -511,9 +521,9 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
             }
             return output.str();
         }
-        catch (const std::exception& error)
+        else
         {
-            output << "Semantic map decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n\n";
+            output << "Semantic map decoding unavailable: " << decoded.error().message << "\nFalling back to the chunk inventory.\n\n";
         }
     }
 
@@ -542,7 +552,7 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
 
     if (extension == ".lua")
     {
-        const auto script = LuaScriptInfo::inspect(bytes);
+        EAW_TRY_ASSIGN(const auto script, LuaScriptInfo::inspect(bytes));
         output << to_string(script.kind) << '\n';
         if (script.kind == LuaScriptKind::source)
         {
@@ -960,9 +970,16 @@ struct GuiApp::State
                 continue;
             }
             auto& gpu = map_models[placement.model_path];
+            const auto model = read_model(vfs, placement.model_path);
+            if (!model)
+            {
+                // Particle ALOs and malformed models fall back to a marker.
+                map_object_warnings.push_back(placement.model_path + ": " + model.error().message);
+                continue;
+            }
             try
             {
-                const auto geometry = build_preview_geometry(AloModel::parse(vfs.read(placement.model_path)), nullptr, {}, false,
+                const auto geometry = build_preview_geometry(*model, nullptr, {}, false,
                                                              [this](const std::string& reference)
                                                              {
                                                                  return load_texture(object_textures, map_object_warnings, reference);
@@ -1033,6 +1050,12 @@ struct GuiApp::State
         message_error = true;
     }
 
+    void fail(const Error& error)
+    {
+        message = error.message;
+        message_error = true;
+    }
+
     void load_assets()
     {
         const auto profile = make_game_profile(utf8_to_path(game_root), variant);
@@ -1084,7 +1107,18 @@ struct GuiApp::State
         }
         const auto& asset = preview_animation_assets[static_cast<std::size_t>(index)];
         const auto bytes = vfs.read(asset.virtual_path);
-        preview_animation = AlaAnimation::parse(bytes);
+        if (!bytes)
+        {
+            fail(bytes.error());
+            return;
+        }
+        auto animation = AlaAnimation::parse(*bytes);
+        if (!animation)
+        {
+            fail(animation.error());
+            return;
+        }
+        preview_animation = std::move(animation).value();
         succeed("Loaded animation " + asset.virtual_path);
     }
 
@@ -1096,8 +1130,17 @@ struct GuiApp::State
         }
         selected_asset = index;
         const auto& asset = assets[static_cast<std::size_t>(index)];
-        const auto bytes = vfs.read(asset.virtual_path);
-        asset_preview = bytes_preview(asset, bytes);
+        const auto read = vfs.read(asset.virtual_path);
+        auto preview = read ? bytes_preview(asset, *read) : Result<std::string>(read.error());
+        if (!preview)
+        {
+            // Shown in the preview pane as well as the status line.
+            fail(preview.error());
+            asset_preview = preview.error().message;
+            return;
+        }
+        const auto& bytes = *read;
+        asset_preview = std::move(preview).value();
         preview_model.reset();
         preview_map.reset();
         preview_inverse_bind.clear();
@@ -1121,14 +1164,12 @@ struct GuiApp::State
         }
         if (extension == ".ted")
         {
-            try
-            {
-                preview_map = TedMap::parse(bytes);
-            }
-            catch (const std::exception&)
+            auto map = TedMap::parse(bytes);
+            if (!map)
             {
                 return;
             }
+            preview_map = std::move(map).value();
             try
             {
                 load_map_objects();
@@ -1144,19 +1185,24 @@ struct GuiApp::State
         {
             return;
         }
-        try
-        {
-            preview_model = AloModel::parse(bytes);
-        }
-        catch (const std::exception&)
+        auto model = AloModel::parse(bytes);
+        if (!model)
         {
             return;
         }
+        preview_model = std::move(model).value();
         const auto bind_pose = preview_model->bind_pose();
         preview_inverse_bind.reserve(bind_pose.size());
         for (const auto& transform : bind_pose)
         {
-            preview_inverse_bind.push_back(alo_inverse(transform));
+            const auto inverse = alo_inverse(transform);
+            if (!inverse)
+            {
+                fail(inverse.error());
+                asset_preview = inverse.error().message;
+                return;
+            }
+            preview_inverse_bind.push_back(*inverse);
         }
 
         const auto directory = lower(selected_path.parent_path().generic_string());
@@ -1209,13 +1255,15 @@ struct GuiApp::State
             {
                 continue;
             }
-            try
+            const auto bytes = vfs.read(virtual_path);
+            auto texture = bytes ? create_dds_texture(graphics_device, *bytes) : Result<PreviewTexture>(bytes.error());
+            if (texture)
             {
-                entry = create_dds_texture(graphics_device, vfs.read(virtual_path));
+                entry = std::move(texture).value();
             }
-            catch (const std::exception& error)
+            else
             {
-                warnings.push_back(reference + ": " + error.what());
+                warnings.push_back(reference + ": " + texture.error().message);
             }
             return entry.view.Get();
         }
@@ -1226,11 +1274,22 @@ struct GuiApp::State
     void open_dat(const std::filesystem::path& path)
     {
         const auto dat = DatFile::load(path);
-        std::vector<LocalizationRow> loaded;
-        loaded.reserve(dat.entries().size());
-        for (const auto& entry : dat.entries())
+        if (!dat)
         {
-            loaded.push_back({entry.key, utf16_to_utf8(entry.value), {}, "existing", {}, {}});
+            fail(dat.error());
+            return;
+        }
+        std::vector<LocalizationRow> loaded;
+        loaded.reserve(dat->entries().size());
+        for (const auto& entry : dat->entries())
+        {
+            auto text = utf16_to_utf8(entry.value);
+            if (!text)
+            {
+                fail(with_context("DAT entry " + entry.key, std::move(text).error()));
+                return;
+            }
+            loaded.push_back({entry.key, std::move(text).value(), {}, "existing", {}, {}});
         }
         std::ranges::sort(loaded, {}, &LocalizationRow::key);
         base_dat_path = path;
@@ -1244,7 +1303,13 @@ struct GuiApp::State
 
     void open_workspace(const std::filesystem::path& path)
     {
-        rows = read_localization_workspace(path);
+        auto loaded = read_localization_workspace(path);
+        if (!loaded)
+        {
+            fail(loaded.error());
+            return;
+        }
+        rows = std::move(loaded).value();
         workspace_path = path;
         selected_row = rows.empty() ? -1 : 0;
         dirty = false;
@@ -1254,7 +1319,11 @@ struct GuiApp::State
 
     void save_workspace(const std::filesystem::path& path)
     {
-        write_localization_workspace(path, rows, true);
+        if (const auto status = write_localization_workspace(path, rows, true); !status)
+        {
+            fail(status.error());
+            return;
+        }
         workspace_path = path;
         dirty = false;
         succeed("Saved localization workspace");
@@ -1288,18 +1357,18 @@ struct GuiApp::State
         }
         if (base_dat_path)
         {
-            try
+            auto candidate = DatFile::load(*base_dat_path);
+            const auto applied = candidate ? apply_localization_workspace(*candidate, rows, skip_todo) : Status(candidate.error());
+            if (!applied)
             {
-                auto candidate = DatFile::load(*base_dat_path);
-                apply_localization_workspace(candidate, rows, skip_todo);
-                for (const auto& issue : candidate.validate())
+                validation_messages.push_back("Error: " + applied.error().message);
+            }
+            else
+            {
+                for (const auto& issue : candidate->validate())
                 {
                     validation_messages.push_back(std::string(issue.severity == DatIssueSeverity::error ? "Error: " : "Warning: ") + issue.message);
                 }
-            }
-            catch (const std::exception& error)
-            {
-                validation_messages.push_back(std::string("Error: ") + error.what());
             }
         }
         const auto errors = std::ranges::count_if(validation_messages,
@@ -1325,8 +1394,18 @@ struct GuiApp::State
         {
             throw std::runtime_error("Choose a different output path; EAWTools will not overwrite the baseline DAT");
         }
-        auto dat = DatFile::load(*base_dat_path);
-        apply_localization_workspace(dat, rows, skip_todo);
+        auto loaded = DatFile::load(*base_dat_path);
+        if (!loaded)
+        {
+            fail(loaded.error());
+            return;
+        }
+        auto& dat = *loaded;
+        if (const auto status = apply_localization_workspace(dat, rows, skip_todo); !status)
+        {
+            fail(status.error());
+            return;
+        }
         const auto issues = dat.validate();
         const auto errors = std::ranges::count_if(issues,
                                                   [](const auto& issue)
@@ -1337,7 +1416,11 @@ struct GuiApp::State
         {
             throw std::runtime_error("The built DAT has " + std::to_string(errors) + " validation errors");
         }
-        dat.save(output, true);
+        if (const auto status = dat.save(output, true); !status)
+        {
+            fail(status.error());
+            return;
+        }
         succeed("Built " + path_to_utf8(output) + " with " + std::to_string(dat.entries().size()) + " entries");
     }
 
@@ -1348,7 +1431,18 @@ struct GuiApp::State
             throw std::runtime_error("Open a baseline DAT before scanning a mod");
         }
         const auto baseline = DatFile::load(*base_dat_path);
-        const auto result = scan_mod_localization(mod_root, baseline);
+        if (!baseline)
+        {
+            fail(baseline.error());
+            return;
+        }
+        const auto scanned = scan_mod_localization(mod_root, *baseline);
+        if (!scanned)
+        {
+            fail(scanned.error());
+            return;
+        }
+        const auto& result = *scanned;
         std::unordered_set<std::string> existing;
         for (const auto& row : rows)
         {

@@ -6,7 +6,6 @@
 #include <cctype>
 #include <filesystem>
 #include <map>
-#include <stdexcept>
 
 namespace eaw {
 namespace {
@@ -42,7 +41,7 @@ bool xml_extension(const std::string_view path)
     return fold_ascii(std::filesystem::path(path).extension().string()) == ".xml";
 }
 
-std::string include_path(const std::string_view value)
+Result<std::string> include_path(const std::string_view value)
 {
     auto candidate = std::string(value);
     std::ranges::replace(candidate, '\\', '/');
@@ -64,15 +63,12 @@ void collect_node(const AssetReader& vfs, const XmlNode& node, const std::string
     const auto value = trim(node.text);
     if (node.children.empty() && xml_extension(value))
     {
-        try
+        // A value ending in .xml can still be a non-path token. It is not an
+        // include if it cannot enter the normalized VFS namespace.
+        if (auto path = include_path(value))
         {
-            const auto path = include_path(value);
-            includes.push_back(XmlIncludeReference{source_path, node.line, value, path, vfs.resolve(path).has_value()});
-        }
-        catch (const std::invalid_argument&)
-        {
-            // A value ending in .xml can still be a non-path token. It is not an
-            // include if it cannot enter the normalized VFS namespace.
+            const bool resolved = vfs.resolve(*path).has_value();
+            includes.push_back(XmlIncludeReference{source_path, node.line, value, std::move(path).value(), resolved});
         }
     }
     for (const auto& child : node.children)
@@ -93,18 +89,22 @@ XmlAssetDatabase XmlAssetDatabase::build(const AssetReader& vfs, const std::stri
             continue;
         }
         ++database.document_count_;
-        try
+        const auto bytes = vfs.read(asset.virtual_path);
+        if (!bytes)
         {
-            const auto document = XmlDocument::parse(vfs.read(asset.virtual_path));
-            ++database.parsed_document_count_;
-            for (const auto& root : document.roots)
-            {
-                collect_node(vfs, root, asset.virtual_path, database.definitions_, database.includes_, 0);
-            }
+            database.failures_.push_back({asset.virtual_path, bytes.error().message});
+            continue;
         }
-        catch (const std::exception& error)
+        const auto document = XmlDocument::parse(std::span<const std::byte>(*bytes));
+        if (!document)
         {
-            database.failures_.push_back({asset.virtual_path, error.what()});
+            database.failures_.push_back({asset.virtual_path, document.error().message});
+            continue;
+        }
+        ++database.parsed_document_count_;
+        for (const auto& root : document->roots)
+        {
+            collect_node(vfs, root, asset.virtual_path, database.definitions_, database.includes_, 0);
         }
     }
 

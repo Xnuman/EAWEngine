@@ -6,7 +6,7 @@
 #include <map>
 #include <set>
 #include <sstream>
-#include <stdexcept>
+#include <system_error>
 #include <tuple>
 
 namespace eaw {
@@ -28,12 +28,12 @@ std::string lower(std::string value)
     return value;
 }
 
-std::string read_text_file(const std::filesystem::path& path)
+Result<std::string> read_text_file(const std::filesystem::path& path)
 {
     std::ifstream stream(path, std::ios::binary);
     if (!stream)
     {
-        throw std::runtime_error("could not open XML file: " + path.string());
+        return make_error("could not open XML file: " + path.string());
     }
     std::ostringstream contents;
     contents << stream.rdbuf();
@@ -80,26 +80,30 @@ std::string join_locations(const std::set<std::string>& locations)
 
 } // namespace
 
-LocalizationScanResult scan_mod_localization(const std::filesystem::path& mod_root, const DatFile& baseline)
+Result<LocalizationScanResult> scan_mod_localization(const std::filesystem::path& mod_root, const DatFile& baseline)
 {
+    std::error_code filesystem_error;
     auto xml_root = mod_root / "Data" / "XML";
-    if (!std::filesystem::is_directory(xml_root))
+    if (!std::filesystem::is_directory(xml_root, filesystem_error))
     {
         xml_root = mod_root / "Data" / "Xml";
     }
-    if (!std::filesystem::is_directory(xml_root))
+    if (!std::filesystem::is_directory(xml_root, filesystem_error))
     {
-        throw std::runtime_error("mod root does not contain Data/XML: " + mod_root.string());
+        return make_error("mod root does not contain Data/XML: " + mod_root.string());
     }
 
     std::map<std::string, ReferenceContext> references;
-    for (const auto& item : std::filesystem::recursive_directory_iterator(xml_root))
+    std::filesystem::recursive_directory_iterator iterator(xml_root, filesystem_error);
+    for (const std::filesystem::recursive_directory_iterator finished; !filesystem_error && iterator != finished; iterator.increment(filesystem_error))
     {
-        if (!item.is_regular_file() || lower(item.path().extension().string()) != ".xml")
+        const auto& item = *iterator;
+        std::error_code type_error;
+        if (!item.is_regular_file(type_error) || lower(item.path().extension().string()) != ".xml")
         {
             continue;
         }
-        auto contents = read_text_file(item.path());
+        EAW_TRY_ASSIGN(auto contents, read_text_file(item.path()));
         remove_xml_comments(contents);
         std::vector<std::size_t> newlines;
         for (std::size_t index = 0; index < contents.size(); ++index)
@@ -131,6 +135,10 @@ LocalizationScanResult scan_mod_localization(const std::filesystem::path& mod_ro
             context.locations.insert(relative + ":" + std::to_string(line));
             position = end;
         }
+    }
+    if (filesystem_error)
+    {
+        return make_error("could not enumerate " + xml_root.string() + " (" + filesystem_error.message() + ")");
     }
 
     LocalizationScanResult result;

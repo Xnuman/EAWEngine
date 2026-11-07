@@ -393,6 +393,12 @@ struct HotReloadCheck
     double seconds{};
 };
 
+eaw::Result<eaw::AlaAnimation> read_animation(const eaw::AssetReader& reader, const std::string_view path)
+{
+    EAW_TRY_ASSIGN(const auto bytes, reader.read(path));
+    return eaw::AlaAnimation::parse(bytes);
+}
+
 SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Options& options, eaw::AssetCache* cache, const bool reload)
 {
     SandboxContent content;
@@ -428,35 +434,28 @@ SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Op
     }
     if (content.model)
     {
-        try
+        content.animations = eaw::model_animations(reader, options.model);
+        const auto animation_path = options.animation ? options.animation : eaw::default_model_animation(reader, options.model);
+        if (animation_path)
         {
-            content.animations = eaw::model_animations(reader, options.model);
-        }
-        catch (const std::exception& error)
-        {
-            content.animation_error = std::string("animation list unavailable: ") + error.what();
-        }
-        try
-        {
-            const auto animation_path = options.animation ? options.animation : eaw::default_model_animation(reader, options.model);
-            if (animation_path)
+            const auto resolved_animation = reader.resolve(*animation_path);
+            if (!resolved_animation)
             {
-                const auto resolved_animation = reader.resolve(*animation_path);
-                if (!resolved_animation)
+                content.animation_error = "asset not found: " + *animation_path;
+            }
+            else
+            {
+                auto animation = read_animation(reader, resolved_animation->virtual_path);
+                if (animation)
                 {
-                    content.animation_error = "asset not found: " + *animation_path;
+                    content.animation = std::move(animation).value();
+                    content.animation_path = resolved_animation->virtual_path;
                 }
                 else
                 {
-                    content.animation = eaw::AlaAnimation::parse(reader.read(resolved_animation->virtual_path));
-                    content.animation_path = resolved_animation->virtual_path;
+                    content.animation_error = animation.error().message + "; using the bind pose";
                 }
             }
-        }
-        catch (const std::exception& error)
-        {
-            content.animation_error = std::string(error.what()) + "; using the bind pose";
-            content.animation.reset();
         }
     }
     content.build_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
@@ -567,7 +566,12 @@ int main(const int argc, char** argv)
             return 3;
         }
         const auto bytes = vfs.read(options.probe);
-        std::cout << "Probe: " << resolved->virtual_path << '\n' << "Source: " << resolved->mount_name << " -> " << resolved->container << '\n' << "Size: " << bytes.size() << " bytes\n";
+        if (!bytes)
+        {
+            std::cerr << "Probe could not be read: " << bytes.error().message << '\n';
+            return 3;
+        }
+        std::cout << "Probe: " << resolved->virtual_path << '\n' << "Source: " << resolved->mount_name << " -> " << resolved->container << '\n' << "Size: " << bytes->size() << " bytes\n";
 
         if (options.mode == RunMode::doctor)
         {
@@ -1087,16 +1091,17 @@ int main(const int argc, char** argv)
                 else
                 {
                     const auto& path = animation_paths[animation_choice - 1U];
-                    try
+                    auto animation = read_animation(vfs, path);
+                    if (animation)
                     {
-                        visual_animation = eaw::AlaAnimation::parse(vfs.read(path));
+                        visual_animation = std::move(animation).value();
                         animation_status = path;
                         std::cout << "Animation " << animation_choice << "/" << animation_paths.size() << ": " << path << " | " << visual_animation->playable_frame_count() << " frames, "
                                   << visual_animation->duration_seconds() << " seconds\n";
                     }
-                    catch (const std::exception& error)
+                    else
                     {
-                        std::cerr << "animation warning: " << path << ": " << error.what() << "; showing the bind pose\n";
+                        std::cerr << "animation warning: " << path << ": " << animation.error().message << "; showing the bind pose\n";
                         renderer.set_bone_transforms(bind_palette);
                     }
                 }
@@ -1155,18 +1160,17 @@ int main(const int argc, char** argv)
                     {
                         const auto& mount = vfs.mounts()[index];
                         const auto archive = mount->source_path();
-                        try
-                        {
-                            vfs.replace_mount(index, std::make_unique<eaw::MegMount>(std::string(mount->name()), archive));
-                            archive_watch.accept(vfs, index);
-                            std::cout << "Hot reload: remounted " << archive.string() << '\n';
-                        }
-                        catch (const std::exception& error)
+                        auto replacement = eaw::MegMount::open(std::string(mount->name()), archive);
+                        if (!replacement)
                         {
                             // Typically the archive is still being written; try again next check.
-                            std::cerr << "hot reload warning: " << archive.string() << " could not be remounted (" << error.what() << "); retrying\n";
+                            std::cerr << "hot reload warning: " << archive.string() << " could not be remounted (" << replacement.error().message << "); retrying\n";
                             remounted = false;
+                            continue;
                         }
+                        vfs.replace_mount(index, std::move(replacement).value());
+                        archive_watch.accept(vfs, index);
+                        std::cout << "Hot reload: remounted " << archive.string() << '\n';
                     }
                     if (remounted && (!check.archives.empty() || !check.files.empty()))
                     {

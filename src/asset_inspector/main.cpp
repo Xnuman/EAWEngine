@@ -205,9 +205,30 @@ std::uint32_t little_u32(const std::span<const std::byte> bytes, const std::size
     return value;
 }
 
-void inspect_dat(const std::span<const std::byte> bytes, const std::size_t limit)
+// Reports the way main's handler does: "asset inspector error: ..." and exit code 1.
+int report_error(const eaw::Error& error)
 {
-    const auto dat = eaw::DatFile::parse(bytes);
+    std::cerr << "asset inspector error: " << error.message << '\n';
+    return 1;
+}
+
+// Reads and decodes one asset through the VFS.
+template <class Asset> eaw::Result<Asset> decode_asset(const eaw::AssetReader& vfs, const std::string_view path)
+{
+    EAW_TRY_ASSIGN(const auto bytes, vfs.read(path));
+    if constexpr (std::is_same_v<Asset, eaw::LuaScriptInfo>)
+    {
+        return eaw::LuaScriptInfo::inspect(bytes);
+    }
+    else
+    {
+        return Asset::parse(bytes);
+    }
+}
+
+eaw::Status inspect_dat(const std::span<const std::byte> bytes, const std::size_t limit)
+{
+    EAW_TRY_ASSIGN(const auto dat, eaw::DatFile::parse(bytes));
     const auto issues = dat.validate();
     std::cout << "Format: Petroglyph string DAT\n"
               << "Entries: " << dat.entries().size() << '\n'
@@ -220,7 +241,7 @@ void inspect_dat(const std::span<const std::byte> bytes, const std::size_t limit
         {
             break;
         }
-        auto value = eaw::utf16_to_utf8(entry.value);
+        EAW_TRY_ASSIGN(auto value, eaw::utf16_to_utf8(entry.value));
         std::ranges::replace(value, '\n', ' ');
         std::ranges::replace(value, '\r', ' ');
         if (value.size() > 100)
@@ -230,11 +251,12 @@ void inspect_dat(const std::span<const std::byte> bytes, const std::size_t limit
         }
         std::cout << "  " << entry.key << " = " << value << '\n';
     }
+    return eaw::Status::success();
 }
 
-void inspect_dds(const std::span<const std::byte> bytes)
+eaw::Status inspect_dds(const std::span<const std::byte> bytes)
 {
-    const auto texture = eaw::DdsTexture::parse(bytes);
+    EAW_TRY_ASSIGN(const auto texture, eaw::DdsTexture::parse(bytes));
     std::cout << "Format: DirectDraw Surface\n"
               << "Pixel format: " << eaw::to_string(texture.format) << '\n'
               << "Dimensions: " << texture.width << 'x' << texture.height;
@@ -248,11 +270,12 @@ void inspect_dds(const std::span<const std::byte> bytes)
               << "Cube map: " << (texture.cube_map ? "yes" : "no") << '\n'
               << "Alpha channel: " << (texture.has_alpha ? "yes" : "no") << '\n'
               << "Image bytes: " << texture.data_size << '\n';
+    return eaw::Status::success();
 }
 
-void inspect_mtd(const std::span<const std::byte> bytes, const std::size_t limit)
+eaw::Status inspect_mtd(const std::span<const std::byte> bytes, const std::size_t limit)
 {
-    const auto directory = eaw::MtdDirectory::parse(bytes);
+    EAW_TRY_ASSIGN(const auto directory, eaw::MtdDirectory::parse(bytes));
     std::cout << "Format: Petroglyph mega-texture directory\n"
               << "Entries: " << directory.entries.size() << '\n'
               << "Atlas extent: " << directory.atlas_width << 'x' << directory.atlas_height << '\n'
@@ -263,6 +286,7 @@ void inspect_mtd(const std::span<const std::byte> bytes, const std::size_t limit
         std::cout << "  [" << index << "] " << entry.name << " crc=0x" << std::hex << std::setw(8) << std::setfill('0') << entry.name_crc << std::dec << std::setfill(' ') << " rect=" << entry.x << ','
                   << entry.y << ' ' << entry.width << 'x' << entry.height << (entry.has_alpha ? " alpha" : "") << '\n';
     }
+    return eaw::Status::success();
 }
 
 void inspect_chunks(const std::span<const std::byte> bytes, const std::size_t limit)
@@ -289,9 +313,9 @@ void inspect_chunks(const std::span<const std::byte> bytes, const std::size_t li
     std::cout << "Top-level bytes consumed: " << cursor << '/' << bytes.size() << '\n';
 }
 
-void inspect_alo(const std::span<const std::byte> bytes, const std::size_t limit)
+eaw::Status inspect_alo(const std::span<const std::byte> bytes, const std::size_t limit)
 {
-    const auto model = eaw::AloModel::parse(bytes);
+    EAW_TRY_ASSIGN(const auto model, eaw::AloModel::parse(bytes));
     std::cout << "Format: Alamo semantic model\n"
               << "Bones: " << model.bones.size() << '\n'
               << "Meshes: " << model.meshes.size() << '\n'
@@ -334,11 +358,12 @@ void inspect_alo(const std::span<const std::byte> bytes, const std::size_t limit
             }
         }
     }
+    return eaw::Status::success();
 }
 
-void inspect_ala(const std::span<const std::byte> bytes, const std::size_t limit)
+eaw::Status inspect_ala(const std::span<const std::byte> bytes, const std::size_t limit)
 {
-    const auto animation = eaw::AlaAnimation::parse(bytes);
+    EAW_TRY_ASSIGN(const auto animation, eaw::AlaAnimation::parse(bytes));
     std::cout << "Format: Alamo semantic animation\n"
               << "Version: " << animation.version << '\n'
               << "Stored frames: " << animation.stored_frame_count << '\n'
@@ -380,11 +405,12 @@ void inspect_ala(const std::span<const std::byte> bytes, const std::size_t limit
         }
         std::cout << '\n';
     }
+    return eaw::Status::success();
 }
 
-void inspect_ted(const std::span<const std::byte> bytes, const std::size_t limit)
+eaw::Status inspect_ted(const std::span<const std::byte> bytes, const std::size_t limit)
 {
-    const auto map = eaw::TedMap::parse(bytes);
+    EAW_TRY_ASSIGN(const auto map, eaw::TedMap::parse(bytes));
     std::cout << "Format: Alamo semantic map\n"
               << "Type: " << eaw::to_string(map.type) << '\n'
               << "Name: " << map.name << '\n'
@@ -468,6 +494,7 @@ void inspect_ted(const std::span<const std::byte> bytes, const std::size_t limit
         const auto& object = map.object_types[index];
         std::cout << "  0x" << std::hex << std::setw(8) << std::setfill('0') << object.crc << std::dec << std::setfill(' ') << " x " << object.count << '\n';
     }
+    return eaw::Status::success();
 }
 
 std::vector<std::string> localization_references(const std::string& xml)
@@ -502,14 +529,14 @@ void collect_named_xml_nodes(const eaw::XmlNode& node, std::vector<const eaw::Xm
     }
 }
 
-void inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& path, const std::size_t limit)
+eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& path, const std::size_t limit)
 {
     const auto resolved = vfs.resolve(path);
     if (!resolved)
     {
         throw std::runtime_error("asset was not found: " + path);
     }
-    const auto bytes = vfs.read(path);
+    EAW_TRY_ASSIGN(const auto bytes, vfs.read(path));
     const auto extension = extension_of(resolved->virtual_path);
     std::cout << "Path: " << resolved->virtual_path << '\n'
               << "Source: " << resolved->mount_name << '\n'
@@ -519,57 +546,45 @@ void inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& path, c
 
     if (extension == ".dat")
     {
-        inspect_dat(bytes, limit);
+        EAW_TRY(inspect_dat(bytes, limit));
     }
     else if (extension == ".dds")
     {
-        inspect_dds(bytes);
+        EAW_TRY(inspect_dds(bytes));
     }
     else if (extension == ".alo")
     {
-        try
+        if (const auto status = inspect_alo(bytes, limit); !status)
         {
-            inspect_alo(bytes, limit);
-        }
-        catch (const std::exception& error)
-        {
-            std::cout << "Semantic model decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n";
+            std::cout << "Semantic model decoding unavailable: " << status.error().message << "\nFalling back to the chunk inventory.\n";
             inspect_chunks(bytes, limit);
         }
     }
     else if (extension == ".ala")
     {
-        try
+        if (const auto status = inspect_ala(bytes, limit); !status)
         {
-            inspect_ala(bytes, limit);
-        }
-        catch (const std::exception& error)
-        {
-            std::cout << "Semantic animation decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n";
+            std::cout << "Semantic animation decoding unavailable: " << status.error().message << "\nFalling back to the chunk inventory.\n";
             inspect_chunks(bytes, limit);
         }
     }
     else if (extension == ".ted")
     {
-        try
+        if (const auto status = inspect_ted(bytes, limit); !status)
         {
-            inspect_ted(bytes, limit);
-        }
-        catch (const std::exception& error)
-        {
-            std::cout << "Semantic map decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n";
+            std::cout << "Semantic map decoding unavailable: " << status.error().message << "\nFalling back to the chunk inventory.\n";
             inspect_chunks(bytes, limit);
         }
     }
     else if (extension == ".mtd")
     {
-        inspect_mtd(bytes, limit);
+        EAW_TRY(inspect_mtd(bytes, limit));
     }
     else if (extension == ".xml")
     {
         const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         const auto references = localization_references(text);
-        const auto document = eaw::XmlDocument::parse(bytes);
+        EAW_TRY_ASSIGN(const auto document, eaw::XmlDocument::parse(std::span<const std::byte>(bytes)));
         std::vector<const eaw::XmlNode*> definitions;
         for (const auto& root : document.roots)
         {
@@ -589,7 +604,7 @@ void inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& path, c
     {
         const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         const auto references = localization_references(text);
-        const auto script = eaw::LuaScriptInfo::inspect(bytes);
+        EAW_TRY_ASSIGN(const auto script, eaw::LuaScriptInfo::inspect(bytes));
         std::cout << "Format: " << eaw::to_string(script.kind) << '\n';
         if (script.kind == eaw::LuaScriptKind::source)
         {
@@ -644,6 +659,7 @@ void inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& path, c
         }
         std::cout << std::dec << std::setfill(' ') << '\n';
     }
+    return eaw::Status::success();
 }
 
 std::optional<std::string> resolve_texture_reference(const eaw::VirtualFileSystem& vfs, const std::string_view reference)
@@ -705,98 +721,97 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
             continue;
         }
         ++model_files;
-        try
+        const auto decoded = decode_asset<eaw::AloModel>(vfs, asset.virtual_path);
+        if (!decoded)
         {
-            const auto model = eaw::AloModel::parse(vfs.read(asset.virtual_path));
-            ++semantic_models;
-            bool has_alternate = false;
-            bool has_lod = false;
-            std::map<std::uint32_t, std::uint64_t> model_lod_triangles;
-            for (const auto& mesh : model.meshes)
+            ++particle_or_invalid;
+            continue;
+        }
+        const auto& model = *decoded;
+        ++semantic_models;
+        bool has_alternate = false;
+        bool has_lod = false;
+        std::map<std::uint32_t, std::uint64_t> model_lod_triangles;
+        for (const auto& mesh : model.meshes)
+        {
+            const auto variant = eaw::alo_name_variant(mesh.name);
+            if (variant.kind == eaw::AloVariantKind::alternate)
             {
-                const auto variant = eaw::alo_name_variant(mesh.name);
-                if (variant.kind == eaw::AloVariantKind::alternate)
-                {
-                    has_alternate = true;
-                    ++alternate_mesh_indices[variant.index];
-                }
-                else if (variant.kind == eaw::AloVariantKind::level_of_detail)
-                {
-                    has_lod = true;
-                    ++lod_mesh_indices[variant.index];
-                    for (const auto& submesh : mesh.submeshes)
-                    {
-                        lod_triangles[variant.index] += submesh.triangle_count;
-                        model_lod_triangles[variant.index] += submesh.triangle_count;
-                    }
-                }
+                has_alternate = true;
+                ++alternate_mesh_indices[variant.index];
             }
-            for (const auto& bone : model.bones)
+            else if (variant.kind == eaw::AloVariantKind::level_of_detail)
             {
-                alternate_bones_without_meshes += eaw::alo_name_variant(bone.name).kind == eaw::AloVariantKind::alternate ? 1U : 0U;
-            }
-            models_with_alternates += has_alternate ? 1U : 0U;
-            models_with_lods += has_lod ? 1U : 0U;
-            if (model_lod_triangles.size() > 1)
-            {
-                const auto by_triangles = [](const auto& left, const auto& right)
-                {
-                    return left.second < right.second;
-                };
-                ++densest_lod[std::ranges::max_element(model_lod_triangles, by_triangles)->first];
-                ++sparsest_lod[std::ranges::min_element(model_lod_triangles, by_triangles)->first];
-            }
-            for (const auto& mesh : model.meshes)
-            {
+                has_lod = true;
+                ++lod_mesh_indices[variant.index];
                 for (const auto& submesh : mesh.submeshes)
                 {
-                    const auto material = eaw::LegacyMaterial::translate(submesh);
-                    ++materials;
-                    ++shaders[material.source_shader.empty() ? "<unnamed>" : material.source_shader];
-                    ++material_families[std::string(eaw::to_string(material.family))];
-                    ++blend_modes[std::string(eaw::to_string(material.blend))];
-                    ++translation_sources[std::string(eaw::to_string(material.source))];
-                    ++render_phases[std::string(eaw::to_string(material.render.phase))];
-                    ++lighting_models[std::string(eaw::to_string(material.features.lighting))];
-                    if (material.source == eaw::LegacyTranslationSource::name_heuristic)
-                    {
-                        ++heuristic_shaders[material.source_shader.empty() ? "<unnamed>" : material.source_shader];
-                    }
-                    for (const auto& parameter : submesh.parameters)
-                    {
-                        if (parameter.values.empty())
-                        {
-                            continue;
-                        }
-                        auto& usage = numeric_parameters[parameter.name];
-                        ++usage.count;
-                        usage.components = std::max(usage.components, parameter.values.size());
-                        for (std::size_t component = 0; component < parameter.values.size() && component < usage.minimum.size(); ++component)
-                        {
-                            usage.minimum[component] = std::min(usage.minimum[component], parameter.values[component]);
-                            usage.maximum[component] = std::max(usage.maximum[component], parameter.values[component]);
-                        }
-                    }
-                    for (const auto& texture : material.textures)
-                    {
-                        ++texture_semantics[std::string(eaw::to_string(texture.semantic))];
-                        ++texture_parameters[texture.parameter];
-                        references.insert(texture.reference);
-                        if (resolve_texture_reference(vfs, texture.reference))
-                        {
-                            resolved.insert(texture.reference);
-                        }
-                        else
-                        {
-                            unresolved[texture.reference].insert(asset.virtual_path);
-                        }
-                    }
+                    lod_triangles[variant.index] += submesh.triangle_count;
+                    model_lod_triangles[variant.index] += submesh.triangle_count;
                 }
             }
         }
-        catch (const std::exception&)
+        for (const auto& bone : model.bones)
         {
-            ++particle_or_invalid;
+            alternate_bones_without_meshes += eaw::alo_name_variant(bone.name).kind == eaw::AloVariantKind::alternate ? 1U : 0U;
+        }
+        models_with_alternates += has_alternate ? 1U : 0U;
+        models_with_lods += has_lod ? 1U : 0U;
+        if (model_lod_triangles.size() > 1)
+        {
+            const auto by_triangles = [](const auto& left, const auto& right)
+            {
+                return left.second < right.second;
+            };
+            ++densest_lod[std::ranges::max_element(model_lod_triangles, by_triangles)->first];
+            ++sparsest_lod[std::ranges::min_element(model_lod_triangles, by_triangles)->first];
+        }
+        for (const auto& mesh : model.meshes)
+        {
+            for (const auto& submesh : mesh.submeshes)
+            {
+                const auto material = eaw::LegacyMaterial::translate(submesh);
+                ++materials;
+                ++shaders[material.source_shader.empty() ? "<unnamed>" : material.source_shader];
+                ++material_families[std::string(eaw::to_string(material.family))];
+                ++blend_modes[std::string(eaw::to_string(material.blend))];
+                ++translation_sources[std::string(eaw::to_string(material.source))];
+                ++render_phases[std::string(eaw::to_string(material.render.phase))];
+                ++lighting_models[std::string(eaw::to_string(material.features.lighting))];
+                if (material.source == eaw::LegacyTranslationSource::name_heuristic)
+                {
+                    ++heuristic_shaders[material.source_shader.empty() ? "<unnamed>" : material.source_shader];
+                }
+                for (const auto& parameter : submesh.parameters)
+                {
+                    if (parameter.values.empty())
+                    {
+                        continue;
+                    }
+                    auto& usage = numeric_parameters[parameter.name];
+                    ++usage.count;
+                    usage.components = std::max(usage.components, parameter.values.size());
+                    for (std::size_t component = 0; component < parameter.values.size() && component < usage.minimum.size(); ++component)
+                    {
+                        usage.minimum[component] = std::min(usage.minimum[component], parameter.values[component]);
+                        usage.maximum[component] = std::max(usage.maximum[component], parameter.values[component]);
+                    }
+                }
+                for (const auto& texture : material.textures)
+                {
+                    ++texture_semantics[std::string(eaw::to_string(texture.semantic))];
+                    ++texture_parameters[texture.parameter];
+                    references.insert(texture.reference);
+                    if (resolve_texture_reference(vfs, texture.reference))
+                    {
+                        resolved.insert(texture.reference);
+                    }
+                    else
+                    {
+                        unresolved[texture.reference].insert(asset.virtual_path);
+                    }
+                }
+            }
         }
     }
 
@@ -822,47 +837,45 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
         if (extension == ".dds")
         {
             ++dds_files;
-            try
+            const auto decoded = decode_asset<eaw::DdsTexture>(vfs, asset.virtual_path);
+            if (!decoded)
             {
-                const auto texture = eaw::DdsTexture::parse(vfs.read(asset.virtual_path));
-                ++decoded_dds;
-                dds_mip_levels += texture.mip_levels;
-                dds_cube_maps += texture.cube_map ? 1U : 0U;
-                dds_volumes += texture.volume ? 1U : 0U;
-                maximum_width = std::max(maximum_width, texture.width);
-                maximum_height = std::max(maximum_height, texture.height);
-                const auto format = std::string(eaw::to_string(texture.format));
-                ++dds_formats[format];
-                dds_format_examples.try_emplace(format, asset.virtual_path);
+                dds_failures.emplace_back(asset.virtual_path, decoded.error().message);
+                continue;
             }
-            catch (const std::exception& error)
-            {
-                dds_failures.emplace_back(asset.virtual_path, error.what());
-            }
+            const auto& texture = *decoded;
+            ++decoded_dds;
+            dds_mip_levels += texture.mip_levels;
+            dds_cube_maps += texture.cube_map ? 1U : 0U;
+            dds_volumes += texture.volume ? 1U : 0U;
+            maximum_width = std::max(maximum_width, texture.width);
+            maximum_height = std::max(maximum_height, texture.height);
+            const auto format = std::string(eaw::to_string(texture.format));
+            ++dds_formats[format];
+            dds_format_examples.try_emplace(format, asset.virtual_path);
         }
         else if (extension == ".mtd")
         {
             ++mtd_files;
-            try
+            const auto decoded = decode_asset<eaw::MtdDirectory>(vfs, asset.virtual_path);
+            if (!decoded)
             {
-                const auto directory = eaw::MtdDirectory::parse(vfs.read(asset.virtual_path));
-                ++decoded_mtd;
-                mtd_entries += directory.entries.size();
-                mtd_alpha_entries += directory.alpha_entries;
-                auto atlas = std::filesystem::path(asset.virtual_path);
-                atlas.replace_filename(atlas.stem().string() + "COMPRESSED.DDS");
-                if (vfs.resolve(atlas.generic_string()))
-                {
-                    ++mtd_atlases_resolved;
-                }
-                else
-                {
-                    mtd_failures.emplace_back(asset.virtual_path, "matching compressed DDS atlas not found");
-                }
+                mtd_failures.emplace_back(asset.virtual_path, decoded.error().message);
+                continue;
             }
-            catch (const std::exception& error)
+            const auto& directory = *decoded;
+            ++decoded_mtd;
+            mtd_entries += directory.entries.size();
+            mtd_alpha_entries += directory.alpha_entries;
+            auto atlas = std::filesystem::path(asset.virtual_path);
+            atlas.replace_filename(atlas.stem().string() + "COMPRESSED.DDS");
+            if (vfs.resolve(atlas.generic_string()))
             {
-                mtd_failures.emplace_back(asset.virtual_path, error.what());
+                ++mtd_atlases_resolved;
+            }
+            else
+            {
+                mtd_failures.emplace_back(asset.virtual_path, "matching compressed DDS atlas not found");
             }
         }
     }
@@ -1060,37 +1073,36 @@ void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
         const auto separator = relative.find('/');
         ++groups[separator == std::string::npos ? "<root>" : relative.substr(0, separator)];
 
-        try
+        auto decoded = decode_asset<eaw::LuaScriptInfo>(vfs, asset.virtual_path);
+        if (!decoded)
         {
-            auto info = eaw::LuaScriptInfo::inspect(vfs.read(asset.virtual_path));
-            ++kinds[std::string(eaw::to_string(info.kind))];
-            total_lines += info.lines;
-            total_prototypes += info.prototypes;
-            total_instructions += info.instructions;
-            warning_count += info.warnings.size();
-            for (const auto& dependency : info.dependencies)
-            {
-                ++dependencies[dependency];
-                dependency_users[dependency].insert(asset.virtual_path);
-            }
-            for (const auto& definition : info.defined_functions)
-            {
-                ++definitions[definition];
-                const auto folded = lower_ascii(definition);
-                definition_keys.insert(folded);
-                const auto leaf = folded.find_last_of(".:");
-                definition_keys.insert(leaf == std::string::npos ? folded : folded.substr(leaf + 1U));
-            }
-            for (const auto& call : info.called_functions)
-            {
-                ++calls[call];
-            }
-            scripts.push_back({asset.virtual_path, std::move(info)});
+            failures.emplace_back(asset.virtual_path, decoded.error().message);
+            continue;
         }
-        catch (const std::exception& error)
+        auto info = std::move(decoded).value();
+        ++kinds[std::string(eaw::to_string(info.kind))];
+        total_lines += info.lines;
+        total_prototypes += info.prototypes;
+        total_instructions += info.instructions;
+        warning_count += info.warnings.size();
+        for (const auto& dependency : info.dependencies)
         {
-            failures.emplace_back(asset.virtual_path, error.what());
+            ++dependencies[dependency];
+            dependency_users[dependency].insert(asset.virtual_path);
         }
+        for (const auto& definition : info.defined_functions)
+        {
+            ++definitions[definition];
+            const auto folded = lower_ascii(definition);
+            definition_keys.insert(folded);
+            const auto leaf = folded.find_last_of(".:");
+            definition_keys.insert(leaf == std::string::npos ? folded : folded.substr(leaf + 1U));
+        }
+        for (const auto& call : info.called_functions)
+        {
+            ++calls[call];
+        }
+        scripts.push_back({asset.virtual_path, std::move(info)});
     }
 
     const auto dependency_resolved = [&](std::string dependency)
@@ -1283,16 +1295,13 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
         {
             continue;
         }
-        eaw::TedMap map;
-        try
+        auto decoded = decode_asset<eaw::TedMap>(vfs, asset.virtual_path);
+        if (!decoded)
         {
-            map = eaw::TedMap::parse(vfs.read(asset.virtual_path));
-        }
-        catch (const std::exception& error)
-        {
-            failures.emplace_back(asset.virtual_path, error.what());
+            failures.emplace_back(asset.virtual_path, decoded.error().message);
             continue;
         }
+        const eaw::TedMap map = std::move(decoded).value();
         ++maps;
         const auto context = map.type == eaw::TedMapType::land ? eaw::GameModelContext::land : eaw::GameModelContext::space;
         const auto layout = eaw::build_map_object_layout(map, catalog, vfs);
@@ -1453,39 +1462,38 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
             continue;
         }
         ++files;
-        try
+        const auto decoded = decode_asset<eaw::TedMap>(vfs, asset.virtual_path);
+        if (!decoded)
         {
-            const auto map = eaw::TedMap::parse(vfs.read(asset.virtual_path));
-            if (map.type == eaw::TedMapType::land)
-            {
-                ++land;
-            }
-            else if (map.type == eaw::TedMapType::space)
-            {
-                ++space;
-            }
-            else
-            {
-                ++unknown;
-            }
-            warnings += map.warnings.size();
-            if (!map.environments.empty())
-            {
-                ++active_environments[map.active_environment];
-                active_environment_out_of_range += map.active_environment >= map.environments.size() ? 1U : 0U;
-            }
-            terrain_layers += map.terrain_layers.size();
-            objects += map.object_count;
-            positioned_objects += std::ranges::count_if(map.placed_objects,
-                                                        [](const auto& object)
-                                                        {
-                                                            return object.has_transform;
-                                                        });
+            failures.emplace_back(asset.virtual_path, decoded.error().message);
+            continue;
         }
-        catch (const std::exception& error)
+        const auto& map = *decoded;
+        if (map.type == eaw::TedMapType::land)
         {
-            failures.emplace_back(asset.virtual_path, error.what());
+            ++land;
         }
+        else if (map.type == eaw::TedMapType::space)
+        {
+            ++space;
+        }
+        else
+        {
+            ++unknown;
+        }
+        warnings += map.warnings.size();
+        if (!map.environments.empty())
+        {
+            ++active_environments[map.active_environment];
+            active_environment_out_of_range += map.active_environment >= map.environments.size() ? 1U : 0U;
+        }
+        terrain_layers += map.terrain_layers.size();
+        objects += map.object_count;
+        positioned_objects += std::ranges::count_if(map.placed_objects,
+                                                    [](const auto& object)
+                                                    {
+                                                        return object.has_transform;
+                                                    });
     }
     std::cout << "TED semantic audit\n"
               << "Map files: " << files << '\n'
@@ -1509,7 +1517,7 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
     }
 }
 
-void audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit, const std::optional<std::filesystem::path>& schema_root, const bool include_foc)
+eaw::Status audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit, const std::optional<std::filesystem::path>& schema_root, const bool include_foc)
 {
     const auto database = eaw::XmlAssetDatabase::build(vfs, prefix);
     std::map<std::string, std::size_t> definitions_by_type;
@@ -1586,7 +1594,7 @@ void audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
 
     if (schema_root)
     {
-        const auto schema = eaw::XmlSchema::load(*schema_root, include_foc);
+        EAW_TRY_ASSIGN(const auto schema, eaw::XmlSchema::load(*schema_root, include_foc));
         const auto validation = schema.validate(database);
         const auto errors = std::ranges::count_if(validation.diagnostics,
                                                   [](const auto& diagnostic)
@@ -1617,6 +1625,7 @@ void audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
                       << diagnostic.object_type << " Name=\"" << diagnostic.object_name << "\" / " << diagnostic.field << ": " << diagnostic.message << '\n';
         }
     }
+    return eaw::Status::success();
 }
 
 } // namespace
@@ -1647,12 +1656,17 @@ int main(const int argc, char** argv)
 
         if (options.command == "inspect")
         {
-            inspect_asset(vfs, options.operand, options.limit);
-            return 0;
+            const auto status = inspect_asset(vfs, options.operand, options.limit);
+            return status ? 0 : report_error(status.error());
         }
         if (options.command == "localization-refs")
         {
-            const auto bytes = vfs.read(options.operand);
+            const auto read = vfs.read(options.operand);
+            if (!read)
+            {
+                return report_error(read.error());
+            }
+            const auto& bytes = *read;
             const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
             const auto references = localization_references(text);
             for (const auto& reference : references)
@@ -1684,8 +1698,8 @@ int main(const int argc, char** argv)
         }
         if (options.command == "xml-audit")
         {
-            audit_xml(vfs, options.prefix, options.limit, options.schema_root, options.variant == eaw::GameVariant::forces_of_corruption);
-            return 0;
+            const auto status = audit_xml(vfs, options.prefix, options.limit, options.schema_root, options.variant == eaw::GameVariant::forces_of_corruption);
+            return status ? 0 : report_error(status.error());
         }
         if (options.command != "summary" && options.command != "list")
         {

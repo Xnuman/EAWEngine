@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <cctype>
 #include <limits>
+#include <optional>
 #include <set>
-#include <stdexcept>
 
 namespace eaw {
 namespace {
@@ -252,13 +252,15 @@ void inspect_source(const std::span<const std::byte> bytes, LuaScriptInfo& resul
     result.called_functions.assign(calls.begin(), calls.end());
 }
 
+// Reads the bytecode structure. The first failure is recorded and moves the cursor to the end, so
+// later reads fail too and return zero; loops driven by decoded counts stop on failed().
 class BytecodeReader
 {
 public:
     BytecodeReader(const std::span<const std::byte> bytes, const bool petroglyph) : bytes_(bytes), petroglyph_(petroglyph)
     {}
 
-    LuaScriptInfo read()
+    Result<LuaScriptInfo> read()
     {
         LuaScriptInfo result;
         result.kind = petroglyph_ ? LuaScriptKind::petroglyph_bytecode : LuaScriptKind::lua50_bytecode;
@@ -278,9 +280,13 @@ public:
         validate_size(result.bytecode_header.size_type_size, "size_t");
         validate_size(result.bytecode_header.instruction_size, "instruction");
         validate_size(result.bytecode_header.number_size, "number");
-        if (result.bytecode_header.version != (petroglyph_ ? 0x51U : 0x50U))
+        if (!failed() && result.bytecode_header.version != (petroglyph_ ? 0x51U : 0x50U))
         {
-            throw std::runtime_error("unsupported Lua bytecode version");
+            fail("unsupported Lua bytecode version");
+        }
+        if (failed())
+        {
+            return std::move(*error_);
         }
         integer_size_ = result.bytecode_header.integer_size;
         size_type_size_ = result.bytecode_header.size_type_size;
@@ -288,6 +294,10 @@ public:
         number_size_ = result.bytecode_header.number_size;
         skip(number_size_);
         read_function(result, 0);
+        if (failed())
+        {
+            return std::move(*error_);
+        }
         if (cursor_ != bytes_.size())
         {
             result.warnings.push_back("bytecode has " + std::to_string(bytes_.size() - cursor_) + " trailing byte(s)");
@@ -298,11 +308,26 @@ public:
 private:
     static constexpr std::uint64_t maximum_count = 100'000'000U;
 
-    void validate_size(const std::uint8_t size, const std::string_view label) const
+    [[nodiscard]] bool failed() const noexcept
+    {
+        return error_.has_value();
+    }
+
+    // Records the first failure and ends reading.
+    void fail(std::string message)
+    {
+        if (!error_)
+        {
+            error_ = make_error(std::move(message));
+        }
+        cursor_ = bytes_.size();
+    }
+
+    void validate_size(const std::uint8_t size, const std::string_view label)
     {
         if (size != 1 && size != 2 && size != 4 && size != 8)
         {
-            throw std::runtime_error("unsupported Lua " + std::string(label) + " size");
+            fail("unsupported Lua " + std::string(label) + " size");
         }
     }
 
@@ -310,7 +335,8 @@ private:
     {
         if (cursor_ >= bytes_.size())
         {
-            throw std::runtime_error("truncated Lua bytecode");
+            fail("truncated Lua bytecode");
+            return 0;
         }
         return std::to_integer<std::uint8_t>(bytes_[cursor_++]);
     }
@@ -319,7 +345,8 @@ private:
     {
         if (size > bytes_.size() - std::min(cursor_, bytes_.size()))
         {
-            throw std::runtime_error("truncated Lua bytecode");
+            fail("truncated Lua bytecode");
+            return;
         }
         cursor_ += static_cast<std::size_t>(size);
     }
@@ -328,7 +355,8 @@ private:
     {
         if (size > bytes_.size() - std::min(cursor_, bytes_.size()))
         {
-            throw std::runtime_error("truncated Lua bytecode");
+            fail("truncated Lua bytecode");
+            return 0;
         }
         std::uint64_t value = 0;
         for (std::uint8_t index = 0; index < size; ++index)
@@ -345,7 +373,8 @@ private:
         const auto count = read_unsigned(integer_size_);
         if (count > maximum_count)
         {
-            throw std::runtime_error("unreasonable Lua bytecode count");
+            fail("unreasonable Lua bytecode count");
+            return 0;
         }
         return count;
     }
@@ -359,11 +388,13 @@ private:
         }
         if (size > bytes_.size() - std::min(cursor_, bytes_.size()))
         {
-            throw std::runtime_error("truncated Lua bytecode string");
+            fail("truncated Lua bytecode string");
+            return {};
         }
         if (std::to_integer<unsigned char>(bytes_[cursor_ + static_cast<std::size_t>(size) - 1U]) != 0)
         {
-            throw std::runtime_error("Lua bytecode string is not null terminated");
+            fail("Lua bytecode string is not null terminated");
+            return {};
         }
         std::string value(reinterpret_cast<const char*>(bytes_.data() + cursor_), static_cast<std::size_t>(size) - 1U);
         cursor_ += static_cast<std::size_t>(size);
@@ -374,11 +405,13 @@ private:
     {
         if (depth > 1024)
         {
-            throw std::runtime_error("Lua bytecode prototype nesting is too deep");
+            fail("Lua bytecode prototype nesting is too deep");
+            return;
         }
         if (++result.prototypes > maximum_count)
         {
-            throw std::runtime_error("unreasonable Lua prototype count");
+            fail("unreasonable Lua prototype count");
+            return;
         }
         static_cast<void>(read_string());
         static_cast<void>(read_unsigned(integer_size_));
@@ -392,19 +425,19 @@ private:
         skip(line_count * integer_size_);
 
         const auto local_count = read_count();
-        for (std::uint64_t index = 0; index < local_count; ++index)
+        for (std::uint64_t index = 0; index < local_count && !failed(); ++index)
         {
             static_cast<void>(read_string());
             skip(static_cast<std::uint64_t>(integer_size_) * 2U);
         }
         const auto upvalue_count = read_count();
-        for (std::uint64_t index = 0; index < upvalue_count; ++index)
+        for (std::uint64_t index = 0; index < upvalue_count && !failed(); ++index)
         {
             static_cast<void>(read_string());
         }
 
         const auto constant_count = read_count();
-        for (std::uint64_t index = 0; index < constant_count; ++index)
+        for (std::uint64_t index = 0; index < constant_count && !failed(); ++index)
         {
             switch (read_byte())
             {
@@ -419,19 +452,25 @@ private:
                 ++result.string_constants;
                 break;
             default:
-                throw std::runtime_error("unsupported Lua bytecode constant type");
+                fail("unsupported Lua bytecode constant type");
+                break;
             }
         }
         const auto child_count = read_count();
-        for (std::uint64_t index = 0; index < child_count; ++index)
+        for (std::uint64_t index = 0; index < child_count && !failed(); ++index)
         {
             read_function(result, depth + 1U);
+        }
+        if (failed())
+        {
+            return;
         }
 
         const auto instruction_count = read_count();
         if (instruction_count > maximum_count - result.instructions)
         {
-            throw std::runtime_error("unreasonable Lua instruction count");
+            fail("unreasonable Lua instruction count");
+            return;
         }
         result.instructions += static_cast<std::size_t>(instruction_count);
         skip(instruction_count * instruction_size_);
@@ -445,11 +484,12 @@ private:
     std::uint8_t instruction_size_{};
     std::uint8_t number_size_{};
     std::size_t cursor_{};
+    std::optional<Error> error_;
 };
 
 } // namespace
 
-LuaScriptInfo LuaScriptInfo::inspect(const std::span<const std::byte> bytes)
+Result<LuaScriptInfo> LuaScriptInfo::inspect(const std::span<const std::byte> bytes)
 {
     const bool binary_signature = bytes.size() >= 4 && std::to_integer<unsigned char>(bytes[0]) == 0x1bU && std::to_integer<char>(bytes[1]) == 'L' && std::to_integer<char>(bytes[2]) == 'u';
     if (binary_signature && std::to_integer<char>(bytes[3]) == 'a')

@@ -90,17 +90,17 @@ std::optional<VisualTextureFormat> visual_format(const DdsFormat format)
     return std::nullopt;
 }
 
-VisualTexture make_visual_texture(const std::string_view name, const std::span<const std::byte> bytes)
+Result<VisualTexture> make_visual_texture(const std::string_view name, const std::span<const std::byte> bytes)
 {
-    const auto dds = DdsTexture::parse(bytes);
+    EAW_TRY_ASSIGN(const auto dds, DdsTexture::parse(bytes));
     if (dds.volume || dds.cube_map || dds.array_size != 1 || dds.faces != 1)
     {
-        throw std::runtime_error("only ordinary 2D DDS textures are supported by the visual sandbox");
+        return make_error("only ordinary 2D DDS textures are supported by the visual sandbox");
     }
     const auto format = visual_format(dds.format);
     if (!format)
     {
-        throw std::runtime_error("DDS format is not supported by the D3D12 sandbox");
+        return make_error("DDS format is not supported by the D3D12 sandbox");
     }
 
     VisualTexture result;
@@ -114,7 +114,7 @@ VisualTexture make_visual_texture(const std::string_view name, const std::span<c
         }
         if (image.offset > bytes.size() || image.size > bytes.size() - image.offset)
         {
-            throw std::runtime_error("DDS subresource extends beyond its file");
+            return make_error("DDS subresource extends beyond its file");
         }
 
         VisualTextureMip mip;
@@ -150,7 +150,7 @@ VisualTexture make_visual_texture(const std::string_view name, const std::span<c
     }
     if (result.mips.empty())
     {
-        throw std::runtime_error("DDS contains no usable 2D mip levels");
+        return make_error("DDS contains no usable 2D mip levels");
     }
     return result;
 }
@@ -253,13 +253,21 @@ struct CachedCatalog
     GameObjectCatalog catalog;
 };
 
-std::shared_ptr<const AloModel> cached_model(SceneBuilder& builder, const std::string& path)
+Result<AloModel> load_model(const AssetReader& reader, const std::string& path)
 {
-    return cached<AloModel>(builder.cache, "alo", path, builder.vfs,
-                            [&](const AssetReader& reader)
-                            {
-                                return AloModel::parse(reader.read(path));
-                            });
+    EAW_TRY_ASSIGN(const auto bytes, reader.read(path));
+    return AloModel::parse(bytes);
+}
+
+// The decoded model, or why it could not be decoded (cached either way: a failed decode depends on
+// the file, so replacing it invalidates the entry).
+std::shared_ptr<const Result<AloModel>> cached_model(SceneBuilder& builder, const std::string& path)
+{
+    return cached<Result<AloModel>>(builder.cache, "alo", path, builder.vfs,
+                                    [&](const AssetReader& reader)
+                                    {
+                                        return load_model(reader, path);
+                                    });
 }
 
 // Loads (once per scene) the DDS for an ALO texture reference and returns its scene texture
@@ -282,15 +290,20 @@ std::uint32_t scene_texture(SceneBuilder& builder, const std::string& reference)
                                                       result.error = "matching DDS not found";
                                                       return result;
                                                   }
-                                                  try
+                                                  const auto bytes = reader.read(*texture_path);
+                                                  if (!bytes)
                                                   {
-                                                      result.texture = make_visual_texture(reference, reader.read(*texture_path));
-                                                      result.texture->identity = next_texture_identity();
+                                                      result.error = bytes.error().message;
+                                                      return result;
                                                   }
-                                                  catch (const std::exception& error)
+                                                  auto texture = make_visual_texture(reference, *bytes);
+                                                  if (!texture)
                                                   {
-                                                      result.error = error.what();
+                                                      result.error = texture.error().message;
+                                                      return result;
                                                   }
+                                                  result.texture = std::move(texture).value();
+                                                  result.texture->identity = next_texture_identity();
                                                   return result;
                                               });
     if (loaded->texture)
@@ -1073,10 +1086,20 @@ VisualModelAsset build_visual_model(const AssetReader& vfs, const std::string_vi
     VisualModelAsset asset;
     auto& scene = asset.scene;
     SceneBuilder builder{vfs, scene, {}, cache};
-    asset.model = *cached_model(builder, resolved->virtual_path);
+    const auto model = cached_model(builder, resolved->virtual_path);
+    if (!model->ok())
+    {
+        throw std::runtime_error(resolved->virtual_path + ": " + model->error().message);
+    }
+    asset.model = model->value();
     for (const auto& transform : asset.model.bind_pose())
     {
-        asset.inverse_bind_pose.push_back(alo_inverse(transform));
+        auto inverse = alo_inverse(transform);
+        if (!inverse)
+        {
+            throw std::runtime_error(resolved->virtual_path + ": " + inverse.error().message);
+        }
+        asset.inverse_bind_pose.push_back(*inverse);
     }
     scene.name = resolved->virtual_path;
     scene.warnings = asset.model.warnings;
@@ -1118,12 +1141,17 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
         throw std::runtime_error("map was not found: " + std::string(map_path));
     }
     VisualMapAsset asset;
-    const auto map_entry = cached<TedMap>(cache, "ted", resolved->virtual_path, vfs,
-                                          [&](const AssetReader& reader)
-                                          {
-                                              return TedMap::parse(reader.read(resolved->virtual_path));
-                                          });
-    const auto& map = *map_entry;
+    const auto map_entry = cached<Result<TedMap>>(cache, "ted", resolved->virtual_path, vfs,
+                                                  [&](const AssetReader& reader) -> Result<TedMap>
+                                                  {
+                                                      EAW_TRY_ASSIGN(const auto bytes, reader.read(resolved->virtual_path));
+                                                      return TedMap::parse(bytes);
+                                                  });
+    if (!map_entry->ok())
+    {
+        throw std::runtime_error(resolved->virtual_path + ": " + map_entry->error().message);
+    }
+    const auto& map = map_entry->value();
     asset.land = map.type == TedMapType::land;
     const auto catalog_entry = cached<CachedCatalog>(cache, "xml-catalog", "Data/XML", vfs,
                                                      [](const AssetReader& reader)
@@ -1178,7 +1206,16 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
         {
             try
             {
-                entry->second = append_model(builder, *cached_model(builder, placement.model_path), placement.model_path);
+                const auto model = cached_model(builder, placement.model_path);
+                if (model->ok())
+                {
+                    entry->second = append_model(builder, model->value(), placement.model_path);
+                }
+                else
+                {
+                    // Particle ALOs and malformed models are reported once and skipped.
+                    scene.warnings.push_back(placement.model_path + ": " + model->error().message);
+                }
             }
             catch (const std::exception& error)
             {
@@ -1268,7 +1305,15 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
             {
                 try
                 {
-                    entry->second = append_model(builder, *cached_model(builder, *path), *path);
+                    const auto decoded = cached_model(builder, *path);
+                    if (decoded->ok())
+                    {
+                        entry->second = append_model(builder, decoded->value(), *path);
+                    }
+                    else
+                    {
+                        scene.warnings.push_back(*path + ": " + decoded->error().message);
+                    }
                 }
                 catch (const std::exception& error)
                 {
@@ -1311,7 +1356,15 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
         {
             try
             {
-                entry->second = append_model(builder, *cached_model(builder, *path), *path);
+                const auto decoded = cached_model(builder, *path);
+                if (decoded->ok())
+                {
+                    entry->second = append_model(builder, decoded->value(), *path);
+                }
+                else
+                {
+                    scene.warnings.push_back(*path + ": " + decoded->error().message);
+                }
             }
             catch (const std::exception& error)
             {

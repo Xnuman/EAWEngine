@@ -9,7 +9,6 @@
 #include <cmath>
 #include <cctype>
 #include <filesystem>
-#include <stdexcept>
 
 namespace eaw {
 namespace {
@@ -318,16 +317,15 @@ std::optional<std::string> resolve_model_path(const AssetReader& vfs, const std:
     {
         filename += ".ALO";
     }
-    try
+    // A malformed reference cannot enter the normalized VFS namespace; report it as missing.
+    const auto normalized = normalize_asset_path("Data/Art/Models/" + filename.generic_string());
+    if (!normalized)
     {
-        if (const auto resolved = vfs.resolve(normalize_asset_path("Data/Art/Models/" + filename.generic_string())))
-        {
-            return resolved->virtual_path;
-        }
+        return std::nullopt;
     }
-    catch (const std::invalid_argument&)
+    if (const auto resolved = vfs.resolve(*normalized))
     {
-        // A malformed reference cannot enter the normalized VFS namespace; report it as missing.
+        return resolved->virtual_path;
     }
     return std::nullopt;
 }

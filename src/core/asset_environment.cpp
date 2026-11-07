@@ -1,6 +1,5 @@
 #include "eaw/asset_environment.hpp"
 
-#include <exception>
 #include <memory>
 
 namespace eaw {
@@ -10,14 +9,13 @@ void mount_archives(VirtualFileSystem& vfs, const std::filesystem::path& runtime
 {
     for (const auto& archive : discover_meg_archives(runtime_root))
     {
-        try
+        auto mount = MegMount::open(prefix + ":" + archive.filename().string(), archive);
+        if (!mount)
         {
-            vfs.mount(std::make_unique<MegMount>(prefix + ":" + archive.filename().string(), archive));
+            report.warnings.push_back("skipped " + archive.string() + ": " + mount.error().message);
+            continue;
         }
-        catch (const std::exception& error)
-        {
-            report.warnings.push_back("skipped " + archive.string() + ": " + error.what());
-        }
+        vfs.mount(std::move(mount).value());
     }
 }
 
@@ -45,7 +43,8 @@ AssetMountReport mount_game_assets(VirtualFileSystem& vfs, const GameProfile& pr
 
     for (auto mod = mods.rbegin(); mod != mods.rend(); ++mod)
     {
-        if (!std::filesystem::is_directory(*mod / "Data"))
+        std::error_code error;
+        if (!std::filesystem::is_directory(*mod / "Data", error))
         {
             report.warnings.push_back("skipped mod without a Data directory: " + mod->string());
             continue;

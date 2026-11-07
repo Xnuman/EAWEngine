@@ -1,29 +1,29 @@
 #include "eaw/text_encoding.hpp"
 
 #include <cstdint>
-#include <stdexcept>
 
 namespace eaw {
 namespace {
 
-void append_utf16(std::u16string& output, const std::uint32_t code_point)
+Status append_utf16(std::u16string& output, const std::uint32_t code_point)
 {
     if (code_point <= 0xffffU)
     {
         if (code_point >= 0xd800U && code_point <= 0xdfffU)
         {
-            throw std::invalid_argument("UTF-8 contains a surrogate code point");
+            return make_error("UTF-8 contains a surrogate code point");
         }
         output.push_back(static_cast<char16_t>(code_point));
-        return;
+        return Status::success();
     }
     if (code_point > 0x10ffffU)
     {
-        throw std::invalid_argument("UTF-8 code point is out of range");
+        return make_error("UTF-8 code point is out of range");
     }
     const auto adjusted = code_point - 0x10000U;
     output.push_back(static_cast<char16_t>(0xd800U + (adjusted >> 10U)));
     output.push_back(static_cast<char16_t>(0xdc00U + (adjusted & 0x3ffU)));
+    return Status::success();
 }
 
 void append_utf8(std::string& output, const std::uint32_t code_point)
@@ -54,7 +54,7 @@ void append_utf8(std::string& output, const std::uint32_t code_point)
 
 } // namespace
 
-std::u16string utf8_to_utf16(const std::string_view text)
+Result<std::u16string> utf8_to_utf16(const std::string_view text)
 {
     std::u16string output;
     output.reserve(text.size());
@@ -89,32 +89,32 @@ std::u16string utf8_to_utf16(const std::string_view text)
         }
         else
         {
-            throw std::invalid_argument("invalid UTF-8 leading byte");
+            return make_error("invalid UTF-8 leading byte");
         }
 
         if (index + continuation_count > text.size())
         {
-            throw std::invalid_argument("truncated UTF-8 sequence");
+            return make_error("truncated UTF-8 sequence");
         }
         for (std::size_t continuation = 0; continuation < continuation_count; ++continuation)
         {
             const auto byte = static_cast<unsigned char>(text[index++]);
             if ((byte & 0xc0U) != 0x80U)
             {
-                throw std::invalid_argument("invalid UTF-8 continuation byte");
+                return make_error("invalid UTF-8 continuation byte");
             }
             code_point = (code_point << 6U) | (byte & 0x3fU);
         }
         if (continuation_count != 0 && code_point < minimum)
         {
-            throw std::invalid_argument("overlong UTF-8 sequence");
+            return make_error("overlong UTF-8 sequence");
         }
-        append_utf16(output, code_point);
+        EAW_TRY(append_utf16(output, code_point));
     }
     return output;
 }
 
-std::string utf16_to_utf8(const std::u16string_view text)
+Result<std::string> utf16_to_utf8(const std::u16string_view text)
 {
     std::string output;
     output.reserve(text.size());
@@ -125,18 +125,18 @@ std::string utf16_to_utf8(const std::u16string_view text)
         {
             if (index + 1 >= text.size())
             {
-                throw std::invalid_argument("unpaired UTF-16 high surrogate");
+                return make_error("unpaired UTF-16 high surrogate");
             }
             const std::uint32_t low = text[++index];
             if (low < 0xdc00U || low > 0xdfffU)
             {
-                throw std::invalid_argument("unpaired UTF-16 high surrogate");
+                return make_error("unpaired UTF-16 high surrogate");
             }
             code_point = 0x10000U + ((code_point - 0xd800U) << 10U) + (low - 0xdc00U);
         }
         else if (code_point >= 0xdc00U && code_point <= 0xdfffU)
         {
-            throw std::invalid_argument("unpaired UTF-16 low surrogate");
+            return make_error("unpaired UTF-16 low surrogate");
         }
         append_utf8(output, code_point);
     }

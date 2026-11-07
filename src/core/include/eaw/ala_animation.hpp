@@ -39,7 +39,8 @@ struct AlaBoneTrack
 class AlaAnimation final
 {
 public:
-    [[nodiscard]] static AlaAnimation parse(std::span<const std::byte> bytes);
+    // The error names the malformed chunk.
+    [[nodiscard]] static Result<AlaAnimation> parse(std::span<const std::byte> bytes);
 
     std::uint32_t version{1};
     std::uint32_t stored_frame_count{};

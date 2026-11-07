@@ -220,7 +220,7 @@ it.
   messages and are logged as warnings (stderr, the debugger output window, and
   a per-run log file); bugs are fatal through `EAW_ASSERT` and the crash
   handlers. Phases: (A) status types, log, sinks, done; (B) core decoders and
-  VFS; (C) engine, cache, simulation; (D) renderer; (E) tools; (F) compile
+  VFS, done; (C) engine, cache, simulation; (D) renderer; (E) tools; (F) compile
   with exceptions disabled and replace throwing standard-library calls.
   Background from the original assessment: the codebase reported errors by
   throwing (about 270 `throw` sites and 66 `catch` blocks, half of the throws in

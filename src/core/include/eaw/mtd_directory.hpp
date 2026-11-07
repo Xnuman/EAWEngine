@@ -1,5 +1,7 @@
 #pragma once
 
+#include "eaw/status.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -26,7 +28,7 @@ struct MtdDirectory
     std::uint32_t atlas_height{};
     std::size_t alpha_entries{};
 
-    [[nodiscard]] static MtdDirectory parse(std::span<const std::byte> bytes);
+    [[nodiscard]] static Result<MtdDirectory> parse(std::span<const std::byte> bytes);
 };
 
 } // namespace eaw

@@ -13,7 +13,6 @@
 #include <map>
 #include <optional>
 #include <set>
-#include <stdexcept>
 #include <system_error>
 
 namespace eaw {
@@ -122,12 +121,12 @@ std::string key_value(const std::string_view text, const std::string_view key)
     return yaml_scalar(text.substr(key.size() + 1));
 }
 
-std::vector<YamlLine> read_yaml(const std::filesystem::path& path)
+Result<std::vector<YamlLine>> read_yaml(const std::filesystem::path& path)
 {
     std::ifstream stream(path, std::ios::binary);
     if (!stream)
     {
-        throw std::runtime_error("could not open XML schema file: " + path.string());
+        return make_error("could not open XML schema file: " + path.string());
     }
     std::vector<YamlLine> lines;
     std::string raw;
@@ -157,10 +156,11 @@ std::vector<YamlLine> read_yaml(const std::filesystem::path& path)
     return lines;
 }
 
-std::vector<XmlTypeSchema> read_types(const std::filesystem::path& path)
+Result<std::vector<XmlTypeSchema>> read_types(const std::filesystem::path& path)
 {
     std::vector<XmlTypeSchema> types;
-    for (const auto& line : read_yaml(path))
+    EAW_TRY_ASSIGN(const auto lines, read_yaml(path));
+    for (const auto& line : lines)
     {
         if (line.indentation == 2 && line.text.starts_with("- typeName:"))
         {
@@ -174,10 +174,11 @@ std::vector<XmlTypeSchema> read_types(const std::filesystem::path& path)
     return types;
 }
 
-std::vector<XmlTagSchema> read_tags(const std::filesystem::path& path)
+Result<std::vector<XmlTagSchema>> read_tags(const std::filesystem::path& path)
 {
     std::vector<XmlTagSchema> tags;
-    for (const auto& line : read_yaml(path))
+    EAW_TRY_ASSIGN(const auto lines, read_yaml(path));
+    for (const auto& line : lines)
     {
         if (line.indentation == 2 && line.text.starts_with("- tag:"))
         {
@@ -217,11 +218,12 @@ std::vector<XmlTagSchema> read_tags(const std::filesystem::path& path)
     return tags;
 }
 
-XmlEnumSchema read_enum(const std::filesystem::path& path)
+Result<XmlEnumSchema> read_enum(const std::filesystem::path& path)
 {
     XmlEnumSchema result;
     bool reading_values = false;
-    for (const auto& line : read_yaml(path))
+    EAW_TRY_ASSIGN(const auto lines, read_yaml(path));
+    for (const auto& line : lines)
     {
         if (line.indentation == 0)
         {
@@ -290,10 +292,11 @@ std::vector<std::string> yaml_inline_list(const std::string_view value)
     return result;
 }
 
-std::vector<XmlObjectKindSchema> read_kinds(const std::filesystem::path& path)
+Result<std::vector<XmlObjectKindSchema>> read_kinds(const std::filesystem::path& path)
 {
     std::vector<XmlObjectKindSchema> kinds;
-    for (const auto& line : read_yaml(path))
+    EAW_TRY_ASSIGN(const auto lines, read_yaml(path));
+    for (const auto& line : lines)
     {
         if (line.indentation == 2 && line.text.starts_with("- kind:"))
         {
@@ -342,12 +345,13 @@ XmlMetafileKind parse_metafile_kind(const std::string_view value)
     return XmlMetafileKind::unknown;
 }
 
-std::vector<XmlMetafileSchema> read_metafiles(const std::filesystem::path& path)
+Result<std::vector<XmlMetafileSchema>> read_metafiles(const std::filesystem::path& path)
 {
     std::vector<XmlMetafileSchema> metafiles;
     bool reading_metafiles = false;
     bool reading_types = false;
-    for (const auto& line : read_yaml(path))
+    EAW_TRY_ASSIGN(const auto lines, read_yaml(path));
+    for (const auto& line : lines)
     {
         if (line.indentation == 0)
         {
@@ -362,14 +366,12 @@ std::vector<XmlMetafileSchema> read_metafiles(const std::filesystem::path& path)
         if (line.indentation == 2 && line.text.starts_with("- path:"))
         {
             const auto path_value = yaml_scalar(line.text.substr(7));
-            try
+            auto normalized = normalize_asset_path(path_value);
+            if (!normalized)
             {
-                metafiles.push_back({normalize_asset_path(path_value), XmlMetafileKind::unknown, {}});
+                return make_error("invalid metafile path in XML schema: " + path_value);
             }
-            catch (const std::invalid_argument&)
-            {
-                throw std::runtime_error("invalid metafile path in XML schema: " + path_value);
-            }
+            metafiles.push_back({std::move(normalized).value(), XmlMetafileKind::unknown, {}});
             reading_types = false;
         }
         else if (!metafiles.empty() && line.indentation == 4 && starts_key(line.text, "metaFileType"))
@@ -393,7 +395,7 @@ std::vector<XmlMetafileSchema> read_metafiles(const std::filesystem::path& path)
     return metafiles;
 }
 
-std::vector<std::filesystem::path> yaml_files(const std::filesystem::path& directory)
+Result<std::vector<std::filesystem::path>> yaml_files(const std::filesystem::path& directory)
 {
     std::vector<std::filesystem::path> files;
     std::error_code error;
@@ -405,7 +407,7 @@ std::vector<std::filesystem::path> yaml_files(const std::filesystem::path& direc
     {
         if (error)
         {
-            throw std::runtime_error("could not enumerate XML schema directory: " + directory.string());
+            return make_error("could not enumerate XML schema directory: " + directory.string());
         }
         if (item->is_regular_file(error) && !error && fold_ascii(item->path().extension().string()) == ".yaml")
         {
@@ -417,15 +419,17 @@ std::vector<std::filesystem::path> yaml_files(const std::filesystem::path& direc
     return files;
 }
 
-SchemaLayer load_layer(const std::filesystem::path& root)
+Result<SchemaLayer> load_layer(const std::filesystem::path& root)
 {
-    if (!std::filesystem::is_regular_file(root / "types.yaml"))
+    std::error_code filesystem_error;
+    if (!std::filesystem::is_regular_file(root / "types.yaml", filesystem_error))
     {
-        throw std::runtime_error("XML schema folder has no types.yaml: " + root.string());
+        return make_error("XML schema folder has no types.yaml: " + root.string());
     }
     SchemaLayer layer;
-    layer.types = read_types(root / "types.yaml");
-    for (const auto& path : yaml_files(root / "tags"))
+    EAW_TRY_ASSIGN(layer.types, read_types(root / "types.yaml"));
+    EAW_TRY_ASSIGN(const auto tag_files, yaml_files(root / "tags"));
+    for (const auto& path : tag_files)
     {
         const auto type_name = path.stem().string();
         auto type = std::ranges::find_if(layer.types,
@@ -438,31 +442,33 @@ SchemaLayer load_layer(const std::filesystem::path& root)
             layer.types.push_back({type_name, {}, {}});
             type = std::prev(layer.types.end());
         }
-        type->tags = read_tags(path);
+        EAW_TRY_ASSIGN(type->tags, read_tags(path));
     }
-    for (const auto& path : yaml_files(root / "enums"))
+    EAW_TRY_ASSIGN(const auto enum_files, yaml_files(root / "enums"));
+    for (const auto& path : enum_files)
     {
-        auto item = read_enum(path);
+        EAW_TRY_ASSIGN(auto item, read_enum(path));
         if (!item.name.empty())
         {
             layer.enums.push_back(std::move(item));
         }
     }
-    for (const auto& path : yaml_files(root / "hardcoded"))
+    EAW_TRY_ASSIGN(const auto hardcoded_files, yaml_files(root / "hardcoded"));
+    for (const auto& path : hardcoded_files)
     {
-        auto item = read_enum(path);
+        EAW_TRY_ASSIGN(auto item, read_enum(path));
         if (!item.name.empty())
         {
             layer.enums.push_back(std::move(item));
         }
     }
-    if (std::filesystem::is_regular_file(root / "kinds.yaml"))
+    if (std::filesystem::is_regular_file(root / "kinds.yaml", filesystem_error))
     {
-        layer.kinds = read_kinds(root / "kinds.yaml");
+        EAW_TRY_ASSIGN(layer.kinds, read_kinds(root / "kinds.yaml"));
     }
-    if (std::filesystem::is_regular_file(root / "meta" / "metafiles.yaml"))
+    if (std::filesystem::is_regular_file(root / "meta" / "metafiles.yaml", filesystem_error))
     {
-        layer.metafiles = read_metafiles(root / "meta" / "metafiles.yaml");
+        EAW_TRY_ASSIGN(layer.metafiles, read_metafiles(root / "meta" / "metafiles.yaml"));
     }
     return layer;
 }
@@ -764,13 +770,14 @@ const XmlTagSchema* XmlTypeSchema::find_tag(const std::string_view requested) co
     return found == tags.end() ? nullptr : &*found;
 }
 
-XmlSchema XmlSchema::load(const std::filesystem::path& root, const bool include_foc)
+Result<XmlSchema> XmlSchema::load(const std::filesystem::path& root, const bool include_foc)
 {
     std::vector<std::filesystem::path> roots;
-    if (std::filesystem::is_directory(root / "eaw"))
+    std::error_code filesystem_error;
+    if (std::filesystem::is_directory(root / "eaw", filesystem_error))
     {
         roots.push_back(root / "eaw");
-        if (include_foc && std::filesystem::is_directory(root / "foc"))
+        if (include_foc && std::filesystem::is_directory(root / "foc", filesystem_error))
         {
             roots.push_back(root / "foc");
         }
@@ -783,7 +790,7 @@ XmlSchema XmlSchema::load(const std::filesystem::path& root, const bool include_
     XmlSchema schema;
     for (const auto& layer_root : roots)
     {
-        auto layer = load_layer(layer_root);
+        EAW_TRY_ASSIGN(auto layer, load_layer(layer_root));
         merge_named(schema.types_, std::move(layer.types));
         merge_named(schema.enums_, std::move(layer.enums));
         merge_named(schema.kinds_, std::move(layer.kinds));
@@ -791,7 +798,7 @@ XmlSchema XmlSchema::load(const std::filesystem::path& root, const bool include_
     }
     if (schema.types_.empty())
     {
-        throw std::runtime_error("XML schema contains no object types: " + root.string());
+        return make_error("XML schema contains no object types: " + root.string());
     }
     return schema;
 }

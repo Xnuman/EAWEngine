@@ -5,7 +5,6 @@
 #include <cmath>
 #include <limits>
 #include <sstream>
-#include <stdexcept>
 
 namespace eaw {
 namespace {
@@ -24,12 +23,11 @@ struct MiniChunk
     std::size_t end{};
 };
 
+// Value readers: every caller checks the enclosing chunk or mini-chunk size first, so an
+// out-of-range read is a bug.
 std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t offset)
 {
-    if (offset + 4 > bytes.size())
-    {
-        throw std::runtime_error("ALA ended while reading a 32-bit value");
-    }
+    EAW_ASSERT_MSG(offset + 4 <= bytes.size(), "ALA ended while reading a 32-bit value");
     std::uint32_t value = 0;
     for (unsigned index = 0; index < 4; ++index)
     {
@@ -40,10 +38,7 @@ std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t
 
 std::uint16_t read_u16(const std::span<const std::byte> bytes, const std::size_t offset)
 {
-    if (offset + 2 > bytes.size())
-    {
-        throw std::runtime_error("ALA ended while reading a 16-bit value");
-    }
+    EAW_ASSERT_MSG(offset + 2 <= bytes.size(), "ALA ended while reading a 16-bit value");
     return static_cast<std::uint16_t>(std::to_integer<unsigned char>(bytes[offset]) | (std::to_integer<unsigned char>(bytes[offset + 1]) << 8U));
 }
 
@@ -59,10 +54,7 @@ float read_float(const std::span<const std::byte> bytes, const std::size_t offse
 
 std::string read_string(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
 {
-    if (begin > end || end > bytes.size())
-    {
-        throw std::runtime_error("ALA string range is invalid");
-    }
+    EAW_ASSERT_MSG(begin <= end && end <= bytes.size(), "ALA string range is invalid");
     std::string value;
     for (auto offset = begin; offset < end; ++offset)
     {
@@ -76,11 +68,11 @@ std::string read_string(const std::span<const std::byte> bytes, const std::size_
     return value;
 }
 
-std::vector<Chunk> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
+Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
 {
     if (begin > end || end > bytes.size())
     {
-        throw std::runtime_error("ALA chunk range is invalid");
+        return make_error("ALA chunk range is invalid");
     }
     std::vector<Chunk> chunks;
     auto cursor = begin;
@@ -88,7 +80,7 @@ std::vector<Chunk> read_chunks(const std::span<const std::byte> bytes, const std
     {
         if (end - cursor < 8)
         {
-            throw std::runtime_error("ALA contains a truncated chunk header");
+            return make_error("ALA contains a truncated chunk header");
         }
         const auto type = read_u32(bytes, cursor);
         const auto size = static_cast<std::size_t>(read_u32(bytes, cursor + 4) & 0x7fffffffU);
@@ -97,7 +89,7 @@ std::vector<Chunk> read_chunks(const std::span<const std::byte> bytes, const std
         {
             std::ostringstream message;
             message << "ALA chunk 0x" << std::hex << type << " extends past its parent";
-            throw std::runtime_error(message.str());
+            return make_error(message.str());
         }
         chunks.push_back({type, payload, payload + size});
         cursor = payload + size;
@@ -105,7 +97,7 @@ std::vector<Chunk> read_chunks(const std::span<const std::byte> bytes, const std
     return chunks;
 }
 
-std::vector<MiniChunk> read_minis(const std::span<const std::byte> bytes, const Chunk& chunk)
+Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes, const Chunk& chunk)
 {
     std::vector<MiniChunk> chunks;
     auto cursor = chunk.payload;
@@ -113,14 +105,14 @@ std::vector<MiniChunk> read_minis(const std::span<const std::byte> bytes, const 
     {
         if (chunk.end - cursor < 2)
         {
-            throw std::runtime_error("ALA contains a truncated mini-chunk header");
+            return make_error("ALA contains a truncated mini-chunk header");
         }
         const auto type = std::to_integer<std::uint8_t>(bytes[cursor]);
         const auto size = std::to_integer<std::uint8_t>(bytes[cursor + 1]);
         const auto payload = cursor + 2;
         if (size > chunk.end - payload)
         {
-            throw std::runtime_error("ALA mini-chunk extends past its parent");
+            return make_error("ALA mini-chunk extends past its parent");
         }
         chunks.push_back({type, payload, payload + size});
         cursor = payload + size;
@@ -212,17 +204,17 @@ struct TrackDecodeInfo
     bool has_visibility{};
 };
 
-TrackDecodeInfo parse_track(const std::span<const std::byte> bytes, const Chunk& track_chunk, const std::uint32_t version)
+Result<TrackDecodeInfo> parse_track(const std::span<const std::byte> bytes, const Chunk& track_chunk, const std::uint32_t version)
 {
     TrackDecodeInfo information_result;
     auto& track = information_result.track;
-    const auto children = read_chunks(bytes, track_chunk.payload, track_chunk.end);
+    EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, track_chunk.payload, track_chunk.end));
     const auto* information = find_chunk(children, 0x1003);
     if (information == nullptr)
     {
-        throw std::runtime_error("ALA bone track is missing chunk 0x1003");
+        return make_error("ALA bone track is missing chunk 0x1003");
     }
-    const auto minis = read_minis(bytes, *information);
+    EAW_TRY_ASSIGN(const auto minis, read_minis(bytes, *information));
     if (const auto* name = find_mini(minis, 4))
     {
         track.name = read_string(bytes, name->payload, name->end);
@@ -426,21 +418,21 @@ AloQuaternion slerp(AloQuaternion left, AloQuaternion right, const float amount)
 
 } // namespace
 
-AlaAnimation AlaAnimation::parse(const std::span<const std::byte> bytes)
+Result<AlaAnimation> AlaAnimation::parse(const std::span<const std::byte> bytes)
 {
     AlaAnimation animation;
-    const auto root_chunks = read_chunks(bytes, 0, bytes.size());
+    EAW_TRY_ASSIGN(const auto root_chunks, read_chunks(bytes, 0, bytes.size()));
     if (root_chunks.size() != 1 || root_chunks.front().type != 0x1000)
     {
-        throw std::runtime_error("file does not begin with an ALA animation container");
+        return make_error("file does not begin with an ALA animation container");
     }
-    const auto chunks = read_chunks(bytes, root_chunks.front().payload, root_chunks.front().end);
+    EAW_TRY_ASSIGN(const auto chunks, read_chunks(bytes, root_chunks.front().payload, root_chunks.front().end));
     const auto* information = find_chunk(chunks, 0x1001);
     if (information == nullptr)
     {
-        throw std::runtime_error("ALA is missing animation information chunk 0x1001");
+        return make_error("ALA is missing animation information chunk 0x1001");
     }
-    const auto minis = read_minis(bytes, *information);
+    EAW_TRY_ASSIGN(const auto minis, read_minis(bytes, *information));
     animation.stored_frame_count = mini_u32(bytes, find_mini(minis, 1));
     if (const auto* fps = find_mini(minis, 2); fps != nullptr && fps->end - fps->payload >= 4)
     {
@@ -469,7 +461,8 @@ AlaAnimation AlaAnimation::parse(const std::span<const std::byte> bytes)
     {
         if (chunk.type == 0x1002)
         {
-            track_information.push_back(parse_track(bytes, chunk, animation.version));
+            EAW_TRY_ASSIGN(auto track, parse_track(bytes, chunk, animation.version));
+            track_information.push_back(std::move(track));
         }
         else if (chunk.type == 0x1009)
         {

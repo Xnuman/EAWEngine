@@ -4,17 +4,14 @@
 
 #include <algorithm>
 #include <limits>
-#include <stdexcept>
 
 namespace eaw {
 namespace {
 
+// Callers check the table size before reading, so an out-of-range read is a bug.
 std::uint32_t read_u32(const std::span<const std::byte> bytes, std::size_t& cursor)
 {
-    if (cursor + 4 > bytes.size())
-    {
-        throw std::runtime_error("truncated MTD file");
-    }
+    EAW_ASSERT(cursor + 4 <= bytes.size());
     std::uint32_t value = 0;
     for (unsigned shift = 0; shift < 32; shift += 8)
     {
@@ -25,14 +22,18 @@ std::uint32_t read_u32(const std::span<const std::byte> bytes, std::size_t& curs
 
 } // namespace
 
-MtdDirectory MtdDirectory::parse(const std::span<const std::byte> bytes)
+Result<MtdDirectory> MtdDirectory::parse(const std::span<const std::byte> bytes)
 {
+    if (bytes.size() < 4)
+    {
+        return make_error("truncated MTD file");
+    }
     std::size_t cursor = 0;
     const auto count = read_u32(bytes, cursor);
     constexpr std::size_t entry_size = 81;
     if (count > (std::numeric_limits<std::size_t>::max() - 4U) / entry_size || 4U + static_cast<std::size_t>(count) * entry_size != bytes.size())
     {
-        throw std::runtime_error("invalid MTD entry table size");
+        return make_error("invalid MTD entry table size");
     }
 
     MtdDirectory result;
@@ -43,7 +44,7 @@ MtdDirectory MtdDirectory::parse(const std::span<const std::byte> bytes)
         const auto name_end = std::find(bytes.begin() + static_cast<std::ptrdiff_t>(cursor), bytes.begin() + static_cast<std::ptrdiff_t>(cursor + 64U), std::byte{});
         if (name_end == bytes.begin() + static_cast<std::ptrdiff_t>(cursor + 64U))
         {
-            throw std::runtime_error("MTD entry name is not null terminated");
+            return make_error("MTD entry name is not null terminated");
         }
         std::string name;
         name.reserve(static_cast<std::size_t>(name_end - (bytes.begin() + static_cast<std::ptrdiff_t>(cursor))));
@@ -52,13 +53,13 @@ MtdDirectory MtdDirectory::parse(const std::span<const std::byte> bytes)
             const auto character = std::to_integer<unsigned char>(*position);
             if (character >= 0x80U)
             {
-                throw std::runtime_error("MTD entry name is not ASCII");
+                return make_error("MTD entry name is not ASCII");
             }
             name.push_back(static_cast<char>(character));
         }
         if (name.empty())
         {
-            throw std::runtime_error("MTD entry name is empty");
+            return make_error("MTD entry name is empty");
         }
         cursor = name_begin + 64U;
 
@@ -72,7 +73,7 @@ MtdDirectory MtdDirectory::parse(const std::span<const std::byte> bytes)
         entry.has_alpha = std::to_integer<unsigned char>(bytes[cursor++]) != 0;
         if (entry.x > std::numeric_limits<std::uint32_t>::max() - entry.width || entry.y > std::numeric_limits<std::uint32_t>::max() - entry.height)
         {
-            throw std::runtime_error("MTD entry rectangle overflows");
+            return make_error("MTD entry rectangle overflows");
         }
         result.atlas_width = std::max(result.atlas_width, entry.x + entry.width);
         result.atlas_height = std::max(result.atlas_height, entry.y + entry.height);

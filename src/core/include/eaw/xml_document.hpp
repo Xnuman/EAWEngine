@@ -1,5 +1,7 @@
 #pragma once
 
+#include "eaw/status.hpp"
+
 #include <cstddef>
 #include <span>
 #include <string>
@@ -34,8 +36,9 @@ struct XmlDocument
 {
     std::vector<XmlNode> roots;
 
-    [[nodiscard]] static XmlDocument parse(std::string_view text);
-    [[nodiscard]] static XmlDocument parse(std::span<const std::byte> bytes);
+    // Errors name the line of the first malformed construct ("XML line 12: ...").
+    [[nodiscard]] static Result<XmlDocument> parse(std::string_view text);
+    [[nodiscard]] static Result<XmlDocument> parse(std::span<const std::byte> bytes);
 };
 
 } // namespace eaw
