@@ -1,6 +1,7 @@
 #include "visual_scene_builder.hpp"
 
 #include "asset_cache.hpp"
+#include "combat_content.hpp"
 
 #include "eaw/alo_model.hpp"
 #include "eaw/dds_texture.hpp"
@@ -1329,6 +1330,19 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     const auto layout = build_map_object_layout(map, catalog, vfs);
     const auto movement_entry = cached<MovementClasses>(cache, "movement-classes", std::string(movement_class_path), vfs, load_movement_classes);
     const auto& movement_classes = movement_entry->classes;
+    const auto combat_entry = cached<CombatContent>(cache, "combat-content", "Data/XML/GameConstants.xml", vfs, load_combat_content);
+    asset.damage_table = combat_entry->damage_table;
+    // One profile per type, so a type's warnings are reported once however often it is placed.
+    std::unordered_map<const XmlDefinition*, CombatProfile> combat_profiles;
+    const auto profile_of = [&](const XmlDefinition& definition) -> const CombatProfile&
+    {
+        auto found = combat_profiles.find(&definition);
+        if (found == combat_profiles.end())
+        {
+            found = combat_profiles.emplace(&definition, combat_profile(catalog, definition, *combat_entry, asset.scene.warnings)).first;
+        }
+        return found->second;
+    };
     asset.untyped = layout.untyped;
     asset.without_model = layout.without_model;
     asset.missing_model_files = layout.missing_model_files;
@@ -1338,6 +1352,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     auto& scene = asset.scene;
     scene.name = resolved->virtual_path;
     SceneBuilder builder{vfs, scene, {}, cache};
+    scene.warnings.insert(scene.warnings.end(), combat_entry->warnings.begin(), combat_entry->warnings.end());
     if (asset.land)
     {
         scene.warnings.insert(scene.warnings.end(), movement_entry->warnings.begin(), movement_entry->warnings.end());
@@ -1403,6 +1418,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             if (placement.type != nullptr)
             {
                 spawn.max_speed = type_max_speed(catalog, *placement.type, scene.warnings);
+                spawn.combat = profile_of(*placement.type);
             }
             asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size())});
         }
@@ -1520,6 +1536,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         spawnable.team_color = catalog.affiliation_color(*definition).value_or(player_team_color(1));
         spawnable.follows_ground = asset.land && type_follows_ground(catalog, *definition);
         spawnable.passable_types = spawnable.follows_ground ? type_passable_types(catalog, *definition, movement_classes) : 0U;
+        spawnable.combat = profile_of(*definition);
         spawnable.hover_offset = type_float_field(catalog, *definition, "Hover_Offset");
         asset.spawnable.push_back(std::move(spawnable));
     }

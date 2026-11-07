@@ -12,10 +12,40 @@ namespace {
 constexpr std::uint32_t no_dense = std::numeric_limits<std::uint32_t>::max();
 // Arrival tolerance in world units.
 constexpr float arrival_distance = 0.01F;
+// Broad-phase cell size in world units (a little above typical weapon ranges).
+constexpr float grid_cell_size = 256.0F;
+// Ticks between automatic target searches of an idle weapon, and between replans of an ordered
+// chase whose target is out of range. Engine choices, not measured from the original.
+constexpr std::uint32_t retarget_interval = 10;
+constexpr std::uint32_t chase_interval = 30;
 
 bool finite(const SimVector3& value) noexcept
 {
     return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+
+bool valid_amount(const float value) noexcept
+{
+    return std::isfinite(value) && value >= 0.0F;
+}
+
+bool valid_profile(const CombatProfile& profile) noexcept
+{
+    if (!valid_amount(profile.health) || !valid_amount(profile.shield) || !valid_amount(profile.shield_regen_per_second) || !std::isfinite(profile.aim_height))
+    {
+        return false;
+    }
+    if (const auto& weapon = profile.weapon)
+    {
+        return valid_amount(weapon->range) && valid_amount(weapon->recharge_seconds) && valid_amount(weapon->pulse_delay_seconds) && valid_amount(weapon->damage) &&
+               valid_amount(weapon->projectile_speed) && valid_amount(weapon->max_flight_distance);
+    }
+    return true;
+}
+
+float distance_xy(const SimVector3& from, const SimVector3& to) noexcept
+{
+    return std::hypot(to.x - from.x, to.y - from.y);
 }
 
 std::uint64_t fnv1a(std::uint64_t hash, const void* data, const std::size_t size) noexcept
@@ -102,6 +132,10 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a non-finite position, heading, or speed");
     }
+    if (!valid_profile(spawn.combat))
+    {
+        return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite combat value");
+    }
     if (ids_.size() >= no_dense)
     {
         return make_error("simulation entity storage is full");
@@ -132,6 +166,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     follows_ground_.push_back(spawn.follows_ground ? 1U : 0U);
     passable_types_.push_back(spawn.passable_types);
     paths_.emplace_back();
+    combat_.push_back({.profile = spawn.combat, .health = spawn.combat.health, .shield = spawn.combat.shield});
     if (spawn.follows_ground && ground_.valid())
     {
         positions_.back().z = ground_.surface_height(spawn.position.x, spawn.position.y);
@@ -154,6 +189,7 @@ void SimulationWorld::step()
         apply(command);
     }
     run_movement();
+    run_combat();
     ++tick_;
     publish();
 }
@@ -170,7 +206,7 @@ const SimSnapshot& SimulationWorld::snapshot() const noexcept
 
 SimulationWorld::Stats SimulationWorld::stats() const noexcept
 {
-    return {tick_, ids_.size(), commands_applied_, stale_references_, blocked_moves_, path_searches_, partial_paths_, path_expansions_};
+    return {tick_, ids_.size(), commands_applied_, stale_references_, blocked_moves_, path_searches_, partial_paths_, path_expansions_, shots_fired_, hits_, kills_, projectiles_.size()};
 }
 
 std::uint64_t SimulationWorld::state_hash() const noexcept
@@ -198,6 +234,26 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         {
             hash = hash_value(hash, waypoint);
         }
+        // Field by field: the combat records have padding, whose bytes are unspecified.
+        const auto& combat = combat_[index];
+        hash = hash_value(hash, combat.health);
+        hash = hash_value(hash, combat.shield);
+        hash = hash_value(hash, combat.target);
+        hash = hash_value(hash, combat.ordered);
+        hash = hash_value(hash, combat.cooldown);
+        hash = hash_value(hash, combat.pulses_left);
+        hash = hash_value(hash, combat.pulse_timer);
+        hash = hash_value(hash, combat.retarget_timer);
+        hash = hash_value(hash, combat.chase_timer);
+    }
+    for (const auto& projectile : projectiles_)
+    {
+        hash = hash_value(hash, projectile.position);
+        hash = hash_value(hash, projectile.aim);
+        hash = hash_value(hash, projectile.target);
+        hash = hash_value(hash, projectile.owner);
+        hash = hash_value(hash, projectile.damage);
+        hash = hash_value(hash, projectile.flown);
     }
     return hash;
 }
@@ -230,6 +286,8 @@ void SimulationWorld::apply(const SimCommand& command)
         switch (command.kind)
         {
         case SimCommandKind::move:
+            combat_[*dense].target = {};
+            combat_[*dense].ordered = false;
             if (max_speeds_[*dense] > 0.0F)
             {
                 plan_move(*dense, command.target);
@@ -238,7 +296,26 @@ void SimulationWorld::apply(const SimCommand& command)
         case SimCommandKind::stop:
             move_targets_[*dense].reset();
             paths_[*dense].clear();
+            combat_[*dense].target = {};
+            combat_[*dense].ordered = false;
             break;
+        case SimCommandKind::attack:
+        {
+            const auto victim = dense_index(command.target_entity);
+            auto& combat = combat_[*dense];
+            if (!victim || !damageable(*victim))
+            {
+                ++stale_references_;
+                break;
+            }
+            if (combat.profile.weapon && *victim != *dense && hostility_.hostile(owners_[*dense], owners_[*victim]))
+            {
+                combat.target = command.target_entity;
+                combat.ordered = true;
+                combat.chase_timer = 0;
+            }
+            break;
+        }
         case SimCommandKind::destroy:
             destroy(*dense);
             break;
@@ -300,6 +377,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         follows_ground_[dense] = follows_ground_[last];
         passable_types_[dense] = passable_types_[last];
         paths_[dense] = std::move(paths_[last]);
+        combat_[dense] = combat_[last];
         slot_dense_[ids_[dense].index] = static_cast<std::uint32_t>(dense);
     }
     ids_.pop_back();
@@ -314,6 +392,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     follows_ground_.pop_back();
     passable_types_.pop_back();
     paths_.pop_back();
+    combat_.pop_back();
     slot_dense_[slot] = no_dense;
     // A slot whose generation would wrap is retired instead of reused.
     if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
@@ -427,6 +506,280 @@ std::vector<SimVector3> SimulationWorld::route(const EntityId id) const
     return points;
 }
 
+void SimulationWorld::set_damage_table(DamageTable table)
+{
+    damage_table_ = std::move(table);
+}
+
+void SimulationWorld::set_hostility(const Hostility& hostility) noexcept
+{
+    hostility_ = hostility;
+}
+
+const Hostility& SimulationWorld::hostility() const noexcept
+{
+    return hostility_;
+}
+
+std::uint32_t SimulationWorld::ticks_for(const float seconds) const noexcept
+{
+    const auto ticks = std::lround(static_cast<double>(seconds) / tick_seconds_);
+    return static_cast<std::uint32_t>(std::clamp<long>(ticks, 0L, 1L << 30));
+}
+
+bool SimulationWorld::damageable(const std::size_t index) const noexcept
+{
+    return combat_[index].profile.health > 0.0F && combat_[index].health > 0.0F;
+}
+
+// Order within a tick: shields recharge, then every armed entity (in dense order) updates its
+// target and fires, then shots fly and hit, then the dead are removed. Entities are only removed
+// at the end, so dense indices stay valid throughout.
+void SimulationWorld::run_combat()
+{
+    const auto dt = static_cast<float>(tick_seconds_);
+    grid_.build(positions_, grid_cell_size);
+    for (auto& combat : combat_)
+    {
+        if (combat.shield < combat.profile.shield && combat.health > 0.0F)
+        {
+            combat.shield = std::min(combat.profile.shield, combat.shield + combat.profile.shield_regen_per_second * dt);
+        }
+    }
+    for (std::size_t index = 0; index < ids_.size(); ++index)
+    {
+        if (combat_[index].profile.weapon)
+        {
+            update_target(index);
+            run_weapon(index);
+        }
+    }
+    run_projectiles();
+    remove_dead();
+}
+
+void SimulationWorld::update_target(const std::size_t index)
+{
+    auto& combat = combat_[index];
+    const auto& weapon = *combat.profile.weapon;
+    if (combat.target.valid())
+    {
+        const auto victim = dense_index(combat.target);
+        bool keep = victim && damageable(*victim) && hostility_.hostile(owners_[index], owners_[*victim]);
+        if (keep && !combat.ordered)
+        {
+            keep = distance_xy(positions_[index], positions_[*victim]) <= weapon.range;
+        }
+        if (!keep)
+        {
+            combat.target = {};
+            combat.ordered = false;
+        }
+    }
+    if (combat.ordered)
+    {
+        // Chase an ordered target until it is in range, then hold position and fire.
+        const auto victim = *dense_index(combat.target);
+        if (distance_xy(positions_[index], positions_[victim]) > weapon.range)
+        {
+            if (max_speeds_[index] > 0.0F && (combat.chase_timer == 0 || !move_targets_[index]))
+            {
+                // Flyers keep their altitude; ground units take theirs from the surface anyway.
+                plan_move(index, {positions_[victim].x, positions_[victim].y, follows_ground_[index] != 0 ? positions_[victim].z : positions_[index].z});
+                combat.chase_timer = chase_interval;
+            }
+        }
+        else if (move_targets_[index])
+        {
+            move_targets_[index].reset();
+            paths_[index].clear();
+        }
+        if (combat.chase_timer > 0)
+        {
+            --combat.chase_timer;
+        }
+        return;
+    }
+    if (combat.target.valid())
+    {
+        return;
+    }
+    if (combat.retarget_timer > 0)
+    {
+        --combat.retarget_timer;
+        return;
+    }
+    combat.retarget_timer = retarget_interval;
+    // The nearest damageable hostile in range; equal distances go to the lower entity id.
+    query_.clear();
+    grid_.query(positions_[index], weapon.range, query_);
+    std::optional<std::size_t> best;
+    float best_distance = 0.0F;
+    for (const auto candidate : query_)
+    {
+        if (candidate == index || !damageable(candidate) || !hostility_.hostile(owners_[index], owners_[candidate]))
+        {
+            continue;
+        }
+        const auto distance = distance_xy(positions_[index], positions_[candidate]);
+        const auto lower_id = [&](const std::size_t a, const std::size_t b)
+        {
+            return ids_[a].index != ids_[b].index ? ids_[a].index < ids_[b].index : ids_[a].generation < ids_[b].generation;
+        };
+        if (!best || distance < best_distance || (distance == best_distance && lower_id(candidate, *best)))
+        {
+            best = candidate;
+            best_distance = distance;
+        }
+    }
+    if (best)
+    {
+        combat.target = ids_[*best];
+    }
+}
+
+void SimulationWorld::run_weapon(const std::size_t index)
+{
+    auto& combat = combat_[index];
+    const auto& weapon = *combat.profile.weapon;
+    if (combat.cooldown > 0)
+    {
+        --combat.cooldown;
+    }
+    if (combat.pulse_timer > 0)
+    {
+        --combat.pulse_timer;
+    }
+    const auto victim = combat.target.valid() ? dense_index(combat.target) : std::nullopt;
+    if (!victim)
+    {
+        combat.pulses_left = 0;
+        return;
+    }
+    if (combat.pulses_left == 0)
+    {
+        if (combat.cooldown != 0 || distance_xy(positions_[index], positions_[*victim]) > weapon.range)
+        {
+            return;
+        }
+        combat.pulses_left = std::max(1U, weapon.pulse_count);
+        combat.pulse_timer = 0;
+        combat.cooldown = std::max(1U, ticks_for(weapon.recharge_seconds));
+    }
+    // A burst keeps firing at its target, in range or not, until its shots are spent.
+    while (combat.pulses_left > 0 && combat.pulse_timer == 0)
+    {
+        launch(index, *victim);
+        --combat.pulses_left;
+        combat.pulse_timer = ticks_for(weapon.pulse_delay_seconds);
+    }
+}
+
+void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim)
+{
+    const auto& weapon = *combat_[shooter].profile.weapon;
+    ++shots_fired_;
+    if (weapon.projectile_speed <= 0.0F)
+    {
+        ++hits_;
+        apply_damage(victim, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health);
+        return;
+    }
+    const auto& from = positions_[shooter];
+    const auto& to = positions_[victim];
+    Projectile projectile;
+    projectile.position = {from.x, from.y, from.z + combat_[shooter].profile.aim_height};
+    projectile.aim = {to.x, to.y, to.z + combat_[victim].profile.aim_height};
+    projectile.target = ids_[victim];
+    projectile.owner = owners_[shooter];
+    projectile.damage = weapon.damage;
+    projectile.damage_type = weapon.damage_type;
+    projectile.damages_shield = weapon.damages_shield;
+    projectile.damages_health = weapon.damages_health;
+    projectile.speed = weapon.projectile_speed;
+    projectile.max_flight = weapon.max_flight_distance;
+    projectiles_.push_back(projectile);
+}
+
+// Provisional semantics: shields absorb a shot first (scaled by the shield armor type); what the
+// shield cannot absorb, converted back to raw damage, reaches the hull scaled by the armor type.
+void SimulationWorld::apply_damage(const std::size_t victim, float damage, const std::uint16_t damage_type, const bool damages_shield, const bool damages_health)
+{
+    auto& combat = combat_[victim];
+    if (damages_shield && combat.shield > 0.0F)
+    {
+        const auto modifier = damage_table_.modifier(damage_type, combat.profile.shield_armor_type);
+        const auto dealt = damage * modifier;
+        if (dealt <= combat.shield)
+        {
+            combat.shield -= dealt;
+            return;
+        }
+        damage = modifier > 0.0F ? (dealt - combat.shield) / modifier : 0.0F;
+        combat.shield = 0.0F;
+    }
+    if (damages_health)
+    {
+        combat.health -= damage * damage_table_.modifier(damage_type, combat.profile.armor_type);
+    }
+}
+
+void SimulationWorld::run_projectiles()
+{
+    const auto dt = static_cast<float>(tick_seconds_);
+    std::size_t kept = 0;
+    for (std::size_t index = 0; index < projectiles_.size(); ++index)
+    {
+        auto projectile = projectiles_[index];
+        // Shots home on their target's current aim point; a dead target's shot flies on to the
+        // last point and is lost there.
+        const auto victim = dense_index(projectile.target);
+        if (victim)
+        {
+            const auto& to = positions_[*victim];
+            projectile.aim = {to.x, to.y, to.z + combat_[*victim].profile.aim_height};
+        }
+        const SimVector3 delta{projectile.aim.x - projectile.position.x, projectile.aim.y - projectile.position.y, projectile.aim.z - projectile.position.z};
+        const auto distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+        const auto step_length = projectile.speed * dt;
+        if (distance > 0.0F)
+        {
+            projectile.direction = {delta.x / distance, delta.y / distance, delta.z / distance};
+        }
+        if (distance <= step_length)
+        {
+            if (victim && damageable(*victim))
+            {
+                ++hits_;
+                apply_damage(*victim, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health);
+            }
+            continue;
+        }
+        const auto scale = step_length / distance;
+        projectile.position = {projectile.position.x + delta.x * scale, projectile.position.y + delta.y * scale, projectile.position.z + delta.z * scale};
+        projectile.flown += step_length;
+        if (projectile.max_flight > 0.0F && projectile.flown > projectile.max_flight)
+        {
+            continue;
+        }
+        projectiles_[kept++] = projectile;
+    }
+    projectiles_.resize(kept);
+}
+
+void SimulationWorld::remove_dead()
+{
+    // Back to front: swap-removal only moves already-visited entities.
+    for (auto index = ids_.size(); index-- > 0;)
+    {
+        if (combat_[index].profile.health > 0.0F && combat_[index].health <= 0.0F)
+        {
+            destroy(index);
+            ++kills_;
+        }
+    }
+}
+
 void SimulationWorld::set_ground(GroundMap ground)
 {
     ground_ = std::move(ground);
@@ -445,8 +798,15 @@ void SimulationWorld::publish()
     snapshot_.entities.reserve(ids_.size());
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
+        const auto& combat = combat_[index];
         snapshot_.entities.push_back({ids_[index], positions_[index], headings_[index], visuals_[index], owners_[index], move_targets_[index].has_value(), selectable_[index] != 0, max_speeds_[index],
-                                      follows_ground_[index] != 0});
+                                      follows_ground_[index] != 0, combat.health, combat.profile.health, combat.shield, combat.profile.shield, combat.target});
+    }
+    snapshot_.projectiles.clear();
+    snapshot_.projectiles.reserve(projectiles_.size());
+    for (const auto& projectile : projectiles_)
+    {
+        snapshot_.projectiles.push_back({projectile.position, projectile.direction, projectile.owner});
     }
 }
 

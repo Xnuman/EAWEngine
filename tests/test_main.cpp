@@ -3,6 +3,7 @@
 #include "eaw/asset_environment.hpp"
 #include "eaw/asset_path.hpp"
 #include "camera_controller.hpp"
+#include "combat_content.hpp"
 #include "visual_scene_builder.hpp"
 #include "eaw/dat_file.hpp"
 #include "eaw/dds_texture.hpp"
@@ -1039,6 +1040,130 @@ void test_pathfinding()
             "a ground unit must follow its path around the wall");
 }
 
+void test_combat()
+{
+    // Broad phase: items within the radius, cells row by row, ascending index within a cell.
+    eaw::SpatialGrid grid;
+    const std::vector<eaw::SimVector3> points{{0.0F, 0.0F, 0.0F}, {300.0F, 0.0F, 0.0F}, {10.0F, 5.0F, 0.0F}, {0.0F, 600.0F, 0.0F}, {std::nanf(""), 0.0F, 0.0F}};
+    grid.build(points, 256.0F);
+    std::vector<std::uint32_t> near;
+    grid.query({0.0F, 0.0F, 0.0F}, 50.0F, near);
+    require(near == std::vector<std::uint32_t>{0, 2} && grid.size() == 4, "the spatial grid must return items within the radius in a fixed order");
+    near.clear();
+    grid.query({150.0F, 0.0F, 0.0F}, 160.0F, near);
+    require(near == std::vector<std::uint32_t>{0, 2, 1}, "queries spanning cells must visit cells in order");
+
+    eaw::DamageTable table;
+    table.set(1, 2, 0.5F);
+    require(table.modifier(1, 2) == 0.5F && table.modifier(2, 1) == 1.0F, "unset damage modifiers must be 1");
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    require(hostility.hostile(2, 1) && !hostility.hostile(1, 3) && !hostility.hostile(1, 1) && !hostility.hostile(1, 200), "hostility must be symmetric and bounded");
+
+    // A shooter (owner 1) with an instant-hit weapon: bursts of two shots 0.1 s apart every second,
+    // 10 damage halved by the victim's armor.
+    const auto make_world = [&]
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_damage_table(table);
+        world.set_hostility(hostility);
+        return world;
+    };
+    eaw::CombatProfile gun;
+    gun.health = 50.0F;
+    gun.weapon = eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 1.0F, .pulse_count = 2, .pulse_delay_seconds = 0.1F, .damage = 10.0F, .damage_type = 1};
+    eaw::CombatProfile target;
+    target.health = 25.0F;
+    target.armor_type = 2;
+    auto world = make_world();
+    const auto shooter = world.spawn({.type_name = "Shooter", .owner = 1, .combat = gun});
+    const auto victim = world.spawn({.type_name = "Victim", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = target});
+    const auto bystander = world.spawn({.type_name = "Neutral", .owner = 3, .position = {20.0F, 0.0F, 0.0F}, .combat = target});
+    const auto distant = world.spawn({.type_name = "Distant", .owner = 2, .position = {500.0F, 0.0F, 0.0F}, .combat = target});
+    require(shooter && victim && bystander && distant, "test spawns must succeed");
+    world.step();
+    require(world.snapshot().entities[1].health == 20.0F && world.snapshot().entities[0].target == *victim, "an armed entity must target the nearest hostile in range and fire");
+    world.step();
+    require(world.snapshot().entities[1].health == 15.0F, "a burst must fire its pulses at the pulse delay");
+    for (int tick = 0; tick < 8; ++tick)
+    {
+        world.step();
+    }
+    require(world.snapshot().entities[1].health == 15.0F, "the weapon must wait for its recharge");
+    for (int tick = 0; tick < 12; ++tick)
+    {
+        world.step();
+    }
+    require(!world.alive(*victim) && world.stats().kills == 1 && world.stats().shots_fired == 5 && world.stats().hits == 5, "a victim must die when its health is spent");
+    require(world.alive(*bystander) && world.alive(*distant) && !world.snapshot().entities[0].target.valid(), "neutral and out-of-range entities must not be attacked");
+
+    // Shields absorb first; the rest reaches the hull through the armor modifier.
+    {
+        auto shielded_world = make_world();
+        auto shielded = target;
+        shielded.shield = 8.0F;
+        shielded.shield_armor_type = 3;
+        (void)shielded_world.spawn({.type_name = "Shooter", .owner = 1, .combat = gun});
+        (void)shielded_world.spawn({.type_name = "Shielded", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = shielded});
+        shielded_world.step();
+        const auto& hit = shielded_world.snapshot().entities[1];
+        require(hit.shield == 0.0F && hit.health == 24.0F, "damage beyond the shield must reach the hull");
+    }
+
+    // Projectiles fly at their speed and hit later.
+    {
+        auto flight_world = make_world();
+        auto cannon = gun;
+        cannon.weapon->projectile_speed = 100.0F;
+        cannon.weapon->pulse_count = 1;
+        (void)flight_world.spawn({.type_name = "Cannon", .owner = 1, .combat = cannon});
+        (void)flight_world.spawn({.type_name = "Victim", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = target});
+        flight_world.step();
+        require(flight_world.snapshot().projectiles.size() == 1 && flight_world.snapshot().projectiles[0].direction.x == 1.0F && flight_world.snapshot().entities[1].health == 25.0F,
+                "a projectile must be in flight before it hits");
+        for (int tick = 0; tick < 6; ++tick)
+        {
+            flight_world.step();
+        }
+        require(flight_world.snapshot().projectiles.empty() && flight_world.snapshot().entities[1].health == 20.0F && flight_world.stats().hits == 1, "a projectile must hit its target");
+    }
+
+    // An attack order chases a target out of range, then holds and fires.
+    {
+        auto chase_world = make_world();
+        auto mobile = gun;
+        const auto hunter = chase_world.spawn({.type_name = "Hunter", .owner = 1, .max_speed = 100.0F, .combat = mobile});
+        const auto prey = chase_world.spawn({.type_name = "Prey", .owner = 2, .position = {400.0F, 0.0F, 0.0F}, .combat = target});
+        require(hunter && prey, "test spawns must succeed");
+        chase_world.submit({.kind = eaw::SimCommandKind::attack, .entities = {*hunter}, .target_entity = *prey});
+        for (int tick = 0; tick < 60; ++tick)
+        {
+            chase_world.step();
+        }
+        require(!chase_world.alive(*prey), "an attack order must chase and kill its target");
+        const auto hunter_x = chase_world.snapshot().entities[0].position.x;
+        require(hunter_x >= 300.0F && hunter_x < 320.0F && !chase_world.snapshot().entities[0].moving, "an attacker must stop once its target is in range");
+    }
+
+    // Identical setups and commands give identical state.
+    const auto run = [&]
+    {
+        auto replay = make_world();
+        (void)replay.spawn({.type_name = "A", .owner = 1, .max_speed = 50.0F, .combat = gun});
+        (void)replay.spawn({.type_name = "B", .owner = 2, .position = {150.0F, 30.0F, 0.0F}, .max_speed = 50.0F, .combat = gun});
+        for (int tick = 0; tick < 40; ++tick)
+        {
+            replay.step();
+        }
+        return replay.state_hash();
+    };
+    require(run() == run(), "combat must be deterministic");
+
+    auto invalid = gun;
+    invalid.weapon->range = -1.0F;
+    require(!world.spawn({.type_name = "Invalid", .combat = invalid}), "a negative weapon range must be rejected");
+}
+
 // A minimal 4x4 BC1 DDS with one mip level.
 std::vector<std::byte> make_test_dds()
 {
@@ -1718,6 +1843,72 @@ void test_xml_asset_database()
     std::filesystem::remove_all(root, ignored);
 }
 
+void test_combat_content()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-combat-content-test";
+    const auto xml_root = root / "Data" / "XML";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::filesystem::create_directories(xml_root);
+    {
+        std::ofstream file(xml_root / "GameConstants.xml", std::ios::binary);
+        file << "<GameConstants>"
+                "<Damage_To_Armor_Mod> Damage_Laser, Armor_Tank, 0.5 </Damage_To_Armor_Mod>"
+                "<Damage_To_Armor_Mod>Damage_Laser, Shield_Tank, 2</Damage_To_Armor_Mod>"
+                "<Damage_To_Armor_Mod>Damage_Laser, Armor_Tank</Damage_To_Armor_Mod>"
+                "</GameConstants>";
+    }
+    {
+        std::ofstream file(xml_root / "Units.xml", std::ios::binary);
+        file << "<Units>"
+                "<Projectile Name=\"Proj_Base\"><Max_Speed>10</Max_Speed><Projectile_Max_Flight_Distance>400</Projectile_Max_Flight_Distance>"
+                "<Projectile_Does_Shield_Damage>No</Projectile_Does_Shield_Damage><Damage_Type>Damage_Laser</Damage_Type></Projectile>"
+                "<Projectile Name=\"Proj_Tank\"><Variant_Of_Existing_Type>Proj_Base</Variant_Of_Existing_Type><Projectile_Damage>7.5</Projectile_Damage></Projectile>"
+                "<GroundVehicle Name=\"Tank\"><Tactical_Health>100</Tactical_Health><Shield_Points>50</Shield_Points><Shield_Refresh_Rate>4</Shield_Refresh_Rate>"
+                "<Armor_Type> Armor_Tank </Armor_Type><Shield_Armor_Type>Shield_Tank</Shield_Armor_Type><Ranged_Target_Z_Adjust>12</Ranged_Target_Z_Adjust>"
+                "<Projectile_Types>Proj_Tank, Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>200</Targeting_Max_Attack_Distance>"
+                "<Projectile_Fire_Recharge_Seconds>1.5</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>3</Projectile_Fire_Pulse_Count>"
+                "<Projectile_Fire_Pulse_Delay_Seconds>0.2</Projectile_Fire_Pulse_Delay_Seconds></GroundVehicle>"
+                "<GroundStructure Name=\"Wall\"><Tactical_Health>-5</Tactical_Health></GroundStructure>"
+                "<GroundVehicle Name=\"Broken_Gun\"><Tactical_Health>10</Tactical_Health><Projectile_Types>Proj_Missing</Projectile_Types>"
+                "<Targeting_Max_Attack_Distance>100</Targeting_Max_Attack_Distance></GroundVehicle>"
+                "</Units>";
+    }
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    const auto database = eaw::XmlAssetDatabase::build(vfs);
+    const auto catalog = eaw::GameObjectCatalog::build(database);
+    const auto content = eaw::load_combat_content(vfs);
+    require(content.damage_table.size() == 2 && content.warnings.size() == 1 && content.warnings[0].find("Damage_To_Armor_Mod") != std::string::npos,
+            "damage modifiers must be read and malformed entries reported");
+    const auto laser = content.type_ids.at("damage_laser");
+    const auto tank_armor = content.type_ids.at("armor_tank");
+    require(content.damage_table.modifier(laser, tank_armor) == 0.5F && content.damage_table.modifier(laser, content.type_ids.at("shield_tank")) == 2.0F,
+            "damage modifiers must map type names to ids");
+
+    const auto definition = [&](const std::string_view name)
+    {
+        return catalog.find(name).front();
+    };
+    std::vector<std::string> warnings;
+    const auto tank = eaw::combat_profile(catalog, *definition("Tank"), content, warnings);
+    require(tank.health == 100.0F && tank.shield == 50.0F && tank.shield_regen_per_second == 4.0F && tank.armor_type == tank_armor && tank.aim_height == 12.0F && tank.weapon,
+            "a type's health, shields, armor, and weapon must be read");
+    const auto& weapon = *tank.weapon;
+    require(weapon.range == 200.0F && weapon.recharge_seconds == 1.5F && weapon.pulse_count == 3 && weapon.pulse_delay_seconds == 0.2F && weapon.damage == 7.5F && weapon.damage_type == laser &&
+                weapon.projectile_speed == 10.0F * eaw::provisional_max_speed_scale && weapon.max_flight_distance == 400.0F && !weapon.damages_shield && weapon.damages_health,
+            "the first projectile type must supply the shot, through its variant chain");
+    require(warnings.empty(), "a well-formed type must not warn");
+    const auto wall = eaw::combat_profile(catalog, *definition("Wall"), content, warnings);
+    require(wall.health == 0.0F && !wall.weapon && warnings.size() == 1 && warnings[0].find("Tactical_Health") != std::string::npos, "a negative health must be reported and ignored");
+    const auto broken = eaw::combat_profile(catalog, *definition("Broken_Gun"), content, warnings);
+    require(broken.health == 10.0F && !broken.weapon && warnings.size() == 2 && warnings[1].find("Proj_Missing") != std::string::npos, "an undefined projectile type must be reported");
+
+    const auto hostility = eaw::provisional_map_hostility();
+    require(hostility.hostile(0, 1) && hostility.hostile(2, 6) && !hostility.hostile(eaw::neutral_map_owner, 1) && !hostility.hostile(1, 1), "map owners must be hostile except the neutral slot");
+    std::filesystem::remove_all(root, ignored);
+}
+
 void test_game_object_catalog()
 {
     // CRC-32 of the uppercased name; reference values from an independent CRC-32 implementation.
@@ -2214,6 +2405,8 @@ int main()
     test_simulation_core();
     test_ground_movement();
     test_pathfinding();
+    test_combat();
+    test_combat_content();
     test_fatal_error_report();
     test_status_and_log();
     test_scene_presentation();

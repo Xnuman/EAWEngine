@@ -301,3 +301,31 @@ least two levels, but its cell-level behavior is unknown. EAWEngine's grid A* is
 an engine-native choice, not a reproduction; behavior that players observe
 (which ground a class may cross, how unreachable orders end, how groups move)
 is what needs black-box comparison with the original, not identical routes.
+
+TED owner slots (placed-object `player`, audited with `EAWAssetInspector
+map-objects`, which now breaks placements down by owner): slot 3 holds 179,407
+of the stock placements, almost all props, markers, decorations, and
+multiplayer structure markers, so it reads as the world's neutral slot. Slots
+0, 1, 2, and 6 hold armies, bases, and squadrons (slot 6 also many props);
+slots 4, 5, and 7 hold mostly `Indigenous_Unit` types; slots 9 to 11 occur on a
+few maps. Which slot a human or AI player takes, and which slots are allied, is
+decided at runtime. Until players and factions exist the engine treats slot 3
+as neutral and every other pair of distinct slots as hostile (a provisional
+rule).
+
+Combat fields used by the first combat slice (stock XML; semantics provisional
+where noted): `Tactical_Health`; `Shield_Points` and `Shield_Refresh_Rate`
+(read as points per second, unverified); `Armor_Type` and `Shield_Armor_Type`;
+`Ranged_Target_Z_Adjust` as the aim height; the first entry of
+`Projectile_Types` with `Targeting_Max_Attack_Distance`,
+`Projectile_Fire_Recharge_Seconds`, `Projectile_Fire_Pulse_Count`, and
+`Projectile_Fire_Pulse_Delay_Seconds`; and from the projectile type
+`Projectile_Damage`, `Damage_Type`, `Max_Speed` (scaled like unit speeds),
+`Projectile_Max_Flight_Distance`, and the shield and hit-point damage flags.
+`GameConstants.xml` lists `Damage_To_Armor_Mod` entries as
+`damage type, armor type, multiplier` (for example `Damage_Sniper,
+Armor_T2B, 0.1`). Shields absorb a shot first through the shield armor type and
+the remainder reaches the hull through the armor type: an engine choice, not a
+measured rule. Ranges are measured in the ground plane. Weapons on hardpoints
+(space ships), `Targeting_Fire_Inaccuracy`, turret target priorities, and
+energy are not read yet.

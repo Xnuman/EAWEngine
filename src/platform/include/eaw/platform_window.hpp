@@ -28,6 +28,7 @@ enum class Key : std::uint8_t
     c,
     g,
     n,
+    o,
     tab,
     f1,
     shift,

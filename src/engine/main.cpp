@@ -10,6 +10,7 @@
 #include "eaw/platform_window.hpp"
 #include "asset_cache.hpp"
 #include "camera_controller.hpp"
+#include "combat_content.hpp"
 #include "camera_math.hpp"
 #include "debug_draw.hpp"
 #include "rts_control.hpp"
@@ -86,8 +87,16 @@ struct Options
     std::filesystem::path log_directory;
     // Once the scene is shown, select every mobile entity and order it to the scene center.
     bool auto_move{};
-    // XML object types made spawnable on maps (--spawn TYPE[:COUNT]); counts spawn when shown.
-    std::vector<std::pair<std::string, std::uint32_t>> spawns;
+    // XML object types made spawnable on maps (--spawn TYPE[:COUNT][@OWNER]); counts spawn when shown, each
+    // request as its own group for its owner slot.
+    struct SpawnRequest
+    {
+        std::string type;
+        std::uint32_t count{};
+        // Owner slot; the sandbox's current spawn owner when absent.
+        std::optional<std::uint32_t> owner;
+    };
+    std::vector<SpawnRequest> spawns;
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};
@@ -125,8 +134,9 @@ void print_usage()
               << "  --log-dir <path>   Folder for log files (default: logs next to the executable)\n"
               << "  --crash-test <assert|exception|access-violation>  Fail deliberately to check crash reporting\n"
               << "  --auto-move        Order every mobile unit to the map center once shown (automation)\n"
-              << "  --spawn <TYPE>[:N] Make an XML object type spawnable on maps (repeatable); N spawn at the view\n"
-              << "                     center when shown, N key spawns one at the cursor, Tab cycles types\n"
+              << "  --spawn <TYPE>[:N][@OWNER] Make an XML object type spawnable on maps (repeatable); N spawn at the view\n"
+              << "                     center when shown (OWNER slot, default 1; each request its own group), N key\n"
+              << "                     spawns one at the cursor, Tab cycles types, O cycles the owner\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
               << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
@@ -234,7 +244,18 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
         }
         else if (argument == "--spawn")
         {
-            EAW_TRY_ASSIGN(const std::string value, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(std::string value, require_value(argc, argv, index, argument));
+            std::optional<std::uint32_t> owner;
+            if (const auto at = value.rfind('@'); at != std::string::npos)
+            {
+                EAW_TRY_ASSIGN(const auto slot, parse_unsigned(std::string_view(value).substr(at + 1U), argument));
+                if (slot >= eaw::Hostility::max_owners)
+                {
+                    return eaw::make_error("--spawn owners must be below " + std::to_string(eaw::Hostility::max_owners));
+                }
+                owner = slot;
+                value.resize(at);
+            }
             const auto colon = value.rfind(':');
             std::uint32_t count = 0;
             auto type = value;
@@ -251,7 +272,7 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
             {
                 return eaw::make_error("--spawn needs an XML object type name");
             }
-            options.spawns.emplace_back(std::move(type), count);
+            options.spawns.push_back({std::move(type), count, owner});
         }
         else if (argument == "--pick")
         {
@@ -440,9 +461,12 @@ SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Op
     if (options.map)
     {
         std::vector<std::string> spawn_types;
-        for (const auto& [type, count] : options.spawns)
+        for (const auto& request : options.spawns)
         {
-            spawn_types.push_back(type);
+            if (std::ranges::find(spawn_types, request.type) == spawn_types.end())
+            {
+                spawn_types.push_back(request.type);
+            }
         }
         if (auto map = eaw::build_visual_map(reader, *options.map, cache, spawn_types))
         {
@@ -658,6 +682,14 @@ int main(const int argc, char** argv)
         // The map's ground surface for CPU order targets (invalid on space maps and models).
         eaw::GroundMap terrain_heights;
         std::size_t spawn_choice = 0;
+        // Owner slot of debug spawns (O cycles through the non-neutral slots 0..7).
+        std::uint32_t spawn_owner = 1;
+        // Pick requests: the instance-to-entity list of the frame that drew each one (instance order
+        // changes whenever an entity dies), requests still waiting for that frame, and which
+        // requests are right-click attack orders rather than selections.
+        std::unordered_map<std::uint32_t, std::vector<eaw::EntityId>> pick_entities;
+        std::vector<std::uint32_t> unbound_picks;
+        std::unordered_set<std::uint32_t> attack_picks;
         bool initial_spawns_sent = false;
         // Every shown object is a simulation entity; backdrops stay static. Presentation re-poses the
         // scene's instances from interpolated snapshots each frame.
@@ -740,6 +772,56 @@ int main(const int argc, char** argv)
                     }
                     eaw::append_debug_box(lines, presentation->mesh_minimum(instance.mesh), presentation->mesh_maximum(instance.mesh), instance.transform,
                                           instance.highlighted ? std::array<float, 4>{1.0F, 0.85F, 0.25F, 1.0F} : std::array<float, 4>{0.3F, 0.85F, 0.95F, 0.45F});
+                }
+            }
+            if (world && presentation)
+            {
+                const auto& snapshot = world->snapshot();
+                // Shots in flight as short streaks, green for the debug-spawn owner's side.
+                for (const auto& projectile : snapshot.projectiles)
+                {
+                    const auto& p = projectile.position;
+                    const auto& d = projectile.direction;
+                    constexpr float streak = 14.0F;
+                    lines.push_back({{p.x - d.x * streak, p.y - d.y * streak, p.z - d.z * streak},
+                                     {p.x, p.y, p.z},
+                                     projectile.owner == spawn_owner ? std::array<float, 4>{0.4F, 1.0F, 0.4F, 1.0F} : std::array<float, 4>{1.0F, 0.35F, 0.25F, 1.0F}});
+                }
+                // Health (green over red) and shield (blue) bars above selected or damaged entities.
+                std::unordered_map<std::uint64_t, const eaw::EntitySnapshot*> by_key;
+                by_key.reserve(snapshot.entities.size());
+                for (const auto& entity : snapshot.entities)
+                {
+                    by_key.emplace(eaw::entity_key(entity.id), &entity);
+                }
+                for (std::size_t index = 0; index < frame_instances.size() && index < frame_entities.size(); ++index)
+                {
+                    const auto found = frame_entities[index].valid() ? by_key.find(eaw::entity_key(frame_entities[index])) : by_key.end();
+                    if (found == by_key.end() || found->second->max_health <= 0.0F)
+                    {
+                        continue;
+                    }
+                    const auto& entity = *found->second;
+                    const bool damaged = entity.health < entity.max_health || entity.shield < entity.max_shield;
+                    if (!damaged && !frame_instances[index].highlighted)
+                    {
+                        continue;
+                    }
+                    const auto& t = frame_instances[index].transform;
+                    const auto z_scale = std::sqrt(t[8] * t[8] + t[9] * t[9] + t[10] * t[10]);
+                    const auto top = t[14] + presentation->mesh_maximum(frame_instances[index].mesh)[2] * z_scale + 6.0F;
+                    const float half = 15.0F;
+                    const auto bar = [&](const float z, const float fraction, const std::array<float, 4>& full, const std::array<float, 4>& empty)
+                    {
+                        const auto split = t[12] - half + 2.0F * half * std::clamp(fraction, 0.0F, 1.0F);
+                        lines.push_back({{t[12] - half, t[13], z}, {split, t[13], z}, full});
+                        lines.push_back({{split, t[13], z}, {t[12] + half, t[13], z}, empty});
+                    };
+                    bar(top, entity.health / entity.max_health, {0.3F, 1.0F, 0.3F, 1.0F}, {0.8F, 0.1F, 0.1F, 1.0F});
+                    if (entity.max_shield > 0.0F)
+                    {
+                        bar(top + 3.0F, entity.shield / entity.max_shield, {0.35F, 0.65F, 1.0F, 1.0F}, {0.15F, 0.15F, 0.3F, 1.0F});
+                    }
                 }
             }
             if (world && terrain_heights.valid())
@@ -905,6 +987,8 @@ int main(const int argc, char** argv)
                 spawnable = visual_map.spawnable;
                 terrain_heights = visual_map.ground;
                 world->set_ground(terrain_heights);
+                world->set_damage_table(visual_map.damage_table);
+                world->set_hostility(eaw::provisional_map_hostility());
                 spawn_choice = 0;
                 initial_spawns_sent = false;
                 for (const auto& type : spawnable)
@@ -1128,7 +1212,7 @@ int main(const int argc, char** argv)
                 }
                 else if (click_travel <= 3 && input.mouse_x >= 0 && input.mouse_y >= 0)
                 {
-                    (void)renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y));
+                    unbound_picks.push_back(renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y)));
                 }
                 renderer.set_selection_rectangle(std::nullopt);
                 drag_start.reset();
@@ -1136,7 +1220,8 @@ int main(const int argc, char** argv)
             }
             // Orders and spawns target the ground under a client pixel, found on the CPU in this frame
             // (terrain or liquid surface on land, the z = 0 plane in space), so they never wait for a
-            // GPU readback. Clicking an object to attack it will use picks once combat exists.
+            // GPU readback. A right-click also requests a pick: if it lands on a hostile entity, an
+            // attack order follows the move a frame or two later.
             const auto ground_target = [&](const float x, const float y) -> std::optional<eaw::SimVector3>
             {
                 const auto stats = renderer.stats();
@@ -1187,12 +1272,13 @@ int main(const int argc, char** argv)
                     {
                         spot.z = terrain_heights.surface_height(spot.x, spot.y) + (type.follows_ground ? 0.0F : type.hover_offset);
                     }
-                    if (const auto spawned = presentation->spawn(*world, type, spot, 0.0F, 1, type.follows_ground && terrain_heights.valid()); !spawned)
+                    if (const auto spawned = presentation->spawn(*world, type, spot, 0.0F, spawn_owner, type.follows_ground && terrain_heights.valid()); !spawned)
                     {
                         eaw::log_warning("simulation", spawned.error());
                     }
                 }
-                std::cout << "Spawned " << spots.size() << " " << type.type_name << " at " << format_fixed(point.x, 0) << ", " << format_fixed(point.y, 0) << ", " << format_fixed(point.z, 0) << '\n';
+                std::cout << "Spawned " << spots.size() << " " << type.type_name << " for owner " << spawn_owner << " at " << format_fixed(point.x, 0) << ", " << format_fixed(point.y, 0) << ", "
+                          << format_fixed(point.z, 0) << '\n';
             };
             // RTS mode: the right button has no drag action, so an order is issued on the press with no
             // movement threshold (a threshold dropped quick clicks made while the mouse was moving).
@@ -1202,6 +1288,47 @@ int main(const int argc, char** argv)
                 {
                     order_move(*target);
                 }
+                if (input.mouse_x >= 0 && input.mouse_y >= 0)
+                {
+                    const auto request = renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y));
+                    unbound_picks.push_back(request);
+                    attack_picks.insert(request);
+                }
+            }
+            const auto order_attack = [&](const eaw::EntityId victim)
+            {
+                const auto& entities = world->snapshot().entities;
+                const auto found = std::ranges::find(entities, victim, &eaw::EntitySnapshot::id);
+                if (found == entities.end() || found->max_health <= 0.0F)
+                {
+                    return;
+                }
+                // Selected units hostile to the victim, in id order; unarmed ones are ignored by the
+                // simulation and keep their move.
+                std::vector<eaw::EntityId> attackers;
+                for (const auto& entity : entities)
+                {
+                    if (selection.contains(eaw::entity_key(entity.id)) && world->hostility().hostile(entity.owner, found->owner))
+                    {
+                        attackers.push_back(entity.id);
+                    }
+                }
+                if (attackers.empty())
+                {
+                    return;
+                }
+                std::ranges::sort(attackers, {}, eaw::entity_key);
+                world->submit({.kind = eaw::SimCommandKind::attack, .entities = std::move(attackers), .target_entity = victim});
+                ++orders_issued;
+                std::cout << "Attack " << presentation->type_name(victim) << " (owner " << found->owner << ")\n";
+            };
+            if (input.keys[static_cast<std::size_t>(eaw::Key::o)].pressed && !spawnable.empty())
+            {
+                do
+                {
+                    spawn_owner = (spawn_owner + 1U) % 8U;
+                } while (spawn_owner == eaw::neutral_map_owner);
+                std::cout << "Spawn owner: " << spawn_owner << '\n';
             }
             if (input.keys[static_cast<std::size_t>(eaw::Key::tab)].pressed && !spawnable.empty())
             {
@@ -1222,13 +1349,29 @@ int main(const int argc, char** argv)
             }
             while (const auto pick = renderer.take_pick())
             {
-                // Pick ids are positions in the instance list of the frame that took the pick; the
-                // list order only changes when entities are destroyed.
-                selection.clear();
-                if (pick->instance && *pick->instance < frame_entities.size() && frame_entities[*pick->instance].valid())
+                // Pick ids are positions in the instance list of the frame that drew the pick.
+                const auto recorded = pick_entities.find(pick->request);
+                const auto& entities_then = recorded != pick_entities.end() ? recorded->second : frame_entities;
+                const auto entity = pick->instance && *pick->instance < entities_then.size() ? entities_then[*pick->instance] : eaw::EntityId{};
+                const bool attack = attack_picks.erase(pick->request) != 0;
+                std::erase(unbound_picks, pick->request);
+                if (recorded != pick_entities.end())
                 {
-                    selection.insert(eaw::entity_key(frame_entities[*pick->instance]));
-                    std::cout << "Selected " << describe_instance(*pick->instance) << '\n';
+                    pick_entities.erase(recorded);
+                }
+                if (attack)
+                {
+                    if (entity.valid() && world && world->alive(entity))
+                    {
+                        order_attack(entity);
+                    }
+                    continue;
+                }
+                selection.clear();
+                if (entity.valid())
+                {
+                    selection.insert(eaw::entity_key(entity));
+                    std::cout << "Selected " << (presentation ? presentation->type_name(entity) : std::string{}) << '\n';
                 }
                 else
                 {
@@ -1388,6 +1531,11 @@ int main(const int argc, char** argv)
                 }
                 const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
                 presentation->build(entities, selection, frame_instances, frame_entities);
+                for (const auto request : unbound_picks)
+                {
+                    pick_entities[request] = frame_entities;
+                }
+                unbound_picks.clear();
                 renderer.set_instances(frame_instances);
                 update_debug_lines();
             }
@@ -1397,19 +1545,27 @@ int main(const int argc, char** argv)
                 // Each requested count spawns at the surface under the screen center.
                 const auto stats = renderer.stats();
                 const auto center = tactical_camera ? ground_target(static_cast<float>(stats.width) * 0.5F, static_cast<float>(stats.height) * 0.5F) : std::nullopt;
-                for (std::size_t index = 0; center && index < spawnable.size(); ++index)
+                // Requests spawn in command-line order, each group 180 units further along +X so
+                // opposing groups start within typical weapon range of each other.
+                const auto default_owner = spawn_owner;
+                for (std::size_t request = 0; center && request < options.spawns.size(); ++request)
                 {
-                    const auto requested = std::ranges::find(options.spawns, spawnable[index].type_name,
-                                                             [](const auto& entry)
-                                                             {
-                                                                 return entry.first;
-                                                             });
-                    const auto count = requested != options.spawns.end() ? requested->second : 0U;
-                    if (count != 0)
+                    const auto& entry = options.spawns[request];
+                    const auto type = std::ranges::find(spawnable, entry.type, &eaw::SpawnableType::type_name);
+                    if (type == spawnable.end() || entry.count == 0)
                     {
-                        spawn_units(index, *center, count);
+                        continue;
                     }
+                    spawn_owner = entry.owner.value_or(default_owner);
+                    auto point = *center;
+                    point.x += 180.0F * static_cast<float>(request);
+                    if (terrain_heights.valid())
+                    {
+                        point.z = terrain_heights.surface_height(point.x, point.y);
+                    }
+                    spawn_units(static_cast<std::size_t>(type - spawnable.begin()), point, entry.count);
                 }
+                spawn_owner = default_owner;
             }
             // Waits for the initial spawns so they are part of the order.
             if (options.auto_move && content_shown_at && world && !automated_move_sent && (spawnable.empty() || (initial_spawns_sent && world->snapshot().entities.size() == world->stats().entities)))
@@ -1429,7 +1585,7 @@ int main(const int argc, char** argv)
             }
             if (options.pick && content_shown_at && !automated_pick_sent)
             {
-                (void)renderer.request_pick((*options.pick)[0], (*options.pick)[1]);
+                unbound_picks.push_back(renderer.request_pick((*options.pick)[0], (*options.pick)[1]));
                 automated_pick_sent = true;
             }
             if (input.keys[static_cast<std::size_t>(eaw::Key::f1)].pressed)
@@ -1499,17 +1655,31 @@ int main(const int argc, char** argv)
                     lines.push_back("Paths: " + std::to_string(simulation.path_searches) + " planned | " + std::to_string(simulation.partial_paths) + " partial | " +
                                     std::to_string(simulation.path_expansions) + " nodes expanded | tick " + format_fixed(last_tick_ms, 2) + " ms, slowest " + format_fixed(slowest_tick_ms, 2) +
                                     " ms");
+                    lines.push_back("Combat: " + std::to_string(simulation.shots_fired) + " shots | " + std::to_string(simulation.hits) + " hits | " + std::to_string(simulation.kills) + " kills | " +
+                                    std::to_string(simulation.projectiles) + " in flight");
+                    if (selection.size() == 1)
+                    {
+                        for (const auto& entity : world->snapshot().entities)
+                        {
+                            if (selection.contains(eaw::entity_key(entity.id)) && entity.max_health > 0.0F)
+                            {
+                                selected_text += " | owner " + std::to_string(entity.owner) + " | health " + format_fixed(entity.health, 0) + "/" + format_fixed(entity.max_health, 0) +
+                                                 (entity.max_shield > 0.0F ? " | shield " + format_fixed(entity.shield, 0) + "/" + format_fixed(entity.max_shield, 0) : std::string{});
+                            }
+                        }
+                    }
                 }
                 lines.push_back("Selected: " + selected_text + " | orders issued " + std::to_string(orders_issued));
                 if (!spawnable.empty())
                 {
-                    lines.push_back("Spawn: " + spawnable[spawn_choice].type_name + " (N at cursor, Tab next of " + std::to_string(spawnable.size()) + ")");
+                    lines.push_back("Spawn: " + spawnable[spawn_choice].type_name + " for owner " + std::to_string(spawn_owner) + " (N at cursor, Tab next of " + std::to_string(spawnable.size()) +
+                                    ", O owner)");
                 }
                 lines.push_back("Hot reload: " + reload_status);
                 lines.push_back("");
                 lines.push_back(!tactical_camera ? "Click select | B bounds | F1 panel | drag orbit, wheel zoom, P pause, Left/Right animation"
                                 : free_camera    ? "Free camera: click select | drag rotate, right-drag pan | C RTS camera | B bounds | F1 panel"
-                                                 : "RTS: click/drag select, right-click move | WASD pan, wheel zoom | C free camera | B bounds | G passability | F1 panel");
+                                                 : "RTS: click/drag select, right-click move/attack | WASD pan, wheel zoom | C free camera | B bounds | G passability | F1 panel");
                 renderer.set_overlay_text(lines);
                 overlay_frames = 0;
                 overlay_refreshed = now;
@@ -1569,6 +1739,7 @@ int main(const int argc, char** argv)
             const auto simulation = world->stats();
             std::cout << "Simulation: " << simulation.tick << " ticks, slowest " << format_fixed(slowest_tick_ms, 2) << " ms | paths " << simulation.path_searches << " planned, "
                       << simulation.partial_paths << " partial, " << simulation.path_expansions << " nodes expanded | blocked moves " << simulation.blocked_moves << '\n';
+            std::cout << "Combat: " << simulation.shots_fired << " shots, " << simulation.hits << " hits, " << simulation.kills << " kills, " << simulation.projectiles << " in flight\n";
         }
         std::cout << "Resources after idle: " << stats.live_textures << " textures, " << stats.free_texture_slots << " free and " << stats.pending_texture_slots << " pending texture slots, "
                   << stats.pending_retirements << " pending retirements, " << stats.pending_texture_uploads << " textures still streaming\n";

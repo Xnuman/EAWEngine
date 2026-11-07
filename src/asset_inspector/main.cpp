@@ -1301,6 +1301,8 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
     std::size_t unexpanded_containers = 0;
     std::map<std::uint32_t, AuditExample> unknown_crcs;
     std::map<std::string, std::size_t> element_types;
+    // Placements per TED owner slot, by XML element type (untyped objects as "?").
+    std::map<std::uint32_t, std::map<std::string, std::size_t>> owner_types;
     std::map<std::string, std::size_t> model_fields;
     std::map<std::string, AuditExample> types_without_model;
     std::map<std::string, AuditExample> missing_models;
@@ -1338,6 +1340,7 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
                 rotation_nonzero[axis] += rotation[axis] != 0.0F ? 1U : 0U;
             }
             const auto match = catalog.resolve(object.crc, context);
+            ++owner_types[object.player][match.definition != nullptr ? match.definition->type : std::string("?")];
             if (match.definition == nullptr)
             {
                 auto& entry = unknown_crcs[object.crc];
@@ -1393,6 +1396,22 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
     for (std::size_t axis = 0; axis < rotation_minimum.size() && placed > 0; ++axis)
     {
         std::cout << "Rotation component " << axis << ": " << rotation_minimum[axis] << " .. " << rotation_maximum[axis] << ", non-zero " << rotation_nonzero[axis] << '\n';
+    }
+    for (const auto& [owner, types] : owner_types)
+    {
+        std::size_t total = 0;
+        for (const auto& [type, count] : types)
+        {
+            total += count;
+        }
+        std::cout << "Owner slot " << owner << ": " << total << " placements (";
+        bool first = true;
+        for (const auto& [type, count] : types)
+        {
+            std::cout << (first ? "" : ", ") << type << ' ' << count;
+            first = false;
+        }
+        std::cout << ")\n";
     }
     // A single-map audit lists its models and the layer each loads from, which shows which files
     // a mod overrides for that map.

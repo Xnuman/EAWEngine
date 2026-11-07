@@ -179,6 +179,12 @@ it.
   battles (pathfinding audit, clearance, JPS, hierarchy, flow fields for
   group orders, reciprocal avoidance, budgeted jobs) and its sources are in
   [pathfinding-research.md](pathfinding-research.md).
+  The first combat slice is in: health, regenerating shields, armor types with
+  `GameConstants.xml` damage modifiers, and one projectile weapon per unit from
+  XML; a deterministic spatial grid; automatic targeting of the nearest hostile
+  in range; attack orders that chase; homing projectiles; and death. Map owner
+  slot 3 is provisionally neutral. Next for combat: hardpoints for space
+  ships, several weapons, inaccuracy, splash, and death effects.
 
 - ECS/storage, fixed-step scheduler, job system, transforms, spatial index,
   movement, formations, targeting, projectiles, damage, hardpoints, fog of war.

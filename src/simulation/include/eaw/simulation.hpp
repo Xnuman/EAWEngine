@@ -11,8 +11,11 @@
 
 #include "eaw/status.hpp"
 
+#include "eaw/combat.hpp"
 #include "eaw/ground_map.hpp"
 #include "eaw/pathfinding.hpp"
+#include "eaw/simulation_types.hpp"
+#include "eaw/spatial_grid.hpp"
 
 #include <array>
 #include <cstddef>
@@ -23,29 +26,6 @@
 #include <vector>
 
 namespace eaw {
-
-struct SimVector3
-{
-    float x{};
-    float y{};
-    float z{};
-
-    friend bool operator==(const SimVector3&, const SimVector3&) = default;
-};
-
-// Generation-checked entity reference. Generation 0 is never issued, so a default id is invalid and a
-// destroyed entity's id never aliases a later entity in the same slot.
-struct EntityId
-{
-    std::uint32_t index{};
-    std::uint32_t generation{};
-
-    [[nodiscard]] constexpr bool valid() const noexcept
-    {
-        return generation != 0;
-    }
-    friend constexpr bool operator==(const EntityId&, const EntityId&) = default;
-};
 
 // Everything needed to create an entity. `type_name` is the XML object type (informational for
 // now); `visual` is an opaque presentation key chosen by the caller (for example a mesh index).
@@ -65,13 +45,19 @@ struct EntitySpawn
     // Passability types a ground entity may enter (its movement class; see ground_map.hpp). Zero
     // means unconstrained.
     std::uint32_t passable_types{};
+    // Health, shields, armor, and weapon; a default profile cannot be damaged and does not fight.
+    CombatProfile combat;
 };
 
 enum class SimCommandKind : std::uint8_t
 {
+    // Move to `target`; clears an attack order.
     move,
+    // Stop moving and attacking.
     stop,
     destroy,
+    // Attack `target_entity`: armed entities chase it until it is in range and fire until it dies.
+    attack,
 };
 
 struct SimCommand
@@ -80,6 +66,8 @@ struct SimCommand
     std::vector<EntityId> entities;
     // Destination for move commands.
     SimVector3 target;
+    // Victim of attack commands.
+    EntityId target_entity;
 };
 
 // Snapshot of one entity after a tick.
@@ -94,12 +82,27 @@ struct EntitySnapshot
     bool selectable{};
     float max_speed{};
     bool follows_ground{};
+    float health{};
+    float max_health{};
+    float shield{};
+    float max_shield{};
+    // The entity its weapon is aimed at (invalid when none).
+    EntityId target;
+};
+
+struct ProjectileSnapshot
+{
+    SimVector3 position;
+    // Unit direction of flight.
+    SimVector3 direction;
+    std::uint32_t owner{};
 };
 
 struct SimSnapshot
 {
     std::uint64_t tick{};
     std::vector<EntitySnapshot> entities;
+    std::vector<ProjectileSnapshot> projectiles;
 };
 
 // Converts real elapsed time into whole simulation ticks. At most `max_ticks_per_advance` ticks are
@@ -141,6 +144,10 @@ public:
         std::uint64_t path_searches{};
         std::uint64_t partial_paths{};
         std::uint64_t path_expansions{};
+        std::uint64_t shots_fired{};
+        std::uint64_t hits{};
+        std::uint64_t kills{};
+        std::size_t projectiles{};
     };
 
     explicit SimulationWorld(double tick_seconds = 1.0 / 30.0);
@@ -155,6 +162,12 @@ public:
     // also stops before a cell its class may not enter; one standing on such a cell may leave it.
     void set_ground(GroundMap ground);
     [[nodiscard]] const GroundMap& ground() const noexcept;
+    // Damage multipliers by damage and armor type, and which owners fight each other. Armed
+    // entities target the nearest damageable hostile within range on their own; an attack command
+    // names the target instead.
+    void set_damage_table(DamageTable table);
+    void set_hostility(const Hostility& hostility) noexcept;
+    [[nodiscard]] const Hostility& hostility() const noexcept;
 
     // Queues a command for the next step(); commands apply in submission order.
     void submit(SimCommand command);
@@ -171,12 +184,53 @@ public:
     [[nodiscard]] std::uint64_t state_hash() const noexcept;
 
 private:
+    struct CombatState
+    {
+        CombatProfile profile;
+        float health{};
+        float shield{};
+        EntityId target;
+        // The target came from an attack command: chase it out of range instead of dropping it.
+        bool ordered{};
+        // Ticks until the next burst may start, until the next shot of a burst, until the next
+        // automatic target search, and until an ordered chase replans.
+        std::uint32_t cooldown{};
+        std::uint32_t pulses_left{};
+        std::uint32_t pulse_timer{};
+        std::uint32_t retarget_timer{};
+        std::uint32_t chase_timer{};
+    };
+    struct Projectile
+    {
+        SimVector3 position;
+        SimVector3 aim;
+        SimVector3 direction;
+        EntityId target;
+        std::uint32_t owner{};
+        float damage{};
+        std::uint16_t damage_type{};
+        bool damages_shield{};
+        bool damages_health{};
+        float speed{};
+        float flown{};
+        float max_flight{};
+    };
+
     [[nodiscard]] std::optional<std::size_t> dense_index(EntityId id) const noexcept;
     void apply(const SimCommand& command);
     void destroy(std::size_t dense);
     void run_movement();
     void plan_move(std::size_t index, const SimVector3& target);
     void move_over_ground(std::size_t index, float dt);
+    void run_combat();
+    void update_target(std::size_t index);
+    void run_weapon(std::size_t index);
+    void launch(std::size_t shooter, std::size_t victim);
+    void apply_damage(std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health);
+    void run_projectiles();
+    void remove_dead();
+    [[nodiscard]] bool damageable(std::size_t index) const noexcept;
+    [[nodiscard]] std::uint32_t ticks_for(float seconds) const noexcept;
     void publish();
 
     double tick_seconds_;
@@ -205,6 +259,15 @@ private:
     std::uint64_t path_searches_{};
     std::uint64_t partial_paths_{};
     std::uint64_t path_expansions_{};
+    std::vector<CombatState> combat_;
+    std::vector<Projectile> projectiles_;
+    SpatialGrid grid_;
+    std::vector<std::uint32_t> query_;
+    DamageTable damage_table_;
+    Hostility hostility_;
+    std::uint64_t shots_fired_{};
+    std::uint64_t hits_{};
+    std::uint64_t kills_{};
     std::vector<SimCommand> pending_;
     SimSnapshot snapshot_;
     std::uint64_t commands_applied_{};

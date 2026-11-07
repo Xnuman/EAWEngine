@@ -58,6 +58,8 @@ struct SpawnableType
     float hover_offset{};
     // Passability types its MovementClass may enter (MovementClassTypeDefs.xml).
     std::uint32_t passable_types{};
+    // Health, shields, armor, and weapon from XML (combat_content.hpp).
+    CombatProfile combat;
 };
 
 struct VisualMapAsset
@@ -88,6 +90,8 @@ struct VisualMapAsset
     std::vector<SpawnableType> spawnable;
     // Ground for the simulation and CPU queries (land maps; invalid for space).
     GroundMap ground;
+    // Damage multipliers from GameConstants.xml, with ids matching the entities' combat profiles.
+    DamageTable damage_table;
 };
 
 // Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file

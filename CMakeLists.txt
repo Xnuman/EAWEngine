@@ -198,9 +198,11 @@ endif()
 
 # Deterministic tactical simulation core: no graphics, platform, or file access.
 add_library(eaw_simulation STATIC
+    src/simulation/combat.cpp
     src/simulation/ground_map.cpp
     src/simulation/pathfinding.cpp
     src/simulation/simulation.cpp
+    src/simulation/spatial_grid.cpp
 )
 target_include_directories(eaw_simulation PUBLIC src/simulation/include)
 target_compile_features(eaw_simulation PUBLIC cxx_std_20)
@@ -218,6 +220,7 @@ add_library(eaw_engine STATIC
     src/engine/camera_math.cpp
     src/engine/debug_draw.cpp
     src/engine/rts_control.cpp
+    src/engine/combat_content.cpp
     src/engine/scene_presentation.cpp
     src/engine/terrain_height.cpp
     src/engine/visual_scene_builder.cpp

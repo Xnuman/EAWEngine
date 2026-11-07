@@ -180,8 +180,9 @@ XML definition, follows `Variant_Of_Existing_Type` inheritance to the
 model exists in the layered VFS. It reports coverage, resolved element types,
 unknown CRCs, typed objects without a model (such as squadrons and companies,
 which spawn member units), missing model files, and variant-chain diagnostics.
-It also reports how many space-squadron members were expanded and how many land
-teams/companies were left unexpanded:
+It also reports how many space-squadron members were expanded, how many land
+teams/companies were left unexpanded, and the placements per TED owner slot by
+element type:
 
 ```powershell
 EAWAssetInspector.exe map-objects Data/Art/Maps --game foc
