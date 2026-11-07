@@ -33,6 +33,7 @@ static const uint LIGHTING_UNLIT = 0u;
 static const uint LIGHTING_LIT = 1u;
 static const uint LIGHTING_NORMAL_MAPPED = 2u;
 static const uint INSTANCE_BACKGROUND = 1u;
+static const uint INSTANCE_HIGHLIGHTED = 2u;
 
 cbuffer FrameConstants : register(b0)
 {
@@ -51,9 +52,11 @@ cbuffer FrameConstants : register(b0)
 // PICK_TERRAIN the terrain. Keep in sync with d3d12_renderer.cpp.
 static const uint PICK_TERRAIN = 0xFFFFFFFFu;
 
-float3 apply_selection_highlight(const float3 color, const uint pick_id)
+// Highlighted when the instance is flagged (selection groups) or is the single highlighted pick id.
+float3 apply_selection_highlight(const float3 color, const uint pick_id, const uint instance_flags)
 {
-    return (pick_id != 0u && pick_id == selection.x) ? lerp(color, float3(1.0f, 0.82f, 0.25f), 0.35f) : color;
+    const bool highlighted = (instance_flags & INSTANCE_HIGHLIGHTED) != 0u || (pick_id != 0u && pick_id == selection.x);
+    return highlighted ? lerp(color, float3(1.0f, 0.82f, 0.25f), 0.35f) : color;
 }
 
 cbuffer DrawConstants : register(b1)

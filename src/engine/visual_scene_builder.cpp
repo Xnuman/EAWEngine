@@ -1157,6 +1157,35 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
         // Every instance shares the identity (bind-pose) palette; per-instance animation is a
         // simulation-driven feature for later milestones.
         VisualInstance instance{*entry->second, placement.transform.values};
+        {
+            const auto& matrix = placement.transform.values;
+            EntitySpawn spawn;
+            spawn.type_name = placement.type != nullptr ? placement.type->name : std::string{};
+            spawn.owner = map.placed_objects[placement.object_index].player;
+            spawn.position = {matrix[12], matrix[13], matrix[14]};
+            // Heading is the rotation of the model's X axis about +Z (row-vector transforms).
+            spawn.heading = std::atan2(matrix[1], matrix[0]);
+            spawn.visual = *entry->second;
+            if (placement.type != nullptr)
+            {
+                if (const auto speed = catalog.field(*placement.type, "Max_Speed").field)
+                {
+                    try
+                    {
+                        const auto value = std::stof(speed->text);
+                        if (std::isfinite(value) && value > 0.0F)
+                        {
+                            spawn.max_speed = value * provisional_max_speed_scale;
+                        }
+                    }
+                    catch (const std::exception&)
+                    {
+                        scene.warnings.push_back(spawn.type_name + ": Max_Speed '" + speed->text + "' is not a number");
+                    }
+                }
+            }
+            asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size())});
+        }
         if (const auto faction = placement.type != nullptr ? catalog.affiliation_color(*placement.type) : std::nullopt)
         {
             instance.team_color = *faction;

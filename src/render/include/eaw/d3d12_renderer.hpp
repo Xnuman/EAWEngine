@@ -103,6 +103,11 @@ public:
     // every frame that used them; the CPU does not wait. Pass an rvalue to avoid copying textures.
     void load_scene(VisualScene scene);
     void set_bone_transforms(std::span<const std::array<float, 16>> transforms);
+    // Replaces the instances drawn each frame with this list, until the next call or load_scene
+    // (which returns to the scene's own instances). The loaded scene's meshes form the mesh library:
+    // instances may reference any of them, appear, move, or disappear from frame to frame. Pick ids
+    // and set_highlight then refer to positions in this list.
+    void set_instances(std::span<const VisualInstance> instances);
     // Throws std::invalid_argument for non-finite or degenerate cameras.
     void set_camera(const VisualCamera& camera);
     // Throws std::invalid_argument for non-finite values or a zero light direction.

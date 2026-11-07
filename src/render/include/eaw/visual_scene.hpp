@@ -187,6 +187,8 @@ struct VisualInstance
     // Background instances (sky domes and star backdrops) are drawn before the world, centered on
     // the camera (translation ignored), at the far plane, without depth testing, in scene order.
     bool background{};
+    // Drawn with the selection tint (any number of instances, e.g. a box-selected group).
+    bool highlighted{};
 };
 
 // A directional light; `direction` points from the surface toward the light (any length).

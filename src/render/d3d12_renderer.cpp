@@ -418,6 +418,10 @@ struct D3d12Renderer::Impl
         // Begin/end GPU timestamps of this context's last frame, resolved for readback.
         ComPtr<ID3D12Resource> timestamp_readback;
         bool timestamps_pending{};
+        // Instances submitted through set_instances, written once this context is reusable.
+        ComPtr<ID3D12Resource> instance_buffer;
+        std::byte* instance_buffer_mapped{};
+        std::size_t instance_capacity{};
         std::uint64_t fence_value{};
     };
 
@@ -501,6 +505,7 @@ struct D3d12Renderer::Impl
     };
 
     static constexpr std::uint32_t background_instance_flag = 1U;
+    static constexpr std::uint32_t highlighted_instance_flag = 2U;
 
     HWND window{};
     D3d12RendererOptions options;
@@ -632,6 +637,14 @@ struct D3d12Renderer::Impl
     std::size_t pending_texture_count{};
     std::size_t last_reused_textures{};
     std::vector<GpuDraw> scene_draws;
+    // Mesh library of the loaded scene: each mesh's draws (instance range unset) and bone count.
+    std::vector<std::vector<GpuDraw>> scene_mesh_draws;
+    std::vector<std::uint32_t> scene_mesh_bone_counts;
+    std::uint32_t scene_bone_capacity{1};
+    // Runtime instance list (set_instances); when present it replaces the scene's instances.
+    std::optional<std::vector<VisualInstance>> dynamic_instances;
+    std::vector<GpuInstance> dynamic_gpu_instances;
+    std::vector<GpuDraw> dynamic_draws;
     std::vector<std::array<float, 16>> bone_transforms;
     ComPtr<ID3D12Resource> fallback_white_texture;
     ComPtr<ID3D12Resource> fallback_normal_texture;
@@ -708,6 +721,11 @@ struct D3d12Renderer::Impl
             {
                 frame.debug_vertex_buffer->Unmap(0, nullptr);
                 frame.debug_vertices_mapped = nullptr;
+            }
+            if (frame.instance_buffer && frame.instance_buffer_mapped != nullptr)
+            {
+                frame.instance_buffer->Unmap(0, nullptr);
+                frame.instance_buffer_mapped = nullptr;
             }
         }
 #if defined(_DEBUG)
@@ -1769,7 +1787,8 @@ struct D3d12Renderer::Impl
                 range.first = static_cast<std::uint32_t>(gpu_instances.size());
             }
             ++range.second;
-            gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset, instance.background ? background_instance_flag : 0U, index + 1U, 0U});
+            gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset,
+                                     (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U), index + 1U, 0U});
         }
 
         auto upload = begin_upload(L"EAWEngine scene upload");
@@ -1860,6 +1879,22 @@ struct D3d12Renderer::Impl
             new_terrain_buffer = upload_buffer(upload, std::as_bytes(std::span(terrain.vertices)), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, L"EAWEngine terrain vertex buffer");
         }
 
+        std::vector<std::vector<GpuDraw>> new_mesh_draws(scene.meshes.size());
+        std::vector<std::uint32_t> new_mesh_bone_counts(scene.meshes.size());
+        for (std::size_t mesh_index = 0; mesh_index < scene.meshes.size(); ++mesh_index)
+        {
+            const auto& mesh = scene.meshes[mesh_index];
+            new_mesh_bone_counts[mesh_index] = mesh.bone_count;
+            for (auto draw_index = mesh.first_draw; draw_index < mesh.first_draw + mesh.draw_count; ++draw_index)
+            {
+                const auto& draw = scene.draws[draw_index];
+                if (draw.material >= scene.materials.size() || static_cast<std::uint64_t>(draw.first_index) + draw.index_count > scene.indices.size())
+                {
+                    throw std::invalid_argument("visual scene draw references data outside its buffers");
+                }
+                new_mesh_draws[mesh_index].push_back({draw, draw.material, scene.materials[draw.material].blend, 0, 0, false});
+            }
+        }
         std::vector<GpuDraw> new_draws;
         new_draws.reserve(scene.draws.size());
         for (std::size_t range_index = 0; range_index < mesh_ranges.size(); ++range_index)
@@ -1952,6 +1987,10 @@ struct D3d12Renderer::Impl
             terrain_vertex_view.StrideInBytes = sizeof(VisualTerrainVertex);
         }
         scene_draws = std::move(new_draws);
+        scene_mesh_draws = std::move(new_mesh_draws);
+        scene_mesh_bone_counts = std::move(new_mesh_bone_counts);
+        scene_bone_capacity = std::max(scene.bone_count, 1U);
+        dynamic_instances.reset();
         highlighted_pick_id = 0;
         scene_vertex_view.BufferLocation = scene_vertex_buffer->GetGPUVirtualAddress();
         scene_vertex_view.SizeInBytes = static_cast<UINT>(vertex_byte_count);
@@ -2117,6 +2156,122 @@ struct D3d12Renderer::Impl
             throw std::invalid_argument("debug lines contain non-finite values");
         }
         debug_lines.assign(lines.begin(), lines.end());
+    }
+
+    void set_instances(const std::span<const VisualInstance> instances)
+    {
+        if (!scene_loaded)
+        {
+            throw std::logic_error("set_instances needs a loaded scene (its meshes are the mesh library)");
+        }
+        if (instances.size() >= std::numeric_limits<std::uint32_t>::max())
+        {
+            throw std::invalid_argument("too many visual instances for one frame");
+        }
+        for (std::size_t index = 0; index < instances.size(); ++index)
+        {
+            const auto& instance = instances[index];
+            if (instance.mesh >= scene_mesh_draws.size())
+            {
+                throw std::invalid_argument("visual instance " + std::to_string(index) + " references mesh " + std::to_string(instance.mesh) + ", but the scene has " +
+                                            std::to_string(scene_mesh_draws.size()));
+            }
+            if (static_cast<std::uint64_t>(instance.bone_offset) + scene_mesh_bone_counts[instance.mesh] > scene_bone_capacity)
+            {
+                throw std::invalid_argument("visual instance " + std::to_string(index) + " bone range exceeds the scene bone palette");
+            }
+            const auto finite = [](const auto& values)
+            {
+                return std::ranges::all_of(values,
+                                           [](const float value)
+                                           {
+                                               return std::isfinite(value);
+                                           });
+            };
+            if (!finite(instance.transform) || !finite(instance.tint) || !finite(instance.team_color))
+            {
+                throw std::invalid_argument("visual instance " + std::to_string(index) + " has non-finite values");
+            }
+        }
+        dynamic_instances.emplace(instances.begin(), instances.end());
+    }
+
+    // Groups instances by mesh and layer into contiguous ranges and builds the draws, ordered like a
+    // loaded scene: backgrounds first, then the world by blend mode. Pick ids are list index + 1.
+    void batch_instances(const std::vector<VisualInstance>& instances, std::vector<GpuInstance>& gpu_instances, std::vector<GpuDraw>& draws) const
+    {
+        std::vector<std::uint32_t> order(instances.size());
+        for (std::uint32_t index = 0; index < order.size(); ++index)
+        {
+            order[index] = index;
+        }
+        const auto range_key = [&](const std::uint32_t index)
+        {
+            return static_cast<std::size_t>(instances[index].mesh) * 2U + (instances[index].background ? 1U : 0U);
+        };
+        std::ranges::stable_sort(order, {}, range_key);
+        gpu_instances.clear();
+        draws.clear();
+        std::size_t range_start = 0;
+        for (std::size_t position = 0; position <= order.size(); ++position)
+        {
+            if (position < order.size())
+            {
+                const auto& instance = instances[order[position]];
+                gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset,
+                                         (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U), order[position] + 1U, 0U});
+            }
+            if (position == order.size() || (position > range_start && range_key(order[position]) != range_key(order[range_start])))
+            {
+                if (position > range_start)
+                {
+                    const auto& first = instances[order[range_start]];
+                    for (auto draw : scene_mesh_draws[first.mesh])
+                    {
+                        draw.first_instance = static_cast<std::uint32_t>(range_start);
+                        draw.instance_count = static_cast<std::uint32_t>(position - range_start);
+                        draw.background = first.background;
+                        draws.push_back(draw);
+                    }
+                }
+                range_start = position;
+            }
+        }
+        std::ranges::stable_sort(draws, {},
+                                 [](const GpuDraw& draw)
+                                 {
+                                     return draw.background ? 0U : 1U + static_cast<unsigned>(draw.blend);
+                                 });
+        if (gpu_instances.empty())
+        {
+            gpu_instances.push_back({visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0});
+        }
+    }
+
+    // Writes the dynamic instances into this frame context's buffer, growing it when needed (the
+    // outgrown buffer retires on the direct timeline).
+    void write_dynamic_instances(FrameContext& frame)
+    {
+        batch_instances(*dynamic_instances, dynamic_gpu_instances, dynamic_draws);
+        if (dynamic_gpu_instances.size() > frame.instance_capacity)
+        {
+            if (frame.instance_buffer)
+            {
+                frame.instance_buffer->Unmap(0, nullptr);
+                frame.instance_buffer_mapped = nullptr;
+                retired_resources.push({std::move(frame.instance_buffer)}, direct_queue.next_value());
+            }
+            const auto capacity = std::max<std::size_t>({dynamic_gpu_instances.size(), frame.instance_capacity * 2U, 256U});
+            const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
+            const auto description = buffer_description(static_cast<std::uint64_t>(capacity) * sizeof(GpuInstance));
+            check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.instance_buffer)),
+                          "CreateCommittedResource(frame instances)");
+            set_name(frame.instance_buffer.Get(), L"EAWEngine frame instances");
+            const D3D12_RANGE no_read{0, 0};
+            check_hresult(frame.instance_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.instance_buffer_mapped)), "Map(frame instances)");
+            frame.instance_capacity = capacity;
+        }
+        std::memcpy(frame.instance_buffer_mapped, dynamic_gpu_instances.data(), dynamic_gpu_instances.size() * sizeof(GpuInstance));
     }
 
     void set_overlay_text(const std::span<const std::string> lines)
@@ -2340,6 +2495,11 @@ struct D3d12Renderer::Impl
         std::memcpy(frame.bone_buffer_mapped, bone_transforms.data(), bone_transforms.size() * sizeof(bone_transforms.front()));
         stream_scene_textures();
         write_texture_residency(frame);
+        const bool dynamic = scene_loaded && dynamic_instances.has_value();
+        if (dynamic)
+        {
+            write_dynamic_instances(frame);
+        }
         collect_pick(frame);
         collect_timestamps(frame);
         if (frame_number % 30U == 0)
@@ -2427,7 +2587,7 @@ struct D3d12Renderer::Impl
         command_list->SetGraphicsRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
         command_list->SetGraphicsRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
         command_list->SetGraphicsRootShaderResourceView(2, frame.bone_buffer->GetGPUVirtualAddress());
-        command_list->SetGraphicsRootShaderResourceView(3, (scene_loaded ? scene_instance_buffer : identity_instance_buffer)->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(3, (dynamic ? frame.instance_buffer : scene_loaded ? scene_instance_buffer : identity_instance_buffer)->GetGPUVirtualAddress());
         command_list->SetGraphicsRootShaderResourceView(4, (scene_loaded ? scene_material_buffer : identity_material_buffer)->GetGPUVirtualAddress());
         command_list->SetGraphicsRootShaderResourceView(6, frame.residency_buffer->GetGPUVirtualAddress());
         command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -2460,7 +2620,7 @@ struct D3d12Renderer::Impl
             };
             command_list->IASetVertexBuffers(0, 1, &scene_vertex_view);
             command_list->IASetIndexBuffer(&scene_index_view);
-            for (const auto& draw : scene_draws)
+            for (const auto& draw : dynamic ? dynamic_draws : scene_draws)
             {
                 if (!terrain_drawn && !draw.background)
                 {
@@ -2756,6 +2916,11 @@ void D3d12Renderer::set_highlight(const std::optional<std::uint32_t> instance)
 void D3d12Renderer::set_debug_lines(const std::span<const VisualDebugLine> lines)
 {
     impl_->set_debug_lines(lines);
+}
+
+void D3d12Renderer::set_instances(const std::span<const VisualInstance> instances)
+{
+    impl_->set_instances(instances);
 }
 
 void D3d12Renderer::set_overlay_text(const std::span<const std::string> lines)

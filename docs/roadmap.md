@@ -157,7 +157,9 @@ it.
   deterministic commands applied at tick boundaries, immutable snapshots),
   map objects spawned as entities from their XML types, a renderer object API
   fed from interpolated snapshots, and the legacy RTS camera with click/box
-  selection and right-click straight-line movement.
+  selection and right-click straight-line movement. Done so far: the
+  simulation core, entity spawning from map placements and XML types, and the
+  renderer instance API with snapshot interpolation; interaction is next.
 
 - ECS/storage, fixed-step scheduler, job system, transforms, spatial index,
   movement, formations, targeting, projectiles, damage, hardpoints, fog of war.

@@ -9,6 +9,7 @@
 #include "eaw/game_installation.hpp"
 #include "asset_cache.hpp"
 #include "debug_draw.hpp"
+#include "scene_presentation.hpp"
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/simulation.hpp"
 #include "eaw/gpu_resource_lifetime.hpp"
@@ -35,6 +36,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -682,6 +684,47 @@ void test_simulation_core()
         rejected = true;
     }
     require(rejected, "a non-finite spawn must be rejected");
+}
+
+void test_scene_presentation()
+{
+    // pose_transform keeps scale and tilt, turns about +Z by the heading change, and moves.
+    const std::array<float, 16> base{2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 5, 6, 7, 1};
+    const auto same = eaw::pose_transform(base, 0.0F, {1.0F, 2.0F, 3.0F}, 0.0F);
+    require(same[0] == 2.0F && same[5] == 2.0F && same[12] == 1.0F && same[13] == 2.0F && same[14] == 3.0F, "an unchanged heading must only move the transform");
+    const auto turned = eaw::pose_transform(base, 0.0F, {0.0F, 0.0F, 0.0F}, std::numbers::pi_v<float> / 2.0F);
+    require(std::fabs(turned[0]) < 1.0e-5F && std::fabs(turned[1] - 2.0F) < 1.0e-5F && std::fabs(turned[4] + 2.0F) < 1.0e-5F && turned[10] == 2.0F,
+            "a quarter turn must rotate the model X axis onto +Y and keep its scale");
+
+    // The presentation spawns entities from scene instances, keeps backgrounds static, and maps
+    // instances back to entities.
+    eaw::VisualScene scene;
+    scene.meshes.resize(2);
+    scene.meshes[0].name = "UNIT.ALO";
+    scene.meshes[1].name = "SKY.ALO";
+    eaw::VisualInstance sky{1};
+    sky.background = true;
+    eaw::VisualInstance unit{0};
+    unit.transform[12] = 10.0F;
+    scene.instances = {sky, unit};
+    eaw::SimulationWorld world(0.1);
+    eaw::EntitySpawn spawn;
+    spawn.type_name = "Test_Unit";
+    spawn.position = {10.0F, 0.0F, 0.0F};
+    spawn.max_speed = 10.0F;
+    const std::array<eaw::MapEntitySpawn, 1> entities{{{spawn, 1}}};
+    const eaw::ScenePresentation presentation(scene, entities, world);
+    world.step();
+    const auto id = world.snapshot().entities.at(0).id;
+    world.submit({eaw::SimCommandKind::move, {id}, {10.0F, 5.0F, 0.0F}});
+    world.step();
+    std::vector<eaw::VisualInstance> instances;
+    std::vector<eaw::EntityId> ids;
+    presentation.build(world.snapshot().entities, {eaw::entity_key(id)}, instances, ids);
+    require(instances.size() == 2 && instances[0].background && !ids[0].valid() && ids[1] == id && instances[1].highlighted && instances[1].mesh == 0,
+            "presentation must list backgrounds first, then entities with their selection state");
+    require(std::fabs(instances[1].transform[13] - 1.0F) < 1.0e-5F && std::fabs(instances[1].transform[1] - 1.0F) < 1.0e-5F, "an entity's instance must follow its simulated position and heading");
+    require(presentation.type_name(id) == "Test_Unit" && presentation.mesh_name(0) == "UNIT.ALO", "presentation must name entities by type and mesh");
 }
 
 // A minimal 4x4 BC1 DDS with one mip level.
@@ -1869,6 +1912,7 @@ int main()
         test_asset_cache_dependencies();
         test_debug_draw();
         test_simulation_core();
+        test_scene_presentation();
         test_texture_formats_and_materials();
         test_lua_inspection();
         test_ala_animation();

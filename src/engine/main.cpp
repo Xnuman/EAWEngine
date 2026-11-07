@@ -8,6 +8,7 @@
 #include "asset_cache.hpp"
 #include "camera_controller.hpp"
 #include "debug_draw.hpp"
+#include "scene_presentation.hpp"
 #include "visual_scene_builder.hpp"
 #endif
 
@@ -28,6 +29,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -484,69 +486,65 @@ int main(const int argc, char** argv)
         // Kept only for --reload-every; otherwise the CPU copy moves into the renderer.
         std::optional<eaw::VisualScene> reload_scene;
         std::vector<std::array<float, 16>> bind_palette;
-        // What each scene instance shows (model path), for reporting selections.
-        std::vector<std::string> instance_labels;
-        std::optional<std::uint32_t> selected_instance;
-        // Per-instance bounds for debug drawing (model-space box and world transform).
-        struct InstanceBounds
-        {
-            std::array<float, 3> minimum{};
-            std::array<float, 3> maximum{};
-            std::array<float, 16> transform{};
-            bool background{};
-        };
-        std::vector<InstanceBounds> instance_bounds;
+        // Every shown object is a simulation entity; backdrops stay static. Presentation re-poses the
+        // scene's instances from interpolated snapshots each frame.
+        std::optional<eaw::SimulationWorld> world;
+        std::optional<eaw::ScenePresentation> presentation;
+        eaw::FixedStepClock simulation_clock(30.0);
+        eaw::SimSnapshot previous_snapshot;
+        std::vector<eaw::VisualInstance> frame_instances;
+        std::vector<eaw::EntityId> frame_entities;
+        std::unordered_set<std::uint64_t> selection;
+        auto simulation_tick = std::chrono::steady_clock::now();
         float axis_length = 1.0F;
         bool show_all_bounds = options.show_bounds;
         // Text shown on the statistics overlay; updated where the console reports the same events.
         std::string scene_status = options.validation_triangle ? "validation triangle" : "building in the background...";
         std::string animation_status;
         std::string reload_status = options.hot_reload ? "waiting for the scene" : "off (--hot-reload)";
-        const auto update_debug_lines = [&]
+        const auto describe_instance = [&](const std::size_t index)
         {
-            std::vector<eaw::VisualDebugLine> lines;
-            if (show_all_bounds)
-            {
-                eaw::append_debug_axes(lines, {0.0F, 0.0F, 0.0F}, axis_length);
-                for (const auto& bounds : instance_bounds)
-                {
-                    if (!bounds.background)
-                    {
-                        eaw::append_debug_box(lines, bounds.minimum, bounds.maximum, bounds.transform, {0.3F, 0.85F, 0.95F, 0.45F});
-                    }
-                }
-            }
-            if (selected_instance && *selected_instance < instance_bounds.size())
-            {
-                const auto& bounds = instance_bounds[*selected_instance];
-                eaw::append_debug_box(lines, bounds.minimum, bounds.maximum, bounds.transform, {1.0F, 0.85F, 0.25F, 1.0F});
-            }
-            renderer.set_debug_lines(lines);
-            if (renderer.stats().dropped_debug_lines != 0)
-            {
-                std::cerr << "debug warning: " << renderer.stats().dropped_debug_lines << " debug lines exceed the per-frame capacity of " << eaw::D3d12Renderer::max_debug_lines() << '\n';
-            }
+            const auto& instance = frame_instances[index];
+            const auto type = frame_entities[index].valid() ? presentation->type_name(frame_entities[index]) : std::string{};
+            const auto& mesh = presentation->mesh_name(instance.mesh);
+            return type.empty() || type == mesh ? mesh : type + " (" + mesh + ")";
         };
-        const auto label_instances = [&](const eaw::VisualScene& scene)
+        const auto start_simulation = [&](const eaw::VisualScene& scene, const std::span<const eaw::MapEntitySpawn> entities)
         {
-            instance_labels.clear();
-            instance_labels.reserve(scene.instances.size());
-            instance_bounds.clear();
-            instance_bounds.reserve(scene.instances.size());
-            for (const auto& instance : scene.instances)
-            {
-                const auto& mesh = scene.meshes[instance.mesh];
-                instance_labels.push_back(mesh.name + (instance.background ? " (backdrop)" : ""));
-                instance_bounds.push_back({mesh.bounds_minimum, mesh.bounds_maximum, instance.transform, instance.background});
-            }
+            world.emplace(simulation_clock.tick_seconds());
+            presentation.emplace(scene, entities, *world);
+            world->step();
+            previous_snapshot = world->snapshot();
+            selection.clear();
             float extent = 0.0F;
             for (std::size_t axis = 0; axis < 3; ++axis)
             {
                 extent = std::max(extent, scene.bounds_maximum[axis] - scene.bounds_minimum[axis]);
             }
             axis_length = std::max(extent * 0.1F, 1.0F);
-            selected_instance.reset();
-            update_debug_lines();
+            simulation_tick = std::chrono::steady_clock::now();
+        };
+        const auto update_debug_lines = [&]
+        {
+            std::vector<eaw::VisualDebugLine> lines;
+            if (presentation)
+            {
+                if (show_all_bounds)
+                {
+                    eaw::append_debug_axes(lines, {0.0F, 0.0F, 0.0F}, axis_length);
+                }
+                for (std::size_t index = 0; index < frame_instances.size(); ++index)
+                {
+                    const auto& instance = frame_instances[index];
+                    if (instance.background || (!show_all_bounds && !instance.highlighted))
+                    {
+                        continue;
+                    }
+                    eaw::append_debug_box(lines, presentation->mesh_minimum(instance.mesh), presentation->mesh_maximum(instance.mesh), instance.transform,
+                                          instance.highlighted ? std::array<float, 4>{1.0F, 0.85F, 0.25F, 1.0F} : std::array<float, 4>{0.3F, 0.85F, 0.95F, 0.45F});
+                }
+            }
+            renderer.set_debug_lines(lines);
         };
         // Model mode: Left/Right step through [bind pose, animations...].
         std::vector<std::string> animation_paths;
@@ -630,7 +628,7 @@ int main(const int argc, char** argv)
                 {
                     reload_scene = scene;
                 }
-                label_instances(visual_map.scene);
+                start_simulation(visual_map.scene, visual_map.entities);
                 renderer.load_scene(std::move(visual_map.scene));
                 if (visual_map.lighting)
                 {
@@ -664,7 +662,19 @@ int main(const int argc, char** argv)
                     reload_scene = scene;
                 }
                 // The renderer takes the scene; keep only the skeleton data needed for animation.
-                label_instances(scene);
+                // The model is one immobile entity.
+                std::vector<eaw::MapEntitySpawn> model_entity;
+                if (!scene.instances.empty())
+                {
+                    const auto& matrix = scene.instances.front().transform;
+                    eaw::EntitySpawn spawn;
+                    spawn.type_name = scene.name;
+                    spawn.position = {matrix[12], matrix[13], matrix[14]};
+                    spawn.heading = std::atan2(matrix[1], matrix[0]);
+                    spawn.visual = scene.instances.front().mesh;
+                    model_entity.push_back({std::move(spawn), 0});
+                }
+                start_simulation(scene, model_entity);
                 renderer.load_scene(std::exchange(scene, {}));
                 bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
                 renderer.set_bone_transforms(bind_palette);
@@ -796,23 +806,22 @@ int main(const int argc, char** argv)
             }
             if (const auto pick = renderer.take_pick())
             {
-                if (pick->instance && *pick->instance < instance_labels.size())
+                // Pick ids are positions in the instance list of the frame that took the pick; the
+                // list order only changes when entities are destroyed.
+                selection.clear();
+                if (pick->instance && *pick->instance < frame_entities.size() && frame_entities[*pick->instance].valid())
                 {
-                    selected_instance = pick->instance;
-                    std::cout << "Selected instance " << *pick->instance << ": " << instance_labels[*pick->instance] << '\n';
+                    selection.insert(eaw::entity_key(frame_entities[*pick->instance]));
+                    std::cout << "Selected " << describe_instance(*pick->instance) << '\n';
                 }
                 else
                 {
-                    selected_instance.reset();
                     std::cout << "Selected: " << (pick->terrain ? "terrain" : "nothing") << '\n';
                 }
-                renderer.set_highlight(selected_instance);
-                update_debug_lines();
             }
             if (input.keys[static_cast<std::size_t>(eaw::Key::b)].pressed)
             {
                 show_all_bounds = !show_all_bounds;
-                update_debug_lines();
                 std::cout << "Bounds overlay " << (show_all_bounds ? "on" : "off") << '\n';
             }
             const int animation_step = (input.keys[static_cast<std::size_t>(eaw::Key::right)].pressed ? 1 : 0) - (input.keys[static_cast<std::size_t>(eaw::Key::left)].pressed ? 1 : 0);
@@ -951,6 +960,20 @@ int main(const int argc, char** argv)
                 renderer.set_bone_transforms(skin_palette);
             }
             renderer.set_scene_time(std::chrono::duration<float>(now - scene_start).count());
+            if (world && presentation)
+            {
+                const auto ticks = simulation_clock.advance(std::chrono::duration<double>(now - simulation_tick).count());
+                simulation_tick = now;
+                for (std::uint32_t tick = 0; tick < ticks; ++tick)
+                {
+                    previous_snapshot = world->snapshot();
+                    world->step();
+                }
+                const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
+                presentation->build(entities, selection, frame_instances, frame_entities);
+                renderer.set_instances(frame_instances);
+                update_debug_lines();
+            }
             if (options.pick && content_shown_at && !automated_pick_sent)
             {
                 renderer.request_pick((*options.pick)[0], (*options.pick)[1]);
@@ -998,7 +1021,29 @@ int main(const int argc, char** argv)
                 {
                     lines.push_back("Animation: " + animation_status + (animation_playing ? "" : " (paused)"));
                 }
-                lines.push_back("Selected: " + (selected_instance && *selected_instance < instance_labels.size() ? instance_labels[*selected_instance] : std::string("none")));
+                std::string selected_text = "none";
+                if (selection.size() == 1)
+                {
+                    for (std::size_t index = 0; index < frame_entities.size(); ++index)
+                    {
+                        if (frame_entities[index].valid() && selection.contains(eaw::entity_key(frame_entities[index])))
+                        {
+                            selected_text = describe_instance(index);
+                            break;
+                        }
+                    }
+                }
+                else if (!selection.empty())
+                {
+                    selected_text = std::to_string(selection.size()) + " objects";
+                }
+                if (world)
+                {
+                    const auto simulation = world->stats();
+                    lines.push_back("Simulation: tick " + std::to_string(simulation.tick) + " at 30 Hz | " + std::to_string(simulation.entities) + " entities | dropped ticks " +
+                                    std::to_string(simulation_clock.dropped_ticks()));
+                }
+                lines.push_back("Selected: " + selected_text);
                 lines.push_back("Hot reload: " + reload_status);
                 lines.push_back("");
                 lines.push_back(tactical_camera ? "Click select | B bounds | F1 panel | WASD pan, drag rotate, wheel zoom"
@@ -1038,7 +1083,11 @@ int main(const int argc, char** argv)
         renderer.wait_idle();
         if (const auto pick = renderer.take_pick())
         {
-            std::cout << "Selected: " << (pick->instance && *pick->instance < instance_labels.size() ? instance_labels[*pick->instance] : pick->terrain ? "terrain" : "nothing") << '\n';
+            std::cout << "Selected: "
+                      << (pick->instance && *pick->instance < frame_entities.size() && frame_entities[*pick->instance].valid() ? describe_instance(*pick->instance)
+                          : pick->terrain                                                                                      ? std::string("terrain")
+                                                                                                                               : std::string("nothing"))
+                      << '\n';
         }
         const auto stats = renderer.stats();
         std::cout << "Rendered frames: " << stats.frame_number << '\n';

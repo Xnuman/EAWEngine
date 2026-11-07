@@ -80,9 +80,9 @@ M2 is complete: a stock space unit and land and space maps load and can be inspe
 
 The first goal is a thin vertical slice: units on a map that can be selected and moved, proving that simulation and rendering stay separate, the tick is deterministic, and commands flow in while snapshots flow out.
 
-1. Simulation core (`src/simulation`, no graphics): stable generation-checked entity ids, structure-of-arrays component storage, a fixed-step scheduler, deterministic command application at tick boundaries, and immutable snapshots for presentation.
-2. Spawning from XML: placed TED objects (and later reinforcements) become entities built from their XML object types instead of a static scene.
-3. Renderer object API: meshes registered once, instances added, updated, and removed at runtime, per-instance bone palettes, fed from snapshots and interpolated between ticks.
+1. ~~Simulation core (`src/simulation`, no graphics): stable generation-checked entity ids, structure-of-arrays component storage, a fixed-step scheduler, deterministic command application at tick boundaries, and immutable snapshots for presentation.~~ Done.
+2. ~~Spawning from XML: placed TED objects become entities built from their XML object types (owner, position, heading, `Max_Speed` with a provisional ×30 scale) instead of a static scene.~~ Done; reinforcements come later.
+3. ~~Renderer object API: the loaded scene's meshes form a mesh library and `set_instances` submits each frame's instances (any count, added or removed freely) through a growable frame-buffered buffer; `ScenePresentation` re-poses instances from interpolated snapshots.~~ Done; per-instance bone palettes (animated units on maps) remain.
 4. First interaction: the legacy RTS camera (fixed pitch and heading, zoom, keyboard pan), click and box selection, and right-click move with straight-line movement on the fixed tick.
 5. Then the rest of M3: dependency-aware job system, spatial queries, pathfinding and formations, targeting, projectiles, damage, hardpoints, fog of war, and a minimal Lua host surface.
 

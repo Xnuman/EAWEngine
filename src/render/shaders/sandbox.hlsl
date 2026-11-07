@@ -53,6 +53,7 @@ struct PixelInput
     float4 team_color : COLOR1;
     float4 vertex_color : COLOR2;
     nointerpolation uint pick_id : PICKID;
+    nointerpolation uint instance_flags : INSTANCEFLAGS;
 };
 
 struct PixelOutput
@@ -126,6 +127,7 @@ PixelInput vs_main(VertexInput input)
     output.team_color = instance.team_color;
     output.vertex_color = input.color;
     output.pick_id = instance.pick_id;
+    output.instance_flags = instance.flags;
     return output;
 }
 
@@ -204,7 +206,7 @@ PixelOutput ps_main(PixelInput input)
     // Blended pipelines mask the pick target, so only opaque and alpha-tested surfaces are pickable.
     PixelOutput output;
     output.color = shade(input);
-    output.color.rgb = apply_selection_highlight(output.color.rgb, input.pick_id);
+    output.color.rgb = apply_selection_highlight(output.color.rgb, input.pick_id, input.instance_flags);
     output.pick_id = input.pick_id;
     return output;
 }

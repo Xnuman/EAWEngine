@@ -197,6 +197,7 @@ add_library(eaw_engine STATIC
     src/engine/asset_cache.cpp
     src/engine/camera_controller.cpp
     src/engine/debug_draw.cpp
+    src/engine/scene_presentation.cpp
     src/engine/visual_scene_builder.cpp
 )
 target_include_directories(eaw_engine PUBLIC src/engine src/render/include)

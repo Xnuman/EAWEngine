@@ -1,6 +1,7 @@
 #pragma once
 
 #include "eaw/ala_animation.hpp"
+#include "eaw/simulation.hpp"
 #include "eaw/alo_model.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/visual_scene.hpp"
@@ -29,6 +30,19 @@ struct VisualModelAsset
 
 // A stock or mod map's placed objects as one instanced scene (no terrain yet). Counts describe
 // placed objects that could not be drawn and why.
+// A placed map object as a simulation entity: its spawn data and the scene instance that showed it
+// at load (mesh, original transform, colors), which presentation re-poses from snapshots.
+struct MapEntitySpawn
+{
+    EntitySpawn spawn;
+    std::uint32_t instance{};
+};
+
+// XML Max_Speed values are small (infantry 0.8, AT-AT 0.5, TIE fighter 4.5), consistent with world
+// units per logic frame. The logic rate is unmeasured; until it is, speeds are scaled as if per 1/30 s.
+// This is a provisional engine assumption, not compatibility evidence.
+inline constexpr float provisional_max_speed_scale = 30.0F;
+
 struct VisualMapAsset
 {
     VisualScene scene;
@@ -51,6 +65,8 @@ struct VisualMapAsset
     std::size_t tracks{};
     std::size_t faction_colored{};
     std::size_t player_colored{};
+    // One entity per drawn placed object (not backdrops), in scene instance order.
+    std::vector<MapEntitySpawn> entities;
 };
 
 // Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file

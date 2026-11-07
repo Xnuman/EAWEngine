@@ -126,6 +126,17 @@ resolved into each frame context's readback buffer and read when that context is
 reused, so measuring never waits. The ImGui DX12 backend waits on the CPU for
 its own font-texture uploads; those happen only when the font atlas changes.
 
+The sandbox runs every shown object as a simulation entity. Map objects spawn
+from their placements and XML types; a model is one immobile entity. A
+fixed-step clock (30 Hz, an engine choice until the original logic rate is
+measured) steps the world, presentation interpolates the last two snapshots,
+and `ScenePresentation` re-poses each entity's original instance: the original
+tilt and scale are kept, the heading change rotates it about +Z, and the
+position comes from the snapshot. The renderer receives the whole instance list
+every frame (`set_instances`), grouped by mesh into a growable, frame-buffered
+instance buffer; the loaded scene's meshes act as the mesh library. Selection
+is a set of entity ids, and selected instances carry a highlight flag.
+
 Selection uses a second render target holding a pick id per pixel: the scene
 instance index plus one, zero for nothing, and a reserved value for terrain.
 Opaque, alpha-tested, and terrain pipelines write it; blended and background
