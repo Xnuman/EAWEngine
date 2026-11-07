@@ -430,6 +430,13 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
         {
             continue;
         }
+        // Rigid meshes attached to a bone that is hidden in the bind pose are alternate states
+        // (for example destroyed-structure debris) that animations or gameplay reveal later.
+        // Visibility changes over time are not modeled yet, so they are omitted.
+        if (mesh.attached_bone && *mesh.attached_bone < model.bones.size() && !model.bones[*mesh.attached_bone].visible)
+        {
+            continue;
+        }
         for (const auto& submesh : mesh.submeshes)
         {
             if (submesh.vertices.empty() || submesh.indices.empty())

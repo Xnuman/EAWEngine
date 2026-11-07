@@ -275,13 +275,13 @@ void append_mini(std::vector<std::byte>& target, const std::uint8_t type, const 
     target.insert(target.end(), payload.begin(), payload.end());
 }
 
-std::vector<std::byte> make_test_alo()
+std::vector<std::byte> make_test_alo(const bool root_visible = true)
 {
     std::vector<std::byte> bone_name;
     append_string(bone_name, "ROOT");
     std::vector<std::byte> bone_data;
     append_u32(bone_data, 0xffffffffU);
-    append_u32(bone_data, 1);
+    append_u32(bone_data, root_visible ? 1U : 0U);
     append_u32(bone_data, 0);
     for (int index = 0; index < 12; ++index)
     {
@@ -1232,6 +1232,24 @@ void test_visual_material_translation()
             "material colors were not taken from exact parameters with legacy defaults");
     require(material.base_color_texture == eaw::invalid_visual_texture && material.tint != std::array<float, 4>{1.0F, 1.0F, 1.0F, 1.0F}, "untextured material did not receive a debug tint");
     require(scene.instances[0].team_color[3] == 1.0F && !scene.instances[0].background, "model instance team color or layer is wrong");
+
+    // A mesh attached to a bone hidden in the bind pose (an alternate state such as debris) is
+    // omitted; with nothing else visible the model reports that it has no visible geometry.
+    {
+        const auto bytes = make_test_alo(false);
+        std::ofstream file(root / "Data" / "Art" / "Models" / "HIDDEN.ALO", std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+    bool hidden_rejected = false;
+    try
+    {
+        static_cast<void>(eaw::build_visual_model(vfs, "Data/Art/Models/HIDDEN.ALO"));
+    }
+    catch (const std::runtime_error& error)
+    {
+        hidden_rejected = std::string_view(error.what()).find("no visible renderable geometry") != std::string_view::npos;
+    }
+    require(hidden_rejected, "a mesh attached to a hidden bind-pose bone was drawn");
     std::filesystem::remove_all(root, ignored);
 }
 
