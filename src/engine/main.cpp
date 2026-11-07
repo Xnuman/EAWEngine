@@ -9,6 +9,7 @@
 #include "visual_scene_builder.hpp"
 #endif
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -45,6 +46,8 @@ struct Options
     std::uint32_t height{900};
     std::uint32_t frame_latency{2};
     std::optional<std::uint64_t> frame_limit;
+    // Reload the scene every N rendered frames to exercise resource replacement and retirement.
+    std::optional<std::uint64_t> reload_every;
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};
@@ -71,6 +74,7 @@ void print_usage()
               << "  --vsync <on|off>   Select synchronized or tearing-capable present\n"
               << "  --frame-latency <1|2>  Maximum queued presentation frames\n"
               << "  --frame-limit <count>  Exit after submitted frames (automation)\n"
+              << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
               << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
               << "  --validation-triangle  Skip model loading and show the fallback\n";
@@ -192,6 +196,14 @@ Options parse_options(const int argc, char** argv)
                 throw std::invalid_argument("--frame-latency must be 1 or 2");
             }
         }
+        else if (argument == "--reload-every")
+        {
+            options.reload_every = parse_unsigned_64(require_value(argc, argv, index, argument), argument);
+            if (*options.reload_every == 0)
+            {
+                throw std::invalid_argument("--reload-every must be greater than zero");
+            }
+        }
         else if (argument == "--frame-limit")
         {
             options.frame_limit = parse_unsigned_64(require_value(argc, argv, index, argument), argument);
@@ -307,6 +319,9 @@ int main(const int argc, char** argv)
         // triangle gets an orbit over its small extent.
         std::optional<eaw::OrbitCamera> orbit_camera;
         std::optional<eaw::TacticalCamera> tactical_camera;
+        // Kept only for --reload-every; otherwise the CPU copy is released after upload.
+        std::optional<eaw::VisualScene> reload_scene;
+        std::vector<std::array<float, 16>> bind_palette;
         if (!options.validation_triangle && options.map)
         {
             try
@@ -314,6 +329,10 @@ int main(const int argc, char** argv)
                 const auto start = std::chrono::steady_clock::now();
                 auto visual_map = eaw::build_visual_map(vfs, *options.map);
                 renderer.load_scene(visual_map.scene);
+                if (options.reload_every)
+                {
+                    reload_scene = visual_map.scene;
+                }
                 tactical_camera.emplace(eaw::CameraBounds{visual_map.scene.bounds_minimum, visual_map.scene.bounds_maximum});
                 if (visual_map.lighting)
                 {
@@ -365,8 +384,12 @@ int main(const int argc, char** argv)
                 visual_model = eaw::build_visual_model(vfs, options.model);
                 renderer.load_scene(visual_model->scene);
                 orbit_camera.emplace(eaw::CameraBounds{visual_model->scene.bounds_minimum, visual_model->scene.bounds_maximum});
-                const auto bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
+                bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
                 renderer.set_bone_transforms(bind_palette);
+                if (options.reload_every)
+                {
+                    reload_scene = visual_model->scene;
+                }
                 std::cout << "Visual model: " << visual_model->scene.name << '\n'
                           << "Geometry: " << visual_model->scene.vertices.size() << " vertices, " << visual_model->scene.indices.size() / 3U << " triangles, " << visual_model->scene.draws.size()
                           << " draws\n"
@@ -432,6 +455,7 @@ int main(const int argc, char** argv)
         auto camera_tick = animation_tick;
         float animation_time = 0.0F;
         bool animation_playing = true;
+        std::uint64_t scene_reloads = 0;
         while (!window.close_requested())
         {
             window.poll_events();
@@ -504,6 +528,16 @@ int main(const int argc, char** argv)
             }
             renderer.set_scene_time(std::chrono::duration<float>(now - scene_start).count());
             const bool rendered = renderer.render();
+            if (rendered && reload_scene && renderer.stats().frame_number % *options.reload_every == 0)
+            {
+                // Load reset the bone palette; restore the bind pose until animation samples again.
+                renderer.load_scene(*reload_scene);
+                if (!bind_palette.empty())
+                {
+                    renderer.set_bone_transforms(bind_palette);
+                }
+                ++scene_reloads;
+            }
             if (options.frame_limit && renderer.stats().frame_number >= *options.frame_limit)
             {
                 window.request_close();
@@ -516,6 +550,12 @@ int main(const int argc, char** argv)
         renderer.wait_idle();
         const auto stats = renderer.stats();
         std::cout << "Rendered frames: " << stats.frame_number << '\n';
+        if (options.reload_every)
+        {
+            std::cout << "Scene reloads: " << scene_reloads << '\n';
+        }
+        std::cout << "Resources after idle: " << stats.live_textures << " textures, " << stats.free_texture_slots << " free and " << stats.pending_texture_slots << " pending texture slots, "
+                  << stats.pending_retirements << " pending retirements\n";
         return 0;
 #else
         std::cerr << "The Direct3D 12 visual sandbox is available on Windows only.\n";

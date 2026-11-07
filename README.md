@@ -83,7 +83,9 @@ Open the Direct3D 12 visual sandbox directly or through the separate launcher:
 The sandbox defaults to vsync with two frames of CPU/GPU overlap. Development
 switches include `--vsync off`, `--frame-latency 1`, `--warp`, and
 `--gpu-validation`. `--frame-limit <count>` supports self-terminating smoke
-tests. `--pipeline-cache <dir>` stores compiled pipeline states in that
+tests, and `--reload-every <frames>` replaces the scene with a fresh copy every
+N frames to exercise resource retirement; the sandbox prints the remaining
+texture, slot, and retirement counts on exit. `--pipeline-cache <dir>` stores compiled pipeline states in that
 directory so later launches skip pipeline compilation; stale or driver-mismatched
 caches are discarded automatically. Use `--model <virtual-alo-path>` to inspect another mounted model,
 `--animation <virtual-ala-path>` to select an animation, or

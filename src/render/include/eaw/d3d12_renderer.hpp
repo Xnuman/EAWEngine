@@ -30,6 +30,12 @@ struct D3d12RendererStats
     std::uint32_t pipeline_cache_hits{};
     std::uint32_t pipeline_cache_misses{};
     std::string pipeline_cache_status;
+    // Resource lifetime: textures resident in the pool, texture-table slots free or awaiting
+    // their release fence, and retired resource groups still waiting for the GPU.
+    std::size_t live_textures{};
+    std::size_t free_texture_slots{};
+    std::size_t pending_texture_slots{};
+    std::size_t pending_retirements{};
 };
 
 class D3d12Renderer final
@@ -48,6 +54,8 @@ public:
     bool render();
     void resize(std::uint32_t width, std::uint32_t height);
     void wait_idle();
+    // Replaces the current scene; may be called at any time. Resources of the replaced scene stay
+    // alive until the GPU has finished every frame that used them; the CPU does not wait.
     void load_scene(const VisualScene& scene);
     void set_bone_transforms(std::span<const std::array<float, 16>> transforms);
     // Throws std::invalid_argument for non-finite or degenerate cameras.

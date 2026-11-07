@@ -1,5 +1,7 @@
 #include "eaw/d3d12_renderer.hpp"
 
+#include "eaw/gpu_resource_lifetime.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -192,6 +194,13 @@ public:
     [[nodiscard]] std::uint64_t completed_value() const
     {
         return fence_->GetCompletedValue();
+    }
+
+    // The value the next signal() will write. Work recorded now is submitted before that signal,
+    // so resources it references may be retired once this value completes.
+    [[nodiscard]] std::uint64_t next_value() const noexcept
+    {
+        return next_fence_value_;
     }
 
     [[nodiscard]] ID3D12CommandQueue* get() const
@@ -530,7 +539,20 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12Resource> scene_index_buffer;
     D3D12_VERTEX_BUFFER_VIEW scene_vertex_view{};
     D3D12_INDEX_BUFFER_VIEW scene_index_view{};
-    std::vector<ComPtr<ID3D12Resource>> scene_textures;
+    // Scene textures are pool entries owning their resource and shader-table slot; the scene keeps
+    // generation-checked handles. Replaced resources retire on the direct queue's timeline.
+    struct GpuTexture
+    {
+        ComPtr<ID3D12Resource> resource;
+        std::uint32_t descriptor{};
+    };
+    struct TextureTag
+    {};
+    using TextureHandle = ResourceHandle<TextureTag>;
+    HandlePool<TextureTag, GpuTexture> textures;
+    DescriptorSlotAllocator texture_slots{fallback_texture_count, maximum_scene_textures - fallback_texture_count};
+    FenceRetirementQueue<std::vector<ComPtr<ID3D12Resource>>> retired_resources;
+    std::vector<TextureHandle> scene_textures;
     std::vector<GpuDraw> scene_draws;
     std::vector<std::array<float, 16>> bone_transforms;
     ComPtr<ID3D12Resource> fallback_white_texture;
@@ -759,6 +781,17 @@ struct D3d12Renderer::Impl
         {
             throw std::invalid_argument("visual scene exceeds the D3D12 bone palette capacity");
         }
+        bone_transforms.assign(count, identity_matrix());
+        if (std::ranges::all_of(frames,
+                                [count](const FrameContext& frame)
+                                {
+                                    return frame.bone_buffer && frame.bone_capacity >= count;
+                                }))
+        {
+            return;
+        }
+        // In-flight frames may still read the old palettes, so they retire on the direct timeline.
+        std::vector<ComPtr<ID3D12Resource>> replaced;
         const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
         const auto description = buffer_description(static_cast<std::uint64_t>(count) * sizeof(std::array<float, 16>));
         for (std::uint32_t index = 0; index < frame_count; ++index)
@@ -769,7 +802,10 @@ struct D3d12Renderer::Impl
                 frame.bone_buffer->Unmap(0, nullptr);
                 frame.bone_buffer_mapped = nullptr;
             }
-            frame.bone_buffer.Reset();
+            if (frame.bone_buffer)
+            {
+                replaced.push_back(std::move(frame.bone_buffer));
+            }
             check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.bone_buffer)),
                           "CreateCommittedResource(frame bone palette)");
             set_name(frame.bone_buffer.Get(), L"EAWEngine frame bone palette " + std::to_wstring(index));
@@ -777,7 +813,10 @@ struct D3d12Renderer::Impl
             check_hresult(frame.bone_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.bone_buffer_mapped)), "Map(frame bone palette)");
             frame.bone_capacity = count;
         }
-        bone_transforms.assign(count, identity_matrix());
+        if (!replaced.empty())
+        {
+            retired_resources.push(std::move(replaced), direct_queue.next_value());
+        }
     }
 
     // --- Pipeline library cache -----------------------------------------------------------------
@@ -1265,17 +1304,17 @@ struct D3d12Renderer::Impl
 
     void load_scene(const VisualScene& scene)
     {
-        if (frame_number != 0 || scene_loaded)
-        {
-            throw std::logic_error("the initial visual scene must be loaded before rendering begins");
-        }
         if (scene.vertices.empty() || scene.indices.empty() || scene.draws.empty())
         {
             throw std::invalid_argument("visual scene contains no renderable geometry");
         }
-        if (scene.textures.size() + fallback_texture_count > maximum_scene_textures)
+        if (scene.textures.size() > texture_slots.capacity())
         {
-            throw std::invalid_argument("visual scene exceeds the D3D12 texture descriptor capacity");
+            throw std::invalid_argument("visual scene has " + std::to_string(scene.textures.size()) + " textures; the D3D12 texture table holds " + std::to_string(texture_slots.capacity()));
+        }
+        if (scene.bone_count > maximum_scene_bones)
+        {
+            throw std::invalid_argument("visual scene has " + std::to_string(scene.bone_count) + " bones; the D3D12 bone palette holds " + std::to_string(maximum_scene_bones));
         }
         if ((scene.meshes.empty() || scene.instances.empty()) && scene.terrain.vertices.empty())
         {
@@ -1313,7 +1352,6 @@ struct D3d12Renderer::Impl
                 throw std::invalid_argument("visual instance " + std::to_string(index) + " has a non-finite transform");
             }
         }
-        create_bone_buffers(scene.bone_count);
 
         // Group instances by mesh so each mesh's draws cover one contiguous instance range.
         std::vector<std::uint32_t> order(scene.instances.size());
@@ -1354,23 +1392,79 @@ struct D3d12Renderer::Impl
         }
         auto new_instance_buffer = upload_buffer(upload, std::as_bytes(std::span(gpu_instances)), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"EAWEngine scene instance buffer");
 
-        std::vector<ComPtr<ID3D12Resource>> new_textures;
+        // New textures are owned by the pool from creation; if the load fails they retire like any
+        // replaced resource (their descriptors may already have been written).
+        std::vector<TextureHandle> new_textures;
         new_textures.reserve(scene.textures.size());
-        for (std::size_t index = 0; index < scene.textures.size(); ++index)
+        std::vector<std::uint32_t> new_texture_slots;
+        new_texture_slots.reserve(scene.textures.size());
+        try
         {
-            new_textures.push_back(upload_texture(upload, scene.textures[index], static_cast<std::uint32_t>(index + fallback_texture_count)));
+            reclaim_texture_slots();
+            for (std::size_t index = 0; index < scene.textures.size(); ++index)
+            {
+                const auto slot = texture_slots.allocate();
+                if (!slot)
+                {
+                    throw std::runtime_error("the D3D12 texture table is exhausted at scene texture " + std::to_string(index) + " (" + scene.textures[index].name + "); " +
+                                             std::to_string(texture_slots.pending_count()) + " slots await GPU completion");
+                }
+                try
+                {
+                    auto resource = upload_texture(upload, scene.textures[index], *slot);
+                    new_textures.push_back(textures.insert({std::move(resource), *slot}));
+                }
+                catch (...)
+                {
+                    texture_slots.release(*slot, direct_queue.next_value());
+                    throw;
+                }
+                new_texture_slots.push_back(*slot);
+            }
+        }
+        catch (...)
+        {
+            retire_textures(new_textures);
+            throw;
         }
 
         std::vector<GpuMaterial> gpu_materials;
         gpu_materials.reserve(std::max<std::size_t>(scene.materials.size(), 1U));
-        for (std::size_t index = 0; index < scene.materials.size(); ++index)
+        try
         {
-            gpu_materials.push_back(gpu_material(scene, index));
+            for (std::size_t index = 0; index < scene.materials.size(); ++index)
+            {
+                gpu_materials.push_back(gpu_material(scene, index, new_texture_slots));
+            }
+        }
+        catch (...)
+        {
+            retire_textures(new_textures);
+            throw;
         }
         if (gpu_materials.empty())
         {
             gpu_materials.emplace_back();
         }
+        try
+        {
+            commit_scene(scene, std::move(upload), std::move(gpu_materials), new_textures, std::move(mesh_ranges), std::move(new_vertex_buffer), std::move(new_index_buffer),
+                         std::move(new_instance_buffer), vertex_bytes.size(), index_bytes.size());
+        }
+        catch (...)
+        {
+            retire_textures(new_textures);
+            throw;
+        }
+    }
+
+    // Second half of load_scene: validates terrain and draws, submits the upload, and swaps the new
+    // scene in. The replaced scene's resources retire once the next direct-queue signal completes,
+    // which covers in-flight frames and the pending transitions that still name them.
+    void commit_scene(const VisualScene& scene, UploadBatch upload, std::vector<GpuMaterial> gpu_materials, std::vector<TextureHandle>& new_textures,
+                      std::vector<std::pair<std::uint32_t, std::uint32_t>> mesh_ranges, ComPtr<ID3D12Resource> new_vertex_buffer, ComPtr<ID3D12Resource> new_index_buffer,
+                      ComPtr<ID3D12Resource> new_instance_buffer, const std::size_t vertex_byte_count, const std::size_t index_byte_count)
+    {
         auto new_material_buffer = upload_buffer(upload, std::as_bytes(std::span(gpu_materials)), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"EAWEngine scene material buffer");
 
         ComPtr<ID3D12Resource> new_terrain_buffer;
@@ -1442,7 +1536,19 @@ struct D3d12Renderer::Impl
                                      return draw.background ? 0U : 1U + static_cast<unsigned>(draw.blend);
                                  });
 
+        // After every validation: a failed load leaves the current scene and its palette untouched.
+        create_bone_buffers(scene.bone_count);
         submit_upload(std::move(upload));
+        const auto retire_value = direct_queue.next_value();
+        std::vector<ComPtr<ID3D12Resource>> replaced{std::move(scene_vertex_buffer), std::move(scene_index_buffer), std::move(scene_instance_buffer), std::move(scene_material_buffer),
+                                                     std::move(terrain_vertex_buffer)};
+        std::erase(replaced, nullptr);
+        if (!replaced.empty())
+        {
+            retired_resources.push(std::move(replaced), retire_value);
+        }
+        retire_textures(scene_textures);
+        scene_textures = std::exchange(new_textures, {});
         scene_vertex_buffer = std::move(new_vertex_buffer);
         scene_index_buffer = std::move(new_index_buffer);
         scene_instance_buffer = std::move(new_instance_buffer);
@@ -1457,14 +1563,62 @@ struct D3d12Renderer::Impl
             terrain_vertex_view.SizeInBytes = static_cast<UINT>(terrain.vertices.size() * sizeof(VisualTerrainVertex));
             terrain_vertex_view.StrideInBytes = sizeof(VisualTerrainVertex);
         }
-        scene_textures = std::move(new_textures);
         scene_draws = std::move(new_draws);
         scene_vertex_view.BufferLocation = scene_vertex_buffer->GetGPUVirtualAddress();
-        scene_vertex_view.SizeInBytes = static_cast<UINT>(vertex_bytes.size());
+        scene_vertex_view.SizeInBytes = static_cast<UINT>(vertex_byte_count);
         scene_vertex_view.StrideInBytes = sizeof(VisualVertex);
         scene_index_view.BufferLocation = scene_index_buffer->GetGPUVirtualAddress();
-        scene_index_view.SizeInBytes = static_cast<UINT>(index_bytes.size());
+        scene_index_view.SizeInBytes = static_cast<UINT>(index_byte_count);
         scene_index_view.Format = DXGI_FORMAT_R32_UINT;
+    }
+
+    // Removes textures from the pool and retires their resources and descriptor slots on the
+    // direct queue's next signal. Stale handles are ignored; the vector is cleared.
+    void retire_textures(std::vector<TextureHandle>& handles)
+    {
+        if (handles.empty())
+        {
+            return;
+        }
+        const auto retire_value = direct_queue.next_value();
+        std::vector<ComPtr<ID3D12Resource>> resources;
+        resources.reserve(handles.size());
+        for (const auto handle : handles)
+        {
+            if (auto texture_entry = textures.erase(handle))
+            {
+                texture_slots.release(texture_entry->descriptor, retire_value);
+                resources.push_back(std::move(texture_entry->resource));
+            }
+        }
+        handles.clear();
+        if (!resources.empty())
+        {
+            retired_resources.push(std::move(resources), retire_value);
+        }
+    }
+
+    // Returns completed texture slots to the allocator and points them at a null view so the shader
+    // table never names a released resource.
+    void reclaim_texture_slots()
+    {
+        const auto reclaimed = texture_slots.reclaim(direct_queue.completed_value());
+        if (reclaimed.empty())
+        {
+            return;
+        }
+        D3D12_SHADER_RESOURCE_VIEW_DESC null_view{};
+        null_view.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        null_view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        null_view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        null_view.Texture2D.MipLevels = 1;
+        const auto increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        for (const auto slot : reclaimed)
+        {
+            auto handle = shader_heap->GetCPUDescriptorHandleForHeapStart();
+            handle.ptr += static_cast<SIZE_T>(slot) * increment;
+            device->CreateShaderResourceView(nullptr, &null_view, handle);
+        }
     }
 
     void set_bone_transforms(const std::span<const std::array<float, 16>> transforms)
@@ -1478,7 +1632,7 @@ struct D3d12Renderer::Impl
     }
 
     // Validates one scene material and converts it to the shader layout.
-    static GpuMaterial gpu_material(const VisualScene& scene, const std::size_t index)
+    static GpuMaterial gpu_material(const VisualScene& scene, const std::size_t index, const std::span<const std::uint32_t> texture_slot_table)
     {
         const auto& material = scene.materials[index];
         const auto slot = [&](const std::uint32_t texture, const std::uint32_t fallback, const char* role)
@@ -1491,7 +1645,7 @@ struct D3d12Renderer::Impl
             {
                 throw std::invalid_argument("visual material " + std::to_string(index) + " (" + material.name + ") references a missing " + role + " texture");
             }
-            return texture + fallback_texture_count;
+            return texture_slot_table[texture];
         };
         const auto finite = [](const auto& values)
         {
@@ -1598,7 +1752,7 @@ struct D3d12Renderer::Impl
 
     bool render()
     {
-        retire_completed_uploads();
+        retire_completed_resources();
         if (occluded)
         {
             const auto test_result = swap_chain->Present(0, DXGI_PRESENT_TEST);
@@ -1839,11 +1993,21 @@ struct D3d12Renderer::Impl
         }
         if (direct_queue.initialized() && copy_queue.initialized())
         {
-            retire_completed_uploads();
+            retire_completed_resources();
         }
         if (error)
         {
             std::rethrow_exception(error);
+        }
+    }
+
+    void retire_completed_resources()
+    {
+        retire_completed_uploads();
+        retired_resources.retire(direct_queue.completed_value());
+        if (shader_heap)
+        {
+            reclaim_texture_slots();
         }
     }
 
@@ -1964,6 +2128,10 @@ D3d12RendererStats D3d12Renderer::stats() const
         .pipeline_cache_hits = impl_->pipeline_cache_hits,
         .pipeline_cache_misses = impl_->pipeline_cache_misses,
         .pipeline_cache_status = impl_->pipeline_cache_status,
+        .live_textures = impl_->textures.size(),
+        .free_texture_slots = impl_->texture_slots.free_count(),
+        .pending_texture_slots = impl_->texture_slots.pending_count(),
+        .pending_retirements = impl_->retired_resources.size(),
     };
 }
 

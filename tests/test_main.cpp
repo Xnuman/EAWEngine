@@ -8,6 +8,7 @@
 #include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
 #include "eaw/game_object_catalog.hpp"
+#include "eaw/gpu_resource_lifetime.hpp"
 #include "eaw/legacy_material.hpp"
 #include "eaw/localization_scan.hpp"
 #include "eaw/localization_workspace.hpp"
@@ -30,6 +31,8 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
+#include <optional>
 #include <ranges>
 #include <set>
 #include <stdexcept>
@@ -412,6 +415,69 @@ void test_alo_default_mesh_visibility()
     require(visible == std::vector<bool>{true, false, true, false, true, false, false, false, false}, "default mesh visibility must keep ALT0 and the highest LOD only");
     const auto animated = eaw::alo_default_mesh_visibility(model, false);
     require(animated[7] && !animated[6] && !animated[8], "an animated caller must decide bind-pose bone visibility from its pose");
+}
+
+void test_gpu_resource_lifetime()
+{
+    struct TestTag
+    {};
+    eaw::HandlePool<TestTag, std::string> pool;
+    require(!eaw::ResourceHandle<TestTag>{}.valid() && pool.get({}) == nullptr, "a default handle must not resolve");
+    const auto first = pool.insert("first");
+    const auto second = pool.insert("second");
+    require(first.valid() && pool.size() == 2 && *pool.get(first) == "first" && *pool.get(second) == "second", "handle pool insert or lookup failed");
+    require(pool.erase(first) == std::optional<std::string>("first") && pool.get(first) == nullptr && !pool.erase(first), "an erased handle must stop resolving");
+    const auto reused = pool.insert("third");
+    require(reused.index == first.index && reused.generation != first.generation && pool.get(first) == nullptr && *pool.get(reused) == "third", "a reused slot must not resolve the stale handle");
+    require(pool.get({second.index, second.generation + 1U}) == nullptr && pool.get({99, 1}) == nullptr, "foreign or future handles must not resolve");
+
+    eaw::DescriptorSlotAllocator slots(3, 3);
+    const auto a = slots.allocate();
+    const auto b = slots.allocate();
+    const auto c = slots.allocate();
+    require(a == 3U && b == 4U && c == 5U && !slots.allocate(), "descriptor slots must come from the configured range, lowest first");
+    slots.release(*a, 10);
+    slots.release(*c, 12);
+    require(!slots.allocate() && slots.pending_count() == 2, "a released slot must not be reused before its fence completes");
+    require(slots.reclaim(9).empty() && slots.reclaim(10) == std::vector<std::uint32_t>{3U} && slots.allocate() == 3U && slots.pending_count() == 1, "a slot returns once its release fence completes");
+    bool rejected = false;
+    try
+    {
+        slots.release(*b, 11);
+    }
+    catch (const std::logic_error&)
+    {
+        rejected = true;
+    }
+    require(rejected, "out-of-order release fences must be rejected");
+    rejected = false;
+    try
+    {
+        slots.release(*c, 13);
+    }
+    catch (const std::logic_error&)
+    {
+        rejected = true;
+    }
+    require(rejected, "releasing a slot that is already pending must be rejected");
+
+    eaw::FenceRetirementQueue<std::shared_ptr<int>> retired;
+    auto tracked = std::make_shared<int>(7);
+    const std::weak_ptr<int> observer = tracked;
+    retired.push(std::move(tracked), 5);
+    retired.push(std::make_shared<int>(8), 6);
+    require(retired.retire(4) == 0 && !observer.expired(), "a retired object must outlive its fence");
+    require(retired.retire(5) == 1 && observer.expired() && retired.size() == 1, "a retired object must be released once its fence completes");
+    rejected = false;
+    try
+    {
+        retired.push(std::make_shared<int>(9), 2);
+    }
+    catch (const std::logic_error&)
+    {
+        rejected = true;
+    }
+    require(rejected && retired.retire(6) == 1 && retired.size() == 0, "retirement fences must be non-decreasing");
 }
 
 // A minimal 4x4 BC1 DDS with one mip level.
@@ -1579,6 +1645,7 @@ int main()
         test_layered_precedence_corpus();
         test_alo_model();
         test_alo_default_mesh_visibility();
+        test_gpu_resource_lifetime();
         test_texture_formats_and_materials();
         test_lua_inspection();
         test_ala_animation();

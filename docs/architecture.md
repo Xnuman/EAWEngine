@@ -71,6 +71,17 @@ latency pacing, reuse of a still-in-flight frame context, swap-chain resize, and
 shutdown. GPU-backed objects that support submitted work remain retained until
 their producing queue's fence completes.
 
+Replacing resources follows the same rule without a CPU wait. The renderer
+records the direct queue's next fence value when a scene is replaced (that
+signal follows every frame and pending barrier that can still name the old
+resources), then holds the old buffers, textures, and bone palettes in a
+fence-keyed retirement queue. Textures live in a generation-checked handle pool,
+so a stale handle stops resolving rather than aliasing a reused slot. Their
+shader-table slots come from an allocator that returns a released slot to use
+only after its fence completes and then overwrites it with a null view. These
+primitives (`gpu_resource_lifetime.hpp`) contain no Direct3D types and are
+unit-tested on their own.
+
 Animated visual scenes preserve model-wide bone indices in immutable vertex
 buffers. ALA poses are sampled on the CPU into skin matrices, while every
 in-flight frame owns a persistently mapped bone-palette buffer. The CPU updates
