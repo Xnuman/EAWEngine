@@ -25,7 +25,8 @@ This repository is at milestone **0.3: native asset and localization workbench**
 - provides an initial `EAWEngine.exe` Direct3D 12 visual sandbox with a native
   window/input layer, asynchronous copy-queue uploads, frame-buffered command
   allocators, fence-based lifetime tracking, and a waitable flip-model swap
-  chain.
+  chain. It loads stock ALO geometry and base-color DDS mip chains into indexed
+  material batches with depth buffering and an orbit camera.
 
 It does **not** run the game yet. Production asset rendering, simulation, Lua
 execution, audio, runtime UI, networking, and save compatibility remain future
@@ -72,7 +73,9 @@ Open the Direct3D 12 visual sandbox directly or through the separate launcher:
 The sandbox defaults to vsync with two frames of CPU/GPU overlap. Development
 switches include `--vsync off`, `--frame-latency 1`, `--warp`, and
 `--gpu-validation`. `--frame-limit <count>` supports self-terminating smoke
-tests.
+tests. Use `--model <virtual-alo-path>` to inspect another mounted model or
+`--validation-triangle` to bypass asset loading. Drag with the left mouse button
+to orbit, use the wheel to zoom, and press Space to reset the camera.
 
 Use the launcher with a mod overlay:
 

@@ -117,7 +117,7 @@ LegacyMaterial LegacyMaterial::translate(const AloSubMesh& submesh)
     {
         result.blend = LegacyBlendMode::alpha_test;
     }
-    else if (contains(shader, "transparent") || contains(shader, "blend") || contains(shader, "alpha"))
+    else if (contains(shader, "transparent") || contains(shader, "blend") || contains(shader, "alpha") || contains(shader, "shield"))
     {
         result.blend = LegacyBlendMode::alpha_blend;
     }

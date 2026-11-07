@@ -1,5 +1,7 @@
 #pragma once
 
+#include "eaw/visual_scene.hpp"
+
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -37,6 +39,10 @@ public:
     bool render();
     void resize(std::uint32_t width, std::uint32_t height);
     void wait_idle();
+    void load_scene(const VisualScene& scene);
+    void orbit_camera(float yaw_delta, float pitch_delta);
+    void zoom_camera(float wheel_delta);
+    void reset_camera();
 
     [[nodiscard]] const std::string& adapter_name() const;
     [[nodiscard]] D3d12RendererStats stats() const;

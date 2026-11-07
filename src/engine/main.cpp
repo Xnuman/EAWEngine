@@ -5,6 +5,7 @@
 #ifdef _WIN32
 #include "eaw/d3d12_renderer.hpp"
 #include "eaw/platform_window.hpp"
+#include "visual_scene_builder.hpp"
 #endif
 
 #include <chrono>
@@ -35,6 +36,7 @@ struct Options
     eaw::GameVariant variant{eaw::GameVariant::forces_of_corruption};
     std::vector<std::filesystem::path> mods;
     std::string probe{"Data/XML/GameObjectFiles.xml"};
+    std::string model{"Data/Art/Models/EV_Acclamator.alo"};
     std::uint32_t width{1600};
     std::uint32_t height{900};
     std::uint32_t frame_latency{2};
@@ -42,6 +44,7 @@ struct Options
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};
+    bool validation_triangle{};
 };
 
 void print_usage()
@@ -55,13 +58,15 @@ void print_usage()
               << "  --game <eaw|foc>   Select the base game or expansion\n"
               << "  --mod <path>       Add a mod root (repeatable; first has priority)\n"
               << "  --probe <asset>    Resolve and read a virtual asset path\n"
+              << "  --model <asset>    ALO model shown in the visual sandbox\n"
               << "  --width <pixels>   Initial sandbox client width\n"
               << "  --height <pixels>  Initial sandbox client height\n"
               << "  --vsync <on|off>   Select synchronized or tearing-capable present\n"
               << "  --frame-latency <1|2>  Maximum queued presentation frames\n"
               << "  --frame-limit <count>  Exit after submitted frames (automation)\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
-              << "  --gpu-validation   Enable D3D12 GPU-based validation\n";
+              << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
+              << "  --validation-triangle  Skip model loading and show the fallback\n";
 }
 
 std::uint32_t parse_unsigned(const std::string_view value, const std::string_view option)
@@ -122,6 +127,10 @@ Options parse_options(const int argc, char** argv)
         {
             options.gpu_validation = true;
         }
+        else if (argument == "--validation-triangle")
+        {
+            options.validation_triangle = true;
+        }
         else if (argument == "--game-root")
         {
             options.game_root = require_value(argc, argv, index, argument);
@@ -143,6 +152,10 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--probe")
         {
             options.probe = require_value(argc, argv, index, argument);
+        }
+        else if (argument == "--model")
+        {
+            options.model = require_value(argc, argv, index, argument);
         }
         else if (argument == "--width")
         {
@@ -268,6 +281,25 @@ int main(const int argc, char** argv)
         renderer_options.gpu_validation = options.gpu_validation;
         renderer_options.maximum_frame_latency = options.frame_latency;
         eaw::D3d12Renderer renderer(window.native_handle(), window.client_width(), window.client_height(), renderer_options);
+        if (!options.validation_triangle)
+        {
+            try
+            {
+                const auto scene = eaw::build_visual_scene(vfs, options.model);
+                renderer.load_scene(scene);
+                std::cout << "Visual model: " << scene.name << '\n'
+                          << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size() << " draws\n"
+                          << "Textures: " << scene.textures.size() << '\n';
+                for (const auto& warning : scene.warnings)
+                {
+                    std::cerr << "model warning: " << warning << '\n';
+                }
+            }
+            catch (const std::exception& error)
+            {
+                std::cerr << "model warning: " << error.what() << "; using the validation triangle\n";
+            }
+        }
         std::cout << "D3D12 adapter: " << renderer.adapter_name() << '\n'
                   << "Present mode: " << (options.vsync ? "vsync" : "immediate when tearing is available") << '\n'
                   << "Frame latency: " << options.frame_latency << '\n'
@@ -279,6 +311,18 @@ int main(const int argc, char** argv)
             if (window.input().keys[static_cast<std::size_t>(eaw::Key::escape)].pressed)
             {
                 window.request_close();
+            }
+            if (window.input().keys[static_cast<std::size_t>(eaw::Key::space)].pressed)
+            {
+                renderer.reset_camera();
+            }
+            if (window.input().mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
+            {
+                renderer.orbit_camera(static_cast<float>(window.input().mouse_delta_x) * 0.01F, static_cast<float>(-window.input().mouse_delta_y) * 0.01F);
+            }
+            if (window.input().wheel_delta != 0.0F)
+            {
+                renderer.zoom_camera(window.input().wheel_delta);
             }
             if (window.close_requested())
             {

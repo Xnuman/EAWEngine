@@ -436,6 +436,10 @@ void test_texture_formats_and_materials()
     require(material.family == eaw::LegacyMaterialFamily::mesh && material.blend == eaw::LegacyBlendMode::opaque && material.textures.size() == 2 &&
                 material.textures[0].semantic == eaw::LegacyTextureSemantic::base_color && material.textures[1].semantic == eaw::LegacyTextureSemantic::normal && material.parameters.size() == 3,
             "legacy material translation failed");
+
+    submesh.shader = "MeshShield.fx";
+    const auto shield = eaw::LegacyMaterial::translate(submesh);
+    require(shield.blend == eaw::LegacyBlendMode::alpha_blend, "shield material did not select alpha blending");
 }
 
 void test_lua_inspection()

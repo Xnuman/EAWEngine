@@ -47,6 +47,7 @@ struct PlatformWindow::Impl
     std::uint32_t client_height{};
     bool close_requested{};
     bool minimized{};
+    bool mouse_position_initialized{};
 
     static LRESULT CALLBACK window_proc(const HWND handle, const UINT message, const WPARAM w_param, const LPARAM l_param)
     {
@@ -129,8 +130,12 @@ struct PlatformWindow::Impl
         {
             const auto x = GET_X_LPARAM(l_param);
             const auto y = GET_Y_LPARAM(l_param);
-            input.mouse_delta_x += x - input.mouse_x;
-            input.mouse_delta_y += y - input.mouse_y;
+            if (mouse_position_initialized)
+            {
+                input.mouse_delta_x += x - input.mouse_x;
+                input.mouse_delta_y += y - input.mouse_y;
+            }
+            mouse_position_initialized = true;
             input.mouse_x = x;
             input.mouse_y = y;
             return 0;
