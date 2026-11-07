@@ -103,9 +103,12 @@ simulation entities and start in an RTS camera: WASD/arrows pan, the wheel
 zooms, left-drag box-selects mobile units, and right-click orders them to the
 clicked point (straight-line movement for now). C switches to the free debug
 camera. `--auto-move` orders every mobile unit to the view center for
-automated runs. Unexpected failures (failed assertions, uncaught exceptions, access
+automated runs. Warnings (for example malformed mod data) go to stderr, the Visual Studio
+Output window, and a per-run log file in `logs/` next to the executable
+(`--log-dir <path>` changes the folder; the 20 newest files are kept).
+Unexpected failures (failed assertions, uncaught exceptions, access
 violations) end the program with an error window describing them, and the same
-report on stderr. Retry breaks into an attached debugger. No window is shown
+report on stderr and in the log file. Retry breaks into an attached debugger. No window is shown
 when stderr is redirected, or with `--no-error-dialog`; `--crash-test
 <assert|exception|access-violation>` fails on purpose to check this.
 `--spawn <XML type>[:count]` (repeatable) makes an object type

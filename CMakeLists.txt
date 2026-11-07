@@ -12,6 +12,7 @@ add_library(eaw_core STATIC
     src/core/asset_environment.cpp
     src/core/dat_file.cpp
     src/core/fatal_error.cpp
+    src/core/log.cpp
     src/core/dds_texture.cpp
     src/core/game_installation.cpp
     src/core/game_object_catalog.cpp
@@ -155,6 +156,7 @@ if(WIN32)
 
     add_library(eaw_platform STATIC
         src/platform/win32_crash_handler.cpp
+        src/platform/win32_log_sinks.cpp
         src/platform/win32_window.cpp
     )
     target_include_directories(eaw_platform PUBLIC src/platform/include)

@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include "eaw/crash_handler.hpp"
+#include "eaw/log_sinks.hpp"
 #include <windows.h>
 
 #include "gui_app.hpp"
@@ -132,6 +133,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 {
     // Unexpected failures end the workbench with an error window describing them.
     eaw::install_crash_handlers({"EAW Tools", true});
+    // A GUI program has no console: the debugger output window and the log file receive warnings.
+    (void)eaw::install_log_sinks({"EAWTools", {}, 20, false});
     ImGui_ImplWin32_EnableDpiAwareness();
     const auto com_result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 

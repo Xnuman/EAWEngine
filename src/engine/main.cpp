@@ -4,6 +4,7 @@
 
 #ifdef _WIN32
 #include "eaw/crash_handler.hpp"
+#include "eaw/log_sinks.hpp"
 #include "eaw/d3d12_renderer.hpp"
 #include "eaw/platform_window.hpp"
 #include "asset_cache.hpp"
@@ -14,6 +15,7 @@
 #include "scene_presentation.hpp"
 #include "visual_scene_builder.hpp"
 #include "eaw/fatal_error.hpp"
+#include "eaw/log.hpp"
 #endif
 
 #include <algorithm>
@@ -74,6 +76,8 @@ struct Options
     bool overlay{true};
     // Deliberately fail in one way to check crash reporting: assert, exception, access-violation.
     std::optional<std::string> crash_test;
+    // Folder for log files (default: "logs" next to the executable).
+    std::filesystem::path log_directory;
     // Once the scene is shown, select every mobile entity and order it to the scene center.
     bool auto_move{};
     // XML object types made spawnable on maps (--spawn TYPE[:COUNT]); counts spawn when shown.
@@ -110,6 +114,7 @@ void print_usage()
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
               << "  --no-overlay       Start without the on-screen statistics panel (F1 toggles)\n"
               << "  --no-error-dialog  Report fatal errors on stderr only (no error window)\n"
+              << "  --log-dir <path>   Folder for log files (default: logs next to the executable)\n"
               << "  --crash-test <assert|exception|access-violation>  Fail deliberately to check crash reporting\n"
               << "  --auto-move        Order every mobile unit to the map center once shown (automation)\n"
               << "  --spawn <TYPE>[:N] Make an XML object type spawnable on maps (repeatable); N spawn at the view\n"
@@ -189,6 +194,10 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--no-overlay")
         {
             options.overlay = false;
+        }
+        else if (argument == "--log-dir")
+        {
+            options.log_directory = std::filesystem::path(std::string(require_value(argc, argv, index, argument)));
         }
         else if (argument == "--crash-test")
         {
@@ -486,6 +495,17 @@ int main(const int argc, char** argv)
         std::cerr << "error: " << error.what() << "\nRun with --help for the available options.\n";
         return 2;
     }
+#ifdef _WIN32
+    // Warnings and errors go to stderr, the debugger output window, and a log file.
+    if (const auto log_file = eaw::install_log_sinks({"EAWEngine", parsed_options.log_directory}))
+    {
+        std::cout << "Log: " << log_file->string() << '\n';
+    }
+    else
+    {
+        eaw::log_warning("log", log_file.error());
+    }
+#endif
     {
         const auto& options = parsed_options;
         if (options.crash_test)

@@ -89,7 +89,7 @@ The first goal is a thin vertical slice: units on a map that can be selected and
 ### Cross-cutting engineering work (planned)
 
 - Raw input in `src/platform` (`WM_INPUT` or GameInput) behind the existing engine-native `InputState`; see the roadmap.
-- Error handling is being reconsidered and is postponed: the owner is evaluating `std::expected` and prefers, for now, that unexpected failures crash visibly rather than being handled. Unexpected failures go through `eaw::fatal_error` / `EAW_ASSERT` (`eaw/fatal_error.hpp`); `install_crash_handlers` (`src/platform`) turns them, uncaught exceptions, and hardware faults into one report on stderr plus an error window (Retry breaks into an attached debugger), and the engine has no top-level catch. Do not add catch-all handlers that hide bugs. Malformed game or mod data still yields diagnostics, not crashes.
+- No exceptions (migration in progress, phases in the roadmap). Recoverable failures (malformed game or mod data, missing assets, unavailable devices) return `eaw::Status` or `eaw::Result<T>` (`eaw/status.hpp`) with a contextual `eaw::Error` message; propagate with `EAW_TRY` / `EAW_TRY_ASSIGN`. Callers that continue report the failure as a warning through the log (`eaw/log.hpp`: `log_warning(category, error)`), which reaches stderr, the debugger output window, and a per-run file in `logs/` next to the executable (`--log-dir`). Programming errors are `EAW_ASSERT` / `eaw::fatal_error`; `install_crash_handlers` turns them, any remaining uncaught exception, and hardware faults into one report on stderr, in the log file, and in an error window. New code must not throw or catch; do not add catch-all handlers that hide bugs.
 
 ### Legacy-mode render backlog
 

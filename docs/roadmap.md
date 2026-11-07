@@ -215,12 +215,14 @@ it.
   engine-native so the simulation and sandbox do not change. Reference designs:
   the owner's own projects and permissively licensed engines (for example SDL's
   Windows raw-input backend); designs are studied, not copied.
-- **Exception-free error handling (postponed).** The owner is evaluating
-  `std::expected` and prefers visible crashes during development; meanwhile
-  unexpected failures end in a fatal error report with an error window
-  (`eaw::fatal_error`, `EAW_ASSERT`, and the platform crash handlers for
-  uncaught exceptions and hardware faults). The original plan follows. The
-  codebase currently reports errors by
+- **Exception-free error handling (in progress).** Decided: no exceptions.
+  Recoverable failures return `eaw::Status` / `eaw::Result<T>` with contextual
+  messages and are logged as warnings (stderr, the debugger output window, and
+  a per-run log file); bugs are fatal through `EAW_ASSERT` and the crash
+  handlers. Phases: (A) status types, log, sinks, done; (B) core decoders and
+  VFS; (C) engine, cache, simulation; (D) renderer; (E) tools; (F) compile
+  with exceptions disabled and replace throwing standard-library calls.
+  Background from the original assessment: the codebase reported errors by
   throwing (about 270 `throw` sites and 66 `catch` blocks, half of the throws in
   core decoders). The goal is explicit error values: a project `Result` type
   carrying a contextual error (virtual path, section, offset), returned by
@@ -229,9 +231,9 @@ it.
   libraries). Migration is incremental: introduce the type and a policy, write
   new code with it, then convert module by module (core decoders first, then
   the renderer's HRESULT paths, the engine, and the tools), each with its tests.
-  Open decisions: `std::expected` (needs C++23) or an equivalent project type in
-  C++20; and whether to end with exceptions disabled, treating allocation
-  failure as fatal.
+  The project type stays on C++20; exceptions end disabled, with allocation
+  failure fatal. Warnings may later also be shown while the engine, game, and
+  mods load.
 
 ## Performance gates
 
