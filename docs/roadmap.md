@@ -98,7 +98,8 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   to models through variant inheritance (99.7% of stock placed objects).
   Space squadrons expand into their members at their `Squadron_Offsets`, and
   `EAWEngine sandbox --map` renders every placed object of a map as one
-  instanced D3D12 scene. Land teams/companies (runtime formations), terrain,
+  instanced D3D12 scene with its environment sky dome/backdrop and an
+  engine-owned tactical camera (pan, rotate, zoom within the map bounds). Land teams/companies (runtime formations), terrain,
   transparency sorting, and streaming are not implemented yet.
 - Add production D3D12 tactical-map rendering. Further tool-only map/model
   preview polish is deferred until it can support the renderer and map editor.

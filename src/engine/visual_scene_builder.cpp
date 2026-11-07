@@ -403,6 +403,11 @@ void update_scene_bounds(VisualScene& scene)
     scene.bounds_maximum.fill(std::numeric_limits<float>::lowest());
     for (const auto& instance : scene.instances)
     {
+        // Backgrounds follow the camera, so they do not contribute to the framed world.
+        if (instance.background)
+        {
+            continue;
+        }
         const auto& mesh = scene.meshes[instance.mesh];
         for (unsigned corner = 0; corner < 8; ++corner)
         {
@@ -498,6 +503,66 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
         // simulation-driven feature for later milestones.
         scene.instances.push_back({*entry->second, placement.transform.values});
     }
+
+    // Backdrop: the active environment names primary and secondary sky domes. Each name is an XML
+    // object (SpacePrimarySkydome, LandPrimarySkydome, ...) whose model is drawn as a camera-
+    // centered background layer, primary first. The stored index can be out of range in
+    // malformed data; the first environment is used then.
+    if (!map.environments.empty())
+    {
+        auto environment_index = static_cast<std::size_t>(map.active_environment);
+        if (environment_index >= map.environments.size())
+        {
+            scene.warnings.push_back("active environment " + std::to_string(map.active_environment) + " is out of range; using environment 0");
+            environment_index = 0;
+        }
+        const auto& environment = map.environments[environment_index];
+        const auto context = asset.land ? GameModelContext::land : GameModelContext::space;
+        for (const auto& name : {environment.skybox_primary, environment.skybox_secondary})
+        {
+            if (name.empty())
+            {
+                continue;
+            }
+            const XmlDefinition* definition = nullptr;
+            std::optional<GameObjectModelReference> model;
+            for (const auto* candidate : catalog.find(name))
+            {
+                if ((model = catalog.model(*candidate, context)))
+                {
+                    definition = candidate;
+                    break;
+                }
+            }
+            const auto path = model ? resolve_model_path(vfs, model->value) : std::nullopt;
+            if (definition == nullptr || !path)
+            {
+                scene.warnings.push_back("backdrop '" + name + "' has no resolvable " + std::string(to_string(context)) + " model");
+                continue;
+            }
+            auto [entry, inserted] = meshes.try_emplace(*path);
+            if (inserted)
+            {
+                try
+                {
+                    entry->second = append_model(builder, AloModel::parse(vfs.read(*path)), *path);
+                }
+                catch (const std::exception& error)
+                {
+                    scene.warnings.push_back(*path + ": " + error.what());
+                }
+            }
+            if (!entry->second)
+            {
+                continue;
+            }
+            VisualInstance backdrop{*entry->second};
+            backdrop.background = true;
+            scene.instances.push_back(backdrop);
+            asset.backdrops.push_back(definition->name + " (" + *path + ")");
+        }
+    }
+
     for (const auto& mesh : scene.meshes)
     {
         scene.bone_count = std::max(scene.bone_count, mesh.bone_count);
@@ -512,7 +577,11 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
     {
         scene.warnings.push_back(std::to_string(layout.diagnostics.size() - maximum_reported_diagnostics) + " more object diagnostics omitted");
     }
-    if (scene.instances.empty())
+    if (std::ranges::none_of(scene.instances,
+                             [](const VisualInstance& instance)
+                             {
+                                 return !instance.background;
+                             }))
     {
         throw std::runtime_error("map has no placed objects with renderable models: " + resolved->virtual_path);
     }

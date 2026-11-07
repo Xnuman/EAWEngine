@@ -235,9 +235,18 @@ void parse_environments(const std::span<const std::byte> bytes, const Chunk& chu
                 map.environments.push_back(std::move(environment));
             }
         }
-        else if (child.type == 8 && child.end - child.payload >= 4)
+        else if (child.type == 8)
         {
-            map.active_environment = read_u32(bytes, child.payload);
+            // The active-environment index is a mini-chunk (stock maps use type 0x25, size 4).
+            // Reading the payload as a raw u32 returned the mini header (0x0425 = 1061) instead.
+            for (const auto& mini : read_minis(bytes, child))
+            {
+                if (mini.end - mini.payload >= 4)
+                {
+                    map.active_environment = read_u32(bytes, mini.payload);
+                    break;
+                }
+            }
         }
     }
 }

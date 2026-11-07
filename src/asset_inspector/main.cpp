@@ -440,6 +440,14 @@ void inspect_ted(const std::span<const std::byte> bytes, const std::size_t limit
         {
             std::cout << " skybox=" << environment.skybox_primary;
         }
+        if (!environment.skybox_secondary.empty())
+        {
+            std::cout << " secondary=" << environment.skybox_secondary;
+        }
+        if (index == map.active_environment)
+        {
+            std::cout << " (active)";
+        }
         std::cout << '\n';
     }
     std::cout << "Object CRCs:\n";
@@ -1305,6 +1313,8 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
     std::size_t terrain_layers = 0;
     std::size_t objects = 0;
     std::size_t positioned_objects = 0;
+    std::size_t active_environment_out_of_range = 0;
+    std::map<std::uint32_t, std::size_t> active_environments;
     std::vector<std::pair<std::string, std::string>> failures;
     for (const auto& asset : assets)
     {
@@ -1329,6 +1339,11 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
                 ++unknown;
             }
             warnings += map.warnings.size();
+            if (!map.environments.empty())
+            {
+                ++active_environments[map.active_environment];
+                active_environment_out_of_range += map.active_environment >= map.environments.size() ? 1U : 0U;
+            }
             terrain_layers += map.terrain_layers.size();
             objects += map.object_count;
             positioned_objects += std::ranges::count_if(map.placed_objects,
@@ -1351,8 +1366,13 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
               << "Terrain layers: " << terrain_layers << '\n'
               << "Objects: " << objects << '\n'
               << "Positioned objects: " << positioned_objects << '\n'
-              << "Warnings: " << warnings << '\n'
-              << "Failures: " << failures.size() << '\n';
+              << "Active environment out of range: " << active_environment_out_of_range << '\n'
+              << "Active environment indices:";
+    for (const auto& [index, count] : active_environments)
+    {
+        std::cout << ' ' << index << 'x' << count;
+    }
+    std::cout << '\n' << "Warnings: " << warnings << '\n' << "Failures: " << failures.size() << '\n';
     for (std::size_t index = 0; index < std::min(limit, failures.size()); ++index)
     {
         std::cout << "  " << failures[index].first << ": " << failures[index].second << '\n';

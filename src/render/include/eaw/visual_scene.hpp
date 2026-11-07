@@ -106,6 +106,20 @@ struct VisualInstance
     std::array<float, 16> transform{visual_identity_transform};
     std::array<float, 4> tint{1.0F, 1.0F, 1.0F, 1.0F};
     std::uint32_t bone_offset{};
+    // Background instances (sky domes and star backdrops) are drawn before the world, centered on
+    // the camera (translation ignored), at the far plane, without depth testing, in scene order.
+    bool background{};
+};
+
+// A perspective view in world space (Z up). The renderer derives the aspect ratio from its target.
+struct VisualCamera
+{
+    std::array<float, 3> eye{0.0F, -10.0F, 5.0F};
+    std::array<float, 3> target{};
+    std::array<float, 3> up{0.0F, 0.0F, 1.0F};
+    float vertical_fov_degrees{55.0F};
+    float near_plane{0.1F};
+    float far_plane{1000.0F};
 };
 
 struct VisualScene

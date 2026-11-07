@@ -5,6 +5,7 @@
 #ifdef _WIN32
 #include "eaw/d3d12_renderer.hpp"
 #include "eaw/platform_window.hpp"
+#include "camera_controller.hpp"
 #include "visual_scene_builder.hpp"
 #endif
 
@@ -62,7 +63,7 @@ void print_usage()
               << "  --probe <asset>    Resolve and read a virtual asset path\n"
               << "  --model <asset>    ALO model shown in the visual sandbox\n"
               << "  --animation <asset>  ALA animation played with the model\n"
-              << "  --map <asset>      TED map whose placed objects are shown instead of a model\n"
+              << "  --map <asset>      TED map shown with its backdrop and a tactical camera\n"
               << "  --width <pixels>   Initial sandbox client width\n"
               << "  --height <pixels>  Initial sandbox client height\n"
               << "  --vsync <on|off>   Select synchronized or tearing-capable present\n"
@@ -295,6 +296,10 @@ int main(const int argc, char** argv)
         eaw::D3d12Renderer renderer(window.native_handle(), window.client_width(), window.client_height(), renderer_options);
         std::optional<eaw::VisualModelAsset> visual_model;
         std::optional<eaw::AlaAnimation> visual_animation;
+        // Model inspection orbits the model; a map uses the tactical camera. The validation
+        // triangle gets an orbit over its small extent.
+        std::optional<eaw::OrbitCamera> orbit_camera;
+        std::optional<eaw::TacticalCamera> tactical_camera;
         if (!options.validation_triangle && options.map)
         {
             try
@@ -302,6 +307,7 @@ int main(const int argc, char** argv)
                 const auto start = std::chrono::steady_clock::now();
                 auto visual_map = eaw::build_visual_map(vfs, *options.map);
                 renderer.load_scene(visual_map.scene);
+                tactical_camera.emplace(eaw::CameraBounds{visual_map.scene.bounds_minimum, visual_map.scene.bounds_maximum});
                 const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
                 const auto& scene = visual_map.scene;
                 std::cout << "Visual map: " << scene.name << (visual_map.land ? " (land; terrain is not rendered yet)" : " (space)") << '\n'
@@ -309,7 +315,17 @@ int main(const int argc, char** argv)
                           << "Not drawn: " << visual_map.untyped << " untyped, " << visual_map.without_model << " without model, " << visual_map.missing_model_files << " missing model files, "
                           << visual_map.unexpanded_containers << " land teams/companies, " << visual_map.unrenderable_placements << " unrenderable models\n"
                           << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size()
-                          << " draws | Textures: " << scene.textures.size() << " | Built in " << seconds << " s\n";
+                          << " draws | Textures: " << scene.textures.size() << " | Built in " << seconds << " s\n"
+                          << "Backdrop: ";
+                if (visual_map.backdrops.empty())
+                {
+                    std::cout << "none";
+                }
+                for (std::size_t index = 0; index < visual_map.backdrops.size(); ++index)
+                {
+                    std::cout << (index == 0 ? "" : ", ") << visual_map.backdrops[index];
+                }
+                std::cout << '\n';
                 for (const auto& warning : scene.warnings)
                 {
                     std::cerr << "map warning: " << warning << '\n';
@@ -326,6 +342,7 @@ int main(const int argc, char** argv)
             {
                 visual_model = eaw::build_visual_model(vfs, options.model);
                 renderer.load_scene(visual_model->scene);
+                orbit_camera.emplace(eaw::CameraBounds{visual_model->scene.bounds_minimum, visual_model->scene.bounds_maximum});
                 const auto bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
                 renderer.set_bone_transforms(bind_palette);
                 std::cout << "Visual model: " << visual_model->scene.name << '\n'
@@ -376,12 +393,19 @@ int main(const int argc, char** argv)
                 visual_animation.reset();
             }
         }
+        if (!orbit_camera && !tactical_camera)
+        {
+            orbit_camera.emplace(eaw::CameraBounds{{-0.8F, -0.7F, -0.1F}, {0.8F, 0.8F, 0.1F}});
+        }
+        renderer.set_camera(tactical_camera ? tactical_camera->camera() : orbit_camera->camera());
         std::cout << "D3D12 adapter: " << renderer.adapter_name() << '\n'
                   << "Present mode: " << (options.vsync ? "vsync" : "immediate when tearing is available") << '\n'
                   << "Frame latency: " << options.frame_latency << '\n'
-                  << "Visual sandbox ready. Left-drag orbits, wheel zooms, Space resets, P pauses animation.\n";
+                  << (tactical_camera ? "Tactical camera: WASD/arrows or right-drag pan (Shift is faster), left-drag rotates, wheel zooms, Space resets.\n"
+                                      : "Visual sandbox ready. Left-drag orbits, wheel zooms, Space resets, P pauses animation.\n");
 
         auto animation_tick = std::chrono::steady_clock::now();
+        auto camera_tick = animation_tick;
         float animation_time = 0.0F;
         bool animation_playing = true;
         while (!window.close_requested())
@@ -391,21 +415,44 @@ int main(const int argc, char** argv)
             {
                 window.request_close();
             }
-            if (window.input().keys[static_cast<std::size_t>(eaw::Key::space)].pressed)
+            const auto& input = window.input();
+            const auto key_down = [&](const eaw::Key key)
             {
-                renderer.reset_camera();
+                return input.keys[static_cast<std::size_t>(key)].down;
+            };
+            const auto camera_now = std::chrono::steady_clock::now();
+            const auto camera_seconds = std::min(std::chrono::duration<float>(camera_now - camera_tick).count(), 0.25F);
+            camera_tick = camera_now;
+            eaw::CameraInput camera_input;
+            camera_input.reset = input.keys[static_cast<std::size_t>(eaw::Key::space)].pressed;
+            camera_input.zoom_steps = input.wheel_delta;
+            if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
+            {
+                camera_input.yaw = static_cast<float>(input.mouse_delta_x) * 0.01F;
+                camera_input.pitch = static_cast<float>(-input.mouse_delta_y) * 0.01F;
+            }
+            if (tactical_camera)
+            {
+                // Pan speed scales with the view distance; panning units are view distances.
+                const auto speed = (key_down(eaw::Key::shift) ? 2.4F : 0.8F) * camera_seconds;
+                camera_input.pan_right = static_cast<float>((key_down(eaw::Key::d) || key_down(eaw::Key::right) ? 1 : 0) - (key_down(eaw::Key::a) || key_down(eaw::Key::left) ? 1 : 0)) * speed;
+                camera_input.pan_forward = static_cast<float>((key_down(eaw::Key::w) || key_down(eaw::Key::up) ? 1 : 0) - (key_down(eaw::Key::s) || key_down(eaw::Key::down) ? 1 : 0)) * speed;
+                if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down)
+                {
+                    camera_input.pan_right -= static_cast<float>(input.mouse_delta_x) * 0.0015F;
+                    camera_input.pan_forward += static_cast<float>(input.mouse_delta_y) * 0.0015F;
+                }
+                tactical_camera->apply(camera_input);
+                renderer.set_camera(tactical_camera->camera());
+            }
+            else
+            {
+                orbit_camera->apply(camera_input);
+                renderer.set_camera(orbit_camera->camera());
             }
             if (window.input().keys[static_cast<std::size_t>(eaw::Key::p)].pressed && visual_animation)
             {
                 animation_playing = !animation_playing;
-            }
-            if (window.input().mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
-            {
-                renderer.orbit_camera(static_cast<float>(window.input().mouse_delta_x) * 0.01F, static_cast<float>(-window.input().mouse_delta_y) * 0.01F);
-            }
-            if (window.input().wheel_delta != 0.0F)
-            {
-                renderer.zoom_camera(window.input().wheel_delta);
             }
             if (window.close_requested())
             {

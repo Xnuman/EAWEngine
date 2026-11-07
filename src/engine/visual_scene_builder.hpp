@@ -34,6 +34,8 @@ struct VisualMapAsset
     std::size_t expanded_members{};
     std::size_t unexpanded_containers{};
     std::size_t unrenderable_placements{};
+    // Resolved backdrop layers ("definition (model path)"), in draw order.
+    std::vector<std::string> backdrops;
 };
 
 [[nodiscard]] VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, std::string_view model_path);

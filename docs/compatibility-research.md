@@ -142,3 +142,15 @@ squadrons expand into 1,026 member ships. Land teams and companies list members
 (`Company_Units`, containers with `ContainerArrangement`) without offsets, so
 their layout is runtime formation behavior; the 247 placed instances are counted
 and left unexpanded until the simulation owns formations.
+
+TED environment chunk 8 stores the active-environment index as a mini-chunk
+(type 0x25, four bytes), not as a raw integer; reading it raw produced 1061
+(0x0425, the mini header) for every map. Decoded correctly, all 269 FoC and 176
+EAW maps name an index inside their environment list (0 to 5). Each environment
+names primary and secondary sky domes; those names are XML objects
+(`SpacePrimarySkydome`, `SpaceSecondarySkydome`, `LandPrimarySkydome`, ...)
+whose `Space_Model_Name`/`Land_Model_Name` supplies the model. The definitions
+mark them `In_Background` decorations, and primary sky domes carry the
+`SKY_DOME` behavior. The engine therefore draws them camera-centered behind the
+world, primary first; `Scale_Factor` (1 for primary, 25 for secondary) and any
+parallax the original game applied are not yet modeled.

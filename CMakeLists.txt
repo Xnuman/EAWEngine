@@ -119,11 +119,20 @@ if(WIN32)
     endif()
 endif()
 
+# Platform-independent engine orchestration: visual scene construction and camera control. It
+# consumes the render contract headers (engine-native data) but no graphics API.
+add_library(eaw_engine STATIC
+    src/engine/camera_controller.cpp
+    src/engine/visual_scene_builder.cpp
+)
+target_include_directories(eaw_engine PUBLIC src/engine src/render/include)
+target_compile_features(eaw_engine PUBLIC cxx_std_20)
+target_compile_definitions(eaw_engine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(eaw_engine PUBLIC eaw_core)
+
 add_executable(EAWEngine src/engine/main.cpp)
-target_link_libraries(EAWEngine PRIVATE eaw_core)
+target_link_libraries(EAWEngine PRIVATE eaw_core eaw_engine)
 if(WIN32)
-    target_sources(EAWEngine PRIVATE src/engine/visual_scene_builder.cpp)
-    target_include_directories(EAWEngine PRIVATE src/engine)
     target_link_libraries(EAWEngine PRIVATE eaw_platform eaw_render_d3d12)
 endif()
 target_compile_features(EAWEngine PRIVATE cxx_std_20)
@@ -144,6 +153,7 @@ target_compile_features(EAWDatEditor PRIVATE cxx_std_20)
 target_compile_definitions(EAWDatEditor PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 
 if(MSVC)
+    target_compile_options(eaw_engine PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(EAWEngine PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(EAWLauncher PRIVATE /W4 /permissive- /EHsc /utf-8)
     target_compile_options(EAWAssetInspector PRIVATE /W4 /permissive- /EHsc /utf-8)
@@ -155,7 +165,7 @@ if(EAW_BUILD_TESTS)
     add_executable(EAWEngineTests
         tests/test_main.cpp
     )
-    target_link_libraries(EAWEngineTests PRIVATE eaw_core)
+    target_link_libraries(EAWEngineTests PRIVATE eaw_core eaw_engine)
     target_compile_features(EAWEngineTests PRIVATE cxx_std_20)
     if(MSVC)
         target_compile_options(EAWEngineTests PRIVATE /W4 /permissive- /EHsc /utf-8)

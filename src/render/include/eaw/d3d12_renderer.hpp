@@ -43,9 +43,8 @@ public:
     void wait_idle();
     void load_scene(const VisualScene& scene);
     void set_bone_transforms(std::span<const std::array<float, 16>> transforms);
-    void orbit_camera(float yaw_delta, float pitch_delta);
-    void zoom_camera(float wheel_delta);
-    void reset_camera();
+    // Throws std::invalid_argument for non-finite or degenerate cameras.
+    void set_camera(const VisualCamera& camera);
 
     [[nodiscard]] const std::string& adapter_name() const;
     [[nodiscard]] D3d12RendererStats stats() const;

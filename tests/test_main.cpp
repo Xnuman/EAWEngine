@@ -2,6 +2,7 @@
 #include "eaw/alo_model.hpp"
 #include "eaw/asset_environment.hpp"
 #include "eaw/asset_path.hpp"
+#include "camera_controller.hpp"
 #include "eaw/dat_file.hpp"
 #include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
@@ -652,11 +653,19 @@ std::vector<std::byte> make_test_ted()
     append_mini(environment_data, 0x19, value);
     std::vector<std::byte> environment_list;
     append_chunk(environment_list, 6, environment_data);
+    std::vector<std::byte> night_environment;
+    value.clear();
+    append_string(value, "Night");
+    append_mini(night_environment, 0x14, value);
+    append_chunk(environment_list, 6, night_environment);
     std::vector<std::byte> environments;
     append_chunk(environments, 4, environment_list, true);
+    // The active-environment index is stored as a mini-chunk, as in stock maps.
     value.clear();
-    append_u32(value, 0);
-    append_chunk(environments, 8, value);
+    append_u32(value, 1);
+    std::vector<std::byte> active_environment;
+    append_mini(active_environment, 0x25, value);
+    append_chunk(environments, 8, active_environment);
 
     std::vector<std::byte> terrain_info;
     value.clear();
@@ -749,7 +758,8 @@ void test_ted_map()
             "TED terrain decoding failed");
     require(map.elevation_map == std::vector<std::int16_t>({-10, 0, 10, 20, 30, 40}) && map.passability_map == std::vector<std::uint32_t>({0, 2, 4, 1, 3, 5}),
             "TED terrain sample retention or passability alignment failed");
-    require(map.terrain_layers.size() == 1 && map.terrain_layers[0].color_texture == "GROUND.TGA" && map.environments.size() == 1 && map.environments[0].name == "Noon_Clear",
+    require(map.terrain_layers.size() == 1 && map.terrain_layers[0].color_texture == "GROUND.TGA" && map.environments.size() == 2 && map.environments[0].name == "Noon_Clear" &&
+                map.environments[0].skybox_primary == "DAY_BLUE_SKY" && map.active_environment == 1,
             "TED dependency decoding failed");
     require(map.object_count == 1 && map.object_types.size() == 1 && map.object_types[0].crc == 0x12345678U && map.zone_count == 1, "TED object or zone decoding failed");
     require(map.placed_objects.size() == 1 && map.placed_objects[0].instance_id == 42U && map.placed_objects[0].crc == 0x12345678U && map.placed_objects[0].player == 3U &&
@@ -1061,6 +1071,65 @@ void test_game_object_catalog()
     std::filesystem::remove_all(root, ignored);
 }
 
+void test_camera_controllers()
+{
+    const auto near_equal = [](const float left, const float right, const float tolerance = 1.0e-3F)
+    {
+        return std::fabs(left - right) <= tolerance;
+    };
+    const auto distance = [](const eaw::VisualCamera& camera)
+    {
+        const auto x = camera.eye[0] - camera.target[0];
+        const auto y = camera.eye[1] - camera.target[1];
+        const auto z = camera.eye[2] - camera.target[2];
+        return std::sqrt(x * x + y * y + z * z);
+    };
+
+    // Orbit: frames the bounds center at 2.6 bounding radii and clamps pitch.
+    eaw::OrbitCamera orbit({{-1.0F, -2.0F, -2.0F}, {3.0F, 2.0F, 2.0F}});
+    auto view = orbit.camera();
+    require(near_equal(view.target[0], 1.0F) && near_equal(view.target[1], 0.0F) && near_equal(distance(view), 2.6F * std::sqrt(12.0F)), "orbit camera does not frame the bounds");
+    orbit.apply({.pitch = 10.0F});
+    view = orbit.camera();
+    require(view.eye[2] - view.target[2] < distance(view) && view.eye[2] > view.target[2], "orbit pitch was not clamped below vertical");
+    orbit.apply({.reset = true});
+    require(near_equal(distance(orbit.camera()), 2.6F * std::sqrt(12.0F)), "orbit reset failed");
+
+    // Tactical: centered on the map, looking north (+Y), zoom limited to the map size.
+    eaw::TacticalCamera tactical({{-1000.0F, -500.0F, 0.0F}, {1000.0F, 500.0F, 0.0F}});
+    view = tactical.camera();
+    require(near_equal(view.target[0], 0.0F) && near_equal(view.target[1], 0.0F) && view.eye[1] < view.target[1] && view.eye[2] > 0.0F, "tactical camera did not start south of the map center");
+    require(near_equal(tactical.distance(), 1500.0F) && view.far_plane > view.near_plane && view.near_plane > 0.0F, "tactical camera default distance or planes are wrong");
+    tactical.apply({.zoom_steps = 1000.0F});
+    require(near_equal(tactical.distance(), tactical.minimum_distance()), "tactical zoom-in was not clamped");
+    tactical.apply({.zoom_steps = -1000.0F});
+    require(near_equal(tactical.distance(), tactical.maximum_distance()), "tactical zoom-out was not clamped");
+    tactical.apply({.reset = true});
+
+    // Panning is relative to the heading: facing north, "right" moves the focus along the
+    // renderer's screen-right axis and "forward" moves it north.
+    tactical.apply({.pan_forward = 0.1F});
+    require(near_equal(tactical.focus()[1], 150.0F) && near_equal(tactical.focus()[0], 0.0F), "tactical forward pan did not follow the heading");
+    tactical.apply({.reset = true});
+    tactical.apply({.pan_right = 0.1F});
+    const auto right_focus = tactical.focus();
+    view = tactical.camera();
+    // Screen right for a left-handed look-at is cross(up, forward).
+    const std::array<float, 2> forward{view.target[0] - view.eye[0], view.target[1] - view.eye[1]};
+    require(near_equal(right_focus[0] * forward[0] + right_focus[1] * forward[1], 0.0F, 1.0F) && near_equal(std::fabs(right_focus[0]), 150.0F) && right_focus[0] * -forward[1] > 0.0F,
+            "tactical right pan is not perpendicular to the heading");
+
+    // The focus stays inside the map, and malformed input or bounds cannot poison the view.
+    tactical.apply({.pan_right = 1.0e6F, .pan_forward = 1.0e6F});
+    require(tactical.focus()[0] >= -1000.0F && tactical.focus()[0] <= 1000.0F && tactical.focus()[1] >= -500.0F && tactical.focus()[1] <= 500.0F, "tactical focus left the map bounds");
+    tactical.apply({.yaw = std::numeric_limits<float>::quiet_NaN(), .pitch = std::numeric_limits<float>::infinity(), .zoom_steps = std::numeric_limits<float>::quiet_NaN()});
+    view = tactical.camera();
+    require(std::isfinite(view.eye[0]) && std::isfinite(view.eye[1]) && std::isfinite(view.eye[2]), "non-finite camera input produced a non-finite view");
+    eaw::TacticalCamera degenerate({{std::numeric_limits<float>::quiet_NaN(), 5.0F, 0.0F}, {1.0F, -5.0F, 0.0F}});
+    view = degenerate.camera();
+    require(std::isfinite(view.eye[0]) && distance(view) >= degenerate.minimum_distance() * 0.999F, "degenerate bounds produced an invalid tactical view");
+}
+
 void test_xml_schema_validation()
 {
     const auto root = std::filesystem::temp_directory_path() / "eawengine-xml-schema-test";
@@ -1225,6 +1294,7 @@ int main()
         test_xml_document();
         test_xml_asset_database();
         test_game_object_catalog();
+        test_camera_controllers();
         test_xml_schema_validation();
 
         std::error_code ignored;

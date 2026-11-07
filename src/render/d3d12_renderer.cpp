@@ -415,6 +415,7 @@ struct D3d12Renderer::Impl
         VisualBlendMode blend{VisualBlendMode::opaque};
         std::uint32_t first_instance{};
         std::uint32_t instance_count{1};
+        bool background{};
     };
 
     // Structured-buffer layout shared with the vertex shader (96 bytes).
@@ -423,8 +424,11 @@ struct D3d12Renderer::Impl
         std::array<float, 16> transform{};
         std::array<float, 4> tint{};
         std::uint32_t bone_offset{};
-        std::array<std::uint32_t, 3> padding{};
+        std::uint32_t flags{};
+        std::array<std::uint32_t, 2> padding{};
     };
+
+    static constexpr std::uint32_t background_instance_flag = 1U;
 
     HWND window{};
     D3d12RendererOptions options;
@@ -435,11 +439,7 @@ struct D3d12Renderer::Impl
     bool occluded{};
     std::uint64_t frame_number{};
     std::string adapter_name;
-    float camera_yaw{-0.65F};
-    float camera_pitch{0.35F};
-    float camera_zoom{1.0F};
-    std::array<float, 3> scene_center{};
-    float scene_radius{1.0F};
+    VisualCamera camera;
 
     ComPtr<IDXGIFactory7> factory;
     ComPtr<IDXGIAdapter4> adapter;
@@ -465,6 +465,9 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12PipelineState> opaque_pipeline;
     ComPtr<ID3D12PipelineState> alpha_pipeline;
     ComPtr<ID3D12PipelineState> additive_pipeline;
+    ComPtr<ID3D12PipelineState> background_opaque_pipeline;
+    ComPtr<ID3D12PipelineState> background_alpha_pipeline;
+    ComPtr<ID3D12PipelineState> background_additive_pipeline;
     ComPtr<ID3D12DescriptorHeap> shader_heap;
     ComPtr<ID3D12Resource> vertex_buffer;
     D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view{};
@@ -710,7 +713,8 @@ struct InstanceData
     row_major float4x4 transform;
     float4 tint;
     uint bone_offset;
-    uint3 padding;
+    uint flags;
+    uint2 padding;
 };
 StructuredBuffer<InstanceData> Instances : register(t2);
 SamplerState SandboxSampler : register(s0);
@@ -781,7 +785,18 @@ PsInput vs_main(VsInput input)
         skinned_normal /= total_weight;
     }
     PsInput output;
-    output.position = mul(mul(skinned_position, instance.transform), view_projection);
+    if ((instance.flags & 1u) != 0u)
+    {
+        // Backgrounds follow the camera: transforming a direction (w = 0) drops the view
+        // translation, and the depth is pinned just inside the far plane.
+        const float3 direction = mul(float4(skinned_position.xyz, 0.0f), instance.transform).xyz;
+        output.position = mul(float4(direction, 0.0f), view_projection);
+        output.position.z = output.position.w * 0.999999f;
+    }
+    else
+    {
+        output.position = mul(mul(skinned_position, instance.transform), view_projection);
+    }
     output.normal = mul(float4(skinned_normal, 0.0f), instance.transform).xyz;
     output.uv = input.uv;
     output.tint = instance.tint;
@@ -935,6 +950,21 @@ float4 ps_main(PsInput input) : SV_TARGET
         check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&additive_pipeline)), "CreateGraphicsPipelineState(additive)");
         set_name(additive_pipeline.Get(), L"EAWEngine additive pipeline state");
 
+        // Background variants: painted first without depth testing or writes.
+        description.DepthStencilState.DepthEnable = FALSE;
+        check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&background_additive_pipeline)), "CreateGraphicsPipelineState(background additive)");
+        set_name(background_additive_pipeline.Get(), L"EAWEngine background additive pipeline state");
+        description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+        description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+        check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&background_alpha_pipeline)), "CreateGraphicsPipelineState(background alpha)");
+        set_name(background_alpha_pipeline.Get(), L"EAWEngine background alpha pipeline state");
+        description.BlendState.RenderTarget[0].BlendEnable = FALSE;
+        description.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+        description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
+        description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+        check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&background_opaque_pipeline)), "CreateGraphicsPipelineState(background opaque)");
+        set_name(background_opaque_pipeline.Get(), L"EAWEngine background opaque pipeline state");
+
         D3D12_DESCRIPTOR_HEAP_DESC shader_heap_description{};
         shader_heap_description.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         shader_heap_description.NumDescriptors = maximum_scene_textures;
@@ -980,7 +1010,7 @@ float4 ps_main(PsInput input) : SV_TARGET
         mip.data.assign(pixel_bytes.begin(), pixel_bytes.end());
         fallback.mips.push_back(std::move(mip));
         texture = upload_texture(upload, fallback, 0);
-        const GpuInstance identity{visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, 0, {}};
+        const GpuInstance identity{visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, {}};
         identity_instance_buffer = upload_buffer(upload, std::as_bytes(std::span(&identity, 1)), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"EAWEngine identity instance buffer");
         submit_upload(std::move(upload));
     }
@@ -1178,24 +1208,26 @@ float4 ps_main(PsInput input) : SV_TARGET
         {
             order[index] = index;
         }
-        std::ranges::stable_sort(order, {},
-                                 [&](const std::uint32_t index)
-                                 {
-                                     return scene.instances[index].mesh;
-                                 });
+        // Ranges are keyed by mesh and layer: range index = mesh * 2 + (background ? 1 : 0).
+        const auto range_key = [&](const std::uint32_t index)
+        {
+            const auto& instance = scene.instances[index];
+            return static_cast<std::size_t>(instance.mesh) * 2U + (instance.background ? 1U : 0U);
+        };
+        std::ranges::stable_sort(order, {}, range_key);
         std::vector<GpuInstance> gpu_instances;
         gpu_instances.reserve(order.size());
-        std::vector<std::pair<std::uint32_t, std::uint32_t>> mesh_ranges(scene.meshes.size(), {0U, 0U});
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> mesh_ranges(scene.meshes.size() * 2U, {0U, 0U});
         for (const auto index : order)
         {
             const auto& instance = scene.instances[index];
-            auto& range = mesh_ranges[instance.mesh];
+            auto& range = mesh_ranges[range_key(index)];
             if (range.second == 0)
             {
                 range.first = static_cast<std::uint32_t>(gpu_instances.size());
             }
             ++range.second;
-            gpu_instances.push_back({instance.transform, instance.tint, instance.bone_offset, {}});
+            gpu_instances.push_back({instance.transform, instance.tint, instance.bone_offset, instance.background ? background_instance_flag : 0U, {}});
         }
 
         auto upload = begin_upload(L"EAWEngine scene upload");
@@ -1214,10 +1246,12 @@ float4 ps_main(PsInput input) : SV_TARGET
 
         std::vector<GpuDraw> new_draws;
         new_draws.reserve(scene.draws.size());
-        for (std::size_t mesh_index = 0; mesh_index < scene.meshes.size(); ++mesh_index)
+        for (std::size_t range_index = 0; range_index < mesh_ranges.size(); ++range_index)
         {
+            const auto mesh_index = range_index / 2U;
+            const bool background = (range_index % 2U) != 0;
             const auto& mesh = scene.meshes[mesh_index];
-            const auto [first_instance, instance_count] = mesh_ranges[mesh_index];
+            const auto [first_instance, instance_count] = mesh_ranges[range_index];
             if (instance_count == 0)
             {
                 continue;
@@ -1239,13 +1273,15 @@ float4 ps_main(PsInput input) : SV_TARGET
                     }
                     descriptor_index = material.base_color_texture + 1U;
                 }
-                new_draws.push_back({draw, material.tint, descriptor_index, material.blend, first_instance, instance_count});
+                new_draws.push_back({draw, material.tint, descriptor_index, material.blend, first_instance, instance_count, background});
             }
         }
-        std::ranges::stable_sort(new_draws,
-                                 [](const GpuDraw& left, const GpuDraw& right)
+        // Backgrounds first in scene (mesh) order so later layers paint over earlier ones; then the
+        // world by blend mode (opaque, alpha-tested, blended, additive).
+        std::ranges::stable_sort(new_draws, {},
+                                 [](const GpuDraw& draw)
                                  {
-                                     return static_cast<unsigned>(left.blend) < static_cast<unsigned>(right.blend);
+                                     return draw.background ? 0U : 1U + static_cast<unsigned>(draw.blend);
                                  });
 
         submit_upload(std::move(upload));
@@ -1260,16 +1296,6 @@ float4 ps_main(PsInput input) : SV_TARGET
         scene_index_view.BufferLocation = scene_index_buffer->GetGPUVirtualAddress();
         scene_index_view.SizeInBytes = static_cast<UINT>(index_bytes.size());
         scene_index_view.Format = DXGI_FORMAT_R32_UINT;
-
-        for (std::size_t axis = 0; axis < scene_center.size(); ++axis)
-        {
-            scene_center[axis] = (scene.bounds_minimum[axis] + scene.bounds_maximum[axis]) * 0.5F;
-        }
-        const auto extent_x = (scene.bounds_maximum[0] - scene.bounds_minimum[0]) * 0.5F;
-        const auto extent_y = (scene.bounds_maximum[1] - scene.bounds_minimum[1]) * 0.5F;
-        const auto extent_z = (scene.bounds_maximum[2] - scene.bounds_minimum[2]) * 0.5F;
-        scene_radius = std::max(std::sqrt(extent_x * extent_x + extent_y * extent_y + extent_z * extent_z), 0.001F);
-        reset_camera();
     }
 
     void set_bone_transforms(const std::span<const std::array<float, 16>> transforms)
@@ -1282,37 +1308,43 @@ float4 ps_main(PsInput input) : SV_TARGET
         std::ranges::copy(transforms, bone_transforms.begin());
     }
 
-    void orbit_camera(const float yaw_delta, const float pitch_delta)
+    void set_camera(const VisualCamera& next)
     {
-        camera_yaw += yaw_delta;
-        camera_pitch = std::clamp(camera_pitch + pitch_delta, -1.45F, 1.45F);
-    }
-
-    void zoom_camera(const float wheel_delta)
-    {
-        camera_zoom = std::clamp(camera_zoom * std::pow(1.12F, wheel_delta), 0.15F, 12.0F);
-    }
-
-    void reset_camera()
-    {
-        camera_yaw = -0.65F;
-        camera_pitch = 0.35F;
-        camera_zoom = 1.0F;
+        const auto finite = [](const std::array<float, 3>& value)
+        {
+            return std::ranges::all_of(value,
+                                       [](const float component)
+                                       {
+                                           return std::isfinite(component);
+                                       });
+        };
+        if (!finite(next.eye) || !finite(next.target) || !finite(next.up) || !std::isfinite(next.vertical_fov_degrees) || !std::isfinite(next.near_plane) || !std::isfinite(next.far_plane))
+        {
+            throw std::invalid_argument("visual camera contains non-finite values");
+        }
+        if (!(next.near_plane > 0.0F) || !(next.far_plane > next.near_plane * 1.0001F) || next.vertical_fov_degrees <= 1.0F || next.vertical_fov_degrees >= 179.0F)
+        {
+            throw std::invalid_argument("visual camera has an invalid projection (near " + std::to_string(next.near_plane) + ", far " + std::to_string(next.far_plane) + ", fov " +
+                                        std::to_string(next.vertical_fov_degrees) + ")");
+        }
+        const std::array<float, 3> forward{next.target[0] - next.eye[0], next.target[1] - next.eye[1], next.target[2] - next.eye[2]};
+        const std::array<float, 3> side{next.up[1] * forward[2] - next.up[2] * forward[1], next.up[2] * forward[0] - next.up[0] * forward[2], next.up[0] * forward[1] - next.up[1] * forward[0]};
+        if (forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2] <= 1.0e-12F || side[0] * side[0] + side[1] * side[1] + side[2] * side[2] <= 1.0e-12F)
+        {
+            throw std::invalid_argument("visual camera eye, target, and up do not define a view");
+        }
+        camera = next;
     }
 
     [[nodiscard]] DirectX::XMFLOAT4X4 camera_matrix() const
     {
         using namespace DirectX;
-        const auto distance = scene_radius * 2.6F / camera_zoom;
-        const auto horizontal = std::cos(camera_pitch) * distance;
-        const auto target = XMVectorSet(scene_center[0], scene_center[1], scene_center[2], 1.0F);
-        const auto eye =
-            XMVectorSet(scene_center[0] + std::cos(camera_yaw) * horizontal, scene_center[1] + std::sin(camera_yaw) * horizontal, scene_center[2] + std::sin(camera_pitch) * distance, 1.0F);
-        const auto view = XMMatrixLookAtLH(eye, target, XMVectorSet(0.0F, 0.0F, 1.0F, 0.0F));
+        const auto eye = XMVectorSet(camera.eye[0], camera.eye[1], camera.eye[2], 1.0F);
+        const auto target = XMVectorSet(camera.target[0], camera.target[1], camera.target[2], 1.0F);
+        const auto up = XMVectorSet(camera.up[0], camera.up[1], camera.up[2], 0.0F);
+        const auto view = XMMatrixLookAtLH(eye, target, up);
         const auto aspect = static_cast<float>(width) / static_cast<float>(std::max(height, 1U));
-        const auto near_plane = std::max(scene_radius * 0.01F, 0.001F);
-        const auto far_plane = std::max(scene_radius * 20.0F, near_plane + 1.0F);
-        const auto projection = XMMatrixPerspectiveFovLH(XMConvertToRadians(55.0F), aspect, near_plane, far_plane);
+        const auto projection = XMMatrixPerspectiveFovLH(XMConvertToRadians(camera.vertical_fov_degrees), aspect, camera.near_plane, camera.far_plane);
         DirectX::XMFLOAT4X4 result;
         XMStoreFloat4x4(&result, XMMatrixTranspose(view * projection));
         return result;
@@ -1416,14 +1448,14 @@ float4 ps_main(PsInput input) : SV_TARGET
             command_list->IASetIndexBuffer(&scene_index_view);
             for (const auto& draw : scene_draws)
             {
-                ID3D12PipelineState* pipeline = opaque_pipeline.Get();
+                ID3D12PipelineState* pipeline = draw.background ? background_opaque_pipeline.Get() : opaque_pipeline.Get();
                 if (draw.blend == VisualBlendMode::alpha_blend)
                 {
-                    pipeline = alpha_pipeline.Get();
+                    pipeline = draw.background ? background_alpha_pipeline.Get() : alpha_pipeline.Get();
                 }
                 else if (draw.blend == VisualBlendMode::additive)
                 {
-                    pipeline = additive_pipeline.Get();
+                    pipeline = draw.background ? background_additive_pipeline.Get() : additive_pipeline.Get();
                 }
                 command_list->SetPipelineState(pipeline);
                 bind_material(draw.descriptor_index, draw.tint, draw.blend == VisualBlendMode::alpha_test);
@@ -1629,19 +1661,9 @@ void D3d12Renderer::set_bone_transforms(const std::span<const std::array<float, 
     impl_->set_bone_transforms(transforms);
 }
 
-void D3d12Renderer::orbit_camera(const float yaw_delta, const float pitch_delta)
+void D3d12Renderer::set_camera(const VisualCamera& camera)
 {
-    impl_->orbit_camera(yaw_delta, pitch_delta);
-}
-
-void D3d12Renderer::zoom_camera(const float wheel_delta)
-{
-    impl_->zoom_camera(wheel_delta);
-}
-
-void D3d12Renderer::reset_camera()
-{
-    impl_->reset_camera();
+    impl_->set_camera(camera);
 }
 
 const std::string& D3d12Renderer::adapter_name() const

@@ -78,6 +78,14 @@ that palette only after the frame's direct-queue fence has completed, avoiding
 both per-frame resource creation and writes into memory still consumed by the
 GPU.
 
+The engine owns the camera: controllers in `eaw_engine` turn input into a
+`VisualCamera` (eye, target, up, field of view, near/far planes) that the
+renderer consumes. An orbit controller frames single models and a tactical
+controller pans, rotates, and zooms over a map within its bounds. Background
+instances (sky domes and star backdrops) are drawn first, centered on the camera
+by transforming them as directions, pinned to the far plane, and without depth
+testing, so they never occlude or parallax against the world.
+
 A visual scene groups draws into meshes (one per model) and places them with
 instances. Each instance carries a world transform, a tint, and a bone-palette
 offset in an immutable structured buffer. Instances are sorted by mesh at load
