@@ -50,6 +50,27 @@ struct TedEnvironment
     std::vector<TedEnvironmentField> fields;
 };
 
+// Liquid surface type from terrain-info mini 0x16. The stock corpus pairs 0 with dry worlds,
+// 1 with water textures, 2 with lava (Mustafar, Sullust), and 3 with ice (Ilum, Polus).
+enum class TedWaterType : std::uint8_t
+{
+    none,
+    water,
+    lava,
+    ice,
+    unknown,
+};
+
+struct TedWater
+{
+    TedWaterType type{TedWaterType::none};
+    std::int32_t raw_type{};
+    // Surface height in world units (mini 0x15).
+    float level{};
+    // RGB tint (mini 0x1a); white when absent.
+    std::array<float, 3> color{1.0F, 1.0F, 1.0F};
+};
+
 // A terrain texture layer. Only the textures and the tiling scale are interpreted; every
 // mini-chunk is kept in `fields` (the corpus also stores two angles, two RGB colors, flags, and an
 // integer per layer whose meanings are not established yet).
@@ -111,7 +132,12 @@ struct TedMap
     std::vector<std::uint32_t> passability_map;
     std::size_t decal_count{};
     std::vector<TedTerrainLayer> terrain_layers;
+    // Terrain-info water textures: [0] bump map (mini 0x1d), [1] surface/fallback texture (0x1e),
+    // [2] an optional third texture (0x1f).
     std::array<std::string, 3> water_maps;
+    TedWater water;
+    // Every terrain-info mini-chunk as stored (clouds, wind, and water fields not interpreted yet).
+    std::vector<TedEnvironmentField> terrain_info_fields;
     std::vector<std::string> track_textures;
 
     std::vector<TedEnvironment> environments;

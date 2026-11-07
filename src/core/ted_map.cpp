@@ -323,6 +323,32 @@ void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, T
         std::uint32_t declared_layers = 0;
         for (const auto& mini : read_minis(bytes, *information))
         {
+            TedEnvironmentField field;
+            field.type = static_cast<std::uint8_t>(mini.type);
+            field.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(mini.payload), bytes.begin() + static_cast<std::ptrdiff_t>(mini.end));
+            map.terrain_info_fields.push_back(std::move(field));
+            if (mini.type == 0x15 && mini.end - mini.payload == 4)
+            {
+                const auto level = read_float(bytes, mini.payload);
+                map.water.level = std::isfinite(level) ? level : 0.0F;
+            }
+            else if (mini.type == 0x16 && mini.end - mini.payload == 4)
+            {
+                map.water.raw_type = read_i32(bytes, mini.payload);
+                map.water.type = map.water.raw_type >= 0 && map.water.raw_type <= 3 ? static_cast<TedWaterType>(map.water.raw_type) : TedWaterType::unknown;
+            }
+            else if (mini.type == 0x1a && mini.end - mini.payload == 12)
+            {
+                std::array<float, 3> color{read_float(bytes, mini.payload), read_float(bytes, mini.payload + 4), read_float(bytes, mini.payload + 8)};
+                if (std::ranges::all_of(color,
+                                        [](const float value)
+                                        {
+                                            return std::isfinite(value);
+                                        }))
+                {
+                    map.water.color = color;
+                }
+            }
             if ((mini.type == 0 || mini.type == 1 || mini.type == 5) && mini.end - mini.payload >= 4)
             {
                 const auto value = read_u32(bytes, mini.payload);

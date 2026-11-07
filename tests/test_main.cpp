@@ -725,6 +725,24 @@ std::vector<std::byte> make_test_ted()
     value.clear();
     append_u32(value, 1);
     append_mini(terrain_info, 5, value);
+    // Water: level 0x15 (world units), type 0x16 (1 = water), color 0x1a, textures 0x1d/0x1e.
+    value.clear();
+    append_float(value, 1.5F);
+    append_mini(terrain_info, 0x15, value);
+    value.clear();
+    append_u32(value, 1);
+    append_mini(terrain_info, 0x16, value);
+    value.clear();
+    append_float(value, 0.4F);
+    append_float(value, 0.6F);
+    append_float(value, 0.8F);
+    append_mini(terrain_info, 0x1a, value);
+    value.clear();
+    append_string(value, "WATER_BUMP.TGA");
+    append_mini(terrain_info, 0x1d, value);
+    value.clear();
+    append_string(value, "WATER.TGA");
+    append_mini(terrain_info, 0x1e, value);
     // Stock samples pack the signed elevation in bits 0-15, the layer index in bits 16-23, and a
     // small signed value (usually -1) in bits 24-31.
     std::vector<std::byte> elevation;
@@ -818,6 +836,9 @@ void test_ted_map()
             "TED terrain decoding failed");
     require(map.elevation_map == std::vector<std::int16_t>({-10, 0, 10, 20, 30, 40}) && map.passability_map == std::vector<std::uint32_t>({0, 2, 4, 1, 3, 5}),
             "TED terrain sample retention or passability alignment failed");
+    require(map.water.type == eaw::TedWaterType::water && map.water.raw_type == 1 && map.water.level == 1.5F && map.water.color == std::array<float, 3>{0.4F, 0.6F, 0.8F} &&
+                map.water_maps[0] == "WATER_BUMP.TGA" && map.water_maps[1] == "WATER.TGA" && map.terrain_info_fields.size() == 8,
+            "TED water settings were not decoded");
     require(map.terrain_layer_map == std::vector<std::uint8_t>({0, 0, 1, 1, 0, 1}) && map.terrain_samples.size() == 6 && (map.terrain_samples[0] >> 24U) == 0xffU,
             "TED terrain layer indices or raw samples were not retained");
     require(map.terrain_layers.size() == 2 && map.terrain_layers[0].tile_size == 64.0F && map.terrain_layers[0].fields.size() == 3 && map.terrain_layers[1].tile_size == 0.0F,
@@ -1283,6 +1304,11 @@ void test_visual_terrain()
     require(terrain.bounds_minimum[2] == -0.5F && terrain.bounds_maximum[0] == 40.0F && terrain.bounds_maximum[2] == 2.0F && asset.scene.bounds_maximum[1] == 20.0F,
             "terrain bounds were not applied to the scene");
     require(!asset.lighting, "an environment without lighting fields produced a light rig");
+    // Water at level 1.5 crosses the terrain (-0.5..2.0) and becomes a blended quad instance.
+    require(asset.water == eaw::TedWaterType::water && asset.scene.meshes.size() == 1 && asset.scene.instances.size() == 1 && asset.scene.vertices.size() == 4 &&
+                asset.scene.vertices[2].position == std::array<float, 3>{40.0F, 20.0F, 1.5F} && asset.scene.materials.back().blend == eaw::VisualBlendMode::alpha_blend &&
+                asset.scene.materials.back().diffuse == std::array<float, 4>{0.4F, 0.6F, 0.8F, 0.75F},
+            "water surface was not built over the terrain");
     std::filesystem::remove_all(root, ignored);
 }
 

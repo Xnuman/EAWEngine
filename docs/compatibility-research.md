@@ -187,3 +187,16 @@ the interpolated ground. Terrain layers carry a tiling scale in mini 0x06 (about
 colors in 0x0a/0x0b, flags, an integer). The public Petrolution format pages
 were unavailable (HTTP 404) when this was researched, so these are corpus
 findings rather than documented facts.
+
+The terrain-information chunk describes one liquid surface per land map. Mini
+0x16 is its type: across 188 stock land maps, 0 (41 maps) pairs with dry worlds
+such as Tatooine and Kessel, 1 (127) with water worlds such as Kamino, Mon
+Calamari, and Dagobah, 2 (11) with lava textures on Mustafar, Sullust, and Shola,
+and 3 (9) with ice textures on Ilum, Polus, and Alzoc III. Mini 0x15 is the
+surface height in world units: Cloud City's -150 lies below all of its terrain,
+while Kamino's 7 covers about 60% of the map. Mini 0x1a is an RGB tint, and minis
+0x1d-0x1f name textures whose roles depend on the type (for water, 0x1d is a bump
+map and 0x1e a plain-color fallback; lava and ice store their color texture
+first). Further fields (apparently opacity, tiling, and scroll speed, plus cloud
+texture, scale, and wind) are preserved raw; the engine's water tiling and scroll
+speeds are its own choices until they are measured.

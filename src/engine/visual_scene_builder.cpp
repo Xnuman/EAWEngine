@@ -681,6 +681,104 @@ void append_terrain(SceneBuilder& builder, const TedMap& map)
     }
 }
 
+// Water, lava, and ice surfaces: a flat quad over the terrain at the map's water level. Texture
+// roles follow the corpus: for water the first texture (0x1d) is a bump map and the second (0x1e)
+// a plain color fallback; lava and ice store their color texture first. Tiling (one repeat per
+// 200 world units) and scroll speeds are engine choices; the related TED fields are preserved but
+// not interpreted yet.
+std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMap& map)
+{
+    auto& scene = builder.scene;
+    const auto& terrain = scene.terrain;
+    const auto type = map.water.type;
+    if (terrain.vertices.empty() || (type != TedWaterType::water && type != TedWaterType::lava && type != TedWaterType::ice))
+    {
+        return std::nullopt;
+    }
+    // A surface entirely below the ground is never visible (for example Cloud City's -150).
+    if (map.water.level < terrain.bounds_minimum[2])
+    {
+        return std::nullopt;
+    }
+
+    VisualMaterial material;
+    const auto texture = [&](const std::string& reference)
+    {
+        return reference.empty() ? invalid_visual_texture : scene_texture(builder, reference);
+    };
+    material.diffuse = {map.water.color[0], map.water.color[1], map.water.color[2], 1.0F};
+    material.specular = {0.6F, 0.6F, 0.6F};
+    if (type == TedWaterType::water)
+    {
+        material.name = "water surface";
+        material.blend = VisualBlendMode::alpha_blend;
+        material.diffuse[3] = 0.75F;
+        material.base_color_texture = texture(map.water_maps[1]);
+        material.normal_texture = texture(map.water_maps[0]);
+        material.uv_scroll = {0.010F, 0.004F};
+    }
+    else if (type == TedWaterType::lava)
+    {
+        material.name = "lava surface";
+        material.lighting = VisualLightingModel::unlit;
+        // Lava maps store black in the tint field (Mustafar), so the texture is shown as authored.
+        material.diffuse = {1.0F, 1.0F, 1.0F, 1.0F};
+        material.base_color_texture = texture(map.water_maps[0]);
+        if (material.base_color_texture == invalid_visual_texture)
+        {
+            material.base_color_texture = texture(map.water_maps[1]);
+        }
+        material.uv_scroll = {0.004F, 0.002F};
+    }
+    else
+    {
+        material.name = "ice surface";
+        material.base_color_texture = texture(map.water_maps[0]);
+        material.normal_texture = texture(map.water_maps[1]);
+        material.specular = {0.8F, 0.8F, 0.85F};
+    }
+    if (material.lighting != VisualLightingModel::unlit)
+    {
+        material.lighting = material.normal_texture != invalid_visual_texture ? VisualLightingModel::normal_mapped : VisualLightingModel::lit;
+        // Liquid surfaces take the full key-light highlight (the color textures are opaque, so
+        // base alpha is 1); the original's reflections and refraction are not modeled yet.
+        material.gloss = VisualGlossSource::base_alpha;
+    }
+
+    constexpr float tile = 200.0F;
+    const auto level = map.water.level;
+    const auto minimum_x = terrain.bounds_minimum[0];
+    const auto minimum_y = terrain.bounds_minimum[1];
+    const auto maximum_x = terrain.bounds_maximum[0];
+    const auto maximum_y = terrain.bounds_maximum[1];
+    VisualMesh mesh;
+    mesh.name = material.name;
+    mesh.first_draw = static_cast<std::uint32_t>(scene.draws.size());
+    mesh.draw_count = 1;
+    mesh.bounds_minimum = {minimum_x, minimum_y, level};
+    mesh.bounds_maximum = {maximum_x, maximum_y, level};
+    const auto base_vertex = static_cast<std::int32_t>(scene.vertices.size());
+    for (const auto& [x, y] : std::array<std::array<float, 2>, 4>{{{minimum_x, minimum_y}, {maximum_x, minimum_y}, {maximum_x, maximum_y}, {minimum_x, maximum_y}}})
+    {
+        VisualVertex vertex;
+        vertex.position = {x, y, level};
+        vertex.normal = {0.0F, 0.0F, 1.0F};
+        vertex.texture_coordinates = {x / tile, y / tile};
+        vertex.tangent = {1.0F, 0.0F, 0.0F};
+        vertex.binormal = {0.0F, 1.0F, 0.0F};
+        scene.vertices.push_back(vertex);
+    }
+    const auto first_index = static_cast<std::uint32_t>(scene.indices.size());
+    scene.indices.insert(scene.indices.end(), {0U, 1U, 2U, 0U, 2U, 3U});
+    const auto material_index = static_cast<std::uint32_t>(scene.materials.size());
+    scene.materials.push_back(std::move(material));
+    scene.draws.push_back({first_index, 6U, base_vertex, material_index});
+    const auto mesh_index = static_cast<std::uint32_t>(scene.meshes.size());
+    scene.meshes.push_back(std::move(mesh));
+    scene.instances.push_back({mesh_index});
+    return mesh_index;
+}
+
 // Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
 void update_scene_bounds(VisualScene& scene)
 {
@@ -769,6 +867,7 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
     if (asset.land)
     {
         append_terrain(builder, map);
+        asset.water = append_water(builder, map).has_value() ? map.water.type : TedWaterType::none;
     }
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
     for (const auto& placement : layout.placements)

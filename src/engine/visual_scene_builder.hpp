@@ -2,6 +2,7 @@
 
 #include "eaw/ala_animation.hpp"
 #include "eaw/alo_model.hpp"
+#include "eaw/ted_map.hpp"
 #include "eaw/visual_scene.hpp"
 
 #include <array>
@@ -40,6 +41,8 @@ struct VisualMapAsset
     std::optional<VisualLightRig> lighting;
     std::string environment_name;
     // Instances colored by their type's affiliated faction versus the player-slot fallback.
+    // Liquid surface added over the terrain (none when the map has none or it is not visible).
+    TedWaterType water{TedWaterType::none};
     std::size_t faction_colored{};
     std::size_t player_colored{};
 };

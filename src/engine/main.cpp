@@ -324,7 +324,11 @@ int main(const int argc, char** argv)
                 std::cout << "Visual map: " << scene.name << (visual_map.land ? " (land)" : " (space)") << '\n'
                           << "Terrain: "
                           << (scene.terrain.vertices.empty() ? std::string("none")
-                                                             : std::to_string(scene.terrain.vertices.size() / 3U) + " triangles, " + std::to_string(scene.terrain.layer_count) + " layers")
+                                                             : std::to_string(scene.terrain.vertices.size() / 3U) + " triangles, " + std::to_string(scene.terrain.layer_count) + " layers" +
+                                                                   (visual_map.water == eaw::TedWaterType::water  ? ", water"
+                                                                    : visual_map.water == eaw::TedWaterType::lava ? ", lava"
+                                                                    : visual_map.water == eaw::TedWaterType::ice  ? ", ice"
+                                                                                                                  : ""))
                           << '\n'
                           << "Objects: " << scene.instances.size() << " instances of " << scene.meshes.size() << " models | squadron members expanded: " << visual_map.expanded_members << '\n'
                           << "Not drawn: " << visual_map.untyped << " untyped, " << visual_map.without_model << " without model, " << visual_map.missing_model_files << " missing model files, "
