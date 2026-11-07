@@ -22,6 +22,9 @@ struct VisualModelAsset
     VisualScene scene;
     AloModel model;
     std::vector<AloMatrix4> inverse_bind_pose;
+    // The scene's palette has a second, visibility-collapsed half for rigid attachments (see
+    // sample_skin_palette).
+    bool visibility_palette{};
 };
 
 // A stock or mod map's placed objects as one instanced scene (no terrain yet). Counts describe
@@ -56,6 +59,10 @@ struct VisualMapAsset
 [[nodiscard]] VisualModelAsset build_visual_model(const AssetReader& reader, std::string_view model_path, AssetCache* cache = nullptr);
 [[nodiscard]] VisualMapAsset build_visual_map(const AssetReader& reader, std::string_view map_path, AssetCache* cache = nullptr);
 [[nodiscard]] std::optional<std::string> default_model_animation(const AssetReader& reader, std::string_view model_path);
+// Every <MODEL>_*.ALA beside the model, sorted by virtual path.
+[[nodiscard]] std::vector<std::string> model_animations(const AssetReader& reader, std::string_view model_path);
+// Skin matrices for the model's bones (bind pose without an animation). With a visibility palette,
+// a second half repeats them, collapsed to a point for bones the pose hides.
 [[nodiscard]] std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimation* animation, float seconds);
 
 } // namespace eaw

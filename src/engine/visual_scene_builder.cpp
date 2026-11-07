@@ -457,18 +457,24 @@ std::array<float, 4> player_team_color(const std::uint32_t player) noexcept
 
 // Appends one ALO model as a new mesh (its draws, vertices, indices, and any new textures) and
 // returns the mesh index. Vertices stay in bind-pose model space with model-wide bone indices.
-std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const std::string_view name)
+// With `animated_visibility`, the mesh's palette has two halves: [0, N) the skin matrices and
+// [N, 2N) the same matrices collapsed to a point while their bone is hidden. Rigid attachments
+// reference the second half, so meshes on bones hidden in the bind pose are included and appear
+// when an animation shows their bone. Without it (maps share one bind-pose palette), such meshes
+// are omitted.
+std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const std::string_view name, const bool animated_visibility = false)
 {
     auto& scene = builder.scene;
     const auto bind_pose = model.bind_pose();
-    if (model.bones.size() > std::numeric_limits<std::uint32_t>::max())
+    if (model.bones.size() > std::numeric_limits<std::uint32_t>::max() / 2U)
     {
         throw std::runtime_error("ALO skeleton exceeds the visual scene bone index range");
     }
+    const auto bone_count = static_cast<std::uint32_t>(model.bones.size());
     VisualMesh visual_mesh;
     visual_mesh.name = name;
     visual_mesh.first_draw = static_cast<std::uint32_t>(scene.draws.size());
-    visual_mesh.bone_count = static_cast<std::uint32_t>(model.bones.size());
+    visual_mesh.bone_count = animated_visibility ? bone_count * 2U : bone_count;
     visual_mesh.bounds_minimum.fill(std::numeric_limits<float>::max());
     visual_mesh.bounds_maximum.fill(std::numeric_limits<float>::lowest());
     const auto first_vertex = scene.vertices.size();
@@ -483,12 +489,13 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
         {0.78F, 0.43F, 0.61F, 1.0F},
     }};
 
-    const auto default_visible = alo_default_mesh_visibility(model);
+    const auto default_visible = alo_default_mesh_visibility(model, !animated_visibility);
     for (std::size_t mesh_index = 0; mesh_index < model.meshes.size(); ++mesh_index)
     {
         const auto& mesh = model.meshes[mesh_index];
-        // Default appearance only: intact state, full detail, no bind-pose-hidden attachments.
-        // Changes driven by damage, animation, or distance are not modeled yet.
+        // Default appearance: intact state and full detail. Bone visibility is either animated
+        // through the visibility palette or, for maps, fixed to the bind pose. Damage-state and
+        // distance switching are not modeled yet.
         if (!default_visible[mesh_index])
         {
             continue;
@@ -557,7 +564,7 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
                 }
                 else if (mesh.attached_bone && *mesh.attached_bone < model.bones.size())
                 {
-                    bone_indices[0] = *mesh.attached_bone;
+                    bone_indices[0] = animated_visibility ? bone_count + *mesh.attached_bone : *mesh.attached_bone;
                     bone_weights[0] = 1.0F;
                 }
                 // Authored vertex colors only drive materials whose legacy profile reads them; other
@@ -1073,7 +1080,8 @@ VisualModelAsset build_visual_model(const AssetReader& vfs, const std::string_vi
     }
     scene.name = resolved->virtual_path;
     scene.warnings = asset.model.warnings;
-    const auto mesh = append_model(builder, asset.model, resolved->virtual_path);
+    asset.visibility_palette = true;
+    const auto mesh = append_model(builder, asset.model, resolved->virtual_path, true);
     VisualInstance instance{mesh};
     instance.team_color = player_team_color(1);
     scene.instances.push_back(instance);
@@ -1252,6 +1260,23 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
     return asset;
 }
 
+std::vector<std::string> model_animations(const AssetReader& reader, const std::string_view model_path)
+{
+    const auto path = std::filesystem::path(model_path);
+    const auto prefix = fold_ascii(path.stem().string() + "_");
+    std::vector<std::string> result;
+    for (const auto& asset : reader.list(path.parent_path().generic_string()))
+    {
+        const auto file = std::filesystem::path(asset.virtual_path);
+        if (fold_ascii(file.extension().string()) == fold_ascii(".ala") && fold_ascii(file.filename().string()).starts_with(prefix))
+        {
+            result.push_back(asset.virtual_path);
+        }
+    }
+    std::ranges::sort(result);
+    return result;
+}
+
 std::optional<std::string> default_model_animation(const AssetReader& vfs, const std::string_view model_path)
 {
     const auto path = std::filesystem::path(model_path);
@@ -1282,10 +1307,20 @@ std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& a
 
     const auto bone_count = std::min(pose.size(), asset.inverse_bind_pose.size());
     std::vector<std::array<float, 16>> result;
-    result.reserve(std::max<std::size_t>(bone_count, 1U));
+    result.reserve(std::max<std::size_t>(bone_count * 2U, 1U));
     for (std::size_t index = 0; index < bone_count; ++index)
     {
         result.push_back(alo_multiply(asset.inverse_bind_pose[index], pose[index].transform).values);
+    }
+    if (asset.visibility_palette)
+    {
+        // Hidden bones collapse their attachments to a point, which rasterizes nothing.
+        std::array<float, 16> collapsed{};
+        collapsed[15] = 1.0F;
+        for (std::size_t index = 0; index < bone_count; ++index)
+        {
+            result.push_back(pose[index].visible ? result[index] : collapsed);
+        }
     }
     if (result.empty())
     {

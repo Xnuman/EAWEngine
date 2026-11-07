@@ -1510,23 +1510,23 @@ void test_visual_material_translation()
     require(material.base_color_texture == eaw::invalid_visual_texture && material.tint != std::array<float, 4>{1.0F, 1.0F, 1.0F, 1.0F}, "untextured material did not receive a debug tint");
     require(scene.instances[0].team_color[3] == 1.0F && !scene.instances[0].background, "model instance team color or layer is wrong");
 
-    // A mesh attached to a bone hidden in the bind pose (an alternate state such as debris) is
-    // omitted; with nothing else visible the model reports that it has no visible geometry.
+    // A mesh attached to a bone hidden in the bind pose (an alternate state such as debris) is kept
+    // in a model scene but bound to the visibility half of the palette, which collapses it until an
+    // animation shows the bone.
     {
         const auto bytes = make_test_alo(false);
         std::ofstream file(root / "Data" / "Art" / "Models" / "HIDDEN.ALO", std::ios::binary);
         file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
-    bool hidden_rejected = false;
-    try
-    {
-        static_cast<void>(eaw::build_visual_model(vfs, "Data/Art/Models/HIDDEN.ALO"));
-    }
-    catch (const std::runtime_error& error)
-    {
-        hidden_rejected = std::string_view(error.what()).find("no visible renderable geometry") != std::string_view::npos;
-    }
-    require(hidden_rejected, "a mesh attached to a hidden bind-pose bone was drawn");
+    const auto hidden = eaw::build_visual_model(vfs, "Data/Art/Models/HIDDEN.ALO");
+    require(hidden.visibility_palette && hidden.scene.bone_count == 2 && hidden.scene.vertices.size() == 3 && hidden.scene.vertices[0].bone_indices[0] == 1,
+            "a rigid attachment must reference the visibility half of the palette");
+    const auto hidden_palette = eaw::sample_skin_palette(hidden, nullptr, 0.0F);
+    std::array<float, 16> collapsed{};
+    collapsed[15] = 1.0F;
+    require(hidden_palette.size() == 2 && hidden_palette[1] == collapsed && hidden_palette[0][0] == 1.0F, "a bone hidden in the bind pose must collapse its attachments");
+    const auto shown_palette = eaw::sample_skin_palette(asset, nullptr, 0.0F);
+    require(shown_palette.size() == 2 && shown_palette[1] == shown_palette[0], "a visible bone's visibility entry must match its skin matrix");
     std::filesystem::remove_all(root, ignored);
 }
 

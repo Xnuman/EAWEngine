@@ -102,7 +102,10 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   bytecode, plus an opt-in `ID3D12PipelineLibrary` cache. Reflection metadata is
   deferred until material shaders need generated bindings.
 - Add animation selection/visibility handling, selection IDs, debug drawing,
-  resource handles, descriptor allocation, streaming, and hot reload. Started:
+  resource handles, descriptor allocation, streaming, and hot reload. Animation
+  selection is done: `sandbox --model` cycles the model's animations with
+  Left/Right, and rigid attachments follow animated bone visibility through a
+  visibility-collapsed second palette half. Started:
   the D3D12 renderer keeps textures in a generation-checked handle pool, takes
   texture-table slots from an allocator that reuses a slot only after its
   release fence, and retires replaced scene resources on the direct-queue

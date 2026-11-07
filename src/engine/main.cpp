@@ -10,6 +10,7 @@
 #include "visual_scene_builder.hpp"
 #endif
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -272,6 +273,8 @@ struct SandboxContent
     std::optional<eaw::VisualModelAsset> model;
     std::optional<eaw::AlaAnimation> animation;
     std::string animation_path;
+    // Every animation beside the model, for runtime selection.
+    std::vector<std::string> animations;
     std::string animation_error;
     // When set, nothing was built and the current view stays.
     std::string error;
@@ -324,6 +327,14 @@ SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Op
     }
     if (content.model)
     {
+        try
+        {
+            content.animations = eaw::model_animations(reader, options.model);
+        }
+        catch (const std::exception& error)
+        {
+            content.animation_error = std::string("animation list unavailable: ") + error.what();
+        }
         try
         {
             const auto animation_path = options.animation ? options.animation : eaw::default_model_animation(reader, options.model);
@@ -440,6 +451,9 @@ int main(const int argc, char** argv)
         // Kept only for --reload-every; otherwise the CPU copy moves into the renderer.
         std::optional<eaw::VisualScene> reload_scene;
         std::vector<std::array<float, 16>> bind_palette;
+        // Model mode: Left/Right step through [bind pose, animations...].
+        std::vector<std::string> animation_paths;
+        std::size_t animation_choice = 0;
 
         // The window stays responsive while the map or model builds on a worker thread. The future
         // is declared after the VFS, so leaving early waits for the worker before the VFS goes away.
@@ -560,8 +574,14 @@ int main(const int argc, char** argv)
                     std::cerr << "animation warning: " << content.animation_error << '\n';
                 }
                 visual_animation.reset();
+                animation_paths = std::move(content.animations);
+                animation_choice = 0;
                 if (content.animation)
                 {
+                    if (const auto found = std::ranges::find(animation_paths, content.animation_path); found != animation_paths.end())
+                    {
+                        animation_choice = static_cast<std::size_t>(found - animation_paths.begin()) + 1U;
+                    }
                     visual_animation = std::move(content.animation);
                     std::cout << "Animation: " << content.animation_path << " | " << visual_animation->playable_frame_count() << " frames at " << visual_animation->frames_per_second << " fps | "
                               << visual_animation->duration_seconds() << " seconds\n";
@@ -572,7 +592,7 @@ int main(const int argc, char** argv)
                 }
                 if (!content.reload)
                 {
-                    std::cout << "Left-drag orbits, wheel zooms, Space resets, P pauses animation.\n";
+                    std::cout << "Left-drag orbits, wheel zooms, Space resets, P pauses animation, Left/Right select among " << animation_paths.size() << " animations.\n";
                 }
             }
             if (content.reload)
@@ -644,6 +664,36 @@ int main(const int argc, char** argv)
             if (window.input().keys[static_cast<std::size_t>(eaw::Key::p)].pressed && visual_animation)
             {
                 animation_playing = !animation_playing;
+            }
+            const int animation_step = (input.keys[static_cast<std::size_t>(eaw::Key::right)].pressed ? 1 : 0) - (input.keys[static_cast<std::size_t>(eaw::Key::left)].pressed ? 1 : 0);
+            if (visual_model && !tactical_camera && animation_step != 0 && !animation_paths.empty())
+            {
+                // Choice 0 is the bind pose; reading here is safe because builds only read too, and
+                // remounts happen on this thread between builds.
+                const auto choices = animation_paths.size() + 1U;
+                animation_choice = (animation_choice + (animation_step > 0 ? 1U : choices - 1U)) % choices;
+                animation_time = 0.0F;
+                visual_animation.reset();
+                if (animation_choice == 0)
+                {
+                    std::cout << "Animation: bind pose\n";
+                    renderer.set_bone_transforms(bind_palette);
+                }
+                else
+                {
+                    const auto& path = animation_paths[animation_choice - 1U];
+                    try
+                    {
+                        visual_animation = eaw::AlaAnimation::parse(vfs.read(path));
+                        std::cout << "Animation " << animation_choice << "/" << animation_paths.size() << ": " << path << " | " << visual_animation->playable_frame_count() << " frames, "
+                                  << visual_animation->duration_seconds() << " seconds\n";
+                    }
+                    catch (const std::exception& error)
+                    {
+                        std::cerr << "animation warning: " << path << ": " << error.what() << "; showing the bind pose\n";
+                        renderer.set_bone_transforms(bind_palette);
+                    }
+                }
             }
             if (window.close_requested())
             {
