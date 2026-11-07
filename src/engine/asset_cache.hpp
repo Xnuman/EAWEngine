@@ -120,6 +120,7 @@ public:
             if (const auto found = entries_.find(cache_key); found != entries_.end() && found->second.type == std::type_index(typeid(T)))
             {
                 ++hits_;
+                found->second.last_epoch = epoch_;
                 if (outer != nullptr)
                 {
                     outer->merge(found->second.dependencies);
@@ -136,13 +137,20 @@ public:
             outer->merge(dependencies);
         }
         std::scoped_lock lock(mutex_);
-        entries_.insert_or_assign(cache_key, Entry{value, std::type_index(typeid(T)), std::move(dependencies)});
+        entries_.insert_or_assign(cache_key, Entry{value, std::type_index(typeid(T)), std::move(dependencies), epoch_});
         return value;
     }
 
     // Drops every entry whose dependencies changed and returns the dropped keys.
     std::vector<std::string> invalidate(const AssetReader& reader);
     void clear();
+
+    // Starts a build: every entry loaded or reused from now on is stamped with the returned epoch.
+    std::uint64_t begin_epoch();
+    // Drops entries not used since `epoch` (for example the textures of a model a mod replaced),
+    // so a long session does not accumulate unused decoded data. Call after a successful build;
+    // returns the number of dropped entries.
+    std::size_t evict_unused_since(std::uint64_t epoch);
     [[nodiscard]] Stats stats() const;
 
 private:
@@ -151,6 +159,7 @@ private:
         std::shared_ptr<const void> value;
         std::type_index type;
         DependencySet dependencies;
+        std::uint64_t last_epoch{};
     };
     [[nodiscard]] static std::string make_key(std::string_view kind, std::string_view key);
 
@@ -158,6 +167,7 @@ private:
     std::unordered_map<std::string, Entry> entries_;
     std::uint64_t hits_{};
     std::uint64_t misses_{};
+    std::uint64_t epoch_{};
 };
 
 // Archive-level change detection: the size and write time of every MEG mount's archive file.

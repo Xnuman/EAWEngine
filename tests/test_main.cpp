@@ -562,6 +562,16 @@ void test_asset_cache_dependencies()
         threw = true;
     }
     require(threw && cache.stats().entries == 1, "a failed load must not be cached");
+
+    // Eviction: entries a build did not touch are dropped once it succeeds.
+    const auto epoch = cache.begin_epoch();
+    (void)cache.load<std::string>("text", "Data/XML/OTHER.XML", vfs,
+                                  [](const eaw::AssetReader&)
+                                  {
+                                      return std::string("other");
+                                  });
+    require(cache.evict_unused_since(epoch) == 1 && cache.stats().entries == 1 && *cache.load<std::string>("text", "Data/XML/OTHER.XML", vfs, read_text) == "other",
+            "only entries unused since the epoch must be evicted");
     std::filesystem::remove_all(root, ignored);
 }
 

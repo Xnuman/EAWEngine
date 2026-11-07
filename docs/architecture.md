@@ -107,7 +107,7 @@ in a higher-priority layer, or a rebuilt archive. A MEG mount indexes entry
 offsets once, so a rebuilt archive must be remounted (`replace_mount`) before
 anything reads from it; the sandbox does that on the main thread between
 builds, never while a worker is reading. A rebuilt archive invalidates every
-asset read from it, which is conservative but never serves stale bytes.
+asset read from it, which is conservative but never serves stale bytes. Each build starts a cache epoch and, once it succeeds, evicts entries it did not use, so replaced assets do not accumulate during long hot-reload sessions.
 
 The renderer reuses uploaded textures by identity. Each decode stamps the
 `VisualTexture` with a new serial, so a texture served from the cache keeps its

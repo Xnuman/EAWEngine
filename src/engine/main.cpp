@@ -280,6 +280,8 @@ struct SandboxContent
     eaw::DependencySet dependencies;
     // Cache entries dropped because their files changed (rebuilds only).
     std::vector<std::string> invalidated;
+    // Cache entries the successful build no longer used.
+    std::size_t evicted{};
     bool reload{};
 };
 
@@ -301,6 +303,7 @@ SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Op
     {
         content.invalidated = cache->invalidate(vfs);
     }
+    const auto epoch = cache != nullptr ? cache->begin_epoch() : 0;
     const eaw::RecordingAssetReader reader(vfs);
     try
     {
@@ -346,6 +349,10 @@ SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Op
     }
     content.build_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     content.dependencies = reader.dependencies();
+    if (cache != nullptr)
+    {
+        content.evicted = cache->evict_unused_since(epoch);
+    }
     return content;
 }
 
@@ -461,7 +468,8 @@ int main(const int argc, char** argv)
             if (content.reload)
             {
                 const auto stats = asset_cache.stats();
-                std::cout << "Hot reload: rebuilt in " << content.build_seconds << " s; " << content.invalidated.size() << " cached assets re-decoded, " << stats.entries << " cached\n";
+                std::cout << "Hot reload: rebuilt in " << content.build_seconds << " s; " << content.invalidated.size() << " cached assets re-decoded, " << content.evicted << " unused evicted, "
+                          << stats.entries << " cached\n";
             }
             if (!content.error.empty())
             {

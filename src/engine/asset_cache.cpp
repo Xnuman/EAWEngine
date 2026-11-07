@@ -230,6 +230,22 @@ std::vector<std::string> AssetCache::invalidate(const AssetReader& reader)
     return dropped;
 }
 
+std::uint64_t AssetCache::begin_epoch()
+{
+    std::scoped_lock lock(mutex_);
+    return ++epoch_;
+}
+
+std::size_t AssetCache::evict_unused_since(const std::uint64_t epoch)
+{
+    std::scoped_lock lock(mutex_);
+    return std::erase_if(entries_,
+                         [epoch](const auto& entry)
+                         {
+                             return entry.second.last_epoch < epoch;
+                         });
+}
+
 void AssetCache::clear()
 {
     std::scoped_lock lock(mutex_);
