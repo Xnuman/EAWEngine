@@ -108,6 +108,7 @@ The authoritative milestone description is [docs/roadmap.md](docs/roadmap.md). U
 - `src/core`: VFS, formats, compatibility data, and reusable asset logic. It must not depend on graphics or Win32 presentation code.
 - `src/platform`: operating-system window, input, clock, and related platform services.
 - `src/render`: rendering interfaces, visual-scene data, and graphics backends. It must consume engine-native visual data, not parse MEG/ALO/ALA/TED files or know VFS precedence.
+- `src/simulation`: the deterministic tactical simulation (entity ids, structure-of-arrays components, fixed-step scheduling, commands, snapshots). It must not depend on graphics, platform, or file access.
 - `src/engine`: runtime orchestration and the bridge from decoded assets to visual/runtime representations.
 - `src/launcher`: configuration and process launch only.
 - `src/asset_inspector` and `src/dat_editor`: command-line tools built on `eaw_core`.
