@@ -20,6 +20,9 @@ struct D3d12RendererOptions
     // When set, compiled pipeline states are cached in this directory (d3d12_pipelines.bin).
     // Empty disables the cache; nothing is written anywhere else.
     std::filesystem::path pipeline_cache_directory;
+    // Texture bytes uploaded per frame while a scene streams in; at least one texture is always
+    // uploaded. Zero uploads every queued texture in the first frame.
+    std::uint64_t texture_upload_budget_bytes{64ULL * 1024ULL * 1024ULL};
 };
 
 struct D3d12RendererStats
@@ -36,6 +39,8 @@ struct D3d12RendererStats
     std::size_t free_texture_slots{};
     std::size_t pending_texture_slots{};
     std::size_t pending_retirements{};
+    // Scene textures still waiting to stream in (drawn with fallbacks meanwhile).
+    std::size_t pending_texture_uploads{};
 };
 
 class D3d12Renderer final
@@ -54,9 +59,11 @@ public:
     bool render();
     void resize(std::uint32_t width, std::uint32_t height);
     void wait_idle();
-    // Replaces the current scene; may be called at any time. Resources of the replaced scene stay
-    // alive until the GPU has finished every frame that used them; the CPU does not wait.
-    void load_scene(const VisualScene& scene);
+    // Replaces the current scene; may be called at any time. Geometry and materials upload at once;
+    // textures are validated here and stream in under the per-frame budget, drawn with fallbacks
+    // until they arrive. Resources of the replaced scene stay alive until the GPU has finished
+    // every frame that used them; the CPU does not wait. Pass an rvalue to avoid copying textures.
+    void load_scene(VisualScene scene);
     void set_bone_transforms(std::span<const std::array<float, 16>> transforms);
     // Throws std::invalid_argument for non-finite or degenerate cameras.
     void set_camera(const VisualCamera& camera);

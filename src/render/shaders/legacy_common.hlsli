@@ -13,6 +13,7 @@
     "SRV(t2, visibility = SHADER_VISIBILITY_VERTEX), " \
     "SRV(t3), " \
     "RootConstants(num32BitConstants = 2, b1), " \
+    "SRV(t4, visibility = SHADER_VISIBILITY_PIXEL), " \
     "StaticSampler(s0, filter = FILTER_ANISOTROPIC, maxAnisotropy = 8, addressU = TEXTURE_ADDRESS_WRAP, addressV = TEXTURE_ADDRESS_WRAP, " \
     "addressW = TEXTURE_ADDRESS_WRAP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK, " \
     "visibility = SHADER_VISIBILITY_PIXEL)"
@@ -68,7 +69,15 @@ struct MaterialData
 
 Texture2D scene_textures[4096] : register(t0, space1);
 StructuredBuffer<MaterialData> materials : register(t3);
+// Logical texture id -> descriptor slot for this frame. Materials name logical ids so a texture can
+// stream in (or fall back) without rewriting descriptors or materials.
+StructuredBuffer<uint> texture_residency : register(t4);
 SamplerState surface_sampler : register(s0);
+
+float4 sample_texture(const uint texture, const float2 uv)
+{
+    return scene_textures[NonUniformResourceIndex(texture_residency[texture])].Sample(surface_sampler, uv);
+}
 
 float3 safe_normalize(const float3 value, const float3 fallback)
 {

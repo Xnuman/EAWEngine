@@ -69,11 +69,11 @@ float4 terrain_ps(TerrainPixelInput input) : SV_TARGET
     {
         const MaterialData layer = materials[material_index + input.layers[corner]];
         const float2 uv = input.world_position.xy * layer.specular.w;
-        const float4 base = scene_textures[layer.base_texture].Sample(surface_sampler, uv);
+        const float4 base = sample_texture(layer.base_texture, uv);
         float3 layer_normal = float3(0.0f, 0.0f, 1.0f);
         if (layer.lighting == LIGHTING_NORMAL_MAPPED)
         {
-            layer_normal = scene_textures[layer.normal_texture].Sample(surface_sampler, uv).xyz * 2.0f - 1.0f;
+            layer_normal = sample_texture(layer.normal_texture, uv).xyz * 2.0f - 1.0f;
         }
         const float weight = weights[corner];
         albedo += base.rgb * weight;

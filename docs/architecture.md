@@ -82,6 +82,19 @@ only after its fence completes and then overwrites it with a null view. These
 primitives (`gpu_resource_lifetime.hpp`) contain no Direct3D types and are
 unit-tested on their own.
 
+Textures stream. `load_scene` uploads geometry and materials immediately but
+only validates textures against their copy footprints; each frame then uploads
+queued textures up to a byte budget (at least one, so oversized textures still
+progress). Materials name logical texture ids rather than descriptor slots, and
+every frame context owns a persistently mapped residency table mapping each
+logical id to its slot, or to a fallback (flat normal for normal maps, white
+otherwise) until the texture arrives. A texture is resident from the frame that
+submits its copy, because the direct queue waits on the copy fence and applies
+the transition before that frame's draws. Descriptors in the shader-visible
+heap are therefore never rewritten while a frame may read them. Scene
+construction itself runs on a worker thread in the sandbox; VFS reads are safe
+there because each const read opens its own stream.
+
 Animated visual scenes preserve model-wide bone indices in immutable vertex
 buffers. ALA poses are sampled on the CPU into skin matrices, while every
 in-flight frame owns a persistently mapped bone-palette buffer. The CPU updates

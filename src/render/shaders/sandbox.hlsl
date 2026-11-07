@@ -126,7 +126,7 @@ float4 ps_main(PixelInput input) : SV_TARGET
 {
     const MaterialData material = materials[material_index];
     const float2 uv = input.uv * material.specular.w + material.uv_scroll * camera_position_time.w;
-    const float4 base = scene_textures[material.base_texture].Sample(surface_sampler, uv);
+    const float4 base = sample_texture(material.base_texture, uv);
     const float4 tint = material.tint * input.tint * input.vertex_color;
     if ((material.flags & MATERIAL_ALPHA_TEST) != 0u)
     {
@@ -160,7 +160,7 @@ float4 ps_main(PixelInput input) : SV_TARGET
     float4 normal_sample = float4(0.5f, 0.5f, 1.0f, 1.0f);
     if (material.lighting == LIGHTING_NORMAL_MAPPED)
     {
-        normal_sample = scene_textures[material.normal_texture].Sample(surface_sampler, uv);
+        normal_sample = sample_texture(material.normal_texture, uv);
         const float3 tangent_normal = normal_sample.xyz * 2.0f - 1.0f;
         const float3 tangent = safe_normalize(input.tangent, float3(1.0f, 0.0f, 0.0f));
         const float3 binormal = safe_normalize(input.binormal, float3(0.0f, 1.0f, 0.0f));
@@ -179,7 +179,7 @@ float4 ps_main(PixelInput input) : SV_TARGET
     }
     else if (gloss_source == GLOSS_RED)
     {
-        gloss = scene_textures[material.gloss_texture].Sample(surface_sampler, uv).r;
+        gloss = sample_texture(material.gloss_texture, uv).r;
     }
     float3 color = legacy_lit_color(albedo, normal, input.world_position, gloss, material.diffuse.rgb, material.specular.rgb, material.emissive.rgb, tint.rgb);
     if ((material.flags & MATERIAL_EMISSIVE_MASK) != 0u)

@@ -395,6 +395,9 @@ struct D3d12Renderer::Impl
         std::uint32_t bone_capacity{};
         ComPtr<ID3D12Resource> constant_buffer;
         std::byte* constant_buffer_mapped{};
+        // Logical texture id -> descriptor slot for this frame (sandbox shaders' texture_residency).
+        ComPtr<ID3D12Resource> residency_buffer;
+        std::uint32_t* residency_mapped{};
         std::uint64_t fence_value{};
     };
 
@@ -552,7 +555,18 @@ struct D3d12Renderer::Impl
     HandlePool<TextureTag, GpuTexture> textures;
     DescriptorSlotAllocator texture_slots{fallback_texture_count, maximum_scene_textures - fallback_texture_count};
     FenceRetirementQueue<std::vector<ComPtr<ID3D12Resource>>> retired_resources;
-    std::vector<TextureHandle> scene_textures;
+    // Materials name logical textures: 0..fallback_texture_count-1 are the fallbacks, then one per
+    // scene texture. Scene textures stream in under the per-frame upload budget; until a texture is
+    // resident its logical id maps to a role-appropriate fallback in the frame's residency table.
+    struct StreamingTexture
+    {
+        VisualTexture source;
+        TextureHandle handle;
+        std::uint32_t fallback_slot{white_texture_slot};
+        std::uint64_t bytes{};
+    };
+    std::vector<StreamingTexture> scene_textures;
+    std::size_t next_streaming_texture{};
     std::vector<GpuDraw> scene_draws;
     std::vector<std::array<float, 16>> bone_transforms;
     ComPtr<ID3D12Resource> fallback_white_texture;
@@ -611,6 +625,11 @@ struct D3d12Renderer::Impl
             {
                 frame.constant_buffer->Unmap(0, nullptr);
                 frame.constant_buffer_mapped = nullptr;
+            }
+            if (frame.residency_buffer && frame.residency_mapped != nullptr)
+            {
+                frame.residency_buffer->Unmap(0, nullptr);
+                frame.residency_mapped = nullptr;
             }
         }
 #if defined(_DEBUG)
@@ -771,6 +790,13 @@ struct D3d12Renderer::Impl
             set_name(frame.constant_buffer.Get(), L"EAWEngine frame constants " + std::to_wstring(index));
             const D3D12_RANGE no_read{0, 0};
             check_hresult(frame.constant_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.constant_buffer_mapped)), "Map(frame constants)");
+
+            const auto residency_description = buffer_description(static_cast<std::uint64_t>(maximum_scene_textures) * sizeof(std::uint32_t));
+            check_hresult(
+                device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &residency_description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.residency_buffer)),
+                "CreateCommittedResource(frame texture residency)");
+            set_name(frame.residency_buffer.Get(), L"EAWEngine frame texture residency " + std::to_wstring(index));
+            check_hresult(frame.residency_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.residency_mapped)), "Map(frame texture residency)");
         }
     }
 
@@ -1221,16 +1247,18 @@ struct D3d12Renderer::Impl
         return resource;
     }
 
-    ComPtr<ID3D12Resource> upload_texture(UploadBatch& upload, const VisualTexture& source, const std::uint32_t descriptor_index)
+    // Checks a texture's format, mip chain, and data sizes against its D3D12 copy footprint so a
+    // streamed upload cannot fail on malformed data after the scene was accepted.
+    D3D12_RESOURCE_DESC texture_description(const VisualTexture& source) const
     {
-        if (source.mips.empty() || descriptor_index >= maximum_scene_textures)
+        if (source.mips.empty() || source.mips.front().width == 0 || source.mips.front().height == 0)
         {
-            throw std::invalid_argument("invalid visual texture upload");
+            throw std::invalid_argument("visual texture '" + source.name + "' has no mip levels or a zero extent");
         }
         const auto format = dxgi_format(source.format);
         if (format == DXGI_FORMAT_UNKNOWN || source.mips.size() > std::numeric_limits<std::uint16_t>::max())
         {
-            throw std::invalid_argument("invalid visual texture format or mip count");
+            throw std::invalid_argument("visual texture '" + source.name + "' has an unsupported format or mip count");
         }
         D3D12_RESOURCE_DESC description{};
         description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -1241,6 +1269,33 @@ struct D3d12Renderer::Impl
         description.Format = format;
         description.SampleDesc.Count = 1;
         description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        std::vector<UINT> row_counts(source.mips.size());
+        std::vector<UINT64> row_sizes(source.mips.size());
+        UINT64 upload_size{};
+        device->GetCopyableFootprints(&description, 0, static_cast<UINT>(source.mips.size()), 0, nullptr, row_counts.data(), row_sizes.data(), &upload_size);
+        if (upload_size == std::numeric_limits<UINT64>::max())
+        {
+            throw std::invalid_argument("visual texture '" + source.name + "' has a mip chain D3D12 cannot lay out");
+        }
+        for (std::size_t mip_index = 0; mip_index < source.mips.size(); ++mip_index)
+        {
+            const auto& mip = source.mips[mip_index];
+            if (mip.row_pitch < row_sizes[mip_index] || mip.data.size() < static_cast<std::uint64_t>(mip.row_pitch) * row_counts[mip_index])
+            {
+                throw std::invalid_argument("visual texture '" + source.name + "' mip " + std::to_string(mip_index) + " is shorter than its D3D12 footprint");
+            }
+        }
+        return description;
+    }
+
+    ComPtr<ID3D12Resource> upload_texture(UploadBatch& upload, const VisualTexture& source, const std::uint32_t descriptor_index)
+    {
+        if (descriptor_index >= maximum_scene_textures)
+        {
+            throw std::invalid_argument("texture descriptor slot is outside the shader table");
+        }
+        const auto description = texture_description(source);
+        const auto format = description.Format;
         const auto default_heap = heap_properties(D3D12_HEAP_TYPE_DEFAULT);
         ComPtr<ID3D12Resource> resource;
         check_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&resource)),
@@ -1302,7 +1357,7 @@ struct D3d12Renderer::Impl
         return resource;
     }
 
-    void load_scene(const VisualScene& scene)
+    void load_scene(VisualScene scene)
     {
         if (scene.vertices.empty() || scene.indices.empty() || scene.draws.empty())
         {
@@ -1392,76 +1447,39 @@ struct D3d12Renderer::Impl
         }
         auto new_instance_buffer = upload_buffer(upload, std::as_bytes(std::span(gpu_instances)), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"EAWEngine scene instance buffer");
 
-        // New textures are owned by the pool from creation; if the load fails they retire like any
-        // replaced resource (their descriptors may already have been written).
-        std::vector<TextureHandle> new_textures;
-        new_textures.reserve(scene.textures.size());
-        std::vector<std::uint32_t> new_texture_slots;
-        new_texture_slots.reserve(scene.textures.size());
-        try
+        // Textures are validated now and stream in from render(). A normal map that has not arrived
+        // yet samples the flat normal; everything else samples white.
+        std::vector<StreamingTexture> new_textures(scene.textures.size());
+        for (std::size_t index = 0; index < scene.textures.size(); ++index)
         {
-            reclaim_texture_slots();
-            for (std::size_t index = 0; index < scene.textures.size(); ++index)
-            {
-                const auto slot = texture_slots.allocate();
-                if (!slot)
-                {
-                    throw std::runtime_error("the D3D12 texture table is exhausted at scene texture " + std::to_string(index) + " (" + scene.textures[index].name + "); " +
-                                             std::to_string(texture_slots.pending_count()) + " slots await GPU completion");
-                }
-                try
-                {
-                    auto resource = upload_texture(upload, scene.textures[index], *slot);
-                    new_textures.push_back(textures.insert({std::move(resource), *slot}));
-                }
-                catch (...)
-                {
-                    texture_slots.release(*slot, direct_queue.next_value());
-                    throw;
-                }
-                new_texture_slots.push_back(*slot);
-            }
+            (void)texture_description(scene.textures[index]);
         }
-        catch (...)
+        for (const auto& material : scene.materials)
         {
-            retire_textures(new_textures);
-            throw;
+            if (material.normal_texture != invalid_visual_texture && material.normal_texture < new_textures.size())
+            {
+                new_textures[material.normal_texture].fallback_slot = flat_normal_texture_slot;
+            }
         }
 
         std::vector<GpuMaterial> gpu_materials;
         gpu_materials.reserve(std::max<std::size_t>(scene.materials.size(), 1U));
-        try
+        for (std::size_t index = 0; index < scene.materials.size(); ++index)
         {
-            for (std::size_t index = 0; index < scene.materials.size(); ++index)
-            {
-                gpu_materials.push_back(gpu_material(scene, index, new_texture_slots));
-            }
-        }
-        catch (...)
-        {
-            retire_textures(new_textures);
-            throw;
+            gpu_materials.push_back(gpu_material(scene, index));
         }
         if (gpu_materials.empty())
         {
             gpu_materials.emplace_back();
         }
-        try
-        {
-            commit_scene(scene, std::move(upload), std::move(gpu_materials), new_textures, std::move(mesh_ranges), std::move(new_vertex_buffer), std::move(new_index_buffer),
-                         std::move(new_instance_buffer), vertex_bytes.size(), index_bytes.size());
-        }
-        catch (...)
-        {
-            retire_textures(new_textures);
-            throw;
-        }
+        commit_scene(scene, std::move(upload), std::move(gpu_materials), std::move(new_textures), std::move(mesh_ranges), std::move(new_vertex_buffer), std::move(new_index_buffer),
+                     std::move(new_instance_buffer), vertex_bytes.size(), index_bytes.size());
     }
 
     // Second half of load_scene: validates terrain and draws, submits the upload, and swaps the new
     // scene in. The replaced scene's resources retire once the next direct-queue signal completes,
     // which covers in-flight frames and the pending transitions that still name them.
-    void commit_scene(const VisualScene& scene, UploadBatch upload, std::vector<GpuMaterial> gpu_materials, std::vector<TextureHandle>& new_textures,
+    void commit_scene(VisualScene& scene, UploadBatch upload, std::vector<GpuMaterial> gpu_materials, std::vector<StreamingTexture> new_textures,
                       std::vector<std::pair<std::uint32_t, std::uint32_t>> mesh_ranges, ComPtr<ID3D12Resource> new_vertex_buffer, ComPtr<ID3D12Resource> new_index_buffer,
                       ComPtr<ID3D12Resource> new_instance_buffer, const std::size_t vertex_byte_count, const std::size_t index_byte_count)
     {
@@ -1548,7 +1566,18 @@ struct D3d12Renderer::Impl
             retired_resources.push(std::move(replaced), retire_value);
         }
         retire_textures(scene_textures);
-        scene_textures = std::exchange(new_textures, {});
+        // Validation is complete, so the CPU texture data moves into the streaming queue.
+        for (std::size_t index = 0; index < new_textures.size(); ++index)
+        {
+            auto& entry = new_textures[index];
+            entry.source = std::move(scene.textures[index]);
+            for (const auto& mip : entry.source.mips)
+            {
+                entry.bytes += mip.data.size();
+            }
+        }
+        scene_textures = std::move(new_textures);
+        next_streaming_texture = 0;
         scene_vertex_buffer = std::move(new_vertex_buffer);
         scene_index_buffer = std::move(new_index_buffer);
         scene_instance_buffer = std::move(new_instance_buffer);
@@ -1573,28 +1602,114 @@ struct D3d12Renderer::Impl
     }
 
     // Removes textures from the pool and retires their resources and descriptor slots on the
-    // direct queue's next signal. Stale handles are ignored; the vector is cleared.
-    void retire_textures(std::vector<TextureHandle>& handles)
+    // direct queue's next signal. Entries that never became resident are dropped; the vector is cleared.
+    void retire_textures(std::vector<StreamingTexture>& entries)
     {
-        if (handles.empty())
+        if (entries.empty())
         {
             return;
         }
         const auto retire_value = direct_queue.next_value();
         std::vector<ComPtr<ID3D12Resource>> resources;
-        resources.reserve(handles.size());
-        for (const auto handle : handles)
+        resources.reserve(entries.size());
+        for (auto& entry : entries)
         {
-            if (auto texture_entry = textures.erase(handle))
+            if (auto texture_entry = textures.erase(entry.handle))
             {
                 texture_slots.release(texture_entry->descriptor, retire_value);
                 resources.push_back(std::move(texture_entry->resource));
             }
+            entry.handle = {};
         }
-        handles.clear();
+        entries.clear();
         if (!resources.empty())
         {
             retired_resources.push(std::move(resources), retire_value);
+        }
+    }
+
+    // Uploads queued scene textures in order until the per-frame byte budget is spent (always at
+    // least one, so a texture larger than the budget still arrives). A texture counts as resident
+    // from the frame that submits it: the direct queue waits for the copy and applies its
+    // transition before that frame's draws. When the shader table is full the rest wait on their
+    // fallbacks and retry next frame.
+    void stream_scene_textures()
+    {
+        if (next_streaming_texture >= scene_textures.size())
+        {
+            return;
+        }
+        reclaim_texture_slots();
+        const auto first = next_streaming_texture;
+        std::optional<UploadBatch> upload;
+        std::uint64_t submitted_bytes = 0;
+        try
+        {
+            while (next_streaming_texture < scene_textures.size())
+            {
+                auto& entry = scene_textures[next_streaming_texture];
+                if (options.texture_upload_budget_bytes != 0 && submitted_bytes != 0 && submitted_bytes + entry.bytes > options.texture_upload_budget_bytes)
+                {
+                    break;
+                }
+                const auto slot = texture_slots.allocate();
+                if (!slot)
+                {
+                    break;
+                }
+                if (!upload)
+                {
+                    upload = begin_upload(L"EAWEngine texture stream");
+                }
+                try
+                {
+                    auto resource = upload_texture(*upload, entry.source, *slot);
+                    entry.handle = textures.insert({std::move(resource), *slot});
+                }
+                catch (...)
+                {
+                    texture_slots.release(*slot, direct_queue.next_value());
+                    throw;
+                }
+                submitted_bytes += entry.bytes;
+                ++next_streaming_texture;
+            }
+            if (upload)
+            {
+                submit_upload(std::move(*upload));
+            }
+        }
+        catch (...)
+        {
+            // Nothing from this batch was submitted: undo residency so no draw samples it.
+            std::vector<StreamingTexture> unsent;
+            for (auto index = first; index < next_streaming_texture; ++index)
+            {
+                unsent.push_back({{}, std::exchange(scene_textures[index].handle, {}), 0, 0});
+            }
+            retire_textures(unsent);
+            next_streaming_texture = first;
+            throw;
+        }
+        for (auto index = first; index < next_streaming_texture; ++index)
+        {
+            scene_textures[index].source = {};
+        }
+    }
+
+    // Writes this frame's logical-texture-to-slot table. Called once the frame context is reusable.
+    void write_texture_residency(FrameContext& frame) const
+    {
+        auto* table = frame.residency_mapped;
+        for (std::uint32_t slot = 0; slot < fallback_texture_count; ++slot)
+        {
+            table[slot] = slot;
+        }
+        for (std::size_t index = 0; index < scene_textures.size(); ++index)
+        {
+            const auto& entry = scene_textures[index];
+            const auto* resident = textures.get(entry.handle);
+            table[fallback_texture_count + index] = resident != nullptr ? resident->descriptor : entry.fallback_slot;
         }
     }
 
@@ -1632,7 +1747,7 @@ struct D3d12Renderer::Impl
     }
 
     // Validates one scene material and converts it to the shader layout.
-    static GpuMaterial gpu_material(const VisualScene& scene, const std::size_t index, const std::span<const std::uint32_t> texture_slot_table)
+    static GpuMaterial gpu_material(const VisualScene& scene, const std::size_t index)
     {
         const auto& material = scene.materials[index];
         const auto slot = [&](const std::uint32_t texture, const std::uint32_t fallback, const char* role)
@@ -1645,7 +1760,7 @@ struct D3d12Renderer::Impl
             {
                 throw std::invalid_argument("visual material " + std::to_string(index) + " (" + material.name + ") references a missing " + role + " texture");
             }
-            return texture_slot_table[texture];
+            return fallback_texture_count + texture;
         };
         const auto finite = [](const auto& values)
         {
@@ -1779,6 +1894,8 @@ struct D3d12Renderer::Impl
             throw std::runtime_error("frame bone palette is smaller than the active visual scene");
         }
         std::memcpy(frame.bone_buffer_mapped, bone_transforms.data(), bone_transforms.size() * sizeof(bone_transforms.front()));
+        stream_scene_textures();
+        write_texture_residency(frame);
         // This frame context's fence has completed above, so its constants can be rewritten.
         FrameConstants constants{};
         constants.view_projection = camera_matrix();
@@ -1834,13 +1951,14 @@ struct D3d12Renderer::Impl
         ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
         command_list->SetDescriptorHeaps(1, descriptor_heaps);
         command_list->SetGraphicsRootSignature(root_signature.Get());
-        // Root parameters (sandbox.hlsl): 0 frame CBV, 1 texture table, 2 bones, 3 instances,
-        // 4 materials, 5 draw constants (first instance, material).
+        // Root parameters (legacy_common.hlsli): 0 frame CBV, 1 texture table, 2 bones, 3 instances,
+        // 4 materials, 5 draw constants (first instance, material), 6 texture residency.
         command_list->SetGraphicsRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
         command_list->SetGraphicsRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
         command_list->SetGraphicsRootShaderResourceView(2, frame.bone_buffer->GetGPUVirtualAddress());
         command_list->SetGraphicsRootShaderResourceView(3, (scene_loaded ? scene_instance_buffer : identity_instance_buffer)->GetGPUVirtualAddress());
         command_list->SetGraphicsRootShaderResourceView(4, (scene_loaded ? scene_material_buffer : identity_material_buffer)->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(6, frame.residency_buffer->GetGPUVirtualAddress());
         command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
         if (!scene_loaded)
@@ -2089,9 +2207,9 @@ void D3d12Renderer::wait_idle()
     impl_->wait_idle();
 }
 
-void D3d12Renderer::load_scene(const VisualScene& scene)
+void D3d12Renderer::load_scene(VisualScene scene)
 {
-    impl_->load_scene(scene);
+    impl_->load_scene(std::move(scene));
 }
 
 void D3d12Renderer::set_bone_transforms(const std::span<const std::array<float, 16>> transforms)
@@ -2132,6 +2250,7 @@ D3d12RendererStats D3d12Renderer::stats() const
         .free_texture_slots = impl_->texture_slots.free_count(),
         .pending_texture_slots = impl_->texture_slots.pending_count(),
         .pending_retirements = impl_->retired_resources.size(),
+        .pending_texture_uploads = impl_->scene_textures.size() - impl_->next_streaming_texture,
     };
 }
 

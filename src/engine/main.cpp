@@ -14,6 +14,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
+#include <future>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -21,6 +23,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -48,6 +51,8 @@ struct Options
     std::optional<std::uint64_t> frame_limit;
     // Reload the scene every N rendered frames to exercise resource replacement and retirement.
     std::optional<std::uint64_t> reload_every;
+    // Per-frame texture upload budget in MiB; zero uploads everything at once.
+    std::uint64_t upload_budget_mib{64};
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};
@@ -73,7 +78,8 @@ void print_usage()
               << "  --height <pixels>  Initial sandbox client height\n"
               << "  --vsync <on|off>   Select synchronized or tearing-capable present\n"
               << "  --frame-latency <1|2>  Maximum queued presentation frames\n"
-              << "  --frame-limit <count>  Exit after submitted frames (automation)\n"
+              << "  --frame-limit <count>  Exit after this many frames once the scene is shown (automation)\n"
+              << "  --upload-budget <MiB>  Texture bytes streamed per frame (default 64; 0 uploads all at once)\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
               << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
@@ -196,6 +202,14 @@ Options parse_options(const int argc, char** argv)
                 throw std::invalid_argument("--frame-latency must be 1 or 2");
             }
         }
+        else if (argument == "--upload-budget")
+        {
+            options.upload_budget_mib = parse_unsigned_64(require_value(argc, argv, index, argument), argument);
+            if (options.upload_budget_mib > 1024ULL * 1024ULL)
+            {
+                throw std::invalid_argument("--upload-budget is limited to 1048576 MiB");
+            }
+        }
         else if (argument == "--reload-every")
         {
             options.reload_every = parse_unsigned_64(require_value(argc, argv, index, argument), argument);
@@ -239,6 +253,70 @@ Options parse_options(const int argc, char** argv)
         throw std::invalid_argument("sandbox width and height must be greater than zero");
     }
     return options;
+}
+
+// Everything the sandbox shows, built off the render thread. Reading the VFS from a worker is safe
+// because its const reads open their own streams, and the main thread does not use the VFS while
+// a build runs.
+struct SandboxContent
+{
+    std::optional<eaw::VisualMapAsset> map;
+    std::optional<eaw::VisualModelAsset> model;
+    std::optional<eaw::AlaAnimation> animation;
+    std::string animation_path;
+    std::string animation_error;
+    // When set, nothing was built and the validation triangle stays.
+    std::string error;
+    double build_seconds{};
+};
+
+SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Options& options)
+{
+    SandboxContent content;
+    const auto start = std::chrono::steady_clock::now();
+    try
+    {
+        if (options.map)
+        {
+            content.map = eaw::build_visual_map(vfs, *options.map);
+        }
+        else
+        {
+            content.model = eaw::build_visual_model(vfs, options.model);
+        }
+    }
+    catch (const std::exception& error)
+    {
+        content.error = error.what();
+        return content;
+    }
+    if (content.model)
+    {
+        try
+        {
+            const auto animation_path = options.animation ? options.animation : eaw::default_model_animation(vfs, options.model);
+            if (animation_path)
+            {
+                const auto resolved_animation = vfs.resolve(*animation_path);
+                if (!resolved_animation)
+                {
+                    content.animation_error = "asset not found: " + *animation_path;
+                }
+                else
+                {
+                    content.animation = eaw::AlaAnimation::parse(vfs.read(resolved_animation->virtual_path));
+                    content.animation_path = resolved_animation->virtual_path;
+                }
+            }
+        }
+        catch (const std::exception& error)
+        {
+            content.animation_error = std::string(error.what()) + "; using the bind pose";
+            content.animation.reset();
+        }
+    }
+    content.build_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    return content;
 }
 
 } // namespace
@@ -312,33 +390,43 @@ int main(const int argc, char** argv)
         renderer_options.gpu_validation = options.gpu_validation;
         renderer_options.maximum_frame_latency = options.frame_latency;
         renderer_options.pipeline_cache_directory = options.pipeline_cache;
+        renderer_options.texture_upload_budget_bytes = options.upload_budget_mib * 1024ULL * 1024ULL;
         eaw::D3d12Renderer renderer(window.native_handle(), window.client_width(), window.client_height(), renderer_options);
         std::optional<eaw::VisualModelAsset> visual_model;
         std::optional<eaw::AlaAnimation> visual_animation;
         // Model inspection orbits the model; a map uses the tactical camera. The validation
-        // triangle gets an orbit over its small extent.
-        std::optional<eaw::OrbitCamera> orbit_camera;
+        // triangle, shown while content builds, gets an orbit over its small extent.
+        std::optional<eaw::OrbitCamera> orbit_camera(std::in_place, eaw::CameraBounds{{-0.8F, -0.7F, -0.1F}, {0.8F, 0.8F, 0.1F}});
         std::optional<eaw::TacticalCamera> tactical_camera;
-        // Kept only for --reload-every; otherwise the CPU copy is released after upload.
+        // Kept only for --reload-every; otherwise the CPU copy moves into the renderer.
         std::optional<eaw::VisualScene> reload_scene;
         std::vector<std::array<float, 16>> bind_palette;
-        if (!options.validation_triangle && options.map)
+
+        // The window stays responsive while the map or model builds on a worker thread. The future
+        // is declared after the VFS, so leaving early waits for the worker before the VFS goes away.
+        std::future<SandboxContent> pending_content;
+        if (!options.validation_triangle)
         {
-            try
+            pending_content = std::async(std::launch::async, build_sandbox_content, std::cref(vfs), std::cref(options));
+            std::cout << "Building " << (options.map ? "map " + *options.map : "model " + options.model) << " in the background...\n";
+        }
+        // Frame count at which the content was shown; --frame-limit counts from here.
+        std::optional<std::uint64_t> content_shown_at;
+        if (options.validation_triangle)
+        {
+            content_shown_at = 0;
+        }
+
+        const auto apply_content = [&](SandboxContent content)
+        {
+            if (!content.error.empty())
             {
-                const auto start = std::chrono::steady_clock::now();
-                auto visual_map = eaw::build_visual_map(vfs, *options.map);
-                renderer.load_scene(visual_map.scene);
-                if (options.reload_every)
-                {
-                    reload_scene = visual_map.scene;
-                }
-                tactical_camera.emplace(eaw::CameraBounds{visual_map.scene.bounds_minimum, visual_map.scene.bounds_maximum});
-                if (visual_map.lighting)
-                {
-                    renderer.set_lighting(*visual_map.lighting);
-                }
-                const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+                std::cerr << (options.map ? "map" : "model") << " warning: " << content.error << "; using the validation triangle\n";
+                return;
+            }
+            if (content.map)
+            {
+                auto& visual_map = *content.map;
                 const auto& scene = visual_map.scene;
                 std::cout << "Visual map: " << scene.name << (visual_map.land ? " (land)" : " (space)") << '\n'
                           << "Terrain: "
@@ -354,7 +442,7 @@ int main(const int argc, char** argv)
                           << "Not drawn: " << visual_map.untyped << " untyped, " << visual_map.without_model << " without model, " << visual_map.missing_model_files << " missing model files, "
                           << visual_map.unexpanded_containers << " land teams/companies, " << visual_map.unrenderable_placements << " unrenderable models\n"
                           << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size()
-                          << " draws | Textures: " << scene.textures.size() << " | Built in " << seconds << " s\n"
+                          << " draws | Textures: " << scene.textures.size() << " | Built in " << content.build_seconds << " s\n"
                           << "Lighting: " << (visual_map.lighting ? "environment '" + visual_map.environment_name + "'" : std::string("engine default"))
                           << " | team colors: " << visual_map.faction_colored << " faction, " << visual_map.player_colored << " player-slot fallback\n"
                           << "Backdrop: ";
@@ -371,84 +459,68 @@ int main(const int argc, char** argv)
                 {
                     std::cerr << "map warning: " << warning << '\n';
                 }
-            }
-            catch (const std::exception& error)
-            {
-                std::cerr << "map warning: " << error.what() << "; using the validation triangle\n";
-            }
-        }
-        else if (!options.validation_triangle)
-        {
-            try
-            {
-                visual_model = eaw::build_visual_model(vfs, options.model);
-                renderer.load_scene(visual_model->scene);
-                orbit_camera.emplace(eaw::CameraBounds{visual_model->scene.bounds_minimum, visual_model->scene.bounds_maximum});
-                bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
-                renderer.set_bone_transforms(bind_palette);
+                const eaw::CameraBounds bounds{scene.bounds_minimum, scene.bounds_maximum};
                 if (options.reload_every)
                 {
-                    reload_scene = visual_model->scene;
+                    reload_scene = scene;
                 }
-                std::cout << "Visual model: " << visual_model->scene.name << '\n'
-                          << "Geometry: " << visual_model->scene.vertices.size() << " vertices, " << visual_model->scene.indices.size() / 3U << " triangles, " << visual_model->scene.draws.size()
-                          << " draws\n"
-                          << "Textures: " << visual_model->scene.textures.size() << " | Bones: " << visual_model->scene.bone_count << '\n';
-                for (const auto& warning : visual_model->scene.warnings)
+                renderer.load_scene(std::move(visual_map.scene));
+                tactical_camera.emplace(bounds);
+                orbit_camera.reset();
+                if (visual_map.lighting)
+                {
+                    renderer.set_lighting(*visual_map.lighting);
+                }
+                renderer.set_camera(tactical_camera->camera());
+                std::cout << "Tactical camera: WASD/arrows or right-drag pan (Shift is faster), left-drag rotates, wheel zooms, Space resets.\n";
+            }
+            else if (content.model)
+            {
+                visual_model = std::move(content.model);
+                auto& scene = visual_model->scene;
+                std::cout << "Visual model: " << scene.name << '\n'
+                          << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size() << " draws\n"
+                          << "Textures: " << scene.textures.size() << " | Bones: " << scene.bone_count << " | Built in " << content.build_seconds << " s\n";
+                for (const auto& warning : scene.warnings)
                 {
                     std::cerr << "model warning: " << warning << '\n';
                 }
-                // Upload staging owns the copied bytes after load_scene returns;
-                // retain only the skeleton data needed for animation sampling.
-                visual_model->scene = {};
-            }
-            catch (const std::exception& error)
-            {
-                std::cerr << "model warning: " << error.what() << "; using the validation triangle\n";
-                visual_model.reset();
-            }
-        }
-        if (visual_model)
-        {
-            try
-            {
-                const auto animation_path = options.animation ? options.animation : eaw::default_model_animation(vfs, options.model);
-                if (animation_path)
+                const eaw::CameraBounds bounds{scene.bounds_minimum, scene.bounds_maximum};
+                if (options.reload_every)
                 {
-                    const auto resolved_animation = vfs.resolve(*animation_path);
-                    if (!resolved_animation)
+                    reload_scene = scene;
+                }
+                // The renderer takes the scene; keep only the skeleton data needed for animation.
+                renderer.load_scene(std::exchange(scene, {}));
+                bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
+                renderer.set_bone_transforms(bind_palette);
+                orbit_camera.emplace(bounds);
+                renderer.set_camera(orbit_camera->camera());
+                if (!content.animation_error.empty())
+                {
+                    std::cerr << "animation warning: " << content.animation_error << '\n';
+                }
+                if (content.animation)
+                {
+                    visual_animation = std::move(content.animation);
+                    std::cout << "Animation: " << content.animation_path << " | " << visual_animation->playable_frame_count() << " frames at " << visual_animation->frames_per_second << " fps | "
+                              << visual_animation->duration_seconds() << " seconds\n";
+                    for (const auto& warning : visual_animation->warnings)
                     {
-                        std::cerr << "animation warning: asset not found: " << *animation_path << '\n';
-                    }
-                    else
-                    {
-                        visual_animation = eaw::AlaAnimation::parse(vfs.read(resolved_animation->virtual_path));
-                        std::cout << "Animation: " << resolved_animation->virtual_path << " | " << visual_animation->playable_frame_count() << " frames at " << visual_animation->frames_per_second
-                                  << " fps | " << visual_animation->duration_seconds() << " seconds\n";
-                        for (const auto& warning : visual_animation->warnings)
-                        {
-                            std::cerr << "animation warning: " << warning << '\n';
-                        }
+                        std::cerr << "animation warning: " << warning << '\n';
                     }
                 }
+                std::cout << "Left-drag orbits, wheel zooms, Space resets, P pauses animation.\n";
             }
-            catch (const std::exception& error)
-            {
-                std::cerr << "animation warning: " << error.what() << "; using the bind pose\n";
-                visual_animation.reset();
-            }
-        }
-        if (!orbit_camera && !tactical_camera)
-        {
-            orbit_camera.emplace(eaw::CameraBounds{{-0.8F, -0.7F, -0.1F}, {0.8F, 0.8F, 0.1F}});
-        }
-        renderer.set_camera(tactical_camera ? tactical_camera->camera() : orbit_camera->camera());
+        };
+
+        renderer.set_camera(orbit_camera->camera());
         std::cout << "D3D12 adapter: " << renderer.adapter_name() << '\n'
                   << "Present mode: " << (options.vsync ? "vsync" : "immediate when tearing is available") << '\n'
                   << "Frame latency: " << options.frame_latency << '\n'
-                  << "Pipeline cache: " << renderer.stats().pipeline_cache_status << " (" << renderer.stats().pipeline_cache_hits << " hits, " << renderer.stats().pipeline_cache_misses << " misses)\n"
-                  << (tactical_camera ? "Tactical camera: WASD/arrows or right-drag pan (Shift is faster), left-drag rotates, wheel zooms, Space resets.\n"
-                                      : "Visual sandbox ready. Left-drag orbits, wheel zooms, Space resets, P pauses animation.\n");
+                  << "Texture upload budget: " << (options.upload_budget_mib == 0 ? std::string("unlimited") : std::to_string(options.upload_budget_mib) + " MiB per frame") << '\n'
+                  << "Pipeline cache: " << renderer.stats().pipeline_cache_status << " (" << renderer.stats().pipeline_cache_hits << " hits, " << renderer.stats().pipeline_cache_misses
+                  << " misses)\n";
 
         auto animation_tick = std::chrono::steady_clock::now();
         const auto scene_start = animation_tick;
@@ -456,6 +528,7 @@ int main(const int argc, char** argv)
         float animation_time = 0.0F;
         bool animation_playing = true;
         std::uint64_t scene_reloads = 0;
+        bool textures_streamed = false;
         while (!window.close_requested())
         {
             window.poll_events();
@@ -514,6 +587,20 @@ int main(const int argc, char** argv)
             }
 
             renderer.resize(window.client_width(), window.client_height());
+            if (pending_content.valid() && pending_content.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+            {
+                // A failed load (for example an invalid scene) keeps the current view.
+                try
+                {
+                    apply_content(pending_content.get());
+                }
+                catch (const std::exception& error)
+                {
+                    std::cerr << "scene warning: " << error.what() << "; keeping the validation triangle\n";
+                }
+                content_shown_at = renderer.stats().frame_number;
+                animation_tick = std::chrono::steady_clock::now();
+            }
             const auto now = std::chrono::steady_clock::now();
             const auto animation_delta = std::chrono::duration<float>(now - animation_tick).count();
             animation_tick = now;
@@ -538,7 +625,15 @@ int main(const int argc, char** argv)
                 }
                 ++scene_reloads;
             }
-            if (options.frame_limit && renderer.stats().frame_number >= *options.frame_limit)
+            if (content_shown_at && !textures_streamed && rendered && renderer.stats().pending_texture_uploads == 0)
+            {
+                textures_streamed = true;
+                if (renderer.stats().live_textures != 0)
+                {
+                    std::cout << "Textures resident after " << renderer.stats().frame_number - *content_shown_at << " frames\n";
+                }
+            }
+            if (options.frame_limit && content_shown_at && renderer.stats().frame_number - *content_shown_at >= *options.frame_limit)
             {
                 window.request_close();
             }
@@ -555,7 +650,7 @@ int main(const int argc, char** argv)
             std::cout << "Scene reloads: " << scene_reloads << '\n';
         }
         std::cout << "Resources after idle: " << stats.live_textures << " textures, " << stats.free_texture_slots << " free and " << stats.pending_texture_slots << " pending texture slots, "
-                  << stats.pending_retirements << " pending retirements\n";
+                  << stats.pending_retirements << " pending retirements, " << stats.pending_texture_uploads << " textures still streaming\n";
         return 0;
 #else
         std::cerr << "The Direct3D 12 visual sandbox is available on Windows only.\n";

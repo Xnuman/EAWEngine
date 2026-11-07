@@ -107,6 +107,9 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   texture-table slots from an allocator that reuses a slot only after its
   release fence, and retires replaced scene resources on the direct-queue
   timeline, so `load_scene` can replace a scene while frames are in flight.
+  Scenes build on a worker thread, and textures stream in under a per-frame
+  upload budget with fallbacks until they arrive. Per-asset handles shared
+  across scenes, dependency tracking, and hot reload remain.
 - Camera, selection IDs, debug drawing; PBS conversion of legacy materials after
   legacy mode is stable.
 - Placed TED objects resolve to XML object types by uppercased-name CRC-32 and
