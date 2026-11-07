@@ -763,11 +763,14 @@ PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<
                                                   IM_COL32(55, 183, 133, 255), IM_COL32(199, 145, 62, 255), IM_COL32(185, 91, 129, 255)};
     PreviewGeometry geometry;
     const auto bind_pose = model.bind_pose();
+    const auto default_visible = alo_default_mesh_visibility(model, pose == nullptr);
     float radius_squared = 0.0F;
     for (std::size_t mesh_index = 0; mesh_index < model.meshes.size(); ++mesh_index)
     {
         const auto& mesh = model.meshes[mesh_index];
-        if (mesh.hidden)
+        // With a pose, bone visibility comes from the animation; alternate states and lower detail
+        // levels stay hidden either way.
+        if (!default_visible[mesh_index])
         {
             continue;
         }

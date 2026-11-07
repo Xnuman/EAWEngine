@@ -212,3 +212,16 @@ as texture scroll per second. The remaining header fields (0x00 is 10 on every
 track, 0x0d ranges 0-181, two flags) are preserved raw. Terrain decals (child 6)
 occur in one stock map: 65 entries with a position, a 15x15 size, and small
 integers, but no texture name, so they are not rendered.
+
+ALO models encode alternate appearances in mesh and bone names. A trailing
+`_ALT<n>` marks a damage state: NB_BASESHIELDGEN, for example, carries
+`base_ALT0`-`ALT3` and `NB_dish_ALT0`-`ALT3`, all visible in the bind pose, and the
+original shows one of them according to health. Across 1,379 stock models, 158
+use ALT meshes (index 0 on 557 meshes, 1 on 530, 2 on 418, 3 on 267, 4-12 rarely),
+so ALT0 is read as the intact state. A trailing `_LOD<n>` marks a detail level:
+145 models use them, and summed triangles by index are 68,881 (LOD0), 129,068
+(LOD1), 123,516 (LOD2), and 12,315 (LOD3, five meshes). Per model, LOD0 is the
+sparsest level in 137 of 145, and the densest is usually the highest index, so
+higher indices are read as more detailed. The engine's default appearance
+therefore shows ALT0 and each model's highest LOD index. Switching on damage or
+distance is runtime behavior and is not modeled yet. These are corpus findings.

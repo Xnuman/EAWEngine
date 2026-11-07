@@ -423,17 +423,13 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
         {0.78F, 0.43F, 0.61F, 1.0F},
     }};
 
+    const auto default_visible = alo_default_mesh_visibility(model);
     for (std::size_t mesh_index = 0; mesh_index < model.meshes.size(); ++mesh_index)
     {
         const auto& mesh = model.meshes[mesh_index];
-        if (mesh.hidden)
-        {
-            continue;
-        }
-        // Rigid meshes attached to a bone that is hidden in the bind pose are alternate states
-        // (for example destroyed-structure debris) that animations or gameplay reveal later.
-        // Visibility changes over time are not modeled yet, so they are omitted.
-        if (mesh.attached_bone && *mesh.attached_bone < model.bones.size() && !model.bones[*mesh.attached_bone].visible)
+        // Default appearance only: intact state, full detail, no bind-pose-hidden attachments.
+        // Changes driven by damage, animation, or distance are not modeled yet.
+        if (!default_visible[mesh_index])
         {
             continue;
         }

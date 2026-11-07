@@ -388,6 +388,32 @@ void test_alo_model()
     require(bind_pose.size() == 1 && bind_pose[0].values[0] == 1.0F && bind_pose[0].values[5] == 1.0F && bind_pose[0].values[10] == 1.0F, "ALO bind-pose decoding failed");
 }
 
+void test_alo_default_mesh_visibility()
+{
+    require(eaw::alo_name_variant("NB_dish_ALT2").kind == eaw::AloVariantKind::alternate && eaw::alo_name_variant("NB_dish_ALT2").index == 2, "ALT suffix was not parsed");
+    require(eaw::alo_name_variant("hull_lod1").kind == eaw::AloVariantKind::level_of_detail && eaw::alo_name_variant("hull_lod1").index == 1, "LOD suffix is case-insensitive");
+    require(eaw::alo_name_variant("ALTAR").kind == eaw::AloVariantKind::none && eaw::alo_name_variant("BASE_ALT").kind == eaw::AloVariantKind::none &&
+                eaw::alo_name_variant("BASE_ALT1X").kind == eaw::AloVariantKind::none,
+            "names without a trailing numbered variant were misread");
+
+    eaw::AloModel model;
+    model.bones = {{.name = "ROOT", .visible = true}, {.name = "FIRE_ALT1", .visible = true}, {.name = "DEBRIS", .visible = false}};
+    const auto mesh = [](std::string name, std::optional<std::uint32_t> bone = std::nullopt, const bool hidden = false)
+    {
+        eaw::AloMesh result;
+        result.name = std::move(name);
+        result.attached_bone = bone;
+        result.hidden = hidden;
+        return result;
+    };
+    model.meshes = {
+        mesh("BASE_ALT0"), mesh("BASE_ALT1"), mesh("TOWER"), mesh("HULL_LOD0"), mesh("HULL_LOD2"), mesh("HULL_LOD1"), mesh("FLAME", 1U), mesh("RUBBLE", 2U), mesh("PLATE", std::nullopt, true)};
+    const auto visible = eaw::alo_default_mesh_visibility(model);
+    require(visible == std::vector<bool>{true, false, true, false, true, false, false, false, false}, "default mesh visibility must keep ALT0 and the highest LOD only");
+    const auto animated = eaw::alo_default_mesh_visibility(model, false);
+    require(animated[7] && !animated[6] && !animated[8], "an animated caller must decide bind-pose bone visibility from its pose");
+}
+
 // A minimal 4x4 BC1 DDS with one mip level.
 std::vector<std::byte> make_test_dds()
 {
@@ -1544,6 +1570,7 @@ int main()
         test_foc_inherits_eaw_assets();
         test_layered_precedence_corpus();
         test_alo_model();
+        test_alo_default_mesh_visibility();
         test_texture_formats_and_materials();
         test_lua_inspection();
         test_ala_animation();

@@ -688,6 +688,16 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
         std::size_t components{};
     };
     std::map<std::string, NumericUsage> numeric_parameters;
+    // State-variant naming census: models and meshes using _ALT<n>/_LOD<n> suffixes.
+    std::size_t models_with_alternates = 0;
+    std::size_t models_with_lods = 0;
+    std::map<std::uint32_t, std::size_t> alternate_mesh_indices;
+    std::map<std::uint32_t, std::size_t> lod_mesh_indices;
+    std::map<std::uint32_t, std::uint64_t> lod_triangles;
+    // Per model: which LOD index carries the most and the fewest triangles.
+    std::map<std::uint32_t, std::size_t> densest_lod;
+    std::map<std::uint32_t, std::size_t> sparsest_lod;
+    std::size_t alternate_bones_without_meshes = 0;
     for (const auto& asset : model_assets)
     {
         if (extension_of(asset.virtual_path) != ".alo")
@@ -699,6 +709,43 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
         {
             const auto model = eaw::AloModel::parse(vfs.read(asset.virtual_path));
             ++semantic_models;
+            bool has_alternate = false;
+            bool has_lod = false;
+            std::map<std::uint32_t, std::uint64_t> model_lod_triangles;
+            for (const auto& mesh : model.meshes)
+            {
+                const auto variant = eaw::alo_name_variant(mesh.name);
+                if (variant.kind == eaw::AloVariantKind::alternate)
+                {
+                    has_alternate = true;
+                    ++alternate_mesh_indices[variant.index];
+                }
+                else if (variant.kind == eaw::AloVariantKind::level_of_detail)
+                {
+                    has_lod = true;
+                    ++lod_mesh_indices[variant.index];
+                    for (const auto& submesh : mesh.submeshes)
+                    {
+                        lod_triangles[variant.index] += submesh.triangle_count;
+                        model_lod_triangles[variant.index] += submesh.triangle_count;
+                    }
+                }
+            }
+            for (const auto& bone : model.bones)
+            {
+                alternate_bones_without_meshes += eaw::alo_name_variant(bone.name).kind == eaw::AloVariantKind::alternate ? 1U : 0U;
+            }
+            models_with_alternates += has_alternate ? 1U : 0U;
+            models_with_lods += has_lod ? 1U : 0U;
+            if (model_lod_triangles.size() > 1)
+            {
+                const auto by_triangles = [](const auto& left, const auto& right)
+                {
+                    return left.second < right.second;
+                };
+                ++densest_lod[std::ranges::max_element(model_lod_triangles, by_triangles)->first];
+                ++sparsest_lod[std::ranges::min_element(model_lod_triangles, by_triangles)->first];
+            }
             for (const auto& mesh : model.meshes)
             {
                 for (const auto& submesh : mesh.submeshes)
@@ -875,6 +922,32 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
     {
         std::cout << "  texture " << semantic << ": " << count << '\n';
     }
+    std::cout << "Models with _ALT<n> meshes: " << models_with_alternates << ", _LOD<n> meshes: " << models_with_lods << "\nALT mesh indices:";
+    for (const auto& [index, count] : alternate_mesh_indices)
+    {
+        std::cout << ' ' << index << 'x' << count;
+    }
+    std::cout << "\nLOD mesh indices:";
+    for (const auto& [index, count] : lod_mesh_indices)
+    {
+        std::cout << ' ' << index << 'x' << count;
+    }
+    std::cout << "\nLOD triangles by index:";
+    for (const auto& [index, count] : lod_triangles)
+    {
+        std::cout << ' ' << index << ':' << count;
+    }
+    std::cout << "\nModels whose densest LOD is index:";
+    for (const auto& [index, count] : densest_lod)
+    {
+        std::cout << ' ' << index << 'x' << count;
+    }
+    std::cout << "\nModels whose sparsest LOD is index:";
+    for (const auto& [index, count] : sparsest_lod)
+    {
+        std::cout << ' ' << index << 'x' << count;
+    }
+    std::cout << "\nBones with _ALT<n> names (meshes and particle emitters): " << alternate_bones_without_meshes << '\n';
     std::cout << "Numeric parameter usage (count, per-component min..max):\n";
     for (const auto& [name, usage] : numeric_parameters)
     {
