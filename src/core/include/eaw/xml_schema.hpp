@@ -40,6 +40,14 @@ struct XmlEnumSchema
     std::vector<std::string> values;
 };
 
+struct XmlObjectKindSchema
+{
+    std::string name;
+    std::vector<std::string> behaviors;
+    std::vector<std::string> flags;
+    std::vector<std::string> member_of;
+};
+
 enum class XmlMetafileKind
 {
     file_registry,
@@ -68,6 +76,7 @@ enum class XmlSchemaDiagnosticKind
     duplicate_field,
     invalid_value,
     unresolved_reference,
+    reference_type_mismatch,
 };
 
 struct XmlSchemaDiagnostic
@@ -86,12 +95,16 @@ struct XmlSchemaValidationResult
 {
     std::size_t definitions_considered{};
     std::size_t definitions_validated{};
+    std::size_t canonical_type_definitions{};
+    std::size_t metafile_type_definitions{};
+    std::size_t structural_type_definitions{};
     std::size_t untyped_definitions{};
     std::size_t fields_validated{};
     std::size_t unknown_fields{};
     std::size_t duplicate_fields{};
     std::size_t invalid_values{};
     std::size_t unresolved_references{};
+    std::size_t mismatched_references{};
     std::vector<XmlSchemaDiagnostic> diagnostics;
 };
 
@@ -104,14 +117,17 @@ public:
 
     [[nodiscard]] std::span<const XmlTypeSchema> types() const noexcept;
     [[nodiscard]] std::span<const XmlEnumSchema> enums() const noexcept;
+    [[nodiscard]] std::span<const XmlObjectKindSchema> kinds() const noexcept;
     [[nodiscard]] std::span<const XmlMetafileSchema> metafiles() const noexcept;
     [[nodiscard]] const XmlTypeSchema* find_type(std::string_view name) const noexcept;
     [[nodiscard]] const XmlEnumSchema* find_enum(std::string_view name) const noexcept;
+    [[nodiscard]] const XmlObjectKindSchema* find_kind(std::string_view name) const noexcept;
     [[nodiscard]] XmlSchemaValidationResult validate(const XmlAssetDatabase& database) const;
 
 private:
     std::vector<XmlTypeSchema> types_;
     std::vector<XmlEnumSchema> enums_;
+    std::vector<XmlObjectKindSchema> kinds_;
     std::vector<XmlMetafileSchema> metafiles_;
 };
 

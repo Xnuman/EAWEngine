@@ -92,11 +92,15 @@ root of an `eaw-schema` checkout or one game schema directory. When a repository
 root is supplied, FoC validation layers the expansion schema over the inherited
 EAW schema. Registry metafiles assign types to referenced files, while a nested
 element whose canonical name identifies a more specific registered type takes
-precedence. Diagnostics currently cover unknown/non-repeatable fields, Boolean,
-integer, float, vector, RGBA and enum shapes, plus unresolved XML-object
-references. The external schema remains a work in progress, so stock-data
-diagnostics are compatibility evidence to review, not automatically engine
-defects.
+precedence. Remaining definitions are typed only when one schema type is the
+unique structural match with at least two matching fields and 60 percent field
+coverage. Diagnostics cover unknown/non-repeatable fields, Boolean, integer,
+float, vector, RGBA and enum shapes, unresolved XML-object names, and references
+whose existing target has the wrong declared type or behavior-derived kind.
+Variant objects inherit kind-defining fields from their parent unless they
+override the field. The external schema remains a work in progress, so
+stock-data diagnostics are compatibility evidence to review, not automatically
+engine defects.
 
 ALO reports skeletons, meshes, bounds, materials, texture references, geometry
 counts, attachments, proxies, lights, and dazzles. ALA reports format version,

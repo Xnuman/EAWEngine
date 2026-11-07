@@ -8,6 +8,8 @@
 #include <cerrno>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -27,6 +29,7 @@ struct SchemaLayer
 {
     std::vector<XmlTypeSchema> types;
     std::vector<XmlEnumSchema> enums;
+    std::vector<XmlObjectKindSchema> kinds;
     std::vector<XmlMetafileSchema> metafiles;
 };
 
@@ -248,6 +251,75 @@ XmlEnumSchema read_enum(const std::filesystem::path& path)
     return result;
 }
 
+std::vector<std::string> yaml_inline_list(const std::string_view value)
+{
+    auto text = trim(value);
+    if (text.size() < 2 || text.front() != '[' || text.back() != ']')
+    {
+        return {};
+    }
+    text = text.substr(1, text.size() - 2);
+    std::vector<std::string> result;
+    std::size_t begin = 0;
+    char quote = '\0';
+    for (std::size_t index = 0; index <= text.size(); ++index)
+    {
+        const auto character = index < text.size() ? text[index] : ',';
+        if (quote != '\0')
+        {
+            if (character == quote && (index == 0 || text[index - 1] != '\\'))
+            {
+                quote = '\0';
+            }
+            continue;
+        }
+        if (character == '\'' || character == '"')
+        {
+            quote = character;
+        }
+        else if (character == ',')
+        {
+            auto item = yaml_scalar(std::string_view(text).substr(begin, index - begin));
+            if (!item.empty())
+            {
+                result.push_back(std::move(item));
+            }
+            begin = index + 1;
+        }
+    }
+    return result;
+}
+
+std::vector<XmlObjectKindSchema> read_kinds(const std::filesystem::path& path)
+{
+    std::vector<XmlObjectKindSchema> kinds;
+    for (const auto& line : read_yaml(path))
+    {
+        if (line.indentation == 2 && line.text.starts_with("- kind:"))
+        {
+            kinds.push_back({yaml_scalar(line.text.substr(7)), {}, {}, {}});
+            continue;
+        }
+        if (kinds.empty() || line.indentation != 4)
+        {
+            continue;
+        }
+        if (starts_key(line.text, "behaviors"))
+        {
+            kinds.back().behaviors = yaml_inline_list(key_value(line.text, "behaviors"));
+        }
+        else if (starts_key(line.text, "flags"))
+        {
+            kinds.back().flags = yaml_inline_list(key_value(line.text, "flags"));
+        }
+        else if (starts_key(line.text, "memberOf"))
+        {
+            kinds.back().member_of = yaml_inline_list(key_value(line.text, "memberOf"));
+        }
+    }
+    return kinds;
+}
+
 XmlMetafileKind parse_metafile_kind(const std::string_view value)
 {
     const auto folded = fold_ascii(value);
@@ -383,6 +455,10 @@ SchemaLayer load_layer(const std::filesystem::path& root)
         {
             layer.enums.push_back(std::move(item));
         }
+    }
+    if (std::filesystem::is_regular_file(root / "kinds.yaml"))
+    {
+        layer.kinds = read_kinds(root / "kinds.yaml");
     }
     if (std::filesystem::is_regular_file(root / "meta" / "metafiles.yaml"))
     {
@@ -710,6 +786,7 @@ XmlSchema XmlSchema::load(const std::filesystem::path& root, const bool include_
         auto layer = load_layer(layer_root);
         merge_named(schema.types_, std::move(layer.types));
         merge_named(schema.enums_, std::move(layer.enums));
+        merge_named(schema.kinds_, std::move(layer.kinds));
         schema.metafiles_.insert(schema.metafiles_.end(), std::make_move_iterator(layer.metafiles.begin()), std::make_move_iterator(layer.metafiles.end()));
     }
     if (schema.types_.empty())
@@ -727,6 +804,11 @@ std::span<const XmlTypeSchema> XmlSchema::types() const noexcept
 std::span<const XmlEnumSchema> XmlSchema::enums() const noexcept
 {
     return enums_;
+}
+
+std::span<const XmlObjectKindSchema> XmlSchema::kinds() const noexcept
+{
+    return kinds_;
 }
 
 std::span<const XmlMetafileSchema> XmlSchema::metafiles() const noexcept
@@ -754,6 +836,17 @@ const XmlEnumSchema* XmlSchema::find_enum(const std::string_view name) const noe
                                                 return fold_ascii(enumeration.name) == folded;
                                             });
     return found == enums_.end() ? nullptr : &*found;
+}
+
+const XmlObjectKindSchema* XmlSchema::find_kind(const std::string_view name) const noexcept
+{
+    const auto folded = fold_ascii(name);
+    const auto found = std::ranges::find_if(kinds_,
+                                            [&](const auto& kind)
+                                            {
+                                                return fold_ascii(kind.name) == folded;
+                                            });
+    return found == kinds_.end() ? nullptr : &*found;
 }
 
 XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) const
@@ -802,10 +895,222 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
         }
     }
 
-    std::set<std::string> object_names;
+    enum class TypeOrigin
+    {
+        none,
+        canonical,
+        metafile,
+        structural,
+    };
+    struct TypeAssignment
+    {
+        const XmlTypeSchema* type{};
+        TypeOrigin origin{TypeOrigin::none};
+    };
+
+    std::map<const XmlDefinition*, TypeAssignment> type_assignments;
+    const auto infer_structural_type = [&](const XmlDefinition& definition)
+    {
+        if (definition.fields.size() < 2)
+        {
+            return static_cast<const XmlTypeSchema*>(nullptr);
+        }
+        const XmlTypeSchema* best = nullptr;
+        std::size_t best_matches = 0;
+        bool tied = false;
+        for (const auto& candidate : types_)
+        {
+            if (fold_ascii(candidate.name) == "gameobjecttype" || candidate.tags.empty())
+            {
+                continue;
+            }
+            const auto matches = static_cast<std::size_t>(std::ranges::count_if(definition.fields,
+                                                                                [&](const auto& field)
+                                                                                {
+                                                                                    return find_tag(&candidate, field.name) != nullptr;
+                                                                                }));
+            if (matches > best_matches)
+            {
+                best = &candidate;
+                best_matches = matches;
+                tied = false;
+            }
+            else if (matches != 0 && matches == best_matches)
+            {
+                tied = true;
+            }
+        }
+        if (best_matches < 2 || best_matches * 100 < definition.fields.size() * 60 || tied)
+        {
+            return static_cast<const XmlTypeSchema*>(nullptr);
+        }
+        return best;
+    };
+
     for (const auto& definition : database.definitions())
     {
-        object_names.insert(fold_ascii(definition.name));
+        ++result.definitions_considered;
+        TypeAssignment assignment;
+        assignment.type = canonical_type(*this, definition.type);
+        if (assignment.type != nullptr)
+        {
+            assignment.origin = TypeOrigin::canonical;
+            ++result.canonical_type_definitions;
+        }
+        else if (definition.depth <= 1)
+        {
+            const auto source = source_types.find(definition.source_path);
+            if (source != source_types.end() && !source->second.empty())
+            {
+                assignment.type = find_type(source->second.front());
+                if (assignment.type != nullptr)
+                {
+                    assignment.origin = TypeOrigin::metafile;
+                    ++result.metafile_type_definitions;
+                }
+            }
+        }
+        if (assignment.type == nullptr)
+        {
+            assignment.type = infer_structural_type(definition);
+            if (assignment.type != nullptr)
+            {
+                assignment.origin = TypeOrigin::structural;
+                ++result.structural_type_definitions;
+            }
+        }
+        if (assignment.type == nullptr)
+        {
+            ++result.untyped_definitions;
+        }
+        else
+        {
+            ++result.definitions_validated;
+        }
+        type_assignments[&definition] = assignment;
+    }
+
+    std::map<std::string, std::vector<const XmlDefinition*>> definitions_by_name;
+    for (const auto& definition : database.definitions())
+    {
+        definitions_by_name[fold_ascii(definition.name)].push_back(&definition);
+    }
+
+    std::map<std::string, std::set<std::string>> member_kinds_by_name;
+    for (const auto& kind : kinds_)
+    {
+        if (kind.member_of.empty())
+        {
+            continue;
+        }
+        for (const auto& owner : database.definitions())
+        {
+            for (const auto& field : owner.fields)
+            {
+                if (!contains_case_insensitive(kind.member_of, field.name))
+                {
+                    continue;
+                }
+                for (const auto& member : split_values(field.text))
+                {
+                    member_kinds_by_name[fold_ascii(member)].insert(fold_ascii(kind.name));
+                }
+            }
+        }
+    }
+
+    const auto truthy = [](const std::string_view value)
+    {
+        const auto folded = fold_ascii(trim(value));
+        return folded == "yes" || folded == "true" || folded == "1";
+    };
+    using EffectiveFieldKey = std::pair<const XmlDefinition*, std::string>;
+    std::map<EffectiveFieldKey, std::vector<std::string>> effective_field_cache;
+    std::set<EffectiveFieldKey> effective_field_stack;
+    std::function<std::vector<std::string>(const XmlDefinition&, const std::string&)> effective_field_values;
+    effective_field_values = [&](const XmlDefinition& definition, const std::string& folded_name)
+    {
+        const EffectiveFieldKey key{&definition, folded_name};
+        if (const auto cached = effective_field_cache.find(key); cached != effective_field_cache.end())
+        {
+            return cached->second;
+        }
+        if (!effective_field_stack.insert(key).second)
+        {
+            return std::vector<std::string>{};
+        }
+
+        std::vector<std::string> values;
+        for (const auto& field : definition.fields)
+        {
+            if (fold_ascii(field.name) == folded_name)
+            {
+                values.push_back(field.text);
+            }
+        }
+        if (values.empty())
+        {
+            for (const auto& field : definition.fields)
+            {
+                if (fold_ascii(field.name) != "variant_of_existing_type")
+                {
+                    continue;
+                }
+                for (const auto& parent_name : split_values(field.text))
+                {
+                    if (reference_sentinel(parent_name))
+                    {
+                        continue;
+                    }
+                    const auto parents = definitions_by_name.find(fold_ascii(parent_name));
+                    if (parents == definitions_by_name.end())
+                    {
+                        continue;
+                    }
+                    for (const auto* parent : parents->second)
+                    {
+                        auto inherited = effective_field_values(*parent, folded_name);
+                        values.insert(values.end(), std::make_move_iterator(inherited.begin()), std::make_move_iterator(inherited.end()));
+                    }
+                }
+            }
+        }
+        effective_field_stack.erase(key);
+        effective_field_cache[key] = values;
+        return values;
+    };
+
+    std::map<const XmlDefinition*, std::set<std::string>> definition_kinds;
+    for (const auto& definition : database.definitions())
+    {
+        std::set<std::string> behaviors;
+        for (const auto& value : effective_field_values(definition, "behavior"))
+        {
+            for (auto behavior : split_values(value, true))
+            {
+                behaviors.insert(fold_ascii(behavior));
+            }
+        }
+        for (const auto& kind : kinds_)
+        {
+            const bool behavior_match = kind.behaviors.empty() || std::ranges::any_of(kind.behaviors,
+                                                                                      [&](const auto& behavior)
+                                                                                      {
+                                                                                          return behaviors.contains(fold_ascii(behavior));
+                                                                                      });
+            const bool flag_match = kind.flags.empty() || std::ranges::any_of(kind.flags,
+                                                                              [&](const auto& flag)
+                                                                              {
+                                                                                  const auto values = effective_field_values(definition, fold_ascii(flag));
+                                                                                  return std::ranges::any_of(values, truthy);
+                                                                              });
+            const auto membership = member_kinds_by_name.find(fold_ascii(definition.name));
+            const bool member_match = kind.member_of.empty() || (membership != member_kinds_by_name.end() && membership->second.contains(fold_ascii(kind.name)));
+            if (behavior_match && flag_match && member_match)
+            {
+                definition_kinds[&definition].insert(fold_ascii(kind.name));
+            }
+        }
     }
 
     const auto add_diagnostic = [&](const XmlSchemaDiagnosticSeverity severity, const XmlSchemaDiagnosticKind kind, const XmlDefinition& definition, const XmlNode& field, std::string message)
@@ -815,22 +1120,12 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
 
     for (const auto& definition : database.definitions())
     {
-        ++result.definitions_considered;
-        const XmlTypeSchema* type = canonical_type(*this, definition.type);
-        if (type == nullptr && definition.depth <= 1)
-        {
-            const auto source = source_types.find(definition.source_path);
-            if (source != source_types.end() && !source->second.empty())
-            {
-                type = find_type(source->second.front());
-            }
-        }
+        const auto type_assignment = type_assignments.find(&definition);
+        const auto* type = type_assignment == type_assignments.end() ? nullptr : type_assignment->second.type;
         if (type == nullptr)
         {
-            ++result.untyped_definitions;
             continue;
         }
-        ++result.definitions_validated;
 
         std::map<std::string, std::vector<const XmlNode*>> fields_by_name;
         for (const auto& field : definition.fields)
@@ -886,10 +1181,39 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
                 }
                 for (const auto& reference : references)
                 {
-                    if (!reference_sentinel(reference) && !object_names.contains(fold_ascii(reference)))
+                    if (reference_sentinel(reference))
+                    {
+                        continue;
+                    }
+                    const auto targets = definitions_by_name.find(fold_ascii(reference));
+                    if (targets == definitions_by_name.end())
                     {
                         ++result.unresolved_references;
                         add_diagnostic(XmlSchemaDiagnosticSeverity::warning, XmlSchemaDiagnosticKind::unresolved_reference, definition, field, "unresolved XML object reference '" + reference + "'");
+                        continue;
+                    }
+                    const auto* expected_type = tag->reference_type.empty() ? nullptr : find_type(tag->reference_type);
+                    const auto* expected_kind = tag->reference_type.empty() ? nullptr : find_kind(tag->reference_type);
+                    if (expected_type == nullptr && expected_kind == nullptr)
+                    {
+                        continue;
+                    }
+                    const bool type_match = std::ranges::any_of(targets->second,
+                                                                [&](const auto* target)
+                                                                {
+                                                                    if (expected_type != nullptr)
+                                                                    {
+                                                                        const auto target_type = type_assignments.find(target);
+                                                                        return target_type != type_assignments.end() && target_type->second.type == expected_type;
+                                                                    }
+                                                                    const auto target_kinds = definition_kinds.find(target);
+                                                                    return target_kinds != definition_kinds.end() && target_kinds->second.contains(fold_ascii(expected_kind->name));
+                                                                });
+                    if (!type_match)
+                    {
+                        ++result.mismatched_references;
+                        add_diagnostic(XmlSchemaDiagnosticSeverity::warning, XmlSchemaDiagnosticKind::reference_type_mismatch, definition, field,
+                                       "XML object reference '" + reference + "' does not match expected type/kind " + tag->reference_type);
                     }
                 }
             }
@@ -931,6 +1255,8 @@ std::string_view to_string(const XmlSchemaDiagnosticKind kind) noexcept
         return "invalid-value";
     case XmlSchemaDiagnosticKind::unresolved_reference:
         return "unresolved-reference";
+    case XmlSchemaDiagnosticKind::reference_type_mismatch:
+        return "reference-type-mismatch";
     }
     return "unknown";
 }

@@ -14,8 +14,8 @@ This repository is at milestone **0.3: native asset and localization workbench**
 - provides separate `EAWLauncher.exe` and `EAWEngine.exe` programs;
 - verifies the real installation by resolving and reading a configured asset.
 - provides `EAWAssetInspector.exe` for overlay-aware asset inventory and format
-  inspection, including a typed XML definition index, semantic ALO models, ALA
-  animations, and TED maps;
+  inspection, including a schema-validated XML definition/reference index,
+  semantic ALO models, ALA animations, and TED maps;
 - provides `EAWDatEditor.exe` for lossless DAT editing, validation, sparse TSV
   localization workspaces, XML-reference audits, and new-unit string bundles.
 - provides `EAWTools.exe`, a native Dear ImGui/DirectX 11 workbench that combines

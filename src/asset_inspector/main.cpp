@@ -794,14 +794,19 @@ void audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
         std::cout << "\nExternal schema validation\n"
                   << "Schema types: " << schema.types().size() << '\n'
                   << "Schema enums/token sets: " << schema.enums().size() << '\n'
+                  << "Schema object kinds: " << schema.kinds().size() << '\n'
                   << "Metafile rules: " << schema.metafiles().size() << '\n'
                   << "Definitions validated: " << validation.definitions_validated << '/' << validation.definitions_considered << '\n'
+                  << "  Canonical element types: " << validation.canonical_type_definitions << '\n'
+                  << "  Metafile-inferred types: " << validation.metafile_type_definitions << '\n'
+                  << "  Structurally inferred types: " << validation.structural_type_definitions << '\n'
                   << "Untyped definitions: " << validation.untyped_definitions << '\n'
                   << "Fields validated: " << validation.fields_validated << '\n'
                   << "Unknown fields: " << validation.unknown_fields << '\n'
                   << "Duplicate non-repeatable fields: " << validation.duplicate_fields << '\n'
                   << "Invalid scalar/enum values: " << validation.invalid_values << '\n'
                   << "Unresolved XML references: " << validation.unresolved_references << '\n'
+                  << "Wrong-type XML references: " << validation.mismatched_references << '\n'
                   << "Diagnostics: " << validation.diagnostics.size() << " (" << errors << " error(s))\n";
         for (std::size_t index = 0; index < std::min(limit, validation.diagnostics.size()); ++index)
         {

@@ -735,6 +735,8 @@ void test_xml_schema_validation()
         std::ofstream file(schema_root / "types.yaml", std::ios::binary);
         file << "types:\n"
                 "  - typeName: GameObjectType\n"
+                "    nameTag: Name\n"
+                "  - typeName: StoryParser\n"
                 "    nameTag: Name\n";
     }
     {
@@ -751,8 +753,28 @@ void test_xml_schema_validation()
                 "    type: NameReference\n"
                 "    referenceKind: xmlObject\n"
                 "    referenceType: GameObjectType\n"
+                "  - tag: Buildable_Target\n"
+                "    type: NameReference\n"
+                "    referenceKind: xmlObject\n"
+                "    referenceType: Buildable\n"
+                "  - tag: Inherited_Buildable_Target\n"
+                "    type: NameReference\n"
+                "    referenceKind: xmlObject\n"
+                "    referenceType: Buildable\n"
+                "  - tag: Variant_Of_Existing_Type\n"
+                "    type: NameReference\n"
+                "    referenceKind: xmlObject\n"
+                "    referenceType: GameObjectType\n"
                 "  - tag: Repeated\n"
                 "    type: Float\n";
+    }
+    {
+        std::ofstream file(schema_root / "tags" / "StoryParser.yaml", std::ios::binary);
+        file << "tags:\n"
+                "  - tag: Event_Type\n"
+                "    type: NameReference\n"
+                "  - tag: Reward_Type\n"
+                "    type: NameReference\n";
     }
     {
         std::ofstream file(schema_root / "enums" / "FactionName.yaml", std::ios::binary);
@@ -760,6 +782,12 @@ void test_xml_schema_validation()
                 "values:\n"
                 "  - name: Empire\n"
                 "  - name: Rebel\n";
+    }
+    {
+        std::ofstream file(schema_root / "kinds.yaml", std::ios::binary);
+        file << "kinds:\n"
+                "  - kind: Buildable\n"
+                "    flags: [Is_Buildable]\n";
     }
     {
         std::ofstream file(schema_root / "meta" / "metafiles.yaml", std::ios::binary);
@@ -780,9 +808,19 @@ void test_xml_schema_validation()
                 "<Build_Cost_Credits>-1</Build_Cost_Credits>"
                 "<Faction>Hutts</Faction>"
                 "<Target>Missing_Unit</Target>"
+                "<Buildable_Target>Unit_B</Buildable_Target>"
+                "<Inherited_Buildable_Target>Unit_Variant</Inherited_Buildable_Target>"
                 "<Repeated>1</Repeated><Repeated>2</Repeated>"
                 "<Unknown_Field>value</Unknown_Field>"
-                "</SpaceUnit><SpaceUnit Name=\"Unit_B\" /></Units>";
+                "</SpaceUnit><SpaceUnit Name=\"Unit_B\" />"
+                "<SpaceUnit Name=\"Unit_Base\"><Is_Buildable>Yes</Is_Buildable></SpaceUnit>"
+                "<SpaceUnit Name=\"Unit_Variant\"><Variant_Of_Existing_Type>Unit_Base</Variant_Of_Existing_Type></SpaceUnit>"
+                "</Units>";
+    }
+    {
+        std::ofstream file(xml_root / "Story.xml", std::ios::binary);
+        file << "<Story><Event Name=\"Story_Event\"><Event_Type>Trigger</Event_Type>"
+                "<Reward_Type>Reward</Reward_Type></Event></Story>";
     }
 
     eaw::VirtualFileSystem vfs;
@@ -790,10 +828,12 @@ void test_xml_schema_validation()
     const auto database = eaw::XmlAssetDatabase::build(vfs);
     const auto schema = eaw::XmlSchema::load(root / "schema");
     const auto validation = schema.validate(database);
-    require(schema.types().size() == 1 && schema.enums().size() == 1 && schema.metafiles().size() == 1, "XML schema loading failed");
-    require(validation.definitions_considered == 2 && validation.definitions_validated == 2 && validation.untyped_definitions == 0, "XML schema type inference failed");
-    require(validation.fields_validated == 6 && validation.unknown_fields == 1 && validation.duplicate_fields == 1, "XML schema field validation failed");
-    require(validation.invalid_values == 3 && validation.unresolved_references == 1, "XML schema value or reference validation failed");
+    require(schema.types().size() == 2 && schema.enums().size() == 1 && schema.kinds().size() == 1 && schema.metafiles().size() == 1, "XML schema loading failed");
+    require(validation.definitions_considered == 5 && validation.definitions_validated == 5 && validation.metafile_type_definitions == 4 && validation.structural_type_definitions == 1 &&
+                validation.untyped_definitions == 0,
+            "XML schema type inference failed");
+    require(validation.fields_validated == 12 && validation.unknown_fields == 1 && validation.duplicate_fields == 1, "XML schema field validation failed");
+    require(validation.invalid_values == 3 && validation.unresolved_references == 1 && validation.mismatched_references == 1, "XML schema value or reference validation failed");
     std::filesystem::remove_all(root, ignored);
 }
 
