@@ -1272,7 +1272,8 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
     std::map<std::string, std::size_t> model_fields;
     std::map<std::string, AuditExample> types_without_model;
     std::map<std::string, AuditExample> missing_models;
-    std::set<std::string> unique_models;
+    // Placements per resolved model path.
+    std::map<std::string, std::size_t> unique_models;
     std::set<std::string> diagnostics;
     std::vector<std::pair<std::string, std::string>> failures;
 
@@ -1333,7 +1334,7 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
             if (const auto path = eaw::resolve_model_path(vfs, model->value))
             {
                 ++model_files;
-                unique_models.insert(*path);
+                ++unique_models[*path];
             }
             else
             {
@@ -1363,6 +1364,17 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
     for (std::size_t axis = 0; axis < rotation_minimum.size() && placed > 0; ++axis)
     {
         std::cout << "Rotation component " << axis << ": " << rotation_minimum[axis] << " .. " << rotation_maximum[axis] << ", non-zero " << rotation_nonzero[axis] << '\n';
+    }
+    // A single-map audit lists its models and the layer each loads from, which shows which files
+    // a mod overrides for that map.
+    if (maps == 1)
+    {
+        std::cout << "\nModels (placements, winning layer):\n";
+        for (const auto& [path, count] : unique_models)
+        {
+            const auto resolved = vfs.resolve(path);
+            std::cout << "  " << path << ": " << count << ", " << (resolved ? resolved->mount_name : std::string("unresolved")) << '\n';
+        }
     }
     std::cout << "\nResolved element types:\n";
     for (const auto& [type, count] : element_types)
