@@ -44,7 +44,6 @@
 #include <set>
 #include <span>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -114,10 +113,7 @@ std::string human_size(const std::uint64_t bytes)
 
 std::uint32_t little_u32(const std::span<const std::byte> bytes, const std::size_t offset)
 {
-    if (offset + 4 > bytes.size())
-    {
-        throw std::runtime_error("asset is shorter than its expected header");
-    }
+    EAW_ASSERT_MSG(offset + 4 <= bytes.size(), "asset is shorter than its expected header");
     std::uint32_t value = 0;
     for (unsigned index = 0; index < 4; ++index)
     {
@@ -977,21 +973,13 @@ struct GuiApp::State
                 map_object_warnings.push_back(placement.model_path + ": " + model.error().message);
                 continue;
             }
-            try
-            {
-                const auto geometry = build_preview_geometry(*model, nullptr, {}, false,
-                                                             [this](const std::string& reference)
-                                                             {
-                                                                 return load_texture(object_textures, map_object_warnings, reference);
-                                                             });
-                gpu.radius = std::max(geometry.radius, 1.0F);
-                gpu.valid = renderer.ready() && !geometry.indices.empty() && gpu.mesh.upload(renderer.device(), renderer.context(), geometry.vertices, geometry.indices, geometry.parts);
-            }
-            catch (const std::exception& error)
-            {
-                // Particle ALOs and malformed models fall back to a marker.
-                map_object_warnings.push_back(placement.model_path + ": " + error.what());
-            }
+            const auto geometry = build_preview_geometry(*model, nullptr, {}, false,
+                                                         [this](const std::string& reference)
+                                                         {
+                                                             return load_texture(object_textures, map_object_warnings, reference);
+                                                         });
+            gpu.radius = std::max(geometry.radius, 1.0F);
+            gpu.valid = renderer.ready() && !geometry.indices.empty() && gpu.mesh.upload(renderer.device(), renderer.context(), geometry.vertices, geometry.indices, geometry.parts);
         }
     }
 
@@ -1017,24 +1005,16 @@ struct GuiApp::State
     {
         // Previews fall back to a message when the GPU preview pipeline is unavailable.
         static_cast<void>(renderer.initialize(device));
-        try
+        const auto installations = InstallationLocator{}.discover();
+        if (!installations.empty())
         {
-            const auto installations = InstallationLocator{}.discover();
-            if (!installations.empty())
-            {
-                game_root = path_to_utf8(installations.front());
-                message = "Detected Empire at War installation";
-            }
-            else
-            {
-                game_root = "D:\\SteamLibrary\\steamapps\\common\\Star Wars Empire at War";
-                message = "Choose or verify the game installation folder";
-            }
+            game_root = path_to_utf8(installations.front());
+            message = "Detected Empire at War installation";
         }
-        catch (const std::exception& error)
+        else
         {
-            message = error.what();
-            message_error = true;
+            game_root = "D:\\SteamLibrary\\steamapps\\common\\Star Wars Empire at War";
+            message = "Choose or verify the game installation folder";
         }
     }
 
@@ -1042,12 +1022,6 @@ struct GuiApp::State
     {
         message = std::move(text);
         message_error = false;
-    }
-
-    void fail(const std::exception& error)
-    {
-        message = error.what();
-        message_error = true;
     }
 
     void fail(const Error& error)
@@ -1058,10 +1032,17 @@ struct GuiApp::State
 
     void load_assets()
     {
-        const auto profile = make_game_profile(utf8_to_path(game_root), variant);
+        const auto root = utf8_to_path(game_root);
+        if (!root)
+        {
+            fail(root.error());
+            return;
+        }
+        const auto profile = make_game_profile(*root, variant);
         if (!profile)
         {
-            throw std::runtime_error("The selected folder is not an Empire at War installation");
+            fail(make_error("The selected folder is not an Empire at War installation"));
+            return;
         }
         VirtualFileSystem next;
         const auto report = mount_game_assets(next, *profile, mods);
@@ -1103,7 +1084,8 @@ struct GuiApp::State
         }
         if (static_cast<std::size_t>(index) >= preview_animation_assets.size())
         {
-            throw std::runtime_error("The selected animation is no longer available");
+            fail(make_error("The selected animation is no longer available"));
+            return;
         }
         const auto& asset = preview_animation_assets[static_cast<std::size_t>(index)];
         const auto bytes = vfs.read(asset.virtual_path);
@@ -1170,15 +1152,7 @@ struct GuiApp::State
                 return;
             }
             preview_map = std::move(map).value();
-            try
-            {
-                load_map_objects();
-            }
-            catch (const std::exception& error)
-            {
-                reset_map_objects();
-                map_object_warnings.push_back(std::string("Placed-object models unavailable: ") + error.what());
-            }
+            load_map_objects();
             return;
         }
         if (extension != ".alo")
@@ -1384,7 +1358,8 @@ struct GuiApp::State
     {
         if (!base_dat_path)
         {
-            throw std::runtime_error("Open a baseline DAT before building an output DAT");
+            fail(make_error("Open a baseline DAT before building an output DAT"));
+            return;
         }
         std::error_code path_error;
         const auto baseline = std::filesystem::weakly_canonical(*base_dat_path, path_error);
@@ -1392,7 +1367,8 @@ struct GuiApp::State
         const auto destination = std::filesystem::weakly_canonical(output, path_error);
         if (lower(path_to_utf8(baseline)) == lower(path_to_utf8(destination)))
         {
-            throw std::runtime_error("Choose a different output path; EAWTools will not overwrite the baseline DAT");
+            fail(make_error("Choose a different output path; EAWTools will not overwrite the baseline DAT"));
+            return;
         }
         auto loaded = DatFile::load(*base_dat_path);
         if (!loaded)
@@ -1414,7 +1390,8 @@ struct GuiApp::State
                                                   });
         if (errors != 0)
         {
-            throw std::runtime_error("The built DAT has " + std::to_string(errors) + " validation errors");
+            fail(make_error("The built DAT has " + std::to_string(errors) + " validation errors"));
+            return;
         }
         if (const auto status = dat.save(output, true); !status)
         {
@@ -1428,7 +1405,8 @@ struct GuiApp::State
     {
         if (!base_dat_path)
         {
-            throw std::runtime_error("Open a baseline DAT before scanning a mod");
+            fail(make_error("Open a baseline DAT before scanning a mod"));
+            return;
         }
         const auto baseline = DatFile::load(*base_dat_path);
         if (!baseline)
@@ -1467,11 +1445,11 @@ struct GuiApp::State
         succeed("Scanned " + std::to_string(result.reference_count) + " references and added " + std::to_string(added) + " missing keys");
     }
 
-    void add_localization_row(LocalizationRow row)
+    Status add_localization_row(LocalizationRow row)
     {
         if (row.key.empty())
         {
-            throw std::runtime_error("Localization key cannot be empty");
+            return make_error("Localization key cannot be empty");
         }
         if (std::ranges::any_of(rows,
                                 [&](const auto& existing)
@@ -1479,11 +1457,12 @@ struct GuiApp::State
                                     return lower(existing.key) == lower(row.key);
                                 }))
         {
-            throw std::runtime_error("The workspace already contains " + row.key);
+            return make_error("The workspace already contains " + row.key);
         }
         rows.push_back(std::move(row));
         selected_row = static_cast<int>(rows.size() - 1);
         dirty = true;
+        return Status::success();
     }
 };
 
@@ -2328,14 +2307,7 @@ void render_model_viewport(GuiApp::State& state)
             const auto name = std::filesystem::path(state.preview_animation_assets[index].virtual_path).filename().string();
             if (ImGui::Selectable(name.c_str(), state.preview_animation_index == static_cast<int>(index)))
             {
-                try
-                {
-                    state.select_preview_animation(static_cast<int>(index));
-                }
-                catch (const std::exception& error)
-                {
-                    state.fail(error);
-                }
+                state.select_preview_animation(static_cast<int>(index));
                 state.model_mesh_cached = false;
             }
         }
@@ -2492,16 +2464,13 @@ void render_asset_workspace(GuiApp::State& state, HWND owner)
     ImGui::SameLine();
     if (ImGui::Button("Browse...", {110.0F, 0.0F}))
     {
-        try
+        if (const auto path = pick_folder(owner, L"Select Empire at War installation"); !path)
         {
-            if (const auto path = pick_folder(owner, L"Select Empire at War installation"))
-            {
-                state.game_root = path_to_utf8(*path);
-            }
+            state.fail(path.error());
         }
-        catch (const std::exception& error)
+        else if (*path)
         {
-            state.fail(error);
+            state.game_root = path_to_utf8(**path);
         }
     }
 
@@ -2517,29 +2486,19 @@ void render_asset_workspace(GuiApp::State& state, HWND owner)
     ImGui::SameLine();
     if (ImGui::Button("Add mod layer..."))
     {
-        try
+        if (const auto path = pick_folder(owner, L"Select a mod folder"); !path)
         {
-            if (const auto path = pick_folder(owner, L"Select a mod folder"))
-            {
-                state.mods.push_back(*path);
-            }
+            state.fail(path.error());
         }
-        catch (const std::exception& error)
+        else if (*path)
         {
-            state.fail(error);
+            state.mods.push_back(**path);
         }
     }
     ImGui::SameLine();
     if (ImGui::Button("Load assets"))
     {
-        try
-        {
-            state.load_assets();
-        }
-        catch (const std::exception& error)
-        {
-            state.fail(error);
-        }
+        state.load_assets();
     }
 
     if (!state.mods.empty())
@@ -2659,15 +2618,7 @@ void render_asset_workspace(GuiApp::State& state, HWND owner)
                     ImGui::TableSetColumnIndex(0);
                     if (ImGui::Selectable(asset.virtual_path.c_str(), state.selected_asset == asset_index, ImGuiSelectableFlags_SpanAllColumns))
                     {
-                        try
-                        {
-                            state.inspect_asset(asset_index);
-                        }
-                        catch (const std::exception& error)
-                        {
-                            state.fail(error);
-                            state.asset_preview = error.what();
-                        }
+                        state.inspect_asset(asset_index);
                     }
                     ImGui::TableSetColumnIndex(1);
                     ImGui::TextUnformatted(human_size(asset.size).c_str());
@@ -2852,15 +2803,14 @@ void render_add_key_popup(GuiApp::State& state)
         ImGui::InputTextWithHint("##new-key", "TEXT_MY_NEW_KEY", &state.new_key);
         if (ImGui::Button("Add", {110.0F, 0.0F}))
         {
-            try
+            if (const auto status = state.add_localization_row({state.new_key, {}, "manual", "todo", {}, "Added in EAWTools"}); !status)
             {
-                state.add_localization_row({state.new_key, {}, "manual", "todo", {}, "Added in EAWTools"});
+                state.fail(status.error());
+            }
+            else
+            {
                 state.new_key.clear();
                 ImGui::CloseCurrentPopup();
-            }
-            catch (const std::exception& error)
-            {
-                state.fail(error);
             }
         }
         ImGui::SameLine();
@@ -2885,24 +2835,24 @@ void render_add_unit_popup(GuiApp::State& state)
         ImGui::InputTextMultiline("##unit-description", &state.unit_description, {520.0F, 130.0F});
         if (ImGui::Button("Create keys", {130.0F, 0.0F}))
         {
-            try
+            const auto id = normalize_unit_id(state.unit_id);
+            const auto name_key = "TEXT_UNIT_" + id;
+            const auto tooltip_key = "TEXT_TOOLTIP_" + id;
+            const auto conflicts = [&](const auto& row)
             {
-                const auto id = normalize_unit_id(state.unit_id);
-                if (id.empty())
-                {
-                    throw std::runtime_error("Unit ID cannot be empty");
-                }
-                const auto name_key = "TEXT_UNIT_" + id;
-                const auto tooltip_key = "TEXT_TOOLTIP_" + id;
-                const auto conflicts = [&](const auto& row)
-                {
-                    const auto key = lower(row.key);
-                    return key == lower(name_key) || key == lower(tooltip_key);
-                };
-                if (std::ranges::any_of(state.rows, conflicts))
-                {
-                    throw std::runtime_error("One of the generated unit keys already exists");
-                }
+                const auto key = lower(row.key);
+                return key == lower(name_key) || key == lower(tooltip_key);
+            };
+            if (id.empty())
+            {
+                state.fail(make_error("Unit ID cannot be empty"));
+            }
+            else if (std::ranges::any_of(state.rows, conflicts))
+            {
+                state.fail(make_error("One of the generated unit keys already exists"));
+            }
+            else
+            {
                 state.rows.push_back({name_key, state.unit_name, "unit:" + id, "ready", "Use in <Text_ID>", "Generated unit display-name key"});
                 state.rows.push_back({tooltip_key, state.unit_description, "unit:" + id, "ready", "Use in <Encyclopedia_Text>", "Generated unit description key"});
                 state.selected_row = static_cast<int>(state.rows.size() - 2);
@@ -2911,10 +2861,6 @@ void render_add_unit_popup(GuiApp::State& state)
                 state.unit_name.clear();
                 state.unit_description.clear();
                 ImGui::CloseCurrentPopup();
-            }
-            catch (const std::exception& error)
-            {
-                state.fail(error);
             }
         }
         ImGui::SameLine();
@@ -2935,81 +2881,69 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
 
     if (ImGui::Button("Open DAT..."))
     {
-        try
+        if (const auto path = open_dat_file(owner, L"Open baseline localization DAT"); !path)
         {
-            if (const auto path = open_dat_file(owner, L"Open baseline localization DAT"))
-            {
-                state.open_dat(*path);
-            }
+            state.fail(path.error());
         }
-        catch (const std::exception& error)
+        else if (*path)
         {
-            state.fail(error);
+            state.open_dat(**path);
         }
     }
     ImGui::SameLine();
     if (ImGui::Button("Open workspace..."))
     {
-        try
+        if (const auto path = open_workspace_file(owner, L"Open localization workspace"); !path)
         {
-            if (const auto path = open_workspace_file(owner, L"Open localization workspace"))
-            {
-                state.open_workspace(*path);
-            }
+            state.fail(path.error());
         }
-        catch (const std::exception& error)
+        else if (*path)
         {
-            state.fail(error);
+            state.open_workspace(**path);
         }
     }
     ImGui::SameLine();
     if (ImGui::Button("Save workspace"))
     {
-        try
+        auto path = state.workspace_path;
+        if (!path)
         {
-            auto path = state.workspace_path;
-            if (!path)
+            if (auto chosen = save_workspace_file(owner, L"Save localization workspace"); !chosen)
             {
-                path = save_workspace_file(owner, L"Save localization workspace");
+                state.fail(chosen.error());
             }
-            if (path)
+            else
             {
-                state.save_workspace(*path);
+                path = std::move(chosen).value();
             }
         }
-        catch (const std::exception& error)
+        if (path)
         {
-            state.fail(error);
+            state.save_workspace(*path);
         }
     }
     ImGui::SameLine();
     if (ImGui::Button("Save as..."))
     {
-        try
+        if (const auto path = save_workspace_file(owner, L"Save localization workspace"); !path)
         {
-            if (const auto path = save_workspace_file(owner, L"Save localization workspace"))
-            {
-                state.save_workspace(*path);
-            }
+            state.fail(path.error());
         }
-        catch (const std::exception& error)
+        else if (*path)
         {
-            state.fail(error);
+            state.save_workspace(**path);
         }
     }
     ImGui::SameLine();
     if (ImGui::Button("Scan mod..."))
     {
-        try
+        if (const auto path = pick_folder(owner, L"Select mod root to scan"); !path)
         {
-            if (const auto path = pick_folder(owner, L"Select mod root to scan"))
-            {
-                state.scan_mod(*path);
-            }
+            state.fail(path.error());
         }
-        catch (const std::exception& error)
+        else if (*path)
         {
-            state.fail(error);
+            state.scan_mod(**path);
         }
     }
     ImGui::SameLine();
@@ -3030,16 +2964,13 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
     ImGui::SameLine();
     if (ImGui::Button("Build DAT..."))
     {
-        try
+        if (const auto path = save_dat_file(owner, L"Build localization DAT"); !path)
         {
-            if (const auto path = save_dat_file(owner, L"Build localization DAT"))
-            {
-                state.build_dat(*path);
-            }
+            state.fail(path.error());
         }
-        catch (const std::exception& error)
+        else if (*path)
         {
-            state.fail(error);
+            state.build_dat(**path);
         }
     }
 

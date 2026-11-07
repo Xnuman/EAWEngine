@@ -9,6 +9,7 @@
 #include "eaw/lua_script.hpp"
 #include "eaw/map_object_layout.hpp"
 #include "eaw/mtd_directory.hpp"
+#include "eaw/status.hpp"
 #include "eaw/text_encoding.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"
@@ -18,6 +19,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -26,11 +28,9 @@
 #include <map>
 #include <optional>
 #include <ranges>
-#include <regex>
 #include <set>
 #include <span>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -73,18 +73,19 @@ void usage()
               << "  --limit <count>         Maximum list/sample rows\n";
 }
 
-std::size_t parse_size(const std::string& value)
+eaw::Result<std::size_t> parse_size(const std::string& value)
 {
-    std::size_t consumed = 0;
-    const auto result = std::stoull(value, &consumed);
-    if (consumed != value.size())
+    std::size_t parsed = 0;
+    const auto* const end = value.data() + value.size();
+    const auto [position, error] = std::from_chars(value.data(), end, parsed);
+    if (value.empty() || error != std::errc{} || position != end)
     {
-        throw std::invalid_argument("invalid number: " + value);
+        return eaw::make_error("invalid number: " + value);
     }
-    return static_cast<std::size_t>(result);
+    return parsed;
 }
 
-Options parse_options(const int argc, char** argv)
+eaw::Result<Options> parse_options(const int argc, char** argv)
 {
     Options options;
     int index = 1;
@@ -113,7 +114,7 @@ Options parse_options(const int argc, char** argv)
         }
         if (index + 1 >= argc)
         {
-            throw std::invalid_argument("missing value after " + argument);
+            return eaw::make_error("missing value after " + argument);
         }
         const std::string value = argv[++index];
         if (argument == "--game-root")
@@ -125,7 +126,7 @@ Options parse_options(const int argc, char** argv)
             const auto variant = eaw::parse_game_variant(value);
             if (!variant)
             {
-                throw std::invalid_argument("unknown game variant: " + value);
+                return eaw::make_error("unknown game variant: " + value);
             }
             options.variant = *variant;
         }
@@ -156,16 +157,16 @@ Options parse_options(const int argc, char** argv)
         }
         else if (argument == "--limit")
         {
-            options.limit = parse_size(value);
+            EAW_TRY_ASSIGN(options.limit, parse_size(value));
         }
         else
         {
-            throw std::invalid_argument("unknown option: " + argument);
+            return eaw::make_error("unknown option: " + argument);
         }
     }
     if ((options.command == "inspect" || options.command == "localization-refs") && options.operand.empty())
     {
-        throw std::invalid_argument(options.command + " requires a virtual asset path");
+        return eaw::make_error(options.command + " requires a virtual asset path");
     }
     return options;
 }
@@ -193,10 +194,7 @@ std::string lower_ascii(std::string value)
 
 std::uint32_t little_u32(const std::span<const std::byte> bytes, const std::size_t offset)
 {
-    if (offset + 4 > bytes.size())
-    {
-        throw std::runtime_error("asset is too short for the requested header");
-    }
+    EAW_ASSERT_MSG(offset + 4 <= bytes.size(), "asset is too short for the requested header");
     std::uint32_t value = 0;
     for (unsigned index = 0; index < 4; ++index)
     {
@@ -205,7 +203,7 @@ std::uint32_t little_u32(const std::span<const std::byte> bytes, const std::size
     return value;
 }
 
-// Reports the way main's handler does: "asset inspector error: ..." and exit code 1.
+// Reports a failure: "asset inspector error: ..." and exit code 1.
 int report_error(const eaw::Error& error)
 {
     std::cerr << "asset inspector error: " << error.message << '\n';
@@ -508,11 +506,32 @@ std::vector<std::string> localization_references(const std::string& xml)
         std::fill(active_xml.begin() + static_cast<std::ptrdiff_t>(comment), active_xml.begin() + static_cast<std::ptrdiff_t>(end), ' ');
         comment = end;
     }
-    static const std::regex reference(R"(\bTEXT_[A-Za-z0-9_.-]+)");
-    std::set<std::string> unique;
-    for (auto match = std::sregex_iterator(active_xml.begin(), active_xml.end(), reference); match != std::sregex_iterator(); ++match)
+    // Keys are "TEXT_" plus one or more of [A-Za-z0-9_.-], starting at a word boundary.
+    const auto word_character = [](const char character)
     {
-        unique.insert(match->str());
+        return std::isalnum(static_cast<unsigned char>(character)) != 0 || character == '_';
+    };
+    std::set<std::string> unique;
+    std::size_t position = 0;
+    while ((position = active_xml.find("TEXT_", position)) != std::string::npos)
+    {
+        if (position > 0 && word_character(active_xml[position - 1]))
+        {
+            ++position;
+            continue;
+        }
+        auto end = position + 5;
+        while (end < active_xml.size() && (word_character(active_xml[end]) || active_xml[end] == '.' || active_xml[end] == '-'))
+        {
+            ++end;
+        }
+        if (end == position + 5)
+        {
+            ++position;
+            continue;
+        }
+        unique.insert(active_xml.substr(position, end - position));
+        position = end;
     }
     return {unique.begin(), unique.end()};
 }
@@ -534,7 +553,7 @@ eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& 
     const auto resolved = vfs.resolve(path);
     if (!resolved)
     {
-        throw std::runtime_error("asset was not found: " + path);
+        return eaw::make_error("asset was not found: " + path);
     }
     EAW_TRY_ASSIGN(const auto bytes, vfs.read(path));
     const auto extension = extension_of(resolved->virtual_path);
@@ -898,7 +917,8 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
               << "Volume textures: " << dds_volumes << "\nFormats:\n";
     for (const auto& [format, count] : dds_formats)
     {
-        std::cout << "  " << format << ": " << count << "  (e.g. " << dds_format_examples.at(format) << ")\n";
+        const auto example = dds_format_examples.find(format);
+        std::cout << "  " << format << ": " << count << "  (e.g. " << (example != dds_format_examples.end() ? example->second : std::string{}) << ")\n";
     }
     std::cout << "\nMTD corpus\n"
               << "Files: " << mtd_files << '\n'
@@ -1628,135 +1648,138 @@ eaw::Status audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view 
     return eaw::Status::success();
 }
 
+// Runs the selected command and returns its exit code; failures are returned for main to report.
+eaw::Result<int> run(const Options& options)
+{
+    const eaw::InstallationLocator locator;
+    const auto installations = locator.discover(options.game_root);
+    if (installations.empty())
+    {
+        return eaw::make_error("no valid Empire at War installation was found");
+    }
+    const auto profile = eaw::make_game_profile(installations.front(), options.variant);
+    if (!profile)
+    {
+        return eaw::make_error("the selected game profile is unavailable");
+    }
+
+    eaw::VirtualFileSystem vfs;
+    const auto report = eaw::mount_game_assets(vfs, *profile, options.mods);
+    for (const auto& warning : report.warnings)
+    {
+        std::cerr << "warning: " << warning << '\n';
+    }
+
+    if (options.command == "inspect")
+    {
+        const auto status = inspect_asset(vfs, options.operand, options.limit);
+        return status ? 0 : report_error(status.error());
+    }
+    if (options.command == "localization-refs")
+    {
+        const auto read = vfs.read(options.operand);
+        if (!read)
+        {
+            return report_error(read.error());
+        }
+        const auto& bytes = *read;
+        const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        const auto references = localization_references(text);
+        for (const auto& reference : references)
+        {
+            std::cout << reference << '\n';
+        }
+        std::cerr << references.size() << " unique localization references\n";
+        return 0;
+    }
+    if (options.command == "texture-audit")
+    {
+        audit_texture_references(vfs, options.prefix, options.limit);
+        return 0;
+    }
+    if (options.command == "lua-audit")
+    {
+        audit_lua(vfs, options.prefix, options.limit);
+        return 0;
+    }
+    if (options.command == "map-objects")
+    {
+        audit_map_objects(vfs, options.prefix, options.limit);
+        return 0;
+    }
+    if (options.command == "map-audit")
+    {
+        audit_maps(vfs, options.prefix, options.limit);
+        return 0;
+    }
+    if (options.command == "xml-audit")
+    {
+        const auto status = audit_xml(vfs, options.prefix, options.limit, options.schema_root, options.variant == eaw::GameVariant::forces_of_corruption);
+        return status ? 0 : report_error(status.error());
+    }
+    if (options.command != "summary" && options.command != "list")
+    {
+        return eaw::make_error("unknown command: " + options.command);
+    }
+
+    auto assets = vfs.list(options.prefix);
+    if (!options.extension.empty())
+    {
+        std::erase_if(assets,
+                      [&](const auto& asset)
+                      {
+                          return extension_of(asset.virtual_path) != options.extension;
+                      });
+    }
+    if (options.command == "list")
+    {
+        for (std::size_t index = 0; index < std::min(options.limit, assets.size()); ++index)
+        {
+            const auto& asset = assets[index];
+            std::cout << std::setw(12) << asset.size << "  " << asset.virtual_path << "  [" << asset.mount_name << "]\n";
+        }
+        std::cout.flush();
+        std::cerr << "showing " << std::min(options.limit, assets.size()) << " of " << assets.size() << " assets\n";
+        return 0;
+    }
+
+    std::map<std::string, std::pair<std::size_t, std::uint64_t>> by_extension;
+    std::map<std::string, std::size_t> by_mount;
+    std::uint64_t total_bytes = 0;
+    for (const auto& asset : assets)
+    {
+        auto& group = by_extension[extension_of(asset.virtual_path)];
+        ++group.first;
+        group.second += asset.size;
+        ++by_mount[asset.mount_name];
+        total_bytes += asset.size;
+    }
+    std::cout << "Game: " << eaw::to_string(profile->variant) << '\n'
+              << "Installation: " << profile->root << '\n'
+              << "Prefix: " << options.prefix << '\n'
+              << "Resolved assets: " << assets.size() << '\n'
+              << "Logical bytes: " << total_bytes << "\n\nBy extension:\n";
+    for (const auto& [extension, values] : by_extension)
+    {
+        std::cout << "  " << std::setw(8) << extension << "  " << std::setw(7) << values.first << " files  " << values.second << " bytes\n";
+    }
+    std::cout << "\nWinning source mounts:\n";
+    for (const auto& [mount, count] : by_mount)
+    {
+        std::cout << "  " << std::setw(7) << count << "  " << mount << '\n';
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(const int argc, char** argv)
 {
-    try
+    const auto options = parse_options(argc, argv);
+    if (!options)
     {
-        const auto options = parse_options(argc, argv);
-        const eaw::InstallationLocator locator;
-        const auto installations = locator.discover(options.game_root);
-        if (installations.empty())
-        {
-            throw std::runtime_error("no valid Empire at War installation was found");
-        }
-        const auto profile = eaw::make_game_profile(installations.front(), options.variant);
-        if (!profile)
-        {
-            throw std::runtime_error("the selected game profile is unavailable");
-        }
-
-        eaw::VirtualFileSystem vfs;
-        const auto report = eaw::mount_game_assets(vfs, *profile, options.mods);
-        for (const auto& warning : report.warnings)
-        {
-            std::cerr << "warning: " << warning << '\n';
-        }
-
-        if (options.command == "inspect")
-        {
-            const auto status = inspect_asset(vfs, options.operand, options.limit);
-            return status ? 0 : report_error(status.error());
-        }
-        if (options.command == "localization-refs")
-        {
-            const auto read = vfs.read(options.operand);
-            if (!read)
-            {
-                return report_error(read.error());
-            }
-            const auto& bytes = *read;
-            const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-            const auto references = localization_references(text);
-            for (const auto& reference : references)
-            {
-                std::cout << reference << '\n';
-            }
-            std::cerr << references.size() << " unique localization references\n";
-            return 0;
-        }
-        if (options.command == "texture-audit")
-        {
-            audit_texture_references(vfs, options.prefix, options.limit);
-            return 0;
-        }
-        if (options.command == "lua-audit")
-        {
-            audit_lua(vfs, options.prefix, options.limit);
-            return 0;
-        }
-        if (options.command == "map-objects")
-        {
-            audit_map_objects(vfs, options.prefix, options.limit);
-            return 0;
-        }
-        if (options.command == "map-audit")
-        {
-            audit_maps(vfs, options.prefix, options.limit);
-            return 0;
-        }
-        if (options.command == "xml-audit")
-        {
-            const auto status = audit_xml(vfs, options.prefix, options.limit, options.schema_root, options.variant == eaw::GameVariant::forces_of_corruption);
-            return status ? 0 : report_error(status.error());
-        }
-        if (options.command != "summary" && options.command != "list")
-        {
-            throw std::invalid_argument("unknown command: " + options.command);
-        }
-
-        auto assets = vfs.list(options.prefix);
-        if (!options.extension.empty())
-        {
-            std::erase_if(assets,
-                          [&](const auto& asset)
-                          {
-                              return extension_of(asset.virtual_path) != options.extension;
-                          });
-        }
-        if (options.command == "list")
-        {
-            for (std::size_t index = 0; index < std::min(options.limit, assets.size()); ++index)
-            {
-                const auto& asset = assets[index];
-                std::cout << std::setw(12) << asset.size << "  " << asset.virtual_path << "  [" << asset.mount_name << "]\n";
-            }
-            std::cout.flush();
-            std::cerr << "showing " << std::min(options.limit, assets.size()) << " of " << assets.size() << " assets\n";
-            return 0;
-        }
-
-        std::map<std::string, std::pair<std::size_t, std::uint64_t>> by_extension;
-        std::map<std::string, std::size_t> by_mount;
-        std::uint64_t total_bytes = 0;
-        for (const auto& asset : assets)
-        {
-            auto& group = by_extension[extension_of(asset.virtual_path)];
-            ++group.first;
-            group.second += asset.size;
-            ++by_mount[asset.mount_name];
-            total_bytes += asset.size;
-        }
-        std::cout << "Game: " << eaw::to_string(profile->variant) << '\n'
-                  << "Installation: " << profile->root << '\n'
-                  << "Prefix: " << options.prefix << '\n'
-                  << "Resolved assets: " << assets.size() << '\n'
-                  << "Logical bytes: " << total_bytes << "\n\nBy extension:\n";
-        for (const auto& [extension, values] : by_extension)
-        {
-            std::cout << "  " << std::setw(8) << extension << "  " << std::setw(7) << values.first << " files  " << values.second << " bytes\n";
-        }
-        std::cout << "\nWinning source mounts:\n";
-        for (const auto& [mount, count] : by_mount)
-        {
-            std::cout << "  " << std::setw(7) << count << "  " << mount << '\n';
-        }
-        return 0;
+        return report_error(options.error());
     }
-    catch (const std::exception& error)
-    {
-        std::cerr << "asset inspector error: " << error.what() << '\n';
-        return 1;
-    }
+    const auto result = run(*options);
+    return result ? *result : report_error(result.error());
 }

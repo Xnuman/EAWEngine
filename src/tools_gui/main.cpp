@@ -170,7 +170,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     io.ConfigDpiScaleViewports = true;
 
     const std::filesystem::path ui_font = L"C:\\Windows\\Fonts\\segoeui.ttf";
-    if (std::filesystem::is_regular_file(ui_font))
+    std::error_code font_error;
+    if (std::filesystem::is_regular_file(ui_font, font_error))
     {
         io.Fonts->AddFontFromFileTTF(ui_font.string().c_str(), 17.0F, nullptr, io.Fonts->GetGlyphRangesCyrillic());
     }

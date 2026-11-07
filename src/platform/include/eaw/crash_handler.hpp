@@ -1,10 +1,11 @@
 #pragma once
 
 // Process-wide crash reporting. Every way a process can die unexpectedly ends in one fatal error
-// report: eaw::fatal_error and failed EAW_ASSERTs, uncaught C++ exceptions (std::terminate), hardware
-// faults such as access violations or stack overflows, pure virtual calls, and invalid CRT
-// parameters. The report always goes to stderr; an error window shows it as well unless dialogs are
-// disabled or stderr is redirected (automated runs must never wait for a click).
+// report: eaw::fatal_error and failed EAW_ASSERTs, std::terminate, C++ exceptions raised by code
+// outside EAWEngine (which is built without them), hardware faults such as access violations or
+// stack overflows, pure virtual calls, and invalid CRT parameters. The report always goes to
+// stderr; an error window shows it as well unless dialogs are disabled or stderr is redirected
+// (automated runs must never wait for a click).
 
 #include <string>
 

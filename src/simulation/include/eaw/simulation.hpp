@@ -9,6 +9,8 @@
 // which depends only on the spawn/destroy history. Floating-point behavior across compilers or CPUs
 // is not yet guaranteed; cross-machine lockstep will need a stricter numeric policy.
 
+#include "eaw/status.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -92,7 +94,8 @@ struct SimSnapshot
 };
 
 // Converts real elapsed time into whole simulation ticks. At most `max_ticks_per_advance` ticks are
-// returned per call (excess time is dropped), so a long stall cannot trigger a catch-up spiral.
+// returned per call (excess time is dropped), so a long stall cannot trigger an ever-growing
+// backlog of ticks.
 class FixedStepClock final
 {
 public:
@@ -126,8 +129,10 @@ public:
 
     explicit SimulationWorld(double tick_seconds = 1.0 / 30.0);
 
-    // Spawning is immediate and intended for setup between ticks (map load, reinforcements).
-    EntityId spawn(const EntitySpawn& spawn);
+    // Spawning is immediate and intended for setup between ticks (map load, reinforcements). Spawn
+    // data comes from map and mod content: a non-finite position, heading, or speed, or full entity
+    // storage, returns an error and spawns nothing.
+    [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn);
     // Queues a command for the next step(); commands apply in submission order.
     void submit(SimCommand command);
     // Applies queued commands, runs the systems once, and publishes a new snapshot.

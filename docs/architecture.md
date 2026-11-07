@@ -148,12 +148,19 @@ interpolation of presentation. GPU picks identify clicked objects. Orders become
 simulation move commands, one per unit, spread on a grid in id order so the
 command stream stays deterministic.
 
-Unexpected failures are not handled. `eaw::fatal_error` and `EAW_ASSERT`
-(core) report and end the process; the platform's crash handlers route uncaught
-C++ exceptions (decoded from the MSVC exception record before unwinding, so a
-debugger still sees the throw site), access violations and other structured
-exceptions, pure virtual calls, and invalid CRT parameters into the same report.
-The report goes to stderr and, for interactive runs, to an error window.
+Errors are values, not exceptions; every target compiles with exceptions
+disabled. Recoverable failures return `eaw::Status` / `eaw::Result<T>` with a
+contextual message, and callers that continue log a warning and fall back (a
+map or model that cannot be built leaves the validation triangle or the current
+view; the renderer is created through `D3d12Renderer::create` so a missing GPU
+is reported cleanly). Programming errors (`EAW_ASSERT_MSG`) and unrecoverable
+runtime failures (`eaw::fatal_error`, for example a D3D12 call failing after
+startup, with the device-removed diagnostics) are not handled: they report and
+end the process. The platform's crash handlers route `std::terminate`, C++
+exceptions raised by code outside the engine (decoded from the MSVC exception
+record before unwinding), access violations and other structured exceptions,
+pure virtual calls, and invalid CRT parameters into the same report. The report
+goes to stderr and, for interactive runs, to an error window.
 
 Selection uses a second render target holding a pick id per pixel: the scene
 instance index plus one, zero for nothing, and a reserved value for terrain.

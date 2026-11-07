@@ -32,6 +32,7 @@ class ScenePresentation final
 {
 public:
     // Spawns every listed entity into `world` and records its template from `scene.instances`.
+    // Entities the world rejects (non-finite map data) are logged as warnings and skipped.
     ScenePresentation(const VisualScene& scene, std::span<const MapEntitySpawn> entities, SimulationWorld& world);
 
     // Builds this frame's instances: static backgrounds first, then one per snapshot entity in
@@ -44,8 +45,9 @@ public:
     [[nodiscard]] const std::array<float, 3>& mesh_maximum(std::uint32_t mesh) const;
     // XML type of a spawned entity (empty when unknown).
     [[nodiscard]] std::string type_name(EntityId id) const;
-    // Spawns an entity of a runtime-spawnable type into `world` and records its template.
-    EntityId spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, float heading, std::uint32_t owner);
+    // Spawns an entity of a runtime-spawnable type into `world` and records its template; fails
+    // (recording nothing) when the world rejects the spawn.
+    [[nodiscard]] Result<EntityId> spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, float heading, std::uint32_t owner);
 
 private:
     struct Template

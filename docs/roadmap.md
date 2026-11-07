@@ -215,20 +215,28 @@ it.
   engine-native so the simulation and sandbox do not change. Reference designs:
   the owner's own projects and permissively licensed engines (for example SDL's
   Windows raw-input backend); designs are studied, not copied.
-- **Exception-free error handling (in progress).** Decided: no exceptions.
-  Recoverable failures return `eaw::Status` / `eaw::Result<T>` with contextual
-  messages and are logged as warnings (stderr, the debugger output window, and
-  a per-run log file); bugs are fatal through `EAW_ASSERT` and the crash
-  handlers. Phases: (A) status types, log, sinks, done; (B) core decoders and
-  VFS, done; (C) engine, cache, simulation; (D) renderer; (E) tools; (F) compile
-  with exceptions disabled and replace throwing standard-library calls.
+- **Exception-free error handling (done).** No exceptions: every target
+  compiles with `/EHs-c-` and `_HAS_EXCEPTIONS=0`. Recoverable failures
+  (malformed data, missing assets, failed map or model builds, invalid input, a
+  window or device that cannot be created at startup) return `eaw::Status` /
+  `eaw::Result<T>` with contextual messages and are logged as warnings
+  (stderr, the debugger output window, and a per-run log file) where the
+  caller falls back. Programming errors are `EAW_ASSERT_MSG`; unrecoverable
+  runtime failures (D3D12 calls after startup, device removal) are
+  `eaw::fatal_error` with their diagnostics; both end in the crash handlers'
+  report. Phases: (A) status types, log, sinks, done; (B) core decoders and
+  VFS, done; (C) engine, cache, simulation, done; (D) renderer (startup through
+  `D3d12Renderer::create`, `load_scene` returns `Status`), done; (E) tools,
+  done; (F) compile with exceptions disabled and replace throwing
+  standard-library calls (`std::from_chars`, `std::error_code` filesystem
+  overloads, hand-written parsing instead of `std::regex`), done.
   Background from the original assessment: the codebase reported errors by
   throwing (about 270 `throw` sites and 66 `catch` blocks, half of the throws in
   core decoders). The goal is explicit error values: a project `Result` type
   carrying a contextual error (virtual path, section, offset), returned by
-  decoders, the VFS, the renderer, and the engine, with `try`/`catch` only at
-  boundaries that call code which throws (the standard library, third-party
-  libraries). Migration is incremental: introduce the type and a policy, write
+  decoders, the VFS, the renderer, and the engine. (Handlers at boundaries to
+  throwing code turned out to be unnecessary: the standard library is used in
+  its non-throwing forms and Dear ImGui does not throw.) Migration is incremental: introduce the type and a policy, write
   new code with it, then convert module by module (core decoders first, then
   the renderer's HRESULT paths, the engine, and the tools), each with its tests.
   The project type stays on C++20; exceptions end disabled, with allocation

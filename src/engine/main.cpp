@@ -1,5 +1,6 @@
 #include "eaw/asset_environment.hpp"
 #include "eaw/game_installation.hpp"
+#include "eaw/status.hpp"
 #include "eaw/virtual_file_system.hpp"
 
 #ifdef _WIN32
@@ -20,6 +21,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -31,9 +33,9 @@
 #include <sstream>
 #include <limits>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <unordered_set>
 #include <utility>
@@ -125,38 +127,38 @@ void print_usage()
               << "  --validation-triangle  Skip model loading and show the fallback\n";
 }
 
-std::uint32_t parse_unsigned(const std::string_view value, const std::string_view option)
+// A whole decimal number (digits only).
+eaw::Result<std::uint64_t> parse_unsigned_64(const std::string_view value, const std::string_view option)
 {
-    std::size_t consumed{};
-    const auto parsed = std::stoull(std::string(value), &consumed, 10);
-    if (consumed != value.size() || parsed > std::numeric_limits<std::uint32_t>::max())
+    std::uint64_t parsed{};
+    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed, 10);
+    if (value.empty() || error != std::errc{} || end != value.data() + value.size())
     {
-        throw std::invalid_argument("invalid value for " + std::string(option) + ": " + std::string(value));
-    }
-    return static_cast<std::uint32_t>(parsed);
-}
-
-std::uint64_t parse_unsigned_64(const std::string_view value, const std::string_view option)
-{
-    std::size_t consumed{};
-    const auto parsed = std::stoull(std::string(value), &consumed, 10);
-    if (consumed != value.size())
-    {
-        throw std::invalid_argument("invalid value for " + std::string(option) + ": " + std::string(value));
+        return eaw::make_error("invalid value for " + std::string(option) + ": " + std::string(value));
     }
     return parsed;
 }
 
-std::string require_value(const int argc, char** argv, int& index, const std::string& option)
+eaw::Result<std::uint32_t> parse_unsigned(const std::string_view value, const std::string_view option)
+{
+    EAW_TRY_ASSIGN(const auto parsed, parse_unsigned_64(value, option));
+    if (parsed > std::numeric_limits<std::uint32_t>::max())
+    {
+        return eaw::make_error("invalid value for " + std::string(option) + ": " + std::string(value));
+    }
+    return static_cast<std::uint32_t>(parsed);
+}
+
+eaw::Result<std::string> require_value(const int argc, char** argv, int& index, const std::string& option)
 {
     if (index + 1 >= argc)
     {
-        throw std::invalid_argument("missing value after " + option);
+        return eaw::make_error("missing value after " + option);
     }
-    return argv[++index];
+    return std::string(argv[++index]);
 }
 
-Options parse_options(const int argc, char** argv)
+eaw::Result<Options> parse_options(const int argc, char** argv)
 {
     Options options;
     for (int index = 1; index < argc; ++index)
@@ -197,14 +199,15 @@ Options parse_options(const int argc, char** argv)
         }
         else if (argument == "--log-dir")
         {
-            options.log_directory = std::filesystem::path(std::string(require_value(argc, argv, index, argument)));
+            EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
+            options.log_directory = std::filesystem::path(value);
         }
         else if (argument == "--crash-test")
         {
-            options.crash_test = std::string(require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.crash_test, require_value(argc, argv, index, argument));
             if (*options.crash_test != "assert" && *options.crash_test != "exception" && *options.crash_test != "access-violation")
             {
-                throw std::invalid_argument("--crash-test must be assert, exception, or access-violation");
+                return eaw::make_error("--crash-test must be assert, exception, or access-violation");
             }
         }
         else if (argument == "--no-error-dialog")
@@ -217,29 +220,31 @@ Options parse_options(const int argc, char** argv)
         }
         else if (argument == "--spawn")
         {
-            const std::string value(require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(const std::string value, require_value(argc, argv, index, argument));
             const auto colon = value.rfind(':');
             std::uint32_t count = 0;
             auto type = value;
             if (colon != std::string::npos)
             {
                 type = value.substr(0, colon);
-                count = parse_unsigned(std::string_view(value).substr(colon + 1U), argument);
+                EAW_TRY_ASSIGN(count, parse_unsigned(std::string_view(value).substr(colon + 1U), argument));
                 if (count > 1000)
                 {
-                    throw std::invalid_argument("--spawn counts are limited to 1000 per type");
+                    return eaw::make_error("--spawn counts are limited to 1000 per type");
                 }
             }
             if (type.empty())
             {
-                throw std::invalid_argument("--spawn needs an XML object type name");
+                return eaw::make_error("--spawn needs an XML object type name");
             }
             options.spawns.emplace_back(std::move(type), count);
         }
         else if (argument == "--pick")
         {
-            const auto x = parse_unsigned(require_value(argc, argv, index, argument), argument);
-            const auto y = parse_unsigned(require_value(argc, argv, index, argument), argument);
+            EAW_TRY_ASSIGN(const auto x_text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(const auto x, parse_unsigned(x_text, argument));
+            EAW_TRY_ASSIGN(const auto y_text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(const auto y, parse_unsigned(y_text, argument));
             options.pick = std::array<std::uint32_t, 2>{x, y};
         }
         else if (argument == "--validation-triangle")
@@ -248,85 +253,92 @@ Options parse_options(const int argc, char** argv)
         }
         else if (argument == "--game-root")
         {
-            options.game_root = require_value(argc, argv, index, argument);
+            EAW_TRY_ASSIGN(options.game_root, require_value(argc, argv, index, argument));
         }
         else if (argument == "--game")
         {
-            const auto value = require_value(argc, argv, index, argument);
+            EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
             const auto variant = eaw::parse_game_variant(value);
             if (!variant)
             {
-                throw std::invalid_argument("unknown game variant: " + value);
+                return eaw::make_error("unknown game variant: " + value);
             }
             options.variant = *variant;
         }
         else if (argument == "--mod")
         {
-            options.mods.emplace_back(require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
+            options.mods.emplace_back(value);
         }
         else if (argument == "--probe")
         {
-            options.probe = require_value(argc, argv, index, argument);
+            EAW_TRY_ASSIGN(options.probe, require_value(argc, argv, index, argument));
         }
         else if (argument == "--model")
         {
-            options.model = require_value(argc, argv, index, argument);
+            EAW_TRY_ASSIGN(options.model, require_value(argc, argv, index, argument));
         }
         else if (argument == "--animation")
         {
-            options.animation = require_value(argc, argv, index, argument);
+            EAW_TRY_ASSIGN(options.animation, require_value(argc, argv, index, argument));
         }
         else if (argument == "--map")
         {
-            options.map = require_value(argc, argv, index, argument);
+            EAW_TRY_ASSIGN(options.map, require_value(argc, argv, index, argument));
         }
         else if (argument == "--pipeline-cache")
         {
-            options.pipeline_cache = require_value(argc, argv, index, argument);
+            EAW_TRY_ASSIGN(options.pipeline_cache, require_value(argc, argv, index, argument));
         }
         else if (argument == "--width")
         {
-            options.width = parse_unsigned(require_value(argc, argv, index, argument), argument);
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.width, parse_unsigned(text, argument));
         }
         else if (argument == "--height")
         {
-            options.height = parse_unsigned(require_value(argc, argv, index, argument), argument);
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.height, parse_unsigned(text, argument));
         }
         else if (argument == "--frame-latency")
         {
-            options.frame_latency = parse_unsigned(require_value(argc, argv, index, argument), argument);
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.frame_latency, parse_unsigned(text, argument));
             if (options.frame_latency < 1 || options.frame_latency > 2)
             {
-                throw std::invalid_argument("--frame-latency must be 1 or 2");
+                return eaw::make_error("--frame-latency must be 1 or 2");
             }
         }
         else if (argument == "--upload-budget")
         {
-            options.upload_budget_mib = parse_unsigned_64(require_value(argc, argv, index, argument), argument);
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.upload_budget_mib, parse_unsigned_64(text, argument));
             if (options.upload_budget_mib > 1024ULL * 1024ULL)
             {
-                throw std::invalid_argument("--upload-budget is limited to 1048576 MiB");
+                return eaw::make_error("--upload-budget is limited to 1048576 MiB");
             }
         }
         else if (argument == "--reload-every")
         {
-            options.reload_every = parse_unsigned_64(require_value(argc, argv, index, argument), argument);
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.reload_every, parse_unsigned_64(text, argument));
             if (*options.reload_every == 0)
             {
-                throw std::invalid_argument("--reload-every must be greater than zero");
+                return eaw::make_error("--reload-every must be greater than zero");
             }
         }
         else if (argument == "--frame-limit")
         {
-            options.frame_limit = parse_unsigned_64(require_value(argc, argv, index, argument), argument);
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.frame_limit, parse_unsigned_64(text, argument));
             if (*options.frame_limit == 0)
             {
-                throw std::invalid_argument("--frame-limit must be greater than zero");
+                return eaw::make_error("--frame-limit must be greater than zero");
             }
         }
         else if (argument == "--vsync")
         {
-            const auto value = require_value(argc, argv, index, argument);
+            EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
             if (value == "on")
             {
                 options.vsync = true;
@@ -337,18 +349,18 @@ Options parse_options(const int argc, char** argv)
             }
             else
             {
-                throw std::invalid_argument("--vsync must be 'on' or 'off'");
+                return eaw::make_error("--vsync must be 'on' or 'off'");
             }
         }
         else
         {
-            throw std::invalid_argument("unknown option or mode: " + argument);
+            return eaw::make_error("unknown option or mode: " + argument);
         }
     }
 
     if (options.width == 0 || options.height == 0)
     {
-        throw std::invalid_argument("sandbox width and height must be greater than zero");
+        return eaw::make_error("sandbox width and height must be greater than zero");
     }
     return options;
 }
@@ -410,25 +422,37 @@ SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Op
     }
     const auto epoch = cache != nullptr ? cache->begin_epoch() : 0;
     const eaw::RecordingAssetReader reader(vfs);
-    try
+    std::optional<eaw::Error> failure;
+    if (options.map)
     {
-        if (options.map)
+        std::vector<std::string> spawn_types;
+        for (const auto& [type, count] : options.spawns)
         {
-            std::vector<std::string> spawn_types;
-            for (const auto& [type, count] : options.spawns)
-            {
-                spawn_types.push_back(type);
-            }
-            content.map = eaw::build_visual_map(reader, *options.map, cache, spawn_types);
+            spawn_types.push_back(type);
+        }
+        if (auto map = eaw::build_visual_map(reader, *options.map, cache, spawn_types))
+        {
+            content.map = std::move(map).value();
         }
         else
         {
-            content.model = eaw::build_visual_model(reader, options.model, cache);
+            failure = std::move(map).error();
         }
     }
-    catch (const std::exception& error)
+    else
     {
-        content.error = error.what();
+        if (auto model = eaw::build_visual_model(reader, options.model, cache))
+        {
+            content.model = std::move(model).value();
+        }
+        else
+        {
+            failure = std::move(model).error();
+        }
+    }
+    if (failure)
+    {
+        content.error = std::move(failure->message);
         content.dependencies = reader.dependencies();
         return content;
     }
@@ -471,9 +495,10 @@ SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Op
 
 int main(const int argc, char** argv)
 {
-    // Unexpected failures are not handled: they end the process with a clear report (an error
-    // window plus stderr) through the crash handlers. Only invalid command lines are reported as
-    // usage errors, and malformed game or mod data keeps producing warnings.
+    // Programming errors and unrecoverable failures end the process with a clear report (an error
+    // window plus stderr) through the crash handlers. Invalid command lines are usage errors, a
+    // window or GPU device that cannot be created is reported before exiting, and malformed game
+    // or mod data produces warnings.
 #ifdef _WIN32
     bool error_dialogs = true;
     for (int index = 1; index < argc; ++index)
@@ -484,16 +509,13 @@ int main(const int argc, char** argv)
 #endif
     // Status lines (builds, streaming, hot reload) appear as they happen even when redirected.
     std::cout << std::unitbuf;
-    Options parsed_options;
-    try
+    auto parse_result = parse_options(argc, argv);
+    if (!parse_result)
     {
-        parsed_options = parse_options(argc, argv);
-    }
-    catch (const std::exception& error)
-    {
-        std::cerr << "error: " << error.what() << "\nRun with --help for the available options.\n";
+        std::cerr << "error: " << parse_result.error().message << "\nRun with --help for the available options.\n";
         return 2;
     }
+    const Options parsed_options = std::move(parse_result).value();
 #ifdef _WIN32
     // Warnings and errors go to stderr, the debugger output window, and a log file.
     if (const auto log_file = eaw::install_log_sinks({"EAWEngine", parsed_options.log_directory}))
@@ -515,7 +537,8 @@ int main(const int argc, char** argv)
             }
             else if (*options.crash_test == "exception")
             {
-                throw std::runtime_error("deliberate failure requested by --crash-test exception");
+                // EAWEngine is built without C++ exceptions; this reports what an unhandled one did.
+                eaw::fatal_error("simulated unhandled exception requested by --crash-test exception");
             }
             else
             {
@@ -584,7 +607,13 @@ int main(const int argc, char** argv)
         window_description.title = "EAWEngine Visual Sandbox — " + std::string(eaw::to_string(profile->variant));
         window_description.width = options.width;
         window_description.height = options.height;
-        eaw::PlatformWindow window(window_description);
+        auto created_window = eaw::PlatformWindow::create(window_description);
+        if (!created_window)
+        {
+            std::cerr << "error: " << created_window.error().message << '\n';
+            return 1;
+        }
+        auto window = std::move(created_window).value();
 
         eaw::D3d12RendererOptions renderer_options;
         renderer_options.vsync = options.vsync;
@@ -593,7 +622,13 @@ int main(const int argc, char** argv)
         renderer_options.maximum_frame_latency = options.frame_latency;
         renderer_options.pipeline_cache_directory = options.pipeline_cache;
         renderer_options.texture_upload_budget_bytes = options.upload_budget_mib * 1024ULL * 1024ULL;
-        eaw::D3d12Renderer renderer(window.native_handle(), window.client_width(), window.client_height(), renderer_options);
+        auto created_renderer = eaw::D3d12Renderer::create(window.native_handle(), window.client_width(), window.client_height(), renderer_options);
+        if (!created_renderer)
+        {
+            std::cerr << "error: " << created_renderer.error().message << '\n';
+            return 1;
+        }
+        auto& renderer = **created_renderer;
         std::optional<eaw::VisualModelAsset> visual_model;
         std::optional<eaw::AlaAnimation> visual_animation;
         // Model inspection orbits the model; a map uses the tactical camera. The validation
@@ -646,6 +681,29 @@ int main(const int argc, char** argv)
             }
             axis_length = std::max(extent * 0.1F, 1.0F);
             simulation_tick = std::chrono::steady_clock::now();
+        };
+        // Hands a built scene to the renderer. Nothing else changes before it is accepted, so a scene
+        // the renderer rejects leaves the current view, simulation, and camera as they were.
+        const auto load_content_scene = [&](eaw::VisualScene scene, const bool reload)
+        {
+            const auto loaded = renderer.load_scene(std::move(scene));
+            if (!loaded)
+            {
+                eaw::log_warning("scene", loaded.error().message + (reload ? "; keeping the current view" : "; using the validation triangle"));
+            }
+            return loaded.ok();
+        };
+        // The parts of a scene the presentation keeps (the rest moves into the renderer).
+        const auto presentation_layout = [](const eaw::VisualScene& scene)
+        {
+            eaw::VisualScene layout;
+            layout.name = scene.name;
+            layout.meshes = scene.meshes;
+            layout.instances = scene.instances;
+            layout.bone_count = scene.bone_count;
+            layout.bounds_minimum = scene.bounds_minimum;
+            layout.bounds_maximum = scene.bounds_maximum;
+            return layout;
         };
         const auto update_debug_lines = [&]
         {
@@ -706,14 +764,14 @@ int main(const int argc, char** argv)
             }
             if (!content.error.empty())
             {
-                std::cerr << (options.map ? "map" : "model") << " warning: " << content.error << (content.reload ? "; keeping the current view\n" : "; using the validation triangle\n");
+                eaw::log_warning(options.map ? "map" : "model", content.error + (content.reload ? "; keeping the current view" : "; using the validation triangle"));
                 return;
             }
             if (content.map)
             {
                 auto& visual_map = *content.map;
                 const auto& scene = visual_map.scene;
-                scene_status =
+                const auto map_status =
                     scene.name + (visual_map.land ? " (land)" : " (space)") + ", " + std::to_string(scene.instances.size()) + " objects, built in " + format_fixed(content.build_seconds, 2) + " s";
                 std::cout << "Visual map: " << scene.name << (visual_map.land ? " (land)" : " (space)") << '\n'
                           << "Terrain: "
@@ -747,11 +805,19 @@ int main(const int argc, char** argv)
                     std::cerr << "map warning: " << warning << '\n';
                 }
                 const eaw::CameraBounds bounds{scene.bounds_minimum, scene.bounds_maximum};
+                std::optional<eaw::VisualScene> reload_copy;
                 if (options.reload_every)
                 {
-                    reload_scene = scene;
+                    reload_copy = scene;
                 }
-                start_simulation(visual_map.scene, visual_map.entities);
+                const auto layout = presentation_layout(scene);
+                if (!load_content_scene(std::move(visual_map.scene), content.reload))
+                {
+                    return;
+                }
+                scene_status = map_status;
+                reload_scene = std::move(reload_copy);
+                start_simulation(layout, visual_map.entities);
                 spawnable = visual_map.spawnable;
                 terrain_heights = visual_map.terrain_heights;
                 spawn_choice = 0;
@@ -760,7 +826,6 @@ int main(const int argc, char** argv)
                 {
                     std::cout << "Spawnable: " << type.type_name << " (speed " << format_fixed(type.max_speed, 1) << ")\n";
                 }
-                renderer.load_scene(std::move(visual_map.scene));
                 if (visual_map.lighting)
                 {
                     renderer.set_lighting(*visual_map.lighting);
@@ -776,10 +841,8 @@ int main(const int argc, char** argv)
             }
             else if (content.model)
             {
-                visual_model = std::move(content.model);
-                auto& scene = visual_model->scene;
-                scene_status = scene.name + ", " + std::to_string(scene.bone_count) + " palette entries, built in " + format_fixed(content.build_seconds, 2) + " s";
-                animation_status = "bind pose";
+                auto& scene = content.model->scene;
+                const auto model_status = scene.name + ", " + std::to_string(scene.bone_count) + " palette entries, built in " + format_fixed(content.build_seconds, 2) + " s";
                 std::cout << "Visual model: " << scene.name << '\n'
                           << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size() << " draws\n"
                           << "Textures: " << scene.textures.size() << " | Bones: " << scene.bone_count << " | Built in " << content.build_seconds << " s\n";
@@ -788,9 +851,10 @@ int main(const int argc, char** argv)
                     std::cerr << "model warning: " << warning << '\n';
                 }
                 const eaw::CameraBounds bounds{scene.bounds_minimum, scene.bounds_maximum};
+                std::optional<eaw::VisualScene> reload_copy;
                 if (options.reload_every)
                 {
-                    reload_scene = scene;
+                    reload_copy = scene;
                 }
                 // The renderer takes the scene; keep only the skeleton data needed for animation.
                 // The model is one immobile entity.
@@ -805,8 +869,16 @@ int main(const int argc, char** argv)
                     spawn.visual = scene.instances.front().mesh;
                     model_entity.push_back({std::move(spawn), 0});
                 }
-                start_simulation(scene, model_entity);
-                renderer.load_scene(std::exchange(scene, {}));
+                const auto layout = presentation_layout(scene);
+                if (!load_content_scene(std::exchange(scene, {}), content.reload))
+                {
+                    return;
+                }
+                visual_model = std::move(content.model);
+                scene_status = model_status;
+                animation_status = "bind pose";
+                reload_scene = std::move(reload_copy);
+                start_simulation(layout, model_entity);
                 bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
                 renderer.set_bone_transforms(bind_palette);
                 if (!content.reload || !orbit_camera)
@@ -1023,7 +1095,10 @@ int main(const int argc, char** argv)
                     {
                         spot.z = terrain_heights.surface_height(spot.x, spot.y);
                     }
-                    (void)presentation->spawn(*world, type, spot, 0.0F, 1);
+                    if (const auto spawned = presentation->spawn(*world, type, spot, 0.0F, 1); !spawned)
+                    {
+                        eaw::log_warning("simulation", spawned.error());
+                    }
                 }
                 std::cout << "Spawned " << spots.size() << " " << type.type_name << " at " << format_fixed(point.x, 0) << ", " << format_fixed(point.y, 0) << ", " << format_fixed(point.z, 0) << '\n';
             };
@@ -1120,15 +1195,8 @@ int main(const int argc, char** argv)
             renderer.resize(window.client_width(), window.client_height());
             if (pending_content.valid() && pending_content.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
             {
-                // A failed load (for example an invalid scene) keeps the current view.
-                try
-                {
-                    apply_content(pending_content.get());
-                }
-                catch (const std::exception& error)
-                {
-                    std::cerr << "scene warning: " << error.what() << "; keeping the validation triangle\n";
-                }
+                // A failed build or a scene the renderer rejects keeps the current view.
+                apply_content(pending_content.get());
                 if (!content_shown_at)
                 {
                     content_shown_at = renderer.stats().frame_number;
@@ -1163,7 +1231,7 @@ int main(const int argc, char** argv)
                         auto replacement = eaw::MegMount::open(std::string(mount->name()), archive);
                         if (!replacement)
                         {
-                            // Typically the archive is still being written; try again next check.
+                            // Typically the archive is still being written; the next check retries.
                             std::cerr << "hot reload warning: " << archive.string() << " could not be remounted (" << replacement.error().message << "); retrying\n";
                             remounted = false;
                             continue;
@@ -1346,12 +1414,19 @@ int main(const int argc, char** argv)
             if (rendered && reload_scene && renderer.stats().frame_number % *options.reload_every == 0)
             {
                 // Load reset the bone palette; restore the bind pose until animation samples again.
-                renderer.load_scene(*reload_scene);
-                if (!bind_palette.empty())
+                // The copy was accepted before, so a failure here leaves the identical scene shown.
+                if (const auto loaded = renderer.load_scene(*reload_scene); loaded)
                 {
-                    renderer.set_bone_transforms(bind_palette);
+                    if (!bind_palette.empty())
+                    {
+                        renderer.set_bone_transforms(bind_palette);
+                    }
+                    ++scene_reloads;
                 }
-                ++scene_reloads;
+                else
+                {
+                    eaw::log_warning("scene", eaw::with_context("reloading the scene copy", loaded.error()));
+                }
             }
             if (content_shown_at && !textures_streamed && rendered && renderer.stats().pending_texture_uploads == 0)
             {

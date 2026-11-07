@@ -1,5 +1,6 @@
 #pragma once
 
+#include "eaw/status.hpp"
 #include "eaw/visual_scene.hpp"
 
 #include <array>
@@ -87,10 +88,16 @@ struct VisualOverlayInput
     float wheel{};
 };
 
+// Programming errors in calls (invalid camera, lighting, instances, debug lines, bone palettes, or
+// scene time produced by engine code) are assertions. A D3D12 or DXGI failure after startup, such
+// as device removal, ends the process through eaw::fatal_error with the device-removed diagnostics.
 class D3d12Renderer final
 {
 public:
-    D3d12Renderer(void* native_window, std::uint32_t width, std::uint32_t height, const D3d12RendererOptions& options = {});
+    // Creates the device, queues, swap chain, and pipelines for a window (an HWND). Returns an
+    // error when no suitable adapter exists, the device lacks a required feature, or the device,
+    // queues, swap chain, or debug overlay cannot be created.
+    [[nodiscard]] static Result<std::unique_ptr<D3d12Renderer>> create(void* native_window, std::uint32_t width, std::uint32_t height, const D3d12RendererOptions& options = {});
     ~D3d12Renderer();
 
     D3d12Renderer(const D3d12Renderer&) = delete;
@@ -107,16 +114,18 @@ public:
     // textures are validated here and stream in under the per-frame budget, drawn with fallbacks
     // until they arrive. Resources of the replaced scene stay alive until the GPU has finished
     // every frame that used them; the CPU does not wait. Pass an rvalue to avoid copying textures.
-    void load_scene(VisualScene scene);
+    // Returns an error for an invalid scene (no geometry, capacities exceeded, references outside
+    // the scene, non-finite data, textures D3D12 cannot lay out); the current scene then stays.
+    [[nodiscard]] Status load_scene(VisualScene scene);
     void set_bone_transforms(std::span<const std::array<float, 16>> transforms);
     // Replaces the instances drawn each frame with this list, until the next call or load_scene
     // (which returns to the scene's own instances). The loaded scene's meshes form the mesh library:
     // instances may reference any of them, appear, move, or disappear from frame to frame. Pick ids
     // and set_highlight then refer to positions in this list.
     void set_instances(std::span<const VisualInstance> instances);
-    // Throws std::invalid_argument for non-finite or degenerate cameras.
+    // Non-finite or degenerate cameras are a programming error (assertion).
     void set_camera(const VisualCamera& camera);
-    // Throws std::invalid_argument for non-finite values or a zero light direction.
+    // Non-finite values or a zero light direction are a programming error (assertion).
     void set_lighting(const VisualLightRig& lighting);
     // Seconds of scene time driving texture-coordinate scrolling.
     void set_scene_time(float seconds);
@@ -150,6 +159,7 @@ public:
 
 private:
     struct Impl;
+    explicit D3d12Renderer(std::unique_ptr<Impl> impl) noexcept;
     std::unique_ptr<Impl> impl_;
 };
 

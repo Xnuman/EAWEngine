@@ -4,9 +4,9 @@
 #include <cstdlib>
 #include <fstream>
 #include <limits>
-#include <regex>
 #include <set>
 #include <sstream>
+#include <string_view>
 #include <system_error>
 #include <tuple>
 
@@ -59,14 +59,106 @@ std::string read_text_file(const std::filesystem::path& path)
     return text.str();
 }
 
+constexpr char ascii_lower(const char character) noexcept
+{
+    return character >= 'A' && character <= 'Z' ? static_cast<char>(character - 'A' + 'a') : character;
+}
+
+// Position of the first ASCII-case-insensitive occurrence of `needle` at or after `from`.
+std::size_t find_ascii_ci(const std::string_view text, const std::string_view needle, const std::size_t from) noexcept
+{
+    if (needle.size() > text.size())
+    {
+        return std::string_view::npos;
+    }
+    for (auto position = from; position + needle.size() <= text.size(); ++position)
+    {
+        if (std::ranges::equal(text.substr(position, needle.size()), needle,
+                               [](const char left, const char right)
+                               {
+                                   return ascii_lower(left) == ascii_lower(right);
+                               }))
+        {
+            return position;
+        }
+    }
+    return std::string_view::npos;
+}
+
+// The characters std::isspace accepts in the "C" locale.
+constexpr bool is_ascii_space(const char character) noexcept
+{
+    return character == ' ' || character == '\t' || character == '\n' || character == '\v' || character == '\f' || character == '\r';
+}
+
+// Every `"path" <whitespace> "<value>"` pair (key matched case-insensitively, value non-empty and
+// ending at the next quote), as written in Steam's libraryfolders.vdf.
+std::vector<std::string> vdf_path_values(const std::string_view contents)
+{
+    constexpr std::string_view key = "\"path\"";
+    std::vector<std::string> values;
+    auto position = find_ascii_ci(contents, key, 0);
+    while (position != std::string_view::npos)
+    {
+        auto cursor = position + key.size();
+        const auto whitespace_begin = cursor;
+        while (cursor < contents.size() && is_ascii_space(contents[cursor]))
+        {
+            ++cursor;
+        }
+        const auto value_end = cursor < contents.size() && cursor != whitespace_begin && contents[cursor] == '"' ? contents.find('"', cursor + 1U) : std::string_view::npos;
+        if (value_end == std::string_view::npos || value_end == cursor + 1U)
+        {
+            position = find_ascii_ci(contents, key, position + 1U);
+            continue;
+        }
+        values.emplace_back(contents.substr(cursor + 1U, value_end - cursor - 1U));
+        position = find_ascii_ci(contents, key, value_end + 1U);
+    }
+    return values;
+}
+
+// The trimmed text of every `<File>...</File>` element (tags matched case-insensitively; the text
+// contains no '<'), as written in megafiles.xml.
+std::vector<std::string> manifest_file_entries(const std::string_view contents)
+{
+    constexpr std::string_view open_tag = "<file>";
+    constexpr std::string_view close_tag = "</file>";
+    std::vector<std::string> entries;
+    auto position = find_ascii_ci(contents, open_tag, 0);
+    while (position != std::string_view::npos)
+    {
+        const auto text_begin = position + open_tag.size();
+        const auto text_end = contents.find('<', text_begin);
+        if (text_end == std::string_view::npos || text_end == text_begin || find_ascii_ci(contents.substr(0, text_end + close_tag.size()), close_tag, text_end) != text_end)
+        {
+            position = find_ascii_ci(contents, open_tag, position + 1U);
+            continue;
+        }
+        auto text = contents.substr(text_begin, text_end - text_begin);
+        while (!text.empty() && is_ascii_space(text.front()))
+        {
+            text.remove_prefix(1);
+        }
+        while (!text.empty() && is_ascii_space(text.back()))
+        {
+            text.remove_suffix(1);
+        }
+        if (!text.empty())
+        {
+            entries.emplace_back(text);
+        }
+        position = find_ascii_ci(contents, open_tag, text_end + close_tag.size());
+    }
+    return entries;
+}
+
 std::vector<std::filesystem::path> steam_libraries_from_vdf(const std::filesystem::path& vdf_path)
 {
     const auto contents = read_text_file(vdf_path);
     std::vector<std::filesystem::path> libraries;
-    const std::regex path_pattern(R"regex("path"\s+"([^"]+)")regex", std::regex::icase);
-    for (auto match = std::sregex_iterator(contents.begin(), contents.end(), path_pattern); match != std::sregex_iterator(); ++match)
+    for (const auto& value : vdf_path_values(contents))
     {
-        auto value = (*match)[1].str();
         std::string unescaped;
         unescaped.reserve(value.size());
         for (std::size_t index = 0; index < value.size(); ++index)
@@ -129,10 +221,8 @@ std::vector<std::filesystem::path> parse_meg_manifest(const std::filesystem::pat
 {
     const auto contents = read_text_file(runtime_root / "Data" / "megafiles.xml");
     std::vector<std::filesystem::path> result;
-    const std::regex file_pattern(R"regex(<File>\s*([^<]+?)\s*</File>)regex", std::regex::icase);
-    for (auto match = std::sregex_iterator(contents.begin(), contents.end(), file_pattern); match != std::sregex_iterator(); ++match)
+    for (auto relative : manifest_file_entries(contents))
     {
-        auto relative = (*match)[1].str();
         std::replace(relative.begin(), relative.end(), '\\', '/');
         auto archive = runtime_root / relative;
         std::error_code error;

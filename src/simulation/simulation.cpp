@@ -4,7 +4,6 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
-#include <stdexcept>
 #include <unordered_map>
 
 namespace eaw {
@@ -53,10 +52,7 @@ float wrap_angle(float angle) noexcept
 
 FixedStepClock::FixedStepClock(const double ticks_per_second, const std::uint32_t max_ticks_per_advance) : tick_seconds_(1.0 / ticks_per_second), max_ticks_(max_ticks_per_advance)
 {
-    if (!(ticks_per_second > 0.0) || !std::isfinite(ticks_per_second) || max_ticks_per_advance == 0)
-    {
-        throw std::invalid_argument("fixed-step clock needs a positive tick rate and tick budget");
-    }
+    EAW_ASSERT_MSG(ticks_per_second > 0.0 && std::isfinite(ticks_per_second) && max_ticks_per_advance != 0, "fixed-step clock needs a positive tick rate and tick budget");
 }
 
 std::uint32_t FixedStepClock::advance(const double seconds)
@@ -97,21 +93,18 @@ std::uint64_t FixedStepClock::dropped_ticks() const noexcept
 
 SimulationWorld::SimulationWorld(const double tick_seconds) : tick_seconds_(tick_seconds)
 {
-    if (!(tick_seconds > 0.0) || !std::isfinite(tick_seconds))
-    {
-        throw std::invalid_argument("simulation tick length must be positive");
-    }
+    EAW_ASSERT_MSG(tick_seconds > 0.0 && std::isfinite(tick_seconds), "simulation tick length must be positive");
 }
 
-EntityId SimulationWorld::spawn(const EntitySpawn& spawn)
+Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
 {
     if (!finite(spawn.position) || !std::isfinite(spawn.heading) || !std::isfinite(spawn.max_speed) || spawn.max_speed < 0.0F)
     {
-        throw std::invalid_argument("entity spawn '" + spawn.type_name + "' has a non-finite position, heading, or speed");
+        return make_error("entity spawn '" + spawn.type_name + "' has a non-finite position, heading, or speed");
     }
     if (ids_.size() >= no_dense)
     {
-        throw std::length_error("simulation entity storage is full");
+        return make_error("simulation entity storage is full");
     }
     std::uint32_t slot{};
     if (!free_slots_.empty())

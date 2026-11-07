@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <optional>
-#include <stdexcept>
 #include <string_view>
 #include <utility>
 
@@ -14,17 +13,17 @@ namespace {
 
 constexpr wchar_t window_class_name[] = L"EAWEngine.PlatformWindow";
 
-std::wstring to_wide(const std::string_view value)
+Result<std::wstring> to_wide(const std::string_view value)
 {
     if (value.empty())
     {
-        return {};
+        return std::wstring{};
     }
 
     const auto size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0);
     if (size <= 0)
     {
-        throw std::runtime_error("window title is not valid UTF-8");
+        return make_error("window title is not valid UTF-8");
     }
 
     std::wstring result(static_cast<std::size_t>(size), L'\0');
@@ -275,8 +274,13 @@ struct PlatformWindow::Impl
     }
 };
 
-PlatformWindow::PlatformWindow(const WindowDescription& description) : impl_(std::make_unique<Impl>())
+PlatformWindow::PlatformWindow() : impl_(std::make_unique<Impl>())
+{}
+
+Result<PlatformWindow> PlatformWindow::create(const WindowDescription& description)
 {
+    PlatformWindow window;
+    auto& impl = *window.impl_;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
     const auto instance = GetModuleHandleW(nullptr);
@@ -289,31 +293,32 @@ PlatformWindow::PlatformWindow(const WindowDescription& description) : impl_(std
     window_class.lpszClassName = window_class_name;
     if (RegisterClassExW(&window_class) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
     {
-        throw std::runtime_error("could not register the EAWEngine window class");
+        return make_error("could not register the EAWEngine window class (Windows error " + std::to_string(GetLastError()) + ")");
     }
 
     const DWORD style = WS_OVERLAPPEDWINDOW;
     RECT bounds{0, 0, static_cast<LONG>(description.width), static_cast<LONG>(description.height)};
     if (!AdjustWindowRectExForDpi(&bounds, style, FALSE, 0, GetDpiForSystem()))
     {
-        throw std::runtime_error("could not calculate the EAWEngine window size");
+        return make_error("could not calculate the EAWEngine window size (Windows error " + std::to_string(GetLastError()) + ")");
     }
 
-    const auto title = to_wide(description.title);
-    impl_->handle =
-        CreateWindowExW(0, window_class_name, title.c_str(), style, CW_USEDEFAULT, CW_USEDEFAULT, bounds.right - bounds.left, bounds.bottom - bounds.top, nullptr, nullptr, instance, impl_.get());
-    if (impl_->handle == nullptr)
+    EAW_TRY_ASSIGN(const auto title, to_wide(description.title));
+    // The window procedure keeps a pointer to the Impl, which stays put when the window moves.
+    impl.handle = CreateWindowExW(0, window_class_name, title.c_str(), style, CW_USEDEFAULT, CW_USEDEFAULT, bounds.right - bounds.left, bounds.bottom - bounds.top, nullptr, nullptr, instance, &impl);
+    if (impl.handle == nullptr)
     {
-        throw std::runtime_error("could not create the EAWEngine window");
+        return make_error("could not create the EAWEngine window (Windows error " + std::to_string(GetLastError()) + ")");
     }
 
     RECT client{};
-    GetClientRect(impl_->handle, &client);
-    impl_->client_width = static_cast<std::uint32_t>(client.right - client.left);
-    impl_->client_height = static_cast<std::uint32_t>(client.bottom - client.top);
-    impl_->input.focused = true;
-    ShowWindow(impl_->handle, SW_SHOWDEFAULT);
-    UpdateWindow(impl_->handle);
+    GetClientRect(impl.handle, &client);
+    impl.client_width = static_cast<std::uint32_t>(client.right - client.left);
+    impl.client_height = static_cast<std::uint32_t>(client.bottom - client.top);
+    impl.input.focused = true;
+    ShowWindow(impl.handle, SW_SHOWDEFAULT);
+    UpdateWindow(impl.handle);
+    return window;
 }
 
 PlatformWindow::~PlatformWindow()

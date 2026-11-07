@@ -1,10 +1,10 @@
 #include "eaw/game_installation.hpp"
+#include "eaw/status.hpp"
 
 #include <filesystem>
 #include <iostream>
 #include <optional>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -43,7 +43,7 @@ std::string quote(const std::string& value)
 }
 
 #ifdef _WIN32
-int launch_engine(const std::filesystem::path& executable, const std::vector<std::string>& arguments)
+eaw::Result<int> launch_engine(const std::filesystem::path& executable, const std::vector<std::string>& arguments)
 {
     std::ostringstream command;
     command << quote(executable.string());
@@ -59,7 +59,7 @@ int launch_engine(const std::filesystem::path& executable, const std::vector<std
     PROCESS_INFORMATION process{};
     if (!CreateProcessA(executable.string().c_str(), mutable_command.data(), nullptr, nullptr, FALSE, 0, nullptr, executable.parent_path().string().c_str(), &startup, &process))
     {
-        throw std::runtime_error("could not start EAWEngine.exe (Windows error " + std::to_string(GetLastError()) + ")");
+        return eaw::make_error("could not start EAWEngine.exe (Windows error " + std::to_string(GetLastError()) + ")");
     }
     WaitForSingleObject(process.hProcess, INFINITE);
     DWORD exit_code = 1;
@@ -74,52 +74,57 @@ int launch_engine(const std::filesystem::path& executable, const std::vector<std
 
 int main(const int argc, char** argv)
 {
-    try
+    std::optional<std::filesystem::path> explicit_root;
+    std::vector<std::string> forwarded{"sandbox"};
+    for (int index = 1; index < argc; ++index)
     {
-        std::optional<std::filesystem::path> explicit_root;
-        std::vector<std::string> forwarded{"sandbox"};
-        for (int index = 1; index < argc; ++index)
+        const std::string argument = argv[index];
+        if (argument == "--game-root" && index + 1 < argc)
         {
-            const std::string argument = argv[index];
-            if (argument == "--game-root" && index + 1 < argc)
-            {
-                explicit_root = argv[index + 1];
-            }
-            forwarded.push_back(argument);
+            explicit_root = argv[index + 1];
         }
-
-        const eaw::InstallationLocator locator;
-        const auto installations = locator.discover(explicit_root);
-        if (installations.empty())
-        {
-            std::cerr << "EAWLauncher could not find Empire at War. "
-                         "Pass --game-root <path>.\n";
-            return 2;
-        }
-        if (!explicit_root)
-        {
-            forwarded.push_back("--game-root");
-            forwarded.push_back(installations.front().string());
-        }
-
-        auto engine = std::filesystem::absolute(argv[0]).parent_path() / "EAWEngine.exe";
-        if (!std::filesystem::is_regular_file(engine))
-        {
-            std::cerr << "EAWEngine.exe is not next to the launcher: " << engine << '\n';
-            return 2;
-        }
-
-        std::cout << "Launching the new engine against read-only game data at:\n  " << installations.front() << '\n';
-#ifdef _WIN32
-        return launch_engine(engine, forwarded);
-#else
-        std::cerr << "The bootstrap launcher currently supports Windows only.\n";
-        return 2;
-#endif
+        forwarded.push_back(argument);
     }
-    catch (const std::exception& error)
+
+    const eaw::InstallationLocator locator;
+    const auto installations = locator.discover(explicit_root);
+    if (installations.empty())
     {
-        std::cerr << "launcher error: " << error.what() << '\n';
+        std::cerr << "EAWLauncher could not find Empire at War. "
+                     "Pass --game-root <path>.\n";
+        return 2;
+    }
+    if (!explicit_root)
+    {
+        forwarded.push_back("--game-root");
+        forwarded.push_back(installations.front().string());
+    }
+
+    std::error_code path_error;
+    const auto launcher = std::filesystem::absolute(argv[0], path_error);
+    if (path_error)
+    {
+        std::cerr << "launcher error: could not resolve the launcher path: " << path_error.message() << '\n';
         return 1;
     }
+    const auto engine = launcher.parent_path() / "EAWEngine.exe";
+    if (!std::filesystem::is_regular_file(engine, path_error))
+    {
+        std::cerr << "EAWEngine.exe is not next to the launcher: " << engine << '\n';
+        return 2;
+    }
+
+    std::cout << "Launching the new engine against read-only game data at:\n  " << installations.front() << '\n';
+#ifdef _WIN32
+    const auto exit_code = launch_engine(engine, forwarded);
+    if (!exit_code)
+    {
+        std::cerr << "launcher error: " << exit_code.error().message << '\n';
+        return 1;
+    }
+    return *exit_code;
+#else
+    std::cerr << "The bootstrap launcher currently supports Windows only.\n";
+    return 2;
+#endif
 }

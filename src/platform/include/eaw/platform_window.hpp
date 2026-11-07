@@ -1,5 +1,7 @@
 #pragma once
 
+#include "eaw/status.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -69,7 +71,9 @@ struct WindowDescription
 class PlatformWindow final
 {
 public:
-    explicit PlatformWindow(const WindowDescription& description);
+    // Creates and shows the window; fails when Windows cannot register or create it, or the title is
+    // not valid UTF-8.
+    [[nodiscard]] static Result<PlatformWindow> create(const WindowDescription& description);
     ~PlatformWindow();
 
     PlatformWindow(const PlatformWindow&) = delete;
@@ -89,6 +93,7 @@ public:
 
 private:
     struct Impl;
+    PlatformWindow();
     std::unique_ptr<Impl> impl_;
 };
 

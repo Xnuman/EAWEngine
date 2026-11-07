@@ -5,6 +5,16 @@ project(EAWEngine VERSION 0.1.0 LANGUAGES CXX)
 option(EAW_BUILD_TESTS "Build EAWEngine tests" ON)
 option(EAW_BUILD_GUI "Build the Dear ImGui tool workbench" ON)
 
+# EAWEngine does not use C++ exceptions: recoverable failures return eaw::Status/eaw::Result and
+# broken invariants end the process through eaw::fatal_error. Every target, Dear ImGui included,
+# compiles with exception handling disabled (/EHs-c-) and a standard library configured without
+# exceptions (_HAS_EXCEPTIONS=0). CMake's default MSVC flags enable, so it is removed here.
+if(MSVC)
+    string(REGEX REPLACE "/EH[a-z]*" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    add_compile_options(/EHs-c-)
+    add_compile_definitions(_HAS_EXCEPTIONS=0)
+endif()
+
 add_library(eaw_core STATIC
     src/core/ala_animation.cpp
     src/core/alo_model.cpp
@@ -36,7 +46,7 @@ target_compile_features(eaw_core PUBLIC cxx_std_20)
 target_compile_definitions(eaw_core PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 
 if(MSVC)
-    target_compile_options(eaw_core PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(eaw_core PRIVATE /W4 /permissive- /utf-8)
 else()
     target_compile_options(eaw_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
@@ -118,7 +128,7 @@ if(WIN32)
     target_compile_features(eaw_imgui PUBLIC cxx_std_20)
     target_compile_definitions(eaw_imgui PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     if(MSVC)
-        target_compile_options(eaw_imgui PRIVATE /W3 /EHsc /utf-8)
+        target_compile_options(eaw_imgui PRIVATE /W3 /utf-8)
     endif()
 endif()
 
@@ -147,7 +157,7 @@ if(EAW_BUILD_GUI AND WIN32)
     target_compile_features(EAWTools PRIVATE cxx_std_20)
     target_compile_definitions(EAWTools PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     if(MSVC)
-        target_compile_options(EAWTools PRIVATE /W4 /permissive- /EHsc /utf-8)
+        target_compile_options(EAWTools PRIVATE /W4 /permissive- /utf-8)
     endif()
 endif()
 
@@ -170,7 +180,7 @@ if(WIN32)
     target_include_directories(eaw_render_d3d12 PUBLIC src/render/include)
     target_compile_features(eaw_render_d3d12 PUBLIC cxx_std_20)
     target_compile_definitions(eaw_render_d3d12 PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(eaw_render_d3d12 PRIVATE d3d12 dxgi eaw_imgui)
+    target_link_libraries(eaw_render_d3d12 PUBLIC eaw_core PRIVATE d3d12 dxgi eaw_imgui)
     target_sources(eaw_render_d3d12 PRIVATE src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/legacy_common.hlsli)
     set_source_files_properties(src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/legacy_common.hlsli PROPERTIES VS_TOOL_OVERRIDE "None")
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/terrain.hlsl terrain_vs vs_6_0 g_eaw_terrain_vs)
@@ -181,8 +191,8 @@ if(WIN32)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/debug.hlsl debug_ps ps_6_0 g_eaw_debug_ps)
 
     if(MSVC)
-        target_compile_options(eaw_platform PRIVATE /W4 /permissive- /EHsc /utf-8)
-        target_compile_options(eaw_render_d3d12 PRIVATE /W4 /permissive- /EHsc /utf-8)
+        target_compile_options(eaw_platform PRIVATE /W4 /permissive- /utf-8)
+        target_compile_options(eaw_render_d3d12 PRIVATE /W4 /permissive- /utf-8)
     endif()
 endif()
 
@@ -192,8 +202,10 @@ add_library(eaw_simulation STATIC
 )
 target_include_directories(eaw_simulation PUBLIC src/simulation/include)
 target_compile_features(eaw_simulation PUBLIC cxx_std_20)
+# Only for Status/Result and fatal errors; the simulation still reads no files.
+target_link_libraries(eaw_simulation PUBLIC eaw_core)
 if(MSVC)
-    target_compile_options(eaw_simulation PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(eaw_simulation PRIVATE /W4 /permissive- /utf-8)
 endif()
 
 # Platform-independent engine orchestration: visual scene construction and camera control. It
@@ -236,11 +248,11 @@ target_compile_features(EAWDatEditor PRIVATE cxx_std_20)
 target_compile_definitions(EAWDatEditor PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 
 if(MSVC)
-    target_compile_options(eaw_engine PRIVATE /W4 /permissive- /EHsc /utf-8)
-    target_compile_options(EAWEngine PRIVATE /W4 /permissive- /EHsc /utf-8)
-    target_compile_options(EAWLauncher PRIVATE /W4 /permissive- /EHsc /utf-8)
-    target_compile_options(EAWAssetInspector PRIVATE /W4 /permissive- /EHsc /utf-8)
-    target_compile_options(EAWDatEditor PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(eaw_engine PRIVATE /W4 /permissive- /utf-8)
+    target_compile_options(EAWEngine PRIVATE /W4 /permissive- /utf-8)
+    target_compile_options(EAWLauncher PRIVATE /W4 /permissive- /utf-8)
+    target_compile_options(EAWAssetInspector PRIVATE /W4 /permissive- /utf-8)
+    target_compile_options(EAWDatEditor PRIVATE /W4 /permissive- /utf-8)
 endif()
 
 if(EAW_BUILD_TESTS)
@@ -251,7 +263,7 @@ if(EAW_BUILD_TESTS)
     target_link_libraries(EAWEngineTests PRIVATE eaw_core eaw_engine)
     target_compile_features(EAWEngineTests PRIVATE cxx_std_20)
     if(MSVC)
-        target_compile_options(EAWEngineTests PRIVATE /W4 /permissive- /EHsc /utf-8)
+        target_compile_options(EAWEngineTests PRIVATE /W4 /permissive- /utf-8)
     endif()
     add_test(NAME EAWEngineTests COMMAND EAWEngineTests)
 endif()

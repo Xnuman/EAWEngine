@@ -86,11 +86,13 @@ struct VisualMapAsset
 
 // Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file
 // dependencies). With a cache, decoded models, textures, maps, and the XML object catalog are
-// reused across builds until their source files change.
-[[nodiscard]] VisualModelAsset build_visual_model(const AssetReader& reader, std::string_view model_path, AssetCache* cache = nullptr);
+// reused across builds until their source files change. A model or map that cannot be built (not
+// found, malformed, or without renderable geometry) returns an error naming its virtual path;
+// problems that only drop parts of a scene are listed in its warnings instead.
+[[nodiscard]] Result<VisualModelAsset> build_visual_model(const AssetReader& reader, std::string_view model_path, AssetCache* cache = nullptr);
 // `spawn_types` names XML object types whose models are added to the scene's meshes so they can be
 // spawned at runtime; types without a model for the map's context are reported as warnings.
-[[nodiscard]] VisualMapAsset build_visual_map(const AssetReader& reader, std::string_view map_path, AssetCache* cache = nullptr, std::span<const std::string> spawn_types = {});
+[[nodiscard]] Result<VisualMapAsset> build_visual_map(const AssetReader& reader, std::string_view map_path, AssetCache* cache = nullptr, std::span<const std::string> spawn_types = {});
 [[nodiscard]] std::optional<std::string> default_model_animation(const AssetReader& reader, std::string_view model_path);
 // Every <MODEL>_*.ALA beside the model, sorted by virtual path.
 [[nodiscard]] std::vector<std::string> model_animations(const AssetReader& reader, std::string_view model_path);

@@ -2,7 +2,6 @@
 
 #include "eaw/asset_path.hpp"
 
-#include <stdexcept>
 #include <system_error>
 
 namespace eaw {
@@ -113,16 +112,8 @@ std::vector<std::string> DependencySet::changes(const AssetReader& reader) const
     std::vector<std::string> changed;
     for (const auto& [key, print] : files_)
     {
-        std::optional<ResolvedAsset> resolved;
-        try
-        {
-            resolved = reader.resolve(key);
-        }
-        catch (const std::exception&)
-        {
-            // An unresolvable request stays absent.
-        }
-        if (fingerprint_asset(resolved) != print)
+        // An unresolvable request resolves to nothing, which stays absent.
+        if (fingerprint_asset(reader.resolve(key)) != print)
         {
             changed.push_back(key);
         }

@@ -1,7 +1,8 @@
 #include "scene_presentation.hpp"
 
+#include "eaw/log.hpp"
+
 #include <cmath>
-#include <stdexcept>
 
 namespace eaw {
 
@@ -42,12 +43,16 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
     }
     for (const auto& entity : entities)
     {
-        if (entity.instance >= scene.instances.size() || scene.instances[entity.instance].background)
-        {
-            throw std::invalid_argument("entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(entity.instance) + ", which is missing or a background");
-        }
+        EAW_ASSERT_MSG(entity.instance < scene.instances.size() && !scene.instances[entity.instance].background,
+                       "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(entity.instance) + ", which is missing or a background");
         const auto id = world.spawn(entity.spawn);
-        templates_.emplace(entity_key(id), Template{scene.instances[entity.instance], entity.spawn.heading, entity.spawn.type_name});
+        if (!id)
+        {
+            // Map data: one bad placement does not stop the rest of the map.
+            log_warning("simulation", with_context("skipping map entity", id.error()));
+            continue;
+        }
+        templates_.emplace(entity_key(*id), Template{scene.instances[entity.instance], entity.spawn.heading, entity.spawn.type_name});
     }
 }
 
@@ -80,25 +85,25 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
 
 const std::string& ScenePresentation::mesh_name(const std::uint32_t mesh) const
 {
-    return mesh_names_.at(mesh);
+    EAW_ASSERT_MSG(mesh < mesh_names_.size(), "scene presentation mesh " + std::to_string(mesh) + " is out of range");
+    return mesh_names_[mesh];
 }
 
 const std::array<float, 3>& ScenePresentation::mesh_minimum(const std::uint32_t mesh) const
 {
-    return mesh_minimum_.at(mesh);
+    EAW_ASSERT_MSG(mesh < mesh_minimum_.size(), "scene presentation mesh " + std::to_string(mesh) + " is out of range");
+    return mesh_minimum_[mesh];
 }
 
 const std::array<float, 3>& ScenePresentation::mesh_maximum(const std::uint32_t mesh) const
 {
-    return mesh_maximum_.at(mesh);
+    EAW_ASSERT_MSG(mesh < mesh_maximum_.size(), "scene presentation mesh " + std::to_string(mesh) + " is out of range");
+    return mesh_maximum_[mesh];
 }
 
-EntityId ScenePresentation::spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, const float heading, const std::uint32_t owner)
+Result<EntityId> ScenePresentation::spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, const float heading, const std::uint32_t owner)
 {
-    if (type.mesh >= mesh_names_.size())
-    {
-        throw std::invalid_argument("spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which the scene does not have");
-    }
+    EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which the scene does not have");
     EntitySpawn spawn;
     spawn.type_name = type.type_name;
     spawn.owner = owner;
@@ -106,7 +111,7 @@ EntityId ScenePresentation::spawn(SimulationWorld& world, const SpawnableType& t
     spawn.heading = heading;
     spawn.max_speed = type.max_speed;
     spawn.visual = type.mesh;
-    const auto id = world.spawn(spawn);
+    EAW_TRY_ASSIGN(const auto id, world.spawn(spawn));
     // The template's transform is the model's own frame; pose_transform turns and places it.
     VisualInstance instance{type.mesh};
     instance.team_color = type.team_color;

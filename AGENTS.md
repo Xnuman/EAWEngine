@@ -89,7 +89,7 @@ The first goal is a thin vertical slice: units on a map that can be selected and
 ### Cross-cutting engineering work (planned)
 
 - Raw input in `src/platform` (`WM_INPUT` or GameInput) behind the existing engine-native `InputState`; see the roadmap.
-- No exceptions (migration in progress, phases in the roadmap). Recoverable failures (malformed game or mod data, missing assets, unavailable devices) return `eaw::Status` or `eaw::Result<T>` (`eaw/status.hpp`) with a contextual `eaw::Error` message; propagate with `EAW_TRY` / `EAW_TRY_ASSIGN`. Callers that continue report the failure as a warning through the log (`eaw/log.hpp`: `log_warning(category, error)`), which reaches stderr, the debugger output window, and a per-run file in `logs/` next to the executable (`--log-dir`). Programming errors are `EAW_ASSERT` / `eaw::fatal_error`; `install_crash_handlers` turns them, any remaining uncaught exception, and hardware faults into one report on stderr, in the log file, and in an error window. New code must not throw or catch; do not add catch-all handlers that hide bugs.
+- No exceptions: every target compiles with exceptions disabled (`/EHs-c-`, `_HAS_EXCEPTIONS=0`), and `src`/`tests` contain no `throw`, `try`, or `catch`. Recoverable failures (malformed game or mod data, missing assets, a map or model that cannot be built, invalid command lines or user input, a window or GPU device that cannot be created at startup) return `eaw::Status` or `eaw::Result<T>` (`eaw/status.hpp`) with a contextual `eaw::Error` message; propagate with `EAW_TRY` / `EAW_TRY_ASSIGN`. Callers that continue report the failure as a warning through the log (`eaw/log.hpp`: `log_warning(category, error)`), which reaches stderr, the debugger output window, and a per-run file in `logs/` next to the executable (`--log-dir`), and fall back (the sandbox shows the validation triangle, hot reload keeps the current view, a map skips the object). Programming errors and violated API preconditions are `EAW_ASSERT_MSG`; unrecoverable runtime failures (a failed D3D12 call after startup, device removal, failed fence waits) are `eaw::fatal_error` with their diagnostics; allocation failure is fatal. `install_crash_handlers` turns these, `std::terminate`, and hardware faults into one report on stderr, in the log file, and in an error window. Use non-throwing standard-library forms for data and user input (`std::from_chars`, `std::error_code` filesystem overloads, checked indexing).
 
 ### Legacy-mode render backlog
 
@@ -210,7 +210,7 @@ These are correctness rules, not optional optimizations.
 
 ## Code and design style
 
-- C++20; Windows builds use `/W4 /permissive- /EHsc /utf-8`. New warnings are defects.
+- C++20; Windows builds use `/W4 /permissive- /utf-8` with exceptions disabled (`/EHs-c-`, `_HAS_EXCEPTIONS=0`, set once for every target in `CMakeLists.txt`). New warnings are defects.
 - `.clang-format` is authoritative: four spaces, project brace rules, and the configured 200-column limit. Format every changed C/C++ file before validation.
 - Follow the established style in neighboring files: descriptive names, small cohesive types, early validation, explicit ownership, and comments that explain invariants or evidence rather than restating code.
 - Prefer standard-library and Win32/D3D12 primitives already used by the project. Add a dependency only when it removes substantial risk or work, and pin it reproducibly.

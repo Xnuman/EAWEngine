@@ -48,18 +48,19 @@
 #include <set>
 #include <source_location>
 #include <span>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace {
 
+// A failed requirement ends the run: the remaining tests may depend on what failed.
 void require(const bool condition, const std::string& message)
 {
     if (!condition)
     {
-        throw std::runtime_error(message);
+        std::cerr << "test failure: " << message << '\n';
+        std::exit(1);
     }
 }
 
@@ -465,26 +466,10 @@ void test_gpu_resource_lifetime()
     slots.release(*c, 12);
     require(!slots.allocate() && slots.pending_count() == 2, "a released slot must not be reused before its fence completes");
     require(slots.reclaim(9).empty() && slots.reclaim(10) == std::vector<std::uint32_t>{3U} && slots.allocate() == 3U && slots.pending_count() == 1, "a slot returns once its release fence completes");
-    bool rejected = false;
-    try
-    {
-        slots.release(*b, 11);
-    }
-    catch (const std::logic_error&)
-    {
-        rejected = true;
-    }
-    require(rejected, "out-of-order release fences must be rejected");
-    rejected = false;
-    try
-    {
-        slots.release(*c, 13);
-    }
-    catch (const std::logic_error&)
-    {
-        rejected = true;
-    }
-    require(rejected, "releasing a slot that is already pending must be rejected");
+    // Violating these preconditions is a programming error (release asserts); the predicates report it.
+    require(slots.can_release(*b, 12) && !slots.can_release(*b, 11), "out-of-order release fences must be rejected");
+    require(!slots.can_release(*c, 13), "releasing a slot that is already pending must be rejected");
+    require(!slots.can_release(99, 13), "releasing a slot outside the range must be rejected");
 
     eaw::FenceRetirementQueue<std::shared_ptr<int>> retired;
     auto tracked = std::make_shared<int>(7);
@@ -493,16 +478,7 @@ void test_gpu_resource_lifetime()
     retired.push(std::make_shared<int>(8), 6);
     require(retired.retire(4) == 0 && !observer.expired(), "a retired object must outlive its fence");
     require(retired.retire(5) == 1 && observer.expired() && retired.size() == 1, "a retired object must be released once its fence completes");
-    rejected = false;
-    try
-    {
-        retired.push(std::make_shared<int>(9), 2);
-    }
-    catch (const std::logic_error&)
-    {
-        rejected = true;
-    }
-    require(rejected && retired.retire(6) == 1 && retired.size() == 0, "retirement fences must be non-decreasing");
+    require(!retired.can_push(2) && retired.can_push(6) && retired.retire(6) == 1 && retired.size() == 0, "retirement fences must be non-decreasing");
 }
 
 void test_asset_cache_dependencies()
@@ -531,9 +507,9 @@ void test_asset_cache_dependencies()
 
     eaw::AssetCache cache;
     const eaw::RecordingAssetReader first_build(vfs);
-    (void)eaw::build_visual_model(first_build, "Data/Art/Models/TEST.ALO", &cache);
+    (void)expect_ok(eaw::build_visual_model(first_build, "Data/Art/Models/TEST.ALO", &cache), "first cached model build");
     const eaw::RecordingAssetReader second_build(vfs);
-    (void)eaw::build_visual_model(second_build, "Data/Art/Models/TEST.ALO", &cache);
+    (void)expect_ok(eaw::build_visual_model(second_build, "Data/Art/Models/TEST.ALO", &cache), "second cached model build");
     const auto stats = cache.stats();
     require(stats.entries == 1 && stats.misses == 1 && stats.hits == 1, "a second build must reuse the cached model");
     const auto scene_dependencies = second_build.dependencies();
@@ -569,26 +545,20 @@ void test_asset_cache_dependencies()
     require(cache.invalidate(vfs) == std::vector<std::string>{"text|DATA/XML/A.XML"}, "assets from a rebuilt archive must be invalidated");
     require(*cache.load<std::string>("text", "Data/XML/A.XML", vfs, read_text) == "<A version='2' />", "the remounted archive must serve the new bytes");
 
-    // A failing (throwing) loader caches nothing, so the next load retries.
-    bool threw = false;
-    try
+    // A failing loader caches nothing, so the next load retries.
+    const auto load_missing = [&]
     {
-        (void)cache.load<std::string>("text", "Data/XML/MISSING.XML", vfs,
-                                      [](const eaw::AssetReader& reader)
-                                      {
-                                          const auto bytes = reader.read("Data/XML/MISSING.XML");
-                                          if (!bytes)
-                                          {
-                                              throw std::runtime_error(bytes.error().message);
-                                          }
-                                          return std::string(reinterpret_cast<const char*>(bytes->data()), bytes->size());
-                                      });
-    }
-    catch (const std::exception&)
-    {
-        threw = true;
-    }
-    require(threw && cache.stats().entries == 1, "a failed load must not be cached");
+        return cache.try_load<std::string>("text", "Data/XML/MISSING.XML", vfs,
+                                           [](const eaw::AssetReader& reader) -> eaw::Result<std::string>
+                                           {
+                                               EAW_TRY_ASSIGN(const auto bytes, reader.read("Data/XML/MISSING.XML"));
+                                               return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+                                           });
+    };
+    const auto misses_before = cache.stats().misses;
+    const auto failed = load_missing();
+    require(!failed && failed.error().message.find("MISSING.XML") != std::string::npos && cache.stats().entries == 1, "a failed load must be returned and not cached");
+    require(!load_missing() && cache.stats().misses == misses_before + 2U, "a failed load must run the loader again");
 
     // Eviction: entries a build did not touch are dropped once it succeeds.
     const auto epoch = cache.begin_epoch();
@@ -637,8 +607,8 @@ void test_simulation_core()
 {
     // Movement: 3 units/s at 10 ticks/s reaches a point 1 unit away in four ticks (0.3 per tick).
     eaw::SimulationWorld world(0.1);
-    const auto mover = world.spawn({.type_name = "Mover", .owner = 1, .position = {0.0F, 0.0F, 0.0F}, .max_speed = 3.0F, .visual = 7});
-    const auto statue = world.spawn({.type_name = "Statue", .position = {5.0F, 5.0F, 0.0F}});
+    const auto mover = expect_ok(world.spawn({.type_name = "Mover", .owner = 1, .position = {0.0F, 0.0F, 0.0F}, .max_speed = 3.0F, .visual = 7}), "spawning the mover");
+    const auto statue = expect_ok(world.spawn({.type_name = "Statue", .position = {5.0F, 5.0F, 0.0F}}), "spawning the statue");
     world.submit({eaw::SimCommandKind::move, {mover, statue}, {1.0F, 0.0F, 0.0F}});
     world.step();
     const auto& first = world.snapshot();
@@ -659,7 +629,7 @@ void test_simulation_core()
     world.submit({eaw::SimCommandKind::move, {mover}, {2.0F, 0.0F, 0.0F}});
     world.step();
     require(world.stats().stale_references == 1, "a command naming a destroyed entity must count as stale");
-    const auto reused = world.spawn({.type_name = "Mover", .max_speed = 1.0F});
+    const auto reused = expect_ok(world.spawn({.type_name = "Mover", .max_speed = 1.0F}), "spawning into a reused slot");
     require(reused.index == mover.index && reused.generation != mover.generation && !world.alive(mover) && world.alive(reused), "a reused slot must not revive the old id");
 
     // Determinism: identical histories give identical state; a different command does not.
@@ -669,7 +639,8 @@ void test_simulation_core()
         std::vector<eaw::EntityId> ids;
         for (int index = 0; index < 20; ++index)
         {
-            ids.push_back(sim.spawn({.type_name = "Unit", .position = {static_cast<float>(index), 0.0F, 0.0F}, .heading = 0.1F * static_cast<float>(index), .max_speed = 12.5F}));
+            ids.push_back(
+                expect_ok(sim.spawn({.type_name = "Unit", .position = {static_cast<float>(index), 0.0F, 0.0F}, .heading = 0.1F * static_cast<float>(index), .max_speed = 12.5F}), "spawning a unit"));
         }
         sim.submit({eaw::SimCommandKind::move, {ids.begin(), ids.begin() + 10}, {target_x, 40.0F, 0.0F}});
         for (int tick = 0; tick < 45; ++tick)
@@ -685,7 +656,7 @@ void test_simulation_core()
     };
     require(run(25.0F) == run(25.0F) && run(25.0F) != run(26.0F), "identical command histories must produce identical state");
 
-    // Clock: whole ticks, a bounded catch-up, and an interpolation fraction.
+    // Clock: whole ticks, a capped backlog, and an interpolation fraction.
     eaw::FixedStepClock clock(10.0, 4);
     require(clock.advance(0.25) == 2 && std::fabs(clock.interpolation() - 0.5F) < 1.0e-4F, "the clock must return whole ticks and the remaining fraction");
     require(clock.advance(10.0) == 4 && clock.dropped_ticks() > 90, "a long stall must be capped and the excess dropped");
@@ -697,16 +668,9 @@ void test_simulation_core()
     require(blended.size() == 2 && std::fabs(blended[0].position.x - 2.5F) < 1.0e-5F && std::fabs(blended[0].heading - 0.25F) < 1.0e-5F && blended[1].position.x == 4.0F,
             "snapshot interpolation must blend matching entities only");
 
-    bool rejected = false;
-    try
-    {
-        (void)world.spawn({.type_name = "Bad", .position = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F}});
-    }
-    catch (const std::invalid_argument&)
-    {
-        rejected = true;
-    }
-    require(rejected, "a non-finite spawn must be rejected");
+    const auto entities_before = world.stats().entities;
+    const auto rejected = world.spawn({.type_name = "Bad", .position = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F}});
+    require(!rejected && rejected.error().message.find("'Bad'") != std::string::npos && world.stats().entities == entities_before, "a non-finite spawn must be rejected");
 }
 
 void test_scene_presentation()
@@ -735,10 +699,15 @@ void test_scene_presentation()
     spawn.type_name = "Test_Unit";
     spawn.position = {10.0F, 0.0F, 0.0F};
     spawn.max_speed = 10.0F;
-    const std::array<eaw::MapEntitySpawn, 1> entities{{{spawn, 1}}};
+    // The second entity's map data is not finite: it is skipped with a warning, the rest still spawn.
+    eaw::EntitySpawn broken = spawn;
+    broken.type_name = "Broken_Unit";
+    broken.position.x = std::numeric_limits<float>::infinity();
+    const std::array<eaw::MapEntitySpawn, 2> entities{{{spawn, 1}, {broken, 1}}};
     const eaw::ScenePresentation presentation(scene, entities, world);
     world.step();
-    const auto id = world.snapshot().entities.at(0).id;
+    require(world.snapshot().entities.size() == 1, "presentation must spawn the valid map entity and skip the broken one");
+    const auto id = world.snapshot().entities[0].id;
     world.submit({eaw::SimCommandKind::move, {id}, {10.0F, 5.0F, 0.0F}});
     world.step();
     std::vector<eaw::VisualInstance> instances;
@@ -1796,7 +1765,7 @@ void test_visual_material_translation()
     }
     eaw::VirtualFileSystem vfs;
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
-    const auto asset = eaw::build_visual_model(vfs, "Data/Art/Models/TEST.ALO");
+    const auto asset = expect_ok(eaw::build_visual_model(vfs, "Data/Art/Models/TEST.ALO"), "building the visual model");
     const auto& scene = asset.scene;
     require(scene.meshes.size() == 1 && scene.instances.size() == 1 && scene.materials.size() == 1 && scene.vertices.size() == 3, "visual model scene structure is wrong");
     const auto& material = scene.materials[0];
@@ -1816,7 +1785,7 @@ void test_visual_material_translation()
         std::ofstream file(root / "Data" / "Art" / "Models" / "HIDDEN.ALO", std::ios::binary);
         file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
-    const auto hidden = eaw::build_visual_model(vfs, "Data/Art/Models/HIDDEN.ALO");
+    const auto hidden = expect_ok(eaw::build_visual_model(vfs, "Data/Art/Models/HIDDEN.ALO"), "building the hidden-bone model");
     require(hidden.visibility_palette && hidden.scene.bone_count == 2 && hidden.scene.vertices.size() == 3 && hidden.scene.vertices[0].bone_indices[0] == 1,
             "a rigid attachment must reference the visibility half of the palette");
     const auto hidden_palette = eaw::sample_skin_palette(hidden, nullptr, 0.0F);
@@ -1849,7 +1818,9 @@ void test_visual_terrain()
     }
     eaw::VirtualFileSystem vfs;
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
-    const auto asset = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED");
+    const auto asset = expect_ok(eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED"), "building the visual map");
+    const auto missing = eaw::build_visual_map(vfs, "Data/Art/Maps/MISSING.TED");
+    require(!missing && missing.error().message.find("MISSING.TED") != std::string::npos, "a missing map must be reported by path");
 
     // Spawnable types: a type with a land model joins the mesh library with its speed; an unknown
     // type is reported, not fatal.
@@ -1860,7 +1831,7 @@ void test_visual_terrain()
         std::ofstream(root / "Data" / "XML" / "UNITS.XML", std::ios::binary)
             << "<Units><GroundVehicle Name=\"Test_Tank\"><Land_Model_Name>TANK.ALO</Land_Model_Name><Max_Speed>2</Max_Speed></GroundVehicle></Units>";
         const std::array<std::string, 2> types{"Test_Tank", "Missing_Type"};
-        const auto with_spawns = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", nullptr, types);
+        const auto with_spawns = expect_ok(eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", nullptr, types), "building the map with spawn types");
         require(with_spawns.spawnable.size() == 1 && with_spawns.spawnable[0].type_name == "Test_Tank" &&
                     std::fabs(with_spawns.spawnable[0].max_speed - 2.0F * eaw::provisional_max_speed_scale) < 1.0e-4F && with_spawns.spawnable[0].mesh < with_spawns.scene.meshes.size(),
                 "a spawn type must resolve to a mesh and its scaled speed");
@@ -1877,15 +1848,15 @@ void test_visual_terrain()
     // the GPU), fresh for every decode.
     {
         eaw::AssetCache cache;
-        const auto first = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", &cache);
-        const auto second = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", &cache);
+        const auto first = expect_ok(eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", &cache), "first cached map build");
+        const auto second = expect_ok(eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", &cache), "second cached map build");
         require(!first.scene.textures.empty() && first.scene.textures.size() == second.scene.textures.size(), "cached map builds must produce the same textures");
         for (std::size_t index = 0; index < first.scene.textures.size(); ++index)
         {
             require(!first.scene.textures[index].identity.empty() && first.scene.textures[index].identity == second.scene.textures[index].identity,
                     "a texture served from the cache must keep its identity");
         }
-        const auto uncached = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED");
+        const auto uncached = expect_ok(eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED"), "uncached map build");
         require(uncached.scene.textures.front().identity != first.scene.textures.front().identity, "a fresh decode must get a new identity");
     }
     const auto& terrain = asset.scene.terrain;
@@ -2043,61 +2014,53 @@ void test_xml_schema_validation()
 
 int main()
 {
-    try
-    {
-        require(expect_ok(eaw::normalize_asset_path("data\\xml/./GameObjectFiles.xml"), "asset normalization") == "DATA/XML/GAMEOBJECTFILES.XML", "asset normalization failed");
+    require(expect_ok(eaw::normalize_asset_path("data\\xml/./GameObjectFiles.xml"), "asset normalization") == "DATA/XML/GAMEOBJECTFILES.XML", "asset normalization failed");
 
-        require(!eaw::normalize_asset_path("Data/../secret").ok(), "parent traversal was not rejected");
+    require(!eaw::normalize_asset_path("Data/../secret").ok(), "parent traversal was not rejected");
 
-        const auto archive_path = write_test_meg();
-        const auto archive = expect_ok(eaw::MegArchive::open(archive_path), "opening the test MEG archive");
-        const auto* entry = archive.find("data/xml/test.xml");
-        require(entry != nullptr, "MEG lookup failed");
-        const auto bytes = expect_ok(archive.read(*entry), "reading the MEG entry");
-        const std::string payload(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-        require(payload == "<Test />", "MEG payload read failed");
+    const auto archive_path = write_test_meg();
+    const auto archive = expect_ok(eaw::MegArchive::open(archive_path), "opening the test MEG archive");
+    const auto* entry = archive.find("data/xml/test.xml");
+    require(entry != nullptr, "MEG lookup failed");
+    const auto bytes = expect_ok(archive.read(*entry), "reading the MEG entry");
+    const std::string payload(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    require(payload == "<Test />", "MEG payload read failed");
 
-        eaw::VirtualFileSystem vfs;
-        vfs.mount(expect_ok(eaw::MegMount::open("test", archive_path), "mounting the test MEG archive"));
-        const auto resolved = vfs.resolve("DATA/XML/TEST.XML");
-        require(resolved && resolved->size == 8, "VFS MEG resolution failed");
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(expect_ok(eaw::MegMount::open("test", archive_path), "mounting the test MEG archive"));
+    const auto resolved = vfs.resolve("DATA/XML/TEST.XML");
+    require(resolved && resolved->size == 8, "VFS MEG resolution failed");
 
-        test_patch_order();
-        test_foc_inherits_eaw_assets();
-        test_layered_precedence_corpus();
-        test_alo_model();
-        test_alo_default_mesh_visibility();
-        test_gpu_resource_lifetime();
-        test_asset_cache_dependencies();
-        test_debug_draw();
-        test_simulation_core();
-        test_fatal_error_report();
-        test_status_and_log();
-        test_scene_presentation();
-        test_rts_control();
-        test_terrain_height_field();
-        test_texture_formats_and_materials();
-        test_lua_inspection();
-        test_ala_animation();
-        test_ted_map();
-        test_dat_and_workspace();
-        test_localization_scan();
-        test_xml_document();
-        test_xml_asset_database();
-        test_game_object_catalog();
-        test_camera_controllers();
-        test_visual_material_translation();
-        test_visual_terrain();
-        test_xml_schema_validation();
+    test_patch_order();
+    test_foc_inherits_eaw_assets();
+    test_layered_precedence_corpus();
+    test_alo_model();
+    test_alo_default_mesh_visibility();
+    test_gpu_resource_lifetime();
+    test_asset_cache_dependencies();
+    test_debug_draw();
+    test_simulation_core();
+    test_fatal_error_report();
+    test_status_and_log();
+    test_scene_presentation();
+    test_rts_control();
+    test_terrain_height_field();
+    test_texture_formats_and_materials();
+    test_lua_inspection();
+    test_ala_animation();
+    test_ted_map();
+    test_dat_and_workspace();
+    test_localization_scan();
+    test_xml_document();
+    test_xml_asset_database();
+    test_game_object_catalog();
+    test_camera_controllers();
+    test_visual_material_translation();
+    test_visual_terrain();
+    test_xml_schema_validation();
 
-        std::error_code ignored;
-        std::filesystem::remove(archive_path, ignored);
-        std::cout << "All EAWEngine tests passed.\n";
-        return 0;
-    }
-    catch (const std::exception& error)
-    {
-        std::cerr << "test failure: " << error.what() << '\n';
-        return 1;
-    }
+    std::error_code ignored;
+    std::filesystem::remove(archive_path, ignored);
+    std::cout << "All EAWEngine tests passed.\n";
+    return 0;
 }

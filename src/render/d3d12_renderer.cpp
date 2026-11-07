@@ -1,6 +1,8 @@
 #include "eaw/d3d12_renderer.hpp"
 
+#include "eaw/fatal_error.hpp"
 #include "eaw/gpu_resource_lifetime.hpp"
+#include "eaw/status.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_dx12.h"
@@ -15,14 +17,13 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
-#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <source_location>
 #include <sstream>
 #include <span>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -76,11 +77,27 @@ std::string hresult_text(const HRESULT result)
     return stream.str();
 }
 
-void check_hresult(const HRESULT result, const std::string_view operation)
+std::string hresult_failure(const HRESULT result, const std::string_view operation)
+{
+    return std::string(operation) + " failed (" + hresult_text(result) + ")";
+}
+
+// Startup and creation failures: reported to the caller of D3d12Renderer::create.
+Status hresult_status(const HRESULT result, const std::string_view operation)
 {
     if (FAILED(result))
     {
-        throw std::runtime_error(std::string(operation) + " failed (" + hresult_text(result) + ")");
+        return make_error(hresult_failure(result, operation));
+    }
+    return Status::success();
+}
+
+// Failures after startup (frame recording, uploads, synchronization) are unrecoverable.
+void check_hresult(const HRESULT result, const std::string_view operation, const std::source_location location = std::source_location::current())
+{
+    if (FAILED(result))
+    {
+        fatal_error(hresult_failure(result, operation), location);
     }
 }
 
@@ -151,14 +168,14 @@ private:
 class CommandQueue final
 {
 public:
-    void initialize(ID3D12Device* device, const D3D12_COMMAND_LIST_TYPE type, const wchar_t* name)
+    [[nodiscard]] Status initialize(ID3D12Device* device, const D3D12_COMMAND_LIST_TYPE type, const wchar_t* name)
     {
         D3D12_COMMAND_QUEUE_DESC description{};
         description.Type = type;
         description.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
         description.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-        check_hresult(device->CreateCommandQueue(&description, IID_PPV_ARGS(&queue_)), "CreateCommandQueue");
-        check_hresult(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence_)), "CreateFence");
+        EAW_TRY(hresult_status(device->CreateCommandQueue(&description, IID_PPV_ARGS(&queue_)), "CreateCommandQueue"));
+        EAW_TRY(hresult_status(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence_)), "CreateFence"));
 
         set_name(queue_.Get(), name);
         const std::wstring fence_name = std::wstring(name) + L" fence";
@@ -167,8 +184,9 @@ public:
         event_.reset(CreateEventW(nullptr, FALSE, FALSE, nullptr));
         if (event_.get() == nullptr)
         {
-            throw std::runtime_error("CreateEventW failed for a D3D12 fence");
+            return make_error("CreateEventW failed for a D3D12 fence");
         }
+        return Status::success();
     }
 
     void execute(ID3D12CommandList* const* lists, const std::uint32_t count) const
@@ -198,13 +216,29 @@ public:
         const auto wait_result = WaitForSingleObjectEx(event_.get(), INFINITE, FALSE);
         if (wait_result != WAIT_OBJECT_0)
         {
-            throw std::runtime_error("waiting for a D3D12 fence failed");
+            fatal_error("waiting for a D3D12 fence failed");
         }
     }
 
     void flush()
     {
         wait_cpu(signal());
+    }
+
+    // Best-effort flush for shutdown and failed startup: reports failure instead of ending the
+    // process, so a removed device cannot turn cleanup into a fatal error.
+    bool try_flush() noexcept
+    {
+        const auto value = next_fence_value_++;
+        if (FAILED(queue_->Signal(fence_.Get(), value)))
+        {
+            return false;
+        }
+        if (fence_->GetCompletedValue() >= value)
+        {
+            return true;
+        }
+        return SUCCEEDED(fence_->SetEventOnCompletion(value, event_.get())) && WaitForSingleObjectEx(event_.get(), INFINITE, FALSE) == WAIT_OBJECT_0;
     }
 
     [[nodiscard]] std::uint64_t completed_value() const
@@ -330,12 +364,12 @@ DXGI_FORMAT dxgi_format(const VisualTextureFormat format)
     return DXGI_FORMAT_UNKNOWN;
 }
 
-ComPtr<IDXGIAdapter4> select_adapter(IDXGIFactory7* factory, const bool use_warp)
+Result<ComPtr<IDXGIAdapter4>> select_adapter(IDXGIFactory7* factory, const bool use_warp)
 {
     ComPtr<IDXGIAdapter4> adapter;
     if (use_warp)
     {
-        check_hresult(factory->EnumWarpAdapter(IID_PPV_ARGS(&adapter)), "IDXGIFactory::EnumWarpAdapter");
+        EAW_TRY(hresult_status(factory->EnumWarpAdapter(IID_PPV_ARGS(&adapter)), "IDXGIFactory::EnumWarpAdapter"));
         return adapter;
     }
 
@@ -347,10 +381,10 @@ ComPtr<IDXGIAdapter4> select_adapter(IDXGIFactory7* factory, const bool use_warp
         {
             break;
         }
-        check_hresult(result, "IDXGIFactory6::EnumAdapterByGpuPreference");
+        EAW_TRY(hresult_status(result, "IDXGIFactory6::EnumAdapterByGpuPreference"));
 
         DXGI_ADAPTER_DESC3 description{};
-        check_hresult(candidate->GetDesc3(&description), "IDXGIAdapter4::GetDesc3");
+        EAW_TRY(hresult_status(candidate->GetDesc3(&description), "IDXGIAdapter4::GetDesc3"));
         if ((description.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE) != 0)
         {
             continue;
@@ -360,25 +394,25 @@ ComPtr<IDXGIAdapter4> select_adapter(IDXGIFactory7* factory, const bool use_warp
             return candidate;
         }
     }
-    throw std::runtime_error("no Direct3D 12 feature-level 12_0 adapter was found (use --warp to test with WARP)");
+    return make_error("no Direct3D 12 feature-level 12_0 adapter was found (use --warp to test with WARP)");
 }
 
-void configure_debugging(const bool gpu_validation)
+Status configure_debugging(const bool gpu_validation)
 {
 #if !defined(_DEBUG)
     if (!gpu_validation)
     {
-        return;
+        return Status::success();
     }
 #endif
 
     ComPtr<ID3D12Debug> debug;
-    check_hresult(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)), "D3D12GetDebugInterface");
+    EAW_TRY(hresult_status(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)), "D3D12GetDebugInterface"));
     debug->EnableDebugLayer();
     if (gpu_validation)
     {
         ComPtr<ID3D12Debug1> validation;
-        check_hresult(debug.As(&validation), "query ID3D12Debug1");
+        EAW_TRY(hresult_status(debug.As(&validation), "query ID3D12Debug1"));
         validation->SetEnableGPUBasedValidation(TRUE);
         validation->SetEnableSynchronizedCommandQueueValidation(TRUE);
     }
@@ -389,6 +423,7 @@ void configure_debugging(const bool gpu_validation)
         dred_settings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
         dred_settings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
     }
+    return Status::success();
 }
 
 #if defined(_DEBUG)
@@ -674,49 +709,20 @@ struct D3d12Renderer::Impl
     std::vector<UploadBatch> pending_uploads;
     std::vector<D3D12_RESOURCE_BARRIER> pending_transitions;
 
+    // Construction only records the parameters; initialize() creates the device and resources.
     Impl(void* native_window, const std::uint32_t initial_width, const std::uint32_t initial_height, const D3d12RendererOptions& renderer_options)
         : window(static_cast<HWND>(native_window)), options(renderer_options), width(std::max(initial_width, 1U)), height(std::max(initial_height, 1U))
     {
-        if (window == nullptr)
-        {
-            throw std::invalid_argument("D3d12Renderer requires a valid HWND");
-        }
         options.maximum_frame_latency = std::clamp(options.maximum_frame_latency, 1U, frame_count - 1);
-        try
-        {
-            initialize();
-        }
-        catch (...)
-        {
-            try
-            {
-                wait_idle();
-            }
-            catch (...)
-            {}
-            throw;
-        }
     }
 
     ~Impl()
     {
-        try
-        {
-            wait_idle();
-        }
-        catch (...)
-        {
-            // Destructors must not mask an active rendering or device-removal error.
-        }
+        // Best effort: a removed device must not turn shutdown (or a failed startup) into a fatal
+        // error, so these waits report failure instead of ending the process.
+        wait_idle_for_shutdown();
         shutdown_overlay();
-        try
-        {
-            wait_idle();
-        }
-        catch (...)
-        {
-            // Destructors must not mask an active rendering or device-removal error.
-        }
+        wait_idle_for_shutdown();
         for (auto& frame : frames)
         {
             if (frame.bone_buffer && frame.bone_buffer_mapped != nullptr)
@@ -753,44 +759,52 @@ struct D3d12Renderer::Impl
 #endif
     }
 
-    void initialize()
+    // Startup. Failures that depend on the machine (debug layer, adapter, device, queues, swap
+    // chain, required features, overlay backend) are returned; a failed resource creation once the
+    // device and its required features exist is treated like any later D3D12 failure (fatal).
+    [[nodiscard]] Status initialize()
     {
-        configure_debugging(options.gpu_validation);
+        if (window == nullptr)
+        {
+            return make_error("D3d12Renderer requires a valid HWND");
+        }
+        EAW_TRY(configure_debugging(options.gpu_validation));
 
 #if defined(_DEBUG)
         constexpr UINT factory_flags = DXGI_CREATE_FACTORY_DEBUG;
 #else
         const UINT factory_flags = options.gpu_validation ? DXGI_CREATE_FACTORY_DEBUG : 0;
 #endif
-        check_hresult(CreateDXGIFactory2(factory_flags, IID_PPV_ARGS(&factory)), "CreateDXGIFactory2");
-        adapter = select_adapter(factory.Get(), options.use_warp);
-        check_hresult(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device)), "D3D12CreateDevice");
+        EAW_TRY(hresult_status(CreateDXGIFactory2(factory_flags, IID_PPV_ARGS(&factory)), "CreateDXGIFactory2"));
+        EAW_TRY_ASSIGN(adapter, select_adapter(factory.Get(), options.use_warp));
+        EAW_TRY(hresult_status(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device)), "D3D12CreateDevice"));
         set_name(device.Get(), L"EAWEngine D3D12 device");
 
         DXGI_ADAPTER_DESC3 adapter_description{};
-        check_hresult(adapter->GetDesc3(&adapter_description), "IDXGIAdapter4::GetDesc3");
+        EAW_TRY(hresult_status(adapter->GetDesc3(&adapter_description), "IDXGIAdapter4::GetDesc3"));
         adapter_name = to_utf8(adapter_description.Description);
 
 #if defined(_DEBUG)
         if (SUCCEEDED(device.As(&debug_info_queue)))
         {
             debug_info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
-            check_hresult(debug_info_queue->RegisterMessageCallback(debug_message_callback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, nullptr, &debug_callback_cookie),
-                          "ID3D12InfoQueue1::RegisterMessageCallback");
+            EAW_TRY(hresult_status(debug_info_queue->RegisterMessageCallback(debug_message_callback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, nullptr, &debug_callback_cookie),
+                                   "ID3D12InfoQueue1::RegisterMessageCallback"));
             debug_callback_registered = true;
         }
 #endif
 
-        direct_queue.initialize(device.Get(), D3D12_COMMAND_LIST_TYPE_DIRECT, L"EAWEngine direct queue");
-        copy_queue.initialize(device.Get(), D3D12_COMMAND_LIST_TYPE_COPY, L"EAWEngine copy queue");
-        create_swap_chain();
+        EAW_TRY(check_required_features());
+        EAW_TRY(direct_queue.initialize(device.Get(), D3D12_COMMAND_LIST_TYPE_DIRECT, L"EAWEngine direct queue"));
+        EAW_TRY(copy_queue.initialize(device.Get(), D3D12_COMMAND_LIST_TYPE_COPY, L"EAWEngine copy queue"));
+        EAW_TRY(create_swap_chain());
         create_frame_resources();
         open_pipeline_cache();
         create_pipeline();
         save_pipeline_cache();
         create_initial_assets();
         create_statistics_queries();
-        create_overlay();
+        return create_overlay();
     }
 
     void create_statistics_queries()
@@ -806,7 +820,7 @@ struct D3d12Renderer::Impl
     // The ImGui DX12 backend uploads its font texture on the direct queue and waits for that upload
     // on the CPU. This happens only when the font atlas changes (startup, first use of new glyphs),
     // never per frame; it is a documented exception to the no-CPU-wait rule for this debug overlay.
-    void create_overlay()
+    [[nodiscard]] Status create_overlay()
     {
         IMGUI_CHECKVERSION();
         overlay_context = ImGui::CreateContext();
@@ -835,19 +849,18 @@ struct D3d12Renderer::Impl
         {
             ImGui::DestroyContext(overlay_context);
             overlay_context = nullptr;
-            throw std::runtime_error("the debug overlay (Dear ImGui DX12 backend) could not be initialized");
+            return make_error("the debug overlay (Dear ImGui DX12 backend) could not be initialized");
         }
         overlay_backend_initialized = true;
+        return Status::success();
     }
 
     void allocate_overlay_descriptor(D3D12_CPU_DESCRIPTOR_HANDLE& cpu, D3D12_GPU_DESCRIPTOR_HANDLE& gpu)
     {
         reclaim_texture_slots();
         const auto slot = texture_slots.allocate();
-        if (!slot)
-        {
-            throw std::runtime_error("the D3D12 texture table has no slot for a debug overlay texture");
-        }
+        // The backend allocates its font texture during startup, while the table is nearly empty.
+        EAW_ASSERT_MSG(slot.has_value(), "the D3D12 texture table has no slot for a debug overlay texture");
         const auto increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         cpu = shader_heap->GetCPUDescriptorHandleForHeapStart();
         cpu.ptr += static_cast<SIZE_T>(*slot) * increment;
@@ -859,7 +872,12 @@ struct D3d12Renderer::Impl
     {
         const auto increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         const auto slot = static_cast<std::uint32_t>((cpu.ptr - shader_heap->GetCPUDescriptorHandleForHeapStart().ptr) / increment);
-        texture_slots.release(slot, direct_queue.next_value());
+        // Also called from shutdown; a slot that cannot be released is only bookkeeping discarded
+        // with the renderer, so it is skipped there rather than asserted.
+        if (texture_slots.can_release(slot, direct_queue.next_value()))
+        {
+            texture_slots.release(slot, direct_queue.next_value());
+        }
     }
 
     void shutdown_overlay() noexcept
@@ -871,14 +889,7 @@ struct D3d12Renderer::Impl
         ImGui::SetCurrentContext(overlay_context);
         if (overlay_backend_initialized)
         {
-            try
-            {
-                ImGui_ImplDX12_Shutdown();
-            }
-            catch (...)
-            {
-                // Destructors must not throw; slot bookkeeping is discarded with the renderer.
-            }
+            ImGui_ImplDX12_Shutdown();
             overlay_backend_initialized = false;
         }
         ImGui::DestroyContext(overlay_context);
@@ -1000,7 +1011,7 @@ struct D3d12Renderer::Impl
         }
     }
 
-    void create_swap_chain()
+    [[nodiscard]] Status create_swap_chain()
     {
         tearing_supported = query_tearing_support(factory.Get());
         swap_chain_flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
@@ -1022,16 +1033,17 @@ struct D3d12Renderer::Impl
         description.Flags = swap_chain_flags;
 
         ComPtr<IDXGISwapChain1> created;
-        check_hresult(factory->CreateSwapChainForHwnd(direct_queue.get(), window, &description, nullptr, nullptr, &created), "IDXGIFactory2::CreateSwapChainForHwnd");
-        check_hresult(created.As(&swap_chain), "query IDXGISwapChain3");
-        check_hresult(factory->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER), "IDXGIFactory::MakeWindowAssociation");
-        check_hresult(swap_chain->SetMaximumFrameLatency(options.maximum_frame_latency), "IDXGISwapChain2::SetMaximumFrameLatency");
+        EAW_TRY(hresult_status(factory->CreateSwapChainForHwnd(direct_queue.get(), window, &description, nullptr, nullptr, &created), "IDXGIFactory2::CreateSwapChainForHwnd"));
+        EAW_TRY(hresult_status(created.As(&swap_chain), "query IDXGISwapChain3"));
+        EAW_TRY(hresult_status(factory->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER), "IDXGIFactory::MakeWindowAssociation"));
+        EAW_TRY(hresult_status(swap_chain->SetMaximumFrameLatency(options.maximum_frame_latency), "IDXGISwapChain2::SetMaximumFrameLatency"));
 
         frame_latency_event.reset(swap_chain->GetFrameLatencyWaitableObject());
         if (frame_latency_event.get() == nullptr)
         {
-            throw std::runtime_error("DXGI did not create the frame-latency waitable object");
+            return make_error("DXGI did not create the frame-latency waitable object");
         }
+        return Status::success();
     }
 
     void create_frame_resources()
@@ -1162,10 +1174,8 @@ struct D3d12Renderer::Impl
     void create_bone_buffers(const std::uint32_t requested_count)
     {
         const auto count = std::max(requested_count, 1U);
-        if (count > maximum_scene_bones)
-        {
-            throw std::invalid_argument("visual scene exceeds the D3D12 bone palette capacity");
-        }
+        // load_scene validates the scene's bone count before it gets here.
+        EAW_ASSERT_MSG(count <= maximum_scene_bones, "visual scene exceeds the D3D12 bone palette capacity");
         bone_transforms.assign(count, identity_matrix());
         if (std::ranges::all_of(frames,
                                 [count](const FrameContext& frame)
@@ -1325,62 +1335,84 @@ struct D3d12Renderer::Impl
             created_pipelines.clear();
             return;
         }
-        try
+        if (const auto saved = write_pipeline_cache(); saved)
         {
-            ComPtr<ID3D12PipelineLibrary> library = pipeline_library;
-            if (pipeline_library_stale)
-            {
-                ComPtr<ID3D12Device1> device1;
-                check_hresult(device.As(&device1), "query ID3D12Device1");
-                library.Reset();
-                check_hresult(device1->CreatePipelineLibrary(nullptr, 0, IID_PPV_ARGS(&library)), "CreatePipelineLibrary(rebuild)");
-                for (const auto& [name, pipeline] : created_pipelines)
-                {
-                    check_hresult(library->StorePipeline(name.c_str(), pipeline.Get()), "ID3D12PipelineLibrary::StorePipeline(rebuild)");
-                }
-            }
-            const auto payload_size = library->GetSerializedSize();
-            std::vector<std::byte> payload(payload_size);
-            check_hresult(library->Serialize(payload.data(), payload.size()), "ID3D12PipelineLibrary::Serialize");
-            std::filesystem::create_directories(options.pipeline_cache_directory);
-            auto temporary = pipeline_cache_file;
-            temporary += L".tmp";
-            {
-                std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
-                const std::uint64_t size = payload.size();
-                file.write(pipeline_cache_magic.data(), static_cast<std::streamsize>(pipeline_cache_magic.size()));
-                file.write(reinterpret_cast<const char*>(&pipeline_cache_key), sizeof(pipeline_cache_key));
-                file.write(reinterpret_cast<const char*>(&size), sizeof(size));
-                file.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
-                if (!file)
-                {
-                    throw std::runtime_error("could not write " + temporary.string());
-                }
-            }
-            std::filesystem::rename(temporary, pipeline_cache_file);
             pipeline_cache_status += pipeline_library_stale ? ", rebuilt and saved" : ", saved";
         }
-        catch (const std::exception& error)
+        else
         {
-            pipeline_cache_status += std::string(", not saved: ") + error.what();
+            pipeline_cache_status += ", not saved: " + saved.error().message;
         }
         created_pipelines.clear();
     }
 
-    void create_pipeline()
+    // Serializes the pipeline library to the cache file (through a temporary and a rename).
+    // Failures leave rendering unaffected; save_pipeline_cache records them in the status.
+    [[nodiscard]] Status write_pipeline_cache() const
+    {
+        ComPtr<ID3D12PipelineLibrary> library = pipeline_library;
+        if (pipeline_library_stale)
+        {
+            ComPtr<ID3D12Device1> device1;
+            EAW_TRY(hresult_status(device.As(&device1), "query ID3D12Device1"));
+            library.Reset();
+            EAW_TRY(hresult_status(device1->CreatePipelineLibrary(nullptr, 0, IID_PPV_ARGS(&library)), "CreatePipelineLibrary(rebuild)"));
+            for (const auto& [name, pipeline] : created_pipelines)
+            {
+                EAW_TRY(hresult_status(library->StorePipeline(name.c_str(), pipeline.Get()), "ID3D12PipelineLibrary::StorePipeline(rebuild)"));
+            }
+        }
+        const auto payload_size = library->GetSerializedSize();
+        std::vector<std::byte> payload(payload_size);
+        EAW_TRY(hresult_status(library->Serialize(payload.data(), payload.size()), "ID3D12PipelineLibrary::Serialize"));
+        std::error_code error;
+        std::filesystem::create_directories(options.pipeline_cache_directory, error);
+        if (error)
+        {
+            return make_error("could not create " + options.pipeline_cache_directory.string() + ": " + error.message());
+        }
+        auto temporary = pipeline_cache_file;
+        temporary += L".tmp";
+        {
+            std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+            const std::uint64_t size = payload.size();
+            file.write(pipeline_cache_magic.data(), static_cast<std::streamsize>(pipeline_cache_magic.size()));
+            file.write(reinterpret_cast<const char*>(&pipeline_cache_key), sizeof(pipeline_cache_key));
+            file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+            file.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
+            if (!file)
+            {
+                return make_error("could not write " + temporary.string());
+            }
+        }
+        std::filesystem::rename(temporary, pipeline_cache_file, error);
+        if (error)
+        {
+            return make_error("could not replace " + pipeline_cache_file.string() + ": " + error.message());
+        }
+        return Status::success();
+    }
+
+    // Features the offline-compiled shaders and the texture table require (checked at startup).
+    [[nodiscard]] Status check_required_features() const
     {
         D3D12_FEATURE_DATA_SHADER_MODEL shader_model{D3D_SHADER_MODEL_6_0};
         if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shader_model, sizeof(shader_model))) || shader_model.HighestShaderModel < D3D_SHADER_MODEL_6_0)
         {
-            throw std::runtime_error("the D3D12 device does not support shader model 6.0, which the offline-compiled sandbox shaders require");
+            return make_error("the D3D12 device does not support shader model 6.0, which the offline-compiled sandbox shaders require");
         }
         // The material shader indexes a 4096-entry texture table, which needs resource binding
         // tier 2 (tier 1 limits a stage to 128 shader resource views).
         D3D12_FEATURE_DATA_D3D12_OPTIONS binding_options{};
         if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &binding_options, sizeof(binding_options))) || binding_options.ResourceBindingTier < D3D12_RESOURCE_BINDING_TIER_2)
         {
-            throw std::runtime_error("the D3D12 device does not support resource binding tier 2, which the sandbox texture table requires");
+            return make_error("the D3D12 device does not support resource binding tier 2, which the sandbox texture table requires");
         }
+        return Status::success();
+    }
+
+    void create_pipeline()
+    {
         check_hresult(device->CreateRootSignature(0, g_eaw_sandbox_vs, sizeof(g_eaw_sandbox_vs), IID_PPV_ARGS(&root_signature)), "CreateRootSignature(embedded sandbox root signature)");
         set_name(root_signature.Get(), L"EAWEngine sandbox root signature");
 
@@ -1606,10 +1638,7 @@ struct D3d12Renderer::Impl
 
     ComPtr<ID3D12Resource> upload_buffer(UploadBatch& upload, const std::span<const std::byte> bytes, const D3D12_RESOURCE_STATES final_state, const std::wstring_view name)
     {
-        if (bytes.empty())
-        {
-            throw std::invalid_argument("cannot upload an empty D3D12 buffer");
-        }
+        EAW_ASSERT_MSG(!bytes.empty(), "cannot upload an empty D3D12 buffer");
         const auto description = buffer_description(bytes.size());
         const auto default_heap = heap_properties(D3D12_HEAP_TYPE_DEFAULT);
         const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
@@ -1634,16 +1663,16 @@ struct D3d12Renderer::Impl
 
     // Checks a texture's format, mip chain, and data sizes against its D3D12 copy footprint so a
     // streamed upload cannot fail on malformed data after the scene was accepted.
-    D3D12_RESOURCE_DESC texture_description(const VisualTexture& source) const
+    [[nodiscard]] Result<D3D12_RESOURCE_DESC> texture_description(const VisualTexture& source) const
     {
         if (source.mips.empty() || source.mips.front().width == 0 || source.mips.front().height == 0)
         {
-            throw std::invalid_argument("visual texture '" + source.name + "' has no mip levels or a zero extent");
+            return make_error("visual texture '" + source.name + "' has no mip levels or a zero extent");
         }
         const auto format = dxgi_format(source.format);
         if (format == DXGI_FORMAT_UNKNOWN || source.mips.size() > std::numeric_limits<std::uint16_t>::max())
         {
-            throw std::invalid_argument("visual texture '" + source.name + "' has an unsupported format or mip count");
+            return make_error("visual texture '" + source.name + "' has an unsupported format or mip count");
         }
         D3D12_RESOURCE_DESC description{};
         description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -1660,14 +1689,14 @@ struct D3d12Renderer::Impl
         device->GetCopyableFootprints(&description, 0, static_cast<UINT>(source.mips.size()), 0, nullptr, row_counts.data(), row_sizes.data(), &upload_size);
         if (upload_size == std::numeric_limits<UINT64>::max())
         {
-            throw std::invalid_argument("visual texture '" + source.name + "' has a mip chain D3D12 cannot lay out");
+            return make_error("visual texture '" + source.name + "' has a mip chain D3D12 cannot lay out");
         }
         for (std::size_t mip_index = 0; mip_index < source.mips.size(); ++mip_index)
         {
             const auto& mip = source.mips[mip_index];
             if (mip.row_pitch < row_sizes[mip_index] || mip.data.size() < static_cast<std::uint64_t>(mip.row_pitch) * row_counts[mip_index])
             {
-                throw std::invalid_argument("visual texture '" + source.name + "' mip " + std::to_string(mip_index) + " is shorter than its D3D12 footprint");
+                return make_error("visual texture '" + source.name + "' mip " + std::to_string(mip_index) + " is shorter than its D3D12 footprint");
             }
         }
         return description;
@@ -1675,11 +1704,11 @@ struct D3d12Renderer::Impl
 
     ComPtr<ID3D12Resource> upload_texture(UploadBatch& upload, const VisualTexture& source, const std::uint32_t descriptor_index)
     {
-        if (descriptor_index >= maximum_scene_textures)
-        {
-            throw std::invalid_argument("texture descriptor slot is outside the shader table");
-        }
-        const auto description = texture_description(source);
+        EAW_ASSERT_MSG(descriptor_index < maximum_scene_textures, "texture descriptor slot is outside the shader table");
+        // Scene textures were validated by load_scene; the fallbacks are built by the renderer.
+        const auto described = texture_description(source);
+        EAW_ASSERT_MSG(described.ok(), described.ok() ? std::string{} : described.error().message);
+        const auto& description = described.value();
         const auto format = description.Format;
         const auto default_heap = heap_properties(D3D12_HEAP_TYPE_DEFAULT);
         ComPtr<ID3D12Resource> resource;
@@ -1706,11 +1735,7 @@ struct D3d12Renderer::Impl
         {
             const auto& mip = source.mips[mip_index];
             const auto required_size = mip.row_pitch * row_counts[mip_index];
-            if (mip.data.size() < required_size || mip.row_pitch < row_sizes[mip_index])
-            {
-                staging->Unmap(0, nullptr);
-                throw std::runtime_error("visual texture mip data is shorter than its D3D12 footprint");
-            }
+            EAW_ASSERT_MSG(mip.data.size() >= required_size && mip.row_pitch >= row_sizes[mip_index], "visual texture mip data is shorter than its D3D12 footprint");
             for (UINT row = 0; row < row_counts[mip_index]; ++row)
             {
                 std::memcpy(mapped + footprints[mip_index].Offset + static_cast<std::size_t>(row) * footprints[mip_index].Footprint.RowPitch,
@@ -1742,34 +1767,37 @@ struct D3d12Renderer::Impl
         return resource;
     }
 
-    void load_scene(VisualScene scene)
+    // Validates the scene before anything of the current scene changes, so a failed load leaves
+    // the current scene, its palette, and its textures untouched. Resources created for a rejected
+    // scene are released with the unsubmitted upload batch when this returns.
+    [[nodiscard]] Status load_scene(VisualScene scene)
     {
         if (scene.vertices.empty() || scene.indices.empty() || scene.draws.empty())
         {
-            throw std::invalid_argument("visual scene contains no renderable geometry");
+            return make_error("visual scene contains no renderable geometry");
         }
         if (scene.textures.size() > texture_slots.capacity())
         {
-            throw std::invalid_argument("visual scene has " + std::to_string(scene.textures.size()) + " textures; the D3D12 texture table holds " + std::to_string(texture_slots.capacity()));
+            return make_error("visual scene has " + std::to_string(scene.textures.size()) + " textures; the D3D12 texture table holds " + std::to_string(texture_slots.capacity()));
         }
         if (scene.bone_count > maximum_scene_bones)
         {
-            throw std::invalid_argument("visual scene has " + std::to_string(scene.bone_count) + " bones; the D3D12 bone palette holds " + std::to_string(maximum_scene_bones));
+            return make_error("visual scene has " + std::to_string(scene.bone_count) + " bones; the D3D12 bone palette holds " + std::to_string(maximum_scene_bones));
         }
         if ((scene.meshes.empty() || scene.instances.empty()) && scene.terrain.vertices.empty())
         {
-            throw std::invalid_argument("visual scene has no meshes, instances, or terrain");
+            return make_error("visual scene has no meshes, instances, or terrain");
         }
         if (scene.instances.size() > std::numeric_limits<std::uint32_t>::max())
         {
-            throw std::invalid_argument("visual scene has too many instances for one D3D12 instance buffer");
+            return make_error("visual scene has too many instances for one D3D12 instance buffer");
         }
         for (std::size_t index = 0; index < scene.meshes.size(); ++index)
         {
             const auto& mesh = scene.meshes[index];
             if (static_cast<std::uint64_t>(mesh.first_draw) + mesh.draw_count > scene.draws.size())
             {
-                throw std::invalid_argument("visual mesh " + std::to_string(index) + " (" + mesh.name + ") references draws outside the scene");
+                return make_error("visual mesh " + std::to_string(index) + " (" + mesh.name + ") references draws outside the scene");
             }
         }
         for (std::size_t index = 0; index < scene.instances.size(); ++index)
@@ -1777,11 +1805,11 @@ struct D3d12Renderer::Impl
             const auto& instance = scene.instances[index];
             if (instance.mesh >= scene.meshes.size())
             {
-                throw std::invalid_argument("visual instance " + std::to_string(index) + " references a missing mesh");
+                return make_error("visual instance " + std::to_string(index) + " references a missing mesh");
             }
             if (static_cast<std::uint64_t>(instance.bone_offset) + scene.meshes[instance.mesh].bone_count > std::max(scene.bone_count, 1U))
             {
-                throw std::invalid_argument("visual instance " + std::to_string(index) + " bone range exceeds the scene bone palette");
+                return make_error("visual instance " + std::to_string(index) + " bone range exceeds the scene bone palette");
             }
             if (!std::ranges::all_of(instance.transform,
                                      [](const float value)
@@ -1789,7 +1817,7 @@ struct D3d12Renderer::Impl
                                          return std::isfinite(value);
                                      }))
             {
-                throw std::invalid_argument("visual instance " + std::to_string(index) + " has a non-finite transform");
+                return make_error("visual instance " + std::to_string(index) + " has a non-finite transform");
             }
         }
 
@@ -1838,7 +1866,7 @@ struct D3d12Renderer::Impl
         std::vector<StreamingTexture> new_textures(scene.textures.size());
         for (std::size_t index = 0; index < scene.textures.size(); ++index)
         {
-            (void)texture_description(scene.textures[index]);
+            EAW_TRY(texture_description(scene.textures[index]));
         }
         for (const auto& material : scene.materials)
         {
@@ -1852,22 +1880,23 @@ struct D3d12Renderer::Impl
         gpu_materials.reserve(std::max<std::size_t>(scene.materials.size(), 1U));
         for (std::size_t index = 0; index < scene.materials.size(); ++index)
         {
-            gpu_materials.push_back(gpu_material(scene, index));
+            EAW_TRY_ASSIGN(auto material, gpu_material(scene, index));
+            gpu_materials.push_back(material);
         }
         if (gpu_materials.empty())
         {
             gpu_materials.emplace_back();
         }
-        commit_scene(scene, std::move(upload), std::move(gpu_materials), std::move(new_textures), std::move(mesh_ranges), std::move(new_vertex_buffer), std::move(new_index_buffer),
-                     std::move(new_instance_buffer), vertex_bytes.size(), index_bytes.size());
+        return commit_scene(scene, std::move(upload), std::move(gpu_materials), std::move(new_textures), std::move(mesh_ranges), std::move(new_vertex_buffer), std::move(new_index_buffer),
+                            std::move(new_instance_buffer), vertex_bytes.size(), index_bytes.size());
     }
 
     // Second half of load_scene: validates terrain and draws, submits the upload, and swaps the new
     // scene in. The replaced scene's resources retire once the next direct-queue signal completes,
     // which covers in-flight frames and the pending transitions that still name them.
-    void commit_scene(VisualScene& scene, UploadBatch upload, std::vector<GpuMaterial> gpu_materials, std::vector<StreamingTexture> new_textures,
-                      std::vector<std::pair<std::uint32_t, std::uint32_t>> mesh_ranges, ComPtr<ID3D12Resource> new_vertex_buffer, ComPtr<ID3D12Resource> new_index_buffer,
-                      ComPtr<ID3D12Resource> new_instance_buffer, const std::size_t vertex_byte_count, const std::size_t index_byte_count)
+    [[nodiscard]] Status commit_scene(VisualScene& scene, UploadBatch upload, std::vector<GpuMaterial> gpu_materials, std::vector<StreamingTexture> new_textures,
+                                      std::vector<std::pair<std::uint32_t, std::uint32_t>> mesh_ranges, ComPtr<ID3D12Resource> new_vertex_buffer, ComPtr<ID3D12Resource> new_index_buffer,
+                                      ComPtr<ID3D12Resource> new_instance_buffer, const std::size_t vertex_byte_count, const std::size_t index_byte_count)
     {
         auto new_material_buffer = upload_buffer(upload, std::as_bytes(std::span(gpu_materials)), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"EAWEngine scene material buffer");
 
@@ -1878,7 +1907,7 @@ struct D3d12Renderer::Impl
             if (terrain.vertices.size() % 3U != 0 || terrain.vertices.size() > std::numeric_limits<std::uint32_t>::max() || terrain.layer_count == 0 ||
                 static_cast<std::uint64_t>(terrain.first_material) + terrain.layer_count > scene.materials.size())
             {
-                throw std::invalid_argument("visual terrain has an invalid triangle count or layer range");
+                return make_error("visual terrain has an invalid triangle count or layer range");
             }
             for (std::size_t index = 0; index < terrain.vertices.size(); ++index)
             {
@@ -1904,7 +1933,7 @@ struct D3d12Renderer::Impl
                                                        return layer >= terrain.layer_count;
                                                    }))
                 {
-                    throw std::invalid_argument("visual terrain vertex " + std::to_string(index) + " has non-finite data or a layer outside the terrain");
+                    return make_error("visual terrain vertex " + std::to_string(index) + " has non-finite data or a layer outside the terrain");
                 }
             }
             new_terrain_buffer = upload_buffer(upload, std::as_bytes(std::span(terrain.vertices)), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, L"EAWEngine terrain vertex buffer");
@@ -1921,7 +1950,7 @@ struct D3d12Renderer::Impl
                 const auto& draw = scene.draws[draw_index];
                 if (draw.material >= scene.materials.size() || static_cast<std::uint64_t>(draw.first_index) + draw.index_count > scene.indices.size())
                 {
-                    throw std::invalid_argument("visual scene draw references data outside its buffers");
+                    return make_error("visual scene draw references data outside its buffers");
                 }
                 new_mesh_draws[mesh_index].push_back({draw, draw.material, scene.materials[draw.material].blend, 0, 0, false});
             }
@@ -1943,7 +1972,7 @@ struct D3d12Renderer::Impl
                 const auto& draw = scene.draws[draw_index];
                 if (draw.material >= scene.materials.size() || static_cast<std::uint64_t>(draw.first_index) + draw.index_count > scene.indices.size())
                 {
-                    throw std::invalid_argument("visual scene draw references data outside its buffers");
+                    return make_error("visual scene draw references data outside its buffers");
                 }
                 new_draws.push_back({draw, draw.material, scene.materials[draw.material].blend, first_instance, instance_count, background});
             }
@@ -2029,6 +2058,7 @@ struct D3d12Renderer::Impl
         scene_index_view.BufferLocation = scene_index_buffer->GetGPUVirtualAddress();
         scene_index_view.SizeInBytes = static_cast<UINT>(index_byte_count);
         scene_index_view.Format = DXGI_FORMAT_R32_UINT;
+        return Status::success();
     }
 
     // Removes textures from the pool and retires their resources and descriptor slots on the
@@ -2070,64 +2100,42 @@ struct D3d12Renderer::Impl
             return;
         }
         reclaim_texture_slots();
-        const auto first = next_streaming_texture;
         std::vector<std::size_t> streamed;
         std::optional<UploadBatch> upload;
         std::uint64_t submitted_bytes = 0;
-        try
+        // load_scene validated every queued texture, so an upload here fails only with the device
+        // (fatal); there is no partially submitted batch to undo.
+        while (next_streaming_texture < scene_textures.size())
         {
-            while (next_streaming_texture < scene_textures.size())
+            auto& entry = scene_textures[next_streaming_texture];
+            if (textures.contains(entry.handle))
             {
-                auto& entry = scene_textures[next_streaming_texture];
-                if (textures.contains(entry.handle))
-                {
-                    // Reused from the previous scene.
-                    ++next_streaming_texture;
-                    continue;
-                }
-                if (options.texture_upload_budget_bytes != 0 && submitted_bytes != 0 && submitted_bytes + entry.bytes > options.texture_upload_budget_bytes)
-                {
-                    break;
-                }
-                const auto slot = texture_slots.allocate();
-                if (!slot)
-                {
-                    break;
-                }
-                if (!upload)
-                {
-                    upload = begin_upload(L"EAWEngine texture stream");
-                }
-                try
-                {
-                    auto resource = upload_texture(*upload, entry.source, *slot);
-                    entry.handle = textures.insert({std::move(resource), *slot});
-                }
-                catch (...)
-                {
-                    texture_slots.release(*slot, direct_queue.next_value());
-                    throw;
-                }
-                submitted_bytes += entry.bytes;
-                streamed.push_back(next_streaming_texture);
+                // Reused from the previous scene.
                 ++next_streaming_texture;
+                continue;
             }
-            if (upload)
+            if (options.texture_upload_budget_bytes != 0 && submitted_bytes != 0 && submitted_bytes + entry.bytes > options.texture_upload_budget_bytes)
             {
-                submit_upload(std::move(*upload));
+                break;
             }
+            const auto slot = texture_slots.allocate();
+            if (!slot)
+            {
+                break;
+            }
+            if (!upload)
+            {
+                upload = begin_upload(L"EAWEngine texture stream");
+            }
+            auto resource = upload_texture(*upload, entry.source, *slot);
+            entry.handle = textures.insert({std::move(resource), *slot});
+            submitted_bytes += entry.bytes;
+            streamed.push_back(next_streaming_texture);
+            ++next_streaming_texture;
         }
-        catch (...)
+        if (upload)
         {
-            // Nothing from this batch was submitted: undo residency so no draw samples it.
-            std::vector<StreamingTexture> unsent;
-            for (const auto index : streamed)
-            {
-                unsent.push_back({{}, std::exchange(scene_textures[index].handle, {}), 0, 0, {}});
-            }
-            retire_textures(unsent);
-            next_streaming_texture = first;
-            throw;
+            submit_upload(std::move(*upload));
         }
         for (const auto index : streamed)
         {
@@ -2190,39 +2198,26 @@ struct D3d12Renderer::Impl
                                            return std::isfinite(value);
                                        });
         };
-        if (!std::ranges::all_of(lines,
-                                 [&](const VisualDebugLine& line)
-                                 {
-                                     return finite(line.from) && finite(line.to) && finite(line.color);
-                                 }))
-        {
-            throw std::invalid_argument("debug lines contain non-finite values");
-        }
+        EAW_ASSERT_MSG(std::ranges::all_of(lines,
+                                           [&](const VisualDebugLine& line)
+                                           {
+                                               return finite(line.from) && finite(line.to) && finite(line.color);
+                                           }),
+                       "debug lines contain non-finite values");
         debug_lines.assign(lines.begin(), lines.end());
     }
 
     void set_instances(const std::span<const VisualInstance> instances)
     {
-        if (!scene_loaded)
-        {
-            throw std::logic_error("set_instances needs a loaded scene (its meshes are the mesh library)");
-        }
-        if (instances.size() >= std::numeric_limits<std::uint32_t>::max())
-        {
-            throw std::invalid_argument("too many visual instances for one frame");
-        }
+        EAW_ASSERT_MSG(scene_loaded, "set_instances needs a loaded scene (its meshes are the mesh library)");
+        EAW_ASSERT_MSG(instances.size() < std::numeric_limits<std::uint32_t>::max(), "too many visual instances for one frame");
         for (std::size_t index = 0; index < instances.size(); ++index)
         {
             const auto& instance = instances[index];
-            if (instance.mesh >= scene_mesh_draws.size())
-            {
-                throw std::invalid_argument("visual instance " + std::to_string(index) + " references mesh " + std::to_string(instance.mesh) + ", but the scene has " +
-                                            std::to_string(scene_mesh_draws.size()));
-            }
-            if (static_cast<std::uint64_t>(instance.bone_offset) + scene_mesh_bone_counts[instance.mesh] > scene_bone_capacity)
-            {
-                throw std::invalid_argument("visual instance " + std::to_string(index) + " bone range exceeds the scene bone palette");
-            }
+            EAW_ASSERT_MSG(instance.mesh < scene_mesh_draws.size(),
+                           "visual instance " + std::to_string(index) + " references mesh " + std::to_string(instance.mesh) + ", but the scene has " + std::to_string(scene_mesh_draws.size()));
+            EAW_ASSERT_MSG(static_cast<std::uint64_t>(instance.bone_offset) + scene_mesh_bone_counts[instance.mesh] <= scene_bone_capacity,
+                           "visual instance " + std::to_string(index) + " bone range exceeds the scene bone palette");
             const auto finite = [](const auto& values)
             {
                 return std::ranges::all_of(values,
@@ -2231,10 +2226,7 @@ struct D3d12Renderer::Impl
                                                return std::isfinite(value);
                                            });
             };
-            if (!finite(instance.transform) || !finite(instance.tint) || !finite(instance.team_color))
-            {
-                throw std::invalid_argument("visual instance " + std::to_string(index) + " has non-finite values");
-            }
+            EAW_ASSERT_MSG(finite(instance.transform) && finite(instance.tint) && finite(instance.team_color), "visual instance " + std::to_string(index) + " has non-finite values");
         }
         dynamic_instances.emplace(instances.begin(), instances.end());
     }
@@ -2385,19 +2377,16 @@ struct D3d12Renderer::Impl
 
     void set_bone_transforms(const std::span<const std::array<float, 16>> transforms)
     {
-        if (transforms.size() > bone_transforms.size())
-        {
-            throw std::invalid_argument("bone palette update exceeds the loaded visual scene capacity");
-        }
+        EAW_ASSERT_MSG(transforms.size() <= bone_transforms.size(), "bone palette update exceeds the loaded visual scene capacity");
         std::ranges::fill(bone_transforms, identity_matrix());
         std::ranges::copy(transforms, bone_transforms.begin());
     }
 
     // Validates one scene material and converts it to the shader layout.
-    static GpuMaterial gpu_material(const VisualScene& scene, const std::size_t index)
+    static Result<GpuMaterial> gpu_material(const VisualScene& scene, const std::size_t index)
     {
         const auto& material = scene.materials[index];
-        const auto slot = [&](const std::uint32_t texture, const std::uint32_t fallback, const char* role)
+        const auto slot = [&](const std::uint32_t texture, const std::uint32_t fallback, const char* role) -> Result<std::uint32_t>
         {
             if (texture == invalid_visual_texture)
             {
@@ -2405,7 +2394,7 @@ struct D3d12Renderer::Impl
             }
             if (texture >= scene.textures.size())
             {
-                throw std::invalid_argument("visual material " + std::to_string(index) + " (" + material.name + ") references a missing " + role + " texture");
+                return make_error("visual material " + std::to_string(index) + " (" + material.name + ") references a missing " + role + " texture");
             }
             return fallback_texture_count + texture;
         };
@@ -2420,7 +2409,7 @@ struct D3d12Renderer::Impl
         if (!finite(material.tint) || !finite(material.diffuse) || !finite(material.specular) || !finite(material.emissive) || !finite(material.uv_scroll) ||
             !std::isfinite(material.alpha_test_threshold) || !std::isfinite(material.uv_scale))
         {
-            throw std::invalid_argument("visual material " + std::to_string(index) + " (" + material.name + ") has non-finite parameters");
+            return make_error("visual material " + std::to_string(index) + " (" + material.name + ") has non-finite parameters");
         }
         GpuMaterial result;
         result.tint = material.tint;
@@ -2429,9 +2418,9 @@ struct D3d12Renderer::Impl
         result.emissive = {material.emissive[0], material.emissive[1], material.emissive[2], 0.0F};
         result.uv_scroll = material.uv_scroll;
         result.alpha_cutoff = material.alpha_test_threshold;
-        result.base_texture = slot(material.base_color_texture, white_texture_slot, "base color");
-        result.normal_texture = slot(material.normal_texture, flat_normal_texture_slot, "normal");
-        result.gloss_texture = slot(material.gloss_texture, white_texture_slot, "gloss");
+        EAW_TRY_ASSIGN(result.base_texture, slot(material.base_color_texture, white_texture_slot, "base color"));
+        EAW_TRY_ASSIGN(result.normal_texture, slot(material.normal_texture, flat_normal_texture_slot, "normal"));
+        EAW_TRY_ASSIGN(result.gloss_texture, slot(material.gloss_texture, white_texture_slot, "gloss"));
         result.lighting = static_cast<std::uint32_t>(material.lighting);
         result.flags = (material.blend == VisualBlendMode::alpha_test ? material_alpha_test : 0U) | (material.blend == VisualBlendMode::alpha_blend ? material_alpha_blend : 0U) |
                        (material.blend == VisualBlendMode::additive ? material_additive : 0U) | (material.team_color_mask ? material_team_color : 0U) |
@@ -2454,19 +2443,14 @@ struct D3d12Renderer::Impl
             const auto& direction = light.direction;
             return finite(direction) && finite(light.color) && direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2] > 1.0e-12F;
         };
-        if (!valid_light(next.key) || !valid_light(next.fills[0]) || !valid_light(next.fills[1]) || !finite(next.key_specular) || !finite(next.ambient))
-        {
-            throw std::invalid_argument("visual light rig contains non-finite values or a zero light direction");
-        }
+        EAW_ASSERT_MSG(valid_light(next.key) && valid_light(next.fills[0]) && valid_light(next.fills[1]) && finite(next.key_specular) && finite(next.ambient),
+                       "visual light rig contains non-finite values or a zero light direction");
         lighting = next;
     }
 
     void set_scene_time(const float seconds)
     {
-        if (!std::isfinite(seconds))
-        {
-            throw std::invalid_argument("scene time is not finite");
-        }
+        EAW_ASSERT_MSG(std::isfinite(seconds), "scene time is not finite");
         scene_time = seconds;
     }
 
@@ -2480,21 +2464,15 @@ struct D3d12Renderer::Impl
                                            return std::isfinite(component);
                                        });
         };
-        if (!finite(next.eye) || !finite(next.target) || !finite(next.up) || !std::isfinite(next.vertical_fov_degrees) || !std::isfinite(next.near_plane) || !std::isfinite(next.far_plane))
-        {
-            throw std::invalid_argument("visual camera contains non-finite values");
-        }
-        if (!(next.near_plane > 0.0F) || !(next.far_plane > next.near_plane * 1.0001F) || next.vertical_fov_degrees <= 1.0F || next.vertical_fov_degrees >= 179.0F)
-        {
-            throw std::invalid_argument("visual camera has an invalid projection (near " + std::to_string(next.near_plane) + ", far " + std::to_string(next.far_plane) + ", fov " +
-                                        std::to_string(next.vertical_fov_degrees) + ")");
-        }
+        EAW_ASSERT_MSG(finite(next.eye) && finite(next.target) && finite(next.up) && std::isfinite(next.vertical_fov_degrees) && std::isfinite(next.near_plane) && std::isfinite(next.far_plane),
+                       "visual camera contains non-finite values");
+        EAW_ASSERT_MSG(next.near_plane > 0.0F && next.far_plane > next.near_plane * 1.0001F && next.vertical_fov_degrees > 1.0F && next.vertical_fov_degrees < 179.0F,
+                       "visual camera has an invalid projection (near " + std::to_string(next.near_plane) + ", far " + std::to_string(next.far_plane) + ", fov " +
+                           std::to_string(next.vertical_fov_degrees) + ")");
         const std::array<float, 3> forward{next.target[0] - next.eye[0], next.target[1] - next.eye[1], next.target[2] - next.eye[2]};
         const std::array<float, 3> side{next.up[1] * forward[2] - next.up[2] * forward[1], next.up[2] * forward[0] - next.up[0] * forward[2], next.up[0] * forward[1] - next.up[1] * forward[0]};
-        if (forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2] <= 1.0e-12F || side[0] * side[0] + side[1] * side[1] + side[2] * side[2] <= 1.0e-12F)
-        {
-            throw std::invalid_argument("visual camera eye, target, and up do not define a view");
-        }
+        EAW_ASSERT_MSG(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2] > 1.0e-12F && side[0] * side[0] + side[1] * side[1] + side[2] * side[2] > 1.0e-12F,
+                       "visual camera eye, target, and up do not define a view");
         camera = next;
     }
 
@@ -2549,10 +2527,7 @@ struct D3d12Renderer::Impl
         {
             direct_queue.wait_cpu(frame.fence_value);
         }
-        if (bone_transforms.size() > frame.bone_capacity)
-        {
-            throw std::runtime_error("frame bone palette is smaller than the active visual scene");
-        }
+        EAW_ASSERT_MSG(bone_transforms.size() <= frame.bone_capacity, "frame bone palette is smaller than the active visual scene");
         std::memcpy(frame.bone_buffer_mapped, bone_transforms.data(), bone_transforms.size() * sizeof(bone_transforms.front()));
         stream_scene_textures();
         write_texture_residency(frame);
@@ -2805,7 +2780,7 @@ struct D3d12Renderer::Impl
                 }
                 return false;
             }
-            throw std::runtime_error("waiting for the DXGI frame-latency object failed (Windows error " + std::to_string(GetLastError()) + ")");
+            fatal_error("waiting for the DXGI frame-latency object failed (Windows error " + std::to_string(GetLastError()) + ")");
         }
     }
 
@@ -2835,48 +2810,51 @@ struct D3d12Renderer::Impl
         occluded = false;
     }
 
+    // Waits for both queues; a failed wait is fatal (the device is lost).
     void wait_idle()
     {
-        std::exception_ptr error;
         if (direct_queue.initialized())
         {
-            try
-            {
-                direct_queue.flush();
-            }
-            catch (...)
-            {
-                error = std::current_exception();
-            }
+            direct_queue.flush();
         }
         if (copy_queue.initialized())
         {
-            try
-            {
-                copy_queue.flush();
-            }
-            catch (...)
-            {
-                if (!error)
-                {
-                    error = std::current_exception();
-                }
-            }
+            copy_queue.flush();
         }
         if (direct_queue.initialized() && copy_queue.initialized())
         {
-            retire_completed_resources();
-            for (auto& frame : frames)
-            {
-                if (frame.pick_readback)
-                {
-                    collect_pick(frame);
-                }
-            }
+            retire_completed_after_idle();
         }
-        if (error)
+    }
+
+    // Destructor variant of wait_idle: never fatal. When a wait fails, resources are not retired
+    // through the normal path; they are released with the renderer after the device is lost.
+    void wait_idle_for_shutdown() noexcept
+    {
+        bool idle = true;
+        if (direct_queue.initialized())
         {
-            std::rethrow_exception(error);
+            idle = direct_queue.try_flush() && idle;
+        }
+        if (copy_queue.initialized())
+        {
+            idle = copy_queue.try_flush() && idle;
+        }
+        if (idle && direct_queue.initialized() && copy_queue.initialized())
+        {
+            retire_completed_after_idle();
+        }
+    }
+
+    void retire_completed_after_idle()
+    {
+        retire_completed_resources();
+        for (auto& frame : frames)
+        {
+            if (frame.pick_readback)
+            {
+                collect_pick(frame);
+            }
         }
     }
 
@@ -2908,7 +2886,7 @@ struct D3d12Renderer::Impl
         }
         if (result == DXGI_ERROR_DEVICE_REMOVED || result == DXGI_ERROR_DEVICE_RESET || result == DXGI_ERROR_DEVICE_HUNG || result == DXGI_ERROR_DRIVER_INTERNAL_ERROR)
         {
-            throw std::runtime_error(std::string(operation) + " failed: " + device_removed_diagnostics());
+            fatal_error(std::string(operation) + " failed: " + device_removed_diagnostics());
         }
         check_hresult(result, operation);
     }
@@ -2945,9 +2923,19 @@ struct D3d12Renderer::Impl
     }
 };
 
-D3d12Renderer::D3d12Renderer(void* native_window, const std::uint32_t width, const std::uint32_t height, const D3d12RendererOptions& options)
-    : impl_(std::make_unique<Impl>(native_window, width, height, options))
+D3d12Renderer::D3d12Renderer(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
 {}
+
+Result<std::unique_ptr<D3d12Renderer>> D3d12Renderer::create(void* native_window, const std::uint32_t width, const std::uint32_t height, const D3d12RendererOptions& options)
+{
+    auto impl = std::make_unique<Impl>(native_window, width, height, options);
+    if (auto status = impl->initialize(); !status)
+    {
+        // ~Impl waits for whatever was submitted before the failure (best effort).
+        return std::move(status).error();
+    }
+    return std::unique_ptr<D3d12Renderer>(new D3d12Renderer(std::move(impl)));
+}
 
 D3d12Renderer::~D3d12Renderer() = default;
 D3d12Renderer::D3d12Renderer(D3d12Renderer&&) noexcept = default;
@@ -3024,9 +3012,9 @@ std::size_t D3d12Renderer::max_debug_lines() noexcept
     return maximum_debug_lines;
 }
 
-void D3d12Renderer::load_scene(VisualScene scene)
+Status D3d12Renderer::load_scene(VisualScene scene)
 {
-    impl_->load_scene(std::move(scene));
+    return impl_->load_scene(std::move(scene));
 }
 
 void D3d12Renderer::set_bone_transforms(const std::span<const std::array<float, 16>> transforms)

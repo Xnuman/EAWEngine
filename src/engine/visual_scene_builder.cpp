@@ -15,14 +15,15 @@
 #include <atomic>
 #include <array>
 #include <cctype>
+#include <charconv>
 #include <cmath>
 #include <filesystem>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <ranges>
-#include <stdexcept>
 #include <string>
+#include <system_error>
 #include <unordered_map>
 
 namespace eaw {
@@ -452,6 +453,21 @@ VisualLightRig environment_light_rig(const TedEnvironment& environment)
     return rig;
 }
 
+// Whether a light rig decoded from map data is usable (finite values, non-zero directions).
+bool light_rig_valid(const VisualLightRig& rig) noexcept
+{
+    const auto finite = [](const std::array<float, 3>& value)
+    {
+        return std::isfinite(value[0]) && std::isfinite(value[1]) && std::isfinite(value[2]);
+    };
+    const auto valid_light = [&](const VisualDirectionalLight& light)
+    {
+        const auto& direction = light.direction;
+        return finite(direction) && finite(light.color) && direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2] > 1.0e-12F;
+    };
+    return valid_light(rig.key) && valid_light(rig.fills[0]) && valid_light(rig.fills[1]) && finite(rig.key_specular) && finite(rig.ambient);
+}
+
 // Fallback colors by player slot for types without a faction affiliation. Index 0 is neutral.
 std::array<float, 4> player_team_color(const std::uint32_t player) noexcept
 {
@@ -475,13 +491,14 @@ std::array<float, 4> player_team_color(const std::uint32_t player) noexcept
 // reference the second half, so meshes on bones hidden in the bind pose are included and appear
 // when an animation shows their bone. Without it (maps share one bind-pose palette), such meshes
 // are omitted.
-std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const std::string_view name, const bool animated_visibility = false)
+// A model that cannot be appended leaves no geometry, indices, or materials behind.
+Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model, const std::string_view name, const bool animated_visibility = false)
 {
     auto& scene = builder.scene;
     const auto bind_pose = model.bind_pose();
     if (model.bones.size() > std::numeric_limits<std::uint32_t>::max() / 2U)
     {
-        throw std::runtime_error("ALO skeleton exceeds the visual scene bone index range");
+        return make_error("ALO skeleton exceeds the visual scene bone index range");
     }
     const auto bone_count = static_cast<std::uint32_t>(model.bones.size());
     VisualMesh visual_mesh;
@@ -493,6 +510,13 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
     const auto first_vertex = scene.vertices.size();
     const auto first_scene_index = scene.indices.size();
     const auto first_material = scene.materials.size();
+    const auto roll_back = [&]
+    {
+        scene.vertices.resize(first_vertex);
+        scene.indices.resize(first_scene_index);
+        scene.materials.resize(first_material);
+        scene.draws.resize(visual_mesh.first_draw);
+    };
     static constexpr std::array<std::array<float, 4>, 6> palette{{
         {0.35F, 0.78F, 0.82F, 1.0F},
         {0.42F, 0.63F, 0.88F, 1.0F},
@@ -541,7 +565,8 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
 
             if (scene.vertices.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
             {
-                throw std::runtime_error("visual scene has too many vertices for a D3D12 base-vertex draw");
+                roll_back();
+                return make_error("visual scene has too many vertices for a D3D12 base-vertex draw");
             }
             const auto base_vertex = static_cast<std::int32_t>(scene.vertices.size());
             const AloMatrix4* attachment = nullptr;
@@ -641,10 +666,8 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
     if (visual_mesh.draw_count == 0)
     {
         // Roll back so a model without visible geometry leaves no partial data behind.
-        scene.vertices.resize(first_vertex);
-        scene.indices.resize(first_scene_index);
-        scene.materials.resize(first_material);
-        throw std::runtime_error("ALO model has no visible renderable geometry");
+        roll_back();
+        return make_error("ALO model has no visible renderable geometry");
     }
     const auto mesh_index = static_cast<std::uint32_t>(scene.meshes.size());
     scene.meshes.push_back(std::move(visual_mesh));
@@ -662,6 +685,25 @@ constexpr std::uint32_t maximum_terrain_dimension = 4096;
 
 // Builds the land heightfield as independent triangles whose vertices carry the triangle's corner
 // layers. Each TED layer becomes a material; its texture tiles world X/Y once per tile_size.
+// Decodes and appends a model referenced by a map (placed object, backdrop, or spawn type). Particle
+// ALOs and malformed models are reported once as scene warnings and yield nothing.
+std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std::string& model_path)
+{
+    const auto model = cached_model(builder, model_path);
+    if (!model->ok())
+    {
+        builder.scene.warnings.push_back(model_path + ": " + model->error().message);
+        return std::nullopt;
+    }
+    auto mesh = append_model(builder, model->value(), model_path);
+    if (!mesh)
+    {
+        builder.scene.warnings.push_back(model_path + ": " + mesh.error().message);
+        return std::nullopt;
+    }
+    return *mesh;
+}
+
 void append_terrain(SceneBuilder& builder, const TedMap& map)
 {
     auto& scene = builder.scene;
@@ -1065,6 +1107,11 @@ void update_scene_bounds(VisualScene& scene)
             transform.values = instance.transform;
             const auto world = alo_transform_point(local, transform);
             const std::array<float, 3> point{world.x, world.y, world.z};
+            // Malformed vertex data must not leave the camera framing non-finite.
+            if (!std::isfinite(point[0]) || !std::isfinite(point[1]) || !std::isfinite(point[2]))
+            {
+                continue;
+            }
             for (std::size_t axis = 0; axis < point.size(); ++axis)
             {
                 scene.bounds_minimum[axis] = std::min(scene.bounds_minimum[axis], point[axis]);
@@ -1076,12 +1123,12 @@ void update_scene_bounds(VisualScene& scene)
 
 } // namespace
 
-VisualModelAsset build_visual_model(const AssetReader& vfs, const std::string_view model_path, AssetCache* cache)
+Result<VisualModelAsset> build_visual_model(const AssetReader& vfs, const std::string_view model_path, AssetCache* cache)
 {
     const auto resolved = vfs.resolve(model_path);
     if (!resolved)
     {
-        throw std::runtime_error("visual model was not found: " + std::string(model_path));
+        return make_error("visual model was not found: " + std::string(model_path));
     }
     VisualModelAsset asset;
     auto& scene = asset.scene;
@@ -1089,7 +1136,7 @@ VisualModelAsset build_visual_model(const AssetReader& vfs, const std::string_vi
     const auto model = cached_model(builder, resolved->virtual_path);
     if (!model->ok())
     {
-        throw std::runtime_error(resolved->virtual_path + ": " + model->error().message);
+        return with_context(resolved->virtual_path, model->error());
     }
     asset.model = model->value();
     for (const auto& transform : asset.model.bind_pose())
@@ -1097,14 +1144,19 @@ VisualModelAsset build_visual_model(const AssetReader& vfs, const std::string_vi
         auto inverse = alo_inverse(transform);
         if (!inverse)
         {
-            throw std::runtime_error(resolved->virtual_path + ": " + inverse.error().message);
+            return with_context(resolved->virtual_path, inverse.error());
         }
         asset.inverse_bind_pose.push_back(*inverse);
     }
     scene.name = resolved->virtual_path;
     scene.warnings = asset.model.warnings;
     asset.visibility_palette = true;
-    const auto mesh = append_model(builder, asset.model, resolved->virtual_path, true);
+    const auto appended = append_model(builder, asset.model, resolved->virtual_path, true);
+    if (!appended)
+    {
+        return with_context(resolved->virtual_path, appended.error());
+    }
+    const auto mesh = *appended;
     VisualInstance instance{mesh};
     instance.team_color = player_team_color(1);
     scene.instances.push_back(instance);
@@ -1121,24 +1173,39 @@ static float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinitio
     {
         return 0.0F;
     }
-    try
+    // Like the previous std::stof parse: leading whitespace is skipped and trailing text ignored.
+    const auto& text = speed->text;
+    const auto* first = text.data();
+    const auto* const last = text.data() + text.size();
+    while (first != last && std::isspace(static_cast<unsigned char>(*first)) != 0)
     {
-        const auto value = std::stof(speed->text);
-        return std::isfinite(value) && value > 0.0F ? value * provisional_max_speed_scale : 0.0F;
+        ++first;
     }
-    catch (const std::exception&)
+    if (first != last && *first == '+')
+    {
+        ++first;
+    }
+    float value{};
+    const auto [end, error] = std::from_chars(first, last, value);
+    if (error == std::errc::invalid_argument || end == first)
     {
         warnings.push_back(definition.name + ": Max_Speed '" + speed->text + "' is not a number");
         return 0.0F;
     }
+    if (error == std::errc::result_out_of_range)
+    {
+        warnings.push_back(definition.name + ": Max_Speed '" + speed->text + "' is out of range");
+        return 0.0F;
+    }
+    return std::isfinite(value) && value > 0.0F ? value * provisional_max_speed_scale : 0.0F;
 }
 
-VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view map_path, AssetCache* cache, const std::span<const std::string> spawn_types)
+Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::string_view map_path, AssetCache* cache, const std::span<const std::string> spawn_types)
 {
     const auto resolved = vfs.resolve(map_path);
     if (!resolved)
     {
-        throw std::runtime_error("map was not found: " + std::string(map_path));
+        return make_error("map was not found: " + std::string(map_path));
     }
     VisualMapAsset asset;
     const auto map_entry = cached<Result<TedMap>>(cache, "ted", resolved->virtual_path, vfs,
@@ -1149,7 +1216,7 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
                                                   });
     if (!map_entry->ok())
     {
-        throw std::runtime_error(resolved->virtual_path + ": " + map_entry->error().message);
+        return with_context(resolved->virtual_path, map_entry->error());
     }
     const auto& map = map_entry->value();
     asset.land = map.type == TedMapType::land;
@@ -1204,24 +1271,7 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
         auto [entry, inserted] = meshes.try_emplace(placement.model_path);
         if (inserted)
         {
-            try
-            {
-                const auto model = cached_model(builder, placement.model_path);
-                if (model->ok())
-                {
-                    entry->second = append_model(builder, model->value(), placement.model_path);
-                }
-                else
-                {
-                    // Particle ALOs and malformed models are reported once and skipped.
-                    scene.warnings.push_back(placement.model_path + ": " + model->error().message);
-                }
-            }
-            catch (const std::exception& error)
-            {
-                // Particle ALOs and malformed models are reported once and skipped.
-                scene.warnings.push_back(placement.model_path + ": " + error.what());
-            }
+            entry->second = append_scene_model(builder, placement.model_path);
         }
         if (!entry->second)
         {
@@ -1275,7 +1325,15 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
         asset.environment_name = environment.name;
         if (environment.has_lighting)
         {
-            asset.lighting = environment_light_rig(environment);
+            const auto rig = environment_light_rig(environment);
+            if (light_rig_valid(rig))
+            {
+                asset.lighting = rig;
+            }
+            else
+            {
+                scene.warnings.push_back("environment '" + environment.name + "' has non-finite lighting; using the engine default");
+            }
         }
         const auto context = asset.land ? GameModelContext::land : GameModelContext::space;
         for (const auto& name : {environment.skybox_primary, environment.skybox_secondary})
@@ -1303,22 +1361,7 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
             auto [entry, inserted] = meshes.try_emplace(*path);
             if (inserted)
             {
-                try
-                {
-                    const auto decoded = cached_model(builder, *path);
-                    if (decoded->ok())
-                    {
-                        entry->second = append_model(builder, decoded->value(), *path);
-                    }
-                    else
-                    {
-                        scene.warnings.push_back(*path + ": " + decoded->error().message);
-                    }
-                }
-                catch (const std::exception& error)
-                {
-                    scene.warnings.push_back(*path + ": " + error.what());
-                }
+                entry->second = append_scene_model(builder, *path);
             }
             if (!entry->second)
             {
@@ -1354,22 +1397,7 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
         auto [entry, inserted] = meshes.try_emplace(*path);
         if (inserted)
         {
-            try
-            {
-                const auto decoded = cached_model(builder, *path);
-                if (decoded->ok())
-                {
-                    entry->second = append_model(builder, decoded->value(), *path);
-                }
-                else
-                {
-                    scene.warnings.push_back(*path + ": " + decoded->error().message);
-                }
-            }
-            catch (const std::exception& error)
-            {
-                scene.warnings.push_back(*path + ": " + error.what());
-            }
+            entry->second = append_scene_model(builder, *path);
         }
         if (!entry->second)
         {
@@ -1403,7 +1431,7 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
                                                                    return !instance.background;
                                                                }))
     {
-        throw std::runtime_error("map has no placed objects with renderable models: " + resolved->virtual_path);
+        return make_error("map has no placed objects with renderable models: " + resolved->virtual_path);
     }
     update_scene_bounds(scene);
     return asset;

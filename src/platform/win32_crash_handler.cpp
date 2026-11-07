@@ -55,19 +55,12 @@ void show_report(const std::string_view report)
     {
         return;
     }
-    try
+    const auto text = to_wide(std::string(report) + "\n\nRetry: break into the debugger (when one is attached).\nCancel: exit.");
+    const auto title = to_wide(application_title + " - fatal error");
+    const auto choice = MessageBoxW(nullptr, text.c_str(), title.c_str(), MB_RETRYCANCEL | MB_ICONERROR | MB_TOPMOST | MB_SETFOREGROUND | MB_TASKMODAL);
+    if (choice == IDRETRY && IsDebuggerPresent())
     {
-        const auto text = to_wide(std::string(report) + "\n\nRetry: break into the debugger (when one is attached).\nCancel: exit.");
-        const auto title = to_wide(application_title + " - fatal error");
-        const auto choice = MessageBoxW(nullptr, text.c_str(), title.c_str(), MB_RETRYCANCEL | MB_ICONERROR | MB_TOPMOST | MB_SETFOREGROUND | MB_TASKMODAL);
-        if (choice == IDRETRY && IsDebuggerPresent())
-        {
-            __debugbreak();
-        }
-    }
-    catch (...)
-    {
-        // Out of memory while reporting: the stderr report already exists.
+        __debugbreak();
     }
 }
 
@@ -101,9 +94,10 @@ std::string describe_address(const void* address)
     return hex(reinterpret_cast<std::uintptr_t>(address));
 }
 
-// MSVC throws C++ exceptions as structured exception 0xE06D7363 ("msc"). The record carries the
-// thrown object and its ThrowInfo, which lists every type a catch clause could match (most derived
-// first). These layouts are the documented-by-practice x64 ABI used by the CRT; they are read
+// EAWEngine is built without C++ exceptions, but code outside it (a driver or system DLL) may still
+// raise one. MSVC raises C++ exceptions as structured exception 0xE06D7363 ("msc"). The record
+// carries the exception object and its ThrowInfo, which lists every type a handler could match
+// (most derived first). These layouts are the documented-by-practice x64 ABI used by the CRT; they are read
 // defensively under SEH so a malformed record cannot fault inside the crash handler.
 constexpr DWORD msvc_cpp_exception = 0xE06D7363;
 constexpr ULONG_PTR msvc_exception_magic = 0x19930520;
@@ -141,9 +135,9 @@ struct TypeDescriptor
     char name[1];
 };
 
-// Copies the thrown type's decorated name and, when it derives from std::exception, what() into the
-// buffers. Plain C buffers only: this runs under __try, which cannot unwind C++ objects.
-void read_cpp_exception(const EXCEPTION_RECORD& record, char* type_name, const std::size_t type_size, char* message, const std::size_t message_size) noexcept
+// Copies the exception object's decorated type name into the buffer. A plain C buffer only: this
+// runs under __try, which cannot unwind C++ objects.
+void read_cpp_exception(const EXCEPTION_RECORD& record, char* type_name, const std::size_t type_size) noexcept
 {
     __try
     {
@@ -159,21 +153,11 @@ void read_cpp_exception(const EXCEPTION_RECORD& record, char* type_name, const s
             return;
         }
         const auto* types = reinterpret_cast<const CatchableTypeArray*>(image + throw_info->catchable_types);
-        for (int index = 0; index < types->count && index < 64; ++index)
+        if (types->count > 0)
         {
-            const auto* type = reinterpret_cast<const CatchableType*>(image + types->types[index]);
+            const auto* type = reinterpret_cast<const CatchableType*>(image + types->types[0]);
             const auto* descriptor = reinterpret_cast<const TypeDescriptor*>(image + type->type_descriptor);
-            if (index == 0)
-            {
-                strncpy_s(type_name, type_size, descriptor->name, _TRUNCATE);
-            }
-            // std::exception reached through a non-virtual base: adjust and ask for what().
-            if (std::strcmp(descriptor->name, ".?AVexception@std@@") == 0 && type->displacement.virtual_base_pointer < 0)
-            {
-                const auto* exception = reinterpret_cast<const std::exception*>(object + type->displacement.member);
-                strncpy_s(message, message_size, exception->what(), _TRUNCATE);
-                return;
-            }
+            strncpy_s(type_name, type_size, descriptor->name, _TRUNCATE);
         }
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
@@ -205,20 +189,15 @@ std::string describe_exception(const EXCEPTION_RECORD& record)
     if (record.ExceptionCode == msvc_cpp_exception)
     {
         std::array<char, 256> type_name{};
-        std::array<char, 1024> message{};
-        read_cpp_exception(record, type_name.data(), type_name.size(), message.data(), message.size());
+        read_cpp_exception(record, type_name.data(), type_name.size());
         std::string text = "Unhandled C++ exception";
         if (type_name[0] != '\0')
         {
             text += " (" + readable_type_name(type_name.data()) + ")";
         }
-        if (message[0] != '\0')
-        {
-            text += ": " + std::string(message.data());
-        }
-        // The record's address is the CRT's RaiseException; the throw site is on the call stack,
+        // The record's address is the CRT's RaiseException; the raising code is on the call stack,
         // which a debugger shows after Retry (this filter runs before unwinding).
-        return text + "\nRetry under a debugger to stop with the throw site on the call stack.";
+        return text + "\nRetry under a debugger to stop where it was raised.";
     }
 
     std::string text;
@@ -274,37 +253,12 @@ LONG WINAPI unhandled_exception_filter(EXCEPTION_POINTERS* pointers)
     {
         fatal_error_report("Unhandled structured exception (no exception record)");
     }
-    std::string report;
-    try
-    {
-        report = describe_exception(*pointers->ExceptionRecord);
-    }
-    catch (...)
-    {
-        report = "Unhandled structured exception";
-    }
-    fatal_error_report(report);
+    fatal_error_report(describe_exception(*pointers->ExceptionRecord));
 }
 
 void terminate_handler()
 {
-    std::string report = "std::terminate was called without an active exception";
-    if (const auto exception = std::current_exception())
-    {
-        try
-        {
-            std::rethrow_exception(exception);
-        }
-        catch (const std::exception& error)
-        {
-            report = std::string("Unhandled C++ exception: ") + error.what();
-        }
-        catch (...)
-        {
-            report = "Unhandled C++ exception of a non-standard type";
-        }
-    }
-    fatal_error_report(report);
+    fatal_error_report("std::terminate was called");
 }
 
 void purecall_handler()

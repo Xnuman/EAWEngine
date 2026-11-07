@@ -6,6 +6,8 @@
 //
 // Fence values are those of one queue timeline; callers must not mix timelines in one instance.
 
+#include "eaw/fatal_error.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -13,7 +15,6 @@
 #include <functional>
 #include <limits>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -49,10 +50,7 @@ public:
         }
         else
         {
-            if (slots_.size() >= std::numeric_limits<std::uint32_t>::max())
-            {
-                throw std::length_error("resource handle pool is full");
-            }
+            EAW_ASSERT_MSG(slots_.size() < std::numeric_limits<std::uint32_t>::max(), "resource handle pool is full");
             index = static_cast<std::uint32_t>(slots_.size());
             slots_.emplace_back();
         }
@@ -124,10 +122,7 @@ public:
     DescriptorSlotAllocator() = default;
     DescriptorSlotAllocator(const std::uint32_t first, const std::uint32_t count) : first_(first), count_(count), state_(count, SlotState::free)
     {
-        if (static_cast<std::uint64_t>(first) + count > std::numeric_limits<std::uint32_t>::max())
-        {
-            throw std::invalid_argument("descriptor slot range overflows");
-        }
+        EAW_ASSERT_MSG(static_cast<std::uint64_t>(first) + count <= std::numeric_limits<std::uint32_t>::max(), "descriptor slot range overflows");
         free_.reserve(count);
         for (std::uint32_t offset = count; offset > 0; --offset)
         {
@@ -148,16 +143,18 @@ public:
         return slot;
     }
 
+    // Whether release(slot, fence_value) is allowed: the slot is allocated and the fence value does
+    // not precede an earlier release.
+    [[nodiscard]] bool can_release(const std::uint32_t slot, const std::uint64_t fence_value) const noexcept
+    {
+        return slot >= first_ && slot - first_ < count_ && state_[slot - first_] == SlotState::allocated && (pending_.empty() || fence_value >= pending_.back().fence_value);
+    }
+
+    // Releasing a slot that is not allocated, or out of fence order, is a programming error.
     void release(const std::uint32_t slot, const std::uint64_t fence_value)
     {
-        if (slot < first_ || slot - first_ >= count_ || state_[slot - first_] != SlotState::allocated)
-        {
-            throw std::logic_error("descriptor slot " + std::to_string(slot) + " released while not allocated");
-        }
-        if (!pending_.empty() && fence_value < pending_.back().fence_value)
-        {
-            throw std::logic_error("descriptor slot releases must use non-decreasing fence values");
-        }
+        EAW_ASSERT_MSG(slot >= first_ && slot - first_ < count_ && state_[slot - first_] == SlotState::allocated, "descriptor slot " + std::to_string(slot) + " released while not allocated");
+        EAW_ASSERT_MSG(pending_.empty() || fence_value >= pending_.back().fence_value, "descriptor slot releases must use non-decreasing fence values");
         state_[slot - first_] = SlotState::pending;
         pending_.push_back({slot, fence_value});
     }
@@ -218,12 +215,16 @@ private:
 template <class T> class FenceRetirementQueue final
 {
 public:
+    // Whether push(value, fence_value) keeps the queue in fence order.
+    [[nodiscard]] bool can_push(const std::uint64_t fence_value) const noexcept
+    {
+        return entries_.empty() || fence_value >= entries_.back().fence_value;
+    }
+
+    // Pushing out of fence order is a programming error.
     void push(T value, const std::uint64_t fence_value)
     {
-        if (!entries_.empty() && fence_value < entries_.back().fence_value)
-        {
-            throw std::logic_error("retirement fence values must be non-decreasing");
-        }
+        EAW_ASSERT_MSG(can_push(fence_value), "retirement fence values must be non-decreasing");
         entries_.push_back({std::move(value), fence_value});
     }
 

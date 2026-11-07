@@ -106,11 +106,12 @@ camera. `--auto-move` orders every mobile unit to the view center for
 automated runs. Warnings (for example malformed mod data) go to stderr, the Visual Studio
 Output window, and a per-run log file in `logs/` next to the executable
 (`--log-dir <path>` changes the folder; the 20 newest files are kept).
-Unexpected failures (failed assertions, uncaught exceptions, access
+Unexpected failures (failed assertions, unrecoverable GPU errors, access
 violations) end the program with an error window describing them, and the same
 report on stderr and in the log file. Retry breaks into an attached debugger. No window is shown
 when stderr is redirected, or with `--no-error-dialog`; `--crash-test
-<assert|exception|access-violation>` fails on purpose to check this.
+<assert|exception|access-violation>` fails on purpose to check this (the
+engine is built without C++ exceptions, so `exception` reports a simulated one).
 `--spawn <XML type>[:count]` (repeatable) makes an object type
 spawnable on maps: the count spawns at the surface under the view center when
 the map appears, N spawns one at the cursor, and Tab cycles through the types,

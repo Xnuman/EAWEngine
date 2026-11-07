@@ -12,6 +12,7 @@
 // every asset read from it is invalidated even if its bytes did not change; that is conservative
 // but never serves stale data.
 
+#include "eaw/status.hpp"
 #include "eaw/virtual_file_system.hpp"
 
 #include <cstddef>
@@ -108,10 +109,24 @@ public:
         std::uint64_t misses{};
     };
 
-    // Returns the cached value or runs `loader(recording_reader)` and caches its result. The
-    // value's dependencies are added to `reader` when it is a RecordingAssetReader, so a scene
-    // records the files behind every asset it reuses. A throwing loader caches nothing.
+    // Returns the cached value or runs `loader(recording_reader)`, which returns a T, and caches its
+    // result. The value's dependencies are added to `reader` when it is a RecordingAssetReader, so
+    // a scene records the files behind every asset it reuses. A loader whose failures should be
+    // cached too (they depend on files, so a fix invalidates them) returns a value that carries the
+    // failure, such as a Result<U> used as T.
     template <class T, class Loader> std::shared_ptr<const T> load(std::string_view kind, std::string_view key, const AssetReader& reader, Loader&& loader)
+    {
+        auto loaded = try_load<T>(kind, key, reader,
+                                  [&](const AssetReader& recorder) -> Result<T>
+                                  {
+                                      return std::invoke(std::forward<Loader>(loader), recorder);
+                                  });
+        return std::move(loaded).value();
+    }
+
+    // Like load, for a loader returning Result<T>: a failed load is returned and caches nothing, so
+    // the next request runs the loader again. Its dependencies still reach `reader`.
+    template <class T, class Loader> Result<std::shared_ptr<const T>> try_load(std::string_view kind, std::string_view key, const AssetReader& reader, Loader&& loader)
     {
         const auto cache_key = make_key(kind, key);
         const auto* outer = dynamic_cast<const RecordingAssetReader*>(&reader);
@@ -130,15 +145,20 @@ public:
             ++misses_;
         }
         RecordingAssetReader recorder(outer != nullptr ? outer->base() : reader);
-        auto value = std::make_shared<const T>(std::invoke(std::forward<Loader>(loader), static_cast<const AssetReader&>(recorder)));
+        Result<T> result = std::invoke(std::forward<Loader>(loader), static_cast<const AssetReader&>(recorder));
         auto dependencies = recorder.dependencies();
         if (outer != nullptr)
         {
             outer->merge(dependencies);
         }
+        if (!result)
+        {
+            return std::move(result).error();
+        }
+        auto value = std::make_shared<const T>(std::move(result).value());
         std::scoped_lock lock(mutex_);
         entries_.insert_or_assign(cache_key, Entry{value, std::type_index(typeid(T)), std::move(dependencies), epoch_});
-        return value;
+        return std::shared_ptr<const T>(std::move(value));
     }
 
     // Drops every entry whose dependencies changed and returns the dropped keys.
