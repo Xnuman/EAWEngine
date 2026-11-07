@@ -40,6 +40,7 @@ struct Options
     std::string model{"Data/Art/Models/EV_Acclamator.alo"};
     std::optional<std::string> animation;
     std::optional<std::string> map;
+    std::filesystem::path pipeline_cache;
     std::uint32_t width{1600};
     std::uint32_t height{900};
     std::uint32_t frame_latency{2};
@@ -64,6 +65,7 @@ void print_usage()
               << "  --model <asset>    ALO model shown in the visual sandbox\n"
               << "  --animation <asset>  ALA animation played with the model\n"
               << "  --map <asset>      TED map shown with its backdrop and a tactical camera\n"
+              << "  --pipeline-cache <dir>  Cache compiled D3D12 pipeline states in this directory\n"
               << "  --width <pixels>   Initial sandbox client width\n"
               << "  --height <pixels>  Initial sandbox client height\n"
               << "  --vsync <on|off>   Select synchronized or tearing-capable present\n"
@@ -169,6 +171,10 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--map")
         {
             options.map = require_value(argc, argv, index, argument);
+        }
+        else if (argument == "--pipeline-cache")
+        {
+            options.pipeline_cache = require_value(argc, argv, index, argument);
         }
         else if (argument == "--width")
         {
@@ -293,6 +299,7 @@ int main(const int argc, char** argv)
         renderer_options.use_warp = options.use_warp;
         renderer_options.gpu_validation = options.gpu_validation;
         renderer_options.maximum_frame_latency = options.frame_latency;
+        renderer_options.pipeline_cache_directory = options.pipeline_cache;
         eaw::D3d12Renderer renderer(window.native_handle(), window.client_width(), window.client_height(), renderer_options);
         std::optional<eaw::VisualModelAsset> visual_model;
         std::optional<eaw::AlaAnimation> visual_animation;
@@ -401,6 +408,7 @@ int main(const int argc, char** argv)
         std::cout << "D3D12 adapter: " << renderer.adapter_name() << '\n'
                   << "Present mode: " << (options.vsync ? "vsync" : "immediate when tearing is available") << '\n'
                   << "Frame latency: " << options.frame_latency << '\n'
+                  << "Pipeline cache: " << renderer.stats().pipeline_cache_status << " (" << renderer.stats().pipeline_cache_hits << " hits, " << renderer.stats().pipeline_cache_misses << " misses)\n"
                   << (tactical_camera ? "Tactical camera: WASD/arrows or right-drag pan (Shift is faster), left-drag rotates, wheel zooms, Space resets.\n"
                                       : "Visual sandbox ready. Left-drag orbits, wheel zooms, Space resets, P pauses animation.\n");
 

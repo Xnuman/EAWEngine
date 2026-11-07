@@ -1,89 +1,18 @@
 #include "preview_renderer.hpp"
 
-#include <d3dcompiler.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <string_view>
 
+// Offline-compiled shader model 5.0 bytecode (see src/tools_gui/shaders/preview.hlsl).
+#include "g_eaw_preview_ps.h"
+#include "g_eaw_preview_vs.h"
+
 namespace eaw::tools {
 namespace {
 
 using Microsoft::WRL::ComPtr;
-
-constexpr std::string_view shader_source = R"(
-cbuffer Frame : register(b0)
-{
-    row_major float4x4 view_projection;
-};
-
-cbuffer Part : register(b1)
-{
-    float alpha_cutoff;
-    uint mode;
-    float2 part_padding;
-};
-
-Texture2D base_texture : register(t0);
-SamplerState base_sampler : register(s0);
-
-struct VertexInput
-{
-    float3 position : POSITION;
-    float2 uv : TEXCOORD0;
-    float4 color : COLOR0;
-    float4 row0 : INSTANCE0;
-    float4 row1 : INSTANCE1;
-    float4 row2 : INSTANCE2;
-    float4 row3 : INSTANCE3;
-    float4 tint : INSTANCE4;
-};
-
-struct PixelInput
-{
-    float4 position : SV_Position;
-    float3 world : TEXCOORD1;
-    float2 uv : TEXCOORD0;
-    float4 color : COLOR0;
-};
-
-PixelInput vertex_main(VertexInput input)
-{
-    const float4x4 world = float4x4(input.row0, input.row1, input.row2, input.row3);
-    const float4 position = mul(float4(input.position, 1.0f), world);
-    PixelInput output;
-    output.position = mul(position, view_projection);
-    output.world = position.xyz;
-    output.uv = input.uv;
-    output.color = input.color * input.tint;
-    return output;
-}
-
-float4 pixel_main(PixelInput input) : SV_Target
-{
-    const float4 texel = base_texture.Sample(base_sampler, input.uv) * input.color;
-    // Flat shading from the screen-space derivative of the preview-space position.
-    const float3 edge = cross(ddx(input.world), ddy(input.world));
-    const float edge_length = length(edge);
-    const float facing = edge_length > 1.0e-12f ? abs(dot(edge / edge_length, normalize(float3(0.35f, -0.45f, 0.82f)))) : 1.0f;
-    const float light = 0.42f + 0.58f * facing;
-    if (mode == 3u)
-    {
-        return float4(texel.rgb, 1.0f);
-    }
-    if (mode == 1u)
-    {
-        clip(texel.a - alpha_cutoff);
-    }
-    if (mode == 2u)
-    {
-        clip(texel.a - (1.0f / 255.0f));
-        return float4(texel.rgb * light, texel.a);
-    }
-    return float4(texel.rgb * light, 1.0f);
-}
-)";
 
 struct FrameConstants
 {
@@ -96,18 +25,6 @@ struct PartConstants
     std::uint32_t mode{};
     float padding[2]{};
 };
-
-ComPtr<ID3DBlob> compile(const char* entry, const char* target)
-{
-    ComPtr<ID3DBlob> code;
-    ComPtr<ID3DBlob> errors;
-    if (FAILED(D3DCompile(shader_source.data(), shader_source.size(), "eaw_tools_preview", nullptr, nullptr, entry, target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, code.GetAddressOf(),
-                          errors.GetAddressOf())))
-    {
-        return nullptr;
-    }
-    return code;
-}
 
 // Creates or grows a buffer, then writes `bytes` into it.
 bool write_buffer(ID3D11Device* device, ID3D11DeviceContext* context, ComPtr<ID3D11Buffer>& buffer, std::uint32_t& capacity, const UINT bind, const void* data, const std::size_t bytes)
@@ -195,12 +112,6 @@ bool PreviewRenderer::initialize(ID3D11Device* device)
     device_ = device;
     device->GetImmediateContext(context_.GetAddressOf());
 
-    const auto vertex_code = compile("vertex_main", "vs_5_0");
-    const auto pixel_code = compile("pixel_main", "ps_5_0");
-    if (!vertex_code || !pixel_code)
-    {
-        return false;
-    }
     const D3D11_INPUT_ELEMENT_DESC layout[]{
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(PreviewVertex, position), D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(PreviewVertex, texture_coordinates), D3D11_INPUT_PER_VERTEX_DATA, 0},
@@ -211,8 +122,8 @@ bool PreviewRenderer::initialize(ID3D11Device* device)
         {"INSTANCE", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 48, D3D11_INPUT_PER_INSTANCE_DATA, 1},
         {"INSTANCE", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 64, D3D11_INPUT_PER_INSTANCE_DATA, 1},
     };
-    if (FAILED(device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex_shader_.GetAddressOf())) ||
-        FAILED(device->CreateInputLayout(layout, static_cast<UINT>(std::size(layout)), vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), input_layout_.GetAddressOf())))
+    if (FAILED(device->CreateVertexShader(g_eaw_preview_vs, sizeof(g_eaw_preview_vs), nullptr, vertex_shader_.GetAddressOf())) ||
+        FAILED(device->CreateInputLayout(layout, static_cast<UINT>(std::size(layout)), g_eaw_preview_vs, sizeof(g_eaw_preview_vs), input_layout_.GetAddressOf())))
     {
         return false;
     }
@@ -303,7 +214,7 @@ bool PreviewRenderer::initialize(ID3D11Device* device)
     {
         return false;
     }
-    return SUCCEEDED(device->CreatePixelShader(pixel_code->GetBufferPointer(), pixel_code->GetBufferSize(), nullptr, pixel_shader_.GetAddressOf()));
+    return SUCCEEDED(device->CreatePixelShader(g_eaw_preview_ps, sizeof(g_eaw_preview_ps), nullptr, pixel_shader_.GetAddressOf()));
 }
 
 bool PreviewRenderer::resize(PreviewTarget& target, const std::uint32_t width, const std::uint32_t height)

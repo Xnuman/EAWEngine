@@ -39,6 +39,51 @@ else()
     target_compile_options(eaw_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+if(WIN32)
+    # Shaders are compiled offline into generated headers that embed the bytecode, so runtime
+    # never invokes a shader compiler. DXC (shader model 6) serves Direct3D 12 and FXC (shader
+    # model 5) the Direct3D 11 tool previews. Both ship with the Windows SDK selected for the
+    # build; set EAW_DXC_EXECUTABLE / EAW_FXC_EXECUTABLE to override.
+    get_filename_component(EAW_WINDOWS_KITS_ROOT "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots;KitsRoot10]" ABSOLUTE)
+    set(EAW_WINDOWS_SDK_BIN_HINTS
+        "${EAW_WINDOWS_KITS_ROOT}/bin/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/x64"
+        "${EAW_WINDOWS_KITS_ROOT}/bin/x64"
+    )
+    find_program(EAW_DXC_EXECUTABLE dxc HINTS ${EAW_WINDOWS_SDK_BIN_HINTS})
+    find_program(EAW_FXC_EXECUTABLE fxc HINTS ${EAW_WINDOWS_SDK_BIN_HINTS})
+    if(NOT EAW_DXC_EXECUTABLE OR NOT EAW_FXC_EXECUTABLE)
+        message(FATAL_ERROR "dxc.exe and fxc.exe were not found in the Windows SDK (looked in ${EAW_WINDOWS_SDK_BIN_HINTS}). "
+                            "Install a Windows 10/11 SDK or set EAW_DXC_EXECUTABLE and EAW_FXC_EXECUTABLE.")
+    endif()
+    set(EAW_GENERATED_SHADER_DIR "${CMAKE_BINARY_DIR}/generated/shaders")
+    file(MAKE_DIRECTORY "${EAW_GENERATED_SHADER_DIR}")
+
+    # eaw_compile_shader(<target> <dxc|fxc> <source> <entry> <profile> <symbol>) compiles one
+    # entry point into ${EAW_GENERATED_SHADER_DIR}/<symbol>.h (a byte array named <symbol>).
+    function(eaw_compile_shader target compiler source entry profile symbol)
+        set(output "${EAW_GENERATED_SHADER_DIR}/${symbol}.h")
+        set(input "${CMAKE_CURRENT_SOURCE_DIR}/${source}")
+        if(compiler STREQUAL "dxc")
+            add_custom_command(
+                OUTPUT "${output}"
+                COMMAND "${EAW_DXC_EXECUTABLE}" -nologo -T ${profile} -E ${entry} -HV 2021 -WX -O3 -force-rootsig-ver rootsig_1_0 -Qstrip_debug -Qstrip_reflect
+                        -Fh "${output}" -Vn ${symbol} "${input}"
+                DEPENDS "${input}"
+                COMMENT "DXC ${source} (${entry}, ${profile})"
+                VERBATIM)
+        else()
+            add_custom_command(
+                OUTPUT "${output}"
+                COMMAND "${EAW_FXC_EXECUTABLE}" /nologo /T ${profile} /E ${entry} /WX /O3 /Fh "${output}" /Vn ${symbol} "${input}"
+                DEPENDS "${input}"
+                COMMENT "FXC ${source} (${entry}, ${profile})"
+                VERBATIM)
+        endif()
+        target_sources(${target} PRIVATE "${output}")
+        target_include_directories(${target} PRIVATE "${EAW_GENERATED_SHADER_DIR}")
+    endfunction()
+endif()
+
 if(EAW_BUILD_GUI AND WIN32)
     include(FetchContent)
     FetchContent_Declare(
@@ -82,11 +127,14 @@ if(EAW_BUILD_GUI AND WIN32)
         d3d11
         dxgi
         dwmapi
-        d3dcompiler
         ole32
         shell32
         uuid
     )
+    target_sources(EAWTools PRIVATE src/tools_gui/shaders/preview.hlsl)
+    set_source_files_properties(src/tools_gui/shaders/preview.hlsl PROPERTIES VS_TOOL_OVERRIDE "None")
+    eaw_compile_shader(EAWTools fxc src/tools_gui/shaders/preview.hlsl vertex_main vs_5_0 g_eaw_preview_vs)
+    eaw_compile_shader(EAWTools fxc src/tools_gui/shaders/preview.hlsl pixel_main ps_5_0 g_eaw_preview_ps)
     target_compile_features(EAWTools PRIVATE cxx_std_20)
     target_compile_definitions(EAWTools PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     if(MSVC)
@@ -111,7 +159,11 @@ if(WIN32)
     target_include_directories(eaw_render_d3d12 PUBLIC src/render/include)
     target_compile_features(eaw_render_d3d12 PUBLIC cxx_std_20)
     target_compile_definitions(eaw_render_d3d12 PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(eaw_render_d3d12 PRIVATE d3d12 d3dcompiler dxgi)
+    target_link_libraries(eaw_render_d3d12 PRIVATE d3d12 dxgi)
+    target_sources(eaw_render_d3d12 PRIVATE src/render/shaders/sandbox.hlsl)
+    set_source_files_properties(src/render/shaders/sandbox.hlsl PROPERTIES VS_TOOL_OVERRIDE "None")
+    eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/sandbox.hlsl vs_main vs_6_0 g_eaw_sandbox_vs)
+    eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/sandbox.hlsl ps_main ps_6_0 g_eaw_sandbox_ps)
 
     if(MSVC)
         target_compile_options(eaw_platform PRIVATE /W4 /permissive- /EHsc /utf-8)

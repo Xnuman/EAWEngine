@@ -43,8 +43,10 @@ milestones.
 ## Build
 
 Requirements: Windows, CMake 3.25+, and Visual Studio 2022 with the x64 C++
-toolchain. The first configure fetches a commit-pinned copy of Dear ImGui's
-official docking branch.
+toolchain and a Windows 10/11 SDK. The first configure fetches a commit-pinned
+copy of Dear ImGui's official docking branch. Shaders are compiled at build time
+with the SDK's `dxc.exe` and `fxc.exe` (override with `EAW_DXC_EXECUTABLE` /
+`EAW_FXC_EXECUTABLE`); nothing is compiled at runtime.
 
 ```powershell
 cmake --preset vs2022-x64
@@ -81,7 +83,9 @@ Open the Direct3D 12 visual sandbox directly or through the separate launcher:
 The sandbox defaults to vsync with two frames of CPU/GPU overlap. Development
 switches include `--vsync off`, `--frame-latency 1`, `--warp`, and
 `--gpu-validation`. `--frame-limit <count>` supports self-terminating smoke
-tests. Use `--model <virtual-alo-path>` to inspect another mounted model,
+tests. `--pipeline-cache <dir>` stores compiled pipeline states in that
+directory so later launches skip pipeline compilation; stale or driver-mismatched
+caches are discarded automatically. Use `--model <virtual-alo-path>` to inspect another mounted model,
 `--animation <virtual-ala-path>` to select an animation, or
 `--validation-triangle` to bypass asset loading. The sandbox automatically tries
 the model's `_IDLE_00.ALA` when present. `--map <virtual-ted-path>` instead

@@ -78,6 +78,15 @@ that palette only after the frame's direct-queue fence has completed, avoiding
 both per-frame resource creation and writes into memory still consumed by the
 GPU.
 
+Shaders are engine-written HLSL source files compiled at build time: DXC
+(shader model 6.0) for Direct3D 12 and FXC (shader model 5.0) for the Direct3D 11
+tool previews, embedded as bytecode in generated headers. The D3D12 root
+signature is declared in the HLSL, validated by DXC, and created from the
+compiled vertex shader, so there is one definition of the binding layout. An
+opt-in `ID3D12PipelineLibrary` cache, keyed by a hash of the embedded bytecode
+and a layout version, persists pipeline states between runs; driver or shader
+changes discard it and the file is replaced atomically.
+
 The engine owns the camera: controllers in `eaw_engine` turn input into a
 `VisualCamera` (eye, target, up, field of view, near/far planes) that the
 renderer consumes. An orbit controller frames single models and a tactical

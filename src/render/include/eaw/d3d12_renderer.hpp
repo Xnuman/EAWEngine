@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <span>
 #include <string>
@@ -16,6 +17,9 @@ struct D3d12RendererOptions
     bool use_warp{};
     bool gpu_validation{};
     std::uint32_t maximum_frame_latency{2};
+    // When set, compiled pipeline states are cached in this directory (d3d12_pipelines.bin).
+    // Empty disables the cache; nothing is written anywhere else.
+    std::filesystem::path pipeline_cache_directory;
 };
 
 struct D3d12RendererStats
@@ -23,6 +27,9 @@ struct D3d12RendererStats
     std::uint64_t frame_number{};
     std::uint64_t direct_fence_completed{};
     std::uint64_t copy_fence_completed{};
+    std::uint32_t pipeline_cache_hits{};
+    std::uint32_t pipeline_cache_misses{};
+    std::string pipeline_cache_status;
 };
 
 class D3d12Renderer final

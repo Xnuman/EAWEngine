@@ -89,7 +89,10 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   behavior can be stabilized. Add normal/gloss/emissive/team-color and special
   material behavior in that mode. A physically based material path with a
   documented conversion from legacy profiles follows once legacy mode is stable,
-  then move inline shaders to an offline DXC/reflection and PSO-cache pipeline.
+  on top of the offline shader pipeline: HLSL sources compiled by DXC (D3D12,
+  shader model 6.0, root signature in HLSL) and FXC (D3D11 tools) into embedded
+  bytecode, plus an opt-in `ID3D12PipelineLibrary` cache. Reflection metadata is
+  deferred until material shaders need generated bindings.
 - Add animation selection/visibility handling, selection IDs, debug drawing,
   resource handles, descriptor allocation, streaming, and hot reload.
 - Camera, selection IDs, debug drawing; PBS conversion of legacy materials after

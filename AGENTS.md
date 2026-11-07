@@ -58,7 +58,7 @@ Known limitations are intentional, not invitations to hide special cases:
 - only base-color textures are used by the D3D12 path;
 - normal, specular, emissive, colorize, UV animation, shields, heat, shadows, and much of the legacy render state are not translated yet;
 - alpha ordering is coarse and material translation is conservative;
-- shaders are currently inline HLSL compiled through `D3DCompile` at shader model 5.1; there is no DXC/offline pipeline, reflection database, or persistent PSO cache yet;
+- shaders are newly written HLSL under `src/render/shaders` (D3D12, DXC, shader model 6.0, root signature declared in the HLSL) and `src/tools_gui/shaders` (D3D11 tools, FXC, shader model 5.0), compiled at build time into embedded bytecode; there is no runtime shader compilation. Shader reflection metadata is not generated yet, and the pipeline-state cache is opt-in (`--pipeline-cache <dir>`);
 - animation choice has no runtime UI and some visibility/complex animation behavior remains incomplete;
 - assets are loaded before rendering; handles, streaming, hot reload, and background scene construction are not implemented;
 - the descriptor and bone capacities are temporary implementation limits, not asset-format limits;
@@ -74,7 +74,7 @@ Work in dependency order unless the user explicitly reprioritizes it.
 
 1. ~~Inventory the legacy shader families in `Shaders/` and create an evidence-based mapping from legacy techniques, parameters, and render states to engine-native material features.~~ Done; see [docs/legacy-shader-mapping.md](docs/legacy-shader-mapping.md).
 2. Implement legacy-mode material rendering in the D3D12 sandbox from `LegacyMaterial` profiles, using newly written HLSL: SH plus key-light lighting, normal/gloss/emissive/team-color channels, UV animation, cull/depth/alpha rules, and special families such as shields and heat where evidence supports them. Keep the material interface engine-native so a PBS path can be added later without changing decoders.
-3. Move modern shader sources out of inline C++ to newly written HLSL. Introduce DXC/offline compilation, reflection metadata, stable root-signature layouts, and PSO caching without making runtime builds depend on the legacy reference files.
+3. ~~Move modern shader sources out of inline C++ to newly written HLSL. Introduce DXC/offline compilation, stable root-signature layouts, and PSO caching.~~ Done; reflection metadata is deferred until material shaders need generated bindings.
 4. Add animation selection and visibility handling, then selection IDs, debug drawing, and camera polish. The PBS material model and its documented conversion from legacy profiles follow once legacy mode is stable.
 5. Add D3D12 tactical-map rendering. Defer further tool-only model/map preview polish until it can share code with the production renderer and the later map editor.
 6. Introduce generation-checked asset/resource handles, descriptor allocation, dependency tracking, background loading, upload budgeting, hot reload, and clean retirement across queue timelines.

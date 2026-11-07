@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <cstring>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -19,11 +21,15 @@
 #include <vector>
 
 #include <d3d12.h>
-#include <d3dcompiler.h>
 #include <DirectXMath.h>
 #include <dxgi1_6.h>
 #include <windows.h>
 #include <wrl/client.h>
+
+// Offline-compiled shader model 6.0 bytecode (see src/render/shaders/sandbox.hlsl). Both entry
+// points embed the root signature, which the renderer creates from the vertex shader blob.
+#include "g_eaw_sandbox_ps.h"
+#include "g_eaw_sandbox_vs.h"
 
 namespace eaw {
 namespace {
@@ -236,31 +242,6 @@ std::array<float, 16> identity_matrix()
     return {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
 }
 
-ComPtr<ID3DBlob> compile_shader(const std::string_view source, const char* entry_point, const char* target)
-{
-    UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
-#if defined(_DEBUG)
-    flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#else
-    flags |= D3DCOMPILE_OPTIMIZATION_LEVEL3;
-#endif
-
-    ComPtr<ID3DBlob> bytecode;
-    ComPtr<ID3DBlob> errors;
-    const auto result = D3DCompile(source.data(), source.size(), "visual_sandbox.hlsl", nullptr, nullptr, entry_point, target, flags, 0, &bytecode, &errors);
-    if (FAILED(result))
-    {
-        std::string message = "D3DCompile failed";
-        if (errors)
-        {
-            message += ": ";
-            message.append(static_cast<const char*>(errors->GetBufferPointer()), errors->GetBufferSize());
-        }
-        throw std::runtime_error(message);
-    }
-    return bytecode;
-}
-
 bool query_tearing_support(IDXGIFactory7* factory)
 {
     BOOL supported = FALSE;
@@ -444,6 +425,19 @@ struct D3d12Renderer::Impl
     ComPtr<IDXGIFactory7> factory;
     ComPtr<IDXGIAdapter4> adapter;
     ComPtr<ID3D12Device> device;
+    // Optional pipeline library. The serialized blob backs the library, so it is declared first
+    // and therefore destroyed after it.
+    std::vector<std::byte> pipeline_library_blob;
+    ComPtr<ID3D12PipelineLibrary> pipeline_library;
+    std::filesystem::path pipeline_cache_file;
+    std::uint64_t pipeline_cache_key{};
+    bool pipeline_library_loaded{};
+    bool pipeline_library_dirty{};
+    bool pipeline_library_stale{};
+    std::uint32_t pipeline_cache_hits{};
+    std::uint32_t pipeline_cache_misses{};
+    std::string pipeline_cache_status{"disabled"};
+    std::vector<std::pair<std::wstring, ComPtr<ID3D12PipelineState>>> created_pipelines;
 #if defined(_DEBUG)
     ComPtr<ID3D12InfoQueue1> debug_info_queue;
     DWORD debug_callback_cookie{};
@@ -568,7 +562,9 @@ struct D3d12Renderer::Impl
         copy_queue.initialize(device.Get(), D3D12_COMMAND_LIST_TYPE_COPY, L"EAWEngine copy queue");
         create_swap_chain();
         create_frame_resources();
+        open_pipeline_cache();
         create_pipeline();
+        save_pipeline_cache();
         create_initial_assets();
     }
 
@@ -699,195 +695,175 @@ struct D3d12Renderer::Impl
         bone_transforms.assign(count, identity_matrix());
     }
 
+    // --- Pipeline library cache -----------------------------------------------------------------
+    // File layout: "EAWPSO01", u64 key (shader bytecode + layout version), u64 payload size,
+    // payload (ID3D12PipelineLibrary::Serialize output). Any mismatch or driver rejection discards
+    // the cache; failures never stop rendering.
+    static constexpr std::array<char, 8> pipeline_cache_magic{'E', 'A', 'W', 'P', 'S', 'O', '0', '1'};
+    static constexpr std::uint64_t pipeline_layout_version = 1;
+    static constexpr std::uint64_t maximum_pipeline_cache_bytes = 256ULL * 1024ULL * 1024ULL;
+
+    static std::uint64_t fnv1a(std::uint64_t hash, const std::span<const std::byte> bytes) noexcept
+    {
+        for (const auto byte : bytes)
+        {
+            hash = (hash ^ static_cast<std::uint8_t>(byte)) * 1099511628211ULL;
+        }
+        return hash;
+    }
+
+    void open_pipeline_cache()
+    {
+        if (options.pipeline_cache_directory.empty())
+        {
+            return;
+        }
+        ComPtr<ID3D12Device1> device1;
+        if (FAILED(device.As(&device1)))
+        {
+            pipeline_cache_status = "unsupported (ID3D12Device1 unavailable)";
+            return;
+        }
+        auto key = fnv1a(1469598103934665603ULL, std::as_bytes(std::span(g_eaw_sandbox_vs)));
+        key = fnv1a(key, std::as_bytes(std::span(g_eaw_sandbox_ps)));
+        key = fnv1a(key, std::as_bytes(std::span(&pipeline_layout_version, 1)));
+        pipeline_cache_key = key;
+        pipeline_cache_file = options.pipeline_cache_directory / "d3d12_pipelines.bin";
+
+        pipeline_cache_status = "created";
+        std::error_code error;
+        const auto size = std::filesystem::file_size(pipeline_cache_file, error);
+        if (!error && size > 24 && size <= maximum_pipeline_cache_bytes)
+        {
+            std::ifstream file(pipeline_cache_file, std::ios::binary);
+            std::array<char, 8> magic{};
+            std::uint64_t stored_key{};
+            std::uint64_t payload_size{};
+            file.read(magic.data(), static_cast<std::streamsize>(magic.size()));
+            file.read(reinterpret_cast<char*>(&stored_key), sizeof(stored_key));
+            file.read(reinterpret_cast<char*>(&payload_size), sizeof(payload_size));
+            if (!file || magic != pipeline_cache_magic || payload_size != size - 24)
+            {
+                pipeline_cache_status = "discarded (unrecognized or truncated file)";
+            }
+            else if (stored_key != pipeline_cache_key)
+            {
+                pipeline_cache_status = "discarded (shaders changed)";
+            }
+            else
+            {
+                pipeline_library_blob.resize(static_cast<std::size_t>(payload_size));
+                file.read(reinterpret_cast<char*>(pipeline_library_blob.data()), static_cast<std::streamsize>(payload_size));
+                const auto result = file ? device1->CreatePipelineLibrary(pipeline_library_blob.data(), pipeline_library_blob.size(), IID_PPV_ARGS(&pipeline_library)) : E_FAIL;
+                if (SUCCEEDED(result))
+                {
+                    pipeline_cache_status = "loaded";
+                    pipeline_library_loaded = true;
+                }
+                else
+                {
+                    pipeline_library.Reset();
+                    pipeline_library_blob.clear();
+                    pipeline_cache_status = "discarded (driver rejected library, " + hresult_text(result) + ")";
+                }
+            }
+        }
+        if (!pipeline_library && FAILED(device1->CreatePipelineLibrary(nullptr, 0, IID_PPV_ARGS(&pipeline_library))))
+        {
+            pipeline_library.Reset();
+            pipeline_cache_status = "unsupported (CreatePipelineLibrary failed)";
+            return;
+        }
+        set_name(pipeline_library.Get(), L"EAWEngine pipeline library");
+    }
+
+    void create_pipeline_state(const wchar_t* name, const D3D12_GRAPHICS_PIPELINE_STATE_DESC& description, ComPtr<ID3D12PipelineState>& pipeline)
+    {
+        // Only a library read from disk can contain the pipeline; probing a fresh one just makes
+        // the debug layer warn about every miss.
+        if (pipeline_library_loaded && SUCCEEDED(pipeline_library->LoadGraphicsPipeline(name, &description, IID_PPV_ARGS(&pipeline))))
+        {
+            ++pipeline_cache_hits;
+        }
+        else
+        {
+            check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&pipeline)), "CreateGraphicsPipelineState(" + to_utf8(name) + ")");
+            if (pipeline_library)
+            {
+                ++pipeline_cache_misses;
+                // A name that is already stored with a different description cannot be replaced
+                // in place, so the whole library is rebuilt when saving.
+                if (SUCCEEDED(pipeline_library->StorePipeline(name, pipeline.Get())))
+                {
+                    pipeline_library_dirty = true;
+                }
+                else
+                {
+                    pipeline_library_stale = true;
+                }
+            }
+        }
+        set_name(pipeline.Get(), std::wstring(L"EAWEngine ") + name + L" pipeline state");
+        created_pipelines.emplace_back(name, pipeline);
+    }
+
+    void save_pipeline_cache()
+    {
+        if (!pipeline_library || (!pipeline_library_dirty && !pipeline_library_stale))
+        {
+            created_pipelines.clear();
+            return;
+        }
+        try
+        {
+            ComPtr<ID3D12PipelineLibrary> library = pipeline_library;
+            if (pipeline_library_stale)
+            {
+                ComPtr<ID3D12Device1> device1;
+                check_hresult(device.As(&device1), "query ID3D12Device1");
+                library.Reset();
+                check_hresult(device1->CreatePipelineLibrary(nullptr, 0, IID_PPV_ARGS(&library)), "CreatePipelineLibrary(rebuild)");
+                for (const auto& [name, pipeline] : created_pipelines)
+                {
+                    check_hresult(library->StorePipeline(name.c_str(), pipeline.Get()), "ID3D12PipelineLibrary::StorePipeline(rebuild)");
+                }
+            }
+            const auto payload_size = library->GetSerializedSize();
+            std::vector<std::byte> payload(payload_size);
+            check_hresult(library->Serialize(payload.data(), payload.size()), "ID3D12PipelineLibrary::Serialize");
+            std::filesystem::create_directories(options.pipeline_cache_directory);
+            auto temporary = pipeline_cache_file;
+            temporary += L".tmp";
+            {
+                std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+                const std::uint64_t size = payload.size();
+                file.write(pipeline_cache_magic.data(), static_cast<std::streamsize>(pipeline_cache_magic.size()));
+                file.write(reinterpret_cast<const char*>(&pipeline_cache_key), sizeof(pipeline_cache_key));
+                file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+                file.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
+                if (!file)
+                {
+                    throw std::runtime_error("could not write " + temporary.string());
+                }
+            }
+            std::filesystem::rename(temporary, pipeline_cache_file);
+            pipeline_cache_status += pipeline_library_stale ? ", rebuilt and saved" : ", saved";
+        }
+        catch (const std::exception& error)
+        {
+            pipeline_cache_status += std::string(", not saved: ") + error.what();
+        }
+        created_pipelines.clear();
+    }
+
     void create_pipeline()
     {
-        constexpr std::string_view shader_source = R"(
-Texture2D SandboxTexture : register(t0);
-struct BoneTransform
-{
-    row_major float4x4 transform;
-};
-StructuredBuffer<BoneTransform> BoneTransforms : register(t1);
-struct InstanceData
-{
-    row_major float4x4 transform;
-    float4 tint;
-    uint bone_offset;
-    uint flags;
-    uint2 padding;
-};
-StructuredBuffer<InstanceData> Instances : register(t2);
-SamplerState SandboxSampler : register(s0);
-
-cbuffer FrameConstants : register(b0)
-{
-    float4x4 view_projection;
-};
-
-cbuffer DrawConstants : register(b2)
-{
-    uint instance_base;
-};
-
-cbuffer MaterialConstants : register(b1)
-{
-    float4 material_tint;
-    uint4 material_flags;
-};
-
-struct VsInput
-{
-    float3 position : POSITION;
-    float3 normal : NORMAL;
-    float2 uv : TEXCOORD0;
-    uint4 bone_indices : BLENDINDICES0;
-    float4 bone_weights : BLENDWEIGHT0;
-    uint instance_id : SV_InstanceID;
-};
-
-struct PsInput
-{
-    float4 position : SV_POSITION;
-    float3 normal : NORMAL;
-    float2 uv : TEXCOORD0;
-    float4 tint : COLOR0;
-};
-
-PsInput vs_main(VsInput input)
-{
-    // SV_InstanceID restarts at zero for every draw, so the batch's first instance arrives as a
-    // root constant.
-    const InstanceData instance = Instances[instance_base + input.instance_id];
-    float4 skinned_position = 0.0f;
-    float3 skinned_normal = 0.0f;
-    float total_weight = 0.0f;
-    [unroll]
-    for (uint influence = 0; influence < 4; ++influence)
-    {
-        const float weight = input.bone_weights[influence];
-        if (weight <= 0.0f)
+        D3D12_FEATURE_DATA_SHADER_MODEL shader_model{D3D_SHADER_MODEL_6_0};
+        if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shader_model, sizeof(shader_model))) || shader_model.HighestShaderModel < D3D_SHADER_MODEL_6_0)
         {
-            continue;
+            throw std::runtime_error("the D3D12 device does not support shader model 6.0, which the offline-compiled sandbox shaders require");
         }
-        const row_major float4x4 skin = BoneTransforms[input.bone_indices[influence] + instance.bone_offset].transform;
-        skinned_position += mul(float4(input.position, 1.0f), skin) * weight;
-        skinned_normal += mul(float4(input.normal, 0.0f), skin).xyz * weight;
-        total_weight += weight;
-    }
-    if (total_weight <= 0.000001f)
-    {
-        skinned_position = float4(input.position, 1.0f);
-        skinned_normal = input.normal;
-    }
-    else if (abs(total_weight - 1.0f) > 0.0001f)
-    {
-        skinned_position /= total_weight;
-        skinned_normal /= total_weight;
-    }
-    PsInput output;
-    if ((instance.flags & 1u) != 0u)
-    {
-        // Backgrounds follow the camera: transforming a direction (w = 0) drops the view
-        // translation, and the depth is pinned just inside the far plane.
-        const float3 direction = mul(float4(skinned_position.xyz, 0.0f), instance.transform).xyz;
-        output.position = mul(float4(direction, 0.0f), view_projection);
-        output.position.z = output.position.w * 0.999999f;
-    }
-    else
-    {
-        output.position = mul(mul(skinned_position, instance.transform), view_projection);
-    }
-    output.normal = mul(float4(skinned_normal, 0.0f), instance.transform).xyz;
-    output.uv = input.uv;
-    output.tint = instance.tint;
-    return output;
-}
-
-float4 ps_main(PsInput input) : SV_TARGET
-{
-    float4 color = SandboxTexture.Sample(SandboxSampler, input.uv) * material_tint * input.tint;
-    if (material_flags.x != 0 && color.a < 0.5f)
-    {
-        discard;
-    }
-    const float3 light_direction = normalize(float3(0.35f, -0.45f, 0.82f));
-    const float lighting = 0.32f + 0.68f * abs(dot(normalize(input.normal), light_direction));
-    color.rgb *= lighting;
-    return color;
-}
-)";
-        const auto vertex_shader = compile_shader(shader_source, "vs_main", "vs_5_1");
-        const auto pixel_shader = compile_shader(shader_source, "ps_main", "ps_5_1");
-
-        D3D12_DESCRIPTOR_RANGE range{};
-        range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        range.NumDescriptors = 1;
-        range.BaseShaderRegister = 0;
-        range.RegisterSpace = 0;
-        range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-
-        std::array<D3D12_ROOT_PARAMETER, 6> parameters{};
-        parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        parameters[0].Constants.ShaderRegister = 0;
-        parameters[0].Constants.Num32BitValues = 16;
-        parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-        parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        parameters[1].DescriptorTable.NumDescriptorRanges = 1;
-        parameters[1].DescriptorTable.pDescriptorRanges = &range;
-        parameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        parameters[2].Constants.ShaderRegister = 1;
-        parameters[2].Constants.Num32BitValues = 8;
-        parameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-        parameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-        parameters[3].Descriptor.ShaderRegister = 1;
-        parameters[3].Descriptor.RegisterSpace = 0;
-        parameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-        parameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-        parameters[4].Descriptor.ShaderRegister = 2;
-        parameters[4].Descriptor.RegisterSpace = 0;
-        parameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-        parameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        parameters[5].Constants.ShaderRegister = 2;
-        parameters[5].Constants.Num32BitValues = 1;
-        parameters[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-
-        D3D12_STATIC_SAMPLER_DESC sampler{};
-        sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-        sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-        sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-        sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-        sampler.MipLODBias = 0.0F;
-        sampler.MaxAnisotropy = 1;
-        sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-        sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
-        sampler.MinLOD = 0.0F;
-        sampler.MaxLOD = D3D12_FLOAT32_MAX;
-        sampler.ShaderRegister = 0;
-        sampler.RegisterSpace = 0;
-        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-
-        D3D12_ROOT_SIGNATURE_DESC root_description{};
-        root_description.NumParameters = static_cast<UINT>(parameters.size());
-        root_description.pParameters = parameters.data();
-        root_description.NumStaticSamplers = 1;
-        root_description.pStaticSamplers = &sampler;
-        root_description.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-
-        ComPtr<ID3DBlob> serialized;
-        ComPtr<ID3DBlob> errors;
-        const auto serialize_result = D3D12SerializeRootSignature(&root_description, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors);
-        if (FAILED(serialize_result))
-        {
-            std::string message = "D3D12SerializeRootSignature failed";
-            if (errors)
-            {
-                message += ": ";
-                message.append(static_cast<const char*>(errors->GetBufferPointer()), errors->GetBufferSize());
-            }
-            throw std::runtime_error(message);
-        }
-        check_hresult(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&root_signature)), "CreateRootSignature");
+        check_hresult(device->CreateRootSignature(0, g_eaw_sandbox_vs, sizeof(g_eaw_sandbox_vs), IID_PPV_ARGS(&root_signature)), "CreateRootSignature(embedded sandbox root signature)");
         set_name(root_signature.Get(), L"EAWEngine sandbox root signature");
 
         constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 5> input_layout{{
@@ -900,8 +876,8 @@ float4 ps_main(PsInput input) : SV_TARGET
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
         description.pRootSignature = root_signature.Get();
-        description.VS = {vertex_shader->GetBufferPointer(), vertex_shader->GetBufferSize()};
-        description.PS = {pixel_shader->GetBufferPointer(), pixel_shader->GetBufferSize()};
+        description.VS = {g_eaw_sandbox_vs, sizeof(g_eaw_sandbox_vs)};
+        description.PS = {g_eaw_sandbox_ps, sizeof(g_eaw_sandbox_ps)};
         description.BlendState.AlphaToCoverageEnable = FALSE;
         description.BlendState.IndependentBlendEnable = FALSE;
         auto& blend = description.BlendState.RenderTarget[0];
@@ -933,8 +909,7 @@ float4 ps_main(PsInput input) : SV_TARGET
         description.RTVFormats[0] = back_buffer_format;
         description.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         description.SampleDesc.Count = 1;
-        check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&opaque_pipeline)), "CreateGraphicsPipelineState(opaque)");
-        set_name(opaque_pipeline.Get(), L"EAWEngine opaque pipeline state");
+        create_pipeline_state(L"opaque", description, opaque_pipeline);
 
         description.BlendState.RenderTarget[0].BlendEnable = TRUE;
         description.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
@@ -942,28 +917,23 @@ float4 ps_main(PsInput input) : SV_TARGET
         description.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
         description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
         description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
-        check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&alpha_pipeline)), "CreateGraphicsPipelineState(alpha)");
-        set_name(alpha_pipeline.Get(), L"EAWEngine alpha pipeline state");
+        create_pipeline_state(L"alpha", description, alpha_pipeline);
 
         description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
         description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
-        check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&additive_pipeline)), "CreateGraphicsPipelineState(additive)");
-        set_name(additive_pipeline.Get(), L"EAWEngine additive pipeline state");
+        create_pipeline_state(L"additive", description, additive_pipeline);
 
         // Background variants: painted first without depth testing or writes.
         description.DepthStencilState.DepthEnable = FALSE;
-        check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&background_additive_pipeline)), "CreateGraphicsPipelineState(background additive)");
-        set_name(background_additive_pipeline.Get(), L"EAWEngine background additive pipeline state");
+        create_pipeline_state(L"background additive", description, background_additive_pipeline);
         description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
         description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
-        check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&background_alpha_pipeline)), "CreateGraphicsPipelineState(background alpha)");
-        set_name(background_alpha_pipeline.Get(), L"EAWEngine background alpha pipeline state");
+        create_pipeline_state(L"background alpha", description, background_alpha_pipeline);
         description.BlendState.RenderTarget[0].BlendEnable = FALSE;
         description.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
         description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
         description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
-        check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&background_opaque_pipeline)), "CreateGraphicsPipelineState(background opaque)");
-        set_name(background_opaque_pipeline.Get(), L"EAWEngine background opaque pipeline state");
+        create_pipeline_state(L"background opaque", description, background_opaque_pipeline);
 
         D3D12_DESCRIPTOR_HEAP_DESC shader_heap_description{};
         shader_heap_description.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -1677,6 +1647,9 @@ D3d12RendererStats D3d12Renderer::stats() const
         .frame_number = impl_->frame_number,
         .direct_fence_completed = impl_->direct_queue.completed_value(),
         .copy_fence_completed = impl_->copy_queue.completed_value(),
+        .pipeline_cache_hits = impl_->pipeline_cache_hits,
+        .pipeline_cache_misses = impl_->pipeline_cache_misses,
+        .pipeline_cache_status = impl_->pipeline_cache_status,
     };
 }
 
