@@ -110,7 +110,11 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   without stalling, and the sandbox highlights the selection. Debug drawing is
   done: world-space line lists (bounds, axes) drawn depth-tested from a
   frame-buffered buffer; the sandbox outlines the selection and toggles every
-  object's bounds with B. Camera polish remains. Started:
+  object's bounds with B. Camera polish remains.
+- On-screen debug text and overlays in the engine (selection name, frame and
+  streaming statistics, hot-reload events) instead of console-only output;
+  likely a Dear ImGui D3D12 overlay shared with later in-engine tools. Liquid
+  surfaces may get their own pick id so clicking water reports it. Started:
   the D3D12 renderer keeps textures in a generation-checked handle pool, takes
   texture-table slots from an allocator that reuses a slot only after its
   release fence, and retires replaced scene resources on the direct-queue
