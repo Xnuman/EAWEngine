@@ -68,6 +68,8 @@ struct InputState
     bool focused{};
     // Mouse movement and keys come from raw input (WM_INPUT) rather than window messages.
     bool raw_input{};
+    // Raw input records processed this frame (high polling rate mice produce many per frame).
+    std::uint32_t raw_events{};
 };
 
 struct WindowDescription

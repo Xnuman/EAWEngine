@@ -211,8 +211,13 @@ it.
   through `WM_INPUT` (`RegisterRawInputDevices`): unaccelerated device deltas in
   `InputState::raw_mouse_delta_x/y` (absolute devices such as tablets and remote
   desktop are converted to deltas) and raw key state. Cursor position, buttons,
-  and wheel stay on window messages, as in the owner's Singe engine and in
-  Unreal and Godot, so clicks outside the client area never reach the scene.
+  and wheel stay on window messages, as in the owner's Singe engine, so clicks
+  outside the client area never reach the scene. Queued raw input is drained in
+  batches with `GetRawInputBuffer` once per frame before the message loop, the
+  approach Microsoft's raw input guidance and Godot's fix for 4-8 kHz mice
+  describe (per-message dispatch made high polling rate mice collapse the frame
+  rate there); `GetRawInputBuffer` removes the messages it reads, so nothing is
+  counted twice. Not yet verified with a high polling rate mouse.
   The sandbox rotates cameras with raw deltas; `--no-raw-input` falls back to
   window messages. Input timestamps and GameInput (controllers) are later options.
 - **Exception-free error handling (done).** No exceptions: every target

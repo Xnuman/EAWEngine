@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <vector>
 #include <optional>
 #include <string_view>
@@ -53,6 +54,8 @@ struct PlatformWindow::Impl
     bool mouse_position_initialized{};
     // Last absolute raw position (tablets, remote desktop, virtual machines), in screen pixels.
     std::optional<std::array<LONG, 2>> last_absolute_mouse;
+    // Reused buffer for batched raw input reads; 64-bit words keep the records 8-byte aligned.
+    std::vector<std::uint64_t> raw_buffer;
 
     static LRESULT CALLBACK window_proc(const HWND handle, const UINT message, const WPARAM w_param, const LPARAM l_param)
     {
@@ -189,6 +192,7 @@ struct PlatformWindow::Impl
         input.mouse_delta_y = 0;
         input.raw_mouse_delta_x = 0;
         input.raw_mouse_delta_y = 0;
+        input.raw_events = 0;
         input.wheel_delta = 0.0F;
     }
 
@@ -222,7 +226,12 @@ struct PlatformWindow::Impl
         {
             return;
         }
-        const auto& raw = *reinterpret_cast<const RAWINPUT*>(buffer.data());
+        handle_raw_record(*reinterpret_cast<const RAWINPUT*>(buffer.data()));
+    }
+
+    void handle_raw_record(const RAWINPUT& raw)
+    {
+        ++input.raw_events;
         if (raw.header.dwType == RIM_TYPEMOUSE)
         {
             handle_raw_mouse(raw.data.mouse);
@@ -230,6 +239,45 @@ struct PlatformWindow::Impl
         else if (raw.header.dwType == RIM_TYPEKEYBOARD)
         {
             handle_raw_keyboard(raw.data.keyboard);
+        }
+    }
+
+    // Reads all queued raw input in batches. High polling rate mice (4-8 kHz) queue many WM_INPUT
+    // messages per frame; dispatching each one through the message loop is costly, so they are read
+    // here in bulk first. GetRawInputBuffer removes the WM_INPUT messages it reads from the queue,
+    // so nothing is counted twice, and input that arrives later is still handled per message.
+    // (This build is 64-bit only, so the WOW64 buffer-size adjustment does not apply.)
+    void drain_raw_input()
+    {
+        if (!input.raw_input)
+        {
+            return;
+        }
+        for (int batch = 0; batch < 64; ++batch)
+        {
+            UINT record_size = 0;
+            if (GetRawInputBuffer(nullptr, &record_size, sizeof(RAWINPUTHEADER)) != 0 || record_size == 0)
+            {
+                return;
+            }
+            // Room for many records per call; each is at most one RAWINPUT for mice and keyboards.
+            const auto capacity_bytes = std::max<std::size_t>(record_size, sizeof(RAWINPUT)) * 256U;
+            raw_buffer.resize((capacity_bytes + sizeof(std::uint64_t) - 1U) / sizeof(std::uint64_t));
+            auto size = static_cast<UINT>(raw_buffer.size() * sizeof(std::uint64_t));
+            auto* records = reinterpret_cast<RAWINPUT*>(raw_buffer.data());
+            const auto count = GetRawInputBuffer(records, &size, sizeof(RAWINPUTHEADER));
+            if (count == 0 || count == static_cast<UINT>(-1))
+            {
+                return;
+            }
+            const auto* record = records;
+            for (UINT index = 0; index < count; ++index)
+            {
+                handle_raw_record(*record);
+                // What NEXTRAWINPUTBLOCK does: records are dwSize bytes, each starting 8-byte aligned.
+                const auto next = (reinterpret_cast<std::uintptr_t>(record) + record->header.dwSize + 7U) & ~static_cast<std::uintptr_t>(7U);
+                record = reinterpret_cast<const RAWINPUT*>(next);
+            }
         }
     }
 
@@ -442,6 +490,7 @@ PlatformWindow& PlatformWindow::operator=(PlatformWindow&&) noexcept = default;
 void PlatformWindow::poll_events()
 {
     impl_->begin_input_frame();
+    impl_->drain_raw_input();
     MSG message{};
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
     {

@@ -1368,7 +1368,8 @@ int main(const int argc, char** argv)
                         (options.vsync   ? "vsync"
                          : stats.tearing ? "immediate (tearing)"
                                          : "immediate") +
-                        " | latency " + std::to_string(options.frame_latency) + " | input " + (window.input().raw_input ? "raw" : "window messages"),
+                        " | latency " + std::to_string(options.frame_latency) + " | input " +
+                        (window.input().raw_input ? "raw (" + std::to_string(window.input().raw_events) + " events last frame)" : std::string("window messages")),
                     "",
                     "FPS " + format_fixed(static_cast<double>(overlay_frames) / seconds, 1) + " | CPU " + format_fixed(seconds * 1000.0 / static_cast<double>(overlay_frames), 2) + " ms | GPU " +
                         format_fixed(stats.gpu_frame_milliseconds, 2) + " ms",
