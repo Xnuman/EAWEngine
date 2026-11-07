@@ -1,6 +1,6 @@
 // EAWEngine D3D12 legacy-mode surface shaders: instanced, skinned geometry with engine-native
 // materials (see VisualMaterial). The lighting approximates how Alamo materials were meant to
-// look -- a hemispherical fill plus one directional key light, a 2x diffuse convention, and a
+// look -- ambient plus two fill lights and a directional key light, a 2x diffuse convention, and a
 // fixed exponent-16 highlight -- as documented in docs/legacy-shader-mapping.md. This file is
 // written for this engine; no legacy shader code is used.
 //
@@ -42,8 +42,9 @@ cbuffer FrameConstants : register(b0)
     float4 key_direction;        // xyz unit vector from surface toward the light
     float4 key_diffuse;
     float4 key_specular;
-    float4 fill_sky;
-    float4 fill_ground;
+    float4 ambient;
+    float4 fill_direction[2];    // unit vectors toward the fill lights
+    float4 fill_diffuse[2];
 };
 
 cbuffer DrawConstants : register(b1)
@@ -232,7 +233,7 @@ float4 ps_main(PixelInput input) : SV_TARGET
 
     const float3 light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
     const float3 half_vector = safe_normalize(light + view, normal);
-    const float3 fill = lerp(fill_ground.rgb, fill_sky.rgb, saturate(normal.z * 0.5f + 0.5f));
+    const float3 fill = ambient.rgb + saturate(dot(normal, fill_direction[0].xyz)) * fill_diffuse[0].rgb + saturate(dot(normal, fill_direction[1].xyz)) * fill_diffuse[1].rgb;
     const float3 diffuse_light = material.diffuse.rgb * (fill + saturate(dot(normal, light)) * key_diffuse.rgb) + material.emissive.rgb;
 
     float gloss = 0.0f;

@@ -2,6 +2,7 @@
 
 #include "eaw/xml_asset_database.hpp"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -79,6 +80,11 @@ public:
     // share a name; a candidate with a model for the requested context is preferred, otherwise
     // the first in database order. This tie-break is corpus inference, not documented behavior.
     [[nodiscard]] GameObjectTypeMatch resolve(std::uint32_t crc, GameModelContext context) const;
+
+    // Display color (0..1 RGBA) of the first faction named in the type's Affiliation field, read
+    // from that Faction definition's Color (0..255 components). Placed objects are owned by a
+    // player slot at runtime; using the declared affiliation is an approximation for previews.
+    [[nodiscard]] std::optional<std::array<float, 4>> affiliation_color(const XmlDefinition& definition) const;
 
     [[nodiscard]] std::optional<GameObjectModelReference> model(const XmlDefinition& definition, GameModelContext context, std::vector<std::string>* diagnostics = nullptr) const;
 

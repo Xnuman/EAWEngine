@@ -152,16 +152,22 @@ struct VisualInstance
     bool background{};
 };
 
-// Global lighting for legacy-mode shading: a directional key light (direction points from the
-// surface toward the light) plus a hemispherical fill between ground and sky colors. Defaults are
-// engine choices until per-map environment lighting is decoded.
+// A directional light; `direction` points from the surface toward the light (any length).
+struct VisualDirectionalLight
+{
+    std::array<float, 3> direction{0.0F, 0.0F, 1.0F};
+    std::array<float, 3> color{};
+};
+
+// Global lighting for legacy-mode shading, matching the TED environment model: a key light that
+// also drives the highlight, two diffuse fill lights, and ambient. Maps supply their active
+// environment; the defaults are an engine choice for model inspection.
 struct VisualLightRig
 {
-    std::array<float, 3> key_direction{0.45F, -0.35F, 0.82F};
-    std::array<float, 3> key_diffuse{0.55F, 0.53F, 0.50F};
+    VisualDirectionalLight key{{0.45F, -0.35F, 0.82F}, {0.55F, 0.53F, 0.50F}};
     std::array<float, 3> key_specular{0.60F, 0.60F, 0.60F};
-    std::array<float, 3> fill_sky{0.20F, 0.21F, 0.24F};
-    std::array<float, 3> fill_ground{0.09F, 0.09F, 0.10F};
+    std::array<VisualDirectionalLight, 2> fills{{{{-0.6F, 0.5F, 0.4F}, {0.14F, 0.15F, 0.18F}}, {{0.4F, 0.7F, -0.5F}, {0.08F, 0.08F, 0.10F}}}};
+    std::array<float, 3> ambient{0.10F, 0.10F, 0.11F};
 };
 
 // A perspective view in world space (Z up). The renderer derives the aspect ratio from its target.

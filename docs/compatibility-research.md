@@ -154,3 +154,20 @@ mark them `In_Background` decorations, and primary sky domes carry the
 `SKY_DOME` behavior. The engine therefore draws them camera-centered behind the
 world, primary first; `Scale_Factor` (1 for primary, 25 for secondary) and any
 parallax the original game applied are not yet modeled.
+
+Every stock TED environment (624 across both games) stores the same lighting
+block in mini-chunks 0x00-0x0d: RGB colors for a key light and two fill lights
+(0x00-0x02), a specular color (0x03), and an ambient color (0x04); intensities
+(0x05-0x07); azimuths in radians (0x08-0x0a, 0 to 2*pi); and elevations in
+radians (0x0b-0x0d, about -pi/2 to pi/2). Keys are typically white and above the
+horizon, while fills are tinted and usually below it. This matches the legacy
+shaders' engine-supplied key light plus a fill term derived from lights. The
+engine treats each light's direction as pointing from the surface toward the
+light and scales colors by intensity; the axis convention, and scaling the
+specular color by the key intensity, are inferences. The remaining fields
+(apparently fog color and range, wind, and cloud settings) are preserved raw.
+
+Faction definitions carry a 0..255 RGBA `Color`. A placed object's owner is a
+player slot chosen at runtime, so previews color team-color masks with the
+type's first `Affiliation` faction instead; types without an affiliation fall
+back to a player-slot palette.

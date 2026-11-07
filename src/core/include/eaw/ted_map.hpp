@@ -16,6 +16,23 @@ enum class TedMapType : std::uint32_t
     space = 2,
 };
 
+// One environment mini-chunk exactly as stored (type byte and payload).
+struct TedEnvironmentField
+{
+    std::uint8_t type{};
+    std::vector<std::byte> payload;
+};
+
+// A directional light: RGB color, intensity, and direction angles in radians. The stock corpus
+// stores three per environment (a key light followed by two fill lights).
+struct TedLight
+{
+    std::array<float, 3> color{};
+    float intensity{};
+    float azimuth{};
+    float elevation{};
+};
+
 struct TedEnvironment
 {
     std::string name;
@@ -23,6 +40,14 @@ struct TedEnvironment
     std::string skybox_primary;
     std::string skybox_secondary;
     std::string clouds;
+    // Lighting fields (mini types 0x00-0x0d). `has_lighting` is false when any of them is absent
+    // or malformed, in which case the decoded values must not be used.
+    bool has_lighting{};
+    std::array<TedLight, 3> lights{};
+    std::array<float, 3> specular{};
+    std::array<float, 3> ambient{};
+    // Every mini-chunk in source order, including fields not interpreted yet (fog, wind, clouds).
+    std::vector<TedEnvironmentField> fields;
 };
 
 struct TedTerrainLayer

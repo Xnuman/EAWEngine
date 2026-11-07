@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
+#include <cmath>
 #include <cctype>
 #include <filesystem>
 #include <stdexcept>
@@ -210,6 +212,59 @@ GameObjectFieldList GameObjectCatalog::fields(const XmlDefinition& definition, c
         }
     }
     return result;
+}
+
+std::optional<std::array<float, 4>> GameObjectCatalog::affiliation_color(const XmlDefinition& definition) const
+{
+    const auto affiliation = field(definition, "Affiliation");
+    if (affiliation.field == nullptr)
+    {
+        return std::nullopt;
+    }
+    const auto text = std::string_view(affiliation.field->text);
+    const auto faction_name = trim(text.substr(0, text.find(',')));
+    if (faction_name.empty())
+    {
+        return std::nullopt;
+    }
+    for (const auto* faction : find(faction_name))
+    {
+        if (faction->type != "Faction")
+        {
+            continue;
+        }
+        const auto color = field(*faction, "Color");
+        if (color.field == nullptr)
+        {
+            return std::nullopt;
+        }
+        // "R, G, B[, A]" in 0..255; separators may be commas and/or spaces.
+        std::array<float, 4> result{0.0F, 0.0F, 0.0F, 1.0F};
+        std::size_t count = 0;
+        const auto value = std::string_view(color.field->text);
+        std::size_t position = 0;
+        while (position < value.size() && count < result.size())
+        {
+            while (position < value.size() && (value[position] == ',' || std::isspace(static_cast<unsigned char>(value[position]))))
+            {
+                ++position;
+            }
+            if (position >= value.size())
+            {
+                break;
+            }
+            float component{};
+            const auto [end, error] = std::from_chars(value.data() + position, value.data() + value.size(), component);
+            if (error != std::errc{} || !std::isfinite(component))
+            {
+                return std::nullopt;
+            }
+            result[count++] = std::clamp(component / 255.0F, 0.0F, 1.0F);
+            position = static_cast<std::size_t>(end - value.data());
+        }
+        return count >= 3 ? std::optional<std::array<float, 4>>{result} : std::nullopt;
+    }
+    return std::nullopt;
 }
 
 GameObjectTypeMatch GameObjectCatalog::resolve(const std::uint32_t crc, const GameModelContext context) const

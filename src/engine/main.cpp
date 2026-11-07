@@ -315,6 +315,10 @@ int main(const int argc, char** argv)
                 auto visual_map = eaw::build_visual_map(vfs, *options.map);
                 renderer.load_scene(visual_map.scene);
                 tactical_camera.emplace(eaw::CameraBounds{visual_map.scene.bounds_minimum, visual_map.scene.bounds_maximum});
+                if (visual_map.lighting)
+                {
+                    renderer.set_lighting(*visual_map.lighting);
+                }
                 const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
                 const auto& scene = visual_map.scene;
                 std::cout << "Visual map: " << scene.name << (visual_map.land ? " (land; terrain is not rendered yet)" : " (space)") << '\n'
@@ -323,6 +327,8 @@ int main(const int argc, char** argv)
                           << visual_map.unexpanded_containers << " land teams/companies, " << visual_map.unrenderable_placements << " unrenderable models\n"
                           << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size()
                           << " draws | Textures: " << scene.textures.size() << " | Built in " << seconds << " s\n"
+                          << "Lighting: " << (visual_map.lighting ? "environment '" + visual_map.environment_name + "'" : std::string("engine default"))
+                          << " | team colors: " << visual_map.faction_colored << " faction, " << visual_map.player_colored << " player-slot fallback\n"
                           << "Backdrop: ";
                 if (visual_map.backdrops.empty())
                 {

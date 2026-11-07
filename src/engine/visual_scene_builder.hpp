@@ -36,6 +36,12 @@ struct VisualMapAsset
     std::size_t unrenderable_placements{};
     // Resolved backdrop layers ("definition (model path)"), in draw order.
     std::vector<std::string> backdrops;
+    // Lighting of the active environment, when it carries a complete lighting block.
+    std::optional<VisualLightRig> lighting;
+    std::string environment_name;
+    // Instances colored by their type's affiliated faction versus the player-slot fallback.
+    std::size_t faction_colored{};
+    std::size_t player_colored{};
 };
 
 [[nodiscard]] VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, std::string_view model_path);

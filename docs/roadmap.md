@@ -88,8 +88,10 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   materials (lighting model, gloss source, team-color and self-illumination
   masks, Diffuse/Specular/Emissive/Color, UV scroll, base/normal/gloss textures)
   shaded with a fill plus key-light approximation, a bindless-style texture
-  table, a material structured buffer, and per-frame constant buffers. Per-map
-  lighting, faction colors, reflections, planets, shields, and effects remain.
+  table, a material structured buffer, and per-frame constant buffers. Maps are
+  lit by their active TED environment (key, two fills, specular, ambient) and
+  team colors come from faction XML. Reflections, planets, shields, and effects
+  remain.
 - Legacy mode first: render materials from the legacy reference profiles with
   newly written shaders so the original game can run on the new engine and its
   behavior can be stabilized. Add normal/gloss/emissive/team-color and special

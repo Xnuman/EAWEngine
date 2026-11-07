@@ -395,8 +395,9 @@ struct D3d12Renderer::Impl
         std::array<float, 4> key_direction;
         std::array<float, 4> key_diffuse;
         std::array<float, 4> key_specular;
-        std::array<float, 4> fill_sky;
-        std::array<float, 4> fill_ground;
+        std::array<float, 4> ambient;
+        std::array<std::array<float, 4>, 2> fill_direction;
+        std::array<std::array<float, 4>, 2> fill_diffuse;
     };
     static_assert(sizeof(FrameConstants) <= frame_constant_bytes);
 
@@ -1453,14 +1454,14 @@ struct D3d12Renderer::Impl
                                            return std::isfinite(component);
                                        });
         };
-        if (!finite(next.key_direction) || !finite(next.key_diffuse) || !finite(next.key_specular) || !finite(next.fill_sky) || !finite(next.fill_ground))
+        const auto valid_light = [&](const VisualDirectionalLight& light)
         {
-            throw std::invalid_argument("visual light rig contains non-finite values");
-        }
-        const auto& direction = next.key_direction;
-        if (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2] <= 1.0e-12F)
+            const auto& direction = light.direction;
+            return finite(direction) && finite(light.color) && direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2] > 1.0e-12F;
+        };
+        if (!valid_light(next.key) || !valid_light(next.fills[0]) || !valid_light(next.fills[1]) || !finite(next.key_specular) || !finite(next.ambient))
         {
-            throw std::invalid_argument("visual light rig key direction is zero");
+            throw std::invalid_argument("visual light rig contains non-finite values or a zero light direction");
         }
         lighting = next;
     }
@@ -1549,13 +1550,24 @@ struct D3d12Renderer::Impl
         FrameConstants constants{};
         constants.view_projection = camera_matrix();
         constants.camera_position_time = {camera.eye[0], camera.eye[1], camera.eye[2], scene_time};
-        const auto& key = lighting.key_direction;
-        const auto key_length = std::sqrt(key[0] * key[0] + key[1] * key[1] + key[2] * key[2]);
-        constants.key_direction = {key[0] / key_length, key[1] / key_length, key[2] / key_length, 0.0F};
-        constants.key_diffuse = {lighting.key_diffuse[0], lighting.key_diffuse[1], lighting.key_diffuse[2], 0.0F};
-        constants.key_specular = {lighting.key_specular[0], lighting.key_specular[1], lighting.key_specular[2], 0.0F};
-        constants.fill_sky = {lighting.fill_sky[0], lighting.fill_sky[1], lighting.fill_sky[2], 0.0F};
-        constants.fill_ground = {lighting.fill_ground[0], lighting.fill_ground[1], lighting.fill_ground[2], 0.0F};
+        const auto unit = [](const std::array<float, 3>& value)
+        {
+            const auto length = std::sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2]);
+            return std::array<float, 4>{value[0] / length, value[1] / length, value[2] / length, 0.0F};
+        };
+        const auto rgb = [](const std::array<float, 3>& value)
+        {
+            return std::array<float, 4>{value[0], value[1], value[2], 0.0F};
+        };
+        constants.key_direction = unit(lighting.key.direction);
+        constants.key_diffuse = rgb(lighting.key.color);
+        constants.key_specular = rgb(lighting.key_specular);
+        constants.ambient = rgb(lighting.ambient);
+        for (std::size_t index = 0; index < lighting.fills.size(); ++index)
+        {
+            constants.fill_direction[index] = unit(lighting.fills[index].direction);
+            constants.fill_diffuse[index] = rgb(lighting.fills[index].color);
+        }
         std::memcpy(frame.constant_buffer_mapped, &constants, sizeof(constants));
 
         check_hresult(frame.allocator->Reset(), "ID3D12CommandAllocator::Reset");

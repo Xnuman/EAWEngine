@@ -209,8 +209,63 @@ void parse_environments(const std::span<const std::byte> bytes, const Chunk& chu
                     continue;
                 }
                 TedEnvironment environment;
+                // Lighting fields observed in all 624 stock environments: colors 0x00 (key),
+                // 0x01-0x02 (fills), 0x03 (specular), 0x04 (ambient); intensities 0x05-0x07;
+                // azimuths 0x08-0x0a and elevations 0x0b-0x0d in radians.
+                std::array<bool, 0x0e> seen{};
+                const auto read_rgb = [&](const MiniChunk& mini, std::array<float, 3>& target)
+                {
+                    if (mini.end - mini.payload != 12)
+                    {
+                        return false;
+                    }
+                    target = {read_float(bytes, mini.payload), read_float(bytes, mini.payload + 4), read_float(bytes, mini.payload + 8)};
+                    return true;
+                };
+                const auto read_scalar = [&](const MiniChunk& mini, float& target)
+                {
+                    if (mini.end - mini.payload != 4)
+                    {
+                        return false;
+                    }
+                    target = read_float(bytes, mini.payload);
+                    return true;
+                };
                 for (const auto& mini : read_minis(bytes, environment_chunk))
                 {
+                    TedEnvironmentField field;
+                    field.type = static_cast<std::uint8_t>(mini.type);
+                    field.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(mini.payload), bytes.begin() + static_cast<std::ptrdiff_t>(mini.end));
+                    environment.fields.push_back(std::move(field));
+                    if (mini.type < seen.size())
+                    {
+                        bool valid = false;
+                        if (mini.type <= 0x02)
+                        {
+                            valid = read_rgb(mini, environment.lights[mini.type].color);
+                        }
+                        else if (mini.type == 0x03)
+                        {
+                            valid = read_rgb(mini, environment.specular);
+                        }
+                        else if (mini.type == 0x04)
+                        {
+                            valid = read_rgb(mini, environment.ambient);
+                        }
+                        else if (mini.type <= 0x07)
+                        {
+                            valid = read_scalar(mini, environment.lights[mini.type - 0x05].intensity);
+                        }
+                        else if (mini.type <= 0x0a)
+                        {
+                            valid = read_scalar(mini, environment.lights[mini.type - 0x08].azimuth);
+                        }
+                        else
+                        {
+                            valid = read_scalar(mini, environment.lights[mini.type - 0x0b].elevation);
+                        }
+                        seen[mini.type] = valid;
+                    }
                     switch (mini.type)
                     {
                     case 0x14:
@@ -231,6 +286,15 @@ void parse_environments(const std::span<const std::byte> bytes, const Chunk& chu
                     default:
                         break;
                     }
+                }
+                environment.has_lighting = std::ranges::all_of(seen,
+                                                               [](const bool value)
+                                                               {
+                                                                   return value;
+                                                               });
+                if (!environment.has_lighting)
+                {
+                    map.warnings.push_back("environment '" + environment.name + "' has incomplete or malformed lighting fields");
                 }
                 map.environments.push_back(std::move(environment));
             }

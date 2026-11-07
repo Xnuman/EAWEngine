@@ -171,7 +171,8 @@ EAWAssetInspector.exe map-audit Data/Art/Maps --game foc
 
 `map-audit` also reports the distribution of active-environment indices and
 how many maps name an environment index outside their environment list, and
-`inspect` on a TED marks the active environment and both sky-dome names.
+`inspect` on a TED marks the active environment and both sky-dome names, and
+lists each environment's key and fill lights, specular, and ambient.
 
 `map-objects` resolves every placed TED object through its type-name CRC to an
 XML definition, follows `Variant_Of_Existing_Type` inheritance to the

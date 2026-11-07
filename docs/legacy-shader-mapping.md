@@ -192,13 +192,13 @@ It reproduces the documented behavior, not the original code:
 
 | Behavior | Status |
 | --- | --- |
-| Fill plus key light, 2x diffuse, exponent-16 highlight | Implemented. Fill is a sky/ground hemisphere instead of spherical harmonics, and the highlight is per pixel for all families (legacy vertex-lit families computed it per vertex). |
+| Fill plus key light, 2x diffuse, exponent-16 highlight | Implemented. The fill is ambient plus two directional fill lights evaluated directly rather than projected into spherical harmonics, and the highlight is per pixel for all families (legacy vertex-lit families computed it per vertex). |
 | Normal maps (bump families, terrain meshes, planets) | Implemented with the ALO tangent frame. |
 | Gloss from base alpha, normal alpha, or gloss-texture red | Implemented per profile. |
-| Team color (colorize mask in base alpha) | Implemented; colors are a placeholder player palette until faction colors are read from XML. |
+| Team color (colorize mask in base alpha) | Implemented; the color is the `Color` of the type's first `Affiliation` faction, with a player-slot palette for unaffiliated types. |
 | Self-illumination mask (`FSAMeshGlow`) | Implemented. |
 | Diffuse, Specular, Emissive, Color parameters | Implemented from exact ALO values; absent Specular defaults to white. |
 | Alpha test, alpha blend, additive | Implemented; transparency is not depth-sorted. |
 | UV scroll (`UVScrollRate`, nebula at 3x) | Implemented; `UVOffset` (always zero in stock data) is not applied. |
-| Per-map lighting from TED environments | Not yet; a fixed default rig is used. |
+| Per-map lighting from TED environments | Implemented from the active environment; single-model inspection uses an engine default rig. |
 | Cube reflection, planet atmosphere/clouds/city lights, shield layers, nebula wobble, wind bend, heat, occluded silhouettes, shadow volumes, fog, fog of war | Not yet. |

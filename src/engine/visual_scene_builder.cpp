@@ -356,7 +356,30 @@ VisualMaterial make_visual_material(SceneBuilder& builder, const LegacyMaterial&
     return result;
 }
 
-// Placeholder player colors until faction colors are read from XML. Index 0 is neutral.
+// Converts an environment's lighting block. Each light's direction comes from its azimuth (about
+// +Z) and elevation (above the XY plane) and points toward the light; colors are scaled by their
+// intensity. The highlight uses the specular color scaled by the key intensity. The direction
+// convention and the specular scaling are inferences pending comparison with the original game.
+VisualLightRig environment_light_rig(const TedEnvironment& environment)
+{
+    const auto light = [](const TedLight& source)
+    {
+        VisualDirectionalLight result;
+        const auto horizontal = std::cos(source.elevation);
+        result.direction = {horizontal * std::cos(source.azimuth), horizontal * std::sin(source.azimuth), std::sin(source.elevation)};
+        result.color = {source.color[0] * source.intensity, source.color[1] * source.intensity, source.color[2] * source.intensity};
+        return result;
+    };
+    VisualLightRig rig;
+    rig.key = light(environment.lights[0]);
+    rig.fills = {light(environment.lights[1]), light(environment.lights[2])};
+    const auto key_intensity = environment.lights[0].intensity;
+    rig.key_specular = {environment.specular[0] * key_intensity, environment.specular[1] * key_intensity, environment.specular[2] * key_intensity};
+    rig.ambient = environment.ambient;
+    return rig;
+}
+
+// Fallback colors by player slot for types without a faction affiliation. Index 0 is neutral.
 std::array<float, 4> player_team_color(const std::uint32_t player) noexcept
 {
     static constexpr std::array<std::array<float, 4>, 8> colors{{
@@ -637,7 +660,16 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
         // Every instance shares the identity (bind-pose) palette; per-instance animation is a
         // simulation-driven feature for later milestones.
         VisualInstance instance{*entry->second, placement.transform.values};
-        instance.team_color = player_team_color(map.placed_objects[placement.object_index].player);
+        if (const auto faction = placement.type != nullptr ? catalog.affiliation_color(*placement.type) : std::nullopt)
+        {
+            instance.team_color = *faction;
+            ++asset.faction_colored;
+        }
+        else
+        {
+            instance.team_color = player_team_color(map.placed_objects[placement.object_index].player);
+            ++asset.player_colored;
+        }
         scene.instances.push_back(instance);
     }
 
@@ -654,6 +686,11 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
             environment_index = 0;
         }
         const auto& environment = map.environments[environment_index];
+        asset.environment_name = environment.name;
+        if (environment.has_lighting)
+        {
+            asset.lighting = environment_light_rig(environment);
+        }
         const auto context = asset.land ? GameModelContext::land : GameModelContext::space;
         for (const auto& name : {environment.skybox_primary, environment.skybox_secondary})
         {

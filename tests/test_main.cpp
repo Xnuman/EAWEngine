@@ -673,6 +673,32 @@ std::vector<std::byte> make_test_ted()
     value.clear();
     append_string(value, "DAY_BLUE_SKY");
     append_mini(environment_data, 0x19, value);
+    // Complete lighting block: key/fill/fill colors, specular, ambient, intensities, azimuths,
+    // elevations (mini types 0x00-0x0d), plus an uninterpreted fog-distance field.
+    const auto append_floats = [&](const std::uint8_t type, const std::vector<float>& floats)
+    {
+        std::vector<std::byte> payload;
+        for (const auto component : floats)
+        {
+            append_float(payload, component);
+        }
+        append_mini(environment_data, type, payload);
+    };
+    append_floats(0x00, {1.0F, 0.9F, 0.8F});
+    append_floats(0x01, {0.1F, 0.2F, 0.3F});
+    append_floats(0x02, {0.2F, 0.2F, 0.4F});
+    append_floats(0x03, {0.7F, 0.7F, 0.7F});
+    append_floats(0x04, {0.05F, 0.05F, 0.05F});
+    append_floats(0x05, {0.5F});
+    append_floats(0x06, {0.4F});
+    append_floats(0x07, {0.25F});
+    append_floats(0x08, {1.5F});
+    append_floats(0x09, {3.0F});
+    append_floats(0x0a, {4.5F});
+    append_floats(0x0b, {0.4F});
+    append_floats(0x0c, {-0.3F});
+    append_floats(0x0d, {-0.2F});
+    append_floats(0x12, {10000.0F});
     std::vector<std::byte> environment_list;
     append_chunk(environment_list, 6, environment_data);
     std::vector<std::byte> night_environment;
@@ -781,7 +807,10 @@ void test_ted_map()
     require(map.elevation_map == std::vector<std::int16_t>({-10, 0, 10, 20, 30, 40}) && map.passability_map == std::vector<std::uint32_t>({0, 2, 4, 1, 3, 5}),
             "TED terrain sample retention or passability alignment failed");
     require(map.terrain_layers.size() == 1 && map.terrain_layers[0].color_texture == "GROUND.TGA" && map.environments.size() == 2 && map.environments[0].name == "Noon_Clear" &&
-                map.environments[0].skybox_primary == "DAY_BLUE_SKY" && map.active_environment == 1,
+                map.environments[0].skybox_primary == "DAY_BLUE_SKY" && map.active_environment == 1 && map.environments[0].has_lighting &&
+                map.environments[0].lights[0].color == std::array<float, 3>{1.0F, 0.9F, 0.8F} && map.environments[0].lights[2].intensity == 0.25F && map.environments[0].lights[1].azimuth == 3.0F &&
+                map.environments[0].lights[0].elevation == 0.4F && map.environments[0].ambient[0] == 0.05F && map.environments[0].fields.size() == 17 &&
+                map.environments[0].fields.back().type == 0x12 && map.environments[0].fields.back().payload.size() == 4 && !map.environments[1].has_lighting && map.warnings.size() == 1,
             "TED dependency decoding failed");
     require(map.object_count == 1 && map.object_types.size() == 1 && map.object_types[0].crc == 0x12345678U && map.zone_count == 1, "TED object or zone decoding failed");
     require(map.placed_objects.size() == 1 && map.placed_objects[0].instance_id == 42U && map.placed_objects[0].crc == 0x12345678U && map.placed_objects[0].player == 3U &&
@@ -983,6 +1012,10 @@ void test_game_object_catalog()
                 "<Squadron Name=\"Test_Squadron\"><Squadron_Units>Unit_A</Squadron_Units><Squadron_Units>Unit_A, Unit_A_Variant, Missing_Member</Squadron_Units>"
                 "<Squadron_Offsets>10.0, 0.0, 0.0</Squadron_Offsets><Squadron_Offsets>bad</Squadron_Offsets></Squadron>"
                 "<Container Name=\"Test_Team\" />"
+                "<Faction Name=\"Test_Empire\"><Color> 54, 134, 242, 255 </Color></Faction>"
+                "<Faction Name=\"Broken_Faction\"><Color>red</Color></Faction>"
+                "<SpaceUnit Name=\"Imperial_Unit\"><Affiliation>Test_Empire, Rebel</Affiliation></SpaceUnit>"
+                "<SpaceUnit Name=\"Broken_Unit\"><Affiliation>Broken_Faction</Affiliation></SpaceUnit>"
                 "</SpaceUnits>";
     }
     std::ofstream(model_root / "EV_UNIT.ALO", std::ios::binary) << "x";
@@ -1052,6 +1085,12 @@ void test_game_object_catalog()
     require(layout.placements.size() == 3 && layout.untyped == 1 && layout.missing_model_files == 1 && layout.placements[0].model_path == "DATA/ART/MODELS/EV_UNIT.ALO" &&
                 layout.placements[0].type == unit.definition && layout.placements[2].object_index == 3 && layout.placements[2].model_path.empty(),
             "map object layout resolution failed");
+
+    // Faction colors come from the first affiliated faction's 0..255 Color.
+    const auto imperial_color = catalog.affiliation_color(*catalog.find("Imperial_Unit").front());
+    require(imperial_color && std::fabs((*imperial_color)[0] - 54.0F / 255.0F) < 1.0e-6F && std::fabs((*imperial_color)[2] - 242.0F / 255.0F) < 1.0e-6F && (*imperial_color)[3] == 1.0F,
+            "affiliation faction color was not resolved");
+    require(!catalog.affiliation_color(*catalog.find("Broken_Unit").front()) && !catalog.affiliation_color(*unit.definition), "missing or malformed faction colors were accepted");
 
     // Repeated fields keep source order; a single-valued lookup takes the last occurrence.
     const auto squadron_type = catalog.find("Test_Squadron");

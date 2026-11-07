@@ -449,6 +449,18 @@ void inspect_ted(const std::span<const std::byte> bytes, const std::size_t limit
             std::cout << " (active)";
         }
         std::cout << '\n';
+        if (environment.has_lighting)
+        {
+            static constexpr std::array<const char*, 3> roles{"key", "fill", "fill"};
+            for (std::size_t light = 0; light < environment.lights.size(); ++light)
+            {
+                const auto& source = environment.lights[light];
+                std::cout << "      " << roles[light] << " color=" << source.color[0] << ',' << source.color[1] << ',' << source.color[2] << " intensity=" << source.intensity
+                          << " azimuth=" << source.azimuth << " elevation=" << source.elevation << '\n';
+            }
+            std::cout << "      specular=" << environment.specular[0] << ',' << environment.specular[1] << ',' << environment.specular[2] << " ambient=" << environment.ambient[0] << ','
+                      << environment.ambient[1] << ',' << environment.ambient[2] << " fields=" << environment.fields.size() << '\n';
+        }
     }
     std::cout << "Object CRCs:\n";
     for (std::size_t index = 0; index < std::min(limit, map.object_types.size()); ++index)
