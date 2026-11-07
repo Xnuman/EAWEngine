@@ -22,9 +22,14 @@ This repository is at milestone **0.3: native asset and localization workbench**
 - provides `EAWTools.exe`, a native Dear ImGui/DirectX 11 workbench that combines
   the asset inspector and DAT localization studio in a fast modern GUI, with an
   initial textured and animated ALO/ALA inspection viewport.
+- provides an initial `EAWEngine.exe` Direct3D 12 visual sandbox with a native
+  window/input layer, asynchronous copy-queue uploads, frame-buffered command
+  allocators, fence-based lifetime tracking, and a waitable flip-model swap
+  chain.
 
-It does **not** run the game yet. Rendering, simulation, Lua execution, audio,
-UI, networking, and save compatibility remain future milestones.
+It does **not** run the game yet. Production asset rendering, simulation, Lua
+execution, audio, runtime UI, networking, and save compatibility remain future
+milestones.
 
 ## Build
 
@@ -54,13 +59,22 @@ Verify the installed Forces of Corruption data:
 .\build\vs2022-x64\Debug\EAWEngine.exe doctor --game foc
 ```
 
-Or use the separate launcher:
+Open the Direct3D 12 visual sandbox directly or through the separate launcher:
+
+```powershell
+.\build\vs2022-x64\Debug\EAWEngine.exe sandbox --game foc
+```
 
 ```powershell
 .\build\vs2022-x64\Debug\EAWLauncher.exe --game foc
 ```
 
-Pass a development mod as a read-only overlay:
+The sandbox defaults to vsync with two frames of CPU/GPU overlap. Development
+switches include `--vsync off`, `--frame-latency 1`, `--warp`, and
+`--gpu-validation`. `--frame-limit <count>` supports self-terminating smoke
+tests.
+
+Use the launcher with a mod overlay:
 
 ```powershell
 .\build\vs2022-x64\Debug\EAWLauncher.exe --game foc `

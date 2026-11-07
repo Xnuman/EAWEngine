@@ -92,11 +92,36 @@ endif()
 
 if(WIN32)
     target_link_libraries(eaw_core PRIVATE advapi32)
+
+    add_library(eaw_platform STATIC
+        src/platform/win32_window.cpp
+    )
+    target_include_directories(eaw_platform PUBLIC src/platform/include)
+    target_compile_features(eaw_platform PUBLIC cxx_std_20)
+    target_compile_definitions(eaw_platform PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(eaw_platform PRIVATE user32)
+
+    add_library(eaw_render_d3d12 STATIC
+        src/render/d3d12_renderer.cpp
+    )
+    target_include_directories(eaw_render_d3d12 PUBLIC src/render/include)
+    target_compile_features(eaw_render_d3d12 PUBLIC cxx_std_20)
+    target_compile_definitions(eaw_render_d3d12 PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(eaw_render_d3d12 PRIVATE d3d12 d3dcompiler dxgi)
+
+    if(MSVC)
+        target_compile_options(eaw_platform PRIVATE /W4 /permissive- /EHsc /utf-8)
+        target_compile_options(eaw_render_d3d12 PRIVATE /W4 /permissive- /EHsc /utf-8)
+    endif()
 endif()
 
 add_executable(EAWEngine src/engine/main.cpp)
 target_link_libraries(EAWEngine PRIVATE eaw_core)
+if(WIN32)
+    target_link_libraries(EAWEngine PRIVATE eaw_platform eaw_render_d3d12)
+endif()
 target_compile_features(EAWEngine PRIVATE cxx_std_20)
+target_compile_definitions(EAWEngine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 
 add_executable(EAWLauncher src/launcher/main.cpp)
 target_link_libraries(EAWLauncher PRIVATE eaw_core)

@@ -77,7 +77,7 @@ int main(const int argc, char** argv)
     try
     {
         std::optional<std::filesystem::path> explicit_root;
-        std::vector<std::string> forwarded{"bootstrap"};
+        std::vector<std::string> forwarded{"sandbox"};
         for (int index = 1; index < argc; ++index)
         {
             const std::string argument = argv[index];

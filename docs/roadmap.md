@@ -66,7 +66,12 @@ campaign compatibility is a long-term engine project, not a renderer swap.
 
 ## M2 — visual sandbox
 
-- Window/input/platform layer and Direct3D 12 RHI.
+- Window/input/platform layer and the initial Direct3D 12 RHI are implemented:
+  a flip-model waitable swap chain, triple-buffered allocator contexts,
+  independent direct/copy queue fences, asynchronous initial uploads, resize
+  handling, optional tearing, WARP and GPU-validation modes, and DRED device
+  removal diagnostics. The sandbox currently renders a textured validation
+  primitive through a default-heap upload path.
 - Production GPU texture/material translation and ALO/ALA model/animation
   viewer, replacing the current ImGui inspection viewport.
 - Camera, PBR approximation for legacy materials, selection IDs, debug drawing.

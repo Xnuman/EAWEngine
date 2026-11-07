@@ -55,6 +55,15 @@ shadow atlases, clustered lighting, HDR, temporal anti-aliasing, and a scalable
 effects system. High-resolution assets are a budget/streaming problem, not a
 hard-coded dimension or polygon-count limit.
 
+The Direct3D 12 backend starts with independent direct and copy queue timelines.
+Each queue owns a monotonic fence. Swap-chain frame contexts own their command
+allocators and may only recycle them after that frame's direct-queue fence has
+completed. Uploads run on the copy queue; consumers enqueue a GPU-side wait on
+the direct queue instead of stalling the CPU. CPU waits are limited to frame
+latency pacing, reuse of a still-in-flight frame context, swap-chain resize, and
+shutdown. GPU-backed objects that support submitted work remain retained until
+their producing queue's fence completes.
+
 ## Multithreading direction
 
 "Use all cores" is not an architecture by itself. The engine uses a dependency
