@@ -225,3 +225,24 @@ sparsest level in 137 of 145, and the densest is usually the highest index, so
 higher indices are read as more detailed. The engine's default appearance
 therefore shows ALT0 and each model's highest LOD index. Switching on damage or
 distance is runtime behavior and is not modeled yet. These are corpus findings.
+
+Many terrain layers name no color texture (3,369 stock layer entries; their mini
+0x14 is always 0, while textured layers use 1-16). They are painted widely: 40 of
+135 stock land maps use them, 39 above the liquid level. The Bespin maps paint
+63% (`_LAND_PLANET_BESPIN_01`) and 79% (`UM07_CLOUD_CITY_CONFLICT`) of their
+samples with them, with the liquid level below all
+terrain, and Kamino paints its ocean floor and platform slopes with one. The
+engine reads such a layer as covering nothing: terrain is not drawn where
+untextured layers dominate, so the sky and background show through. This is an
+inference from those maps' intended look (a city floating over clouds, platforms
+over the sea), not a measured rule. The cutout follows the 20-unit sample grid.
+
+Cube reflection is rare in stock content. `MeshBumpReflectColorize` and
+`RSkinBumpReflectColorize`, the only reference shaders that sample the engine's
+sky cube, are used by no stock material, and `MeshAdditiveReflection.fx`, which
+has no reference source, by three. The reference math is recorded in
+`docs/legacy-shader-mapping.md`: a world-space reflection of the view direction
+about the vertex normal, sampled from an engine-supplied cube and scaled by
+`Specular` and normal-map alpha. No stock cube textures exist, so the original
+presumably builds the cube from the sky. Implementation is deferred until a mod
+needs it.

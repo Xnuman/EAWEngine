@@ -201,4 +201,4 @@ It reproduces the documented behavior, not the original code:
 | Alpha test, alpha blend, additive | Implemented; transparency is not depth-sorted. |
 | UV scroll (`UVScrollRate`, nebula at 3x) | Implemented; `UVOffset` (always zero in stock data) is not applied. |
 | Per-map lighting from TED environments | Implemented from the active environment; single-model inspection uses an engine default rig. |
-| Cube reflection, planet atmosphere/clouds/city lights, shield layers, nebula wobble, wind bend, heat, occluded silhouettes, shadow volumes, fog, fog of war | Not yet. |
+| Cube reflection (no stock material uses the reflective profiles), planet atmosphere/clouds/city lights, shield layers, nebula wobble, wind bend, heat, occluded silhouettes, shadow volumes, fog, fog of war | Not yet. |

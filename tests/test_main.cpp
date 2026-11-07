@@ -809,6 +809,12 @@ std::vector<std::byte> make_test_ted()
     append_string(value, "ROCK.TGA");
     append_mini(second_layer, 12, value);
     append_chunk(layers, 3, second_layer);
+    // A third, untextured layer (stock maps use these for terrain that is not drawn).
+    std::vector<std::byte> empty_layer;
+    value.clear();
+    append_string(value, "");
+    append_mini(empty_layer, 12, value);
+    append_chunk(layers, 3, empty_layer);
     // One track: header (scroll 0.1/0.2), two points, texture, two widths, opacity keys 0/1/0.
     std::vector<std::byte> track_header;
     value.clear();
@@ -929,7 +935,8 @@ void test_ted_map()
             "TED track decoding failed");
     require(map.terrain_layer_map == std::vector<std::uint8_t>({0, 0, 1, 1, 0, 1}) && map.terrain_samples.size() == 6 && (map.terrain_samples[0] >> 24U) == 0xffU,
             "TED terrain layer indices or raw samples were not retained");
-    require(map.terrain_layers.size() == 2 && map.terrain_layers[0].tile_size == 64.0F && map.terrain_layers[0].fields.size() == 3 && map.terrain_layers[1].tile_size == 0.0F,
+    require(map.terrain_layers.size() == 3 && map.terrain_layers[2].color_texture.empty() && map.terrain_layers[0].tile_size == 64.0F && map.terrain_layers[0].fields.size() == 3 &&
+                map.terrain_layers[1].tile_size == 0.0F,
             "TED terrain layer tiling or raw fields were not decoded");
     require(map.terrain_layers[0].color_texture == "GROUND.TGA" && map.environments.size() == 2 && map.environments[0].name == "Noon_Clear" && map.environments[0].skybox_primary == "DAY_BLUE_SKY" &&
                 map.active_environment == 1 && map.environments[0].has_lighting && map.environments[0].lights[0].color == std::array<float, 3>{1.0F, 0.9F, 0.8F} &&
@@ -1385,7 +1392,8 @@ void test_visual_terrain()
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
     const auto asset = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED");
     const auto& terrain = asset.scene.terrain;
-    require(asset.land && terrain.layer_count == 2 && terrain.vertices.size() == 12 && terrain.first_material + 2 <= asset.scene.materials.size(), "terrain mesh structure is wrong");
+    require(asset.land && terrain.layer_count == 3 && terrain.vertices.size() == 12 && terrain.first_material + 3 <= asset.scene.materials.size(), "terrain mesh structure is wrong");
+    require(asset.scene.materials[terrain.first_material].tint[3] == 1.0F && asset.scene.materials[terrain.first_material + 2].tint[3] == 0.0F, "an untextured terrain layer must carry zero coverage");
     require(std::fabs(asset.scene.materials[terrain.first_material].uv_scale - 1.0F / 64.0F) < 1.0e-7F, "terrain layer tiling was not applied");
     // First triangle: (0,0), (1,0), (1,1) with layers {0, 0, 0} -> sample (1,1) is index 4, layer 0.
     const auto& first = terrain.vertices[0];

@@ -615,6 +615,13 @@ void append_terrain(SceneBuilder& builder, const TedMap& map)
         {
             material.base_color_texture = scene_texture(builder, layer.color_texture);
         }
+        else
+        {
+            // A layer without a color texture covers nothing: the terrain is not drawn where it
+            // dominates, so the sky and background show through (Cloud City's platforms float over
+            // such terrain). Tint alpha carries the layer's coverage to the terrain shader.
+            material.tint[3] = 0.0F;
+        }
         if (!layer.normal_texture.empty())
         {
             material.normal_texture = scene_texture(builder, layer.normal_texture);

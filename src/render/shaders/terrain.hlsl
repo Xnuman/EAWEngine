@@ -2,7 +2,9 @@
 // one texture layer (TED sample bits 16-23). Every triangle carries its three corner layers and
 // barycentric weights, so a pixel blends the three layers' textures and normals smoothly before
 // the shared legacy lighting. Layers are materials at material_index + layer; textures are
-// projected from world X/Y and tiled by each layer's texture-coordinate scale.
+// projected from world X/Y and tiled by each layer's texture-coordinate scale. A layer's tint alpha
+// is its coverage: untextured layers have none, so the blend uses only covered layers and pixels
+// with less than half coverage are discarded.
 //
 // Written for this engine; compiled offline by DXC (shader model 6.0).
 
@@ -44,8 +46,18 @@ float4 terrain_ps(TerrainPixelInput input) : SV_TARGET
     // Planar projection: texture U follows world +X and V follows world +Y on the surface.
     const float3 tangent = safe_normalize(float3(1.0f, 0.0f, 0.0f) - surface_normal * surface_normal.x, float3(1.0f, 0.0f, 0.0f));
     const float3 binormal = cross(surface_normal, tangent);
-    const float total = max(input.barycentric.x + input.barycentric.y + input.barycentric.z, 1.0e-6f);
-    const float3 weights = input.barycentric / total;
+    float3 weights = input.barycentric / max(input.barycentric.x + input.barycentric.y + input.barycentric.z, 1.0e-6f);
+    [unroll]
+    for (uint layer_corner = 0; layer_corner < 3; ++layer_corner)
+    {
+        weights[layer_corner] *= saturate(materials[material_index + input.layers[layer_corner]].tint.a);
+    }
+    const float coverage = weights.x + weights.y + weights.z;
+    if (coverage < 0.5f)
+    {
+        discard;
+    }
+    weights /= coverage;
 
     float3 albedo = 0.0f;
     float3 tangent_normal = 0.0f;
