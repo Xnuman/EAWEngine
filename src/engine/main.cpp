@@ -797,7 +797,7 @@ int main(const int argc, char** argv)
         bool free_camera = false;
         std::optional<std::array<float, 2>> drag_start;
         bool box_active = false;
-        std::int64_t right_travel = 0;
+        std::uint64_t orders_issued = 0;
         std::uint64_t streaming_since = 0;
         while (!window.close_requested())
         {
@@ -932,6 +932,7 @@ int main(const int argc, char** argv)
                     }
                     world->submit({eaw::SimCommandKind::move, {movers[index]}, spot});
                 }
+                ++orders_issued;
                 std::cout << "Move " << movers.size() << " units to " << format_fixed(target.x, 0) << ", " << format_fixed(target.y, 0) << ", " << format_fixed(target.z, 0) << '\n';
             };
             const auto spawn_units = [&](const std::size_t type_index, const eaw::SimVector3& point, const std::uint32_t count)
@@ -948,15 +949,9 @@ int main(const int argc, char** argv)
                 }
                 std::cout << "Spawned " << spots.size() << " " << type.type_name << " at " << format_fixed(point.x, 0) << ", " << format_fixed(point.y, 0) << ", " << format_fixed(point.z, 0) << '\n';
             };
-            if (right_button.pressed)
-            {
-                right_travel = scene_mouse ? 0 : std::numeric_limits<std::int32_t>::max();
-            }
-            if (right_button.down)
-            {
-                right_travel += std::abs(input.mouse_delta_x) + std::abs(input.mouse_delta_y);
-            }
-            if (right_button.released && rts_mode && right_travel <= 3 && !selection.empty() && world)
+            // RTS mode: the right button has no drag action, so an order is issued on the press with no
+            // movement threshold (a threshold dropped quick clicks made while the mouse was moving).
+            if (right_button.pressed && rts_mode && scene_mouse && !selection.empty() && world)
             {
                 if (const auto target = ground_target(mouse[0], mouse[1]))
                 {
@@ -1255,7 +1250,7 @@ int main(const int argc, char** argv)
                     lines.push_back("Simulation: tick " + std::to_string(simulation.tick) + " at 30 Hz | " + std::to_string(simulation.entities) + " entities | dropped ticks " +
                                     std::to_string(simulation_clock.dropped_ticks()));
                 }
-                lines.push_back("Selected: " + selected_text);
+                lines.push_back("Selected: " + selected_text + " | orders issued " + std::to_string(orders_issued));
                 if (!spawnable.empty())
                 {
                     lines.push_back("Spawn: " + spawnable[spawn_choice].type_name + " (N at cursor, Tab next of " + std::to_string(spawnable.size()) + ")");
