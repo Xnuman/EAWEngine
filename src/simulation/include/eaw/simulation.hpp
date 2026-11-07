@@ -59,9 +59,11 @@ struct EntitySpawn
     float max_speed{};
     std::uint32_t visual{};
     bool selectable{true};
-    // Moves over the world's ground (height from the surface, stopped by blocked cells) instead of
-    // in a straight 3D line.
+    // Moves over the world's ground (height from the surface) instead of in a straight 3D line.
     bool follows_ground{};
+    // Passability types a ground entity may enter (its movement class; see ground_map.hpp). Zero
+    // means unconstrained.
+    std::uint32_t passable_types{};
 };
 
 enum class SimCommandKind : std::uint8_t
@@ -141,10 +143,9 @@ public:
     // data comes from map and mod content: a non-finite position, heading, or speed, or full entity
     // storage, returns an error and spawns nothing.
     [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn);
-    // Ground for entities that follow it. `blocked_classes` is a mask of raw passability values that
-    // stop ground movement (provisionally only passability::blocked; see ground_map.hpp). An entity
-    // standing on a blocked cell may still leave it.
-    void set_ground(GroundMap ground, std::uint32_t blocked_classes = passability::blocked);
+    // Ground for entities that follow it. A ground entity stops before a cell whose passability type
+    // is not among its passable_types; one standing on such a cell may still leave it.
+    void set_ground(GroundMap ground);
     [[nodiscard]] const GroundMap& ground() const noexcept;
 
     // Queues a command for the next step(); commands apply in submission order.
@@ -184,7 +185,7 @@ private:
     std::vector<std::string> type_names_;
     std::vector<std::uint8_t> follows_ground_;
     GroundMap ground_;
-    std::uint32_t blocked_classes_{};
+    std::vector<std::uint32_t> passable_types_;
     std::uint64_t blocked_moves_{};
     std::vector<SimCommand> pending_;
     SimSnapshot snapshot_;

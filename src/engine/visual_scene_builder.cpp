@@ -9,6 +9,7 @@
 #include "eaw/map_object_layout.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/xml_asset_database.hpp"
+#include "eaw/xml_document.hpp"
 #include "eaw/virtual_file_system.hpp"
 
 #include <algorithm>
@@ -22,6 +23,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <system_error>
 #include <unordered_map>
@@ -1194,6 +1196,61 @@ static bool type_follows_ground(const GameObjectCatalog& catalog, const XmlDefin
     return value == "land" || value == "none";
 }
 
+static constexpr std::string_view movement_class_path = "Data/XML/MovementClassTypeDefs.xml";
+
+// Movement classes from Data/XML/MovementClassTypeDefs.xml (the winning layer, so mods apply): class
+// name (folded) -> passability types it may enter, plus problems to report as scene warnings.
+struct MovementClasses
+{
+    std::unordered_map<std::string, std::uint32_t> classes;
+    std::vector<std::string> warnings;
+};
+
+static MovementClasses load_movement_classes(const AssetReader& reader)
+{
+    MovementClasses result;
+    const auto bytes = reader.read(movement_class_path);
+    if (!bytes)
+    {
+        result.warnings.push_back("movement classes unavailable: " + bytes.error().message);
+        return result;
+    }
+    const auto document = XmlDocument::parse(std::span<const std::byte>(*bytes));
+    if (!document)
+    {
+        result.warnings.push_back(std::string(movement_class_path) + ": " + document.error().message);
+        return result;
+    }
+    for (const auto& root : document->roots)
+    {
+        for (const auto& movement_class : root.children)
+        {
+            const auto mask = parse_passability_list(movement_class.text);
+            if (!mask)
+            {
+                result.warnings.push_back(std::string(movement_class_path) + " class " + movement_class.name + ": " + mask.error().message);
+                continue;
+            }
+            result.classes[fold_ascii(movement_class.name)] = *mask;
+        }
+    }
+    return result;
+}
+
+// Passability types a type may enter: its MovementClass's entry, or Clear | Shield (what most
+// ground classes allow) when the type names no known class.
+static std::uint32_t type_passable_types(const GameObjectCatalog& catalog, const XmlDefinition& definition, const std::unordered_map<std::string, std::uint32_t>& classes)
+{
+    if (const auto node = catalog.field(definition, "MovementClass").field)
+    {
+        if (const auto found = classes.find(fold_ascii(std::string(trim_ascii(node->text)))); found != classes.end())
+        {
+            return found->second;
+        }
+    }
+    return passability::clear | passability::shield;
+}
+
 static float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& definition, const std::string_view field)
 {
     const auto node = catalog.field(definition, field).field;
@@ -1270,6 +1327,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                                                      });
     const auto& catalog = catalog_entry->catalog;
     const auto layout = build_map_object_layout(map, catalog, vfs);
+    const auto movement_entry = cached<MovementClasses>(cache, "movement-classes", std::string(movement_class_path), vfs, load_movement_classes);
+    const auto& movement_classes = movement_entry->classes;
     asset.untyped = layout.untyped;
     asset.without_model = layout.without_model;
     asset.missing_model_files = layout.missing_model_files;
@@ -1281,6 +1340,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     SceneBuilder builder{vfs, scene, {}, cache};
     if (asset.land)
     {
+        scene.warnings.insert(scene.warnings.end(), movement_entry->warnings.begin(), movement_entry->warnings.end());
         append_terrain(builder, map);
         asset.water = append_water(builder, map).has_value() ? map.water.type : TedWaterType::none;
         const auto samples = static_cast<std::size_t>(map.terrain_width) * map.terrain_height;
@@ -1336,6 +1396,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             spawn.heading = std::atan2(matrix[1], matrix[0]);
             spawn.visual = *entry->second;
             spawn.follows_ground = asset.land && placement.type != nullptr && type_follows_ground(catalog, *placement.type);
+            if (spawn.follows_ground)
+            {
+                spawn.passable_types = type_passable_types(catalog, *placement.type, movement_classes);
+            }
             if (placement.type != nullptr)
             {
                 spawn.max_speed = type_max_speed(catalog, *placement.type, scene.warnings);
@@ -1455,6 +1519,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         spawnable.max_speed = type_max_speed(catalog, *definition, scene.warnings);
         spawnable.team_color = catalog.affiliation_color(*definition).value_or(player_team_color(1));
         spawnable.follows_ground = asset.land && type_follows_ground(catalog, *definition);
+        spawnable.passable_types = spawnable.follows_ground ? type_passable_types(catalog, *definition, movement_classes) : 0U;
         spawnable.hover_offset = type_float_field(catalog, *definition, "Hover_Offset");
         asset.spawnable.push_back(std::move(spawnable));
     }

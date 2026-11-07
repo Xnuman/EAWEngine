@@ -263,9 +263,24 @@ steep, void, or deep ground (mean slope 12.3; 16.6% below the liquid, 11.7%
 untextured); 0x20 (3%) lies 95% below the liquid surface and reads as water;
 0x100 (4%) is steep and often untextured; 0x80 and 0x4 are rare and flat. Kamino
 marks half of its flat seabed 0x1, so the values are authored, not derived from
-geometry. The engine provisionally blocks ground movement only on 0x2 and keeps
-the other classes raw until their meanings are confirmed; the sandbox's
-passability overlay (G) draws them for comparison with the original.
+geometry.
+
+The values name the passability types of `Data/XML/MovementClassTypeDefs.xml`,
+whose entries list, per movement class, the types it may enter (for example
+`Infantry` is `Clear | Shield` in EAW and `Clear | Shield | InfantryOnly` in
+FoC; `Hover` adds `Water`; `Flying` and `Space` allow nearly everything). 0x80
+and 0x100 occur only in FoC's `maps.meg`, the expansion that added
+`InfantryOnly` and `Impassable`, so they are those types; 0x1 is `Clear`, 0x2
+`Steep`, 0x20 `Water` (from the geometry above). 0x4 is read as `Obstacle`, the
+remaining static base-game type, with medium confidence. `Shield`, `RebelWall`,
+and `EmpireWall` are applied at runtime by objects (`OverridePassability`,
+`SecondaryOccupationPassability`) and never appear in stock rasters; the engine
+gives them provisional bits. Each ground entity gets the mask of its XML
+`MovementClass` (Clear | Shield when the class is missing or unknown) and stops
+before a cell outside it; one standing on such a cell may still leave. No
+official documentation of the raster was found (the public Petroglyph mod-tool
+pages and community guides describe painting passability in the map editor, not
+its encoding); comparison with the original map editor remains the check.
 
 Whether a unit walks on land-map terrain follows its XML `Space_Layer`: `Land`
 for every ground vehicle, infantry, and land hero type with a speed, `None` for

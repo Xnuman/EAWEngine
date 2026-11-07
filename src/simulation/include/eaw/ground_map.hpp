@@ -4,22 +4,39 @@
 // the drawn liquid level, and the TED passability raster. Graphics-free; the simulation moves ground
 // units over it and presentation uses it for clicks and placement.
 
+#include "eaw/status.hpp"
+
 #include <cstdint>
+#include <string_view>
 #include <optional>
 #include <vector>
 
 namespace eaw {
 
-// Raw TED passability values (one per cell; the stock corpus uses exactly one of these per cell).
-// Only the provisional readings below are evidence-based; see docs/compatibility-research.md.
+// TED passability types (one bit per type; the stock maps paint exactly one per cell). Names come
+// from MovementClassTypeDefs.xml. Evidence for the bits (docs/compatibility-research.md): 0x80 and
+// 0x100 occur only in Forces of Corruption maps, the expansion that added InfantryOnly and
+// Impassable; 0x20 cells lie 95% below the liquid; 0x2 cells are steep. Obstacle as 0x4 is the
+// remaining base-game static type (medium confidence). Walls and shields are applied at runtime by
+// objects and never appear in the stock rasters, so their bits are unverified guesses.
 namespace passability {
-inline constexpr std::uint32_t ground = 0x1;        // flat ground (most cells; mean slope 2.5)
-inline constexpr std::uint32_t blocked = 0x2;       // steep, void, or deep cells (mean slope 12.3)
-inline constexpr std::uint32_t unknown_4 = 0x4;     // rare, flat; meaning unknown
-inline constexpr std::uint32_t water = 0x20;        // 95% of its cells lie below the liquid surface
-inline constexpr std::uint32_t unknown_80 = 0x80;   // rare, flat; meaning unknown
-inline constexpr std::uint32_t unknown_100 = 0x100; // steep and void cells; meaning unknown
+inline constexpr std::uint32_t clear = 0x1;
+inline constexpr std::uint32_t steep = 0x2;
+inline constexpr std::uint32_t obstacle = 0x4;
+inline constexpr std::uint32_t rebel_wall = 0x8;   // unverified
+inline constexpr std::uint32_t empire_wall = 0x10; // unverified
+inline constexpr std::uint32_t water = 0x20;
+inline constexpr std::uint32_t shield = 0x40; // unverified
+inline constexpr std::uint32_t infantry_only = 0x80;
+inline constexpr std::uint32_t impassable = 0x100;
 } // namespace passability
+
+// The bit for a passability type name ("Clear", "InfantryOnly", ...; case-insensitive).
+[[nodiscard]] std::optional<std::uint32_t> passability_type(std::string_view name) noexcept;
+
+// Parses a MovementClassTypeDefs entry such as " Clear | Shield | InfantryOnly " into a mask of the
+// types a movement class may enter. Unknown names are an error naming them.
+[[nodiscard]] Result<std::uint32_t> parse_passability_list(std::string_view text);
 
 struct GroundMap
 {

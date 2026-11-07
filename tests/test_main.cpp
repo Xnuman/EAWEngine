@@ -879,15 +879,15 @@ void test_ground_movement()
         for (std::uint32_t x = 0; x < ground.width; ++x)
         {
             ground.heights.push_back(5.0F * static_cast<float>(x));
-            ground.passability.push_back(x == 4 ? eaw::passability::blocked : eaw::passability::ground);
+            ground.passability.push_back(x == 4 ? eaw::passability::steep : eaw::passability::clear);
         }
     }
-    require(ground.passability_at(81.0F, 20.0F) == eaw::passability::blocked && ground.passability_at(39.0F, 20.0F) == eaw::passability::ground && !ground.passability_at(-30.0F, 0.0F),
+    require(ground.passability_at(81.0F, 20.0F) == eaw::passability::steep && ground.passability_at(39.0F, 20.0F) == eaw::passability::clear && !ground.passability_at(-30.0F, 0.0F),
             "passability must be looked up at the nearest cell");
 
     eaw::SimulationWorld world(0.1);
     world.set_ground(ground);
-    const auto walker = world.spawn({.type_name = "Walker", .position = {0.0F, 20.0F, 999.0F}, .max_speed = 100.0F, .follows_ground = true});
+    const auto walker = world.spawn({.type_name = "Walker", .position = {0.0F, 20.0F, 999.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
     const auto flyer = world.spawn({.type_name = "Flyer", .position = {0.0F, 20.0F, 50.0F}, .max_speed = 100.0F});
     require(walker && flyer, "test spawns must succeed");
     world.step();
@@ -908,7 +908,7 @@ void test_ground_movement()
     require(stopped[1].position.x == 100.0F && stopped[1].position.z == 50.0F, "a unit that does not follow the ground ignores passability");
 
     // A unit standing on a blocked cell may leave it.
-    const auto stranded = world.spawn({.type_name = "Stranded", .position = {80.0F, 0.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true});
+    const auto stranded = world.spawn({.type_name = "Stranded", .position = {80.0F, 0.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
     require(stranded.ok(), "test spawn must succeed");
     world.submit({eaw::SimCommandKind::move, {*stranded}, {100.0F, 0.0F, 0.0F}});
     for (int tick = 0; tick < 5; ++tick)
@@ -916,6 +916,24 @@ void test_ground_movement()
         world.step();
     }
     require(world.snapshot().entities[2].position.x == 100.0F && std::fabs(world.snapshot().entities[2].position.z - 25.0F) < 1.0e-4F, "leaving a blocked cell must be allowed");
+
+    // A climbing class may enter steep cells.
+    const auto climber =
+        world.spawn({.type_name = "Climber", .position = {60.0F, 40.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear | eaw::passability::steep});
+    require(climber.ok(), "test spawn must succeed");
+    world.submit({eaw::SimCommandKind::move, {*climber}, {100.0F, 40.0F, 0.0F}});
+    for (int tick = 0; tick < 5; ++tick)
+    {
+        world.step();
+    }
+    require(world.snapshot().entities[3].position.x == 100.0F, "a class allowed on steep ground must cross it");
+
+    // Movement class lists parse into masks; unknown names are reported.
+    require(eaw::parse_passability_list(" Clear | Shield | InfantryOnly ").value_or(0) == (eaw::passability::clear | eaw::passability::shield | eaw::passability::infantry_only) &&
+                eaw::parse_passability_list("water").value_or(0) == eaw::passability::water,
+            "passability lists must parse case-insensitively");
+    const auto unknown = eaw::parse_passability_list("Clear | Lava");
+    require(!unknown && unknown.error().message.find("Lava") != std::string::npos, "an unknown passability type must be named");
 
     // The liquid surface carries ground units over lower terrain.
     eaw::GroundMap flooded = ground;

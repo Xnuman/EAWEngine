@@ -112,6 +112,7 @@ Result<EntityId> ScenePresentation::spawn(SimulationWorld& world, const Spawnabl
     spawn.max_speed = type.max_speed;
     spawn.visual = type.mesh;
     spawn.follows_ground = follows_ground;
+    spawn.passable_types = follows_ground ? type.passable_types : 0U;
     EAW_TRY_ASSIGN(const auto id, world.spawn(spawn));
     // The template's transform is the model's own frame; pose_transform turns and places it.
     VisualInstance instance{type.mesh};

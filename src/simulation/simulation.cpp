@@ -130,6 +130,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     selectable_.push_back(spawn.selectable ? 1U : 0U);
     type_names_.push_back(spawn.type_name);
     follows_ground_.push_back(spawn.follows_ground ? 1U : 0U);
+    passable_types_.push_back(spawn.passable_types);
     if (spawn.follows_ground && ground_.valid())
     {
         positions_.back().z = ground_.surface_height(spawn.position.x, spawn.position.y);
@@ -190,6 +191,7 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, visuals_[index]);
         hash = hash_value(hash, selectable_[index]);
         hash = hash_value(hash, follows_ground_[index]);
+        hash = hash_value(hash, passable_types_[index]);
     }
     return hash;
 }
@@ -254,6 +256,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         selectable_[dense] = selectable_[last];
         type_names_[dense] = std::move(type_names_[last]);
         follows_ground_[dense] = follows_ground_[last];
+        passable_types_[dense] = passable_types_[last];
         slot_dense_[ids_[dense].index] = static_cast<std::uint32_t>(dense);
     }
     ids_.pop_back();
@@ -266,6 +269,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     selectable_.pop_back();
     type_names_.pop_back();
     follows_ground_.pop_back();
+    passable_types_.pop_back();
     slot_dense_[slot] = no_dense;
     // A slot whose generation would wrap is retired instead of reused.
     if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
@@ -323,12 +327,12 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
     const auto scale = arrives || distance <= 0.0F ? 1.0F : step_length / distance;
     const auto next_x = position.x + delta_x * scale;
     const auto next_y = position.y + delta_y * scale;
-    if (blocked_classes_ != 0)
+    if (const auto allowed = passable_types_[index]; allowed != 0)
     {
         const auto here = ground_.passability_at(position.x, position.y);
         const auto there = ground_.passability_at(next_x, next_y);
-        const bool leaving_blocked = here && (*here & blocked_classes_) != 0;
-        if (there && (*there & blocked_classes_) != 0 && !leaving_blocked)
+        const bool leaving_blocked = here && (*here & allowed) == 0;
+        if (there && (*there & allowed) == 0 && !leaving_blocked)
         {
             // No pathfinding yet: the unit stops at the edge of a blocked cell.
             target.reset();
@@ -347,10 +351,9 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
     }
 }
 
-void SimulationWorld::set_ground(GroundMap ground, const std::uint32_t blocked_classes)
+void SimulationWorld::set_ground(GroundMap ground)
 {
     ground_ = std::move(ground);
-    blocked_classes_ = blocked_classes;
 }
 
 const GroundMap& SimulationWorld::ground() const noexcept

@@ -1,9 +1,87 @@
 #include "eaw/ground_map.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
+#include <string>
+#include <utility>
 #include <cmath>
 
 namespace eaw {
+namespace {
+
+bool equal_ignoring_case(const std::string_view left, const std::string_view right) noexcept
+{
+    return left.size() == right.size() && std::ranges::equal(left, right,
+                                                             [](const char a, const char b)
+                                                             {
+                                                                 return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+                                                             });
+}
+
+std::string_view trim(std::string_view text) noexcept
+{
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0)
+    {
+        text.remove_prefix(1);
+    }
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0)
+    {
+        text.remove_suffix(1);
+    }
+    return text;
+}
+
+} // namespace
+
+std::optional<std::uint32_t> passability_type(const std::string_view name) noexcept
+{
+    static constexpr std::array<std::pair<std::string_view, std::uint32_t>, 9> types{{
+        {"Clear", passability::clear},
+        {"Steep", passability::steep},
+        {"Obstacle", passability::obstacle},
+        {"RebelWall", passability::rebel_wall},
+        {"EmpireWall", passability::empire_wall},
+        {"Water", passability::water},
+        {"Shield", passability::shield},
+        {"InfantryOnly", passability::infantry_only},
+        {"Impassable", passability::impassable},
+    }};
+    for (const auto& [type_name, bit] : types)
+    {
+        if (equal_ignoring_case(type_name, name))
+        {
+            return bit;
+        }
+    }
+    return std::nullopt;
+}
+
+Result<std::uint32_t> parse_passability_list(const std::string_view text)
+{
+    std::uint32_t mask = 0;
+    std::size_t start = 0;
+    while (start <= text.size())
+    {
+        const auto separator = text.find('|', start);
+        const auto item = trim(text.substr(start, separator == std::string_view::npos ? std::string_view::npos : separator - start));
+        if (!item.empty())
+        {
+            const auto bit = passability_type(item);
+            if (!bit)
+            {
+                return make_error("unknown passability type '" + std::string(item) + "'");
+            }
+            mask |= *bit;
+        }
+        if (separator == std::string_view::npos)
+        {
+            break;
+        }
+        start = separator + 1;
+    }
+    return mask;
+}
 
 bool GroundMap::valid() const noexcept
 {

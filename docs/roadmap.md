@@ -166,9 +166,10 @@ it.
   pathfinding, formations, and turn rates, then targeting and combat; spawning
   becomes a deterministic command, and meshes can be registered at runtime.
   Terrain following and passability data are in: ground units (`Space_Layer`
-  Land/None) move over the map's surface and stop before blocked cells (class
-  0x2, provisional); flyers keep their altitude. Remaining passability classes
-  need confirmation; pathfinding is next.
+  Land/None) move over the map's surface and stop before cells their XML
+  `MovementClass` may not enter (types from `MovementClassTypeDefs.xml`; the
+  Obstacle bit and runtime wall/shield bits are unconfirmed); flyers keep
+  their altitude. Pathfinding is next.
 
 - ECS/storage, fixed-step scheduler, job system, transforms, spatial index,
   movement, formations, targeting, projectiles, damage, hardpoints, fog of war.

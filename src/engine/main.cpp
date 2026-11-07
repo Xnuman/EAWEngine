@@ -745,8 +745,8 @@ int main(const int argc, char** argv)
             if (show_passability && tactical_camera && terrain_heights.valid() && terrain_heights.passability.size() == terrain_heights.heights.size())
             {
                 // Every non-ground cell within 40 cells of the focus gets an X just above the surface,
-                // colored by its raw class (red blocked, blue water, orange 0x100, green 0x80,
-                // magenta 0x4, white anything else).
+                // colored by type (red Steep, blue Water, orange Impassable, green InfantryOnly,
+                // magenta Obstacle, white anything else).
                 const auto focus = tactical_camera->focus();
                 const auto spacing = terrain_heights.spacing;
                 const auto center_x = static_cast<long>(std::lround(focus[0] / spacing));
@@ -757,16 +757,16 @@ int main(const int argc, char** argv)
                     for (auto column = std::max(0L, center_x - radius); column <= std::min(static_cast<long>(terrain_heights.width) - 1, center_x + radius); ++column)
                     {
                         const auto value = terrain_heights.passability[static_cast<std::size_t>(row) * terrain_heights.width + static_cast<std::size_t>(column)];
-                        if (value == eaw::passability::ground)
+                        if (value == eaw::passability::clear)
                         {
                             continue;
                         }
-                        const std::array<float, 4> color = value == eaw::passability::blocked       ? std::array<float, 4>{1.0F, 0.25F, 0.2F, 0.85F}
-                                                           : value == eaw::passability::water       ? std::array<float, 4>{0.25F, 0.55F, 1.0F, 0.85F}
-                                                           : value == eaw::passability::unknown_100 ? std::array<float, 4>{1.0F, 0.6F, 0.1F, 0.85F}
-                                                           : value == eaw::passability::unknown_80  ? std::array<float, 4>{0.3F, 1.0F, 0.35F, 0.85F}
-                                                           : value == eaw::passability::unknown_4   ? std::array<float, 4>{1.0F, 0.3F, 1.0F, 0.85F}
-                                                                                                    : std::array<float, 4>{1.0F, 1.0F, 1.0F, 0.85F};
+                        const std::array<float, 4> color = value == eaw::passability::steep           ? std::array<float, 4>{1.0F, 0.25F, 0.2F, 0.85F}
+                                                           : value == eaw::passability::water         ? std::array<float, 4>{0.25F, 0.55F, 1.0F, 0.85F}
+                                                           : value == eaw::passability::impassable    ? std::array<float, 4>{1.0F, 0.6F, 0.1F, 0.85F}
+                                                           : value == eaw::passability::infantry_only ? std::array<float, 4>{0.3F, 1.0F, 0.35F, 0.85F}
+                                                           : value == eaw::passability::obstacle      ? std::array<float, 4>{1.0F, 0.3F, 1.0F, 0.85F}
+                                                                                                      : std::array<float, 4>{1.0F, 1.0F, 1.0F, 0.85F};
                         const auto x = static_cast<float>(column) * spacing;
                         const auto y = static_cast<float>(row) * spacing;
                         const auto half = spacing * 0.4F;

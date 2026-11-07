@@ -56,6 +56,8 @@ struct SpawnableType
     bool follows_ground{};
     // XML Hover_Offset: height above the surface for flyers (air whales 250, snowspeeders 50).
     float hover_offset{};
+    // Passability types its MovementClass may enter (MovementClassTypeDefs.xml).
+    std::uint32_t passable_types{};
 };
 
 struct VisualMapAsset

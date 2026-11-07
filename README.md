@@ -99,9 +99,10 @@ A left click without dragging selects the object under the cursor (it is
 highlighted, outlined by its bounds, and named in the console; `--pick <x> <y>`
 does the same for automation). B toggles every object's bounds and the world
 axes (`--show-bounds` starts with them on). G draws the map's passability
-classes around the camera focus (`--show-passability`): red blocked, blue
-water, orange/green/magenta classes not yet understood. Ground units follow the
-terrain and stop before blocked cells; flying units keep their altitude. Maps run their placed objects as
+types around the camera focus (`--show-passability`): red Steep, blue Water,
+orange Impassable, green InfantryOnly, magenta Obstacle. Ground units follow the
+terrain and stop before cells their movement class may not enter; flying units
+keep their altitude. Maps run their placed objects as
 simulation entities and start in an RTS camera: WASD/arrows pan, the wheel
 zooms, left-drag box-selects mobile units, and right-click orders them to the
 clicked point (straight-line movement for now). C switches to the free debug
