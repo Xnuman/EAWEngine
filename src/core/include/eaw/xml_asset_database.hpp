@@ -11,7 +11,8 @@
 
 namespace eaw {
 
-struct XmlDefinition {
+struct XmlDefinition
+{
     std::string type;
     std::string name;
     std::string source_path;
@@ -20,12 +21,14 @@ struct XmlDefinition {
     std::vector<XmlNode> fields;
 };
 
-struct XmlParseFailure {
+struct XmlParseFailure
+{
     std::string source_path;
     std::string message;
 };
 
-struct XmlIncludeReference {
+struct XmlIncludeReference
+{
     std::string source_path;
     std::size_t line{1};
     std::string value;
@@ -33,22 +36,23 @@ struct XmlIncludeReference {
     bool resolved{};
 };
 
-struct XmlDefinitionLocation {
+struct XmlDefinitionLocation
+{
     std::string source_path;
     std::size_t line{1};
 };
 
-struct XmlDuplicateDefinition {
+struct XmlDuplicateDefinition
+{
     std::string type;
     std::string name;
     std::vector<XmlDefinitionLocation> occurrences;
 };
 
-class XmlAssetDatabase final {
+class XmlAssetDatabase final
+{
 public:
-    [[nodiscard]] static XmlAssetDatabase build(
-        const VirtualFileSystem& vfs,
-        std::string_view prefix = "Data/XML");
+    [[nodiscard]] static XmlAssetDatabase build(const VirtualFileSystem& vfs, std::string_view prefix = "Data/XML");
 
     [[nodiscard]] std::size_t document_count() const noexcept;
     [[nodiscard]] std::size_t parsed_document_count() const noexcept;
@@ -56,9 +60,7 @@ public:
     [[nodiscard]] std::span<const XmlParseFailure> failures() const noexcept;
     [[nodiscard]] std::span<const XmlIncludeReference> includes() const noexcept;
     [[nodiscard]] std::span<const XmlDuplicateDefinition> duplicates() const noexcept;
-    [[nodiscard]] std::vector<const XmlDefinition*> find(
-        std::string_view type,
-        std::string_view name) const;
+    [[nodiscard]] std::vector<const XmlDefinition*> find(std::string_view type, std::string_view name) const;
 
 private:
     std::size_t document_count_{};

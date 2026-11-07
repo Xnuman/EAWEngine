@@ -13,70 +13,72 @@
 namespace eaw {
 namespace {
 
-struct Chunk {
+struct Chunk
+{
     std::uint32_t type{};
     bool container{};
     std::size_t payload{};
     std::size_t end{};
 };
 
-struct MiniChunk {
+struct MiniChunk
+{
     std::uint8_t type{};
     std::size_t payload{};
     std::size_t end{};
 };
 
-std::uint32_t read_u32(const std::span<const std::byte> bytes,
-                       const std::size_t offset) {
-    if (offset + 4 > bytes.size()) {
+std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t offset)
+{
+    if (offset + 4 > bytes.size())
+    {
         throw std::runtime_error("ALO ended while reading a 32-bit value");
     }
     std::uint32_t value = 0;
-    for (unsigned index = 0; index < 4; ++index) {
-        value |= static_cast<std::uint32_t>(
-                     std::to_integer<unsigned char>(bytes[offset + index]))
-                 << (index * 8U);
+    for (unsigned index = 0; index < 4; ++index)
+    {
+        value |= static_cast<std::uint32_t>(std::to_integer<unsigned char>(bytes[offset + index])) << (index * 8U);
     }
     return value;
 }
 
-std::int32_t read_i32(const std::span<const std::byte> bytes,
-                      const std::size_t offset) {
+std::int32_t read_i32(const std::span<const std::byte> bytes, const std::size_t offset)
+{
     return static_cast<std::int32_t>(read_u32(bytes, offset));
 }
 
-std::uint16_t read_u16(const std::span<const std::byte> bytes,
-                       const std::size_t offset) {
-    if (offset + 2 > bytes.size()) {
+std::uint16_t read_u16(const std::span<const std::byte> bytes, const std::size_t offset)
+{
+    if (offset + 2 > bytes.size())
+    {
         throw std::runtime_error("ALO ended while reading a 16-bit value");
     }
-    return static_cast<std::uint16_t>(
-        std::to_integer<unsigned char>(bytes[offset]) |
-        (std::to_integer<unsigned char>(bytes[offset + 1]) << 8U));
+    return static_cast<std::uint16_t>(std::to_integer<unsigned char>(bytes[offset]) | (std::to_integer<unsigned char>(bytes[offset + 1]) << 8U));
 }
 
-float read_float(const std::span<const std::byte> bytes,
-                 const std::size_t offset) {
+float read_float(const std::span<const std::byte> bytes, const std::size_t offset)
+{
     return std::bit_cast<float>(read_u32(bytes, offset));
 }
 
-AloVector3 read_vector3(const std::span<const std::byte> bytes,
-                        const std::size_t offset) {
-    return {read_float(bytes, offset), read_float(bytes, offset + 4),
-            read_float(bytes, offset + 8)};
+AloVector3 read_vector3(const std::span<const std::byte> bytes, const std::size_t offset)
+{
+    return {read_float(bytes, offset), read_float(bytes, offset + 4), read_float(bytes, offset + 8)};
 }
 
-std::string read_string(const std::span<const std::byte> bytes,
-                        const std::size_t begin,
-                        const std::size_t end) {
-    if (begin > end || end > bytes.size()) {
+std::string read_string(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
+{
+    if (begin > end || end > bytes.size())
+    {
         throw std::runtime_error("ALO string range is invalid");
     }
     std::string value;
     value.reserve(end - begin);
-    for (auto offset = begin; offset < end; ++offset) {
+    for (auto offset = begin; offset < end; ++offset)
+    {
         const auto character = std::to_integer<unsigned char>(bytes[offset]);
-        if (character == 0) {
+        if (character == 0)
+        {
             break;
         }
         value.push_back(static_cast<char>(character));
@@ -84,46 +86,51 @@ std::string read_string(const std::span<const std::byte> bytes,
     return value;
 }
 
-std::vector<Chunk> read_chunks(const std::span<const std::byte> bytes,
-                               const std::size_t begin,
-                               const std::size_t end) {
-    if (begin > end || end > bytes.size()) {
+std::vector<Chunk> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
+{
+    if (begin > end || end > bytes.size())
+    {
         throw std::runtime_error("ALO chunk range is invalid");
     }
     std::vector<Chunk> chunks;
     auto cursor = begin;
-    while (cursor < end) {
-        if (end - cursor < 8) {
+    while (cursor < end)
+    {
+        if (end - cursor < 8)
+        {
             throw std::runtime_error("ALO contains a truncated chunk header");
         }
         const auto type = read_u32(bytes, cursor);
         const auto encoded_size = read_u32(bytes, cursor + 4);
         const auto size = static_cast<std::size_t>(encoded_size & 0x7fffffffU);
         const auto payload = cursor + 8;
-        if (size > end - payload) {
+        if (size > end - payload)
+        {
             std::ostringstream message;
             message << "ALO chunk 0x" << std::hex << type << " extends past its parent";
             throw std::runtime_error(message.str());
         }
-        chunks.push_back({type, (encoded_size & 0x80000000U) != 0, payload,
-                          payload + size});
+        chunks.push_back({type, (encoded_size & 0x80000000U) != 0, payload, payload + size});
         cursor = payload + size;
     }
     return chunks;
 }
 
-std::vector<MiniChunk> read_minis(const std::span<const std::byte> bytes,
-                                  const Chunk& chunk) {
+std::vector<MiniChunk> read_minis(const std::span<const std::byte> bytes, const Chunk& chunk)
+{
     std::vector<MiniChunk> chunks;
     auto cursor = chunk.payload;
-    while (cursor < chunk.end) {
-        if (chunk.end - cursor < 2) {
+    while (cursor < chunk.end)
+    {
+        if (chunk.end - cursor < 2)
+        {
             throw std::runtime_error("ALO contains a truncated mini-chunk header");
         }
         const auto type = std::to_integer<std::uint8_t>(bytes[cursor]);
         const auto size = std::to_integer<std::uint8_t>(bytes[cursor + 1]);
         const auto payload = cursor + 2;
-        if (size > chunk.end - payload) {
+        if (size > chunk.end - payload)
+        {
             throw std::runtime_error("ALO mini-chunk extends past its parent");
         }
         chunks.push_back({type, payload, payload + size});
@@ -132,39 +139,44 @@ std::vector<MiniChunk> read_minis(const std::span<const std::byte> bytes,
     return chunks;
 }
 
-const Chunk* find_chunk(const std::vector<Chunk>& chunks,
-                        const std::uint32_t type) {
+const Chunk* find_chunk(const std::vector<Chunk>& chunks, const std::uint32_t type)
+{
     const auto found = std::ranges::find(chunks, type, &Chunk::type);
     return found == chunks.end() ? nullptr : &*found;
 }
 
-const MiniChunk* find_mini(const std::vector<MiniChunk>& chunks,
-                           const std::uint8_t type) {
+const MiniChunk* find_mini(const std::vector<MiniChunk>& chunks, const std::uint8_t type)
+{
     const auto found = std::ranges::find(chunks, type, &MiniChunk::type);
     return found == chunks.end() ? nullptr : &*found;
 }
 
-std::string numeric_value(const std::span<const std::byte> bytes,
-                          const Chunk& chunk,
-                          const AloShaderParameterType type) {
+std::string numeric_value(const std::span<const std::byte> bytes, const Chunk& chunk, const AloShaderParameterType type)
+{
     std::ostringstream value;
     value << std::setprecision(7);
-    switch (type) {
+    switch (type)
+    {
     case AloShaderParameterType::integer:
-        if (chunk.end - chunk.payload >= 4) {
+        if (chunk.end - chunk.payload >= 4)
+        {
             value << read_i32(bytes, chunk.payload);
         }
         break;
     case AloShaderParameterType::scalar:
-        if (chunk.end - chunk.payload >= 4) {
+        if (chunk.end - chunk.payload >= 4)
+        {
             value << read_float(bytes, chunk.payload);
         }
         break;
     case AloShaderParameterType::vector3:
-    case AloShaderParameterType::vector4: {
+    case AloShaderParameterType::vector4:
+    {
         const auto count = type == AloShaderParameterType::vector3 ? 3U : 4U;
-        for (unsigned index = 0; index < count; ++index) {
-            if (index != 0) {
+        for (unsigned index = 0; index < count; ++index)
+        {
+            if (index != 0)
+            {
                 value << ", ";
             }
             value << read_float(bytes, chunk.payload + index * 4U);
@@ -177,10 +189,11 @@ std::string numeric_value(const std::span<const std::byte> bytes,
     return value.str();
 }
 
-AloShaderParameter parse_parameter(const std::span<const std::byte> bytes,
-                                   const Chunk& chunk) {
+AloShaderParameter parse_parameter(const std::span<const std::byte> bytes, const Chunk& chunk)
+{
     AloShaderParameter parameter;
-    switch (chunk.type) {
+    switch (chunk.type)
+    {
     case 0x10102:
         parameter.type = AloShaderParameterType::integer;
         break;
@@ -200,40 +213,43 @@ AloShaderParameter parse_parameter(const std::span<const std::byte> bytes,
         return parameter;
     }
     const auto minis = read_minis(bytes, chunk);
-    if (const auto* name = find_mini(minis, 1)) {
+    if (const auto* name = find_mini(minis, 1))
+    {
         parameter.name = read_string(bytes, name->payload, name->end);
     }
-    if (const auto* data = find_mini(minis, 2)) {
+    if (const auto* data = find_mini(minis, 2))
+    {
         const Chunk data_chunk{0, false, data->payload, data->end};
-        parameter.value = parameter.type == AloShaderParameterType::texture
-                              ? read_string(bytes, data->payload, data->end)
-                              : numeric_value(bytes, data_chunk, parameter.type);
+        parameter.value = parameter.type == AloShaderParameterType::texture ? read_string(bytes, data->payload, data->end) : numeric_value(bytes, data_chunk, parameter.type);
     }
     return parameter;
 }
 
-struct Material {
+struct Material
+{
     std::string shader;
     std::vector<AloShaderParameter> parameters;
 };
 
-Material parse_material(const std::span<const std::byte> bytes,
-                        const Chunk& chunk) {
+Material parse_material(const std::span<const std::byte> bytes, const Chunk& chunk)
+{
     Material material;
-    for (const auto& child : read_chunks(bytes, chunk.payload, chunk.end)) {
-        if (child.type == 0x10101) {
+    for (const auto& child : read_chunks(bytes, chunk.payload, chunk.end))
+    {
+        if (child.type == 0x10101)
+        {
             material.shader = read_string(bytes, child.payload, child.end);
-        } else if (child.type >= 0x10102 && child.type <= 0x10106) {
+        }
+        else if (child.type >= 0x10102 && child.type <= 0x10106)
+        {
             material.parameters.push_back(parse_parameter(bytes, child));
         }
     }
     return material;
 }
 
-AloSubMesh parse_submesh(const std::span<const std::byte> bytes,
-                         const Chunk& chunk,
-                         Material material,
-                         std::vector<std::string>& warnings) {
+AloSubMesh parse_submesh(const std::span<const std::byte> bytes, const Chunk& chunk, Material material, std::vector<std::string>& warnings)
+{
     AloSubMesh submesh;
     submesh.shader = std::move(material.shader);
     submesh.parameters = std::move(material.parameters);
@@ -244,10 +260,13 @@ AloSubMesh parse_submesh(const std::span<const std::byte> bytes,
     bool has_vertex_data = false;
     bool has_index_data = false;
     bool has_skin_data = false;
-    for (const auto& child : read_chunks(bytes, chunk.payload, chunk.end)) {
-        switch (child.type) {
+    for (const auto& child : read_chunks(bytes, chunk.payload, chunk.end))
+    {
+        switch (child.type)
+        {
         case 0x10001:
-            if (child.end - child.payload >= 8) {
+            if (child.end - child.payload >= 8)
+            {
                 submesh.vertex_count = read_u32(bytes, child.payload);
                 submesh.triangle_count = read_u32(bytes, child.payload + 4);
             }
@@ -266,8 +285,7 @@ AloSubMesh parse_submesh(const std::span<const std::byte> bytes,
             has_index_data = true;
             break;
         case 0x10006:
-            submesh.skin_bone_count = static_cast<std::uint32_t>(
-                (child.end - child.payload) / sizeof(std::uint32_t));
+            submesh.skin_bone_count = static_cast<std::uint32_t>((child.end - child.payload) / sizeof(std::uint32_t));
             skin_data = child;
             has_skin_data = true;
             break;
@@ -275,87 +293,89 @@ AloSubMesh parse_submesh(const std::span<const std::byte> bytes,
             break;
         }
     }
-    if (submesh.vertex_count != 0 && vertex_bytes % submesh.vertex_count == 0) {
-        submesh.vertex_stride = static_cast<std::uint32_t>(vertex_bytes /
-                                                           submesh.vertex_count);
+    if (submesh.vertex_count != 0 && vertex_bytes % submesh.vertex_count == 0)
+    {
+        submesh.vertex_stride = static_cast<std::uint32_t>(vertex_bytes / submesh.vertex_count);
     }
-    if (has_vertex_data && submesh.vertex_count != 0 &&
-        (submesh.vertex_stride == 128 || submesh.vertex_stride == 144)) {
+    if (has_vertex_data && submesh.vertex_count != 0 && (submesh.vertex_stride == 128 || submesh.vertex_stride == 144))
+    {
         submesh.vertices.reserve(submesh.vertex_count);
         const auto bone_offset = submesh.vertex_stride == 144 ? 112U : 96U;
         const auto weight_offset = bone_offset + 16U;
-        for (std::uint32_t vertex_index = 0; vertex_index < submesh.vertex_count;
-             ++vertex_index) {
-            const auto base = vertex_data.payload +
-                              static_cast<std::size_t>(vertex_index) *
-                                  submesh.vertex_stride;
+        for (std::uint32_t vertex_index = 0; vertex_index < submesh.vertex_count; ++vertex_index)
+        {
+            const auto base = vertex_data.payload + static_cast<std::size_t>(vertex_index) * submesh.vertex_stride;
             AloVertex vertex;
             vertex.position = read_vector3(bytes, base);
             vertex.normal = read_vector3(bytes, base + 12);
-            for (std::size_t coordinate = 0; coordinate < 4; ++coordinate) {
-                vertex.texture_coordinates[coordinate] = {
-                    read_float(bytes, base + 24 + coordinate * 8),
-                    read_float(bytes, base + 28 + coordinate * 8)};
+            for (std::size_t coordinate = 0; coordinate < 4; ++coordinate)
+            {
+                vertex.texture_coordinates[coordinate] = {read_float(bytes, base + 24 + coordinate * 8), read_float(bytes, base + 28 + coordinate * 8)};
             }
             vertex.tangent = read_vector3(bytes, base + 56);
             vertex.binormal = read_vector3(bytes, base + 68);
-            vertex.color = {read_float(bytes, base + 80),
-                            read_float(bytes, base + 84),
-                            read_float(bytes, base + 88),
-                            read_float(bytes, base + 92)};
-            for (std::size_t influence = 0; influence < 4; ++influence) {
-                vertex.bone_indices[influence] =
-                    read_u32(bytes, base + bone_offset + influence * 4);
-                vertex.bone_weights[influence] =
-                    read_float(bytes, base + weight_offset + influence * 4);
+            vertex.color = {read_float(bytes, base + 80), read_float(bytes, base + 84), read_float(bytes, base + 88), read_float(bytes, base + 92)};
+            for (std::size_t influence = 0; influence < 4; ++influence)
+            {
+                vertex.bone_indices[influence] = read_u32(bytes, base + bone_offset + influence * 4);
+                vertex.bone_weights[influence] = read_float(bytes, base + weight_offset + influence * 4);
             }
             submesh.vertices.push_back(vertex);
         }
-    } else if (submesh.vertex_count != 0) {
-        warnings.push_back("Unsupported ALO vertex stride " +
-                           std::to_string(submesh.vertex_stride));
+    }
+    else if (submesh.vertex_count != 0)
+    {
+        warnings.push_back("Unsupported ALO vertex stride " + std::to_string(submesh.vertex_stride));
     }
 
-    if (has_index_data) {
+    if (has_index_data)
+    {
         const auto available = (index_data.end - index_data.payload) / 2U;
         const auto expected = static_cast<std::size_t>(submesh.triangle_count) * 3U;
         const auto count = std::min(available, expected);
         submesh.indices.reserve(count);
-        for (std::size_t index = 0; index < count; ++index) {
+        for (std::size_t index = 0; index < count; ++index)
+        {
             const auto value = read_u16(bytes, index_data.payload + index * 2U);
             submesh.indices.push_back(value);
-            if (value >= submesh.vertex_count) {
+            if (value >= submesh.vertex_count)
+            {
                 warnings.emplace_back("ALO submesh contains an out-of-range vertex index");
                 break;
             }
         }
-        if (available != expected) {
+        if (available != expected)
+        {
             warnings.push_back("ALO index count does not match its triangle count");
         }
     }
-    if (has_skin_data) {
+    if (has_skin_data)
+    {
         submesh.skin_bones.reserve(submesh.skin_bone_count);
-        for (std::uint32_t index = 0; index < submesh.skin_bone_count; ++index) {
-            submesh.skin_bones.push_back(
-                read_u32(bytes, skin_data.payload + index * 4U));
+        for (std::uint32_t index = 0; index < submesh.skin_bone_count; ++index)
+        {
+            submesh.skin_bones.push_back(read_u32(bytes, skin_data.payload + index * 4U));
         }
     }
     return submesh;
 }
 
-AloBone parse_bone(const std::span<const std::byte> bytes,
-                   const Chunk& chunk) {
+AloBone parse_bone(const std::span<const std::byte> bytes, const Chunk& chunk)
+{
     AloBone bone;
     const auto children = read_chunks(bytes, chunk.payload, chunk.end);
-    if (const auto* name = find_chunk(children, 0x203)) {
+    if (const auto* name = find_chunk(children, 0x203))
+    {
         bone.name = read_string(bytes, name->payload, name->end);
     }
     auto* data = find_chunk(children, 0x206);
-    if (data == nullptr) {
+    if (data == nullptr)
+    {
         data = find_chunk(children, 0x205);
     }
     const auto required_size = data != nullptr && data->type == 0x206 ? 60U : 56U;
-    if (data == nullptr || data->end - data->payload < required_size) {
+    if (data == nullptr || data->end - data->payload < required_size)
+    {
         throw std::runtime_error("ALO bone is missing its transform data");
     }
     bone.parent = read_i32(bytes, data->payload);
@@ -363,44 +383,45 @@ AloBone parse_bone(const std::span<const std::byte> bytes,
     const bool version_two = data->type == 0x206;
     bone.billboard = version_two ? read_u32(bytes, data->payload + 8) : 0;
     const auto transform = data->payload + (version_two ? 12U : 8U);
-    for (std::size_t index = 0; index < bone.transform.size(); ++index) {
+    for (std::size_t index = 0; index < bone.transform.size(); ++index)
+    {
         bone.transform[index] = read_float(bytes, transform + index * 4U);
     }
     return bone;
 }
 
-void parse_skeleton(const std::span<const std::byte> bytes,
-                    const Chunk& chunk,
-                    AloModel& model) {
+void parse_skeleton(const std::span<const std::byte> bytes, const Chunk& chunk, AloModel& model)
+{
     const auto children = read_chunks(bytes, chunk.payload, chunk.end);
     std::uint32_t declared = 0;
-    if (const auto* info = find_chunk(children, 0x201);
-        info != nullptr && info->end - info->payload >= 4) {
+    if (const auto* info = find_chunk(children, 0x201); info != nullptr && info->end - info->payload >= 4)
+    {
         declared = read_u32(bytes, info->payload);
     }
-    for (const auto& child : children) {
-        if (child.type == 0x202) {
+    for (const auto& child : children)
+    {
+        if (child.type == 0x202)
+        {
             model.bones.push_back(parse_bone(bytes, child));
         }
     }
-    if (declared != model.bones.size()) {
-        model.warnings.push_back("Skeleton declares " + std::to_string(declared) +
-                                 " bones but contains " +
-                                 std::to_string(model.bones.size()));
+    if (declared != model.bones.size())
+    {
+        model.warnings.push_back("Skeleton declares " + std::to_string(declared) + " bones but contains " + std::to_string(model.bones.size()));
     }
 }
 
-AloMesh parse_mesh(const std::span<const std::byte> bytes,
-                   const Chunk& chunk,
-                   AloModel& model) {
+AloMesh parse_mesh(const std::span<const std::byte> bytes, const Chunk& chunk, AloModel& model)
+{
     AloMesh mesh;
     const auto children = read_chunks(bytes, chunk.payload, chunk.end);
     std::uint32_t declared_materials = 0;
-    if (const auto* name = find_chunk(children, 0x401)) {
+    if (const auto* name = find_chunk(children, 0x401))
+    {
         mesh.name = read_string(bytes, name->payload, name->end);
     }
-    if (const auto* info = find_chunk(children, 0x402);
-        info != nullptr && info->end - info->payload >= 40) {
+    if (const auto* info = find_chunk(children, 0x402); info != nullptr && info->end - info->payload >= 40)
+    {
         declared_materials = read_u32(bytes, info->payload);
         mesh.bounds.minimum = read_vector3(bytes, info->payload + 4);
         mesh.bounds.maximum = read_vector3(bytes, info->payload + 16);
@@ -410,36 +431,36 @@ AloMesh parse_mesh(const std::span<const std::byte> bytes,
 
     Material pending;
     bool has_material = false;
-    for (const auto& child : children) {
-        if (child.type == 0x10100) {
+    for (const auto& child : children)
+    {
+        if (child.type == 0x10100)
+        {
             pending = parse_material(bytes, child);
             has_material = true;
-        } else if (child.type == 0x10000) {
-            mesh.submeshes.push_back(parse_submesh(bytes, child,
-                                                   has_material ? std::move(pending)
-                                                                : Material{},
-                                                   model.warnings));
+        }
+        else if (child.type == 0x10000)
+        {
+            mesh.submeshes.push_back(parse_submesh(bytes, child, has_material ? std::move(pending) : Material{}, model.warnings));
             has_material = false;
         }
     }
-    if (declared_materials != mesh.submeshes.size()) {
-        model.warnings.push_back("Mesh " + mesh.name + " declares " +
-                                 std::to_string(declared_materials) +
-                                 " submeshes but contains " +
-                                 std::to_string(mesh.submeshes.size()));
+    if (declared_materials != mesh.submeshes.size())
+    {
+        model.warnings.push_back("Mesh " + mesh.name + " declares " + std::to_string(declared_materials) + " submeshes but contains " + std::to_string(mesh.submeshes.size()));
     }
     return mesh;
 }
 
-AloLight parse_light(const std::span<const std::byte> bytes,
-                     const Chunk& chunk) {
+AloLight parse_light(const std::span<const std::byte> bytes, const Chunk& chunk)
+{
     AloLight light;
     const auto children = read_chunks(bytes, chunk.payload, chunk.end);
-    if (const auto* name = find_chunk(children, 0x1301)) {
+    if (const auto* name = find_chunk(children, 0x1301))
+    {
         light.name = read_string(bytes, name->payload, name->end);
     }
-    if (const auto* data = find_chunk(children, 0x1302);
-        data != nullptr && data->end - data->payload >= 20) {
+    if (const auto* data = find_chunk(children, 0x1302); data != nullptr && data->end - data->payload >= 20)
+    {
         light.type = read_u32(bytes, data->payload);
         light.color = read_vector3(bytes, data->payload + 4);
         light.intensity = read_float(bytes, data->payload + 16);
@@ -447,71 +468,83 @@ AloLight parse_light(const std::span<const std::byte> bytes,
     return light;
 }
 
-void parse_connections(const std::span<const std::byte> bytes,
-                       const Chunk& chunk,
-                       AloModel& model,
-                       const std::vector<std::pair<bool, std::size_t>>& objects) {
+void parse_connections(const std::span<const std::byte> bytes, const Chunk& chunk, AloModel& model, const std::vector<std::pair<bool, std::size_t>>& objects)
+{
     const auto children = read_chunks(bytes, chunk.payload, chunk.end);
-    for (const auto& child : children) {
-        if (child.type == 0x602) {
+    for (const auto& child : children)
+    {
+        if (child.type == 0x602)
+        {
             const auto minis = read_minis(bytes, child);
             const auto* object = find_mini(minis, 2);
             const auto* bone = find_mini(minis, 3);
-            if (object == nullptr || bone == nullptr || object->end - object->payload < 4 ||
-                bone->end - bone->payload < 4) {
+            if (object == nullptr || bone == nullptr || object->end - object->payload < 4 || bone->end - bone->payload < 4)
+            {
                 continue;
             }
             const auto object_index = read_u32(bytes, object->payload);
             const auto bone_index = read_u32(bytes, bone->payload);
-            if (object_index >= objects.size()) {
+            if (object_index >= objects.size())
+            {
                 model.warnings.push_back("Object connection references an invalid object");
                 continue;
             }
             const auto [is_mesh, index] = objects[object_index];
-            if (is_mesh) {
+            if (is_mesh)
+            {
                 model.meshes[index].attached_bone = bone_index;
-            } else {
+            }
+            else
+            {
                 model.lights[index].attached_bone = bone_index;
             }
-        } else if (child.type == 0x603) {
+        }
+        else if (child.type == 0x603)
+        {
             const auto minis = read_minis(bytes, child);
             AloProxy proxy;
-            if (const auto* value = find_mini(minis, 5)) {
+            if (const auto* value = find_mini(minis, 5))
+            {
                 proxy.name = read_string(bytes, value->payload, value->end);
             }
-            if (const auto* value = find_mini(minis, 6);
-                value != nullptr && value->end - value->payload >= 4) {
+            if (const auto* value = find_mini(minis, 6); value != nullptr && value->end - value->payload >= 4)
+            {
                 proxy.bone = read_u32(bytes, value->payload);
             }
-            if (const auto* value = find_mini(minis, 7);
-                value != nullptr && value->end - value->payload >= 4) {
+            if (const auto* value = find_mini(minis, 7); value != nullptr && value->end - value->payload >= 4)
+            {
                 proxy.hidden = read_u32(bytes, value->payload) != 0;
             }
-            if (const auto* value = find_mini(minis, 8);
-                value != nullptr && value->end - value->payload >= 4) {
+            if (const auto* value = find_mini(minis, 8); value != nullptr && value->end - value->payload >= 4)
+            {
                 proxy.alt_decrease_stay_hidden = read_u32(bytes, value->payload) != 0;
             }
             model.proxies.push_back(std::move(proxy));
-        } else if (child.type == 0x604) {
+        }
+        else if (child.type == 0x604)
+        {
             const auto nested = read_chunks(bytes, child.payload, child.end);
             const auto* data = find_chunk(nested, 0);
-            if (data == nullptr) {
+            if (data == nullptr)
+            {
                 continue;
             }
             const auto minis = read_minis(bytes, *data);
             AloDazzle dazzle;
-            if (const auto* value = find_mini(minis, 11)) {
+            if (const auto* value = find_mini(minis, 11))
+            {
                 dazzle.name = read_string(bytes, value->payload, value->end);
             }
-            if (const auto* value = find_mini(minis, 5)) {
+            if (const auto* value = find_mini(minis, 5))
+            {
                 dazzle.texture = read_string(bytes, value->payload, value->end);
             }
-            if (const auto* value = find_mini(minis, 10);
-                value != nullptr && value->end - value->payload >= 4) {
+            if (const auto* value = find_mini(minis, 10); value != nullptr && value->end - value->payload >= 4)
+            {
                 dazzle.bone = read_u32(bytes, value->payload);
             }
-            if (const auto* value = find_mini(minis, 12);
-                value != nullptr && value->end - value->payload >= 4) {
+            if (const auto* value = find_mini(minis, 12); value != nullptr && value->end - value->payload >= 4)
+            {
                 dazzle.hidden = read_u32(bytes, value->payload) != 0;
             }
             model.dazzles.push_back(std::move(dazzle));
@@ -521,7 +554,8 @@ void parse_connections(const std::span<const std::byte> bytes,
 
 } // namespace
 
-AloMatrix4 alo_identity_matrix() noexcept {
+AloMatrix4 alo_identity_matrix() noexcept
+{
     AloMatrix4 matrix;
     matrix.values[0] = 1.0F;
     matrix.values[5] = 1.0F;
@@ -530,15 +564,17 @@ AloMatrix4 alo_identity_matrix() noexcept {
     return matrix;
 }
 
-AloMatrix4 alo_multiply(const AloMatrix4& left,
-                        const AloMatrix4& right) noexcept {
+AloMatrix4 alo_multiply(const AloMatrix4& left, const AloMatrix4& right) noexcept
+{
     AloMatrix4 result;
-    for (std::size_t row = 0; row < 4; ++row) {
-        for (std::size_t column = 0; column < 4; ++column) {
+    for (std::size_t row = 0; row < 4; ++row)
+    {
+        for (std::size_t column = 0; column < 4; ++column)
+        {
             float value = 0.0F;
-            for (std::size_t inner = 0; inner < 4; ++inner) {
-                value += left.values[row * 4 + inner] *
-                         right.values[inner * 4 + column];
+            for (std::size_t inner = 0; inner < 4; ++inner)
+            {
+                value += left.values[row * 4 + inner] * right.values[inner * 4 + column];
             }
             result.values[row * 4 + column] = value;
         }
@@ -546,66 +582,76 @@ AloMatrix4 alo_multiply(const AloMatrix4& left,
     return result;
 }
 
-AloMatrix4 alo_inverse(const AloMatrix4& matrix) {
+AloMatrix4 alo_inverse(const AloMatrix4& matrix)
+{
     float augmented[4][8]{};
-    for (std::size_t row = 0; row < 4; ++row) {
-        for (std::size_t column = 0; column < 4; ++column) {
+    for (std::size_t row = 0; row < 4; ++row)
+    {
+        for (std::size_t column = 0; column < 4; ++column)
+        {
             augmented[row][column] = matrix.values[row * 4 + column];
         }
         augmented[row][row + 4] = 1.0F;
     }
-    for (std::size_t pivot = 0; pivot < 4; ++pivot) {
+    for (std::size_t pivot = 0; pivot < 4; ++pivot)
+    {
         auto best = pivot;
-        for (std::size_t row = pivot + 1; row < 4; ++row) {
-            if (std::fabs(augmented[row][pivot]) >
-                std::fabs(augmented[best][pivot])) {
+        for (std::size_t row = pivot + 1; row < 4; ++row)
+        {
+            if (std::fabs(augmented[row][pivot]) > std::fabs(augmented[best][pivot]))
+            {
                 best = row;
             }
         }
-        if (std::fabs(augmented[best][pivot]) < 1.0e-8F) {
+        if (std::fabs(augmented[best][pivot]) < 1.0e-8F)
+        {
             throw std::runtime_error("ALO bone transform is singular");
         }
-        if (best != pivot) {
-            for (std::size_t column = 0; column < 8; ++column) {
+        if (best != pivot)
+        {
+            for (std::size_t column = 0; column < 8; ++column)
+            {
                 std::swap(augmented[pivot][column], augmented[best][column]);
             }
         }
         const auto divisor = augmented[pivot][pivot];
-        for (float& value : augmented[pivot]) {
+        for (float& value : augmented[pivot])
+        {
             value /= divisor;
         }
-        for (std::size_t row = 0; row < 4; ++row) {
-            if (row == pivot) {
+        for (std::size_t row = 0; row < 4; ++row)
+        {
+            if (row == pivot)
+            {
                 continue;
             }
             const auto factor = augmented[row][pivot];
-            for (std::size_t column = 0; column < 8; ++column) {
+            for (std::size_t column = 0; column < 8; ++column)
+            {
                 augmented[row][column] -= factor * augmented[pivot][column];
             }
         }
     }
     AloMatrix4 result;
-    for (std::size_t row = 0; row < 4; ++row) {
-        for (std::size_t column = 0; column < 4; ++column) {
+    for (std::size_t row = 0; row < 4; ++row)
+    {
+        for (std::size_t column = 0; column < 4; ++column)
+        {
             result.values[row * 4 + column] = augmented[row][column + 4];
         }
     }
     return result;
 }
 
-AloVector3 alo_transform_point(const AloVector3& point,
-                               const AloMatrix4& matrix) noexcept {
-    return {point.x * matrix.values[0] + point.y * matrix.values[4] +
-                point.z * matrix.values[8] + matrix.values[12],
-            point.x * matrix.values[1] + point.y * matrix.values[5] +
-                point.z * matrix.values[9] + matrix.values[13],
-            point.x * matrix.values[2] + point.y * matrix.values[6] +
-                point.z * matrix.values[10] + matrix.values[14]};
+AloVector3 alo_transform_point(const AloVector3& point, const AloMatrix4& matrix) noexcept
+{
+    return {point.x * matrix.values[0] + point.y * matrix.values[4] + point.z * matrix.values[8] + matrix.values[12],
+            point.x * matrix.values[1] + point.y * matrix.values[5] + point.z * matrix.values[9] + matrix.values[13],
+            point.x * matrix.values[2] + point.y * matrix.values[6] + point.z * matrix.values[10] + matrix.values[14]};
 }
 
-AloMatrix4 alo_compose_transform(const AloVector3& scale,
-                                 const AloQuaternion& rotation,
-                                 const AloVector3& translation) noexcept {
+AloMatrix4 alo_compose_transform(const AloVector3& scale, const AloQuaternion& rotation, const AloVector3& translation) noexcept
+{
     const auto xx = rotation.x * rotation.x;
     const auto yy = rotation.y * rotation.y;
     const auto zz = rotation.z * rotation.z;
@@ -631,71 +677,91 @@ AloMatrix4 alo_compose_transform(const AloVector3& scale,
     return matrix;
 }
 
-AloModel AloModel::parse(const std::span<const std::byte> bytes) {
+AloModel AloModel::parse(const std::span<const std::byte> bytes)
+{
     AloModel model;
     const auto chunks = read_chunks(bytes, 0, bytes.size());
     const auto* skeleton = find_chunk(chunks, 0x200);
-    if (skeleton == nullptr) {
+    if (skeleton == nullptr)
+    {
         throw std::runtime_error("ALO is not a semantic model file (it may be a particle ALO)");
     }
     parse_skeleton(bytes, *skeleton, model);
 
     std::vector<std::pair<bool, std::size_t>> objects;
     const Chunk* connections = nullptr;
-    for (const auto& chunk : chunks) {
-        if (chunk.type == 0x400) {
+    for (const auto& chunk : chunks)
+    {
+        if (chunk.type == 0x400)
+        {
             model.meshes.push_back(parse_mesh(bytes, chunk, model));
             objects.emplace_back(true, model.meshes.size() - 1);
-        } else if (chunk.type == 0x1300) {
+        }
+        else if (chunk.type == 0x1300)
+        {
             model.lights.push_back(parse_light(bytes, chunk));
             objects.emplace_back(false, model.lights.size() - 1);
-        } else if (chunk.type == 0x600) {
+        }
+        else if (chunk.type == 0x600)
+        {
             connections = &chunk;
         }
     }
-    if (connections != nullptr) {
+    if (connections != nullptr)
+    {
         parse_connections(bytes, *connections, model, objects);
     }
     return model;
 }
 
-std::size_t AloModel::submesh_count() const noexcept {
+std::size_t AloModel::submesh_count() const noexcept
+{
     std::size_t count = 0;
-    for (const auto& mesh : meshes) {
+    for (const auto& mesh : meshes)
+    {
         count += mesh.submeshes.size();
     }
     return count;
 }
 
-std::uint64_t AloModel::vertex_count() const noexcept {
+std::uint64_t AloModel::vertex_count() const noexcept
+{
     std::uint64_t count = 0;
-    for (const auto& mesh : meshes) {
-        for (const auto& submesh : mesh.submeshes) {
+    for (const auto& mesh : meshes)
+    {
+        for (const auto& submesh : mesh.submeshes)
+        {
             count += submesh.vertex_count;
         }
     }
     return count;
 }
 
-std::uint64_t AloModel::triangle_count() const noexcept {
+std::uint64_t AloModel::triangle_count() const noexcept
+{
     std::uint64_t count = 0;
-    for (const auto& mesh : meshes) {
-        for (const auto& submesh : mesh.submeshes) {
+    for (const auto& mesh : meshes)
+    {
+        for (const auto& submesh : mesh.submeshes)
+        {
             count += submesh.triangle_count;
         }
     }
     return count;
 }
 
-std::vector<AloMatrix4> AloModel::local_bind_pose() const {
+std::vector<AloMatrix4> AloModel::local_bind_pose() const
+{
     std::vector<AloMatrix4> pose;
     pose.reserve(bones.size());
-    for (const auto& bone : bones) {
+    for (const auto& bone : bones)
+    {
         auto local = alo_identity_matrix();
-        for (std::size_t row = 0; row < 3; ++row) {
-            for (std::size_t column = 0; column < 4; ++column) {
-                local.values[column * 4 + row] =
-                    bone.transform[row * 4 + column];
+        for (std::size_t row = 0; row < 3; ++row)
+        {
+            for (std::size_t column = 0; column < 4; ++column)
+            {
+                local.values[column * 4 + row] = bone.transform[row * 4 + column];
             }
         }
         pose.push_back(local);
@@ -703,17 +769,19 @@ std::vector<AloMatrix4> AloModel::local_bind_pose() const {
     return pose;
 }
 
-std::vector<AloMatrix4> AloModel::bind_pose() const {
+std::vector<AloMatrix4> AloModel::bind_pose() const
+{
     auto local_pose = local_bind_pose();
     std::vector<AloMatrix4> pose;
     pose.reserve(bones.size());
-    for (std::size_t index = 0; index < bones.size(); ++index) {
-        if (bones[index].parent >= 0 &&
-            static_cast<std::size_t>(bones[index].parent) < pose.size()) {
-            pose.push_back(alo_multiply(
-                local_pose[index],
-                pose[static_cast<std::size_t>(bones[index].parent)]));
-        } else {
+    for (std::size_t index = 0; index < bones.size(); ++index)
+    {
+        if (bones[index].parent >= 0 && static_cast<std::size_t>(bones[index].parent) < pose.size())
+        {
+            pose.push_back(alo_multiply(local_pose[index], pose[static_cast<std::size_t>(bones[index].parent)]));
+        }
+        else
+        {
             pose.push_back(local_pose[index]);
         }
     }

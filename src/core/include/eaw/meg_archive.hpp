@@ -11,7 +11,8 @@
 
 namespace eaw {
 
-struct MegEntry {
+struct MegEntry
+{
     std::string path;
     std::uint32_t crc{};
     std::uint32_t index{};
@@ -19,7 +20,8 @@ struct MegEntry {
     std::uint32_t offset{};
 };
 
-class MegArchive final {
+class MegArchive final
+{
 public:
     explicit MegArchive(std::filesystem::path archive_path);
 
@@ -35,4 +37,3 @@ private:
 };
 
 } // namespace eaw
-

@@ -8,7 +8,8 @@
 
 namespace eaw {
 
-struct LocalizationRow {
+struct LocalizationRow
+{
     std::string key;
     std::string text;
     std::string group;
@@ -17,17 +18,9 @@ struct LocalizationRow {
     std::string notes;
 };
 
-[[nodiscard]] std::vector<LocalizationRow> read_localization_workspace(
-    const std::filesystem::path& path);
-void write_localization_workspace(const std::filesystem::path& path,
-                                  const std::vector<LocalizationRow>& rows,
-                                  bool overwrite = false);
-[[nodiscard]] std::vector<LocalizationRow> diff_localization(
-    const DatFile& base,
-    const DatFile& edited);
-void apply_localization_workspace(DatFile& target,
-                                  const std::vector<LocalizationRow>& rows,
-                                  bool allow_todo = false);
+[[nodiscard]] std::vector<LocalizationRow> read_localization_workspace(const std::filesystem::path& path);
+void write_localization_workspace(const std::filesystem::path& path, const std::vector<LocalizationRow>& rows, bool overwrite = false);
+[[nodiscard]] std::vector<LocalizationRow> diff_localization(const DatFile& base, const DatFile& edited);
+void apply_localization_workspace(DatFile& target, const std::vector<LocalizationRow>& rows, bool allow_todo = false);
 
 } // namespace eaw
-

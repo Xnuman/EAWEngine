@@ -10,16 +10,13 @@
 
 namespace eaw {
 
-struct AssetMountReport {
+struct AssetMountReport
+{
     std::vector<std::string> warnings;
 };
 
 // Builds the same low-to-high data precedence used by the engine. Mod paths are
 // accepted in user-facing high-to-low priority order (first mod wins).
-[[nodiscard]] AssetMountReport mount_game_assets(
-    VirtualFileSystem& vfs,
-    const GameProfile& profile,
-    std::span<const std::filesystem::path> mods = {});
+[[nodiscard]] AssetMountReport mount_game_assets(VirtualFileSystem& vfs, const GameProfile& profile, std::span<const std::filesystem::path> mods = {});
 
 } // namespace eaw
-

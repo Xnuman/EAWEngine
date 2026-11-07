@@ -28,79 +28,77 @@
 
 namespace {
 
-void require(const bool condition, const std::string& message) {
-    if (!condition) {
+void require(const bool condition, const std::string& message)
+{
+    if (!condition)
+    {
         throw std::runtime_error(message);
     }
 }
 
-template <typename Integer>
-void write_little_endian(std::ostream& stream, Integer value) {
-    for (std::size_t index = 0; index < sizeof(Integer); ++index) {
+template <typename Integer> void write_little_endian(std::ostream& stream, Integer value)
+{
+    for (std::size_t index = 0; index < sizeof(Integer); ++index)
+    {
         stream.put(static_cast<char>((value >> (index * 8U)) & 0xffU));
     }
 }
 
-void write_test_meg(
-    const std::filesystem::path& path,
-    const std::vector<std::pair<std::string, std::string>>& entries) {
+void write_test_meg(const std::filesystem::path& path, const std::vector<std::pair<std::string, std::string>>& entries)
+{
     std::filesystem::create_directories(path.parent_path());
     std::ofstream stream(path, std::ios::binary | std::ios::trunc);
     require(static_cast<bool>(stream), "could not create synthetic MEG archive");
-    write_little_endian<std::uint32_t>(
-        stream, static_cast<std::uint32_t>(entries.size()));
-    write_little_endian<std::uint32_t>(
-        stream, static_cast<std::uint32_t>(entries.size()));
-    std::uint32_t payload_offset = 8U +
-                                   static_cast<std::uint32_t>(entries.size() * 20U);
-    for (const auto& [name, payload] : entries) {
+    write_little_endian<std::uint32_t>(stream, static_cast<std::uint32_t>(entries.size()));
+    write_little_endian<std::uint32_t>(stream, static_cast<std::uint32_t>(entries.size()));
+    std::uint32_t payload_offset = 8U + static_cast<std::uint32_t>(entries.size() * 20U);
+    for (const auto& [name, payload] : entries)
+    {
         (void)payload;
-        require(name.size() <= std::numeric_limits<std::uint16_t>::max(),
-                "synthetic MEG filename is too long");
-        write_little_endian<std::uint16_t>(
-            stream, static_cast<std::uint16_t>(name.size()));
+        require(name.size() <= std::numeric_limits<std::uint16_t>::max(), "synthetic MEG filename is too long");
+        write_little_endian<std::uint16_t>(stream, static_cast<std::uint16_t>(name.size()));
         stream.write(name.data(), static_cast<std::streamsize>(name.size()));
         payload_offset += 2U + static_cast<std::uint32_t>(name.size());
     }
     auto next_offset = payload_offset;
-    for (std::size_t index = 0; index < entries.size(); ++index) {
+    for (std::size_t index = 0; index < entries.size(); ++index)
+    {
         const auto& payload = entries[index].second;
         write_little_endian<std::uint32_t>(stream, 0);
-        write_little_endian<std::uint32_t>(
-            stream, static_cast<std::uint32_t>(index));
-        write_little_endian<std::uint32_t>(
-            stream, static_cast<std::uint32_t>(payload.size()));
+        write_little_endian<std::uint32_t>(stream, static_cast<std::uint32_t>(index));
+        write_little_endian<std::uint32_t>(stream, static_cast<std::uint32_t>(payload.size()));
         write_little_endian<std::uint32_t>(stream, next_offset);
-        write_little_endian<std::uint32_t>(
-            stream, static_cast<std::uint32_t>(index));
+        write_little_endian<std::uint32_t>(stream, static_cast<std::uint32_t>(index));
         next_offset += static_cast<std::uint32_t>(payload.size());
     }
-    for (const auto& [name, payload] : entries) {
+    for (const auto& [name, payload] : entries)
+    {
         (void)name;
         stream.write(payload.data(), static_cast<std::streamsize>(payload.size()));
     }
     stream.close();
 }
 
-std::filesystem::path write_test_meg() {
-    const auto path = std::filesystem::temp_directory_path() /
-                      "eawengine-meg-reader-test.meg";
+std::filesystem::path write_test_meg()
+{
+    const auto path = std::filesystem::temp_directory_path() / "eawengine-meg-reader-test.meg";
     write_test_meg(path, {{"DATA\\XML\\TEST.XML", "<Test />"}});
     return path;
 }
 
-std::string read_vfs_text(const eaw::VirtualFileSystem& vfs,
-                          const std::string_view path) {
+std::string read_vfs_text(const eaw::VirtualFileSystem& vfs, const std::string_view path)
+{
     const auto bytes = vfs.read(path);
     return {reinterpret_cast<const char*>(bytes.data()), bytes.size()};
 }
 
-void test_patch_order() {
-    const auto root = std::filesystem::temp_directory_path() /
-                      "eawengine-patch-order-test";
+void test_patch_order()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-patch-order-test";
     const auto data = root / "Data";
     std::filesystem::create_directories(data);
-    for (const auto* name : {"Config.meg", "Patch2.meg", "64Patch.meg", "Patch.meg"}) {
+    for (const auto* name : {"Config.meg", "Patch2.meg", "64Patch.meg", "Patch.meg"})
+    {
         std::ofstream(data / name, std::ios::binary).put('\0');
     }
     {
@@ -119,9 +117,9 @@ void test_patch_order() {
     std::filesystem::remove_all(root, ignored);
 }
 
-void test_foc_inherits_eaw_assets() {
-    const auto root = std::filesystem::temp_directory_path() /
-                      "eawengine-foc-inheritance-test";
+void test_foc_inherits_eaw_assets()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-foc-inheritance-test";
     const auto eaw_data = root / "GameData" / "Data" / "Art" / "Textures";
     const auto foc_data = root / "corruption" / "Data" / "Art" / "Textures";
     std::error_code ignored;
@@ -134,26 +132,20 @@ void test_foc_inherits_eaw_assets() {
         std::ofstream(foc_data / "Shared.dds", std::ios::binary) << "foc-shared";
     }
 
-    const eaw::GameProfile profile{root, root / "corruption",
-                                   root / "corruption" / "Data",
-                                   eaw::GameVariant::forces_of_corruption};
+    const eaw::GameProfile profile{root, root / "corruption", root / "corruption" / "Data", eaw::GameVariant::forces_of_corruption};
     eaw::VirtualFileSystem vfs;
     const auto report = eaw::mount_game_assets(vfs, profile);
     require(report.warnings.empty(), "unexpected inherited-asset mount warning");
     const auto base_only = vfs.read("Data/Art/Textures/BaseOnly.dds");
     const auto shared = vfs.read("Data/Art/Textures/Shared.dds");
-    require(std::string(reinterpret_cast<const char*>(base_only.data()),
-                        base_only.size()) == "eaw-only",
-            "FoC did not inherit a base-game-only asset");
-    require(std::string(reinterpret_cast<const char*>(shared.data()), shared.size()) ==
-                "foc-shared",
-            "FoC did not override a shared base-game asset");
+    require(std::string(reinterpret_cast<const char*>(base_only.data()), base_only.size()) == "eaw-only", "FoC did not inherit a base-game-only asset");
+    require(std::string(reinterpret_cast<const char*>(shared.data()), shared.size()) == "foc-shared", "FoC did not override a shared base-game asset");
     std::filesystem::remove_all(root, ignored);
 }
 
-void test_layered_precedence_corpus() {
-    const auto root = std::filesystem::temp_directory_path() /
-                      "eawengine-layered-precedence-corpus";
+void test_layered_precedence_corpus()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-layered-precedence-corpus";
     const auto eaw_runtime = root / "GameData";
     const auto foc_runtime = root / "corruption";
     const auto high_mod = root / "Mods" / "HighPriority";
@@ -161,17 +153,14 @@ void test_layered_precedence_corpus() {
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
 
-    const auto write_manifest = [](const std::filesystem::path& runtime,
-                                   const std::string_view archive) {
+    const auto write_manifest = [](const std::filesystem::path& runtime, const std::string_view archive)
+    {
         std::filesystem::create_directories(runtime / "Data");
-        std::ofstream manifest(runtime / "Data" / "megafiles.xml",
-                               std::ios::binary | std::ios::trunc);
-        manifest << "<Mega_Files><File>Data\\" << archive
-                 << "</File></Mega_Files>";
+        std::ofstream manifest(runtime / "Data" / "megafiles.xml", std::ios::binary | std::ios::trunc);
+        manifest << "<Mega_Files><File>Data\\" << archive << "</File></Mega_Files>";
     };
-    const auto write_loose = [](const std::filesystem::path& runtime,
-                                const std::filesystem::path& relative,
-                                const std::string_view contents) {
+    const auto write_loose = [](const std::filesystem::path& runtime, const std::filesystem::path& relative, const std::string_view contents)
+    {
         const auto path = runtime / relative;
         std::filesystem::create_directories(path.parent_path());
         std::ofstream stream(path, std::ios::binary | std::ios::trunc);
@@ -179,141 +168,112 @@ void test_layered_precedence_corpus() {
     };
 
     write_manifest(eaw_runtime, "Base.meg");
-    write_test_meg(eaw_runtime / "Data" / "Base.meg",
-                   {{"DATA\\XML\\TARGET.XML", "eaw-manifest"},
-                    {"DATA\\XML\\EAW_ONLY.XML", "eaw-only"},
-                    {"DATA\\XML\\PATCH_CHAIN.XML", "manifest"}});
-    write_test_meg(eaw_runtime / "Data" / "Extra.meg",
-                   {{"DATA/XML/PATCH_CHAIN.XML", "unlisted"}});
-    write_test_meg(eaw_runtime / "Data" / "Patch.meg",
-                   {{"DATA/XML/PATCH_CHAIN.XML", "patch"},
-                    {"DATA/XML/NUMBERED_PATCH.XML", "patch-base"}});
-    write_test_meg(eaw_runtime / "Data" / "Patch2.meg",
-                   {{"DATA/XML/PATCH_CHAIN.XML", "patch2"},
-                    {"DATA/XML/NUMBERED_PATCH.XML", "patch2"}});
-    write_test_meg(eaw_runtime / "Data" / "Patch10.meg",
-                   {{"DATA/XML/NUMBERED_PATCH.XML", "patch10"}});
-    write_test_meg(eaw_runtime / "Data" / "64Patch.meg",
-                   {{"DATA/XML/PATCH_CHAIN.XML", "64patch"}});
+    write_test_meg(eaw_runtime / "Data" / "Base.meg", {{"DATA\\XML\\TARGET.XML", "eaw-manifest"}, {"DATA\\XML\\EAW_ONLY.XML", "eaw-only"}, {"DATA\\XML\\PATCH_CHAIN.XML", "manifest"}});
+    write_test_meg(eaw_runtime / "Data" / "Extra.meg", {{"DATA/XML/PATCH_CHAIN.XML", "unlisted"}});
+    write_test_meg(eaw_runtime / "Data" / "Patch.meg", {{"DATA/XML/PATCH_CHAIN.XML", "patch"}, {"DATA/XML/NUMBERED_PATCH.XML", "patch-base"}});
+    write_test_meg(eaw_runtime / "Data" / "Patch2.meg", {{"DATA/XML/PATCH_CHAIN.XML", "patch2"}, {"DATA/XML/NUMBERED_PATCH.XML", "patch2"}});
+    write_test_meg(eaw_runtime / "Data" / "Patch10.meg", {{"DATA/XML/NUMBERED_PATCH.XML", "patch10"}});
+    write_test_meg(eaw_runtime / "Data" / "64Patch.meg", {{"DATA/XML/PATCH_CHAIN.XML", "64patch"}});
 
     write_manifest(foc_runtime, "Base.meg");
-    write_test_meg(foc_runtime / "Data" / "Base.meg",
-                   {{"DATA/XML/TARGET.XML", "foc-manifest"},
-                    {"DATA/XML/FOC_ONLY.XML", "foc-only"}});
-    write_test_meg(foc_runtime / "Data" / "Patch.meg",
-                   {{"DATA/XML/TARGET.XML", "foc-patch"}});
+    write_test_meg(foc_runtime / "Data" / "Base.meg", {{"DATA/XML/TARGET.XML", "foc-manifest"}, {"DATA/XML/FOC_ONLY.XML", "foc-only"}});
+    write_test_meg(foc_runtime / "Data" / "Patch.meg", {{"DATA/XML/TARGET.XML", "foc-patch"}});
     write_loose(foc_runtime, "Data/XML/Target.xml", "foc-loose");
 
     write_manifest(low_mod, "Assets.meg");
-    write_test_meg(low_mod / "Data" / "Assets.meg",
-                   {{"DATA/XML/TARGET.XML", "low-archive"},
-                    {"DATA/XML/LOW_ONLY.XML", "low-only"}});
+    write_test_meg(low_mod / "Data" / "Assets.meg", {{"DATA/XML/TARGET.XML", "low-archive"}, {"DATA/XML/LOW_ONLY.XML", "low-only"}});
     write_loose(low_mod, "Data/XML/Target.xml", "low-loose");
 
     write_manifest(high_mod, "Assets.meg");
-    write_test_meg(high_mod / "Data" / "Assets.meg",
-                   {{"DATA/XML/TARGET.XML", "high-archive"},
-                    {"DATA/XML/HIGH_ARCHIVE_ONLY.XML", "high-archive-only"}});
+    write_test_meg(high_mod / "Data" / "Assets.meg", {{"DATA/XML/TARGET.XML", "high-archive"}, {"DATA/XML/HIGH_ARCHIVE_ONLY.XML", "high-archive-only"}});
     write_loose(high_mod, "Data/XML/Target.xml", "high-loose");
 
-    const eaw::GameProfile profile{root, foc_runtime, foc_runtime / "Data",
-                                   eaw::GameVariant::forces_of_corruption};
+    const eaw::GameProfile profile{root, foc_runtime, foc_runtime / "Data", eaw::GameVariant::forces_of_corruption};
     eaw::VirtualFileSystem vfs;
     const std::array mods{high_mod, low_mod};
     const auto report = eaw::mount_game_assets(vfs, profile, mods);
     require(report.warnings.empty(), "precedence corpus produced mount warnings");
 
-    require(read_vfs_text(vfs, "data\\xml/TARGET.xml") == "high-loose",
-            "first mod loose file did not win the full override stack");
-    require(read_vfs_text(vfs, "DATA/XML/HIGH_ARCHIVE_ONLY.XML") ==
-                "high-archive-only",
-            "high-priority mod archive was not mounted");
-    require(read_vfs_text(vfs, "Data/XML/Low_Only.xml") == "low-only",
-            "lower-priority mod fallback was not preserved");
-    require(read_vfs_text(vfs, "data/xml/foc_only.xml") == "foc-only",
-            "FoC fallback asset was not preserved");
-    require(read_vfs_text(vfs, "data/xml/eaw_only.xml") == "eaw-only",
-            "base-game fallback asset was not preserved");
-    require(read_vfs_text(vfs, "DATA/XML/PATCH_CHAIN.XML") == "64patch",
-            "64Patch did not win the base archive patch chain");
-    require(read_vfs_text(vfs, "DATA/XML/NUMBERED_PATCH.XML") == "patch10",
-            "numbered patch archives were not ordered numerically");
+    require(read_vfs_text(vfs, "data\\xml/TARGET.xml") == "high-loose", "first mod loose file did not win the full override stack");
+    require(read_vfs_text(vfs, "DATA/XML/HIGH_ARCHIVE_ONLY.XML") == "high-archive-only", "high-priority mod archive was not mounted");
+    require(read_vfs_text(vfs, "Data/XML/Low_Only.xml") == "low-only", "lower-priority mod fallback was not preserved");
+    require(read_vfs_text(vfs, "data/xml/foc_only.xml") == "foc-only", "FoC fallback asset was not preserved");
+    require(read_vfs_text(vfs, "data/xml/eaw_only.xml") == "eaw-only", "base-game fallback asset was not preserved");
+    require(read_vfs_text(vfs, "DATA/XML/PATCH_CHAIN.XML") == "64patch", "64Patch did not win the base archive patch chain");
+    require(read_vfs_text(vfs, "DATA/XML/NUMBERED_PATCH.XML") == "patch10", "numbered patch archives were not ordered numerically");
 
     const auto target = vfs.resolve("Data/XML/Target.xml");
-    require(target && target->kind == eaw::AssetSourceKind::directory &&
-                target->mount_name == "mod:loose:HighPriority",
-            "resolved winner did not report the highest-priority mod layer");
+    require(target && target->kind == eaw::AssetSourceKind::directory && target->mount_name == "mod:loose:HighPriority", "resolved winner did not report the highest-priority mod layer");
     const auto listed = vfs.list("data\\xml");
-    require(std::ranges::count(listed, std::string("DATA/XML/TARGET.XML"),
-                               &eaw::ResolvedAsset::virtual_path) == 1,
-            "VFS list exposed duplicate overridden paths");
-    const auto listed_target = std::ranges::find(
-        listed, std::string("DATA/XML/TARGET.XML"),
-        &eaw::ResolvedAsset::virtual_path);
-    require(listed_target != listed.end() &&
-                listed_target->mount_name == "mod:loose:HighPriority",
-            "VFS list did not expose the same winner as resolve");
+    require(std::ranges::count(listed, std::string("DATA/XML/TARGET.XML"), &eaw::ResolvedAsset::virtual_path) == 1, "VFS list exposed duplicate overridden paths");
+    const auto listed_target = std::ranges::find(listed, std::string("DATA/XML/TARGET.XML"), &eaw::ResolvedAsset::virtual_path);
+    require(listed_target != listed.end() && listed_target->mount_name == "mod:loose:HighPriority", "VFS list did not expose the same winner as resolve");
 
     std::filesystem::remove_all(root, ignored);
 }
 
-void append_u32(std::vector<std::byte>& bytes, const std::uint32_t value) {
-    for (unsigned shift = 0; shift < 32; shift += 8) {
+void append_u32(std::vector<std::byte>& bytes, const std::uint32_t value)
+{
+    for (unsigned shift = 0; shift < 32; shift += 8)
+    {
         bytes.push_back(static_cast<std::byte>((value >> shift) & 0xffU));
     }
 }
 
-void append_float(std::vector<std::byte>& bytes, const float value) {
+void append_float(std::vector<std::byte>& bytes, const float value)
+{
     append_u32(bytes, std::bit_cast<std::uint32_t>(value));
 }
 
-void append_u16(std::vector<std::byte>& bytes, const std::uint16_t value) {
+void append_u16(std::vector<std::byte>& bytes, const std::uint16_t value)
+{
     bytes.push_back(static_cast<std::byte>(value & 0xffU));
     bytes.push_back(static_cast<std::byte>((value >> 8U) & 0xffU));
 }
 
-void append_string(std::vector<std::byte>& bytes, const std::string_view value) {
-    for (const char character : value) {
+void append_string(std::vector<std::byte>& bytes, const std::string_view value)
+{
+    for (const char character : value)
+    {
         bytes.push_back(static_cast<std::byte>(character));
     }
     bytes.push_back(std::byte{});
 }
 
-void append_wide_string(std::vector<std::byte>& bytes,
-                        const std::u16string_view value) {
-    for (const auto character : value) {
+void append_wide_string(std::vector<std::byte>& bytes, const std::u16string_view value)
+{
+    for (const auto character : value)
+    {
         append_u16(bytes, static_cast<std::uint16_t>(character));
     }
     append_u16(bytes, 0);
 }
 
-void append_chunk(std::vector<std::byte>& target,
-                  const std::uint32_t type,
-                  const std::vector<std::byte>& payload,
-                  const bool container = false) {
+void append_chunk(std::vector<std::byte>& target, const std::uint32_t type, const std::vector<std::byte>& payload, const bool container = false)
+{
     append_u32(target, type);
-    append_u32(target, static_cast<std::uint32_t>(payload.size()) |
-                           (container ? 0x80000000U : 0U));
+    append_u32(target, static_cast<std::uint32_t>(payload.size()) | (container ? 0x80000000U : 0U));
     target.insert(target.end(), payload.begin(), payload.end());
 }
 
-void append_mini(std::vector<std::byte>& target,
-                 const std::uint8_t type,
-                 const std::vector<std::byte>& payload) {
+void append_mini(std::vector<std::byte>& target, const std::uint8_t type, const std::vector<std::byte>& payload)
+{
     require(payload.size() <= 255, "test mini-chunk payload is too large");
     target.push_back(static_cast<std::byte>(type));
     target.push_back(static_cast<std::byte>(payload.size()));
     target.insert(target.end(), payload.begin(), payload.end());
 }
 
-std::vector<std::byte> make_test_alo() {
+std::vector<std::byte> make_test_alo()
+{
     std::vector<std::byte> bone_name;
     append_string(bone_name, "ROOT");
     std::vector<std::byte> bone_data;
     append_u32(bone_data, 0xffffffffU);
     append_u32(bone_data, 1);
     append_u32(bone_data, 0);
-    for (int index = 0; index < 12; ++index) {
+    for (int index = 0; index < 12; ++index)
+    {
         append_float(bone_data, index == 0 || index == 5 || index == 10 ? 1.0F : 0.0F);
     }
     std::vector<std::byte> bone;
@@ -349,7 +309,8 @@ std::vector<std::byte> make_test_alo() {
     append_string(mesh_name, "TEST_MESH");
     std::vector<std::byte> mesh_info;
     append_u32(mesh_info, 1);
-    for (const float value : {-1.0F, -2.0F, -3.0F, 1.0F, 2.0F, 3.0F}) {
+    for (const float value : {-1.0F, -2.0F, -3.0F, 1.0F, 2.0F, 3.0F})
+    {
         append_float(mesh_info, value);
     }
     append_u32(mesh_info, 0);
@@ -383,28 +344,20 @@ std::vector<std::byte> make_test_alo() {
     return alo;
 }
 
-void test_alo_model() {
+void test_alo_model()
+{
     const auto model = eaw::AloModel::parse(make_test_alo());
-    require(model.bones.size() == 1 && model.bones[0].name == "ROOT" &&
-                model.bones[0].parent == -1,
-            "ALO skeleton decoding failed");
-    require(model.meshes.size() == 1 && model.meshes[0].name == "TEST_MESH" &&
-                model.meshes[0].attached_bone == 0U,
-            "ALO mesh decoding failed");
-    require(model.submesh_count() == 1 && model.vertex_count() == 3 &&
-                model.triangle_count() == 1 &&
-                model.meshes[0].submeshes[0].vertex_stride == 144 &&
-                model.meshes[0].submeshes[0].vertices.size() == 3 &&
-                model.meshes[0].submeshes[0].indices.size() == 3 &&
-                model.meshes[0].submeshes[0].shader == "MeshGloss.fx",
+    require(model.bones.size() == 1 && model.bones[0].name == "ROOT" && model.bones[0].parent == -1, "ALO skeleton decoding failed");
+    require(model.meshes.size() == 1 && model.meshes[0].name == "TEST_MESH" && model.meshes[0].attached_bone == 0U, "ALO mesh decoding failed");
+    require(model.submesh_count() == 1 && model.vertex_count() == 3 && model.triangle_count() == 1 && model.meshes[0].submeshes[0].vertex_stride == 144 &&
+                model.meshes[0].submeshes[0].vertices.size() == 3 && model.meshes[0].submeshes[0].indices.size() == 3 && model.meshes[0].submeshes[0].shader == "MeshGloss.fx",
             "ALO submesh decoding failed");
     const auto bind_pose = model.bind_pose();
-    require(bind_pose.size() == 1 && bind_pose[0].values[0] == 1.0F &&
-                bind_pose[0].values[5] == 1.0F && bind_pose[0].values[10] == 1.0F,
-            "ALO bind-pose decoding failed");
+    require(bind_pose.size() == 1 && bind_pose[0].values[0] == 1.0F && bind_pose[0].values[5] == 1.0F && bind_pose[0].values[10] == 1.0F, "ALO bind-pose decoding failed");
 }
 
-std::vector<std::byte> make_test_ala() {
+std::vector<std::byte> make_test_ala()
+{
     std::vector<std::byte> info_minis;
     std::vector<std::byte> frames;
     append_u32(frames, 31);
@@ -442,39 +395,32 @@ std::vector<std::byte> make_test_ala() {
 
     std::vector<std::byte> track;
     append_chunk(track, 0x1003, track_minis);
-    append_chunk(track, 0x1007, {std::byte{0xff}, std::byte{0xff},
-                                 std::byte{0xff}, std::byte{0x7f}});
+    append_chunk(track, 0x1007, {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}, std::byte{0x7f}});
 
     std::vector<std::byte> animation;
     append_chunk(animation, 0x1001, info_minis);
     append_chunk(animation, 0x1002, track, true);
-    append_chunk(animation, 0x100a,
-                 std::vector<std::byte>(31U * 3U * 2U, std::byte{}));
-    append_chunk(animation, 0x1009,
-                 std::vector<std::byte>(31U * 4U * 2U, std::byte{}));
+    append_chunk(animation, 0x100a, std::vector<std::byte>(31U * 3U * 2U, std::byte{}));
+    append_chunk(animation, 0x1009, std::vector<std::byte>(31U * 4U * 2U, std::byte{}));
     std::vector<std::byte> ala;
     append_chunk(ala, 0x1000, animation, true);
     return ala;
 }
 
-void test_ala_animation() {
+void test_ala_animation()
+{
     const auto animation = eaw::AlaAnimation::parse(make_test_ala());
-    require(animation.version == 2 && animation.stored_frame_count == 31 &&
-                animation.playable_frame_count() == 30 &&
-                animation.frames_per_second == 30.0F &&
-                animation.duration_seconds() == 1.0F,
+    require(animation.version == 2 && animation.stored_frame_count == 31 && animation.playable_frame_count() == 30 && animation.frames_per_second == 30.0F && animation.duration_seconds() == 1.0F,
             "ALA animation header decoding failed");
-    require(animation.tracks.size() == 1 && animation.tracks[0].name == "ROOT" &&
-                animation.tracks[0].translation && animation.tracks[0].rotation &&
-                !animation.tracks[0].scale && animation.tracks[0].visibility &&
-                animation.tracks[0].frames.size() == 31,
+    require(animation.tracks.size() == 1 && animation.tracks[0].name == "ROOT" && animation.tracks[0].translation && animation.tracks[0].rotation && !animation.tracks[0].scale &&
+                animation.tracks[0].visibility && animation.tracks[0].frames.size() == 31,
             "ALA bone track decoding failed");
     const auto pose = animation.sample_pose(eaw::AloModel::parse(make_test_alo()), 0.5F);
-    require(pose.size() == 1 && pose[0].visible,
-            "ALA sampled pose decoding failed");
+    require(pose.size() == 1 && pose[0].visible, "ALA sampled pose decoding failed");
 }
 
-std::vector<std::byte> make_test_ted() {
+std::vector<std::byte> make_test_ted()
+{
     std::vector<std::byte> properties;
     std::vector<std::byte> value;
     append_u32(value, 1);
@@ -515,7 +461,8 @@ std::vector<std::byte> make_test_ted() {
     append_u32(value, 1);
     append_mini(terrain_info, 5, value);
     std::vector<std::byte> elevation;
-    for (const auto height : {-10, 0, 10, 20, 30, 40}) {
+    for (const auto height : {-10, 0, 10, 20, 30, 40})
+    {
         append_u32(elevation, static_cast<std::uint32_t>(height));
     }
     std::vector<std::byte> layer_data;
@@ -569,7 +516,8 @@ std::vector<std::byte> make_test_ted() {
     std::vector<std::byte> zones;
     append_chunk(zones, 0, {}, true);
     std::vector<std::byte> passability;
-    for (int index = 0; index < 6; ++index) {
+    for (int index = 0; index < 6; ++index)
+    {
         append_u32(passability, static_cast<std::uint32_t>(index));
     }
 
@@ -585,42 +533,25 @@ std::vector<std::byte> make_test_ted() {
     return ted;
 }
 
-void test_ted_map() {
+void test_ted_map()
+{
     const auto map = eaw::TedMap::parse(make_test_ted());
-    require(map.type == eaw::TedMapType::land && map.players == 2 &&
-                map.name == "TEXT_TEST_MAP" && map.planet == "TEST_PLANET",
-            "TED property decoding failed");
-    require(map.terrain_width == 3 && map.terrain_height == 2 &&
-                map.elevation_sample_count == 6 && map.minimum_elevation == -10 &&
-                map.maximum_elevation == 40 && map.passability_sample_count == 6,
+    require(map.type == eaw::TedMapType::land && map.players == 2 && map.name == "TEXT_TEST_MAP" && map.planet == "TEST_PLANET", "TED property decoding failed");
+    require(map.terrain_width == 3 && map.terrain_height == 2 && map.elevation_sample_count == 6 && map.minimum_elevation == -10 && map.maximum_elevation == 40 && map.passability_sample_count == 6,
             "TED terrain decoding failed");
-    require(map.elevation_map ==
-                std::vector<std::int16_t>({-10, 0, 10, 20, 30, 40}) &&
-                map.passability_map ==
-                    std::vector<std::uint32_t>({0, 2, 4, 1, 3, 5}),
+    require(map.elevation_map == std::vector<std::int16_t>({-10, 0, 10, 20, 30, 40}) && map.passability_map == std::vector<std::uint32_t>({0, 2, 4, 1, 3, 5}),
             "TED terrain sample retention or passability alignment failed");
-    require(map.terrain_layers.size() == 1 &&
-                map.terrain_layers[0].color_texture == "GROUND.TGA" &&
-                map.environments.size() == 1 &&
-                map.environments[0].name == "Noon_Clear",
+    require(map.terrain_layers.size() == 1 && map.terrain_layers[0].color_texture == "GROUND.TGA" && map.environments.size() == 1 && map.environments[0].name == "Noon_Clear",
             "TED dependency decoding failed");
-    require(map.object_count == 1 && map.object_types.size() == 1 &&
-                map.object_types[0].crc == 0x12345678U && map.zone_count == 1,
-            "TED object or zone decoding failed");
-    require(map.placed_objects.size() == 1 &&
-                map.placed_objects[0].instance_id == 42U &&
-                map.placed_objects[0].crc == 0x12345678U &&
-                map.placed_objects[0].player == 3U &&
-                map.placed_objects[0].scale == 1.5F &&
-                map.placed_objects[0].position.x == 100.0F &&
-                map.placed_objects[0].position.y == 25.0F &&
-                map.placed_objects[0].position.z == -50.0F &&
-                map.placed_objects[0].rotation.y == 90.0F &&
-                map.placed_objects[0].has_transform,
+    require(map.object_count == 1 && map.object_types.size() == 1 && map.object_types[0].crc == 0x12345678U && map.zone_count == 1, "TED object or zone decoding failed");
+    require(map.placed_objects.size() == 1 && map.placed_objects[0].instance_id == 42U && map.placed_objects[0].crc == 0x12345678U && map.placed_objects[0].player == 3U &&
+                map.placed_objects[0].scale == 1.5F && map.placed_objects[0].position.x == 100.0F && map.placed_objects[0].position.y == 25.0F && map.placed_objects[0].position.z == -50.0F &&
+                map.placed_objects[0].rotation.y == 90.0F && map.placed_objects[0].has_transform,
             "TED placed-object transform decoding failed");
 }
 
-std::vector<std::byte> make_test_dat() {
+std::vector<std::byte> make_test_dat()
+{
     const std::string first_key = "TEXT_UNIT_TEST";
     const std::string second_key = "TEXT_TOOLTIP_TEST";
     const std::u16string first_value = u"Test Unit";
@@ -633,78 +564,68 @@ std::vector<std::byte> make_test_dat() {
     append_u32(bytes, eaw::dat_key_crc(second_key));
     append_u32(bytes, static_cast<std::uint32_t>(second_value.size()));
     append_u32(bytes, static_cast<std::uint32_t>(second_key.size()));
-    for (const auto& value : {first_value, second_value}) {
-        for (const char16_t character : value) {
+    for (const auto& value : {first_value, second_value})
+    {
+        for (const char16_t character : value)
+        {
             bytes.push_back(static_cast<std::byte>(character & 0xffU));
             bytes.push_back(static_cast<std::byte>((character >> 8U) & 0xffU));
         }
     }
-    for (const auto& key : {first_key, second_key}) {
-        for (const unsigned char character : key) {
+    for (const auto& key : {first_key, second_key})
+    {
+        for (const unsigned char character : key)
+        {
             bytes.push_back(static_cast<std::byte>(character));
         }
     }
     return bytes;
 }
 
-void test_dat_and_workspace() {
+void test_dat_and_workspace()
+{
     const auto original = make_test_dat();
     auto dat = eaw::DatFile::parse(original);
     require(dat.entries().size() == 2, "DAT entry count failed");
     require(dat.find("TEXT_UNIT_TEST") != nullptr, "DAT key lookup failed");
     require(dat.serialize() == original, "DAT byte-identical round trip failed");
     require(dat.validate().empty(), "valid DAT reported issues");
-    require(eaw::dat_key_crc("TEXT_SPEECH_EMPIRE_ACT01_MISSION_THREE_62") ==
-                0x0001db80U,
-            "Petroglyph DAT CRC32 failed");
+    require(eaw::dat_key_crc("TEXT_SPEECH_EMPIRE_ACT01_MISSION_THREE_62") == 0x0001db80U, "Petroglyph DAT CRC32 failed");
 
     dat.upsert("TEXT_UNIT_NEW", eaw::utf8_to_utf16("Žluťoučký 🚀"));
-    require(eaw::utf16_to_utf8(dat.find("TEXT_UNIT_NEW")->value) ==
-                "Žluťoučký 🚀",
-            "UTF-8/UTF-16 conversion failed");
+    require(eaw::utf16_to_utf8(dat.find("TEXT_UNIT_NEW")->value) == "Žluťoučký 🚀", "UTF-8/UTF-16 conversion failed");
 
-    const auto workspace = std::filesystem::temp_directory_path() /
-                           "eawengine-localization-test.tsv";
+    const auto workspace = std::filesystem::temp_directory_path() / "eawengine-localization-test.tsv";
     std::error_code ignored;
     std::filesystem::remove(workspace, ignored);
-    const std::vector<eaw::LocalizationRow> rows{
-        {"TEXT_UNIT_NEW", "Name\twith tab", "unit:new", "ready",
-         "Data/XML/Test.xml:2", "A \"quoted\" note\nwith a new line"}};
+    const std::vector<eaw::LocalizationRow> rows{{"TEXT_UNIT_NEW", "Name\twith tab", "unit:new", "ready", "Data/XML/Test.xml:2", "A \"quoted\" note\nwith a new line"}};
     eaw::write_localization_workspace(workspace, rows);
     const auto loaded = eaw::read_localization_workspace(workspace);
-    require(loaded.size() == 1 && loaded[0].text == rows[0].text &&
-                loaded[0].notes == rows[0].notes,
-            "localization TSV round trip failed");
+    require(loaded.size() == 1 && loaded[0].text == rows[0].text && loaded[0].notes == rows[0].notes, "localization TSV round trip failed");
 
     auto resolved_todo = eaw::DatFile::parse(original);
-    eaw::apply_localization_workspace(
-        resolved_todo,
-        {{"TEXT_UNIT_TEST", "Completed TODO value", "unit:test", "todo", {}, {}}});
-    require(eaw::utf16_to_utf8(resolved_todo.find("TEXT_UNIT_TEST")->value) ==
-                "Completed TODO value",
-            "completed TODO localization value was skipped");
+    eaw::apply_localization_workspace(resolved_todo, {{"TEXT_UNIT_TEST", "Completed TODO value", "unit:test", "todo", {}, {}}});
+    require(eaw::utf16_to_utf8(resolved_todo.find("TEXT_UNIT_TEST")->value) == "Completed TODO value", "completed TODO localization value was skipped");
 
     auto unresolved_todo = eaw::DatFile::parse(original);
     bool unresolved_rejected = false;
-    try {
-        eaw::apply_localization_workspace(
-            unresolved_todo,
-            {{"TEXT_UNIT_EMPTY", {}, "unit:empty", "todo", {}, {}}});
-    } catch (const std::runtime_error&) {
+    try
+    {
+        eaw::apply_localization_workspace(unresolved_todo, {{"TEXT_UNIT_EMPTY", {}, "unit:empty", "todo", {}, {}}});
+    }
+    catch (const std::runtime_error&)
+    {
         unresolved_rejected = true;
     }
     require(unresolved_rejected, "empty TODO localization row was not rejected");
-    eaw::apply_localization_workspace(
-        unresolved_todo,
-        {{"TEXT_UNIT_EMPTY", {}, "unit:empty", "todo", {}, {}}}, true);
-    require(unresolved_todo.find("TEXT_UNIT_EMPTY") == nullptr,
-            "empty TODO localization row was not skipped");
+    eaw::apply_localization_workspace(unresolved_todo, {{"TEXT_UNIT_EMPTY", {}, "unit:empty", "todo", {}, {}}}, true);
+    require(unresolved_todo.find("TEXT_UNIT_EMPTY") == nullptr, "empty TODO localization row was not skipped");
     std::filesystem::remove(workspace, ignored);
 }
 
-void test_localization_scan() {
-    const auto root = std::filesystem::temp_directory_path() /
-                      "eawengine-localization-scan-test";
+void test_localization_scan()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-localization-scan-test";
     const auto xml_root = root / "Data" / "XML";
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
@@ -721,51 +642,43 @@ void test_localization_scan() {
     const auto baseline = eaw::DatFile::parse(make_test_dat());
     const auto result = eaw::scan_mod_localization(root, baseline);
     require(result.reference_count == 2, "localization scan reference count failed");
-    require(result.missing.size() == 1 &&
-                result.missing.front().key == "TEXT_UNIT_MISSING" &&
-                result.missing.front().context.find("Units.xml:3") != std::string::npos,
+    require(result.missing.size() == 1 && result.missing.front().key == "TEXT_UNIT_MISSING" && result.missing.front().context.find("Units.xml:3") != std::string::npos,
             "localization scan missing-key context failed");
     std::filesystem::remove_all(root, ignored);
 }
 
-void test_xml_document() {
-    const auto document = eaw::XmlDocument::parse(
-        "\xef\xbb\xbf<?xml version=\"1.0\"?>\n"
-        "<!-- a Petroglyph file may contain several roots -->\n"
-        "<SpaceUnit Name='Unit_A' Enabled=\"Yes\">\n"
-        "  <Text_ID>TEXT_A &amp; B</Text_ID>\n"
-        "  <Payload><![CDATA[x < y]]></Payload>\n"
-        "</SpaceUnit>\n"
-        "<SpaceUnit Name=\"Unit_B\"><Value>&#x41;&#66;</Value></SpaceUnit>");
+void test_xml_document()
+{
+    const auto document = eaw::XmlDocument::parse("\xef\xbb\xbf<?xml version=\"1.0\"?>\n"
+                                                  "<!-- a Petroglyph file may contain several roots -->\n"
+                                                  "<SpaceUnit Name='Unit_A' Enabled=\"Yes\">\n"
+                                                  "  <Text_ID>TEXT_A &amp; B</Text_ID>\n"
+                                                  "  <Payload><![CDATA[x < y]]></Payload>\n"
+                                                  "</SpaceUnit>\n"
+                                                  "<SpaceUnit Name=\"Unit_B\"><Value>&#x41;&#66;</Value></SpaceUnit>");
     require(document.roots.size() == 2, "XML fragment root parsing failed");
     const auto& first = document.roots.front();
-    require(first.name == "SpaceUnit" &&
-                first.attribute("name") != nullptr &&
-                first.attribute("NAME")->value == "Unit_A",
-            "XML case-insensitive attribute lookup failed");
-    require(first.child("text_id") != nullptr &&
-                first.child("Text_ID")->text == "TEXT_A & B",
-            "XML entity decoding failed");
-    require(first.child("Payload") != nullptr &&
-                first.child("Payload")->text == "x < y",
-            "XML CDATA parsing failed");
-    require(document.roots[1].child("Value")->text == "AB",
-            "XML numeric character decoding failed");
-    require(eaw::XmlDocument::parse("<?xml version=\"1.0\"><A />").roots.size() == 1,
-            "Petroglyph XML declaration compatibility failed");
+    require(first.name == "SpaceUnit" && first.attribute("name") != nullptr && first.attribute("NAME")->value == "Unit_A", "XML case-insensitive attribute lookup failed");
+    require(first.child("text_id") != nullptr && first.child("Text_ID")->text == "TEXT_A & B", "XML entity decoding failed");
+    require(first.child("Payload") != nullptr && first.child("Payload")->text == "x < y", "XML CDATA parsing failed");
+    require(document.roots[1].child("Value")->text == "AB", "XML numeric character decoding failed");
+    require(eaw::XmlDocument::parse("<?xml version=\"1.0\"><A />").roots.size() == 1, "Petroglyph XML declaration compatibility failed");
 
     bool mismatch_rejected = false;
-    try {
+    try
+    {
         static_cast<void>(eaw::XmlDocument::parse("<A><B /></C>"));
-    } catch (const std::runtime_error&) {
+    }
+    catch (const std::runtime_error&)
+    {
         mismatch_rejected = true;
     }
     require(mismatch_rejected, "mismatched XML closing element was accepted");
 }
 
-void test_xml_asset_database() {
-    const auto root = std::filesystem::temp_directory_path() /
-                      "eawengine-xml-database-test";
+void test_xml_asset_database()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-xml-database-test";
     const auto xml_root = root / "Data" / "XML";
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
@@ -790,40 +703,35 @@ void test_xml_asset_database() {
     eaw::VirtualFileSystem vfs;
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
     const auto database = eaw::XmlAssetDatabase::build(vfs);
-    require(database.document_count() == 3 &&
-                database.parsed_document_count() == 3 &&
-                database.failures().empty(),
-            "XML database document accounting failed");
-    require(database.definitions().size() == 3,
-            "XML database named definition discovery failed");
+    require(database.document_count() == 3 && database.parsed_document_count() == 3 && database.failures().empty(), "XML database document accounting failed");
+    require(database.definitions().size() == 3, "XML database named definition discovery failed");
     const auto matches = database.find("spaceunit", "unit_a");
-    const auto ordered_fields = std::ranges::find_if(matches, [](const auto* match) {
-        return match->fields.size() == 2 &&
-               match->fields[0].name == "Text_ID" &&
-               match->fields[1].name == "Build_Cost_Credits";
-    });
-    require(matches.size() == 2 && ordered_fields != matches.end(),
-            "XML database typed lookup or field order failed");
-    require(database.duplicates().size() == 1,
-            "XML duplicate definition diagnostics failed");
-    require(database.includes().size() == 2 && database.includes()[0].resolved &&
-                !database.includes()[1].resolved,
-            "XML include resolution diagnostics failed");
+    const auto ordered_fields = std::ranges::find_if(matches,
+                                                     [](const auto* match)
+                                                     {
+                                                         return match->fields.size() == 2 && match->fields[0].name == "Text_ID" && match->fields[1].name == "Build_Cost_Credits";
+                                                     });
+    require(matches.size() == 2 && ordered_fields != matches.end(), "XML database typed lookup or field order failed");
+    require(database.duplicates().size() == 1, "XML duplicate definition diagnostics failed");
+    require(database.includes().size() == 2 && database.includes()[0].resolved && !database.includes()[1].resolved, "XML include resolution diagnostics failed");
     std::filesystem::remove_all(root, ignored);
 }
 
 } // namespace
 
-int main() {
-    try {
-        require(eaw::normalize_asset_path("data\\xml/./GameObjectFiles.xml") ==
-                    "DATA/XML/GAMEOBJECTFILES.XML",
-                "asset normalization failed");
+int main()
+{
+    try
+    {
+        require(eaw::normalize_asset_path("data\\xml/./GameObjectFiles.xml") == "DATA/XML/GAMEOBJECTFILES.XML", "asset normalization failed");
 
         bool traversal_rejected = false;
-        try {
+        try
+        {
             static_cast<void>(eaw::normalize_asset_path("Data/../secret"));
-        } catch (const std::invalid_argument&) {
+        }
+        catch (const std::invalid_argument&)
+        {
             traversal_rejected = true;
         }
         require(traversal_rejected, "parent traversal was not rejected");
@@ -856,9 +764,10 @@ int main() {
         std::filesystem::remove(archive_path, ignored);
         std::cout << "All EAWEngine tests passed.\n";
         return 0;
-    } catch (const std::exception& error) {
+    }
+    catch (const std::exception& error)
+    {
         std::cerr << "test failure: " << error.what() << '\n';
         return 1;
     }
 }
-

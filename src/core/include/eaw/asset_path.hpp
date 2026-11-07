@@ -10,4 +10,3 @@ namespace eaw {
 [[nodiscard]] std::string normalize_asset_path(std::string_view path);
 
 } // namespace eaw
-

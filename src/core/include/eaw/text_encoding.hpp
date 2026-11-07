@@ -9,4 +9,3 @@ namespace eaw {
 [[nodiscard]] std::string utf16_to_utf8(std::u16string_view text);
 
 } // namespace eaw
-

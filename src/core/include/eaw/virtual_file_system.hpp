@@ -13,12 +13,14 @@
 
 namespace eaw {
 
-enum class AssetSourceKind {
+enum class AssetSourceKind
+{
     directory,
     meg_archive,
 };
 
-struct ResolvedAsset {
+struct ResolvedAsset
+{
     AssetSourceKind kind{};
     std::string mount_name;
     std::filesystem::path container;
@@ -27,26 +29,24 @@ struct ResolvedAsset {
     std::uint64_t size{};
 };
 
-class AssetMount {
+class AssetMount
+{
 public:
     virtual ~AssetMount() = default;
     [[nodiscard]] virtual std::string_view name() const noexcept = 0;
-    [[nodiscard]] virtual std::optional<ResolvedAsset> resolve(
-        std::string_view virtual_path) const = 0;
-    [[nodiscard]] virtual std::vector<std::byte> read(
-        const ResolvedAsset& asset) const = 0;
+    [[nodiscard]] virtual std::optional<ResolvedAsset> resolve(std::string_view virtual_path) const = 0;
+    [[nodiscard]] virtual std::vector<std::byte> read(const ResolvedAsset& asset) const = 0;
     [[nodiscard]] virtual std::size_t entry_count() const noexcept = 0;
     [[nodiscard]] virtual std::vector<std::string> paths() const = 0;
 };
 
-class DirectoryMount final : public AssetMount {
+class DirectoryMount final : public AssetMount
+{
 public:
     DirectoryMount(std::string name, std::filesystem::path root);
     [[nodiscard]] std::string_view name() const noexcept override;
-    [[nodiscard]] std::optional<ResolvedAsset> resolve(
-        std::string_view virtual_path) const override;
-    [[nodiscard]] std::vector<std::byte> read(
-        const ResolvedAsset& asset) const override;
+    [[nodiscard]] std::optional<ResolvedAsset> resolve(std::string_view virtual_path) const override;
+    [[nodiscard]] std::vector<std::byte> read(const ResolvedAsset& asset) const override;
     [[nodiscard]] std::size_t entry_count() const noexcept override;
     [[nodiscard]] std::vector<std::string> paths() const override;
 
@@ -55,14 +55,13 @@ private:
     std::filesystem::path root_;
 };
 
-class MegMount final : public AssetMount {
+class MegMount final : public AssetMount
+{
 public:
     MegMount(std::string name, std::filesystem::path archive);
     [[nodiscard]] std::string_view name() const noexcept override;
-    [[nodiscard]] std::optional<ResolvedAsset> resolve(
-        std::string_view virtual_path) const override;
-    [[nodiscard]] std::vector<std::byte> read(
-        const ResolvedAsset& asset) const override;
+    [[nodiscard]] std::optional<ResolvedAsset> resolve(std::string_view virtual_path) const override;
+    [[nodiscard]] std::vector<std::byte> read(const ResolvedAsset& asset) const override;
     [[nodiscard]] std::size_t entry_count() const noexcept override;
     [[nodiscard]] std::vector<std::string> paths() const override;
 
@@ -71,15 +70,14 @@ private:
     MegArchive archive_;
 };
 
-class VirtualFileSystem final {
+class VirtualFileSystem final
+{
 public:
     // Mounts are added from lowest to highest priority.
     void mount(std::unique_ptr<AssetMount> mount);
-    [[nodiscard]] std::optional<ResolvedAsset> resolve(
-        std::string_view virtual_path) const;
+    [[nodiscard]] std::optional<ResolvedAsset> resolve(std::string_view virtual_path) const;
     [[nodiscard]] std::vector<std::byte> read(std::string_view virtual_path) const;
-    [[nodiscard]] std::vector<ResolvedAsset> list(
-        std::string_view prefix = {}) const;
+    [[nodiscard]] std::vector<ResolvedAsset> list(std::string_view prefix = {}) const;
     [[nodiscard]] std::span<const std::unique_ptr<AssetMount>> mounts() const noexcept;
 
 private:
@@ -87,4 +85,3 @@ private:
 };
 
 } // namespace eaw
-

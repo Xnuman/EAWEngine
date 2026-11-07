@@ -8,13 +8,15 @@
 
 namespace eaw {
 
-struct XmlAttribute {
+struct XmlAttribute
+{
     std::string name;
     std::string value;
     std::size_t line{1};
 };
 
-struct XmlNode {
+struct XmlNode
+{
     std::string name;
     std::vector<XmlAttribute> attributes;
     std::string text;
@@ -28,7 +30,8 @@ struct XmlNode {
 // Petroglyph XML files are often fragments containing several top-level object
 // elements rather than one standards-compliant document root. The parser keeps
 // those roots in source order while still validating every element subtree.
-struct XmlDocument {
+struct XmlDocument
+{
     std::vector<XmlNode> roots;
 
     [[nodiscard]] static XmlDocument parse(std::string_view text);

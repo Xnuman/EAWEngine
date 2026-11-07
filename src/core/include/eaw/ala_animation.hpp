@@ -10,19 +10,22 @@
 
 namespace eaw {
 
-struct AlaBoneFrame {
+struct AlaBoneFrame
+{
     AloVector3 translation;
     AloVector3 scale{1.0F, 1.0F, 1.0F};
     AloQuaternion rotation;
     bool visible{true};
 };
 
-struct AlaPoseBone {
+struct AlaPoseBone
+{
     AloMatrix4 transform;
     bool visible{true};
 };
 
-struct AlaBoneTrack {
+struct AlaBoneTrack
+{
     std::string name;
     std::uint32_t bone_index{};
     bool translation{};
@@ -33,7 +36,8 @@ struct AlaBoneTrack {
     std::vector<AlaBoneFrame> frames;
 };
 
-class AlaAnimation final {
+class AlaAnimation final
+{
 public:
     [[nodiscard]] static AlaAnimation parse(std::span<const std::byte> bytes);
 
@@ -51,9 +55,7 @@ public:
 
     [[nodiscard]] std::uint32_t playable_frame_count() const noexcept;
     [[nodiscard]] float duration_seconds() const noexcept;
-    [[nodiscard]] std::vector<AlaPoseBone> sample_pose(
-        const AloModel& model,
-        float seconds) const;
+    [[nodiscard]] std::vector<AlaPoseBone> sample_pose(const AloModel& model, float seconds) const;
 };
 
 } // namespace eaw

@@ -52,39 +52,36 @@ constexpr ImVec4 warning{0.96F, 0.69F, 0.24F, 1.0F};
 constexpr ImVec4 danger{0.96F, 0.35F, 0.39F, 1.0F};
 constexpr ImVec4 muted{0.58F, 0.64F, 0.70F, 1.0F};
 
-struct KnownAssetExtension {
+struct KnownAssetExtension
+{
     const char* label;
     const char* extension;
 };
 
-constexpr std::array known_asset_extensions{
-    KnownAssetExtension{"All extensions", ""},
-    KnownAssetExtension{"ALO models / particles", ".alo"},
-    KnownAssetExtension{"ALA animations", ".ala"},
-    KnownAssetExtension{"TED maps", ".ted"},
-    KnownAssetExtension{"DDS textures", ".dds"},
-    KnownAssetExtension{"TGA textures", ".tga"},
-    KnownAssetExtension{"MTD mega-textures", ".mtd"},
-    KnownAssetExtension{"DAT localization", ".dat"},
-    KnownAssetExtension{"XML definitions", ".xml"},
-    KnownAssetExtension{"Lua scripts", ".lua"},
-    KnownAssetExtension{"WAV audio", ".wav"},
-    KnownAssetExtension{"BIK videos", ".bik"}};
+constexpr std::array known_asset_extensions{KnownAssetExtension{"All extensions", ""},        KnownAssetExtension{"ALO models / particles", ".alo"},
+                                            KnownAssetExtension{"ALA animations", ".ala"},    KnownAssetExtension{"TED maps", ".ted"},
+                                            KnownAssetExtension{"DDS textures", ".dds"},      KnownAssetExtension{"TGA textures", ".tga"},
+                                            KnownAssetExtension{"MTD mega-textures", ".mtd"}, KnownAssetExtension{"DAT localization", ".dat"},
+                                            KnownAssetExtension{"XML definitions", ".xml"},   KnownAssetExtension{"Lua scripts", ".lua"},
+                                            KnownAssetExtension{"WAV audio", ".wav"},         KnownAssetExtension{"BIK videos", ".bik"}};
 
-struct PreviewTexture {
+struct PreviewTexture
+{
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> view;
     std::uint32_t width{};
     std::uint32_t height{};
 };
 
-struct PreviewTriangle {
+struct PreviewTriangle
+{
     AloVector3 points[3];
     AloVector2 texture_coordinates[3];
     ID3D11ShaderResourceView* texture{};
     ImU32 color{};
 };
 
-struct ProjectedTriangle {
+struct ProjectedTriangle
+{
     ImVec2 points[3];
     ImVec2 texture_coordinates[3];
     ID3D11ShaderResourceView* texture{};
@@ -92,108 +89,110 @@ struct ProjectedTriangle {
     ImU32 color{};
 };
 
-std::string lower(std::string value) {
-    std::ranges::transform(value, value.begin(), [](const unsigned char character) {
-        return static_cast<char>(std::tolower(character));
-    });
+std::string lower(std::string value)
+{
+    std::ranges::transform(value, value.begin(),
+                           [](const unsigned char character)
+                           {
+                               return static_cast<char>(std::tolower(character));
+                           });
     return value;
 }
 
-std::string human_size(const std::uint64_t bytes) {
+std::string human_size(const std::uint64_t bytes)
+{
     static constexpr std::array units{"B", "KiB", "MiB", "GiB"};
     double value = static_cast<double>(bytes);
     std::size_t unit = 0;
-    while (value >= 1024.0 && unit + 1 < units.size()) {
+    while (value >= 1024.0 && unit + 1 < units.size())
+    {
         value /= 1024.0;
         ++unit;
     }
     std::ostringstream text;
-    text << std::fixed << std::setprecision(unit == 0 ? 0 : 1) << value << ' '
-         << units[unit];
+    text << std::fixed << std::setprecision(unit == 0 ? 0 : 1) << value << ' ' << units[unit];
     return text.str();
 }
 
-std::uint32_t little_u32(const std::span<const std::byte> bytes,
-                         const std::size_t offset) {
-    if (offset + 4 > bytes.size()) {
+std::uint32_t little_u32(const std::span<const std::byte> bytes, const std::size_t offset)
+{
+    if (offset + 4 > bytes.size())
+    {
         throw std::runtime_error("asset is shorter than its expected header");
     }
     std::uint32_t value = 0;
-    for (unsigned index = 0; index < 4; ++index) {
-        value |= static_cast<std::uint32_t>(
-                     std::to_integer<unsigned char>(bytes[offset + index]))
-                 << (index * 8U);
+    for (unsigned index = 0; index < 4; ++index)
+    {
+        value |= static_cast<std::uint32_t>(std::to_integer<unsigned char>(bytes[offset + index])) << (index * 8U);
     }
     return value;
 }
 
-std::vector<std::byte> decode_bc_diffuse(const std::span<const std::byte> bytes,
-                                         const std::size_t offset,
-                                         const std::uint32_t width,
-                                         const std::uint32_t height,
-                                         const DXGI_FORMAT format) {
-    const bool bc1 = format == DXGI_FORMAT_BC1_UNORM ||
-                     format == DXGI_FORMAT_BC1_UNORM_SRGB;
+std::vector<std::byte> decode_bc_diffuse(const std::span<const std::byte> bytes, const std::size_t offset, const std::uint32_t width, const std::uint32_t height, const DXGI_FORMAT format)
+{
+    const bool bc1 = format == DXGI_FORMAT_BC1_UNORM || format == DXGI_FORMAT_BC1_UNORM_SRGB;
     const auto block_size = bc1 ? 8U : 16U;
     std::vector<std::byte> pixels(static_cast<std::size_t>(width) * height * 4U);
     const auto blocks_x = std::max(1U, (width + 3U) / 4U);
     const auto blocks_y = std::max(1U, (height + 3U) / 4U);
-    const auto expand5 = [](const std::uint16_t value) {
+    const auto expand5 = [](const std::uint16_t value)
+    {
         return static_cast<std::uint8_t>((value << 3U) | (value >> 2U));
     };
-    const auto expand6 = [](const std::uint16_t value) {
+    const auto expand6 = [](const std::uint16_t value)
+    {
         return static_cast<std::uint8_t>((value << 2U) | (value >> 4U));
     };
-    for (std::uint32_t block_y = 0; block_y < blocks_y; ++block_y) {
-        for (std::uint32_t block_x = 0; block_x < blocks_x; ++block_x) {
-            const auto block = offset +
-                               (static_cast<std::size_t>(block_y) * blocks_x + block_x) *
-                                   block_size;
+    for (std::uint32_t block_y = 0; block_y < blocks_y; ++block_y)
+    {
+        for (std::uint32_t block_x = 0; block_x < blocks_x; ++block_x)
+        {
+            const auto block = offset + (static_cast<std::size_t>(block_y) * blocks_x + block_x) * block_size;
             const auto color = block + (bc1 ? 0U : 8U);
-            const auto read_u16_at = [&](const std::size_t position) {
-                return static_cast<std::uint16_t>(
-                    std::to_integer<std::uint8_t>(bytes[position]) |
-                    (std::to_integer<std::uint8_t>(bytes[position + 1]) << 8U));
+            const auto read_u16_at = [&](const std::size_t position)
+            {
+                return static_cast<std::uint16_t>(std::to_integer<std::uint8_t>(bytes[position]) | (std::to_integer<std::uint8_t>(bytes[position + 1]) << 8U));
             };
             const auto color0 = read_u16_at(color);
             const auto color1 = read_u16_at(color + 2U);
             std::array<std::array<std::uint8_t, 4>, 4> palette{};
-            palette[0] = {expand5((color0 >> 11U) & 31U),
-                          expand6((color0 >> 5U) & 63U), expand5(color0 & 31U), 255};
-            palette[1] = {expand5((color1 >> 11U) & 31U),
-                          expand6((color1 >> 5U) & 63U), expand5(color1 & 31U), 255};
+            palette[0] = {expand5((color0 >> 11U) & 31U), expand6((color0 >> 5U) & 63U), expand5(color0 & 31U), 255};
+            palette[1] = {expand5((color1 >> 11U) & 31U), expand6((color1 >> 5U) & 63U), expand5(color1 & 31U), 255};
             const bool four_colors = !bc1 || color0 > color1;
-            if (four_colors) {
-                for (std::size_t channel = 0; channel < 3; ++channel) {
-                    palette[2][channel] = static_cast<std::uint8_t>(
-                        (2U * palette[0][channel] + palette[1][channel]) / 3U);
-                    palette[3][channel] = static_cast<std::uint8_t>(
-                        (palette[0][channel] + 2U * palette[1][channel]) / 3U);
+            if (four_colors)
+            {
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    palette[2][channel] = static_cast<std::uint8_t>((2U * palette[0][channel] + palette[1][channel]) / 3U);
+                    palette[3][channel] = static_cast<std::uint8_t>((palette[0][channel] + 2U * palette[1][channel]) / 3U);
                 }
-            } else {
-                for (std::size_t channel = 0; channel < 3; ++channel) {
-                    palette[2][channel] = static_cast<std::uint8_t>(
-                        (palette[0][channel] + palette[1][channel]) / 2U);
+            }
+            else
+            {
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    palette[2][channel] = static_cast<std::uint8_t>((palette[0][channel] + palette[1][channel]) / 2U);
                     palette[3][channel] = 0;
                 }
             }
             palette[2][3] = 255;
             palette[3][3] = 255;
             const auto selectors = little_u32(bytes, color + 4U);
-            for (std::uint32_t local_y = 0; local_y < 4; ++local_y) {
-                for (std::uint32_t local_x = 0; local_x < 4; ++local_x) {
+            for (std::uint32_t local_y = 0; local_y < 4; ++local_y)
+            {
+                for (std::uint32_t local_x = 0; local_x < 4; ++local_x)
+                {
                     const auto x = block_x * 4U + local_x;
                     const auto y = block_y * 4U + local_y;
-                    if (x >= width || y >= height) {
+                    if (x >= width || y >= height)
+                    {
                         continue;
                     }
-                    const auto selector =
-                        (selectors >> (2U * (local_y * 4U + local_x))) & 3U;
-                    const auto destination =
-                        (static_cast<std::size_t>(y) * width + x) * 4U;
-                    for (std::size_t channel = 0; channel < 4; ++channel) {
-                        pixels[destination + channel] =
-                            static_cast<std::byte>(palette[selector][channel]);
+                    const auto selector = (selectors >> (2U * (local_y * 4U + local_x))) & 3U;
+                    const auto destination = (static_cast<std::size_t>(y) * width + x) * 4U;
+                    for (std::size_t channel = 0; channel < 4; ++channel)
+                    {
+                        pixels[destination + channel] = static_cast<std::byte>(palette[selector][channel]);
                     }
                 }
             }
@@ -202,10 +201,10 @@ std::vector<std::byte> decode_bc_diffuse(const std::span<const std::byte> bytes,
     return pixels;
 }
 
-PreviewTexture create_dds_texture(ID3D11Device* device,
-                                  const std::span<const std::byte> bytes) {
-    if (device == nullptr || bytes.size() < 128 || little_u32(bytes, 0) != 0x20534444U ||
-        little_u32(bytes, 4) != 124U) {
+PreviewTexture create_dds_texture(ID3D11Device* device, const std::span<const std::byte> bytes)
+{
+    if (device == nullptr || bytes.size() < 128 || little_u32(bytes, 0) != 0x20534444U || little_u32(bytes, 4) != 124U)
+    {
         throw std::runtime_error("invalid or unsupported DDS header");
     }
     const auto height = little_u32(bytes, 12);
@@ -222,16 +221,15 @@ PreviewTexture create_dds_texture(ID3D11Device* device,
     std::uint32_t row_pitch = 0;
     std::uint32_t row_count = height;
 
-    constexpr auto make_fourcc = [](const char a, const char b, const char c,
-                                    const char d) {
-        return static_cast<std::uint32_t>(a) |
-               (static_cast<std::uint32_t>(b) << 8U) |
-               (static_cast<std::uint32_t>(c) << 16U) |
-               (static_cast<std::uint32_t>(d) << 24U);
+    constexpr auto make_fourcc = [](const char a, const char b, const char c, const char d)
+    {
+        return static_cast<std::uint32_t>(a) | (static_cast<std::uint32_t>(b) << 8U) | (static_cast<std::uint32_t>(c) << 16U) | (static_cast<std::uint32_t>(d) << 24U);
     };
-    if ((pixel_flags & 0x4U) != 0) {
+    if ((pixel_flags & 0x4U) != 0)
+    {
         std::uint32_t block_size = 0;
-        switch (fourcc) {
+        switch (fourcc)
+        {
         case make_fourcc('D', 'X', 'T', '1'):
             format = DXGI_FORMAT_BC1_UNORM;
             block_size = 8;
@@ -255,58 +253,60 @@ PreviewTexture create_dds_texture(ID3D11Device* device,
             block_size = 16;
             break;
         case make_fourcc('D', 'X', '1', '0'):
-            if (bytes.size() < 148) {
+            if (bytes.size() < 148)
+            {
                 throw std::runtime_error("truncated DDS DX10 header");
             }
             format = static_cast<DXGI_FORMAT>(little_u32(bytes, 128));
             data_offset = 148;
-            if (format == DXGI_FORMAT_BC1_UNORM ||
-                format == DXGI_FORMAT_BC1_UNORM_SRGB ||
-                format == DXGI_FORMAT_BC4_UNORM) {
+            if (format == DXGI_FORMAT_BC1_UNORM || format == DXGI_FORMAT_BC1_UNORM_SRGB || format == DXGI_FORMAT_BC4_UNORM)
+            {
                 block_size = 8;
-            } else if (format == DXGI_FORMAT_BC2_UNORM ||
-                       format == DXGI_FORMAT_BC2_UNORM_SRGB ||
-                       format == DXGI_FORMAT_BC3_UNORM ||
-                       format == DXGI_FORMAT_BC3_UNORM_SRGB ||
-                       format == DXGI_FORMAT_BC5_UNORM) {
+            }
+            else if (format == DXGI_FORMAT_BC2_UNORM || format == DXGI_FORMAT_BC2_UNORM_SRGB || format == DXGI_FORMAT_BC3_UNORM || format == DXGI_FORMAT_BC3_UNORM_SRGB ||
+                     format == DXGI_FORMAT_BC5_UNORM)
+            {
                 block_size = 16;
             }
             break;
         default:
             break;
         }
-        if (block_size != 0) {
+        if (block_size != 0)
+        {
             row_pitch = std::max(1U, (width + 3U) / 4U) * block_size;
             row_count = std::max(1U, (height + 3U) / 4U);
         }
-    } else if ((pixel_flags & 0x40U) != 0 && rgb_bits == 32) {
-        if (red_mask == 0x00ff0000U && green_mask == 0x0000ff00U &&
-            blue_mask == 0x000000ffU && alpha_mask == 0xff000000U) {
+    }
+    else if ((pixel_flags & 0x40U) != 0 && rgb_bits == 32)
+    {
+        if (red_mask == 0x00ff0000U && green_mask == 0x0000ff00U && blue_mask == 0x000000ffU && alpha_mask == 0xff000000U)
+        {
             format = DXGI_FORMAT_B8G8R8A8_UNORM;
-        } else if (red_mask == 0x000000ffU && green_mask == 0x0000ff00U &&
-                   blue_mask == 0x00ff0000U && alpha_mask == 0xff000000U) {
+        }
+        else if (red_mask == 0x000000ffU && green_mask == 0x0000ff00U && blue_mask == 0x00ff0000U && alpha_mask == 0xff000000U)
+        {
             format = DXGI_FORMAT_R8G8B8A8_UNORM;
         }
         row_pitch = width * 4U;
     }
 
-    if (format == DXGI_FORMAT_UNKNOWN || row_pitch == 0 || width == 0 || height == 0) {
+    if (format == DXGI_FORMAT_UNKNOWN || row_pitch == 0 || width == 0 || height == 0)
+    {
         throw std::runtime_error("unsupported DDS pixel format");
     }
     const auto data_size = static_cast<std::size_t>(row_pitch) * row_count;
-    if (data_offset + data_size > bytes.size()) {
+    if (data_offset + data_size > bytes.size())
+    {
         throw std::runtime_error("truncated DDS image data");
     }
 
     std::vector<std::byte> decoded_pixels;
-    const bool decode_diffuse = format == DXGI_FORMAT_BC1_UNORM ||
-                                format == DXGI_FORMAT_BC1_UNORM_SRGB ||
-                                format == DXGI_FORMAT_BC2_UNORM ||
-                                format == DXGI_FORMAT_BC2_UNORM_SRGB ||
-                                format == DXGI_FORMAT_BC3_UNORM ||
-                                format == DXGI_FORMAT_BC3_UNORM_SRGB;
+    const bool decode_diffuse = format == DXGI_FORMAT_BC1_UNORM || format == DXGI_FORMAT_BC1_UNORM_SRGB || format == DXGI_FORMAT_BC2_UNORM || format == DXGI_FORMAT_BC2_UNORM_SRGB ||
+                                format == DXGI_FORMAT_BC3_UNORM || format == DXGI_FORMAT_BC3_UNORM_SRGB;
     const void* texture_data = bytes.data() + data_offset;
-    if (decode_diffuse) {
+    if (decode_diffuse)
+    {
         decoded_pixels = decode_bc_diffuse(bytes, data_offset, width, height, format);
         texture_data = decoded_pixels.data();
         format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -327,11 +327,13 @@ PreviewTexture create_dds_texture(ID3D11Device* device,
     initial.SysMemPitch = row_pitch;
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
-    if (FAILED(device->CreateTexture2D(&description, &initial, &texture))) {
+    if (FAILED(device->CreateTexture2D(&description, &initial, &texture)))
+    {
         throw std::runtime_error("DirectX 11 could not create the DDS texture");
     }
     PreviewTexture result;
-    if (FAILED(device->CreateShaderResourceView(texture.Get(), nullptr, &result.view))) {
+    if (FAILED(device->CreateShaderResourceView(texture.Get(), nullptr, &result.view)))
+    {
         throw std::runtime_error("DirectX 11 could not create a texture view");
     }
     result.width = width;
@@ -339,19 +341,21 @@ PreviewTexture create_dds_texture(ID3D11Device* device,
     return result;
 }
 
-std::string clean_one_line(std::string value, const std::size_t maximum = 90) {
+std::string clean_one_line(std::string value, const std::size_t maximum = 90)
+{
     std::ranges::replace(value, '\r', ' ');
     std::ranges::replace(value, '\n', ' ');
     std::ranges::replace(value, '\t', ' ');
-    if (value.size() > maximum) {
+    if (value.size() > maximum)
+    {
         value.resize(maximum - 3);
         value += "...";
     }
     return value;
 }
 
-std::string bytes_preview(const ResolvedAsset& asset,
-                          const std::span<const std::byte> bytes) {
+std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std::byte> bytes)
+{
     const auto extension = lower(std::filesystem::path(asset.virtual_path).extension().string());
     std::ostringstream output;
     output << "Virtual path: " << asset.virtual_path << '\n'
@@ -359,237 +363,229 @@ std::string bytes_preview(const ResolvedAsset& asset,
            << "Container: " << path_to_utf8(asset.container) << '\n'
            << "Size: " << human_size(asset.size) << " (" << asset.size << " bytes)\n\n";
 
-    if (extension == ".dat") {
+    if (extension == ".dat")
+    {
         const auto dat = DatFile::parse(bytes);
         const auto issues = dat.validate();
-        output << "Petroglyph localization DAT\nEntries: " << dat.entries().size()
-               << "\nCRC sorted: " << (dat.crc_sorted() ? "yes" : "no")
-               << "\nValidation issues: " << issues.size() << "\n\nSample:\n";
+        output << "Petroglyph localization DAT\nEntries: " << dat.entries().size() << "\nCRC sorted: " << (dat.crc_sorted() ? "yes" : "no") << "\nValidation issues: " << issues.size()
+               << "\n\nSample:\n";
         std::size_t shown = 0;
-        for (const auto& entry : dat.entries()) {
-            if (shown++ == 24) {
+        for (const auto& entry : dat.entries())
+        {
+            if (shown++ == 24)
+            {
                 output << "...\n";
                 break;
             }
-            output << entry.key << " = "
-                   << clean_one_line(utf16_to_utf8(entry.value), 110) << '\n';
+            output << entry.key << " = " << clean_one_line(utf16_to_utf8(entry.value), 110) << '\n';
         }
         return output.str();
     }
 
-    if (extension == ".dds" && bytes.size() >= 128) {
+    if (extension == ".dds" && bytes.size() >= 128)
+    {
         std::string fourcc;
-        for (std::size_t index = 84; index < 88; ++index) {
+        for (std::size_t index = 84; index < 88; ++index)
+        {
             const char character = std::to_integer<char>(bytes[index]);
-            fourcc.push_back(std::isprint(static_cast<unsigned char>(character))
-                                 ? character
-                                 : '.');
+            fourcc.push_back(std::isprint(static_cast<unsigned char>(character)) ? character : '.');
         }
-        output << "DirectDraw Surface\nDimensions: " << little_u32(bytes, 16) << 'x'
-               << little_u32(bytes, 12) << "\nMip levels: " << little_u32(bytes, 28)
-               << "\nFourCC: " << fourcc << '\n';
+        output << "DirectDraw Surface\nDimensions: " << little_u32(bytes, 16) << 'x' << little_u32(bytes, 12) << "\nMip levels: " << little_u32(bytes, 28) << "\nFourCC: " << fourcc << '\n';
         return output.str();
     }
 
-    if (extension == ".alo") {
-        try {
+    if (extension == ".alo")
+    {
+        try
+        {
             const auto model = AloModel::parse(bytes);
             output << "Alamo semantic model\n"
-                   << "Bones: " << model.bones.size() << "\nMeshes: "
-                   << model.meshes.size() << "\nSubmeshes: " << model.submesh_count()
-                   << "\nVertices: " << model.vertex_count() << "\nTriangles: "
-                   << model.triangle_count() << "\nLights: " << model.lights.size()
-                   << "\nProxies: " << model.proxies.size() << "\nDazzles: "
-                   << model.dazzles.size() << "\n";
-            for (const auto& warning_text : model.warnings) {
+                   << "Bones: " << model.bones.size() << "\nMeshes: " << model.meshes.size() << "\nSubmeshes: " << model.submesh_count() << "\nVertices: " << model.vertex_count()
+                   << "\nTriangles: " << model.triangle_count() << "\nLights: " << model.lights.size() << "\nProxies: " << model.proxies.size() << "\nDazzles: " << model.dazzles.size() << "\n";
+            for (const auto& warning_text : model.warnings)
+            {
                 output << "Warning: " << warning_text << '\n';
             }
 
             output << "\nSkeleton:\n";
-            for (std::size_t index = 0;
-                 index < std::min<std::size_t>(model.bones.size(), 48); ++index) {
+            for (std::size_t index = 0; index < std::min<std::size_t>(model.bones.size(), 48); ++index)
+            {
                 const auto& bone = model.bones[index];
-                output << "  [" << index << "] " << bone.name << "  parent="
-                       << bone.parent << "  " << (bone.visible ? "visible" : "hidden");
-                if (bone.billboard != 0) {
+                output << "  [" << index << "] " << bone.name << "  parent=" << bone.parent << "  " << (bone.visible ? "visible" : "hidden");
+                if (bone.billboard != 0)
+                {
                     output << "  billboard=" << bone.billboard;
                 }
                 output << '\n';
             }
 
             output << "\nMeshes and materials:\n";
-            for (std::size_t mesh_index = 0;
-                 mesh_index < std::min<std::size_t>(model.meshes.size(), 64);
-                 ++mesh_index) {
+            for (std::size_t mesh_index = 0; mesh_index < std::min<std::size_t>(model.meshes.size(), 64); ++mesh_index)
+            {
                 const auto& mesh = model.meshes[mesh_index];
-                output << "  [" << mesh_index << "] " << mesh.name << "  bounds=("
-                       << mesh.bounds.minimum.x << ", " << mesh.bounds.minimum.y << ", "
-                       << mesh.bounds.minimum.z << ")..(" << mesh.bounds.maximum.x << ", "
-                       << mesh.bounds.maximum.y << ", " << mesh.bounds.maximum.z << ')';
-                if (mesh.attached_bone) {
+                output << "  [" << mesh_index << "] " << mesh.name << "  bounds=(" << mesh.bounds.minimum.x << ", " << mesh.bounds.minimum.y << ", " << mesh.bounds.minimum.z << ")..("
+                       << mesh.bounds.maximum.x << ", " << mesh.bounds.maximum.y << ", " << mesh.bounds.maximum.z << ')';
+                if (mesh.attached_bone)
+                {
                     output << "  bone=" << *mesh.attached_bone;
                 }
-                if (mesh.hidden) {
+                if (mesh.hidden)
+                {
                     output << "  hidden";
                 }
-                if (mesh.collision_enabled) {
+                if (mesh.collision_enabled)
+                {
                     output << "  collision";
                 }
                 output << '\n';
-                for (std::size_t submesh_index = 0;
-                     submesh_index < mesh.submeshes.size(); ++submesh_index) {
+                for (std::size_t submesh_index = 0; submesh_index < mesh.submeshes.size(); ++submesh_index)
+                {
                     const auto& submesh = mesh.submeshes[submesh_index];
-                    output << "      material " << submesh_index << ": " << submesh.shader
-                           << "  vertices=" << submesh.vertex_count
-                           << "  triangles=" << submesh.triangle_count
+                    output << "      material " << submesh_index << ": " << submesh.shader << "  vertices=" << submesh.vertex_count << "  triangles=" << submesh.triangle_count
                            << "  stride=" << submesh.vertex_stride << '\n';
-                    for (const auto& parameter : submesh.parameters) {
-                        if (parameter.type == AloShaderParameterType::texture) {
-                            output << "        " << parameter.name << " = "
-                                   << parameter.value << '\n';
+                    for (const auto& parameter : submesh.parameters)
+                    {
+                        if (parameter.type == AloShaderParameterType::texture)
+                        {
+                            output << "        " << parameter.name << " = " << parameter.value << '\n';
                         }
                     }
                 }
             }
-            if (!model.proxies.empty()) {
+            if (!model.proxies.empty())
+            {
                 output << "\nProxies:\n";
-                for (const auto& proxy : model.proxies) {
-                    output << "  " << proxy.name << "  bone=" << proxy.bone
-                           << (proxy.hidden ? "  hidden" : "") << '\n';
+                for (const auto& proxy : model.proxies)
+                {
+                    output << "  " << proxy.name << "  bone=" << proxy.bone << (proxy.hidden ? "  hidden" : "") << '\n';
                 }
             }
             return output.str();
-        } catch (const std::exception& error) {
-            output << "Semantic model decoding unavailable: " << error.what()
-                   << "\nFalling back to the chunk inventory.\n\n";
+        }
+        catch (const std::exception& error)
+        {
+            output << "Semantic model decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n\n";
         }
     }
 
-    if (extension == ".ala") {
-        try {
+    if (extension == ".ala")
+    {
+        try
+        {
             const auto animation = AlaAnimation::parse(bytes);
-            output << "Alamo semantic animation\nVersion: " << animation.version
-                   << "\nStored frames: " << animation.stored_frame_count
-                   << "\nPlayable frames: " << animation.playable_frame_count()
-                   << "\nFrames per second: " << animation.frames_per_second
-                   << "\nDuration: " << animation.duration_seconds()
-                   << " seconds\nBone tracks: " << animation.tracks.size()
-                   << "\nRotation data: " << human_size(animation.rotation_data_bytes)
-                   << "\nTranslation data: "
-                   << human_size(animation.translation_data_bytes)
+            output << "Alamo semantic animation\nVersion: " << animation.version << "\nStored frames: " << animation.stored_frame_count << "\nPlayable frames: " << animation.playable_frame_count()
+                   << "\nFrames per second: " << animation.frames_per_second << "\nDuration: " << animation.duration_seconds() << " seconds\nBone tracks: " << animation.tracks.size()
+                   << "\nRotation data: " << human_size(animation.rotation_data_bytes) << "\nTranslation data: " << human_size(animation.translation_data_bytes)
                    << "\nScale data: " << human_size(animation.scale_data_bytes) << '\n';
-            for (const auto& warning_text : animation.warnings) {
+            for (const auto& warning_text : animation.warnings)
+            {
                 output << "Warning: " << warning_text << '\n';
             }
             output << "\nTracks:\n";
-            for (std::size_t index = 0;
-                 index < std::min<std::size_t>(animation.tracks.size(), 96); ++index) {
+            for (std::size_t index = 0; index < std::min<std::size_t>(animation.tracks.size(), 96); ++index)
+            {
                 const auto& track = animation.tracks[index];
                 output << "  [" << track.bone_index << "] " << track.name << "  ";
-                if (track.translation) {
+                if (track.translation)
+                {
                     output << 'T';
                 }
-                if (track.rotation) {
+                if (track.rotation)
+                {
                     output << 'R';
                 }
-                if (track.scale) {
+                if (track.scale)
+                {
                     output << 'S';
                 }
-                if (track.visibility) {
+                if (track.visibility)
+                {
                     output << " visibility";
                 }
-                if (track.stepped) {
+                if (track.stepped)
+                {
                     output << " stepped";
                 }
                 output << '\n';
             }
             return output.str();
-        } catch (const std::exception& error) {
-            output << "Semantic animation decoding unavailable: " << error.what()
-                   << "\nFalling back to the chunk inventory.\n\n";
+        }
+        catch (const std::exception& error)
+        {
+            output << "Semantic animation decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n\n";
         }
     }
 
-    if (extension == ".ted") {
-        try {
+    if (extension == ".ted")
+    {
+        try
+        {
             const auto map = TedMap::parse(bytes);
-            output << "Alamo semantic map\nType: " << to_string(map.type)
-                   << "\nName: " << map.name << "\nPlanet: " << map.planet
-                   << "\nPlayers: " << map.players << "\nWorld dimensions: "
-                   << map.world_width << " x " << map.world_height
-                   << "\nTerrain grid: " << map.terrain_width << " x "
-                   << map.terrain_height << "\nElevation: "
-                   << map.elevation_sample_count << " samples ("
-                   << map.minimum_elevation << ".." << map.maximum_elevation
-                   << ")\nPassability: " << map.passability_sample_count
-                   << " samples\nTerrain layers: " << map.terrain_layers.size()
-                   << "\nDecals: " << map.decal_count
-                   << "\nTracks: " << map.track_textures.size()
-                   << "\nEnvironments: " << map.environments.size()
-                   << "\nObjects: " << map.object_count << " ("
-                   << map.object_types.size() << " types, "
-                   << std::ranges::count_if(map.placed_objects, [](const auto& object) {
-                          return object.has_transform;
-                      })
-                   << " positioned)\nZones: "
-                   << map.zone_count << "\nEmbedded preview: "
-                   << (map.has_preview ? "yes" : "no") << '\n';
-            for (const auto& warning_text : map.warnings) {
+            output << "Alamo semantic map\nType: " << to_string(map.type) << "\nName: " << map.name << "\nPlanet: " << map.planet << "\nPlayers: " << map.players
+                   << "\nWorld dimensions: " << map.world_width << " x " << map.world_height << "\nTerrain grid: " << map.terrain_width << " x " << map.terrain_height
+                   << "\nElevation: " << map.elevation_sample_count << " samples (" << map.minimum_elevation << ".." << map.maximum_elevation << ")\nPassability: " << map.passability_sample_count
+                   << " samples\nTerrain layers: " << map.terrain_layers.size() << "\nDecals: " << map.decal_count << "\nTracks: " << map.track_textures.size()
+                   << "\nEnvironments: " << map.environments.size() << "\nObjects: " << map.object_count << " (" << map.object_types.size() << " types, "
+                   << std::ranges::count_if(map.placed_objects,
+                                            [](const auto& object)
+                                            {
+                                                return object.has_transform;
+                                            })
+                   << " positioned)\nZones: " << map.zone_count << "\nEmbedded preview: " << (map.has_preview ? "yes" : "no") << '\n';
+            for (const auto& warning_text : map.warnings)
+            {
                 output << "Warning: " << warning_text << '\n';
             }
             output << "\nTerrain textures:\n";
-            for (std::size_t index = 0;
-                 index < std::min<std::size_t>(map.terrain_layers.size(), 48);
-                 ++index) {
+            for (std::size_t index = 0; index < std::min<std::size_t>(map.terrain_layers.size(), 48); ++index)
+            {
                 const auto& layer = map.terrain_layers[index];
                 output << "  [" << index << "] " << layer.color_texture;
-                if (!layer.normal_texture.empty()) {
+                if (!layer.normal_texture.empty())
+                {
                     output << " | " << layer.normal_texture;
                 }
                 output << '\n';
             }
             output << "\nEnvironments:\n";
-            for (std::size_t index = 0;
-                 index < std::min<std::size_t>(map.environments.size(), 32);
-                 ++index) {
+            for (std::size_t index = 0; index < std::min<std::size_t>(map.environments.size(), 32); ++index)
+            {
                 const auto& environment = map.environments[index];
                 output << "  [" << index << "] " << environment.name;
-                if (!environment.scenario.empty()) {
+                if (!environment.scenario.empty())
+                {
                     output << " scenario=" << environment.scenario;
                 }
                 output << '\n';
             }
             output << "\nObject CRC counts:\n";
-            for (std::size_t index = 0;
-                 index < std::min<std::size_t>(map.object_types.size(), 64);
-                 ++index) {
+            for (std::size_t index = 0; index < std::min<std::size_t>(map.object_types.size(), 64); ++index)
+            {
                 const auto& object = map.object_types[index];
-                output << "  0x" << std::hex << std::setw(8) << std::setfill('0')
-                       << object.crc << std::dec << std::setfill(' ') << " x "
-                       << object.count << '\n';
+                output << "  0x" << std::hex << std::setw(8) << std::setfill('0') << object.crc << std::dec << std::setfill(' ') << " x " << object.count << '\n';
             }
             return output.str();
-        } catch (const std::exception& error) {
-            output << "Semantic map decoding unavailable: " << error.what()
-                   << "\nFalling back to the chunk inventory.\n\n";
+        }
+        catch (const std::exception& error)
+        {
+            output << "Semantic map decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n\n";
         }
     }
 
-    if (extension == ".alo" || extension == ".ala" || extension == ".mtd" ||
-        extension == ".ted") {
+    if (extension == ".alo" || extension == ".ala" || extension == ".mtd" || extension == ".ted")
+    {
         output << "Alamo chunk container (top-level inventory)\n";
         std::size_t cursor = 0;
         std::size_t count = 0;
-        while (cursor + 8 <= bytes.size() && count < 80) {
+        while (cursor + 8 <= bytes.size() && count < 80)
+        {
             const auto type = little_u32(bytes, cursor);
             const auto encoded_size = little_u32(bytes, cursor + 4);
             const auto size = encoded_size & 0x7fffffffU;
-            output << '[' << count << "] type=0x" << std::hex << std::setw(8)
-                   << std::setfill('0') << type << std::dec << std::setfill(' ')
-                   << "  size=" << size << "  "
-                   << ((encoded_size & 0x80000000U) != 0 ? "container" : "data")
-                   << '\n';
-            if (static_cast<std::uint64_t>(cursor) + 8U + size > bytes.size()) {
+            output << '[' << count << "] type=0x" << std::hex << std::setw(8) << std::setfill('0') << type << std::dec << std::setfill(' ') << "  size=" << size << "  "
+                   << ((encoded_size & 0x80000000U) != 0 ? "container" : "data") << '\n';
+            if (static_cast<std::uint64_t>(cursor) + 8U + size > bytes.size())
+            {
                 output << "Truncated chunk body\n";
                 break;
             }
@@ -599,12 +595,13 @@ std::string bytes_preview(const ResolvedAsset& asset,
         return output.str();
     }
 
-    if (extension == ".xml" || extension == ".lua" || extension == ".txt") {
+    if (extension == ".xml" || extension == ".lua" || extension == ".txt")
+    {
         const auto maximum = std::min<std::size_t>(bytes.size(), 64U * 1024U);
         output << "Text preview\n\n";
-        output.write(reinterpret_cast<const char*>(bytes.data()),
-                     static_cast<std::streamsize>(maximum));
-        if (maximum != bytes.size()) {
+        output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(maximum));
+        if (maximum != bytes.size())
+        {
             output << "\n\n[preview truncated]";
         }
         return output.str();
@@ -612,18 +609,23 @@ std::string bytes_preview(const ResolvedAsset& asset,
 
     output << "Binary signature (first 256 bytes)\n\n";
     const auto maximum = std::min<std::size_t>(bytes.size(), 256);
-    for (std::size_t index = 0; index < maximum; index += 16) {
+    for (std::size_t index = 0; index < maximum; index += 16)
+    {
         output << std::hex << std::setw(8) << std::setfill('0') << index << "  ";
-        for (std::size_t column = 0; column < 16; ++column) {
-            if (index + column < maximum) {
-                output << std::setw(2)
-                       << std::to_integer<unsigned>(bytes[index + column]) << ' ';
-            } else {
+        for (std::size_t column = 0; column < 16; ++column)
+        {
+            if (index + column < maximum)
+            {
+                output << std::setw(2) << std::to_integer<unsigned>(bytes[index + column]) << ' ';
+            }
+            else
+            {
                 output << "   ";
             }
         }
         output << "  ";
-        for (std::size_t column = 0; column < 16 && index + column < maximum; ++column) {
+        for (std::size_t column = 0; column < 16 && index + column < maximum; ++column)
+        {
             const auto character = std::to_integer<unsigned char>(bytes[index + column]);
             output << (std::isprint(character) ? static_cast<char>(character) : '.');
         }
@@ -632,26 +634,32 @@ std::string bytes_preview(const ResolvedAsset& asset,
     return output.str();
 }
 
-void label_value(const char* label, const std::string_view value) {
+void label_value(const char* label, const std::string_view value)
+{
     ImGui::TextColored(muted, "%s", label);
     ImGui::SameLine(132.0F);
     ImGui::TextUnformatted(value.data(), value.data() + value.size());
 }
 
-std::string normalize_unit_id(std::string id) {
-    for (char& character : id) {
+std::string normalize_unit_id(std::string id)
+{
+    for (char& character : id)
+    {
         const auto byte = static_cast<unsigned char>(character);
         character = std::isalnum(byte) ? static_cast<char>(std::toupper(byte)) : '_';
     }
     auto duplicate = id.find("__");
-    while (duplicate != std::string::npos) {
+    while (duplicate != std::string::npos)
+    {
         id.replace(duplicate, 2, "_");
         duplicate = id.find("__");
     }
-    while (!id.empty() && id.front() == '_') {
+    while (!id.empty() && id.front() == '_')
+    {
         id.erase(id.begin());
     }
-    while (!id.empty() && id.back() == '_') {
+    while (!id.empty() && id.back() == '_')
+    {
         id.pop_back();
     }
     return id;
@@ -659,8 +667,13 @@ std::string normalize_unit_id(std::string id) {
 
 } // namespace
 
-struct GuiApp::State {
-    enum class Workspace { assets, localization } workspace{Workspace::assets};
+struct GuiApp::State
+{
+    enum class Workspace
+    {
+        assets,
+        localization
+    } workspace{Workspace::assets};
 
     ID3D11Device* graphics_device{};
     std::string game_root;
@@ -725,35 +738,46 @@ struct GuiApp::State {
     std::string message{"Ready"};
     bool message_error{};
 
-    explicit State(ID3D11Device* device) : graphics_device(device) {
-        try {
+    explicit State(ID3D11Device* device) : graphics_device(device)
+    {
+        try
+        {
             const auto installations = InstallationLocator{}.discover();
-            if (!installations.empty()) {
+            if (!installations.empty())
+            {
                 game_root = path_to_utf8(installations.front());
                 message = "Detected Empire at War installation";
-            } else {
+            }
+            else
+            {
                 game_root = "D:\\SteamLibrary\\steamapps\\common\\Star Wars Empire at War";
                 message = "Choose or verify the game installation folder";
             }
-        } catch (const std::exception& error) {
+        }
+        catch (const std::exception& error)
+        {
             message = error.what();
             message_error = true;
         }
     }
 
-    void succeed(std::string text) {
+    void succeed(std::string text)
+    {
         message = std::move(text);
         message_error = false;
     }
 
-    void fail(const std::exception& error) {
+    void fail(const std::exception& error)
+    {
         message = error.what();
         message_error = true;
     }
 
-    void load_assets() {
+    void load_assets()
+    {
         const auto profile = make_game_profile(utf8_to_path(game_root), variant);
-        if (!profile) {
+        if (!profile)
+        {
             throw std::runtime_error("The selected folder is not an Empire at War installation");
         }
         VirtualFileSystem next;
@@ -779,18 +803,20 @@ struct GuiApp::State {
         map_preview_triangles.clear();
         map_preview_cached = false;
         map_preview_large_window = false;
-        succeed("Loaded " + std::to_string(assets.size()) + " logical assets from " +
-                std::to_string(vfs.mounts().size()) + " layers");
+        succeed("Loaded " + std::to_string(assets.size()) + " logical assets from " + std::to_string(vfs.mounts().size()) + " layers");
     }
 
-    void select_preview_animation(const int index) {
+    void select_preview_animation(const int index)
+    {
         preview_animation_index = index;
         preview_animation.reset();
         preview_time = 0.0F;
-        if (index < 0) {
+        if (index < 0)
+        {
             return;
         }
-        if (static_cast<std::size_t>(index) >= preview_animation_assets.size()) {
+        if (static_cast<std::size_t>(index) >= preview_animation_assets.size())
+        {
             throw std::runtime_error("The selected animation is no longer available");
         }
         const auto& asset = preview_animation_assets[static_cast<std::size_t>(index)];
@@ -799,8 +825,10 @@ struct GuiApp::State {
         succeed("Loaded animation " + asset.virtual_path);
     }
 
-    void inspect_asset(const int index) {
-        if (index < 0 || static_cast<std::size_t>(index) >= assets.size()) {
+    void inspect_asset(const int index)
+    {
+        if (index < 0 || static_cast<std::size_t>(index) >= assets.size())
+        {
             return;
         }
         selected_asset = index;
@@ -823,96 +851,112 @@ struct GuiApp::State {
 
         const auto selected_path = std::filesystem::path(asset.virtual_path);
         const auto extension = lower(selected_path.extension().string());
-        if (extension != ".ted") {
+        if (extension != ".ted")
+        {
             map_preview_large_window = false;
         }
-        if (extension == ".ted") {
-            try {
+        if (extension == ".ted")
+        {
+            try
+            {
                 preview_map = TedMap::parse(bytes);
-            } catch (const std::exception&) {
             }
+            catch (const std::exception&)
+            {}
             return;
         }
-        if (extension != ".alo") {
+        if (extension != ".alo")
+        {
             return;
         }
-        try {
+        try
+        {
             preview_model = AloModel::parse(bytes);
-        } catch (const std::exception&) {
+        }
+        catch (const std::exception&)
+        {
             return;
         }
         const auto bind_pose = preview_model->bind_pose();
         preview_inverse_bind.reserve(bind_pose.size());
-        for (const auto& transform : bind_pose) {
+        for (const auto& transform : bind_pose)
+        {
             preview_inverse_bind.push_back(alo_inverse(transform));
         }
 
         const auto directory = lower(selected_path.parent_path().generic_string());
         const auto stem = lower(selected_path.stem().string());
-        for (const auto& candidate : assets) {
+        for (const auto& candidate : assets)
+        {
             const auto candidate_path = std::filesystem::path(candidate.virtual_path);
-            if (lower(candidate_path.extension().string()) != ".ala" ||
-                lower(candidate_path.parent_path().generic_string()) != directory) {
+            if (lower(candidate_path.extension().string()) != ".ala" || lower(candidate_path.parent_path().generic_string()) != directory)
+            {
                 continue;
             }
             const auto candidate_stem = lower(candidate_path.stem().string());
-            if (candidate_stem == stem || candidate_stem.starts_with(stem + "_")) {
+            if (candidate_stem == stem || candidate_stem.starts_with(stem + "_"))
+            {
                 preview_animation_assets.push_back(candidate);
             }
         }
 
-        for (const auto& mesh : preview_model->meshes) {
-            for (const auto& submesh : mesh.submeshes) {
-                for (const auto& parameter : submesh.parameters) {
-                    if (parameter.type != AloShaderParameterType::texture ||
-                        parameter.value.empty()) {
+        for (const auto& mesh : preview_model->meshes)
+        {
+            for (const auto& submesh : mesh.submeshes)
+            {
+                for (const auto& parameter : submesh.parameters)
+                {
+                    if (parameter.type != AloShaderParameterType::texture || parameter.value.empty())
+                    {
                         continue;
                     }
                     const auto key = lower(parameter.value);
-                    if (preview_textures.contains(key)) {
+                    if (preview_textures.contains(key))
+                    {
                         continue;
                     }
                     auto filename = std::filesystem::path(parameter.value).filename();
                     filename.replace_extension(".DDS");
-                    const std::array candidates{
-                        std::string("DATA/ART/TEXTURES/") + filename.generic_string(),
-                        std::string("DATA/ART/") + filename.generic_string(),
-                        filename.generic_string()};
+                    const std::array candidates{std::string("DATA/ART/TEXTURES/") + filename.generic_string(), std::string("DATA/ART/") + filename.generic_string(), filename.generic_string()};
                     bool loaded = false;
-                    for (const auto& virtual_path : candidates) {
-                        if (!vfs.resolve(virtual_path)) {
+                    for (const auto& virtual_path : candidates)
+                    {
+                        if (!vfs.resolve(virtual_path))
+                        {
                             continue;
                         }
-                        try {
+                        try
+                        {
                             const auto texture_bytes = vfs.read(virtual_path);
-                            preview_textures.emplace(
-                                key, create_dds_texture(graphics_device, texture_bytes));
+                            preview_textures.emplace(key, create_dds_texture(graphics_device, texture_bytes));
                             loaded = true;
-                        } catch (const std::exception& error) {
-                            preview_texture_warnings.push_back(parameter.value + ": " +
-                                                               error.what());
+                        }
+                        catch (const std::exception& error)
+                        {
+                            preview_texture_warnings.push_back(parameter.value + ": " + error.what());
                         }
                         break;
                     }
-                    if (!loaded && !std::ranges::any_of(
-                                           preview_texture_warnings,
-                                           [&](const auto& warning_text) {
-                                               return warning_text.starts_with(parameter.value +
-                                                                               ":");
-                                           })) {
-                        preview_texture_warnings.push_back(parameter.value +
-                                                           ": matching DDS not found");
+                    if (!loaded && !std::ranges::any_of(preview_texture_warnings,
+                                                        [&](const auto& warning_text)
+                                                        {
+                                                            return warning_text.starts_with(parameter.value + ":");
+                                                        }))
+                    {
+                        preview_texture_warnings.push_back(parameter.value + ": matching DDS not found");
                     }
                 }
             }
         }
     }
 
-    void open_dat(const std::filesystem::path& path) {
+    void open_dat(const std::filesystem::path& path)
+    {
         const auto dat = DatFile::load(path);
         std::vector<LocalizationRow> loaded;
         loaded.reserve(dat.entries().size());
-        for (const auto& entry : dat.entries()) {
+        for (const auto& entry : dat.entries())
+        {
             loaded.push_back({entry.key, utf16_to_utf8(entry.value), {}, "existing", {}, {}});
         }
         std::ranges::sort(loaded, {}, &LocalizationRow::key);
@@ -925,7 +969,8 @@ struct GuiApp::State {
         succeed("Opened " + std::to_string(rows.size()) + " localization entries");
     }
 
-    void open_workspace(const std::filesystem::path& path) {
+    void open_workspace(const std::filesystem::path& path)
+    {
         rows = read_localization_workspace(path);
         workspace_path = path;
         selected_row = rows.empty() ? -1 : 0;
@@ -934,117 +979,139 @@ struct GuiApp::State {
         succeed("Opened workspace with " + std::to_string(rows.size()) + " rows");
     }
 
-    void save_workspace(const std::filesystem::path& path) {
+    void save_workspace(const std::filesystem::path& path)
+    {
         write_localization_workspace(path, rows, true);
         workspace_path = path;
         dirty = false;
         succeed("Saved localization workspace");
     }
 
-    void validate_workspace() {
+    void validate_workspace()
+    {
         validation_messages.clear();
         std::unordered_set<std::string> keys;
-        for (const auto& row : rows) {
-            if (row.key.empty()) {
+        for (const auto& row : rows)
+        {
+            if (row.key.empty())
+            {
                 validation_messages.emplace_back("Error: a row has an empty key");
-            } else if (!keys.insert(lower(row.key)).second) {
-                validation_messages.push_back(
-                    std::string(lower(row.key) == "text_end_of_data" ? "Warning: "
-                                                                      : "Error: ") +
-                    "duplicate key " + row.key);
             }
-            if (lower(row.status) == "todo") {
-                if (row.text.empty()) {
+            else if (!keys.insert(lower(row.key)).second)
+            {
+                validation_messages.push_back(std::string(lower(row.key) == "text_end_of_data" ? "Warning: " : "Error: ") + "duplicate key " + row.key);
+            }
+            if (lower(row.status) == "todo")
+            {
+                if (row.text.empty())
+                {
                     validation_messages.push_back("TODO: " + row.key);
-                } else {
-                    validation_messages.push_back(
-                        "Warning: " + row.key +
-                        " has text but is still marked TODO; its value will be included");
+                }
+                else
+                {
+                    validation_messages.push_back("Warning: " + row.key + " has text but is still marked TODO; its value will be included");
                 }
             }
         }
-        if (base_dat_path) {
-            try {
+        if (base_dat_path)
+        {
+            try
+            {
                 auto candidate = DatFile::load(*base_dat_path);
                 apply_localization_workspace(candidate, rows, skip_todo);
-                for (const auto& issue : candidate.validate()) {
-                    validation_messages.push_back(
-                        std::string(issue.severity == DatIssueSeverity::error ? "Error: "
-                                                                            : "Warning: ") +
-                        issue.message);
+                for (const auto& issue : candidate.validate())
+                {
+                    validation_messages.push_back(std::string(issue.severity == DatIssueSeverity::error ? "Error: " : "Warning: ") + issue.message);
                 }
-            } catch (const std::exception& error) {
+            }
+            catch (const std::exception& error)
+            {
                 validation_messages.push_back(std::string("Error: ") + error.what());
             }
         }
-        const auto errors = std::ranges::count_if(validation_messages, [](const auto& item) {
-            return item.starts_with("Error:");
-        });
-        succeed(errors == 0 ? "Validation completed without errors"
-                            : "Validation found " + std::to_string(errors) + " errors");
+        const auto errors = std::ranges::count_if(validation_messages,
+                                                  [](const auto& item)
+                                                  {
+                                                      return item.starts_with("Error:");
+                                                  });
+        succeed(errors == 0 ? "Validation completed without errors" : "Validation found " + std::to_string(errors) + " errors");
         message_error = errors != 0;
     }
 
-    void build_dat(const std::filesystem::path& output) {
-        if (!base_dat_path) {
+    void build_dat(const std::filesystem::path& output)
+    {
+        if (!base_dat_path)
+        {
             throw std::runtime_error("Open a baseline DAT before building an output DAT");
         }
         std::error_code path_error;
         const auto baseline = std::filesystem::weakly_canonical(*base_dat_path, path_error);
         path_error.clear();
         const auto destination = std::filesystem::weakly_canonical(output, path_error);
-        if (lower(path_to_utf8(baseline)) == lower(path_to_utf8(destination))) {
-            throw std::runtime_error(
-                "Choose a different output path; EAWTools will not overwrite the baseline DAT");
+        if (lower(path_to_utf8(baseline)) == lower(path_to_utf8(destination)))
+        {
+            throw std::runtime_error("Choose a different output path; EAWTools will not overwrite the baseline DAT");
         }
         auto dat = DatFile::load(*base_dat_path);
         apply_localization_workspace(dat, rows, skip_todo);
         const auto issues = dat.validate();
-        const auto errors = std::ranges::count_if(issues, [](const auto& issue) {
-            return issue.severity == DatIssueSeverity::error;
-        });
-        if (errors != 0) {
-            throw std::runtime_error("The built DAT has " + std::to_string(errors) +
-                                     " validation errors");
+        const auto errors = std::ranges::count_if(issues,
+                                                  [](const auto& issue)
+                                                  {
+                                                      return issue.severity == DatIssueSeverity::error;
+                                                  });
+        if (errors != 0)
+        {
+            throw std::runtime_error("The built DAT has " + std::to_string(errors) + " validation errors");
         }
         dat.save(output, true);
-        succeed("Built " + path_to_utf8(output) + " with " +
-                std::to_string(dat.entries().size()) + " entries");
+        succeed("Built " + path_to_utf8(output) + " with " + std::to_string(dat.entries().size()) + " entries");
     }
 
-    void scan_mod(const std::filesystem::path& mod_root) {
-        if (!base_dat_path) {
+    void scan_mod(const std::filesystem::path& mod_root)
+    {
+        if (!base_dat_path)
+        {
             throw std::runtime_error("Open a baseline DAT before scanning a mod");
         }
         const auto baseline = DatFile::load(*base_dat_path);
         const auto result = scan_mod_localization(mod_root, baseline);
         std::unordered_set<std::string> existing;
-        for (const auto& row : rows) {
+        for (const auto& row : rows)
+        {
             existing.insert(lower(row.key));
         }
         std::size_t added = 0;
-        for (const auto& row : result.missing) {
-            if (existing.insert(lower(row.key)).second) {
+        for (const auto& row : result.missing)
+        {
+            if (existing.insert(lower(row.key)).second)
+            {
                 rows.push_back(row);
                 ++added;
             }
         }
-        std::ranges::sort(rows, [](const auto& left, const auto& right) {
-            return std::tie(left.group, left.key) < std::tie(right.group, right.key);
-        });
+        std::ranges::sort(rows,
+                          [](const auto& left, const auto& right)
+                          {
+                              return std::tie(left.group, left.key) < std::tie(right.group, right.key);
+                          });
         dirty = dirty || added != 0;
         selected_row = rows.empty() ? -1 : 0;
-        succeed("Scanned " + std::to_string(result.reference_count) +
-                " references and added " + std::to_string(added) + " missing keys");
+        succeed("Scanned " + std::to_string(result.reference_count) + " references and added " + std::to_string(added) + " missing keys");
     }
 
-    void add_localization_row(LocalizationRow row) {
-        if (row.key.empty()) {
+    void add_localization_row(LocalizationRow row)
+    {
+        if (row.key.empty())
+        {
             throw std::runtime_error("Localization key cannot be empty");
         }
-        if (std::ranges::any_of(rows, [&](const auto& existing) {
-                return lower(existing.key) == lower(row.key);
-            })) {
+        if (std::ranges::any_of(rows,
+                                [&](const auto& existing)
+                                {
+                                    return lower(existing.key) == lower(row.key);
+                                }))
+        {
             throw std::runtime_error("The workspace already contains " + row.key);
         }
         rows.push_back(std::move(row));
@@ -1053,79 +1120,87 @@ struct GuiApp::State {
     }
 };
 
-GuiApp::GuiApp(ID3D11Device* device) : state_(std::make_unique<State>(device)) {}
+GuiApp::GuiApp(ID3D11Device* device) : state_(std::make_unique<State>(device))
+{}
 GuiApp::~GuiApp() = default;
 
 namespace {
 
-void render_status_bar(GuiApp::State& state) {
+void render_status_bar(GuiApp::State& state)
+{
     ImGui::Separator();
-    ImGui::TextColored(state.message_error ? danger : accent, "%s",
-                       state.message_error ? "!" : "●");
+    ImGui::TextColored(state.message_error ? danger : accent, "%s", state.message_error ? "!" : "●");
     ImGui::SameLine();
     ImGui::TextUnformatted(state.message.c_str());
 }
 
-bool collision_material(const AloSubMesh& submesh) {
+bool collision_material(const AloSubMesh& submesh)
+{
     return lower(submesh.shader).find("collision") != std::string::npos;
 }
 
-ID3D11ShaderResourceView* submesh_texture(const GuiApp::State& state,
-                                          const AloSubMesh& submesh) {
+ID3D11ShaderResourceView* submesh_texture(const GuiApp::State& state, const AloSubMesh& submesh)
+{
     const AloShaderParameter* selected = nullptr;
-    for (const auto& parameter : submesh.parameters) {
-        if (parameter.type != AloShaderParameterType::texture ||
-            parameter.value.empty()) {
+    for (const auto& parameter : submesh.parameters)
+    {
+        if (parameter.type != AloShaderParameterType::texture || parameter.value.empty())
+        {
             continue;
         }
-        if (selected == nullptr) {
+        if (selected == nullptr)
+        {
             selected = &parameter;
         }
         const auto name = lower(parameter.name);
-        if (name == "basetexture" || name == "diffusetexture" ||
-            name == "texture") {
+        if (name == "basetexture" || name == "diffusetexture" || name == "texture")
+        {
             selected = &parameter;
             break;
         }
     }
-    if (selected == nullptr) {
+    if (selected == nullptr)
+    {
         return nullptr;
     }
     const auto found = state.preview_textures.find(lower(selected->value));
     return found == state.preview_textures.end() ? nullptr : found->second.view.Get();
 }
 
-AloVector3 animated_vertex(const AloVertex& vertex,
-                           const AloSubMesh& submesh,
-                           const std::vector<AlaPoseBone>& pose,
-                           const std::vector<AloMatrix4>& inverse_bind) {
-    if (submesh.skin_bones.empty()) {
+AloVector3 animated_vertex(const AloVertex& vertex, const AloSubMesh& submesh, const std::vector<AlaPoseBone>& pose, const std::vector<AloMatrix4>& inverse_bind)
+{
+    if (submesh.skin_bones.empty())
+    {
         return vertex.position;
     }
     AloVector3 result{};
     float total_weight = 0.0F;
-    for (std::size_t influence = 0; influence < vertex.bone_indices.size(); ++influence) {
+    for (std::size_t influence = 0; influence < vertex.bone_indices.size(); ++influence)
+    {
         const auto weight = vertex.bone_weights[influence];
         const auto palette_index = vertex.bone_indices[influence];
-        if (weight <= 0.0F || palette_index >= submesh.skin_bones.size()) {
+        if (weight <= 0.0F || palette_index >= submesh.skin_bones.size())
+        {
             continue;
         }
         const auto bone_index = submesh.skin_bones[palette_index];
-        if (bone_index >= pose.size() || bone_index >= inverse_bind.size()) {
+        if (bone_index >= pose.size() || bone_index >= inverse_bind.size())
+        {
             continue;
         }
-        const auto skin = alo_multiply(inverse_bind[bone_index],
-                                       pose[bone_index].transform);
+        const auto skin = alo_multiply(inverse_bind[bone_index], pose[bone_index].transform);
         const auto point = alo_transform_point(vertex.position, skin);
         result.x += point.x * weight;
         result.y += point.y * weight;
         result.z += point.z * weight;
         total_weight += weight;
     }
-    if (total_weight <= 1.0e-6F) {
+    if (total_weight <= 1.0e-6F)
+    {
         return vertex.position;
     }
-    if (std::fabs(total_weight - 1.0F) > 1.0e-4F) {
+    if (std::fabs(total_weight - 1.0F) > 1.0e-4F)
+    {
         result.x /= total_weight;
         result.y /= total_weight;
         result.z /= total_weight;
@@ -1133,214 +1208,199 @@ AloVector3 animated_vertex(const AloVertex& vertex,
     return result;
 }
 
-std::vector<AlaPoseBone> preview_pose(const GuiApp::State& state) {
-    if (!state.preview_model) {
+std::vector<AlaPoseBone> preview_pose(const GuiApp::State& state)
+{
+    if (!state.preview_model)
+    {
         return {};
     }
-    if (state.preview_animation) {
-        return state.preview_animation->sample_pose(*state.preview_model,
-                                                    state.preview_time);
+    if (state.preview_animation)
+    {
+        return state.preview_animation->sample_pose(*state.preview_model, state.preview_time);
     }
     const auto transforms = state.preview_model->bind_pose();
     std::vector<AlaPoseBone> pose;
     pose.reserve(transforms.size());
-    for (std::size_t index = 0; index < transforms.size(); ++index) {
+    for (std::size_t index = 0; index < transforms.size(); ++index)
+    {
         pose.push_back({transforms[index], state.preview_model->bones[index].visible});
     }
     return pose;
 }
 
-std::vector<PreviewTriangle> preview_triangles(const GuiApp::State& state,
-                                               const std::vector<AlaPoseBone>& pose) {
+std::vector<PreviewTriangle> preview_triangles(const GuiApp::State& state, const std::vector<AlaPoseBone>& pose)
+{
     std::vector<PreviewTriangle> triangles;
-    if (!state.preview_model) {
+    if (!state.preview_model)
+    {
         return triangles;
     }
-    const auto maximum_triangles = static_cast<std::size_t>(
-        std::max(state.preview_triangle_budget, 1000));
-    triangles.reserve(static_cast<std::size_t>(std::min<std::uint64_t>(
-        state.preview_model->triangle_count(), maximum_triangles)));
-    const auto triangle_stride = std::max<std::uint64_t>(
-        1, (state.preview_model->triangle_count() + maximum_triangles - 1) /
-               maximum_triangles);
-    static constexpr std::array<ImU32, 6> palette{
-        IM_COL32(54, 177, 186, 255), IM_COL32(71, 137, 201, 255),
-        IM_COL32(121, 101, 198, 255), IM_COL32(55, 183, 133, 255),
-        IM_COL32(199, 145, 62, 255), IM_COL32(185, 91, 129, 255)};
+    const auto maximum_triangles = static_cast<std::size_t>(std::max(state.preview_triangle_budget, 1000));
+    triangles.reserve(static_cast<std::size_t>(std::min<std::uint64_t>(state.preview_model->triangle_count(), maximum_triangles)));
+    const auto triangle_stride = std::max<std::uint64_t>(1, (state.preview_model->triangle_count() + maximum_triangles - 1) / maximum_triangles);
+    static constexpr std::array<ImU32, 6> palette{IM_COL32(54, 177, 186, 255), IM_COL32(71, 137, 201, 255), IM_COL32(121, 101, 198, 255),
+                                                  IM_COL32(55, 183, 133, 255), IM_COL32(199, 145, 62, 255), IM_COL32(185, 91, 129, 255)};
 
-    for (std::size_t mesh_index = 0;
-         mesh_index < state.preview_model->meshes.size() &&
-         triangles.size() < maximum_triangles;
-         ++mesh_index) {
+    for (std::size_t mesh_index = 0; mesh_index < state.preview_model->meshes.size() && triangles.size() < maximum_triangles; ++mesh_index)
+    {
         const auto& mesh = state.preview_model->meshes[mesh_index];
-        if (mesh.hidden) {
+        if (mesh.hidden)
+        {
             continue;
         }
-        if (mesh.attached_bone && *mesh.attached_bone < pose.size() &&
-            !pose[*mesh.attached_bone].visible) {
+        if (mesh.attached_bone && *mesh.attached_bone < pose.size() && !pose[*mesh.attached_bone].visible)
+        {
             continue;
         }
-        for (const auto& submesh : mesh.submeshes) {
+        for (const auto& submesh : mesh.submeshes)
+        {
             const bool collision = collision_material(submesh);
-            if (collision && !state.preview_show_collision) {
+            if (collision && !state.preview_show_collision)
+            {
                 continue;
             }
-            if (submesh.vertices.empty() || submesh.indices.size() < 3) {
+            if (submesh.vertices.empty() || submesh.indices.size() < 3)
+            {
                 continue;
             }
             std::vector<AloVector3> vertices;
             vertices.reserve(submesh.vertices.size());
-            for (const auto& vertex : submesh.vertices) {
-                auto point = animated_vertex(vertex, submesh, pose,
-                                             state.preview_inverse_bind);
-                if (submesh.skin_bones.empty() && mesh.attached_bone &&
-                    *mesh.attached_bone < pose.size()) {
-                    point = alo_transform_point(point,
-                                                pose[*mesh.attached_bone].transform);
+            for (const auto& vertex : submesh.vertices)
+            {
+                auto point = animated_vertex(vertex, submesh, pose, state.preview_inverse_bind);
+                if (submesh.skin_bones.empty() && mesh.attached_bone && *mesh.attached_bone < pose.size())
+                {
+                    point = alo_transform_point(point, pose[*mesh.attached_bone].transform);
                 }
                 vertices.push_back(point);
             }
-            const auto color = collision ? IM_COL32(224, 79, 72, 180)
-                                         : palette[mesh_index % palette.size()];
+            const auto color = collision ? IM_COL32(224, 79, 72, 180) : palette[mesh_index % palette.size()];
             auto* texture = collision ? nullptr : submesh_texture(state, submesh);
-            for (std::size_t index = 0;
-                 index + 2 < submesh.indices.size() &&
-                 triangles.size() < maximum_triangles;
-                 index += static_cast<std::size_t>(3U * triangle_stride)) {
+            for (std::size_t index = 0; index + 2 < submesh.indices.size() && triangles.size() < maximum_triangles; index += static_cast<std::size_t>(3U * triangle_stride))
+            {
                 const auto a = submesh.indices[index];
                 const auto b = submesh.indices[index + 1];
                 const auto c = submesh.indices[index + 2];
-                if (a >= vertices.size() || b >= vertices.size() ||
-                    c >= vertices.size()) {
+                if (a >= vertices.size() || b >= vertices.size() || c >= vertices.size())
+                {
                     continue;
                 }
-                triangles.push_back(
-                    {{vertices[a], vertices[b], vertices[c]},
-                     {submesh.vertices[a].texture_coordinates[0],
-                      submesh.vertices[b].texture_coordinates[0],
-                      submesh.vertices[c].texture_coordinates[0]},
-                     texture,
-                     texture != nullptr ? IM_COL32_WHITE : color});
+                triangles.push_back({{vertices[a], vertices[b], vertices[c]},
+                                     {submesh.vertices[a].texture_coordinates[0], submesh.vertices[b].texture_coordinates[0], submesh.vertices[c].texture_coordinates[0]},
+                                     texture,
+                                     texture != nullptr ? IM_COL32_WHITE : color});
             }
         }
     }
     return triangles;
 }
 
-ImU32 shaded_color(const ImU32 color, const float intensity) {
-    const auto channel = [&](const unsigned shift) {
-        return static_cast<int>(std::clamp(
-            static_cast<float>((color >> shift) & 0xffU) * intensity, 0.0F, 255.0F));
+ImU32 shaded_color(const ImU32 color, const float intensity)
+{
+    const auto channel = [&](const unsigned shift)
+    {
+        return static_cast<int>(std::clamp(static_cast<float>((color >> shift) & 0xffU) * intensity, 0.0F, 255.0F));
     };
-    return IM_COL32(channel(IM_COL32_R_SHIFT), channel(IM_COL32_G_SHIFT),
-                    channel(IM_COL32_B_SHIFT), (color >> IM_COL32_A_SHIFT) & 0xffU);
+    return IM_COL32(channel(IM_COL32_R_SHIFT), channel(IM_COL32_G_SHIFT), channel(IM_COL32_B_SHIFT), (color >> IM_COL32_A_SHIFT) & 0xffU);
 }
 
-ImU32 terrain_height_color(const float height) {
-    struct Stop {
+ImU32 terrain_height_color(const float height)
+{
+    struct Stop
+    {
         float position;
         std::array<float, 3> color;
     };
-    static constexpr std::array stops{
-        Stop{0.00F, {25.0F, 70.0F, 82.0F}},
-        Stop{0.18F, {38.0F, 105.0F, 83.0F}},
-        Stop{0.48F, {84.0F, 132.0F, 72.0F}},
-        Stop{0.72F, {137.0F, 112.0F, 70.0F}},
-        Stop{0.90F, {151.0F, 143.0F, 120.0F}},
-        Stop{1.00F, {219.0F, 224.0F, 218.0F}}};
+    static constexpr std::array stops{Stop{0.00F, {25.0F, 70.0F, 82.0F}},   Stop{0.18F, {38.0F, 105.0F, 83.0F}},   Stop{0.48F, {84.0F, 132.0F, 72.0F}},
+                                      Stop{0.72F, {137.0F, 112.0F, 70.0F}}, Stop{0.90F, {151.0F, 143.0F, 120.0F}}, Stop{1.00F, {219.0F, 224.0F, 218.0F}}};
     const auto clamped = std::clamp(height, 0.0F, 1.0F);
     std::size_t upper = 1;
-    while (upper + 1 < stops.size() && clamped > stops[upper].position) {
+    while (upper + 1 < stops.size() && clamped > stops[upper].position)
+    {
         ++upper;
     }
     const auto& left = stops[upper - 1];
     const auto& right = stops[upper];
-    const auto mix = (clamped - left.position) /
-                     std::max(right.position - left.position, 0.0001F);
-    const auto channel = [&](const std::size_t index) {
+    const auto mix = (clamped - left.position) / std::max(right.position - left.position, 0.0001F);
+    const auto channel = [&](const std::size_t index)
+    {
         return static_cast<int>(std::lerp(left.color[index], right.color[index], mix));
     };
     return IM_COL32(channel(0), channel(1), channel(2), 255);
 }
 
-ImU32 passability_color(const std::uint32_t value) {
-    static constexpr std::array<ImU32, 8> palette{
-        IM_COL32(48, 170, 117, 255), IM_COL32(225, 87, 75, 255),
-        IM_COL32(228, 164, 62, 255), IM_COL32(76, 140, 207, 255),
-        IM_COL32(151, 101, 203, 255), IM_COL32(62, 183, 190, 255),
-        IM_COL32(205, 102, 154, 255), IM_COL32(154, 158, 165, 255)};
+ImU32 passability_color(const std::uint32_t value)
+{
+    static constexpr std::array<ImU32, 8> palette{IM_COL32(48, 170, 117, 255),  IM_COL32(225, 87, 75, 255),  IM_COL32(228, 164, 62, 255),  IM_COL32(76, 140, 207, 255),
+                                                  IM_COL32(151, 101, 203, 255), IM_COL32(62, 183, 190, 255), IM_COL32(205, 102, 154, 255), IM_COL32(154, 158, 165, 255)};
     const auto mixed = value ^ (value >> 8U) ^ (value >> 16U) ^ (value >> 24U);
     return palette[mixed % palette.size()];
 }
 
-ImU32 object_player_color(const std::uint32_t player) {
-    static constexpr std::array<ImU32, 8> palette{
-        IM_COL32(188, 199, 207, 255), IM_COL32(70, 156, 222, 255),
-        IM_COL32(228, 88, 76, 255), IM_COL32(235, 179, 67, 255),
-        IM_COL32(112, 195, 130, 255), IM_COL32(166, 111, 215, 255),
-        IM_COL32(67, 190, 194, 255), IM_COL32(219, 116, 175, 255)};
+ImU32 object_player_color(const std::uint32_t player)
+{
+    static constexpr std::array<ImU32, 8> palette{IM_COL32(188, 199, 207, 255), IM_COL32(70, 156, 222, 255),  IM_COL32(228, 88, 76, 255),  IM_COL32(235, 179, 67, 255),
+                                                  IM_COL32(112, 195, 130, 255), IM_COL32(166, 111, 215, 255), IM_COL32(67, 190, 194, 255), IM_COL32(219, 116, 175, 255)};
     return palette[player % palette.size()];
 }
 
-float object_marker_radius(const TedPlacedObject& object, const float scale) {
-    return std::clamp(std::sqrt(std::max(std::fabs(object.scale), 0.1F)),
-                      0.75F, 2.25F) *
-           3.5F * scale;
+float object_marker_radius(const TedPlacedObject& object, const float scale)
+{
+    return std::clamp(std::sqrt(std::max(std::fabs(object.scale), 0.1F)), 0.75F, 2.25F) * 3.5F * scale;
 }
 
-std::vector<PreviewTriangle> map_preview_triangles(const TedMap& map,
-                                                   const int triangle_budget,
-                                                   const float vertical_scale,
-                                                   const bool show_passability) {
+std::vector<PreviewTriangle> map_preview_triangles(const TedMap& map, const int triangle_budget, const float vertical_scale, const bool show_passability)
+{
     std::vector<PreviewTriangle> triangles;
     const auto width = map.terrain_width;
     const auto height = map.terrain_height;
     const auto expected = static_cast<std::size_t>(width) * height;
-    if (width < 2 || height < 2 || map.elevation_map.size() < expected) {
+    if (width < 2 || height < 2 || map.elevation_map.size() < expected)
+    {
         return triangles;
     }
 
     const auto budget = static_cast<std::size_t>(std::max(triangle_budget, 2));
     std::uint32_t stride = 1;
-    const auto cell_count = [&](const std::uint32_t step) {
+    const auto cell_count = [&](const std::uint32_t step)
+    {
         const auto columns = (static_cast<std::size_t>(width - 1U) + step - 1U) / step;
         const auto rows = (static_cast<std::size_t>(height - 1U) + step - 1U) / step;
         return columns * rows * 2U;
     };
-    while (cell_count(stride) > budget) {
+    while (cell_count(stride) > budget)
+    {
         ++stride;
     }
     triangles.reserve(cell_count(stride));
 
-    const auto elevation_range = std::max(
-        1.0F, static_cast<float>(map.maximum_elevation - map.minimum_elevation));
+    const auto elevation_range = std::max(1.0F, static_cast<float>(map.maximum_elevation - map.minimum_elevation));
     const auto horizontal_extent = static_cast<float>(std::max(width - 1U, height - 1U));
     const auto vertical_extent = horizontal_extent * 0.36F * vertical_scale;
     const auto center_x = static_cast<float>(width - 1U) * 0.5F;
     const auto center_y = static_cast<float>(height - 1U) * 0.5F;
-    const auto point = [&](const std::uint32_t x, const std::uint32_t y) {
+    const auto point = [&](const std::uint32_t x, const std::uint32_t y)
+    {
         const auto index = static_cast<std::size_t>(y) * width + x;
-        const auto normalized =
-            (static_cast<float>(map.elevation_map[index]) - map.minimum_elevation) /
-            elevation_range;
-        return AloVector3{static_cast<float>(x) - center_x,
-                          static_cast<float>(y) - center_y,
-                          (normalized - 0.5F) * vertical_extent};
+        const auto normalized = (static_cast<float>(map.elevation_map[index]) - map.minimum_elevation) / elevation_range;
+        return AloVector3{static_cast<float>(x) - center_x, static_cast<float>(y) - center_y, (normalized - 0.5F) * vertical_extent};
     };
-    const auto color = [&](const std::uint32_t x, const std::uint32_t y) {
+    const auto color = [&](const std::uint32_t x, const std::uint32_t y)
+    {
         const auto index = static_cast<std::size_t>(y) * width + x;
-        if (show_passability && index < map.passability_map.size()) {
+        if (show_passability && index < map.passability_map.size())
+        {
             return passability_color(map.passability_map[index]);
         }
-        const auto normalized =
-            (static_cast<float>(map.elevation_map[index]) - map.minimum_elevation) /
-            elevation_range;
+        const auto normalized = (static_cast<float>(map.elevation_map[index]) - map.minimum_elevation) / elevation_range;
         return terrain_height_color(normalized);
     };
 
-    for (std::uint32_t y = 0; y + 1U < height; y += stride) {
+    for (std::uint32_t y = 0; y + 1U < height; y += stride)
+    {
         const auto next_y = std::min(y + stride, height - 1U);
-        for (std::uint32_t x = 0; x + 1U < width; x += stride) {
+        for (std::uint32_t x = 0; x + 1U < width; x += stride)
+        {
             const auto next_x = std::min(x + stride, width - 1U);
             const auto a = point(x, y);
             const auto b = point(next_x, y);
@@ -1350,25 +1410,26 @@ std::vector<PreviewTriangle> map_preview_triangles(const TedMap& map,
             const auto first_y = (2U * y + next_y) / 3U;
             const auto second_x = (2U * x + next_x) / 3U;
             const auto second_y = (y + 2U * next_y) / 3U;
-            triangles.push_back(
-                {{a, b, c}, {}, nullptr, color(first_x, first_y)});
-            triangles.push_back(
-                {{a, c, d}, {}, nullptr, color(second_x, second_y)});
+            triangles.push_back({{a, b, c}, {}, nullptr, color(first_x, first_y)});
+            triangles.push_back({{a, c, d}, {}, nullptr, color(second_x, second_y)});
         }
     }
     return triangles;
 }
 
-void render_space_map_viewport(GuiApp::State& state,
-                               const bool reserve_footer) {
-    if (!state.preview_map) {
+void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
+{
+    if (!state.preview_map)
+    {
         return;
     }
     const auto& map = *state.preview_map;
     std::vector<std::size_t> positioned;
     positioned.reserve(map.placed_objects.size());
-    for (std::size_t index = 0; index < map.placed_objects.size(); ++index) {
-        if (map.placed_objects[index].has_transform) {
+    for (std::size_t index = 0; index < map.placed_objects.size(); ++index)
+    {
+        if (map.placed_objects[index].has_transform)
+        {
             positioned.push_back(index);
         }
     }
@@ -1379,55 +1440,46 @@ void render_space_map_viewport(GuiApp::State& state,
     ImGui::SameLine();
     ImGui::Checkbox("3D altitude", &state.map_preview_show_altitude);
     ImGui::SetNextItemWidth(-1.0F);
-    ImGui::SliderFloat("##space-marker-scale", &state.map_preview_marker_scale,
-                       0.5F, 2.5F, "Marker size: %.2fx");
-    ImGui::TextColored(muted, "%zu positioned objects  |  %zu types  |  %.0f x %.0f bounds",
-                       positioned.size(), map.object_types.size(), map.world_width,
-                       map.world_height);
+    ImGui::SliderFloat("##space-marker-scale", &state.map_preview_marker_scale, 0.5F, 2.5F, "Marker size: %.2fx");
+    ImGui::TextColored(muted, "%zu positioned objects  |  %zu types  |  %.0f x %.0f bounds", positioned.size(), map.object_types.size(), map.world_width, map.world_height);
 
     auto canvas_size = ImGui::GetContentRegionAvail();
-    if (reserve_footer) {
+    if (reserve_footer)
+    {
         canvas_size.y -= ImGui::GetFrameHeightWithSpacing();
     }
     canvas_size.x = std::max(canvas_size.x, 120.0F);
     canvas_size.y = std::max(canvas_size.y, 260.0F);
-    ImGui::InvisibleButton("space-map-canvas", canvas_size,
-                           ImGuiButtonFlags_MouseButtonLeft);
+    ImGui::InvisibleButton("space-map-canvas", canvas_size, ImGuiButtonFlags_MouseButtonLeft);
     const auto canvas_min = ImGui::GetItemRectMin();
     const auto canvas_max = ImGui::GetItemRectMax();
-    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+    {
         state.map_preview_yaw += ImGui::GetIO().MouseDelta.x * 0.012F;
-        state.map_preview_pitch = std::clamp(
-            state.map_preview_pitch - ImGui::GetIO().MouseDelta.y * 0.012F,
-            -1.45F, 1.45F);
+        state.map_preview_pitch = std::clamp(state.map_preview_pitch - ImGui::GetIO().MouseDelta.y * 0.012F, -1.45F, 1.45F);
     }
-    if (ImGui::IsItemHovered() && ImGui::GetIO().MouseWheel != 0.0F) {
-        state.map_preview_zoom = std::clamp(
-            state.map_preview_zoom * std::pow(1.12F, ImGui::GetIO().MouseWheel),
-            0.15F, 12.0F);
+    if (ImGui::IsItemHovered() && ImGui::GetIO().MouseWheel != 0.0F)
+    {
+        state.map_preview_zoom = std::clamp(state.map_preview_zoom * std::pow(1.12F, ImGui::GetIO().MouseWheel), 0.15F, 12.0F);
     }
 
     auto* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(canvas_min, canvas_max, IM_COL32(7, 13, 20, 255), 6.0F);
     draw->AddRect(canvas_min, canvas_max, IM_COL32(40, 78, 91, 255), 6.0F);
-    if (positioned.empty()) {
-        draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 14.0F},
-                      IM_COL32(150, 164, 174, 255),
-                      "No positioned objects were decoded from this space map");
+    if (positioned.empty())
+    {
+        draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 14.0F}, IM_COL32(150, 164, 174, 255), "No positioned objects were decoded from this space map");
         return;
     }
 
-    AloVector3 minimum{std::numeric_limits<float>::max(),
-                       std::numeric_limits<float>::max(),
-                       std::numeric_limits<float>::max()};
-    AloVector3 maximum{std::numeric_limits<float>::lowest(),
-                       std::numeric_limits<float>::lowest(),
-                       std::numeric_limits<float>::lowest()};
-    const auto preview_point = [&](const TedPlacedObject& object) {
-        return AloVector3{object.position.x, object.position.y,
-                          state.map_preview_show_altitude ? object.position.z : 0.0F};
+    AloVector3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+    AloVector3 maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+    const auto preview_point = [&](const TedPlacedObject& object)
+    {
+        return AloVector3{object.position.x, object.position.y, state.map_preview_show_altitude ? object.position.z : 0.0F};
     };
-    for (const auto index : positioned) {
+    for (const auto index : positioned)
+    {
         const auto point = preview_point(map.placed_objects[index]);
         minimum.x = std::min(minimum.x, point.x);
         minimum.y = std::min(minimum.y, point.y);
@@ -1436,7 +1488,8 @@ void render_space_map_viewport(GuiApp::State& state,
         maximum.y = std::max(maximum.y, point.y);
         maximum.z = std::max(maximum.z, point.z);
     }
-    if (map.world_width > 0.0F && map.world_height > 0.0F) {
+    if (map.world_width > 0.0F && map.world_height > 0.0F)
+    {
         minimum.x = std::min(minimum.x, map.world_width * -0.5F);
         maximum.x = std::max(maximum.x, map.world_width * 0.5F);
         minimum.y = std::min(minimum.y, map.world_height * -0.5F);
@@ -1444,34 +1497,31 @@ void render_space_map_viewport(GuiApp::State& state,
     }
     minimum.z = std::min(minimum.z, 0.0F);
     maximum.z = std::max(maximum.z, 0.0F);
-    const AloVector3 center{(minimum.x + maximum.x) * 0.5F,
-                            (minimum.y + maximum.y) * 0.5F,
-                            (minimum.z + maximum.z) * 0.5F};
-    const auto extent = std::max({maximum.x - minimum.x, maximum.y - minimum.y,
-                                  maximum.z - minimum.z, 0.001F});
-    const auto scale = std::min(canvas_size.x, canvas_size.y) * 0.78F /
-                       extent * state.map_preview_zoom;
-    const auto screen_center = ImVec2{(canvas_min.x + canvas_max.x) * 0.5F,
-                                      (canvas_min.y + canvas_max.y) * 0.5F};
+    const AloVector3 center{(minimum.x + maximum.x) * 0.5F, (minimum.y + maximum.y) * 0.5F, (minimum.z + maximum.z) * 0.5F};
+    const auto extent = std::max({maximum.x - minimum.x, maximum.y - minimum.y, maximum.z - minimum.z, 0.001F});
+    const auto scale = std::min(canvas_size.x, canvas_size.y) * 0.78F / extent * state.map_preview_zoom;
+    const auto screen_center = ImVec2{(canvas_min.x + canvas_max.x) * 0.5F, (canvas_min.y + canvas_max.y) * 0.5F};
     const auto yaw_cos = std::cos(state.map_preview_yaw);
     const auto yaw_sin = std::sin(state.map_preview_yaw);
     const auto pitch_cos = std::cos(state.map_preview_pitch);
     const auto pitch_sin = std::sin(state.map_preview_pitch);
-    const auto project = [&](const AloVector3& point, float* depth = nullptr) {
+    const auto project = [&](const AloVector3& point, float* depth = nullptr)
+    {
         const auto x = point.x - center.x;
         const auto y = point.y - center.y;
         const auto z = point.z - center.z;
         const auto horizontal = yaw_cos * x + yaw_sin * y;
         const auto forward = -yaw_sin * x + yaw_cos * y;
         const auto vertical = -pitch_sin * forward + pitch_cos * z;
-        if (depth != nullptr) {
+        if (depth != nullptr)
+        {
             *depth = pitch_cos * forward + pitch_sin * z;
         }
-        return ImVec2{screen_center.x + horizontal * scale,
-                      screen_center.y - vertical * scale};
+        return ImVec2{screen_center.x + horizontal * scale, screen_center.y - vertical * scale};
     };
 
-    struct SpaceMarker {
+    struct SpaceMarker
+    {
         ImVec2 point;
         ImVec2 ground;
         float depth{};
@@ -1481,12 +1531,10 @@ void render_space_map_viewport(GuiApp::State& state,
         std::size_t object_index{};
     };
     std::vector<SpaceMarker> markers;
-    const auto marker_stride = std::max<std::size_t>(
-        1, (positioned.size() + 5999U) / 6000U);
+    const auto marker_stride = std::max<std::size_t>(1, (positioned.size() + 5999U) / 6000U);
     markers.reserve((positioned.size() + marker_stride - 1U) / marker_stride);
-    for (std::size_t shown = 0;
-         state.map_preview_show_objects && shown < positioned.size();
-         shown += marker_stride) {
+    for (std::size_t shown = 0; state.map_preview_show_objects && shown < positioned.size(); shown += marker_stride)
+    {
         const auto object_index = positioned[shown];
         const auto& object = map.placed_objects[object_index];
         const auto point = preview_point(object);
@@ -1502,181 +1550,168 @@ void render_space_map_viewport(GuiApp::State& state,
     std::ranges::sort(markers, {}, &SpaceMarker::depth);
 
     draw->PushClipRect(canvas_min, canvas_max, true);
-    if (state.map_preview_show_grid) {
+    if (state.map_preview_show_grid)
+    {
         const auto grid_color = IM_COL32(72, 120, 139, 75);
         const auto boundary_color = IM_COL32(91, 169, 184, 155);
         const auto left = map.world_width > 0.0F ? map.world_width * -0.5F : minimum.x;
         const auto right = map.world_width > 0.0F ? map.world_width * 0.5F : maximum.x;
         const auto bottom = map.world_height > 0.0F ? map.world_height * -0.5F : minimum.y;
         const auto top = map.world_height > 0.0F ? map.world_height * 0.5F : maximum.y;
-        for (int index = 0; index <= 10; ++index) {
+        for (int index = 0; index <= 10; ++index)
+        {
             const auto t = static_cast<float>(index) / 10.0F;
             const auto x = std::lerp(left, right, t);
             const auto y = std::lerp(bottom, top, t);
-            draw->AddLine(project({x, bottom, 0.0F}), project({x, top, 0.0F}),
-                          grid_color);
-            draw->AddLine(project({left, y, 0.0F}), project({right, y, 0.0F}),
-                          grid_color);
+            draw->AddLine(project({x, bottom, 0.0F}), project({x, top, 0.0F}), grid_color);
+            draw->AddLine(project({left, y, 0.0F}), project({right, y, 0.0F}), grid_color);
         }
-        const std::array corners{project({left, bottom, 0.0F}),
-                                 project({right, bottom, 0.0F}),
-                                 project({right, top, 0.0F}),
-                                 project({left, top, 0.0F})};
-        for (std::size_t index = 0; index < corners.size(); ++index) {
-            draw->AddLine(corners[index], corners[(index + 1U) % corners.size()],
-                          boundary_color, 1.5F);
+        const std::array corners{project({left, bottom, 0.0F}), project({right, bottom, 0.0F}), project({right, top, 0.0F}), project({left, top, 0.0F})};
+        for (std::size_t index = 0; index < corners.size(); ++index)
+        {
+            draw->AddLine(corners[index], corners[(index + 1U) % corners.size()], boundary_color, 1.5F);
         }
     }
-    if (state.map_preview_show_altitude && markers.size() <= 2000) {
-        for (const auto& marker : markers) {
-            draw->AddLine(marker.ground, marker.point,
-                          IM_COL32(105, 145, 158, 55));
+    if (state.map_preview_show_altitude && markers.size() <= 2000)
+    {
+        for (const auto& marker : markers)
+        {
+            draw->AddLine(marker.ground, marker.point, IM_COL32(105, 145, 158, 55));
         }
     }
-    for (const auto& marker : markers) {
+    for (const auto& marker : markers)
+    {
         const auto radius = marker.radius;
-        const std::array diamond{
-            ImVec2{marker.point.x, marker.point.y - radius},
-            ImVec2{marker.point.x + radius, marker.point.y},
-            ImVec2{marker.point.x, marker.point.y + radius},
-            ImVec2{marker.point.x - radius, marker.point.y}};
-        draw->AddConvexPolyFilled(diamond.data(), static_cast<int>(diamond.size()),
-                                  marker.color);
-        draw->AddPolyline(diamond.data(), static_cast<int>(diamond.size()),
-                          marker.outline, ImDrawFlags_Closed, 1.25F);
+        const std::array diamond{ImVec2{marker.point.x, marker.point.y - radius}, ImVec2{marker.point.x + radius, marker.point.y}, ImVec2{marker.point.x, marker.point.y + radius},
+                                 ImVec2{marker.point.x - radius, marker.point.y}};
+        draw->AddConvexPolyFilled(diamond.data(), static_cast<int>(diamond.size()), marker.color);
+        draw->AddPolyline(diamond.data(), static_cast<int>(diamond.size()), marker.outline, ImDrawFlags_Closed, 1.25F);
     }
-    draw->AddText({canvas_min.x + 12.0F, canvas_min.y + 10.0F},
-                  IM_COL32(178, 197, 205, 255),
-                  "Drag to orbit  |  Wheel to zoom  |  Hover a marker for details");
+    draw->AddText({canvas_min.x + 12.0F, canvas_min.y + 10.0F}, IM_COL32(178, 197, 205, 255), "Drag to orbit  |  Wheel to zoom  |  Hover a marker for details");
     draw->PopClipRect();
 
-    if (ImGui::IsItemHovered()) {
+    if (ImGui::IsItemHovered())
+    {
         const auto mouse = ImGui::GetIO().MousePos;
         const SpaceMarker* hovered = nullptr;
         float nearest = std::numeric_limits<float>::max();
-        for (const auto& marker : markers) {
+        for (const auto& marker : markers)
+        {
             const auto dx = mouse.x - marker.point.x;
             const auto dy = mouse.y - marker.point.y;
             const auto distance = dx * dx + dy * dy;
             const auto hit_radius = marker.radius + 4.0F;
-            if (distance <= hit_radius * hit_radius && distance < nearest) {
+            if (distance <= hit_radius * hit_radius && distance < nearest)
+            {
                 hovered = &marker;
                 nearest = distance;
             }
         }
-        if (hovered != nullptr) {
+        if (hovered != nullptr)
+        {
             const auto& object = map.placed_objects[hovered->object_index];
             ImGui::BeginTooltip();
             ImGui::Text("Type CRC: 0x%08X", object.crc);
-            ImGui::Text("Instance: %u  |  Player code: %u", object.instance_id,
-                        object.player);
-            ImGui::Text("Position: %.1f, %.1f, %.1f", object.position.x,
-                        object.position.y, object.position.z);
-            ImGui::Text("Rotation: %.1f, %.1f, %.1f  |  Scale: %.2f",
-                        object.rotation.x, object.rotation.y, object.rotation.z,
-                        object.scale);
+            ImGui::Text("Instance: %u  |  Player code: %u", object.instance_id, object.player);
+            ImGui::Text("Position: %.1f, %.1f, %.1f", object.position.x, object.position.y, object.position.z);
+            ImGui::Text("Rotation: %.1f, %.1f, %.1f  |  Scale: %.2f", object.rotation.x, object.rotation.y, object.rotation.z, object.scale);
             ImGui::EndTooltip();
         }
     }
 }
 
-void render_map_viewport(GuiApp::State& state, const bool reserve_footer) {
-    if (!state.preview_map) {
+void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
+{
+    if (!state.preview_map)
+    {
         return;
     }
     const auto& map = *state.preview_map;
-    if (map.type == TedMapType::space) {
+    if (map.type == TedMapType::space)
+    {
         render_space_map_viewport(state, reserve_footer);
         return;
     }
-    const auto has_terrain = map.terrain_width >= 2 && map.terrain_height >= 2 &&
-                             map.elevation_map.size() >=
-                                 static_cast<std::size_t>(map.terrain_width) *
-                                     map.terrain_height;
+    const auto has_terrain = map.terrain_width >= 2 && map.terrain_height >= 2 && map.elevation_map.size() >= static_cast<std::size_t>(map.terrain_width) * map.terrain_height;
 
     ImGui::Checkbox("Reference grid", &state.map_preview_show_grid);
     ImGui::SameLine();
     ImGui::Checkbox("Objects", &state.map_preview_show_objects);
     ImGui::SameLine();
-    if (!has_terrain || map.passability_map.empty()) {
+    if (!has_terrain || map.passability_map.empty())
+    {
         ImGui::BeginDisabled();
     }
-    if (ImGui::Checkbox("Passability", &state.map_preview_show_passability)) {
+    if (ImGui::Checkbox("Passability", &state.map_preview_show_passability))
+    {
         state.map_preview_cached = false;
     }
-    if (ImGui::IsItemHovered()) {
+    if (ImGui::IsItemHovered())
+    {
         ImGui::SetTooltip("Color raw passability classes; class meanings vary by map type");
     }
-    if (!has_terrain || map.passability_map.empty()) {
+    if (!has_terrain || map.passability_map.empty())
+    {
         ImGui::EndDisabled();
     }
     ImGui::SameLine();
     ImGui::Checkbox("Wireframe", &state.map_preview_show_wireframe);
 
     ImGui::SetNextItemWidth(-1.0F);
-    if (ImGui::SliderFloat("##map-vertical-scale", &state.map_preview_vertical_scale,
-                           0.0F, 3.0F, "Elevation scale: %.2fx")) {
+    if (ImGui::SliderFloat("##map-vertical-scale", &state.map_preview_vertical_scale, 0.0F, 3.0F, "Elevation scale: %.2fx"))
+    {
         state.map_preview_cached = false;
     }
     ImGui::SetNextItemWidth(-1.0F);
-    if (ImGui::SliderInt("##map-triangle-budget", &state.map_preview_triangle_budget,
-                         2000, 18000, "Detail: up to %d triangles")) {
+    if (ImGui::SliderInt("##map-triangle-budget", &state.map_preview_triangle_budget, 2000, 18000, "Detail: up to %d triangles"))
+    {
         state.map_preview_cached = false;
     }
 
-    if (!state.map_preview_cached) {
-        state.map_preview_triangles = map_preview_triangles(
-            map, state.map_preview_triangle_budget, state.map_preview_vertical_scale,
-            state.map_preview_show_passability);
+    if (!state.map_preview_cached)
+    {
+        state.map_preview_triangles = map_preview_triangles(map, state.map_preview_triangle_budget, state.map_preview_vertical_scale, state.map_preview_show_passability);
         state.map_preview_cached = true;
     }
-    ImGui::TextColored(muted, "%u x %u grid  |  %zu triangles  |  elevation %d..%d",
-                       map.terrain_width, map.terrain_height,
-                       state.map_preview_triangles.size(), map.minimum_elevation,
+    ImGui::TextColored(muted, "%u x %u grid  |  %zu triangles  |  elevation %d..%d", map.terrain_width, map.terrain_height, state.map_preview_triangles.size(), map.minimum_elevation,
                        map.maximum_elevation);
 
     auto canvas_size = ImGui::GetContentRegionAvail();
-    if (reserve_footer) {
+    if (reserve_footer)
+    {
         canvas_size.y -= ImGui::GetFrameHeightWithSpacing();
     }
     canvas_size.x = std::max(canvas_size.x, 120.0F);
     canvas_size.y = std::max(canvas_size.y, 260.0F);
-    ImGui::InvisibleButton("map-canvas", canvas_size,
-                           ImGuiButtonFlags_MouseButtonLeft);
+    ImGui::InvisibleButton("map-canvas", canvas_size, ImGuiButtonFlags_MouseButtonLeft);
     const auto canvas_min = ImGui::GetItemRectMin();
     const auto canvas_max = ImGui::GetItemRectMax();
-    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+    {
         state.map_preview_yaw += ImGui::GetIO().MouseDelta.x * 0.012F;
-        state.map_preview_pitch = std::clamp(
-            state.map_preview_pitch - ImGui::GetIO().MouseDelta.y * 0.012F,
-            -1.45F, 1.45F);
+        state.map_preview_pitch = std::clamp(state.map_preview_pitch - ImGui::GetIO().MouseDelta.y * 0.012F, -1.45F, 1.45F);
     }
-    if (ImGui::IsItemHovered() && ImGui::GetIO().MouseWheel != 0.0F) {
-        state.map_preview_zoom = std::clamp(
-            state.map_preview_zoom * std::pow(1.12F, ImGui::GetIO().MouseWheel),
-            0.15F, 12.0F);
+    if (ImGui::IsItemHovered() && ImGui::GetIO().MouseWheel != 0.0F)
+    {
+        state.map_preview_zoom = std::clamp(state.map_preview_zoom * std::pow(1.12F, ImGui::GetIO().MouseWheel), 0.15F, 12.0F);
     }
 
     auto* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(canvas_min, canvas_max, IM_COL32(7, 13, 20, 255), 6.0F);
     draw->AddRect(canvas_min, canvas_max, IM_COL32(40, 78, 91, 255), 6.0F);
-    if (state.map_preview_triangles.empty()) {
-        const auto message = map.type == TedMapType::space
-                                 ? "Space map: no terrain heightmap; placed-object transforms are not decoded yet"
-                                 : "No renderable terrain heightmap in this map";
-        draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 14.0F},
-                      IM_COL32(150, 164, 174, 255), message);
+    if (state.map_preview_triangles.empty())
+    {
+        const auto message = map.type == TedMapType::space ? "Space map: no terrain heightmap; placed-object transforms are not decoded yet" : "No renderable terrain heightmap in this map";
+        draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 14.0F}, IM_COL32(150, 164, 174, 255), message);
         return;
     }
 
-    AloVector3 minimum{std::numeric_limits<float>::max(),
-                       std::numeric_limits<float>::max(),
-                       std::numeric_limits<float>::max()};
-    AloVector3 maximum{std::numeric_limits<float>::lowest(),
-                       std::numeric_limits<float>::lowest(),
-                       std::numeric_limits<float>::lowest()};
-    for (const auto& triangle : state.map_preview_triangles) {
-        for (const auto& point : triangle.points) {
+    AloVector3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+    AloVector3 maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+    for (const auto& triangle : state.map_preview_triangles)
+    {
+        for (const auto& point : triangle.points)
+        {
             minimum.x = std::min(minimum.x, point.x);
             minimum.y = std::min(minimum.y, point.y);
             minimum.z = std::min(minimum.z, point.z);
@@ -1685,41 +1720,38 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer) {
             maximum.z = std::max(maximum.z, point.z);
         }
     }
-    const AloVector3 center{(minimum.x + maximum.x) * 0.5F,
-                            (minimum.y + maximum.y) * 0.5F,
-                            (minimum.z + maximum.z) * 0.5F};
-    const auto extent = std::max({maximum.x - minimum.x, maximum.y - minimum.y,
-                                  maximum.z - minimum.z, 0.001F});
-    const auto scale = std::min(canvas_size.x, canvas_size.y) * 0.78F /
-                       extent * state.map_preview_zoom;
-    const auto screen_center = ImVec2{(canvas_min.x + canvas_max.x) * 0.5F,
-                                      (canvas_min.y + canvas_max.y) * 0.5F};
+    const AloVector3 center{(minimum.x + maximum.x) * 0.5F, (minimum.y + maximum.y) * 0.5F, (minimum.z + maximum.z) * 0.5F};
+    const auto extent = std::max({maximum.x - minimum.x, maximum.y - minimum.y, maximum.z - minimum.z, 0.001F});
+    const auto scale = std::min(canvas_size.x, canvas_size.y) * 0.78F / extent * state.map_preview_zoom;
+    const auto screen_center = ImVec2{(canvas_min.x + canvas_max.x) * 0.5F, (canvas_min.y + canvas_max.y) * 0.5F};
     const auto yaw_cos = std::cos(state.map_preview_yaw);
     const auto yaw_sin = std::sin(state.map_preview_yaw);
     const auto pitch_cos = std::cos(state.map_preview_pitch);
     const auto pitch_sin = std::sin(state.map_preview_pitch);
-    const auto project = [&](const AloVector3& point, float* depth = nullptr) {
+    const auto project = [&](const AloVector3& point, float* depth = nullptr)
+    {
         const auto x = point.x - center.x;
         const auto y = point.y - center.y;
         const auto z = point.z - center.z;
         const auto horizontal = yaw_cos * x + yaw_sin * y;
         const auto forward = -yaw_sin * x + yaw_cos * y;
         const auto vertical = -pitch_sin * forward + pitch_cos * z;
-        if (depth != nullptr) {
+        if (depth != nullptr)
+        {
             *depth = pitch_cos * forward + pitch_sin * z;
         }
-        return ImVec2{screen_center.x + horizontal * scale,
-                      screen_center.y - vertical * scale};
+        return ImVec2{screen_center.x + horizontal * scale, screen_center.y - vertical * scale};
     };
 
     std::vector<ProjectedTriangle> projected;
     projected.reserve(state.map_preview_triangles.size());
-    for (const auto& triangle : state.map_preview_triangles) {
+    for (const auto& triangle : state.map_preview_triangles)
+    {
         ProjectedTriangle item{};
         float depths[3]{};
-        for (std::size_t point_index = 0; point_index < 3; ++point_index) {
-            item.points[point_index] = project(triangle.points[point_index],
-                                               &depths[point_index]);
+        for (std::size_t point_index = 0; point_index < 3; ++point_index)
+        {
+            item.points[point_index] = project(triangle.points[point_index], &depths[point_index]);
         }
         item.depth = (depths[0] + depths[1] + depths[2]) / 3.0F;
         const auto ux = triangle.points[1].x - triangle.points[0].x;
@@ -1732,16 +1764,14 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer) {
         const auto ny = uz * vx - ux * vz;
         const auto nz = ux * vy - uy * vx;
         const auto length = std::sqrt(nx * nx + ny * ny + nz * nz);
-        const auto lighting = length > 1.0e-5F
-                                  ? std::fabs((nx * 0.35F - ny * 0.45F + nz * 0.82F) /
-                                              length)
-                                  : 0.0F;
+        const auto lighting = length > 1.0e-5F ? std::fabs((nx * 0.35F - ny * 0.45F + nz * 0.82F) / length) : 0.0F;
         item.color = shaded_color(triangle.color, 0.45F + lighting * 0.55F);
         projected.push_back(item);
     }
     std::ranges::sort(projected, {}, &ProjectedTriangle::depth);
 
-    struct LandMarker {
+    struct LandMarker
+    {
         ImVec2 point;
         float depth{};
         float radius{};
@@ -1750,47 +1780,36 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer) {
         std::size_t object_index{};
     };
     std::vector<LandMarker> markers;
-    if (state.map_preview_show_objects && map.world_width > 0.0F &&
-        map.world_height > 0.0F) {
+    if (state.map_preview_show_objects && map.world_width > 0.0F && map.world_height > 0.0F)
+    {
         std::vector<std::size_t> positioned;
         positioned.reserve(map.placed_objects.size());
-        for (std::size_t index = 0; index < map.placed_objects.size(); ++index) {
-            if (map.placed_objects[index].has_transform) {
+        for (std::size_t index = 0; index < map.placed_objects.size(); ++index)
+        {
+            if (map.placed_objects[index].has_transform)
+            {
                 positioned.push_back(index);
             }
         }
-        const auto marker_stride = std::max<std::size_t>(
-            1, (positioned.size() + 5999U) / 6000U);
+        const auto marker_stride = std::max<std::size_t>(1, (positioned.size() + 5999U) / 6000U);
         markers.reserve((positioned.size() + marker_stride - 1U) / marker_stride);
-        const auto elevation_range = std::max(
-            1.0F, static_cast<float>(map.maximum_elevation - map.minimum_elevation));
-        const auto horizontal_extent = static_cast<float>(
-            std::max(map.terrain_width - 1U, map.terrain_height - 1U));
-        const auto vertical_extent = horizontal_extent * 0.36F *
-                                     state.map_preview_vertical_scale;
+        const auto elevation_range = std::max(1.0F, static_cast<float>(map.maximum_elevation - map.minimum_elevation));
+        const auto horizontal_extent = static_cast<float>(std::max(map.terrain_width - 1U, map.terrain_height - 1U));
+        const auto vertical_extent = horizontal_extent * 0.36F * state.map_preview_vertical_scale;
         const auto editor_width = static_cast<float>(map.terrain_width) * 20.0F;
         const auto editor_height = static_cast<float>(map.terrain_height) * 20.0F;
         const auto center_x = static_cast<float>(map.terrain_width - 1U) * 0.5F;
         const auto center_y = static_cast<float>(map.terrain_height - 1U) * 0.5F;
-        for (std::size_t shown = 0; shown < positioned.size();
-             shown += marker_stride) {
+        for (std::size_t shown = 0; shown < positioned.size(); shown += marker_stride)
+        {
             const auto object_index = positioned[shown];
             const auto& object = map.placed_objects[object_index];
-            const AloVector3 point{
-                object.position.x / editor_width *
-                        static_cast<float>(map.terrain_width - 1U) -
-                    center_x,
-                object.position.y / editor_height *
-                        static_cast<float>(map.terrain_height - 1U) -
-                    center_y,
-                ((object.position.z * 20.0F - map.minimum_elevation) /
-                     elevation_range -
-                 0.5F) *
-                    vertical_extent};
+            const AloVector3 point{object.position.x / editor_width * static_cast<float>(map.terrain_width - 1U) - center_x,
+                                   object.position.y / editor_height * static_cast<float>(map.terrain_height - 1U) - center_y,
+                                   ((object.position.z * 20.0F - map.minimum_elevation) / elevation_range - 0.5F) * vertical_extent};
             LandMarker marker;
             marker.point = project(point, &marker.depth);
-            marker.radius = object_marker_radius(object,
-                                                  state.map_preview_marker_scale);
+            marker.radius = object_marker_radius(object, state.map_preview_marker_scale);
             marker.color = passability_color(object.crc);
             marker.outline = object_player_color(object.player);
             marker.object_index = object_index;
@@ -1800,114 +1819,105 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer) {
     }
 
     draw->PushClipRect(canvas_min, canvas_max, true);
-    for (const auto& triangle : projected) {
-        draw->AddTriangleFilled(triangle.points[0], triangle.points[1],
-                                triangle.points[2], triangle.color);
+    for (const auto& triangle : projected)
+    {
+        draw->AddTriangleFilled(triangle.points[0], triangle.points[1], triangle.points[2], triangle.color);
     }
-    if (state.map_preview_show_grid) {
+    if (state.map_preview_show_grid)
+    {
         const auto grid_color = IM_COL32(93, 157, 169, 105);
-        for (int index = 0; index <= 10; ++index) {
+        for (int index = 0; index <= 10; ++index)
+        {
             const auto t = static_cast<float>(index) / 10.0F;
             const auto x = std::lerp(minimum.x, maximum.x, t);
             const auto y = std::lerp(minimum.y, maximum.y, t);
-            draw->AddLine(project({x, minimum.y, minimum.z}),
-                          project({x, maximum.y, minimum.z}), grid_color);
-            draw->AddLine(project({minimum.x, y, minimum.z}),
-                          project({maximum.x, y, minimum.z}), grid_color);
+            draw->AddLine(project({x, minimum.y, minimum.z}), project({x, maximum.y, minimum.z}), grid_color);
+            draw->AddLine(project({minimum.x, y, minimum.z}), project({maximum.x, y, minimum.z}), grid_color);
         }
     }
-    if (state.map_preview_show_wireframe) {
-        const auto wire_stride = std::max<std::size_t>(
-            1, (projected.size() + 3999U) / 4000U);
-        for (std::size_t index = 0; index < projected.size(); index += wire_stride) {
+    if (state.map_preview_show_wireframe)
+    {
+        const auto wire_stride = std::max<std::size_t>(1, (projected.size() + 3999U) / 4000U);
+        for (std::size_t index = 0; index < projected.size(); index += wire_stride)
+        {
             const auto& triangle = projected[index];
-            draw->AddTriangle(triangle.points[0], triangle.points[1],
-                              triangle.points[2], IM_COL32(8, 16, 20, 95));
+            draw->AddTriangle(triangle.points[0], triangle.points[1], triangle.points[2], IM_COL32(8, 16, 20, 95));
         }
     }
-    for (const auto& marker : markers) {
+    for (const auto& marker : markers)
+    {
         const auto radius = marker.radius;
-        const std::array diamond{
-            ImVec2{marker.point.x, marker.point.y - radius},
-            ImVec2{marker.point.x + radius, marker.point.y},
-            ImVec2{marker.point.x, marker.point.y + radius},
-            ImVec2{marker.point.x - radius, marker.point.y}};
-        draw->AddConvexPolyFilled(diamond.data(), static_cast<int>(diamond.size()),
-                                  marker.color);
-        draw->AddPolyline(diamond.data(), static_cast<int>(diamond.size()),
-                          marker.outline, ImDrawFlags_Closed, 1.25F);
+        const std::array diamond{ImVec2{marker.point.x, marker.point.y - radius}, ImVec2{marker.point.x + radius, marker.point.y}, ImVec2{marker.point.x, marker.point.y + radius},
+                                 ImVec2{marker.point.x - radius, marker.point.y}};
+        draw->AddConvexPolyFilled(diamond.data(), static_cast<int>(diamond.size()), marker.color);
+        draw->AddPolyline(diamond.data(), static_cast<int>(diamond.size()), marker.outline, ImDrawFlags_Closed, 1.25F);
     }
-    draw->AddText({canvas_min.x + 12.0F, canvas_min.y + 10.0F},
-                  IM_COL32(178, 197, 205, 255),
-                  state.map_preview_show_objects
-                      ? "Drag to orbit  |  Wheel to zoom  |  Hover a marker for details"
-                      : "Drag to orbit  |  Wheel to zoom");
+    draw->AddText({canvas_min.x + 12.0F, canvas_min.y + 10.0F}, IM_COL32(178, 197, 205, 255),
+                  state.map_preview_show_objects ? "Drag to orbit  |  Wheel to zoom  |  Hover a marker for details" : "Drag to orbit  |  Wheel to zoom");
     draw->PopClipRect();
 
-    if (state.map_preview_show_objects && ImGui::IsItemHovered()) {
+    if (state.map_preview_show_objects && ImGui::IsItemHovered())
+    {
         const auto mouse = ImGui::GetIO().MousePos;
         const LandMarker* hovered = nullptr;
         float nearest = std::numeric_limits<float>::max();
-        for (const auto& marker : markers) {
+        for (const auto& marker : markers)
+        {
             const auto dx = mouse.x - marker.point.x;
             const auto dy = mouse.y - marker.point.y;
             const auto distance = dx * dx + dy * dy;
             const auto hit_radius = marker.radius + 4.0F;
-            if (distance <= hit_radius * hit_radius && distance < nearest) {
+            if (distance <= hit_radius * hit_radius && distance < nearest)
+            {
                 hovered = &marker;
                 nearest = distance;
             }
         }
-        if (hovered != nullptr) {
+        if (hovered != nullptr)
+        {
             const auto& object = map.placed_objects[hovered->object_index];
             ImGui::BeginTooltip();
             ImGui::Text("Type CRC: 0x%08X", object.crc);
-            ImGui::Text("Instance: %u  |  Player code: %u", object.instance_id,
-                        object.player);
-            ImGui::Text("Position: %.1f, %.1f, %.1f", object.position.x,
-                        object.position.y, object.position.z);
-            ImGui::Text("Rotation: %.1f, %.1f, %.1f  |  Scale: %.2f",
-                        object.rotation.x, object.rotation.y, object.rotation.z,
-                        object.scale);
+            ImGui::Text("Instance: %u  |  Player code: %u", object.instance_id, object.player);
+            ImGui::Text("Position: %.1f, %.1f, %.1f", object.position.x, object.position.y, object.position.z);
+            ImGui::Text("Rotation: %.1f, %.1f, %.1f  |  Scale: %.2f", object.rotation.x, object.rotation.y, object.rotation.z, object.scale);
             ImGui::EndTooltip();
         }
     }
 }
 
-void render_model_viewport(GuiApp::State& state) {
-    if (!state.preview_model) {
+void render_model_viewport(GuiApp::State& state)
+{
+    if (!state.preview_model)
+    {
         return;
     }
 
     const char* animation_label = "Bind pose";
     std::string selected_animation_name;
-    if (state.preview_animation_index >= 0 &&
-        static_cast<std::size_t>(state.preview_animation_index) <
-            state.preview_animation_assets.size()) {
-        selected_animation_name = std::filesystem::path(
-                                      state.preview_animation_assets[static_cast<std::size_t>(
-                                          state.preview_animation_index)]
-                                          .virtual_path)
-                                      .filename()
-                                      .string();
+    if (state.preview_animation_index >= 0 && static_cast<std::size_t>(state.preview_animation_index) < state.preview_animation_assets.size())
+    {
+        selected_animation_name = std::filesystem::path(state.preview_animation_assets[static_cast<std::size_t>(state.preview_animation_index)].virtual_path).filename().string();
         animation_label = selected_animation_name.c_str();
     }
     ImGui::SetNextItemWidth(-1.0F);
-    if (ImGui::BeginCombo("##preview-animation", animation_label)) {
-        if (ImGui::Selectable("Bind pose", state.preview_animation_index < 0)) {
+    if (ImGui::BeginCombo("##preview-animation", animation_label))
+    {
+        if (ImGui::Selectable("Bind pose", state.preview_animation_index < 0))
+        {
             state.select_preview_animation(-1);
         }
-        for (std::size_t index = 0; index < state.preview_animation_assets.size(); ++index) {
-            const auto name = std::filesystem::path(
-                                  state.preview_animation_assets[index].virtual_path)
-                                  .filename()
-                                  .string();
-            if (ImGui::Selectable(name.c_str(),
-                                  state.preview_animation_index ==
-                                      static_cast<int>(index))) {
-                try {
+        for (std::size_t index = 0; index < state.preview_animation_assets.size(); ++index)
+        {
+            const auto name = std::filesystem::path(state.preview_animation_assets[index].virtual_path).filename().string();
+            if (ImGui::Selectable(name.c_str(), state.preview_animation_index == static_cast<int>(index)))
+            {
+                try
+                {
                     state.select_preview_animation(static_cast<int>(index));
-                } catch (const std::exception& error) {
+                }
+                catch (const std::exception& error)
+                {
                     state.fail(error);
                 }
             }
@@ -1915,44 +1925,49 @@ void render_model_viewport(GuiApp::State& state) {
         ImGui::EndCombo();
     }
 
-    if (state.preview_animation) {
-        if (ImGui::Button(state.preview_playing ? "Pause" : "Play")) {
+    if (state.preview_animation)
+    {
+        if (ImGui::Button(state.preview_playing ? "Pause" : "Play"))
+        {
             state.preview_playing = !state.preview_playing;
         }
         ImGui::SameLine();
         const auto duration = static_cast<float>(state.preview_animation->duration_seconds());
         ImGui::SetNextItemWidth(-1.0F);
-        ImGui::SliderFloat("##animation-time", &state.preview_time, 0.0F,
-                           std::max(duration, 0.001F), "%.3f s");
-        if (state.preview_playing && duration > 0.0F) {
-            state.preview_time = std::fmod(
-                state.preview_time + ImGui::GetIO().DeltaTime, duration);
+        ImGui::SliderFloat("##animation-time", &state.preview_time, 0.0F, std::max(duration, 0.001F), "%.3f s");
+        if (state.preview_playing && duration > 0.0F)
+        {
+            state.preview_time = std::fmod(state.preview_time + ImGui::GetIO().DeltaTime, duration);
         }
     }
 
     ImGui::Checkbox("Skeleton", &state.preview_show_skeleton);
     ImGui::SameLine();
-    if (ImGui::Checkbox("Collision", &state.preview_show_collision)) {
+    if (ImGui::Checkbox("Collision", &state.preview_show_collision))
+    {
         state.preview_static_cached = false;
     }
     ImGui::SameLine();
-    if (ImGui::SmallButton("Reset camera")) {
+    if (ImGui::SmallButton("Reset camera"))
+    {
         state.preview_yaw = -0.65F;
         state.preview_pitch = 0.35F;
         state.preview_zoom = 1.0F;
     }
 
     ImGui::SetNextItemWidth(-1.0F);
-    if (ImGui::SliderInt("##triangle-budget", &state.preview_triangle_budget,
-                         3000, 30000, "Detail: %d triangles")) {
+    if (ImGui::SliderInt("##triangle-budget", &state.preview_triangle_budget, 3000, 30000, "Detail: %d triangles"))
+    {
         state.preview_static_cached = false;
     }
-    if (!state.preview_texture_warnings.empty()) {
-        ImGui::TextColored(warning, "%zu texture(s) unavailable",
-                           state.preview_texture_warnings.size());
-        if (ImGui::IsItemHovered()) {
+    if (!state.preview_texture_warnings.empty())
+    {
+        ImGui::TextColored(warning, "%zu texture(s) unavailable", state.preview_texture_warnings.size());
+        if (ImGui::IsItemHovered())
+        {
             ImGui::BeginTooltip();
-            for (const auto& warning_text : state.preview_texture_warnings) {
+            for (const auto& warning_text : state.preview_texture_warnings)
+            {
                 ImGui::TextUnformatted(warning_text.c_str());
             }
             ImGui::EndTooltip();
@@ -1962,60 +1977,58 @@ void render_model_viewport(GuiApp::State& state) {
     const auto pose = preview_pose(state);
     std::vector<PreviewTriangle> animated_triangles;
     const std::vector<PreviewTriangle>* triangles = nullptr;
-    if (state.preview_animation) {
+    if (state.preview_animation)
+    {
         animated_triangles = preview_triangles(state, pose);
         triangles = &animated_triangles;
-    } else {
-        if (!state.preview_static_cached ||
-            state.preview_static_collision != state.preview_show_collision) {
+    }
+    else
+    {
+        if (!state.preview_static_cached || state.preview_static_collision != state.preview_show_collision)
+        {
             state.preview_static_triangles = preview_triangles(state, pose);
             state.preview_static_collision = state.preview_show_collision;
             state.preview_static_cached = true;
         }
         triangles = &state.preview_static_triangles;
     }
-    const auto textured_triangles = std::ranges::count_if(
-        *triangles, [](const auto& triangle) { return triangle.texture != nullptr; });
-    ImGui::TextColored(muted, "%zu DDS loaded  |  %zu/%zu textured triangles",
-                       state.preview_textures.size(), textured_triangles,
-                       triangles->size());
+    const auto textured_triangles = std::ranges::count_if(*triangles,
+                                                          [](const auto& triangle)
+                                                          {
+                                                              return triangle.texture != nullptr;
+                                                          });
+    ImGui::TextColored(muted, "%zu DDS loaded  |  %zu/%zu textured triangles", state.preview_textures.size(), textured_triangles, triangles->size());
     auto canvas_size = ImGui::GetContentRegionAvail();
     canvas_size.x = std::max(canvas_size.x, 120.0F);
     canvas_size.y = std::max(canvas_size.y, 260.0F);
-    ImGui::InvisibleButton("model-canvas", canvas_size,
-                           ImGuiButtonFlags_MouseButtonLeft);
+    ImGui::InvisibleButton("model-canvas", canvas_size, ImGuiButtonFlags_MouseButtonLeft);
     const auto canvas_min = ImGui::GetItemRectMin();
     const auto canvas_max = ImGui::GetItemRectMax();
-    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+    {
         state.preview_yaw += ImGui::GetIO().MouseDelta.x * 0.012F;
-        state.preview_pitch = std::clamp(
-            state.preview_pitch - ImGui::GetIO().MouseDelta.y * 0.012F,
-            -1.45F, 1.45F);
+        state.preview_pitch = std::clamp(state.preview_pitch - ImGui::GetIO().MouseDelta.y * 0.012F, -1.45F, 1.45F);
     }
-    if (ImGui::IsItemHovered() && ImGui::GetIO().MouseWheel != 0.0F) {
-        state.preview_zoom = std::clamp(
-            state.preview_zoom * std::pow(1.12F, ImGui::GetIO().MouseWheel),
-            0.15F, 12.0F);
+    if (ImGui::IsItemHovered() && ImGui::GetIO().MouseWheel != 0.0F)
+    {
+        state.preview_zoom = std::clamp(state.preview_zoom * std::pow(1.12F, ImGui::GetIO().MouseWheel), 0.15F, 12.0F);
     }
 
     auto* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(canvas_min, canvas_max, IM_COL32(7, 13, 20, 255), 6.0F);
     draw->AddRect(canvas_min, canvas_max, IM_COL32(40, 78, 91, 255), 6.0F);
-    if (triangles->empty()) {
-        draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 14.0F},
-                      IM_COL32(150, 164, 174, 255),
-                      "No renderable triangle stream in this model");
+    if (triangles->empty())
+    {
+        draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 14.0F}, IM_COL32(150, 164, 174, 255), "No renderable triangle stream in this model");
         return;
     }
 
-    AloVector3 minimum{std::numeric_limits<float>::max(),
-                       std::numeric_limits<float>::max(),
-                       std::numeric_limits<float>::max()};
-    AloVector3 maximum{std::numeric_limits<float>::lowest(),
-                       std::numeric_limits<float>::lowest(),
-                       std::numeric_limits<float>::lowest()};
-    for (const auto& triangle : *triangles) {
-        for (const auto& point : triangle.points) {
+    AloVector3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+    AloVector3 maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+    for (const auto& triangle : *triangles)
+    {
+        for (const auto& point : triangle.points)
+        {
             minimum.x = std::min(minimum.x, point.x);
             minimum.y = std::min(minimum.y, point.y);
             minimum.z = std::min(minimum.z, point.z);
@@ -2024,43 +2037,39 @@ void render_model_viewport(GuiApp::State& state) {
             maximum.z = std::max(maximum.z, point.z);
         }
     }
-    const AloVector3 center{(minimum.x + maximum.x) * 0.5F,
-                            (minimum.y + maximum.y) * 0.5F,
-                            (minimum.z + maximum.z) * 0.5F};
-    const auto extent = std::max({maximum.x - minimum.x, maximum.y - minimum.y,
-                                  maximum.z - minimum.z, 0.001F});
-    const auto scale = std::min(canvas_size.x, canvas_size.y) * 0.78F /
-                       extent * state.preview_zoom;
-    const auto screen_center = ImVec2{(canvas_min.x + canvas_max.x) * 0.5F,
-                                      (canvas_min.y + canvas_max.y) * 0.5F};
+    const AloVector3 center{(minimum.x + maximum.x) * 0.5F, (minimum.y + maximum.y) * 0.5F, (minimum.z + maximum.z) * 0.5F};
+    const auto extent = std::max({maximum.x - minimum.x, maximum.y - minimum.y, maximum.z - minimum.z, 0.001F});
+    const auto scale = std::min(canvas_size.x, canvas_size.y) * 0.78F / extent * state.preview_zoom;
+    const auto screen_center = ImVec2{(canvas_min.x + canvas_max.x) * 0.5F, (canvas_min.y + canvas_max.y) * 0.5F};
     const auto yaw_cos = std::cos(state.preview_yaw);
     const auto yaw_sin = std::sin(state.preview_yaw);
     const auto pitch_cos = std::cos(state.preview_pitch);
     const auto pitch_sin = std::sin(state.preview_pitch);
-    const auto project = [&](const AloVector3& point, float* depth = nullptr) {
+    const auto project = [&](const AloVector3& point, float* depth = nullptr)
+    {
         const auto x = point.x - center.x;
         const auto y = point.y - center.y;
         const auto z = point.z - center.z;
         const auto horizontal = yaw_cos * x + yaw_sin * y;
         const auto forward = -yaw_sin * x + yaw_cos * y;
         const auto vertical = -pitch_sin * forward + pitch_cos * z;
-        if (depth != nullptr) {
+        if (depth != nullptr)
+        {
             *depth = pitch_cos * forward + pitch_sin * z;
         }
-        return ImVec2{screen_center.x + horizontal * scale,
-                      screen_center.y - vertical * scale};
+        return ImVec2{screen_center.x + horizontal * scale, screen_center.y - vertical * scale};
     };
 
     std::vector<ProjectedTriangle> projected;
     projected.reserve(triangles->size());
-    for (const auto& triangle : *triangles) {
+    for (const auto& triangle : *triangles)
+    {
         ProjectedTriangle item;
         float depths[3]{};
-        for (std::size_t point = 0; point < 3; ++point) {
+        for (std::size_t point = 0; point < 3; ++point)
+        {
             item.points[point] = project(triangle.points[point], &depths[point]);
-            item.texture_coordinates[point] = {
-                triangle.texture_coordinates[point].x,
-                triangle.texture_coordinates[point].y};
+            item.texture_coordinates[point] = {triangle.texture_coordinates[point].x, triangle.texture_coordinates[point].y};
         }
         item.texture = triangle.texture;
         item.depth = (depths[0] + depths[1] + depths[2]) / 3.0F;
@@ -2074,80 +2083,77 @@ void render_model_viewport(GuiApp::State& state) {
         const auto ny = uz * vx - ux * vz;
         const auto nz = ux * vy - uy * vx;
         const auto length = std::sqrt(nx * nx + ny * ny + nz * nz);
-        const auto lighting = length > 1.0e-5F
-                                  ? std::fabs((nx * 0.35F - ny * 0.45F + nz * 0.82F) /
-                                              length)
-                                  : 0.0F;
+        const auto lighting = length > 1.0e-5F ? std::fabs((nx * 0.35F - ny * 0.45F + nz * 0.82F) / length) : 0.0F;
         item.color = shaded_color(triangle.color, 0.38F + lighting * 0.62F);
         projected.push_back(item);
     }
-    std::ranges::sort(projected, [](const auto& left, const auto& right) {
-        const auto left_texture = reinterpret_cast<std::uintptr_t>(left.texture);
-        const auto right_texture = reinterpret_cast<std::uintptr_t>(right.texture);
-        if (left_texture != right_texture) {
-            return left_texture < right_texture;
-        }
-        return left.depth < right.depth;
-    });
+    std::ranges::sort(projected,
+                      [](const auto& left, const auto& right)
+                      {
+                          const auto left_texture = reinterpret_cast<std::uintptr_t>(left.texture);
+                          const auto right_texture = reinterpret_cast<std::uintptr_t>(right.texture);
+                          if (left_texture != right_texture)
+                          {
+                              return left_texture < right_texture;
+                          }
+                          return left.depth < right.depth;
+                      });
     draw->PushClipRect(canvas_min, canvas_max, true);
     ID3D11ShaderResourceView* active_texture = nullptr;
     bool texture_pushed = false;
-    for (const auto& triangle : projected) {
-        if (triangle.texture != active_texture) {
-            if (texture_pushed) {
+    for (const auto& triangle : projected)
+    {
+        if (triangle.texture != active_texture)
+        {
+            if (texture_pushed)
+            {
                 draw->PopTexture();
                 texture_pushed = false;
             }
             active_texture = triangle.texture;
-            if (active_texture != nullptr) {
-                draw->PushTexture(ImTextureRef(reinterpret_cast<ImTextureID>(
-                    active_texture)));
+            if (active_texture != nullptr)
+            {
+                draw->PushTexture(ImTextureRef(reinterpret_cast<ImTextureID>(active_texture)));
                 texture_pushed = true;
             }
         }
-        if (active_texture != nullptr) {
+        if (active_texture != nullptr)
+        {
             draw->PrimReserve(3, 3);
-            draw->PrimVtx(triangle.points[0], triangle.texture_coordinates[0],
-                          triangle.color);
-            draw->PrimVtx(triangle.points[1], triangle.texture_coordinates[1],
-                          triangle.color);
-            draw->PrimVtx(triangle.points[2], triangle.texture_coordinates[2],
-                          triangle.color);
-        } else {
-            draw->AddTriangleFilled(triangle.points[0], triangle.points[1],
-                                    triangle.points[2], triangle.color);
+            draw->PrimVtx(triangle.points[0], triangle.texture_coordinates[0], triangle.color);
+            draw->PrimVtx(triangle.points[1], triangle.texture_coordinates[1], triangle.color);
+            draw->PrimVtx(triangle.points[2], triangle.texture_coordinates[2], triangle.color);
+        }
+        else
+        {
+            draw->AddTriangleFilled(triangle.points[0], triangle.points[1], triangle.points[2], triangle.color);
         }
     }
-    if (texture_pushed) {
+    if (texture_pushed)
+    {
         draw->PopTexture();
     }
-    if (state.preview_show_skeleton) {
-        for (std::size_t index = 0;
-             index < pose.size() && index < state.preview_model->bones.size(); ++index) {
+    if (state.preview_show_skeleton)
+    {
+        for (std::size_t index = 0; index < pose.size() && index < state.preview_model->bones.size(); ++index)
+        {
             const auto parent = state.preview_model->bones[index].parent;
-            if (parent < 0 || static_cast<std::size_t>(parent) >= pose.size()) {
+            if (parent < 0 || static_cast<std::size_t>(parent) >= pose.size())
+            {
                 continue;
             }
-            const AloVector3 point{pose[index].transform.values[12],
-                                   pose[index].transform.values[13],
-                                   pose[index].transform.values[14]};
-            const AloVector3 parent_point{pose[static_cast<std::size_t>(parent)]
-                                              .transform.values[12],
-                                          pose[static_cast<std::size_t>(parent)]
-                                              .transform.values[13],
-                                          pose[static_cast<std::size_t>(parent)]
-                                              .transform.values[14]};
-            draw->AddLine(project(parent_point), project(point),
-                          IM_COL32(255, 202, 74, 230), 1.5F);
+            const AloVector3 point{pose[index].transform.values[12], pose[index].transform.values[13], pose[index].transform.values[14]};
+            const AloVector3 parent_point{pose[static_cast<std::size_t>(parent)].transform.values[12], pose[static_cast<std::size_t>(parent)].transform.values[13],
+                                          pose[static_cast<std::size_t>(parent)].transform.values[14]};
+            draw->AddLine(project(parent_point), project(point), IM_COL32(255, 202, 74, 230), 1.5F);
         }
     }
-    draw->AddText({canvas_min.x + 12.0F, canvas_min.y + 10.0F},
-                  IM_COL32(178, 197, 205, 255),
-                  "Drag to orbit  |  Wheel to zoom");
+    draw->AddText({canvas_min.x + 12.0F, canvas_min.y + 10.0F}, IM_COL32(178, 197, 205, 255), "Drag to orbit  |  Wheel to zoom");
     draw->PopClipRect();
 }
 
-void render_asset_workspace(GuiApp::State& state, HWND owner) {
+void render_asset_workspace(GuiApp::State& state, HWND owner)
+{
     ImGui::TextUnformatted("ASSET INSPECTOR");
     ImGui::SameLine();
     ImGui::TextColored(muted, "Layered game and mod resources");
@@ -2156,51 +2162,68 @@ void render_asset_workspace(GuiApp::State& state, HWND owner) {
     ImGui::SetNextItemWidth(-125.0F);
     ImGui::InputTextWithHint("##game-root", "Empire at War installation", &state.game_root);
     ImGui::SameLine();
-    if (ImGui::Button("Browse...", {110.0F, 0.0F})) {
-        try {
-            if (const auto path = pick_folder(owner, L"Select Empire at War installation")) {
+    if (ImGui::Button("Browse...", {110.0F, 0.0F}))
+    {
+        try
+        {
+            if (const auto path = pick_folder(owner, L"Select Empire at War installation"))
+            {
                 state.game_root = path_to_utf8(*path);
             }
-        } catch (const std::exception& error) {
+        }
+        catch (const std::exception& error)
+        {
             state.fail(error);
         }
     }
 
-    if (ImGui::RadioButton("Forces of Corruption",
-                           state.variant == GameVariant::forces_of_corruption)) {
+    if (ImGui::RadioButton("Forces of Corruption", state.variant == GameVariant::forces_of_corruption))
+    {
         state.variant = GameVariant::forces_of_corruption;
     }
     ImGui::SameLine();
-    if (ImGui::RadioButton("Empire at War",
-                           state.variant == GameVariant::empire_at_war)) {
+    if (ImGui::RadioButton("Empire at War", state.variant == GameVariant::empire_at_war))
+    {
         state.variant = GameVariant::empire_at_war;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Add mod layer...")) {
-        try {
-            if (const auto path = pick_folder(owner, L"Select a mod folder")) {
+    if (ImGui::Button("Add mod layer..."))
+    {
+        try
+        {
+            if (const auto path = pick_folder(owner, L"Select a mod folder"))
+            {
                 state.mods.push_back(*path);
             }
-        } catch (const std::exception& error) {
+        }
+        catch (const std::exception& error)
+        {
             state.fail(error);
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Load assets")) {
-        try {
+    if (ImGui::Button("Load assets"))
+    {
+        try
+        {
             state.load_assets();
-        } catch (const std::exception& error) {
+        }
+        catch (const std::exception& error)
+        {
             state.fail(error);
         }
     }
 
-    if (!state.mods.empty()) {
+    if (!state.mods.empty())
+    {
         ImGui::TextColored(muted, "Mod priority (first wins):");
-        for (std::size_t index = 0; index < state.mods.size(); ++index) {
+        for (std::size_t index = 0; index < state.mods.size(); ++index)
+        {
             ImGui::PushID(static_cast<int>(index));
             ImGui::BulletText("%s", path_to_utf8(state.mods[index]).c_str());
             ImGui::SameLine();
-            if (ImGui::SmallButton("Remove")) {
+            if (ImGui::SmallButton("Remove"))
+            {
                 state.mods.erase(state.mods.begin() + static_cast<std::ptrdiff_t>(index));
                 ImGui::PopID();
                 break;
@@ -2211,40 +2234,44 @@ void render_asset_workspace(GuiApp::State& state, HWND owner) {
 
     ImGui::Spacing();
     ImGui::SetNextItemWidth(-405.0F);
-    ImGui::InputTextWithHint("##asset-search", "Search virtual paths...",
-                             &state.asset_query);
+    ImGui::InputTextWithHint("##asset-search", "Search virtual paths...", &state.asset_query);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(155.0F);
-    ImGui::InputTextWithHint("##extension", "Extension, e.g. .xml",
-                             &state.asset_extension);
+    ImGui::InputTextWithHint("##extension", "Extension, e.g. .xml", &state.asset_extension);
     ImGui::SameLine();
     auto normalized_extension = lower(state.asset_extension);
-    if (!normalized_extension.empty() && normalized_extension.front() != '.') {
+    if (!normalized_extension.empty() && normalized_extension.front() != '.')
+    {
         normalized_extension.insert(normalized_extension.begin(), '.');
     }
-    const char* known_extension_label = normalized_extension.empty()
-                                            ? known_asset_extensions.front().label
-                                            : "Custom extension";
-    for (const auto& known : known_asset_extensions) {
-        if (normalized_extension == known.extension) {
+    const char* known_extension_label = normalized_extension.empty() ? known_asset_extensions.front().label : "Custom extension";
+    for (const auto& known : known_asset_extensions)
+    {
+        if (normalized_extension == known.extension)
+        {
             known_extension_label = known.label;
             break;
         }
     }
     ImGui::SetNextItemWidth(235.0F);
-    if (ImGui::BeginCombo("##known-extension", known_extension_label)) {
-        for (const auto& known : known_asset_extensions) {
+    if (ImGui::BeginCombo("##known-extension", known_extension_label))
+    {
+        for (const auto& known : known_asset_extensions)
+        {
             const auto selected = normalized_extension == known.extension;
-            if (ImGui::Selectable(known.label, selected)) {
+            if (ImGui::Selectable(known.label, selected))
+            {
                 state.asset_extension = known.extension;
             }
-            if (selected) {
+            if (selected)
+            {
                 ImGui::SetItemDefaultFocus();
             }
         }
         ImGui::EndCombo();
     }
-    if (ImGui::IsItemHovered()) {
+    if (ImGui::IsItemHovered())
+    {
         ImGui::SetTooltip("Choose a known game asset type or enter a custom extension");
     }
 
@@ -2252,17 +2279,20 @@ void render_asset_workspace(GuiApp::State& state, HWND owner) {
     visible.reserve(state.assets.size());
     const auto query = lower(state.asset_query);
     auto extension = lower(state.asset_extension);
-    if (!extension.empty() && extension.front() != '.') {
+    if (!extension.empty() && extension.front() != '.')
+    {
         extension.insert(extension.begin(), '.');
     }
     std::uint64_t total_bytes = 0;
-    for (std::size_t index = 0; index < state.assets.size(); ++index) {
+    for (std::size_t index = 0; index < state.assets.size(); ++index)
+    {
         const auto& asset = state.assets[index];
-        if (!query.empty() && lower(asset.virtual_path).find(query) == std::string::npos) {
+        if (!query.empty() && lower(asset.virtual_path).find(query) == std::string::npos)
+        {
             continue;
         }
-        if (!extension.empty() &&
-            lower(std::filesystem::path(asset.virtual_path).extension().string()) != extension) {
+        if (!extension.empty() && lower(std::filesystem::path(asset.virtual_path).extension().string()) != extension)
+        {
             continue;
         }
         visible.push_back(static_cast<int>(index));
@@ -2271,25 +2301,18 @@ void render_asset_workspace(GuiApp::State& state, HWND owner) {
 
     ImGui::TextColored(accent, "%zu assets", visible.size());
     ImGui::SameLine();
-    ImGui::TextColored(muted, "  %s visible  •  %zu mounted layers",
-                       human_size(total_bytes).c_str(), state.vfs.mounts().size());
+    ImGui::TextColored(muted, "  %s visible  •  %zu mounted layers", human_size(total_bytes).c_str(), state.vfs.mounts().size());
 
-    const float preview_width = std::max(
-        360.0F, ImGui::GetContentRegionAvail().x *
-                    ((state.preview_model || state.preview_map) ? 0.52F : 0.40F));
-    if (ImGui::BeginTable("asset-layout", 2, ImGuiTableFlags_Resizable |
-                                                ImGuiTableFlags_BordersInnerV,
-                          {-1.0F, -1.0F})) {
+    const float preview_width = std::max(360.0F, ImGui::GetContentRegionAvail().x * ((state.preview_model || state.preview_map) ? 0.52F : 0.40F));
+    if (ImGui::BeginTable("asset-layout", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV, {-1.0F, -1.0F}))
+    {
         ImGui::TableSetupColumn("Assets", ImGuiTableColumnFlags_WidthStretch, 0.60F);
-        ImGui::TableSetupColumn("Inspector", ImGuiTableColumnFlags_WidthFixed,
-                                preview_width);
+        ImGui::TableSetupColumn("Inspector", ImGuiTableColumnFlags_WidthFixed, preview_width);
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        if (ImGui::BeginTable("asset-table", 3,
-                              ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
-                                  ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-                                  ImGuiTableFlags_SizingStretchProp,
-                              {-1.0F, -1.0F})) {
+        if (ImGui::BeginTable("asset-table", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp,
+                              {-1.0F, -1.0F}))
+        {
             ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableSetupColumn("Virtual path", ImGuiTableColumnFlags_WidthStretch, 0.67F);
             ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, 82.0F);
@@ -2297,19 +2320,23 @@ void render_asset_workspace(GuiApp::State& state, HWND owner) {
             ImGui::TableHeadersRow();
             ImGuiListClipper clipper;
             clipper.Begin(static_cast<int>(visible.size()));
-            while (clipper.Step()) {
-                for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+            while (clipper.Step())
+            {
+                for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+                {
                     const int asset_index = visible[static_cast<std::size_t>(row)];
                     const auto& asset = state.assets[static_cast<std::size_t>(asset_index)];
                     ImGui::PushID(asset_index);
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
-                    if (ImGui::Selectable(asset.virtual_path.c_str(),
-                                          state.selected_asset == asset_index,
-                                          ImGuiSelectableFlags_SpanAllColumns)) {
-                        try {
+                    if (ImGui::Selectable(asset.virtual_path.c_str(), state.selected_asset == asset_index, ImGuiSelectableFlags_SpanAllColumns))
+                    {
+                        try
+                        {
                             state.inspect_asset(asset_index);
-                        } catch (const std::exception& error) {
+                        }
+                        catch (const std::exception& error)
+                        {
                             state.fail(error);
                             state.asset_preview = error.what();
                         }
@@ -2325,44 +2352,60 @@ void render_asset_workspace(GuiApp::State& state, HWND owner) {
         }
         ImGui::TableSetColumnIndex(1);
         ImGui::BeginChild("asset-preview", {-1.0F, -1.0F}, ImGuiChildFlags_Borders);
-        if (state.asset_preview.empty()) {
+        if (state.asset_preview.empty())
+        {
             ImGui::TextColored(muted, "Select an asset to inspect its container, header, and contents.");
-        } else if (state.preview_model || state.preview_map) {
-            if (ImGui::BeginTabBar("visual-preview-tabs")) {
-                if (ImGui::BeginTabItem("3D Preview")) {
-                    if (state.preview_model) {
+        }
+        else if (state.preview_model || state.preview_map)
+        {
+            if (ImGui::BeginTabBar("visual-preview-tabs"))
+            {
+                if (ImGui::BeginTabItem("3D Preview"))
+                {
+                    if (state.preview_model)
+                    {
                         render_model_viewport(state);
-                    } else {
-                        if (!state.map_preview_large_window) {
+                    }
+                    else
+                    {
+                        if (!state.map_preview_large_window)
+                        {
                             ImGui::PushID("embedded-map-preview");
                             render_map_viewport(state, true);
                             ImGui::PopID();
-                            if (ImGui::Button("Preview")) {
+                            if (ImGui::Button("Preview"))
+                            {
                                 state.map_preview_large_window = true;
                             }
                             ImGui::SameLine();
-                            if (ImGui::Button("Reset camera")) {
+                            if (ImGui::Button("Reset camera"))
+                            {
                                 state.map_preview_yaw = -0.65F;
                                 state.map_preview_pitch = 0.72F;
                                 state.map_preview_zoom = 1.0F;
                             }
-                        } else {
-                            ImGui::TextColored(muted,
-                                               "Map preview is open in a separate window.");
-                            if (ImGui::SmallButton("Close large preview")) {
+                        }
+                        else
+                        {
+                            ImGui::TextColored(muted, "Map preview is open in a separate window.");
+                            if (ImGui::SmallButton("Close large preview"))
+                            {
                                 state.map_preview_large_window = false;
                             }
                         }
                     }
                     ImGui::EndTabItem();
                 }
-                if (ImGui::BeginTabItem("Metadata")) {
+                if (ImGui::BeginTabItem("Metadata"))
+                {
                     ImGui::TextUnformatted(state.asset_preview.c_str());
                     ImGui::EndTabItem();
                 }
                 ImGui::EndTabBar();
             }
-        } else {
+        }
+        else
+        {
             ImGui::TextUnformatted(state.asset_preview.c_str());
         }
         ImGui::EndChild();
@@ -2370,36 +2413,35 @@ void render_asset_workspace(GuiApp::State& state, HWND owner) {
     }
 }
 
-void render_large_map_preview(GuiApp::State& state) {
-    if (!state.map_preview_large_window) {
+void render_large_map_preview(GuiApp::State& state)
+{
+    if (!state.map_preview_large_window)
+    {
         return;
     }
-    if (!state.preview_map) {
+    if (!state.preview_map)
+    {
         state.map_preview_large_window = false;
         return;
     }
 
     const auto* viewport = ImGui::GetMainViewport();
-    const ImVec2 window_size{std::max(760.0F, viewport->WorkSize.x * 0.86F),
-                             std::max(560.0F, viewport->WorkSize.y * 0.86F)};
-    const ImVec2 window_center{viewport->WorkPos.x + viewport->WorkSize.x * 0.5F,
-                               viewport->WorkPos.y + viewport->WorkSize.y * 0.5F};
+    const ImVec2 window_size{std::max(760.0F, viewport->WorkSize.x * 0.86F), std::max(560.0F, viewport->WorkSize.y * 0.86F)};
+    const ImVec2 window_center{viewport->WorkPos.x + viewport->WorkSize.x * 0.5F, viewport->WorkPos.y + viewport->WorkSize.y * 0.5F};
     ImGui::SetNextWindowSize(window_size, ImGuiCond_Appearing);
     ImGui::SetNextWindowPos(window_center, ImGuiCond_Appearing, {0.5F, 0.5F});
-    if (ImGui::Begin("Map Preview###large-map-preview",
-                     &state.map_preview_large_window,
-                     ImGuiWindowFlags_NoCollapse)) {
-        if (state.selected_asset >= 0 &&
-            static_cast<std::size_t>(state.selected_asset) < state.assets.size()) {
-            ImGui::TextColored(muted, "%s",
-                               state.assets[static_cast<std::size_t>(state.selected_asset)]
-                                   .virtual_path.c_str());
+    if (ImGui::Begin("Map Preview###large-map-preview", &state.map_preview_large_window, ImGuiWindowFlags_NoCollapse))
+    {
+        if (state.selected_asset >= 0 && static_cast<std::size_t>(state.selected_asset) < state.assets.size())
+        {
+            ImGui::TextColored(muted, "%s", state.assets[static_cast<std::size_t>(state.selected_asset)].virtual_path.c_str());
             ImGui::Separator();
         }
         ImGui::PushID("large-map-preview-content");
         render_map_viewport(state, true);
         ImGui::PopID();
-        if (ImGui::Button("Reset camera")) {
+        if (ImGui::Button("Reset camera"))
+        {
             state.map_preview_yaw = -0.65F;
             state.map_preview_pitch = 0.72F;
             state.map_preview_zoom = 1.0F;
@@ -2408,31 +2450,36 @@ void render_large_map_preview(GuiApp::State& state) {
     ImGui::End();
 }
 
-bool status_matches(const std::string& filter, const LocalizationRow& row) {
+bool status_matches(const std::string& filter, const LocalizationRow& row)
+{
     return filter == "all" || lower(row.status) == filter;
 }
 
-int compare_case_insensitive(const std::string_view left,
-                             const std::string_view right) {
+int compare_case_insensitive(const std::string_view left, const std::string_view right)
+{
     const auto count = std::min(left.size(), right.size());
-    for (std::size_t index = 0; index < count; ++index) {
+    for (std::size_t index = 0; index < count; ++index)
+    {
         const auto left_byte = static_cast<unsigned char>(left[index]);
         const auto right_byte = static_cast<unsigned char>(right[index]);
         const auto left_folded = static_cast<unsigned char>(std::tolower(left_byte));
         const auto right_folded = static_cast<unsigned char>(std::tolower(right_byte));
-        if (left_folded != right_folded) {
+        if (left_folded != right_folded)
+        {
             return left_folded < right_folded ? -1 : 1;
         }
     }
-    if (left.size() == right.size()) {
+    if (left.size() == right.size())
+    {
         return 0;
     }
     return left.size() < right.size() ? -1 : 1;
 }
 
-std::string_view localization_sort_value(const LocalizationRow& row,
-                                         const ImGuiID column) {
-    switch (column) {
+std::string_view localization_sort_value(const LocalizationRow& row, const ImGuiID column)
+{
+    switch (column)
+    {
     case 1:
         return row.key;
     case 2:
@@ -2446,182 +2493,224 @@ std::string_view localization_sort_value(const LocalizationRow& row,
     }
 }
 
-void sort_localization_rows(std::vector<int>& visible,
-                            const std::vector<LocalizationRow>& rows,
-                            const ImGuiTableSortSpecs& specifications) {
-    std::ranges::stable_sort(visible, [&](const int left_index, const int right_index) {
-        const auto& left = rows[static_cast<std::size_t>(left_index)];
-        const auto& right = rows[static_cast<std::size_t>(right_index)];
-        for (int sort_index = 0; sort_index < specifications.SpecsCount; ++sort_index) {
-            const auto& specification = specifications.Specs[sort_index];
-            const auto comparison = compare_case_insensitive(
-                localization_sort_value(left, specification.ColumnUserID),
-                localization_sort_value(right, specification.ColumnUserID));
-            if (comparison == 0) {
-                continue;
-            }
-            return specification.SortDirection == ImGuiSortDirection_Ascending
-                       ? comparison < 0
-                       : comparison > 0;
-        }
-        return left_index < right_index;
-    });
+void sort_localization_rows(std::vector<int>& visible, const std::vector<LocalizationRow>& rows, const ImGuiTableSortSpecs& specifications)
+{
+    std::ranges::stable_sort(visible,
+                             [&](const int left_index, const int right_index)
+                             {
+                                 const auto& left = rows[static_cast<std::size_t>(left_index)];
+                                 const auto& right = rows[static_cast<std::size_t>(right_index)];
+                                 for (int sort_index = 0; sort_index < specifications.SpecsCount; ++sort_index)
+                                 {
+                                     const auto& specification = specifications.Specs[sort_index];
+                                     const auto comparison =
+                                         compare_case_insensitive(localization_sort_value(left, specification.ColumnUserID), localization_sort_value(right, specification.ColumnUserID));
+                                     if (comparison == 0)
+                                     {
+                                         continue;
+                                     }
+                                     return specification.SortDirection == ImGuiSortDirection_Ascending ? comparison < 0 : comparison > 0;
+                                 }
+                                 return left_index < right_index;
+                             });
 }
 
-void render_add_key_popup(GuiApp::State& state) {
-    if (ImGui::BeginPopupModal("Add localization key", nullptr,
-                               ImGuiWindowFlags_AlwaysAutoResize)) {
+void render_add_key_popup(GuiApp::State& state)
+{
+    if (ImGui::BeginPopupModal("Add localization key", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    {
         ImGui::TextColored(muted, "Use the same TEXT_* identifier referenced by mod XML.");
         ImGui::SetNextItemWidth(480.0F);
         ImGui::InputTextWithHint("##new-key", "TEXT_MY_NEW_KEY", &state.new_key);
-        if (ImGui::Button("Add", {110.0F, 0.0F})) {
-            try {
-                state.add_localization_row(
-                    {state.new_key, {}, "manual", "todo", {}, "Added in EAWTools"});
+        if (ImGui::Button("Add", {110.0F, 0.0F}))
+        {
+            try
+            {
+                state.add_localization_row({state.new_key, {}, "manual", "todo", {}, "Added in EAWTools"});
                 state.new_key.clear();
                 ImGui::CloseCurrentPopup();
-            } catch (const std::exception& error) {
+            }
+            catch (const std::exception& error)
+            {
                 state.fail(error);
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", {110.0F, 0.0F})) {
+        if (ImGui::Button("Cancel", {110.0F, 0.0F}))
+        {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }
 }
 
-void render_add_unit_popup(GuiApp::State& state) {
-    if (ImGui::BeginPopupModal("Add unit localization", nullptr,
-                               ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextColored(muted,
-                           "Creates a display name and encyclopedia description together.");
+void render_add_unit_popup(GuiApp::State& state)
+{
+    if (ImGui::BeginPopupModal("Add unit localization", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::TextColored(muted, "Creates a display name and encyclopedia description together.");
         ImGui::SetNextItemWidth(520.0F);
-        ImGui::InputTextWithHint("##unit-id", "Unit ID, e.g. REPUBLIC_VENATOR",
-                                 &state.unit_id);
+        ImGui::InputTextWithHint("##unit-id", "Unit ID, e.g. REPUBLIC_VENATOR", &state.unit_id);
         ImGui::SetNextItemWidth(520.0F);
         ImGui::InputTextWithHint("##unit-name", "Display name", &state.unit_name);
         ImGui::SetNextItemWidth(520.0F);
-        ImGui::InputTextMultiline("##unit-description", &state.unit_description,
-                                  {520.0F, 130.0F});
-        if (ImGui::Button("Create keys", {130.0F, 0.0F})) {
-            try {
+        ImGui::InputTextMultiline("##unit-description", &state.unit_description, {520.0F, 130.0F});
+        if (ImGui::Button("Create keys", {130.0F, 0.0F}))
+        {
+            try
+            {
                 const auto id = normalize_unit_id(state.unit_id);
-                if (id.empty()) {
+                if (id.empty())
+                {
                     throw std::runtime_error("Unit ID cannot be empty");
                 }
                 const auto name_key = "TEXT_UNIT_" + id;
                 const auto tooltip_key = "TEXT_TOOLTIP_" + id;
-                const auto conflicts = [&](const auto& row) {
+                const auto conflicts = [&](const auto& row)
+                {
                     const auto key = lower(row.key);
                     return key == lower(name_key) || key == lower(tooltip_key);
                 };
-                if (std::ranges::any_of(state.rows, conflicts)) {
+                if (std::ranges::any_of(state.rows, conflicts))
+                {
                     throw std::runtime_error("One of the generated unit keys already exists");
                 }
-                state.rows.push_back({name_key, state.unit_name, "unit:" + id, "ready",
-                                      "Use in <Text_ID>",
-                                      "Generated unit display-name key"});
-                state.rows.push_back({tooltip_key, state.unit_description, "unit:" + id,
-                                      "ready", "Use in <Encyclopedia_Text>",
-                                      "Generated unit description key"});
+                state.rows.push_back({name_key, state.unit_name, "unit:" + id, "ready", "Use in <Text_ID>", "Generated unit display-name key"});
+                state.rows.push_back({tooltip_key, state.unit_description, "unit:" + id, "ready", "Use in <Encyclopedia_Text>", "Generated unit description key"});
                 state.selected_row = static_cast<int>(state.rows.size() - 2);
                 state.dirty = true;
                 state.unit_id.clear();
                 state.unit_name.clear();
                 state.unit_description.clear();
                 ImGui::CloseCurrentPopup();
-            } catch (const std::exception& error) {
+            }
+            catch (const std::exception& error)
+            {
                 state.fail(error);
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", {110.0F, 0.0F})) {
+        if (ImGui::Button("Cancel", {110.0F, 0.0F}))
+        {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }
 }
 
-void render_localization_workspace(GuiApp::State& state, HWND owner) {
+void render_localization_workspace(GuiApp::State& state, HWND owner)
+{
     ImGui::TextUnformatted("DAT LOCALIZATION STUDIO");
     ImGui::SameLine();
     ImGui::TextColored(muted, "Edit, scan, validate, and build mod text");
     ImGui::Spacing();
 
-    if (ImGui::Button("Open DAT...")) {
-        try {
-            if (const auto path = open_dat_file(owner, L"Open baseline localization DAT")) {
+    if (ImGui::Button("Open DAT..."))
+    {
+        try
+        {
+            if (const auto path = open_dat_file(owner, L"Open baseline localization DAT"))
+            {
                 state.open_dat(*path);
             }
-        } catch (const std::exception& error) {
+        }
+        catch (const std::exception& error)
+        {
             state.fail(error);
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Open workspace...")) {
-        try {
-            if (const auto path = open_workspace_file(owner, L"Open localization workspace")) {
+    if (ImGui::Button("Open workspace..."))
+    {
+        try
+        {
+            if (const auto path = open_workspace_file(owner, L"Open localization workspace"))
+            {
                 state.open_workspace(*path);
             }
-        } catch (const std::exception& error) {
+        }
+        catch (const std::exception& error)
+        {
             state.fail(error);
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Save workspace")) {
-        try {
+    if (ImGui::Button("Save workspace"))
+    {
+        try
+        {
             auto path = state.workspace_path;
-            if (!path) {
+            if (!path)
+            {
                 path = save_workspace_file(owner, L"Save localization workspace");
             }
-            if (path) {
+            if (path)
+            {
                 state.save_workspace(*path);
             }
-        } catch (const std::exception& error) {
+        }
+        catch (const std::exception& error)
+        {
             state.fail(error);
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Save as...")) {
-        try {
-            if (const auto path = save_workspace_file(owner, L"Save localization workspace")) {
+    if (ImGui::Button("Save as..."))
+    {
+        try
+        {
+            if (const auto path = save_workspace_file(owner, L"Save localization workspace"))
+            {
                 state.save_workspace(*path);
             }
-        } catch (const std::exception& error) {
+        }
+        catch (const std::exception& error)
+        {
             state.fail(error);
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Scan mod...")) {
-        try {
-            if (const auto path = pick_folder(owner, L"Select mod root to scan")) {
+    if (ImGui::Button("Scan mod..."))
+    {
+        try
+        {
+            if (const auto path = pick_folder(owner, L"Select mod root to scan"))
+            {
                 state.scan_mod(*path);
             }
-        } catch (const std::exception& error) {
+        }
+        catch (const std::exception& error)
+        {
             state.fail(error);
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Add key")) {
+    if (ImGui::Button("Add key"))
+    {
         ImGui::OpenPopup("Add localization key");
     }
     ImGui::SameLine();
-    if (ImGui::Button("Add unit")) {
+    if (ImGui::Button("Add unit"))
+    {
         ImGui::OpenPopup("Add unit localization");
     }
     ImGui::SameLine();
-    if (ImGui::Button("Validate")) {
+    if (ImGui::Button("Validate"))
+    {
         state.validate_workspace();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Build DAT...")) {
-        try {
-            if (const auto path = save_dat_file(owner, L"Build localization DAT")) {
+    if (ImGui::Button("Build DAT..."))
+    {
+        try
+        {
+            if (const auto path = save_dat_file(owner, L"Build localization DAT"))
+            {
                 state.build_dat(*path);
             }
-        } catch (const std::exception& error) {
+        }
+        catch (const std::exception& error)
+        {
             state.fail(error);
         }
     }
@@ -2629,33 +2718,40 @@ void render_localization_workspace(GuiApp::State& state, HWND owner) {
     render_add_key_popup(state);
     render_add_unit_popup(state);
 
-    if (state.base_dat_path) {
+    if (state.base_dat_path)
+    {
         label_value("Baseline", path_to_utf8(*state.base_dat_path));
-    } else {
+    }
+    else
+    {
         label_value("Baseline", "Not selected (required for scan/build)");
     }
-    if (state.workspace_path) {
+    if (state.workspace_path)
+    {
         label_value("Workspace", path_to_utf8(*state.workspace_path));
     }
     ImGui::Checkbox("Skip unresolved TODO rows when building", &state.skip_todo);
-    if (state.dirty) {
+    if (state.dirty)
+    {
         ImGui::SameLine();
         ImGui::TextColored(warning, "Unsaved changes");
     }
 
     ImGui::SetNextItemWidth(-510.0F);
-    ImGui::InputTextWithHint("##row-search", "Search keys, text, group, or context...",
-                             &state.row_query);
+    ImGui::InputTextWithHint("##row-search", "Search keys, text, group, or context...", &state.row_query);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(150.0F);
-    if (ImGui::BeginCombo("##status-filter", state.status_filter.c_str())) {
-        for (const char* status : {"all", "existing", "new", "modified", "ready", "todo",
-                                   "deleted"}) {
+    if (ImGui::BeginCombo("##status-filter", state.status_filter.c_str()))
+    {
+        for (const char* status : {"all", "existing", "new", "modified", "ready", "todo", "deleted"})
+        {
             const bool selected = state.status_filter == status;
-            if (ImGui::Selectable(status, selected)) {
+            if (ImGui::Selectable(status, selected))
+            {
                 state.status_filter = status;
             }
-            if (selected) {
+            if (selected)
+            {
                 ImGui::SetItemDefaultFocus();
             }
         }
@@ -2667,65 +2763,57 @@ void render_localization_workspace(GuiApp::State& state, HWND owner) {
     std::vector<int> visible;
     visible.reserve(state.rows.size());
     const auto query = lower(state.row_query);
-    for (std::size_t index = 0; index < state.rows.size(); ++index) {
+    for (std::size_t index = 0; index < state.rows.size(); ++index)
+    {
         const auto& row = state.rows[index];
-        if (!status_matches(state.status_filter, row)) {
+        if (!status_matches(state.status_filter, row))
+        {
             continue;
         }
-        if (!query.empty()) {
-            const auto searchable = lower(row.key + "\n" + row.text + "\n" + row.group +
-                                          "\n" + row.context);
-            if (searchable.find(query) == std::string::npos) {
+        if (!query.empty())
+        {
+            const auto searchable = lower(row.key + "\n" + row.text + "\n" + row.group + "\n" + row.context);
+            if (searchable.find(query) == std::string::npos)
+            {
                 continue;
             }
         }
         visible.push_back(static_cast<int>(index));
     }
 
-    if (ImGui::BeginTable("localization-layout", 2,
-                          ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV,
-                          {-1.0F, -1.0F})) {
+    if (ImGui::BeginTable("localization-layout", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV, {-1.0F, -1.0F}))
+    {
         ImGui::TableSetupColumn("Entries", ImGuiTableColumnFlags_WidthStretch, 0.62F);
         ImGui::TableSetupColumn("Editor", ImGuiTableColumnFlags_WidthStretch, 0.38F);
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        if (ImGui::BeginTable("localization-table", 4,
-                              ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
-                                  ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-                                  ImGuiTableFlags_Sortable,
-                              {-1.0F, -1.0F})) {
+        if (ImGui::BeginTable("localization-table", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable | ImGuiTableFlags_Sortable,
+                              {-1.0F, -1.0F}))
+        {
             ImGui::TableSetupScrollFreeze(0, 1);
-            ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthStretch |
-                                               ImGuiTableColumnFlags_DefaultSort |
-                                               ImGuiTableColumnFlags_PreferSortAscending,
-                                    0.44F, 1);
-            ImGui::TableSetupColumn("Text", ImGuiTableColumnFlags_WidthStretch |
-                                                ImGuiTableColumnFlags_PreferSortAscending,
-                                    0.36F, 2);
-            ImGui::TableSetupColumn("Group", ImGuiTableColumnFlags_WidthStretch |
-                                                 ImGuiTableColumnFlags_PreferSortAscending,
-                                    0.20F, 3);
-            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed |
-                                                  ImGuiTableColumnFlags_PreferSortAscending,
-                                    70.0F, 4);
-            if (auto* sort_specs = ImGui::TableGetSortSpecs();
-                sort_specs != nullptr && sort_specs->SpecsCount > 0) {
+            ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_PreferSortAscending, 0.44F, 1);
+            ImGui::TableSetupColumn("Text", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_PreferSortAscending, 0.36F, 2);
+            ImGui::TableSetupColumn("Group", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_PreferSortAscending, 0.20F, 3);
+            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_PreferSortAscending, 70.0F, 4);
+            if (auto* sort_specs = ImGui::TableGetSortSpecs(); sort_specs != nullptr && sort_specs->SpecsCount > 0)
+            {
                 sort_localization_rows(visible, state.rows, *sort_specs);
                 sort_specs->SpecsDirty = false;
             }
             ImGui::TableHeadersRow();
             ImGuiListClipper clipper;
             clipper.Begin(static_cast<int>(visible.size()));
-            while (clipper.Step()) {
-                for (int table_row = clipper.DisplayStart; table_row < clipper.DisplayEnd;
-                     ++table_row) {
+            while (clipper.Step())
+            {
+                for (int table_row = clipper.DisplayStart; table_row < clipper.DisplayEnd; ++table_row)
+                {
                     const int index = visible[static_cast<std::size_t>(table_row)];
                     const auto& row = state.rows[static_cast<std::size_t>(index)];
                     ImGui::PushID(index);
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
-                    if (ImGui::Selectable(row.key.c_str(), state.selected_row == index,
-                                          ImGuiSelectableFlags_SpanAllColumns)) {
+                    if (ImGui::Selectable(row.key.c_str(), state.selected_row == index, ImGuiSelectableFlags_SpanAllColumns))
+                    {
                         state.selected_row = index;
                     }
                     ImGui::TableSetColumnIndex(1);
@@ -2733,9 +2821,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner) {
                     ImGui::TableSetColumnIndex(2);
                     ImGui::TextUnformatted(row.group.c_str());
                     ImGui::TableSetColumnIndex(3);
-                    const auto color = lower(row.status) == "todo"
-                                           ? warning
-                                           : (lower(row.status) == "deleted" ? danger : accent);
+                    const auto color = lower(row.status) == "todo" ? warning : (lower(row.status) == "deleted" ? danger : accent);
                     ImGui::TextColored(color, "%s", row.status.c_str());
                     ImGui::PopID();
                 }
@@ -2745,40 +2831,50 @@ void render_localization_workspace(GuiApp::State& state, HWND owner) {
 
         ImGui::TableSetColumnIndex(1);
         ImGui::BeginChild("row-editor", {-1.0F, -1.0F}, ImGuiChildFlags_Borders);
-        if (state.selected_row >= 0 &&
-            static_cast<std::size_t>(state.selected_row) < state.rows.size()) {
+        if (state.selected_row >= 0 && static_cast<std::size_t>(state.selected_row) < state.rows.size())
+        {
             auto& row = state.rows[static_cast<std::size_t>(state.selected_row)];
             ImGui::TextColored(accent, "%s", row.key.c_str());
             ImGui::TextColored(muted, "Key");
             const bool existing = lower(row.status) == "existing";
-            if (existing) {
+            if (existing)
+            {
                 ImGui::BeginDisabled();
             }
-            if (ImGui::InputText("##edit-key", &row.key)) {
+            if (ImGui::InputText("##edit-key", &row.key))
+            {
                 state.dirty = true;
             }
-            if (existing) {
+            if (existing)
+            {
                 ImGui::EndDisabled();
             }
             ImGui::TextColored(muted, "Localized text");
-            if (ImGui::InputTextMultiline("##edit-text", &row.text, {-1.0F, 150.0F})) {
+            if (ImGui::InputTextMultiline("##edit-text", &row.text, {-1.0F, 150.0F}))
+            {
                 const auto current_status = lower(row.status);
-                if (current_status == "existing") {
+                if (current_status == "existing")
+                {
                     row.status = "modified";
-                } else if (current_status == "todo" && !row.text.empty()) {
+                }
+                else if (current_status == "todo" && !row.text.empty())
+                {
                     row.status = "ready";
                 }
                 state.dirty = true;
             }
             ImGui::TextColored(muted, "Group");
-            if (ImGui::InputText("##edit-group", &row.group)) {
+            if (ImGui::InputText("##edit-group", &row.group))
+            {
                 state.dirty = true;
             }
             ImGui::TextColored(muted, "Status");
-            if (ImGui::BeginCombo("##edit-status", row.status.c_str())) {
-                for (const char* status : {"existing", "new", "modified", "ready", "todo",
-                                           "deleted"}) {
-                    if (ImGui::Selectable(status, row.status == status)) {
+            if (ImGui::BeginCombo("##edit-status", row.status.c_str()))
+            {
+                for (const char* status : {"existing", "new", "modified", "ready", "todo", "deleted"})
+                {
+                    if (ImGui::Selectable(status, row.status == status))
+                    {
                         row.status = status;
                         state.dirty = true;
                     }
@@ -2786,37 +2882,39 @@ void render_localization_workspace(GuiApp::State& state, HWND owner) {
                 ImGui::EndCombo();
             }
             ImGui::TextColored(muted, "Context");
-            if (ImGui::InputTextMultiline("##edit-context", &row.context,
-                                          {-1.0F, 74.0F})) {
+            if (ImGui::InputTextMultiline("##edit-context", &row.context, {-1.0F, 74.0F}))
+            {
                 state.dirty = true;
             }
             ImGui::TextColored(muted, "Notes");
-            if (ImGui::InputTextMultiline("##edit-notes", &row.notes,
-                                          {-1.0F, 74.0F})) {
+            if (ImGui::InputTextMultiline("##edit-notes", &row.notes, {-1.0F, 74.0F}))
+            {
                 state.dirty = true;
             }
-            if (ImGui::Button("Delete entry")) {
-                if (lower(row.status) == "new" || lower(row.status) == "todo") {
+            if (ImGui::Button("Delete entry"))
+            {
+                if (lower(row.status) == "new" || lower(row.status) == "todo")
+                {
                     state.rows.erase(state.rows.begin() + state.selected_row);
-                    state.selected_row = state.rows.empty()
-                                             ? -1
-                                             : std::min(state.selected_row,
-                                                        static_cast<int>(state.rows.size() - 1));
-                } else {
+                    state.selected_row = state.rows.empty() ? -1 : std::min(state.selected_row, static_cast<int>(state.rows.size() - 1));
+                }
+                else
+                {
                     row.status = "deleted";
                 }
                 state.dirty = true;
             }
-        } else {
+        }
+        else
+        {
             ImGui::TextColored(muted, "Select a localization row to edit it.");
         }
-        if (!state.validation_messages.empty()) {
+        if (!state.validation_messages.empty())
+        {
             ImGui::SeparatorText("Validation");
-            for (const auto& item : state.validation_messages) {
-                ImGui::TextColored(item.starts_with("Error:") ? danger
-                                   : item.starts_with("TODO:") ? warning
-                                                                : muted,
-                                   "%s", item.c_str());
+            for (const auto& item : state.validation_messages)
+            {
+                ImGui::TextColored(item.starts_with("Error:") ? danger : item.starts_with("TODO:") ? warning : muted, "%s", item.c_str());
             }
         }
         ImGui::EndChild();
@@ -2826,7 +2924,8 @@ void render_localization_workspace(GuiApp::State& state, HWND owner) {
 
 } // namespace
 
-void GuiApp::render(const NativeWindowHandle window) {
+void GuiApp::render(const NativeWindowHandle window)
+{
     auto& style = ImGui::GetStyle();
     style.WindowRounding = 8.0F;
     style.ChildRounding = 7.0F;
@@ -2857,8 +2956,7 @@ void GuiApp::render(const NativeWindowHandle window) {
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
     ImGui::SetNextWindowViewport(viewport->ID);
-    const auto flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                       ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
+    const auto flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
     ImGui::Begin("EAW Tools Workbench", nullptr, flags);
 
     ImGui::BeginChild("navigation", {205.0F, -35.0F}, ImGuiChildFlags_Borders);
@@ -2867,26 +2965,26 @@ void GuiApp::render(const NativeWindowHandle window) {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
-    if (ImGui::Selectable("Asset Inspector",
-                          state_->workspace == State::Workspace::assets, 0,
-                          {0.0F, 42.0F})) {
+    if (ImGui::Selectable("Asset Inspector", state_->workspace == State::Workspace::assets, 0, {0.0F, 42.0F}))
+    {
         state_->workspace = State::Workspace::assets;
     }
-    if (ImGui::Selectable("DAT Localization",
-                          state_->workspace == State::Workspace::localization, 0,
-                          {0.0F, 42.0F})) {
+    if (ImGui::Selectable("DAT Localization", state_->workspace == State::Workspace::localization, 0, {0.0F, 42.0F}))
+    {
         state_->workspace = State::Workspace::localization;
     }
-    ImGui::SetCursorPosY(std::max(ImGui::GetCursorPosY(),
-                                  ImGui::GetWindowHeight() - 68.0F));
+    ImGui::SetCursorPosY(std::max(ImGui::GetCursorPosY(), ImGui::GetWindowHeight() - 68.0F));
     ImGui::TextColored(muted, "Native C++20");
     ImGui::TextColored(muted, "Dear ImGui • DirectX 11");
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("workspace", {0.0F, -35.0F}, ImGuiChildFlags_Borders);
-    if (state_->workspace == State::Workspace::assets) {
+    if (state_->workspace == State::Workspace::assets)
+    {
         render_asset_workspace(*state_, window);
-    } else {
+    }
+    else
+    {
         render_localization_workspace(*state_, window);
     }
     ImGui::EndChild();

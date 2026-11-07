@@ -11,13 +11,13 @@ namespace eaw::tools {
 namespace {
 
 template <typename Dialog>
-std::optional<std::filesystem::path> show_dialog(HWND owner, const CLSID& class_id, std::wstring_view title, FILEOPENDIALOGOPTIONS options, const COMDLG_FILTERSPEC* filters,
-                                                 const UINT filter_count, std::wstring_view default_extension, std::wstring_view suggested_name)
+std::optional<std::filesystem::path> show_dialog(HWND owner, const CLSID& class_id, std::wstring_view title, FILEOPENDIALOGOPTIONS options, const COMDLG_FILTERSPEC* filters, const UINT filter_count,
+                                                 std::wstring_view default_extension, std::wstring_view suggested_name)
 {
     Dialog* dialog = nullptr;
-    const auto created = CoCreateInstance(class_id, nullptr, CLSCTX_INPROC_SERVER,
-                                          IID_PPV_ARGS(&dialog));
-    if (FAILED(created)) {
+    const auto created = CoCreateInstance(class_id, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
+    if (FAILED(created))
+    {
         throw std::runtime_error("Windows file dialog could not be created");
     }
 
@@ -80,44 +80,28 @@ std::optional<std::filesystem::path> show_dialog(HWND owner, const CLSID& class_
 
 std::optional<std::filesystem::path> open_dat_file(HWND owner, const std::wstring_view title)
 {
-    static constexpr std::array filters
-    {
-        COMDLG_FILTERSPEC{L"Petroglyph string files (*.dat)", L"*.dat"},
-        COMDLG_FILTERSPEC{L"All files (*.*)", L"*.*"}
-    };
+    static constexpr std::array filters{COMDLG_FILTERSPEC{L"Petroglyph string files (*.dat)", L"*.dat"}, COMDLG_FILTERSPEC{L"All files (*.*)", L"*.*"}};
 
     return show_dialog<IFileOpenDialog>(owner, CLSID_FileOpenDialog, title, FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST, filters.data(), static_cast<UINT>(filters.size()), L"dat", {});
 }
 
 std::optional<std::filesystem::path> open_workspace_file(HWND owner, const std::wstring_view title)
 {
-    static constexpr std::array filters
-    {
-        COMDLG_FILTERSPEC{L"Localization workspaces (*.tsv)", L"*.tsv"},
-        COMDLG_FILTERSPEC{L"All files (*.*)", L"*.*"}
-    };
+    static constexpr std::array filters{COMDLG_FILTERSPEC{L"Localization workspaces (*.tsv)", L"*.tsv"}, COMDLG_FILTERSPEC{L"All files (*.*)", L"*.*"}};
 
     return show_dialog<IFileOpenDialog>(owner, CLSID_FileOpenDialog, title, FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST, filters.data(), static_cast<UINT>(filters.size()), L"tsv", {});
 }
 
 std::optional<std::filesystem::path> save_dat_file(HWND owner, const std::wstring_view title, const std::wstring_view suggested_name)
 {
-    static constexpr std::array filters
-    {
-        COMDLG_FILTERSPEC{L"Petroglyph string files (*.dat)", L"*.dat"},
-        COMDLG_FILTERSPEC{L"All files (*.*)", L"*.*"}
-    };
+    static constexpr std::array filters{COMDLG_FILTERSPEC{L"Petroglyph string files (*.dat)", L"*.dat"}, COMDLG_FILTERSPEC{L"All files (*.*)", L"*.*"}};
 
     return show_dialog<IFileSaveDialog>(owner, CLSID_FileSaveDialog, title, FOS_OVERWRITEPROMPT | FOS_PATHMUSTEXIST, filters.data(), static_cast<UINT>(filters.size()), L"dat", suggested_name);
 }
 
 std::optional<std::filesystem::path> save_workspace_file(HWND owner, const std::wstring_view title, const std::wstring_view suggested_name)
 {
-    static constexpr std::array filters
-    {
-        COMDLG_FILTERSPEC{L"Localization workspaces (*.tsv)", L"*.tsv"},
-        COMDLG_FILTERSPEC{L"All files (*.*)", L"*.*"}
-    };
+    static constexpr std::array filters{COMDLG_FILTERSPEC{L"Localization workspaces (*.tsv)", L"*.tsv"}, COMDLG_FILTERSPEC{L"All files (*.*)", L"*.*"}};
 
     return show_dialog<IFileSaveDialog>(owner, CLSID_FileSaveDialog, title, FOS_OVERWRITEPROMPT | FOS_PATHMUSTEXIST, filters.data(), static_cast<UINT>(filters.size()), L"tsv", suggested_name);
 }

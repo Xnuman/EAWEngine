@@ -8,7 +8,8 @@ using NativeWindowHandle = HWND__*;
 
 namespace eaw::tools {
 
-class GuiApp final {
+class GuiApp final
+{
 public:
     struct State;
 

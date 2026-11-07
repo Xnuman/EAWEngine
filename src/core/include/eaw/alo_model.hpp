@@ -10,46 +10,48 @@
 
 namespace eaw {
 
-struct AloVector3 {
+struct AloVector3
+{
     float x{};
     float y{};
     float z{};
 };
 
-struct AloVector2 {
+struct AloVector2
+{
     float x{};
     float y{};
 };
 
-struct AloVector4 {
+struct AloVector4
+{
     float x{};
     float y{};
     float z{};
     float w{};
 };
 
-struct AloQuaternion {
+struct AloQuaternion
+{
     float x{};
     float y{};
     float z{};
     float w{1.0F};
 };
 
-struct AloMatrix4 {
+struct AloMatrix4
+{
     std::array<float, 16> values{};
 };
 
 [[nodiscard]] AloMatrix4 alo_identity_matrix() noexcept;
-[[nodiscard]] AloMatrix4 alo_multiply(const AloMatrix4& left,
-                                      const AloMatrix4& right) noexcept;
+[[nodiscard]] AloMatrix4 alo_multiply(const AloMatrix4& left, const AloMatrix4& right) noexcept;
 [[nodiscard]] AloMatrix4 alo_inverse(const AloMatrix4& matrix);
-[[nodiscard]] AloVector3 alo_transform_point(const AloVector3& point,
-                                             const AloMatrix4& matrix) noexcept;
-[[nodiscard]] AloMatrix4 alo_compose_transform(const AloVector3& scale,
-                                               const AloQuaternion& rotation,
-                                               const AloVector3& translation) noexcept;
+[[nodiscard]] AloVector3 alo_transform_point(const AloVector3& point, const AloMatrix4& matrix) noexcept;
+[[nodiscard]] AloMatrix4 alo_compose_transform(const AloVector3& scale, const AloQuaternion& rotation, const AloVector3& translation) noexcept;
 
-struct AloVertex {
+struct AloVertex
+{
     AloVector3 position;
     AloVector3 normal;
     std::array<AloVector2, 4> texture_coordinates{};
@@ -60,12 +62,14 @@ struct AloVertex {
     std::array<float, 4> bone_weights{};
 };
 
-struct AloBounds {
+struct AloBounds
+{
     AloVector3 minimum;
     AloVector3 maximum;
 };
 
-struct AloBone {
+struct AloBone
+{
     std::string name;
     std::int32_t parent{-1};
     bool visible{};
@@ -73,7 +77,8 @@ struct AloBone {
     std::array<float, 12> transform{};
 };
 
-enum class AloShaderParameterType {
+enum class AloShaderParameterType
+{
     integer,
     scalar,
     vector3,
@@ -82,13 +87,15 @@ enum class AloShaderParameterType {
     unknown,
 };
 
-struct AloShaderParameter {
+struct AloShaderParameter
+{
     std::string name;
     AloShaderParameterType type{AloShaderParameterType::unknown};
     std::string value;
 };
 
-struct AloSubMesh {
+struct AloSubMesh
+{
     std::string shader;
     std::vector<AloShaderParameter> parameters;
     std::string vertex_format;
@@ -101,7 +108,8 @@ struct AloSubMesh {
     std::vector<std::uint32_t> skin_bones;
 };
 
-struct AloMesh {
+struct AloMesh
+{
     std::string name;
     AloBounds bounds;
     bool hidden{};
@@ -110,7 +118,8 @@ struct AloMesh {
     std::vector<AloSubMesh> submeshes;
 };
 
-struct AloLight {
+struct AloLight
+{
     std::string name;
     std::uint32_t type{};
     AloVector3 color;
@@ -118,21 +127,24 @@ struct AloLight {
     std::optional<std::uint32_t> attached_bone;
 };
 
-struct AloProxy {
+struct AloProxy
+{
     std::string name;
     std::uint32_t bone{};
     bool hidden{};
     bool alt_decrease_stay_hidden{};
 };
 
-struct AloDazzle {
+struct AloDazzle
+{
     std::string name;
     std::string texture;
     std::uint32_t bone{};
     bool hidden{};
 };
 
-class AloModel final {
+class AloModel final
+{
 public:
     [[nodiscard]] static AloModel parse(std::span<const std::byte> bytes);
 

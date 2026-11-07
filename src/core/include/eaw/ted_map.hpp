@@ -9,13 +9,15 @@
 
 namespace eaw {
 
-enum class TedMapType : std::uint32_t {
+enum class TedMapType : std::uint32_t
+{
     unknown = 0,
     land = 1,
     space = 2,
 };
 
-struct TedEnvironment {
+struct TedEnvironment
+{
     std::string name;
     std::string scenario;
     std::string skybox_primary;
@@ -23,23 +25,27 @@ struct TedEnvironment {
     std::string clouds;
 };
 
-struct TedTerrainLayer {
+struct TedTerrainLayer
+{
     std::string color_texture;
     std::string normal_texture;
 };
 
-struct TedObjectType {
+struct TedObjectType
+{
     std::uint32_t crc{};
     std::uint32_t count{};
 };
 
-struct TedVector3 {
+struct TedVector3
+{
     float x{};
     float y{};
     float z{};
 };
 
-struct TedPlacedObject {
+struct TedPlacedObject
+{
     std::uint32_t instance_id{};
     std::uint32_t crc{};
     std::uint32_t player{};
@@ -49,7 +55,8 @@ struct TedPlacedObject {
     bool has_transform{};
 };
 
-struct TedMap {
+struct TedMap
+{
     TedMapType type{TedMapType::unknown};
     std::uint32_t players{};
     std::string name;

@@ -30,7 +30,8 @@
 
 namespace {
 
-struct Options {
+struct Options
+{
     std::string command{"summary"};
     std::string operand;
     std::optional<std::filesystem::path> game_root;
@@ -41,119 +42,144 @@ struct Options {
     std::size_t limit{200};
 };
 
-void usage() {
-    std::cout
-        << "EAWAssetInspector - layered Empire at War asset browser\n\n"
-        << "Usage:\n"
-        << "  EAWAssetInspector summary [options]\n"
-        << "  EAWAssetInspector list [prefix] [options]\n"
-        << "  EAWAssetInspector inspect <virtual-path> [options]\n"
-        << "  EAWAssetInspector map-audit [prefix] [options]\n"
-        << "  EAWAssetInspector texture-audit [prefix] [options]\n"
-        << "  EAWAssetInspector xml-audit [prefix] [options]\n"
-        << "  EAWAssetInspector localization-refs <xml-path> [options]\n\n"
-        << "Options:\n"
-        << "  --game-root <path>      Installation root (auto-detected by default)\n"
-        << "  --game <eaw|foc>        Game profile (default: foc)\n"
-        << "  --mod <path>            Mod root; repeatable, first has priority\n"
-        << "  --prefix <path>         Summary/list prefix (default: Data)\n"
-        << "  --extension <.xml>      Filter list by extension\n"
-        << "  --limit <count>         Maximum list/sample rows\n";
+void usage()
+{
+    std::cout << "EAWAssetInspector - layered Empire at War asset browser\n\n"
+              << "Usage:\n"
+              << "  EAWAssetInspector summary [options]\n"
+              << "  EAWAssetInspector list [prefix] [options]\n"
+              << "  EAWAssetInspector inspect <virtual-path> [options]\n"
+              << "  EAWAssetInspector map-audit [prefix] [options]\n"
+              << "  EAWAssetInspector texture-audit [prefix] [options]\n"
+              << "  EAWAssetInspector xml-audit [prefix] [options]\n"
+              << "  EAWAssetInspector localization-refs <xml-path> [options]\n\n"
+              << "Options:\n"
+              << "  --game-root <path>      Installation root (auto-detected by default)\n"
+              << "  --game <eaw|foc>        Game profile (default: foc)\n"
+              << "  --mod <path>            Mod root; repeatable, first has priority\n"
+              << "  --prefix <path>         Summary/list prefix (default: Data)\n"
+              << "  --extension <.xml>      Filter list by extension\n"
+              << "  --limit <count>         Maximum list/sample rows\n";
 }
 
-std::size_t parse_size(const std::string& value) {
+std::size_t parse_size(const std::string& value)
+{
     std::size_t consumed = 0;
     const auto result = std::stoull(value, &consumed);
-    if (consumed != value.size()) {
+    if (consumed != value.size())
+    {
         throw std::invalid_argument("invalid number: " + value);
     }
     return static_cast<std::size_t>(result);
 }
 
-Options parse_options(const int argc, char** argv) {
+Options parse_options(const int argc, char** argv)
+{
     Options options;
     int index = 1;
-    if (index < argc && argv[index][0] != '-') {
+    if (index < argc && argv[index][0] != '-')
+    {
         options.command = argv[index++];
     }
-    if ((options.command == "inspect" || options.command == "localization-refs") &&
-        index < argc && argv[index][0] != '-') {
+    if ((options.command == "inspect" || options.command == "localization-refs") && index < argc && argv[index][0] != '-')
+    {
         options.operand = argv[index++];
-    } else if ((options.command == "list" || options.command == "map-audit" ||
-                options.command == "texture-audit" ||
-                options.command == "xml-audit") &&
-               index < argc && argv[index][0] != '-') {
+    }
+    else if ((options.command == "list" || options.command == "map-audit" || options.command == "texture-audit" || options.command == "xml-audit") && index < argc && argv[index][0] != '-')
+    {
         options.prefix = argv[index++];
     }
 
-    for (; index < argc; ++index) {
+    for (; index < argc; ++index)
+    {
         const std::string argument = argv[index];
-        if (argument == "--help" || argument == "-h") {
+        if (argument == "--help" || argument == "-h")
+        {
             usage();
             std::exit(0);
         }
-        if (index + 1 >= argc) {
+        if (index + 1 >= argc)
+        {
             throw std::invalid_argument("missing value after " + argument);
         }
         const std::string value = argv[++index];
-        if (argument == "--game-root") {
+        if (argument == "--game-root")
+        {
             options.game_root = value;
-        } else if (argument == "--game") {
+        }
+        else if (argument == "--game")
+        {
             const auto variant = eaw::parse_game_variant(value);
-            if (!variant) {
+            if (!variant)
+            {
                 throw std::invalid_argument("unknown game variant: " + value);
             }
             options.variant = *variant;
-        } else if (argument == "--mod") {
+        }
+        else if (argument == "--mod")
+        {
             options.mods.emplace_back(value);
-        } else if (argument == "--prefix") {
+        }
+        else if (argument == "--prefix")
+        {
             options.prefix = value;
-        } else if (argument == "--extension") {
+        }
+        else if (argument == "--extension")
+        {
             options.extension = value;
-            if (!options.extension.empty() && options.extension.front() != '.') {
+            if (!options.extension.empty() && options.extension.front() != '.')
+            {
                 options.extension.insert(options.extension.begin(), '.');
             }
             std::ranges::transform(options.extension, options.extension.begin(),
-                                   [](const unsigned char character) {
+                                   [](const unsigned char character)
+                                   {
                                        return static_cast<char>(std::tolower(character));
                                    });
-        } else if (argument == "--limit") {
+        }
+        else if (argument == "--limit")
+        {
             options.limit = parse_size(value);
-        } else {
+        }
+        else
+        {
             throw std::invalid_argument("unknown option: " + argument);
         }
     }
-    if ((options.command == "inspect" || options.command == "localization-refs") &&
-        options.operand.empty()) {
+    if ((options.command == "inspect" || options.command == "localization-refs") && options.operand.empty())
+    {
         throw std::invalid_argument(options.command + " requires a virtual asset path");
     }
     return options;
 }
 
-std::string extension_of(const std::string_view path) {
+std::string extension_of(const std::string_view path)
+{
     auto extension = std::filesystem::path(path).extension().string();
     std::ranges::transform(extension, extension.begin(),
-                           [](const unsigned char character) {
+                           [](const unsigned char character)
+                           {
                                return static_cast<char>(std::tolower(character));
                            });
     return extension.empty() ? "<none>" : extension;
 }
 
-std::uint32_t little_u32(const std::span<const std::byte> bytes,
-                         const std::size_t offset) {
-    if (offset + 4 > bytes.size()) {
+std::uint32_t little_u32(const std::span<const std::byte> bytes, const std::size_t offset)
+{
+    if (offset + 4 > bytes.size())
+    {
         throw std::runtime_error("asset is too short for the requested header");
     }
     std::uint32_t value = 0;
-    for (unsigned index = 0; index < 4; ++index) {
-        value |= static_cast<std::uint32_t>(
-                     std::to_integer<unsigned char>(bytes[offset + index]))
-                 << (index * 8U);
+    for (unsigned index = 0; index < 4; ++index)
+    {
+        value |= static_cast<std::uint32_t>(std::to_integer<unsigned char>(bytes[offset + index])) << (index * 8U);
     }
     return value;
 }
 
-void inspect_dat(const std::span<const std::byte> bytes, const std::size_t limit) {
+void inspect_dat(const std::span<const std::byte> bytes, const std::size_t limit)
+{
     const auto dat = eaw::DatFile::parse(bytes);
     const auto issues = dat.validate();
     std::cout << "Format: Petroglyph string DAT\n"
@@ -161,14 +187,17 @@ void inspect_dat(const std::span<const std::byte> bytes, const std::size_t limit
               << "CRC sorted: " << (dat.crc_sorted() ? "yes" : "no") << '\n'
               << "Validation issues: " << issues.size() << '\n';
     std::size_t shown = 0;
-    for (const auto& entry : dat.entries()) {
-        if (shown++ >= limit) {
+    for (const auto& entry : dat.entries())
+    {
+        if (shown++ >= limit)
+        {
             break;
         }
         auto value = eaw::utf16_to_utf8(entry.value);
         std::ranges::replace(value, '\n', ' ');
         std::ranges::replace(value, '\r', ' ');
-        if (value.size() > 100) {
+        if (value.size() > 100)
+        {
             value.resize(97);
             value += "...";
         }
@@ -176,22 +205,21 @@ void inspect_dat(const std::span<const std::byte> bytes, const std::size_t limit
     }
 }
 
-void inspect_dds(const std::span<const std::byte> bytes) {
-    if (bytes.size() < 128 || std::to_integer<char>(bytes[0]) != 'D' ||
-        std::to_integer<char>(bytes[1]) != 'D' ||
-        std::to_integer<char>(bytes[2]) != 'S' ||
-        std::to_integer<unsigned char>(bytes[3]) != 0x20U) {
+void inspect_dds(const std::span<const std::byte> bytes)
+{
+    if (bytes.size() < 128 || std::to_integer<char>(bytes[0]) != 'D' || std::to_integer<char>(bytes[1]) != 'D' || std::to_integer<char>(bytes[2]) != 'S' ||
+        std::to_integer<unsigned char>(bytes[3]) != 0x20U)
+    {
         throw std::runtime_error("invalid DDS header");
     }
     const auto height = little_u32(bytes, 12);
     const auto width = little_u32(bytes, 16);
     const auto mipmaps = little_u32(bytes, 28);
     std::string fourcc;
-    for (std::size_t index = 84; index < 88; ++index) {
+    for (std::size_t index = 84; index < 88; ++index)
+    {
         const char character = std::to_integer<char>(bytes[index]);
-        fourcc.push_back(std::isprint(static_cast<unsigned char>(character))
-                             ? character
-                             : '.');
+        fourcc.push_back(std::isprint(static_cast<unsigned char>(character)) ? character : '.');
     }
     std::cout << "Format: DirectDraw Surface\n"
               << "Dimensions: " << width << 'x' << height << '\n'
@@ -199,21 +227,21 @@ void inspect_dds(const std::span<const std::byte> bytes) {
               << "FourCC: " << fourcc << '\n';
 }
 
-void inspect_chunks(const std::span<const std::byte> bytes,
-                    const std::size_t limit) {
+void inspect_chunks(const std::span<const std::byte> bytes, const std::size_t limit)
+{
     std::cout << "Format: Alamo chunk container (top-level inventory)\n";
     std::size_t cursor = 0;
     std::size_t count = 0;
-    while (cursor + 8 <= bytes.size() && count < limit) {
+    while (cursor + 8 <= bytes.size() && count < limit)
+    {
         const auto type = little_u32(bytes, cursor);
         const auto encoded_size = little_u32(bytes, cursor + 4);
         const bool container = (encoded_size & 0x80000000U) != 0;
         const auto size = encoded_size & 0x7fffffffU;
-        std::cout << "  [" << count << "] type=0x" << std::hex
-                  << std::setw(8) << std::setfill('0') << type << std::dec
-                  << std::setfill(' ') << " size=" << size
+        std::cout << "  [" << count << "] type=0x" << std::hex << std::setw(8) << std::setfill('0') << type << std::dec << std::setfill(' ') << " size=" << size
                   << " kind=" << (container ? "container" : "data") << '\n';
-        if (static_cast<std::uint64_t>(cursor) + 8U + size > bytes.size()) {
+        if (static_cast<std::uint64_t>(cursor) + 8U + size > bytes.size())
+        {
             std::cout << "  truncated chunk body\n";
             break;
         }
@@ -223,8 +251,8 @@ void inspect_chunks(const std::span<const std::byte> bytes,
     std::cout << "Top-level bytes consumed: " << cursor << '/' << bytes.size() << '\n';
 }
 
-void inspect_alo(const std::span<const std::byte> bytes,
-                 const std::size_t limit) {
+void inspect_alo(const std::span<const std::byte> bytes, const std::size_t limit)
+{
     const auto model = eaw::AloModel::parse(bytes);
     std::cout << "Format: Alamo semantic model\n"
               << "Bones: " << model.bones.size() << '\n'
@@ -235,44 +263,43 @@ void inspect_alo(const std::span<const std::byte> bytes,
               << "Lights: " << model.lights.size() << '\n'
               << "Proxies: " << model.proxies.size() << '\n'
               << "Dazzles: " << model.dazzles.size() << '\n';
-    for (const auto& warning : model.warnings) {
+    for (const auto& warning : model.warnings)
+    {
         std::cout << "Warning: " << warning << '\n';
     }
 
     std::cout << "Skeleton:\n";
-    for (std::size_t index = 0;
-         index < std::min(limit, model.bones.size()); ++index) {
+    for (std::size_t index = 0; index < std::min(limit, model.bones.size()); ++index)
+    {
         const auto& bone = model.bones[index];
-        std::cout << "  [" << index << "] " << bone.name << " parent=" << bone.parent
-                  << ' ' << (bone.visible ? "visible" : "hidden") << '\n';
+        std::cout << "  [" << index << "] " << bone.name << " parent=" << bone.parent << ' ' << (bone.visible ? "visible" : "hidden") << '\n';
     }
     std::cout << "Meshes:\n";
-    for (std::size_t index = 0;
-         index < std::min(limit, model.meshes.size()); ++index) {
+    for (std::size_t index = 0; index < std::min(limit, model.meshes.size()); ++index)
+    {
         const auto& mesh = model.meshes[index];
-        std::cout << "  [" << index << "] " << mesh.name
-                  << " submeshes=" << mesh.submeshes.size();
-        if (mesh.attached_bone) {
+        std::cout << "  [" << index << "] " << mesh.name << " submeshes=" << mesh.submeshes.size();
+        if (mesh.attached_bone)
+        {
             std::cout << " bone=" << *mesh.attached_bone;
         }
         std::cout << '\n';
-        for (const auto& submesh : mesh.submeshes) {
-            std::cout << "      " << submesh.shader << " vertices="
-                      << submesh.vertex_count << " triangles="
-                      << submesh.triangle_count << " stride="
-                      << submesh.vertex_stride << '\n';
-            for (const auto& parameter : submesh.parameters) {
-                if (parameter.type == eaw::AloShaderParameterType::texture) {
-                    std::cout << "        " << parameter.name << '=' << parameter.value
-                              << '\n';
+        for (const auto& submesh : mesh.submeshes)
+        {
+            std::cout << "      " << submesh.shader << " vertices=" << submesh.vertex_count << " triangles=" << submesh.triangle_count << " stride=" << submesh.vertex_stride << '\n';
+            for (const auto& parameter : submesh.parameters)
+            {
+                if (parameter.type == eaw::AloShaderParameterType::texture)
+                {
+                    std::cout << "        " << parameter.name << '=' << parameter.value << '\n';
                 }
             }
         }
     }
 }
 
-void inspect_ala(const std::span<const std::byte> bytes,
-                 const std::size_t limit) {
+void inspect_ala(const std::span<const std::byte> bytes, const std::size_t limit)
+{
     const auto animation = eaw::AlaAnimation::parse(bytes);
     std::cout << "Format: Alamo semantic animation\n"
               << "Version: " << animation.version << '\n'
@@ -284,135 +311,144 @@ void inspect_ala(const std::span<const std::byte> bytes,
               << "Rotation data: " << animation.rotation_data_bytes << " bytes\n"
               << "Translation data: " << animation.translation_data_bytes << " bytes\n"
               << "Scale data: " << animation.scale_data_bytes << " bytes\n";
-    for (const auto& warning : animation.warnings) {
+    for (const auto& warning : animation.warnings)
+    {
         std::cout << "Warning: " << warning << '\n';
     }
     std::cout << "Tracks:\n";
-    for (std::size_t index = 0;
-         index < std::min(limit, animation.tracks.size()); ++index) {
+    for (std::size_t index = 0; index < std::min(limit, animation.tracks.size()); ++index)
+    {
         const auto& track = animation.tracks[index];
         std::cout << "  [" << track.bone_index << "] " << track.name << ' ';
-        if (track.translation) {
+        if (track.translation)
+        {
             std::cout << 'T';
         }
-        if (track.rotation) {
+        if (track.rotation)
+        {
             std::cout << 'R';
         }
-        if (track.scale) {
+        if (track.scale)
+        {
             std::cout << 'S';
         }
-        if (track.visibility) {
+        if (track.visibility)
+        {
             std::cout << " visibility";
         }
-        if (track.stepped) {
+        if (track.stepped)
+        {
             std::cout << " stepped";
         }
         std::cout << '\n';
     }
 }
 
-void inspect_ted(const std::span<const std::byte> bytes,
-                 const std::size_t limit) {
+void inspect_ted(const std::span<const std::byte> bytes, const std::size_t limit)
+{
     const auto map = eaw::TedMap::parse(bytes);
     std::cout << "Format: Alamo semantic map\n"
               << "Type: " << eaw::to_string(map.type) << '\n'
               << "Name: " << map.name << '\n'
               << "Planet: " << map.planet << '\n'
               << "Players: " << map.players << '\n'
-              << "World dimensions: " << map.world_width << " x "
-              << map.world_height << '\n'
-              << "Terrain grid: " << map.terrain_width << " x "
-              << map.terrain_height << '\n'
-              << "Elevation samples: " << map.elevation_sample_count << " ("
-              << map.minimum_elevation << ".." << map.maximum_elevation << ")\n"
+              << "World dimensions: " << map.world_width << " x " << map.world_height << '\n'
+              << "Terrain grid: " << map.terrain_width << " x " << map.terrain_height << '\n'
+              << "Elevation samples: " << map.elevation_sample_count << " (" << map.minimum_elevation << ".." << map.maximum_elevation << ")\n"
               << "Passability samples: " << map.passability_sample_count << '\n'
               << "Terrain layers: " << map.terrain_layers.size() << '\n'
               << "Decals: " << map.decal_count << '\n'
               << "Tracks: " << map.track_textures.size() << '\n'
               << "Environments: " << map.environments.size() << '\n'
-              << "Objects: " << map.object_count << " (" << map.object_types.size()
-              << " types, "
-              << std::ranges::count_if(map.placed_objects, [](const auto& object) {
-                     return object.has_transform;
-                 })
+              << "Objects: " << map.object_count << " (" << map.object_types.size() << " types, "
+              << std::ranges::count_if(map.placed_objects,
+                                       [](const auto& object)
+                                       {
+                                           return object.has_transform;
+                                       })
               << " positioned)\n"
               << "Zones: " << map.zone_count << '\n'
               << "Embedded preview: " << (map.has_preview ? "yes" : "no");
-    if (map.has_preview) {
-        std::cout << " (" << map.preview_width << 'x' << map.preview_height << ", "
-                  << map.preview_bytes << " bytes)";
+    if (map.has_preview)
+    {
+        std::cout << " (" << map.preview_width << 'x' << map.preview_height << ", " << map.preview_bytes << " bytes)";
     }
     std::cout << '\n';
-    for (const auto& warning : map.warnings) {
+    for (const auto& warning : map.warnings)
+    {
         std::cout << "Warning: " << warning << '\n';
     }
     std::cout << "Terrain textures:\n";
-    for (std::size_t index = 0;
-         index < std::min(limit, map.terrain_layers.size()); ++index) {
+    for (std::size_t index = 0; index < std::min(limit, map.terrain_layers.size()); ++index)
+    {
         const auto& layer = map.terrain_layers[index];
         std::cout << "  [" << index << "] " << layer.color_texture;
-        if (!layer.normal_texture.empty()) {
+        if (!layer.normal_texture.empty())
+        {
             std::cout << " | " << layer.normal_texture;
         }
         std::cout << '\n';
     }
     std::cout << "Environments:\n";
-    for (std::size_t index = 0;
-         index < std::min(limit, map.environments.size()); ++index) {
+    for (std::size_t index = 0; index < std::min(limit, map.environments.size()); ++index)
+    {
         const auto& environment = map.environments[index];
         std::cout << "  [" << index << "] " << environment.name;
-        if (!environment.scenario.empty()) {
+        if (!environment.scenario.empty())
+        {
             std::cout << " scenario=" << environment.scenario;
         }
-        if (!environment.skybox_primary.empty()) {
+        if (!environment.skybox_primary.empty())
+        {
             std::cout << " skybox=" << environment.skybox_primary;
         }
         std::cout << '\n';
     }
     std::cout << "Object CRCs:\n";
-    for (std::size_t index = 0;
-         index < std::min(limit, map.object_types.size()); ++index) {
+    for (std::size_t index = 0; index < std::min(limit, map.object_types.size()); ++index)
+    {
         const auto& object = map.object_types[index];
-        std::cout << "  0x" << std::hex << std::setw(8) << std::setfill('0')
-                  << object.crc << std::dec << std::setfill(' ') << " x "
-                  << object.count << '\n';
+        std::cout << "  0x" << std::hex << std::setw(8) << std::setfill('0') << object.crc << std::dec << std::setfill(' ') << " x " << object.count << '\n';
     }
 }
 
-std::vector<std::string> localization_references(const std::string& xml) {
+std::vector<std::string> localization_references(const std::string& xml)
+{
     auto active_xml = xml;
     std::size_t comment = 0;
-    while ((comment = active_xml.find("<!--", comment)) != std::string::npos) {
+    while ((comment = active_xml.find("<!--", comment)) != std::string::npos)
+    {
         const auto close = active_xml.find("-->", comment + 4);
         const auto end = close == std::string::npos ? active_xml.size() : close + 3;
-        std::fill(active_xml.begin() + static_cast<std::ptrdiff_t>(comment),
-                  active_xml.begin() + static_cast<std::ptrdiff_t>(end), ' ');
+        std::fill(active_xml.begin() + static_cast<std::ptrdiff_t>(comment), active_xml.begin() + static_cast<std::ptrdiff_t>(end), ' ');
         comment = end;
     }
     static const std::regex reference(R"(\bTEXT_[A-Za-z0-9_.-]+)");
     std::set<std::string> unique;
-    for (auto match = std::sregex_iterator(active_xml.begin(), active_xml.end(), reference);
-         match != std::sregex_iterator(); ++match) {
+    for (auto match = std::sregex_iterator(active_xml.begin(), active_xml.end(), reference); match != std::sregex_iterator(); ++match)
+    {
         unique.insert(match->str());
     }
     return {unique.begin(), unique.end()};
 }
 
-void collect_named_xml_nodes(const eaw::XmlNode& node,
-                             std::vector<const eaw::XmlNode*>& output) {
-    if (node.attribute("Name") != nullptr) {
+void collect_named_xml_nodes(const eaw::XmlNode& node, std::vector<const eaw::XmlNode*>& output)
+{
+    if (node.attribute("Name") != nullptr)
+    {
         output.push_back(&node);
     }
-    for (const auto& child : node.children) {
+    for (const auto& child : node.children)
+    {
         collect_named_xml_nodes(child, output);
     }
 }
 
-void inspect_asset(const eaw::VirtualFileSystem& vfs,
-                   const std::string& path,
-                   const std::size_t limit) {
+void inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& path, const std::size_t limit)
+{
     const auto resolved = vfs.resolve(path);
-    if (!resolved) {
+    if (!resolved)
+    {
         throw std::runtime_error("asset was not found: " + path);
     }
     const auto bytes = vfs.read(path);
@@ -423,100 +459,114 @@ void inspect_asset(const eaw::VirtualFileSystem& vfs,
               << "Offset: " << resolved->offset << '\n'
               << "Size: " << resolved->size << " bytes\n";
 
-    if (extension == ".dat") {
+    if (extension == ".dat")
+    {
         inspect_dat(bytes, limit);
-    } else if (extension == ".dds") {
+    }
+    else if (extension == ".dds")
+    {
         inspect_dds(bytes);
-    } else if (extension == ".alo") {
-        try {
+    }
+    else if (extension == ".alo")
+    {
+        try
+        {
             inspect_alo(bytes, limit);
-        } catch (const std::exception& error) {
-            std::cout << "Semantic model decoding unavailable: " << error.what()
-                      << "\nFalling back to the chunk inventory.\n";
+        }
+        catch (const std::exception& error)
+        {
+            std::cout << "Semantic model decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n";
             inspect_chunks(bytes, limit);
         }
-    } else if (extension == ".ala") {
-        try {
+    }
+    else if (extension == ".ala")
+    {
+        try
+        {
             inspect_ala(bytes, limit);
-        } catch (const std::exception& error) {
-            std::cout << "Semantic animation decoding unavailable: " << error.what()
-                      << "\nFalling back to the chunk inventory.\n";
+        }
+        catch (const std::exception& error)
+        {
+            std::cout << "Semantic animation decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n";
             inspect_chunks(bytes, limit);
         }
-    } else if (extension == ".ted") {
-        try {
+    }
+    else if (extension == ".ted")
+    {
+        try
+        {
             inspect_ted(bytes, limit);
-        } catch (const std::exception& error) {
-            std::cout << "Semantic map decoding unavailable: " << error.what()
-                      << "\nFalling back to the chunk inventory.\n";
+        }
+        catch (const std::exception& error)
+        {
+            std::cout << "Semantic map decoding unavailable: " << error.what() << "\nFalling back to the chunk inventory.\n";
             inspect_chunks(bytes, limit);
         }
-    } else if (extension == ".mtd") {
+    }
+    else if (extension == ".mtd")
+    {
         inspect_chunks(bytes, limit);
-    } else if (extension == ".xml") {
+    }
+    else if (extension == ".xml")
+    {
         const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         const auto references = localization_references(text);
         const auto document = eaw::XmlDocument::parse(bytes);
         std::vector<const eaw::XmlNode*> definitions;
-        for (const auto& root : document.roots) {
+        for (const auto& root : document.roots)
+        {
             collect_named_xml_nodes(root, definitions);
         }
         std::cout << "Format: Petroglyph XML\n"
                   << "Top-level elements: " << document.roots.size() << '\n'
                   << "Named definitions: " << definitions.size() << '\n'
                   << "Localization references: " << references.size() << '\n';
-        for (std::size_t index = 0;
-             index < std::min(limit, definitions.size()); ++index) {
+        for (std::size_t index = 0; index < std::min(limit, definitions.size()); ++index)
+        {
             const auto* name = definitions[index]->attribute("Name");
-            std::cout << "  " << definitions[index]->name << " Name=\""
-                      << name->value << "\" (line " << definitions[index]->line
-                      << ")\n";
+            std::cout << "  " << definitions[index]->name << " Name=\"" << name->value << "\" (line " << definitions[index]->line << ")\n";
         }
-    } else if (extension == ".lua") {
+    }
+    else if (extension == ".lua")
+    {
         const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         const auto references = localization_references(text);
-        const bool compiled_lua = bytes.size() >= 4 &&
-                                  std::to_integer<unsigned char>(bytes[0]) == 0x1bU &&
-                                  std::to_integer<char>(bytes[1]) == 'L' &&
-                                  std::to_integer<char>(bytes[2]) == 'u' &&
+        const bool compiled_lua = bytes.size() >= 4 && std::to_integer<unsigned char>(bytes[0]) == 0x1bU && std::to_integer<char>(bytes[1]) == 'L' && std::to_integer<char>(bytes[2]) == 'u' &&
                                   std::to_integer<char>(bytes[3]) == 'p';
-        std::cout << "Format: " << (compiled_lua
-                                         ? "Petroglyph Lua 5.0 bytecode"
-                                         : "Lua source")
-                  << '\n' << "Localization references: " << references.size() << '\n';
-        for (std::size_t index = 0; index < std::min(limit, references.size()); ++index) {
+        std::cout << "Format: " << (compiled_lua ? "Petroglyph Lua 5.0 bytecode" : "Lua source") << '\n' << "Localization references: " << references.size() << '\n';
+        for (std::size_t index = 0; index < std::min(limit, references.size()); ++index)
+        {
             std::cout << "  " << references[index] << '\n';
         }
-    } else {
+    }
+    else
+    {
         std::cout << "Format: unknown\nSignature:";
-        for (std::size_t index = 0; index < std::min<std::size_t>(16, bytes.size()); ++index) {
-            std::cout << ' ' << std::hex << std::setw(2) << std::setfill('0')
-                      << std::to_integer<unsigned>(bytes[index]);
+        for (std::size_t index = 0; index < std::min<std::size_t>(16, bytes.size()); ++index)
+        {
+            std::cout << ' ' << std::hex << std::setw(2) << std::setfill('0') << std::to_integer<unsigned>(bytes[index]);
         }
         std::cout << std::dec << std::setfill(' ') << '\n';
     }
 }
 
-std::optional<std::string> resolve_texture_reference(
-    const eaw::VirtualFileSystem& vfs,
-    const std::string_view reference) {
+std::optional<std::string> resolve_texture_reference(const eaw::VirtualFileSystem& vfs, const std::string_view reference)
+{
     auto filename = std::filesystem::path(reference).filename();
     filename.replace_extension(".DDS");
-    const std::array candidates{
-        std::string("DATA/ART/TEXTURES/") + filename.generic_string(),
-        std::string("DATA/ART/") + filename.generic_string(),
-        filename.generic_string()};
-    for (const auto& candidate : candidates) {
-        if (vfs.resolve(candidate)) {
+    const std::array candidates{std::string("DATA/ART/TEXTURES/") + filename.generic_string(), std::string("DATA/ART/") + filename.generic_string(), filename.generic_string()};
+    for (const auto& candidate : candidates)
+    {
+        if (vfs.resolve(candidate))
+        {
             return candidate;
         }
     }
     return std::nullopt;
 }
 
-void audit_texture_references(const eaw::VirtualFileSystem& vfs,
-                              const std::string_view prefix,
-                              const std::size_t limit) {
+void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit)
+{
     const auto assets = vfs.list(prefix);
     std::size_t model_files = 0;
     std::size_t semantic_models = 0;
@@ -524,31 +574,42 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs,
     std::set<std::string> references;
     std::set<std::string> resolved;
     std::map<std::string, std::set<std::string>> unresolved;
-    for (const auto& asset : assets) {
-        if (extension_of(asset.virtual_path) != ".alo") {
+    for (const auto& asset : assets)
+    {
+        if (extension_of(asset.virtual_path) != ".alo")
+        {
             continue;
         }
         ++model_files;
-        try {
+        try
+        {
             const auto model = eaw::AloModel::parse(vfs.read(asset.virtual_path));
             ++semantic_models;
-            for (const auto& mesh : model.meshes) {
-                for (const auto& submesh : mesh.submeshes) {
-                    for (const auto& parameter : submesh.parameters) {
-                        if (parameter.type != eaw::AloShaderParameterType::texture ||
-                            parameter.value.empty()) {
+            for (const auto& mesh : model.meshes)
+            {
+                for (const auto& submesh : mesh.submeshes)
+                {
+                    for (const auto& parameter : submesh.parameters)
+                    {
+                        if (parameter.type != eaw::AloShaderParameterType::texture || parameter.value.empty())
+                        {
                             continue;
                         }
                         references.insert(parameter.value);
-                        if (resolve_texture_reference(vfs, parameter.value)) {
+                        if (resolve_texture_reference(vfs, parameter.value))
+                        {
                             resolved.insert(parameter.value);
-                        } else {
+                        }
+                        else
+                        {
                             unresolved[parameter.value].insert(asset.virtual_path);
                         }
                     }
                 }
             }
-        } catch (const std::exception&) {
+        }
+        catch (const std::exception&)
+        {
             ++particle_or_invalid;
         }
     }
@@ -560,20 +621,22 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs,
               << "Resolved references: " << resolved.size() << '\n'
               << "Unresolved references: " << unresolved.size() << '\n';
     std::size_t shown = 0;
-    for (const auto& [reference, models] : unresolved) {
-        if (shown++ >= limit) {
+    for (const auto& [reference, models] : unresolved)
+    {
+        if (shown++ >= limit)
+        {
             break;
         }
         std::cout << "  " << reference << "  (" << models.size() << " model(s))\n";
-        if (!models.empty()) {
+        if (!models.empty())
+        {
             std::cout << "    e.g. " << *models.begin() << '\n';
         }
     }
 }
 
-void audit_maps(const eaw::VirtualFileSystem& vfs,
-                const std::string_view prefix,
-                const std::size_t limit) {
+void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit)
+{
     const auto assets = vfs.list(prefix);
     std::size_t files = 0;
     std::size_t land = 0;
@@ -584,27 +647,39 @@ void audit_maps(const eaw::VirtualFileSystem& vfs,
     std::size_t objects = 0;
     std::size_t positioned_objects = 0;
     std::vector<std::pair<std::string, std::string>> failures;
-    for (const auto& asset : assets) {
-        if (extension_of(asset.virtual_path) != ".ted") {
+    for (const auto& asset : assets)
+    {
+        if (extension_of(asset.virtual_path) != ".ted")
+        {
             continue;
         }
         ++files;
-        try {
+        try
+        {
             const auto map = eaw::TedMap::parse(vfs.read(asset.virtual_path));
-            if (map.type == eaw::TedMapType::land) {
+            if (map.type == eaw::TedMapType::land)
+            {
                 ++land;
-            } else if (map.type == eaw::TedMapType::space) {
+            }
+            else if (map.type == eaw::TedMapType::space)
+            {
                 ++space;
-            } else {
+            }
+            else
+            {
                 ++unknown;
             }
             warnings += map.warnings.size();
             terrain_layers += map.terrain_layers.size();
             objects += map.object_count;
-            positioned_objects += std::ranges::count_if(
-                map.placed_objects,
-                [](const auto& object) { return object.has_transform; });
-        } catch (const std::exception& error) {
+            positioned_objects += std::ranges::count_if(map.placed_objects,
+                                                        [](const auto& object)
+                                                        {
+                                                            return object.has_transform;
+                                                        });
+        }
+        catch (const std::exception& error)
+        {
             failures.emplace_back(asset.virtual_path, error.what());
         }
     }
@@ -619,22 +694,25 @@ void audit_maps(const eaw::VirtualFileSystem& vfs,
               << "Positioned objects: " << positioned_objects << '\n'
               << "Warnings: " << warnings << '\n'
               << "Failures: " << failures.size() << '\n';
-    for (std::size_t index = 0; index < std::min(limit, failures.size()); ++index) {
-        std::cout << "  " << failures[index].first << ": "
-                  << failures[index].second << '\n';
+    for (std::size_t index = 0; index < std::min(limit, failures.size()); ++index)
+    {
+        std::cout << "  " << failures[index].first << ": " << failures[index].second << '\n';
     }
 }
 
-void audit_xml(const eaw::VirtualFileSystem& vfs,
-               const std::string_view prefix,
-               const std::size_t limit) {
+void audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit)
+{
     const auto database = eaw::XmlAssetDatabase::build(vfs, prefix);
     std::map<std::string, std::size_t> definitions_by_type;
-    for (const auto& definition : database.definitions()) {
+    for (const auto& definition : database.definitions())
+    {
         ++definitions_by_type[definition.type];
     }
-    const auto missing_includes = std::ranges::count_if(
-        database.includes(), [](const auto& reference) { return !reference.resolved; });
+    const auto missing_includes = std::ranges::count_if(database.includes(),
+                                                        [](const auto& reference)
+                                                        {
+                                                            return !reference.resolved;
+                                                        });
 
     std::cout << "XML semantic audit\n"
               << "Documents: " << database.document_count() << '\n'
@@ -647,128 +725,146 @@ void audit_xml(const eaw::VirtualFileSystem& vfs,
               << "Missing XML file references: " << missing_includes << '\n';
 
     std::cout << "\nMost common definition types:\n";
-    std::vector<std::pair<std::string, std::size_t>> sorted_types(
-        definitions_by_type.begin(), definitions_by_type.end());
-    std::ranges::sort(sorted_types, [](const auto& left, const auto& right) {
-        if (left.second != right.second) {
-            return left.second > right.second;
-        }
-        return left.first < right.first;
-    });
-    for (std::size_t index = 0; index < std::min(limit, sorted_types.size()); ++index) {
-        std::cout << "  " << std::setw(7) << sorted_types[index].second << "  "
-                  << sorted_types[index].first << '\n';
+    std::vector<std::pair<std::string, std::size_t>> sorted_types(definitions_by_type.begin(), definitions_by_type.end());
+    std::ranges::sort(sorted_types,
+                      [](const auto& left, const auto& right)
+                      {
+                          if (left.second != right.second)
+                          {
+                              return left.second > right.second;
+                          }
+                          return left.first < right.first;
+                      });
+    for (std::size_t index = 0; index < std::min(limit, sorted_types.size()); ++index)
+    {
+        std::cout << "  " << std::setw(7) << sorted_types[index].second << "  " << sorted_types[index].first << '\n';
     }
 
-    if (!database.failures().empty()) {
+    if (!database.failures().empty())
+    {
         std::cout << "\nParse failures:\n";
-        for (std::size_t index = 0;
-             index < std::min(limit, database.failures().size()); ++index) {
-            std::cout << "  " << database.failures()[index].source_path << ": "
-                      << database.failures()[index].message << '\n';
+        for (std::size_t index = 0; index < std::min(limit, database.failures().size()); ++index)
+        {
+            std::cout << "  " << database.failures()[index].source_path << ": " << database.failures()[index].message << '\n';
         }
     }
-    if (!database.duplicates().empty()) {
+    if (!database.duplicates().empty())
+    {
         std::cout << "\nDuplicate definitions:\n";
-        for (std::size_t index = 0;
-             index < std::min(limit, database.duplicates().size()); ++index) {
+        for (std::size_t index = 0; index < std::min(limit, database.duplicates().size()); ++index)
+        {
             const auto& duplicate = database.duplicates()[index];
-            std::cout << "  " << duplicate.type << " Name=\"" << duplicate.name
-                      << "\"  (" << duplicate.occurrences.size()
-                      << " occurrence(s))\n";
-            for (const auto& occurrence : duplicate.occurrences) {
-                std::cout << "    " << occurrence.source_path << ':'
-                          << occurrence.line << '\n';
+            std::cout << "  " << duplicate.type << " Name=\"" << duplicate.name << "\"  (" << duplicate.occurrences.size() << " occurrence(s))\n";
+            for (const auto& occurrence : duplicate.occurrences)
+            {
+                std::cout << "    " << occurrence.source_path << ':' << occurrence.line << '\n';
             }
         }
     }
-    if (missing_includes != 0) {
+    if (missing_includes != 0)
+    {
         std::cout << "\nMissing XML file references:\n";
         std::size_t shown = 0;
-        for (const auto& reference : database.includes()) {
-            if (reference.resolved || shown++ >= limit) {
+        for (const auto& reference : database.includes())
+        {
+            if (reference.resolved || shown++ >= limit)
+            {
                 continue;
             }
-            std::cout << "  " << reference.resolved_path << "  from "
-                      << reference.source_path << ':' << reference.line << '\n';
+            std::cout << "  " << reference.resolved_path << "  from " << reference.source_path << ':' << reference.line << '\n';
         }
     }
 }
 
 } // namespace
 
-int main(const int argc, char** argv) {
-    try {
+int main(const int argc, char** argv)
+{
+    try
+    {
         const auto options = parse_options(argc, argv);
         const eaw::InstallationLocator locator;
         const auto installations = locator.discover(options.game_root);
-        if (installations.empty()) {
+        if (installations.empty())
+        {
             throw std::runtime_error("no valid Empire at War installation was found");
         }
         const auto profile = eaw::make_game_profile(installations.front(), options.variant);
-        if (!profile) {
+        if (!profile)
+        {
             throw std::runtime_error("the selected game profile is unavailable");
         }
 
         eaw::VirtualFileSystem vfs;
         const auto report = eaw::mount_game_assets(vfs, *profile, options.mods);
-        for (const auto& warning : report.warnings) {
+        for (const auto& warning : report.warnings)
+        {
             std::cerr << "warning: " << warning << '\n';
         }
 
-        if (options.command == "inspect") {
+        if (options.command == "inspect")
+        {
             inspect_asset(vfs, options.operand, options.limit);
             return 0;
         }
-        if (options.command == "localization-refs") {
+        if (options.command == "localization-refs")
+        {
             const auto bytes = vfs.read(options.operand);
             const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
             const auto references = localization_references(text);
-            for (const auto& reference : references) {
+            for (const auto& reference : references)
+            {
                 std::cout << reference << '\n';
             }
             std::cerr << references.size() << " unique localization references\n";
             return 0;
         }
-        if (options.command == "texture-audit") {
+        if (options.command == "texture-audit")
+        {
             audit_texture_references(vfs, options.prefix, options.limit);
             return 0;
         }
-        if (options.command == "map-audit") {
+        if (options.command == "map-audit")
+        {
             audit_maps(vfs, options.prefix, options.limit);
             return 0;
         }
-        if (options.command == "xml-audit") {
+        if (options.command == "xml-audit")
+        {
             audit_xml(vfs, options.prefix, options.limit);
             return 0;
         }
-        if (options.command != "summary" && options.command != "list") {
+        if (options.command != "summary" && options.command != "list")
+        {
             throw std::invalid_argument("unknown command: " + options.command);
         }
 
         auto assets = vfs.list(options.prefix);
-        if (!options.extension.empty()) {
-            std::erase_if(assets, [&](const auto& asset) {
-                return extension_of(asset.virtual_path) != options.extension;
-            });
+        if (!options.extension.empty())
+        {
+            std::erase_if(assets,
+                          [&](const auto& asset)
+                          {
+                              return extension_of(asset.virtual_path) != options.extension;
+                          });
         }
-        if (options.command == "list") {
-            for (std::size_t index = 0;
-                 index < std::min(options.limit, assets.size()); ++index) {
+        if (options.command == "list")
+        {
+            for (std::size_t index = 0; index < std::min(options.limit, assets.size()); ++index)
+            {
                 const auto& asset = assets[index];
-                std::cout << std::setw(12) << asset.size << "  "
-                          << asset.virtual_path << "  [" << asset.mount_name << "]\n";
+                std::cout << std::setw(12) << asset.size << "  " << asset.virtual_path << "  [" << asset.mount_name << "]\n";
             }
             std::cout.flush();
-            std::cerr << "showing " << std::min(options.limit, assets.size())
-                      << " of " << assets.size() << " assets\n";
+            std::cerr << "showing " << std::min(options.limit, assets.size()) << " of " << assets.size() << " assets\n";
             return 0;
         }
 
         std::map<std::string, std::pair<std::size_t, std::uint64_t>> by_extension;
         std::map<std::string, std::size_t> by_mount;
         std::uint64_t total_bytes = 0;
-        for (const auto& asset : assets) {
+        for (const auto& asset : assets)
+        {
             auto& group = by_extension[extension_of(asset.virtual_path)];
             ++group.first;
             group.second += asset.size;
@@ -780,17 +876,19 @@ int main(const int argc, char** argv) {
                   << "Prefix: " << options.prefix << '\n'
                   << "Resolved assets: " << assets.size() << '\n'
                   << "Logical bytes: " << total_bytes << "\n\nBy extension:\n";
-        for (const auto& [extension, values] : by_extension) {
-            std::cout << "  " << std::setw(8) << extension << "  "
-                      << std::setw(7) << values.first << " files  "
-                      << values.second << " bytes\n";
+        for (const auto& [extension, values] : by_extension)
+        {
+            std::cout << "  " << std::setw(8) << extension << "  " << std::setw(7) << values.first << " files  " << values.second << " bytes\n";
         }
         std::cout << "\nWinning source mounts:\n";
-        for (const auto& [mount, count] : by_mount) {
+        for (const auto& [mount, count] : by_mount)
+        {
             std::cout << "  " << std::setw(7) << count << "  " << mount << '\n';
         }
         return 0;
-    } catch (const std::exception& error) {
+    }
+    catch (const std::exception& error)
+    {
         std::cerr << "asset inspector error: " << error.what() << '\n';
         return 1;
     }

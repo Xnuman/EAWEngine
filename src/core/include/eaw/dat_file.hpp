@@ -10,18 +10,21 @@
 
 namespace eaw {
 
-struct DatEntry {
+struct DatEntry
+{
     std::uint32_t crc{};
     std::string key;
     std::u16string value;
 };
 
-enum class DatIssueSeverity {
+enum class DatIssueSeverity
+{
     warning,
     error,
 };
 
-struct DatIssue {
+struct DatIssue
+{
     DatIssueSeverity severity{};
     std::size_t entry{};
     std::string message;
@@ -29,7 +32,8 @@ struct DatIssue {
 
 [[nodiscard]] std::uint32_t dat_key_crc(std::string_view key) noexcept;
 
-class DatFile final {
+class DatFile final
+{
 public:
     [[nodiscard]] static DatFile load(const std::filesystem::path& path);
     [[nodiscard]] static DatFile parse(std::span<const std::byte> bytes);
@@ -51,4 +55,3 @@ private:
 };
 
 } // namespace eaw
-
