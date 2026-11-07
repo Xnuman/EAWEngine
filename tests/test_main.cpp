@@ -893,8 +893,9 @@ void test_ground_movement()
     world.step();
     require(world.snapshot().entities[0].position.z == 0.0F && world.snapshot().entities[1].position.z == 50.0F, "a ground unit spawns on the surface; others keep their height");
 
-    // Ordered across the slope toward the blocked column: the walker climbs with the terrain and
-    // stops before x = 4 (cell edge at 70), the flyer keeps a straight line.
+    // Ordered across the slope beyond the blocked column: the walker climbs with the terrain and,
+    // since the column cuts the field, ends at the closest reachable cell (x = 60); the flyer keeps
+    // a straight line.
     world.submit({eaw::SimCommandKind::move, {*walker, *flyer}, {100.0F, 20.0F, 50.0F}});
     world.step();
     const auto& moved = world.snapshot().entities;
@@ -904,7 +905,8 @@ void test_ground_movement()
         world.step();
     }
     const auto& stopped = world.snapshot().entities;
-    require(!stopped[0].moving && stopped[0].position.x < 70.0F && world.stats().blocked_moves == 1, "a ground unit must stop before entering a blocked cell");
+    require(!stopped[0].moving && stopped[0].position.x == 60.0F && world.stats().partial_paths == 1 && world.stats().blocked_moves == 0,
+            "a ground unit ordered into an unreachable region must stop at the closest reachable cell");
     require(stopped[1].position.x == 100.0F && stopped[1].position.z == 50.0F, "a unit that does not follow the ground ignores passability");
 
     // A unit standing on a blocked cell may leave it.
@@ -939,6 +941,102 @@ void test_ground_movement()
     eaw::GroundMap flooded = ground;
     flooded.liquid_level = 12.0F;
     require(flooded.surface_height(0.0F, 0.0F) == 12.0F && flooded.surface_height(100.0F, 0.0F) == 25.0F, "the surface is the higher of terrain and liquid");
+}
+
+void test_pathfinding()
+{
+    // A 12x12 clear field (10 units per cell) split by a steep wall at column 6 with a gap at row 9.
+    eaw::GroundMap ground;
+    ground.width = 12;
+    ground.height = 12;
+    ground.spacing = 10.0F;
+    ground.heights.assign(144, 0.0F);
+    for (std::uint32_t y = 0; y < ground.height; ++y)
+    {
+        for (std::uint32_t x = 0; x < ground.width; ++x)
+        {
+            ground.passability.push_back(x == 6 && y != 9 ? eaw::passability::steep : eaw::passability::clear);
+        }
+    }
+    const auto clear = eaw::passability::clear;
+    require(!eaw::ground_line_passable(ground, {10.0F, 10.0F}, {110.0F, 10.0F}, clear) && eaw::ground_line_passable(ground, {10.0F, 90.0F}, {110.0F, 90.0F}, clear),
+            "a straight line must be checked against every cell it crosses");
+
+    eaw::GridPathfinder pathfinder;
+    const auto path = pathfinder.find(ground, {10.0F, 10.0F}, {110.0F, 12.0F}, clear);
+    require(path.status == eaw::PathStatus::reached && !path.waypoints.empty() && path.waypoints.back() == eaw::PathPoint{110.0F, 12.0F}, "a reachable goal must end the path exactly");
+    bool through_gap = false;
+    eaw::PathPoint previous{10.0F, 10.0F};
+    for (const auto& waypoint : path.waypoints)
+    {
+        require(eaw::ground_line_passable(ground, previous, waypoint, clear), "every path segment must stay on enterable cells");
+        through_gap = through_gap || waypoint.y >= 80.0F;
+        previous = waypoint;
+    }
+    require(through_gap && path.waypoints.size() <= 4, "the path must go through the gap with its redundant cell waypoints removed");
+    const auto again = pathfinder.find(ground, {10.0F, 10.0F}, {110.0F, 12.0F}, clear);
+    require(again.waypoints == path.waypoints && again.expanded == path.expanded, "pathfinding must be deterministic");
+
+    // A goal on the wall moves to the nearest enterable cell (of two equally near, the start's side).
+    const auto onto_wall = pathfinder.find(ground, {10.0F, 10.0F}, {60.0F, 10.0F}, clear);
+    require(onto_wall.status == eaw::PathStatus::partial && onto_wall.waypoints.back() == eaw::PathPoint{50.0F, 10.0F}, "a goal the class may not enter must move to the nearest cell");
+    // A class allowed on steep ground goes straight through.
+    const auto climbing = pathfinder.find(ground, {10.0F, 10.0F}, {110.0F, 10.0F}, clear | eaw::passability::steep);
+    require(climbing.status == eaw::PathStatus::reached && climbing.waypoints.size() == 1, "a class allowed on the wall must cross it directly");
+
+    // Closing the gap leaves the goal unreachable: the path ends at the closest reachable cell.
+    auto closed = ground;
+    closed.passability[9 * 12 + 6] = eaw::passability::steep;
+    eaw::GridPathfinder fresh;
+    const auto blocked = fresh.find(closed, {10.0F, 10.0F}, {110.0F, 10.0F}, clear);
+    require(blocked.status == eaw::PathStatus::partial && blocked.waypoints.back() == eaw::PathPoint{50.0F, 10.0F} && blocked.expanded <= 10,
+            "an unreachable goal must end at the closest reachable cell without searching the whole region");
+
+    // A start on the wall first leaves for the nearest enterable cell on the goal's side: with the
+    // gap closed, only that side reaches the goal.
+    const auto stranded = fresh.find(closed, {60.0F, 10.0F}, {110.0F, 10.0F}, clear);
+    require(stranded.status == eaw::PathStatus::reached && stranded.waypoints.back() == eaw::PathPoint{110.0F, 10.0F}, "a unit on a cell its class may not enter must leave it toward the goal");
+    const auto boxed = fresh.find(closed, {60.0F, 10.0F}, {10.0F, 10.0F}, clear);
+    require(boxed.status == eaw::PathStatus::reached && boxed.waypoints.back() == eaw::PathPoint{10.0F, 10.0F}, "leaving a blocked cell must work in either direction");
+
+    eaw::GridPathfinder limited(3);
+    const auto budgeted = limited.find(ground, {10.0F, 10.0F}, {110.0F, 12.0F}, clear);
+    require(budgeted.status == eaw::PathStatus::partial && budgeted.expanded == 3, "the search must stop at its expansion budget");
+
+    // A diagonal through a cell corner needs both side cells.
+    eaw::GroundMap corner;
+    corner.width = 3;
+    corner.height = 3;
+    corner.spacing = 10.0F;
+    corner.heights.assign(9, 0.0F);
+    corner.passability.assign(9, clear);
+    corner.passability[1] = eaw::passability::steep;
+    require(!eaw::ground_line_passable(corner, {0.0F, 0.0F}, {20.0F, 20.0F}, clear) && eaw::ground_line_passable(corner, {0.0F, 10.0F}, {20.0F, 20.0F}, clear),
+            "a line through a corner must check both side cells");
+    const auto around = pathfinder.find(corner, {0.0F, 0.0F}, {20.0F, 0.0F}, clear);
+    require(around.status == eaw::PathStatus::reached && around.waypoints.size() == 3 && around.waypoints[0] == eaw::PathPoint{0.0F, 10.0F}, "a path must not cut a blocked corner");
+
+    auto no_data = ground;
+    no_data.passability.clear();
+    require(pathfinder.find(no_data, {0.0F, 0.0F}, {50.0F, 50.0F}, clear).status == eaw::PathStatus::unavailable, "ground without passability must not constrain paths");
+
+    // The simulation plans ground orders and follows the waypoints to the ordered point.
+    eaw::SimulationWorld world(0.1);
+    world.set_ground(ground);
+    const auto walker = world.spawn({.type_name = "Walker", .position = {10.0F, 10.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = clear});
+    require(walker.ok(), "test spawn must succeed");
+    world.submit({eaw::SimCommandKind::move, {*walker}, {110.0F, 12.0F, 0.0F}});
+    world.step();
+    const auto route = world.route(*walker);
+    require(!route.empty() && route.back().x == 110.0F && route.back().y == 12.0F && world.stats().path_searches == 1 && world.stats().path_expansions > 0,
+            "a ground order must be planned and expose its route");
+    for (int tick = 0; tick < 40; ++tick)
+    {
+        world.step();
+    }
+    const auto& arrived = world.snapshot().entities[0];
+    require(!arrived.moving && arrived.position.x == 110.0F && arrived.position.y == 12.0F && world.stats().blocked_moves == 0 && world.route(*walker).empty(),
+            "a ground unit must follow its path around the wall");
 }
 
 // A minimal 4x4 BC1 DDS with one mip level.
@@ -2115,6 +2213,7 @@ int main()
     test_debug_draw();
     test_simulation_core();
     test_ground_movement();
+    test_pathfinding();
     test_fatal_error_report();
     test_status_and_log();
     test_scene_presentation();

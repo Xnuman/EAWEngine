@@ -742,6 +742,36 @@ int main(const int argc, char** argv)
                                           instance.highlighted ? std::array<float, 4>{1.0F, 0.85F, 0.25F, 1.0F} : std::array<float, 4>{0.3F, 0.85F, 0.95F, 0.45F});
                 }
             }
+            if (world && terrain_heights.valid())
+            {
+                // The remaining route of every selected moving unit, draped just above the surface.
+                for (const auto& entity : world->snapshot().entities)
+                {
+                    if (!entity.moving || !selection.contains(eaw::entity_key(entity.id)))
+                    {
+                        continue;
+                    }
+                    auto from = entity.position;
+                    for (const auto& to : world->route(entity.id))
+                    {
+                        const auto length = std::hypot(to.x - from.x, to.y - from.y);
+                        const auto pieces = std::clamp(static_cast<int>(length / terrain_heights.spacing), 1, 256);
+                        for (int piece = 0; piece < pieces; ++piece)
+                        {
+                            const auto at = [&](const int step)
+                            {
+                                const auto t = static_cast<float>(step) / static_cast<float>(pieces);
+                                const auto x = from.x + (to.x - from.x) * t;
+                                const auto y = from.y + (to.y - from.y) * t;
+                                const auto z = entity.follows_ground ? terrain_heights.surface_height(x, y) + 2.0F : from.z + (to.z - from.z) * t;
+                                return std::array<float, 3>{x, y, z};
+                            };
+                            lines.push_back({at(piece), at(piece + 1), {0.35F, 1.0F, 0.9F, 0.9F}});
+                        }
+                        from = to;
+                    }
+                }
+            }
             if (show_passability && tactical_camera && terrain_heights.valid() && terrain_heights.passability.size() == terrain_heights.heights.size())
             {
                 // Every non-ground cell within 40 cells of the focus gets an X just above the surface,
@@ -1003,6 +1033,9 @@ int main(const int argc, char** argv)
         std::optional<std::array<float, 2>> drag_start;
         bool box_active = false;
         std::uint64_t orders_issued = 0;
+        // Simulation step cost (move orders are planned inside the step that applies them).
+        double last_tick_ms = 0.0;
+        double slowest_tick_ms = 0.0;
         std::uint64_t streaming_since = 0;
         while (!window.close_requested())
         {
@@ -1348,7 +1381,10 @@ int main(const int argc, char** argv)
                 for (std::uint32_t tick = 0; tick < ticks; ++tick)
                 {
                     previous_snapshot = world->snapshot();
+                    const auto tick_start = std::chrono::steady_clock::now();
                     world->step();
+                    last_tick_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tick_start).count();
+                    slowest_tick_ms = std::max(slowest_tick_ms, last_tick_ms);
                 }
                 const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
                 presentation->build(entities, selection, frame_instances, frame_entities);
@@ -1460,6 +1496,9 @@ int main(const int argc, char** argv)
                     const auto simulation = world->stats();
                     lines.push_back("Simulation: tick " + std::to_string(simulation.tick) + " at 30 Hz | " + std::to_string(simulation.entities) + " entities | dropped ticks " +
                                     std::to_string(simulation_clock.dropped_ticks()) + " | blocked moves " + std::to_string(simulation.blocked_moves));
+                    lines.push_back("Paths: " + std::to_string(simulation.path_searches) + " planned | " + std::to_string(simulation.partial_paths) + " partial | " +
+                                    std::to_string(simulation.path_expansions) + " nodes expanded | tick " + format_fixed(last_tick_ms, 2) + " ms, slowest " + format_fixed(slowest_tick_ms, 2) +
+                                    " ms");
                 }
                 lines.push_back("Selected: " + selected_text + " | orders issued " + std::to_string(orders_issued));
                 if (!spawnable.empty())
@@ -1524,6 +1563,12 @@ int main(const int argc, char** argv)
         if (options.reload_every)
         {
             std::cout << "Scene reloads: " << scene_reloads << '\n';
+        }
+        if (world)
+        {
+            const auto simulation = world->stats();
+            std::cout << "Simulation: " << simulation.tick << " ticks, slowest " << format_fixed(slowest_tick_ms, 2) << " ms | paths " << simulation.path_searches << " planned, "
+                      << simulation.partial_paths << " partial, " << simulation.path_expansions << " nodes expanded | blocked moves " << simulation.blocked_moves << '\n';
         }
         std::cout << "Resources after idle: " << stats.live_textures << " textures, " << stats.free_texture_slots << " free and " << stats.pending_texture_slots << " pending texture slots, "
                   << stats.pending_retirements << " pending retirements, " << stats.pending_texture_uploads << " textures still streaming\n";

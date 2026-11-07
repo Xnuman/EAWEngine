@@ -101,8 +101,9 @@ does the same for automation). B toggles every object's bounds and the world
 axes (`--show-bounds` starts with them on). G draws the map's passability
 types around the camera focus (`--show-passability`): red Steep, blue Water,
 orange Impassable, green InfantryOnly, magenta Obstacle. Ground units follow the
-terrain and stop before cells their movement class may not enter; flying units
-keep their altitude. Maps run their placed objects as
+terrain and path around cells their movement class may not enter (an
+unreachable target ends at the nearest reachable point); selected units show
+their remaining route. Flying units keep their altitude. Maps run their placed objects as
 simulation entities and start in an RTS camera: WASD/arrows pan, the wheel
 zooms, left-drag box-selects mobile units, and right-click orders them to the
 clicked point (straight-line movement for now). C switches to the free debug

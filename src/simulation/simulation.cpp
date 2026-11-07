@@ -131,6 +131,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     type_names_.push_back(spawn.type_name);
     follows_ground_.push_back(spawn.follows_ground ? 1U : 0U);
     passable_types_.push_back(spawn.passable_types);
+    paths_.emplace_back();
     if (spawn.follows_ground && ground_.valid())
     {
         positions_.back().z = ground_.surface_height(spawn.position.x, spawn.position.y);
@@ -169,7 +170,7 @@ const SimSnapshot& SimulationWorld::snapshot() const noexcept
 
 SimulationWorld::Stats SimulationWorld::stats() const noexcept
 {
-    return {tick_, ids_.size(), commands_applied_, stale_references_, blocked_moves_};
+    return {tick_, ids_.size(), commands_applied_, stale_references_, blocked_moves_, path_searches_, partial_paths_, path_expansions_};
 }
 
 std::uint64_t SimulationWorld::state_hash() const noexcept
@@ -192,6 +193,11 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, selectable_[index]);
         hash = hash_value(hash, follows_ground_[index]);
         hash = hash_value(hash, passable_types_[index]);
+        hash = hash_value(hash, paths_[index].size());
+        for (const auto& waypoint : paths_[index])
+        {
+            hash = hash_value(hash, waypoint);
+        }
     }
     return hash;
 }
@@ -226,16 +232,52 @@ void SimulationWorld::apply(const SimCommand& command)
         case SimCommandKind::move:
             if (max_speeds_[*dense] > 0.0F)
             {
-                move_targets_[*dense] = command.target;
+                plan_move(*dense, command.target);
             }
             break;
         case SimCommandKind::stop:
             move_targets_[*dense].reset();
+            paths_[*dense].clear();
             break;
         case SimCommandKind::destroy:
             destroy(*dense);
             break;
         }
+    }
+}
+
+void SimulationWorld::plan_move(const std::size_t index, const SimVector3& target)
+{
+    auto& path = paths_[index];
+    path.clear();
+    if (follows_ground_[index] == 0 || passable_types_[index] == 0)
+    {
+        move_targets_[index] = target;
+        return;
+    }
+    const auto& position = positions_[index];
+    const auto planned = pathfinder_.find(ground_, {position.x, position.y}, {target.x, target.y}, passable_types_[index]);
+    if (planned.status == PathStatus::unavailable)
+    {
+        move_targets_[index] = target;
+        return;
+    }
+    ++path_searches_;
+    path_expansions_ += planned.expanded;
+    if (planned.status == PathStatus::partial)
+    {
+        ++partial_paths_;
+    }
+    if (planned.waypoints.empty())
+    {
+        move_targets_[index].reset();
+        return;
+    }
+    const auto destination = planned.waypoints.back();
+    move_targets_[index] = SimVector3{destination.x, destination.y, target.z};
+    for (auto waypoint = planned.waypoints.rbegin() + 1; waypoint != planned.waypoints.rend(); ++waypoint)
+    {
+        path.push_back({waypoint->x, waypoint->y, 0.0F});
     }
 }
 
@@ -257,6 +299,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         type_names_[dense] = std::move(type_names_[last]);
         follows_ground_[dense] = follows_ground_[last];
         passable_types_[dense] = passable_types_[last];
+        paths_[dense] = std::move(paths_[last]);
         slot_dense_[ids_[dense].index] = static_cast<std::uint32_t>(dense);
     }
     ids_.pop_back();
@@ -270,6 +313,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     type_names_.pop_back();
     follows_ground_.pop_back();
     passable_types_.pop_back();
+    paths_.pop_back();
     slot_dense_[slot] = no_dense;
     // A slot whose generation would wrap is retired instead of reused.
     if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
@@ -318,42 +362,75 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
 {
     auto& target = move_targets_[index];
     auto& position = positions_[index];
-    // Ground units move in the horizontal plane; their height always comes from the surface.
-    const auto delta_x = target->x - position.x;
-    const auto delta_y = target->y - position.y;
-    const auto distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
-    const auto step_length = max_speeds_[index] * dt;
-    const bool arrives = distance <= std::max(step_length, arrival_distance);
-    const auto scale = arrives || distance <= 0.0F ? 1.0F : step_length / distance;
-    const auto next_x = position.x + delta_x * scale;
-    const auto next_y = position.y + delta_y * scale;
-    if (const auto allowed = passable_types_[index]; allowed != 0)
+    auto& path = paths_[index];
+    const auto allowed = passable_types_[index];
+    // Ground units move in the horizontal plane; their height always comes from the surface. A
+    // tick's movement carries on past reached waypoints, so corners do not slow a unit down.
+    auto remaining = max_speeds_[index] * dt;
+    while (target)
     {
-        const auto here = ground_.passability_at(position.x, position.y);
-        const auto there = ground_.passability_at(next_x, next_y);
-        const bool leaving_blocked = here && (*here & allowed) == 0;
-        if (there && (*there & allowed) == 0 && !leaving_blocked)
+        const auto waypoint = path.empty() ? *target : path.back();
+        const auto delta_x = waypoint.x - position.x;
+        const auto delta_y = waypoint.y - position.y;
+        const auto distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
+        const bool arrives = distance <= std::max(remaining, arrival_distance);
+        const auto scale = arrives || distance <= 0.0F ? 1.0F : remaining / distance;
+        const auto next_x = position.x + delta_x * scale;
+        const auto next_y = position.y + delta_y * scale;
+        if (allowed != 0)
         {
-            // No pathfinding yet: the unit stops at the edge of a blocked cell.
+            const auto here = ground_.passability_at(position.x, position.y);
+            const auto there = ground_.passability_at(next_x, next_y);
+            const bool leaving_blocked = here && (*here & allowed) == 0;
+            if (there && (*there & allowed) == 0 && !leaving_blocked)
+            {
+                // Only reached when the route was not planned (or the ground changed under it).
+                target.reset();
+                path.clear();
+                ++blocked_moves_;
+                return;
+            }
+        }
+        position = {next_x, next_y, ground_.surface_height(next_x, next_y)};
+        if (delta_x != 0.0F || delta_y != 0.0F)
+        {
+            headings_[index] = std::atan2(delta_y, delta_x);
+        }
+        if (!arrives)
+        {
+            return;
+        }
+        if (path.empty())
+        {
             target.reset();
-            ++blocked_moves_;
+            return;
+        }
+        path.pop_back();
+        remaining -= distance;
+        if (remaining <= 0.0F)
+        {
             return;
         }
     }
-    position = {next_x, next_y, ground_.surface_height(next_x, next_y)};
-    if (delta_x != 0.0F || delta_y != 0.0F)
+}
+
+std::vector<SimVector3> SimulationWorld::route(const EntityId id) const
+{
+    std::vector<SimVector3> points;
+    const auto dense = dense_index(id);
+    if (!dense || !move_targets_[*dense])
     {
-        headings_[index] = std::atan2(delta_y, delta_x);
+        return points;
     }
-    if (arrives)
-    {
-        target.reset();
-    }
+    points.assign(paths_[*dense].rbegin(), paths_[*dense].rend());
+    points.push_back(*move_targets_[*dense]);
+    return points;
 }
 
 void SimulationWorld::set_ground(GroundMap ground)
 {
     ground_ = std::move(ground);
+    pathfinder_.reset();
 }
 
 const GroundMap& SimulationWorld::ground() const noexcept

@@ -169,7 +169,13 @@ it.
   Land/None) move over the map's surface and stop before cells their XML
   `MovementClass` may not enter (types from `MovementClassTypeDefs.xml`; the
   Obstacle bit and runtime wall/shield bits are unconfirmed); flyers keep
-  their altitude. Pathfinding is next.
+  their altitude. Ground orders are planned by deterministic grid A* over the
+  passability cells per movement class (regions labeled once per class, so an
+  unreachable goal ends at the nearest reachable point at once; smoothed
+  waypoints); the sandbox draws selected units' routes. Searches run inside
+  the tick for now (about 1 ms per cross-map path); a per-tick budget or the
+  job system takes over before large armies. Next: unit clearance,
+  separation, formations, and turn rates.
 
 - ECS/storage, fixed-step scheduler, job system, transforms, spatial index,
   movement, formations, targeting, projectiles, damage, hardpoints, fog of war.

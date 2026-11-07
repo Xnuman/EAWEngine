@@ -12,6 +12,7 @@
 #include "eaw/status.hpp"
 
 #include "eaw/ground_map.hpp"
+#include "eaw/pathfinding.hpp"
 
 #include <array>
 #include <cstddef>
@@ -133,8 +134,13 @@ public:
         std::uint64_t commands_applied{};
         // Commands or command targets that named destroyed or unknown entities.
         std::uint64_t stale_references{};
-        // Ground moves stopped at a blocked passability cell.
+        // Ground moves stopped at a cell their class may not enter (a route that no longer fits).
         std::uint64_t blocked_moves{};
+        // Ground move orders planned through the pathfinder, how many of them end short of the
+        // ordered point, and the nodes they expanded.
+        std::uint64_t path_searches{};
+        std::uint64_t partial_paths{};
+        std::uint64_t path_expansions{};
     };
 
     explicit SimulationWorld(double tick_seconds = 1.0 / 30.0);
@@ -143,8 +149,10 @@ public:
     // data comes from map and mod content: a non-finite position, heading, or speed, or full entity
     // storage, returns an error and spawns nothing.
     [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn);
-    // Ground for entities that follow it. A ground entity stops before a cell whose passability type
-    // is not among its passable_types; one standing on such a cell may still leave it.
+    // Ground for entities that follow it. A move order for a ground entity with passable_types is
+    // planned when it is applied (GridPathfinder): the entity follows the waypoints, ending at the
+    // ordered point or, when that cannot be reached, at the closest point found. A ground entity
+    // also stops before a cell its class may not enter; one standing on such a cell may leave it.
     void set_ground(GroundMap ground);
     [[nodiscard]] const GroundMap& ground() const noexcept;
 
@@ -154,6 +162,9 @@ public:
     void step();
 
     [[nodiscard]] bool alive(EntityId id) const noexcept;
+    // The points an entity is still moving through, in order, ending at its destination (empty
+    // when it is not moving or unknown). For debugging and presentation; not part of snapshots.
+    [[nodiscard]] std::vector<SimVector3> route(EntityId id) const;
     [[nodiscard]] const SimSnapshot& snapshot() const noexcept;
     [[nodiscard]] Stats stats() const noexcept;
     // FNV-1a over every component, in storage order: equal hashes mean identical simulation state.
@@ -164,6 +175,7 @@ private:
     void apply(const SimCommand& command);
     void destroy(std::size_t dense);
     void run_movement();
+    void plan_move(std::size_t index, const SimVector3& target);
     void move_over_ground(std::size_t index, float dt);
     void publish();
 
@@ -186,7 +198,13 @@ private:
     std::vector<std::uint8_t> follows_ground_;
     GroundMap ground_;
     std::vector<std::uint32_t> passable_types_;
+    // Waypoints before the move target, last first (back() is the next one to reach).
+    std::vector<std::vector<SimVector3>> paths_;
+    GridPathfinder pathfinder_;
     std::uint64_t blocked_moves_{};
+    std::uint64_t path_searches_{};
+    std::uint64_t partial_paths_{};
+    std::uint64_t path_expansions_{};
     std::vector<SimCommand> pending_;
     SimSnapshot snapshot_;
     std::uint64_t commands_applied_{};
