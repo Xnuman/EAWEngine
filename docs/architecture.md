@@ -109,6 +109,14 @@ anything reads from it; the sandbox does that on the main thread between
 builds, never while a worker is reading. A rebuilt archive invalidates every
 asset read from it, which is conservative but never serves stale bytes.
 
+The renderer reuses uploaded textures by identity. Each decode stamps the
+`VisualTexture` with a new serial, so a texture served from the cache keeps its
+identity and a re-decoded one does not. When `load_scene` replaces a scene, a
+new texture whose identity matches a resident texture of the outgoing scene
+takes over that texture and its descriptor slot; only unmatched textures stream,
+and the remaining old textures retire on the direct-queue timeline. Geometry,
+instance, and material buffers are still built per scene.
+
 Animated visual scenes preserve model-wide bone indices in immutable vertex
 buffers. ALA poses are sampled on the CPU into skin matrices, while every
 in-flight frame owns a persistently mapped bone-palette buffer. The CPU updates

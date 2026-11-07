@@ -52,6 +52,10 @@ struct VisualTextureMip
 struct VisualTexture
 {
     std::string name;
+    // Identity of the decoded texels. Two textures with the same non-empty identity are identical,
+    // so a renderer may keep an uploaded texture when a replacement scene names it again. Empty
+    // means "never reuse".
+    std::string identity;
     VisualTextureFormat format{VisualTextureFormat::rgba8_unorm};
     std::vector<VisualTextureMip> mips;
 };

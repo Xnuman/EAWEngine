@@ -41,6 +41,8 @@ struct D3d12RendererStats
     std::size_t pending_retirements{};
     // Scene textures still waiting to stream in (drawn with fallbacks meanwhile).
     std::size_t pending_texture_uploads{};
+    // Textures the last load_scene kept from the replaced scene (same identity) instead of uploading.
+    std::size_t reused_textures{};
 };
 
 class D3d12Renderer final

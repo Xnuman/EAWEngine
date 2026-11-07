@@ -289,6 +289,7 @@ struct HotReloadCheck
 {
     std::vector<std::size_t> archives;
     std::vector<std::string> files;
+    double seconds{};
 };
 
 SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Options& options, eaw::AssetCache* cache, const bool reload)
@@ -352,6 +353,8 @@ SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Op
 
 int main(const int argc, char** argv)
 {
+    // Status lines (builds, streaming, hot reload) appear as they happen even when redirected.
+    std::cout << std::unitbuf;
     try
     {
         const auto options = parse_options(argc, argv);
@@ -564,6 +567,11 @@ int main(const int argc, char** argv)
                     std::cout << "Left-drag orbits, wheel zooms, Space resets, P pauses animation.\n";
                 }
             }
+            if (content.reload)
+            {
+                const auto stats = renderer.stats();
+                std::cout << "Hot reload: " << stats.reused_textures << " textures kept on the GPU, " << stats.pending_texture_uploads << " uploading\n";
+            }
         };
 
         renderer.set_camera(orbit_camera->camera());
@@ -581,6 +589,7 @@ int main(const int argc, char** argv)
         bool animation_playing = true;
         std::uint64_t scene_reloads = 0;
         bool textures_streamed = false;
+        bool reload_check_reported = false;
         std::uint64_t streaming_since = 0;
         while (!window.close_requested())
         {
@@ -669,6 +678,12 @@ int main(const int argc, char** argv)
                 if (pending_check.valid() && pending_check.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
                 {
                     auto check = pending_check.get();
+                    if (!reload_check_reported)
+                    {
+                        reload_check_reported = true;
+                        std::cout << "Hot reload: watching " << scene_dependencies->file_count() << " files and " << scene_dependencies->listing_count() << " listings; a check takes " << check.seconds
+                                  << " s\n";
+                    }
                     next_reload_check = std::chrono::steady_clock::now() + std::chrono::seconds(1);
                     bool remounted = true;
                     for (const auto index : check.archives)
@@ -704,7 +719,10 @@ int main(const int argc, char** argv)
                     pending_check = std::async(std::launch::async,
                                                [&vfs, &archive_watch, dependencies = *scene_dependencies]
                                                {
-                                                   return HotReloadCheck{archive_watch.changed(vfs), dependencies.changes(vfs)};
+                                                   const auto start = std::chrono::steady_clock::now();
+                                                   HotReloadCheck result{archive_watch.changed(vfs), dependencies.changes(vfs), 0.0};
+                                                   result.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+                                                   return result;
                                                });
                 }
             }

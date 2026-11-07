@@ -111,8 +111,10 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   upload budget with fallbacks until they arrive. An engine asset cache keeps
   decoded models, textures, maps, and the XML catalog with recorded file
   dependencies, and `sandbox --hot-reload` rebuilds the scene when a loose file
-  or MEG archive behind it changes. Per-asset renderer handles shared across
-  scenes remain.
+  or MEG archive behind it changes. Decoded textures carry an identity, so a
+  reload keeps unchanged textures on the GPU and uploads only the changed ones
+  (Kamino: 0.5 s rebuild, 1 of 67 textures uploaded). Per-asset geometry handles
+  and several resident scenes remain.
 - Camera, selection IDs, debug drawing; PBS conversion of legacy materials after
   legacy mode is stable.
 - Placed TED objects resolve to XML object types by uppercased-name CRC-32 and

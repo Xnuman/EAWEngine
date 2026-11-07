@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -564,9 +565,13 @@ struct D3d12Renderer::Impl
         TextureHandle handle;
         std::uint32_t fallback_slot{white_texture_slot};
         std::uint64_t bytes{};
+        std::string identity;
     };
     std::vector<StreamingTexture> scene_textures;
+    // Scan position of the streaming queue; entries before it are resident or reused.
     std::size_t next_streaming_texture{};
+    std::size_t pending_texture_count{};
+    std::size_t last_reused_textures{};
     std::vector<GpuDraw> scene_draws;
     std::vector<std::array<float, 16>> bone_transforms;
     ComPtr<ID3D12Resource> fallback_white_texture;
@@ -1565,17 +1570,40 @@ struct D3d12Renderer::Impl
         {
             retired_resources.push(std::move(replaced), retire_value);
         }
-        retire_textures(scene_textures);
+        // A texture whose identity a resident texture of the outgoing scene already has keeps that
+        // texture and descriptor slot instead of uploading again; the rest of the outgoing scene's
+        // textures retire.
+        std::unordered_map<std::string, std::size_t> resident_by_identity;
+        for (std::size_t index = 0; index < scene_textures.size(); ++index)
+        {
+            const auto& entry = scene_textures[index];
+            if (!entry.identity.empty() && textures.contains(entry.handle))
+            {
+                resident_by_identity.try_emplace(entry.identity, index);
+            }
+        }
+        last_reused_textures = 0;
+        pending_texture_count = 0;
         // Validation is complete, so the CPU texture data moves into the streaming queue.
         for (std::size_t index = 0; index < new_textures.size(); ++index)
         {
             auto& entry = new_textures[index];
+            entry.identity = scene.textures[index].identity;
+            if (const auto reused = resident_by_identity.find(entry.identity); !entry.identity.empty() && reused != resident_by_identity.end())
+            {
+                entry.handle = std::exchange(scene_textures[reused->second].handle, {});
+                resident_by_identity.erase(reused);
+                ++last_reused_textures;
+                continue;
+            }
             entry.source = std::move(scene.textures[index]);
             for (const auto& mip : entry.source.mips)
             {
                 entry.bytes += mip.data.size();
             }
+            ++pending_texture_count;
         }
+        retire_textures(scene_textures);
         scene_textures = std::move(new_textures);
         next_streaming_texture = 0;
         scene_vertex_buffer = std::move(new_vertex_buffer);
@@ -1641,6 +1669,7 @@ struct D3d12Renderer::Impl
         }
         reclaim_texture_slots();
         const auto first = next_streaming_texture;
+        std::vector<std::size_t> streamed;
         std::optional<UploadBatch> upload;
         std::uint64_t submitted_bytes = 0;
         try
@@ -1648,6 +1677,12 @@ struct D3d12Renderer::Impl
             while (next_streaming_texture < scene_textures.size())
             {
                 auto& entry = scene_textures[next_streaming_texture];
+                if (textures.contains(entry.handle))
+                {
+                    // Reused from the previous scene.
+                    ++next_streaming_texture;
+                    continue;
+                }
                 if (options.texture_upload_budget_bytes != 0 && submitted_bytes != 0 && submitted_bytes + entry.bytes > options.texture_upload_budget_bytes)
                 {
                     break;
@@ -1672,6 +1707,7 @@ struct D3d12Renderer::Impl
                     throw;
                 }
                 submitted_bytes += entry.bytes;
+                streamed.push_back(next_streaming_texture);
                 ++next_streaming_texture;
             }
             if (upload)
@@ -1683,18 +1719,19 @@ struct D3d12Renderer::Impl
         {
             // Nothing from this batch was submitted: undo residency so no draw samples it.
             std::vector<StreamingTexture> unsent;
-            for (auto index = first; index < next_streaming_texture; ++index)
+            for (const auto index : streamed)
             {
-                unsent.push_back({{}, std::exchange(scene_textures[index].handle, {}), 0, 0});
+                unsent.push_back({{}, std::exchange(scene_textures[index].handle, {}), 0, 0, {}});
             }
             retire_textures(unsent);
             next_streaming_texture = first;
             throw;
         }
-        for (auto index = first; index < next_streaming_texture; ++index)
+        for (const auto index : streamed)
         {
             scene_textures[index].source = {};
         }
+        pending_texture_count -= std::min(pending_texture_count, streamed.size());
     }
 
     // Writes this frame's logical-texture-to-slot table. Called once the frame context is reusable.
@@ -2250,7 +2287,8 @@ D3d12RendererStats D3d12Renderer::stats() const
         .free_texture_slots = impl_->texture_slots.free_count(),
         .pending_texture_slots = impl_->texture_slots.pending_count(),
         .pending_retirements = impl_->retired_resources.size(),
-        .pending_texture_uploads = impl_->scene_textures.size() - impl_->next_streaming_texture,
+        .pending_texture_uploads = impl_->pending_texture_count,
+        .reused_textures = impl_->last_reused_textures,
     };
 }
 

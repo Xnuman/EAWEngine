@@ -1542,6 +1542,22 @@ void test_visual_terrain()
     eaw::VirtualFileSystem vfs;
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
     const auto asset = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED");
+
+    // Texture identities: stable across builds served from a cache (so the renderer keeps them on
+    // the GPU), fresh for every decode.
+    {
+        eaw::AssetCache cache;
+        const auto first = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", &cache);
+        const auto second = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", &cache);
+        require(!first.scene.textures.empty() && first.scene.textures.size() == second.scene.textures.size(), "cached map builds must produce the same textures");
+        for (std::size_t index = 0; index < first.scene.textures.size(); ++index)
+        {
+            require(!first.scene.textures[index].identity.empty() && first.scene.textures[index].identity == second.scene.textures[index].identity,
+                    "a texture served from the cache must keep its identity");
+        }
+        const auto uncached = eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED");
+        require(uncached.scene.textures.front().identity != first.scene.textures.front().identity, "a fresh decode must get a new identity");
+    }
     const auto& terrain = asset.scene.terrain;
     require(asset.land && terrain.layer_count == 3 && terrain.vertices.size() == 12 && terrain.first_material + 3 <= asset.scene.materials.size(), "terrain mesh structure is wrong");
     require(asset.scene.materials[terrain.first_material].tint[3] == 1.0F && asset.scene.materials[terrain.first_material + 2].tint[3] == 0.0F, "an untextured terrain layer must carry zero coverage");

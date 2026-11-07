@@ -12,6 +12,7 @@
 #include "eaw/virtual_file_system.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cctype>
 #include <cmath>
@@ -237,6 +238,14 @@ struct CachedTexture
     std::string error;
 };
 
+// Every decode gets a new identity, so a cached texture keeps its identity across builds and a
+// re-decoded one gets a fresh one; the renderer then re-uploads exactly the changed textures.
+std::string next_texture_identity()
+{
+    static std::atomic<std::uint64_t> serial{0};
+    return "texture#" + std::to_string(serial.fetch_add(1, std::memory_order_relaxed) + 1);
+}
+
 // The XML object catalog borrows its database, so both live behind one stable allocation.
 struct CachedCatalog
 {
@@ -276,6 +285,7 @@ std::uint32_t scene_texture(SceneBuilder& builder, const std::string& reference)
                                                   try
                                                   {
                                                       result.texture = make_visual_texture(reference, reader.read(*texture_path));
+                                                      result.texture->identity = next_texture_identity();
                                                   }
                                                   catch (const std::exception& error)
                                                   {
