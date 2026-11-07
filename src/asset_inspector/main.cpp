@@ -4,6 +4,7 @@
 #include "eaw/dat_file.hpp"
 #include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
+#include "eaw/game_object_catalog.hpp"
 #include "eaw/legacy_material.hpp"
 #include "eaw/lua_script.hpp"
 #include "eaw/mtd_directory.hpp"
@@ -56,6 +57,7 @@ void usage()
               << "  EAWAssetInspector list [prefix] [options]\n"
               << "  EAWAssetInspector inspect <virtual-path> [options]\n"
               << "  EAWAssetInspector map-audit [prefix] [options]\n"
+              << "  EAWAssetInspector map-objects [prefix] [options]\n"
               << "  EAWAssetInspector texture-audit [prefix] [options]\n"
               << "  EAWAssetInspector lua-audit [prefix] [options]\n"
               << "  EAWAssetInspector xml-audit [prefix] [options]\n"
@@ -93,8 +95,9 @@ Options parse_options(const int argc, char** argv)
     {
         options.operand = argv[index++];
     }
-    else if ((options.command == "list" || options.command == "map-audit" || options.command == "texture-audit" || options.command == "lua-audit" || options.command == "xml-audit") && index < argc &&
-             argv[index][0] != '-')
+    else if ((options.command == "list" || options.command == "map-audit" || options.command == "map-objects" || options.command == "texture-audit" || options.command == "lua-audit" ||
+              options.command == "xml-audit") &&
+             index < argc && argv[index][0] != '-')
     {
         options.prefix = argv[index++];
     }
@@ -1091,6 +1094,183 @@ void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
     }
 }
 
+struct AuditExample
+{
+    std::size_t count{};
+    std::string map;
+    std::string detail;
+};
+
+template <typename Key> std::vector<std::pair<Key, AuditExample>> by_count(const std::map<Key, AuditExample>& entries)
+{
+    std::vector<std::pair<Key, AuditExample>> result(entries.begin(), entries.end());
+    std::ranges::stable_sort(result,
+                             [](const auto& left, const auto& right)
+                             {
+                                 return left.second.count > right.second.count;
+                             });
+    return result;
+}
+
+void record_example(std::map<std::string, AuditExample>& entries, const std::string& key, const std::string& map, const std::string& detail = {})
+{
+    auto& entry = entries[key];
+    if (entry.count++ == 0)
+    {
+        entry.map = map;
+        entry.detail = detail;
+    }
+}
+
+// Resolves every placed TED object through its type CRC to an XML definition and model, then
+// reports coverage. This is the evidence for the object-name CRC rule and the model fields.
+void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit)
+{
+    const auto database = eaw::XmlAssetDatabase::build(vfs);
+    const auto catalog = eaw::GameObjectCatalog::build(database);
+
+    std::size_t maps = 0;
+    std::size_t placed = 0;
+    std::size_t typed = 0;
+    std::size_t ambiguous = 0;
+    std::size_t modeled = 0;
+    std::size_t model_files = 0;
+    std::map<std::uint32_t, AuditExample> unknown_crcs;
+    std::map<std::string, std::size_t> element_types;
+    std::map<std::string, std::size_t> model_fields;
+    std::map<std::string, AuditExample> types_without_model;
+    std::map<std::string, AuditExample> missing_models;
+    std::set<std::string> unique_models;
+    std::set<std::string> diagnostics;
+    std::vector<std::pair<std::string, std::string>> failures;
+
+    for (const auto& asset : vfs.list(prefix))
+    {
+        if (extension_of(asset.virtual_path) != ".ted")
+        {
+            continue;
+        }
+        eaw::TedMap map;
+        try
+        {
+            map = eaw::TedMap::parse(vfs.read(asset.virtual_path));
+        }
+        catch (const std::exception& error)
+        {
+            failures.emplace_back(asset.virtual_path, error.what());
+            continue;
+        }
+        ++maps;
+        const auto context = map.type == eaw::TedMapType::land ? eaw::GameModelContext::land : eaw::GameModelContext::space;
+        for (const auto& object : map.placed_objects)
+        {
+            ++placed;
+            const auto match = catalog.resolve(object.crc, context);
+            if (match.definition == nullptr)
+            {
+                auto& entry = unknown_crcs[object.crc];
+                if (entry.count++ == 0)
+                {
+                    entry.map = asset.virtual_path;
+                }
+                continue;
+            }
+            ++typed;
+            ambiguous += match.candidates > 1 ? 1U : 0U;
+            ++element_types[match.definition->type];
+            std::vector<std::string> messages;
+            const auto model = catalog.model(*match.definition, context, &messages);
+            diagnostics.insert(messages.begin(), messages.end());
+            if (!model)
+            {
+                record_example(types_without_model, match.definition->type + " " + match.definition->name, asset.virtual_path);
+                continue;
+            }
+            ++modeled;
+            ++model_fields[model->field];
+            if (const auto path = eaw::resolve_model_path(vfs, model->value))
+            {
+                ++model_files;
+                unique_models.insert(*path);
+            }
+            else
+            {
+                record_example(missing_models, model->value, asset.virtual_path, match.definition->name);
+            }
+        }
+    }
+
+    const auto percent = [](const std::size_t part, const std::size_t whole)
+    {
+        std::ostringstream text;
+        text << std::fixed << std::setprecision(1) << (whole == 0 ? 0.0 : 100.0 * static_cast<double>(part) / static_cast<double>(whole)) << '%';
+        return text.str();
+    };
+
+    std::cout << "Map object resolution audit\n"
+              << "XML definitions: " << catalog.size() << '\n'
+              << "Maps: " << maps << " (failures: " << failures.size() << ")\n"
+              << "Placed objects: " << placed << '\n'
+              << "Typed by name CRC: " << typed << " (" << percent(typed, placed) << ")\n"
+              << "Ambiguous CRC matches: " << ambiguous << '\n'
+              << "With a model reference: " << modeled << " (" << percent(modeled, placed) << ")\n"
+              << "Model files resolved: " << model_files << " (" << percent(model_files, placed) << "), unique models: " << unique_models.size() << '\n'
+              << "Unknown CRCs: " << unknown_crcs.size() << "\n\nResolved element types:\n";
+    for (const auto& [type, count] : element_types)
+    {
+        std::cout << "  " << type << ": " << count << '\n';
+    }
+    std::cout << "Model fields:\n";
+    for (const auto& [field, count] : model_fields)
+    {
+        std::cout << "  " << field << ": " << count << '\n';
+    }
+    std::cout << "\nUnknown CRCs:\n";
+    std::size_t shown = 0;
+    for (const auto& [crc, entry] : by_count(unknown_crcs))
+    {
+        if (shown++ >= limit)
+        {
+            break;
+        }
+        std::cout << "  0x" << std::hex << std::setw(8) << std::setfill('0') << crc << std::dec << std::setfill(' ') << "  x" << entry.count << "  e.g. " << entry.map << '\n';
+    }
+    std::cout << "\nTyped objects without a model for their map context:\n";
+    shown = 0;
+    for (const auto& [type, entry] : by_count(types_without_model))
+    {
+        if (shown++ >= limit)
+        {
+            break;
+        }
+        std::cout << "  " << type << "  x" << entry.count << "  e.g. " << entry.map << '\n';
+    }
+    std::cout << "\nMissing model files:\n";
+    shown = 0;
+    for (const auto& [model, entry] : by_count(missing_models))
+    {
+        if (shown++ >= limit)
+        {
+            break;
+        }
+        std::cout << "  " << model << "  x" << entry.count << "  (" << entry.detail << ", e.g. " << entry.map << ")\n";
+    }
+    std::cout << "\nVariant diagnostics: " << diagnostics.size() << '\n';
+    shown = 0;
+    for (const auto& message : diagnostics)
+    {
+        if (shown++ >= limit)
+        {
+            break;
+        }
+        std::cout << "  " << message << '\n';
+    }
+    for (const auto& [path, message] : failures)
+    {
+        std::cout << "map failure: " << path << ": " << message << '\n';
+    }
+}
+
 void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit)
 {
     const auto assets = vfs.list(prefix);
@@ -1317,6 +1497,11 @@ int main(const int argc, char** argv)
         if (options.command == "lua-audit")
         {
             audit_lua(vfs, options.prefix, options.limit);
+            return 0;
+        }
+        if (options.command == "map-objects")
+        {
+            audit_map_objects(vfs, options.prefix, options.limit);
             return 0;
         }
         if (options.command == "map-audit")

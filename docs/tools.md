@@ -157,6 +157,17 @@ coverage without extracting maps:
 EAWAssetInspector.exe map-audit Data/Art/Maps --game foc
 ```
 
+`map-objects` resolves every placed TED object through its type-name CRC to an
+XML definition, follows `Variant_Of_Existing_Type` inheritance to the
+`Space_Model_Name` or `Land_Model_Name` for the map type, and checks that the
+model exists in the layered VFS. It reports coverage, resolved element types,
+unknown CRCs, typed objects without a model (such as squadrons and companies,
+which spawn member units), missing model files, and variant-chain diagnostics:
+
+```powershell
+EAWAssetInspector.exe map-objects Data/Art/Maps --game foc
+```
+
 ## EAWDatEditor
 
 The DAT editor preserves the Petroglyph binary layout, UTF-16 values, ASCII

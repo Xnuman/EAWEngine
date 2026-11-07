@@ -94,6 +94,9 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   resource handles, descriptor allocation, streaming, and hot reload.
 - Camera, selection IDs, debug drawing; PBS conversion of legacy materials after
   legacy mode is stable.
+- Placed TED objects resolve to XML object types by uppercased-name CRC-32 and
+  to models through variant inheritance (99.7% of stock placed objects).
+  Squadron/company expansion and multi-instance scene loading are next.
 - Add production D3D12 tactical-map rendering. Further tool-only map/model
   preview polish is deferred until it can support the renderer and map editor.
 - Deliverable: load and inspect a stock space unit and a tactical map.

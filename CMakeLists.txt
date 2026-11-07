@@ -13,6 +13,7 @@ add_library(eaw_core STATIC
     src/core/dat_file.cpp
     src/core/dds_texture.cpp
     src/core/game_installation.cpp
+    src/core/game_object_catalog.cpp
     src/core/legacy_material.cpp
     src/core/localization_scan.cpp
     src/core/localization_workspace.cpp

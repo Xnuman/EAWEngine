@@ -46,6 +46,7 @@ The native Direct3D 12 sandbox currently has:
 - CPU ALA pose sampling and GPU skinning through persistently mapped, per-frame bone palettes;
 - automatic `_IDLE_00.ALA` lookup, explicit `--model`/`--animation` selection, pause/reset controls, and a validation-triangle fallback;
 - render direction: the first target is **legacy mode**: running the original game on the new engine with rendering that approximates Alamo, driven by `LegacyMaterial` reference profiles and newly written shaders, then stabilizing behavior. A modern physically based shading (PBS) pipeline with engine-native materials comes after legacy mode is stable; the profiles will then also be conversion input for it;
+- `GameObjectCatalog` resolves TED placed-object CRCs (CRC-32 of the uppercased type name) to XML definitions and models through `Variant_Of_Existing_Type`; `EAWAssetInspector map-objects` audits it (99.7% of stock placed objects reach an existing model);
 - an evidence-based legacy shader inventory ([docs/legacy-shader-mapping.md](docs/legacy-shader-mapping.md)) and reference profiles in `LegacyMaterial` for all 39 readable `Shaders/` effects. The profiles record render phase, depth/cull/alpha-test state, lighting model, texture-channel roles, UV/vertex animation, and vertex requirements. Unreferenced names keep tagged name heuristics. The sandbox skips heat and occluded-unit materials with a warning until those passes exist.
 
 Debug and Release builds, unit tests, WARP/GPU-validation smoke tests, and human visual checks have passed for the current slice.
@@ -59,7 +60,7 @@ Known limitations are intentional, not invitations to hide special cases:
 - animation choice has no runtime UI and some visibility/complex animation behavior remains incomplete;
 - assets are loaded before rendering; handles, streaming, hot reload, and background scene construction are not implemented;
 - the descriptor and bone capacities are temporary implementation limits, not asset-format limits;
-- the D3D12 renderer does not render TED terrain/maps yet;
+- the D3D12 renderer does not render TED terrain/maps yet, and the sandbox loads one model at a time;
 - `EAWTools` remains on Direct3D 11 and its preview renderer is not the production renderer;
 - a complete renderer-agnostic RHI has not yet been extracted;
 - simulation, gameplay Lua execution, audio, runtime UI, networking, and save compatibility are future milestones.

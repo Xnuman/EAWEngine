@@ -114,3 +114,16 @@ metadata, strings, constants, nested prototypes, instruction ranges, and the
 Petroglyph IDs with explicit resource limits. VM execution, coroutine scheduling,
 save-state persistence, and host API behavior remain black-box research areas.
 
+
+TED placed objects reference their XML object type by CRC-32 (the same
+reflected IEEE polynomial as DAT keys) of the ASCII-uppercased type name. The
+stock audit observed on 2026-11-07 confirms it: in FoC, 191,048 of 191,083
+placed objects across all 269 maps match a named XML definition, and 99.7%
+resolve through `Variant_Of_Existing_Type` inheritance to an existing
+`Space_Model_Name` or `Land_Model_Name` model (649 unique models). The base EAW
+profile matches 137,488 of 137,499 objects. Eleven FoC CRCs (35 objects) match
+no definition, and one placed object has a name shared by several element types;
+the resolver prefers the definition with a model for the map context, which is
+inference. Squadrons, companies, and teams have no model of their own and must
+be expanded into their member units. The audit indexes every XML file under
+`Data/XML`, not only files registered by the game's object-file manifests.

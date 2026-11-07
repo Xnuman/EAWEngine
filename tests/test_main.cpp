@@ -5,6 +5,7 @@
 #include "eaw/dat_file.hpp"
 #include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
+#include "eaw/game_object_catalog.hpp"
 #include "eaw/legacy_material.hpp"
 #include "eaw/localization_scan.hpp"
 #include "eaw/localization_workspace.hpp"
@@ -923,6 +924,69 @@ void test_xml_asset_database()
     std::filesystem::remove_all(root, ignored);
 }
 
+void test_game_object_catalog()
+{
+    // CRC-32 of the uppercased name; reference values from an independent CRC-32 implementation.
+    require(eaw::game_object_name_crc("Unit_A") == 0xbb137f89U && eaw::game_object_name_crc("UNIT_A") == 0xbb137f89U, "object-name CRC is not case-insensitive CRC-32");
+
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-object-catalog-test";
+    const auto xml_root = root / "Data" / "XML";
+    const auto model_root = root / "Data" / "Art" / "Models";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::filesystem::create_directories(xml_root);
+    std::filesystem::create_directories(model_root);
+    {
+        std::ofstream file(xml_root / "Units.xml", std::ios::binary);
+        file << "<SpaceUnits>"
+                "<SpaceUnit Name=\"Unit_A\"><Space_Model_Name> EV_Unit.alo </Space_Model_Name><Land_Model_Name>EI_Unit</Land_Model_Name></SpaceUnit>"
+                "<SpaceUnit Name=\"Unit_A_Variant\"><Variant_Of_Existing_Type>unit_a</Variant_Of_Existing_Type>"
+                "<Land_Model_Name>EI_Variant.alo</Land_Model_Name></SpaceUnit>"
+                "<SpaceUnit Name=\"Orphan\"><Variant_Of_Existing_Type>Not_Defined</Variant_Of_Existing_Type></SpaceUnit>"
+                "<SpaceUnit Name=\"Loop_A\"><Variant_Of_Existing_Type>Loop_B</Variant_Of_Existing_Type></SpaceUnit>"
+                "<SpaceUnit Name=\"Loop_B\"><Variant_Of_Existing_Type>Loop_A</Variant_Of_Existing_Type></SpaceUnit>"
+                "<SFXEvent Name=\"Shared_Name\" />"
+                "<SpaceProp Name=\"Shared_Name\"><Space_Model_Name>Missing_Model</Space_Model_Name></SpaceProp>"
+                "</SpaceUnits>";
+    }
+    std::ofstream(model_root / "EV_UNIT.ALO", std::ios::binary) << "x";
+    std::ofstream(model_root / "EI_Unit.alo", std::ios::binary) << "x";
+
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    const auto database = eaw::XmlAssetDatabase::build(vfs);
+    const auto catalog = eaw::GameObjectCatalog::build(database);
+
+    const auto unit = catalog.resolve(0xbb137f89U, eaw::GameModelContext::space);
+    require(unit.definition != nullptr && unit.definition->name == "Unit_A" && unit.candidates == 1, "object CRC did not resolve to its definition");
+    const auto space_model = catalog.model(*unit.definition, eaw::GameModelContext::space);
+    require(space_model && space_model->value == "EV_Unit.alo" && space_model->field == "Space_Model_Name", "space model reference was not read and trimmed");
+
+    // A variant inherits fields it does not override and keeps the ones it does.
+    const auto variant = catalog.find("UNIT_A_VARIANT");
+    require(variant.size() == 1, "case-insensitive name lookup failed");
+    const auto inherited = catalog.model(*variant.front(), eaw::GameModelContext::space);
+    const auto overridden = catalog.model(*variant.front(), eaw::GameModelContext::land);
+    require(inherited && inherited->value == "EV_Unit.alo" && inherited->declared_by == unit.definition && overridden && overridden->value == "EI_Variant.alo", "variant field inheritance failed");
+    require(!catalog.model(*variant.front(), eaw::GameModelContext::galactic), "absent model field was reported");
+
+    std::vector<std::string> diagnostics;
+    require(!catalog.model(*catalog.find("Orphan").front(), eaw::GameModelContext::space, &diagnostics) && diagnostics.size() == 1 && diagnostics.front().find("Not_Defined") != std::string::npos,
+            "missing variant parent was not diagnosed");
+    diagnostics.clear();
+    require(!catalog.model(*catalog.find("Loop_A").front(), eaw::GameModelContext::space, &diagnostics) && diagnostics.size() == 1 && diagnostics.front().find("cycle") != std::string::npos,
+            "variant cycle was not diagnosed");
+
+    // When names collide across element types, the definition with a model wins the CRC.
+    const auto shared = catalog.resolve(eaw::game_object_name_crc("Shared_Name"), eaw::GameModelContext::space);
+    require(shared.definition != nullptr && shared.definition->type == "SpaceProp" && shared.candidates == 2, "ambiguous CRC did not prefer the modeled definition");
+    require(catalog.resolve(0x12345678U, eaw::GameModelContext::space).definition == nullptr, "unknown CRC resolved");
+
+    require(eaw::resolve_model_path(vfs, "ev_unit.alo").has_value() && eaw::resolve_model_path(vfs, "Art\\Models\\EI_Unit").has_value(), "model reference did not resolve through the VFS");
+    require(!eaw::resolve_model_path(vfs, "Missing_Model") && !eaw::resolve_model_path(vfs, "  ") && !eaw::resolve_model_path(vfs, "..\\"), "missing model reference resolved");
+    std::filesystem::remove_all(root, ignored);
+}
+
 void test_xml_schema_validation()
 {
     const auto root = std::filesystem::temp_directory_path() / "eawengine-xml-schema-test";
@@ -1086,6 +1150,7 @@ int main()
         test_localization_scan();
         test_xml_document();
         test_xml_asset_database();
+        test_game_object_catalog();
         test_xml_schema_validation();
 
         std::error_code ignored;
