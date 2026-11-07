@@ -44,6 +44,13 @@ layered VFS -> format decoders -> immutable asset database
 
 ## Rendering direction
 
+The first render target is legacy mode: newly written shaders driven by the
+decoded legacy ALO materials and their reference profiles, approximating
+original Alamo rendering so the game can run on the new engine and its behavior
+can be stabilized. A modern physically based shading pipeline with
+engine-native materials follows, using the same profiles as conversion input.
+Legacy shaders are mapping evidence only and are never used at runtime.
+
 The renderer uses an RHI with explicit resources, command lists, queues,
 barriers, descriptor tables, and pipeline objects. The first production backend
 should be Direct3D 12 because the target game and primary audience are on

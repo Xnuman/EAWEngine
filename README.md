@@ -1,11 +1,18 @@
 # EAWEngine
 
-EAWEngine is a clean-room, open compatibility engine for *Star Wars: Empire at
-War* and *Forces of Corruption*. It is designed to use the assets from a game
-installation owned by the player. Game assets are never copied into this
-repository or redistributed.
+EAWEngine is an independently developed, open compatibility engine for *Star
+Wars: Empire at War* and *Forces of Corruption*. It is designed to use the
+assets from a game installation owned by the player without modifying that
+installation or redistributing its runtime data.
 
-This repository is at milestone **0.3: native asset and localization workbench**. It currently:
+The owner-provided `Shaders/` directory is an isolated development reference
+containing legacy Direct3D 9 shader files. It is git-ignored, never
+distributed, and never a runtime/build dependency or release input. It only
+documents how models were meant to render in Alamo; the engine uses its own
+physically based materials and newly written shaders. See [its reference policy](Shaders/README.md). Do not describe the
+renderer as strictly clean-room while that corpus is available to contributors.
+
+This repository is at milestone **M2: visual sandbox**. It currently:
 
 - discovers the Steam installation and both game variants;
 - reads legacy Petroglyph `.meg` archives without extracting them;
@@ -128,7 +135,8 @@ See [Asset and localization tools](docs/tools.md) for the complete workflow.
 
 ## Design principles
 
-- Clean-room implementation from public format documentation and behavior tests.
+- Independent implementation driven by public documentation, measured behavior,
+  compatibility corpora, and the explicitly isolated legacy shader reference.
 - Original installation and mod directories are read-only inputs.
 - Data compatibility is separated from the renderer and simulation.
 - Deterministic fixed-step simulation; presentation may run independently.
