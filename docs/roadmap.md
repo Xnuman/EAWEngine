@@ -205,6 +205,29 @@ it.
   the project (an open-source reader such as ufbx, or the proprietary Autodesk
   FBX SDK); that choice is open.
 
+## Cross-cutting engineering work
+
+- **Raw input.** Replace window-message mouse and keyboard handling in
+  `src/platform` with raw input (`WM_INPUT` via `RegisterRawInputDevices`, or
+  Microsoft GameInput), giving unaccelerated high-resolution mouse deltas,
+  per-device state, and input timestamps, while window messages stay the source
+  of cursor position for UI. The platform input contract (`InputState`) stays
+  engine-native so the simulation and sandbox do not change. Reference designs:
+  the owner's own projects and permissively licensed engines (for example SDL's
+  Windows raw-input backend); designs are studied, not copied.
+- **Exception-free error handling.** The codebase currently reports errors by
+  throwing (about 270 `throw` sites and 66 `catch` blocks, half of the throws in
+  core decoders). The goal is explicit error values: a project `Result` type
+  carrying a contextual error (virtual path, section, offset), returned by
+  decoders, the VFS, the renderer, and the engine, with `try`/`catch` only at
+  boundaries that call code which throws (the standard library, third-party
+  libraries). Migration is incremental: introduce the type and a policy, write
+  new code with it, then convert module by module (core decoders first, then
+  the renderer's HRESULT paths, the engine, and the tools), each with its tests.
+  Open decisions: `std::expected` (needs C++23) or an equivalent project type in
+  C++20; and whether to end with exceptions disabled, treating allocation
+  failure as fatal.
+
 ## Performance gates
 
 - Headless deterministic simulation benchmark before renderer optimization.

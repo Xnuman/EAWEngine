@@ -86,6 +86,11 @@ The first goal is a thin vertical slice: units on a map that can be selected and
 4. ~~First interaction: the legacy RTS camera (fixed pitch and heading, zoom, keyboard pan), click and box selection, and right-click move with straight-line movement on the fixed tick.~~ Done: maps start in RTS mode (C toggles the free debug camera); left-drag box-selects mobile units, a click selects any object, and right-click orders selected units to the ground under the cursor, found on the CPU in the same frame (`TerrainHeightField` built from the map, ray-marched by `intersect_terrain`, liquid surfaces included; the z = 0 plane in space), spread on a grid. GPU picks are only used to identify clicked objects, and completed picks are read from any frame context whose fence has finished. Movement is a straight 3D line with instant turning: no terrain following, collision, pathfinding, or formations yet, and the camera's fixed pitch and heading are provisional. `--spawn <TYPE>[:N]` adds XML types' models to the map's mesh library so the sandbox can spawn them (N at the cursor, Tab cycles); runtime spawning is an immediate setup call, not yet a deterministic simulation command, and types not requested at build time cannot be spawned until meshes can be registered at runtime.
 5. Then the rest of M3: dependency-aware job system, spatial queries, pathfinding and formations, targeting, projectiles, damage, hardpoints, fog of war, and a minimal Lua host surface.
 
+### Cross-cutting engineering work (planned)
+
+- Raw input in `src/platform` (`WM_INPUT` or GameInput) behind the existing engine-native `InputState`; see the roadmap.
+- Exception-free error handling: replace throwing with a contextual `Result` error type, converted module by module (core decoders first). Until that policy lands, follow the existing conventions; do not add new exception-based APIs where a returned error is natural. Open decisions are recorded in the roadmap.
+
 ### Legacy-mode render backlog
 
 - Cube reflections (no stock material uses them), planet atmosphere/clouds/city lights, shield distortion layers, nebula wobble, wind bend, heat distortion, occluded-unit silhouettes, shadows, and fog.
