@@ -84,7 +84,7 @@ Later milestones remain:
 
 - **M4:** complete land/space skirmish systems, pathfinding, reinforcements, abilities, tactical AI, UI, audio, and deterministic replays.
 - **M5:** galactic mode, campaigns, economy, heroes, story events, campaign AI, persistence, and versioned saves.
-- **M6:** broad XML/Lua compatibility, Steam mod discovery, multiplayer/replays, authoring tools, profiling, and a documented namespaced mechanics SDK.
+- **M6:** broad XML/Lua compatibility, Steam mod discovery, multiplayer/replays, authoring tools, profiling, a documented namespaced mechanics SDK, and modern model/animation formats (FBX, glTF 2.0; blending, retargeting, blend shapes) as optional engine-native assets beside ALO/ALA.
 
 The authoritative milestone description is [docs/roadmap.md](docs/roadmap.md). Update it and this summary together when scope or status changes.
 

@@ -157,6 +157,15 @@ campaign compatibility is a long-term engine project, not a renderer swap.
 - Broad XML/Lua API coverage, Steam mod discovery, mod stack diagnostics,
   multiplayer protocol, replays, authoring/import tools, profiling overlays.
 - New namespaced mechanics API and documented extension points.
+- Modern model and animation formats as optional, engine-native assets beside
+  ALO/ALA: FBX and glTF 2.0 import of meshes, skeletons, skinning, and
+  animation clips, with modern animation features (blending, layering,
+  additive clips, retargeting, root motion, blend shapes). Imported materials
+  map to the PBS material model. ALO/ALA stay the compatibility baseline and
+  existing mods keep working unchanged; new formats load through the same VFS
+  layers, asset cache, and hot reload. FBX needs an importer whose license fits
+  the project (an open-source reader such as ufbx, or the proprietary Autodesk
+  FBX SDK); that choice is open.
 
 ## Performance gates
 
