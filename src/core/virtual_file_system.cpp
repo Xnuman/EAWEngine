@@ -18,6 +18,16 @@ std::string_view DirectoryMount::name() const noexcept
     return name_;
 }
 
+AssetSourceKind DirectoryMount::kind() const noexcept
+{
+    return AssetSourceKind::directory;
+}
+
+const std::filesystem::path& DirectoryMount::source_path() const noexcept
+{
+    return root_;
+}
+
 std::optional<ResolvedAsset> DirectoryMount::resolve(const std::string_view virtual_path) const
 {
     const auto normalized = normalize_asset_path(virtual_path);
@@ -101,6 +111,16 @@ std::string_view MegMount::name() const noexcept
     return name_;
 }
 
+AssetSourceKind MegMount::kind() const noexcept
+{
+    return AssetSourceKind::meg_archive;
+}
+
+const std::filesystem::path& MegMount::source_path() const noexcept
+{
+    return archive_.path();
+}
+
 std::optional<ResolvedAsset> MegMount::resolve(const std::string_view virtual_path) const
 {
     const auto* entry = archive_.find(virtual_path);
@@ -144,6 +164,19 @@ void VirtualFileSystem::mount(std::unique_ptr<AssetMount> mount_point)
         throw std::invalid_argument("cannot add a null asset mount");
     }
     mounts_.push_back(std::move(mount_point));
+}
+
+void VirtualFileSystem::replace_mount(const std::size_t index, std::unique_ptr<AssetMount> mount_point)
+{
+    if (!mount_point)
+    {
+        throw std::invalid_argument("cannot replace an asset mount with null");
+    }
+    if (index >= mounts_.size())
+    {
+        throw std::out_of_range("asset mount index " + std::to_string(index) + " is out of range");
+    }
+    mounts_[index] = std::move(mount_point);
 }
 
 std::optional<ResolvedAsset> VirtualFileSystem::resolve(const std::string_view virtual_path) const

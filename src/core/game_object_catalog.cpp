@@ -302,7 +302,7 @@ std::optional<GameObjectModelReference> GameObjectCatalog::model(const XmlDefini
     return std::nullopt;
 }
 
-std::optional<std::string> resolve_model_path(const VirtualFileSystem& vfs, const std::string_view model_reference)
+std::optional<std::string> resolve_model_path(const AssetReader& vfs, const std::string_view model_reference)
 {
     const auto reference = trim(model_reference);
     if (reference.empty())

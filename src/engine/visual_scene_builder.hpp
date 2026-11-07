@@ -14,7 +14,8 @@
 
 namespace eaw {
 
-class VirtualFileSystem;
+class AssetReader;
+class AssetCache;
 
 struct VisualModelAsset
 {
@@ -49,9 +50,12 @@ struct VisualMapAsset
     std::size_t player_colored{};
 };
 
-[[nodiscard]] VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, std::string_view model_path);
-[[nodiscard]] VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, std::string_view map_path);
-[[nodiscard]] std::optional<std::string> default_model_animation(const VirtualFileSystem& vfs, std::string_view model_path);
+// Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file
+// dependencies). With a cache, decoded models, textures, maps, and the XML object catalog are
+// reused across builds until their source files change.
+[[nodiscard]] VisualModelAsset build_visual_model(const AssetReader& reader, std::string_view model_path, AssetCache* cache = nullptr);
+[[nodiscard]] VisualMapAsset build_visual_map(const AssetReader& reader, std::string_view map_path, AssetCache* cache = nullptr);
+[[nodiscard]] std::optional<std::string> default_model_animation(const AssetReader& reader, std::string_view model_path);
 [[nodiscard]] std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimation* animation, float seconds);
 
 } // namespace eaw

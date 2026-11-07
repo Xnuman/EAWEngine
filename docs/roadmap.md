@@ -108,8 +108,11 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   release fence, and retires replaced scene resources on the direct-queue
   timeline, so `load_scene` can replace a scene while frames are in flight.
   Scenes build on a worker thread, and textures stream in under a per-frame
-  upload budget with fallbacks until they arrive. Per-asset handles shared
-  across scenes, dependency tracking, and hot reload remain.
+  upload budget with fallbacks until they arrive. An engine asset cache keeps
+  decoded models, textures, maps, and the XML catalog with recorded file
+  dependencies, and `sandbox --hot-reload` rebuilds the scene when a loose file
+  or MEG archive behind it changes. Per-asset renderer handles shared across
+  scenes remain.
 - Camera, selection IDs, debug drawing; PBS conversion of legacy materials after
   legacy mode is stable.
 - Placed TED objects resolve to XML object types by uppercased-name CRC-32 and

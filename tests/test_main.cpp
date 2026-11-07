@@ -7,6 +7,7 @@
 #include "eaw/dat_file.hpp"
 #include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
+#include "asset_cache.hpp"
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/gpu_resource_lifetime.hpp"
 #include "eaw/legacy_material.hpp"
@@ -35,6 +36,7 @@
 #include <optional>
 #include <ranges>
 #include <set>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -478,6 +480,89 @@ void test_gpu_resource_lifetime()
         rejected = true;
     }
     require(rejected && retired.retire(6) == 1 && retired.size() == 0, "retirement fences must be non-decreasing");
+}
+
+void test_asset_cache_dependencies()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-asset-cache-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::filesystem::create_directories(root / "base" / "Data" / "Art" / "Models");
+    std::filesystem::create_directories(root / "mod" / "Data");
+    const auto write_file = [](const std::filesystem::path& path, const std::span<const std::byte> bytes)
+    {
+        std::filesystem::create_directories(path.parent_path());
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    };
+    const auto model_bytes = make_test_alo();
+    write_file(root / "base" / "Data" / "Art" / "Models" / "TEST.ALO", model_bytes);
+    const auto archive = root / "data.meg";
+    write_test_meg(archive, {{"DATA\\XML\\A.XML", "<A />"}});
+
+    // Priority: base directory < archive < mod directory.
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("base", root / "base"));
+    vfs.mount(std::make_unique<eaw::MegMount>("archive", archive));
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("mod", root / "mod"));
+
+    eaw::AssetCache cache;
+    const eaw::RecordingAssetReader first_build(vfs);
+    (void)eaw::build_visual_model(first_build, "Data/Art/Models/TEST.ALO", &cache);
+    const eaw::RecordingAssetReader second_build(vfs);
+    (void)eaw::build_visual_model(second_build, "Data/Art/Models/TEST.ALO", &cache);
+    const auto stats = cache.stats();
+    require(stats.entries == 1 && stats.misses == 1 && stats.hits == 1, "a second build must reuse the cached model");
+    const auto scene_dependencies = second_build.dependencies();
+    require(scene_dependencies.file_count() >= 1 && scene_dependencies.changes(vfs).empty(), "a reused asset must contribute its dependencies, unchanged");
+
+    // A missing file is a dependency too: adding it changes the recorded state.
+    const eaw::RecordingAssetReader probe(vfs);
+    require(!probe.resolve("Data/Art/Textures/NEW.DDS"), "the probe file must start absent");
+    const std::array<std::byte, 1> one_byte{std::byte{1}};
+    write_file(root / "mod" / "Data" / "Art" / "Textures" / "NEW.DDS", one_byte);
+    require(probe.dependencies().changes(vfs) == std::vector<std::string>{"DATA/ART/TEXTURES/NEW.DDS"}, "adding a previously missing file must be detected");
+
+    // A loose override in a higher layer invalidates the model cached from the lower layer.
+    write_file(root / "mod" / "Data" / "Art" / "Models" / "TEST.ALO", model_bytes);
+    require(scene_dependencies.changes(vfs) == std::vector<std::string>{"DATA/ART/MODELS/TEST.ALO"}, "a mod override must change the dependency");
+    require(cache.invalidate(vfs).size() == 1 && cache.stats().entries == 0, "the overridden model must be dropped from the cache");
+
+    // Archive entries: a rebuilt archive is detected, remounted, and its assets reload.
+    const auto read_text = [](const eaw::AssetReader& reader)
+    {
+        const auto bytes = reader.read("Data/XML/A.XML");
+        return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    };
+    const auto text = cache.load<std::string>("text", "Data/XML/A.XML", vfs, read_text);
+    require(*text == "<A />", "archive text was not loaded");
+    eaw::ArchiveWatch watch(vfs);
+    require(watch.changed(vfs).empty(), "an untouched archive must not report a change");
+    write_test_meg(archive, {{"DATA\\XML\\A.XML", "<A version='2' />"}});
+    require(watch.changed(vfs) == std::vector<std::size_t>{1}, "a rebuilt archive must be reported by mount index");
+    vfs.replace_mount(1, std::make_unique<eaw::MegMount>("archive", archive));
+    watch.accept(vfs, 1);
+    require(watch.changed(vfs).empty(), "an accepted remount must clear the change");
+    require(cache.invalidate(vfs) == std::vector<std::string>{"text|DATA/XML/A.XML"}, "assets from a rebuilt archive must be invalidated");
+    require(*cache.load<std::string>("text", "Data/XML/A.XML", vfs, read_text) == "<A version='2' />", "the remounted archive must serve the new bytes");
+
+    // A failing loader caches nothing, so the next load retries.
+    bool threw = false;
+    try
+    {
+        (void)cache.load<std::string>("text", "Data/XML/MISSING.XML", vfs,
+                                      [](const eaw::AssetReader& reader)
+                                      {
+                                          const auto bytes = reader.read("Data/XML/MISSING.XML");
+                                          return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+                                      });
+    }
+    catch (const std::exception&)
+    {
+        threw = true;
+    }
+    require(threw && cache.stats().entries == 1, "a failed load must not be cached");
+    std::filesystem::remove_all(root, ignored);
 }
 
 // A minimal 4x4 BC1 DDS with one mip level.
@@ -1646,6 +1731,7 @@ int main()
         test_alo_model();
         test_alo_default_mesh_visibility();
         test_gpu_resource_lifetime();
+        test_asset_cache_dependencies();
         test_texture_formats_and_materials();
         test_lua_inspection();
         test_ala_animation();

@@ -11,7 +11,7 @@
 
 namespace eaw {
 
-class VirtualFileSystem;
+class AssetReader;
 
 // Object-to-world transform for a placed TED object in the row-vector convention used by
 // alo_transform_point. Rotation components are degrees applied about X, then Y, then Z; stock
@@ -51,6 +51,6 @@ struct MapObjectLayout
 // Resolves every positioned placed object of a map to its XML type, model, and world transform.
 // Objects without a decoded transform are skipped. The catalog (and its database) must outlive
 // the returned layout because placements point at catalog definitions.
-[[nodiscard]] MapObjectLayout build_map_object_layout(const TedMap& map, const GameObjectCatalog& catalog, const VirtualFileSystem& vfs);
+[[nodiscard]] MapObjectLayout build_map_object_layout(const TedMap& map, const GameObjectCatalog& catalog, const AssetReader& vfs);
 
 } // namespace eaw

@@ -212,7 +212,7 @@ AloMatrix4 placed_object_transform(const TedPlacedObject& object) noexcept
     return alo_compose_transform({scale, scale, scale}, rotation, {object.position.x, object.position.y, object.position.z});
 }
 
-MapObjectLayout build_map_object_layout(const TedMap& map, const GameObjectCatalog& catalog, const VirtualFileSystem& vfs)
+MapObjectLayout build_map_object_layout(const TedMap& map, const GameObjectCatalog& catalog, const AssetReader& vfs)
 {
     MapObjectLayout layout;
     layout.context = map.type == TedMapType::land ? GameModelContext::land : GameModelContext::space;

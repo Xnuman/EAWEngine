@@ -95,6 +95,20 @@ heap are therefore never rewritten while a frame may read them. Scene
 construction itself runs on a worker thread in the sandbox; VFS reads are safe
 there because each const read opens its own stream.
 
+Decoded assets live in the engine's `AssetCache`, keyed by kind and virtual
+path. Builders read through the core `AssetReader` interface, which the VFS
+implements; a `RecordingAssetReader` wraps it and records a fingerprint of every
+resolve (winning mount, container, entry offset and size, and the container's
+write time), every lookup that found nothing, and a hash of every listing. A
+cached asset keeps the dependencies gathered while it loaded, and reusing it
+adds them to the caller's recorder, so a scene knows every file behind it. An
+asset is stale when any fingerprint changes: an edited loose file, a new file
+in a higher-priority layer, or a rebuilt archive. A MEG mount indexes entry
+offsets once, so a rebuilt archive must be remounted (`replace_mount`) before
+anything reads from it; the sandbox does that on the main thread between
+builds, never while a worker is reading. A rebuilt archive invalidates every
+asset read from it, which is conservative but never serves stale bytes.
+
 Animated visual scenes preserve model-wide bone indices in immutable vertex
 buffers. ALA poses are sampled on the CPU into skin matrices, while every
 in-flight frame owns a persistently mapped bone-palette buffer. The CPU updates

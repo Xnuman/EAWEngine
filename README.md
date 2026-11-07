@@ -88,7 +88,11 @@ shows the validation triangle; textures then stream in under
 `--frame-limit <count>` supports self-terminating smoke tests and counts frames
 from the moment the scene is shown. `--reload-every <frames>` replaces the scene
 with a fresh copy every N frames to exercise resource retirement; the sandbox
-prints the remaining texture, slot, and retirement counts on exit. `--pipeline-cache <dir>` stores compiled pipeline states in that
+prints the remaining texture, slot, and retirement counts on exit. With
+`--hot-reload`, the sandbox watches the files the scene was built from (loose
+files in the game and mod directories and the MEG archives) and rebuilds it,
+re-decoding only the changed assets, when one of them changes; the camera is
+kept. Your installation is only read. `--pipeline-cache <dir>` stores compiled pipeline states in that
 directory so later launches skip pipeline compilation; stale or driver-mismatched
 caches are discarded automatically. Use `--model <virtual-alo-path>` to inspect another mounted model,
 `--animation <virtual-ala-path>` to select an animation, or

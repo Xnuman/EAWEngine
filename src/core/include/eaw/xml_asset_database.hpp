@@ -53,7 +53,7 @@ struct XmlDuplicateDefinition
 class XmlAssetDatabase final
 {
 public:
-    [[nodiscard]] static XmlAssetDatabase build(const VirtualFileSystem& vfs, std::string_view prefix = "Data/XML");
+    [[nodiscard]] static XmlAssetDatabase build(const AssetReader& vfs, std::string_view prefix = "Data/XML");
 
     [[nodiscard]] std::size_t document_count() const noexcept;
     [[nodiscard]] std::size_t parsed_document_count() const noexcept;

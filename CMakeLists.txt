@@ -178,6 +178,7 @@ endif()
 # Platform-independent engine orchestration: visual scene construction and camera control. It
 # consumes the render contract headers (engine-native data) but no graphics API.
 add_library(eaw_engine STATIC
+    src/engine/asset_cache.cpp
     src/engine/camera_controller.cpp
     src/engine/visual_scene_builder.cpp
 )

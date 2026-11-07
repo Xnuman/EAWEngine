@@ -53,7 +53,7 @@ std::string include_path(const std::string_view value)
     return normalize_asset_path(candidate);
 }
 
-void collect_node(const VirtualFileSystem& vfs, const XmlNode& node, const std::string& source_path, std::vector<XmlDefinition>& definitions, std::vector<XmlIncludeReference>& includes,
+void collect_node(const AssetReader& vfs, const XmlNode& node, const std::string& source_path, std::vector<XmlDefinition>& definitions, std::vector<XmlIncludeReference>& includes,
                   const std::size_t depth)
 {
     if (const auto* name = node.attribute("Name"); name != nullptr && !trim(name->value).empty())
@@ -83,7 +83,7 @@ void collect_node(const VirtualFileSystem& vfs, const XmlNode& node, const std::
 
 } // namespace
 
-XmlAssetDatabase XmlAssetDatabase::build(const VirtualFileSystem& vfs, const std::string_view prefix)
+XmlAssetDatabase XmlAssetDatabase::build(const AssetReader& vfs, const std::string_view prefix)
 {
     XmlAssetDatabase database;
     for (const auto& asset : vfs.list(prefix))

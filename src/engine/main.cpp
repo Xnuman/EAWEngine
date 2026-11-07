@@ -5,6 +5,7 @@
 #ifdef _WIN32
 #include "eaw/d3d12_renderer.hpp"
 #include "eaw/platform_window.hpp"
+#include "asset_cache.hpp"
 #include "camera_controller.hpp"
 #include "visual_scene_builder.hpp"
 #endif
@@ -53,6 +54,8 @@ struct Options
     std::optional<std::uint64_t> reload_every;
     // Per-frame texture upload budget in MiB; zero uploads everything at once.
     std::uint64_t upload_budget_mib{64};
+    // Watch the scene's source files and archives and rebuild when they change.
+    bool hot_reload{};
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};
@@ -80,6 +83,7 @@ void print_usage()
               << "  --frame-latency <1|2>  Maximum queued presentation frames\n"
               << "  --frame-limit <count>  Exit after this many frames once the scene is shown (automation)\n"
               << "  --upload-budget <MiB>  Texture bytes streamed per frame (default 64; 0 uploads all at once)\n"
+              << "  --hot-reload       Rebuild the scene when its loose files or MEG archives change\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
               << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
@@ -143,6 +147,10 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--gpu-validation")
         {
             options.gpu_validation = true;
+        }
+        else if (argument == "--hot-reload")
+        {
+            options.hot_reload = true;
         }
         else if (argument == "--validation-triangle")
         {
@@ -265,46 +273,66 @@ struct SandboxContent
     std::optional<eaw::AlaAnimation> animation;
     std::string animation_path;
     std::string animation_error;
-    // When set, nothing was built and the validation triangle stays.
+    // When set, nothing was built and the current view stays.
     std::string error;
     double build_seconds{};
+    // Files the build consulted (also after a failure, so fixing a file triggers a rebuild).
+    eaw::DependencySet dependencies;
+    // Cache entries dropped because their files changed (rebuilds only).
+    std::vector<std::string> invalidated;
+    bool reload{};
 };
 
-SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Options& options)
+// Result of a background hot-reload check: archives whose file changed and scene dependencies
+// whose resolved source changed.
+struct HotReloadCheck
+{
+    std::vector<std::size_t> archives;
+    std::vector<std::string> files;
+};
+
+SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Options& options, eaw::AssetCache* cache, const bool reload)
 {
     SandboxContent content;
+    content.reload = reload;
     const auto start = std::chrono::steady_clock::now();
+    if (reload && cache != nullptr)
+    {
+        content.invalidated = cache->invalidate(vfs);
+    }
+    const eaw::RecordingAssetReader reader(vfs);
     try
     {
         if (options.map)
         {
-            content.map = eaw::build_visual_map(vfs, *options.map);
+            content.map = eaw::build_visual_map(reader, *options.map, cache);
         }
         else
         {
-            content.model = eaw::build_visual_model(vfs, options.model);
+            content.model = eaw::build_visual_model(reader, options.model, cache);
         }
     }
     catch (const std::exception& error)
     {
         content.error = error.what();
+        content.dependencies = reader.dependencies();
         return content;
     }
     if (content.model)
     {
         try
         {
-            const auto animation_path = options.animation ? options.animation : eaw::default_model_animation(vfs, options.model);
+            const auto animation_path = options.animation ? options.animation : eaw::default_model_animation(reader, options.model);
             if (animation_path)
             {
-                const auto resolved_animation = vfs.resolve(*animation_path);
+                const auto resolved_animation = reader.resolve(*animation_path);
                 if (!resolved_animation)
                 {
                     content.animation_error = "asset not found: " + *animation_path;
                 }
                 else
                 {
-                    content.animation = eaw::AlaAnimation::parse(vfs.read(resolved_animation->virtual_path));
+                    content.animation = eaw::AlaAnimation::parse(reader.read(resolved_animation->virtual_path));
                     content.animation_path = resolved_animation->virtual_path;
                 }
             }
@@ -316,6 +344,7 @@ SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Op
         }
     }
     content.build_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    content.dependencies = reader.dependencies();
     return content;
 }
 
@@ -404,10 +433,16 @@ int main(const int argc, char** argv)
 
         // The window stays responsive while the map or model builds on a worker thread. The future
         // is declared after the VFS, so leaving early waits for the worker before the VFS goes away.
+        // Decoded assets shared by every build; a hot reload re-decodes only what changed.
+        eaw::AssetCache asset_cache;
+        eaw::ArchiveWatch archive_watch(vfs);
+        std::optional<eaw::DependencySet> scene_dependencies;
         std::future<SandboxContent> pending_content;
+        std::future<HotReloadCheck> pending_check;
+        auto next_reload_check = std::chrono::steady_clock::now();
         if (!options.validation_triangle)
         {
-            pending_content = std::async(std::launch::async, build_sandbox_content, std::cref(vfs), std::cref(options));
+            pending_content = std::async(std::launch::async, build_sandbox_content, std::cref(vfs), std::cref(options), &asset_cache, false);
             std::cout << "Building " << (options.map ? "map " + *options.map : "model " + options.model) << " in the background...\n";
         }
         // Frame count at which the content was shown; --frame-limit counts from here.
@@ -419,9 +454,15 @@ int main(const int argc, char** argv)
 
         const auto apply_content = [&](SandboxContent content)
         {
+            scene_dependencies = std::move(content.dependencies);
+            if (content.reload)
+            {
+                const auto stats = asset_cache.stats();
+                std::cout << "Hot reload: rebuilt in " << content.build_seconds << " s; " << content.invalidated.size() << " cached assets re-decoded, " << stats.entries << " cached\n";
+            }
             if (!content.error.empty())
             {
-                std::cerr << (options.map ? "map" : "model") << " warning: " << content.error << "; using the validation triangle\n";
+                std::cerr << (options.map ? "map" : "model") << " warning: " << content.error << (content.reload ? "; keeping the current view\n" : "; using the validation triangle\n");
                 return;
             }
             if (content.map)
@@ -465,14 +506,18 @@ int main(const int argc, char** argv)
                     reload_scene = scene;
                 }
                 renderer.load_scene(std::move(visual_map.scene));
-                tactical_camera.emplace(bounds);
-                orbit_camera.reset();
                 if (visual_map.lighting)
                 {
                     renderer.set_lighting(*visual_map.lighting);
                 }
-                renderer.set_camera(tactical_camera->camera());
-                std::cout << "Tactical camera: WASD/arrows or right-drag pan (Shift is faster), left-drag rotates, wheel zooms, Space resets.\n";
+                // A hot reload keeps the viewer's camera.
+                if (!content.reload || !tactical_camera)
+                {
+                    tactical_camera.emplace(bounds);
+                    orbit_camera.reset();
+                    renderer.set_camera(tactical_camera->camera());
+                    std::cout << "Tactical camera: WASD/arrows or right-drag pan (Shift is faster), left-drag rotates, wheel zooms, Space resets.\n";
+                }
             }
             else if (content.model)
             {
@@ -494,12 +539,16 @@ int main(const int argc, char** argv)
                 renderer.load_scene(std::exchange(scene, {}));
                 bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
                 renderer.set_bone_transforms(bind_palette);
-                orbit_camera.emplace(bounds);
-                renderer.set_camera(orbit_camera->camera());
+                if (!content.reload || !orbit_camera)
+                {
+                    orbit_camera.emplace(bounds);
+                    renderer.set_camera(orbit_camera->camera());
+                }
                 if (!content.animation_error.empty())
                 {
                     std::cerr << "animation warning: " << content.animation_error << '\n';
                 }
+                visual_animation.reset();
                 if (content.animation)
                 {
                     visual_animation = std::move(content.animation);
@@ -510,7 +559,10 @@ int main(const int argc, char** argv)
                         std::cerr << "animation warning: " << warning << '\n';
                     }
                 }
-                std::cout << "Left-drag orbits, wheel zooms, Space resets, P pauses animation.\n";
+                if (!content.reload)
+                {
+                    std::cout << "Left-drag orbits, wheel zooms, Space resets, P pauses animation.\n";
+                }
             }
         };
 
@@ -529,6 +581,7 @@ int main(const int argc, char** argv)
         bool animation_playing = true;
         std::uint64_t scene_reloads = 0;
         bool textures_streamed = false;
+        std::uint64_t streaming_since = 0;
         while (!window.close_requested())
         {
             window.poll_events();
@@ -598,8 +651,62 @@ int main(const int argc, char** argv)
                 {
                     std::cerr << "scene warning: " << error.what() << "; keeping the validation triangle\n";
                 }
-                content_shown_at = renderer.stats().frame_number;
+                if (!content_shown_at)
+                {
+                    content_shown_at = renderer.stats().frame_number;
+                }
+                textures_streamed = false;
+                streaming_since = renderer.stats().frame_number;
                 animation_tick = std::chrono::steady_clock::now();
+                next_reload_check = animation_tick + std::chrono::seconds(1);
+            }
+            // Hot reload: once a second (and never during a build) a worker compares the scene's
+            // dependencies and the MEG archives with their recorded state. Rebuilt archives are
+            // remounted here, while no other thread reads the file system, then the scene rebuilds
+            // in the background from the cache.
+            if (options.hot_reload && scene_dependencies && !pending_content.valid())
+            {
+                if (pending_check.valid() && pending_check.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+                {
+                    auto check = pending_check.get();
+                    next_reload_check = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+                    bool remounted = true;
+                    for (const auto index : check.archives)
+                    {
+                        const auto& mount = vfs.mounts()[index];
+                        const auto archive = mount->source_path();
+                        try
+                        {
+                            vfs.replace_mount(index, std::make_unique<eaw::MegMount>(std::string(mount->name()), archive));
+                            archive_watch.accept(vfs, index);
+                            std::cout << "Hot reload: remounted " << archive.string() << '\n';
+                        }
+                        catch (const std::exception& error)
+                        {
+                            // Typically the archive is still being written; try again next check.
+                            std::cerr << "hot reload warning: " << archive.string() << " could not be remounted (" << error.what() << "); retrying\n";
+                            remounted = false;
+                        }
+                    }
+                    if (remounted && (!check.archives.empty() || !check.files.empty()))
+                    {
+                        std::cout << "Hot reload: " << check.files.size() << " changed dependencies";
+                        for (std::size_t index = 0; index < check.files.size() && index < 3; ++index)
+                        {
+                            std::cout << (index == 0 ? " (" : ", ") << check.files[index];
+                        }
+                        std::cout << (check.files.size() > 3 ? ", ...)" : check.files.empty() ? "" : ")") << "; rebuilding\n";
+                        pending_content = std::async(std::launch::async, build_sandbox_content, std::cref(vfs), std::cref(options), &asset_cache, true);
+                    }
+                }
+                else if (!pending_check.valid() && std::chrono::steady_clock::now() >= next_reload_check)
+                {
+                    pending_check = std::async(std::launch::async,
+                                               [&vfs, &archive_watch, dependencies = *scene_dependencies]
+                                               {
+                                                   return HotReloadCheck{archive_watch.changed(vfs), dependencies.changes(vfs)};
+                                               });
+                }
             }
             const auto now = std::chrono::steady_clock::now();
             const auto animation_delta = std::chrono::duration<float>(now - animation_tick).count();
@@ -630,7 +737,7 @@ int main(const int argc, char** argv)
                 textures_streamed = true;
                 if (renderer.stats().live_textures != 0)
                 {
-                    std::cout << "Textures resident after " << renderer.stats().frame_number - *content_shown_at << " frames\n";
+                    std::cout << "Textures resident after " << renderer.stats().frame_number - streaming_since << " frames\n";
                 }
             }
             if (options.frame_limit && content_shown_at && renderer.stats().frame_number - *content_shown_at >= *options.frame_limit)

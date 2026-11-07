@@ -1,5 +1,7 @@
 #include "visual_scene_builder.hpp"
 
+#include "asset_cache.hpp"
+
 #include "eaw/alo_model.hpp"
 #include "eaw/dds_texture.hpp"
 #include "eaw/game_object_catalog.hpp"
@@ -15,6 +17,7 @@
 #include <cmath>
 #include <filesystem>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <stdexcept>
@@ -151,7 +154,7 @@ VisualTexture make_visual_texture(const std::string_view name, const std::span<c
     return result;
 }
 
-std::optional<std::string> resolve_texture(const VirtualFileSystem& vfs, const std::string_view reference)
+std::optional<std::string> resolve_texture(const AssetReader& vfs, const std::string_view reference)
 {
     auto filename = std::filesystem::path(reference).filename();
     filename.replace_extension(".DDS");
@@ -210,10 +213,45 @@ AloVector3 transform_direction(const AloVector3& direction, const AloMatrix4& ma
 // Accumulates models into one scene with a shared, deduplicated texture table.
 struct SceneBuilder
 {
-    const VirtualFileSystem& vfs;
+    const AssetReader& vfs;
     VisualScene& scene;
     std::unordered_map<std::string, std::uint32_t> texture_indices;
+    AssetCache* cache{};
 };
+
+// Loads through the cache when there is one; otherwise decodes directly.
+template <class T, class Loader> std::shared_ptr<const T> cached(AssetCache* cache, const std::string_view kind, const std::string_view key, const AssetReader& reader, Loader&& loader)
+{
+    if (cache != nullptr)
+    {
+        return cache->load<T>(kind, key, reader, std::forward<Loader>(loader));
+    }
+    return std::make_shared<const T>(loader(reader));
+}
+
+// A decoded DDS for an ALO texture reference, or why it is unavailable (cached either way: the
+// failed lookups are dependencies, so adding the file later invalidates the entry).
+struct CachedTexture
+{
+    std::optional<VisualTexture> texture;
+    std::string error;
+};
+
+// The XML object catalog borrows its database, so both live behind one stable allocation.
+struct CachedCatalog
+{
+    std::unique_ptr<XmlAssetDatabase> database;
+    GameObjectCatalog catalog;
+};
+
+std::shared_ptr<const AloModel> cached_model(SceneBuilder& builder, const std::string& path)
+{
+    return cached<AloModel>(builder.cache, "alo", path, builder.vfs,
+                            [&](const AssetReader& reader)
+                            {
+                                return AloModel::parse(reader.read(path));
+                            });
+}
 
 // Loads (once per scene) the DDS for an ALO texture reference and returns its scene texture
 // index, or invalid_visual_texture with a warning when it is missing or unsupported.
@@ -225,22 +263,34 @@ std::uint32_t scene_texture(SceneBuilder& builder, const std::string& reference)
         return existing->second;
     }
     auto index = invalid_visual_texture;
-    if (const auto texture_path = resolve_texture(builder.vfs, reference))
+    const auto loaded = cached<CachedTexture>(builder.cache, "texture", key, builder.vfs,
+                                              [&](const AssetReader& reader)
+                                              {
+                                                  CachedTexture result;
+                                                  const auto texture_path = resolve_texture(reader, reference);
+                                                  if (!texture_path)
+                                                  {
+                                                      result.error = "matching DDS not found";
+                                                      return result;
+                                                  }
+                                                  try
+                                                  {
+                                                      result.texture = make_visual_texture(reference, reader.read(*texture_path));
+                                                  }
+                                                  catch (const std::exception& error)
+                                                  {
+                                                      result.error = error.what();
+                                                  }
+                                                  return result;
+                                              });
+    if (loaded->texture)
     {
-        try
-        {
-            index = static_cast<std::uint32_t>(builder.scene.textures.size());
-            builder.scene.textures.push_back(make_visual_texture(reference, builder.vfs.read(*texture_path)));
-        }
-        catch (const std::exception& error)
-        {
-            index = invalid_visual_texture;
-            builder.scene.warnings.push_back(reference + ": " + error.what());
-        }
+        index = static_cast<std::uint32_t>(builder.scene.textures.size());
+        builder.scene.textures.push_back(*loaded->texture);
     }
     else
     {
-        builder.scene.warnings.push_back(reference + ": matching DDS not found");
+        builder.scene.warnings.push_back(reference + ": " + loaded->error);
     }
     builder.texture_indices.emplace(key, index);
     return index;
@@ -996,7 +1046,7 @@ void update_scene_bounds(VisualScene& scene)
 
 } // namespace
 
-VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, const std::string_view model_path)
+VisualModelAsset build_visual_model(const AssetReader& vfs, const std::string_view model_path, AssetCache* cache)
 {
     const auto resolved = vfs.resolve(model_path);
     if (!resolved)
@@ -1004,15 +1054,15 @@ VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, const std::str
         throw std::runtime_error("visual model was not found: " + std::string(model_path));
     }
     VisualModelAsset asset;
-    asset.model = AloModel::parse(vfs.read(resolved->virtual_path));
+    auto& scene = asset.scene;
+    SceneBuilder builder{vfs, scene, {}, cache};
+    asset.model = *cached_model(builder, resolved->virtual_path);
     for (const auto& transform : asset.model.bind_pose())
     {
         asset.inverse_bind_pose.push_back(alo_inverse(transform));
     }
-    auto& scene = asset.scene;
     scene.name = resolved->virtual_path;
     scene.warnings = asset.model.warnings;
-    SceneBuilder builder{vfs, scene, {}};
     const auto mesh = append_model(builder, asset.model, resolved->virtual_path);
     VisualInstance instance{mesh};
     instance.team_color = player_team_color(1);
@@ -1022,7 +1072,7 @@ VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, const std::str
     return asset;
 }
 
-VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_view map_path)
+VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view map_path, AssetCache* cache)
 {
     const auto resolved = vfs.resolve(map_path);
     if (!resolved)
@@ -1030,10 +1080,21 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
         throw std::runtime_error("map was not found: " + std::string(map_path));
     }
     VisualMapAsset asset;
-    const auto map = TedMap::parse(vfs.read(resolved->virtual_path));
+    const auto map_entry = cached<TedMap>(cache, "ted", resolved->virtual_path, vfs,
+                                          [&](const AssetReader& reader)
+                                          {
+                                              return TedMap::parse(reader.read(resolved->virtual_path));
+                                          });
+    const auto& map = *map_entry;
     asset.land = map.type == TedMapType::land;
-    const auto database = XmlAssetDatabase::build(vfs);
-    const auto catalog = GameObjectCatalog::build(database);
+    const auto catalog_entry = cached<CachedCatalog>(cache, "xml-catalog", "Data/XML", vfs,
+                                                     [](const AssetReader& reader)
+                                                     {
+                                                         auto database = std::make_unique<XmlAssetDatabase>(XmlAssetDatabase::build(reader));
+                                                         auto catalog = GameObjectCatalog::build(*database);
+                                                         return CachedCatalog{std::move(database), std::move(catalog)};
+                                                     });
+    const auto& catalog = catalog_entry->catalog;
     const auto layout = build_map_object_layout(map, catalog, vfs);
     asset.untyped = layout.untyped;
     asset.without_model = layout.without_model;
@@ -1043,7 +1104,7 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
 
     auto& scene = asset.scene;
     scene.name = resolved->virtual_path;
-    SceneBuilder builder{vfs, scene, {}};
+    SceneBuilder builder{vfs, scene, {}, cache};
     if (asset.land)
     {
         append_terrain(builder, map);
@@ -1062,7 +1123,7 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
         {
             try
             {
-                entry->second = append_model(builder, AloModel::parse(vfs.read(placement.model_path)), placement.model_path);
+                entry->second = append_model(builder, *cached_model(builder, placement.model_path), placement.model_path);
             }
             catch (const std::exception& error)
             {
@@ -1137,7 +1198,7 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
             {
                 try
                 {
-                    entry->second = append_model(builder, AloModel::parse(vfs.read(*path)), *path);
+                    entry->second = append_model(builder, *cached_model(builder, *path), *path);
                 }
                 catch (const std::exception& error)
                 {
@@ -1181,7 +1242,7 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
     return asset;
 }
 
-std::optional<std::string> default_model_animation(const VirtualFileSystem& vfs, const std::string_view model_path)
+std::optional<std::string> default_model_animation(const AssetReader& vfs, const std::string_view model_path)
 {
     const auto path = std::filesystem::path(model_path);
     const auto candidate = path.parent_path() / (path.stem().string() + "_IDLE_00.ALA");

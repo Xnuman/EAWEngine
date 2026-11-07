@@ -13,7 +13,7 @@
 
 namespace eaw {
 
-class VirtualFileSystem;
+class AssetReader;
 
 // Hash used to reference object types by name from binary data such as TED placed objects:
 // CRC-32 (IEEE, reflected) of the ASCII-uppercased type name. Established by the stock corpus
@@ -96,7 +96,7 @@ private:
 
 // Resolves an XML model reference (for example "EV_Acclamator.alo" or "EV_Acclamator") to the
 // winning virtual path under Data/Art/Models, or nullopt when no layer provides it.
-[[nodiscard]] std::optional<std::string> resolve_model_path(const VirtualFileSystem& vfs, std::string_view model_reference);
+[[nodiscard]] std::optional<std::string> resolve_model_path(const AssetReader& vfs, std::string_view model_reference);
 
 [[nodiscard]] std::string_view to_string(GameModelContext context) noexcept;
 
