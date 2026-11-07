@@ -408,6 +408,8 @@ struct PlatformWindow::Impl
             return Key::b;
         case 'C':
             return Key::c;
+        case 'G':
+            return Key::g;
         case 'N':
             return Key::n;
         case VK_TAB:

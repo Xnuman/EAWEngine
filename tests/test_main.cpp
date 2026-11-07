@@ -767,7 +767,7 @@ void test_rts_control()
 void test_terrain_height_field()
 {
     // A 4x4 field rising along X (height = 5 * column) with a liquid at 7.
-    eaw::TerrainHeightField field;
+    eaw::GroundMap field;
     field.width = 4;
     field.height = 4;
     field.spacing = 20.0F;
@@ -865,6 +865,62 @@ void test_status_and_log()
             "log records must reach sinks in order and be counted");
     const auto line = eaw::format_log_record({eaw::LogLevel::warning, "map", "bad placement"});
     require(line.starts_with("[") && line.ends_with("] [warning] [map] bad placement"), "log lines must carry time, level, category, and message");
+}
+
+void test_ground_movement()
+{
+    // A 6x3 field (20 units per cell) rising 5 units per column, with a blocked column at x = 4.
+    eaw::GroundMap ground;
+    ground.width = 6;
+    ground.height = 3;
+    ground.spacing = 20.0F;
+    for (std::uint32_t y = 0; y < ground.height; ++y)
+    {
+        for (std::uint32_t x = 0; x < ground.width; ++x)
+        {
+            ground.heights.push_back(5.0F * static_cast<float>(x));
+            ground.passability.push_back(x == 4 ? eaw::passability::blocked : eaw::passability::ground);
+        }
+    }
+    require(ground.passability_at(81.0F, 20.0F) == eaw::passability::blocked && ground.passability_at(39.0F, 20.0F) == eaw::passability::ground && !ground.passability_at(-30.0F, 0.0F),
+            "passability must be looked up at the nearest cell");
+
+    eaw::SimulationWorld world(0.1);
+    world.set_ground(ground);
+    const auto walker = world.spawn({.type_name = "Walker", .position = {0.0F, 20.0F, 999.0F}, .max_speed = 100.0F, .follows_ground = true});
+    const auto flyer = world.spawn({.type_name = "Flyer", .position = {0.0F, 20.0F, 50.0F}, .max_speed = 100.0F});
+    require(walker && flyer, "test spawns must succeed");
+    world.step();
+    require(world.snapshot().entities[0].position.z == 0.0F && world.snapshot().entities[1].position.z == 50.0F, "a ground unit spawns on the surface; others keep their height");
+
+    // Ordered across the slope toward the blocked column: the walker climbs with the terrain and
+    // stops before x = 4 (cell edge at 70), the flyer keeps a straight line.
+    world.submit({eaw::SimCommandKind::move, {*walker, *flyer}, {100.0F, 20.0F, 50.0F}});
+    world.step();
+    const auto& moved = world.snapshot().entities;
+    require(std::fabs(moved[0].position.x - 10.0F) < 1.0e-4F && std::fabs(moved[0].position.z - 2.5F) < 1.0e-4F, "a ground unit must take its height from the surface");
+    for (int tick = 0; tick < 20; ++tick)
+    {
+        world.step();
+    }
+    const auto& stopped = world.snapshot().entities;
+    require(!stopped[0].moving && stopped[0].position.x < 70.0F && world.stats().blocked_moves == 1, "a ground unit must stop before entering a blocked cell");
+    require(stopped[1].position.x == 100.0F && stopped[1].position.z == 50.0F, "a unit that does not follow the ground ignores passability");
+
+    // A unit standing on a blocked cell may leave it.
+    const auto stranded = world.spawn({.type_name = "Stranded", .position = {80.0F, 0.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true});
+    require(stranded.ok(), "test spawn must succeed");
+    world.submit({eaw::SimCommandKind::move, {*stranded}, {100.0F, 0.0F, 0.0F}});
+    for (int tick = 0; tick < 5; ++tick)
+    {
+        world.step();
+    }
+    require(world.snapshot().entities[2].position.x == 100.0F && std::fabs(world.snapshot().entities[2].position.z - 25.0F) < 1.0e-4F, "leaving a blocked cell must be allowed");
+
+    // The liquid surface carries ground units over lower terrain.
+    eaw::GroundMap flooded = ground;
+    flooded.liquid_level = 12.0F;
+    require(flooded.surface_height(0.0F, 0.0F) == 12.0F && flooded.surface_height(100.0F, 0.0F) == 25.0F, "the surface is the higher of terrain and liquid");
 }
 
 // A minimal 4x4 BC1 DDS with one mip level.
@@ -2040,6 +2096,7 @@ int main()
     test_asset_cache_dependencies();
     test_debug_draw();
     test_simulation_core();
+    test_ground_movement();
     test_fatal_error_report();
     test_status_and_log();
     test_scene_presentation();

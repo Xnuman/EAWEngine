@@ -47,7 +47,7 @@ public:
     [[nodiscard]] std::string type_name(EntityId id) const;
     // Spawns an entity of a runtime-spawnable type into `world` and records its template; fails
     // (recording nothing) when the world rejects the spawn.
-    [[nodiscard]] Result<EntityId> spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, float heading, std::uint32_t owner);
+    [[nodiscard]] Result<EntityId> spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, float heading, std::uint32_t owner, bool follows_ground = false);
 
 private:
     struct Template

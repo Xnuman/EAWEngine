@@ -52,6 +52,10 @@ struct SpawnableType
     std::uint32_t mesh{};
     float max_speed{};
     std::array<float, 4> team_color{1.0F, 1.0F, 1.0F, 1.0F};
+    // Walks on the ground on land maps (Space_Layer Land or None); flyers keep a height instead.
+    bool follows_ground{};
+    // XML Hover_Offset: height above the surface for flyers (air whales 250, snowspeeders 50).
+    float hover_offset{};
 };
 
 struct VisualMapAsset
@@ -80,8 +84,8 @@ struct VisualMapAsset
     std::vector<MapEntitySpawn> entities;
     // Types requested for runtime spawning that resolved to a model, in request order.
     std::vector<SpawnableType> spawnable;
-    // Ground surface for CPU queries (land maps; invalid for space).
-    TerrainHeightField terrain_heights;
+    // Ground for the simulation and CPU queries (land maps; invalid for space).
+    GroundMap ground;
 };
 
 // Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file

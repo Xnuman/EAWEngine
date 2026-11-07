@@ -198,6 +198,7 @@ endif()
 
 # Deterministic tactical simulation core: no graphics, platform, or file access.
 add_library(eaw_simulation STATIC
+    src/simulation/ground_map.cpp
     src/simulation/simulation.cpp
 )
 target_include_directories(eaw_simulation PUBLIC src/simulation/include)

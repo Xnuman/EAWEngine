@@ -26,6 +26,7 @@ enum class Key : std::uint8_t
     p,
     b,
     c,
+    g,
     n,
     tab,
     f1,

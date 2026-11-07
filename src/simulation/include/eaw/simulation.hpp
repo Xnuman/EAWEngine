@@ -11,6 +11,8 @@
 
 #include "eaw/status.hpp"
 
+#include "eaw/ground_map.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -57,6 +59,9 @@ struct EntitySpawn
     float max_speed{};
     std::uint32_t visual{};
     bool selectable{true};
+    // Moves over the world's ground (height from the surface, stopped by blocked cells) instead of
+    // in a straight 3D line.
+    bool follows_ground{};
 };
 
 enum class SimCommandKind : std::uint8_t
@@ -85,6 +90,7 @@ struct EntitySnapshot
     bool moving{};
     bool selectable{};
     float max_speed{};
+    bool follows_ground{};
 };
 
 struct SimSnapshot
@@ -125,6 +131,8 @@ public:
         std::uint64_t commands_applied{};
         // Commands or command targets that named destroyed or unknown entities.
         std::uint64_t stale_references{};
+        // Ground moves stopped at a blocked passability cell.
+        std::uint64_t blocked_moves{};
     };
 
     explicit SimulationWorld(double tick_seconds = 1.0 / 30.0);
@@ -133,6 +141,12 @@ public:
     // data comes from map and mod content: a non-finite position, heading, or speed, or full entity
     // storage, returns an error and spawns nothing.
     [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn);
+    // Ground for entities that follow it. `blocked_classes` is a mask of raw passability values that
+    // stop ground movement (provisionally only passability::blocked; see ground_map.hpp). An entity
+    // standing on a blocked cell may still leave it.
+    void set_ground(GroundMap ground, std::uint32_t blocked_classes = passability::blocked);
+    [[nodiscard]] const GroundMap& ground() const noexcept;
+
     // Queues a command for the next step(); commands apply in submission order.
     void submit(SimCommand command);
     // Applies queued commands, runs the systems once, and publishes a new snapshot.
@@ -149,6 +163,7 @@ private:
     void apply(const SimCommand& command);
     void destroy(std::size_t dense);
     void run_movement();
+    void move_over_ground(std::size_t index, float dt);
     void publish();
 
     double tick_seconds_;
@@ -167,6 +182,10 @@ private:
     std::vector<std::uint32_t> visuals_;
     std::vector<std::uint8_t> selectable_;
     std::vector<std::string> type_names_;
+    std::vector<std::uint8_t> follows_ground_;
+    GroundMap ground_;
+    std::uint32_t blocked_classes_{};
+    std::uint64_t blocked_moves_{};
     std::vector<SimCommand> pending_;
     SimSnapshot snapshot_;
     std::uint64_t commands_applied_{};

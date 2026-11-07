@@ -74,6 +74,8 @@ struct Options
     std::optional<std::array<std::uint32_t, 2>> pick;
     // Start with every instance's bounds drawn (B toggles at runtime).
     bool show_bounds{};
+    // Start with the passability overlay drawn (G toggles at runtime).
+    bool show_passability{};
     // On-screen statistics panel (F1 toggles at runtime).
     bool overlay{true};
     // Mouse movement and keys through raw input (--no-raw-input uses window messages).
@@ -116,6 +118,7 @@ void print_usage()
               << "  --hot-reload       Rebuild the scene when its loose files or MEG archives change\n"
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
+              << "  --show-passability Start with the map's passability classes drawn (G toggles)\n"
               << "  --no-overlay       Start without the on-screen statistics panel (F1 toggles)\n"
               << "  --no-raw-input     Read mouse movement and keys from window messages instead of raw input\n"
               << "  --no-error-dialog  Report fatal errors on stderr only (no error window)\n"
@@ -195,6 +198,10 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
         else if (argument == "--show-bounds")
         {
             options.show_bounds = true;
+        }
+        else if (argument == "--show-passability")
+        {
+            options.show_passability = true;
         }
         else if (argument == "--no-overlay")
         {
@@ -649,7 +656,7 @@ int main(const int argc, char** argv)
         // Runtime-spawnable types of the current map; N spawns `spawn_choice` at the cursor.
         std::vector<eaw::SpawnableType> spawnable;
         // The map's ground surface for CPU order targets (invalid on space maps and models).
-        eaw::TerrainHeightField terrain_heights;
+        eaw::GroundMap terrain_heights;
         std::size_t spawn_choice = 0;
         bool initial_spawns_sent = false;
         // Every shown object is a simulation entity; backdrops stay static. Presentation re-poses the
@@ -664,6 +671,8 @@ int main(const int argc, char** argv)
         auto simulation_tick = std::chrono::steady_clock::now();
         float axis_length = 1.0F;
         bool show_all_bounds = options.show_bounds;
+        // G: passability classes drawn around the camera focus (land maps).
+        bool show_passability = options.show_passability;
         // Text shown on the statistics overlay; updated where the console reports the same events.
         std::string scene_status = options.validation_triangle ? "validation triangle" : "building in the background...";
         std::string animation_status;
@@ -731,6 +740,43 @@ int main(const int argc, char** argv)
                     }
                     eaw::append_debug_box(lines, presentation->mesh_minimum(instance.mesh), presentation->mesh_maximum(instance.mesh), instance.transform,
                                           instance.highlighted ? std::array<float, 4>{1.0F, 0.85F, 0.25F, 1.0F} : std::array<float, 4>{0.3F, 0.85F, 0.95F, 0.45F});
+                }
+            }
+            if (show_passability && tactical_camera && terrain_heights.valid() && terrain_heights.passability.size() == terrain_heights.heights.size())
+            {
+                // Every non-ground cell within 40 cells of the focus gets an X just above the surface,
+                // colored by its raw class (red blocked, blue water, orange 0x100, green 0x80,
+                // magenta 0x4, white anything else).
+                const auto focus = tactical_camera->focus();
+                const auto spacing = terrain_heights.spacing;
+                const auto center_x = static_cast<long>(std::lround(focus[0] / spacing));
+                const auto center_y = static_cast<long>(std::lround(focus[1] / spacing));
+                constexpr long radius = 40;
+                for (auto row = std::max(0L, center_y - radius); row <= std::min(static_cast<long>(terrain_heights.height) - 1, center_y + radius); ++row)
+                {
+                    for (auto column = std::max(0L, center_x - radius); column <= std::min(static_cast<long>(terrain_heights.width) - 1, center_x + radius); ++column)
+                    {
+                        const auto value = terrain_heights.passability[static_cast<std::size_t>(row) * terrain_heights.width + static_cast<std::size_t>(column)];
+                        if (value == eaw::passability::ground)
+                        {
+                            continue;
+                        }
+                        const std::array<float, 4> color = value == eaw::passability::blocked       ? std::array<float, 4>{1.0F, 0.25F, 0.2F, 0.85F}
+                                                           : value == eaw::passability::water       ? std::array<float, 4>{0.25F, 0.55F, 1.0F, 0.85F}
+                                                           : value == eaw::passability::unknown_100 ? std::array<float, 4>{1.0F, 0.6F, 0.1F, 0.85F}
+                                                           : value == eaw::passability::unknown_80  ? std::array<float, 4>{0.3F, 1.0F, 0.35F, 0.85F}
+                                                           : value == eaw::passability::unknown_4   ? std::array<float, 4>{1.0F, 0.3F, 1.0F, 0.85F}
+                                                                                                    : std::array<float, 4>{1.0F, 1.0F, 1.0F, 0.85F};
+                        const auto x = static_cast<float>(column) * spacing;
+                        const auto y = static_cast<float>(row) * spacing;
+                        const auto half = spacing * 0.4F;
+                        const auto z = [&](const float px, const float py)
+                        {
+                            return terrain_heights.surface_height(px, py) + 1.5F;
+                        };
+                        lines.push_back({{x - half, y - half, z(x - half, y - half)}, {x + half, y + half, z(x + half, y + half)}, color});
+                        lines.push_back({{x - half, y + half, z(x - half, y + half)}, {x + half, y - half, z(x + half, y - half)}, color});
+                    }
                 }
             }
             renderer.set_debug_lines(lines);
@@ -827,7 +873,8 @@ int main(const int argc, char** argv)
                 reload_scene = std::move(reload_copy);
                 start_simulation(layout, visual_map.entities);
                 spawnable = visual_map.spawnable;
-                terrain_heights = visual_map.terrain_heights;
+                terrain_heights = visual_map.ground;
+                world->set_ground(terrain_heights);
                 spawn_choice = 0;
                 initial_spawns_sent = false;
                 for (const auto& type : spawnable)
@@ -1073,24 +1120,26 @@ int main(const int argc, char** argv)
             const auto order_move = [&](const eaw::SimVector3& target)
             {
                 // Selected mobile units in a deterministic order (by id) spread on a grid.
-                std::vector<eaw::EntityId> movers;
+                std::vector<const eaw::EntitySnapshot*> movers;
                 for (const auto& entity : world->snapshot().entities)
                 {
                     if (selection.contains(eaw::entity_key(entity.id)) && entity.max_speed > 0.0F)
                     {
-                        movers.push_back(entity.id);
+                        movers.push_back(&entity);
                     }
                 }
-                std::ranges::sort(movers, {}, eaw::entity_key);
+                std::ranges::sort(movers, {},
+                                  [](const eaw::EntitySnapshot* entity)
+                                  {
+                                      return eaw::entity_key(entity->id);
+                                  });
                 const auto targets = eaw::grid_targets(target, movers.size(), 40.0F);
                 for (std::size_t index = 0; index < movers.size(); ++index)
                 {
                     auto spot = targets[index];
-                    if (terrain_heights.valid())
-                    {
-                        spot.z = terrain_heights.surface_height(spot.x, spot.y);
-                    }
-                    world->submit({eaw::SimCommandKind::move, {movers[index]}, spot});
+                    // Ground units take the surface height themselves; flyers keep their altitude.
+                    spot.z = movers[index]->follows_ground || !terrain_heights.valid() ? spot.z : movers[index]->position.z;
+                    world->submit({eaw::SimCommandKind::move, {movers[index]->id}, spot});
                 }
                 ++orders_issued;
                 std::cout << "Move " << movers.size() << " units to " << format_fixed(target.x, 0) << ", " << format_fixed(target.y, 0) << ", " << format_fixed(target.z, 0) << '\n';
@@ -1103,9 +1152,9 @@ int main(const int argc, char** argv)
                 {
                     if (terrain_heights.valid())
                     {
-                        spot.z = terrain_heights.surface_height(spot.x, spot.y);
+                        spot.z = terrain_heights.surface_height(spot.x, spot.y) + (type.follows_ground ? 0.0F : type.hover_offset);
                     }
-                    if (const auto spawned = presentation->spawn(*world, type, spot, 0.0F, 1); !spawned)
+                    if (const auto spawned = presentation->spawn(*world, type, spot, 0.0F, 1, type.follows_ground && terrain_heights.valid()); !spawned)
                     {
                         eaw::log_warning("simulation", spawned.error());
                     }
@@ -1157,6 +1206,11 @@ int main(const int argc, char** argv)
             {
                 show_all_bounds = !show_all_bounds;
                 std::cout << "Bounds overlay " << (show_all_bounds ? "on" : "off") << '\n';
+            }
+            if (input.keys[static_cast<std::size_t>(eaw::Key::g)].pressed)
+            {
+                show_passability = !show_passability;
+                std::cout << "Passability overlay " << (show_passability ? "on" : "off") << '\n';
             }
             const int animation_step = (input.keys[static_cast<std::size_t>(eaw::Key::right)].pressed ? 1 : 0) - (input.keys[static_cast<std::size_t>(eaw::Key::left)].pressed ? 1 : 0);
             if (visual_model && !tactical_camera && animation_step != 0 && !animation_paths.empty())
@@ -1405,7 +1459,7 @@ int main(const int argc, char** argv)
                 {
                     const auto simulation = world->stats();
                     lines.push_back("Simulation: tick " + std::to_string(simulation.tick) + " at 30 Hz | " + std::to_string(simulation.entities) + " entities | dropped ticks " +
-                                    std::to_string(simulation_clock.dropped_ticks()));
+                                    std::to_string(simulation_clock.dropped_ticks()) + " | blocked moves " + std::to_string(simulation.blocked_moves));
                 }
                 lines.push_back("Selected: " + selected_text + " | orders issued " + std::to_string(orders_issued));
                 if (!spawnable.empty())
@@ -1416,7 +1470,7 @@ int main(const int argc, char** argv)
                 lines.push_back("");
                 lines.push_back(!tactical_camera ? "Click select | B bounds | F1 panel | drag orbit, wheel zoom, P pause, Left/Right animation"
                                 : free_camera    ? "Free camera: click select | drag rotate, right-drag pan | C RTS camera | B bounds | F1 panel"
-                                                 : "RTS: click/drag select, right-click move | WASD pan, wheel zoom | C free camera | B bounds | F1 panel");
+                                                 : "RTS: click/drag select, right-click move | WASD pan, wheel zoom | C free camera | B bounds | G passability | F1 panel");
                 renderer.set_overlay_text(lines);
                 overlay_frames = 0;
                 overlay_refreshed = now;

@@ -165,6 +165,10 @@ it.
   type whose model is resolvable. Next: terrain following and passability,
   pathfinding, formations, and turn rates, then targeting and combat; spawning
   becomes a deterministic command, and meshes can be registered at runtime.
+  Terrain following and passability data are in: ground units (`Space_Layer`
+  Land/None) move over the map's surface and stop before blocked cells (class
+  0x2, provisional); flyers keep their altitude. Remaining passability classes
+  need confirmation; pathfinding is next.
 
 - ECS/storage, fixed-step scheduler, job system, transforms, spatial index,
   movement, formations, targeting, projectiles, damage, hardpoints, fog of war.

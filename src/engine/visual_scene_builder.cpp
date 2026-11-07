@@ -1166,6 +1166,47 @@ Result<VisualModelAsset> build_visual_model(const AssetReader& vfs, const std::s
 }
 
 // Movement speed of an object type from its XML Max_Speed (zero when absent or invalid).
+static std::string_view trim_ascii(std::string_view text)
+{
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0)
+    {
+        text.remove_prefix(1);
+    }
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0)
+    {
+        text.remove_suffix(1);
+    }
+    return text;
+}
+
+// Whether a type walks on the ground of land maps. XML Space_Layer is "Land" for ground vehicles,
+// infantry, and heroes, and "None" for walkers such as Ewoks; air units (snowspeeders, air whales)
+// use "Frigate", "Capital", or "Corvette", and birds or space-only types have none. This reading is
+// a corpus inference (see docs/compatibility-research.md).
+static bool type_follows_ground(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto layer = catalog.field(definition, "Space_Layer").field;
+    if (layer == nullptr)
+    {
+        return false;
+    }
+    const auto value = fold_ascii(std::string(trim_ascii(layer->text)));
+    return value == "land" || value == "none";
+}
+
+static float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& definition, const std::string_view field)
+{
+    const auto node = catalog.field(definition, field).field;
+    if (node == nullptr)
+    {
+        return 0.0F;
+    }
+    const auto text = trim_ascii(node->text);
+    float value = 0.0F;
+    const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
+    return result.ec == std::errc{} && std::isfinite(value) ? value : 0.0F;
+}
+
 static float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings)
 {
     const auto speed = catalog.field(definition, "Max_Speed").field;
@@ -1245,7 +1286,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         const auto samples = static_cast<std::size_t>(map.terrain_width) * map.terrain_height;
         if (map.terrain_width >= 2 && map.terrain_height >= 2 && map.elevation_map.size() >= samples)
         {
-            auto& field = asset.terrain_heights;
+            auto& field = asset.ground;
             field.width = map.terrain_width;
             field.height = map.terrain_height;
             field.spacing = terrain_sample_spacing;
@@ -1257,6 +1298,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             if (asset.water != TedWaterType::none)
             {
                 field.liquid_level = map.water.level;
+            }
+            if (map.passability_map.size() == samples)
+            {
+                field.passability = map.passability_map;
             }
         }
         asset.tracks = append_tracks(builder, map);
@@ -1290,6 +1335,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             // Heading is the rotation of the model's X axis about +Z (row-vector transforms).
             spawn.heading = std::atan2(matrix[1], matrix[0]);
             spawn.visual = *entry->second;
+            spawn.follows_ground = asset.land && placement.type != nullptr && type_follows_ground(catalog, *placement.type);
             if (placement.type != nullptr)
             {
                 spawn.max_speed = type_max_speed(catalog, *placement.type, scene.warnings);
@@ -1408,6 +1454,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         spawnable.mesh = *entry->second;
         spawnable.max_speed = type_max_speed(catalog, *definition, scene.warnings);
         spawnable.team_color = catalog.affiliation_color(*definition).value_or(player_team_color(1));
+        spawnable.follows_ground = asset.land && type_follows_ground(catalog, *definition);
+        spawnable.hover_offset = type_float_field(catalog, *definition, "Hover_Offset");
         asset.spawnable.push_back(std::move(spawnable));
     }
 

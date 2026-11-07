@@ -101,7 +101,7 @@ const std::array<float, 3>& ScenePresentation::mesh_maximum(const std::uint32_t 
     return mesh_maximum_[mesh];
 }
 
-Result<EntityId> ScenePresentation::spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, const float heading, const std::uint32_t owner)
+Result<EntityId> ScenePresentation::spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, const float heading, const std::uint32_t owner, const bool follows_ground)
 {
     EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which the scene does not have");
     EntitySpawn spawn;
@@ -111,6 +111,7 @@ Result<EntityId> ScenePresentation::spawn(SimulationWorld& world, const Spawnabl
     spawn.heading = heading;
     spawn.max_speed = type.max_speed;
     spawn.visual = type.mesh;
+    spawn.follows_ground = follows_ground;
     EAW_TRY_ASSIGN(const auto id, world.spawn(spawn));
     // The template's transform is the model's own frame; pose_transform turns and places it.
     VisualInstance instance{type.mesh};

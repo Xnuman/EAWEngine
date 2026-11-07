@@ -254,3 +254,23 @@ button selects units, by click or by dragging a selection rectangle, and the
 right mouse button issues move and attack commands. Exact angles, zoom limits,
 pan speeds, and per-map camera settings still need evidence from the shipped
 data or black-box observation before the legacy camera is implemented.
+
+TED passability (root chunk 0x10a, stored X-major) holds one of six values per
+cell across all 269 stock maps; each sample has exactly one bit set, so the
+values behave like an enumeration. Cross-tabulated with terrain: 0x1 (52% of
+cells) is flat ground (mean slope 2.5 units per 20-unit cell); 0x2 (40%) is
+steep, void, or deep ground (mean slope 12.3; 16.6% below the liquid, 11.7%
+untextured); 0x20 (3%) lies 95% below the liquid surface and reads as water;
+0x100 (4%) is steep and often untextured; 0x80 and 0x4 are rare and flat. Kamino
+marks half of its flat seabed 0x1, so the values are authored, not derived from
+geometry. The engine provisionally blocks ground movement only on 0x2 and keeps
+the other classes raw until their meanings are confirmed; the sandbox's
+passability overlay (G) draws them for comparison with the original.
+
+Whether a unit walks on land-map terrain follows its XML `Space_Layer`: `Land`
+for every ground vehicle, infantry, and land hero type with a speed, `None` for
+walkers such as Ewoks and R2-D2, and `Frigate`, `Capital`, or `Corvette` for air
+units such as snowspeeders and Kamino's air whales (`Kamino_Aiwha`, which also
+has `Hover_Offset` 250 and `Layer_Z_Adjust` 100). Types without the field
+(birds, space-only types, projectiles) are treated as not walking. Spawned
+flyers start at the surface plus `Hover_Offset`. This is a corpus inference.

@@ -129,6 +129,11 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     visuals_.push_back(spawn.visual);
     selectable_.push_back(spawn.selectable ? 1U : 0U);
     type_names_.push_back(spawn.type_name);
+    follows_ground_.push_back(spawn.follows_ground ? 1U : 0U);
+    if (spawn.follows_ground && ground_.valid())
+    {
+        positions_.back().z = ground_.surface_height(spawn.position.x, spawn.position.y);
+    }
     return id;
 }
 
@@ -163,7 +168,7 @@ const SimSnapshot& SimulationWorld::snapshot() const noexcept
 
 SimulationWorld::Stats SimulationWorld::stats() const noexcept
 {
-    return {tick_, ids_.size(), commands_applied_, stale_references_};
+    return {tick_, ids_.size(), commands_applied_, stale_references_, blocked_moves_};
 }
 
 std::uint64_t SimulationWorld::state_hash() const noexcept
@@ -184,6 +189,7 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, owners_[index]);
         hash = hash_value(hash, visuals_[index]);
         hash = hash_value(hash, selectable_[index]);
+        hash = hash_value(hash, follows_ground_[index]);
     }
     return hash;
 }
@@ -247,6 +253,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         visuals_[dense] = visuals_[last];
         selectable_[dense] = selectable_[last];
         type_names_[dense] = std::move(type_names_[last]);
+        follows_ground_[dense] = follows_ground_[last];
         slot_dense_[ids_[dense].index] = static_cast<std::uint32_t>(dense);
     }
     ids_.pop_back();
@@ -258,6 +265,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     visuals_.pop_back();
     selectable_.pop_back();
     type_names_.pop_back();
+    follows_ground_.pop_back();
     slot_dense_[slot] = no_dense;
     // A slot whose generation would wrap is retired instead of reused.
     if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
@@ -278,6 +286,11 @@ void SimulationWorld::run_movement()
             continue;
         }
         auto& position = positions_[index];
+        if (follows_ground_[index] != 0 && ground_.valid())
+        {
+            move_over_ground(index, dt);
+            continue;
+        }
         const SimVector3 delta{target->x - position.x, target->y - position.y, target->z - position.z};
         const auto distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto step_length = max_speeds_[index] * dt;
@@ -297,6 +310,54 @@ void SimulationWorld::run_movement()
     }
 }
 
+void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
+{
+    auto& target = move_targets_[index];
+    auto& position = positions_[index];
+    // Ground units move in the horizontal plane; their height always comes from the surface.
+    const auto delta_x = target->x - position.x;
+    const auto delta_y = target->y - position.y;
+    const auto distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
+    const auto step_length = max_speeds_[index] * dt;
+    const bool arrives = distance <= std::max(step_length, arrival_distance);
+    const auto scale = arrives || distance <= 0.0F ? 1.0F : step_length / distance;
+    const auto next_x = position.x + delta_x * scale;
+    const auto next_y = position.y + delta_y * scale;
+    if (blocked_classes_ != 0)
+    {
+        const auto here = ground_.passability_at(position.x, position.y);
+        const auto there = ground_.passability_at(next_x, next_y);
+        const bool leaving_blocked = here && (*here & blocked_classes_) != 0;
+        if (there && (*there & blocked_classes_) != 0 && !leaving_blocked)
+        {
+            // No pathfinding yet: the unit stops at the edge of a blocked cell.
+            target.reset();
+            ++blocked_moves_;
+            return;
+        }
+    }
+    position = {next_x, next_y, ground_.surface_height(next_x, next_y)};
+    if (delta_x != 0.0F || delta_y != 0.0F)
+    {
+        headings_[index] = std::atan2(delta_y, delta_x);
+    }
+    if (arrives)
+    {
+        target.reset();
+    }
+}
+
+void SimulationWorld::set_ground(GroundMap ground, const std::uint32_t blocked_classes)
+{
+    ground_ = std::move(ground);
+    blocked_classes_ = blocked_classes;
+}
+
+const GroundMap& SimulationWorld::ground() const noexcept
+{
+    return ground_;
+}
+
 void SimulationWorld::publish()
 {
     snapshot_.tick = tick_;
@@ -304,8 +365,8 @@ void SimulationWorld::publish()
     snapshot_.entities.reserve(ids_.size());
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
-        snapshot_.entities.push_back(
-            {ids_[index], positions_[index], headings_[index], visuals_[index], owners_[index], move_targets_[index].has_value(), selectable_[index] != 0, max_speeds_[index]});
+        snapshot_.entities.push_back({ids_[index], positions_[index], headings_[index], visuals_[index], owners_[index], move_targets_[index].has_value(), selectable_[index] != 0, max_speeds_[index],
+                                      follows_ground_[index] != 0});
     }
 }
 
