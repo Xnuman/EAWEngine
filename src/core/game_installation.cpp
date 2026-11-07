@@ -1,0 +1,289 @@
+#include "eaw/game_installation.hpp"
+
+#include <algorithm>
+#include <cstdlib>
+#include <fstream>
+#include <limits>
+#include <regex>
+#include <set>
+#include <sstream>
+#include <system_error>
+#include <tuple>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+namespace eaw {
+namespace {
+
+bool looks_like_installation(const std::filesystem::path& root) {
+    return std::filesystem::is_directory(root / "GameData" / "Data") &&
+           std::filesystem::is_directory(root / "corruption" / "Data");
+}
+
+std::optional<std::string> environment_value(const char* name) {
+#ifdef _WIN32
+    std::size_t required = 0;
+    if (getenv_s(&required, nullptr, 0, name) != 0 || required == 0) {
+        return std::nullopt;
+    }
+    std::string value(required, '\0');
+    if (getenv_s(&required, value.data(), value.size(), name) != 0) {
+        return std::nullopt;
+    }
+    while (!value.empty() && value.back() == '\0') {
+        value.pop_back();
+    }
+    return value.empty() ? std::nullopt
+                         : std::optional<std::string>(std::move(value));
+#else
+    const char* value = std::getenv(name);
+    return value == nullptr ? std::nullopt
+                            : std::optional<std::string>(value);
+#endif
+}
+
+std::string read_text_file(const std::filesystem::path& path) {
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) {
+        return {};
+    }
+    std::ostringstream text;
+    text << stream.rdbuf();
+    return text.str();
+}
+
+std::vector<std::filesystem::path> steam_libraries_from_vdf(
+    const std::filesystem::path& vdf_path) {
+    const auto contents = read_text_file(vdf_path);
+    std::vector<std::filesystem::path> libraries;
+    const std::regex path_pattern(R"regex("path"\s+"([^"]+)")regex",
+                                  std::regex::icase);
+    for (auto match = std::sregex_iterator(contents.begin(), contents.end(), path_pattern);
+         match != std::sregex_iterator(); ++match) {
+        auto value = (*match)[1].str();
+        std::string unescaped;
+        unescaped.reserve(value.size());
+        for (std::size_t index = 0; index < value.size(); ++index) {
+            if (value[index] == '\\' && index + 1 < value.size() &&
+                value[index + 1] == '\\') {
+                ++index;
+            }
+            unescaped.push_back(value[index]);
+        }
+        libraries.emplace_back(unescaped);
+    }
+    return libraries;
+}
+
+#ifdef _WIN32
+std::optional<std::filesystem::path> steam_path_from_registry() {
+    HKEY key{};
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Valve\\Steam", 0, KEY_READ, &key) !=
+        ERROR_SUCCESS) {
+        return std::nullopt;
+    }
+
+    std::wstring value(32768, L'\0');
+    DWORD bytes = static_cast<DWORD>(value.size() * sizeof(wchar_t));
+    DWORD type = 0;
+    const auto status = RegQueryValueExW(
+        key, L"SteamPath", nullptr, &type,
+        reinterpret_cast<BYTE*>(value.data()), &bytes);
+    RegCloseKey(key);
+    if (status != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ)) {
+        return std::nullopt;
+    }
+    value.resize(bytes / sizeof(wchar_t));
+    while (!value.empty() && value.back() == L'\0') {
+        value.pop_back();
+    }
+    return value.empty() ? std::nullopt
+                         : std::optional<std::filesystem::path>(value);
+}
+#endif
+
+void append_if_unique(std::vector<std::filesystem::path>& output,
+                      const std::filesystem::path& candidate) {
+    std::error_code error;
+    const auto normalized = std::filesystem::weakly_canonical(candidate, error);
+    const auto path = error ? candidate.lexically_normal() : normalized;
+    const auto duplicate = std::ranges::any_of(output, [&](const auto& existing) {
+        return existing == path;
+    });
+    if (!duplicate) {
+        output.push_back(path);
+    }
+}
+
+std::vector<std::filesystem::path> parse_meg_manifest(
+    const std::filesystem::path& runtime_root) {
+    const auto contents = read_text_file(runtime_root / "Data" / "megafiles.xml");
+    std::vector<std::filesystem::path> result;
+    const std::regex file_pattern(R"regex(<File>\s*([^<]+?)\s*</File>)regex",
+                                  std::regex::icase);
+    for (auto match = std::sregex_iterator(contents.begin(), contents.end(), file_pattern);
+         match != std::sregex_iterator(); ++match) {
+        auto relative = (*match)[1].str();
+        std::replace(relative.begin(), relative.end(), '\\', '/');
+        auto archive = runtime_root / relative;
+        if (std::filesystem::is_regular_file(archive)) {
+            append_if_unique(result, archive);
+        }
+    }
+    return result;
+}
+
+} // namespace
+
+std::string_view to_string(const GameVariant variant) noexcept {
+    switch (variant) {
+    case GameVariant::empire_at_war:
+        return "eaw";
+    case GameVariant::forces_of_corruption:
+        return "foc";
+    }
+    return "unknown";
+}
+
+std::optional<GameVariant> parse_game_variant(std::string_view text) {
+    std::string lowered(text);
+    std::ranges::transform(lowered, lowered.begin(), [](const unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    if (lowered == "eaw" || lowered == "empire-at-war") {
+        return GameVariant::empire_at_war;
+    }
+    if (lowered == "foc" || lowered == "forces-of-corruption") {
+        return GameVariant::forces_of_corruption;
+    }
+    return std::nullopt;
+}
+
+std::optional<GameProfile> make_game_profile(const std::filesystem::path& root,
+                                             const GameVariant variant) {
+    if (!looks_like_installation(root)) {
+        return std::nullopt;
+    }
+    const auto runtime = root / (variant == GameVariant::empire_at_war
+                                     ? "GameData"
+                                     : "corruption");
+    return GameProfile{root, runtime, runtime / "Data", variant};
+}
+
+std::vector<std::filesystem::path> InstallationLocator::discover(
+    const std::optional<std::filesystem::path>& explicit_root) const {
+    std::vector<std::filesystem::path> results;
+    if (explicit_root && looks_like_installation(*explicit_root)) {
+        append_if_unique(results, *explicit_root);
+    }
+
+    if (const auto environment = environment_value("EAW_GAME_ROOT");
+        environment && looks_like_installation(*environment)) {
+        append_if_unique(results, *environment);
+    }
+
+    std::vector<std::filesystem::path> steam_roots;
+#ifdef _WIN32
+    if (const auto registry_path = steam_path_from_registry()) {
+        append_if_unique(steam_roots, *registry_path);
+    }
+    if (const auto program_files_x86 = environment_value("ProgramFiles(x86)")) {
+        append_if_unique(steam_roots,
+                         std::filesystem::path(*program_files_x86) / "Steam");
+    }
+#endif
+
+    for (const auto& steam_root : steam_roots) {
+        auto libraries = steam_libraries_from_vdf(
+            steam_root / "steamapps" / "libraryfolders.vdf");
+        libraries.insert(libraries.begin(), steam_root);
+        for (const auto& library : libraries) {
+            const auto candidate = library / "steamapps" / "common" /
+                                   "Star Wars Empire at War";
+            if (looks_like_installation(candidate)) {
+                append_if_unique(results, candidate);
+            }
+        }
+    }
+    return results;
+}
+
+std::vector<std::filesystem::path> discover_meg_archives(
+    const std::filesystem::path& runtime_root) {
+    auto archives = parse_meg_manifest(runtime_root);
+    std::vector<std::filesystem::path> unlisted;
+    std::vector<std::filesystem::path> patches;
+    const auto data_root = runtime_root / "Data";
+    if (!std::filesystem::is_directory(data_root)) {
+        return archives;
+    }
+
+    for (const auto& item : std::filesystem::recursive_directory_iterator(data_root)) {
+        if (!item.is_regular_file()) {
+            continue;
+        }
+        auto extension = item.path().extension().string();
+        std::ranges::transform(extension, extension.begin(), [](const unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+        if (extension != ".meg") {
+            continue;
+        }
+
+        auto filename = item.path().filename().string();
+        std::ranges::transform(filename, filename.begin(), [](const unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+        const bool is_patch = filename.starts_with("patch") ||
+                              filename.starts_with("64patch");
+        (is_patch ? patches : unlisted).push_back(item.path());
+    }
+
+    const auto lexical = [](const auto& left, const auto& right) {
+        return left.generic_string() < right.generic_string();
+    };
+    std::ranges::sort(unlisted, lexical);
+    const auto patch_key = [](const std::filesystem::path& path) {
+        auto stem = path.stem().string();
+        std::ranges::transform(stem, stem.begin(), [](const unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+        const auto is_64_bit = stem.starts_with("64patch");
+        const std::string_view prefix = is_64_bit ? "64patch" : "patch";
+        const auto suffix = std::string_view(stem).substr(prefix.size());
+        std::uint64_t number = 0;
+        if (!suffix.empty()) {
+            for (const char character : suffix) {
+                if (character < '0' || character > '9') {
+                    number = std::numeric_limits<std::uint64_t>::max();
+                    break;
+                }
+                const auto digit = static_cast<std::uint64_t>(character - '0');
+                if (number > (std::numeric_limits<std::uint64_t>::max() - digit) /
+                                 10U) {
+                    number = std::numeric_limits<std::uint64_t>::max();
+                    break;
+                }
+                number = number * 10U + digit;
+            }
+        }
+        return std::tuple{is_64_bit ? 1 : 0, number, stem};
+    };
+    std::ranges::sort(patches, [&](const auto& left, const auto& right) {
+        const auto left_key = patch_key(left);
+        const auto right_key = patch_key(right);
+        return left_key == right_key ? lexical(left, right) : left_key < right_key;
+    });
+    for (const auto& archive : unlisted) {
+        append_if_unique(archives, archive);
+    }
+    for (const auto& archive : patches) {
+        append_if_unique(archives, archive);
+    }
+    return archives;
+}
+
+} // namespace eaw
+

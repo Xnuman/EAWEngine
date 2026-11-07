@@ -1,0 +1,81 @@
+# Architecture
+
+## Product boundary
+
+`EAWLauncher` selects a game variant, installation, mod stack, and engine
+settings. It launches `EAWEngine`; it never launches or injects into the legacy
+game executable. `EAWEngine` reads the user's existing data in place and owns
+the new runtime.
+
+The original files are inputs only:
+
+```text
+owned game + mods
+        |
+        v
+layered VFS -> format decoders -> immutable asset database
+                                      |
+                    +-----------------+------------------+
+                    v                                    v
+          deterministic simulation              presentation world
+                    |                                    |
+                    +---------- snapshots --------------+
+                                                         |
+                                                  render/audio/UI
+```
+
+## Module boundaries
+
+1. **Platform**: windowing, input, files, clocks, crash reporting, CPU topology.
+2. **VFS**: loose directories, MEG archives, mod priority, asynchronous reads.
+3. **Formats**: XML, Lua 5.0 bytecode/source, ALO, ALA, TED, MTD, DAT, DDS,
+   shaders, audio, and movies. Decoders produce versioned engine-native data.
+4. **Asset runtime**: handles, dependency graph, background streaming, budgets,
+   hot reload, and GPU upload queues.
+5. **Simulation**: deterministic fixed ticks and data-oriented components.
+   Parallel jobs operate on disjoint partitions; commands merge at explicit
+   barriers. Render frame rate never changes gameplay results.
+6. **Modes**: galactic, land tactical, space tactical, campaign/story, skirmish.
+7. **Scripting**: compatible Lua surface plus namespaced new APIs. Scripts may
+   schedule work but cannot mutate simulation storage outside command buffers.
+8. **Presentation**: renderer, animation, effects, UI, audio, and cinematics.
+9. **Tools**: launcher, asset inspector, map/model viewers, converter, profiler,
+   compatibility test runner, and mod SDK.
+
+## Rendering direction
+
+The renderer uses an RHI with explicit resources, command lists, queues,
+barriers, descriptor tables, and pipeline objects. The first production backend
+should be Direct3D 12 because the target game and primary audience are on
+Windows. Vulkan follows through the same RHI.
+
+The renderer should support bindless resources, GPU-driven culling, indirect
+drawing, mesh LODs, texture streaming, modern compressed texture formats,
+shadow atlases, clustered lighting, HDR, temporal anti-aliasing, and a scalable
+effects system. High-resolution assets are a budget/streaming problem, not a
+hard-coded dimension or polygon-count limit.
+
+## Multithreading direction
+
+"Use all cores" is not an architecture by itself. The engine uses a dependency
+aware job system and divides work into deterministic phases:
+
+1. collect input and script commands;
+2. update spatial queries and perception;
+3. update AI planning at controlled cadences;
+4. solve movement/path requests in parallel;
+5. resolve weapons, projectiles, damage, and abilities;
+6. publish an immutable presentation snapshot.
+
+Large unit counts require structure-of-arrays storage, stable entity IDs,
+batched queries, hierarchical spatial indices, flow fields or shared paths for
+groups, AI level-of-detail, and performance budgets. Adding threads to the
+legacy object model would not be sufficient.
+
+## Compatibility policy
+
+Compatibility is measured, not assumed. Every supported format and behavior
+gets a corpus test, a decoder test, and—where possible—a golden result captured
+from public data or black-box observation. Extensions use new optional tags or
+namespaced files so an original mod remains readable without edits.
+

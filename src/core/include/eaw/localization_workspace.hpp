@@ -1,0 +1,33 @@
+#pragma once
+
+#include "eaw/dat_file.hpp"
+
+#include <filesystem>
+#include <string>
+#include <vector>
+
+namespace eaw {
+
+struct LocalizationRow {
+    std::string key;
+    std::string text;
+    std::string group;
+    std::string status;
+    std::string context;
+    std::string notes;
+};
+
+[[nodiscard]] std::vector<LocalizationRow> read_localization_workspace(
+    const std::filesystem::path& path);
+void write_localization_workspace(const std::filesystem::path& path,
+                                  const std::vector<LocalizationRow>& rows,
+                                  bool overwrite = false);
+[[nodiscard]] std::vector<LocalizationRow> diff_localization(
+    const DatFile& base,
+    const DatFile& edited);
+void apply_localization_workspace(DatFile& target,
+                                  const std::vector<LocalizationRow>& rows,
+                                  bool allow_todo = false);
+
+} // namespace eaw
+
