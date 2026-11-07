@@ -1,6 +1,7 @@
 #include "gui_app.hpp"
 
 #include "file_dialogs.hpp"
+#include "preview_renderer.hpp"
 
 #include "eaw/ala_animation.hpp"
 #include "eaw/alo_model.hpp"
@@ -8,14 +9,17 @@
 #include "eaw/dat_file.hpp"
 #include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
+#include "eaw/game_object_catalog.hpp"
 #include "eaw/legacy_material.hpp"
 #include "eaw/localization_scan.hpp"
 #include "eaw/localization_workspace.hpp"
+#include "eaw/map_object_layout.hpp"
 #include "eaw/lua_script.hpp"
 #include "eaw/mtd_directory.hpp"
 #include "eaw/text_encoding.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"
+#include "eaw/xml_asset_database.hpp"
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -34,6 +38,7 @@
 #include <iomanip>
 #include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -76,23 +81,12 @@ struct PreviewTexture
     std::uint32_t height{};
 };
 
+// Terrain triangle for land-map previews, in preview space.
 struct PreviewTriangle
 {
     AloVector3 points[3];
-    AloVector2 texture_coordinates[3];
-    ID3D11ShaderResourceView* texture{};
     ImU32 color{};
 };
-
-struct ProjectedTriangle
-{
-    ImVec2 points[3];
-    ImVec2 texture_coordinates[3];
-    ID3D11ShaderResourceView* texture{};
-    float depth{};
-    ImU32 color{};
-};
-
 std::string lower(std::string value)
 {
     std::ranges::transform(value, value.begin(),
@@ -663,6 +657,192 @@ std::string normalize_unit_id(std::string id)
     return id;
 }
 
+// Surfaces drawn in the color pass. Collision, shadow-volume, heat-distortion, and occluded-unit
+// geometry is not visible surface and is hidden from previews (collision is opt-in).
+bool preview_hidden_family(const LegacyMaterialFamily family, const bool show_collision) noexcept
+{
+    return (family == LegacyMaterialFamily::collision && !show_collision) || family == LegacyMaterialFamily::shadow || family == LegacyMaterialFamily::heat || family == LegacyMaterialFamily::occluded;
+}
+
+// The texture reference a preview should sample: the material's base-color binding, otherwise its
+// first texture.
+std::optional<std::string> preview_texture_reference(const LegacyMaterial& material)
+{
+    for (const auto& binding : material.textures)
+    {
+        if (binding.semantic == LegacyTextureSemantic::base_color)
+        {
+            return binding.reference;
+        }
+    }
+    return material.textures.empty() ? std::nullopt : std::optional<std::string>{material.textures.front().reference};
+}
+
+PreviewBlend preview_blend(const LegacyMaterial& material) noexcept
+{
+    switch (material.blend)
+    {
+    case LegacyBlendMode::opaque:
+        return PreviewBlend::opaque;
+    case LegacyBlendMode::alpha_test:
+        return PreviewBlend::alpha_test;
+    case LegacyBlendMode::alpha_blend:
+        return PreviewBlend::blended;
+    case LegacyBlendMode::additive:
+        return PreviewBlend::additive;
+    }
+    return PreviewBlend::opaque;
+}
+
+// GPU geometry for one placed-object model, shared by every instance on the current map.
+struct MapModelGpu
+{
+    PreviewMesh mesh;
+    float radius{1.0F};
+    bool valid{};
+};
+
+AloVector3 animated_vertex(const AloVertex& vertex, const AloSubMesh& submesh, const std::vector<AlaPoseBone>& pose, const std::vector<AloMatrix4>& inverse_bind)
+{
+    if (submesh.skin_bones.empty())
+    {
+        return vertex.position;
+    }
+    AloVector3 result{};
+    float total_weight = 0.0F;
+    for (std::size_t influence = 0; influence < vertex.bone_indices.size(); ++influence)
+    {
+        const auto weight = vertex.bone_weights[influence];
+        const auto palette_index = vertex.bone_indices[influence];
+        if (weight <= 0.0F || palette_index >= submesh.skin_bones.size())
+        {
+            continue;
+        }
+        const auto bone_index = submesh.skin_bones[palette_index];
+        if (bone_index >= pose.size() || bone_index >= inverse_bind.size())
+        {
+            continue;
+        }
+        const auto skin = alo_multiply(inverse_bind[bone_index], pose[bone_index].transform);
+        const auto point = alo_transform_point(vertex.position, skin);
+        result.x += point.x * weight;
+        result.y += point.y * weight;
+        result.z += point.z * weight;
+        total_weight += weight;
+    }
+    if (total_weight <= 1.0e-6F)
+    {
+        return vertex.position;
+    }
+    if (std::fabs(total_weight - 1.0F) > 1.0e-4F)
+    {
+        result.x /= total_weight;
+        result.y /= total_weight;
+        result.z /= total_weight;
+    }
+    return result;
+}
+
+// CPU geometry for a GPU preview: one part per visible submesh, positions posed by `pose` (CPU
+// skinning) or, without a pose, placed in bind pose.
+struct PreviewGeometry
+{
+    std::vector<PreviewVertex> vertices;
+    std::vector<std::uint32_t> indices;
+    std::vector<PreviewPart> parts;
+    AloVector3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+    AloVector3 maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+    // Distance of the farthest vertex from the model origin.
+    float radius{};
+};
+
+PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<AlaPoseBone>* pose, const std::vector<AloMatrix4>& inverse_bind, const bool show_collision,
+                                       const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture)
+{
+    static constexpr std::array<ImU32, 6> palette{IM_COL32(54, 177, 186, 255), IM_COL32(71, 137, 201, 255), IM_COL32(121, 101, 198, 255),
+                                                  IM_COL32(55, 183, 133, 255), IM_COL32(199, 145, 62, 255), IM_COL32(185, 91, 129, 255)};
+    PreviewGeometry geometry;
+    const auto bind_pose = model.bind_pose();
+    float radius_squared = 0.0F;
+    for (std::size_t mesh_index = 0; mesh_index < model.meshes.size(); ++mesh_index)
+    {
+        const auto& mesh = model.meshes[mesh_index];
+        if (mesh.hidden)
+        {
+            continue;
+        }
+        if (pose != nullptr && mesh.attached_bone && *mesh.attached_bone < pose->size() && !(*pose)[*mesh.attached_bone].visible)
+        {
+            continue;
+        }
+        for (const auto& submesh : mesh.submeshes)
+        {
+            const auto material = LegacyMaterial::translate(submesh);
+            if (preview_hidden_family(material.family, show_collision) || submesh.vertices.empty() || submesh.indices.size() < 3)
+            {
+                continue;
+            }
+            const bool collision = material.family == LegacyMaterialFamily::collision;
+            ID3D11ShaderResourceView* view = nullptr;
+            if (!collision)
+            {
+                if (const auto reference = preview_texture_reference(material))
+                {
+                    view = texture(*reference);
+                }
+            }
+            const auto color = view != nullptr ? IM_COL32_WHITE : collision ? IM_COL32(224, 79, 72, 150) : palette[mesh_index % palette.size()];
+            const auto base = static_cast<std::uint32_t>(geometry.vertices.size());
+            const auto rigid = submesh.skin_bones.empty() && mesh.attached_bone.has_value();
+            for (const auto& vertex : submesh.vertices)
+            {
+                AloVector3 point = vertex.position;
+                if (pose != nullptr)
+                {
+                    point = animated_vertex(vertex, submesh, *pose, inverse_bind);
+                    if (rigid && *mesh.attached_bone < pose->size())
+                    {
+                        point = alo_transform_point(point, (*pose)[*mesh.attached_bone].transform);
+                    }
+                }
+                else if (rigid && *mesh.attached_bone < bind_pose.size())
+                {
+                    point = alo_transform_point(point, bind_pose[*mesh.attached_bone]);
+                }
+                geometry.vertices.push_back({{point.x, point.y, point.z}, {vertex.texture_coordinates[0].x, vertex.texture_coordinates[0].y}, color});
+                if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z))
+                {
+                    geometry.minimum = {std::min(geometry.minimum.x, point.x), std::min(geometry.minimum.y, point.y), std::min(geometry.minimum.z, point.z)};
+                    geometry.maximum = {std::max(geometry.maximum.x, point.x), std::max(geometry.maximum.y, point.y), std::max(geometry.maximum.z, point.z)};
+                    radius_squared = std::max(radius_squared, point.x * point.x + point.y * point.y + point.z * point.z);
+                }
+            }
+            PreviewPart part;
+            part.first_index = static_cast<std::uint32_t>(geometry.indices.size());
+            part.texture = view;
+            part.blend = collision ? PreviewBlend::blended : preview_blend(material);
+            part.alpha_cutoff = material.render.alpha_test_threshold.value_or(0.5F);
+            for (std::size_t index = 0; index + 2 < submesh.indices.size(); index += 3)
+            {
+                const auto a = submesh.indices[index];
+                const auto b = submesh.indices[index + 1];
+                const auto c = submesh.indices[index + 2];
+                if (a < submesh.vertices.size() && b < submesh.vertices.size() && c < submesh.vertices.size())
+                {
+                    geometry.indices.insert(geometry.indices.end(), {base + a, base + b, base + c});
+                }
+            }
+            part.index_count = static_cast<std::uint32_t>(geometry.indices.size()) - part.first_index;
+            if (part.index_count > 0)
+            {
+                geometry.parts.push_back(part);
+            }
+        }
+    }
+    geometry.radius = std::sqrt(radius_squared);
+    return geometry;
+}
+
 } // namespace
 
 struct GuiApp::State
@@ -697,10 +877,15 @@ struct GuiApp::State
     bool preview_playing{true};
     bool preview_show_skeleton{};
     bool preview_show_collision{};
-    int preview_triangle_budget{18000};
-    bool preview_static_collision{};
-    bool preview_static_cached{};
-    std::vector<PreviewTriangle> preview_static_triangles;
+    // GPU preview: the model mesh is rebuilt when the model or collision toggle changes, and every
+    // frame while an animation plays (skinning runs on the CPU).
+    PreviewRenderer renderer;
+    PreviewMesh model_mesh;
+    PreviewTarget model_target;
+    bool model_mesh_cached{};
+    bool model_mesh_collision{};
+    AloVector3 model_minimum{};
+    AloVector3 model_maximum{};
     std::unordered_map<std::string, PreviewTexture> preview_textures;
     std::vector<std::string> preview_texture_warnings;
     float map_preview_yaw{-0.65F};
@@ -717,6 +902,78 @@ struct GuiApp::State
     bool map_preview_large_window{};
     bool map_preview_cached{};
     std::vector<PreviewTriangle> map_preview_triangles;
+    PreviewTarget map_target;
+    PreviewMesh terrain_mesh;
+    bool terrain_mesh_cached{};
+
+    // Object-type index for map previews, built lazily per mounted VFS. The catalog borrows the
+    // database, so both live in one heap allocation with a stable address.
+    struct ObjectIndex
+    {
+        XmlAssetDatabase database;
+        GameObjectCatalog catalog;
+    };
+    std::unique_ptr<ObjectIndex> object_index;
+    // Textures for map-object models persist across map selections, like the model proxies.
+    std::unordered_map<std::string, PreviewTexture> object_textures;
+    std::unordered_map<std::string, MapModelGpu> map_models;
+    std::optional<MapObjectLayout> map_object_layout;
+    std::vector<int> map_object_placement;
+    std::vector<std::string> map_object_warnings;
+    bool map_object_cached{};
+    std::vector<char> map_object_drawn;
+
+    void reset_map_objects()
+    {
+        map_object_layout.reset();
+        map_object_placement.clear();
+        map_object_warnings.clear();
+        map_object_drawn.clear();
+        map_object_cached = false;
+    }
+
+    void load_map_objects()
+    {
+        reset_map_objects();
+        if (!preview_map)
+        {
+            return;
+        }
+        if (!object_index)
+        {
+            auto index = std::make_unique<ObjectIndex>();
+            index->database = XmlAssetDatabase::build(vfs);
+            index->catalog = GameObjectCatalog::build(index->database);
+            object_index = std::move(index);
+        }
+        map_object_layout = build_map_object_layout(*preview_map, object_index->catalog, vfs);
+        map_object_placement.assign(preview_map->placed_objects.size(), -1);
+        for (std::size_t index = 0; index < map_object_layout->placements.size(); ++index)
+        {
+            const auto& placement = map_object_layout->placements[index];
+            map_object_placement[placement.object_index] = static_cast<int>(index);
+            if (placement.model_path.empty() || map_models.contains(placement.model_path))
+            {
+                continue;
+            }
+            auto& gpu = map_models[placement.model_path];
+            try
+            {
+                const auto geometry = build_preview_geometry(AloModel::parse(vfs.read(placement.model_path)), nullptr, {}, false,
+                                                             [this](const std::string& reference)
+                                                             {
+                                                                 return load_texture(object_textures, map_object_warnings, reference);
+                                                             });
+                gpu.radius = std::max(geometry.radius, 1.0F);
+                gpu.valid = renderer.ready() && !geometry.indices.empty() && gpu.mesh.upload(renderer.device(), renderer.context(), geometry.vertices, geometry.indices, geometry.parts);
+            }
+            catch (const std::exception& error)
+            {
+                // Particle ALOs and malformed models fall back to a marker.
+                map_object_warnings.push_back(placement.model_path + ": " + error.what());
+            }
+        }
+    }
 
     std::optional<std::filesystem::path> base_dat_path;
     std::optional<std::filesystem::path> workspace_path;
@@ -738,6 +995,8 @@ struct GuiApp::State
 
     explicit State(ID3D11Device* device) : graphics_device(device)
     {
+        // Previews fall back to a message when the GPU preview pipeline is unavailable.
+        static_cast<void>(renderer.initialize(device));
         try
         {
             const auto installations = InstallationLocator{}.discover();
@@ -794,13 +1053,16 @@ struct GuiApp::State
         preview_animation.reset();
         preview_animation_index = -1;
         preview_time = 0.0F;
-        preview_static_triangles.clear();
-        preview_static_cached = false;
+        model_mesh_cached = false;
         preview_textures.clear();
         preview_texture_warnings.clear();
         map_preview_triangles.clear();
         map_preview_cached = false;
         map_preview_large_window = false;
+        object_index.reset();
+        map_models.clear();
+        object_textures.clear();
+        reset_map_objects();
         succeed("Loaded " + std::to_string(assets.size()) + " logical assets from " + std::to_string(vfs.mounts().size()) + " layers");
     }
 
@@ -840,12 +1102,13 @@ struct GuiApp::State
         preview_animation.reset();
         preview_animation_index = -1;
         preview_time = 0.0F;
-        preview_static_triangles.clear();
-        preview_static_cached = false;
+        model_mesh_cached = false;
         preview_textures.clear();
         preview_texture_warnings.clear();
         map_preview_triangles.clear();
         map_preview_cached = false;
+        reset_map_objects();
+        terrain_mesh_cached = false;
 
         const auto selected_path = std::filesystem::path(asset.virtual_path);
         const auto extension = lower(selected_path.extension().string());
@@ -860,7 +1123,18 @@ struct GuiApp::State
                 preview_map = TedMap::parse(bytes);
             }
             catch (const std::exception&)
-            {}
+            {
+                return;
+            }
+            try
+            {
+                load_map_objects();
+            }
+            catch (const std::exception& error)
+            {
+                reset_map_objects();
+                map_object_warnings.push_back(std::string("Placed-object models unavailable: ") + error.what());
+            }
             return;
         }
         if (extension != ".alo")
@@ -904,48 +1178,46 @@ struct GuiApp::State
             {
                 for (const auto& parameter : submesh.parameters)
                 {
-                    if (parameter.type != AloShaderParameterType::texture || parameter.value.empty())
+                    if (parameter.type == AloShaderParameterType::texture && !parameter.value.empty())
                     {
-                        continue;
-                    }
-                    const auto key = lower(parameter.value);
-                    if (preview_textures.contains(key))
-                    {
-                        continue;
-                    }
-                    auto filename = std::filesystem::path(parameter.value).filename();
-                    filename.replace_extension(".DDS");
-                    const std::array candidates{std::string("DATA/ART/TEXTURES/") + filename.generic_string(), std::string("DATA/ART/") + filename.generic_string(), filename.generic_string()};
-                    bool loaded = false;
-                    for (const auto& virtual_path : candidates)
-                    {
-                        if (!vfs.resolve(virtual_path))
-                        {
-                            continue;
-                        }
-                        try
-                        {
-                            const auto texture_bytes = vfs.read(virtual_path);
-                            preview_textures.emplace(key, create_dds_texture(graphics_device, texture_bytes));
-                            loaded = true;
-                        }
-                        catch (const std::exception& error)
-                        {
-                            preview_texture_warnings.push_back(parameter.value + ": " + error.what());
-                        }
-                        break;
-                    }
-                    if (!loaded && !std::ranges::any_of(preview_texture_warnings,
-                                                        [&](const auto& warning_text)
-                                                        {
-                                                            return warning_text.starts_with(parameter.value + ":");
-                                                        }))
-                    {
-                        preview_texture_warnings.push_back(parameter.value + ": matching DDS not found");
+                        static_cast<void>(load_texture(preview_textures, preview_texture_warnings, parameter.value));
                     }
                 }
             }
         }
+    }
+
+    // Loads the DDS for an ALO texture reference into `cache` (keyed by folded reference) and
+    // returns its view, or null when it is missing or undecodable. Failures are cached too.
+    ID3D11ShaderResourceView* load_texture(std::unordered_map<std::string, PreviewTexture>& cache, std::vector<std::string>& warnings, const std::string& reference)
+    {
+        const auto key = lower(reference);
+        if (const auto found = cache.find(key); found != cache.end())
+        {
+            return found->second.view.Get();
+        }
+        auto& entry = cache[key];
+        auto filename = std::filesystem::path(reference).filename();
+        filename.replace_extension(".DDS");
+        const std::array candidates{std::string("DATA/ART/TEXTURES/") + filename.generic_string(), std::string("DATA/ART/") + filename.generic_string(), filename.generic_string()};
+        for (const auto& virtual_path : candidates)
+        {
+            if (!vfs.resolve(virtual_path))
+            {
+                continue;
+            }
+            try
+            {
+                entry = create_dds_texture(graphics_device, vfs.read(virtual_path));
+            }
+            catch (const std::exception& error)
+            {
+                warnings.push_back(reference + ": " + error.what());
+            }
+            return entry.view.Get();
+        }
+        warnings.push_back(reference + ": matching DDS not found");
+        return nullptr;
     }
 
     void open_dat(const std::filesystem::path& path)
@@ -1132,80 +1404,6 @@ void render_status_bar(GuiApp::State& state)
     ImGui::TextUnformatted(state.message.c_str());
 }
 
-bool collision_material(const AloSubMesh& submesh)
-{
-    return lower(submesh.shader).find("collision") != std::string::npos;
-}
-
-ID3D11ShaderResourceView* submesh_texture(const GuiApp::State& state, const AloSubMesh& submesh)
-{
-    const AloShaderParameter* selected = nullptr;
-    for (const auto& parameter : submesh.parameters)
-    {
-        if (parameter.type != AloShaderParameterType::texture || parameter.value.empty())
-        {
-            continue;
-        }
-        if (selected == nullptr)
-        {
-            selected = &parameter;
-        }
-        const auto name = lower(parameter.name);
-        if (name == "basetexture" || name == "diffusetexture" || name == "texture")
-        {
-            selected = &parameter;
-            break;
-        }
-    }
-    if (selected == nullptr)
-    {
-        return nullptr;
-    }
-    const auto found = state.preview_textures.find(lower(selected->value));
-    return found == state.preview_textures.end() ? nullptr : found->second.view.Get();
-}
-
-AloVector3 animated_vertex(const AloVertex& vertex, const AloSubMesh& submesh, const std::vector<AlaPoseBone>& pose, const std::vector<AloMatrix4>& inverse_bind)
-{
-    if (submesh.skin_bones.empty())
-    {
-        return vertex.position;
-    }
-    AloVector3 result{};
-    float total_weight = 0.0F;
-    for (std::size_t influence = 0; influence < vertex.bone_indices.size(); ++influence)
-    {
-        const auto weight = vertex.bone_weights[influence];
-        const auto palette_index = vertex.bone_indices[influence];
-        if (weight <= 0.0F || palette_index >= submesh.skin_bones.size())
-        {
-            continue;
-        }
-        const auto bone_index = submesh.skin_bones[palette_index];
-        if (bone_index >= pose.size() || bone_index >= inverse_bind.size())
-        {
-            continue;
-        }
-        const auto skin = alo_multiply(inverse_bind[bone_index], pose[bone_index].transform);
-        const auto point = alo_transform_point(vertex.position, skin);
-        result.x += point.x * weight;
-        result.y += point.y * weight;
-        result.z += point.z * weight;
-        total_weight += weight;
-    }
-    if (total_weight <= 1.0e-6F)
-    {
-        return vertex.position;
-    }
-    if (std::fabs(total_weight - 1.0F) > 1.0e-4F)
-    {
-        result.x /= total_weight;
-        result.y /= total_weight;
-        result.z /= total_weight;
-    }
-    return result;
-}
-
 std::vector<AlaPoseBone> preview_pose(const GuiApp::State& state)
 {
     if (!state.preview_model)
@@ -1224,82 +1422,6 @@ std::vector<AlaPoseBone> preview_pose(const GuiApp::State& state)
         pose.push_back({transforms[index], state.preview_model->bones[index].visible});
     }
     return pose;
-}
-
-std::vector<PreviewTriangle> preview_triangles(const GuiApp::State& state, const std::vector<AlaPoseBone>& pose)
-{
-    std::vector<PreviewTriangle> triangles;
-    if (!state.preview_model)
-    {
-        return triangles;
-    }
-    const auto maximum_triangles = static_cast<std::size_t>(std::max(state.preview_triangle_budget, 1000));
-    triangles.reserve(static_cast<std::size_t>(std::min<std::uint64_t>(state.preview_model->triangle_count(), maximum_triangles)));
-    const auto triangle_stride = std::max<std::uint64_t>(1, (state.preview_model->triangle_count() + maximum_triangles - 1) / maximum_triangles);
-    static constexpr std::array<ImU32, 6> palette{IM_COL32(54, 177, 186, 255), IM_COL32(71, 137, 201, 255), IM_COL32(121, 101, 198, 255),
-                                                  IM_COL32(55, 183, 133, 255), IM_COL32(199, 145, 62, 255), IM_COL32(185, 91, 129, 255)};
-
-    for (std::size_t mesh_index = 0; mesh_index < state.preview_model->meshes.size() && triangles.size() < maximum_triangles; ++mesh_index)
-    {
-        const auto& mesh = state.preview_model->meshes[mesh_index];
-        if (mesh.hidden)
-        {
-            continue;
-        }
-        if (mesh.attached_bone && *mesh.attached_bone < pose.size() && !pose[*mesh.attached_bone].visible)
-        {
-            continue;
-        }
-        for (const auto& submesh : mesh.submeshes)
-        {
-            const bool collision = collision_material(submesh);
-            if (collision && !state.preview_show_collision)
-            {
-                continue;
-            }
-            if (submesh.vertices.empty() || submesh.indices.size() < 3)
-            {
-                continue;
-            }
-            std::vector<AloVector3> vertices;
-            vertices.reserve(submesh.vertices.size());
-            for (const auto& vertex : submesh.vertices)
-            {
-                auto point = animated_vertex(vertex, submesh, pose, state.preview_inverse_bind);
-                if (submesh.skin_bones.empty() && mesh.attached_bone && *mesh.attached_bone < pose.size())
-                {
-                    point = alo_transform_point(point, pose[*mesh.attached_bone].transform);
-                }
-                vertices.push_back(point);
-            }
-            const auto color = collision ? IM_COL32(224, 79, 72, 180) : palette[mesh_index % palette.size()];
-            auto* texture = collision ? nullptr : submesh_texture(state, submesh);
-            for (std::size_t index = 0; index + 2 < submesh.indices.size() && triangles.size() < maximum_triangles; index += static_cast<std::size_t>(3U * triangle_stride))
-            {
-                const auto a = submesh.indices[index];
-                const auto b = submesh.indices[index + 1];
-                const auto c = submesh.indices[index + 2];
-                if (a >= vertices.size() || b >= vertices.size() || c >= vertices.size())
-                {
-                    continue;
-                }
-                triangles.push_back({{vertices[a], vertices[b], vertices[c]},
-                                     {submesh.vertices[a].texture_coordinates[0], submesh.vertices[b].texture_coordinates[0], submesh.vertices[c].texture_coordinates[0]},
-                                     texture,
-                                     texture != nullptr ? IM_COL32_WHITE : color});
-            }
-        }
-    }
-    return triangles;
-}
-
-ImU32 shaded_color(const ImU32 color, const float intensity)
-{
-    const auto channel = [&](const unsigned shift)
-    {
-        return static_cast<int>(std::clamp(static_cast<float>((color >> shift) & 0xffU) * intensity, 0.0F, 255.0F));
-    };
-    return IM_COL32(channel(IM_COL32_R_SHIFT), channel(IM_COL32_G_SHIFT), channel(IM_COL32_B_SHIFT), (color >> IM_COL32_A_SHIFT) & 0xffU);
 }
 
 ImU32 terrain_height_color(const float height)
@@ -1345,6 +1467,83 @@ ImU32 object_player_color(const std::uint32_t player)
 float object_marker_radius(const TedPlacedObject& object, const float scale)
 {
     return std::clamp(std::sqrt(std::max(std::fabs(object.scale), 0.1F)), 0.75F, 2.25F) * 3.5F * scale;
+}
+
+void map_object_tooltip(const GuiApp::State& state, const std::size_t object_index)
+{
+    const auto& object = state.preview_map->placed_objects[object_index];
+    ImGui::BeginTooltip();
+    const MapObjectPlacement* placement = nullptr;
+    if (state.map_object_layout && object_index < state.map_object_placement.size() && state.map_object_placement[object_index] >= 0)
+    {
+        placement = &state.map_object_layout->placements[static_cast<std::size_t>(state.map_object_placement[object_index])];
+    }
+    if (placement != nullptr && placement->type != nullptr)
+    {
+        ImGui::Text("%s  (%s)", placement->type->name.c_str(), placement->type->type.c_str());
+        ImGui::TextColored(muted, "%s:%zu", placement->type->source_path.c_str(), placement->type->line);
+        if (!placement->model_path.empty())
+        {
+            ImGui::Text("Model: %s", placement->model_path.c_str());
+        }
+        else if (!placement->model_reference.empty())
+        {
+            ImGui::Text("Model: %s (not found)", placement->model_reference.c_str());
+        }
+        else
+        {
+            ImGui::TextUnformatted("Model: none for this map type");
+        }
+    }
+    else if (state.map_object_layout)
+    {
+        ImGui::TextUnformatted("Unresolved object type");
+    }
+    ImGui::Text("Type CRC: 0x%08X", object.crc);
+    ImGui::Text("Instance: %u  |  Player code: %u", object.instance_id, object.player);
+    ImGui::Text("Position: %.1f, %.1f, %.1f", object.position.x, object.position.y, object.position.z);
+    ImGui::Text("Rotation: %.1f, %.1f, %.1f  |  Scale: %.2f", object.rotation.x, object.rotation.y, object.rotation.z, object.scale);
+    ImGui::EndTooltip();
+}
+
+// Bounding radius of a placed object's model in world units, or zero without a drawn model.
+float map_object_radius(const GuiApp::State& state, const std::size_t object_index)
+{
+    if (!state.map_object_layout || object_index >= state.map_object_placement.size() || state.map_object_placement[object_index] < 0)
+    {
+        return 0.0F;
+    }
+    const auto& placement = state.map_object_layout->placements[static_cast<std::size_t>(state.map_object_placement[object_index])];
+    const auto found = state.map_models.find(placement.model_path);
+    if (found == state.map_models.end() || !found->second.valid)
+    {
+        return 0.0F;
+    }
+    return found->second.radius * std::fabs(state.preview_map->placed_objects[object_index].scale);
+}
+
+void render_map_object_status(const GuiApp::State& state)
+{
+    if (!state.map_object_layout)
+    {
+        for (const auto& message : state.map_object_warnings)
+        {
+            ImGui::TextColored(danger, "%s", message.c_str());
+        }
+        return;
+    }
+    const auto& layout = *state.map_object_layout;
+    const auto drawn = static_cast<std::size_t>(std::ranges::count(state.map_object_drawn, char{1}));
+    ImGui::TextColored(muted, "%zu objects drawn as models  |  %zu untyped  |  %zu without model  |  %zu missing model files", drawn, layout.untyped, layout.without_model, layout.missing_model_files);
+    if (!state.map_object_warnings.empty() && ImGui::IsItemHovered())
+    {
+        ImGui::BeginTooltip();
+        for (std::size_t index = 0; index < std::min<std::size_t>(state.map_object_warnings.size(), 12); ++index)
+        {
+            ImGui::TextUnformatted(state.map_object_warnings[index].c_str());
+        }
+        ImGui::EndTooltip();
+    }
 }
 
 std::vector<PreviewTriangle> map_preview_triangles(const TedMap& map, const int triangle_budget, const float vertical_scale, const bool show_passability)
@@ -1408,11 +1607,86 @@ std::vector<PreviewTriangle> map_preview_triangles(const TedMap& map, const int 
             const auto first_y = (2U * y + next_y) / 3U;
             const auto second_x = (2U * x + next_x) / 3U;
             const auto second_y = (y + 2U * next_y) / 3U;
-            triangles.push_back({{a, b, c}, {}, nullptr, color(first_x, first_y)});
-            triangles.push_back({{a, c, d}, {}, nullptr, color(second_x, second_y)});
+            triangles.push_back({{a, b, c}, color(first_x, first_y)});
+            triangles.push_back({{a, c, d}, color(second_x, second_y)});
         }
     }
     return triangles;
+}
+
+// Uploads per-model instance lists for the current map. `anchor` maps an object position into
+// preview space and `unit_scale` converts model/world units to preview units (1 for space maps,
+// terrain samples per world unit for land maps).
+void update_map_instances(GuiApp::State& state, const std::function<AloVector3(const TedPlacedObject&)>& anchor, const float unit_scale)
+{
+    const auto& map = *state.preview_map;
+    state.map_object_drawn.assign(map.placed_objects.size(), 0);
+    std::unordered_map<std::string, std::vector<PreviewInstance>> instances;
+    if (state.map_object_layout)
+    {
+        auto scale = alo_identity_matrix();
+        scale.values[0] = scale.values[5] = scale.values[10] = unit_scale;
+        for (const auto& placement : state.map_object_layout->placements)
+        {
+            const auto found = state.map_models.find(placement.model_path);
+            if (placement.model_path.empty() || found == state.map_models.end() || !found->second.valid)
+            {
+                continue;
+            }
+            const auto& object = map.placed_objects[placement.object_index];
+            auto transform = alo_multiply(placement.transform, scale);
+            const auto origin = anchor(object);
+            transform.values[12] = origin.x;
+            transform.values[13] = origin.y;
+            transform.values[14] = origin.z;
+            PreviewInstance instance;
+            std::ranges::copy(transform.values, instance.transform.begin());
+            instances[placement.model_path].push_back(instance);
+            state.map_object_drawn[placement.object_index] = 1;
+        }
+    }
+    for (auto& [path, model] : state.map_models)
+    {
+        if (!model.valid)
+        {
+            continue;
+        }
+        const auto found = instances.find(path);
+        const auto list = found == instances.end() ? std::span<const PreviewInstance>{} : std::span<const PreviewInstance>{found->second};
+        static_cast<void>(model.mesh.set_instances(state.renderer.device(), state.renderer.context(), list));
+    }
+    state.map_object_cached = true;
+}
+
+std::vector<const PreviewMesh*> map_object_meshes(const GuiApp::State& state)
+{
+    std::vector<const PreviewMesh*> meshes;
+    for (const auto& [path, model] : state.map_models)
+    {
+        if (model.valid && model.mesh.ready())
+        {
+            meshes.push_back(&model.mesh);
+        }
+    }
+    return meshes;
+}
+
+// Renders `meshes` into `target` and shows it over the canvas. Returns false (after drawing a
+// message) when the GPU preview pipeline is unavailable.
+bool draw_gpu_preview(GuiApp::State& state, PreviewTarget& target, const ImVec2 canvas_min, const ImVec2 canvas_max, const AloVector3& center, const float yaw, const float pitch, const float scale,
+                      const float depth_radius, const std::span<const PreviewMesh* const> meshes)
+{
+    auto* draw = ImGui::GetWindowDrawList();
+    const auto width = static_cast<std::uint32_t>(std::max(1.0F, std::round(canvas_max.x - canvas_min.x)));
+    const auto height = static_cast<std::uint32_t>(std::max(1.0F, std::round(canvas_max.y - canvas_min.y)));
+    const auto view_projection = orbit_view_projection({center.x, center.y, center.z}, yaw, pitch, scale, static_cast<float>(width), static_cast<float>(height), depth_radius);
+    if (!state.renderer.render(target, width, height, view_projection, meshes, {7.0F / 255.0F, 13.0F / 255.0F, 20.0F / 255.0F, 1.0F}))
+    {
+        draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 32.0F}, IM_COL32(230, 120, 110, 255), "GPU preview unavailable on this device");
+        return false;
+    }
+    draw->AddImage(ImTextureRef(reinterpret_cast<ImTextureID>(target.view())), canvas_min, canvas_max);
+    return true;
 }
 
 void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
@@ -1436,9 +1710,24 @@ void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
     ImGui::SameLine();
     ImGui::Checkbox("Objects", &state.map_preview_show_objects);
     ImGui::SameLine();
-    ImGui::Checkbox("3D altitude", &state.map_preview_show_altitude);
+    if (ImGui::Checkbox("3D altitude", &state.map_preview_show_altitude))
+    {
+        state.map_object_cached = false;
+    }
     ImGui::SetNextItemWidth(-1.0F);
     ImGui::SliderFloat("##space-marker-scale", &state.map_preview_marker_scale, 0.5F, 2.5F, "Marker size: %.2fx");
+    if (!state.map_object_cached)
+    {
+        const auto altitude = state.map_preview_show_altitude;
+        update_map_instances(
+            state,
+            [altitude](const TedPlacedObject& object)
+            {
+                return AloVector3{object.position.x, object.position.y, altitude ? object.position.z : 0.0F};
+            },
+            1.0F);
+    }
+    render_map_object_status(state);
     ImGui::TextColored(muted, "%zu positioned objects  |  %zu types  |  %.0f x %.0f bounds", positioned.size(), map.object_types.size(), map.world_width, map.world_height);
 
     auto canvas_size = ImGui::GetContentRegionAvail();
@@ -1479,12 +1768,8 @@ void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
     for (const auto index : positioned)
     {
         const auto point = preview_point(map.placed_objects[index]);
-        minimum.x = std::min(minimum.x, point.x);
-        minimum.y = std::min(minimum.y, point.y);
-        minimum.z = std::min(minimum.z, point.z);
-        maximum.x = std::max(maximum.x, point.x);
-        maximum.y = std::max(maximum.y, point.y);
-        maximum.z = std::max(maximum.z, point.z);
+        minimum = {std::min(minimum.x, point.x), std::min(minimum.y, point.y), std::min(minimum.z, point.z)};
+        maximum = {std::max(maximum.x, point.x), std::max(maximum.y, point.y), std::max(maximum.z, point.z)};
     }
     if (map.world_width > 0.0F && map.world_height > 0.0F)
     {
@@ -1518,6 +1803,19 @@ void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
         return ImVec2{screen_center.x + horizontal * scale, screen_center.y - vertical * scale};
     };
 
+    float largest_model = 0.0F;
+    for (const auto& [path, model] : state.map_models)
+    {
+        largest_model = std::max(largest_model, model.radius);
+    }
+    std::vector<const PreviewMesh*> meshes;
+    if (state.map_preview_show_objects)
+    {
+        meshes = map_object_meshes(state);
+    }
+    draw->PushClipRect(canvas_min, canvas_max, true);
+    draw_gpu_preview(state, state.map_target, canvas_min, canvas_max, center, state.map_preview_yaw, state.map_preview_pitch, scale, extent * 1.5F + largest_model * 4.0F, meshes);
+
     struct SpaceMarker
     {
         ImVec2 point;
@@ -1527,6 +1825,7 @@ void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
         ImU32 color{};
         ImU32 outline{};
         std::size_t object_index{};
+        bool visible{true};
     };
     std::vector<SpaceMarker> markers;
     const auto marker_stride = std::max<std::size_t>(1, (positioned.size() + 5999U) / 6000U);
@@ -1543,11 +1842,16 @@ void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
         marker.color = passability_color(object.crc);
         marker.outline = object_player_color(object.player);
         marker.object_index = object_index;
+        // Objects drawn as models keep an invisible hover target sized to their projected bounds.
+        if (object_index < state.map_object_drawn.size() && state.map_object_drawn[object_index] != 0)
+        {
+            marker.visible = false;
+            marker.radius = std::max(marker.radius, map_object_radius(state, object_index) * scale);
+        }
         markers.push_back(marker);
     }
     std::ranges::sort(markers, {}, &SpaceMarker::depth);
 
-    draw->PushClipRect(canvas_min, canvas_max, true);
     if (state.map_preview_show_grid)
     {
         const auto grid_color = IM_COL32(72, 120, 139, 75);
@@ -1579,13 +1883,17 @@ void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
     }
     for (const auto& marker : markers)
     {
+        if (!marker.visible)
+        {
+            continue;
+        }
         const auto radius = marker.radius;
         const std::array diamond{ImVec2{marker.point.x, marker.point.y - radius}, ImVec2{marker.point.x + radius, marker.point.y}, ImVec2{marker.point.x, marker.point.y + radius},
                                  ImVec2{marker.point.x - radius, marker.point.y}};
         draw->AddConvexPolyFilled(diamond.data(), static_cast<int>(diamond.size()), marker.color);
         draw->AddPolyline(diamond.data(), static_cast<int>(diamond.size()), marker.outline, ImDrawFlags_Closed, 1.25F);
     }
-    draw->AddText({canvas_min.x + 12.0F, canvas_min.y + 10.0F}, IM_COL32(178, 197, 205, 255), "Drag to orbit  |  Wheel to zoom  |  Hover a marker for details");
+    draw->AddText({canvas_min.x + 12.0F, canvas_min.y + 10.0F}, IM_COL32(178, 197, 205, 255), "Drag to orbit  |  Wheel to zoom  |  Hover an object for details");
     draw->PopClipRect();
 
     if (ImGui::IsItemHovered())
@@ -1607,13 +1915,7 @@ void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
         }
         if (hovered != nullptr)
         {
-            const auto& object = map.placed_objects[hovered->object_index];
-            ImGui::BeginTooltip();
-            ImGui::Text("Type CRC: 0x%08X", object.crc);
-            ImGui::Text("Instance: %u  |  Player code: %u", object.instance_id, object.player);
-            ImGui::Text("Position: %.1f, %.1f, %.1f", object.position.x, object.position.y, object.position.z);
-            ImGui::Text("Rotation: %.1f, %.1f, %.1f  |  Scale: %.2f", object.rotation.x, object.rotation.y, object.rotation.z, object.scale);
-            ImGui::EndTooltip();
+            map_object_tooltip(state, hovered->object_index);
         }
     }
 }
@@ -1661,7 +1963,7 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
         state.map_preview_cached = false;
     }
     ImGui::SetNextItemWidth(-1.0F);
-    if (ImGui::SliderInt("##map-triangle-budget", &state.map_preview_triangle_budget, 2000, 18000, "Detail: up to %d triangles"))
+    if (ImGui::SliderInt("##map-triangle-budget", &state.map_preview_triangle_budget, 2000, 18000, "Terrain detail: up to %d triangles"))
     {
         state.map_preview_cached = false;
     }
@@ -1670,9 +1972,56 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
     {
         state.map_preview_triangles = map_preview_triangles(map, state.map_preview_triangle_budget, state.map_preview_vertical_scale, state.map_preview_show_passability);
         state.map_preview_cached = true;
+        state.terrain_mesh_cached = false;
+        state.map_object_cached = false;
     }
-    ImGui::TextColored(muted, "%u x %u grid  |  %zu triangles  |  elevation %d..%d", map.terrain_width, map.terrain_height, state.map_preview_triangles.size(), map.minimum_elevation,
+    if (!state.terrain_mesh_cached && state.renderer.ready())
+    {
+        std::vector<PreviewVertex> vertices;
+        std::vector<std::uint32_t> indices;
+        vertices.reserve(state.map_preview_triangles.size() * 3);
+        indices.reserve(state.map_preview_triangles.size() * 3);
+        for (const auto& triangle : state.map_preview_triangles)
+        {
+            for (const auto& point : triangle.points)
+            {
+                indices.push_back(static_cast<std::uint32_t>(vertices.size()));
+                vertices.push_back({{point.x, point.y, point.z}, {}, triangle.color});
+            }
+        }
+        const std::vector<PreviewPart> parts{{0, static_cast<std::uint32_t>(indices.size()), nullptr, PreviewBlend::opaque, 0.5F}};
+        const PreviewInstance identity;
+        if (!indices.empty() && state.terrain_mesh.upload(state.renderer.device(), state.renderer.context(), vertices, indices, parts))
+        {
+            static_cast<void>(state.terrain_mesh.set_instances(state.renderer.device(), state.renderer.context(), std::span<const PreviewInstance>{&identity, 1}));
+        }
+        state.terrain_mesh_cached = true;
+    }
+
+    // Placed objects use editor coordinates at 20 world units per terrain sample, with Z elevation
+    // in the heightmap's 20x stored scale. Model geometry keeps uniform world proportions.
+    const auto elevation_range = std::max(1.0F, static_cast<float>(map.maximum_elevation - map.minimum_elevation));
+    const auto horizontal_extent = static_cast<float>(std::max(map.terrain_width - 1U, map.terrain_height - 1U));
+    const auto vertical_extent = horizontal_extent * 0.36F * state.map_preview_vertical_scale;
+    const auto editor_width = static_cast<float>(map.terrain_width) * 20.0F;
+    const auto editor_height = static_cast<float>(map.terrain_height) * 20.0F;
+    const auto grid_center_x = static_cast<float>(map.terrain_width - 1U) * 0.5F;
+    const auto grid_center_y = static_cast<float>(map.terrain_height - 1U) * 0.5F;
+    const auto land_point = [&](const TedPlacedObject& object)
+    {
+        return AloVector3{object.position.x / editor_width * static_cast<float>(map.terrain_width - 1U) - grid_center_x,
+                          object.position.y / editor_height * static_cast<float>(map.terrain_height - 1U) - grid_center_y,
+                          ((object.position.z * 20.0F - map.minimum_elevation) / elevation_range - 0.5F) * vertical_extent};
+    };
+    const auto land_unit_scale = static_cast<float>(map.terrain_width - 1U) / std::max(editor_width, 1.0F);
+    const auto has_object_space = map.world_width > 0.0F && map.world_height > 0.0F;
+    if (has_object_space && !state.map_object_cached)
+    {
+        update_map_instances(state, land_point, land_unit_scale);
+    }
+    ImGui::TextColored(muted, "%u x %u grid  |  %zu terrain triangles  |  elevation %d..%d", map.terrain_width, map.terrain_height, state.map_preview_triangles.size(), map.minimum_elevation,
                        map.maximum_elevation);
+    render_map_object_status(state);
 
     auto canvas_size = ImGui::GetContentRegionAvail();
     if (reserve_footer)
@@ -1699,8 +2048,7 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
     draw->AddRect(canvas_min, canvas_max, IM_COL32(40, 78, 91, 255), 6.0F);
     if (state.map_preview_triangles.empty())
     {
-        const auto message = map.type == TedMapType::space ? "Space map: no terrain heightmap; placed-object transforms are not decoded yet" : "No renderable terrain heightmap in this map";
-        draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 14.0F}, IM_COL32(150, 164, 174, 255), message);
+        draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 14.0F}, IM_COL32(150, 164, 174, 255), "No renderable terrain heightmap in this map");
         return;
     }
 
@@ -1710,12 +2058,8 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
     {
         for (const auto& point : triangle.points)
         {
-            minimum.x = std::min(minimum.x, point.x);
-            minimum.y = std::min(minimum.y, point.y);
-            minimum.z = std::min(minimum.z, point.z);
-            maximum.x = std::max(maximum.x, point.x);
-            maximum.y = std::max(maximum.y, point.y);
-            maximum.z = std::max(maximum.z, point.z);
+            minimum = {std::min(minimum.x, point.x), std::min(minimum.y, point.y), std::min(minimum.z, point.z)};
+            maximum = {std::max(maximum.x, point.x), std::max(maximum.y, point.y), std::max(maximum.z, point.z)};
         }
     }
     const AloVector3 center{(minimum.x + maximum.x) * 0.5F, (minimum.y + maximum.y) * 0.5F, (minimum.z + maximum.z) * 0.5F};
@@ -1741,32 +2085,19 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
         return ImVec2{screen_center.x + horizontal * scale, screen_center.y - vertical * scale};
     };
 
-    std::vector<ProjectedTriangle> projected;
-    projected.reserve(state.map_preview_triangles.size());
-    for (const auto& triangle : state.map_preview_triangles)
+    std::vector<const PreviewMesh*> meshes{&state.terrain_mesh};
+    if (state.map_preview_show_objects && has_object_space)
     {
-        ProjectedTriangle item{};
-        float depths[3]{};
-        for (std::size_t point_index = 0; point_index < 3; ++point_index)
-        {
-            item.points[point_index] = project(triangle.points[point_index], &depths[point_index]);
-        }
-        item.depth = (depths[0] + depths[1] + depths[2]) / 3.0F;
-        const auto ux = triangle.points[1].x - triangle.points[0].x;
-        const auto uy = triangle.points[1].y - triangle.points[0].y;
-        const auto uz = triangle.points[1].z - triangle.points[0].z;
-        const auto vx = triangle.points[2].x - triangle.points[0].x;
-        const auto vy = triangle.points[2].y - triangle.points[0].y;
-        const auto vz = triangle.points[2].z - triangle.points[0].z;
-        const auto nx = uy * vz - uz * vy;
-        const auto ny = uz * vx - ux * vz;
-        const auto nz = ux * vy - uy * vx;
-        const auto length = std::sqrt(nx * nx + ny * ny + nz * nz);
-        const auto lighting = length > 1.0e-5F ? std::fabs((nx * 0.35F - ny * 0.45F + nz * 0.82F) / length) : 0.0F;
-        item.color = shaded_color(triangle.color, 0.45F + lighting * 0.55F);
-        projected.push_back(item);
+        const auto objects = map_object_meshes(state);
+        meshes.insert(meshes.end(), objects.begin(), objects.end());
     }
-    std::ranges::sort(projected, {}, &ProjectedTriangle::depth);
+    float largest_model = 0.0F;
+    for (const auto& [path, model] : state.map_models)
+    {
+        largest_model = std::max(largest_model, model.radius * land_unit_scale);
+    }
+    draw->PushClipRect(canvas_min, canvas_max, true);
+    draw_gpu_preview(state, state.map_target, canvas_min, canvas_max, center, state.map_preview_yaw, state.map_preview_pitch, scale, extent * 1.5F + largest_model * 4.0F, meshes);
 
     struct LandMarker
     {
@@ -1776,9 +2107,10 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
         ImU32 color{};
         ImU32 outline{};
         std::size_t object_index{};
+        bool visible{true};
     };
     std::vector<LandMarker> markers;
-    if (state.map_preview_show_objects && map.world_width > 0.0F && map.world_height > 0.0F)
+    if (state.map_preview_show_objects && has_object_space)
     {
         std::vector<std::size_t> positioned;
         positioned.reserve(map.placed_objects.size());
@@ -1791,36 +2123,26 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
         }
         const auto marker_stride = std::max<std::size_t>(1, (positioned.size() + 5999U) / 6000U);
         markers.reserve((positioned.size() + marker_stride - 1U) / marker_stride);
-        const auto elevation_range = std::max(1.0F, static_cast<float>(map.maximum_elevation - map.minimum_elevation));
-        const auto horizontal_extent = static_cast<float>(std::max(map.terrain_width - 1U, map.terrain_height - 1U));
-        const auto vertical_extent = horizontal_extent * 0.36F * state.map_preview_vertical_scale;
-        const auto editor_width = static_cast<float>(map.terrain_width) * 20.0F;
-        const auto editor_height = static_cast<float>(map.terrain_height) * 20.0F;
-        const auto center_x = static_cast<float>(map.terrain_width - 1U) * 0.5F;
-        const auto center_y = static_cast<float>(map.terrain_height - 1U) * 0.5F;
         for (std::size_t shown = 0; shown < positioned.size(); shown += marker_stride)
         {
             const auto object_index = positioned[shown];
             const auto& object = map.placed_objects[object_index];
-            const AloVector3 point{object.position.x / editor_width * static_cast<float>(map.terrain_width - 1U) - center_x,
-                                   object.position.y / editor_height * static_cast<float>(map.terrain_height - 1U) - center_y,
-                                   ((object.position.z * 20.0F - map.minimum_elevation) / elevation_range - 0.5F) * vertical_extent};
             LandMarker marker;
-            marker.point = project(point, &marker.depth);
+            marker.point = project(land_point(object), &marker.depth);
             marker.radius = object_marker_radius(object, state.map_preview_marker_scale);
             marker.color = passability_color(object.crc);
             marker.outline = object_player_color(object.player);
             marker.object_index = object_index;
+            if (object_index < state.map_object_drawn.size() && state.map_object_drawn[object_index] != 0)
+            {
+                marker.visible = false;
+                marker.radius = std::max(marker.radius, map_object_radius(state, object_index) * land_unit_scale * scale);
+            }
             markers.push_back(marker);
         }
         std::ranges::sort(markers, {}, &LandMarker::depth);
     }
 
-    draw->PushClipRect(canvas_min, canvas_max, true);
-    for (const auto& triangle : projected)
-    {
-        draw->AddTriangleFilled(triangle.points[0], triangle.points[1], triangle.points[2], triangle.color);
-    }
     if (state.map_preview_show_grid)
     {
         const auto grid_color = IM_COL32(93, 157, 169, 105);
@@ -1835,15 +2157,19 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
     }
     if (state.map_preview_show_wireframe)
     {
-        const auto wire_stride = std::max<std::size_t>(1, (projected.size() + 3999U) / 4000U);
-        for (std::size_t index = 0; index < projected.size(); index += wire_stride)
+        const auto wire_stride = std::max<std::size_t>(1, (state.map_preview_triangles.size() + 3999U) / 4000U);
+        for (std::size_t index = 0; index < state.map_preview_triangles.size(); index += wire_stride)
         {
-            const auto& triangle = projected[index];
-            draw->AddTriangle(triangle.points[0], triangle.points[1], triangle.points[2], IM_COL32(8, 16, 20, 95));
+            const auto& triangle = state.map_preview_triangles[index];
+            draw->AddTriangle(project(triangle.points[0]), project(triangle.points[1]), project(triangle.points[2]), IM_COL32(8, 16, 20, 95));
         }
     }
     for (const auto& marker : markers)
     {
+        if (!marker.visible)
+        {
+            continue;
+        }
         const auto radius = marker.radius;
         const std::array diamond{ImVec2{marker.point.x, marker.point.y - radius}, ImVec2{marker.point.x + radius, marker.point.y}, ImVec2{marker.point.x, marker.point.y + radius},
                                  ImVec2{marker.point.x - radius, marker.point.y}};
@@ -1851,7 +2177,7 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
         draw->AddPolyline(diamond.data(), static_cast<int>(diamond.size()), marker.outline, ImDrawFlags_Closed, 1.25F);
     }
     draw->AddText({canvas_min.x + 12.0F, canvas_min.y + 10.0F}, IM_COL32(178, 197, 205, 255),
-                  state.map_preview_show_objects ? "Drag to orbit  |  Wheel to zoom  |  Hover a marker for details" : "Drag to orbit  |  Wheel to zoom");
+                  state.map_preview_show_objects ? "Drag to orbit  |  Wheel to zoom  |  Hover an object for details" : "Drag to orbit  |  Wheel to zoom");
     draw->PopClipRect();
 
     if (state.map_preview_show_objects && ImGui::IsItemHovered())
@@ -1873,13 +2199,7 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
         }
         if (hovered != nullptr)
         {
-            const auto& object = map.placed_objects[hovered->object_index];
-            ImGui::BeginTooltip();
-            ImGui::Text("Type CRC: 0x%08X", object.crc);
-            ImGui::Text("Instance: %u  |  Player code: %u", object.instance_id, object.player);
-            ImGui::Text("Position: %.1f, %.1f, %.1f", object.position.x, object.position.y, object.position.z);
-            ImGui::Text("Rotation: %.1f, %.1f, %.1f  |  Scale: %.2f", object.rotation.x, object.rotation.y, object.rotation.z, object.scale);
-            ImGui::EndTooltip();
+            map_object_tooltip(state, hovered->object_index);
         }
     }
 }
@@ -1904,6 +2224,7 @@ void render_model_viewport(GuiApp::State& state)
         if (ImGui::Selectable("Bind pose", state.preview_animation_index < 0))
         {
             state.select_preview_animation(-1);
+            state.model_mesh_cached = false;
         }
         for (std::size_t index = 0; index < state.preview_animation_assets.size(); ++index)
         {
@@ -1918,6 +2239,7 @@ void render_model_viewport(GuiApp::State& state)
                 {
                     state.fail(error);
                 }
+                state.model_mesh_cached = false;
             }
         }
         ImGui::EndCombo();
@@ -1943,7 +2265,7 @@ void render_model_viewport(GuiApp::State& state)
     ImGui::SameLine();
     if (ImGui::Checkbox("Collision", &state.preview_show_collision))
     {
-        state.preview_static_cached = false;
+        state.model_mesh_cached = false;
     }
     ImGui::SameLine();
     if (ImGui::SmallButton("Reset camera"))
@@ -1951,12 +2273,6 @@ void render_model_viewport(GuiApp::State& state)
         state.preview_yaw = -0.65F;
         state.preview_pitch = 0.35F;
         state.preview_zoom = 1.0F;
-    }
-
-    ImGui::SetNextItemWidth(-1.0F);
-    if (ImGui::SliderInt("##triangle-budget", &state.preview_triangle_budget, 3000, 30000, "Detail: %d triangles"))
-    {
-        state.preview_static_cached = false;
     }
     if (!state.preview_texture_warnings.empty())
     {
@@ -1972,30 +2288,32 @@ void render_model_viewport(GuiApp::State& state)
         }
     }
 
+    // Static models upload once; animated models re-skin on the CPU and re-upload every frame.
     const auto pose = preview_pose(state);
-    std::vector<PreviewTriangle> animated_triangles;
-    const std::vector<PreviewTriangle>* triangles = nullptr;
-    if (state.preview_animation)
+    if ((!state.model_mesh_cached || state.preview_animation || state.model_mesh_collision != state.preview_show_collision) && state.renderer.ready())
     {
-        animated_triangles = preview_triangles(state, pose);
-        triangles = &animated_triangles;
-    }
-    else
-    {
-        if (!state.preview_static_cached || state.preview_static_collision != state.preview_show_collision)
+        const auto geometry = build_preview_geometry(*state.preview_model, &pose, state.preview_inverse_bind, state.preview_show_collision,
+                                                     [&state](const std::string& reference) -> ID3D11ShaderResourceView*
+                                                     {
+                                                         const auto found = state.preview_textures.find(lower(reference));
+                                                         return found == state.preview_textures.end() ? nullptr : found->second.view.Get();
+                                                     });
+        const PreviewInstance identity;
+        if (!geometry.indices.empty() && state.model_mesh.upload(state.renderer.device(), state.renderer.context(), geometry.vertices, geometry.indices, geometry.parts))
         {
-            state.preview_static_triangles = preview_triangles(state, pose);
-            state.preview_static_collision = state.preview_show_collision;
-            state.preview_static_cached = true;
+            static_cast<void>(state.model_mesh.set_instances(state.renderer.device(), state.renderer.context(), std::span<const PreviewInstance>{&identity, 1}));
+            state.model_minimum = geometry.minimum;
+            state.model_maximum = geometry.maximum;
         }
-        triangles = &state.preview_static_triangles;
+        else
+        {
+            static_cast<void>(state.model_mesh.set_instances(state.renderer.device(), state.renderer.context(), {}));
+        }
+        state.model_mesh_cached = true;
+        state.model_mesh_collision = state.preview_show_collision;
     }
-    const auto textured_triangles = std::ranges::count_if(*triangles,
-                                                          [](const auto& triangle)
-                                                          {
-                                                              return triangle.texture != nullptr;
-                                                          });
-    ImGui::TextColored(muted, "%zu DDS loaded  |  %zu/%zu textured triangles", state.preview_textures.size(), textured_triangles, triangles->size());
+    ImGui::TextColored(muted, "%zu DDS loaded  |  %llu triangles", state.preview_textures.size(), static_cast<unsigned long long>(state.preview_model->triangle_count()));
+
     auto canvas_size = ImGui::GetContentRegionAvail();
     canvas_size.x = std::max(canvas_size.x, 120.0F);
     canvas_size.y = std::max(canvas_size.y, 260.0F);
@@ -2015,26 +2333,15 @@ void render_model_viewport(GuiApp::State& state)
     auto* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(canvas_min, canvas_max, IM_COL32(7, 13, 20, 255), 6.0F);
     draw->AddRect(canvas_min, canvas_max, IM_COL32(40, 78, 91, 255), 6.0F);
-    if (triangles->empty())
+    if (!state.model_mesh.ready() || state.model_minimum.x > state.model_maximum.x)
     {
-        draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 14.0F}, IM_COL32(150, 164, 174, 255), "No renderable triangle stream in this model");
+        draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 14.0F}, IM_COL32(150, 164, 174, 255),
+                      state.renderer.ready() ? "No renderable triangle stream in this model" : "GPU preview unavailable on this device");
         return;
     }
 
-    AloVector3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
-    AloVector3 maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
-    for (const auto& triangle : *triangles)
-    {
-        for (const auto& point : triangle.points)
-        {
-            minimum.x = std::min(minimum.x, point.x);
-            minimum.y = std::min(minimum.y, point.y);
-            minimum.z = std::min(minimum.z, point.z);
-            maximum.x = std::max(maximum.x, point.x);
-            maximum.y = std::max(maximum.y, point.y);
-            maximum.z = std::max(maximum.z, point.z);
-        }
-    }
+    const auto& minimum = state.model_minimum;
+    const auto& maximum = state.model_maximum;
     const AloVector3 center{(minimum.x + maximum.x) * 0.5F, (minimum.y + maximum.y) * 0.5F, (minimum.z + maximum.z) * 0.5F};
     const auto extent = std::max({maximum.x - minimum.x, maximum.y - minimum.y, maximum.z - minimum.z, 0.001F});
     const auto scale = std::min(canvas_size.x, canvas_size.y) * 0.78F / extent * state.preview_zoom;
@@ -2043,7 +2350,7 @@ void render_model_viewport(GuiApp::State& state)
     const auto yaw_sin = std::sin(state.preview_yaw);
     const auto pitch_cos = std::cos(state.preview_pitch);
     const auto pitch_sin = std::sin(state.preview_pitch);
-    const auto project = [&](const AloVector3& point, float* depth = nullptr)
+    const auto project = [&](const AloVector3& point)
     {
         const auto x = point.x - center.x;
         const auto y = point.y - center.y;
@@ -2051,86 +2358,12 @@ void render_model_viewport(GuiApp::State& state)
         const auto horizontal = yaw_cos * x + yaw_sin * y;
         const auto forward = -yaw_sin * x + yaw_cos * y;
         const auto vertical = -pitch_sin * forward + pitch_cos * z;
-        if (depth != nullptr)
-        {
-            *depth = pitch_cos * forward + pitch_sin * z;
-        }
         return ImVec2{screen_center.x + horizontal * scale, screen_center.y - vertical * scale};
     };
 
-    std::vector<ProjectedTriangle> projected;
-    projected.reserve(triangles->size());
-    for (const auto& triangle : *triangles)
-    {
-        ProjectedTriangle item;
-        float depths[3]{};
-        for (std::size_t point = 0; point < 3; ++point)
-        {
-            item.points[point] = project(triangle.points[point], &depths[point]);
-            item.texture_coordinates[point] = {triangle.texture_coordinates[point].x, triangle.texture_coordinates[point].y};
-        }
-        item.texture = triangle.texture;
-        item.depth = (depths[0] + depths[1] + depths[2]) / 3.0F;
-        const auto ux = triangle.points[1].x - triangle.points[0].x;
-        const auto uy = triangle.points[1].y - triangle.points[0].y;
-        const auto uz = triangle.points[1].z - triangle.points[0].z;
-        const auto vx = triangle.points[2].x - triangle.points[0].x;
-        const auto vy = triangle.points[2].y - triangle.points[0].y;
-        const auto vz = triangle.points[2].z - triangle.points[0].z;
-        const auto nx = uy * vz - uz * vy;
-        const auto ny = uz * vx - ux * vz;
-        const auto nz = ux * vy - uy * vx;
-        const auto length = std::sqrt(nx * nx + ny * ny + nz * nz);
-        const auto lighting = length > 1.0e-5F ? std::fabs((nx * 0.35F - ny * 0.45F + nz * 0.82F) / length) : 0.0F;
-        item.color = shaded_color(triangle.color, 0.38F + lighting * 0.62F);
-        projected.push_back(item);
-    }
-    std::ranges::sort(projected,
-                      [](const auto& left, const auto& right)
-                      {
-                          const auto left_texture = reinterpret_cast<std::uintptr_t>(left.texture);
-                          const auto right_texture = reinterpret_cast<std::uintptr_t>(right.texture);
-                          if (left_texture != right_texture)
-                          {
-                              return left_texture < right_texture;
-                          }
-                          return left.depth < right.depth;
-                      });
     draw->PushClipRect(canvas_min, canvas_max, true);
-    ID3D11ShaderResourceView* active_texture = nullptr;
-    bool texture_pushed = false;
-    for (const auto& triangle : projected)
-    {
-        if (triangle.texture != active_texture)
-        {
-            if (texture_pushed)
-            {
-                draw->PopTexture();
-                texture_pushed = false;
-            }
-            active_texture = triangle.texture;
-            if (active_texture != nullptr)
-            {
-                draw->PushTexture(ImTextureRef(reinterpret_cast<ImTextureID>(active_texture)));
-                texture_pushed = true;
-            }
-        }
-        if (active_texture != nullptr)
-        {
-            draw->PrimReserve(3, 3);
-            draw->PrimVtx(triangle.points[0], triangle.texture_coordinates[0], triangle.color);
-            draw->PrimVtx(triangle.points[1], triangle.texture_coordinates[1], triangle.color);
-            draw->PrimVtx(triangle.points[2], triangle.texture_coordinates[2], triangle.color);
-        }
-        else
-        {
-            draw->AddTriangleFilled(triangle.points[0], triangle.points[1], triangle.points[2], triangle.color);
-        }
-    }
-    if (texture_pushed)
-    {
-        draw->PopTexture();
-    }
+    const PreviewMesh* meshes[]{&state.model_mesh};
+    draw_gpu_preview(state, state.model_target, canvas_min, canvas_max, center, state.preview_yaw, state.preview_pitch, scale, extent * 2.0F, meshes);
     if (state.preview_show_skeleton)
     {
         for (std::size_t index = 0; index < pose.size() && index < state.preview_model->bones.size(); ++index)

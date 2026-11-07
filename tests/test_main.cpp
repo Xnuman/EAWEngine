@@ -9,6 +9,7 @@
 #include "eaw/legacy_material.hpp"
 #include "eaw/localization_scan.hpp"
 #include "eaw/localization_workspace.hpp"
+#include "eaw/map_object_layout.hpp"
 #include "eaw/lua_script.hpp"
 #include "eaw/meg_archive.hpp"
 #include "eaw/mtd_directory.hpp"
@@ -984,6 +985,38 @@ void test_game_object_catalog()
 
     require(eaw::resolve_model_path(vfs, "ev_unit.alo").has_value() && eaw::resolve_model_path(vfs, "Art\\Models\\EI_Unit").has_value(), "model reference did not resolve through the VFS");
     require(!eaw::resolve_model_path(vfs, "Missing_Model") && !eaw::resolve_model_path(vfs, "  ") && !eaw::resolve_model_path(vfs, "..\\"), "missing model reference resolved");
+
+    // Placed-object transforms: degrees, uniform scale, then translation (row-vector convention).
+    eaw::TedPlacedObject placed;
+    placed.crc = 0xbb137f89U;
+    placed.scale = 2.0F;
+    placed.rotation = {0.0F, 0.0F, 90.0F};
+    placed.position = {10.0F, 20.0F, 30.0F};
+    placed.has_transform = true;
+    const auto moved = eaw::alo_transform_point({1.0F, 0.0F, 0.0F}, eaw::placed_object_transform(placed));
+    require(std::fabs(moved.x - 10.0F) < 1.0e-4F && std::fabs(moved.y - 22.0F) < 1.0e-4F && std::fabs(moved.z - 30.0F) < 1.0e-4F, "placed-object heading/scale/translation is wrong");
+    auto degenerate = placed;
+    degenerate.scale = 0.0F;
+    degenerate.rotation = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F};
+    const auto safe = eaw::alo_transform_point({1.0F, 0.0F, 0.0F}, eaw::placed_object_transform(degenerate));
+    require(std::isfinite(safe.x) && std::fabs(safe.x - 11.0F) < 1.0e-4F, "degenerate placed-object transform was not sanitized");
+
+    eaw::TedMap map;
+    map.type = eaw::TedMapType::space;
+    map.placed_objects.push_back(placed);
+    auto unknown = placed;
+    unknown.crc = 0x12345678U;
+    map.placed_objects.push_back(unknown);
+    auto unpositioned = placed;
+    unpositioned.has_transform = false;
+    map.placed_objects.push_back(unpositioned);
+    auto prop = placed;
+    prop.crc = eaw::game_object_name_crc("Shared_Name");
+    map.placed_objects.push_back(prop);
+    const auto layout = eaw::build_map_object_layout(map, catalog, vfs);
+    require(layout.placements.size() == 3 && layout.untyped == 1 && layout.missing_model_files == 1 && layout.placements[0].model_path == "DATA/ART/MODELS/EV_UNIT.ALO" &&
+                layout.placements[0].type == unit.definition && layout.placements[2].object_index == 3 && layout.placements[2].model_path.empty(),
+            "map object layout resolution failed");
     std::filesystem::remove_all(root, ignored);
 }
 

@@ -124,6 +124,11 @@ resolve through `Variant_Of_Existing_Type` inheritance to an existing
 profile matches 137,488 of 137,499 objects. Eleven FoC CRCs (35 objects) match
 no definition, and one placed object has a name shared by several element types;
 the resolver prefers the definition with a model for the map context, which is
-inference. Squadrons, companies, and teams have no model of their own and must
+inference. Placed-object rotations are stored in degrees: across the FoC
+corpus the third component (heading about the up axis) is non-zero for 165,199
+objects and ranges over -611..360, while the first two are non-zero for only
+2,067 and 4,488 objects. The engine composes rotations about X, then Y, then Z;
+that order and the rotation direction are inference until compared with the
+original game. Squadrons, companies, and teams have no model of their own and must
 be expanded into their member units. The audit indexes every XML file under
 `Data/XML`, not only files registered by the game's object-file manifests.

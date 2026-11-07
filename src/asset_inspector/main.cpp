@@ -1131,6 +1131,9 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
 
     std::size_t maps = 0;
     std::size_t placed = 0;
+    std::array<float, 3> rotation_minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+    std::array<float, 3> rotation_maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+    std::array<std::size_t, 3> rotation_nonzero{};
     std::size_t typed = 0;
     std::size_t ambiguous = 0;
     std::size_t modeled = 0;
@@ -1165,6 +1168,13 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
         for (const auto& object : map.placed_objects)
         {
             ++placed;
+            const std::array<float, 3> rotation{object.rotation.x, object.rotation.y, object.rotation.z};
+            for (std::size_t axis = 0; axis < rotation.size(); ++axis)
+            {
+                rotation_minimum[axis] = std::min(rotation_minimum[axis], rotation[axis]);
+                rotation_maximum[axis] = std::max(rotation_maximum[axis], rotation[axis]);
+                rotation_nonzero[axis] += rotation[axis] != 0.0F ? 1U : 0U;
+            }
             const auto match = catalog.resolve(object.crc, context);
             if (match.definition == nullptr)
             {
@@ -1215,7 +1225,12 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
               << "Ambiguous CRC matches: " << ambiguous << '\n'
               << "With a model reference: " << modeled << " (" << percent(modeled, placed) << ")\n"
               << "Model files resolved: " << model_files << " (" << percent(model_files, placed) << "), unique models: " << unique_models.size() << '\n'
-              << "Unknown CRCs: " << unknown_crcs.size() << "\n\nResolved element types:\n";
+              << "Unknown CRCs: " << unknown_crcs.size() << '\n';
+    for (std::size_t axis = 0; axis < rotation_minimum.size() && placed > 0; ++axis)
+    {
+        std::cout << "Rotation component " << axis << ": " << rotation_minimum[axis] << " .. " << rotation_maximum[axis] << ", non-zero " << rotation_nonzero[axis] << '\n';
+    }
+    std::cout << "\nResolved element types:\n";
     for (const auto& [type, count] : element_types)
     {
         std::cout << "  " << type << ": " << count << '\n';

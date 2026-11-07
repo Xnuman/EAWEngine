@@ -17,6 +17,7 @@ add_library(eaw_core STATIC
     src/core/legacy_material.cpp
     src/core/localization_scan.cpp
     src/core/localization_workspace.cpp
+    src/core/map_object_layout.cpp
     src/core/lua_script.cpp
     src/core/meg_archive.cpp
     src/core/mtd_directory.cpp
@@ -72,6 +73,7 @@ if(EAW_BUILD_GUI AND WIN32)
     add_executable(EAWTools WIN32
         src/tools_gui/file_dialogs.cpp
         src/tools_gui/gui_app.cpp
+        src/tools_gui/preview_renderer.cpp
         src/tools_gui/main.cpp
     )
     target_link_libraries(EAWTools PRIVATE
@@ -80,6 +82,7 @@ if(EAW_BUILD_GUI AND WIN32)
         d3d11
         dxgi
         dwmapi
+        d3dcompiler
         ole32
         shell32
         uuid

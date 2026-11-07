@@ -18,9 +18,15 @@ The **Asset Inspector** page can:
   Lua, and generic binary metadata;
 - preview ALO geometry in an orbitable viewport, resolve packaged DDS diffuse
   textures through the active mod/VFS layers, play matching ALA animations,
-  and optionally display skeleton and collision geometry;
-- cap viewport triangle detail for large models. Bind-pose geometry is cached;
-  animated skinning is recomputed only while an animation is selected.
+  and optionally display skeleton and collision geometry. Shadow-volume,
+  heat-distortion, and occluded-unit geometry is hidden; opaque materials ignore
+  texture alpha (which holds gloss or team-color masks), alpha-tested materials
+  are cut out, and additive materials blend additively;
+- render model and map previews at full detail with a small depth-buffered
+  Direct3D 11 renderer (4x MSAA, two-sided, flat-shaded) into an offscreen
+  image; grids, markers, and skeletons are drawn over it. Bind-pose geometry is
+  uploaded once; animated skinning runs on the CPU and re-uploads each frame.
+  This renderer is tool-only; the production renderer is the Direct3D 12 path.
 
 The **DAT Localization** page can:
 
@@ -120,8 +126,14 @@ renders space TEDs as an orbitable X/Y placed-object map using decoded
 transforms, Z-altitude guides, type colors, player-code outlines, and tactical
 bounds. Map previews can be detached into a larger resizable window. The asset
 browser also provides an expandable catalog of known game extensions alongside
-its custom extension field. Land previews can overlay the same decoded,
-type-colored placed-object markers used by space maps. Land transforms use
+its custom extension field. With **Objects** enabled, land and space previews
+resolve each placed object through its XML type to its model and draw the
+model's geometry at the object's position, heading, and scale, textured with
+each material's base-color texture. Each unique model is uploaded once and
+drawn instanced at full detail. Objects without a drawable model (unresolved types,
+squadrons and companies, missing or particle models) keep type-colored markers,
+and hovering any object shows its type, element, XML source, and model. Land
+transforms use
 positive X/Y editor coordinates at 20 world units per terrain sample, while Z
 elevation is converted to the heightmap's 20x stored scale. The
 GUI additionally consumes render-ready vertex/index/skin streams, decoded ALA
