@@ -110,7 +110,8 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   without stalling, and the sandbox highlights the selection. Debug drawing is
   done: world-space line lists (bounds, axes) drawn depth-tested from a
   frame-buffered buffer; the sandbox outlines the selection and toggles every
-  object's bounds with B. Camera polish remains.
+  object's bounds with B. The sandbox cameras are inspection tools, not the
+  game camera; gameplay camera and input belong to M3/M4 (see there).
 - On-screen debug text and overlays in the engine (selection name, frame and
   streaming statistics, hot-reload events) instead of console-only output;
   likely a Dear ImGui D3D12 overlay shared with later in-engine tools. Liquid
@@ -147,6 +148,13 @@ campaign compatibility is a long-term engine project, not a renderer swap.
 - ECS/storage, fixed-step scheduler, job system, transforms, spatial index,
   movement, formations, targeting, projectiles, damage, hardpoints, fog of war.
 - Minimal Lua compatibility surface and XML object construction.
+- Legacy-mode RTS camera and input, following the original: the camera does not
+  rotate (fixed pitch and heading), zooms in and out, and pans with the
+  keyboard; the left mouse button selects (click, or drag a rectangle for several
+  units) and the right mouse button issues move and attack commands. Exact
+  angles, zoom range, and pan speeds still need measurement. A free camera may
+  become an option later, as an engine extension. The sandbox's free debug
+  cameras remain for inspection.
 - Deliverable: deterministic headless battle plus rendered space skirmish slice.
 
 ## M4 — space and land modes

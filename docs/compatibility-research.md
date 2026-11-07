@@ -246,3 +246,11 @@ about the vertex normal, sampled from an engine-supplied cube and scaled by
 `Specular` and normal-map alpha. No stock cube textures exist, so the original
 presumably builds the cube from the sky. Implementation is deferred until a mod
 needs it.
+
+Camera and input in the original game (owner observation, not yet measured): the
+tactical camera keeps a fixed pitch and heading and cannot rotate; the player
+zooms in and out and pans with the keyboard. As in most RTS games, the left mouse
+button selects units, by click or by dragging a selection rectangle, and the
+right mouse button issues move and attack commands. Exact angles, zoom limits,
+pan speeds, and per-map camera settings still need evidence from the shipped
+data or black-box observation before the legacy camera is implemented.
