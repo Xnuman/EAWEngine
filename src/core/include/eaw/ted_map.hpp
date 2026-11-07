@@ -71,6 +71,24 @@ struct TedWater
     std::array<float, 3> color{1.0F, 1.0F, 1.0F};
 };
 
+// A track: a textured ribbon laid along a polyline over the terrain (rivers, shoreline waves,
+// lights, beams). Chunk 0x102 holds the control points (mini 0x07, world X/Y/Z with Z usually 0),
+// 0x104 a width per point (mini 0x08), 0x103 the texture, 0x101 header fields, and 0x105 three
+// values that the corpus suggests are opacity at the start, middle, and end ((1,1,1) for 391
+// stock tracks, (0,1,0) for 151).
+struct TedTrack
+{
+    std::string texture;
+    std::vector<std::array<float, 3>> points;
+    std::vector<float> widths;
+    // Header minis 0x04 and 0x05: texture scroll per second along U and V (inferred from wave
+    // tracks); zero when absent.
+    std::array<float, 2> scroll{};
+    std::array<float, 3> opacity{1.0F, 1.0F, 1.0F};
+    std::vector<TedEnvironmentField> header_fields;
+    std::vector<TedEnvironmentField> opacity_fields;
+};
+
 // A terrain texture layer. Only the textures and the tiling scale are interpreted; every
 // mini-chunk is kept in `fields` (the corpus also stores two angles, two RGB colors, flags, and an
 // integer per layer whose meanings are not established yet).
@@ -139,6 +157,7 @@ struct TedMap
     // Every terrain-info mini-chunk as stored (clouds, wind, and water fields not interpreted yet).
     std::vector<TedEnvironmentField> terrain_info_fields;
     std::vector<std::string> track_textures;
+    std::vector<TedTrack> tracks;
 
     std::vector<TedEnvironment> environments;
     std::uint32_t active_environment{};

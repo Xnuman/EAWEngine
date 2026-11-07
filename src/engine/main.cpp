@@ -328,7 +328,8 @@ int main(const int argc, char** argv)
                                                                    (visual_map.water == eaw::TedWaterType::water  ? ", water"
                                                                     : visual_map.water == eaw::TedWaterType::lava ? ", lava"
                                                                     : visual_map.water == eaw::TedWaterType::ice  ? ", ice"
-                                                                                                                  : ""))
+                                                                                                                  : "") +
+                                                                   ", " + std::to_string(visual_map.tracks) + " tracks")
                           << '\n'
                           << "Objects: " << scene.instances.size() << " instances of " << scene.meshes.size() << " models | squadron members expanded: " << visual_map.expanded_members << '\n'
                           << "Not drawn: " << visual_map.untyped << " untyped, " << visual_map.without_model << " without model, " << visual_map.missing_model_files << " missing model files, "

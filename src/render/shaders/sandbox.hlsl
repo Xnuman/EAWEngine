@@ -36,6 +36,7 @@ struct VertexInput
     float4 bone_weights : BLENDWEIGHT0;
     float3 tangent : TANGENT;
     float3 binormal : BINORMAL;
+    float4 color : COLOR;
     uint instance_id : SV_InstanceID;
 };
 
@@ -49,6 +50,7 @@ struct PixelInput
     float2 uv : TEXCOORD0;
     float4 tint : COLOR0;
     float4 team_color : COLOR1;
+    float4 vertex_color : COLOR2;
 };
 
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
@@ -114,6 +116,7 @@ PixelInput vs_main(VertexInput input)
     output.uv = input.uv;
     output.tint = instance.tint;
     output.team_color = instance.team_color;
+    output.vertex_color = input.color;
     return output;
 }
 
@@ -124,7 +127,7 @@ float4 ps_main(PixelInput input) : SV_TARGET
     const MaterialData material = materials[material_index];
     const float2 uv = input.uv * material.specular.w + material.uv_scroll * camera_position_time.w;
     const float4 base = scene_textures[material.base_texture].Sample(surface_sampler, uv);
-    const float4 tint = material.tint * input.tint;
+    const float4 tint = material.tint * input.tint * input.vertex_color;
     if ((material.flags & MATERIAL_ALPHA_TEST) != 0u)
     {
         clip(base.a - material.alpha_cutoff);

@@ -43,6 +43,8 @@ struct VisualMapAsset
     // Instances colored by their type's affiliated faction versus the player-slot fallback.
     // Liquid surface added over the terrain (none when the map has none or it is not visible).
     TedWaterType water{TedWaterType::none};
+    // Track ribbons drawn over the terrain.
+    std::size_t tracks{};
     std::size_t faction_colored{};
     std::size_t player_colored{};
 };

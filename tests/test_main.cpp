@@ -388,7 +388,8 @@ void test_alo_model()
     require(bind_pose.size() == 1 && bind_pose[0].values[0] == 1.0F && bind_pose[0].values[5] == 1.0F && bind_pose[0].values[10] == 1.0F, "ALO bind-pose decoding failed");
 }
 
-void test_texture_formats_and_materials()
+// A minimal 4x4 BC1 DDS with one mip level.
+std::vector<std::byte> make_test_dds()
 {
     std::vector<std::byte> dds(128U + 8U, std::byte{});
     const auto write_u32 = [](std::vector<std::byte>& bytes, const std::size_t offset, const std::uint32_t value)
@@ -406,6 +407,19 @@ void test_texture_formats_and_materials()
     write_u32(dds, 76, 32);
     write_u32(dds, 80, 0x4U);
     write_u32(dds, 84, 0x31545844U);
+    return dds;
+}
+
+void test_texture_formats_and_materials()
+{
+    auto dds = make_test_dds();
+    const auto write_u32 = [](std::vector<std::byte>& bytes, const std::size_t offset, const std::uint32_t value)
+    {
+        for (unsigned shift = 0; shift < 32; shift += 8)
+        {
+            bytes[offset + shift / 8] = static_cast<std::byte>((value >> shift) & 0xffU);
+        }
+    };
     const auto texture = eaw::DdsTexture::parse(dds);
     require(texture.width == 4 && texture.height == 4 && texture.mip_levels == 1 && texture.format == eaw::DdsFormat::bc1_unorm && texture.data_offset == 128 && texture.data_size == 8 &&
                 texture.subresources.size() == 1 && texture.subresources[0].row_pitch == 8,
@@ -769,10 +783,54 @@ std::vector<std::byte> make_test_ted()
     append_string(value, "ROCK.TGA");
     append_mini(second_layer, 12, value);
     append_chunk(layers, 3, second_layer);
+    // One track: header (scroll 0.1/0.2), two points, texture, two widths, opacity keys 0/1/0.
+    std::vector<std::byte> track_header;
+    value.clear();
+    append_float(value, 0.1F);
+    append_mini(track_header, 0x04, value);
+    value.clear();
+    append_float(value, 0.2F);
+    append_mini(track_header, 0x05, value);
+    std::vector<std::byte> track_points;
+    for (const auto& point : {std::array<float, 3>{5.0F, 5.0F, 0.0F}, std::array<float, 3>{35.0F, 15.0F, 0.0F}})
+    {
+        value.clear();
+        for (const auto component : point)
+        {
+            append_float(value, component);
+        }
+        append_mini(track_points, 0x07, value);
+    }
+    std::vector<std::byte> track_widths;
+    for (const auto width : {10.0F, 6.0F})
+    {
+        value.clear();
+        append_float(value, width);
+        append_mini(track_widths, 0x08, value);
+    }
+    std::vector<std::byte> track_opacity;
+    for (const auto key : {0.0F, 1.0F, 0.0F})
+    {
+        value.clear();
+        append_float(value, key);
+        append_mini(track_opacity, 0x09, value);
+    }
+    value.clear();
+    append_string(value, "RIVER.TGA");
+    std::vector<std::byte> ted_track;
+    append_chunk(ted_track, 0x101, track_header);
+    append_chunk(ted_track, 0x103, value);
+    append_chunk(ted_track, 0x102, track_points);
+    append_chunk(ted_track, 0x104, track_widths);
+    append_chunk(ted_track, 0x105, track_opacity);
+    std::vector<std::byte> ted_tracks;
+    append_chunk(ted_tracks, 0x100, ted_track, true);
+
     std::vector<std::byte> terrain;
     append_chunk(terrain, 0, terrain_info);
     append_chunk(terrain, 5, elevation);
     append_chunk(terrain, 2, layers, true);
+    append_chunk(terrain, 9, ted_tracks, true);
 
     std::vector<std::byte> identity_data;
     value.clear();
@@ -839,6 +897,10 @@ void test_ted_map()
     require(map.water.type == eaw::TedWaterType::water && map.water.raw_type == 1 && map.water.level == 1.5F && map.water.color == std::array<float, 3>{0.4F, 0.6F, 0.8F} &&
                 map.water_maps[0] == "WATER_BUMP.TGA" && map.water_maps[1] == "WATER.TGA" && map.terrain_info_fields.size() == 8,
             "TED water settings were not decoded");
+    require(map.tracks.size() == 1 && map.tracks[0].texture == "RIVER.TGA" && map.tracks[0].points.size() == 2 && map.tracks[0].points[1] == std::array<float, 3>{35.0F, 15.0F, 0.0F} &&
+                map.tracks[0].widths == std::vector<float>{10.0F, 6.0F} && map.tracks[0].scroll == std::array<float, 2>{0.1F, 0.2F} &&
+                map.tracks[0].opacity == std::array<float, 3>{0.0F, 1.0F, 0.0F} && map.tracks[0].header_fields.size() == 2 && map.track_textures.size() == 1,
+            "TED track decoding failed");
     require(map.terrain_layer_map == std::vector<std::uint8_t>({0, 0, 1, 1, 0, 1}) && map.terrain_samples.size() == 6 && (map.terrain_samples[0] >> 24U) == 0xffU,
             "TED terrain layer indices or raw samples were not retained");
     require(map.terrain_layers.size() == 2 && map.terrain_layers[0].tile_size == 64.0F && map.terrain_layers[0].fields.size() == 3 && map.terrain_layers[1].tile_size == 0.0F,
@@ -1281,7 +1343,13 @@ void test_visual_terrain()
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
     std::filesystem::create_directories(root / "Data" / "Art" / "Maps");
+    std::filesystem::create_directories(root / "Data" / "Art" / "Textures");
     std::filesystem::create_directories(root / "Data" / "XML");
+    {
+        const auto bytes = make_test_dds();
+        std::ofstream file(root / "Data" / "Art" / "Textures" / "RIVER.DDS", std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
     {
         const auto bytes = make_test_ted();
         std::ofstream file(root / "Data" / "Art" / "Maps" / "TEST.TED", std::ios::binary);
@@ -1305,10 +1373,19 @@ void test_visual_terrain()
             "terrain bounds were not applied to the scene");
     require(!asset.lighting, "an environment without lighting fields produced a light rig");
     // Water at level 1.5 crosses the terrain (-0.5..2.0) and becomes a blended quad instance.
-    require(asset.water == eaw::TedWaterType::water && asset.scene.meshes.size() == 1 && asset.scene.instances.size() == 1 && asset.scene.vertices.size() == 4 &&
-                asset.scene.vertices[2].position == std::array<float, 3>{40.0F, 20.0F, 1.5F} && asset.scene.materials.back().blend == eaw::VisualBlendMode::alpha_blend &&
-                asset.scene.materials.back().diffuse == std::array<float, 4>{0.4F, 0.6F, 0.8F, 0.75F},
+    const auto& water_material = asset.scene.materials[asset.scene.draws[asset.scene.meshes[0].first_draw].material];
+    require(asset.water == eaw::TedWaterType::water && asset.scene.meshes.size() == 2 && asset.scene.instances.size() == 2 && asset.scene.vertices.size() == 10 &&
+                asset.scene.vertices[2].position == std::array<float, 3>{40.0F, 20.0F, 1.5F} && water_material.blend == eaw::VisualBlendMode::alpha_blend &&
+                water_material.diffuse == std::array<float, 4>{0.4F, 0.6F, 0.8F, 0.75F},
             "water surface was not built over the terrain");
+    // The track (5,5)->(35,15), widths 10->6, opacity 0/1/0 becomes a 3-sample draped ribbon.
+    const auto& ribbon = asset.scene.vertices;
+    require(asset.tracks == 1 && asset.scene.indices.size() == 6 + 12 && ribbon[4].color[3] == 0.0F && ribbon[6].color[3] == 1.0F && ribbon[9].color[3] == 0.0F &&
+                ribbon[4].texture_coordinates[0] == 0.0F && ribbon[5].texture_coordinates[0] == 1.0F,
+            "track ribbon structure or opacity fade is wrong");
+    // First left edge vertex lies at (6.581, 0.257): the lower-right triangle of cell (0,0) gives
+    // height -0.3163, plus the 0.6 lift.
+    require(std::fabs(ribbon[4].position[0] - 6.5811F) < 1.0e-3F && std::fabs(ribbon[4].position[2] - 0.2837F) < 2.0e-3F, "track ribbon does not follow the terrain surface");
     std::filesystem::remove_all(root, ignored);
 }
 

@@ -456,10 +456,96 @@ void parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, T
                 continue;
             }
             const auto track_chunks = read_chunks(bytes, track.payload, track.end);
+            TedTrack decoded;
             if (const auto* texture = find_chunk(track_chunks, 0x103))
             {
-                map.track_textures.push_back(read_string(bytes, texture->payload, texture->end));
+                decoded.texture = read_string(bytes, texture->payload, texture->end);
+                map.track_textures.push_back(decoded.texture);
             }
+            const auto raw_fields = [&](const Chunk& source)
+            {
+                std::vector<TedEnvironmentField> fields;
+                for (const auto& mini : read_minis(bytes, source))
+                {
+                    TedEnvironmentField field;
+                    field.type = static_cast<std::uint8_t>(mini.type);
+                    field.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(mini.payload), bytes.begin() + static_cast<std::ptrdiff_t>(mini.end));
+                    fields.push_back(std::move(field));
+                }
+                return fields;
+            };
+            const auto finite_float = [&](const MiniChunk& mini, float& target)
+            {
+                if (mini.end - mini.payload != 4)
+                {
+                    return false;
+                }
+                const auto value = read_float(bytes, mini.payload);
+                if (!std::isfinite(value))
+                {
+                    return false;
+                }
+                target = value;
+                return true;
+            };
+            if (const auto* header = find_chunk(track_chunks, 0x101))
+            {
+                decoded.header_fields = raw_fields(*header);
+                for (const auto& mini : read_minis(bytes, *header))
+                {
+                    if (mini.type == 0x04 || mini.type == 0x05)
+                    {
+                        static_cast<void>(finite_float(mini, decoded.scroll[mini.type - 0x04]));
+                    }
+                }
+            }
+            if (const auto* points = find_chunk(track_chunks, 0x102))
+            {
+                for (const auto& mini : read_minis(bytes, *points))
+                {
+                    if (mini.type == 0x07 && mini.end - mini.payload == 12)
+                    {
+                        const std::array<float, 3> point{read_float(bytes, mini.payload), read_float(bytes, mini.payload + 4), read_float(bytes, mini.payload + 8)};
+                        if (std::ranges::all_of(point,
+                                                [](const float value)
+                                                {
+                                                    return std::isfinite(value);
+                                                }))
+                        {
+                            decoded.points.push_back(point);
+                        }
+                    }
+                }
+            }
+            if (const auto* widths = find_chunk(track_chunks, 0x104))
+            {
+                for (const auto& mini : read_minis(bytes, *widths))
+                {
+                    float width{};
+                    if (mini.type == 0x08 && finite_float(mini, width))
+                    {
+                        decoded.widths.push_back(width);
+                    }
+                }
+            }
+            if (const auto* opacity = find_chunk(track_chunks, 0x105))
+            {
+                decoded.opacity_fields = raw_fields(*opacity);
+                std::size_t key = 0;
+                for (const auto& mini : read_minis(bytes, *opacity))
+                {
+                    if (mini.type == 0x09 && key < decoded.opacity.size())
+                    {
+                        static_cast<void>(finite_float(mini, decoded.opacity[key]));
+                        ++key;
+                    }
+                }
+            }
+            if (decoded.widths.size() != decoded.points.size())
+            {
+                map.warnings.push_back("track '" + decoded.texture + "' has " + std::to_string(decoded.points.size()) + " points but " + std::to_string(decoded.widths.size()) + " widths");
+            }
+            map.tracks.push_back(std::move(decoded));
         }
     }
     if (map.terrain_width > 0 && map.terrain_height > 0)

@@ -66,6 +66,8 @@ struct VisualVertex
     // Tangent frame for normal mapping, in the same space as the normal.
     std::array<float, 3> tangent{1.0F, 0.0F, 0.0F};
     std::array<float, 3> binormal{0.0F, 1.0F, 0.0F};
+    // Linear RGBA multiplier (authored vertex colors, or opacity fades along track ribbons).
+    std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
 };
 
 inline constexpr std::uint32_t invalid_visual_texture = std::numeric_limits<std::uint32_t>::max();

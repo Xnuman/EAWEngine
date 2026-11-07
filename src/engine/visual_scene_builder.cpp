@@ -504,13 +504,29 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
                     bone_indices[0] = *mesh.attached_bone;
                     bone_weights[0] = 1.0F;
                 }
+                // Authored vertex colors only drive materials whose legacy profile reads them; other
+                // files leave the channel unused, so it stays white.
+                std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
+                if (material.features.vertex_color)
+                {
+                    const std::array<float, 4> authored{vertex.color.x, vertex.color.y, vertex.color.z, vertex.color.w};
+                    if (std::ranges::all_of(authored,
+                                            [](const float value)
+                                            {
+                                                return std::isfinite(value);
+                                            }))
+                    {
+                        color = authored;
+                    }
+                }
                 scene.vertices.push_back({{position.x, position.y, position.z},
                                           {normal.x, normal.y, normal.z},
                                           {vertex.texture_coordinates[0].x, vertex.texture_coordinates[0].y},
                                           bone_indices,
                                           bone_weights,
                                           {tangent.x, tangent.y, tangent.z},
-                                          {binormal.x, binormal.y, binormal.z}});
+                                          {binormal.x, binormal.y, binormal.z},
+                                          color});
                 visual_mesh.bounds_minimum[0] = std::min(visual_mesh.bounds_minimum[0], position.x);
                 visual_mesh.bounds_minimum[1] = std::min(visual_mesh.bounds_minimum[1], position.y);
                 visual_mesh.bounds_minimum[2] = std::min(visual_mesh.bounds_minimum[2], position.z);
@@ -779,6 +795,167 @@ std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMap& m
     return mesh_index;
 }
 
+// Height of the rendered terrain surface at world X/Y, using the same two-triangle split per cell
+// as append_terrain so draped geometry follows the drawn surface exactly. Outside the grid the
+// nearest edge is used.
+float terrain_surface_height(const TedMap& map, const float world_x, const float world_y)
+{
+    const auto width = map.terrain_width;
+    const auto height = map.terrain_height;
+    const auto grid_x = std::clamp(world_x / terrain_sample_spacing, 0.0F, static_cast<float>(width - 1));
+    const auto grid_y = std::clamp(world_y / terrain_sample_spacing, 0.0F, static_cast<float>(height - 1));
+    const auto x = std::min(static_cast<std::uint32_t>(grid_x), width - 2);
+    const auto y = std::min(static_cast<std::uint32_t>(grid_y), height - 2);
+    const auto fx = grid_x - static_cast<float>(x);
+    const auto fy = grid_y - static_cast<float>(y);
+    const auto sample = [&](const std::uint32_t sx, const std::uint32_t sy)
+    {
+        return static_cast<float>(map.elevation_map[static_cast<std::size_t>(sy) * width + sx]) / terrain_elevation_scale;
+    };
+    const auto h00 = sample(x, y);
+    const auto h10 = sample(x + 1, y);
+    const auto h01 = sample(x, y + 1);
+    const auto h11 = sample(x + 1, y + 1);
+    // Triangles (x,y)-(x+1,y)-(x+1,y+1) when fx >= fy, otherwise (x,y)-(x+1,y+1)-(x,y+1).
+    return fx >= fy ? h00 + fx * (h10 - h00) + fy * (h11 - h10) : h00 + fx * (h11 - h01) + fy * (h01 - h00);
+}
+
+// Tracks become unlit, alpha-blended ribbons draped over the terrain: the centerline is the
+// control-point polyline (sampled at least every terrain cell), each point's width spans the
+// ribbon, and opacity follows the start/middle/end keys. Texture V repeats once per average
+// width along the track; the header's scroll values animate it.
+std::size_t append_tracks(SceneBuilder& builder, const TedMap& map)
+{
+    auto& scene = builder.scene;
+    if (map.tracks.empty() || scene.terrain.vertices.empty())
+    {
+        return 0;
+    }
+    constexpr float lift = 0.6F;
+    VisualMesh mesh;
+    mesh.name = "terrain tracks";
+    mesh.first_draw = static_cast<std::uint32_t>(scene.draws.size());
+    mesh.bounds_minimum.fill(std::numeric_limits<float>::max());
+    mesh.bounds_maximum.fill(std::numeric_limits<float>::lowest());
+    std::size_t built = 0;
+    for (const auto& track : map.tracks)
+    {
+        const auto count = std::min(track.points.size(), track.widths.size());
+        if (count < 2 || track.texture.empty())
+        {
+            continue;
+        }
+        const auto texture = scene_texture(builder, track.texture);
+        if (texture == invalid_visual_texture)
+        {
+            continue;
+        }
+        double total_length = 0.0;
+        float average_width = 0.0F;
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            average_width += std::fabs(track.widths[index]) / static_cast<float>(count);
+            if (index + 1 < count)
+            {
+                total_length += std::hypot(track.points[index + 1][0] - track.points[index][0], track.points[index + 1][1] - track.points[index][1]);
+            }
+        }
+        if (!(total_length > 0.0) || !(average_width > 0.0F))
+        {
+            continue;
+        }
+        const auto point_direction = [&](const std::size_t index)
+        {
+            const auto& previous = track.points[index == 0 ? 0 : index - 1];
+            const auto& next = track.points[std::min(index + 1, count - 1)];
+            const auto dx = next[0] - previous[0];
+            const auto dy = next[1] - previous[1];
+            const auto length = std::hypot(dx, dy);
+            return length > 1.0e-6F ? std::array<float, 2>{dx / length, dy / length} : std::array<float, 2>{1.0F, 0.0F};
+        };
+        const auto opacity_at = [&](const double fraction)
+        {
+            const auto t = static_cast<float>(std::clamp(fraction, 0.0, 1.0));
+            return t < 0.5F ? std::lerp(track.opacity[0], track.opacity[1], t * 2.0F) : std::lerp(track.opacity[1], track.opacity[2], t * 2.0F - 1.0F);
+        };
+
+        const auto base_vertex = static_cast<std::int32_t>(scene.vertices.size());
+        const auto first_index = static_cast<std::uint32_t>(scene.indices.size());
+        std::uint32_t emitted = 0;
+        double travelled = 0.0;
+        const auto emit = [&](const std::array<float, 2>& center, const std::array<float, 2>& direction, const float width)
+        {
+            const std::array<float, 2> side{-direction[1], direction[0]};
+            const auto half = std::fabs(width) * 0.5F;
+            const auto alpha = opacity_at(travelled / total_length);
+            const auto v = static_cast<float>(travelled / average_width);
+            for (const float across : {-1.0F, 1.0F})
+            {
+                VisualVertex vertex;
+                const auto x = center[0] + side[0] * half * across;
+                const auto y = center[1] + side[1] * half * across;
+                vertex.position = {x, y, terrain_surface_height(map, x, y) + lift};
+                vertex.texture_coordinates = {across < 0.0F ? 0.0F : 1.0F, v};
+                vertex.tangent = {direction[0], direction[1], 0.0F};
+                vertex.binormal = {side[0], side[1], 0.0F};
+                vertex.color = {1.0F, 1.0F, 1.0F, alpha};
+                for (std::size_t axis = 0; axis < 3; ++axis)
+                {
+                    mesh.bounds_minimum[axis] = std::min(mesh.bounds_minimum[axis], vertex.position[axis]);
+                    mesh.bounds_maximum[axis] = std::max(mesh.bounds_maximum[axis], vertex.position[axis]);
+                }
+                scene.vertices.push_back(vertex);
+            }
+            if (emitted != 0)
+            {
+                const auto a = (emitted - 1) * 2;
+                scene.indices.insert(scene.indices.end(), {a, a + 1, a + 3, a, a + 3, a + 2});
+            }
+            ++emitted;
+        };
+        double segment_start = 0.0;
+        for (std::size_t index = 0; index + 1 < count; ++index)
+        {
+            const auto& from = track.points[index];
+            const auto& to = track.points[index + 1];
+            const auto length = std::hypot(to[0] - from[0], to[1] - from[1]);
+            const auto steps = std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(length / terrain_sample_spacing)));
+            const auto from_direction = point_direction(index);
+            const auto to_direction = point_direction(index + 1);
+            for (std::size_t step = index == 0 ? 0 : 1; step <= steps; ++step)
+            {
+                const auto t = static_cast<float>(step) / static_cast<float>(steps);
+                travelled = segment_start + static_cast<double>(t) * length;
+                std::array<float, 2> direction{std::lerp(from_direction[0], to_direction[0], t), std::lerp(from_direction[1], to_direction[1], t)};
+                const auto direction_length = std::hypot(direction[0], direction[1]);
+                direction = direction_length > 1.0e-6F ? std::array<float, 2>{direction[0] / direction_length, direction[1] / direction_length} : from_direction;
+                emit({std::lerp(from[0], to[0], t), std::lerp(from[1], to[1], t)}, direction, std::lerp(track.widths[index], track.widths[index + 1], t));
+            }
+            segment_start += length;
+        }
+
+        VisualMaterial material;
+        material.name = "track " + track.texture;
+        material.blend = VisualBlendMode::alpha_blend;
+        material.lighting = VisualLightingModel::unlit;
+        material.base_color_texture = texture;
+        material.uv_scroll = track.scroll;
+        const auto material_index = static_cast<std::uint32_t>(scene.materials.size());
+        scene.materials.push_back(std::move(material));
+        scene.draws.push_back({first_index, static_cast<std::uint32_t>(scene.indices.size()) - first_index, base_vertex, material_index});
+        ++built;
+    }
+    if (built == 0)
+    {
+        return 0;
+    }
+    mesh.draw_count = static_cast<std::uint32_t>(scene.draws.size()) - mesh.first_draw;
+    const auto mesh_index = static_cast<std::uint32_t>(scene.meshes.size());
+    scene.meshes.push_back(std::move(mesh));
+    scene.instances.push_back({mesh_index});
+    return built;
+}
+
 // Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
 void update_scene_bounds(VisualScene& scene)
 {
@@ -868,6 +1045,7 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
     {
         append_terrain(builder, map);
         asset.water = append_water(builder, map).has_value() ? map.water.type : TedWaterType::none;
+        asset.tracks = append_tracks(builder, map);
     }
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
     for (const auto& placement : layout.placements)

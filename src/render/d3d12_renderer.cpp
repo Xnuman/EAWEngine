@@ -960,7 +960,7 @@ struct D3d12Renderer::Impl
         check_hresult(device->CreateRootSignature(0, g_eaw_sandbox_vs, sizeof(g_eaw_sandbox_vs), IID_PPV_ARGS(&root_signature)), "CreateRootSignature(embedded sandbox root signature)");
         set_name(root_signature.Get(), L"EAWEngine sandbox root signature");
 
-        constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 7> input_layout{{
+        constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 8> input_layout{{
             {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualVertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualVertex, normal), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(VisualVertex, texture_coordinates), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -968,6 +968,7 @@ struct D3d12Renderer::Impl
             {"BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(VisualVertex, bone_weights), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualVertex, tangent), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualVertex, binormal), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(VisualVertex, color), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         }};
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};

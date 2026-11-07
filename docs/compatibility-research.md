@@ -200,3 +200,15 @@ map and 0x1e a plain-color fallback; lava and ice store their color texture
 first). Further fields (apparently opacity, tiling, and scroll speed, plus cloud
 texture, scale, and wind) are preserved raw; the engine's water tiling and scroll
 speeds are its own choices until they are measured.
+
+Terrain tracks (terrain chunk child 9, chunk 0x100 each; 553 in 31 stock land
+maps) are textured ribbons: rivers, shoreline waves, station lights, beams,
+girders, and scrolling text. Chunk 0x102 lists control points (mini 0x07, world
+X/Y with Z = 0), 0x104 a width per point (mini 0x08; every stock track has one
+width per point), and 0x103 the texture. Chunk 0x105 holds three values that are
+(1, 1, 1) on 391 tracks and (0, 1, 0) on 151, read as opacity at the start,
+middle, and end. Header minis 0x04 and 0x05 are small values on wave tracks, read
+as texture scroll per second. The remaining header fields (0x00 is 10 on every
+track, 0x0d ranges 0-181, two flags) are preserved raw. Terrain decals (child 6)
+occur in one stock map: 65 entries with a position, a 15x15 size, and small
+integers, but no texture name, so they are not rendered.

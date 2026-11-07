@@ -92,7 +92,8 @@ the model's `_IDLE_00.ALA` when present. `--map <virtual-ted-path>` instead
 loads every placed object of a map as one instanced scene with the map's sky
 dome and star backdrop; space squadrons are expanded into their member ships,
 and land maps draw their textured terrain heightfield with water, lava, or ice
-surfaces (decals and tracks are not drawn yet). Maps use a tactical camera: WASD/arrow keys
+surfaces and track ribbons such as rivers and shoreline waves (decals are not
+drawn yet). Maps use a tactical camera: WASD/arrow keys
 or right-drag pan (hold Shift to move faster), left-drag rotates and tilts, the
 wheel zooms within map-relative limits, and Space resets the view. Drag with the left mouse button to
 orbit, use the wheel to zoom, press Space to reset the camera, and press P to
