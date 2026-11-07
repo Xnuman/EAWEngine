@@ -200,6 +200,7 @@ add_library(eaw_engine STATIC
     src/engine/debug_draw.cpp
     src/engine/rts_control.cpp
     src/engine/scene_presentation.cpp
+    src/engine/terrain_height.cpp
     src/engine/visual_scene_builder.cpp
 )
 target_include_directories(eaw_engine PUBLIC src/engine src/render/include)

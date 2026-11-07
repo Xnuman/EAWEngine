@@ -11,6 +11,7 @@
 #include "camera_math.hpp"
 #include "debug_draw.hpp"
 #include "rts_control.hpp"
+#include "terrain_height.hpp"
 #include "scene_presentation.hpp"
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/simulation.hpp"
@@ -772,6 +773,48 @@ void test_rts_control()
     require(targets.size() == 4 && targets[0].x == 95.0F && targets[0].y == 45.0F && targets[3].x == 105.0F && targets[3].y == 55.0F && targets[2].z == 2.0F,
             "grid targets must form a centered square");
     require(eaw::grid_targets({}, 0, 10.0F).empty(), "no units need no targets");
+}
+
+void test_terrain_height_field()
+{
+    // A 4x4 field rising along X (height = 5 * column) with a liquid at 7.
+    eaw::TerrainHeightField field;
+    field.width = 4;
+    field.height = 4;
+    field.spacing = 20.0F;
+    for (std::uint32_t y = 0; y < 4; ++y)
+    {
+        for (std::uint32_t x = 0; x < 4; ++x)
+        {
+            field.heights.push_back(5.0F * static_cast<float>(x));
+        }
+    }
+    require(field.valid() && std::fabs(field.terrain_height(30.0F, 10.0F) - 7.5F) < 1.0e-4F && field.terrain_height(-50.0F, 0.0F) == 0.0F && field.terrain_height(500.0F, 0.0F) == 15.0F,
+            "terrain heights must interpolate within cells and clamp at the edges");
+    field.liquid_level = 7.0F;
+    require(field.surface_height(10.0F, 10.0F) == 7.0F && field.surface_height(50.0F, 10.0F) == 12.5F, "the liquid surface must cover lower terrain");
+
+    // A camera looking down onto the field: the hit lies on the surface and on the pixel's ray.
+    eaw::VisualCamera camera;
+    camera.eye = {-40.0F, 30.0F, 120.0F};
+    camera.target = {40.0F, 30.0F, 0.0F};
+    camera.up = {0.0F, 0.0F, 1.0F};
+    camera.vertical_fov_degrees = 60.0F;
+    camera.near_plane = 1.0F;
+    camera.far_plane = 2000.0F;
+    const float width = 640.0F;
+    const float height = 480.0F;
+    for (const auto& pixel : {std::array<float, 2>{320.0F, 240.0F}, std::array<float, 2>{420.0F, 300.0F}, std::array<float, 2>{250.0F, 180.0F}})
+    {
+        const auto hit = eaw::intersect_terrain(camera, width, height, pixel[0], pixel[1], field);
+        require(hit.has_value(), "a ray into the map must hit its surface");
+        require(std::fabs((*hit)[2] - field.surface_height((*hit)[0], (*hit)[1])) < 1.0e-3F, "a terrain hit must lie on the surface");
+        const auto screen = eaw::project_to_screen(camera, width, height, *hit);
+        require(screen && std::fabs((*screen)[0] - pixel[0]) < 0.5F && std::fabs((*screen)[1] - pixel[1]) < 0.5F, "a terrain hit must lie on the clicked pixel's ray");
+    }
+    camera.target = {-40.0F, 30.0F, 500.0F};
+    camera.up = {1.0F, 0.0F, 0.0F};
+    require(!eaw::intersect_terrain(camera, width, height, 320.0F, 240.0F, field), "a ray pointing away from the map must miss");
 }
 
 // A minimal 4x4 BC1 DDS with one mip level.
@@ -1983,6 +2026,7 @@ int main()
         test_simulation_core();
         test_scene_presentation();
         test_rts_control();
+        test_terrain_height_field();
         test_texture_formats_and_materials();
         test_lua_inspection();
         test_ala_animation();

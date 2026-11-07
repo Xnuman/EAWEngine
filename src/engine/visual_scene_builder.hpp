@@ -2,6 +2,7 @@
 
 #include "eaw/ala_animation.hpp"
 #include "eaw/simulation.hpp"
+#include "terrain_height.hpp"
 #include "eaw/alo_model.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/visual_scene.hpp"
@@ -79,6 +80,8 @@ struct VisualMapAsset
     std::vector<MapEntitySpawn> entities;
     // Types requested for runtime spawning that resolved to a model, in request order.
     std::vector<SpawnableType> spawnable;
+    // Ground surface for CPU queries (land maps; invalid for space).
+    TerrainHeightField terrain_heights;
 };
 
 // Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file

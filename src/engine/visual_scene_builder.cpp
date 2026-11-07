@@ -1147,6 +1147,23 @@ VisualMapAsset build_visual_map(const AssetReader& vfs, const std::string_view m
     {
         append_terrain(builder, map);
         asset.water = append_water(builder, map).has_value() ? map.water.type : TedWaterType::none;
+        const auto samples = static_cast<std::size_t>(map.terrain_width) * map.terrain_height;
+        if (map.terrain_width >= 2 && map.terrain_height >= 2 && map.elevation_map.size() >= samples)
+        {
+            auto& field = asset.terrain_heights;
+            field.width = map.terrain_width;
+            field.height = map.terrain_height;
+            field.spacing = terrain_sample_spacing;
+            field.heights.reserve(samples);
+            for (std::size_t index = 0; index < samples; ++index)
+            {
+                field.heights.push_back(static_cast<float>(map.elevation_map[index]) / terrain_elevation_scale);
+            }
+            if (asset.water != TedWaterType::none)
+            {
+                field.liquid_level = map.water.level;
+            }
+        }
         asset.tracks = append_tracks(builder, map);
     }
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;

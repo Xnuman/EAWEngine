@@ -2515,6 +2515,19 @@ struct D3d12Renderer::Impl
     bool render()
     {
         retire_completed_resources();
+        // Picks are read as soon as their frame's fence has completed, from any frame context, rather
+        // than when that context is next reused. Every context's picks and fence value were recorded
+        // together in an earlier render(), so the check is safe here.
+        {
+            const auto completed = direct_queue.completed_value();
+            for (auto& context : frames)
+            {
+                if (!context.picks.empty() && context.fence_value != 0 && completed >= context.fence_value)
+                {
+                    collect_pick(context);
+                }
+            }
+        }
         if (occluded)
         {
             const auto test_result = swap_chain->Present(0, DXGI_PRESENT_TEST);
@@ -2548,6 +2561,8 @@ struct D3d12Renderer::Impl
         {
             write_dynamic_instances(frame);
         }
+        // This context's fence has completed (waited above), so any picks it still holds are ready;
+        // collect them before recording new picks into the same readback slots.
         collect_pick(frame);
         collect_timestamps(frame);
         if (frame_number % 30U == 0)

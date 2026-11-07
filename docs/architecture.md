@@ -139,8 +139,12 @@ is a set of entity ids, and selected instances carry a highlight flag.
 
 Commands come from the RTS input layer: box selection projects snapshot
 positions through the camera (`camera_math`, matching the renderer's look-at
-and perspective), and a right-click uses the pick target's second channel, the
-depth of the clicked surface, to unproject a world target. Orders become
+and perspective), and a right-click finds its world target on the CPU in the
+same frame: a ray through the cursor is clipped to the map, marched across a
+`TerrainHeightField` sampled like the rendered terrain (and its liquid
+surface), and refined by bisection. Orders therefore never wait for a GPU
+readback; the remaining delay is the next simulation tick and the one-tick
+interpolation of presentation. GPU picks identify clicked objects. Orders become
 simulation move commands, one per unit, spread on a grid in id order so the
 command stream stays deterministic.
 
