@@ -87,6 +87,15 @@ opt-in `ID3D12PipelineLibrary` cache, keyed by a hash of the embedded bytecode
 and a layout version, persists pipeline states between runs; driver or shader
 changes discard it and the file is replaced atomically.
 
+Legacy-mode surfaces are described by engine-native `VisualMaterial` data that
+the scene builder translates from legacy material profiles and exact ALO
+parameter values. The renderer uploads materials once into a structured buffer
+and indexes textures through one shader-visible table (resource binding tier 2),
+so a draw binds only two root constants: its first instance and its material.
+Lighting arrives as a `VisualLightRig` in a per-frame constant buffer, next to
+the camera and scene time. A later physically based path can consume the same
+scene data with different materials and shaders.
+
 The engine owns the camera: controllers in `eaw_engine` turn input into a
 `VisualCamera` (eye, target, up, field of view, near/far planes) that the
 renderer consumes. An orbit controller frames single models and a tactical

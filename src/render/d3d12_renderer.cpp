@@ -38,7 +38,15 @@ using Microsoft::WRL::ComPtr;
 
 constexpr std::uint32_t frame_count = 3;
 constexpr std::uint32_t maximum_scene_bones = 4096;
+// Size of the shader-visible texture table (matches numDescriptors in sandbox.hlsl). The first
+// fallback_texture_count slots hold the validation checker, white, and a flat normal map.
 constexpr std::uint32_t maximum_scene_textures = 4096;
+constexpr std::uint32_t checker_texture_slot = 0;
+constexpr std::uint32_t white_texture_slot = 1;
+constexpr std::uint32_t flat_normal_texture_slot = 2;
+constexpr std::uint32_t fallback_texture_count = 3;
+// Per-frame constant buffers are 256-byte aligned, as D3D12 requires for CBVs.
+constexpr std::uint64_t frame_constant_bytes = 256;
 constexpr DXGI_FORMAT back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
 std::string hresult_text(const HRESULT result)
@@ -374,8 +382,46 @@ struct D3d12Renderer::Impl
         ComPtr<ID3D12Resource> bone_buffer;
         std::byte* bone_buffer_mapped{};
         std::uint32_t bone_capacity{};
+        ComPtr<ID3D12Resource> constant_buffer;
+        std::byte* constant_buffer_mapped{};
         std::uint64_t fence_value{};
     };
+
+    // Layout of FrameConstants in sandbox.hlsl.
+    struct FrameConstants
+    {
+        DirectX::XMFLOAT4X4 view_projection;
+        std::array<float, 4> camera_position_time;
+        std::array<float, 4> key_direction;
+        std::array<float, 4> key_diffuse;
+        std::array<float, 4> key_specular;
+        std::array<float, 4> fill_sky;
+        std::array<float, 4> fill_ground;
+    };
+    static_assert(sizeof(FrameConstants) <= frame_constant_bytes);
+
+    // Layout of MaterialData in sandbox.hlsl (96 bytes) and its flag bits.
+    struct GpuMaterial
+    {
+        std::array<float, 4> tint{1.0F, 1.0F, 1.0F, 1.0F};
+        std::array<float, 4> diffuse{1.0F, 1.0F, 1.0F, 1.0F};
+        std::array<float, 4> specular{};
+        std::array<float, 4> emissive{};
+        std::array<float, 2> uv_scroll{};
+        float alpha_cutoff{0.5F};
+        std::uint32_t flags{};
+        std::uint32_t base_texture{white_texture_slot};
+        std::uint32_t normal_texture{flat_normal_texture_slot};
+        std::uint32_t gloss_texture{white_texture_slot};
+        std::uint32_t lighting{};
+    };
+    static_assert(sizeof(GpuMaterial) == 96);
+    static constexpr std::uint32_t material_alpha_test = 1U << 0U;
+    static constexpr std::uint32_t material_alpha_blend = 1U << 1U;
+    static constexpr std::uint32_t material_additive = 1U << 2U;
+    static constexpr std::uint32_t material_team_color = 1U << 3U;
+    static constexpr std::uint32_t material_emissive_mask = 1U << 4U;
+    static constexpr std::uint32_t material_gloss_shift = 8U;
 
     struct UploadBatch
     {
@@ -391,19 +437,19 @@ struct D3d12Renderer::Impl
     struct GpuDraw
     {
         VisualDraw geometry;
-        std::array<float, 4> tint{};
-        std::uint32_t descriptor_index{};
+        std::uint32_t material{};
         VisualBlendMode blend{VisualBlendMode::opaque};
         std::uint32_t first_instance{};
         std::uint32_t instance_count{1};
         bool background{};
     };
 
-    // Structured-buffer layout shared with the vertex shader (96 bytes).
+    // Structured-buffer layout shared with the vertex shader (112 bytes).
     struct GpuInstance
     {
         std::array<float, 16> transform{};
         std::array<float, 4> tint{};
+        std::array<float, 4> team_color{};
         std::uint32_t bone_offset{};
         std::uint32_t flags{};
         std::array<std::uint32_t, 2> padding{};
@@ -477,6 +523,14 @@ struct D3d12Renderer::Impl
     std::vector<ComPtr<ID3D12Resource>> scene_textures;
     std::vector<GpuDraw> scene_draws;
     std::vector<std::array<float, 16>> bone_transforms;
+    ComPtr<ID3D12Resource> fallback_white_texture;
+    ComPtr<ID3D12Resource> fallback_normal_texture;
+    // The validation fallback keeps its own material; like the identity instance it must outlive
+    // any scene because its pending state transition holds a raw resource pointer.
+    ComPtr<ID3D12Resource> identity_material_buffer;
+    ComPtr<ID3D12Resource> scene_material_buffer;
+    VisualLightRig lighting;
+    float scene_time{};
     std::vector<UploadBatch> pending_uploads;
     std::vector<D3D12_RESOURCE_BARRIER> pending_transitions;
 
@@ -520,6 +574,11 @@ struct D3d12Renderer::Impl
             {
                 frame.bone_buffer->Unmap(0, nullptr);
                 frame.bone_buffer_mapped = nullptr;
+            }
+            if (frame.constant_buffer && frame.constant_buffer_mapped != nullptr)
+            {
+                frame.constant_buffer->Unmap(0, nullptr);
+                frame.constant_buffer_mapped = nullptr;
             }
         }
 #if defined(_DEBUG)
@@ -622,6 +681,7 @@ struct D3d12Renderer::Impl
         acquire_back_buffers();
         create_depth_buffer();
         create_bone_buffers(1);
+        create_constant_buffers();
     }
 
     void acquire_back_buffers()
@@ -665,6 +725,21 @@ struct D3d12Renderer::Impl
                       "CreateCommittedResource(depth buffer)");
         set_name(depth_buffer.Get(), L"EAWEngine depth buffer");
         device->CreateDepthStencilView(depth_buffer.Get(), nullptr, dsv_heap->GetCPUDescriptorHandleForHeapStart());
+    }
+
+    void create_constant_buffers()
+    {
+        const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
+        const auto description = buffer_description(frame_constant_bytes);
+        for (std::uint32_t index = 0; index < frame_count; ++index)
+        {
+            auto& frame = frames[index];
+            check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.constant_buffer)),
+                          "CreateCommittedResource(frame constants)");
+            set_name(frame.constant_buffer.Get(), L"EAWEngine frame constants " + std::to_wstring(index));
+            const D3D12_RANGE no_read{0, 0};
+            check_hresult(frame.constant_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.constant_buffer_mapped)), "Map(frame constants)");
+        }
     }
 
     void create_bone_buffers(const std::uint32_t requested_count)
@@ -863,15 +938,24 @@ struct D3d12Renderer::Impl
         {
             throw std::runtime_error("the D3D12 device does not support shader model 6.0, which the offline-compiled sandbox shaders require");
         }
+        // The material shader indexes a 4096-entry texture table, which needs resource binding
+        // tier 2 (tier 1 limits a stage to 128 shader resource views).
+        D3D12_FEATURE_DATA_D3D12_OPTIONS binding_options{};
+        if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &binding_options, sizeof(binding_options))) || binding_options.ResourceBindingTier < D3D12_RESOURCE_BINDING_TIER_2)
+        {
+            throw std::runtime_error("the D3D12 device does not support resource binding tier 2, which the sandbox texture table requires");
+        }
         check_hresult(device->CreateRootSignature(0, g_eaw_sandbox_vs, sizeof(g_eaw_sandbox_vs), IID_PPV_ARGS(&root_signature)), "CreateRootSignature(embedded sandbox root signature)");
         set_name(root_signature.Get(), L"EAWEngine sandbox root signature");
 
-        constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 5> input_layout{{
+        constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 7> input_layout{{
             {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualVertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualVertex, normal), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(VisualVertex, texture_coordinates), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT, 0, offsetof(VisualVertex, bone_indices), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(VisualVertex, bone_weights), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualVertex, tangent), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualVertex, binormal), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         }};
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
@@ -941,6 +1025,19 @@ struct D3d12Renderer::Impl
         shader_heap_description.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         check_hresult(device->CreateDescriptorHeap(&shader_heap_description, IID_PPV_ARGS(&shader_heap)), "CreateDescriptorHeap(shader visible)");
         set_name(shader_heap.Get(), L"EAWEngine sandbox shader descriptor heap");
+        // Every slot starts as a valid null view so unused table entries are well defined.
+        D3D12_SHADER_RESOURCE_VIEW_DESC null_view{};
+        null_view.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        null_view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        null_view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        null_view.Texture2D.MipLevels = 1;
+        const auto increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        auto handle = shader_heap->GetCPUDescriptorHandleForHeapStart();
+        for (std::uint32_t slot = 0; slot < maximum_scene_textures; ++slot)
+        {
+            device->CreateShaderResourceView(nullptr, &null_view, handle);
+            handle.ptr += increment;
+        }
     }
 
     void create_initial_assets()
@@ -979,8 +1076,27 @@ struct D3d12Renderer::Impl
         const auto pixel_bytes = std::as_bytes(std::span(pixels));
         mip.data.assign(pixel_bytes.begin(), pixel_bytes.end());
         fallback.mips.push_back(std::move(mip));
-        texture = upload_texture(upload, fallback, 0);
-        const GpuInstance identity{visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, {}};
+        texture = upload_texture(upload, fallback, checker_texture_slot);
+        const auto solid_texture = [](const std::string& name, const std::uint32_t pixel)
+        {
+            VisualTexture result;
+            result.name = name;
+            result.format = VisualTextureFormat::rgba8_unorm;
+            VisualTextureMip level;
+            level.width = level.height = 1;
+            level.row_pitch = level.slice_pitch = sizeof(pixel);
+            const auto bytes = std::as_bytes(std::span(&pixel, 1));
+            level.data.assign(bytes.begin(), bytes.end());
+            result.mips.push_back(std::move(level));
+            return result;
+        };
+        fallback_white_texture = upload_texture(upload, solid_texture("fallback white", 0xFFFFFFFFU), white_texture_slot);
+        // (0.5, 0.5, 1.0) encodes an unperturbed tangent-space normal; alpha 1 keeps full gloss.
+        fallback_normal_texture = upload_texture(upload, solid_texture("fallback flat normal", 0xFFFF8080U), flat_normal_texture_slot);
+        GpuMaterial checker_material;
+        checker_material.base_texture = checker_texture_slot;
+        identity_material_buffer = upload_buffer(upload, std::as_bytes(std::span(&checker_material, 1)), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"EAWEngine validation material buffer");
+        const GpuInstance identity{visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, {}};
         identity_instance_buffer = upload_buffer(upload, std::as_bytes(std::span(&identity, 1)), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"EAWEngine identity instance buffer");
         submit_upload(std::move(upload));
     }
@@ -1130,7 +1246,7 @@ struct D3d12Renderer::Impl
         {
             throw std::invalid_argument("visual scene contains no renderable geometry");
         }
-        if (scene.textures.size() + 1U > maximum_scene_textures)
+        if (scene.textures.size() + fallback_texture_count > maximum_scene_textures)
         {
             throw std::invalid_argument("visual scene exceeds the D3D12 texture descriptor capacity");
         }
@@ -1197,7 +1313,7 @@ struct D3d12Renderer::Impl
                 range.first = static_cast<std::uint32_t>(gpu_instances.size());
             }
             ++range.second;
-            gpu_instances.push_back({instance.transform, instance.tint, instance.bone_offset, instance.background ? background_instance_flag : 0U, {}});
+            gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset, instance.background ? background_instance_flag : 0U, {}});
         }
 
         auto upload = begin_upload(L"EAWEngine scene upload");
@@ -1211,8 +1327,20 @@ struct D3d12Renderer::Impl
         new_textures.reserve(scene.textures.size());
         for (std::size_t index = 0; index < scene.textures.size(); ++index)
         {
-            new_textures.push_back(upload_texture(upload, scene.textures[index], static_cast<std::uint32_t>(index + 1U)));
+            new_textures.push_back(upload_texture(upload, scene.textures[index], static_cast<std::uint32_t>(index + fallback_texture_count)));
         }
+
+        std::vector<GpuMaterial> gpu_materials;
+        gpu_materials.reserve(std::max<std::size_t>(scene.materials.size(), 1U));
+        for (std::size_t index = 0; index < scene.materials.size(); ++index)
+        {
+            gpu_materials.push_back(gpu_material(scene, index));
+        }
+        if (gpu_materials.empty())
+        {
+            gpu_materials.emplace_back();
+        }
+        auto new_material_buffer = upload_buffer(upload, std::as_bytes(std::span(gpu_materials)), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"EAWEngine scene material buffer");
 
         std::vector<GpuDraw> new_draws;
         new_draws.reserve(scene.draws.size());
@@ -1233,17 +1361,7 @@ struct D3d12Renderer::Impl
                 {
                     throw std::invalid_argument("visual scene draw references data outside its buffers");
                 }
-                const auto& material = scene.materials[draw.material];
-                std::uint32_t descriptor_index = 0;
-                if (material.base_color_texture != invalid_visual_texture)
-                {
-                    if (material.base_color_texture >= scene.textures.size())
-                    {
-                        throw std::invalid_argument("visual material references a missing texture");
-                    }
-                    descriptor_index = material.base_color_texture + 1U;
-                }
-                new_draws.push_back({draw, material.tint, descriptor_index, material.blend, first_instance, instance_count, background});
+                new_draws.push_back({draw, draw.material, scene.materials[draw.material].blend, first_instance, instance_count, background});
             }
         }
         // Backgrounds first in scene (mesh) order so later layers paint over earlier ones; then the
@@ -1258,6 +1376,7 @@ struct D3d12Renderer::Impl
         scene_vertex_buffer = std::move(new_vertex_buffer);
         scene_index_buffer = std::move(new_index_buffer);
         scene_instance_buffer = std::move(new_instance_buffer);
+        scene_material_buffer = std::move(new_material_buffer);
         scene_textures = std::move(new_textures);
         scene_draws = std::move(new_draws);
         scene_vertex_view.BufferLocation = scene_vertex_buffer->GetGPUVirtualAddress();
@@ -1276,6 +1395,83 @@ struct D3d12Renderer::Impl
         }
         std::ranges::fill(bone_transforms, identity_matrix());
         std::ranges::copy(transforms, bone_transforms.begin());
+    }
+
+    // Validates one scene material and converts it to the shader layout.
+    static GpuMaterial gpu_material(const VisualScene& scene, const std::size_t index)
+    {
+        const auto& material = scene.materials[index];
+        const auto slot = [&](const std::uint32_t texture, const std::uint32_t fallback, const char* role)
+        {
+            if (texture == invalid_visual_texture)
+            {
+                return fallback;
+            }
+            if (texture >= scene.textures.size())
+            {
+                throw std::invalid_argument("visual material " + std::to_string(index) + " (" + material.name + ") references a missing " + role + " texture");
+            }
+            return texture + fallback_texture_count;
+        };
+        const auto finite = [](const auto& values)
+        {
+            return std::ranges::all_of(values,
+                                       [](const float value)
+                                       {
+                                           return std::isfinite(value);
+                                       });
+        };
+        if (!finite(material.tint) || !finite(material.diffuse) || !finite(material.specular) || !finite(material.emissive) || !finite(material.uv_scroll) ||
+            !std::isfinite(material.alpha_test_threshold))
+        {
+            throw std::invalid_argument("visual material " + std::to_string(index) + " (" + material.name + ") has non-finite parameters");
+        }
+        GpuMaterial result;
+        result.tint = material.tint;
+        result.diffuse = material.diffuse;
+        result.specular = {material.specular[0], material.specular[1], material.specular[2], 0.0F};
+        result.emissive = {material.emissive[0], material.emissive[1], material.emissive[2], 0.0F};
+        result.uv_scroll = material.uv_scroll;
+        result.alpha_cutoff = material.alpha_test_threshold;
+        result.base_texture = slot(material.base_color_texture, white_texture_slot, "base color");
+        result.normal_texture = slot(material.normal_texture, flat_normal_texture_slot, "normal");
+        result.gloss_texture = slot(material.gloss_texture, white_texture_slot, "gloss");
+        result.lighting = static_cast<std::uint32_t>(material.lighting);
+        result.flags = (material.blend == VisualBlendMode::alpha_test ? material_alpha_test : 0U) | (material.blend == VisualBlendMode::alpha_blend ? material_alpha_blend : 0U) |
+                       (material.blend == VisualBlendMode::additive ? material_additive : 0U) | (material.team_color_mask ? material_team_color : 0U) |
+                       (material.emissive_mask ? material_emissive_mask : 0U) | (static_cast<std::uint32_t>(material.gloss) << material_gloss_shift);
+        return result;
+    }
+
+    void set_lighting(const VisualLightRig& next)
+    {
+        const auto finite = [](const std::array<float, 3>& value)
+        {
+            return std::ranges::all_of(value,
+                                       [](const float component)
+                                       {
+                                           return std::isfinite(component);
+                                       });
+        };
+        if (!finite(next.key_direction) || !finite(next.key_diffuse) || !finite(next.key_specular) || !finite(next.fill_sky) || !finite(next.fill_ground))
+        {
+            throw std::invalid_argument("visual light rig contains non-finite values");
+        }
+        const auto& direction = next.key_direction;
+        if (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2] <= 1.0e-12F)
+        {
+            throw std::invalid_argument("visual light rig key direction is zero");
+        }
+        lighting = next;
+    }
+
+    void set_scene_time(const float seconds)
+    {
+        if (!std::isfinite(seconds))
+        {
+            throw std::invalid_argument("scene time is not finite");
+        }
+        scene_time = seconds;
     }
 
     void set_camera(const VisualCamera& next)
@@ -1349,6 +1545,18 @@ struct D3d12Renderer::Impl
             throw std::runtime_error("frame bone palette is smaller than the active visual scene");
         }
         std::memcpy(frame.bone_buffer_mapped, bone_transforms.data(), bone_transforms.size() * sizeof(bone_transforms.front()));
+        // This frame context's fence has completed above, so its constants can be rewritten.
+        FrameConstants constants{};
+        constants.view_projection = camera_matrix();
+        constants.camera_position_time = {camera.eye[0], camera.eye[1], camera.eye[2], scene_time};
+        const auto& key = lighting.key_direction;
+        const auto key_length = std::sqrt(key[0] * key[0] + key[1] * key[1] + key[2] * key[2]);
+        constants.key_direction = {key[0] / key_length, key[1] / key_length, key[2] / key_length, 0.0F};
+        constants.key_diffuse = {lighting.key_diffuse[0], lighting.key_diffuse[1], lighting.key_diffuse[2], 0.0F};
+        constants.key_specular = {lighting.key_specular[0], lighting.key_specular[1], lighting.key_specular[2], 0.0F};
+        constants.fill_sky = {lighting.fill_sky[0], lighting.fill_sky[1], lighting.fill_sky[2], 0.0F};
+        constants.fill_ground = {lighting.fill_ground[0], lighting.fill_ground[1], lighting.fill_ground[2], 0.0F};
+        std::memcpy(frame.constant_buffer_mapped, &constants, sizeof(constants));
 
         check_hresult(frame.allocator->Reset(), "ID3D12CommandAllocator::Reset");
         check_hresult(command_list->Reset(frame.allocator.Get(), opaque_pipeline.Get()), "ID3D12GraphicsCommandList::Reset");
@@ -1381,34 +1589,20 @@ struct D3d12Renderer::Impl
         ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
         command_list->SetDescriptorHeaps(1, descriptor_heaps);
         command_list->SetGraphicsRootSignature(root_signature.Get());
-        const auto matrix = camera_matrix();
-        command_list->SetGraphicsRoot32BitConstants(0, 16, &matrix, 0);
-        command_list->SetGraphicsRootShaderResourceView(3, frame.bone_buffer->GetGPUVirtualAddress());
-        command_list->SetGraphicsRootShaderResourceView(4, (scene_draws.empty() ? identity_instance_buffer : scene_instance_buffer)->GetGPUVirtualAddress());
+        // Root parameters (sandbox.hlsl): 0 frame CBV, 1 texture table, 2 bones, 3 instances,
+        // 4 materials, 5 draw constants (first instance, material).
+        command_list->SetGraphicsRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
+        command_list->SetGraphicsRootShaderResourceView(2, frame.bone_buffer->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(3, (scene_draws.empty() ? identity_instance_buffer : scene_instance_buffer)->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(4, (scene_draws.empty() ? identity_material_buffer : scene_material_buffer)->GetGPUVirtualAddress());
         command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-        struct MaterialConstants
-        {
-            std::array<float, 4> tint;
-            std::array<std::uint32_t, 4> flags;
-        };
-        const auto descriptor_increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        const auto descriptor_start = shader_heap->GetGPUDescriptorHandleForHeapStart();
-        const auto bind_material = [&](const std::uint32_t descriptor_index, const std::array<float, 4>& tint, const bool alpha_test)
-        {
-            auto descriptor = descriptor_start;
-            descriptor.ptr += static_cast<UINT64>(descriptor_index) * descriptor_increment;
-            command_list->SetGraphicsRootDescriptorTable(1, descriptor);
-            const MaterialConstants constants{tint, {alpha_test ? 1U : 0U, 0U, 0U, 0U}};
-            command_list->SetGraphicsRoot32BitConstants(2, 8, &constants, 0);
-        };
 
         if (scene_draws.empty())
         {
             command_list->SetPipelineState(opaque_pipeline.Get());
-            bind_material(0, {1.0F, 1.0F, 1.0F, 1.0F}, false);
-            const std::uint32_t instance_base = 0;
-            command_list->SetGraphicsRoot32BitConstants(5, 1, &instance_base, 0);
+            const std::array<std::uint32_t, 2> draw_constants{0U, 0U};
+            command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
             command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view);
             command_list->DrawInstanced(3, 1, 0, 0);
         }
@@ -1428,8 +1622,8 @@ struct D3d12Renderer::Impl
                     pipeline = draw.background ? background_additive_pipeline.Get() : additive_pipeline.Get();
                 }
                 command_list->SetPipelineState(pipeline);
-                bind_material(draw.descriptor_index, draw.tint, draw.blend == VisualBlendMode::alpha_test);
-                command_list->SetGraphicsRoot32BitConstants(5, 1, &draw.first_instance, 0);
+                const std::array<std::uint32_t, 2> draw_constants{draw.first_instance, draw.material};
+                command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
                 command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
             }
         }
@@ -1634,6 +1828,16 @@ void D3d12Renderer::set_bone_transforms(const std::span<const std::array<float, 
 void D3d12Renderer::set_camera(const VisualCamera& camera)
 {
     impl_->set_camera(camera);
+}
+
+void D3d12Renderer::set_lighting(const VisualLightRig& lighting)
+{
+    impl_->set_lighting(lighting);
+}
+
+void D3d12Renderer::set_scene_time(const float seconds)
+{
+    impl_->set_scene_time(seconds);
 }
 
 const std::string& D3d12Renderer::adapter_name() const

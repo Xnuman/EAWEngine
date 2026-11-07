@@ -151,42 +151,58 @@ const MiniChunk* find_mini(const std::vector<MiniChunk>& chunks, const std::uint
     return found == chunks.end() ? nullptr : &*found;
 }
 
-std::string numeric_value(const std::span<const std::byte> bytes, const Chunk& chunk, const AloShaderParameterType type)
+// Decodes numeric parameter components from the parameter's own data chunk. A chunk shorter than
+// the type requires yields no values (it never borrows bytes from the following chunk).
+std::vector<float> numeric_values(const std::span<const std::byte> bytes, const Chunk& chunk, const AloShaderParameterType type)
 {
-    std::ostringstream value;
-    value << std::setprecision(7);
+    std::size_t count = 0;
     switch (type)
     {
     case AloShaderParameterType::integer:
-        if (chunk.end - chunk.payload >= 4)
-        {
-            value << read_i32(bytes, chunk.payload);
-        }
-        break;
     case AloShaderParameterType::scalar:
-        if (chunk.end - chunk.payload >= 4)
-        {
-            value << read_float(bytes, chunk.payload);
-        }
+        count = 1;
         break;
     case AloShaderParameterType::vector3:
+        count = 3;
+        break;
     case AloShaderParameterType::vector4:
-    {
-        const auto count = type == AloShaderParameterType::vector3 ? 3U : 4U;
-        for (unsigned index = 0; index < count; ++index)
-        {
-            if (index != 0)
-            {
-                value << ", ";
-            }
-            value << read_float(bytes, chunk.payload + index * 4U);
-        }
+        count = 4;
         break;
-    }
     default:
-        break;
+        return {};
     }
-    return value.str();
+    if (chunk.end < chunk.payload || chunk.end - chunk.payload < count * 4U)
+    {
+        return {};
+    }
+    std::vector<float> values;
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        values.push_back(type == AloShaderParameterType::integer ? static_cast<float>(read_i32(bytes, chunk.payload)) : read_float(bytes, chunk.payload + index * 4U));
+    }
+    return values;
+}
+
+std::string numeric_text(const std::vector<float>& values, const AloShaderParameterType type)
+{
+    std::ostringstream text;
+    text << std::setprecision(9);
+    for (std::size_t index = 0; index < values.size(); ++index)
+    {
+        if (index != 0)
+        {
+            text << ", ";
+        }
+        if (type == AloShaderParameterType::integer)
+        {
+            text << static_cast<std::int64_t>(values[index]);
+        }
+        else
+        {
+            text << values[index];
+        }
+    }
+    return text.str();
 }
 
 AloShaderParameter parse_parameter(const std::span<const std::byte> bytes, const Chunk& chunk)
@@ -220,7 +236,15 @@ AloShaderParameter parse_parameter(const std::span<const std::byte> bytes, const
     if (const auto* data = find_mini(minis, 2))
     {
         const Chunk data_chunk{0, false, data->payload, data->end};
-        parameter.value = parameter.type == AloShaderParameterType::texture ? read_string(bytes, data->payload, data->end) : numeric_value(bytes, data_chunk, parameter.type);
+        if (parameter.type == AloShaderParameterType::texture)
+        {
+            parameter.value = read_string(bytes, data->payload, data->end);
+        }
+        else
+        {
+            parameter.values = numeric_values(bytes, data_chunk, parameter.type);
+            parameter.value = numeric_text(parameter.values, parameter.type);
+        }
     }
     return parameter;
 }

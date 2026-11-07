@@ -215,13 +215,168 @@ struct SceneBuilder
     std::unordered_map<std::string, std::uint32_t> texture_indices;
 };
 
+// Loads (once per scene) the DDS for an ALO texture reference and returns its scene texture
+// index, or invalid_visual_texture with a warning when it is missing or unsupported.
+std::uint32_t scene_texture(SceneBuilder& builder, const std::string& reference)
+{
+    const auto key = fold_ascii(reference);
+    if (const auto existing = builder.texture_indices.find(key); existing != builder.texture_indices.end())
+    {
+        return existing->second;
+    }
+    auto index = invalid_visual_texture;
+    if (const auto texture_path = resolve_texture(builder.vfs, reference))
+    {
+        try
+        {
+            index = static_cast<std::uint32_t>(builder.scene.textures.size());
+            builder.scene.textures.push_back(make_visual_texture(reference, builder.vfs.read(*texture_path)));
+        }
+        catch (const std::exception& error)
+        {
+            index = invalid_visual_texture;
+            builder.scene.warnings.push_back(reference + ": " + error.what());
+        }
+    }
+    else
+    {
+        builder.scene.warnings.push_back(reference + ": matching DDS not found");
+    }
+    builder.texture_indices.emplace(key, index);
+    return index;
+}
+
+// Exact numeric components of a named material parameter, or nullptr when absent or malformed.
+const std::vector<float>* material_values(const LegacyMaterial& material, const std::string_view name)
+{
+    for (const auto& parameter : material.parameters)
+    {
+        if (!parameter.values.empty() && fold_ascii(parameter.name) == fold_ascii(std::string(name)))
+        {
+            return &parameter.values;
+        }
+    }
+    return nullptr;
+}
+
+template <std::size_t Count> void read_color(const LegacyMaterial& material, const std::string_view name, std::array<float, Count>& target)
+{
+    if (const auto* values = material_values(material, name))
+    {
+        for (std::size_t index = 0; index < Count && index < values->size(); ++index)
+        {
+            if (std::isfinite((*values)[index]))
+            {
+                target[index] = (*values)[index];
+            }
+        }
+    }
+}
+
+const LegacyTextureBinding* texture_binding(const LegacyMaterial& material, const LegacyTextureSemantic semantic)
+{
+    const auto found = std::ranges::find(material.textures, semantic, &LegacyTextureBinding::semantic);
+    return found == material.textures.end() ? nullptr : &*found;
+}
+
+// Translates a legacy material profile plus its authored parameters into the engine-native
+// legacy-mode surface description (see docs/legacy-shader-mapping.md for the source behavior).
+VisualMaterial make_visual_material(SceneBuilder& builder, const LegacyMaterial& material)
+{
+    VisualMaterial result;
+    result.name = material.source_shader;
+    result.blend = visual_blend(material.blend);
+    result.two_sided = material.two_sided();
+    result.alpha_test_threshold = material.render.alpha_test_threshold.value_or(0.5F);
+    if (const auto* binding = base_color_texture(material))
+    {
+        result.base_color_texture = scene_texture(builder, binding->reference);
+    }
+
+    const auto& features = material.features;
+    const bool unlit_family = material.family == LegacyMaterialFamily::sky || material.family == LegacyMaterialFamily::nebula || material.family == LegacyMaterialFamily::shield ||
+                              material.family == LegacyMaterialFamily::solid_color || material.family == LegacyMaterialFamily::selection;
+    if (features.lighting == LegacyLightingModel::unlit || features.lighting == LegacyLightingModel::sky_dome || unlit_family)
+    {
+        result.lighting = VisualLightingModel::unlit;
+        // Unlit effects carry their color in "Color" (additive, shield) or "Diffuse".
+        read_color(material, "Diffuse", result.diffuse);
+        read_color(material, "Color", result.diffuse);
+    }
+    else
+    {
+        result.lighting = VisualLightingModel::lit;
+        // Legacy material colors default to white specular when the parameter is absent.
+        result.specular = {1.0F, 1.0F, 1.0F};
+        read_color(material, "Diffuse", result.diffuse);
+        read_color(material, "DiffuseColor", result.diffuse);
+        read_color(material, "Specular", result.specular);
+        read_color(material, "Emissive", result.emissive);
+        const bool wants_normal_map = features.lighting == LegacyLightingModel::normal_mapped || features.lighting == LegacyLightingModel::normal_mapped_reflection ||
+                                      features.lighting == LegacyLightingModel::planet_atmosphere;
+        if (const auto* normal = texture_binding(material, LegacyTextureSemantic::normal); normal != nullptr && wants_normal_map)
+        {
+            result.normal_texture = scene_texture(builder, normal->reference);
+            if (result.normal_texture != invalid_visual_texture)
+            {
+                result.lighting = VisualLightingModel::normal_mapped;
+            }
+        }
+        switch (features.gloss)
+        {
+        case LegacyGlossSource::base_alpha:
+            result.gloss = VisualGlossSource::base_alpha;
+            break;
+        case LegacyGlossSource::normal_alpha:
+            result.gloss = result.normal_texture != invalid_visual_texture ? VisualGlossSource::normal_alpha : VisualGlossSource::none;
+            break;
+        case LegacyGlossSource::gloss_texture_red:
+            if (const auto* gloss = texture_binding(material, LegacyTextureSemantic::specular))
+            {
+                result.gloss_texture = scene_texture(builder, gloss->reference);
+            }
+            result.gloss = result.gloss_texture != invalid_visual_texture ? VisualGlossSource::gloss_red : VisualGlossSource::none;
+            break;
+        case LegacyGlossSource::none:
+            break;
+        }
+        result.team_color_mask = features.colorize;
+        result.emissive_mask = features.base_alpha_emissive;
+    }
+
+    if (features.uv_animation == LegacyUvAnimation::scroll)
+    {
+        read_color(material, "UVScrollRate", result.uv_scroll);
+        // The nebula reference scrolls three times faster than its authored rate.
+        if (material.family == LegacyMaterialFamily::nebula)
+        {
+            result.uv_scroll = {result.uv_scroll[0] * 3.0F, result.uv_scroll[1] * 3.0F};
+        }
+    }
+    return result;
+}
+
+// Placeholder player colors until faction colors are read from XML. Index 0 is neutral.
+std::array<float, 4> player_team_color(const std::uint32_t player) noexcept
+{
+    static constexpr std::array<std::array<float, 4>, 8> colors{{
+        {0.70F, 0.70F, 0.70F, 1.0F},
+        {0.25F, 0.45F, 0.95F, 1.0F},
+        {0.90F, 0.25F, 0.20F, 1.0F},
+        {0.95F, 0.75F, 0.20F, 1.0F},
+        {0.35F, 0.80F, 0.40F, 1.0F},
+        {0.65F, 0.40F, 0.85F, 1.0F},
+        {0.25F, 0.80F, 0.80F, 1.0F},
+        {0.90F, 0.45F, 0.70F, 1.0F},
+    }};
+    return colors[player % colors.size()];
+}
+
 // Appends one ALO model as a new mesh (its draws, vertices, indices, and any new textures) and
 // returns the mesh index. Vertices stay in bind-pose model space with model-wide bone indices.
 std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const std::string_view name)
 {
     auto& scene = builder.scene;
-    auto& texture_indices = builder.texture_indices;
-    const auto& vfs = builder.vfs;
     const auto bind_pose = model.bind_pose();
     if (model.bones.size() > std::numeric_limits<std::uint32_t>::max())
     {
@@ -272,39 +427,10 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
                 continue;
             }
 
-            VisualMaterial visual_material;
-            visual_material.name = material.source_shader;
-            visual_material.tint = palette[mesh_index % palette.size()];
-            visual_material.blend = visual_blend(material.blend);
-            visual_material.two_sided = material.two_sided();
-            if (const auto* binding = base_color_texture(material))
+            auto visual_material = make_visual_material(builder, material);
+            if (visual_material.base_color_texture == invalid_visual_texture)
             {
-                const auto key = fold_ascii(binding->reference);
-                const auto existing = texture_indices.find(key);
-                if (existing != texture_indices.end())
-                {
-                    visual_material.base_color_texture = existing->second;
-                    visual_material.tint = {1.0F, 1.0F, 1.0F, 1.0F};
-                }
-                else if (const auto texture_path = resolve_texture(vfs, binding->reference))
-                {
-                    try
-                    {
-                        const auto texture_index = static_cast<std::uint32_t>(scene.textures.size());
-                        scene.textures.push_back(make_visual_texture(binding->reference, vfs.read(*texture_path)));
-                        texture_indices.emplace(key, texture_index);
-                        visual_material.base_color_texture = texture_index;
-                        visual_material.tint = {1.0F, 1.0F, 1.0F, 1.0F};
-                    }
-                    catch (const std::exception& error)
-                    {
-                        scene.warnings.push_back(binding->reference + ": " + error.what());
-                    }
-                }
-                else
-                {
-                    scene.warnings.push_back(binding->reference + ": matching DDS not found");
-                }
+                visual_material.tint = palette[mesh_index % palette.size()];
             }
 
             if (scene.vertices.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
@@ -321,6 +447,8 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
             {
                 const auto position = attachment != nullptr ? alo_transform_point(vertex.position, *attachment) : vertex.position;
                 const auto normal = attachment != nullptr ? transform_direction(vertex.normal, *attachment) : vertex.normal;
+                const auto tangent = attachment != nullptr ? transform_direction(vertex.tangent, *attachment) : vertex.tangent;
+                const auto binormal = attachment != nullptr ? transform_direction(vertex.binormal, *attachment) : vertex.binormal;
                 std::array<std::uint32_t, 4> bone_indices{};
                 std::array<float, 4> bone_weights{};
                 if (!submesh.skin_bones.empty())
@@ -346,8 +474,13 @@ std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const s
                     bone_indices[0] = *mesh.attached_bone;
                     bone_weights[0] = 1.0F;
                 }
-                scene.vertices.push_back(
-                    {{position.x, position.y, position.z}, {normal.x, normal.y, normal.z}, {vertex.texture_coordinates[0].x, vertex.texture_coordinates[0].y}, bone_indices, bone_weights});
+                scene.vertices.push_back({{position.x, position.y, position.z},
+                                          {normal.x, normal.y, normal.z},
+                                          {vertex.texture_coordinates[0].x, vertex.texture_coordinates[0].y},
+                                          bone_indices,
+                                          bone_weights,
+                                          {tangent.x, tangent.y, tangent.z},
+                                          {binormal.x, binormal.y, binormal.z}});
                 visual_mesh.bounds_minimum[0] = std::min(visual_mesh.bounds_minimum[0], position.x);
                 visual_mesh.bounds_minimum[1] = std::min(visual_mesh.bounds_minimum[1], position.y);
                 visual_mesh.bounds_minimum[2] = std::min(visual_mesh.bounds_minimum[2], position.z);
@@ -446,7 +579,9 @@ VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, const std::str
     scene.warnings = asset.model.warnings;
     SceneBuilder builder{vfs, scene, {}};
     const auto mesh = append_model(builder, asset.model, resolved->virtual_path);
-    scene.instances.push_back({mesh});
+    VisualInstance instance{mesh};
+    instance.team_color = player_team_color(1);
+    scene.instances.push_back(instance);
     scene.bone_count = scene.meshes[mesh].bone_count;
     update_scene_bounds(scene);
     return asset;
@@ -501,7 +636,9 @@ VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_
         }
         // Every instance shares the identity (bind-pose) palette; per-instance animation is a
         // simulation-driven feature for later milestones.
-        scene.instances.push_back({*entry->second, placement.transform.values});
+        VisualInstance instance{*entry->second, placement.transform.values};
+        instance.team_color = player_team_color(map.placed_objects[placement.object_index].player);
+        scene.instances.push_back(instance);
     }
 
     // Backdrop: the active environment names primary and secondary sky domes. Each name is an XML

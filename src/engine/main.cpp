@@ -413,6 +413,7 @@ int main(const int argc, char** argv)
                                       : "Visual sandbox ready. Left-drag orbits, wheel zooms, Space resets, P pauses animation.\n");
 
         auto animation_tick = std::chrono::steady_clock::now();
+        const auto scene_start = animation_tick;
         auto camera_tick = animation_tick;
         float animation_time = 0.0F;
         bool animation_playing = true;
@@ -486,6 +487,7 @@ int main(const int argc, char** argv)
                 const auto skin_palette = eaw::sample_skin_palette(*visual_model, &*visual_animation, animation_time);
                 renderer.set_bone_transforms(skin_palette);
             }
+            renderer.set_scene_time(std::chrono::duration<float>(now - scene_start).count());
             const bool rendered = renderer.render();
             if (options.frame_limit && renderer.stats().frame_number >= *options.frame_limit)
             {

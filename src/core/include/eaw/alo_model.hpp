@@ -91,7 +91,11 @@ struct AloShaderParameter
 {
     std::string name;
     AloShaderParameterType type{AloShaderParameterType::unknown};
+    // Texture name, or the numeric components as text (for display and diagnostics).
     std::string value;
+    // Exact numeric components (integers converted to float). Empty for textures and for data
+    // chunks shorter than the parameter type requires.
+    std::vector<float> values;
 };
 
 struct AloSubMesh

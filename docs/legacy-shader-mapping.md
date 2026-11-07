@@ -183,3 +183,22 @@ Do not carry these into the modern renderer by default:
 - The Direct3D 9 counter-clockwise default culling convention. Verify winding
   against the decoded ALO data rather than assuming it.
 - Stencil shadow volumes as the shadow technique.
+
+## Legacy-mode implementation status
+
+The D3D12 sandbox renders legacy materials through engine-native
+`VisualMaterial` data and newly written HLSL (`src/render/shaders/sandbox.hlsl`).
+It reproduces the documented behavior, not the original code:
+
+| Behavior | Status |
+| --- | --- |
+| Fill plus key light, 2x diffuse, exponent-16 highlight | Implemented. Fill is a sky/ground hemisphere instead of spherical harmonics, and the highlight is per pixel for all families (legacy vertex-lit families computed it per vertex). |
+| Normal maps (bump families, terrain meshes, planets) | Implemented with the ALO tangent frame. |
+| Gloss from base alpha, normal alpha, or gloss-texture red | Implemented per profile. |
+| Team color (colorize mask in base alpha) | Implemented; colors are a placeholder player palette until faction colors are read from XML. |
+| Self-illumination mask (`FSAMeshGlow`) | Implemented. |
+| Diffuse, Specular, Emissive, Color parameters | Implemented from exact ALO values; absent Specular defaults to white. |
+| Alpha test, alpha blend, additive | Implemented; transparency is not depth-sorted. |
+| UV scroll (`UVScrollRate`, nebula at 3x) | Implemented; `UVOffset` (always zero in stock data) is not applied. |
+| Per-map lighting from TED environments | Not yet; a fixed default rig is used. |
+| Cube reflection, planet atmosphere/clouds/city lights, shield layers, nebula wobble, wind bend, heat, occluded silhouettes, shadow volumes, fog, fog of war | Not yet. |

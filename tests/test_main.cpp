@@ -3,6 +3,7 @@
 #include "eaw/asset_environment.hpp"
 #include "eaw/asset_path.hpp"
 #include "camera_controller.hpp"
+#include "visual_scene_builder.hpp"
 #include "eaw/dat_file.hpp"
 #include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
@@ -299,6 +300,23 @@ std::vector<std::byte> make_test_alo()
     append_string(shader_name, "MeshGloss.fx");
     std::vector<std::byte> material;
     append_chunk(material, 0x10101, shader_name);
+    // A well-formed vector4 parameter and a vector3 whose data chunk is too short.
+    const auto append_parameter = [&](const std::uint32_t type, const std::string& name, const std::vector<float>& data)
+    {
+        std::vector<std::byte> name_bytes;
+        append_string(name_bytes, name);
+        std::vector<std::byte> data_bytes;
+        for (const auto value : data)
+        {
+            append_float(data_bytes, value);
+        }
+        std::vector<std::byte> minis;
+        append_mini(minis, 1, name_bytes);
+        append_mini(minis, 2, data_bytes);
+        append_chunk(material, type, minis);
+    };
+    append_parameter(0x10106, "Diffuse", {0.25F, 0.5F, 0.75F, 0.123456789F});
+    append_parameter(0x10104, "Specular", {1.0F, 2.0F});
 
     std::vector<std::byte> submesh_info(128, std::byte{});
     submesh_info.clear();
@@ -362,6 +380,10 @@ void test_alo_model()
     require(model.submesh_count() == 1 && model.vertex_count() == 3 && model.triangle_count() == 1 && model.meshes[0].submeshes[0].vertex_stride == 144 &&
                 model.meshes[0].submeshes[0].vertices.size() == 3 && model.meshes[0].submeshes[0].indices.size() == 3 && model.meshes[0].submeshes[0].shader == "MeshGloss.fx",
             "ALO submesh decoding failed");
+    const auto& parameters = model.meshes[0].submeshes[0].parameters;
+    require(parameters.size() == 2 && parameters[0].name == "Diffuse" && parameters[0].values == std::vector<float>{0.25F, 0.5F, 0.75F, 0.123456789F} && parameters[1].name == "Specular" &&
+                parameters[1].values.empty() && parameters[1].value.empty(),
+            "ALO numeric shader parameters were not decoded exactly or a short chunk was over-read");
     const auto bind_pose = model.bind_pose();
     require(bind_pose.size() == 1 && bind_pose[0].values[0] == 1.0F && bind_pose[0].values[5] == 1.0F && bind_pose[0].values[10] == 1.0F, "ALO bind-pose decoding failed");
 }
@@ -1130,6 +1152,34 @@ void test_camera_controllers()
     require(std::isfinite(view.eye[0]) && distance(view) >= degenerate.minimum_distance() * 0.999F, "degenerate bounds produced an invalid tactical view");
 }
 
+void test_visual_material_translation()
+{
+    // The synthetic ALO uses MeshGloss.fx with an exact Diffuse vector4 and a malformed Specular.
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-visual-material-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::filesystem::create_directories(root / "Data" / "Art" / "Models");
+    {
+        const auto bytes = make_test_alo();
+        std::ofstream file(root / "Data" / "Art" / "Models" / "TEST.ALO", std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    const auto asset = eaw::build_visual_model(vfs, "Data/Art/Models/TEST.ALO");
+    const auto& scene = asset.scene;
+    require(scene.meshes.size() == 1 && scene.instances.size() == 1 && scene.materials.size() == 1 && scene.vertices.size() == 3, "visual model scene structure is wrong");
+    const auto& material = scene.materials[0];
+    require(material.lighting == eaw::VisualLightingModel::lit && material.gloss == eaw::VisualGlossSource::base_alpha && !material.team_color_mask && material.blend == eaw::VisualBlendMode::opaque,
+            "gloss profile did not become a lit, base-alpha-gloss material");
+    require(material.diffuse == std::array<float, 4>{0.25F, 0.5F, 0.75F, 0.123456789F} && material.specular == std::array<float, 3>{1.0F, 1.0F, 1.0F} &&
+                material.emissive == std::array<float, 3>{0.0F, 0.0F, 0.0F},
+            "material colors were not taken from exact parameters with legacy defaults");
+    require(material.base_color_texture == eaw::invalid_visual_texture && material.tint != std::array<float, 4>{1.0F, 1.0F, 1.0F, 1.0F}, "untextured material did not receive a debug tint");
+    require(scene.instances[0].team_color[3] == 1.0F && !scene.instances[0].background, "model instance team color or layer is wrong");
+    std::filesystem::remove_all(root, ignored);
+}
+
 void test_xml_schema_validation()
 {
     const auto root = std::filesystem::temp_directory_path() / "eawengine-xml-schema-test";
@@ -1295,6 +1345,7 @@ int main()
         test_xml_asset_database();
         test_game_object_catalog();
         test_camera_controllers();
+        test_visual_material_translation();
         test_xml_schema_validation();
 
         std::error_code ignored;

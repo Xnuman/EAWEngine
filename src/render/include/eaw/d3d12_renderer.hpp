@@ -52,6 +52,10 @@ public:
     void set_bone_transforms(std::span<const std::array<float, 16>> transforms);
     // Throws std::invalid_argument for non-finite or degenerate cameras.
     void set_camera(const VisualCamera& camera);
+    // Throws std::invalid_argument for non-finite values or a zero key-light direction.
+    void set_lighting(const VisualLightRig& lighting);
+    // Seconds of scene time driving texture-coordinate scrolling.
+    void set_scene_time(float seconds);
 
     [[nodiscard]] const std::string& adapter_name() const;
     [[nodiscard]] D3d12RendererStats stats() const;

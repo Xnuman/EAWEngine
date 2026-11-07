@@ -668,6 +668,14 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
     std::map<std::string, std::size_t> heuristic_shaders;
     std::map<std::string, std::size_t> texture_semantics;
     std::map<std::string, std::size_t> texture_parameters;
+    struct NumericUsage
+    {
+        std::size_t count{};
+        std::array<float, 4> minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+        std::array<float, 4> maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+        std::size_t components{};
+    };
+    std::map<std::string, NumericUsage> numeric_parameters;
     for (const auto& asset : model_assets)
     {
         if (extension_of(asset.virtual_path) != ".alo")
@@ -694,6 +702,21 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
                     if (material.source == eaw::LegacyTranslationSource::name_heuristic)
                     {
                         ++heuristic_shaders[material.source_shader.empty() ? "<unnamed>" : material.source_shader];
+                    }
+                    for (const auto& parameter : submesh.parameters)
+                    {
+                        if (parameter.values.empty())
+                        {
+                            continue;
+                        }
+                        auto& usage = numeric_parameters[parameter.name];
+                        ++usage.count;
+                        usage.components = std::max(usage.components, parameter.values.size());
+                        for (std::size_t component = 0; component < parameter.values.size() && component < usage.minimum.size(); ++component)
+                        {
+                            usage.minimum[component] = std::min(usage.minimum[component], parameter.values[component]);
+                            usage.maximum[component] = std::max(usage.maximum[component], parameter.values[component]);
+                        }
                     }
                     for (const auto& texture : material.textures)
                     {
@@ -839,6 +862,16 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
     for (const auto& [semantic, count] : texture_semantics)
     {
         std::cout << "  texture " << semantic << ": " << count << '\n';
+    }
+    std::cout << "Numeric parameter usage (count, per-component min..max):\n";
+    for (const auto& [name, usage] : numeric_parameters)
+    {
+        std::cout << "  " << name << ": " << usage.count;
+        for (std::size_t component = 0; component < usage.components; ++component)
+        {
+            std::cout << (component == 0 ? "  " : ", ") << usage.minimum[component] << ".." << usage.maximum[component];
+        }
+        std::cout << '\n';
     }
     std::cout << "Texture parameter usage:\n";
     for (const auto& [parameter, count] : texture_parameters)
