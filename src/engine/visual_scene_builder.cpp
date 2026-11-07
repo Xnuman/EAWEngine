@@ -260,12 +260,20 @@ VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, const std::str
             {
                 continue;
             }
+            // Heat distortion and occluded-unit overlays target dedicated passes (a distortion buffer
+            // and a depth-greater silhouette) that the sandbox does not implement yet. Drawing them
+            // into the color pass would be wrong, so they are skipped with a diagnostic.
+            if (material.family == LegacyMaterialFamily::heat || material.family == LegacyMaterialFamily::occluded)
+            {
+                scene.warnings.push_back(mesh.name + ": skipped " + material.source_shader + " (" + std::string(to_string(material.family)) + " pass is not implemented)");
+                continue;
+            }
 
             VisualMaterial visual_material;
             visual_material.name = material.source_shader;
             visual_material.tint = palette[mesh_index % palette.size()];
             visual_material.blend = visual_blend(material.blend);
-            visual_material.two_sided = material.two_sided;
+            visual_material.two_sided = material.two_sided();
             if (const auto* binding = base_color_texture(material))
             {
                 const auto key = fold_ascii(binding->reference);

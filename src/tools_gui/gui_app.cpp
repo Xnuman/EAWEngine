@@ -392,7 +392,8 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
                     const auto& submesh = mesh.submeshes[submesh_index];
                     const auto material = LegacyMaterial::translate(submesh);
                     output << "      material " << submesh_index << ": " << submesh.shader << "  vertices=" << submesh.vertex_count << "  triangles=" << submesh.triangle_count
-                           << "  stride=" << submesh.vertex_stride << "  family=" << to_string(material.family) << "  blend=" << to_string(material.blend) << '\n';
+                           << "  stride=" << submesh.vertex_stride << "  family=" << to_string(material.family) << "  blend=" << to_string(material.blend)
+                           << "  phase=" << to_string(material.render.phase) << "  lighting=" << to_string(material.features.lighting) << "  source=" << to_string(material.source) << '\n';
                     for (const auto& parameter : submesh.parameters)
                     {
                         if (parameter.type == AloShaderParameterType::texture)

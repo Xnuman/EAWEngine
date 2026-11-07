@@ -650,6 +650,10 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
     std::map<std::string, std::size_t> shaders;
     std::map<std::string, std::size_t> material_families;
     std::map<std::string, std::size_t> blend_modes;
+    std::map<std::string, std::size_t> translation_sources;
+    std::map<std::string, std::size_t> render_phases;
+    std::map<std::string, std::size_t> lighting_models;
+    std::map<std::string, std::size_t> heuristic_shaders;
     std::map<std::string, std::size_t> texture_semantics;
     std::map<std::string, std::size_t> texture_parameters;
     for (const auto& asset : model_assets)
@@ -672,6 +676,13 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
                     ++shaders[material.source_shader.empty() ? "<unnamed>" : material.source_shader];
                     ++material_families[std::string(eaw::to_string(material.family))];
                     ++blend_modes[std::string(eaw::to_string(material.blend))];
+                    ++translation_sources[std::string(eaw::to_string(material.source))];
+                    ++render_phases[std::string(eaw::to_string(material.render.phase))];
+                    ++lighting_models[std::string(eaw::to_string(material.features.lighting))];
+                    if (material.source == eaw::LegacyTranslationSource::name_heuristic)
+                    {
+                        ++heuristic_shaders[material.source_shader.empty() ? "<unnamed>" : material.source_shader];
+                    }
                     for (const auto& texture : material.textures)
                     {
                         ++texture_semantics[std::string(eaw::to_string(texture.semantic))];
@@ -796,6 +807,22 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
     for (const auto& [blend, count] : blend_modes)
     {
         std::cout << "  blend " << blend << ": " << count << '\n';
+    }
+    for (const auto& [source, count] : translation_sources)
+    {
+        std::cout << "  source " << source << ": " << count << '\n';
+    }
+    for (const auto& [phase, count] : render_phases)
+    {
+        std::cout << "  phase " << phase << ": " << count << '\n';
+    }
+    for (const auto& [lighting, count] : lighting_models)
+    {
+        std::cout << "  lighting " << lighting << ": " << count << '\n';
+    }
+    for (const auto& [shader, count] : heuristic_shaders)
+    {
+        std::cout << "  heuristic-only shader " << shader << ": " << count << '\n';
     }
     for (const auto& [semantic, count] : texture_semantics)
     {

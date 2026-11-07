@@ -27,8 +27,10 @@
 #include <iostream>
 #include <limits>
 #include <ranges>
+#include <set>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -437,9 +439,77 @@ void test_texture_formats_and_materials()
                 material.textures[0].semantic == eaw::LegacyTextureSemantic::base_color && material.textures[1].semantic == eaw::LegacyTextureSemantic::normal && material.parameters.size() == 3,
             "legacy material translation failed");
 
+    require(material.source == eaw::LegacyTranslationSource::reference_profile && material.features.gloss == eaw::LegacyGlossSource::base_alpha && material.render.depth_write &&
+                material.render.fade_blend,
+            "gloss reference profile was not applied");
+
+    // The reference corpus renders shields additively (ONE/ONE) with culling disabled.
     submesh.shader = "MeshShield.fx";
     const auto shield = eaw::LegacyMaterial::translate(submesh);
-    require(shield.blend == eaw::LegacyBlendMode::alpha_blend, "shield material did not select alpha blending");
+    require(shield.family == eaw::LegacyMaterialFamily::shield && shield.blend == eaw::LegacyBlendMode::additive && shield.two_sided() && !shield.render.depth_write &&
+                shield.features.uv_animation == eaw::LegacyUvAnimation::shield_layers,
+            "shield material did not select the additive two-sided profile");
+
+    // Lookup ignores case, directories, and the .fx/.fxo extension; skinning is a vertex feature.
+    submesh.shader = "Shaders\\RSKINBUMPCOLORIZE.FX";
+    const auto skinned = eaw::LegacyMaterial::translate(submesh);
+    require(skinned.source == eaw::LegacyTranslationSource::reference_profile && skinned.family == eaw::LegacyMaterialFamily::mesh && skinned.vertex.rigid_skinning && skinned.vertex.tangent_frame &&
+                skinned.features.colorize && skinned.features.gloss == eaw::LegacyGlossSource::normal_alpha && skinned.features.lighting == eaw::LegacyLightingModel::normal_mapped,
+            "skinned bump-colorize profile was not applied");
+
+    submesh.shader = "MeshHeat.fx";
+    const auto heat = eaw::LegacyMaterial::translate(submesh);
+    require(heat.family == eaw::LegacyMaterialFamily::heat && heat.render.phase == eaw::LegacyRenderPhase::heat && !heat.render.depth_write, "heat profile was not applied");
+
+    submesh.shader = "Nebula.fx";
+    const auto nebula = eaw::LegacyMaterial::translate(submesh);
+    require(nebula.blend == eaw::LegacyBlendMode::additive && nebula.two_sided() && nebula.features.vertex_animation == eaw::LegacyVertexAnimation::nebula_wobble, "nebula profile was not applied");
+
+    submesh.shader = "Tree.fx";
+    const auto tree = eaw::LegacyMaterial::translate(submesh);
+    require(tree.blend == eaw::LegacyBlendMode::alpha_test && tree.render.alpha_test_threshold && *tree.render.alpha_test_threshold > 0.5F && *tree.render.alpha_test_threshold < 0.51F &&
+                tree.render.depth_write,
+            "tree alpha-test profile was not applied");
+
+    submesh.shader = "MeshOccludedUnit.fx";
+    const auto occluded = eaw::LegacyMaterial::translate(submesh);
+    require(occluded.render.depth_test == eaw::LegacyDepthTest::greater && occluded.render.stencil, "occluded-unit profile did not select a depth-greater test");
+
+    submesh.shader = "MeshShadowVolume.fx";
+    const auto shadow = eaw::LegacyMaterial::translate(submesh);
+    require(shadow.family == eaw::LegacyMaterialFamily::shadow && !shadow.render.color_write && shadow.render.phase == eaw::LegacyRenderPhase::shadow,
+            "shadow-volume profile did not disable color writes");
+
+    // Planet cloud layers must not be mistaken for a second normal or base-color map.
+    submesh.shader = "Planet.fx";
+    submesh.parameters = {{"BaseTexture", eaw::AloShaderParameterType::texture, "P.TGA"},
+                          {"NormalTexture", eaw::AloShaderParameterType::texture, "P_B.TGA"},
+                          {"CloudTexture", eaw::AloShaderParameterType::texture, "C.TGA"},
+                          {"CloudNormalTexture", eaw::AloShaderParameterType::texture, "C_B.TGA"}};
+    const auto planet = eaw::LegacyMaterial::translate(submesh);
+    require(planet.textures.size() == 4 && planet.textures[0].semantic == eaw::LegacyTextureSemantic::base_color && planet.textures[1].semantic == eaw::LegacyTextureSemantic::normal &&
+                planet.textures[2].semantic == eaw::LegacyTextureSemantic::cloud && planet.textures[3].semantic == eaw::LegacyTextureSemantic::cloud_normal &&
+                planet.features.lighting == eaw::LegacyLightingModel::planet_atmosphere,
+            "planet texture semantics were not separated");
+
+    // Shaders outside the reference corpus keep a conservative, explicitly tagged fallback.
+    submesh.shader = "alDefault.fx";
+    require(eaw::LegacyMaterial::translate(submesh).source == eaw::LegacyTranslationSource::name_heuristic, "unreferenced shader was not tagged as heuristic");
+    submesh.shader = "ModRSkinAlphaGlow.fx";
+    const auto modded = eaw::LegacyMaterial::translate(submesh);
+    require(modded.source == eaw::LegacyTranslationSource::name_heuristic && modded.blend == eaw::LegacyBlendMode::alpha_blend && modded.vertex.rigid_skinning && !modded.render.depth_write,
+            "mod shader heuristics were not applied");
+    submesh.shader.clear();
+    require(eaw::LegacyMaterial::translate(submesh).family == eaw::LegacyMaterialFamily::unknown, "empty shader name was not reported as unknown");
+
+    const auto names = eaw::legacy_reference_shader_names();
+    std::set<std::string_view> unique_names(names.begin(), names.end());
+    require(names.size() == 39 && unique_names.size() == names.size(), "legacy reference profile names are missing or duplicated");
+    for (const auto name : names)
+    {
+        submesh.shader = std::string(name) + ".fx";
+        require(eaw::LegacyMaterial::translate(submesh).source == eaw::LegacyTranslationSource::reference_profile, "reference profile name did not resolve: " + std::string(name));
+    }
 }
 
 void test_lua_inspection()

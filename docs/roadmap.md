@@ -5,7 +5,8 @@ campaign compatibility is a long-term engine project, not a renderer swap.
 
 ## M0 — repository and research discipline (done)
 
-- Clean-room boundary and no-asset repository policy.
+- Independent-implementation boundary, read-only owned-installation policy, and
+  explicit isolation rules for compatibility evidence.
 - Build, tests, launcher/engine separation, architecture record.
 
 ## M1 — data bootstrap (baseline complete)
@@ -58,9 +59,9 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   both standard Lua 5.0 and Petroglyph persistent bytecode prototypes. The
   stock layered corpus contains 370 source scripts (85,312 lines), with every
   detected dependency resolved and no inspection failures.
-- Next: M2 visual sandbox. Deeper per-shader render-state, lighting, and Lua
-  host-API behavior are implemented incrementally against the compatibility
-  inventories as their renderer and simulation consumers come online.
+- M1 is now a stable baseline for M2 consumers. Deeper per-shader render-state,
+  lighting, and Lua host-API behavior are implemented incrementally against the
+  compatibility inventories as renderer and simulation consumers come online.
 - Deliverable: asset inspector that can browse every stock and selected mod
   asset and report unresolved references.
 
@@ -74,10 +75,27 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   renderer-only fallback through the same default-heap upload path.
 - Initial engine-native ALO geometry, base-color DDS mip uploads, legacy blend
   translation, depth buffering, orbit camera, and GPU ALA skinning are
-  implemented in the D3D12 sandbox. Continue toward animation selection UI and
-  full legacy shader/material coverage, then replace the current ImGui
-  inspection viewport.
-- Camera, PBR approximation for legacy materials, selection IDs, debug drawing.
+  implemented in the D3D12 sandbox.
+- The owner-provided legacy Direct3D 9 reference corpus in `Shaders/` is
+  inventoried in [Legacy shader mapping](legacy-shader-mapping.md). All 39
+  readable effects have reference profiles (render phase, depth/cull/alpha-test
+  state, lighting model, gloss/colorize/opacity channel roles, UV and vertex
+  animation, vertex requirements) that cover 84% of stock material instances;
+  the rest keep tagged name heuristics. New shaders are independently written
+  modern HLSL; the reference corpus is never compiled, shipped, or required at
+  build/runtime.
+- Legacy mode first: render materials from the legacy reference profiles with
+  newly written shaders so the original game can run on the new engine and its
+  behavior can be stabilized. Add normal/gloss/emissive/team-color and special
+  material behavior in that mode. A physically based material path with a
+  documented conversion from legacy profiles follows once legacy mode is stable,
+  then move inline shaders to an offline DXC/reflection and PSO-cache pipeline.
+- Add animation selection/visibility handling, selection IDs, debug drawing,
+  resource handles, descriptor allocation, streaming, and hot reload.
+- Camera, selection IDs, debug drawing; PBS conversion of legacy materials after
+  legacy mode is stable.
+- Add production D3D12 tactical-map rendering. Further tool-only map/model
+  preview polish is deferred until it can support the renderer and map editor.
 - Deliverable: load and inspect a stock space unit and a tactical map.
 
 ## M3 — tactical simulation slice

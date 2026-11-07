@@ -128,13 +128,16 @@ GUI additionally consumes render-ready vertex/index/skin streams, decoded ALA
 frames, and every DDS encoding observed in the stock corpus. The shared DDS
 decoder also recognizes BC4/BC5 and common DX10 formats for mods. MTD inspection
 lists source-image CRCs and atlas rectangles. ALO material inspection preserves
-raw parameters and adds engine-neutral shader-family, blend-mode, and texture
-role hints; exact production render-state and lighting translation remains a
-future renderer layer.
+raw parameters and adds engine-neutral shader-family, blend-mode, render-phase,
+lighting-model, and texture-role hints. Shaders covered by the legacy reference
+corpus use documented reference profiles ([Legacy shader mapping](legacy-shader-mapping.md));
+other names are tagged `name-heuristic`. Production rendering of those hints
+remains a renderer-layer task.
 
 `texture-audit` parses every resolved DDS and MTD, checks the MTD-to-compressed-
-DDS dependency, inventories format and material coverage, and reports missing
-ALO texture references with an example model. The optional prefix scopes model
+DDS dependency, inventories format and material coverage (including translation
+source, render phase, lighting model, and heuristic-only shader names), and
+reports missing ALO texture references with an example model. The optional prefix scopes model
 inspection; the DDS/MTD corpus always covers the final mounted `Data` VFS.
 
 `lua-audit` is read-only and never executes scripts. For source it ignores

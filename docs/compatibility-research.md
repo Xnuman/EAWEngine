@@ -1,8 +1,18 @@
 # Compatibility research
 
-The bootstrap uses public documentation and the user's installed data. It does
-not use leaked source code, decompiled code copied from the original binary, or
-redistributed game assets.
+The bootstrap uses public documentation, black-box behavior, compatibility
+corpora built from the user's installed data, and an explicitly isolated
+owner-provided Direct3D 9 shader reference under `Shaders/`. It does not use
+leaked source code or decompiled code copied from the original executable, and
+the engine never modifies or redistributes the installed runtime data.
+
+The shader corpus is evidence for parameter, transform, and render-state
+semantics only. It is git-ignored, never distributed, not compiled or shipped, and the new D3D12 shaders are
+independently written against engine-native material contracts. Source checkouts
+without `Shaders/` must still configure, build, test, and run. No other original
+game source, binary, or asset may be added without explicit owner authorization
+and provenance review. Because contributors can consult this corpus, project
+documentation must not characterize the renderer as strictly clean-room.
 
 Primary starting points:
 
@@ -75,7 +85,15 @@ Across 1,379 semantic stock ALO models, 9,294 material instances use 35 shader
 names and seven texture-parameter names. The compatibility representation keeps
 the source shader and all raw parameters, then adds conservative family, blend,
 and texture-role hints. This separation allows the future renderer to improve a
-shader translation without changing the lossless asset decoder. Fourteen of
+shader translation without changing the lossless asset decoder. Reference
+profiles derived from the legacy shader corpus now type 7,808 of those 9,294
+instances (31 of the 35 names); `alDefault.fx`, `Default.fx`,
+`MeshAdditiveReflection.fx`, and `FissureMeshGloss.fx` have no reference source
+and remain name-heuristic. The corpus corrected earlier guesses: shields and
+nebulae are additive and two-sided, heat meshes target a distortion buffer,
+planet cloud maps are layers rather than base/normal maps, and team-color masks
+always come from base-texture alpha. Details and remaining uncertainty are in
+[Legacy shader mapping](legacy-shader-mapping.md). Fourteen of
 1,286 unique model texture references remain absent from the final layered VFS
 and are reported with example source models.
 
