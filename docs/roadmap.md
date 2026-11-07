@@ -112,7 +112,7 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   frame-buffered buffer; the sandbox outlines the selection and toggles every
   object's bounds with B. The sandbox cameras are inspection tools, not the
   game camera; gameplay camera and input belong to M3/M4 (see there).
-- On-screen debug overlay: done. A display-only Dear ImGui D3D12 panel (F1)
+- On-screen debug overlay: done. A movable, resizable, minimizable Dear ImGui D3D12 panel (F1)
   shows FPS, CPU and GPU frame time, draw calls, triangles, instances, video
   memory, texture streaming, scene, camera, animation, selection, and hot-reload
   status. Interactive in-engine tools can build on it later. Liquid surfaces may

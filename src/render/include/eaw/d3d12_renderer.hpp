@@ -70,6 +70,17 @@ struct VisualPick
     bool terrain{};
 };
 
+// Mouse state for the debug overlay, in client pixels.
+struct VisualOverlayInput
+{
+    float mouse_x{-1.0F};
+    float mouse_y{-1.0F};
+    bool left_button{};
+    bool right_button{};
+    // Wheel steps since the previous call (positive away from the user).
+    float wheel{};
+};
+
 class D3d12Renderer final
 {
 public:
@@ -112,6 +123,11 @@ public:
     // Text lines of the on-screen debug panel (top left); an empty line draws a separator and no
     // lines hides the panel.
     void set_overlay_text(std::span<const std::string> lines);
+    // Mouse input for the overlay (its "-"/"+" button, moving, and resizing). Call once per frame.
+    void set_overlay_input(const VisualOverlayInput& input);
+    // True while the mouse is over the overlay or dragging it, as of the last rendered frame; the
+    // caller should then not use the mouse for the scene.
+    [[nodiscard]] bool overlay_wants_mouse() const noexcept;
 
     [[nodiscard]] const std::string& adapter_name() const;
     [[nodiscard]] D3d12RendererStats stats() const;

@@ -737,6 +737,10 @@ int main(const int argc, char** argv)
                 window.request_close();
             }
             const auto& input = window.input();
+            // The overlay gets the mouse first; while it wants it, the scene ignores the mouse.
+            renderer.set_overlay_input({static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y), input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down,
+                                        input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down, input.wheel_delta});
+            const bool scene_mouse = !renderer.overlay_wants_mouse();
             const auto key_down = [&](const eaw::Key key)
             {
                 return input.keys[static_cast<std::size_t>(key)].down;
@@ -746,8 +750,8 @@ int main(const int argc, char** argv)
             camera_tick = camera_now;
             eaw::CameraInput camera_input;
             camera_input.reset = input.keys[static_cast<std::size_t>(eaw::Key::space)].pressed;
-            camera_input.zoom_steps = input.wheel_delta;
-            if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
+            camera_input.zoom_steps = scene_mouse ? input.wheel_delta : 0.0F;
+            if (scene_mouse && input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
             {
                 camera_input.yaw = static_cast<float>(input.mouse_delta_x) * 0.01F;
                 camera_input.pitch = static_cast<float>(-input.mouse_delta_y) * 0.01F;
@@ -758,7 +762,7 @@ int main(const int argc, char** argv)
                 const auto speed = (key_down(eaw::Key::shift) ? 2.4F : 0.8F) * camera_seconds;
                 camera_input.pan_right = static_cast<float>((key_down(eaw::Key::d) || key_down(eaw::Key::right) ? 1 : 0) - (key_down(eaw::Key::a) || key_down(eaw::Key::left) ? 1 : 0)) * speed;
                 camera_input.pan_forward = static_cast<float>((key_down(eaw::Key::w) || key_down(eaw::Key::up) ? 1 : 0) - (key_down(eaw::Key::s) || key_down(eaw::Key::down) ? 1 : 0)) * speed;
-                if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down)
+                if (scene_mouse && input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down)
                 {
                     camera_input.pan_right -= static_cast<float>(input.mouse_delta_x) * 0.0015F;
                     camera_input.pan_forward += static_cast<float>(input.mouse_delta_y) * 0.0015F;
@@ -779,7 +783,8 @@ int main(const int argc, char** argv)
             // rotates as before.
             if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].pressed)
             {
-                click_travel = 0;
+                // A press over the overlay never becomes a scene click.
+                click_travel = scene_mouse ? 0 : std::numeric_limits<std::int32_t>::max();
             }
             if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
             {

@@ -560,6 +560,10 @@ struct D3d12Renderer::Impl
     bool overlay_backend_initialized{};
     std::vector<std::string> overlay_lines;
     std::chrono::steady_clock::time_point overlay_tick{std::chrono::steady_clock::now()};
+    VisualOverlayInput overlay_input;
+    ImVec2 overlay_position{10.0F, 10.0F};
+    bool overlay_minimized{};
+    bool overlay_wants_mouse{};
 
     // Frame statistics of the last recorded frame and of the last frame the GPU finished.
     ComPtr<ID3D12QueryHeap> timestamp_heap;
@@ -855,27 +859,72 @@ struct D3d12Renderer::Impl
         io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
         io.DeltaTime = std::max(std::chrono::duration<float>(now - overlay_tick).count(), 1.0e-4F);
         overlay_tick = now;
+        io.AddMousePosEvent(overlay_input.mouse_x, overlay_input.mouse_y);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, overlay_input.left_button);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Right, overlay_input.right_button);
+        if (overlay_input.wheel != 0.0F)
+        {
+            io.AddMouseWheelEvent(0.0F, overlay_input.wheel);
+        }
+        overlay_input.wheel = 0.0F;
         ImGui_ImplDX12_NewFrame();
         ImGui::NewFrame();
-        ImGui::SetNextWindowPos(ImVec2(10.0F, 10.0F));
-        ImGui::SetNextWindowBgAlpha(0.62F);
-        constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
-                                           ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
-        if (ImGui::Begin("##eaw-debug-overlay", nullptr, flags))
+
+        // Expanded: a movable, resizable panel with a "-" button in its top-right corner. Minimized:
+        // a compact tab at the same place with a "+" button.
+        constexpr ImGuiWindowFlags common = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoCollapse;
+        const auto corner_button = [](const char* label)
         {
-            for (const auto& line : overlay_lines)
+            const auto width = ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0F;
+            ImGui::SameLine();
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0F, ImGui::GetContentRegionAvail().x - width));
+            return ImGui::SmallButton(label);
+        };
+        ImGui::SetNextWindowBgAlpha(0.62F);
+        if (!overlay_minimized)
+        {
+            ImGui::SetNextWindowPos(overlay_position, ImGuiCond_Once);
+            // Zero on an axis fits the contents the first time; afterwards the user's size wins.
+            ImGui::SetNextWindowSize(ImVec2(0.0F, 0.0F), ImGuiCond_FirstUseEver);
+            if (ImGui::Begin("##eaw-statistics", nullptr, common | ImGuiWindowFlags_HorizontalScrollbar))
             {
-                if (line.empty())
+                ImGui::TextUnformatted("Statistics");
+                if (corner_button("-"))
                 {
-                    ImGui::Separator();
+                    overlay_minimized = true;
                 }
-                else
+                ImGui::Separator();
+                for (const auto& line : overlay_lines)
                 {
-                    ImGui::TextUnformatted(line.c_str());
+                    if (line.empty())
+                    {
+                        ImGui::Separator();
+                    }
+                    else
+                    {
+                        ImGui::TextUnformatted(line.c_str());
+                    }
+                }
+                overlay_position = ImGui::GetWindowPos();
+            }
+            ImGui::End();
+        }
+        else
+        {
+            ImGui::SetNextWindowPos(overlay_position, ImGuiCond_Always);
+            if (ImGui::Begin("##eaw-statistics-minimized", nullptr, common | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove))
+            {
+                ImGui::TextUnformatted("Statistics");
+                if (corner_button("+"))
+                {
+                    overlay_minimized = false;
+                    // Reopen the panel where the tab is.
+                    ImGui::SetWindowPos("##eaw-statistics", overlay_position);
                 }
             }
+            ImGui::End();
         }
-        ImGui::End();
+        overlay_wants_mouse = io.WantCaptureMouse;
         ImGui::Render();
         // The overlay pipeline has one color target and no depth.
         command_list->OMSetRenderTargets(1, &render_target, FALSE, nullptr);
@@ -2073,6 +2122,18 @@ struct D3d12Renderer::Impl
     void set_overlay_text(const std::span<const std::string> lines)
     {
         overlay_lines.assign(lines.begin(), lines.end());
+        if (overlay_lines.empty())
+        {
+            overlay_wants_mouse = false;
+        }
+    }
+
+    void set_overlay_input(const VisualOverlayInput& input)
+    {
+        // Wheel steps accumulate until the overlay consumes them in the next rendered frame.
+        const auto wheel = overlay_input.wheel + input.wheel;
+        overlay_input = input;
+        overlay_input.wheel = std::isfinite(wheel) ? wheel : 0.0F;
     }
 
     void set_highlight(const std::optional<std::uint32_t> instance)
@@ -2700,6 +2761,16 @@ void D3d12Renderer::set_debug_lines(const std::span<const VisualDebugLine> lines
 void D3d12Renderer::set_overlay_text(const std::span<const std::string> lines)
 {
     impl_->set_overlay_text(lines);
+}
+
+void D3d12Renderer::set_overlay_input(const VisualOverlayInput& input)
+{
+    impl_->set_overlay_input(input);
+}
+
+bool D3d12Renderer::overlay_wants_mouse() const noexcept
+{
+    return impl_->overlay_wants_mouse;
 }
 
 std::size_t D3d12Renderer::max_debug_lines() noexcept

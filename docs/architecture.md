@@ -118,8 +118,9 @@ and the remaining old textures retire on the direct-queue timeline. Geometry,
 instance, and material buffers are still built per scene.
 
 The debug overlay is drawn by the renderer as the last pass into the back
-buffer: the engine supplies text lines, and the renderer lays them out with a
-display-only Dear ImGui context whose font texture takes a slot from the
+buffer: the engine supplies text lines and mouse input, and the renderer lays
+them out with a Dear ImGui context (the panel moves, resizes, and minimizes;
+the renderer reports when it wants the mouse so the scene ignores it) whose font texture takes a slot from the
 texture-slot allocator. GPU frame time comes from begin/end timestamp queries
 resolved into each frame context's readback buffer and read when that context is
 reused, so measuring never waits. The ImGui DX12 backend waits on the CPU for
