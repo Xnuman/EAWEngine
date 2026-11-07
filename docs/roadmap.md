@@ -112,10 +112,11 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   frame-buffered buffer; the sandbox outlines the selection and toggles every
   object's bounds with B. The sandbox cameras are inspection tools, not the
   game camera; gameplay camera and input belong to M3/M4 (see there).
-- On-screen debug text and overlays in the engine (selection name, frame and
-  streaming statistics, hot-reload events) instead of console-only output;
-  likely a Dear ImGui D3D12 overlay shared with later in-engine tools. Liquid
-  surfaces may get their own pick id so clicking water reports it. Started:
+- On-screen debug overlay: done. A display-only Dear ImGui D3D12 panel (F1)
+  shows FPS, CPU and GPU frame time, draw calls, triangles, instances, video
+  memory, texture streaming, scene, camera, animation, selection, and hot-reload
+  status. Interactive in-engine tools can build on it later. Liquid surfaces may
+  get their own pick id so clicking water reports it. Started:
   the D3D12 renderer keeps textures in a generation-checked handle pool, takes
   texture-table slots from an allocator that reuses a slot only after its
   release fence, and retires replaced scene resources on the direct-queue

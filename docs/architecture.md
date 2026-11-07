@@ -117,6 +117,14 @@ takes over that texture and its descriptor slot; only unmatched textures stream,
 and the remaining old textures retire on the direct-queue timeline. Geometry,
 instance, and material buffers are still built per scene.
 
+The debug overlay is drawn by the renderer as the last pass into the back
+buffer: the engine supplies text lines, and the renderer lays them out with a
+display-only Dear ImGui context whose font texture takes a slot from the
+texture-slot allocator. GPU frame time comes from begin/end timestamp queries
+resolved into each frame context's readback buffer and read when that context is
+reused, so measuring never waits. The ImGui DX12 backend waits on the CPU for
+its own font-texture uploads; those happen only when the font atlas changes.
+
 Selection uses a second render target holding a pick id per pixel: the scene
 instance index plus one, zero for nothing, and a reserved value for terrain.
 Opaque, alpha-tested, and terrain pipelines write it; blended and background

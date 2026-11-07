@@ -98,7 +98,9 @@ caches are discarded automatically. Use `--model <virtual-alo-path>` to inspect 
 A left click without dragging selects the object under the cursor (it is
 highlighted, outlined by its bounds, and named in the console; `--pick <x> <y>`
 does the same for automation). B toggles every object's bounds and the world
-axes (`--show-bounds` starts with them on). `--animation <virtual-ala-path>` selects an animation (Left/Right then step
+axes (`--show-bounds` starts with them on). F1 toggles the on-screen statistics
+panel (FPS, CPU/GPU frame time, draw calls, triangles, video memory, streaming,
+scene, selection, hot reload); `--no-overlay` starts with it hidden. `--animation <virtual-ala-path>` selects an animation (Left/Right then step
 through the bind pose and every `<MODEL>_*.ALA` beside the model), or
 `--validation-triangle` to bypass asset loading. The sandbox automatically tries
 the model's `_IDLE_00.ALA` when present. `--map <virtual-ted-path>` instead

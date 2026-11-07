@@ -86,7 +86,8 @@ if(WIN32)
     endfunction()
 endif()
 
-if(EAW_BUILD_GUI AND WIN32)
+# Dear ImGui (pinned) serves the EAWTools workbench and the D3D12 renderer's debug overlay.
+if(WIN32)
     include(FetchContent)
     FetchContent_Declare(
         imgui
@@ -103,6 +104,7 @@ if(EAW_BUILD_GUI AND WIN32)
         ${imgui_SOURCE_DIR}/imgui_tables.cpp
         ${imgui_SOURCE_DIR}/imgui_widgets.cpp
         ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_dx12.cpp
         ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
         ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
     )
@@ -116,7 +118,9 @@ if(EAW_BUILD_GUI AND WIN32)
     if(MSVC)
         target_compile_options(eaw_imgui PRIVATE /W3 /EHsc /utf-8)
     endif()
+endif()
 
+if(EAW_BUILD_GUI AND WIN32)
     add_executable(EAWTools WIN32
         src/tools_gui/file_dialogs.cpp
         src/tools_gui/gui_app.cpp
@@ -161,7 +165,7 @@ if(WIN32)
     target_include_directories(eaw_render_d3d12 PUBLIC src/render/include)
     target_compile_features(eaw_render_d3d12 PUBLIC cxx_std_20)
     target_compile_definitions(eaw_render_d3d12 PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(eaw_render_d3d12 PRIVATE d3d12 dxgi)
+    target_link_libraries(eaw_render_d3d12 PRIVATE d3d12 dxgi eaw_imgui)
     target_sources(eaw_render_d3d12 PRIVATE src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/legacy_common.hlsli)
     set_source_files_properties(src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/legacy_common.hlsli PROPERTIES VS_TOOL_OVERRIDE "None")
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/terrain.hlsl terrain_vs vs_6_0 g_eaw_terrain_vs)

@@ -23,6 +23,7 @@ enum class Key : std::uint8_t
     d,
     p,
     b,
+    f1,
     shift,
     control,
     count,

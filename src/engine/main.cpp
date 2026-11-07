@@ -19,7 +19,9 @@
 #include <filesystem>
 #include <functional>
 #include <future>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -62,6 +64,8 @@ struct Options
     std::optional<std::array<std::uint32_t, 2>> pick;
     // Start with every instance's bounds drawn (B toggles at runtime).
     bool show_bounds{};
+    // On-screen statistics panel (F1 toggles at runtime).
+    bool overlay{true};
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};
@@ -92,6 +96,7 @@ void print_usage()
               << "  --hot-reload       Rebuild the scene when its loose files or MEG archives change\n"
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
+              << "  --no-overlay       Start without the on-screen statistics panel (F1 toggles)\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
               << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
@@ -163,6 +168,10 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--show-bounds")
         {
             options.show_bounds = true;
+        }
+        else if (argument == "--no-overlay")
+        {
+            options.overlay = false;
         }
         else if (argument == "--pick")
         {
@@ -279,6 +288,13 @@ Options parse_options(const int argc, char** argv)
         throw std::invalid_argument("sandbox width and height must be greater than zero");
     }
     return options;
+}
+
+std::string format_fixed(const double value, const int decimals)
+{
+    std::ostringstream stream;
+    stream << std::fixed << std::setprecision(decimals) << value;
+    return stream.str();
 }
 
 // Everything the sandbox shows, built off the render thread. Reading the VFS from a worker is safe
@@ -482,6 +498,10 @@ int main(const int argc, char** argv)
         std::vector<InstanceBounds> instance_bounds;
         float axis_length = 1.0F;
         bool show_all_bounds = options.show_bounds;
+        // Text shown on the statistics overlay; updated where the console reports the same events.
+        std::string scene_status = options.validation_triangle ? "validation triangle" : "building in the background...";
+        std::string animation_status;
+        std::string reload_status = options.hot_reload ? "waiting for the scene" : "off (--hot-reload)";
         const auto update_debug_lines = [&]
         {
             std::vector<eaw::VisualDebugLine> lines;
@@ -561,6 +581,7 @@ int main(const int argc, char** argv)
                 const auto stats = asset_cache.stats();
                 std::cout << "Hot reload: rebuilt in " << content.build_seconds << " s; " << content.invalidated.size() << " cached assets re-decoded, " << content.evicted << " unused evicted, "
                           << stats.entries << " cached\n";
+                reload_status = "rebuilt in " + format_fixed(content.build_seconds, 2) + " s, " + std::to_string(content.invalidated.size()) + " assets re-decoded";
             }
             if (!content.error.empty())
             {
@@ -571,6 +592,8 @@ int main(const int argc, char** argv)
             {
                 auto& visual_map = *content.map;
                 const auto& scene = visual_map.scene;
+                scene_status =
+                    scene.name + (visual_map.land ? " (land)" : " (space)") + ", " + std::to_string(scene.instances.size()) + " objects, built in " + format_fixed(content.build_seconds, 2) + " s";
                 std::cout << "Visual map: " << scene.name << (visual_map.land ? " (land)" : " (space)") << '\n'
                           << "Terrain: "
                           << (scene.terrain.vertices.empty() ? std::string("none")
@@ -626,6 +649,8 @@ int main(const int argc, char** argv)
             {
                 visual_model = std::move(content.model);
                 auto& scene = visual_model->scene;
+                scene_status = scene.name + ", " + std::to_string(scene.bone_count) + " palette entries, built in " + format_fixed(content.build_seconds, 2) + " s";
+                animation_status = "bind pose";
                 std::cout << "Visual model: " << scene.name << '\n'
                           << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size() << " draws\n"
                           << "Textures: " << scene.textures.size() << " | Bones: " << scene.bone_count << " | Built in " << content.build_seconds << " s\n";
@@ -662,6 +687,7 @@ int main(const int argc, char** argv)
                         animation_choice = static_cast<std::size_t>(found - animation_paths.begin()) + 1U;
                     }
                     visual_animation = std::move(content.animation);
+                    animation_status = content.animation_path;
                     std::cout << "Animation: " << content.animation_path << " | " << visual_animation->playable_frame_count() << " frames at " << visual_animation->frames_per_second << " fps | "
                               << visual_animation->duration_seconds() << " seconds\n";
                     for (const auto& warning : visual_animation->warnings)
@@ -698,6 +724,9 @@ int main(const int argc, char** argv)
         bool textures_streamed = false;
         bool reload_check_reported = false;
         std::int64_t click_travel = 0;
+        bool overlay_visible = options.overlay;
+        std::uint64_t overlay_frames = 0;
+        auto overlay_refreshed = std::chrono::steady_clock::now();
         bool automated_pick_sent = false;
         std::uint64_t streaming_since = 0;
         while (!window.close_requested())
@@ -793,6 +822,7 @@ int main(const int argc, char** argv)
                 if (animation_choice == 0)
                 {
                     std::cout << "Animation: bind pose\n";
+                    animation_status = "bind pose";
                     renderer.set_bone_transforms(bind_palette);
                 }
                 else
@@ -801,6 +831,7 @@ int main(const int argc, char** argv)
                     try
                     {
                         visual_animation = eaw::AlaAnimation::parse(vfs.read(path));
+                        animation_status = path;
                         std::cout << "Animation " << animation_choice << "/" << animation_paths.size() << ": " << path << " | " << visual_animation->playable_frame_count() << " frames, "
                                   << visual_animation->duration_seconds() << " seconds\n";
                     }
@@ -857,6 +888,7 @@ int main(const int argc, char** argv)
                         reload_check_reported = true;
                         std::cout << "Hot reload: watching " << scene_dependencies->file_count() << " files and " << scene_dependencies->listing_count() << " listings; a check takes " << check.seconds
                                   << " s\n";
+                        reload_status = "watching " + std::to_string(scene_dependencies->file_count()) + " files";
                     }
                     next_reload_check = std::chrono::steady_clock::now() + std::chrono::seconds(1);
                     bool remounted = true;
@@ -886,6 +918,7 @@ int main(const int argc, char** argv)
                         }
                         std::cout << (check.files.size() > 3 ? ", ...)" : check.files.empty() ? "" : ")") << "; rebuilding\n";
                         pending_content = std::async(std::launch::async, build_sandbox_content, std::cref(vfs), std::cref(options), &asset_cache, true);
+                        reload_status = std::to_string(check.files.size()) + " changes, rebuilding...";
                     }
                 }
                 else if (!pending_check.valid() && std::chrono::steady_clock::now() >= next_reload_check)
@@ -917,6 +950,57 @@ int main(const int argc, char** argv)
             {
                 renderer.request_pick((*options.pick)[0], (*options.pick)[1]);
                 automated_pick_sent = true;
+            }
+            if (input.keys[static_cast<std::size_t>(eaw::Key::f1)].pressed)
+            {
+                overlay_visible = !overlay_visible;
+                if (!overlay_visible)
+                {
+                    renderer.set_overlay_text({});
+                }
+            }
+            // The panel is refreshed four times a second so the numbers stay readable.
+            ++overlay_frames;
+            if (overlay_visible && now - overlay_refreshed >= std::chrono::milliseconds(250))
+            {
+                const auto seconds = std::chrono::duration<double>(now - overlay_refreshed).count();
+                const auto stats = renderer.stats();
+                const auto mebibytes = [](const std::uint64_t bytes)
+                {
+                    return std::to_string(bytes / (1024ULL * 1024ULL));
+                };
+                const auto& eye = tactical_camera ? tactical_camera->camera().eye : orbit_camera->camera().eye;
+                const auto used_slots = stats.texture_slot_capacity - std::min<std::size_t>(stats.free_texture_slots + stats.pending_texture_slots, stats.texture_slot_capacity);
+                std::vector<std::string> lines{
+                    "EAWEngine sandbox | " + renderer.adapter_name(),
+                    std::to_string(stats.width) + "x" + std::to_string(stats.height) + " | " +
+                        (options.vsync   ? "vsync"
+                         : stats.tearing ? "immediate (tearing)"
+                                         : "immediate") +
+                        " | latency " + std::to_string(options.frame_latency),
+                    "",
+                    "FPS " + format_fixed(static_cast<double>(overlay_frames) / seconds, 1) + " | CPU " + format_fixed(seconds * 1000.0 / static_cast<double>(overlay_frames), 2) + " ms | GPU " +
+                        format_fixed(stats.gpu_frame_milliseconds, 2) + " ms",
+                    "Draw calls " + std::to_string(stats.draw_calls) + " | triangles " + std::to_string(stats.triangles) + " | instances " + std::to_string(stats.instances),
+                    "Video memory " + mebibytes(stats.video_memory_usage) + " / " + mebibytes(stats.video_memory_budget) + " MiB budget",
+                    "Textures " + std::to_string(stats.live_textures) + " resident, " + std::to_string(stats.pending_texture_uploads) + " streaming | slots " + std::to_string(used_slots) + "/" +
+                        std::to_string(stats.texture_slot_capacity) + " | retiring " + std::to_string(stats.pending_retirements),
+                    "",
+                    "Scene: " + scene_status,
+                    "Camera: " + format_fixed(eye[0], 0) + ", " + format_fixed(eye[1], 0) + ", " + format_fixed(eye[2], 0),
+                };
+                if (visual_model)
+                {
+                    lines.push_back("Animation: " + animation_status + (animation_playing ? "" : " (paused)"));
+                }
+                lines.push_back("Selected: " + (selected_instance && *selected_instance < instance_labels.size() ? instance_labels[*selected_instance] : std::string("none")));
+                lines.push_back("Hot reload: " + reload_status);
+                lines.push_back("");
+                lines.push_back(tactical_camera ? "Click select | B bounds | F1 panel | WASD pan, drag rotate, wheel zoom"
+                                                : "Click select | B bounds | F1 panel | drag orbit, wheel zoom, P pause, Left/Right animation");
+                renderer.set_overlay_text(lines);
+                overlay_frames = 0;
+                overlay_refreshed = now;
             }
             const bool rendered = renderer.render();
             if (rendered && reload_scene && renderer.stats().frame_number % *options.reload_every == 0)

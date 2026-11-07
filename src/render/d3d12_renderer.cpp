@@ -2,8 +2,12 @@
 
 #include "eaw/gpu_resource_lifetime.hpp"
 
+#include "imgui.h"
+#include "imgui_impl_dx12.h"
+
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
@@ -411,6 +415,9 @@ struct D3d12Renderer::Impl
         // Debug line vertices written once this context is reusable.
         ComPtr<ID3D12Resource> debug_vertex_buffer;
         std::byte* debug_vertices_mapped{};
+        // Begin/end GPU timestamps of this context's last frame, resolved for readback.
+        ComPtr<ID3D12Resource> timestamp_readback;
+        bool timestamps_pending{};
         std::uint64_t fence_value{};
     };
 
@@ -546,6 +553,23 @@ struct D3d12Renderer::Impl
     std::uint32_t highlighted_pick_id{};
     std::vector<VisualDebugLine> debug_lines;
     ComPtr<ID3D12PipelineState> debug_pipeline;
+
+    // Debug overlay: a display-only Dear ImGui panel drawn last into the back buffer. Its font
+    // texture takes slots from texture_slots through the backend's allocation callbacks.
+    ImGuiContext* overlay_context{};
+    bool overlay_backend_initialized{};
+    std::vector<std::string> overlay_lines;
+    std::chrono::steady_clock::time_point overlay_tick{std::chrono::steady_clock::now()};
+
+    // Frame statistics of the last recorded frame and of the last frame the GPU finished.
+    ComPtr<ID3D12QueryHeap> timestamp_heap;
+    std::uint64_t timestamp_frequency{};
+    double last_gpu_milliseconds{};
+    std::uint32_t last_draw_calls{};
+    std::uint64_t last_triangles{};
+    std::uint64_t last_instances{};
+    std::uint64_t video_memory_usage{};
+    std::uint64_t video_memory_budget{};
     std::uint32_t rtv_increment{};
 
     ComPtr<ID3D12RootSignature> root_signature;
@@ -650,6 +674,15 @@ struct D3d12Renderer::Impl
         {
             // Destructors must not mask an active rendering or device-removal error.
         }
+        shutdown_overlay();
+        try
+        {
+            wait_idle();
+        }
+        catch (...)
+        {
+            // Destructors must not mask an active rendering or device-removal error.
+        }
         for (auto& frame : frames)
         {
             if (frame.bone_buffer && frame.bone_buffer_mapped != nullptr)
@@ -717,6 +750,157 @@ struct D3d12Renderer::Impl
         create_pipeline();
         save_pipeline_cache();
         create_initial_assets();
+        create_statistics_queries();
+        create_overlay();
+    }
+
+    void create_statistics_queries()
+    {
+        D3D12_QUERY_HEAP_DESC description{};
+        description.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+        description.Count = frame_count * 2U;
+        check_hresult(device->CreateQueryHeap(&description, IID_PPV_ARGS(&timestamp_heap)), "CreateQueryHeap(timestamps)");
+        set_name(timestamp_heap.Get(), L"EAWEngine frame timestamps");
+        check_hresult(direct_queue.get()->GetTimestampFrequency(&timestamp_frequency), "ID3D12CommandQueue::GetTimestampFrequency");
+    }
+
+    // The ImGui DX12 backend uploads its font texture on the direct queue and waits for that upload
+    // on the CPU. This happens only when the font atlas changes (startup, first use of new glyphs),
+    // never per frame; it is a documented exception to the no-CPU-wait rule for this debug overlay.
+    void create_overlay()
+    {
+        IMGUI_CHECKVERSION();
+        overlay_context = ImGui::CreateContext();
+        ImGui::SetCurrentContext(overlay_context);
+        auto& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.LogFilename = nullptr;
+        ImGui::StyleColorsDark();
+        ImGui_ImplDX12_InitInfo info;
+        info.Device = device.Get();
+        info.CommandQueue = direct_queue.get();
+        info.NumFramesInFlight = static_cast<int>(frame_count);
+        info.RTVFormat = back_buffer_format;
+        info.DSVFormat = DXGI_FORMAT_UNKNOWN;
+        info.UserData = this;
+        info.SrvDescriptorHeap = shader_heap.Get();
+        info.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* init, D3D12_CPU_DESCRIPTOR_HANDLE* cpu, D3D12_GPU_DESCRIPTOR_HANDLE* gpu)
+        {
+            static_cast<Impl*>(init->UserData)->allocate_overlay_descriptor(*cpu, *gpu);
+        };
+        info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo* init, const D3D12_CPU_DESCRIPTOR_HANDLE cpu, const D3D12_GPU_DESCRIPTOR_HANDLE)
+        {
+            static_cast<Impl*>(init->UserData)->free_overlay_descriptor(cpu);
+        };
+        if (!ImGui_ImplDX12_Init(&info))
+        {
+            ImGui::DestroyContext(overlay_context);
+            overlay_context = nullptr;
+            throw std::runtime_error("the debug overlay (Dear ImGui DX12 backend) could not be initialized");
+        }
+        overlay_backend_initialized = true;
+    }
+
+    void allocate_overlay_descriptor(D3D12_CPU_DESCRIPTOR_HANDLE& cpu, D3D12_GPU_DESCRIPTOR_HANDLE& gpu)
+    {
+        reclaim_texture_slots();
+        const auto slot = texture_slots.allocate();
+        if (!slot)
+        {
+            throw std::runtime_error("the D3D12 texture table has no slot for a debug overlay texture");
+        }
+        const auto increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        cpu = shader_heap->GetCPUDescriptorHandleForHeapStart();
+        cpu.ptr += static_cast<SIZE_T>(*slot) * increment;
+        gpu = shader_heap->GetGPUDescriptorHandleForHeapStart();
+        gpu.ptr += static_cast<UINT64>(*slot) * increment;
+    }
+
+    void free_overlay_descriptor(const D3D12_CPU_DESCRIPTOR_HANDLE cpu)
+    {
+        const auto increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        const auto slot = static_cast<std::uint32_t>((cpu.ptr - shader_heap->GetCPUDescriptorHandleForHeapStart().ptr) / increment);
+        texture_slots.release(slot, direct_queue.next_value());
+    }
+
+    void shutdown_overlay() noexcept
+    {
+        if (overlay_context == nullptr)
+        {
+            return;
+        }
+        ImGui::SetCurrentContext(overlay_context);
+        if (overlay_backend_initialized)
+        {
+            try
+            {
+                ImGui_ImplDX12_Shutdown();
+            }
+            catch (...)
+            {
+                // Destructors must not throw; slot bookkeeping is discarded with the renderer.
+            }
+            overlay_backend_initialized = false;
+        }
+        ImGui::DestroyContext(overlay_context);
+        overlay_context = nullptr;
+    }
+
+    // Draws the overlay panel into the current back buffer (call after every scene pass).
+    void render_overlay(const D3D12_CPU_DESCRIPTOR_HANDLE render_target)
+    {
+        ImGui::SetCurrentContext(overlay_context);
+        const auto now = std::chrono::steady_clock::now();
+        auto& io = ImGui::GetIO();
+        io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
+        io.DeltaTime = std::max(std::chrono::duration<float>(now - overlay_tick).count(), 1.0e-4F);
+        overlay_tick = now;
+        ImGui_ImplDX12_NewFrame();
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(10.0F, 10.0F));
+        ImGui::SetNextWindowBgAlpha(0.62F);
+        constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                           ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
+        if (ImGui::Begin("##eaw-debug-overlay", nullptr, flags))
+        {
+            for (const auto& line : overlay_lines)
+            {
+                if (line.empty())
+                {
+                    ImGui::Separator();
+                }
+                else
+                {
+                    ImGui::TextUnformatted(line.c_str());
+                }
+            }
+        }
+        ImGui::End();
+        ImGui::Render();
+        // The overlay pipeline has one color target and no depth.
+        command_list->OMSetRenderTargets(1, &render_target, FALSE, nullptr);
+        ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), command_list.Get());
+    }
+
+    // Reads the GPU time of the frame this context recorded last; its fence has completed.
+    void collect_timestamps(FrameContext& frame)
+    {
+        if (!frame.timestamps_pending || timestamp_frequency == 0)
+        {
+            return;
+        }
+        frame.timestamps_pending = false;
+        std::array<std::uint64_t, 2> ticks{};
+        const D3D12_RANGE read_range{0, sizeof(ticks)};
+        void* mapped{};
+        check_hresult(frame.timestamp_readback->Map(0, &read_range, &mapped), "Map(frame timestamps)");
+        std::memcpy(ticks.data(), mapped, sizeof(ticks));
+        const D3D12_RANGE no_write{0, 0};
+        frame.timestamp_readback->Unmap(0, &no_write);
+        if (ticks[1] >= ticks[0])
+        {
+            last_gpu_milliseconds = static_cast<double>(ticks[1] - ticks[0]) * 1000.0 / static_cast<double>(timestamp_frequency);
+        }
     }
 
     void create_swap_chain()
@@ -868,6 +1052,12 @@ struct D3d12Renderer::Impl
                           "CreateCommittedResource(frame debug lines)");
             set_name(frame.debug_vertex_buffer.Get(), L"EAWEngine frame debug lines " + std::to_wstring(index));
             check_hresult(frame.debug_vertex_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.debug_vertices_mapped)), "Map(frame debug lines)");
+
+            const auto timestamp_description = buffer_description(2U * sizeof(std::uint64_t));
+            check_hresult(
+                device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &timestamp_description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.timestamp_readback)),
+                "CreateCommittedResource(frame timestamps)");
+            set_name(frame.timestamp_readback.Get(), L"EAWEngine frame timestamps " + std::to_wstring(index));
         }
     }
 
@@ -1880,6 +2070,11 @@ struct D3d12Renderer::Impl
         debug_lines.assign(lines.begin(), lines.end());
     }
 
+    void set_overlay_text(const std::span<const std::string> lines)
+    {
+        overlay_lines.assign(lines.begin(), lines.end());
+    }
+
     void set_highlight(const std::optional<std::uint32_t> instance)
     {
         highlighted_pick_id = instance && *instance < std::numeric_limits<std::uint32_t>::max() ? *instance + 1U : 0U;
@@ -2085,6 +2280,19 @@ struct D3d12Renderer::Impl
         stream_scene_textures();
         write_texture_residency(frame);
         collect_pick(frame);
+        collect_timestamps(frame);
+        if (frame_number % 30U == 0)
+        {
+            DXGI_QUERY_VIDEO_MEMORY_INFO memory{};
+            if (SUCCEEDED(adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memory)))
+            {
+                video_memory_usage = memory.CurrentUsage;
+                video_memory_budget = memory.Budget;
+            }
+        }
+        std::uint32_t draw_calls = 0;
+        std::uint64_t triangles = 0;
+        std::uint64_t instances_drawn = 0;
         const auto debug_line_count = std::min(debug_lines.size(), maximum_debug_lines);
         auto* debug_vertices = reinterpret_cast<DebugVertex*>(frame.debug_vertices_mapped);
         for (std::size_t index = 0; index < debug_line_count; ++index)
@@ -2120,6 +2328,7 @@ struct D3d12Renderer::Impl
 
         check_hresult(frame.allocator->Reset(), "ID3D12CommandAllocator::Reset");
         check_hresult(command_list->Reset(frame.allocator.Get(), opaque_pipeline.Get()), "ID3D12GraphicsCommandList::Reset");
+        command_list->EndQuery(timestamp_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, frame_index * 2U);
 
         if (!pending_transitions.empty())
         {
@@ -2169,6 +2378,9 @@ struct D3d12Renderer::Impl
             command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
             command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view);
             command_list->DrawInstanced(3, 1, 0, 0);
+            ++draw_calls;
+            ++triangles;
+            ++instances_drawn;
         }
         else
         {
@@ -2180,6 +2392,8 @@ struct D3d12Renderer::Impl
                 command_list->SetGraphicsRoot32BitConstants(5, 2, terrain_constants.data(), 0);
                 command_list->IASetVertexBuffers(0, 1, &terrain_vertex_view);
                 command_list->DrawInstanced(terrain_vertex_count, 1, 0, 0);
+                ++draw_calls;
+                triangles += terrain_vertex_count / 3U;
                 command_list->IASetVertexBuffers(0, 1, &scene_vertex_view);
                 terrain_drawn = true;
             };
@@ -2204,6 +2418,9 @@ struct D3d12Renderer::Impl
                 const std::array<std::uint32_t, 2> draw_constants{draw.first_instance, draw.material};
                 command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
                 command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
+                ++draw_calls;
+                triangles += static_cast<std::uint64_t>(draw.geometry.index_count / 3U) * draw.instance_count;
+                instances_drawn += draw.instance_count;
             }
             if (!terrain_drawn)
             {
@@ -2221,6 +2438,14 @@ struct D3d12Renderer::Impl
             debug_view.StrideInBytes = sizeof(DebugVertex);
             command_list->IASetVertexBuffers(0, 1, &debug_view);
             command_list->DrawInstanced(static_cast<UINT>(debug_line_count * 2U), 1, 0, 0);
+            ++draw_calls;
+        }
+        last_draw_calls = draw_calls;
+        last_triangles = triangles;
+        last_instances = instances_drawn;
+        if (!overlay_lines.empty() && overlay_backend_initialized)
+        {
+            render_overlay(render_target);
         }
 
         // A requested pick copies one texel; it is read when this frame's fence completes.
@@ -2246,6 +2471,9 @@ struct D3d12Renderer::Impl
 
         auto to_present = transition_barrier(frame.back_buffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
         command_list->ResourceBarrier(1, &to_present);
+        command_list->EndQuery(timestamp_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, frame_index * 2U + 1U);
+        command_list->ResolveQueryData(timestamp_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, frame_index * 2U, 2, frame.timestamp_readback.Get(), 0);
+        frame.timestamps_pending = true;
         check_hresult(command_list->Close(), "ID3D12GraphicsCommandList::Close");
         ID3D12CommandList* lists[]{command_list.Get()};
         direct_queue.execute(lists, 1);
@@ -2469,6 +2697,11 @@ void D3d12Renderer::set_debug_lines(const std::span<const VisualDebugLine> lines
     impl_->set_debug_lines(lines);
 }
 
+void D3d12Renderer::set_overlay_text(const std::span<const std::string> lines)
+{
+    impl_->set_overlay_text(lines);
+}
+
 std::size_t D3d12Renderer::max_debug_lines() noexcept
 {
     return maximum_debug_lines;
@@ -2520,6 +2753,16 @@ D3d12RendererStats D3d12Renderer::stats() const
         .pending_texture_uploads = impl_->pending_texture_count,
         .reused_textures = impl_->last_reused_textures,
         .dropped_debug_lines = impl_->debug_lines.size() - std::min(impl_->debug_lines.size(), maximum_debug_lines),
+        .draw_calls = impl_->last_draw_calls,
+        .triangles = impl_->last_triangles,
+        .instances = impl_->last_instances,
+        .gpu_frame_milliseconds = impl_->last_gpu_milliseconds,
+        .video_memory_usage = impl_->video_memory_usage,
+        .video_memory_budget = impl_->video_memory_budget,
+        .texture_slot_capacity = impl_->texture_slots.capacity(),
+        .width = impl_->width,
+        .height = impl_->height,
+        .tearing = !impl_->options.vsync && impl_->tearing_supported,
     };
 }
 

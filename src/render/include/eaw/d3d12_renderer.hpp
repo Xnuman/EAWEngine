@@ -46,6 +46,20 @@ struct D3d12RendererStats
     std::size_t reused_textures{};
     // Debug lines beyond the per-frame capacity in the current set.
     std::size_t dropped_debug_lines{};
+    // Last recorded frame: draw calls, triangles, and instances submitted.
+    std::uint32_t draw_calls{};
+    std::uint64_t triangles{};
+    std::uint64_t instances{};
+    // GPU time of the most recent frame the GPU finished (timestamp queries; no CPU wait).
+    double gpu_frame_milliseconds{};
+    // Local video memory in use by this process and the OS budget for it (bytes, refreshed every
+    // 30 frames).
+    std::uint64_t video_memory_usage{};
+    std::uint64_t video_memory_budget{};
+    std::uint32_t texture_slot_capacity{};
+    std::uint32_t width{};
+    std::uint32_t height{};
+    bool tearing{};
 };
 
 // Result of a pick: the scene instance under the pixel, the terrain, or nothing (both empty).
@@ -95,6 +109,9 @@ public:
     // are counted in stats().dropped_debug_lines.
     void set_debug_lines(std::span<const VisualDebugLine> lines);
     [[nodiscard]] static std::size_t max_debug_lines() noexcept;
+    // Text lines of the on-screen debug panel (top left); an empty line draws a separator and no
+    // lines hides the panel.
+    void set_overlay_text(std::span<const std::string> lines);
 
     [[nodiscard]] const std::string& adapter_name() const;
     [[nodiscard]] D3d12RendererStats stats() const;
