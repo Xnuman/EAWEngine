@@ -88,7 +88,7 @@ float4 shade_terrain(TerrainPixelInput input)
 struct TerrainPixelOutput
 {
     float4 color : SV_TARGET0;
-    uint pick_id : SV_TARGET1;
+    uint2 pick : SV_TARGET1; // (pick id, depth bits)
 };
 
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
@@ -96,6 +96,6 @@ TerrainPixelOutput terrain_ps(TerrainPixelInput input)
 {
     TerrainPixelOutput output;
     output.color = shade_terrain(input);
-    output.pick_id = PICK_TERRAIN;
+    output.pick = uint2(PICK_TERRAIN, asuint(input.position.z));
     return output;
 }

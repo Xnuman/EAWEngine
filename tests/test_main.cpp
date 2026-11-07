@@ -8,7 +8,9 @@
 #include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
 #include "asset_cache.hpp"
+#include "camera_math.hpp"
 #include "debug_draw.hpp"
+#include "rts_control.hpp"
 #include "scene_presentation.hpp"
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/simulation.hpp"
@@ -725,6 +727,51 @@ void test_scene_presentation()
             "presentation must list backgrounds first, then entities with their selection state");
     require(std::fabs(instances[1].transform[13] - 1.0F) < 1.0e-5F && std::fabs(instances[1].transform[1] - 1.0F) < 1.0e-5F, "an entity's instance must follow its simulated position and heading");
     require(presentation.type_name(id) == "Test_Unit" && presentation.mesh_name(0) == "UNIT.ALO", "presentation must name entities by type and mesh");
+}
+
+void test_rts_control()
+{
+    // A camera above the origin looking down +X and slightly down.
+    eaw::VisualCamera camera;
+    camera.eye = {-100.0F, 0.0F, 80.0F};
+    camera.target = {0.0F, 0.0F, 0.0F};
+    camera.up = {0.0F, 0.0F, 1.0F};
+    camera.vertical_fov_degrees = 50.0F;
+    camera.near_plane = 1.0F;
+    camera.far_plane = 5000.0F;
+    const float width = 800.0F;
+    const float height = 600.0F;
+
+    // The target projects to the screen center; unprojecting it at its depth returns it.
+    const auto center = eaw::project_to_screen(camera, width, height, {0.0F, 0.0F, 0.0F});
+    require(center && std::fabs((*center)[0] - 399.5F) < 0.01F && std::fabs((*center)[1] - 299.5F) < 0.01F, "the look-at target must project to the screen center");
+    require(!eaw::project_to_screen(camera, width, height, {-200.0F, 0.0F, 80.0F}), "a point behind the camera must not project");
+    const std::array<float, 3> point{30.0F, 20.0F, 5.0F};
+    const auto screen = eaw::project_to_screen(camera, width, height, point);
+    require(screen.has_value(), "a visible point must project");
+    // Depth of the point as the renderer stores it: z_ndc = f/(f-n) - n f/((f-n) z_view).
+    const std::array<float, 3> forward{100.0F / std::sqrt(100.0F * 100.0F + 80.0F * 80.0F), 0.0F, -80.0F / std::sqrt(100.0F * 100.0F + 80.0F * 80.0F)};
+    const auto view_depth = (point[0] - camera.eye[0]) * forward[0] + (point[2] - camera.eye[2]) * forward[2];
+    const auto depth = camera.far_plane / (camera.far_plane - camera.near_plane) - camera.near_plane * camera.far_plane / ((camera.far_plane - camera.near_plane) * view_depth);
+    const auto back = eaw::unproject_screen(camera, width, height, (*screen)[0], (*screen)[1], depth);
+    require(std::fabs(back[0] - point[0]) < 0.05F && std::fabs(back[1] - point[1]) < 0.05F && std::fabs(back[2] - point[2]) < 0.05F, "unprojecting at the stored depth must return the point");
+    const auto ground = eaw::intersect_ground_plane(camera, width, height, (*center)[0], (*center)[1], 0.0F);
+    require(ground && std::fabs((*ground)[0]) < 0.05F && std::fabs((*ground)[1]) < 0.05F, "the center ray must meet the ground at the target");
+
+    // Box selection keeps mobile, selectable entities inside the rectangle.
+    std::vector<eaw::EntitySnapshot> entities(3);
+    entities[0] = {{1, 1}, {0.0F, 0.0F, 0.0F}, 0.0F, 0, 0, false, true, 10.0F};
+    entities[1] = {{2, 1}, {0.0F, 0.0F, 0.0F}, 0.0F, 0, 0, false, true, 0.0F};
+    entities[2] = {{3, 1}, {0.0F, 300.0F, 0.0F}, 0.0F, 0, 0, false, true, 10.0F};
+    const auto boxed = eaw::entities_in_rectangle(entities, camera, width, height, {350.0F, 250.0F, 450.0F, 350.0F}, true);
+    require(boxed.size() == 1 && boxed[0] == eaw::EntityId{1, 1}, "drag-selection must keep only mobile entities inside the box");
+    require(eaw::entities_in_rectangle(entities, camera, width, height, {450.0F, 350.0F, 350.0F, 250.0F}, false).size() == 2, "any corner order works and props count without mobile_only");
+
+    // Grid targets are centered on the order point.
+    const auto targets = eaw::grid_targets({100.0F, 50.0F, 2.0F}, 4, 10.0F);
+    require(targets.size() == 4 && targets[0].x == 95.0F && targets[0].y == 45.0F && targets[3].x == 105.0F && targets[3].y == 55.0F && targets[2].z == 2.0F,
+            "grid targets must form a centered square");
+    require(eaw::grid_targets({}, 0, 10.0F).empty(), "no units need no targets");
 }
 
 // A minimal 4x4 BC1 DDS with one mip level.
@@ -1913,6 +1960,7 @@ int main()
         test_debug_draw();
         test_simulation_core();
         test_scene_presentation();
+        test_rts_control();
         test_texture_formats_and_materials();
         test_lua_inspection();
         test_ala_animation();

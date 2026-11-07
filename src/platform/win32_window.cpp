@@ -255,6 +255,8 @@ struct PlatformWindow::Impl
             return Key::p;
         case 'B':
             return Key::b;
+        case 'C':
+            return Key::c;
         case VK_F1:
             return Key::f1;
         case VK_SHIFT:

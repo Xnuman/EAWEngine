@@ -19,7 +19,7 @@ struct DebugPixelInput
 struct DebugPixelOutput
 {
     float4 color : SV_TARGET0;
-    uint pick_id : SV_TARGET1; // masked by the pipeline; declared to match the bound targets
+    uint2 pick : SV_TARGET1; // masked by the pipeline; declared to match the bound targets
 };
 
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
@@ -36,6 +36,6 @@ DebugPixelOutput debug_ps(DebugPixelInput input)
 {
     DebugPixelOutput output;
     output.color = input.color;
-    output.pick_id = 0u;
+    output.pick = uint2(0u, 0u);
     return output;
 }

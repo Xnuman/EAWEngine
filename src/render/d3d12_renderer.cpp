@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -59,7 +60,8 @@ constexpr std::uint32_t fallback_texture_count = 3;
 // Per-frame constant buffers are 256-byte aligned, as D3D12 requires for CBVs.
 constexpr std::uint64_t frame_constant_bytes = 256;
 constexpr DXGI_FORMAT back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
-constexpr DXGI_FORMAT pick_format = DXGI_FORMAT_R32_UINT;
+// Pick target texel: (pick id, depth-buffer value bits) so a click also yields a world position.
+constexpr DXGI_FORMAT pick_format = DXGI_FORMAT_R32G32_UINT;
 // Temporary per-frame debug line capacity (an implementation limit, diagnosed through stats).
 constexpr std::size_t maximum_debug_lines = 32768;
 constexpr std::uint32_t pick_terrain = 0xFFFFFFFFU;
@@ -412,6 +414,7 @@ struct D3d12Renderer::Impl
         // One pick-target texel copied by this frame, read once its fence completes.
         ComPtr<ID3D12Resource> pick_readback;
         std::optional<std::uint32_t> pick_request;
+        std::array<std::uint32_t, 2> pick_pixel{};
         // Debug line vertices written once this context is reusable.
         ComPtr<ID3D12Resource> debug_vertex_buffer;
         std::byte* debug_vertices_mapped{};
@@ -569,6 +572,7 @@ struct D3d12Renderer::Impl
     ImVec2 overlay_position{10.0F, 10.0F};
     bool overlay_minimized{};
     bool overlay_wants_mouse{};
+    std::optional<std::array<float, 4>> selection_rectangle;
 
     // Frame statistics of the last recorded frame and of the last frame the GPU finished.
     ComPtr<ID3D12QueryHeap> timestamp_heap;
@@ -898,8 +902,21 @@ struct D3d12Renderer::Impl
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0F, ImGui::GetContentRegionAvail().x - width));
             return ImGui::SmallButton(label);
         };
+        if (selection_rectangle)
+        {
+            const auto& [x0, y0, x1, y1] = *selection_rectangle;
+            auto* draw_list = ImGui::GetForegroundDrawList();
+            const ImVec2 minimum(std::min(x0, x1), std::min(y0, y1));
+            const ImVec2 maximum(std::max(x0, x1), std::max(y0, y1));
+            draw_list->AddRectFilled(minimum, maximum, IM_COL32(120, 200, 255, 40));
+            draw_list->AddRect(minimum, maximum, IM_COL32(150, 215, 255, 220));
+        }
         ImGui::SetNextWindowBgAlpha(0.62F);
-        if (!overlay_minimized)
+        if (overlay_lines.empty())
+        {
+            // Only the selection rectangle is shown.
+        }
+        else if (!overlay_minimized)
         {
             ImGui::SetNextWindowPos(overlay_position, ImGuiCond_Once);
             // Zero on an axis fits the contents the first time; afterwards the user's size wins.
@@ -2113,14 +2130,20 @@ struct D3d12Renderer::Impl
             return;
         }
         frame.pick_request.reset();
-        std::uint32_t value{};
-        const D3D12_RANGE read_range{0, sizeof(value)};
+        std::array<std::uint32_t, 2> texel{};
+        const D3D12_RANGE read_range{0, sizeof(texel)};
         void* mapped{};
         check_hresult(frame.pick_readback->Map(0, &read_range, &mapped), "Map(pick readback)");
-        std::memcpy(&value, mapped, sizeof(value));
+        std::memcpy(texel.data(), mapped, sizeof(texel));
         const D3D12_RANGE no_write{0, 0};
         frame.pick_readback->Unmap(0, &no_write);
+        const auto value = texel[0];
         VisualPick result;
+        result.pixel = frame.pick_pixel;
+        if (value != 0)
+        {
+            result.depth = std::bit_cast<float>(texel[1]);
+        }
         if (value == pick_terrain)
         {
             result.terrain = true;
@@ -2281,6 +2304,11 @@ struct D3d12Renderer::Impl
         {
             overlay_wants_mouse = false;
         }
+    }
+
+    void set_selection_rectangle(const std::optional<std::array<float, 4>>& rectangle)
+    {
+        selection_rectangle = rectangle;
     }
 
     void set_overlay_input(const VisualOverlayInput& input)
@@ -2664,7 +2692,7 @@ struct D3d12Renderer::Impl
         last_draw_calls = draw_calls;
         last_triangles = triangles;
         last_instances = instances_drawn;
-        if (!overlay_lines.empty() && overlay_backend_initialized)
+        if ((!overlay_lines.empty() || selection_rectangle) && overlay_backend_initialized)
         {
             render_overlay(render_target);
         }
@@ -2688,6 +2716,7 @@ struct D3d12Renderer::Impl
             auto to_target = transition_barrier(pick_target.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
             command_list->ResourceBarrier(1, &to_target);
             frame.pick_request = next_pick_request++;
+            frame.pick_pixel = {std::min(x, width - 1), std::min(y, height - 1)};
         }
 
         auto to_present = transition_barrier(frame.back_buffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
@@ -2926,6 +2955,11 @@ void D3d12Renderer::set_instances(const std::span<const VisualInstance> instance
 void D3d12Renderer::set_overlay_text(const std::span<const std::string> lines)
 {
     impl_->set_overlay_text(lines);
+}
+
+void D3d12Renderer::set_selection_rectangle(const std::optional<std::array<float, 4>>& rectangle)
+{
+    impl_->set_selection_rectangle(rectangle);
 }
 
 void D3d12Renderer::set_overlay_input(const VisualOverlayInput& input)

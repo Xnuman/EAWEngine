@@ -137,6 +137,13 @@ every frame (`set_instances`), grouped by mesh into a growable, frame-buffered
 instance buffer; the loaded scene's meshes act as the mesh library. Selection
 is a set of entity ids, and selected instances carry a highlight flag.
 
+Commands come from the RTS input layer: box selection projects snapshot
+positions through the camera (`camera_math`, matching the renderer's look-at
+and perspective), and a right-click uses the pick target's second channel, the
+depth of the clicked surface, to unproject a world target. Orders become
+simulation move commands, one per unit, spread on a grid in id order so the
+command stream stays deterministic.
+
 Selection uses a second render target holding a pick id per pixel: the scene
 instance index plus one, zero for nothing, and a reserved value for terrain.
 Opaque, alpha-tested, and terrain pipelines write it; blended and background

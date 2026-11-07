@@ -68,6 +68,10 @@ struct VisualPick
 {
     std::optional<std::uint32_t> instance;
     bool terrain{};
+    // Depth-buffer value (0..1) of the picked surface; unset when nothing was hit.
+    std::optional<float> depth;
+    // The client pixel that was picked (clamped to the target).
+    std::array<std::uint32_t, 2> pixel{};
 };
 
 // Mouse state for the debug overlay, in client pixels.
@@ -130,6 +134,9 @@ public:
     void set_overlay_text(std::span<const std::string> lines);
     // Mouse input for the overlay (its "-"/"+" button, moving, and resizing). Call once per frame.
     void set_overlay_input(const VisualOverlayInput& input);
+    // Screen-space selection box (x0, y0, x1, y1 in client pixels) drawn over everything; nullopt
+    // hides it. Shown even when the statistics panel is hidden.
+    void set_selection_rectangle(const std::optional<std::array<float, 4>>& rectangle);
     // True while the mouse is over the overlay or dragging it, as of the last rendered frame; the
     // caller should then not use the mouse for the scene.
     [[nodiscard]] bool overlay_wants_mouse() const noexcept;

@@ -311,7 +311,8 @@ void SimulationWorld::publish()
     snapshot_.entities.reserve(ids_.size());
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
-        snapshot_.entities.push_back({ids_[index], positions_[index], headings_[index], visuals_[index], owners_[index], move_targets_[index].has_value(), selectable_[index] != 0});
+        snapshot_.entities.push_back(
+            {ids_[index], positions_[index], headings_[index], visuals_[index], owners_[index], move_targets_[index].has_value(), selectable_[index] != 0, max_speeds_[index]});
     }
 }
 

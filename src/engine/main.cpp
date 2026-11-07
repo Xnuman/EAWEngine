@@ -7,7 +7,9 @@
 #include "eaw/platform_window.hpp"
 #include "asset_cache.hpp"
 #include "camera_controller.hpp"
+#include "camera_math.hpp"
 #include "debug_draw.hpp"
+#include "rts_control.hpp"
 #include "scene_presentation.hpp"
 #include "visual_scene_builder.hpp"
 #endif
@@ -68,6 +70,8 @@ struct Options
     bool show_bounds{};
     // On-screen statistics panel (F1 toggles at runtime).
     bool overlay{true};
+    // Once the scene is shown, select every mobile entity and order it to the scene center.
+    bool auto_move{};
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};
@@ -99,6 +103,7 @@ void print_usage()
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
               << "  --no-overlay       Start without the on-screen statistics panel (F1 toggles)\n"
+              << "  --auto-move        Order every mobile unit to the map center once shown (automation)\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
               << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
@@ -174,6 +179,10 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--no-overlay")
         {
             options.overlay = false;
+        }
+        else if (argument == "--auto-move")
+        {
+            options.auto_move = true;
         }
         else if (argument == "--pick")
         {
@@ -738,6 +747,19 @@ int main(const int argc, char** argv)
         std::uint64_t overlay_frames = 0;
         auto overlay_refreshed = std::chrono::steady_clock::now();
         bool automated_pick_sent = false;
+        bool automated_move_sent = false;
+        // Maps use the legacy RTS camera (no rotation; left-drag box-selects, right-click moves);
+        // C switches to the free debug camera (drag rotates, right-drag pans).
+        bool free_camera = false;
+        std::optional<std::array<float, 2>> drag_start;
+        bool box_active = false;
+        std::int64_t right_travel = 0;
+        enum class PickPurpose
+        {
+            select,
+            command,
+        };
+        PickPurpose pick_purpose = PickPurpose::select;
         std::uint64_t streaming_since = 0;
         while (!window.close_requested())
         {
@@ -761,7 +783,8 @@ int main(const int argc, char** argv)
             eaw::CameraInput camera_input;
             camera_input.reset = input.keys[static_cast<std::size_t>(eaw::Key::space)].pressed;
             camera_input.zoom_steps = scene_mouse ? input.wheel_delta : 0.0F;
-            if (scene_mouse && input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
+            const bool rts_mode = tactical_camera && !free_camera;
+            if (scene_mouse && !rts_mode && input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
             {
                 camera_input.yaw = static_cast<float>(input.mouse_delta_x) * 0.01F;
                 camera_input.pitch = static_cast<float>(-input.mouse_delta_y) * 0.01F;
@@ -772,7 +795,7 @@ int main(const int argc, char** argv)
                 const auto speed = (key_down(eaw::Key::shift) ? 2.4F : 0.8F) * camera_seconds;
                 camera_input.pan_right = static_cast<float>((key_down(eaw::Key::d) || key_down(eaw::Key::right) ? 1 : 0) - (key_down(eaw::Key::a) || key_down(eaw::Key::left) ? 1 : 0)) * speed;
                 camera_input.pan_forward = static_cast<float>((key_down(eaw::Key::w) || key_down(eaw::Key::up) ? 1 : 0) - (key_down(eaw::Key::s) || key_down(eaw::Key::down) ? 1 : 0)) * speed;
-                if (scene_mouse && input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down)
+                if (scene_mouse && !rts_mode && input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down)
                 {
                     camera_input.pan_right -= static_cast<float>(input.mouse_delta_x) * 0.0015F;
                     camera_input.pan_forward += static_cast<float>(input.mouse_delta_y) * 0.0015F;
@@ -791,20 +814,112 @@ int main(const int argc, char** argv)
             }
             // A left click that does not drag selects what is under the cursor; dragging orbits or
             // rotates as before.
-            if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].pressed)
+            const auto& left_button = input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)];
+            const auto& right_button = input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)];
+            const std::array<float, 2> mouse{static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y)};
+            if (left_button.pressed)
             {
                 // A press over the overlay never becomes a scene click.
                 click_travel = scene_mouse ? 0 : std::numeric_limits<std::int32_t>::max();
+                drag_start = scene_mouse ? std::optional(mouse) : std::nullopt;
+                box_active = false;
             }
-            if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
+            if (left_button.down)
             {
                 click_travel += std::abs(input.mouse_delta_x) + std::abs(input.mouse_delta_y);
+                if (rts_mode && drag_start && click_travel > 4)
+                {
+                    box_active = true;
+                    renderer.set_selection_rectangle(std::array<float, 4>{(*drag_start)[0], (*drag_start)[1], mouse[0], mouse[1]});
+                }
             }
-            if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].released && click_travel <= 3 && input.mouse_x >= 0 && input.mouse_y >= 0)
+            if (left_button.released)
             {
+                if (box_active && drag_start && world)
+                {
+                    // Drag-selection picks mobile units only, like the original's box selection.
+                    const auto stats = renderer.stats();
+                    const auto picked = eaw::entities_in_rectangle(world->snapshot().entities, tactical_camera->camera(), static_cast<float>(stats.width), static_cast<float>(stats.height),
+                                                                   {(*drag_start)[0], (*drag_start)[1], mouse[0], mouse[1]}, true);
+                    selection.clear();
+                    for (const auto id : picked)
+                    {
+                        selection.insert(eaw::entity_key(id));
+                    }
+                    std::cout << "Box-selected " << selection.size() << " units\n";
+                }
+                else if (click_travel <= 3 && input.mouse_x >= 0 && input.mouse_y >= 0)
+                {
+                    pick_purpose = PickPurpose::select;
+                    renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y));
+                }
+                renderer.set_selection_rectangle(std::nullopt);
+                drag_start.reset();
+                box_active = false;
+            }
+            if (right_button.pressed)
+            {
+                right_travel = scene_mouse ? 0 : std::numeric_limits<std::int32_t>::max();
+            }
+            if (right_button.down)
+            {
+                right_travel += std::abs(input.mouse_delta_x) + std::abs(input.mouse_delta_y);
+            }
+            if (right_button.released && rts_mode && right_travel <= 3 && !selection.empty() && input.mouse_x >= 0 && input.mouse_y >= 0)
+            {
+                // The pick yields the clicked surface's depth, which becomes the move target.
+                pick_purpose = PickPurpose::command;
                 renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y));
             }
-            if (const auto pick = renderer.take_pick())
+            if (input.keys[static_cast<std::size_t>(eaw::Key::c)].pressed && tactical_camera)
+            {
+                free_camera = !free_camera;
+                std::cout << (free_camera ? "Free debug camera (drag rotates, right-drag pans)\n" : "RTS camera (drag selects, right-click moves)\n");
+            }
+            const auto order_move = [&](const eaw::SimVector3& target)
+            {
+                // Selected mobile units in a deterministic order (by id) spread on a grid.
+                std::vector<eaw::EntityId> movers;
+                for (const auto& entity : world->snapshot().entities)
+                {
+                    if (selection.contains(eaw::entity_key(entity.id)) && entity.max_speed > 0.0F)
+                    {
+                        movers.push_back(entity.id);
+                    }
+                }
+                std::ranges::sort(movers, {}, eaw::entity_key);
+                const auto targets = eaw::grid_targets(target, movers.size(), 40.0F);
+                for (std::size_t index = 0; index < movers.size(); ++index)
+                {
+                    world->submit({eaw::SimCommandKind::move, {movers[index]}, targets[index]});
+                }
+                std::cout << "Move " << movers.size() << " units to " << format_fixed(target.x, 0) << ", " << format_fixed(target.y, 0) << ", " << format_fixed(target.z, 0) << '\n';
+            };
+            const auto pick = renderer.take_pick();
+            if (pick && pick_purpose == PickPurpose::command && world && tactical_camera)
+            {
+                const auto stats = renderer.stats();
+                const auto camera = tactical_camera->camera();
+                const auto width = static_cast<float>(stats.width);
+                const auto height = static_cast<float>(stats.height);
+                const auto x = static_cast<float>(pick->pixel[0]);
+                const auto y = static_cast<float>(pick->pixel[1]);
+                // The clicked surface when there is one, otherwise the ground plane z = 0.
+                std::optional<std::array<float, 3>> point;
+                if (pick->depth)
+                {
+                    point = eaw::unproject_screen(camera, width, height, x, y, *pick->depth);
+                }
+                else
+                {
+                    point = eaw::intersect_ground_plane(camera, width, height, x, y, 0.0F);
+                }
+                if (point)
+                {
+                    order_move({(*point)[0], (*point)[1], (*point)[2]});
+                }
+            }
+            else if (pick)
             {
                 // Pick ids are positions in the instance list of the frame that took the pick; the
                 // list order only changes when entities are destroyed.
@@ -974,6 +1089,21 @@ int main(const int argc, char** argv)
                 renderer.set_instances(frame_instances);
                 update_debug_lines();
             }
+            if (options.auto_move && content_shown_at && world && !automated_move_sent)
+            {
+                automated_move_sent = true;
+                selection.clear();
+                for (const auto& entity : world->snapshot().entities)
+                {
+                    if (entity.max_speed > 0.0F)
+                    {
+                        selection.insert(eaw::entity_key(entity.id));
+                    }
+                }
+                const auto& bounds = tactical_camera ? tactical_camera->focus() : std::array<float, 3>{0.0F, 0.0F, 0.0F};
+                std::cout << "Auto-move: " << selection.size() << " mobile units\n";
+                order_move({bounds[0], bounds[1], bounds[2]});
+            }
             if (options.pick && content_shown_at && !automated_pick_sent)
             {
                 renderer.request_pick((*options.pick)[0], (*options.pick)[1]);
@@ -1046,8 +1176,9 @@ int main(const int argc, char** argv)
                 lines.push_back("Selected: " + selected_text);
                 lines.push_back("Hot reload: " + reload_status);
                 lines.push_back("");
-                lines.push_back(tactical_camera ? "Click select | B bounds | F1 panel | WASD pan, drag rotate, wheel zoom"
-                                                : "Click select | B bounds | F1 panel | drag orbit, wheel zoom, P pause, Left/Right animation");
+                lines.push_back(!tactical_camera ? "Click select | B bounds | F1 panel | drag orbit, wheel zoom, P pause, Left/Right animation"
+                                : free_camera    ? "Free camera: click select | drag rotate, right-drag pan | C RTS camera | B bounds | F1 panel"
+                                                 : "RTS: click/drag select, right-click move | WASD pan, wheel zoom | C free camera | B bounds | F1 panel");
                 renderer.set_overlay_text(lines);
                 overlay_frames = 0;
                 overlay_refreshed = now;

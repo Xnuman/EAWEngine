@@ -82,6 +82,7 @@ struct EntitySnapshot
     std::uint32_t owner{};
     bool moving{};
     bool selectable{};
+    float max_speed{};
 };
 
 struct SimSnapshot

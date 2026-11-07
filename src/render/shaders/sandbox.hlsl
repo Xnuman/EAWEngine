@@ -59,7 +59,7 @@ struct PixelInput
 struct PixelOutput
 {
     float4 color : SV_TARGET0;
-    uint pick_id : SV_TARGET1;
+    uint2 pick : SV_TARGET1; // (pick id, depth bits)
 };
 
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
@@ -207,6 +207,6 @@ PixelOutput ps_main(PixelInput input)
     PixelOutput output;
     output.color = shade(input);
     output.color.rgb = apply_selection_highlight(output.color.rgb, input.pick_id, input.instance_flags);
-    output.pick_id = input.pick_id;
+    output.pick = uint2(input.pick_id, asuint(input.position.z));
     return output;
 }
