@@ -65,7 +65,13 @@ campaign compatibility is a long-term engine project, not a renderer swap.
 - Deliverable: asset inspector that can browse every stock and selected mod
   asset and report unresolved references.
 
-## M2 — visual sandbox
+## M2 — visual sandbox (complete)
+
+Complete: a stock space unit and land and space maps load and can be inspected
+through the D3D12 renderer. Remaining render work is the legacy-mode render
+backlog listed in AGENTS.md; it is scheduled when gameplay or evidence needs
+it.
+
 
 - Window/input/platform layer and the initial Direct3D 12 RHI are implemented:
   a flip-model waitable swap chain, triple-buffered allocator contexts,
@@ -144,7 +150,14 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   load in `EAWEngine sandbox` (`--model`, `--map` for space and land); M2 stays
   open until resource handles, streaming, and the remaining map layers exist.
 
-## M3 — tactical simulation slice
+## M3 — tactical simulation slice (active)
+
+- First vertical slice: a graphics-free simulation core (generation-checked
+  entity ids, structure-of-arrays components, fixed-step scheduler,
+  deterministic commands applied at tick boundaries, immutable snapshots),
+  map objects spawned as entities from their XML types, a renderer object API
+  fed from interpolated snapshots, and the legacy RTS camera with click/box
+  selection and right-click straight-line movement.
 
 - ECS/storage, fixed-step scheduler, job system, transforms, spatial index,
   movement, formations, targeting, projectiles, damage, hardpoints, fog of war.

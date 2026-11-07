@@ -33,7 +33,7 @@ EAWEngine is an independently developed, open compatibility engine and toolset f
 - Lua inspection handles source dependencies and structural inspection of standard Lua 5.0 and Petroglyph persistent bytecode without executing it.
 - `EAWAssetInspector`, `EAWDatEditor`, and the Dear ImGui/Direct3D 11 `EAWTools` workbench consume the same `eaw_core` decoders.
 
-### M2: visual sandbox — active
+### M2: visual sandbox — complete (legacy-mode render backlog carried forward)
 
 The native Direct3D 12 sandbox currently has:
 
@@ -74,14 +74,26 @@ Known limitations are intentional, not invitations to hide special cases:
 
 Work in dependency order unless the user explicitly reprioritizes it.
 
-1. ~~Inventory the legacy shader families in `Shaders/` and create an evidence-based mapping from legacy techniques, parameters, and render states to engine-native material features.~~ Done; see [docs/legacy-shader-mapping.md](docs/legacy-shader-mapping.md).
-2. (In progress; the core legacy-mode surface model is implemented.) Implement legacy-mode material rendering in the D3D12 sandbox from `LegacyMaterial` profiles, using newly written HLSL: SH plus key-light lighting, normal/gloss/emissive/team-color channels, UV animation, cull/depth/alpha rules, and special families such as shields and heat where evidence supports them. Keep the material interface engine-native so a PBS path can be added later without changing decoders.
-3. ~~Move modern shader sources out of inline C++ to newly written HLSL. Introduce DXC/offline compilation, stable root-signature layouts, and PSO caching.~~ Done; reflection metadata is deferred until material shaders need generated bindings.
-4. ~~Animation selection, rigid-attachment visibility, GPU selection IDs, debug line drawing, and the on-screen statistics overlay.~~ Done. Gameplay camera and input are not M2 work: the sandbox cameras are inspection tools, and the legacy RTS camera (fixed angles, zoom, keyboard pan) with box selection and right-click commands is planned for M3/M4. The PBS material model and its documented conversion from legacy profiles follow once legacy mode is stable.
-5. ~~Add D3D12 tactical-map rendering.~~ Space maps and land terrain render; water, decals, and tracks remain. Defer further tool-only model/map preview polish until it can share code with the production renderer and the later map editor.
-6. (In progress; handle pool, fence-deferred texture-slot allocation, direct-timeline retirement with runtime scene replacement, background scene construction, budgeted texture streaming, the engine asset cache with dependency tracking, hot reload of loose files and rebuilt MEG archives, and identity-based texture reuse across scene loads are implemented.) Remaining: per-asset geometry handles and several concurrently resident scenes, which M3 runtime spawning will need.
-7. Finish M2 by loading and inspecting both a stock space unit and a tactical map through the new renderer.
-8. Begin M3 only after the visual/data contracts are stable enough: ECS/storage, fixed-step scheduler, dependency-aware job system, deterministic commands/snapshots, transforms, spatial queries, movement, formations, targeting, damage, hardpoints, fog of war, XML construction, and a minimal Lua host surface.
+M2 is complete: a stock space unit and land and space maps load and can be inspected through the D3D12 renderer with legacy-mode materials, environment lighting, terrain, liquids, tracks, streaming, hot reload, selection, debug drawing, and the statistics overlay. Its remaining render items form the legacy-mode render backlog below; they are scheduled when gameplay or evidence needs them, not as an M2 gate.
+
+### M3: tactical simulation slice — active
+
+The first goal is a thin vertical slice: units on a map that can be selected and moved, proving that simulation and rendering stay separate, the tick is deterministic, and commands flow in while snapshots flow out.
+
+1. Simulation core (`src/simulation`, no graphics): stable generation-checked entity ids, structure-of-arrays component storage, a fixed-step scheduler, deterministic command application at tick boundaries, and immutable snapshots for presentation.
+2. Spawning from XML: placed TED objects (and later reinforcements) become entities built from their XML object types instead of a static scene.
+3. Renderer object API: meshes registered once, instances added, updated, and removed at runtime, per-instance bone palettes, fed from snapshots and interpolated between ticks.
+4. First interaction: the legacy RTS camera (fixed pitch and heading, zoom, keyboard pan), click and box selection, and right-click move with straight-line movement on the fixed tick.
+5. Then the rest of M3: dependency-aware job system, spatial queries, pathfinding and formations, targeting, projectiles, damage, hardpoints, fog of war, and a minimal Lua host surface.
+
+### Legacy-mode render backlog
+
+- Cube reflections (no stock material uses them), planet atmosphere/clouds/city lights, shield distortion layers, nebula wobble, wind bend, heat distortion, occluded-unit silhouettes, shadows, and fog.
+- Decals (no texture link established), depth-sorted transparency, and land teams/companies (expanded by runtime formations in M3).
+- Damage-state (`_ALT<n>`) and LOD switching, skinned-mesh visibility, gameplay-driven visibility.
+- Per-asset geometry handles and several resident scenes (covered by the M3 object API), and extracting a renderer-agnostic RHI.
+- Verifying world handedness against the original.
+- The PBS material model and its documented conversion from legacy profiles once legacy mode is stable.
 
 Later milestones remain:
 
