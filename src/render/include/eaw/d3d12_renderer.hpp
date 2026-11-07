@@ -2,8 +2,10 @@
 
 #include "eaw/visual_scene.hpp"
 
+#include <array>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 
 namespace eaw {
@@ -40,6 +42,7 @@ public:
     void resize(std::uint32_t width, std::uint32_t height);
     void wait_idle();
     void load_scene(const VisualScene& scene);
+    void set_bone_transforms(std::span<const std::array<float, 16>> transforms);
     void orbit_camera(float yaw_delta, float pitch_delta);
     void zoom_camera(float wheel_delta);
     void reset_camera();

@@ -31,6 +31,7 @@ namespace {
 using Microsoft::WRL::ComPtr;
 
 constexpr std::uint32_t frame_count = 3;
+constexpr std::uint32_t maximum_scene_bones = 4096;
 constexpr std::uint32_t maximum_scene_textures = 4096;
 constexpr DXGI_FORMAT back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
@@ -230,6 +231,11 @@ D3D12_RESOURCE_BARRIER transition_barrier(ID3D12Resource* resource, const D3D12_
     return barrier;
 }
 
+std::array<float, 16> identity_matrix()
+{
+    return {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+}
+
 ComPtr<ID3DBlob> compile_shader(const std::string_view source, const char* entry_point, const char* target)
 {
     UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
@@ -384,6 +390,9 @@ struct D3d12Renderer::Impl
     {
         ComPtr<ID3D12CommandAllocator> allocator;
         ComPtr<ID3D12Resource> back_buffer;
+        ComPtr<ID3D12Resource> bone_buffer;
+        std::byte* bone_buffer_mapped{};
+        std::uint32_t bone_capacity{};
         std::uint64_t fence_value{};
     };
 
@@ -453,6 +462,7 @@ struct D3d12Renderer::Impl
     D3D12_INDEX_BUFFER_VIEW scene_index_view{};
     std::vector<ComPtr<ID3D12Resource>> scene_textures;
     std::vector<GpuDraw> scene_draws;
+    std::vector<std::array<float, 16>> bone_transforms;
     std::vector<UploadBatch> pending_uploads;
     std::vector<D3D12_RESOURCE_BARRIER> pending_transitions;
 
@@ -489,6 +499,14 @@ struct D3d12Renderer::Impl
         catch (...)
         {
             // Destructors must not mask an active rendering or device-removal error.
+        }
+        for (auto& frame : frames)
+        {
+            if (frame.bone_buffer && frame.bone_buffer_mapped != nullptr)
+            {
+                frame.bone_buffer->Unmap(0, nullptr);
+                frame.bone_buffer_mapped = nullptr;
+            }
         }
 #if defined(_DEBUG)
         if (debug_info_queue && debug_callback_registered)
@@ -587,6 +605,7 @@ struct D3d12Renderer::Impl
         check_hresult(command_list->Close(), "close initial direct command list");
         acquire_back_buffers();
         create_depth_buffer();
+        create_bone_buffers(1);
     }
 
     void acquire_back_buffers()
@@ -632,10 +651,43 @@ struct D3d12Renderer::Impl
         device->CreateDepthStencilView(depth_buffer.Get(), nullptr, dsv_heap->GetCPUDescriptorHandleForHeapStart());
     }
 
+    void create_bone_buffers(const std::uint32_t requested_count)
+    {
+        const auto count = std::max(requested_count, 1U);
+        if (count > maximum_scene_bones)
+        {
+            throw std::invalid_argument("visual scene exceeds the D3D12 bone palette capacity");
+        }
+        const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
+        const auto description = buffer_description(static_cast<std::uint64_t>(count) * sizeof(std::array<float, 16>));
+        for (std::uint32_t index = 0; index < frame_count; ++index)
+        {
+            auto& frame = frames[index];
+            if (frame.bone_buffer && frame.bone_buffer_mapped != nullptr)
+            {
+                frame.bone_buffer->Unmap(0, nullptr);
+                frame.bone_buffer_mapped = nullptr;
+            }
+            frame.bone_buffer.Reset();
+            check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.bone_buffer)),
+                          "CreateCommittedResource(frame bone palette)");
+            set_name(frame.bone_buffer.Get(), L"EAWEngine frame bone palette " + std::to_wstring(index));
+            const D3D12_RANGE no_read{0, 0};
+            check_hresult(frame.bone_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.bone_buffer_mapped)), "Map(frame bone palette)");
+            frame.bone_capacity = count;
+        }
+        bone_transforms.assign(count, identity_matrix());
+    }
+
     void create_pipeline()
     {
         constexpr std::string_view shader_source = R"(
 Texture2D SandboxTexture : register(t0);
+struct BoneTransform
+{
+    row_major float4x4 transform;
+};
+StructuredBuffer<BoneTransform> BoneTransforms : register(t1);
 SamplerState SandboxSampler : register(s0);
 
 cbuffer FrameConstants : register(b0)
@@ -654,6 +706,8 @@ struct VsInput
     float3 position : POSITION;
     float3 normal : NORMAL;
     float2 uv : TEXCOORD0;
+    uint4 bone_indices : BLENDINDICES0;
+    float4 bone_weights : BLENDWEIGHT0;
 };
 
 struct PsInput
@@ -665,9 +719,35 @@ struct PsInput
 
 PsInput vs_main(VsInput input)
 {
+    float4 skinned_position = 0.0f;
+    float3 skinned_normal = 0.0f;
+    float total_weight = 0.0f;
+    [unroll]
+    for (uint influence = 0; influence < 4; ++influence)
+    {
+        const float weight = input.bone_weights[influence];
+        if (weight <= 0.0f)
+        {
+            continue;
+        }
+        const row_major float4x4 skin = BoneTransforms[input.bone_indices[influence]].transform;
+        skinned_position += mul(float4(input.position, 1.0f), skin) * weight;
+        skinned_normal += mul(float4(input.normal, 0.0f), skin).xyz * weight;
+        total_weight += weight;
+    }
+    if (total_weight <= 0.000001f)
+    {
+        skinned_position = float4(input.position, 1.0f);
+        skinned_normal = input.normal;
+    }
+    else if (abs(total_weight - 1.0f) > 0.0001f)
+    {
+        skinned_position /= total_weight;
+        skinned_normal /= total_weight;
+    }
     PsInput output;
-    output.position = mul(float4(input.position, 1.0f), model_view_projection);
-    output.normal = input.normal;
+    output.position = mul(skinned_position, model_view_projection);
+    output.normal = skinned_normal;
     output.uv = input.uv;
     return output;
 }
@@ -695,7 +775,7 @@ float4 ps_main(PsInput input) : SV_TARGET
         range.RegisterSpace = 0;
         range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        std::array<D3D12_ROOT_PARAMETER, 3> parameters{};
+        std::array<D3D12_ROOT_PARAMETER, 4> parameters{};
         parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         parameters[0].Constants.ShaderRegister = 0;
         parameters[0].Constants.Num32BitValues = 16;
@@ -708,6 +788,10 @@ float4 ps_main(PsInput input) : SV_TARGET
         parameters[2].Constants.ShaderRegister = 1;
         parameters[2].Constants.Num32BitValues = 8;
         parameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        parameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        parameters[3].Descriptor.ShaderRegister = 1;
+        parameters[3].Descriptor.RegisterSpace = 0;
+        parameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 
         D3D12_STATIC_SAMPLER_DESC sampler{};
         sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -747,10 +831,12 @@ float4 ps_main(PsInput input) : SV_TARGET
         check_hresult(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&root_signature)), "CreateRootSignature");
         set_name(root_signature.Get(), L"EAWEngine sandbox root signature");
 
-        constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 3> input_layout{{
+        constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 5> input_layout{{
             {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualVertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VisualVertex, normal), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(VisualVertex, texture_coordinates), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT, 0, offsetof(VisualVertex, bone_indices), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(VisualVertex, bone_weights), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         }};
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
@@ -1002,6 +1088,7 @@ float4 ps_main(PsInput input) : SV_TARGET
         {
             throw std::invalid_argument("visual scene exceeds the D3D12 texture descriptor capacity");
         }
+        create_bone_buffers(scene.bone_count);
 
         auto upload = begin_upload(L"EAWEngine scene upload");
         const auto vertex_bytes = std::as_bytes(std::span(scene.vertices));
@@ -1065,6 +1152,16 @@ float4 ps_main(PsInput input) : SV_TARGET
         reset_camera();
     }
 
+    void set_bone_transforms(const std::span<const std::array<float, 16>> transforms)
+    {
+        if (transforms.size() > bone_transforms.size())
+        {
+            throw std::invalid_argument("bone palette update exceeds the loaded visual scene capacity");
+        }
+        std::ranges::fill(bone_transforms, identity_matrix());
+        std::ranges::copy(transforms, bone_transforms.begin());
+    }
+
     void orbit_camera(const float yaw_delta, const float pitch_delta)
     {
         camera_yaw += yaw_delta;
@@ -1125,6 +1222,11 @@ float4 ps_main(PsInput input) : SV_TARGET
         {
             direct_queue.wait_cpu(frame.fence_value);
         }
+        if (bone_transforms.size() > frame.bone_capacity)
+        {
+            throw std::runtime_error("frame bone palette is smaller than the active visual scene");
+        }
+        std::memcpy(frame.bone_buffer_mapped, bone_transforms.data(), bone_transforms.size() * sizeof(bone_transforms.front()));
 
         check_hresult(frame.allocator->Reset(), "ID3D12CommandAllocator::Reset");
         check_hresult(command_list->Reset(frame.allocator.Get(), opaque_pipeline.Get()), "ID3D12GraphicsCommandList::Reset");
@@ -1159,6 +1261,7 @@ float4 ps_main(PsInput input) : SV_TARGET
         command_list->SetGraphicsRootSignature(root_signature.Get());
         const auto matrix = camera_matrix();
         command_list->SetGraphicsRoot32BitConstants(0, 16, &matrix, 0);
+        command_list->SetGraphicsRootShaderResourceView(3, frame.bone_buffer->GetGPUVirtualAddress());
         command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
         struct MaterialConstants
@@ -1395,6 +1498,11 @@ void D3d12Renderer::wait_idle()
 void D3d12Renderer::load_scene(const VisualScene& scene)
 {
     impl_->load_scene(scene);
+}
+
+void D3d12Renderer::set_bone_transforms(const std::span<const std::array<float, 16>> transforms)
+{
+    impl_->set_bone_transforms(transforms);
 }
 
 void D3d12Renderer::orbit_camera(const float yaw_delta, const float pitch_delta)

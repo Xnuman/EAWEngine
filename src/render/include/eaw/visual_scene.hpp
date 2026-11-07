@@ -61,6 +61,8 @@ struct VisualVertex
     std::array<float, 3> position{};
     std::array<float, 3> normal{0.0F, 0.0F, 1.0F};
     std::array<float, 2> texture_coordinates{};
+    std::array<std::uint32_t, 4> bone_indices{};
+    std::array<float, 4> bone_weights{};
 };
 
 inline constexpr std::uint32_t invalid_visual_texture = std::numeric_limits<std::uint32_t>::max();
@@ -90,6 +92,7 @@ struct VisualScene
     std::vector<VisualTexture> textures;
     std::vector<VisualMaterial> materials;
     std::vector<VisualDraw> draws;
+    std::uint32_t bone_count{};
     std::array<float, 3> bounds_minimum{};
     std::array<float, 3> bounds_maximum{};
     std::vector<std::string> warnings;

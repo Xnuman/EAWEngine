@@ -73,9 +73,10 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   removal diagnostics. A textured validation primitive remains available as a
   renderer-only fallback through the same default-heap upload path.
 - Initial engine-native ALO geometry, base-color DDS mip uploads, legacy blend
-  translation, depth buffering, and orbit camera are implemented in the D3D12
-  sandbox. Continue toward full legacy shader/material coverage and ALA skin
-  animation, then replace the current ImGui inspection viewport.
+  translation, depth buffering, orbit camera, and GPU ALA skinning are
+  implemented in the D3D12 sandbox. Continue toward animation selection UI and
+  full legacy shader/material coverage, then replace the current ImGui
+  inspection viewport.
 - Camera, PBR approximation for legacy materials, selection IDs, debug drawing.
 - Deliverable: load and inspect a stock space unit and a tactical map.
 

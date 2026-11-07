@@ -26,7 +26,8 @@ This repository is at milestone **0.3: native asset and localization workbench**
   window/input layer, asynchronous copy-queue uploads, frame-buffered command
   allocators, fence-based lifetime tracking, and a waitable flip-model swap
   chain. It loads stock ALO geometry and base-color DDS mip chains into indexed
-  material batches with depth buffering and an orbit camera.
+  material batches with depth buffering and an orbit camera. Matching ALA idle
+  animations are sampled into frame-buffered GPU skin palettes.
 
 It does **not** run the game yet. Production asset rendering, simulation, Lua
 execution, audio, runtime UI, networking, and save compatibility remain future
@@ -73,9 +74,12 @@ Open the Direct3D 12 visual sandbox directly or through the separate launcher:
 The sandbox defaults to vsync with two frames of CPU/GPU overlap. Development
 switches include `--vsync off`, `--frame-latency 1`, `--warp`, and
 `--gpu-validation`. `--frame-limit <count>` supports self-terminating smoke
-tests. Use `--model <virtual-alo-path>` to inspect another mounted model or
-`--validation-triangle` to bypass asset loading. Drag with the left mouse button
-to orbit, use the wheel to zoom, and press Space to reset the camera.
+tests. Use `--model <virtual-alo-path>` to inspect another mounted model,
+`--animation <virtual-ala-path>` to select an animation, or
+`--validation-triangle` to bypass asset loading. The sandbox automatically tries
+the model's `_IDLE_00.ALA` when present. Drag with the left mouse button to
+orbit, use the wheel to zoom, press Space to reset the camera, and press P to
+pause animation.
 
 Use the launcher with a mod overlay:
 

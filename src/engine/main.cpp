@@ -37,6 +37,7 @@ struct Options
     std::vector<std::filesystem::path> mods;
     std::string probe{"Data/XML/GameObjectFiles.xml"};
     std::string model{"Data/Art/Models/EV_Acclamator.alo"};
+    std::optional<std::string> animation;
     std::uint32_t width{1600};
     std::uint32_t height{900};
     std::uint32_t frame_latency{2};
@@ -59,6 +60,7 @@ void print_usage()
               << "  --mod <path>       Add a mod root (repeatable; first has priority)\n"
               << "  --probe <asset>    Resolve and read a virtual asset path\n"
               << "  --model <asset>    ALO model shown in the visual sandbox\n"
+              << "  --animation <asset>  ALA animation played with the model\n"
               << "  --width <pixels>   Initial sandbox client width\n"
               << "  --height <pixels>  Initial sandbox client height\n"
               << "  --vsync <on|off>   Select synchronized or tearing-capable present\n"
@@ -156,6 +158,10 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--model")
         {
             options.model = require_value(argc, argv, index, argument);
+        }
+        else if (argument == "--animation")
+        {
+            options.animation = require_value(argc, argv, index, argument);
         }
         else if (argument == "--width")
         {
@@ -281,30 +287,72 @@ int main(const int argc, char** argv)
         renderer_options.gpu_validation = options.gpu_validation;
         renderer_options.maximum_frame_latency = options.frame_latency;
         eaw::D3d12Renderer renderer(window.native_handle(), window.client_width(), window.client_height(), renderer_options);
+        std::optional<eaw::VisualModelAsset> visual_model;
+        std::optional<eaw::AlaAnimation> visual_animation;
         if (!options.validation_triangle)
         {
             try
             {
-                const auto scene = eaw::build_visual_scene(vfs, options.model);
-                renderer.load_scene(scene);
-                std::cout << "Visual model: " << scene.name << '\n'
-                          << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size() << " draws\n"
-                          << "Textures: " << scene.textures.size() << '\n';
-                for (const auto& warning : scene.warnings)
+                visual_model = eaw::build_visual_model(vfs, options.model);
+                renderer.load_scene(visual_model->scene);
+                const auto bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
+                renderer.set_bone_transforms(bind_palette);
+                std::cout << "Visual model: " << visual_model->scene.name << '\n'
+                          << "Geometry: " << visual_model->scene.vertices.size() << " vertices, " << visual_model->scene.indices.size() / 3U << " triangles, " << visual_model->scene.draws.size()
+                          << " draws\n"
+                          << "Textures: " << visual_model->scene.textures.size() << " | Bones: " << visual_model->scene.bone_count << '\n';
+                for (const auto& warning : visual_model->scene.warnings)
                 {
                     std::cerr << "model warning: " << warning << '\n';
                 }
+                // Upload staging owns the copied bytes after load_scene returns;
+                // retain only the skeleton data needed for animation sampling.
+                visual_model->scene = {};
             }
             catch (const std::exception& error)
             {
                 std::cerr << "model warning: " << error.what() << "; using the validation triangle\n";
+                visual_model.reset();
+            }
+        }
+        if (visual_model)
+        {
+            try
+            {
+                const auto animation_path = options.animation ? options.animation : eaw::default_model_animation(vfs, options.model);
+                if (animation_path)
+                {
+                    const auto resolved_animation = vfs.resolve(*animation_path);
+                    if (!resolved_animation)
+                    {
+                        std::cerr << "animation warning: asset not found: " << *animation_path << '\n';
+                    }
+                    else
+                    {
+                        visual_animation = eaw::AlaAnimation::parse(vfs.read(resolved_animation->virtual_path));
+                        std::cout << "Animation: " << resolved_animation->virtual_path << " | " << visual_animation->playable_frame_count() << " frames at " << visual_animation->frames_per_second
+                                  << " fps | " << visual_animation->duration_seconds() << " seconds\n";
+                        for (const auto& warning : visual_animation->warnings)
+                        {
+                            std::cerr << "animation warning: " << warning << '\n';
+                        }
+                    }
+                }
+            }
+            catch (const std::exception& error)
+            {
+                std::cerr << "animation warning: " << error.what() << "; using the bind pose\n";
+                visual_animation.reset();
             }
         }
         std::cout << "D3D12 adapter: " << renderer.adapter_name() << '\n'
                   << "Present mode: " << (options.vsync ? "vsync" : "immediate when tearing is available") << '\n'
                   << "Frame latency: " << options.frame_latency << '\n'
-                  << "Visual sandbox ready. Press Escape or close the window to exit.\n";
+                  << "Visual sandbox ready. Left-drag orbits, wheel zooms, Space resets, P pauses animation.\n";
 
+        auto animation_tick = std::chrono::steady_clock::now();
+        float animation_time = 0.0F;
+        bool animation_playing = true;
         while (!window.close_requested())
         {
             window.poll_events();
@@ -315,6 +363,10 @@ int main(const int argc, char** argv)
             if (window.input().keys[static_cast<std::size_t>(eaw::Key::space)].pressed)
             {
                 renderer.reset_camera();
+            }
+            if (window.input().keys[static_cast<std::size_t>(eaw::Key::p)].pressed && visual_animation)
+            {
+                animation_playing = !animation_playing;
             }
             if (window.input().mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
             {
@@ -330,11 +382,24 @@ int main(const int argc, char** argv)
             }
             if (window.minimized())
             {
+                animation_tick = std::chrono::steady_clock::now();
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));
                 continue;
             }
 
             renderer.resize(window.client_width(), window.client_height());
+            const auto now = std::chrono::steady_clock::now();
+            const auto animation_delta = std::chrono::duration<float>(now - animation_tick).count();
+            animation_tick = now;
+            if (animation_playing)
+            {
+                animation_time += animation_delta;
+            }
+            if (visual_model && visual_animation)
+            {
+                const auto skin_palette = eaw::sample_skin_palette(*visual_model, &*visual_animation, animation_time);
+                renderer.set_bone_transforms(skin_palette);
+            }
             const bool rendered = renderer.render();
             if (options.frame_limit && renderer.stats().frame_number >= *options.frame_limit)
             {

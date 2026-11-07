@@ -205,18 +205,30 @@ AloVector3 transform_direction(const AloVector3& direction, const AloMatrix4& ma
 
 } // namespace
 
-VisualScene build_visual_scene(const VirtualFileSystem& vfs, const std::string_view model_path)
+VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, const std::string_view model_path)
 {
     const auto resolved = vfs.resolve(model_path);
     if (!resolved)
     {
         throw std::runtime_error("visual model was not found: " + std::string(model_path));
     }
-    const auto model = AloModel::parse(vfs.read(resolved->virtual_path));
+    VisualModelAsset asset;
+    asset.model = AloModel::parse(vfs.read(resolved->virtual_path));
+    const auto& model = asset.model;
     const auto bind_pose = model.bind_pose();
+    asset.inverse_bind_pose.reserve(bind_pose.size());
+    for (const auto& transform : bind_pose)
+    {
+        asset.inverse_bind_pose.push_back(alo_inverse(transform));
+    }
 
-    VisualScene scene;
+    auto& scene = asset.scene;
     scene.name = resolved->virtual_path;
+    if (model.bones.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error("ALO skeleton exceeds the visual scene bone index range");
+    }
+    scene.bone_count = static_cast<std::uint32_t>(model.bones.size());
     scene.warnings = model.warnings;
     scene.bounds_minimum.fill(std::numeric_limits<float>::max());
     scene.bounds_maximum.fill(std::numeric_limits<float>::lowest());
@@ -298,7 +310,33 @@ VisualScene build_visual_scene(const VirtualFileSystem& vfs, const std::string_v
             {
                 const auto position = attachment != nullptr ? alo_transform_point(vertex.position, *attachment) : vertex.position;
                 const auto normal = attachment != nullptr ? transform_direction(vertex.normal, *attachment) : vertex.normal;
-                scene.vertices.push_back({{position.x, position.y, position.z}, {normal.x, normal.y, normal.z}, {vertex.texture_coordinates[0].x, vertex.texture_coordinates[0].y}});
+                std::array<std::uint32_t, 4> bone_indices{};
+                std::array<float, 4> bone_weights{};
+                if (!submesh.skin_bones.empty())
+                {
+                    for (std::size_t influence = 0; influence < bone_indices.size(); ++influence)
+                    {
+                        const auto palette_index = vertex.bone_indices[influence];
+                        if (vertex.bone_weights[influence] <= 0.0F || palette_index >= submesh.skin_bones.size())
+                        {
+                            continue;
+                        }
+                        const auto bone_index = submesh.skin_bones[palette_index];
+                        if (bone_index >= model.bones.size())
+                        {
+                            continue;
+                        }
+                        bone_indices[influence] = bone_index;
+                        bone_weights[influence] = vertex.bone_weights[influence];
+                    }
+                }
+                else if (mesh.attached_bone && *mesh.attached_bone < model.bones.size())
+                {
+                    bone_indices[0] = *mesh.attached_bone;
+                    bone_weights[0] = 1.0F;
+                }
+                scene.vertices.push_back(
+                    {{position.x, position.y, position.z}, {normal.x, normal.y, normal.z}, {vertex.texture_coordinates[0].x, vertex.texture_coordinates[0].y}, bone_indices, bone_weights});
                 scene.bounds_minimum[0] = std::min(scene.bounds_minimum[0], position.x);
                 scene.bounds_minimum[1] = std::min(scene.bounds_minimum[1], position.y);
                 scene.bounds_minimum[2] = std::min(scene.bounds_minimum[2], position.z);
@@ -337,7 +375,49 @@ VisualScene build_visual_scene(const VirtualFileSystem& vfs, const std::string_v
     {
         throw std::runtime_error("ALO model has no visible renderable geometry");
     }
-    return scene;
+    return asset;
+}
+
+std::optional<std::string> default_model_animation(const VirtualFileSystem& vfs, const std::string_view model_path)
+{
+    const auto path = std::filesystem::path(model_path);
+    const auto candidate = path.parent_path() / (path.stem().string() + "_IDLE_00.ALA");
+    if (const auto resolved = vfs.resolve(candidate.generic_string()))
+    {
+        return resolved->virtual_path;
+    }
+    return std::nullopt;
+}
+
+std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimation* animation, const float seconds)
+{
+    std::vector<AlaPoseBone> pose;
+    if (animation != nullptr)
+    {
+        pose = animation->sample_pose(asset.model, seconds);
+    }
+    else
+    {
+        const auto bind_pose = asset.model.bind_pose();
+        pose.reserve(bind_pose.size());
+        for (std::size_t index = 0; index < bind_pose.size(); ++index)
+        {
+            pose.push_back({bind_pose[index], asset.model.bones[index].visible});
+        }
+    }
+
+    const auto bone_count = std::min(pose.size(), asset.inverse_bind_pose.size());
+    std::vector<std::array<float, 16>> result;
+    result.reserve(std::max<std::size_t>(bone_count, 1U));
+    for (std::size_t index = 0; index < bone_count; ++index)
+    {
+        result.push_back(alo_multiply(asset.inverse_bind_pose[index], pose[index].transform).values);
+    }
+    if (result.empty())
+    {
+        result.push_back(alo_identity_matrix().values);
+    }
+    return result;
 }
 
 } // namespace eaw

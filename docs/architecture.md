@@ -64,6 +64,13 @@ latency pacing, reuse of a still-in-flight frame context, swap-chain resize, and
 shutdown. GPU-backed objects that support submitted work remain retained until
 their producing queue's fence completes.
 
+Animated visual scenes preserve model-wide bone indices in immutable vertex
+buffers. ALA poses are sampled on the CPU into skin matrices, while every
+in-flight frame owns a persistently mapped bone-palette buffer. The CPU updates
+that palette only after the frame's direct-queue fence has completed, avoiding
+both per-frame resource creation and writes into memory still consumed by the
+GPU.
+
 ## Multithreading direction
 
 "Use all cores" is not an architecture by itself. The engine uses a dependency
