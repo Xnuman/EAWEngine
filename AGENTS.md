@@ -89,7 +89,7 @@ The first goal is a thin vertical slice: units on a map that can be selected and
 ### Cross-cutting engineering work (planned)
 
 - Raw input in `src/platform` (`WM_INPUT` or GameInput) behind the existing engine-native `InputState`; see the roadmap.
-- Exception-free error handling: replace throwing with a contextual `Result` error type, converted module by module (core decoders first). Until that policy lands, follow the existing conventions; do not add new exception-based APIs where a returned error is natural. Open decisions are recorded in the roadmap.
+- Error handling is being reconsidered and is postponed: the owner is evaluating `std::expected` and prefers, for now, that unexpected failures crash visibly rather than being handled. Unexpected failures go through `eaw::fatal_error` / `EAW_ASSERT` (`eaw/fatal_error.hpp`); `install_crash_handlers` (`src/platform`) turns them, uncaught exceptions, and hardware faults into one report on stderr plus an error window (Retry breaks into an attached debugger), and the engine has no top-level catch. Do not add catch-all handlers that hide bugs. Malformed game or mod data still yields diagnostics, not crashes.
 
 ### Legacy-mode render backlog
 

@@ -4,6 +4,7 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#include "eaw/crash_handler.hpp"
 #include <windows.h>
 
 #include "gui_app.hpp"
@@ -129,6 +130,8 @@ LRESULT WINAPI window_proc(HWND window, const UINT message, const WPARAM wparam,
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 {
+    // Unexpected failures end the workbench with an error window describing them.
+    eaw::install_crash_handlers({"EAW Tools", true});
     ImGui_ImplWin32_EnableDpiAwareness();
     const auto com_result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 

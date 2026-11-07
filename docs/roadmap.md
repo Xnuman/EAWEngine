@@ -215,7 +215,12 @@ it.
   engine-native so the simulation and sandbox do not change. Reference designs:
   the owner's own projects and permissively licensed engines (for example SDL's
   Windows raw-input backend); designs are studied, not copied.
-- **Exception-free error handling.** The codebase currently reports errors by
+- **Exception-free error handling (postponed).** The owner is evaluating
+  `std::expected` and prefers visible crashes during development; meanwhile
+  unexpected failures end in a fatal error report with an error window
+  (`eaw::fatal_error`, `EAW_ASSERT`, and the platform crash handlers for
+  uncaught exceptions and hardware faults). The original plan follows. The
+  codebase currently reports errors by
   throwing (about 270 `throw` sites and 66 `catch` blocks, half of the throws in
   core decoders). The goal is explicit error values: a project `Result` type
   carrying a contextual error (virtual path, section, offset), returned by

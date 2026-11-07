@@ -13,6 +13,7 @@
 #include "rts_control.hpp"
 #include "terrain_height.hpp"
 #include "scene_presentation.hpp"
+#include "eaw/fatal_error.hpp"
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/simulation.hpp"
 #include "eaw/gpu_resource_lifetime.hpp"
@@ -43,6 +44,7 @@
 #include <optional>
 #include <ranges>
 #include <set>
+#include <source_location>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -815,6 +817,18 @@ void test_terrain_height_field()
     camera.target = {-40.0F, 30.0F, 500.0F};
     camera.up = {1.0F, 0.0F, 0.0F};
     require(!eaw::intersect_terrain(camera, width, height, 320.0F, 240.0F, field), "a ray pointing away from the map must miss");
+}
+
+void test_fatal_error_report()
+{
+    // fatal_error itself ends the process, so only the report format is testable in-process.
+    const auto location = std::source_location::current();
+    const auto report = eaw::format_fatal_error("Bad state", location);
+    require(report.starts_with("Bad state\n\nFile: ") && report.find(location.file_name()) != std::string::npos && report.find("Line: " + std::to_string(location.line())) != std::string::npos &&
+                report.find("Function: ") != std::string::npos,
+            "a fatal error report must name the message, file, line, and function");
+    EAW_ASSERT(report.size() > 10);
+    EAW_ASSERT_MSG(!report.empty(), "passing assertions must not end the process");
 }
 
 // A minimal 4x4 BC1 DDS with one mip level.
@@ -2024,6 +2038,7 @@ int main()
         test_asset_cache_dependencies();
         test_debug_draw();
         test_simulation_core();
+        test_fatal_error_report();
         test_scene_presentation();
         test_rts_control();
         test_terrain_height_field();

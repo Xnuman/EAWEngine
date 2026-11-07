@@ -3,6 +3,7 @@
 #include "eaw/virtual_file_system.hpp"
 
 #ifdef _WIN32
+#include "eaw/crash_handler.hpp"
 #include "eaw/d3d12_renderer.hpp"
 #include "eaw/platform_window.hpp"
 #include "asset_cache.hpp"
@@ -12,6 +13,7 @@
 #include "rts_control.hpp"
 #include "scene_presentation.hpp"
 #include "visual_scene_builder.hpp"
+#include "eaw/fatal_error.hpp"
 #endif
 
 #include <algorithm>
@@ -70,6 +72,8 @@ struct Options
     bool show_bounds{};
     // On-screen statistics panel (F1 toggles at runtime).
     bool overlay{true};
+    // Deliberately fail in one way to check crash reporting: assert, exception, access-violation.
+    std::optional<std::string> crash_test;
     // Once the scene is shown, select every mobile entity and order it to the scene center.
     bool auto_move{};
     // XML object types made spawnable on maps (--spawn TYPE[:COUNT]); counts spawn when shown.
@@ -105,6 +109,8 @@ void print_usage()
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
               << "  --no-overlay       Start without the on-screen statistics panel (F1 toggles)\n"
+              << "  --no-error-dialog  Report fatal errors on stderr only (no error window)\n"
+              << "  --crash-test <assert|exception|access-violation>  Fail deliberately to check crash reporting\n"
               << "  --auto-move        Order every mobile unit to the map center once shown (automation)\n"
               << "  --spawn <TYPE>[:N] Make an XML object type spawnable on maps (repeatable); N spawn at the view\n"
               << "                     center when shown, N key spawns one at the cursor, Tab cycles types\n"
@@ -183,6 +189,18 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--no-overlay")
         {
             options.overlay = false;
+        }
+        else if (argument == "--crash-test")
+        {
+            options.crash_test = std::string(require_value(argc, argv, index, argument));
+            if (*options.crash_test != "assert" && *options.crash_test != "exception" && *options.crash_test != "access-violation")
+            {
+                throw std::invalid_argument("--crash-test must be assert, exception, or access-violation");
+            }
+        }
+        else if (argument == "--no-error-dialog")
+        {
+            // Read before parsing (crash handlers are installed first); accepted here as known.
         }
         else if (argument == "--auto-move")
         {
@@ -445,11 +463,47 @@ SandboxContent build_sandbox_content(const eaw::VirtualFileSystem& vfs, const Op
 
 int main(const int argc, char** argv)
 {
+    // Unexpected failures are not handled: they end the process with a clear report (an error
+    // window plus stderr) through the crash handlers. Only invalid command lines are reported as
+    // usage errors, and malformed game or mod data keeps producing warnings.
+#ifdef _WIN32
+    bool error_dialogs = true;
+    for (int index = 1; index < argc; ++index)
+    {
+        error_dialogs = error_dialogs && std::string_view(argv[index]) != "--no-error-dialog";
+    }
+    eaw::install_crash_handlers({"EAWEngine", error_dialogs});
+#endif
     // Status lines (builds, streaming, hot reload) appear as they happen even when redirected.
     std::cout << std::unitbuf;
+    Options parsed_options;
     try
     {
-        const auto options = parse_options(argc, argv);
+        parsed_options = parse_options(argc, argv);
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr << "error: " << error.what() << "\nRun with --help for the available options.\n";
+        return 2;
+    }
+    {
+        const auto& options = parsed_options;
+        if (options.crash_test)
+        {
+            if (*options.crash_test == "assert")
+            {
+                EAW_ASSERT_MSG(options.crash_test->empty(), "deliberate failure requested by --crash-test assert");
+            }
+            else if (*options.crash_test == "exception")
+            {
+                throw std::runtime_error("deliberate failure requested by --crash-test exception");
+            }
+            else
+            {
+                volatile int* null_pointer = nullptr;
+                *null_pointer = 1;
+            }
+        }
         const eaw::InstallationLocator locator;
         const auto installations = locator.discover(options.game_root);
         if (installations.empty())
@@ -1314,10 +1368,5 @@ int main(const int argc, char** argv)
         std::cerr << "The Direct3D 12 visual sandbox is available on Windows only.\n";
         return 2;
 #endif
-    }
-    catch (const std::exception& error)
-    {
-        std::cerr << "error: " << error.what() << '\n';
-        return 1;
     }
 }

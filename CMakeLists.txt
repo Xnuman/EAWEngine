@@ -11,6 +11,7 @@ add_library(eaw_core STATIC
     src/core/asset_path.cpp
     src/core/asset_environment.cpp
     src/core/dat_file.cpp
+    src/core/fatal_error.cpp
     src/core/dds_texture.cpp
     src/core/game_installation.cpp
     src/core/game_object_catalog.cpp
@@ -130,6 +131,7 @@ if(EAW_BUILD_GUI AND WIN32)
     target_link_libraries(EAWTools PRIVATE
         eaw_core
         eaw_imgui
+        eaw_platform
         d3d11
         dxgi
         dwmapi
@@ -152,12 +154,13 @@ if(WIN32)
     target_link_libraries(eaw_core PRIVATE advapi32)
 
     add_library(eaw_platform STATIC
+        src/platform/win32_crash_handler.cpp
         src/platform/win32_window.cpp
     )
     target_include_directories(eaw_platform PUBLIC src/platform/include)
     target_compile_features(eaw_platform PUBLIC cxx_std_20)
     target_compile_definitions(eaw_platform PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(eaw_platform PRIVATE user32)
+    target_link_libraries(eaw_platform PUBLIC eaw_core PRIVATE user32)
 
     add_library(eaw_render_d3d12 STATIC
         src/render/d3d12_renderer.cpp

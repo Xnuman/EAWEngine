@@ -148,6 +148,13 @@ interpolation of presentation. GPU picks identify clicked objects. Orders become
 simulation move commands, one per unit, spread on a grid in id order so the
 command stream stays deterministic.
 
+Unexpected failures are not handled. `eaw::fatal_error` and `EAW_ASSERT`
+(core) report and end the process; the platform's crash handlers route uncaught
+C++ exceptions (decoded from the MSVC exception record before unwinding, so a
+debugger still sees the throw site), access violations and other structured
+exceptions, pure virtual calls, and invalid CRT parameters into the same report.
+The report goes to stderr and, for interactive runs, to an error window.
+
 Selection uses a second render target holding a pick id per pixel: the scene
 instance index plus one, zero for nothing, and a reserved value for terrain.
 Opaque, alpha-tested, and terrain pipelines write it; blended and background
