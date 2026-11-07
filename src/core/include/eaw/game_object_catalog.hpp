@@ -46,6 +46,14 @@ struct GameObjectFieldLookup
     const XmlDefinition* declared_by{};
 };
 
+// Every occurrence of a repeatable field (for example Squadron_Offsets), in source order, taken
+// from the first definition in the variant chain that declares the field at all.
+struct GameObjectFieldList
+{
+    std::vector<const XmlNode*> fields;
+    const XmlDefinition* declared_by{};
+};
+
 // Read-only index of every named XML definition, keyed by name and by name CRC.
 // The catalog borrows the database: the XmlAssetDatabase must outlive it.
 class GameObjectCatalog final
@@ -64,6 +72,8 @@ public:
     // parent of the same element type. Cycles and chains deeper than a fixed budget stop the
     // walk; `diagnostics` (when supplied) receives a contextual message for them.
     [[nodiscard]] GameObjectFieldLookup field(const XmlDefinition& definition, std::string_view field_name, std::vector<std::string>* diagnostics = nullptr) const;
+
+    [[nodiscard]] GameObjectFieldList fields(const XmlDefinition& definition, std::string_view field_name, std::vector<std::string>* diagnostics = nullptr) const;
 
     // Chooses the definition a CRC reference most plausibly names. Several element types can
     // share a name; a candidate with a model for the requested context is preferred, otherwise

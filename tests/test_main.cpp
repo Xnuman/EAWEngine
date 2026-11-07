@@ -948,6 +948,9 @@ void test_game_object_catalog()
                 "<SpaceUnit Name=\"Loop_B\"><Variant_Of_Existing_Type>Loop_A</Variant_Of_Existing_Type></SpaceUnit>"
                 "<SFXEvent Name=\"Shared_Name\" />"
                 "<SpaceProp Name=\"Shared_Name\"><Space_Model_Name>Missing_Model</Space_Model_Name></SpaceProp>"
+                "<Squadron Name=\"Test_Squadron\"><Squadron_Units>Unit_A</Squadron_Units><Squadron_Units>Unit_A, Unit_A_Variant, Missing_Member</Squadron_Units>"
+                "<Squadron_Offsets>10.0, 0.0, 0.0</Squadron_Offsets><Squadron_Offsets>bad</Squadron_Offsets></Squadron>"
+                "<Container Name=\"Test_Team\" />"
                 "</SpaceUnits>";
     }
     std::ofstream(model_root / "EV_UNIT.ALO", std::ios::binary) << "x";
@@ -1017,6 +1020,44 @@ void test_game_object_catalog()
     require(layout.placements.size() == 3 && layout.untyped == 1 && layout.missing_model_files == 1 && layout.placements[0].model_path == "DATA/ART/MODELS/EV_UNIT.ALO" &&
                 layout.placements[0].type == unit.definition && layout.placements[2].object_index == 3 && layout.placements[2].model_path.empty(),
             "map object layout resolution failed");
+
+    // Repeated fields keep source order; a single-valued lookup takes the last occurrence.
+    const auto squadron_type = catalog.find("Test_Squadron");
+    require(squadron_type.size() == 1 && catalog.fields(*squadron_type.front(), "Squadron_Offsets").fields.size() == 2 &&
+                catalog.field(*squadron_type.front(), "Squadron_Units").field->text.find("Missing_Member") != std::string::npos,
+            "repeated XML field lookup failed");
+
+    // A placed space squadron expands into its members at their rotated Squadron_Offsets; a land
+    // team container is counted instead of guessed.
+    eaw::TedMap squadron_map;
+    squadron_map.type = eaw::TedMapType::space;
+    auto squadron_object = placed;
+    squadron_object.scale = 1.0F;
+    squadron_object.crc = eaw::game_object_name_crc("Test_Squadron");
+    squadron_map.placed_objects.push_back(squadron_object);
+    auto team = placed;
+    team.crc = eaw::game_object_name_crc("Test_Team");
+    squadron_map.placed_objects.push_back(team);
+    const auto squadron_layout = eaw::build_map_object_layout(squadron_map, catalog, vfs);
+    require(squadron_layout.expanded_members == 2 && squadron_layout.untyped == 1 && squadron_layout.unexpanded_containers == 1 && squadron_layout.placements.size() == 3,
+            "squadron expansion counts are wrong");
+    const auto& lead = squadron_layout.placements[0];
+    const auto lead_origin = eaw::alo_transform_point({}, lead.transform);
+    require(lead.container == squadron_type.front() && lead.member == 0 && lead.type == unit.definition && std::fabs(lead_origin.x - 10.0F) < 1.0e-4F && std::fabs(lead_origin.y - 30.0F) < 1.0e-4F &&
+                std::fabs(lead_origin.z - 30.0F) < 1.0e-4F,
+            "squadron member offset was not rotated into the squadron frame");
+    const auto wing_origin = eaw::alo_transform_point({}, squadron_layout.placements[1].transform);
+    require(squadron_layout.placements[1].member == 1 && std::fabs(wing_origin.x - 10.0F) < 1.0e-4F && std::fabs(wing_origin.y - 20.0F) < 1.0e-4F,
+            "malformed squadron offset did not fall back to the squadron origin");
+    const auto mentions = [&](const std::string_view text)
+    {
+        return std::ranges::any_of(squadron_layout.diagnostics,
+                                   [&](const std::string& message)
+                                   {
+                                       return message.find(text) != std::string::npos;
+                                   });
+    };
+    require(mentions("malformed Squadron_Offsets 'bad'") && mentions("'Missing_Member' is not defined"), "squadron expansion diagnostics are missing");
     std::filesystem::remove_all(root, ignored);
 }
 

@@ -84,6 +84,30 @@ struct VisualDraw
     std::uint32_t material{};
 };
 
+// A model in the scene: a contiguous range of draws sharing one bone index space.
+struct VisualMesh
+{
+    std::string name;
+    std::uint32_t first_draw{};
+    std::uint32_t draw_count{};
+    std::uint32_t bone_count{};
+    std::array<float, 3> bounds_minimum{};
+    std::array<float, 3> bounds_maximum{};
+};
+
+inline constexpr std::array<float, 16> visual_identity_transform{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+
+// One placed copy of a mesh. `transform` maps mesh space to world space in the row-vector
+// convention (translation in elements 12..14). Vertex bone indices are offset by `bone_offset`
+// into the scene bone palette, so instances can share a pose or own one.
+struct VisualInstance
+{
+    std::uint32_t mesh{};
+    std::array<float, 16> transform{visual_identity_transform};
+    std::array<float, 4> tint{1.0F, 1.0F, 1.0F, 1.0F};
+    std::uint32_t bone_offset{};
+};
+
 struct VisualScene
 {
     std::string name;
@@ -92,6 +116,9 @@ struct VisualScene
     std::vector<VisualTexture> textures;
     std::vector<VisualMaterial> materials;
     std::vector<VisualDraw> draws;
+    std::vector<VisualMesh> meshes;
+    std::vector<VisualInstance> instances;
+    // Size of the scene bone palette (every instance's bone_offset + mesh bone_count fits in it).
     std::uint32_t bone_count{};
     std::array<float, 3> bounds_minimum{};
     std::array<float, 3> bounds_maximum{};

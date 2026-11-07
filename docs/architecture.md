@@ -78,6 +78,15 @@ that palette only after the frame's direct-queue fence has completed, avoiding
 both per-frame resource creation and writes into memory still consumed by the
 GPU.
 
+A visual scene groups draws into meshes (one per model) and places them with
+instances. Each instance carries a world transform, a tint, and a bone-palette
+offset in an immutable structured buffer. Instances are sorted by mesh at load
+so every draw of a mesh is issued once with `DrawIndexedInstanced` over a
+contiguous instance range; the range start is a root constant because
+`SV_InstanceID` restarts at zero for every draw. Map scenes share one
+bind-pose palette today; per-instance poses will come from simulation
+snapshots.
+
 ## Multithreading direction
 
 "Use all cores" is not an architecture by itself. The engine uses a dependency

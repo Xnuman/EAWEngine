@@ -5,6 +5,7 @@
 #include "eaw/ted_map.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,10 @@ struct MapObjectPlacement
     // context or the referenced file is missing from every layer.
     std::string model_path;
     AloMatrix4 transform{};
+    // Set for members expanded from a space squadron: the squadron type and the member's index.
+    // Several placements then share one object_index.
+    const XmlDefinition* container{};
+    std::uint32_t member{};
 };
 
 struct MapObjectLayout
@@ -37,6 +42,9 @@ struct MapObjectLayout
     std::size_t untyped{};
     std::size_t without_model{};
     std::size_t missing_model_files{};
+    std::size_t expanded_members{};
+    // Land teams and companies whose members are arranged by runtime formation behavior.
+    std::size_t unexpanded_containers{};
     std::vector<std::string> diagnostics;
 };
 

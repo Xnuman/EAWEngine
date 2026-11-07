@@ -132,3 +132,13 @@ that order and the rotation direction are inference until compared with the
 original game. Squadrons, companies, and teams have no model of their own and must
 be expanded into their member units. The audit indexes every XML file under
 `Data/XML`, not only files registered by the game's object-file manifests.
+
+Space squadrons place no model of their own. Their `Squadron_Units` field lists
+member types, and repeated `Squadron_Offsets` fields give each member's offset
+in the squadron's local frame. Some stock definitions repeat `Squadron_Units`;
+the engine uses the last occurrence, which is the ordinary override rule but is
+not yet confirmed against the original game. Across the FoC corpus, 327 placed
+squadrons expand into 1,026 member ships. Land teams and companies list members
+(`Company_Units`, containers with `ContainerArrangement`) without offsets, so
+their layout is runtime formation behavior; the 247 placed instances are counted
+and left unexpanded until the simulation owns formations.

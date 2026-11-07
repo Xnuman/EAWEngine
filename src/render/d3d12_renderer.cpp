@@ -405,12 +405,25 @@ struct D3d12Renderer::Impl
         std::uint64_t fence_value{};
     };
 
+    // One draw of one mesh, issued once for every instance of that mesh. Instances are sorted by
+    // mesh at load, so each batch reads a contiguous instance range.
     struct GpuDraw
     {
         VisualDraw geometry;
         std::array<float, 4> tint{};
         std::uint32_t descriptor_index{};
         VisualBlendMode blend{VisualBlendMode::opaque};
+        std::uint32_t first_instance{};
+        std::uint32_t instance_count{1};
+    };
+
+    // Structured-buffer layout shared with the vertex shader (96 bytes).
+    struct GpuInstance
+    {
+        std::array<float, 16> transform{};
+        std::array<float, 4> tint{};
+        std::uint32_t bone_offset{};
+        std::array<std::uint32_t, 3> padding{};
     };
 
     HWND window{};
@@ -456,6 +469,10 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12Resource> vertex_buffer;
     D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view{};
     ComPtr<ID3D12Resource> texture;
+    // The validation fallback keeps its own identity instance; its pending COMMON-to-SRV transition
+    // holds a raw resource pointer, so it must outlive any scene that replaces the scene buffer.
+    ComPtr<ID3D12Resource> identity_instance_buffer;
+    ComPtr<ID3D12Resource> scene_instance_buffer;
     ComPtr<ID3D12Resource> scene_vertex_buffer;
     ComPtr<ID3D12Resource> scene_index_buffer;
     D3D12_VERTEX_BUFFER_VIEW scene_vertex_view{};
@@ -688,11 +705,24 @@ struct BoneTransform
     row_major float4x4 transform;
 };
 StructuredBuffer<BoneTransform> BoneTransforms : register(t1);
+struct InstanceData
+{
+    row_major float4x4 transform;
+    float4 tint;
+    uint bone_offset;
+    uint3 padding;
+};
+StructuredBuffer<InstanceData> Instances : register(t2);
 SamplerState SandboxSampler : register(s0);
 
 cbuffer FrameConstants : register(b0)
 {
-    float4x4 model_view_projection;
+    float4x4 view_projection;
+};
+
+cbuffer DrawConstants : register(b2)
+{
+    uint instance_base;
 };
 
 cbuffer MaterialConstants : register(b1)
@@ -708,6 +738,7 @@ struct VsInput
     float2 uv : TEXCOORD0;
     uint4 bone_indices : BLENDINDICES0;
     float4 bone_weights : BLENDWEIGHT0;
+    uint instance_id : SV_InstanceID;
 };
 
 struct PsInput
@@ -715,10 +746,14 @@ struct PsInput
     float4 position : SV_POSITION;
     float3 normal : NORMAL;
     float2 uv : TEXCOORD0;
+    float4 tint : COLOR0;
 };
 
 PsInput vs_main(VsInput input)
 {
+    // SV_InstanceID restarts at zero for every draw, so the batch's first instance arrives as a
+    // root constant.
+    const InstanceData instance = Instances[instance_base + input.instance_id];
     float4 skinned_position = 0.0f;
     float3 skinned_normal = 0.0f;
     float total_weight = 0.0f;
@@ -730,7 +765,7 @@ PsInput vs_main(VsInput input)
         {
             continue;
         }
-        const row_major float4x4 skin = BoneTransforms[input.bone_indices[influence]].transform;
+        const row_major float4x4 skin = BoneTransforms[input.bone_indices[influence] + instance.bone_offset].transform;
         skinned_position += mul(float4(input.position, 1.0f), skin) * weight;
         skinned_normal += mul(float4(input.normal, 0.0f), skin).xyz * weight;
         total_weight += weight;
@@ -746,15 +781,16 @@ PsInput vs_main(VsInput input)
         skinned_normal /= total_weight;
     }
     PsInput output;
-    output.position = mul(skinned_position, model_view_projection);
-    output.normal = skinned_normal;
+    output.position = mul(mul(skinned_position, instance.transform), view_projection);
+    output.normal = mul(float4(skinned_normal, 0.0f), instance.transform).xyz;
     output.uv = input.uv;
+    output.tint = instance.tint;
     return output;
 }
 
 float4 ps_main(PsInput input) : SV_TARGET
 {
-    float4 color = SandboxTexture.Sample(SandboxSampler, input.uv) * material_tint;
+    float4 color = SandboxTexture.Sample(SandboxSampler, input.uv) * material_tint * input.tint;
     if (material_flags.x != 0 && color.a < 0.5f)
     {
         discard;
@@ -775,7 +811,7 @@ float4 ps_main(PsInput input) : SV_TARGET
         range.RegisterSpace = 0;
         range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        std::array<D3D12_ROOT_PARAMETER, 4> parameters{};
+        std::array<D3D12_ROOT_PARAMETER, 6> parameters{};
         parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         parameters[0].Constants.ShaderRegister = 0;
         parameters[0].Constants.Num32BitValues = 16;
@@ -792,6 +828,14 @@ float4 ps_main(PsInput input) : SV_TARGET
         parameters[3].Descriptor.ShaderRegister = 1;
         parameters[3].Descriptor.RegisterSpace = 0;
         parameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+        parameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        parameters[4].Descriptor.ShaderRegister = 2;
+        parameters[4].Descriptor.RegisterSpace = 0;
+        parameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+        parameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        parameters[5].Constants.ShaderRegister = 2;
+        parameters[5].Constants.Num32BitValues = 1;
+        parameters[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 
         D3D12_STATIC_SAMPLER_DESC sampler{};
         sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -936,6 +980,8 @@ float4 ps_main(PsInput input) : SV_TARGET
         mip.data.assign(pixel_bytes.begin(), pixel_bytes.end());
         fallback.mips.push_back(std::move(mip));
         texture = upload_texture(upload, fallback, 0);
+        const GpuInstance identity{visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, 0, {}};
+        identity_instance_buffer = upload_buffer(upload, std::as_bytes(std::span(&identity, 1)), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"EAWEngine identity instance buffer");
         submit_upload(std::move(upload));
     }
 
@@ -1088,13 +1134,76 @@ float4 ps_main(PsInput input) : SV_TARGET
         {
             throw std::invalid_argument("visual scene exceeds the D3D12 texture descriptor capacity");
         }
+        if (scene.meshes.empty() || scene.instances.empty())
+        {
+            throw std::invalid_argument("visual scene has no meshes or instances");
+        }
+        if (scene.instances.size() > std::numeric_limits<std::uint32_t>::max())
+        {
+            throw std::invalid_argument("visual scene has too many instances for one D3D12 instance buffer");
+        }
+        for (std::size_t index = 0; index < scene.meshes.size(); ++index)
+        {
+            const auto& mesh = scene.meshes[index];
+            if (static_cast<std::uint64_t>(mesh.first_draw) + mesh.draw_count > scene.draws.size())
+            {
+                throw std::invalid_argument("visual mesh " + std::to_string(index) + " (" + mesh.name + ") references draws outside the scene");
+            }
+        }
+        for (std::size_t index = 0; index < scene.instances.size(); ++index)
+        {
+            const auto& instance = scene.instances[index];
+            if (instance.mesh >= scene.meshes.size())
+            {
+                throw std::invalid_argument("visual instance " + std::to_string(index) + " references a missing mesh");
+            }
+            if (static_cast<std::uint64_t>(instance.bone_offset) + scene.meshes[instance.mesh].bone_count > std::max(scene.bone_count, 1U))
+            {
+                throw std::invalid_argument("visual instance " + std::to_string(index) + " bone range exceeds the scene bone palette");
+            }
+            if (!std::ranges::all_of(instance.transform,
+                                     [](const float value)
+                                     {
+                                         return std::isfinite(value);
+                                     }))
+            {
+                throw std::invalid_argument("visual instance " + std::to_string(index) + " has a non-finite transform");
+            }
+        }
         create_bone_buffers(scene.bone_count);
+
+        // Group instances by mesh so each mesh's draws cover one contiguous instance range.
+        std::vector<std::uint32_t> order(scene.instances.size());
+        for (std::uint32_t index = 0; index < order.size(); ++index)
+        {
+            order[index] = index;
+        }
+        std::ranges::stable_sort(order, {},
+                                 [&](const std::uint32_t index)
+                                 {
+                                     return scene.instances[index].mesh;
+                                 });
+        std::vector<GpuInstance> gpu_instances;
+        gpu_instances.reserve(order.size());
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> mesh_ranges(scene.meshes.size(), {0U, 0U});
+        for (const auto index : order)
+        {
+            const auto& instance = scene.instances[index];
+            auto& range = mesh_ranges[instance.mesh];
+            if (range.second == 0)
+            {
+                range.first = static_cast<std::uint32_t>(gpu_instances.size());
+            }
+            ++range.second;
+            gpu_instances.push_back({instance.transform, instance.tint, instance.bone_offset, {}});
+        }
 
         auto upload = begin_upload(L"EAWEngine scene upload");
         const auto vertex_bytes = std::as_bytes(std::span(scene.vertices));
         const auto index_bytes = std::as_bytes(std::span(scene.indices));
         auto new_vertex_buffer = upload_buffer(upload, vertex_bytes, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, L"EAWEngine scene vertex buffer");
         auto new_index_buffer = upload_buffer(upload, index_bytes, D3D12_RESOURCE_STATE_INDEX_BUFFER, L"EAWEngine scene index buffer");
+        auto new_instance_buffer = upload_buffer(upload, std::as_bytes(std::span(gpu_instances)), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"EAWEngine scene instance buffer");
 
         std::vector<ComPtr<ID3D12Resource>> new_textures;
         new_textures.reserve(scene.textures.size());
@@ -1105,23 +1214,33 @@ float4 ps_main(PsInput input) : SV_TARGET
 
         std::vector<GpuDraw> new_draws;
         new_draws.reserve(scene.draws.size());
-        for (const auto& draw : scene.draws)
+        for (std::size_t mesh_index = 0; mesh_index < scene.meshes.size(); ++mesh_index)
         {
-            if (draw.material >= scene.materials.size() || static_cast<std::uint64_t>(draw.first_index) + draw.index_count > scene.indices.size())
+            const auto& mesh = scene.meshes[mesh_index];
+            const auto [first_instance, instance_count] = mesh_ranges[mesh_index];
+            if (instance_count == 0)
             {
-                throw std::invalid_argument("visual scene draw references data outside its buffers");
+                continue;
             }
-            const auto& material = scene.materials[draw.material];
-            std::uint32_t descriptor_index = 0;
-            if (material.base_color_texture != invalid_visual_texture)
+            for (auto draw_index = mesh.first_draw; draw_index < mesh.first_draw + mesh.draw_count; ++draw_index)
             {
-                if (material.base_color_texture >= scene.textures.size())
+                const auto& draw = scene.draws[draw_index];
+                if (draw.material >= scene.materials.size() || static_cast<std::uint64_t>(draw.first_index) + draw.index_count > scene.indices.size())
                 {
-                    throw std::invalid_argument("visual material references a missing texture");
+                    throw std::invalid_argument("visual scene draw references data outside its buffers");
                 }
-                descriptor_index = material.base_color_texture + 1U;
+                const auto& material = scene.materials[draw.material];
+                std::uint32_t descriptor_index = 0;
+                if (material.base_color_texture != invalid_visual_texture)
+                {
+                    if (material.base_color_texture >= scene.textures.size())
+                    {
+                        throw std::invalid_argument("visual material references a missing texture");
+                    }
+                    descriptor_index = material.base_color_texture + 1U;
+                }
+                new_draws.push_back({draw, material.tint, descriptor_index, material.blend, first_instance, instance_count});
             }
-            new_draws.push_back({draw, material.tint, descriptor_index, material.blend});
         }
         std::ranges::stable_sort(new_draws,
                                  [](const GpuDraw& left, const GpuDraw& right)
@@ -1132,6 +1251,7 @@ float4 ps_main(PsInput input) : SV_TARGET
         submit_upload(std::move(upload));
         scene_vertex_buffer = std::move(new_vertex_buffer);
         scene_index_buffer = std::move(new_index_buffer);
+        scene_instance_buffer = std::move(new_instance_buffer);
         scene_textures = std::move(new_textures);
         scene_draws = std::move(new_draws);
         scene_vertex_view.BufferLocation = scene_vertex_buffer->GetGPUVirtualAddress();
@@ -1262,6 +1382,7 @@ float4 ps_main(PsInput input) : SV_TARGET
         const auto matrix = camera_matrix();
         command_list->SetGraphicsRoot32BitConstants(0, 16, &matrix, 0);
         command_list->SetGraphicsRootShaderResourceView(3, frame.bone_buffer->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(4, (scene_draws.empty() ? identity_instance_buffer : scene_instance_buffer)->GetGPUVirtualAddress());
         command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
         struct MaterialConstants
@@ -1284,6 +1405,8 @@ float4 ps_main(PsInput input) : SV_TARGET
         {
             command_list->SetPipelineState(opaque_pipeline.Get());
             bind_material(0, {1.0F, 1.0F, 1.0F, 1.0F}, false);
+            const std::uint32_t instance_base = 0;
+            command_list->SetGraphicsRoot32BitConstants(5, 1, &instance_base, 0);
             command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view);
             command_list->DrawInstanced(3, 1, 0, 0);
         }
@@ -1304,7 +1427,8 @@ float4 ps_main(PsInput input) : SV_TARGET
                 }
                 command_list->SetPipelineState(pipeline);
                 bind_material(draw.descriptor_index, draw.tint, draw.blend == VisualBlendMode::alpha_test);
-                command_list->DrawIndexedInstanced(draw.geometry.index_count, 1, draw.geometry.first_index, draw.geometry.base_vertex, 0);
+                command_list->SetGraphicsRoot32BitConstants(5, 1, &draw.first_instance, 0);
+                command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
             }
         }
 

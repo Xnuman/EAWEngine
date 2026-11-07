@@ -7,6 +7,7 @@
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/legacy_material.hpp"
 #include "eaw/lua_script.hpp"
+#include "eaw/map_object_layout.hpp"
 #include "eaw/mtd_directory.hpp"
 #include "eaw/text_encoding.hpp"
 #include "eaw/ted_map.hpp"
@@ -1138,6 +1139,8 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
     std::size_t ambiguous = 0;
     std::size_t modeled = 0;
     std::size_t model_files = 0;
+    std::size_t squadron_members = 0;
+    std::size_t unexpanded_containers = 0;
     std::map<std::uint32_t, AuditExample> unknown_crcs;
     std::map<std::string, std::size_t> element_types;
     std::map<std::string, std::size_t> model_fields;
@@ -1165,6 +1168,9 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
         }
         ++maps;
         const auto context = map.type == eaw::TedMapType::land ? eaw::GameModelContext::land : eaw::GameModelContext::space;
+        const auto layout = eaw::build_map_object_layout(map, catalog, vfs);
+        squadron_members += layout.expanded_members;
+        unexpanded_containers += layout.unexpanded_containers;
         for (const auto& object : map.placed_objects)
         {
             ++placed;
@@ -1225,7 +1231,9 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
               << "Ambiguous CRC matches: " << ambiguous << '\n'
               << "With a model reference: " << modeled << " (" << percent(modeled, placed) << ")\n"
               << "Model files resolved: " << model_files << " (" << percent(model_files, placed) << "), unique models: " << unique_models.size() << '\n'
-              << "Unknown CRCs: " << unknown_crcs.size() << '\n';
+              << "Unknown CRCs: " << unknown_crcs.size() << '\n'
+              << "Space squadron members expanded: " << squadron_members << '\n'
+              << "Land teams/companies not expanded: " << unexpanded_containers << '\n';
     for (std::size_t axis = 0; axis < rotation_minimum.size() && placed > 0; ++axis)
     {
         std::cout << "Rotation component " << axis << ": " << rotation_minimum[axis] << " .. " << rotation_maximum[axis] << ", non-zero " << rotation_nonzero[axis] << '\n';

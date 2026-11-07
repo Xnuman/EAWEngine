@@ -2,7 +2,11 @@
 
 #include "eaw/alo_model.hpp"
 #include "eaw/dds_texture.hpp"
+#include "eaw/game_object_catalog.hpp"
 #include "eaw/legacy_material.hpp"
+#include "eaw/map_object_layout.hpp"
+#include "eaw/ted_map.hpp"
+#include "eaw/xml_asset_database.hpp"
 #include "eaw/virtual_file_system.hpp"
 
 #include <algorithm>
@@ -203,36 +207,35 @@ AloVector3 transform_direction(const AloVector3& direction, const AloMatrix4& ma
     return result;
 }
 
-} // namespace
-
-VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, const std::string_view model_path)
+// Accumulates models into one scene with a shared, deduplicated texture table.
+struct SceneBuilder
 {
-    const auto resolved = vfs.resolve(model_path);
-    if (!resolved)
-    {
-        throw std::runtime_error("visual model was not found: " + std::string(model_path));
-    }
-    VisualModelAsset asset;
-    asset.model = AloModel::parse(vfs.read(resolved->virtual_path));
-    const auto& model = asset.model;
-    const auto bind_pose = model.bind_pose();
-    asset.inverse_bind_pose.reserve(bind_pose.size());
-    for (const auto& transform : bind_pose)
-    {
-        asset.inverse_bind_pose.push_back(alo_inverse(transform));
-    }
+    const VirtualFileSystem& vfs;
+    VisualScene& scene;
+    std::unordered_map<std::string, std::uint32_t> texture_indices;
+};
 
-    auto& scene = asset.scene;
-    scene.name = resolved->virtual_path;
+// Appends one ALO model as a new mesh (its draws, vertices, indices, and any new textures) and
+// returns the mesh index. Vertices stay in bind-pose model space with model-wide bone indices.
+std::uint32_t append_model(SceneBuilder& builder, const AloModel& model, const std::string_view name)
+{
+    auto& scene = builder.scene;
+    auto& texture_indices = builder.texture_indices;
+    const auto& vfs = builder.vfs;
+    const auto bind_pose = model.bind_pose();
     if (model.bones.size() > std::numeric_limits<std::uint32_t>::max())
     {
         throw std::runtime_error("ALO skeleton exceeds the visual scene bone index range");
     }
-    scene.bone_count = static_cast<std::uint32_t>(model.bones.size());
-    scene.warnings = model.warnings;
-    scene.bounds_minimum.fill(std::numeric_limits<float>::max());
-    scene.bounds_maximum.fill(std::numeric_limits<float>::lowest());
-    std::unordered_map<std::string, std::uint32_t> texture_indices;
+    VisualMesh visual_mesh;
+    visual_mesh.name = name;
+    visual_mesh.first_draw = static_cast<std::uint32_t>(scene.draws.size());
+    visual_mesh.bone_count = static_cast<std::uint32_t>(model.bones.size());
+    visual_mesh.bounds_minimum.fill(std::numeric_limits<float>::max());
+    visual_mesh.bounds_maximum.fill(std::numeric_limits<float>::lowest());
+    const auto first_vertex = scene.vertices.size();
+    const auto first_scene_index = scene.indices.size();
+    const auto first_material = scene.materials.size();
     static constexpr std::array<std::array<float, 4>, 6> palette{{
         {0.35F, 0.78F, 0.82F, 1.0F},
         {0.42F, 0.63F, 0.88F, 1.0F},
@@ -345,12 +348,12 @@ VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, const std::str
                 }
                 scene.vertices.push_back(
                     {{position.x, position.y, position.z}, {normal.x, normal.y, normal.z}, {vertex.texture_coordinates[0].x, vertex.texture_coordinates[0].y}, bone_indices, bone_weights});
-                scene.bounds_minimum[0] = std::min(scene.bounds_minimum[0], position.x);
-                scene.bounds_minimum[1] = std::min(scene.bounds_minimum[1], position.y);
-                scene.bounds_minimum[2] = std::min(scene.bounds_minimum[2], position.z);
-                scene.bounds_maximum[0] = std::max(scene.bounds_maximum[0], position.x);
-                scene.bounds_maximum[1] = std::max(scene.bounds_maximum[1], position.y);
-                scene.bounds_maximum[2] = std::max(scene.bounds_maximum[2], position.z);
+                visual_mesh.bounds_minimum[0] = std::min(visual_mesh.bounds_minimum[0], position.x);
+                visual_mesh.bounds_minimum[1] = std::min(visual_mesh.bounds_minimum[1], position.y);
+                visual_mesh.bounds_minimum[2] = std::min(visual_mesh.bounds_minimum[2], position.z);
+                visual_mesh.bounds_maximum[0] = std::max(visual_mesh.bounds_maximum[0], position.x);
+                visual_mesh.bounds_maximum[1] = std::max(visual_mesh.bounds_maximum[1], position.y);
+                visual_mesh.bounds_maximum[2] = std::max(visual_mesh.bounds_maximum[2], position.z);
             }
 
             const auto first_index = static_cast<std::uint32_t>(scene.indices.size());
@@ -379,10 +382,141 @@ VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, const std::str
         }
     }
 
-    if (scene.vertices.empty() || scene.indices.empty() || scene.draws.empty())
+    visual_mesh.draw_count = static_cast<std::uint32_t>(scene.draws.size()) - visual_mesh.first_draw;
+    if (visual_mesh.draw_count == 0)
     {
+        // Roll back so a model without visible geometry leaves no partial data behind.
+        scene.vertices.resize(first_vertex);
+        scene.indices.resize(first_scene_index);
+        scene.materials.resize(first_material);
         throw std::runtime_error("ALO model has no visible renderable geometry");
     }
+    const auto mesh_index = static_cast<std::uint32_t>(scene.meshes.size());
+    scene.meshes.push_back(std::move(visual_mesh));
+    return mesh_index;
+}
+
+// Expands the scene bounds by every instance's transformed mesh bounds.
+void update_scene_bounds(VisualScene& scene)
+{
+    scene.bounds_minimum.fill(std::numeric_limits<float>::max());
+    scene.bounds_maximum.fill(std::numeric_limits<float>::lowest());
+    for (const auto& instance : scene.instances)
+    {
+        const auto& mesh = scene.meshes[instance.mesh];
+        for (unsigned corner = 0; corner < 8; ++corner)
+        {
+            const AloVector3 local{(corner & 1U) != 0 ? mesh.bounds_maximum[0] : mesh.bounds_minimum[0], (corner & 2U) != 0 ? mesh.bounds_maximum[1] : mesh.bounds_minimum[1],
+                                   (corner & 4U) != 0 ? mesh.bounds_maximum[2] : mesh.bounds_minimum[2]};
+            AloMatrix4 transform;
+            transform.values = instance.transform;
+            const auto world = alo_transform_point(local, transform);
+            const std::array<float, 3> point{world.x, world.y, world.z};
+            for (std::size_t axis = 0; axis < point.size(); ++axis)
+            {
+                scene.bounds_minimum[axis] = std::min(scene.bounds_minimum[axis], point[axis]);
+                scene.bounds_maximum[axis] = std::max(scene.bounds_maximum[axis], point[axis]);
+            }
+        }
+    }
+}
+
+} // namespace
+
+VisualModelAsset build_visual_model(const VirtualFileSystem& vfs, const std::string_view model_path)
+{
+    const auto resolved = vfs.resolve(model_path);
+    if (!resolved)
+    {
+        throw std::runtime_error("visual model was not found: " + std::string(model_path));
+    }
+    VisualModelAsset asset;
+    asset.model = AloModel::parse(vfs.read(resolved->virtual_path));
+    for (const auto& transform : asset.model.bind_pose())
+    {
+        asset.inverse_bind_pose.push_back(alo_inverse(transform));
+    }
+    auto& scene = asset.scene;
+    scene.name = resolved->virtual_path;
+    scene.warnings = asset.model.warnings;
+    SceneBuilder builder{vfs, scene, {}};
+    const auto mesh = append_model(builder, asset.model, resolved->virtual_path);
+    scene.instances.push_back({mesh});
+    scene.bone_count = scene.meshes[mesh].bone_count;
+    update_scene_bounds(scene);
+    return asset;
+}
+
+VisualMapAsset build_visual_map(const VirtualFileSystem& vfs, const std::string_view map_path)
+{
+    const auto resolved = vfs.resolve(map_path);
+    if (!resolved)
+    {
+        throw std::runtime_error("map was not found: " + std::string(map_path));
+    }
+    VisualMapAsset asset;
+    const auto map = TedMap::parse(vfs.read(resolved->virtual_path));
+    asset.land = map.type == TedMapType::land;
+    const auto database = XmlAssetDatabase::build(vfs);
+    const auto catalog = GameObjectCatalog::build(database);
+    const auto layout = build_map_object_layout(map, catalog, vfs);
+    asset.untyped = layout.untyped;
+    asset.without_model = layout.without_model;
+    asset.missing_model_files = layout.missing_model_files;
+    asset.expanded_members = layout.expanded_members;
+    asset.unexpanded_containers = layout.unexpanded_containers;
+
+    auto& scene = asset.scene;
+    scene.name = resolved->virtual_path;
+    SceneBuilder builder{vfs, scene, {}};
+    std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
+    for (const auto& placement : layout.placements)
+    {
+        if (placement.model_path.empty())
+        {
+            continue;
+        }
+        auto [entry, inserted] = meshes.try_emplace(placement.model_path);
+        if (inserted)
+        {
+            try
+            {
+                entry->second = append_model(builder, AloModel::parse(vfs.read(placement.model_path)), placement.model_path);
+            }
+            catch (const std::exception& error)
+            {
+                // Particle ALOs and malformed models are reported once and skipped.
+                scene.warnings.push_back(placement.model_path + ": " + error.what());
+            }
+        }
+        if (!entry->second)
+        {
+            ++asset.unrenderable_placements;
+            continue;
+        }
+        // Every instance shares the identity (bind-pose) palette; per-instance animation is a
+        // simulation-driven feature for later milestones.
+        scene.instances.push_back({*entry->second, placement.transform.values});
+    }
+    for (const auto& mesh : scene.meshes)
+    {
+        scene.bone_count = std::max(scene.bone_count, mesh.bone_count);
+    }
+    scene.bone_count = std::max(scene.bone_count, 1U);
+    constexpr std::size_t maximum_reported_diagnostics = 50;
+    for (std::size_t index = 0; index < layout.diagnostics.size() && index < maximum_reported_diagnostics; ++index)
+    {
+        scene.warnings.push_back(layout.diagnostics[index]);
+    }
+    if (layout.diagnostics.size() > maximum_reported_diagnostics)
+    {
+        scene.warnings.push_back(std::to_string(layout.diagnostics.size() - maximum_reported_diagnostics) + " more object diagnostics omitted");
+    }
+    if (scene.instances.empty())
+    {
+        throw std::runtime_error("map has no placed objects with renderable models: " + resolved->virtual_path);
+    }
+    update_scene_bounds(scene);
     return asset;
 }
 

@@ -174,7 +174,9 @@ XML definition, follows `Variant_Of_Existing_Type` inheritance to the
 `Space_Model_Name` or `Land_Model_Name` for the map type, and checks that the
 model exists in the layered VFS. It reports coverage, resolved element types,
 unknown CRCs, typed objects without a model (such as squadrons and companies,
-which spawn member units), missing model files, and variant-chain diagnostics:
+which spawn member units), missing model files, and variant-chain diagnostics.
+It also reports how many space-squadron members were expanded and how many land
+teams/companies were left unexpanded:
 
 ```powershell
 EAWAssetInspector.exe map-objects Data/Art/Maps --game foc

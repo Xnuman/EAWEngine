@@ -38,6 +38,7 @@ struct Options
     std::string probe{"Data/XML/GameObjectFiles.xml"};
     std::string model{"Data/Art/Models/EV_Acclamator.alo"};
     std::optional<std::string> animation;
+    std::optional<std::string> map;
     std::uint32_t width{1600};
     std::uint32_t height{900};
     std::uint32_t frame_latency{2};
@@ -61,6 +62,7 @@ void print_usage()
               << "  --probe <asset>    Resolve and read a virtual asset path\n"
               << "  --model <asset>    ALO model shown in the visual sandbox\n"
               << "  --animation <asset>  ALA animation played with the model\n"
+              << "  --map <asset>      TED map whose placed objects are shown instead of a model\n"
               << "  --width <pixels>   Initial sandbox client width\n"
               << "  --height <pixels>  Initial sandbox client height\n"
               << "  --vsync <on|off>   Select synchronized or tearing-capable present\n"
@@ -162,6 +164,10 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--animation")
         {
             options.animation = require_value(argc, argv, index, argument);
+        }
+        else if (argument == "--map")
+        {
+            options.map = require_value(argc, argv, index, argument);
         }
         else if (argument == "--width")
         {
@@ -289,7 +295,32 @@ int main(const int argc, char** argv)
         eaw::D3d12Renderer renderer(window.native_handle(), window.client_width(), window.client_height(), renderer_options);
         std::optional<eaw::VisualModelAsset> visual_model;
         std::optional<eaw::AlaAnimation> visual_animation;
-        if (!options.validation_triangle)
+        if (!options.validation_triangle && options.map)
+        {
+            try
+            {
+                const auto start = std::chrono::steady_clock::now();
+                auto visual_map = eaw::build_visual_map(vfs, *options.map);
+                renderer.load_scene(visual_map.scene);
+                const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+                const auto& scene = visual_map.scene;
+                std::cout << "Visual map: " << scene.name << (visual_map.land ? " (land; terrain is not rendered yet)" : " (space)") << '\n'
+                          << "Objects: " << scene.instances.size() << " instances of " << scene.meshes.size() << " models | squadron members expanded: " << visual_map.expanded_members << '\n'
+                          << "Not drawn: " << visual_map.untyped << " untyped, " << visual_map.without_model << " without model, " << visual_map.missing_model_files << " missing model files, "
+                          << visual_map.unexpanded_containers << " land teams/companies, " << visual_map.unrenderable_placements << " unrenderable models\n"
+                          << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size()
+                          << " draws | Textures: " << scene.textures.size() << " | Built in " << seconds << " s\n";
+                for (const auto& warning : scene.warnings)
+                {
+                    std::cerr << "map warning: " << warning << '\n';
+                }
+            }
+            catch (const std::exception& error)
+            {
+                std::cerr << "map warning: " << error.what() << "; using the validation triangle\n";
+            }
+        }
+        else if (!options.validation_triangle)
         {
             try
             {

@@ -84,7 +84,9 @@ switches include `--vsync off`, `--frame-latency 1`, `--warp`, and
 tests. Use `--model <virtual-alo-path>` to inspect another mounted model,
 `--animation <virtual-ala-path>` to select an animation, or
 `--validation-triangle` to bypass asset loading. The sandbox automatically tries
-the model's `_IDLE_00.ALA` when present. Drag with the left mouse button to
+the model's `_IDLE_00.ALA` when present. `--map <virtual-ted-path>` instead
+loads every placed object of a map as one instanced scene; space squadrons are
+expanded into their member ships, while terrain is not rendered yet. Drag with the left mouse button to
 orbit, use the wheel to zoom, press Space to reset the camera, and press P to
 pause animation.
 

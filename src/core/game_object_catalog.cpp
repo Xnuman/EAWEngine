@@ -193,6 +193,25 @@ GameObjectFieldLookup GameObjectCatalog::field(const XmlDefinition& definition, 
     return {};
 }
 
+GameObjectFieldList GameObjectCatalog::fields(const XmlDefinition& definition, const std::string_view field_name, std::vector<std::string>* diagnostics) const
+{
+    GameObjectFieldList result;
+    const auto lookup = field(definition, field_name, diagnostics);
+    if (lookup.declared_by == nullptr)
+    {
+        return result;
+    }
+    result.declared_by = lookup.declared_by;
+    for (const auto& node : lookup.declared_by->fields)
+    {
+        if (equals_ascii(node.name, field_name))
+        {
+            result.fields.push_back(&node);
+        }
+    }
+    return result;
+}
+
 GameObjectTypeMatch GameObjectCatalog::resolve(const std::uint32_t crc, const GameModelContext context) const
 {
     const auto candidates = find_crc(crc);
