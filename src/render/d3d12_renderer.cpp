@@ -31,6 +31,8 @@
 
 // Offline-compiled shader model 6.0 bytecode (see src/render/shaders/sandbox.hlsl). Both entry
 // points embed the root signature, which the renderer creates from the vertex shader blob.
+#include "g_eaw_debug_ps.h"
+#include "g_eaw_debug_vs.h"
 #include "g_eaw_sandbox_ps.h"
 #include "g_eaw_sandbox_vs.h"
 #include "g_eaw_terrain_ps.h"
@@ -54,6 +56,8 @@ constexpr std::uint32_t fallback_texture_count = 3;
 constexpr std::uint64_t frame_constant_bytes = 256;
 constexpr DXGI_FORMAT back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 constexpr DXGI_FORMAT pick_format = DXGI_FORMAT_R32_UINT;
+// Temporary per-frame debug line capacity (an implementation limit, diagnosed through stats).
+constexpr std::size_t maximum_debug_lines = 32768;
 constexpr std::uint32_t pick_terrain = 0xFFFFFFFFU;
 
 std::string hresult_text(const HRESULT result)
@@ -404,7 +408,17 @@ struct D3d12Renderer::Impl
         // One pick-target texel copied by this frame, read once its fence completes.
         ComPtr<ID3D12Resource> pick_readback;
         std::optional<std::uint32_t> pick_request;
+        // Debug line vertices written once this context is reusable.
+        ComPtr<ID3D12Resource> debug_vertex_buffer;
+        std::byte* debug_vertices_mapped{};
         std::uint64_t fence_value{};
+    };
+
+    // Vertex layout of debug.hlsl.
+    struct DebugVertex
+    {
+        std::array<float, 3> position;
+        std::array<float, 4> color;
     };
 
     // Layout of FrameConstants in sandbox.hlsl.
@@ -530,6 +544,8 @@ struct D3d12Renderer::Impl
     std::uint32_t next_pick_request{1};
     std::optional<VisualPick> completed_pick;
     std::uint32_t highlighted_pick_id{};
+    std::vector<VisualDebugLine> debug_lines;
+    ComPtr<ID3D12PipelineState> debug_pipeline;
     std::uint32_t rtv_increment{};
 
     ComPtr<ID3D12RootSignature> root_signature;
@@ -650,6 +666,11 @@ struct D3d12Renderer::Impl
             {
                 frame.residency_buffer->Unmap(0, nullptr);
                 frame.residency_mapped = nullptr;
+            }
+            if (frame.debug_vertex_buffer && frame.debug_vertices_mapped != nullptr)
+            {
+                frame.debug_vertex_buffer->Unmap(0, nullptr);
+                frame.debug_vertices_mapped = nullptr;
             }
         }
 #if defined(_DEBUG)
@@ -841,6 +862,12 @@ struct D3d12Renderer::Impl
             check_hresult(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &readback_description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.pick_readback)),
                           "CreateCommittedResource(frame pick readback)");
             set_name(frame.pick_readback.Get(), L"EAWEngine frame pick readback " + std::to_wstring(index));
+
+            const auto debug_description = buffer_description(static_cast<std::uint64_t>(maximum_debug_lines) * 2U * sizeof(DebugVertex));
+            check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &debug_description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.debug_vertex_buffer)),
+                          "CreateCommittedResource(frame debug lines)");
+            set_name(frame.debug_vertex_buffer.Get(), L"EAWEngine frame debug lines " + std::to_wstring(index));
+            check_hresult(frame.debug_vertex_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.debug_vertices_mapped)), "Map(frame debug lines)");
         }
     }
 
@@ -1161,6 +1188,25 @@ struct D3d12Renderer::Impl
         description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
         description.BlendState.RenderTarget[1].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
         create_pipeline_state(L"terrain", description, terrain_pipeline);
+
+        // Debug lines: alpha-blended over the scene, depth-tested without depth or pick writes.
+        constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 2> debug_layout{{
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(DebugVertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(DebugVertex, color), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        }};
+        description.VS = {g_eaw_debug_vs, sizeof(g_eaw_debug_vs)};
+        description.PS = {g_eaw_debug_ps, sizeof(g_eaw_debug_ps)};
+        description.InputLayout = {debug_layout.data(), static_cast<UINT>(debug_layout.size())};
+        description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+        description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+        description.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+        description.BlendState.RenderTarget[0].BlendEnable = TRUE;
+        description.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+        description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+        description.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+        description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+        description.BlendState.RenderTarget[1].RenderTargetWriteMask = 0;
+        create_pipeline_state(L"debug lines", description, debug_pipeline);
 
         D3D12_DESCRIPTOR_HEAP_DESC shader_heap_description{};
         shader_heap_description.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -1813,6 +1859,27 @@ struct D3d12Renderer::Impl
         pending_pick = std::array<std::uint32_t, 2>{x, y};
     }
 
+    void set_debug_lines(const std::span<const VisualDebugLine> lines)
+    {
+        const auto finite = [](const auto& values)
+        {
+            return std::ranges::all_of(values,
+                                       [](const float value)
+                                       {
+                                           return std::isfinite(value);
+                                       });
+        };
+        if (!std::ranges::all_of(lines,
+                                 [&](const VisualDebugLine& line)
+                                 {
+                                     return finite(line.from) && finite(line.to) && finite(line.color);
+                                 }))
+        {
+            throw std::invalid_argument("debug lines contain non-finite values");
+        }
+        debug_lines.assign(lines.begin(), lines.end());
+    }
+
     void set_highlight(const std::optional<std::uint32_t> instance)
     {
         highlighted_pick_id = instance && *instance < std::numeric_limits<std::uint32_t>::max() ? *instance + 1U : 0U;
@@ -2018,6 +2085,14 @@ struct D3d12Renderer::Impl
         stream_scene_textures();
         write_texture_residency(frame);
         collect_pick(frame);
+        const auto debug_line_count = std::min(debug_lines.size(), maximum_debug_lines);
+        auto* debug_vertices = reinterpret_cast<DebugVertex*>(frame.debug_vertices_mapped);
+        for (std::size_t index = 0; index < debug_line_count; ++index)
+        {
+            const auto& line = debug_lines[index];
+            debug_vertices[index * 2U] = {line.from, line.color};
+            debug_vertices[index * 2U + 1U] = {line.to, line.color};
+        }
         // This frame context's fence has completed above, so its constants can be rewritten.
         FrameConstants constants{};
         constants.view_projection = camera_matrix();
@@ -2134,6 +2209,18 @@ struct D3d12Renderer::Impl
             {
                 draw_terrain();
             }
+        }
+
+        if (debug_line_count != 0)
+        {
+            command_list->SetPipelineState(debug_pipeline.Get());
+            command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+            D3D12_VERTEX_BUFFER_VIEW debug_view{};
+            debug_view.BufferLocation = frame.debug_vertex_buffer->GetGPUVirtualAddress();
+            debug_view.SizeInBytes = static_cast<UINT>(debug_line_count * 2U * sizeof(DebugVertex));
+            debug_view.StrideInBytes = sizeof(DebugVertex);
+            command_list->IASetVertexBuffers(0, 1, &debug_view);
+            command_list->DrawInstanced(static_cast<UINT>(debug_line_count * 2U), 1, 0, 0);
         }
 
         // A requested pick copies one texel; it is read when this frame's fence completes.
@@ -2377,6 +2464,16 @@ void D3d12Renderer::set_highlight(const std::optional<std::uint32_t> instance)
     impl_->set_highlight(instance);
 }
 
+void D3d12Renderer::set_debug_lines(const std::span<const VisualDebugLine> lines)
+{
+    impl_->set_debug_lines(lines);
+}
+
+std::size_t D3d12Renderer::max_debug_lines() noexcept
+{
+    return maximum_debug_lines;
+}
+
 void D3d12Renderer::load_scene(VisualScene scene)
 {
     impl_->load_scene(std::move(scene));
@@ -2422,6 +2519,7 @@ D3d12RendererStats D3d12Renderer::stats() const
         .pending_retirements = impl_->retired_resources.size(),
         .pending_texture_uploads = impl_->pending_texture_count,
         .reused_textures = impl_->last_reused_textures,
+        .dropped_debug_lines = impl_->debug_lines.size() - std::min(impl_->debug_lines.size(), maximum_debug_lines),
     };
 }
 

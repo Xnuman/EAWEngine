@@ -7,6 +7,7 @@
 #include "eaw/platform_window.hpp"
 #include "asset_cache.hpp"
 #include "camera_controller.hpp"
+#include "debug_draw.hpp"
 #include "visual_scene_builder.hpp"
 #endif
 
@@ -59,6 +60,8 @@ struct Options
     bool hot_reload{};
     // Pick this client pixel once the scene is shown (automation for the selection path).
     std::optional<std::array<std::uint32_t, 2>> pick;
+    // Start with every instance's bounds drawn (B toggles at runtime).
+    bool show_bounds{};
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};
@@ -88,6 +91,7 @@ void print_usage()
               << "  --upload-budget <MiB>  Texture bytes streamed per frame (default 64; 0 uploads all at once)\n"
               << "  --hot-reload       Rebuild the scene when its loose files or MEG archives change\n"
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
+              << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
               << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
@@ -155,6 +159,10 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--hot-reload")
         {
             options.hot_reload = true;
+        }
+        else if (argument == "--show-bounds")
+        {
+            options.show_bounds = true;
         }
         else if (argument == "--pick")
         {
@@ -463,15 +471,62 @@ int main(const int argc, char** argv)
         // What each scene instance shows (model path), for reporting selections.
         std::vector<std::string> instance_labels;
         std::optional<std::uint32_t> selected_instance;
+        // Per-instance bounds for debug drawing (model-space box and world transform).
+        struct InstanceBounds
+        {
+            std::array<float, 3> minimum{};
+            std::array<float, 3> maximum{};
+            std::array<float, 16> transform{};
+            bool background{};
+        };
+        std::vector<InstanceBounds> instance_bounds;
+        float axis_length = 1.0F;
+        bool show_all_bounds = options.show_bounds;
+        const auto update_debug_lines = [&]
+        {
+            std::vector<eaw::VisualDebugLine> lines;
+            if (show_all_bounds)
+            {
+                eaw::append_debug_axes(lines, {0.0F, 0.0F, 0.0F}, axis_length);
+                for (const auto& bounds : instance_bounds)
+                {
+                    if (!bounds.background)
+                    {
+                        eaw::append_debug_box(lines, bounds.minimum, bounds.maximum, bounds.transform, {0.3F, 0.85F, 0.95F, 0.45F});
+                    }
+                }
+            }
+            if (selected_instance && *selected_instance < instance_bounds.size())
+            {
+                const auto& bounds = instance_bounds[*selected_instance];
+                eaw::append_debug_box(lines, bounds.minimum, bounds.maximum, bounds.transform, {1.0F, 0.85F, 0.25F, 1.0F});
+            }
+            renderer.set_debug_lines(lines);
+            if (renderer.stats().dropped_debug_lines != 0)
+            {
+                std::cerr << "debug warning: " << renderer.stats().dropped_debug_lines << " debug lines exceed the per-frame capacity of " << eaw::D3d12Renderer::max_debug_lines() << '\n';
+            }
+        };
         const auto label_instances = [&](const eaw::VisualScene& scene)
         {
             instance_labels.clear();
             instance_labels.reserve(scene.instances.size());
+            instance_bounds.clear();
+            instance_bounds.reserve(scene.instances.size());
             for (const auto& instance : scene.instances)
             {
-                instance_labels.push_back(scene.meshes[instance.mesh].name + (instance.background ? " (backdrop)" : ""));
+                const auto& mesh = scene.meshes[instance.mesh];
+                instance_labels.push_back(mesh.name + (instance.background ? " (backdrop)" : ""));
+                instance_bounds.push_back({mesh.bounds_minimum, mesh.bounds_maximum, instance.transform, instance.background});
             }
+            float extent = 0.0F;
+            for (std::size_t axis = 0; axis < 3; ++axis)
+            {
+                extent = std::max(extent, scene.bounds_maximum[axis] - scene.bounds_minimum[axis]);
+            }
+            axis_length = std::max(extent * 0.1F, 1.0F);
             selected_instance.reset();
+            update_debug_lines();
         };
         // Model mode: Left/Right step through [bind pose, animations...].
         std::vector<std::string> animation_paths;
@@ -718,6 +773,13 @@ int main(const int argc, char** argv)
                     std::cout << "Selected: " << (pick->terrain ? "terrain" : "nothing") << '\n';
                 }
                 renderer.set_highlight(selected_instance);
+                update_debug_lines();
+            }
+            if (input.keys[static_cast<std::size_t>(eaw::Key::b)].pressed)
+            {
+                show_all_bounds = !show_all_bounds;
+                update_debug_lines();
+                std::cout << "Bounds overlay " << (show_all_bounds ? "on" : "off") << '\n';
             }
             const int animation_step = (input.keys[static_cast<std::size_t>(eaw::Key::right)].pressed ? 1 : 0) - (input.keys[static_cast<std::size_t>(eaw::Key::left)].pressed ? 1 : 0);
             if (visual_model && !tactical_camera && animation_step != 0 && !animation_paths.empty())

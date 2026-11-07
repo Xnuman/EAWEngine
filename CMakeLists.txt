@@ -162,12 +162,14 @@ if(WIN32)
     target_compile_features(eaw_render_d3d12 PUBLIC cxx_std_20)
     target_compile_definitions(eaw_render_d3d12 PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(eaw_render_d3d12 PRIVATE d3d12 dxgi)
-    target_sources(eaw_render_d3d12 PRIVATE src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/legacy_common.hlsli)
-    set_source_files_properties(src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/legacy_common.hlsli PROPERTIES VS_TOOL_OVERRIDE "None")
+    target_sources(eaw_render_d3d12 PRIVATE src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/legacy_common.hlsli)
+    set_source_files_properties(src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/legacy_common.hlsli PROPERTIES VS_TOOL_OVERRIDE "None")
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/terrain.hlsl terrain_vs vs_6_0 g_eaw_terrain_vs)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/terrain.hlsl terrain_ps ps_6_0 g_eaw_terrain_ps)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/sandbox.hlsl vs_main vs_6_0 g_eaw_sandbox_vs)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/sandbox.hlsl ps_main ps_6_0 g_eaw_sandbox_ps)
+    eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/debug.hlsl debug_vs vs_6_0 g_eaw_debug_vs)
+    eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/debug.hlsl debug_ps ps_6_0 g_eaw_debug_ps)
 
     if(MSVC)
         target_compile_options(eaw_platform PRIVATE /W4 /permissive- /EHsc /utf-8)
@@ -180,6 +182,7 @@ endif()
 add_library(eaw_engine STATIC
     src/engine/asset_cache.cpp
     src/engine/camera_controller.cpp
+    src/engine/debug_draw.cpp
     src/engine/visual_scene_builder.cpp
 )
 target_include_directories(eaw_engine PUBLIC src/engine src/render/include)

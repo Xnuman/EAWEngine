@@ -107,7 +107,10 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   Left/Right, and rigid attachments follow animated bone visibility through a
   visibility-collapsed second palette half. Selection IDs are done: a GPU pick
   target and per-frame readback select the instance or terrain under a click
-  without stalling, and the sandbox highlights the selection. Started:
+  without stalling, and the sandbox highlights the selection. Debug drawing is
+  done: world-space line lists (bounds, axes) drawn depth-tested from a
+  frame-buffered buffer; the sandbox outlines the selection and toggles every
+  object's bounds with B. Camera polish remains. Started:
   the D3D12 renderer keeps textures in a generation-checked handle pool, takes
   texture-table slots from an allocator that reuses a slot only after its
   release fence, and retires replaced scene resources on the direct-queue

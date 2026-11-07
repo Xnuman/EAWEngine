@@ -60,6 +60,14 @@ struct VisualTexture
     std::vector<VisualTextureMip> mips;
 };
 
+// A world-space debug line segment (bounds, axes, paths), drawn depth-tested over the scene.
+struct VisualDebugLine
+{
+    std::array<float, 3> from{};
+    std::array<float, 3> to{};
+    std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
+};
+
 struct VisualVertex
 {
     std::array<float, 3> position{};

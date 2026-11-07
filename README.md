@@ -96,8 +96,9 @@ when one of them changes; the camera is kept. Your installation is only read. `-
 directory so later launches skip pipeline compilation; stale or driver-mismatched
 caches are discarded automatically. Use `--model <virtual-alo-path>` to inspect another mounted model,
 A left click without dragging selects the object under the cursor (it is
-highlighted and named in the console; `--pick <x> <y>` does the same for
-automation). `--animation <virtual-ala-path>` selects an animation (Left/Right then step
+highlighted, outlined by its bounds, and named in the console; `--pick <x> <y>`
+does the same for automation). B toggles every object's bounds and the world
+axes (`--show-bounds` starts with them on). `--animation <virtual-ala-path>` selects an animation (Left/Right then step
 through the bind pose and every `<MODEL>_*.ALA` beside the model), or
 `--validation-triangle` to bypass asset loading. The sandbox automatically tries
 the model's `_IDLE_00.ALA` when present. `--map <virtual-ted-path>` instead

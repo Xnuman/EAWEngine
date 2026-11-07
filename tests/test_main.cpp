@@ -8,6 +8,7 @@
 #include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
 #include "asset_cache.hpp"
+#include "debug_draw.hpp"
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/gpu_resource_lifetime.hpp"
 #include "eaw/legacy_material.hpp"
@@ -573,6 +574,37 @@ void test_asset_cache_dependencies()
     require(cache.evict_unused_since(epoch) == 1 && cache.stats().entries == 1 && *cache.load<std::string>("text", "Data/XML/OTHER.XML", vfs, read_text) == "other",
             "only entries unused since the epoch must be evicted");
     std::filesystem::remove_all(root, ignored);
+}
+
+void test_debug_draw()
+{
+    // A unit box translated by (10, 20, 30): 12 edges, each of length 1 along one axis, all corners
+    // inside the translated box.
+    std::array<float, 16> transform{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1};
+    std::vector<eaw::VisualDebugLine> lines;
+    eaw::append_debug_box(lines, {0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F}, transform, {1.0F, 0.0F, 0.0F, 1.0F});
+    require(lines.size() == 12, "a debug box must have 12 edges");
+    std::array<int, 3> axis_edges{};
+    for (const auto& line : lines)
+    {
+        int changed = -1;
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            const auto base = axis == 0 ? 10.0F : axis == 1 ? 20.0F : 30.0F;
+            require(line.from[axis] >= base && line.from[axis] <= base + 1.0F && line.to[axis] >= base && line.to[axis] <= base + 1.0F, "debug box corner outside the transformed box");
+            if (line.from[axis] != line.to[axis])
+            {
+                require(changed < 0 && std::fabs(line.to[axis] - line.from[axis]) == 1.0F, "a debug box edge must run along exactly one axis");
+                changed = axis;
+            }
+        }
+        require(changed >= 0, "a debug box edge must not be degenerate");
+        ++axis_edges[static_cast<std::size_t>(changed)];
+    }
+    require(axis_edges == std::array<int, 3>{4, 4, 4}, "a debug box has four edges per axis");
+    lines.clear();
+    eaw::append_debug_axes(lines, {1.0F, 2.0F, 3.0F}, 5.0F);
+    require(lines.size() == 3 && lines[0].to == std::array<float, 3>{6.0F, 2.0F, 3.0F} && lines[2].to == std::array<float, 3>{1.0F, 2.0F, 8.0F}, "debug axes have the wrong extent");
 }
 
 // A minimal 4x4 BC1 DDS with one mip level.
@@ -1758,6 +1790,7 @@ int main()
         test_alo_default_mesh_visibility();
         test_gpu_resource_lifetime();
         test_asset_cache_dependencies();
+        test_debug_draw();
         test_texture_formats_and_materials();
         test_lua_inspection();
         test_ala_animation();

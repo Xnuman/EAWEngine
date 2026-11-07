@@ -44,6 +44,8 @@ struct D3d12RendererStats
     std::size_t pending_texture_uploads{};
     // Textures the last load_scene kept from the replaced scene (same identity) instead of uploading.
     std::size_t reused_textures{};
+    // Debug lines beyond the per-frame capacity in the current set.
+    std::size_t dropped_debug_lines{};
 };
 
 // Result of a pick: the scene instance under the pixel, the terrain, or nothing (both empty).
@@ -89,6 +91,10 @@ public:
     [[nodiscard]] std::optional<VisualPick> take_pick();
     // Draws one scene instance highlighted (nothing for nullopt); cleared by load_scene.
     void set_highlight(std::optional<std::uint32_t> instance);
+    // Debug lines drawn every frame until replaced. At most max_debug_lines() are drawn; the rest
+    // are counted in stats().dropped_debug_lines.
+    void set_debug_lines(std::span<const VisualDebugLine> lines);
+    [[nodiscard]] static std::size_t max_debug_lines() noexcept;
 
     [[nodiscard]] const std::string& adapter_name() const;
     [[nodiscard]] D3d12RendererStats stats() const;
