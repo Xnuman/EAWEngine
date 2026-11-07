@@ -14,6 +14,7 @@ Primary starting points:
 - Petrolution file-format index: <https://modtools.petrolution.net/docs/Formats>
 - MEG v1 format: <https://modtools.petrolution.net/docs/MegFileFormat>
 - Shared chunk format: <https://modtools.petrolution.net/docs/ChunkFileFormat>
+- Petroglyph Lua object format: <https://modtools.petrolution.net/docs/LuaFileFormat>
 
 Observed local Steam layout on 2026-11-06:
 
@@ -77,4 +78,21 @@ and texture-role hints. This separation allows the future renderer to improve a
 shader translation without changing the lossless asset decoder. Fourteen of
 1,286 unique model texture references remain absent from the final layered VFS
 and are reported with example source models.
+
+The final layered FoC/EAW script corpus contains 370 Lua source files totaling
+85,312 lines; current 64-bit patch archives override any older compiled copies
+visible at lower layers. Lexical inspection finds 19 dependency spellings, all
+resolved to final VFS winners, 1,725 defined function names, and 3,364 called
+function names without warnings or parse failures. The resulting conservative
+host-call inventory is compatibility evidence rather than a promise that every
+name is engine-provided: object methods and functions assigned dynamically can
+only be classified once runtime types and execution behavior are modeled.
+
+Mod bytecode inspection follows the published Lua 5.0 structure without
+executing code. Standard chunks use the `Lua` signature and version `0x50`;
+Petroglyph chunks use `Lup`, version `0x51`, and add a persistent-function
+integer after `lineDefined` in every prototype. The parser validates native-size
+metadata, strings, constants, nested prototypes, instruction ranges, and the
+Petroglyph IDs with explicit resource limits. VM execution, coroutine scheduling,
+save-state persistence, and host API behavior remain black-box research areas.
 

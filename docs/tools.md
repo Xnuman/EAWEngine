@@ -69,6 +69,9 @@ EAWAssetInspector.exe localization-refs Data/XML/Units.xml
 # Audit model references, material mappings, DDS formats, and MTD atlases
 EAWAssetInspector.exe texture-audit Data/Art/Models --game foc
 
+# Inventory Lua source/bytecode, dependencies, callbacks, and host API calls
+EAWAssetInspector.exe lua-audit Data/Scripts --game foc --limit 100
+
 # Parse and index the complete resolved XML object database
 EAWAssetInspector.exe xml-audit Data/XML --game foc
 
@@ -78,8 +81,8 @@ EAWAssetInspector.exe xml-audit Data/XML --game foc `
 ```
 
 Current semantic inspectors cover DAT string tables, DDS textures, MTD atlas
-directories, ALO model
-structure, ALA animation structure, TED maps, and Petroglyph XML. The XML
+directories, ALO model structure, ALA animation structure, TED maps, Petroglyph
+XML, and Lua source/bytecode. The XML
 reader accepts the game's multi-root fragments and historical declaration
 syntax, preserves element/attribute/field order and source lines, and indexes
 typed `Name` definitions case-insensitively. `xml-audit` reports definition-type
@@ -133,6 +136,16 @@ future renderer layer.
 DDS dependency, inventories format and material coverage, and reports missing
 ALO texture references with an example model. The optional prefix scopes model
 inspection; the DDS/MTD corpus always covers the final mounted `Data` VFS.
+
+`lua-audit` is read-only and never executes scripts. For source it ignores
+comments and string contents while collecting explicit `require`, `Script.Load`,
+`Script.Reload`, and `include` dependencies, named function definitions, and
+called names. It resolves modules against the final layered VFS and separates
+standard-library and corpus-defined names from candidate engine host calls. For
+standard Lua 5.0 and Petroglyph `Lup` bytecode it validates the architecture
+header and recursively inventories prototypes, constants, instructions, and
+persistent function IDs. This is structural compatibility analysis, not a
+decompiler or Lua VM.
 
 `map-audit` parses every resolved TED in one mounted profile and reports corpus
 coverage without extracting maps:

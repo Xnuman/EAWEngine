@@ -16,7 +16,7 @@ This repository is at milestone **0.3: native asset and localization workbench**
 - provides `EAWAssetInspector.exe` for overlay-aware asset inventory and format
   inspection, including a schema-validated XML definition/reference index,
   semantic DDS/MTD textures, normalized legacy materials, ALO models, ALA
-  animations, and TED maps;
+  animations, TED maps, and Lua source/bytecode inventories;
 - provides `EAWDatEditor.exe` for lossless DAT editing, validation, sparse TSV
   localization workspaces, XML-reference audits, and new-unit string bundles.
 - provides `EAWTools.exe`, a native Dear ImGui/DirectX 11 workbench that combines
@@ -79,6 +79,7 @@ Inspect the resolved FoC asset set or a specific archive-backed model:
 .\build\vs2022-x64\Release\EAWAssetInspector.exe inspect `
   Data/Art/Models/Some_Unit.alo --game foc
 .\build\vs2022-x64\Release\EAWAssetInspector.exe xml-audit Data/XML --game foc
+.\build\vs2022-x64\Release\EAWAssetInspector.exe lua-audit Data/Scripts --game foc
 ```
 
 Optionally validate that resolved XML against a local checkout of the public

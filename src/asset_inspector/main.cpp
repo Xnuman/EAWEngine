@@ -5,6 +5,7 @@
 #include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
 #include "eaw/legacy_material.hpp"
+#include "eaw/lua_script.hpp"
 #include "eaw/mtd_directory.hpp"
 #include "eaw/text_encoding.hpp"
 #include "eaw/ted_map.hpp"
@@ -56,6 +57,7 @@ void usage()
               << "  EAWAssetInspector inspect <virtual-path> [options]\n"
               << "  EAWAssetInspector map-audit [prefix] [options]\n"
               << "  EAWAssetInspector texture-audit [prefix] [options]\n"
+              << "  EAWAssetInspector lua-audit [prefix] [options]\n"
               << "  EAWAssetInspector xml-audit [prefix] [options]\n"
               << "  EAWAssetInspector localization-refs <xml-path> [options]\n\n"
               << "Options:\n"
@@ -91,7 +93,8 @@ Options parse_options(const int argc, char** argv)
     {
         options.operand = argv[index++];
     }
-    else if ((options.command == "list" || options.command == "map-audit" || options.command == "texture-audit" || options.command == "xml-audit") && index < argc && argv[index][0] != '-')
+    else if ((options.command == "list" || options.command == "map-audit" || options.command == "texture-audit" || options.command == "lua-audit" || options.command == "xml-audit") && index < argc &&
+             argv[index][0] != '-')
     {
         options.prefix = argv[index++];
     }
@@ -172,6 +175,16 @@ std::string extension_of(const std::string_view path)
                                return static_cast<char>(std::tolower(character));
                            });
     return extension.empty() ? "<none>" : extension;
+}
+
+std::string lower_ascii(std::string value)
+{
+    std::ranges::transform(value, value.begin(),
+                           [](const unsigned char character)
+                           {
+                               return static_cast<char>(std::tolower(character));
+                           });
+    return value;
 }
 
 std::uint32_t little_u32(const std::span<const std::byte> bytes, const std::size_t offset)
@@ -552,9 +565,47 @@ void inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& path, c
     {
         const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         const auto references = localization_references(text);
-        const bool compiled_lua = bytes.size() >= 4 && std::to_integer<unsigned char>(bytes[0]) == 0x1bU && std::to_integer<char>(bytes[1]) == 'L' && std::to_integer<char>(bytes[2]) == 'u' &&
-                                  std::to_integer<char>(bytes[3]) == 'p';
-        std::cout << "Format: " << (compiled_lua ? "Petroglyph Lua 5.0 bytecode" : "Lua source") << '\n' << "Localization references: " << references.size() << '\n';
+        const auto script = eaw::LuaScriptInfo::inspect(bytes);
+        std::cout << "Format: " << eaw::to_string(script.kind) << '\n';
+        if (script.kind == eaw::LuaScriptKind::source)
+        {
+            std::cout << "Lines: " << script.lines << '\n'
+                      << "Dependencies: " << script.dependencies.size() << '\n'
+                      << "Defined functions: " << script.defined_functions.size() << '\n'
+                      << "Called functions: " << script.called_functions.size() << '\n';
+        }
+        else if (script.kind == eaw::LuaScriptKind::lua50_bytecode || script.kind == eaw::LuaScriptKind::petroglyph_bytecode)
+        {
+            std::cout << "Version: 0x" << std::hex << static_cast<unsigned>(script.bytecode_header.version) << std::dec << '\n'
+                      << "Byte order: " << (script.bytecode_header.little_endian ? "little-endian" : "big-endian") << '\n'
+                      << "Integer/size_t/instruction/number: " << static_cast<unsigned>(script.bytecode_header.integer_size) << '/' << static_cast<unsigned>(script.bytecode_header.size_type_size)
+                      << '/' << static_cast<unsigned>(script.bytecode_header.instruction_size) << '/' << static_cast<unsigned>(script.bytecode_header.number_size) << " bytes\n"
+                      << "Prototypes: " << script.prototypes << '\n'
+                      << "Instructions: " << script.instructions << '\n'
+                      << "Number constants: " << script.number_constants << '\n'
+                      << "String constants: " << script.string_constants << '\n';
+        }
+        std::cout << "Localization references: " << references.size() << '\n';
+        for (const auto& warning : script.warnings)
+        {
+            std::cout << "Warning: " << warning << '\n';
+        }
+        std::cout << "Dependencies:\n";
+        for (std::size_t index = 0; index < std::min(limit, script.dependencies.size()); ++index)
+        {
+            std::cout << "  " << script.dependencies[index] << '\n';
+        }
+        std::cout << "Defined functions:\n";
+        for (std::size_t index = 0; index < std::min(limit, script.defined_functions.size()); ++index)
+        {
+            std::cout << "  " << script.defined_functions[index] << '\n';
+        }
+        std::cout << "Called functions:\n";
+        for (std::size_t index = 0; index < std::min(limit, script.called_functions.size()); ++index)
+        {
+            std::cout << "  " << script.called_functions[index] << '\n';
+        }
+        std::cout << "Localization references:\n";
         for (std::size_t index = 0; index < std::min(limit, references.size()); ++index)
         {
             std::cout << "  " << references[index] << '\n';
@@ -794,6 +845,225 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
     }
 }
 
+void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit)
+{
+    struct ScriptRecord
+    {
+        std::string path;
+        eaw::LuaScriptInfo info;
+    };
+
+    std::vector<ScriptRecord> scripts;
+    std::vector<std::pair<std::string, std::string>> failures;
+    std::map<std::string, std::size_t> kinds;
+    std::map<std::string, std::size_t> groups;
+    std::map<std::string, std::size_t> dependencies;
+    std::map<std::string, std::set<std::string>> dependency_users;
+    std::map<std::string, std::size_t> definitions;
+    std::map<std::string, std::size_t> calls;
+    std::set<std::string> definition_keys;
+    std::set<std::string> module_keys;
+    std::size_t total_lines = 0;
+    std::size_t total_prototypes = 0;
+    std::size_t total_instructions = 0;
+    std::size_t warning_count = 0;
+
+    constexpr std::string_view scripts_prefix = "DATA/SCRIPTS/";
+    for (const auto& asset : vfs.list("DATA/SCRIPTS"))
+    {
+        if (extension_of(asset.virtual_path) != ".lua")
+        {
+            continue;
+        }
+        auto relative = asset.virtual_path;
+        if (relative.starts_with(scripts_prefix))
+        {
+            relative.erase(0, scripts_prefix.size());
+        }
+        auto module = lower_ascii(std::filesystem::path(relative).replace_extension().generic_string());
+        module_keys.insert(module);
+        auto dotted = module;
+        std::ranges::replace(dotted, '/', '.');
+        module_keys.insert(std::move(dotted));
+        module_keys.insert(lower_ascii(std::filesystem::path(relative).stem().string()));
+    }
+
+    const auto assets = vfs.list(prefix);
+    for (const auto& asset : assets)
+    {
+        if (extension_of(asset.virtual_path) != ".lua")
+        {
+            continue;
+        }
+        auto relative = asset.virtual_path;
+        if (relative.starts_with(scripts_prefix))
+        {
+            relative.erase(0, scripts_prefix.size());
+        }
+        const auto separator = relative.find('/');
+        ++groups[separator == std::string::npos ? "<root>" : relative.substr(0, separator)];
+
+        try
+        {
+            auto info = eaw::LuaScriptInfo::inspect(vfs.read(asset.virtual_path));
+            ++kinds[std::string(eaw::to_string(info.kind))];
+            total_lines += info.lines;
+            total_prototypes += info.prototypes;
+            total_instructions += info.instructions;
+            warning_count += info.warnings.size();
+            for (const auto& dependency : info.dependencies)
+            {
+                ++dependencies[dependency];
+                dependency_users[dependency].insert(asset.virtual_path);
+            }
+            for (const auto& definition : info.defined_functions)
+            {
+                ++definitions[definition];
+                const auto folded = lower_ascii(definition);
+                definition_keys.insert(folded);
+                const auto leaf = folded.find_last_of(".:");
+                definition_keys.insert(leaf == std::string::npos ? folded : folded.substr(leaf + 1U));
+            }
+            for (const auto& call : info.called_functions)
+            {
+                ++calls[call];
+            }
+            scripts.push_back({asset.virtual_path, std::move(info)});
+        }
+        catch (const std::exception& error)
+        {
+            failures.emplace_back(asset.virtual_path, error.what());
+        }
+    }
+
+    const auto dependency_resolved = [&](std::string dependency)
+    {
+        dependency = lower_ascii(std::move(dependency));
+        std::ranges::replace(dependency, '\\', '/');
+        if (dependency.starts_with("data/scripts/"))
+        {
+            dependency.erase(0, 13);
+        }
+        if (dependency.ends_with(".lua"))
+        {
+            dependency.resize(dependency.size() - 4U);
+        }
+        if (module_keys.contains(dependency))
+        {
+            return true;
+        }
+        auto path_form = dependency;
+        std::ranges::replace(path_form, '.', '/');
+        if (module_keys.contains(path_form))
+        {
+            return true;
+        }
+        return module_keys.contains(lower_ascii(std::filesystem::path(dependency).stem().string()));
+    };
+
+    std::map<std::string, std::set<std::string>> unresolved_dependencies;
+    for (const auto& [dependency, users] : dependency_users)
+    {
+        if (!dependency_resolved(dependency))
+        {
+            unresolved_dependencies[dependency] = users;
+        }
+    }
+
+    const auto standard_library = [](const std::string_view call)
+    {
+        const auto separator = call.find_first_of(".:");
+        const auto root = lower_ascii(std::string(call.substr(0, separator)));
+        static const std::set<std::string> standard{"assert",     "collectgarbage", "coroutine",    "dofile", "error", "gcinfo",   "getfenv",  "getmetatable", "ipairs", "loadfile",
+                                                    "loadstring", "math",           "next",         "pairs",  "pcall", "print",    "rawequal", "rawget",       "rawset", "require",
+                                                    "select",     "setfenv",        "setmetatable", "string", "table", "tonumber", "tostring", "type",         "unpack", "xpcall"};
+        return standard.contains(root);
+    };
+    std::map<std::string, std::size_t> host_api_calls;
+    for (const auto& [call, count] : calls)
+    {
+        const auto folded = lower_ascii(call);
+        const auto leaf = folded.find_last_of(".:");
+        const auto leaf_name = leaf == std::string::npos ? folded : folded.substr(leaf + 1U);
+        if (!standard_library(call) && !definition_keys.contains(folded) && !definition_keys.contains(leaf_name))
+        {
+            host_api_calls[call] = count;
+        }
+    }
+
+    const auto sorted = [](const std::map<std::string, std::size_t>& values)
+    {
+        std::vector<std::pair<std::string, std::size_t>> result(values.begin(), values.end());
+        std::ranges::sort(result,
+                          [](const auto& left, const auto& right)
+                          {
+                              return left.second != right.second ? left.second > right.second : left.first < right.first;
+                          });
+        return result;
+    };
+
+    std::cout << "Lua compatibility audit\n"
+              << "Scripts: " << scripts.size() + failures.size() << '\n'
+              << "Inspected: " << scripts.size() << '\n'
+              << "Failures: " << failures.size() << '\n'
+              << "Warnings: " << warning_count << '\n'
+              << "Source lines: " << total_lines << '\n'
+              << "Bytecode prototypes: " << total_prototypes << '\n'
+              << "Bytecode instructions: " << total_instructions << '\n'
+              << "Unique dependencies: " << dependencies.size() << '\n'
+              << "Unresolved dependencies: " << unresolved_dependencies.size() << '\n'
+              << "Defined function names: " << definitions.size() << '\n'
+              << "Called function names: " << calls.size() << '\n'
+              << "Candidate host API calls: " << host_api_calls.size() << "\n\nFormats:\n";
+    for (const auto& [kind, count] : kinds)
+    {
+        std::cout << "  " << kind << ": " << count << '\n';
+    }
+    std::cout << "Script groups:\n";
+    for (const auto& [group, count] : groups)
+    {
+        std::cout << "  " << group << ": " << count << '\n';
+    }
+    std::cout << "Most-used dependencies:\n";
+    const auto sorted_dependencies = sorted(dependencies);
+    for (std::size_t index = 0; index < std::min(limit, sorted_dependencies.size()); ++index)
+    {
+        std::cout << "  " << sorted_dependencies[index].second << "  " << sorted_dependencies[index].first << '\n';
+    }
+    std::cout << "Candidate host API calls (scripts using each):\n";
+    const auto sorted_calls = sorted(host_api_calls);
+    for (std::size_t index = 0; index < std::min(limit, sorted_calls.size()); ++index)
+    {
+        std::cout << "  " << sorted_calls[index].second << "  " << sorted_calls[index].first << '\n';
+    }
+    std::cout << "Most-common defined functions:\n";
+    const auto sorted_definitions = sorted(definitions);
+    for (std::size_t index = 0; index < std::min(limit, sorted_definitions.size()); ++index)
+    {
+        std::cout << "  " << sorted_definitions[index].second << "  " << sorted_definitions[index].first << '\n';
+    }
+    std::cout << "Unresolved dependencies:\n";
+    std::size_t shown = 0;
+    for (const auto& [dependency, users] : unresolved_dependencies)
+    {
+        if (shown++ >= limit)
+        {
+            break;
+        }
+        std::cout << "  " << dependency << "  (" << users.size() << " script(s))";
+        if (!users.empty())
+        {
+            std::cout << "  e.g. " << *users.begin();
+        }
+        std::cout << '\n';
+    }
+    std::cout << "Inspection failures:\n";
+    for (std::size_t index = 0; index < std::min(limit, failures.size()); ++index)
+    {
+        std::cout << "  " << failures[index].first << ": " << failures[index].second << '\n';
+    }
+}
+
 void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit)
 {
     const auto assets = vfs.list(prefix);
@@ -1015,6 +1285,11 @@ int main(const int argc, char** argv)
         if (options.command == "texture-audit")
         {
             audit_texture_references(vfs, options.prefix, options.limit);
+            return 0;
+        }
+        if (options.command == "lua-audit")
+        {
+            audit_lua(vfs, options.prefix, options.limit);
             return 0;
         }
         if (options.command == "map-audit")

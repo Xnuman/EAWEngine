@@ -8,7 +8,7 @@ campaign compatibility is a long-term engine project, not a renderer swap.
 - Clean-room boundary and no-asset repository policy.
 - Build, tests, launcher/engine separation, architecture record.
 
-## M1 — data bootstrap (in progress)
+## M1 — data bootstrap (baseline complete)
 
 - Steam installation and EAW/FoC profile discovery.
 - MEG v1 and layered loose-file/mod VFS.
@@ -54,8 +54,13 @@ campaign compatibility is a long-term engine project, not a renderer swap.
 - Legacy ALO materials now normalize shader family, blend mode, and texture
   semantics while preserving every original shader parameter. All observed
   stock mesh shaders and texture parameter names have a classified fallback.
-- Next: Lua bytecode inventory, followed by deeper per-shader render-state and
-  lighting translation as the production renderer comes online.
+- Lua inspection covers source dependencies, function definitions/calls, and
+  both standard Lua 5.0 and Petroglyph persistent bytecode prototypes. The
+  stock layered corpus contains 370 source scripts (85,312 lines), with every
+  detected dependency resolved and no inspection failures.
+- Next: M2 visual sandbox. Deeper per-shader render-state, lighting, and Lua
+  host-API behavior are implemented incrementally against the compatibility
+  inventories as their renderer and simulation consumers come online.
 - Deliverable: asset inspector that can browse every stock and selected mod
   asset and report unresolved references.
 

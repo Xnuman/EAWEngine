@@ -8,6 +8,7 @@
 #include "eaw/legacy_material.hpp"
 #include "eaw/localization_scan.hpp"
 #include "eaw/localization_workspace.hpp"
+#include "eaw/lua_script.hpp"
 #include "eaw/meg_archive.hpp"
 #include "eaw/mtd_directory.hpp"
 #include "eaw/text_encoding.hpp"
@@ -435,6 +436,56 @@ void test_texture_formats_and_materials()
     require(material.family == eaw::LegacyMaterialFamily::mesh && material.blend == eaw::LegacyBlendMode::opaque && material.textures.size() == 2 &&
                 material.textures[0].semantic == eaw::LegacyTextureSemantic::base_color && material.textures[1].semantic == eaw::LegacyTextureSemantic::normal && material.parameters.size() == 3,
             "legacy material translation failed");
+}
+
+void test_lua_inspection()
+{
+    const std::string source = "-- require('IGNORED')\n"
+                               "require('PGStateMachine')\n"
+                               "Script.Load(\"Story/Helper\")\n"
+                               "function On_Enter_State()\n"
+                               "  Find_First_Object('Executor')\n"
+                               "  Controller:Advance()\n"
+                               "end\n";
+    const auto source_info = eaw::LuaScriptInfo::inspect(std::as_bytes(std::span(source)));
+    require(source_info.kind == eaw::LuaScriptKind::source && source_info.lines == 7 && source_info.dependencies.size() == 2 && source_info.dependencies[0] == "PGStateMachine" &&
+                source_info.dependencies[1] == "Story/Helper" && source_info.defined_functions.size() == 1 && source_info.defined_functions[0] == "On_Enter_State" &&
+                std::ranges::find(source_info.called_functions, "Find_First_Object") != source_info.called_functions.end() &&
+                std::ranges::find(source_info.called_functions, "Controller:Advance") != source_info.called_functions.end(),
+            "Lua source inspection failed");
+
+    std::vector<std::byte> bytecode{std::byte{0x1b}, std::byte{'L'}, std::byte{'u'}, std::byte{'p'}, std::byte{0x51}, std::byte{1}, std::byte{4},
+                                    std::byte{4},    std::byte{4},   std::byte{6},   std::byte{8},   std::byte{9},    std::byte{9}, std::byte{8}};
+    bytecode.resize(bytecode.size() + 8U, std::byte{});
+    const auto append_lua_string = [&](const std::string_view value)
+    {
+        append_u32(bytecode, static_cast<std::uint32_t>(value.size() + 1U));
+        for (const auto character : value)
+        {
+            bytecode.push_back(static_cast<std::byte>(character));
+        }
+        bytecode.push_back(std::byte{});
+    };
+    append_lua_string("@TEST.LUA");
+    append_u32(bytecode, 1);
+    append_u32(bytecode, 42);
+    bytecode.insert(bytecode.end(), 4U, std::byte{});
+    append_u32(bytecode, 0);
+    append_u32(bytecode, 0);
+    append_u32(bytecode, 0);
+    append_u32(bytecode, 2);
+    bytecode.push_back(std::byte{3});
+    bytecode.resize(bytecode.size() + 8U, std::byte{});
+    bytecode.push_back(std::byte{4});
+    append_lua_string("constant");
+    append_u32(bytecode, 0);
+    append_u32(bytecode, 1);
+    append_u32(bytecode, 0);
+
+    const auto bytecode_info = eaw::LuaScriptInfo::inspect(bytecode);
+    require(bytecode_info.kind == eaw::LuaScriptKind::petroglyph_bytecode && bytecode_info.bytecode_header.version == 0x51 && bytecode_info.prototypes == 1 && bytecode_info.instructions == 1 &&
+                bytecode_info.number_constants == 1 && bytecode_info.string_constants == 1 && bytecode_info.persistent_function_ids == std::vector<std::uint64_t>{42},
+            "Petroglyph Lua bytecode inspection failed");
 }
 
 std::vector<std::byte> make_test_ala()
@@ -954,6 +1005,7 @@ int main()
         test_layered_precedence_corpus();
         test_alo_model();
         test_texture_formats_and_materials();
+        test_lua_inspection();
         test_ala_animation();
         test_ted_map();
         test_dat_and_workspace();

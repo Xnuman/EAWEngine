@@ -11,6 +11,7 @@
 #include "eaw/legacy_material.hpp"
 #include "eaw/localization_scan.hpp"
 #include "eaw/localization_workspace.hpp"
+#include "eaw/lua_script.hpp"
 #include "eaw/mtd_directory.hpp"
 #include "eaw/text_encoding.hpp"
 #include "eaw/ted_map.hpp"
@@ -544,7 +545,54 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
         return output.str();
     }
 
-    if (extension == ".xml" || extension == ".lua" || extension == ".txt")
+    if (extension == ".lua")
+    {
+        const auto script = LuaScriptInfo::inspect(bytes);
+        output << to_string(script.kind) << '\n';
+        if (script.kind == LuaScriptKind::source)
+        {
+            output << "Lines: " << script.lines << "\nDependencies: " << script.dependencies.size() << "\nDefined functions: " << script.defined_functions.size()
+                   << "\nCalled functions: " << script.called_functions.size() << '\n';
+        }
+        else if (script.kind == LuaScriptKind::lua50_bytecode || script.kind == LuaScriptKind::petroglyph_bytecode)
+        {
+            output << "Version: 0x" << std::hex << static_cast<unsigned>(script.bytecode_header.version) << std::dec
+                   << "\nByte order: " << (script.bytecode_header.little_endian ? "little-endian" : "big-endian") << "\nPrototypes: " << script.prototypes << "\nInstructions: " << script.instructions
+                   << "\nPersistent function IDs: " << script.persistent_function_ids.size() << '\n';
+        }
+        for (const auto& warning_text : script.warnings)
+        {
+            output << "Warning: " << warning_text << '\n';
+        }
+        output << "\nDependencies:\n";
+        for (const auto& dependency : script.dependencies)
+        {
+            output << "  " << dependency << '\n';
+        }
+        output << "\nDefined functions:\n";
+        for (std::size_t index = 0; index < std::min<std::size_t>(script.defined_functions.size(), 120); ++index)
+        {
+            output << "  " << script.defined_functions[index] << '\n';
+        }
+        output << "\nCalled functions:\n";
+        for (std::size_t index = 0; index < std::min<std::size_t>(script.called_functions.size(), 160); ++index)
+        {
+            output << "  " << script.called_functions[index] << '\n';
+        }
+        if (script.kind == LuaScriptKind::source)
+        {
+            const auto maximum = std::min<std::size_t>(bytes.size(), 64U * 1024U);
+            output << "\nSource preview\n\n";
+            output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(maximum));
+            if (maximum != bytes.size())
+            {
+                output << "\n\n[preview truncated]";
+            }
+        }
+        return output.str();
+    }
+
+    if (extension == ".xml" || extension == ".txt")
     {
         const auto maximum = std::min<std::size_t>(bytes.size(), 64U * 1024U);
         output << "Text preview\n\n";
