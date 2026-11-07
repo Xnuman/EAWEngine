@@ -39,8 +39,7 @@ TerrainPixelInput terrain_vs(TerrainVertexInput input)
     return output;
 }
 
-[RootSignature(SANDBOX_ROOT_SIGNATURE)]
-float4 terrain_ps(TerrainPixelInput input) : SV_TARGET
+float4 shade_terrain(TerrainPixelInput input)
 {
     const float3 surface_normal = safe_normalize(input.normal, float3(0.0f, 0.0f, 1.0f));
     // Planar projection: texture U follows world +X and V follows world +Y on the surface.
@@ -84,4 +83,19 @@ float4 terrain_ps(TerrainPixelInput input) : SV_TARGET
     }
     const float3 normal = safe_normalize(tangent_normal.x * tangent + tangent_normal.y * binormal + tangent_normal.z * surface_normal, surface_normal);
     return float4(legacy_lit_color(albedo, normal, input.world_position, gloss, diffuse, specular, float3(0.0f, 0.0f, 0.0f), float3(1.0f, 1.0f, 1.0f)), 1.0f);
+}
+
+struct TerrainPixelOutput
+{
+    float4 color : SV_TARGET0;
+    uint pick_id : SV_TARGET1;
+};
+
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+TerrainPixelOutput terrain_ps(TerrainPixelInput input)
+{
+    TerrainPixelOutput output;
+    output.color = shade_terrain(input);
+    output.pick_id = PICK_TERRAIN;
+    return output;
 }

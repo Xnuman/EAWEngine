@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 
@@ -45,6 +46,14 @@ struct D3d12RendererStats
     std::size_t reused_textures{};
 };
 
+// Result of a pick: the scene instance under the pixel, the terrain, or nothing (both empty).
+// Blended effects and backgrounds are not pickable.
+struct VisualPick
+{
+    std::optional<std::uint32_t> instance;
+    bool terrain{};
+};
+
 class D3d12Renderer final
 {
 public:
@@ -73,6 +82,13 @@ public:
     void set_lighting(const VisualLightRig& lighting);
     // Seconds of scene time driving texture-coordinate scrolling.
     void set_scene_time(float seconds);
+    // Asks which surface is visible at client pixel (x, y) in the next rendered frame. The answer
+    // arrives through take_pick() once that frame has finished on the GPU (usually one or two
+    // frames later); the CPU never waits for it. A newer request replaces an unrendered one.
+    void request_pick(std::uint32_t x, std::uint32_t y);
+    [[nodiscard]] std::optional<VisualPick> take_pick();
+    // Draws one scene instance highlighted (nothing for nullopt); cleared by load_scene.
+    void set_highlight(std::optional<std::uint32_t> instance);
 
     [[nodiscard]] const std::string& adapter_name() const;
     [[nodiscard]] D3d12RendererStats stats() const;

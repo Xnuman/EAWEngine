@@ -117,6 +117,13 @@ takes over that texture and its descriptor slot; only unmatched textures stream,
 and the remaining old textures retire on the direct-queue timeline. Geometry,
 instance, and material buffers are still built per scene.
 
+Selection uses a second render target holding a pick id per pixel: the scene
+instance index plus one, zero for nothing, and a reserved value for terrain.
+Opaque, alpha-tested, and terrain pipelines write it; blended and background
+pipelines mask it. A pick request copies one texel into the frame context's
+readback buffer, and the value is read when that context is next reused, after
+its fence has completed, so selection never adds a CPU wait.
+
 Animated visual scenes preserve model-wide bone indices in immutable vertex
 buffers. ALA poses are sampled on the CPU into skin matrices, while every
 in-flight frame owns a persistently mapped bone-palette buffer. The CPU updates

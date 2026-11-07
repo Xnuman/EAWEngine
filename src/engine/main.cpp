@@ -57,6 +57,8 @@ struct Options
     std::uint64_t upload_budget_mib{64};
     // Watch the scene's source files and archives and rebuild when they change.
     bool hot_reload{};
+    // Pick this client pixel once the scene is shown (automation for the selection path).
+    std::optional<std::array<std::uint32_t, 2>> pick;
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};
@@ -85,6 +87,7 @@ void print_usage()
               << "  --frame-limit <count>  Exit after this many frames once the scene is shown (automation)\n"
               << "  --upload-budget <MiB>  Texture bytes streamed per frame (default 64; 0 uploads all at once)\n"
               << "  --hot-reload       Rebuild the scene when its loose files or MEG archives change\n"
+              << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
               << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
@@ -152,6 +155,12 @@ Options parse_options(const int argc, char** argv)
         else if (argument == "--hot-reload")
         {
             options.hot_reload = true;
+        }
+        else if (argument == "--pick")
+        {
+            const auto x = parse_unsigned(require_value(argc, argv, index, argument), argument);
+            const auto y = parse_unsigned(require_value(argc, argv, index, argument), argument);
+            options.pick = std::array<std::uint32_t, 2>{x, y};
         }
         else if (argument == "--validation-triangle")
         {
@@ -451,6 +460,19 @@ int main(const int argc, char** argv)
         // Kept only for --reload-every; otherwise the CPU copy moves into the renderer.
         std::optional<eaw::VisualScene> reload_scene;
         std::vector<std::array<float, 16>> bind_palette;
+        // What each scene instance shows (model path), for reporting selections.
+        std::vector<std::string> instance_labels;
+        std::optional<std::uint32_t> selected_instance;
+        const auto label_instances = [&](const eaw::VisualScene& scene)
+        {
+            instance_labels.clear();
+            instance_labels.reserve(scene.instances.size());
+            for (const auto& instance : scene.instances)
+            {
+                instance_labels.push_back(scene.meshes[instance.mesh].name + (instance.background ? " (backdrop)" : ""));
+            }
+            selected_instance.reset();
+        };
         // Model mode: Left/Right step through [bind pose, animations...].
         std::vector<std::string> animation_paths;
         std::size_t animation_choice = 0;
@@ -530,6 +552,7 @@ int main(const int argc, char** argv)
                 {
                     reload_scene = scene;
                 }
+                label_instances(visual_map.scene);
                 renderer.load_scene(std::move(visual_map.scene));
                 if (visual_map.lighting)
                 {
@@ -561,6 +584,7 @@ int main(const int argc, char** argv)
                     reload_scene = scene;
                 }
                 // The renderer takes the scene; keep only the skeleton data needed for animation.
+                label_instances(scene);
                 renderer.load_scene(std::exchange(scene, {}));
                 bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
                 renderer.set_bone_transforms(bind_palette);
@@ -618,6 +642,8 @@ int main(const int argc, char** argv)
         std::uint64_t scene_reloads = 0;
         bool textures_streamed = false;
         bool reload_check_reported = false;
+        std::int64_t click_travel = 0;
+        bool automated_pick_sent = false;
         std::uint64_t streaming_since = 0;
         while (!window.close_requested())
         {
@@ -664,6 +690,34 @@ int main(const int argc, char** argv)
             if (window.input().keys[static_cast<std::size_t>(eaw::Key::p)].pressed && visual_animation)
             {
                 animation_playing = !animation_playing;
+            }
+            // A left click that does not drag selects what is under the cursor; dragging orbits or
+            // rotates as before.
+            if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].pressed)
+            {
+                click_travel = 0;
+            }
+            if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
+            {
+                click_travel += std::abs(input.mouse_delta_x) + std::abs(input.mouse_delta_y);
+            }
+            if (input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].released && click_travel <= 3 && input.mouse_x >= 0 && input.mouse_y >= 0)
+            {
+                renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y));
+            }
+            if (const auto pick = renderer.take_pick())
+            {
+                if (pick->instance && *pick->instance < instance_labels.size())
+                {
+                    selected_instance = pick->instance;
+                    std::cout << "Selected instance " << *pick->instance << ": " << instance_labels[*pick->instance] << '\n';
+                }
+                else
+                {
+                    selected_instance.reset();
+                    std::cout << "Selected: " << (pick->terrain ? "terrain" : "nothing") << '\n';
+                }
+                renderer.set_highlight(selected_instance);
             }
             const int animation_step = (input.keys[static_cast<std::size_t>(eaw::Key::right)].pressed ? 1 : 0) - (input.keys[static_cast<std::size_t>(eaw::Key::left)].pressed ? 1 : 0);
             if (visual_model && !tactical_camera && animation_step != 0 && !animation_paths.empty())
@@ -797,6 +851,11 @@ int main(const int argc, char** argv)
                 renderer.set_bone_transforms(skin_palette);
             }
             renderer.set_scene_time(std::chrono::duration<float>(now - scene_start).count());
+            if (options.pick && content_shown_at && !automated_pick_sent)
+            {
+                renderer.request_pick((*options.pick)[0], (*options.pick)[1]);
+                automated_pick_sent = true;
+            }
             const bool rendered = renderer.render();
             if (rendered && reload_scene && renderer.stats().frame_number % *options.reload_every == 0)
             {
@@ -826,6 +885,10 @@ int main(const int argc, char** argv)
             }
         }
         renderer.wait_idle();
+        if (const auto pick = renderer.take_pick())
+        {
+            std::cout << "Selected: " << (pick->instance && *pick->instance < instance_labels.size() ? instance_labels[*pick->instance] : pick->terrain ? "terrain" : "nothing") << '\n';
+        }
         const auto stats = renderer.stats();
         std::cout << "Rendered frames: " << stats.frame_number << '\n';
         if (options.reload_every)

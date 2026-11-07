@@ -53,6 +53,8 @@ constexpr std::uint32_t fallback_texture_count = 3;
 // Per-frame constant buffers are 256-byte aligned, as D3D12 requires for CBVs.
 constexpr std::uint64_t frame_constant_bytes = 256;
 constexpr DXGI_FORMAT back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
+constexpr DXGI_FORMAT pick_format = DXGI_FORMAT_R32_UINT;
+constexpr std::uint32_t pick_terrain = 0xFFFFFFFFU;
 
 std::string hresult_text(const HRESULT result)
 {
@@ -399,6 +401,9 @@ struct D3d12Renderer::Impl
         // Logical texture id -> descriptor slot for this frame (sandbox shaders' texture_residency).
         ComPtr<ID3D12Resource> residency_buffer;
         std::uint32_t* residency_mapped{};
+        // One pick-target texel copied by this frame, read once its fence completes.
+        ComPtr<ID3D12Resource> pick_readback;
+        std::optional<std::uint32_t> pick_request;
         std::uint64_t fence_value{};
     };
 
@@ -413,6 +418,7 @@ struct D3d12Renderer::Impl
         std::array<float, 4> ambient;
         std::array<std::array<float, 4>, 2> fill_direction;
         std::array<std::array<float, 4>, 2> fill_diffuse;
+        std::array<std::uint32_t, 4> selection{};
     };
     static_assert(sizeof(FrameConstants) <= frame_constant_bytes);
 
@@ -468,7 +474,9 @@ struct D3d12Renderer::Impl
         std::array<float, 4> team_color{};
         std::uint32_t bone_offset{};
         std::uint32_t flags{};
-        std::array<std::uint32_t, 2> padding{};
+        // Scene instance index + 1; 0 for instances that are not pickable.
+        std::uint32_t pick_id{};
+        std::uint32_t padding{};
     };
 
     static constexpr std::uint32_t background_instance_flag = 1U;
@@ -515,6 +523,13 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12DescriptorHeap> rtv_heap;
     ComPtr<ID3D12DescriptorHeap> dsv_heap;
     ComPtr<ID3D12Resource> depth_buffer;
+    ComPtr<ID3D12DescriptorHeap> pick_rtv_heap;
+    ComPtr<ID3D12Resource> pick_target;
+    // Requested pixel and selection state (see request_pick / set_highlight).
+    std::optional<std::array<std::uint32_t, 2>> pending_pick;
+    std::uint32_t next_pick_request{1};
+    std::optional<VisualPick> completed_pick;
+    std::uint32_t highlighted_pick_id{};
     std::uint32_t rtv_increment{};
 
     ComPtr<ID3D12RootSignature> root_signature;
@@ -781,6 +796,24 @@ struct D3d12Renderer::Impl
                       "CreateCommittedResource(depth buffer)");
         set_name(depth_buffer.Get(), L"EAWEngine depth buffer");
         device->CreateDepthStencilView(depth_buffer.Get(), nullptr, dsv_heap->GetCPUDescriptorHandleForHeapStart());
+
+        // Selection target: the pick id of the surface in front at every pixel.
+        if (!pick_rtv_heap)
+        {
+            D3D12_DESCRIPTOR_HEAP_DESC pick_heap{};
+            pick_heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+            pick_heap.NumDescriptors = 1;
+            check_hresult(device->CreateDescriptorHeap(&pick_heap, IID_PPV_ARGS(&pick_rtv_heap)), "CreateDescriptorHeap(pick RTV)");
+            set_name(pick_rtv_heap.Get(), L"EAWEngine pick RTV heap");
+        }
+        description.Format = pick_format;
+        description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+        D3D12_CLEAR_VALUE pick_clear{};
+        pick_clear.Format = pick_format;
+        check_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_RENDER_TARGET, &pick_clear, IID_PPV_ARGS(&pick_target)),
+                      "CreateCommittedResource(pick target)");
+        set_name(pick_target.Get(), L"EAWEngine pick target");
+        device->CreateRenderTargetView(pick_target.Get(), nullptr, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart());
     }
 
     void create_constant_buffers()
@@ -802,6 +835,12 @@ struct D3d12Renderer::Impl
                 "CreateCommittedResource(frame texture residency)");
             set_name(frame.residency_buffer.Get(), L"EAWEngine frame texture residency " + std::to_wstring(index));
             check_hresult(frame.residency_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.residency_mapped)), "Map(frame texture residency)");
+
+            const auto readback_heap = heap_properties(D3D12_HEAP_TYPE_READBACK);
+            const auto readback_description = buffer_description(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
+            check_hresult(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &readback_description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.pick_readback)),
+                          "CreateCommittedResource(frame pick readback)");
+            set_name(frame.pick_readback.Get(), L"EAWEngine frame pick readback " + std::to_wstring(index));
         }
     }
 
@@ -855,7 +894,7 @@ struct D3d12Renderer::Impl
     // payload (ID3D12PipelineLibrary::Serialize output). Any mismatch or driver rejection discards
     // the cache; failures never stop rendering.
     static constexpr std::array<char, 8> pipeline_cache_magic{'E', 'A', 'W', 'P', 'S', 'O', '0', '1'};
-    static constexpr std::uint64_t pipeline_layout_version = 1;
+    static constexpr std::uint64_t pipeline_layout_version = 2;
     static constexpr std::uint64_t maximum_pipeline_cache_bytes = 256ULL * 1024ULL * 1024ULL;
 
     static std::uint64_t fnv1a(std::uint64_t hash, const std::span<const std::byte> bytes) noexcept
@@ -1046,7 +1085,7 @@ struct D3d12Renderer::Impl
         description.VS = {g_eaw_sandbox_vs, sizeof(g_eaw_sandbox_vs)};
         description.PS = {g_eaw_sandbox_ps, sizeof(g_eaw_sandbox_ps)};
         description.BlendState.AlphaToCoverageEnable = FALSE;
-        description.BlendState.IndependentBlendEnable = FALSE;
+        description.BlendState.IndependentBlendEnable = TRUE;
         auto& blend = description.BlendState.RenderTarget[0];
         blend.BlendEnable = FALSE;
         blend.LogicOpEnable = FALSE;
@@ -1072,8 +1111,13 @@ struct D3d12Renderer::Impl
         description.DepthStencilState.StencilEnable = FALSE;
         description.InputLayout = {input_layout.data(), static_cast<UINT>(input_layout.size())};
         description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        description.NumRenderTargets = 1;
+        // Target 1 is the pick target: written (never blended) by opaque, alpha-tested, and terrain
+        // surfaces; masked for blended effects and backgrounds so they cannot be selected.
+        description.BlendState.RenderTarget[1] = blend;
+        description.BlendState.RenderTarget[1].BlendEnable = FALSE;
+        description.NumRenderTargets = 2;
         description.RTVFormats[0] = back_buffer_format;
+        description.RTVFormats[1] = pick_format;
         description.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         description.SampleDesc.Count = 1;
         create_pipeline_state(L"opaque", description, opaque_pipeline);
@@ -1084,6 +1128,7 @@ struct D3d12Renderer::Impl
         description.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
         description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
         description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+        description.BlendState.RenderTarget[1].RenderTargetWriteMask = 0;
         create_pipeline_state(L"alpha", description, alpha_pipeline);
 
         description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
@@ -1114,6 +1159,7 @@ struct D3d12Renderer::Impl
         description.InputLayout = {terrain_layout.data(), static_cast<UINT>(terrain_layout.size())};
         description.DepthStencilState.DepthEnable = TRUE;
         description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+        description.BlendState.RenderTarget[1].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
         create_pipeline_state(L"terrain", description, terrain_pipeline);
 
         D3D12_DESCRIPTOR_HEAP_DESC shader_heap_description{};
@@ -1193,7 +1239,7 @@ struct D3d12Renderer::Impl
         GpuMaterial checker_material;
         checker_material.base_texture = checker_texture_slot;
         identity_material_buffer = upload_buffer(upload, std::as_bytes(std::span(&checker_material, 1)), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"EAWEngine validation material buffer");
-        const GpuInstance identity{visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, {}};
+        const GpuInstance identity{visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0};
         identity_instance_buffer = upload_buffer(upload, std::as_bytes(std::span(&identity, 1)), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"EAWEngine identity instance buffer");
         submit_upload(std::move(upload));
     }
@@ -1438,7 +1484,7 @@ struct D3d12Renderer::Impl
                 range.first = static_cast<std::uint32_t>(gpu_instances.size());
             }
             ++range.second;
-            gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset, instance.background ? background_instance_flag : 0U, {}});
+            gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset, instance.background ? background_instance_flag : 0U, index + 1U, 0U});
         }
 
         auto upload = begin_upload(L"EAWEngine scene upload");
@@ -1448,7 +1494,7 @@ struct D3d12Renderer::Impl
         auto new_index_buffer = upload_buffer(upload, index_bytes, D3D12_RESOURCE_STATE_INDEX_BUFFER, L"EAWEngine scene index buffer");
         if (gpu_instances.empty())
         {
-            gpu_instances.push_back({visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, {}});
+            gpu_instances.push_back({visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0});
         }
         auto new_instance_buffer = upload_buffer(upload, std::as_bytes(std::span(gpu_instances)), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"EAWEngine scene instance buffer");
 
@@ -1621,6 +1667,7 @@ struct D3d12Renderer::Impl
             terrain_vertex_view.StrideInBytes = sizeof(VisualTerrainVertex);
         }
         scene_draws = std::move(new_draws);
+        highlighted_pick_id = 0;
         scene_vertex_view.BufferLocation = scene_vertex_buffer->GetGPUVirtualAddress();
         scene_vertex_view.SizeInBytes = static_cast<UINT>(vertex_byte_count);
         scene_vertex_view.StrideInBytes = sizeof(VisualVertex);
@@ -1732,6 +1779,43 @@ struct D3d12Renderer::Impl
             scene_textures[index].source = {};
         }
         pending_texture_count -= std::min(pending_texture_count, streamed.size());
+    }
+
+    // Reads a pick this frame context copied earlier; its fence has completed when this runs.
+    void collect_pick(FrameContext& frame)
+    {
+        if (!frame.pick_request)
+        {
+            return;
+        }
+        frame.pick_request.reset();
+        std::uint32_t value{};
+        const D3D12_RANGE read_range{0, sizeof(value)};
+        void* mapped{};
+        check_hresult(frame.pick_readback->Map(0, &read_range, &mapped), "Map(pick readback)");
+        std::memcpy(&value, mapped, sizeof(value));
+        const D3D12_RANGE no_write{0, 0};
+        frame.pick_readback->Unmap(0, &no_write);
+        VisualPick result;
+        if (value == pick_terrain)
+        {
+            result.terrain = true;
+        }
+        else if (value != 0)
+        {
+            result.instance = value - 1U;
+        }
+        completed_pick = result;
+    }
+
+    void request_pick(const std::uint32_t x, const std::uint32_t y)
+    {
+        pending_pick = std::array<std::uint32_t, 2>{x, y};
+    }
+
+    void set_highlight(const std::optional<std::uint32_t> instance)
+    {
+        highlighted_pick_id = instance && *instance < std::numeric_limits<std::uint32_t>::max() ? *instance + 1U : 0U;
     }
 
     // Writes this frame's logical-texture-to-slot table. Called once the frame context is reusable.
@@ -1933,6 +2017,7 @@ struct D3d12Renderer::Impl
         std::memcpy(frame.bone_buffer_mapped, bone_transforms.data(), bone_transforms.size() * sizeof(bone_transforms.front()));
         stream_scene_textures();
         write_texture_residency(frame);
+        collect_pick(frame);
         // This frame context's fence has completed above, so its constants can be rewritten.
         FrameConstants constants{};
         constants.view_projection = camera_matrix();
@@ -1955,6 +2040,7 @@ struct D3d12Renderer::Impl
             constants.fill_direction[index] = unit(lighting.fills[index].direction);
             constants.fill_diffuse[index] = rgb(lighting.fills[index].color);
         }
+        constants.selection = {highlighted_pick_id, 0, 0, 0};
         std::memcpy(frame.constant_buffer_mapped, &constants, sizeof(constants));
 
         check_hresult(frame.allocator->Reset(), "ID3D12CommandAllocator::Reset");
@@ -1980,9 +2066,12 @@ struct D3d12Renderer::Impl
         auto render_target = rtv_heap->GetCPUDescriptorHandleForHeapStart();
         render_target.ptr += static_cast<SIZE_T>(frame_index) * rtv_increment;
         const auto depth_target = dsv_heap->GetCPUDescriptorHandleForHeapStart();
-        command_list->OMSetRenderTargets(1, &render_target, FALSE, &depth_target);
+        const std::array targets{render_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};
+        command_list->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), FALSE, &depth_target);
         constexpr std::array clear_color{0.018F, 0.031F, 0.043F, 1.0F};
+        constexpr std::array clear_pick{0.0F, 0.0F, 0.0F, 0.0F};
         command_list->ClearRenderTargetView(render_target, clear_color.data(), 0, nullptr);
+        command_list->ClearRenderTargetView(targets[1], clear_pick.data(), 0, nullptr);
         command_list->ClearDepthStencilView(depth_target, D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
 
         ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
@@ -2047,6 +2136,27 @@ struct D3d12Renderer::Impl
             }
         }
 
+        // A requested pick copies one texel; it is read when this frame's fence completes.
+        if (pending_pick)
+        {
+            const auto [x, y] = *pending_pick;
+            pending_pick.reset();
+            auto to_copy = transition_barrier(pick_target.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
+            command_list->ResourceBarrier(1, &to_copy);
+            D3D12_TEXTURE_COPY_LOCATION source{};
+            source.pResource = pick_target.Get();
+            source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            D3D12_TEXTURE_COPY_LOCATION destination{};
+            destination.pResource = frame.pick_readback.Get();
+            destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            destination.PlacedFootprint.Footprint = {pick_format, 1, 1, 1, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT};
+            const D3D12_BOX texel{std::min(x, width - 1), std::min(y, height - 1), 0, std::min(x, width - 1) + 1, std::min(y, height - 1) + 1, 1};
+            command_list->CopyTextureRegion(&destination, 0, 0, 0, &source, &texel);
+            auto to_target = transition_barrier(pick_target.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            command_list->ResourceBarrier(1, &to_target);
+            frame.pick_request = next_pick_request++;
+        }
+
         auto to_present = transition_barrier(frame.back_buffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
         command_list->ResourceBarrier(1, &to_present);
         check_hresult(command_list->Close(), "ID3D12GraphicsCommandList::Close");
@@ -2104,6 +2214,7 @@ struct D3d12Renderer::Impl
         // synchronization point. Normal frame submission never takes this path.
         direct_queue.flush();
         depth_buffer.Reset();
+        pick_target.Reset();
         for (auto& frame : frames)
         {
             frame.back_buffer.Reset();
@@ -2149,6 +2260,13 @@ struct D3d12Renderer::Impl
         if (direct_queue.initialized() && copy_queue.initialized())
         {
             retire_completed_resources();
+            for (auto& frame : frames)
+            {
+                if (frame.pick_readback)
+                {
+                    collect_pick(frame);
+                }
+            }
         }
         if (error)
         {
@@ -2242,6 +2360,21 @@ void D3d12Renderer::resize(const std::uint32_t width, const std::uint32_t height
 void D3d12Renderer::wait_idle()
 {
     impl_->wait_idle();
+}
+
+void D3d12Renderer::request_pick(const std::uint32_t x, const std::uint32_t y)
+{
+    impl_->request_pick(x, y);
+}
+
+std::optional<VisualPick> D3d12Renderer::take_pick()
+{
+    return std::exchange(impl_->completed_pick, std::nullopt);
+}
+
+void D3d12Renderer::set_highlight(const std::optional<std::uint32_t> instance)
+{
+    impl_->set_highlight(instance);
 }
 
 void D3d12Renderer::load_scene(VisualScene scene)

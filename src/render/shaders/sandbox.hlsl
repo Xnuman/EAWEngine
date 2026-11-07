@@ -21,7 +21,8 @@ struct InstanceData
     float4 team_color;
     uint bone_offset;
     uint flags;
-    uint2 padding;
+    uint pick_id;
+    uint padding;
 };
 
 StructuredBuffer<BoneTransform> bones : register(t1);
@@ -51,6 +52,13 @@ struct PixelInput
     float4 tint : COLOR0;
     float4 team_color : COLOR1;
     float4 vertex_color : COLOR2;
+    nointerpolation uint pick_id : PICKID;
+};
+
+struct PixelOutput
+{
+    float4 color : SV_TARGET0;
+    uint pick_id : SV_TARGET1;
 };
 
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
@@ -117,12 +125,12 @@ PixelInput vs_main(VertexInput input)
     output.tint = instance.tint;
     output.team_color = instance.team_color;
     output.vertex_color = input.color;
+    output.pick_id = instance.pick_id;
     return output;
 }
 
 
-[RootSignature(SANDBOX_ROOT_SIGNATURE)]
-float4 ps_main(PixelInput input) : SV_TARGET
+float4 shade(PixelInput input)
 {
     const MaterialData material = materials[material_index];
     const float2 uv = input.uv * material.specular.w + material.uv_scroll * camera_position_time.w;
@@ -188,4 +196,15 @@ float4 ps_main(PixelInput input) : SV_TARGET
     }
     const float alpha = (material.flags & MATERIAL_ALPHA_BLEND) != 0u ? base.a * material.diffuse.a * tint.a : 1.0f;
     return float4(color, alpha);
+}
+
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+PixelOutput ps_main(PixelInput input)
+{
+    // Blended pipelines mask the pick target, so only opaque and alpha-tested surfaces are pickable.
+    PixelOutput output;
+    output.color = shade(input);
+    output.color.rgb = apply_selection_highlight(output.color.rgb, input.pick_id);
+    output.pick_id = input.pick_id;
+    return output;
 }

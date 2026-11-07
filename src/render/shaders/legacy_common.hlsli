@@ -44,7 +44,17 @@ cbuffer FrameConstants : register(b0)
     float4 ambient;
     float4 fill_direction[2];    // unit vectors toward the fill lights
     float4 fill_diffuse[2];
+    uint4 selection; // x: pick id drawn highlighted (0 = none)
 };
+
+// Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
+// PICK_TERRAIN the terrain. Keep in sync with d3d12_renderer.cpp.
+static const uint PICK_TERRAIN = 0xFFFFFFFFu;
+
+float3 apply_selection_highlight(const float3 color, const uint pick_id)
+{
+    return (pick_id != 0u && pick_id == selection.x) ? lerp(color, float3(1.0f, 0.82f, 0.25f), 0.35f) : color;
+}
 
 cbuffer DrawConstants : register(b1)
 {

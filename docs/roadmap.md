@@ -105,7 +105,9 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   resource handles, descriptor allocation, streaming, and hot reload. Animation
   selection is done: `sandbox --model` cycles the model's animations with
   Left/Right, and rigid attachments follow animated bone visibility through a
-  visibility-collapsed second palette half. Started:
+  visibility-collapsed second palette half. Selection IDs are done: a GPU pick
+  target and per-frame readback select the instance or terrain under a click
+  without stalling, and the sandbox highlights the selection. Started:
   the D3D12 renderer keeps textures in a generation-checked handle pool, takes
   texture-table slots from an allocator that reuses a slot only after its
   release fence, and retires replaced scene resources on the direct-queue
