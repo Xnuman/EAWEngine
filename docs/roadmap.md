@@ -207,14 +207,14 @@ it.
 
 ## Cross-cutting engineering work
 
-- **Raw input.** Replace window-message mouse and keyboard handling in
-  `src/platform` with raw input (`WM_INPUT` via `RegisterRawInputDevices`, or
-  Microsoft GameInput), giving unaccelerated high-resolution mouse deltas,
-  per-device state, and input timestamps, while window messages stay the source
-  of cursor position for UI. The platform input contract (`InputState`) stays
-  engine-native so the simulation and sandbox do not change. Reference designs:
-  the owner's own projects and permissively licensed engines (for example SDL's
-  Windows raw-input backend); designs are studied, not copied.
+- **Raw input (done).** `src/platform` reads mouse movement and the keyboard
+  through `WM_INPUT` (`RegisterRawInputDevices`): unaccelerated device deltas in
+  `InputState::raw_mouse_delta_x/y` (absolute devices such as tablets and remote
+  desktop are converted to deltas) and raw key state. Cursor position, buttons,
+  and wheel stay on window messages, as in the owner's Singe engine and in
+  Unreal and Godot, so clicks outside the client area never reach the scene.
+  The sandbox rotates cameras with raw deltas; `--no-raw-input` falls back to
+  window messages. Input timestamps and GameInput (controllers) are later options.
 - **Exception-free error handling (done).** No exceptions: every target
   compiles with `/EHs-c-` and `_HAS_EXCEPTIONS=0`. Recoverable failures
   (malformed data, missing assets, failed map or model builds, invalid input, a

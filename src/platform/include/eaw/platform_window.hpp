@@ -55,10 +55,19 @@ struct InputState
     std::array<ButtonState, static_cast<std::size_t>(MouseButton::count)> mouse_buttons;
     std::int32_t mouse_x{};
     std::int32_t mouse_y{};
+    // Cursor movement in client pixels this frame (pointer speed and acceleration applied); use it
+    // for anything tied to the cursor, such as dragging a selection box.
     std::int32_t mouse_delta_x{};
     std::int32_t mouse_delta_y{};
+    // Device movement this frame from raw input: unaccelerated mouse counts, independent of the
+    // cursor (keeps moving at screen edges). Use it for camera rotation and other relative control.
+    // Equals the cursor movement when raw input is unavailable.
+    std::int32_t raw_mouse_delta_x{};
+    std::int32_t raw_mouse_delta_y{};
     float wheel_delta{};
     bool focused{};
+    // Mouse movement and keys come from raw input (WM_INPUT) rather than window messages.
+    bool raw_input{};
 };
 
 struct WindowDescription
@@ -66,6 +75,9 @@ struct WindowDescription
     std::string title{"EAWEngine Visual Sandbox"};
     std::uint32_t width{1600};
     std::uint32_t height{900};
+    // Read mouse movement and keys through raw input (falls back to window messages when the
+    // devices cannot be registered).
+    bool raw_input{true};
 };
 
 class PlatformWindow final

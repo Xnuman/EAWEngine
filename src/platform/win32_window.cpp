@@ -1,6 +1,10 @@
 #include "eaw/platform_window.hpp"
 
+#include "eaw/log.hpp"
+
 #include <algorithm>
+#include <array>
+#include <vector>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -47,6 +51,8 @@ struct PlatformWindow::Impl
     bool close_requested{};
     bool minimized{};
     bool mouse_position_initialized{};
+    // Last absolute raw position (tablets, remote desktop, virtual machines), in screen pixels.
+    std::optional<std::array<LONG, 2>> last_absolute_mouse;
 
     static LRESULT CALLBACK window_proc(const HWND handle, const UINT message, const WPARAM w_param, const LPARAM l_param)
     {
@@ -91,22 +97,31 @@ struct PlatformWindow::Impl
             input.focused = false;
             release_all_input();
             return 0;
+        case WM_INPUT:
+            // Only while this window is in the foreground (RIM_INPUT); DefWindowProc then releases
+            // the system's raw input buffer, as the documentation requires.
+            if (GET_RAWINPUT_CODE_WPARAM(w_param) == RIM_INPUT)
+            {
+                handle_raw_input(reinterpret_cast<HRAWINPUT>(l_param));
+            }
+            return DefWindowProcW(handle, message, w_param, l_param);
         case WM_KEYDOWN:
-            update_key(w_param, true);
-            return 0;
         case WM_KEYUP:
-            update_key(w_param, false);
+            // With raw input the keyboard state comes from WM_INPUT; these messages remain for
+            // future text entry.
+            if (!input.raw_input)
+            {
+                update_key(w_param, message == WM_KEYDOWN);
+            }
             return 0;
         case WM_SYSKEYDOWN:
-            if (w_param == VK_F4)
-            {
-                return DefWindowProcW(handle, message, w_param, l_param);
-            }
-            update_key(w_param, true);
-            return 0;
         case WM_SYSKEYUP:
-            update_key(w_param, false);
-            return 0;
+            if (!input.raw_input)
+            {
+                update_key(w_param, message == WM_SYSKEYDOWN);
+            }
+            // Alt+F4 and the system menu keep working.
+            return DefWindowProcW(handle, message, w_param, l_param);
         case WM_LBUTTONDOWN:
             update_mouse_button(MouseButton::left, true);
             return 0;
@@ -133,6 +148,11 @@ struct PlatformWindow::Impl
             {
                 input.mouse_delta_x += x - input.mouse_x;
                 input.mouse_delta_y += y - input.mouse_y;
+                if (!input.raw_input)
+                {
+                    input.raw_mouse_delta_x += x - input.mouse_x;
+                    input.raw_mouse_delta_y += y - input.mouse_y;
+                }
             }
             mouse_position_initialized = true;
             input.mouse_x = x;
@@ -167,7 +187,89 @@ struct PlatformWindow::Impl
         }
         input.mouse_delta_x = 0;
         input.mouse_delta_y = 0;
+        input.raw_mouse_delta_x = 0;
+        input.raw_mouse_delta_y = 0;
         input.wheel_delta = 0.0F;
+    }
+
+    // Registers the mouse and keyboard (HID usage page 1, usages 2 and 6) for WM_INPUT. Legacy
+    // messages are still generated: buttons, wheel, and cursor position keep coming from them (so a
+    // click on the title bar or another window never reaches the scene), and key messages remain
+    // available for text entry.
+    bool register_raw_input()
+    {
+        std::array<RAWINPUTDEVICE, 2> devices{};
+        devices[0] = {0x01, 0x02, 0, handle};
+        devices[1] = {0x01, 0x06, 0, handle};
+        if (!RegisterRawInputDevices(devices.data(), static_cast<UINT>(devices.size()), sizeof(RAWINPUTDEVICE)))
+        {
+            log_warning("input", "raw input is unavailable (Windows error " + std::to_string(GetLastError()) + "); using window messages");
+            return false;
+        }
+        return true;
+    }
+
+    void handle_raw_input(const HRAWINPUT raw_handle)
+    {
+        UINT size = 0;
+        if (GetRawInputData(raw_handle, RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER)) != 0 || size == 0)
+        {
+            return;
+        }
+        // RAWINPUT is variable-sized for HID devices; keyboard and mouse records fit in the struct.
+        alignas(RAWINPUT) std::array<std::byte, sizeof(RAWINPUT) + 64> buffer{};
+        if (size > buffer.size() || GetRawInputData(raw_handle, RID_INPUT, buffer.data(), &size, sizeof(RAWINPUTHEADER)) != size)
+        {
+            return;
+        }
+        const auto& raw = *reinterpret_cast<const RAWINPUT*>(buffer.data());
+        if (raw.header.dwType == RIM_TYPEMOUSE)
+        {
+            handle_raw_mouse(raw.data.mouse);
+        }
+        else if (raw.header.dwType == RIM_TYPEKEYBOARD)
+        {
+            handle_raw_keyboard(raw.data.keyboard);
+        }
+    }
+
+    void handle_raw_mouse(const RAWMOUSE& mouse)
+    {
+        if ((mouse.usFlags & MOUSE_MOVE_ABSOLUTE) == 0)
+        {
+            // A conventional mouse: unaccelerated relative counts.
+            input.raw_mouse_delta_x += mouse.lLastX;
+            input.raw_mouse_delta_y += mouse.lLastY;
+            return;
+        }
+        // Absolute devices (pen tablets, remote desktop, virtual machines) report 0..65535 across the
+        // primary or virtual screen; movement is the change between reports, in screen pixels.
+        const bool virtual_desktop = (mouse.usFlags & MOUSE_VIRTUAL_DESKTOP) != 0;
+        const auto width = GetSystemMetrics(virtual_desktop ? SM_CXVIRTUALSCREEN : SM_CXSCREEN);
+        const auto height = GetSystemMetrics(virtual_desktop ? SM_CYVIRTUALSCREEN : SM_CYSCREEN);
+        const std::array<LONG, 2> position{static_cast<LONG>(static_cast<long long>(mouse.lLastX) * width / 65535), static_cast<LONG>(static_cast<long long>(mouse.lLastY) * height / 65535)};
+        if (last_absolute_mouse)
+        {
+            input.raw_mouse_delta_x += position[0] - (*last_absolute_mouse)[0];
+            input.raw_mouse_delta_y += position[1] - (*last_absolute_mouse)[1];
+        }
+        last_absolute_mouse = position;
+    }
+
+    void handle_raw_keyboard(const RAWKEYBOARD& keyboard)
+    {
+        // 255 marks the fake keys of escaped scan code sequences.
+        if (keyboard.VKey == 0xFF)
+        {
+            return;
+        }
+        WPARAM virtual_key = keyboard.VKey;
+        if (virtual_key == VK_SHIFT)
+        {
+            // Raw input reports both shifts as VK_SHIFT; the scan code tells them apart.
+            virtual_key = MapVirtualKeyW(keyboard.MakeCode, MAPVK_VSC_TO_VK_EX);
+        }
+        update_key(virtual_key, (keyboard.Flags & RI_KEY_BREAK) == 0);
     }
 
     void release_all_input()
@@ -265,8 +367,12 @@ struct PlatformWindow::Impl
         case VK_F1:
             return Key::f1;
         case VK_SHIFT:
+        case VK_LSHIFT:
+        case VK_RSHIFT:
             return Key::shift;
         case VK_CONTROL:
+        case VK_LCONTROL:
+        case VK_RCONTROL:
             return Key::control;
         default:
             return std::nullopt;
@@ -316,6 +422,7 @@ Result<PlatformWindow> PlatformWindow::create(const WindowDescription& descripti
     impl.client_width = static_cast<std::uint32_t>(client.right - client.left);
     impl.client_height = static_cast<std::uint32_t>(client.bottom - client.top);
     impl.input.focused = true;
+    impl.input.raw_input = description.raw_input && impl.register_raw_input();
     ShowWindow(impl.handle, SW_SHOWDEFAULT);
     UpdateWindow(impl.handle);
     return window;

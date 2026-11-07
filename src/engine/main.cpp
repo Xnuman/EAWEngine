@@ -76,6 +76,8 @@ struct Options
     bool show_bounds{};
     // On-screen statistics panel (F1 toggles at runtime).
     bool overlay{true};
+    // Mouse movement and keys through raw input (--no-raw-input uses window messages).
+    bool raw_input{true};
     // Deliberately fail in one way to check crash reporting: assert, exception, access-violation.
     std::optional<std::string> crash_test;
     // Folder for log files (default: "logs" next to the executable).
@@ -115,6 +117,7 @@ void print_usage()
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
               << "  --no-overlay       Start without the on-screen statistics panel (F1 toggles)\n"
+              << "  --no-raw-input     Read mouse movement and keys from window messages instead of raw input\n"
               << "  --no-error-dialog  Report fatal errors on stderr only (no error window)\n"
               << "  --log-dir <path>   Folder for log files (default: logs next to the executable)\n"
               << "  --crash-test <assert|exception|access-violation>  Fail deliberately to check crash reporting\n"
@@ -196,6 +199,10 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
         else if (argument == "--no-overlay")
         {
             options.overlay = false;
+        }
+        else if (argument == "--no-raw-input")
+        {
+            options.raw_input = false;
         }
         else if (argument == "--log-dir")
         {
@@ -607,6 +614,7 @@ int main(const int argc, char** argv)
         window_description.title = "EAWEngine Visual Sandbox — " + std::string(eaw::to_string(profile->variant));
         window_description.width = options.width;
         window_description.height = options.height;
+        window_description.raw_input = options.raw_input;
         auto created_window = eaw::PlatformWindow::create(window_description);
         if (!created_window)
         {
@@ -974,8 +982,10 @@ int main(const int argc, char** argv)
             const bool rts_mode = tactical_camera && !free_camera;
             if (scene_mouse && !rts_mode && input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
             {
-                camera_input.yaw = static_cast<float>(input.mouse_delta_x) * 0.01F;
-                camera_input.pitch = static_cast<float>(-input.mouse_delta_y) * 0.01F;
+                // Rotation follows the device (raw, unaccelerated counts); dragging that should track
+                // the cursor, such as panning, uses cursor pixels.
+                camera_input.yaw = static_cast<float>(input.raw_mouse_delta_x) * 0.01F;
+                camera_input.pitch = static_cast<float>(-input.raw_mouse_delta_y) * 0.01F;
             }
             if (tactical_camera)
             {
@@ -1358,7 +1368,7 @@ int main(const int argc, char** argv)
                         (options.vsync   ? "vsync"
                          : stats.tearing ? "immediate (tearing)"
                                          : "immediate") +
-                        " | latency " + std::to_string(options.frame_latency),
+                        " | latency " + std::to_string(options.frame_latency) + " | input " + (window.input().raw_input ? "raw" : "window messages"),
                     "",
                     "FPS " + format_fixed(static_cast<double>(overlay_frames) / seconds, 1) + " | CPU " + format_fixed(seconds * 1000.0 / static_cast<double>(overlay_frames), 2) + " ms | GPU " +
                         format_fixed(stats.gpu_frame_milliseconds, 2) + " ms",
