@@ -181,6 +181,16 @@ if(WIN32)
     endif()
 endif()
 
+# Deterministic tactical simulation core: no graphics, platform, or file access.
+add_library(eaw_simulation STATIC
+    src/simulation/simulation.cpp
+)
+target_include_directories(eaw_simulation PUBLIC src/simulation/include)
+target_compile_features(eaw_simulation PUBLIC cxx_std_20)
+if(MSVC)
+    target_compile_options(eaw_simulation PRIVATE /W4 /permissive- /EHsc /utf-8)
+endif()
+
 # Platform-independent engine orchestration: visual scene construction and camera control. It
 # consumes the render contract headers (engine-native data) but no graphics API.
 add_library(eaw_engine STATIC
@@ -192,7 +202,7 @@ add_library(eaw_engine STATIC
 target_include_directories(eaw_engine PUBLIC src/engine src/render/include)
 target_compile_features(eaw_engine PUBLIC cxx_std_20)
 target_compile_definitions(eaw_engine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-target_link_libraries(eaw_engine PUBLIC eaw_core)
+target_link_libraries(eaw_engine PUBLIC eaw_core eaw_simulation)
 
 add_executable(EAWEngine src/engine/main.cpp)
 target_link_libraries(EAWEngine PRIVATE eaw_core eaw_engine)

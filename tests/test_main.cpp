@@ -10,6 +10,7 @@
 #include "asset_cache.hpp"
 #include "debug_draw.hpp"
 #include "eaw/game_object_catalog.hpp"
+#include "eaw/simulation.hpp"
 #include "eaw/gpu_resource_lifetime.hpp"
 #include "eaw/legacy_material.hpp"
 #include "eaw/localization_scan.hpp"
@@ -605,6 +606,82 @@ void test_debug_draw()
     lines.clear();
     eaw::append_debug_axes(lines, {1.0F, 2.0F, 3.0F}, 5.0F);
     require(lines.size() == 3 && lines[0].to == std::array<float, 3>{6.0F, 2.0F, 3.0F} && lines[2].to == std::array<float, 3>{1.0F, 2.0F, 8.0F}, "debug axes have the wrong extent");
+}
+
+void test_simulation_core()
+{
+    // Movement: 3 units/s at 10 ticks/s reaches a point 1 unit away in four ticks (0.3 per tick).
+    eaw::SimulationWorld world(0.1);
+    const auto mover = world.spawn({.type_name = "Mover", .owner = 1, .position = {0.0F, 0.0F, 0.0F}, .max_speed = 3.0F, .visual = 7});
+    const auto statue = world.spawn({.type_name = "Statue", .position = {5.0F, 5.0F, 0.0F}});
+    world.submit({eaw::SimCommandKind::move, {mover, statue}, {1.0F, 0.0F, 0.0F}});
+    world.step();
+    const auto& first = world.snapshot();
+    require(first.tick == 1 && first.entities.size() == 2 && first.entities[0].id == mover && std::fabs(first.entities[0].position.x - 0.3F) < 1.0e-5F && first.entities[0].moving &&
+                first.entities[0].visual == 7 && first.entities[0].owner == 1,
+            "a moving entity must advance by speed times tick length");
+    require(!first.entities[1].moving && first.entities[1].position == eaw::SimVector3{5.0F, 5.0F, 0.0F}, "an entity without speed must ignore move commands");
+    for (int tick = 0; tick < 3; ++tick)
+    {
+        world.step();
+    }
+    require(world.snapshot().entities[0].position == eaw::SimVector3{1.0F, 0.0F, 0.0F} && !world.snapshot().entities[0].moving, "an entity must stop exactly at its target");
+
+    // Destruction: ids are generation-checked, stale references are counted, slots are reused.
+    world.submit({eaw::SimCommandKind::destroy, {mover}, {}});
+    world.step();
+    require(!world.alive(mover) && world.alive(statue) && world.snapshot().entities.size() == 1, "a destroyed entity must leave the world");
+    world.submit({eaw::SimCommandKind::move, {mover}, {2.0F, 0.0F, 0.0F}});
+    world.step();
+    require(world.stats().stale_references == 1, "a command naming a destroyed entity must count as stale");
+    const auto reused = world.spawn({.type_name = "Mover", .max_speed = 1.0F});
+    require(reused.index == mover.index && reused.generation != mover.generation && !world.alive(mover) && world.alive(reused), "a reused slot must not revive the old id");
+
+    // Determinism: identical histories give identical state; a different command does not.
+    const auto run = [](const float target_x)
+    {
+        eaw::SimulationWorld sim(1.0 / 30.0);
+        std::vector<eaw::EntityId> ids;
+        for (int index = 0; index < 20; ++index)
+        {
+            ids.push_back(sim.spawn({.type_name = "Unit", .position = {static_cast<float>(index), 0.0F, 0.0F}, .heading = 0.1F * static_cast<float>(index), .max_speed = 12.5F}));
+        }
+        sim.submit({eaw::SimCommandKind::move, {ids.begin(), ids.begin() + 10}, {target_x, 40.0F, 0.0F}});
+        for (int tick = 0; tick < 45; ++tick)
+        {
+            if (tick == 20)
+            {
+                sim.submit({eaw::SimCommandKind::destroy, {ids[3], ids[15]}, {}});
+                sim.submit({eaw::SimCommandKind::stop, {ids[4]}, {}});
+            }
+            sim.step();
+        }
+        return sim.state_hash();
+    };
+    require(run(25.0F) == run(25.0F) && run(25.0F) != run(26.0F), "identical command histories must produce identical state");
+
+    // Clock: whole ticks, a bounded catch-up, and an interpolation fraction.
+    eaw::FixedStepClock clock(10.0, 4);
+    require(clock.advance(0.25) == 2 && std::fabs(clock.interpolation() - 0.5F) < 1.0e-4F, "the clock must return whole ticks and the remaining fraction");
+    require(clock.advance(10.0) == 4 && clock.dropped_ticks() > 90, "a long stall must be capped and the excess dropped");
+
+    // Interpolation blends matching entities and keeps new ones at their current state.
+    eaw::SimSnapshot before{1, {{{1, 1}, {0.0F, 0.0F, 0.0F}, 0.0F}}};
+    eaw::SimSnapshot after{2, {{{1, 1}, {10.0F, 0.0F, 0.0F}, 1.0F}, {{2, 1}, {4.0F, 4.0F, 0.0F}, 0.0F}}};
+    const auto blended = eaw::interpolate_snapshots(before, after, 0.25F);
+    require(blended.size() == 2 && std::fabs(blended[0].position.x - 2.5F) < 1.0e-5F && std::fabs(blended[0].heading - 0.25F) < 1.0e-5F && blended[1].position.x == 4.0F,
+            "snapshot interpolation must blend matching entities only");
+
+    bool rejected = false;
+    try
+    {
+        (void)world.spawn({.type_name = "Bad", .position = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F}});
+    }
+    catch (const std::invalid_argument&)
+    {
+        rejected = true;
+    }
+    require(rejected, "a non-finite spawn must be rejected");
 }
 
 // A minimal 4x4 BC1 DDS with one mip level.
@@ -1791,6 +1868,7 @@ int main()
         test_gpu_resource_lifetime();
         test_asset_cache_dependencies();
         test_debug_draw();
+        test_simulation_core();
         test_texture_formats_and_materials();
         test_lua_inspection();
         test_ala_animation();
