@@ -62,3 +62,19 @@ remain compatibility-research inputs: public schema declarations, structurally
 inferred types, and intentionally permissive shipped data can each require
 further evidence before a warning becomes an engine rule.
 
+The texture corpus observed on 2026-11-07 contains 2,213 resolved DDS files.
+The semantic decoder validates all of them: 168 BC1, 181 BC2, 1,656 BC3, 37
+24-bit BGR, 169 32-bit BGRA, and two 32-bit BGRX textures, with 17,854 mip
+levels in total and a maximum extent of 2048 by 2048. No stock cube or volume
+textures are present, but their DDS metadata and subresource layout are handled
+for mods. The FoC command-bar mega-texture directory contains 1,107 named atlas
+rectangles, 997 with alpha, and resolves to its 2048-square compressed DDS.
+
+Across 1,379 semantic stock ALO models, 9,294 material instances use 35 shader
+names and seven texture-parameter names. The compatibility representation keeps
+the source shader and all raw parameters, then adds conservative family, blend,
+and texture-role hints. This separation allows the future renderer to improve a
+shader translation without changing the lossless asset decoder. Fourteen of
+1,286 unique model texture references remain absent from the final layered VFS
+and are reported with example source models.
+

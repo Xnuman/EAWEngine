@@ -66,7 +66,7 @@ EAWAssetInspector.exe inspect Data/Art/Models/Some_Unit.alo
 # Unique TEXT_* references in one resolved XML file
 EAWAssetInspector.exe localization-refs Data/XML/Units.xml
 
-# Resolve every texture parameter used by semantic ALO models
+# Audit model references, material mappings, DDS formats, and MTD atlases
 EAWAssetInspector.exe texture-audit Data/Art/Models --game foc
 
 # Parse and index the complete resolved XML object database
@@ -77,7 +77,8 @@ EAWAssetInspector.exe xml-audit Data/XML --game foc `
   --schema-root "D:\path\to\eaw-schema"
 ```
 
-Current semantic inspectors cover DAT string tables, DDS headers, ALO model
+Current semantic inspectors cover DAT string tables, DDS textures, MTD atlas
+directories, ALO model
 structure, ALA animation structure, TED maps, and Petroglyph XML. The XML
 reader accepts the game's multi-root fragments and historical declaration
 syntax, preserves element/attribute/field order and source lines, and indexes
@@ -106,7 +107,7 @@ ALO reports skeletons, meshes, bounds, materials, texture references, geometry
 counts, attachments, proxies, lights, and dazzles. ALA reports format version,
 playback timing, bone tracks, packed
 translation/rotation/scale blocks, visibility, and stepped channels. Particle
-ALO files and MTD mega-textures retain a safe top-level chunk fallback. TED
+ALO particle files retain a safe top-level chunk fallback. TED
 inspection reports land/space properties, terrain dimensions and elevation,
 texture layers, water maps, tracks, decals, environments, passability, object
 CRC counts, AI zones, and embedded map previews. Land TED files also get an
@@ -120,9 +121,18 @@ its custom extension field. Land previews can overlay the same decoded,
 type-colored placed-object markers used by space maps. Land transforms use
 positive X/Y editor coordinates at 20 world units per terrain sample, while Z
 elevation is converted to the heightmap's 20x stored scale. The
-GUI additionally consumes render-ready vertex/index/skin streams, decoded
-ALA frames, and BC1/BC2/BC3 diffuse DDS data. Semantic mega-texture decoding and
-faithful translation of every legacy material shader remain future layers.
+GUI additionally consumes render-ready vertex/index/skin streams, decoded ALA
+frames, and every DDS encoding observed in the stock corpus. The shared DDS
+decoder also recognizes BC4/BC5 and common DX10 formats for mods. MTD inspection
+lists source-image CRCs and atlas rectangles. ALO material inspection preserves
+raw parameters and adds engine-neutral shader-family, blend-mode, and texture
+role hints; exact production render-state and lighting translation remains a
+future renderer layer.
+
+`texture-audit` parses every resolved DDS and MTD, checks the MTD-to-compressed-
+DDS dependency, inventories format and material coverage, and reports missing
+ALO texture references with an example model. The optional prefix scopes model
+inspection; the DDS/MTD corpus always covers the final mounted `Data` VFS.
 
 `map-audit` parses every resolved TED in one mounted profile and reports corpus
 coverage without extracting maps:

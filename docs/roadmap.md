@@ -47,8 +47,15 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   metafile registries, and conservative structural matching type 20,881 of the
   21,283 named stock definitions. Object-kind checks consume behavior, flag,
   membership, and variant-inheritance rules from the public schema.
-- Next: remaining DDS/MTD formats, legacy shader/material translation, and Lua
-  bytecode inventory.
+- Semantic DDS decoding validates dimensions, mip/subresource layout, arrays,
+  cube/volume metadata, legacy masks, BC1-BC5, and DX10 formats. Semantic MTD
+  decoding covers atlas entries, rectangles, alpha flags, and name CRCs. The
+  stock corpus decodes all 2,213 DDS files and the 1,107-entry command-bar MTD.
+- Legacy ALO materials now normalize shader family, blend mode, and texture
+  semantics while preserving every original shader parameter. All observed
+  stock mesh shaders and texture parameter names have a classified fallback.
+- Next: Lua bytecode inventory, followed by deeper per-shader render-state and
+  lighting translation as the production renderer comes online.
 - Deliverable: asset inspector that can browse every stock and selected mod
   asset and report unresolved references.
 

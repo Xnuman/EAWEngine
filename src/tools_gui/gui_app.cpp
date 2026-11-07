@@ -6,9 +6,12 @@
 #include "eaw/alo_model.hpp"
 #include "eaw/asset_environment.hpp"
 #include "eaw/dat_file.hpp"
+#include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
+#include "eaw/legacy_material.hpp"
 #include "eaw/localization_scan.hpp"
 #include "eaw/localization_workspace.hpp"
+#include "eaw/mtd_directory.hpp"
 #include "eaw/text_encoding.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"
@@ -128,194 +131,125 @@ std::uint32_t little_u32(const std::span<const std::byte> bytes, const std::size
     return value;
 }
 
-std::vector<std::byte> decode_bc_diffuse(const std::span<const std::byte> bytes, const std::size_t offset, const std::uint32_t width, const std::uint32_t height, const DXGI_FORMAT format)
-{
-    const bool bc1 = format == DXGI_FORMAT_BC1_UNORM || format == DXGI_FORMAT_BC1_UNORM_SRGB;
-    const auto block_size = bc1 ? 8U : 16U;
-    std::vector<std::byte> pixels(static_cast<std::size_t>(width) * height * 4U);
-    const auto blocks_x = std::max(1U, (width + 3U) / 4U);
-    const auto blocks_y = std::max(1U, (height + 3U) / 4U);
-    const auto expand5 = [](const std::uint16_t value)
-    {
-        return static_cast<std::uint8_t>((value << 3U) | (value >> 2U));
-    };
-    const auto expand6 = [](const std::uint16_t value)
-    {
-        return static_cast<std::uint8_t>((value << 2U) | (value >> 4U));
-    };
-    for (std::uint32_t block_y = 0; block_y < blocks_y; ++block_y)
-    {
-        for (std::uint32_t block_x = 0; block_x < blocks_x; ++block_x)
-        {
-            const auto block = offset + (static_cast<std::size_t>(block_y) * blocks_x + block_x) * block_size;
-            const auto color = block + (bc1 ? 0U : 8U);
-            const auto read_u16_at = [&](const std::size_t position)
-            {
-                return static_cast<std::uint16_t>(std::to_integer<std::uint8_t>(bytes[position]) | (std::to_integer<std::uint8_t>(bytes[position + 1]) << 8U));
-            };
-            const auto color0 = read_u16_at(color);
-            const auto color1 = read_u16_at(color + 2U);
-            std::array<std::array<std::uint8_t, 4>, 4> palette{};
-            palette[0] = {expand5((color0 >> 11U) & 31U), expand6((color0 >> 5U) & 63U), expand5(color0 & 31U), 255};
-            palette[1] = {expand5((color1 >> 11U) & 31U), expand6((color1 >> 5U) & 63U), expand5(color1 & 31U), 255};
-            const bool four_colors = !bc1 || color0 > color1;
-            if (four_colors)
-            {
-                for (std::size_t channel = 0; channel < 3; ++channel)
-                {
-                    palette[2][channel] = static_cast<std::uint8_t>((2U * palette[0][channel] + palette[1][channel]) / 3U);
-                    palette[3][channel] = static_cast<std::uint8_t>((palette[0][channel] + 2U * palette[1][channel]) / 3U);
-                }
-            }
-            else
-            {
-                for (std::size_t channel = 0; channel < 3; ++channel)
-                {
-                    palette[2][channel] = static_cast<std::uint8_t>((palette[0][channel] + palette[1][channel]) / 2U);
-                    palette[3][channel] = 0;
-                }
-            }
-            palette[2][3] = 255;
-            palette[3][3] = 255;
-            const auto selectors = little_u32(bytes, color + 4U);
-            for (std::uint32_t local_y = 0; local_y < 4; ++local_y)
-            {
-                for (std::uint32_t local_x = 0; local_x < 4; ++local_x)
-                {
-                    const auto x = block_x * 4U + local_x;
-                    const auto y = block_y * 4U + local_y;
-                    if (x >= width || y >= height)
-                    {
-                        continue;
-                    }
-                    const auto selector = (selectors >> (2U * (local_y * 4U + local_x))) & 3U;
-                    const auto destination = (static_cast<std::size_t>(y) * width + x) * 4U;
-                    for (std::size_t channel = 0; channel < 4; ++channel)
-                    {
-                        pixels[destination + channel] = static_cast<std::byte>(palette[selector][channel]);
-                    }
-                }
-            }
-        }
-    }
-    return pixels;
-}
-
 PreviewTexture create_dds_texture(ID3D11Device* device, const std::span<const std::byte> bytes)
 {
-    if (device == nullptr || bytes.size() < 128 || little_u32(bytes, 0) != 0x20534444U || little_u32(bytes, 4) != 124U)
+    if (device == nullptr)
     {
-        throw std::runtime_error("invalid or unsupported DDS header");
+        throw std::runtime_error("DirectX 11 device is unavailable");
     }
-    const auto height = little_u32(bytes, 12);
-    const auto width = little_u32(bytes, 16);
-    const auto pixel_flags = little_u32(bytes, 80);
-    const auto fourcc = little_u32(bytes, 84);
-    const auto rgb_bits = little_u32(bytes, 88);
-    const auto red_mask = little_u32(bytes, 92);
-    const auto green_mask = little_u32(bytes, 96);
-    const auto blue_mask = little_u32(bytes, 100);
-    const auto alpha_mask = little_u32(bytes, 104);
-    std::size_t data_offset = 128;
+    const auto texture_info = DdsTexture::parse(bytes);
+    if (texture_info.subresources.empty())
+    {
+        throw std::runtime_error("DDS contains no image data");
+    }
+    const auto& image = texture_info.subresources.front();
     DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
-    std::uint32_t row_pitch = 0;
-    std::uint32_t row_count = height;
-
-    constexpr auto make_fourcc = [](const char a, const char b, const char c, const char d)
+    switch (texture_info.format)
     {
-        return static_cast<std::uint32_t>(a) | (static_cast<std::uint32_t>(b) << 8U) | (static_cast<std::uint32_t>(c) << 16U) | (static_cast<std::uint32_t>(d) << 24U);
-    };
-    if ((pixel_flags & 0x4U) != 0)
-    {
-        std::uint32_t block_size = 0;
-        switch (fourcc)
-        {
-        case make_fourcc('D', 'X', 'T', '1'):
-            format = DXGI_FORMAT_BC1_UNORM;
-            block_size = 8;
-            break;
-        case make_fourcc('D', 'X', 'T', '3'):
-            format = DXGI_FORMAT_BC2_UNORM;
-            block_size = 16;
-            break;
-        case make_fourcc('D', 'X', 'T', '5'):
-            format = DXGI_FORMAT_BC3_UNORM;
-            block_size = 16;
-            break;
-        case make_fourcc('A', 'T', 'I', '1'):
-        case make_fourcc('B', 'C', '4', 'U'):
-            format = DXGI_FORMAT_BC4_UNORM;
-            block_size = 8;
-            break;
-        case make_fourcc('A', 'T', 'I', '2'):
-        case make_fourcc('B', 'C', '5', 'U'):
-            format = DXGI_FORMAT_BC5_UNORM;
-            block_size = 16;
-            break;
-        case make_fourcc('D', 'X', '1', '0'):
-            if (bytes.size() < 148)
-            {
-                throw std::runtime_error("truncated DDS DX10 header");
-            }
-            format = static_cast<DXGI_FORMAT>(little_u32(bytes, 128));
-            data_offset = 148;
-            if (format == DXGI_FORMAT_BC1_UNORM || format == DXGI_FORMAT_BC1_UNORM_SRGB || format == DXGI_FORMAT_BC4_UNORM)
-            {
-                block_size = 8;
-            }
-            else if (format == DXGI_FORMAT_BC2_UNORM || format == DXGI_FORMAT_BC2_UNORM_SRGB || format == DXGI_FORMAT_BC3_UNORM || format == DXGI_FORMAT_BC3_UNORM_SRGB ||
-                     format == DXGI_FORMAT_BC5_UNORM)
-            {
-                block_size = 16;
-            }
-            break;
-        default:
-            break;
-        }
-        if (block_size != 0)
-        {
-            row_pitch = std::max(1U, (width + 3U) / 4U) * block_size;
-            row_count = std::max(1U, (height + 3U) / 4U);
-        }
-    }
-    else if ((pixel_flags & 0x40U) != 0 && rgb_bits == 32)
-    {
-        if (red_mask == 0x00ff0000U && green_mask == 0x0000ff00U && blue_mask == 0x000000ffU && alpha_mask == 0xff000000U)
-        {
-            format = DXGI_FORMAT_B8G8R8A8_UNORM;
-        }
-        else if (red_mask == 0x000000ffU && green_mask == 0x0000ff00U && blue_mask == 0x00ff0000U && alpha_mask == 0xff000000U)
-        {
-            format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        }
-        row_pitch = width * 4U;
-    }
-
-    if (format == DXGI_FORMAT_UNKNOWN || row_pitch == 0 || width == 0 || height == 0)
-    {
-        throw std::runtime_error("unsupported DDS pixel format");
-    }
-    const auto data_size = static_cast<std::size_t>(row_pitch) * row_count;
-    if (data_offset + data_size > bytes.size())
-    {
-        throw std::runtime_error("truncated DDS image data");
-    }
-
-    std::vector<std::byte> decoded_pixels;
-    const bool decode_diffuse = format == DXGI_FORMAT_BC1_UNORM || format == DXGI_FORMAT_BC1_UNORM_SRGB || format == DXGI_FORMAT_BC2_UNORM || format == DXGI_FORMAT_BC2_UNORM_SRGB ||
-                                format == DXGI_FORMAT_BC3_UNORM || format == DXGI_FORMAT_BC3_UNORM_SRGB;
-    const void* texture_data = bytes.data() + data_offset;
-    if (decode_diffuse)
-    {
-        decoded_pixels = decode_bc_diffuse(bytes, data_offset, width, height, format);
-        texture_data = decoded_pixels.data();
+    case DdsFormat::bc1_unorm:
+        format = DXGI_FORMAT_BC1_UNORM;
+        break;
+    case DdsFormat::bc1_srgb:
+        format = DXGI_FORMAT_BC1_UNORM_SRGB;
+        break;
+    case DdsFormat::bc2_unorm:
+        format = DXGI_FORMAT_BC2_UNORM;
+        break;
+    case DdsFormat::bc2_srgb:
+        format = DXGI_FORMAT_BC2_UNORM_SRGB;
+        break;
+    case DdsFormat::bc3_unorm:
+        format = DXGI_FORMAT_BC3_UNORM;
+        break;
+    case DdsFormat::bc3_srgb:
+        format = DXGI_FORMAT_BC3_UNORM_SRGB;
+        break;
+    case DdsFormat::bc4_unorm:
+        format = DXGI_FORMAT_BC4_UNORM;
+        break;
+    case DdsFormat::bc4_snorm:
+        format = DXGI_FORMAT_BC4_SNORM;
+        break;
+    case DdsFormat::bc5_unorm:
+        format = DXGI_FORMAT_BC5_UNORM;
+        break;
+    case DdsFormat::bc5_snorm:
+        format = DXGI_FORMAT_BC5_SNORM;
+        break;
+    case DdsFormat::rgba8_unorm:
         format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        row_pitch = width * 4U;
+        break;
+    case DdsFormat::rgba8_srgb:
+        format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        break;
+    case DdsFormat::bgra8_unorm:
+        format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        break;
+    case DdsFormat::bgra8_srgb:
+        format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+        break;
+    case DdsFormat::bgrx8_unorm:
+        format = DXGI_FORMAT_B8G8R8X8_UNORM;
+        break;
+    case DdsFormat::bgrx8_srgb:
+        format = DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
+        break;
+    case DdsFormat::r8_unorm:
+        format = DXGI_FORMAT_R8_UNORM;
+        break;
+    case DdsFormat::a8_unorm:
+        format = DXGI_FORMAT_A8_UNORM;
+        break;
+    case DdsFormat::rg8_unorm:
+        format = DXGI_FORMAT_R8G8_UNORM;
+        break;
+    case DdsFormat::rgbx8_unorm:
+    case DdsFormat::rgb8_unorm:
+    case DdsFormat::bgr8_unorm:
+    case DdsFormat::unknown:
+        break;
+    }
+
+    std::vector<std::byte> converted_pixels;
+    const void* texture_data = bytes.data() + image.offset;
+    if (image.row_pitch > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error("DDS row pitch exceeds DirectX 11 limits");
+    }
+    auto row_pitch = static_cast<std::uint32_t>(image.row_pitch);
+    if (texture_info.format == DdsFormat::rgb8_unorm || texture_info.format == DdsFormat::bgr8_unorm || texture_info.format == DdsFormat::rgbx8_unorm)
+    {
+        if (texture_info.width > std::numeric_limits<std::uint32_t>::max() / 4U)
+        {
+            throw std::runtime_error("DDS row pitch exceeds DirectX 11 limits");
+        }
+        const auto source_stride = texture_info.format == DdsFormat::rgbx8_unorm ? 4U : 3U;
+        converted_pixels.resize(static_cast<std::size_t>(texture_info.width) * texture_info.height * 4U);
+        for (std::uint32_t y = 0; y < texture_info.height; ++y)
+        {
+            for (std::uint32_t x = 0; x < texture_info.width; ++x)
+            {
+                const auto source = image.offset + static_cast<std::size_t>(y) * image.row_pitch + static_cast<std::size_t>(x) * source_stride;
+                const auto destination = (static_cast<std::size_t>(y) * texture_info.width + x) * 4U;
+                const bool bgr = texture_info.format == DdsFormat::bgr8_unorm;
+                converted_pixels[destination] = bytes[source + (bgr ? 2U : 0U)];
+                converted_pixels[destination + 1U] = bytes[source + 1U];
+                converted_pixels[destination + 2U] = bytes[source + (bgr ? 0U : 2U)];
+                converted_pixels[destination + 3U] = std::byte{0xff};
+            }
+        }
+        texture_data = converted_pixels.data();
+        format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        row_pitch = texture_info.width * 4U;
+    }
+    if (format == DXGI_FORMAT_UNKNOWN)
+    {
+        throw std::runtime_error("DDS pixel format cannot be uploaded to DirectX 11");
     }
 
     D3D11_TEXTURE2D_DESC description{};
-    description.Width = width;
-    description.Height = height;
+    description.Width = texture_info.width;
+    description.Height = texture_info.height;
     description.MipLevels = 1;
     description.ArraySize = 1;
     description.Format = format;
@@ -336,8 +270,8 @@ PreviewTexture create_dds_texture(ID3D11Device* device, const std::span<const st
     {
         throw std::runtime_error("DirectX 11 could not create a texture view");
     }
-    result.width = width;
-    result.height = height;
+    result.width = texture_info.width;
+    result.height = texture_info.height;
     return result;
 }
 
@@ -382,15 +316,29 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
         return output.str();
     }
 
-    if (extension == ".dds" && bytes.size() >= 128)
+    if (extension == ".dds")
     {
-        std::string fourcc;
-        for (std::size_t index = 84; index < 88; ++index)
+        const auto texture = DdsTexture::parse(bytes);
+        output << "DirectDraw Surface\nPixel format: " << to_string(texture.format) << "\nDimensions: " << texture.width << 'x' << texture.height;
+        if (texture.volume)
         {
-            const char character = std::to_integer<char>(bytes[index]);
-            fourcc.push_back(std::isprint(static_cast<unsigned char>(character)) ? character : '.');
+            output << 'x' << texture.depth;
         }
-        output << "DirectDraw Surface\nDimensions: " << little_u32(bytes, 16) << 'x' << little_u32(bytes, 12) << "\nMip levels: " << little_u32(bytes, 28) << "\nFourCC: " << fourcc << '\n';
+        output << "\nMip levels: " << texture.mip_levels << "\nArray layers: " << texture.array_size << "\nFaces: " << texture.faces << "\nAlpha channel: " << (texture.has_alpha ? "yes" : "no")
+               << "\nImage bytes: " << human_size(texture.data_size) << '\n';
+        return output.str();
+    }
+
+    if (extension == ".mtd")
+    {
+        const auto directory = MtdDirectory::parse(bytes);
+        output << "Petroglyph mega-texture directory\nEntries: " << directory.entries.size() << "\nAtlas extent: " << directory.atlas_width << 'x' << directory.atlas_height
+               << "\nEntries with alpha: " << directory.alpha_entries << "\n\nEntries:\n";
+        for (std::size_t index = 0; index < std::min<std::size_t>(directory.entries.size(), 120); ++index)
+        {
+            const auto& entry = directory.entries[index];
+            output << "  [" << index << "] " << entry.name << "  rect=" << entry.x << ',' << entry.y << ' ' << entry.width << 'x' << entry.height << (entry.has_alpha ? "  alpha" : "") << '\n';
+        }
         return output.str();
     }
 
@@ -441,8 +389,9 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
                 for (std::size_t submesh_index = 0; submesh_index < mesh.submeshes.size(); ++submesh_index)
                 {
                     const auto& submesh = mesh.submeshes[submesh_index];
+                    const auto material = LegacyMaterial::translate(submesh);
                     output << "      material " << submesh_index << ": " << submesh.shader << "  vertices=" << submesh.vertex_count << "  triangles=" << submesh.triangle_count
-                           << "  stride=" << submesh.vertex_stride << '\n';
+                           << "  stride=" << submesh.vertex_stride << "  family=" << to_string(material.family) << "  blend=" << to_string(material.blend) << '\n';
                     for (const auto& parameter : submesh.parameters)
                     {
                         if (parameter.type == AloShaderParameterType::texture)
@@ -572,7 +521,7 @@ std::string bytes_preview(const ResolvedAsset& asset, const std::span<const std:
         }
     }
 
-    if (extension == ".alo" || extension == ".ala" || extension == ".mtd" || extension == ".ted")
+    if (extension == ".alo" || extension == ".ala" || extension == ".ted")
     {
         output << "Alamo chunk container (top-level inventory)\n";
         std::size_t cursor = 0;

@@ -2,7 +2,10 @@
 #include "eaw/alo_model.hpp"
 #include "eaw/asset_environment.hpp"
 #include "eaw/dat_file.hpp"
+#include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
+#include "eaw/legacy_material.hpp"
+#include "eaw/mtd_directory.hpp"
 #include "eaw/text_encoding.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"
@@ -214,24 +217,35 @@ void inspect_dat(const std::span<const std::byte> bytes, const std::size_t limit
 
 void inspect_dds(const std::span<const std::byte> bytes)
 {
-    if (bytes.size() < 128 || std::to_integer<char>(bytes[0]) != 'D' || std::to_integer<char>(bytes[1]) != 'D' || std::to_integer<char>(bytes[2]) != 'S' ||
-        std::to_integer<unsigned char>(bytes[3]) != 0x20U)
-    {
-        throw std::runtime_error("invalid DDS header");
-    }
-    const auto height = little_u32(bytes, 12);
-    const auto width = little_u32(bytes, 16);
-    const auto mipmaps = little_u32(bytes, 28);
-    std::string fourcc;
-    for (std::size_t index = 84; index < 88; ++index)
-    {
-        const char character = std::to_integer<char>(bytes[index]);
-        fourcc.push_back(std::isprint(static_cast<unsigned char>(character)) ? character : '.');
-    }
+    const auto texture = eaw::DdsTexture::parse(bytes);
     std::cout << "Format: DirectDraw Surface\n"
-              << "Dimensions: " << width << 'x' << height << '\n'
-              << "Mip levels: " << mipmaps << '\n'
-              << "FourCC: " << fourcc << '\n';
+              << "Pixel format: " << eaw::to_string(texture.format) << '\n'
+              << "Dimensions: " << texture.width << 'x' << texture.height;
+    if (texture.volume)
+    {
+        std::cout << 'x' << texture.depth;
+    }
+    std::cout << "\nMip levels: " << texture.mip_levels << '\n'
+              << "Array layers: " << texture.array_size << '\n'
+              << "Faces: " << texture.faces << '\n'
+              << "Cube map: " << (texture.cube_map ? "yes" : "no") << '\n'
+              << "Alpha channel: " << (texture.has_alpha ? "yes" : "no") << '\n'
+              << "Image bytes: " << texture.data_size << '\n';
+}
+
+void inspect_mtd(const std::span<const std::byte> bytes, const std::size_t limit)
+{
+    const auto directory = eaw::MtdDirectory::parse(bytes);
+    std::cout << "Format: Petroglyph mega-texture directory\n"
+              << "Entries: " << directory.entries.size() << '\n'
+              << "Atlas extent: " << directory.atlas_width << 'x' << directory.atlas_height << '\n'
+              << "Entries with alpha: " << directory.alpha_entries << "\nEntries:\n";
+    for (std::size_t index = 0; index < std::min(limit, directory.entries.size()); ++index)
+    {
+        const auto& entry = directory.entries[index];
+        std::cout << "  [" << index << "] " << entry.name << " crc=0x" << std::hex << std::setw(8) << std::setfill('0') << entry.name_crc << std::dec << std::setfill(' ') << " rect=" << entry.x << ','
+                  << entry.y << ' ' << entry.width << 'x' << entry.height << (entry.has_alpha ? " alpha" : "") << '\n';
+    }
 }
 
 void inspect_chunks(const std::span<const std::byte> bytes, const std::size_t limit)
@@ -512,7 +526,7 @@ void inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& path, c
     }
     else if (extension == ".mtd")
     {
-        inspect_chunks(bytes, limit);
+        inspect_mtd(bytes, limit);
     }
     else if (extension == ".xml")
     {
@@ -574,14 +588,20 @@ std::optional<std::string> resolve_texture_reference(const eaw::VirtualFileSyste
 
 void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit)
 {
-    const auto assets = vfs.list(prefix);
+    const auto model_assets = vfs.list(prefix);
     std::size_t model_files = 0;
     std::size_t semantic_models = 0;
     std::size_t particle_or_invalid = 0;
+    std::size_t materials = 0;
     std::set<std::string> references;
     std::set<std::string> resolved;
     std::map<std::string, std::set<std::string>> unresolved;
-    for (const auto& asset : assets)
+    std::map<std::string, std::size_t> shaders;
+    std::map<std::string, std::size_t> material_families;
+    std::map<std::string, std::size_t> blend_modes;
+    std::map<std::string, std::size_t> texture_semantics;
+    std::map<std::string, std::size_t> texture_parameters;
+    for (const auto& asset : model_assets)
     {
         if (extension_of(asset.virtual_path) != ".alo")
         {
@@ -596,20 +616,23 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
             {
                 for (const auto& submesh : mesh.submeshes)
                 {
-                    for (const auto& parameter : submesh.parameters)
+                    const auto material = eaw::LegacyMaterial::translate(submesh);
+                    ++materials;
+                    ++shaders[material.source_shader.empty() ? "<unnamed>" : material.source_shader];
+                    ++material_families[std::string(eaw::to_string(material.family))];
+                    ++blend_modes[std::string(eaw::to_string(material.blend))];
+                    for (const auto& texture : material.textures)
                     {
-                        if (parameter.type != eaw::AloShaderParameterType::texture || parameter.value.empty())
+                        ++texture_semantics[std::string(eaw::to_string(texture.semantic))];
+                        ++texture_parameters[texture.parameter];
+                        references.insert(texture.reference);
+                        if (resolve_texture_reference(vfs, texture.reference))
                         {
-                            continue;
-                        }
-                        references.insert(parameter.value);
-                        if (resolve_texture_reference(vfs, parameter.value))
-                        {
-                            resolved.insert(parameter.value);
+                            resolved.insert(texture.reference);
                         }
                         else
                         {
-                            unresolved[parameter.value].insert(asset.virtual_path);
+                            unresolved[texture.reference].insert(asset.virtual_path);
                         }
                     }
                 }
@@ -620,13 +643,132 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
             ++particle_or_invalid;
         }
     }
-    std::cout << "ALO texture reference audit\n"
+
+    std::size_t dds_files = 0;
+    std::size_t decoded_dds = 0;
+    std::size_t dds_mip_levels = 0;
+    std::size_t dds_cube_maps = 0;
+    std::size_t dds_volumes = 0;
+    std::uint32_t maximum_width = 0;
+    std::uint32_t maximum_height = 0;
+    std::map<std::string, std::size_t> dds_formats;
+    std::map<std::string, std::string> dds_format_examples;
+    std::vector<std::pair<std::string, std::string>> dds_failures;
+    std::size_t mtd_files = 0;
+    std::size_t decoded_mtd = 0;
+    std::size_t mtd_entries = 0;
+    std::size_t mtd_alpha_entries = 0;
+    std::size_t mtd_atlases_resolved = 0;
+    std::vector<std::pair<std::string, std::string>> mtd_failures;
+    for (const auto& asset : vfs.list("DATA"))
+    {
+        const auto extension = extension_of(asset.virtual_path);
+        if (extension == ".dds")
+        {
+            ++dds_files;
+            try
+            {
+                const auto texture = eaw::DdsTexture::parse(vfs.read(asset.virtual_path));
+                ++decoded_dds;
+                dds_mip_levels += texture.mip_levels;
+                dds_cube_maps += texture.cube_map ? 1U : 0U;
+                dds_volumes += texture.volume ? 1U : 0U;
+                maximum_width = std::max(maximum_width, texture.width);
+                maximum_height = std::max(maximum_height, texture.height);
+                const auto format = std::string(eaw::to_string(texture.format));
+                ++dds_formats[format];
+                dds_format_examples.try_emplace(format, asset.virtual_path);
+            }
+            catch (const std::exception& error)
+            {
+                dds_failures.emplace_back(asset.virtual_path, error.what());
+            }
+        }
+        else if (extension == ".mtd")
+        {
+            ++mtd_files;
+            try
+            {
+                const auto directory = eaw::MtdDirectory::parse(vfs.read(asset.virtual_path));
+                ++decoded_mtd;
+                mtd_entries += directory.entries.size();
+                mtd_alpha_entries += directory.alpha_entries;
+                auto atlas = std::filesystem::path(asset.virtual_path);
+                atlas.replace_filename(atlas.stem().string() + "COMPRESSED.DDS");
+                if (vfs.resolve(atlas.generic_string()))
+                {
+                    ++mtd_atlases_resolved;
+                }
+                else
+                {
+                    mtd_failures.emplace_back(asset.virtual_path, "matching compressed DDS atlas not found");
+                }
+            }
+            catch (const std::exception& error)
+            {
+                mtd_failures.emplace_back(asset.virtual_path, error.what());
+            }
+        }
+    }
+
+    std::cout << "Texture and material compatibility audit\n"
               << "Model files: " << model_files << '\n'
               << "Semantic models: " << semantic_models << '\n'
               << "Particle/unsupported files: " << particle_or_invalid << '\n'
+              << "Material instances: " << materials << '\n'
               << "Unique texture references: " << references.size() << '\n'
               << "Resolved references: " << resolved.size() << '\n'
-              << "Unresolved references: " << unresolved.size() << '\n';
+              << "Unresolved references: " << unresolved.size() << "\n\n"
+              << "DDS corpus\n"
+              << "Files: " << dds_files << '\n'
+              << "Decoded: " << decoded_dds << '\n'
+              << "Unsupported/corrupt: " << dds_failures.size() << '\n'
+              << "Total mip levels: " << dds_mip_levels << '\n'
+              << "Largest dimensions: " << maximum_width << 'x' << maximum_height << '\n'
+              << "Cube maps: " << dds_cube_maps << '\n'
+              << "Volume textures: " << dds_volumes << "\nFormats:\n";
+    for (const auto& [format, count] : dds_formats)
+    {
+        std::cout << "  " << format << ": " << count << "  (e.g. " << dds_format_examples.at(format) << ")\n";
+    }
+    std::cout << "\nMTD corpus\n"
+              << "Files: " << mtd_files << '\n'
+              << "Decoded: " << decoded_mtd << '\n'
+              << "Entries: " << mtd_entries << '\n'
+              << "Entries with alpha: " << mtd_alpha_entries << '\n'
+              << "Resolved compressed atlases: " << mtd_atlases_resolved << '/' << decoded_mtd << "\n\n"
+              << "Material translation\n";
+    for (const auto& [family, count] : material_families)
+    {
+        std::cout << "  family " << family << ": " << count << '\n';
+    }
+    for (const auto& [blend, count] : blend_modes)
+    {
+        std::cout << "  blend " << blend << ": " << count << '\n';
+    }
+    for (const auto& [semantic, count] : texture_semantics)
+    {
+        std::cout << "  texture " << semantic << ": " << count << '\n';
+    }
+    std::cout << "Texture parameter usage:\n";
+    for (const auto& [parameter, count] : texture_parameters)
+    {
+        std::cout << "  " << parameter << ": " << count << '\n';
+    }
+
+    std::vector<std::pair<std::string, std::size_t>> sorted_shaders(shaders.begin(), shaders.end());
+    std::ranges::sort(sorted_shaders,
+                      [](const auto& left, const auto& right)
+                      {
+                          return left.second != right.second ? left.second > right.second : left.first < right.first;
+                      });
+    std::cout << "Shader usage:\n";
+    for (std::size_t index = 0; index < std::min(limit, sorted_shaders.size()); ++index)
+    {
+        std::cout << "  " << sorted_shaders[index].first << ": " << sorted_shaders[index].second << '\n';
+    }
+
+    std::cout << "\nUnresolved model texture references:\n";
     std::size_t shown = 0;
     for (const auto& [reference, models] : unresolved)
     {
@@ -639,6 +781,16 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
         {
             std::cout << "    e.g. " << *models.begin() << '\n';
         }
+    }
+    std::cout << "DDS failures:\n";
+    for (std::size_t index = 0; index < std::min(limit, dds_failures.size()); ++index)
+    {
+        std::cout << "  " << dds_failures[index].first << ": " << dds_failures[index].second << '\n';
+    }
+    std::cout << "MTD failures/dependencies:\n";
+    for (std::size_t index = 0; index < std::min(limit, mtd_failures.size()); ++index)
+    {
+        std::cout << "  " << mtd_failures[index].first << ": " << mtd_failures[index].second << '\n';
     }
 }
 

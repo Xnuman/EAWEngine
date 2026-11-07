@@ -3,10 +3,13 @@
 #include "eaw/asset_environment.hpp"
 #include "eaw/asset_path.hpp"
 #include "eaw/dat_file.hpp"
+#include "eaw/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
+#include "eaw/legacy_material.hpp"
 #include "eaw/localization_scan.hpp"
 #include "eaw/localization_workspace.hpp"
 #include "eaw/meg_archive.hpp"
+#include "eaw/mtd_directory.hpp"
 #include "eaw/text_encoding.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"
@@ -355,6 +358,83 @@ void test_alo_model()
             "ALO submesh decoding failed");
     const auto bind_pose = model.bind_pose();
     require(bind_pose.size() == 1 && bind_pose[0].values[0] == 1.0F && bind_pose[0].values[5] == 1.0F && bind_pose[0].values[10] == 1.0F, "ALO bind-pose decoding failed");
+}
+
+void test_texture_formats_and_materials()
+{
+    std::vector<std::byte> dds(128U + 8U, std::byte{});
+    const auto write_u32 = [](std::vector<std::byte>& bytes, const std::size_t offset, const std::uint32_t value)
+    {
+        for (unsigned shift = 0; shift < 32; shift += 8)
+        {
+            bytes[offset + shift / 8] = static_cast<std::byte>((value >> shift) & 0xffU);
+        }
+    };
+    write_u32(dds, 0, 0x20534444U);
+    write_u32(dds, 4, 124);
+    write_u32(dds, 12, 4);
+    write_u32(dds, 16, 4);
+    write_u32(dds, 28, 1);
+    write_u32(dds, 76, 32);
+    write_u32(dds, 80, 0x4U);
+    write_u32(dds, 84, 0x31545844U);
+    const auto texture = eaw::DdsTexture::parse(dds);
+    require(texture.width == 4 && texture.height == 4 && texture.mip_levels == 1 && texture.format == eaw::DdsFormat::bc1_unorm && texture.data_offset == 128 && texture.data_size == 8 &&
+                texture.subresources.size() == 1 && texture.subresources[0].row_pitch == 8,
+            "DDS semantic decoding failed");
+    bool truncated_dds_rejected = false;
+    try
+    {
+        static_cast<void>(eaw::DdsTexture::parse(std::span<const std::byte>(dds).first(dds.size() - 1U)));
+    }
+    catch (const std::runtime_error&)
+    {
+        truncated_dds_rejected = true;
+    }
+    require(truncated_dds_rejected, "truncated DDS data was accepted");
+
+    std::vector<std::byte> mtd;
+    append_u32(mtd, 2);
+    const auto append_mtd_entry = [&](const std::string_view name, const std::uint32_t x, const std::uint32_t y, const std::uint32_t width, const std::uint32_t height, const bool alpha)
+    {
+        const auto begin = mtd.size();
+        for (const auto character : name)
+        {
+            mtd.push_back(static_cast<std::byte>(character));
+        }
+        mtd.resize(begin + 64U, std::byte{});
+        append_u32(mtd, x);
+        append_u32(mtd, y);
+        append_u32(mtd, width);
+        append_u32(mtd, height);
+        mtd.push_back(alpha ? std::byte{1} : std::byte{});
+    };
+    append_mtd_entry("ICON_A.TGA", 0, 0, 32, 16, true);
+    append_mtd_entry("ICON_B.TGA", 32, 8, 8, 24, false);
+    const auto directory = eaw::MtdDirectory::parse(mtd);
+    require(directory.entries.size() == 2 && directory.entries[0].name == "ICON_A.TGA" && directory.entries[0].has_alpha && directory.entries[0].name_crc == eaw::dat_key_crc("ICON_A.TGA") &&
+                directory.atlas_width == 40 && directory.atlas_height == 32 && directory.alpha_entries == 1,
+            "MTD semantic decoding failed");
+    bool truncated_mtd_rejected = false;
+    try
+    {
+        static_cast<void>(eaw::MtdDirectory::parse(std::span<const std::byte>(mtd).first(mtd.size() - 1U)));
+    }
+    catch (const std::runtime_error&)
+    {
+        truncated_mtd_rejected = true;
+    }
+    require(truncated_mtd_rejected, "truncated MTD data was accepted");
+
+    eaw::AloSubMesh submesh;
+    submesh.shader = "MeshGloss.fx";
+    submesh.parameters.push_back({"DiffuseTexture", eaw::AloShaderParameterType::texture, "UNIT.TGA"});
+    submesh.parameters.push_back({"BumpTexture", eaw::AloShaderParameterType::texture, "UNIT_BUMP.TGA"});
+    submesh.parameters.push_back({"Glossiness", eaw::AloShaderParameterType::scalar, "32"});
+    const auto material = eaw::LegacyMaterial::translate(submesh);
+    require(material.family == eaw::LegacyMaterialFamily::mesh && material.blend == eaw::LegacyBlendMode::opaque && material.textures.size() == 2 &&
+                material.textures[0].semantic == eaw::LegacyTextureSemantic::base_color && material.textures[1].semantic == eaw::LegacyTextureSemantic::normal && material.parameters.size() == 3,
+            "legacy material translation failed");
 }
 
 std::vector<std::byte> make_test_ala()
@@ -873,6 +953,7 @@ int main()
         test_foc_inherits_eaw_assets();
         test_layered_precedence_corpus();
         test_alo_model();
+        test_texture_formats_and_materials();
         test_ala_animation();
         test_ted_map();
         test_dat_and_workspace();

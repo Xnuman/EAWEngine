@@ -11,10 +11,13 @@ add_library(eaw_core STATIC
     src/core/asset_path.cpp
     src/core/asset_environment.cpp
     src/core/dat_file.cpp
+    src/core/dds_texture.cpp
     src/core/game_installation.cpp
+    src/core/legacy_material.cpp
     src/core/localization_scan.cpp
     src/core/localization_workspace.cpp
     src/core/meg_archive.cpp
+    src/core/mtd_directory.cpp
     src/core/text_encoding.cpp
     src/core/ted_map.cpp
     src/core/virtual_file_system.cpp
