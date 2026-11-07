@@ -147,9 +147,11 @@ command stream stays deterministic.
 Selection uses a second render target holding a pick id per pixel: the scene
 instance index plus one, zero for nothing, and a reserved value for terrain.
 Opaque, alpha-tested, and terrain pipelines write it; blended and background
-pipelines mask it. A pick request copies one texel into the frame context's
-readback buffer, and the value is read when that context is next reused, after
-its fence has completed, so selection never adds a CPU wait.
+pipelines mask it. Each pick request gets an id and copies one texel into a
+placement-aligned slot of the frame context's readback buffer (up to eight per
+frame; later requests wait for the next frame). Values are read when that
+context is next reused, after its fence has completed, and returned in request
+order, so selection never adds a CPU wait and rapid clicks are never dropped.
 
 Animated visual scenes preserve model-wide bone indices in immutable vertex
 buffers. ALA poses are sampled on the CPU into skin matrices, while every

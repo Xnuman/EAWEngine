@@ -72,6 +72,8 @@ struct VisualPick
     std::optional<float> depth;
     // The client pixel that was picked (clamped to the target).
     std::array<std::uint32_t, 2> pixel{};
+    // The id request_pick returned for this pick.
+    std::uint32_t request{};
 };
 
 // Mouse state for the debug overlay, in client pixels.
@@ -118,10 +120,12 @@ public:
     void set_lighting(const VisualLightRig& lighting);
     // Seconds of scene time driving texture-coordinate scrolling.
     void set_scene_time(float seconds);
-    // Asks which surface is visible at client pixel (x, y) in the next rendered frame. The answer
-    // arrives through take_pick() once that frame has finished on the GPU (usually one or two
-    // frames later); the CPU never waits for it. A newer request replaces an unrendered one.
-    void request_pick(std::uint32_t x, std::uint32_t y);
+    // Asks which surface is visible at client pixel (x, y) in the next rendered frame and returns
+    // the request id. Answers arrive through take_pick() in request order once their frame has
+    // finished on the GPU (usually one or two frames later); the CPU never waits, and no request
+    // is dropped (more than eight per frame are copied over several frames).
+    std::uint32_t request_pick(std::uint32_t x, std::uint32_t y);
+    // The oldest completed pick, if any; call until it returns nothing.
     [[nodiscard]] std::optional<VisualPick> take_pick();
     // Draws one scene instance highlighted (nothing for nullopt); cleared by load_scene.
     void set_highlight(std::optional<std::uint32_t> instance);

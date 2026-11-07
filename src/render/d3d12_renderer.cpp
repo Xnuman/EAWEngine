@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -65,6 +66,8 @@ constexpr DXGI_FORMAT pick_format = DXGI_FORMAT_R32G32_UINT;
 // Temporary per-frame debug line capacity (an implementation limit, diagnosed through stats).
 constexpr std::size_t maximum_debug_lines = 32768;
 constexpr std::uint32_t pick_terrain = 0xFFFFFFFFU;
+// Picks copied per frame; further requests wait for the next frame (none are dropped).
+constexpr std::uint32_t maximum_picks_per_frame = 8;
 
 std::string hresult_text(const HRESULT result)
 {
@@ -413,8 +416,12 @@ struct D3d12Renderer::Impl
         std::uint32_t* residency_mapped{};
         // One pick-target texel copied by this frame, read once its fence completes.
         ComPtr<ID3D12Resource> pick_readback;
-        std::optional<std::uint32_t> pick_request;
-        std::array<std::uint32_t, 2> pick_pixel{};
+        struct PickCopy
+        {
+            std::uint32_t request{};
+            std::array<std::uint32_t, 2> pixel{};
+        };
+        std::vector<PickCopy> picks;
         // Debug line vertices written once this context is reusable.
         ComPtr<ID3D12Resource> debug_vertex_buffer;
         std::byte* debug_vertices_mapped{};
@@ -555,9 +562,15 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12DescriptorHeap> pick_rtv_heap;
     ComPtr<ID3D12Resource> pick_target;
     // Requested pixel and selection state (see request_pick / set_highlight).
-    std::optional<std::array<std::uint32_t, 2>> pending_pick;
+    struct PickRequest
+    {
+        std::uint32_t id{};
+        std::uint32_t x{};
+        std::uint32_t y{};
+    };
+    std::deque<PickRequest> pending_picks;
     std::uint32_t next_pick_request{1};
-    std::optional<VisualPick> completed_pick;
+    std::deque<VisualPick> completed_picks;
     std::uint32_t highlighted_pick_id{};
     std::vector<VisualDebugLine> debug_lines;
     ComPtr<ID3D12PipelineState> debug_pipeline;
@@ -1126,7 +1139,8 @@ struct D3d12Renderer::Impl
             check_hresult(frame.residency_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.residency_mapped)), "Map(frame texture residency)");
 
             const auto readback_heap = heap_properties(D3D12_HEAP_TYPE_READBACK);
-            const auto readback_description = buffer_description(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
+            // One placement-aligned slot per pick copied in a frame.
+            const auto readback_description = buffer_description(static_cast<std::uint64_t>(maximum_picks_per_frame) * D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
             check_hresult(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &readback_description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.pick_readback)),
                           "CreateCommittedResource(frame pick readback)");
             set_name(frame.pick_readback.Get(), L"EAWEngine frame pick readback " + std::to_wstring(index));
@@ -2122,42 +2136,48 @@ struct D3d12Renderer::Impl
         pending_texture_count -= std::min(pending_texture_count, streamed.size());
     }
 
-    // Reads a pick this frame context copied earlier; its fence has completed when this runs.
+    // Reads the picks this frame context copied earlier; its fence has completed when this runs.
     void collect_pick(FrameContext& frame)
     {
-        if (!frame.pick_request)
+        if (frame.picks.empty())
         {
             return;
         }
-        frame.pick_request.reset();
-        std::array<std::uint32_t, 2> texel{};
-        const D3D12_RANGE read_range{0, sizeof(texel)};
+        const D3D12_RANGE read_range{0, frame.picks.size() * D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT};
         void* mapped{};
         check_hresult(frame.pick_readback->Map(0, &read_range, &mapped), "Map(pick readback)");
-        std::memcpy(texel.data(), mapped, sizeof(texel));
+        for (std::size_t index = 0; index < frame.picks.size(); ++index)
+        {
+            std::array<std::uint32_t, 2> texel{};
+            std::memcpy(texel.data(), static_cast<const std::byte*>(mapped) + index * D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, sizeof(texel));
+            VisualPick result;
+            result.request = frame.picks[index].request;
+            result.pixel = frame.picks[index].pixel;
+            const auto value = texel[0];
+            if (value != 0)
+            {
+                result.depth = std::bit_cast<float>(texel[1]);
+            }
+            if (value == pick_terrain)
+            {
+                result.terrain = true;
+            }
+            else if (value != 0)
+            {
+                result.instance = value - 1U;
+            }
+            completed_picks.push_back(result);
+        }
         const D3D12_RANGE no_write{0, 0};
         frame.pick_readback->Unmap(0, &no_write);
-        const auto value = texel[0];
-        VisualPick result;
-        result.pixel = frame.pick_pixel;
-        if (value != 0)
-        {
-            result.depth = std::bit_cast<float>(texel[1]);
-        }
-        if (value == pick_terrain)
-        {
-            result.terrain = true;
-        }
-        else if (value != 0)
-        {
-            result.instance = value - 1U;
-        }
-        completed_pick = result;
+        frame.picks.clear();
     }
 
-    void request_pick(const std::uint32_t x, const std::uint32_t y)
+    std::uint32_t request_pick(const std::uint32_t x, const std::uint32_t y)
     {
-        pending_pick = std::array<std::uint32_t, 2>{x, y};
+        const auto id = next_pick_request++;
+        pending_picks.push_back({id, x, y});
+        return id;
     }
 
     void set_debug_lines(const std::span<const VisualDebugLine> lines)
@@ -2697,26 +2717,32 @@ struct D3d12Renderer::Impl
             render_overlay(render_target);
         }
 
-        // A requested pick copies one texel; it is read when this frame's fence completes.
-        if (pending_pick)
+        // Requested picks copy one texel each (up to a per-frame limit; the rest wait for the next
+        // frame); they are read when this frame's fence completes.
+        if (!pending_picks.empty())
         {
-            const auto [x, y] = *pending_pick;
-            pending_pick.reset();
             auto to_copy = transition_barrier(pick_target.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
             command_list->ResourceBarrier(1, &to_copy);
             D3D12_TEXTURE_COPY_LOCATION source{};
             source.pResource = pick_target.Get();
             source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-            D3D12_TEXTURE_COPY_LOCATION destination{};
-            destination.pResource = frame.pick_readback.Get();
-            destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-            destination.PlacedFootprint.Footprint = {pick_format, 1, 1, 1, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT};
-            const D3D12_BOX texel{std::min(x, width - 1), std::min(y, height - 1), 0, std::min(x, width - 1) + 1, std::min(y, height - 1) + 1, 1};
-            command_list->CopyTextureRegion(&destination, 0, 0, 0, &source, &texel);
+            while (!pending_picks.empty() && frame.picks.size() < maximum_picks_per_frame)
+            {
+                const auto request = pending_picks.front();
+                pending_picks.pop_front();
+                const auto x = std::min(request.x, width - 1);
+                const auto y = std::min(request.y, height - 1);
+                D3D12_TEXTURE_COPY_LOCATION destination{};
+                destination.pResource = frame.pick_readback.Get();
+                destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+                destination.PlacedFootprint.Offset = frame.picks.size() * D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT;
+                destination.PlacedFootprint.Footprint = {pick_format, 1, 1, 1, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT};
+                const D3D12_BOX texel{x, y, 0, x + 1, y + 1, 1};
+                command_list->CopyTextureRegion(&destination, 0, 0, 0, &source, &texel);
+                frame.picks.push_back({request.id, {x, y}});
+            }
             auto to_target = transition_barrier(pick_target.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
             command_list->ResourceBarrier(1, &to_target);
-            frame.pick_request = next_pick_request++;
-            frame.pick_pixel = {std::min(x, width - 1), std::min(y, height - 1)};
         }
 
         auto to_present = transition_barrier(frame.back_buffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
@@ -2927,14 +2953,20 @@ void D3d12Renderer::wait_idle()
     impl_->wait_idle();
 }
 
-void D3d12Renderer::request_pick(const std::uint32_t x, const std::uint32_t y)
+std::uint32_t D3d12Renderer::request_pick(const std::uint32_t x, const std::uint32_t y)
 {
-    impl_->request_pick(x, y);
+    return impl_->request_pick(x, y);
 }
 
 std::optional<VisualPick> D3d12Renderer::take_pick()
 {
-    return std::exchange(impl_->completed_pick, std::nullopt);
+    if (impl_->completed_picks.empty())
+    {
+        return std::nullopt;
+    }
+    auto result = impl_->completed_picks.front();
+    impl_->completed_picks.pop_front();
+    return result;
 }
 
 void D3d12Renderer::set_highlight(const std::optional<std::uint32_t> instance)

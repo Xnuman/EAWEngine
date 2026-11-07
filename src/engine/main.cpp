@@ -528,8 +528,6 @@ int main(const int argc, char** argv)
         // Runtime-spawnable types of the current map; N spawns `spawn_choice` at the cursor.
         std::vector<eaw::SpawnableType> spawnable;
         std::size_t spawn_choice = 0;
-        std::uint32_t pending_spawn_count = 0;
-        std::size_t pending_spawn_type = 0;
         bool initial_spawns_sent = false;
         // Every shown object is a simulation entity; backdrops stay static. Presentation re-poses the
         // scene's instances from interpolated snapshots each frame.
@@ -803,7 +801,23 @@ int main(const int argc, char** argv)
             command,
             spawn,
         };
-        PickPurpose pick_purpose = PickPurpose::select;
+        // Every pick request remembers why it was made, so overlapping clicks (a move order while
+        // a selection pick is in flight, rapid re-orders) each get their own answer.
+        struct PickIntent
+        {
+            PickPurpose purpose{PickPurpose::select};
+            std::size_t spawn_type{};
+            std::uint32_t spawn_count{};
+        };
+        std::unordered_map<std::uint32_t, PickIntent> pick_intents;
+        const auto pending_spawns = [&]
+        {
+            return std::ranges::any_of(pick_intents,
+                                       [](const auto& entry)
+                                       {
+                                           return entry.second.purpose == PickPurpose::spawn;
+                                       });
+        };
         std::uint64_t streaming_since = 0;
         while (!window.close_requested())
         {
@@ -894,8 +908,7 @@ int main(const int argc, char** argv)
                 }
                 else if (click_travel <= 3 && input.mouse_x >= 0 && input.mouse_y >= 0)
                 {
-                    pick_purpose = PickPurpose::select;
-                    renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y));
+                    pick_intents[renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y))] = {PickPurpose::select};
                 }
                 renderer.set_selection_rectangle(std::nullopt);
                 drag_start.reset();
@@ -912,8 +925,7 @@ int main(const int argc, char** argv)
             if (right_button.released && rts_mode && right_travel <= 3 && !selection.empty() && input.mouse_x >= 0 && input.mouse_y >= 0)
             {
                 // The pick yields the clicked surface's depth, which becomes the move target.
-                pick_purpose = PickPurpose::command;
-                renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y));
+                pick_intents[renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y))] = {PickPurpose::command};
             }
             if (input.keys[static_cast<std::size_t>(eaw::Key::tab)].pressed && !spawnable.empty())
             {
@@ -922,10 +934,7 @@ int main(const int argc, char** argv)
             }
             if (input.keys[static_cast<std::size_t>(eaw::Key::n)].pressed && !spawnable.empty() && world && tactical_camera && scene_mouse && input.mouse_x >= 0 && input.mouse_y >= 0)
             {
-                pick_purpose = PickPurpose::spawn;
-                pending_spawn_type = spawn_choice;
-                pending_spawn_count = 1;
-                renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y));
+                pick_intents[renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y))] = {PickPurpose::spawn, spawn_choice, 1U};
             }
             if (input.keys[static_cast<std::size_t>(eaw::Key::c)].pressed && tactical_camera)
             {
@@ -951,57 +960,70 @@ int main(const int argc, char** argv)
                 }
                 std::cout << "Move " << movers.size() << " units to " << format_fixed(target.x, 0) << ", " << format_fixed(target.y, 0) << ", " << format_fixed(target.z, 0) << '\n';
             };
-            const auto pick = renderer.take_pick();
-            const auto picked_point = [&]() -> std::optional<std::array<float, 3>>
+            while (const auto pick = renderer.take_pick())
             {
-                const auto stats = renderer.stats();
-                const auto camera = tactical_camera->camera();
-                const auto width = static_cast<float>(stats.width);
-                const auto height = static_cast<float>(stats.height);
-                const auto x = static_cast<float>(pick->pixel[0]);
-                const auto y = static_cast<float>(pick->pixel[1]);
-                // The clicked surface when there is one, otherwise the ground plane z = 0.
-                if (pick->depth)
+                PickIntent intent;
+                if (const auto found = pick_intents.find(pick->request); found != pick_intents.end())
                 {
-                    return eaw::unproject_screen(camera, width, height, x, y, *pick->depth);
+                    intent = found->second;
+                    pick_intents.erase(found);
                 }
-                return eaw::intersect_ground_plane(camera, width, height, x, y, 0.0F);
-            };
-            if (pick && pick_purpose == PickPurpose::spawn && world && presentation && tactical_camera && pending_spawn_type < spawnable.size())
-            {
-                if (const auto point = picked_point())
+                const auto picked_point = [&]() -> std::optional<std::array<float, 3>>
                 {
-                    const auto& type = spawnable[pending_spawn_type];
-                    const auto spots = eaw::grid_targets({(*point)[0], (*point)[1], (*point)[2]}, pending_spawn_count, 40.0F);
-                    for (const auto& spot : spots)
+                    const auto stats = renderer.stats();
+                    const auto camera = tactical_camera->camera();
+                    const auto width = static_cast<float>(stats.width);
+                    const auto height = static_cast<float>(stats.height);
+                    const auto x = static_cast<float>(pick->pixel[0]);
+                    const auto y = static_cast<float>(pick->pixel[1]);
+                    // The clicked surface when there is one, otherwise the ground plane z = 0.
+                    if (pick->depth)
                     {
-                        (void)presentation->spawn(*world, type, spot, 0.0F, 1);
+                        return eaw::unproject_screen(camera, width, height, x, y, *pick->depth);
                     }
-                    std::cout << "Spawned " << spots.size() << " " << type.type_name << " at " << format_fixed((*point)[0], 0) << ", " << format_fixed((*point)[1], 0) << ", "
-                              << format_fixed((*point)[2], 0) << '\n';
-                }
-                pick_purpose = PickPurpose::select;
-            }
-            else if (pick && pick_purpose == PickPurpose::command && world && tactical_camera)
-            {
-                if (const auto point = picked_point())
+                    return eaw::intersect_ground_plane(camera, width, height, x, y, 0.0F);
+                };
+                if (intent.purpose == PickPurpose::spawn)
                 {
-                    order_move({(*point)[0], (*point)[1], (*point)[2]});
+                    if (world && presentation && tactical_camera && intent.spawn_type < spawnable.size())
+                    {
+                        if (const auto point = picked_point())
+                        {
+                            const auto& type = spawnable[intent.spawn_type];
+                            const auto spots = eaw::grid_targets({(*point)[0], (*point)[1], (*point)[2]}, intent.spawn_count, 40.0F);
+                            for (const auto& spot : spots)
+                            {
+                                (void)presentation->spawn(*world, type, spot, 0.0F, 1);
+                            }
+                            std::cout << "Spawned " << spots.size() << " " << type.type_name << " at " << format_fixed((*point)[0], 0) << ", " << format_fixed((*point)[1], 0) << ", "
+                                      << format_fixed((*point)[2], 0) << '\n';
+                        }
+                    }
                 }
-            }
-            else if (pick)
-            {
-                // Pick ids are positions in the instance list of the frame that took the pick; the
-                // list order only changes when entities are destroyed.
-                selection.clear();
-                if (pick->instance && *pick->instance < frame_entities.size() && frame_entities[*pick->instance].valid())
+                else if (intent.purpose == PickPurpose::command)
                 {
-                    selection.insert(eaw::entity_key(frame_entities[*pick->instance]));
-                    std::cout << "Selected " << describe_instance(*pick->instance) << '\n';
+                    if (world && tactical_camera)
+                    {
+                        if (const auto point = picked_point())
+                        {
+                            order_move({(*point)[0], (*point)[1], (*point)[2]});
+                        }
+                    }
                 }
                 else
                 {
-                    std::cout << "Selected: " << (pick->terrain ? "terrain" : "nothing") << '\n';
+                    // Pick ids are positions in the instance list of the frame that took the pick;
+                    // the list order only changes when entities are destroyed.
+                    selection.clear();
+                    if (pick->instance && *pick->instance < frame_entities.size() && frame_entities[*pick->instance].valid())
+                    {
+                        selection.insert(eaw::entity_key(frame_entities[*pick->instance]));
+                        std::cout << "Selected " << describe_instance(*pick->instance) << '\n';
+                    }
+                    else
+                    {
+                        std::cout << "Selected: " << (pick->terrain ? "terrain" : "nothing") << '\n';
+                    }
                 }
             }
             if (input.keys[static_cast<std::size_t>(eaw::Key::b)].pressed)
@@ -1176,16 +1198,13 @@ int main(const int argc, char** argv)
                     if (count != 0)
                     {
                         const auto stats = renderer.stats();
-                        pick_purpose = PickPurpose::spawn;
-                        pending_spawn_type = index;
-                        pending_spawn_count = count;
-                        renderer.request_pick(stats.width / 2U, stats.height / 2U);
+                        pick_intents[renderer.request_pick(stats.width / 2U, stats.height / 2U)] = {PickPurpose::spawn, index, count};
                         break;
                     }
                 }
             }
             // Waits for the initial spawns so they are part of the order.
-            if (options.auto_move && content_shown_at && world && !automated_move_sent && (spawnable.empty() || (initial_spawns_sent && pick_purpose != PickPurpose::spawn)))
+            if (options.auto_move && content_shown_at && world && !automated_move_sent && (spawnable.empty() || (initial_spawns_sent && !pending_spawns())))
             {
                 automated_move_sent = true;
                 selection.clear();
@@ -1202,7 +1221,7 @@ int main(const int argc, char** argv)
             }
             if (options.pick && content_shown_at && !automated_pick_sent)
             {
-                renderer.request_pick((*options.pick)[0], (*options.pick)[1]);
+                pick_intents[renderer.request_pick((*options.pick)[0], (*options.pick)[1])] = {PickPurpose::select};
                 automated_pick_sent = true;
             }
             if (input.keys[static_cast<std::size_t>(eaw::Key::f1)].pressed)
@@ -1312,7 +1331,7 @@ int main(const int argc, char** argv)
             }
         }
         renderer.wait_idle();
-        if (const auto pick = renderer.take_pick())
+        while (const auto pick = renderer.take_pick())
         {
             std::cout << "Selected: "
                       << (pick->instance && *pick->instance < frame_entities.size() && frame_entities[*pick->instance].valid() ? describe_instance(*pick->instance)

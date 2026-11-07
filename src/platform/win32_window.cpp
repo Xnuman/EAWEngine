@@ -199,17 +199,19 @@ struct PlatformWindow::Impl
             return;
         }
 
+        // Edges latch until the next frame: a press and release inside one frame both register.
         auto& state = input.keys[index_of(*key)];
-        state.pressed = down && !state.down;
-        state.released = !down && state.down;
+        state.pressed = state.pressed || (down && !state.down);
+        state.released = state.released || (!down && state.down);
         state.down = down;
     }
 
     void update_mouse_button(const MouseButton button, const bool down)
     {
+        // Edges latch until the next frame: a quick click inside one frame reports both edges.
         auto& state = input.mouse_buttons[index_of(button)];
-        state.pressed = down && !state.down;
-        state.released = !down && state.down;
+        state.pressed = state.pressed || (down && !state.down);
+        state.released = state.released || (!down && state.down);
         state.down = down;
         if (down)
         {
