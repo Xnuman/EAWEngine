@@ -45,3 +45,12 @@ still rejecting mismatched and unterminated elements. Type/tag value validation
 will consume the public `eaw-schema` registry as a separate layer over the
 lossless syntax tree and typed-name index.
 
+The schema loader consumes a local checkout rather than downloading definitions
+at runtime. It reads the type/tag/enum/hardcoded/metafile YAML subset used for
+validation, layers FoC additions over EAW, and follows file-registry references
+through the resolved VFS. With the public schema checkout observed on
+2026-11-07, 10,977 of 21,283 named stock definitions receive an authoritative
+canonical or metafile type. Remaining diagnostics are retained as research
+inputs because the public schema and several shipped values intentionally expose
+known or still-undocumented engine leniency.
+

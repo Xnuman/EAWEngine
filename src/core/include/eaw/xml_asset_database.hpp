@@ -17,6 +17,7 @@ struct XmlDefinition
     std::string name;
     std::string source_path;
     std::size_t line{1};
+    std::size_t depth{};
     std::vector<XmlAttribute> attributes;
     std::vector<XmlNode> fields;
 };

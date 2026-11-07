@@ -53,11 +53,12 @@ std::string include_path(const std::string_view value)
     return normalize_asset_path(candidate);
 }
 
-void collect_node(const VirtualFileSystem& vfs, const XmlNode& node, const std::string& source_path, std::vector<XmlDefinition>& definitions, std::vector<XmlIncludeReference>& includes)
+void collect_node(const VirtualFileSystem& vfs, const XmlNode& node, const std::string& source_path, std::vector<XmlDefinition>& definitions, std::vector<XmlIncludeReference>& includes,
+                  const std::size_t depth)
 {
     if (const auto* name = node.attribute("Name"); name != nullptr && !trim(name->value).empty())
     {
-        definitions.push_back(XmlDefinition{node.name, trim(name->value), source_path, node.line, node.attributes, node.children});
+        definitions.push_back(XmlDefinition{node.name, trim(name->value), source_path, node.line, depth, node.attributes, node.children});
     }
 
     const auto value = trim(node.text);
@@ -76,7 +77,7 @@ void collect_node(const VirtualFileSystem& vfs, const XmlNode& node, const std::
     }
     for (const auto& child : node.children)
     {
-        collect_node(vfs, child, source_path, definitions, includes);
+        collect_node(vfs, child, source_path, definitions, includes, depth + 1);
     }
 }
 
@@ -98,7 +99,7 @@ XmlAssetDatabase XmlAssetDatabase::build(const VirtualFileSystem& vfs, const std
             ++database.parsed_document_count_;
             for (const auto& root : document.roots)
             {
-                collect_node(vfs, root, asset.virtual_path, database.definitions_, database.includes_);
+                collect_node(vfs, root, asset.virtual_path, database.definitions_, database.includes_, 0);
             }
         }
         catch (const std::exception& error)

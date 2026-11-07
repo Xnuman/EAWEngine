@@ -80,6 +80,15 @@ Inspect the resolved FoC asset set or a specific archive-backed model:
 .\build\vs2022-x64\Release\EAWAssetInspector.exe xml-audit Data/XML --game foc
 ```
 
+Optionally validate that resolved XML against a local checkout of the public
+`eaw-schema` project:
+
+```powershell
+git clone https://github.com/AlamoEngine-Tools/eaw-schema.git .\build\eaw-schema
+.\build\vs2022-x64\Release\EAWAssetInspector.exe xml-audit Data/XML `
+  --game foc --schema-root .\build\eaw-schema
+```
+
 Create a sparse localization workspace for a unit and build a complete DAT:
 
 ```powershell

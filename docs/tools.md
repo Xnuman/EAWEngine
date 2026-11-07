@@ -71,6 +71,10 @@ EAWAssetInspector.exe texture-audit Data/Art/Models --game foc
 
 # Parse and index the complete resolved XML object database
 EAWAssetInspector.exe xml-audit Data/XML --game foc
+
+# Add type/tag, scalar, enum, repetition, and object-reference validation
+EAWAssetInspector.exe xml-audit Data/XML --game foc `
+  --schema-root "D:\path\to\eaw-schema"
 ```
 
 Current semantic inspectors cover DAT string tables, DDS headers, ALO model
@@ -82,6 +86,17 @@ coverage, duplicate type/name keys, XML file references, missing references,
 and parse failures across the final VFS winners. The combined stock FoC/EAW
 corpus currently parses all 638 resolved XML files and indexes 21,283 named
 definitions across 185 element types.
+
+Schema validation is optional and offline. `--schema-root` accepts either the
+root of an `eaw-schema` checkout or one game schema directory. When a repository
+root is supplied, FoC validation layers the expansion schema over the inherited
+EAW schema. Registry metafiles assign types to referenced files, while a nested
+element whose canonical name identifies a more specific registered type takes
+precedence. Diagnostics currently cover unknown/non-repeatable fields, Boolean,
+integer, float, vector, RGBA and enum shapes, plus unresolved XML-object
+references. The external schema remains a work in progress, so stock-data
+diagnostics are compatibility evidence to review, not automatically engine
+defects.
 
 ALO reports skeletons, meshes, bounds, materials, texture references, geometry
 counts, attachments, proxies, lights, and dazzles. ALA reports format version,

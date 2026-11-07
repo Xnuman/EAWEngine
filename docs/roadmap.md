@@ -40,9 +40,13 @@ campaign compatibility is a long-term engine project, not a renderer swap.
   definitions, and diagnoses duplicate keys and unresolved XML-file references.
   The combined stock corpus parses all 638 resolved XML files and indexes
   21,283 named definitions across 185 element types without parse failures.
-- Next: load the external type/tag schema for value and reference validation,
-  then remaining DDS/MTD formats, legacy shader/material translation, and Lua
-  bytecode inventory.
+- Optional `eaw-schema` loading now layers EAW/FoC type, tag, enum, hardcoded
+  token, and metafile definitions over the XML index. The audit validates field
+  membership/repetition, common scalar and enum shapes, and XML-object
+  references while retaining source-line diagnostics.
+- Next: extend XML inference and typed reference semantics, then remaining
+  DDS/MTD formats, legacy shader/material translation, and Lua bytecode
+  inventory.
 - Deliverable: asset inspector that can browse every stock and selected mod
   asset and report unresolved references.
 

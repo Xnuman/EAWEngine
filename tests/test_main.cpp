@@ -12,6 +12,7 @@
 #include "eaw/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
 #include "eaw/xml_document.hpp"
+#include "eaw/xml_schema.hpp"
 
 #include <array>
 #include <bit>
@@ -717,6 +718,85 @@ void test_xml_asset_database()
     std::filesystem::remove_all(root, ignored);
 }
 
+void test_xml_schema_validation()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-xml-schema-test";
+    const auto game_root = root / "game";
+    const auto xml_root = game_root / "Data" / "XML";
+    const auto schema_root = root / "schema" / "eaw";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::filesystem::create_directories(xml_root);
+    std::filesystem::create_directories(schema_root / "tags");
+    std::filesystem::create_directories(schema_root / "enums");
+    std::filesystem::create_directories(schema_root / "meta");
+
+    {
+        std::ofstream file(schema_root / "types.yaml", std::ios::binary);
+        file << "types:\n"
+                "  - typeName: GameObjectType\n"
+                "    nameTag: Name\n";
+    }
+    {
+        std::ofstream file(schema_root / "tags" / "GameObjectType.yaml", std::ios::binary);
+        file << "tags:\n"
+                "  - tag: Is_Buildable\n"
+                "    type: Boolean\n"
+                "  - tag: Build_Cost_Credits\n"
+                "    type: UInt\n"
+                "  - tag: Faction\n"
+                "    type: DynamicEnumValue\n"
+                "    enumName: FactionName\n"
+                "  - tag: Target\n"
+                "    type: NameReference\n"
+                "    referenceKind: xmlObject\n"
+                "    referenceType: GameObjectType\n"
+                "  - tag: Repeated\n"
+                "    type: Float\n";
+    }
+    {
+        std::ofstream file(schema_root / "enums" / "FactionName.yaml", std::ios::binary);
+        file << "name: FactionName\n"
+                "values:\n"
+                "  - name: Empire\n"
+                "  - name: Rebel\n";
+    }
+    {
+        std::ofstream file(schema_root / "meta" / "metafiles.yaml", std::ios::binary);
+        file << "metafiles:\n"
+                "  - path: data/xml/gameobjectfiles.xml\n"
+                "    metaFileType: fileRegistry\n"
+                "    types:\n"
+                "      - GameObjectType\n";
+    }
+    {
+        std::ofstream file(xml_root / "GameObjectFiles.xml", std::ios::binary);
+        file << "<Game_Object_Files><File>Units.xml</File></Game_Object_Files>";
+    }
+    {
+        std::ofstream file(xml_root / "Units.xml", std::ios::binary);
+        file << "<Units><SpaceUnit Name=\"Unit_A\">"
+                "<Is_Buildable>Maybe</Is_Buildable>"
+                "<Build_Cost_Credits>-1</Build_Cost_Credits>"
+                "<Faction>Hutts</Faction>"
+                "<Target>Missing_Unit</Target>"
+                "<Repeated>1</Repeated><Repeated>2</Repeated>"
+                "<Unknown_Field>value</Unknown_Field>"
+                "</SpaceUnit><SpaceUnit Name=\"Unit_B\" /></Units>";
+    }
+
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", game_root));
+    const auto database = eaw::XmlAssetDatabase::build(vfs);
+    const auto schema = eaw::XmlSchema::load(root / "schema");
+    const auto validation = schema.validate(database);
+    require(schema.types().size() == 1 && schema.enums().size() == 1 && schema.metafiles().size() == 1, "XML schema loading failed");
+    require(validation.definitions_considered == 2 && validation.definitions_validated == 2 && validation.untyped_definitions == 0, "XML schema type inference failed");
+    require(validation.fields_validated == 6 && validation.unknown_fields == 1 && validation.duplicate_fields == 1, "XML schema field validation failed");
+    require(validation.invalid_values == 3 && validation.unresolved_references == 1, "XML schema value or reference validation failed");
+    std::filesystem::remove_all(root, ignored);
+}
+
 } // namespace
 
 int main()
@@ -759,6 +839,7 @@ int main()
         test_localization_scan();
         test_xml_document();
         test_xml_asset_database();
+        test_xml_schema_validation();
 
         std::error_code ignored;
         std::filesystem::remove(archive_path, ignored);

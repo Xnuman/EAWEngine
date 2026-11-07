@@ -20,6 +20,7 @@ add_library(eaw_core STATIC
     src/core/virtual_file_system.cpp
     src/core/xml_asset_database.cpp
     src/core/xml_document.cpp
+    src/core/xml_schema.cpp
 )
 
 target_include_directories(eaw_core PUBLIC src/core/include)

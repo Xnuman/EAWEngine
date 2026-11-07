@@ -8,6 +8,7 @@
 #include "eaw/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
 #include "eaw/xml_document.hpp"
+#include "eaw/xml_schema.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -35,6 +36,7 @@ struct Options
     std::string command{"summary"};
     std::string operand;
     std::optional<std::filesystem::path> game_root;
+    std::optional<std::filesystem::path> schema_root;
     eaw::GameVariant variant{eaw::GameVariant::forces_of_corruption};
     std::vector<std::filesystem::path> mods;
     std::string prefix{"Data"};
@@ -56,6 +58,7 @@ void usage()
               << "Options:\n"
               << "  --game-root <path>      Installation root (auto-detected by default)\n"
               << "  --game <eaw|foc>        Game profile (default: foc)\n"
+              << "  --schema-root <path>    Optional eaw-schema checkout for XML validation\n"
               << "  --mod <path>            Mod root; repeatable, first has priority\n"
               << "  --prefix <path>         Summary/list prefix (default: Data)\n"
               << "  --extension <.xml>      Filter list by extension\n"
@@ -115,6 +118,10 @@ Options parse_options(const int argc, char** argv)
                 throw std::invalid_argument("unknown game variant: " + value);
             }
             options.variant = *variant;
+        }
+        else if (argument == "--schema-root")
+        {
+            options.schema_root = value;
         }
         else if (argument == "--mod")
         {
@@ -700,7 +707,7 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
     }
 }
 
-void audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit)
+void audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit, const std::optional<std::filesystem::path>& schema_root, const bool include_foc)
 {
     const auto database = eaw::XmlAssetDatabase::build(vfs, prefix);
     std::map<std::string, std::size_t> definitions_by_type;
@@ -774,6 +781,35 @@ void audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
             std::cout << "  " << reference.resolved_path << "  from " << reference.source_path << ':' << reference.line << '\n';
         }
     }
+
+    if (schema_root)
+    {
+        const auto schema = eaw::XmlSchema::load(*schema_root, include_foc);
+        const auto validation = schema.validate(database);
+        const auto errors = std::ranges::count_if(validation.diagnostics,
+                                                  [](const auto& diagnostic)
+                                                  {
+                                                      return diagnostic.severity == eaw::XmlSchemaDiagnosticSeverity::error;
+                                                  });
+        std::cout << "\nExternal schema validation\n"
+                  << "Schema types: " << schema.types().size() << '\n'
+                  << "Schema enums/token sets: " << schema.enums().size() << '\n'
+                  << "Metafile rules: " << schema.metafiles().size() << '\n'
+                  << "Definitions validated: " << validation.definitions_validated << '/' << validation.definitions_considered << '\n'
+                  << "Untyped definitions: " << validation.untyped_definitions << '\n'
+                  << "Fields validated: " << validation.fields_validated << '\n'
+                  << "Unknown fields: " << validation.unknown_fields << '\n'
+                  << "Duplicate non-repeatable fields: " << validation.duplicate_fields << '\n'
+                  << "Invalid scalar/enum values: " << validation.invalid_values << '\n'
+                  << "Unresolved XML references: " << validation.unresolved_references << '\n'
+                  << "Diagnostics: " << validation.diagnostics.size() << " (" << errors << " error(s))\n";
+        for (std::size_t index = 0; index < std::min(limit, validation.diagnostics.size()); ++index)
+        {
+            const auto& diagnostic = validation.diagnostics[index];
+            std::cout << "  " << eaw::to_string(diagnostic.severity) << '[' << eaw::to_string(diagnostic.kind) << "] " << diagnostic.source_path << ':' << diagnostic.line << "  "
+                      << diagnostic.object_type << " Name=\"" << diagnostic.object_name << "\" / " << diagnostic.field << ": " << diagnostic.message << '\n';
+        }
+    }
 }
 
 } // namespace
@@ -831,7 +867,7 @@ int main(const int argc, char** argv)
         }
         if (options.command == "xml-audit")
         {
-            audit_xml(vfs, options.prefix, options.limit);
+            audit_xml(vfs, options.prefix, options.limit, options.schema_root, options.variant == eaw::GameVariant::forces_of_corruption);
             return 0;
         }
         if (options.command != "summary" && options.command != "list")
