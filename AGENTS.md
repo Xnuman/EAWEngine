@@ -122,7 +122,7 @@ The authoritative milestone description is [docs/roadmap.md](docs/roadmap.md). U
 - `src/dev_launcher`: `EAWDevLauncher`, the development GUI that edits and starts sandbox scenarios through `eaw_launch`.
 - `src/imgui_app`: `eaw_imgui_app`, the shared Win32 + Direct3D 11 + Dear ImGui window shell and file dialogs of the desktop tools.
 - `src/asset_inspector` and `src/dat_editor`: command-line tools built on `eaw_core`. The inspector has one source file per command group (`inspect_asset`, `audit_textures`, `audit_lua`, `audit_maps`, `audit_xml`) plus `inspector_options` and `inspector_common`, declared in `inspector.hpp`.
-- `src/tools_gui`: the Dear ImGui workbench. Tool UI may present core data but must not duplicate parsers.
+- `src/tools_gui`: the Dear ImGui workbench. Tool UI may present core data but must not duplicate parsers. Each panel has its own file (`gui_asset_workspace`, `gui_map_view`, `gui_model_view`, `gui_localization`); `GuiApp::State` is declared in `gui_internal.hpp` with its methods in `gui_state.cpp`, and shared helpers live in `gui_support.cpp`.
 - `tests`: automated decoder, VFS, compatibility, and runtime-contract tests, one module per file (`test_<module>.cpp`, listed in `EAW_TEST_MODULES` in `CMakeLists.txt`, one ctest entry each); shared requirement helpers and synthetic format fixtures live in `test_support.*`. `EAWEngineTests <module>...` runs only the named modules.
 - `docs`: architecture, evidence, roadmap, and tool workflows.
 - `Shaders`: owner-provided legacy Direct3D 9 shader reference corpus; never a runtime or build dependency.

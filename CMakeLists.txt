@@ -148,6 +148,12 @@ if(EAW_BUILD_GUI AND WIN32)
 
     add_executable(EAWTools WIN32
         src/tools_gui/gui_app.cpp
+        src/tools_gui/gui_asset_workspace.cpp
+        src/tools_gui/gui_localization.cpp
+        src/tools_gui/gui_map_view.cpp
+        src/tools_gui/gui_model_view.cpp
+        src/tools_gui/gui_state.cpp
+        src/tools_gui/gui_support.cpp
         src/tools_gui/preview_renderer.cpp
         src/tools_gui/main.cpp
     )
