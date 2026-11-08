@@ -121,7 +121,7 @@ The authoritative milestone description is [docs/roadmap.md](docs/roadmap.md). U
 - `src/launcher`: configuration and process launch only.
 - `src/asset_inspector` and `src/dat_editor`: command-line tools built on `eaw_core`.
 - `src/tools_gui`: the Dear ImGui workbench. Tool UI may present core data but must not duplicate parsers.
-- `tests`: automated decoder, VFS, compatibility, and runtime-contract tests.
+- `tests`: automated decoder, VFS, compatibility, and runtime-contract tests, one module per file (`test_<module>.cpp`, listed in `EAW_TEST_MODULES` in `CMakeLists.txt`, one ctest entry each); shared requirement helpers and synthetic format fixtures live in `test_support.*`. `EAWEngineTests <module>...` runs only the named modules.
 - `docs`: architecture, evidence, roadmap, and tool workflows.
 - `Shaders`: owner-provided legacy Direct3D 9 shader reference corpus; never a runtime or build dependency.
 - `build`: generated output; never edit generated project files as source.

@@ -262,14 +262,22 @@ endif()
 
 if(EAW_BUILD_TESTS)
     enable_testing()
-    add_executable(EAWEngineTests
-        tests/test_main.cpp
-    )
+    # Each module is tests/test_<module>.cpp, registers its tests under that name, and gets its own
+    # ctest entry; add new modules here.
+    set(EAW_TEST_MODULES engine formats foundation render simulation vfs xml)
+    set(EAW_TEST_SOURCES tests/test_main.cpp tests/test_support.cpp)
+    foreach(test_module IN LISTS EAW_TEST_MODULES)
+        list(APPEND EAW_TEST_SOURCES tests/test_${test_module}.cpp)
+    endforeach()
+    add_executable(EAWEngineTests ${EAW_TEST_SOURCES})
     target_link_libraries(EAWEngineTests PRIVATE eaw_core eaw_engine)
     target_compile_features(EAWEngineTests PRIVATE cxx_std_20)
     if(MSVC)
         target_compile_options(EAWEngineTests PRIVATE /W4 /permissive- /utf-8)
     endif()
-    add_test(NAME EAWEngineTests COMMAND EAWEngineTests)
+    # EAWEngineTests runs every module when given none.
+    foreach(test_module IN LISTS EAW_TEST_MODULES)
+        add_test(NAME EAWEngineTests.${test_module} COMMAND EAWEngineTests ${test_module})
+    endforeach()
 endif()
 
