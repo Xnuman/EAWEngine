@@ -436,6 +436,23 @@ void test_turning_and_separation()
         require(world.snapshot().entities[4].position.x < 145.0F, "a push must not move a unit onto a cell it may not enter");
         require(world.stats().separated_pairs == 0, "separated units must stop pushing once apart");
     }
+    // A unit walking into an idle unit of another owner does not push it aside.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto walker =
+            world.spawn({.type_name = "Walker", .owner = 1, .position = {40.0F, 150.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto enemy =
+            world.spawn({.type_name = "Enemy", .owner = 2, .position = {60.0F, 150.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        require(walker && enemy, "test spawns must succeed");
+        world.submit({eaw::SimCommandKind::move, {*walker}, {80.0F, 150.0F, 0.0F}});
+        for (int tick = 0; tick < 30; ++tick)
+        {
+            world.step();
+        }
+        const auto& entities = world.snapshot().entities;
+        require(entities[1].position.x == 60.0F && entities[1].position.y == 150.0F && entities[0].position.x < 51.0F, "an idle foreign unit must stand its ground");
+    }
     {
         const auto replay = [&]
         {
@@ -527,6 +544,112 @@ void test_formations()
             "a group must arrive in distinct slots around the target");
 }
 
+void test_narrow_passage()
+{
+    // A wall at column 15 with a one-cell gap at row 14; six tank-sized units ordered through it. With
+    // equal pushes they jammed at the gap (reported on Bespin); route priority makes them queue.
+    eaw::GroundMap ground;
+    ground.width = 30;
+    ground.height = 30;
+    ground.spacing = 10.0F;
+    ground.heights.assign(900, 0.0F);
+    ground.passability.assign(900, eaw::passability::clear);
+    for (std::uint32_t y = 0; y < 30; ++y)
+    {
+        if (y != 14)
+        {
+            ground.passability[y * 30 + 15] = eaw::passability::steep;
+        }
+    }
+    eaw::SimulationWorld world(1.0 / 30.0);
+    world.set_ground(ground);
+    std::vector<eaw::EntityId> group;
+    for (int index = 0; index < 6; ++index)
+    {
+        const auto id = world.spawn({.type_name = "Trooper",
+                                     .position = {40.0F + static_cast<float>(index % 3) * 20.0F, 100.0F + static_cast<float>(index / 3) * 20.0F, 0.0F},
+                                     .max_speed = 30.0F,
+                                     .follows_ground = true,
+                                     .passable_types = eaw::passability::clear,
+                                     .radius = 8.0F,
+                                     .turn_rate = 8.0F});
+        require(id.ok(), "test spawn must succeed");
+        group.push_back(*id);
+    }
+    world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = group, .target = {240.0F, 150.0F, 0.0F}});
+    for (int tick = 0; tick < 900; ++tick)
+    {
+        world.step();
+    }
+    for (const auto& entity : world.snapshot().entities)
+    {
+        require(!entity.moving && entity.position.x > 200.0F, "a group must queue through a passage one unit wide instead of jamming at its mouth");
+    }
+    require(world.stats().separated_pairs == 0, "units at rest must stop pushing each other");
+}
+
+void test_group_cohesion()
+{
+    eaw::GroundMap ground;
+    ground.width = 60;
+    ground.height = 30;
+    ground.spacing = 10.0F;
+    ground.heights.assign(1800, 0.0F);
+    ground.passability.assign(1800, eaw::passability::clear);
+    const auto spawn = [&](eaw::SimulationWorld& world, const float x, const float y)
+    {
+        const auto id = world.spawn({.type_name = "Trooper", .position = {x, y, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 4.0F});
+        require(id.ok(), "test spawn must succeed");
+        return *id;
+    };
+
+    // A straggler 150 units behind: the members ahead wait for it, and the group arrives together.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const std::vector<eaw::EntityId> group{spawn(world, 200.0F, 140.0F), spawn(world, 200.0F, 160.0F), spawn(world, 50.0F, 150.0F)};
+        world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = group, .target = {450.0F, 150.0F, 0.0F}});
+        world.step();
+        require(world.stats().waiting_members == 2, "members ahead of the group must wait");
+        std::array<int, 3> arrived{-1, -1, -1};
+        for (int tick = 1; tick < 400; ++tick)
+        {
+            world.step();
+            for (std::size_t member = 0; member < 3; ++member)
+            {
+                if (arrived[member] < 0 && !world.snapshot().entities[member].moving)
+                {
+                    arrived[member] = tick;
+                }
+            }
+        }
+        require(arrived[0] > 0 && arrived[2] > 0 && std::abs(arrived[0] - arrived[2]) < 40 && std::abs(arrived[1] - arrived[2]) < 40, "a re-formed group must arrive together");
+    }
+
+    // A member that cannot make progress (it faces away and turns almost imperceptibly slowly) is
+    // released, so the rest of the group goes on.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto stuck = world.spawn({.type_name = "Stuck",
+                                        .position = {100.0F, 150.0F, 0.0F},
+                                        .heading = std::numbers::pi_v<float>,
+                                        .max_speed = 30.0F,
+                                        .follows_ground = true,
+                                        .passable_types = eaw::passability::clear,
+                                        .radius = 4.0F,
+                                        .turn_rate = 1.0e-4F});
+        const auto free = spawn(world, 100.0F, 100.0F);
+        require(stuck.ok(), "test spawn must succeed");
+        world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = {*stuck, free}, .target = {300.0F, 130.0F, 0.0F}});
+        for (int tick = 0; tick < 300; ++tick)
+        {
+            world.step();
+        }
+        require(world.stats().released_members >= 1 && !world.snapshot().entities[1].moving, "a stuck member must be released so the group does not wait forever");
+    }
+}
+
 const ModuleRegistrar registrar("simulation", {
                                                   {"test_simulation_core", &test_simulation_core},
                                                   {"test_ground_movement", &test_ground_movement},
@@ -534,6 +657,8 @@ const ModuleRegistrar registrar("simulation", {
                                                   {"test_combat", &test_combat},
                                                   {"test_turning_and_separation", &test_turning_and_separation},
                                                   {"test_formations", &test_formations},
+                                                  {"test_narrow_passage", &test_narrow_passage},
+                                                  {"test_group_cohesion", &test_group_cohesion},
                                               });
 
 } // namespace

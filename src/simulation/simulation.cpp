@@ -18,6 +18,11 @@ constexpr float grid_cell_size = 256.0F;
 // chase whose target is out of range. Engine choices, not measured from the original.
 constexpr std::uint32_t retarget_interval = 10;
 constexpr std::uint32_t chase_interval = 30;
+// A formation member waits while it is more than this much route ahead of its group's furthest
+// member (plus two footprint diameters), and leaves its group after this many ticks without
+// progress while not waiting. Engine choices.
+constexpr float cohesion_slack = 30.0F;
+constexpr std::uint32_t cohesion_stall_ticks = 90;
 
 bool finite(const SimVector3& value) noexcept
 {
@@ -176,6 +181,10 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     formation_orders_.push_back(spawn.formation_order);
     formation_spacings_.push_back(spawn.formation_spacing);
     speed_limits_.push_back(0.0F);
+    group_ids_.push_back(0);
+    group_best_remaining_.push_back(0.0F);
+    group_stall_ticks_.push_back(0);
+    group_waiting_.push_back(0);
     if (spawn.follows_ground && ground_.valid())
     {
         positions_.back().z = ground_.surface_height(spawn.position.x, spawn.position.y);
@@ -216,8 +225,8 @@ const SimSnapshot& SimulationWorld::snapshot() const noexcept
 
 SimulationWorld::Stats SimulationWorld::stats() const noexcept
 {
-    return {tick_, ids_.size(), commands_applied_,   stale_references_, blocked_moves_, path_searches_, partial_paths_, path_expansions_, shots_fired_,
-            hits_, kills_,      projectiles_.size(), separated_pairs_};
+    return {tick_, ids_.size(), commands_applied_,   stale_references_, blocked_moves_,   path_searches_,   partial_paths_, path_expansions_, shots_fired_,
+            hits_, kills_,      projectiles_.size(), separated_pairs_,  waiting_members_, released_members_};
 }
 
 std::uint64_t SimulationWorld::state_hash() const noexcept
@@ -261,6 +270,9 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, formation_orders_[index]);
         hash = hash_value(hash, formation_spacings_[index]);
         hash = hash_value(hash, speed_limits_[index]);
+        hash = hash_value(hash, group_ids_[index]);
+        hash = hash_value(hash, group_best_remaining_[index]);
+        hash = hash_value(hash, group_stall_ticks_[index]);
     }
     for (const auto& projectile : projectiles_)
     {
@@ -312,6 +324,7 @@ void SimulationWorld::apply(const SimCommand& command)
             combat_[*dense].target = {};
             combat_[*dense].ordered = false;
             speed_limits_[*dense] = 0.0F;
+            group_ids_[*dense] = 0;
             if (max_speeds_[*dense] > 0.0F)
             {
                 plan_move(*dense, command.target);
@@ -319,6 +332,7 @@ void SimulationWorld::apply(const SimCommand& command)
             break;
         case SimCommandKind::stop:
             speed_limits_[*dense] = 0.0F;
+            group_ids_[*dense] = 0;
             move_targets_[*dense].reset();
             paths_[*dense].clear();
             combat_[*dense].target = {};
@@ -338,6 +352,7 @@ void SimulationWorld::apply(const SimCommand& command)
                 combat.target = command.target_entity;
                 combat.ordered = true;
                 speed_limits_[*dense] = 0.0F;
+                group_ids_[*dense] = 0;
                 combat.chase_timer = 0;
             }
             break;
@@ -408,6 +423,11 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         return;
     }
     const auto slots = formation_slots(members, command.target, formation_facing(members, command.target));
+    const auto group = movers.size() > 1 ? next_group_id_++ : 0U;
+    if (next_group_id_ == 0)
+    {
+        next_group_id_ = 1;
+    }
     float group_speed = max_speeds_[movers.front()];
     for (const auto index : movers)
     {
@@ -419,6 +439,9 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         combat_[index].target = {};
         combat_[index].ordered = false;
         speed_limits_[index] = movers.size() > 1 ? group_speed : 0.0F;
+        group_ids_[index] = group;
+        group_best_remaining_[index] = std::numeric_limits<float>::max();
+        group_stall_ticks_[index] = 0;
         auto slot = slots[member].position;
         // Flyers keep their altitude; ground units take theirs from the surface anyway.
         if (follows_ground_[index] == 0)
@@ -426,6 +449,84 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
             slot.z = positions_[index].z;
         }
         plan_move(index, slot);
+    }
+}
+
+void SimulationWorld::measure_remaining_routes()
+{
+    remaining_route_.assign(ids_.size(), 0.0F);
+    for (std::size_t index = 0; index < ids_.size(); ++index)
+    {
+        if (const auto& target = move_targets_[index])
+        {
+            auto from = positions_[index];
+            float length = 0.0F;
+            for (auto waypoint = paths_[index].rbegin(); waypoint != paths_[index].rend(); ++waypoint)
+            {
+                length += std::hypot(waypoint->x - from.x, waypoint->y - from.y);
+                from = *waypoint;
+            }
+            remaining_route_[index] = length + std::hypot(target->x - from.x, target->y - from.y);
+        }
+    }
+}
+
+// A formation advances together, as in Age of Empires II: a moving member more than the slack
+// ahead of its group's furthest moving member waits, so a group torn apart by a narrow passage or a
+// detour re-forms. A member that makes no progress for cohesion_stall_ticks while not waiting is
+// released from its group (it keeps its order), so one stuck unit cannot hold the others forever.
+void SimulationWorld::update_group_cohesion()
+{
+    waiting_members_ = 0;
+    group_waiting_.assign(ids_.size(), 0);
+    // Furthest remaining route and largest footprint per group, in first-seen order.
+    struct GroupState
+    {
+        std::uint32_t id{};
+        float furthest{};
+        float largest_radius{};
+    };
+    std::vector<GroupState> groups;
+    for (std::size_t index = 0; index < ids_.size(); ++index)
+    {
+        if (group_ids_[index] == 0 || !move_targets_[index])
+        {
+            continue;
+        }
+        auto found = std::ranges::find(groups, group_ids_[index], &GroupState::id);
+        if (found == groups.end())
+        {
+            groups.push_back({group_ids_[index], 0.0F, 0.0F});
+            found = groups.end() - 1;
+        }
+        found->furthest = std::max(found->furthest, remaining_route_[index]);
+        found->largest_radius = std::max(found->largest_radius, radii_[index]);
+    }
+    for (std::size_t index = 0; index < ids_.size(); ++index)
+    {
+        if (group_ids_[index] == 0 || !move_targets_[index])
+        {
+            continue;
+        }
+        const auto& group = *std::ranges::find(groups, group_ids_[index], &GroupState::id);
+        const auto slack = cohesion_slack + 4.0F * group.largest_radius;
+        if (remaining_route_[index] + slack < group.furthest)
+        {
+            group_waiting_[index] = 1;
+            ++waiting_members_;
+            continue;
+        }
+        // Progress is measured against the best remaining route reached so far.
+        if (remaining_route_[index] + 0.5F < group_best_remaining_[index])
+        {
+            group_best_remaining_[index] = remaining_route_[index];
+            group_stall_ticks_[index] = 0;
+        }
+        else if (++group_stall_ticks_[index] >= cohesion_stall_ticks)
+        {
+            group_ids_[index] = 0;
+            ++released_members_;
+        }
     }
 }
 
@@ -460,6 +561,10 @@ void SimulationWorld::destroy(const std::size_t dense)
         formation_orders_[dense] = formation_orders_[last];
         formation_spacings_[dense] = formation_spacings_[last];
         speed_limits_[dense] = speed_limits_[last];
+        group_ids_[dense] = group_ids_[last];
+        group_best_remaining_[dense] = group_best_remaining_[last];
+        group_stall_ticks_[dense] = group_stall_ticks_[last];
+        group_waiting_[dense] = group_waiting_[last];
         slot_dense_[ids_[dense].index] = static_cast<std::uint32_t>(dense);
     }
     ids_.pop_back();
@@ -480,6 +585,10 @@ void SimulationWorld::destroy(const std::size_t dense)
     formation_orders_.pop_back();
     formation_spacings_.pop_back();
     speed_limits_.pop_back();
+    group_ids_.pop_back();
+    group_best_remaining_.pop_back();
+    group_stall_ticks_.pop_back();
+    group_waiting_.pop_back();
     slot_dense_[slot] = no_dense;
     // A slot whose generation would wrap is retired instead of reused.
     if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
@@ -492,12 +601,19 @@ void SimulationWorld::destroy(const std::size_t dense)
 void SimulationWorld::run_movement()
 {
     const auto dt = static_cast<float>(tick_seconds_);
+    measure_remaining_routes();
+    update_group_cohesion();
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
         auto& target = move_targets_[index];
         if (!target)
         {
             speed_limits_[index] = 0.0F;
+            group_ids_[index] = 0;
+            continue;
+        }
+        if (group_waiting_[index] != 0)
+        {
             continue;
         }
         auto& position = positions_[index];
@@ -626,13 +742,32 @@ void SimulationWorld::run_separation()
             largest_radius = std::max(largest_radius, radii_[index]);
         }
     }
-    const auto weight = [&](const std::size_t index)
+    // Remaining route length of every moving unit: of two moving units, the one further along
+    // (less route left) has priority and yields much less, so units queue through a narrow
+    // passage instead of shoving each other back and forth (Age of Empires II's priority rule).
+    measure_remaining_routes();
+    const auto weight = [&](const std::size_t index, const std::size_t other)
     {
         if (max_speeds_[index] <= 0.0F)
         {
             return 0.0F;
         }
-        return move_targets_[index] ? 1.0F : 2.0F;
+        // Only units of one owner make way for each other. An idle unit of another owner (an enemy
+        // or a neutral) stands its ground against a moving one, which is held back instead; two
+        // foreign units that both move or both stand split the push evenly.
+        if (owners_[index] != owners_[other])
+        {
+            return !move_targets_[index] && move_targets_[other] ? 0.0F : 1.0F;
+        }
+        if (!move_targets_[index])
+        {
+            return 2.0F;
+        }
+        if (move_targets_[other] && max_speeds_[other] > 0.0F && remaining_route_[index] != remaining_route_[other])
+        {
+            return remaining_route_[index] < remaining_route_[other] ? 0.25F : 1.75F;
+        }
+        return 1.0F;
     };
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
@@ -653,9 +788,10 @@ void SimulationWorld::run_separation()
             const auto dy = positions_[other].y - positions_[index].y;
             const auto distance = std::sqrt(dx * dx + dy * dy);
             const auto overlap = radii_[index] + radii_[other] - distance;
-            const auto first_weight = weight(index);
-            const auto second_weight = weight(other);
-            if (overlap <= 0.0F || first_weight + second_weight <= 0.0F)
+            const auto first_weight = weight(index, other);
+            const auto second_weight = weight(other, index);
+            // A hundredth of a world unit of overlap is tolerated, so units at rest stop pushing.
+            if (overlap <= 0.01F || first_weight + second_weight <= 0.0F)
             {
                 continue;
             }

@@ -295,8 +295,17 @@ EAWEngine's steps:
    - Immobile entities are never pushed, idle units yield to moving ones, and
      nobody is pushed onto ground they may not enter.
    - A unit pushed off its route plans again.
+   - Between two moving units of one owner, the one with less route left
+     yields much less (route priority), so groups queue through narrow
+     passages instead of jamming. This was reported on Bespin and reproduced
+     in a test.
+   - Only units of one owner make way for each other; idle enemies and
+     neutrals stand their ground.
    - Units turn at their XML rate and slow down while facing away.
-2. **Formation slots for group orders** (done).
+2. **Formation slots for group orders** (done). Members ahead of their
+   group wait for the rest, as in Age of Empires II, so a group re-forms
+   after a choke point; a member without progress for three seconds is
+   released.
    - Ranks follow `FormationOrder`, spacing follows footprints and
      `FormationSpacing`, and units are assigned to slots deterministically.
    - The group moves at its slowest member's speed.

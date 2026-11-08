@@ -67,7 +67,8 @@ enum class SimCommandKind : std::uint8_t
     // Attack `target_entity`: armed entities chase it until it is in range and fire until it dies.
     attack,
     // Move the mobile entities together: each to its slot of a formation centered on `target`
-    // (formation.hpp), all at the slowest member's speed. Clears attack orders like move.
+    // (formation.hpp), all at the slowest member's speed, members ahead of the group waiting for
+    // the rest. Clears attack orders like move.
     formation_move,
 };
 
@@ -163,6 +164,10 @@ public:
         std::size_t projectiles{};
         // Overlapping ground pairs pushed apart in the last tick.
         std::size_t separated_pairs{};
+        // Group members waiting for the group in the last tick, and members released from their
+        // group because they stopped making progress.
+        std::size_t waiting_members{};
+        std::uint64_t released_members{};
     };
 
     explicit SimulationWorld(double tick_seconds = 1.0 / 30.0);
@@ -237,6 +242,11 @@ private:
     void run_movement();
     void plan_move(std::size_t index, const SimVector3& target);
     void apply_formation_move(const SimCommand& command);
+    // Remaining route length of every moving entity (zero for the rest).
+    void measure_remaining_routes();
+    // Marks group members that are ahead of their group to wait this tick, and releases members
+    // that stopped making progress.
+    void update_group_cohesion();
     // Speed this tick: the entity's own, or its group's when that is slower.
     [[nodiscard]] float travel_speed(std::size_t index) const noexcept;
     void move_over_ground(std::size_t index, float dt);
@@ -289,6 +299,16 @@ private:
     // Group speed of a formation move until the entity arrives; zero when none.
     std::vector<float> speed_limits_;
     std::vector<SimVector3> separation_push_;
+    std::vector<float> remaining_route_;
+    // Formation group of a member (zero when none), the remaining route it last made progress at,
+    // ticks since then, and whether it waits this tick.
+    std::vector<std::uint32_t> group_ids_;
+    std::vector<float> group_best_remaining_;
+    std::vector<std::uint32_t> group_stall_ticks_;
+    std::vector<std::uint8_t> group_waiting_;
+    std::uint32_t next_group_id_{1};
+    std::size_t waiting_members_{};
+    std::uint64_t released_members_{};
     std::size_t separated_pairs_{};
     std::vector<Projectile> projectiles_;
     SpatialGrid grid_;
