@@ -6,6 +6,7 @@
 #include "eaw/game_installation.hpp"
 #include "eaw/log.hpp"
 #include "eaw/sandbox_scenario.hpp"
+#include "eaw/spawn_catalog.hpp"
 #include "eaw/virtual_file_system.hpp"
 
 #include <imgui.h>
@@ -19,7 +20,9 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -132,6 +135,11 @@ struct DevLauncherApp::State
     std::string model_filter;
     std::string new_mod;
     std::vector<Run> runs;
+    // Spawnable XML types of the listed layers, built on a worker from its own mounted file system.
+    std::vector<SpawnTypeInfo> spawn_types;
+    std::future<std::vector<SpawnTypeInfo>> spawn_types_pending;
+    bool units_only{true};
+    bool match_map{true};
 
     void report(std::string message, const bool error = false)
     {
@@ -248,7 +256,8 @@ struct DevLauncherApp::State
                 mods.push_back(*path);
             }
         }
-        VirtualFileSystem vfs;
+        auto shared_vfs = std::make_shared<VirtualFileSystem>();
+        auto& vfs = *shared_vfs;
         const auto mount = mount_game_assets(vfs, *profile, mods);
         for (const auto& warning : mount.warnings)
         {
@@ -271,6 +280,17 @@ struct DevLauncherApp::State
         maps = collect("Data/Art/Maps", ".ted");
         models = collect("Data/Art/Models", ".alo");
         listed_for = installation_key();
+        // Reading every XML file takes a few seconds; a refresh during a build waits for it first.
+        if (spawn_types_pending.valid())
+        {
+            spawn_types_pending.wait();
+        }
+        spawn_types.clear();
+        spawn_types_pending = std::async(std::launch::async,
+                                         [shared_vfs]
+                                         {
+                                             return list_spawn_types(*shared_vfs);
+                                         });
         report("Listed " + std::to_string(maps.size()) + " maps and " + std::to_string(models.size()) + " models from " + tools::path_to_utf8(installations.front()) +
                (mount.warnings.empty() ? std::string{} : " (" + std::to_string(mount.warnings.size()) + " mount warnings in the log)"));
     }
@@ -300,11 +320,25 @@ DevLauncherApp::DevLauncherApp() : state_(std::make_unique<State>())
     state_->refresh_assets();
 }
 
-DevLauncherApp::~DevLauncherApp() = default;
+DevLauncherApp::~DevLauncherApp()
+{
+    if (state_->spawn_types_pending.valid())
+    {
+        state_->spawn_types_pending.wait();
+    }
+}
 
 void DevLauncherApp::render(HWND window)
 {
     auto& state = *state_;
+    if (state.spawn_types_pending.valid() && state.spawn_types_pending.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+    {
+        state.spawn_types = state.spawn_types_pending.get();
+        const auto units = std::ranges::count_if(state.spawn_types, &SpawnTypeInfo::unit);
+        const auto summary = std::to_string(state.spawn_types.size()) + " spawnable types (" + std::to_string(units) + " units and structures)";
+        log_info("dev-launcher", "listed " + summary);
+        state.report("Listed " + summary);
+    }
     for (auto& run : state.runs)
     {
         if (!run.exit_code)
@@ -452,13 +486,65 @@ void DevLauncherApp::render(HWND window)
         {
             ImGui::Text("Map: %s", scenario.map.empty() ? "(none)" : scenario.map.c_str());
             edited(asset_list("maps", state.maps, state.map_filter, scenario.map, 220.0F));
-            ImGui::TextUnformatted("Debug spawns (TYPE, count, owner slot; -1 = default 1):");
+            ImGui::TextUnformatted("Debug spawns (type, count, owner slot; -1 = default 1):");
+            if (state.spawn_types_pending.valid())
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(reading spawnable types...)");
+            }
+            // Land or space by the stock naming convention; only a hint for the type list.
+            const bool space_map = lower(scenario.map).find("_space") != std::string::npos;
             for (std::size_t index = 0; index < scenario.spawns.size(); ++index)
             {
                 auto& spawn = scenario.spawns[index];
                 ImGui::PushID(static_cast<int>(index));
                 ImGui::SetNextItemWidth(260.0F);
                 edited(ImGui::InputTextWithHint("##type", "XML type, e.g. T2B_Tank", &spawn.type));
+                ImGui::SameLine();
+                if (ImGui::Button("Pick..."))
+                {
+                    ImGui::OpenPopup("spawn-types");
+                }
+                if (ImGui::BeginPopup("spawn-types"))
+                {
+                    ImGui::Checkbox("Units and structures only", &state.units_only);
+                    ImGui::SameLine();
+                    ImGui::Checkbox(space_map ? "With a space model" : "With a land model", &state.match_map);
+                    ImGui::TextDisabled("Filtered by the text in the type field");
+                    std::vector<const SpawnTypeInfo*> shown;
+                    for (const auto& type : state.spawn_types)
+                    {
+                        if ((!state.units_only || type.unit) && (!state.match_map || (space_map ? type.space_model : type.land_model)) && matches(type.name, spawn.type))
+                        {
+                            shown.push_back(&type);
+                        }
+                    }
+                    ImGui::Text("%zu of %zu types", shown.size(), state.spawn_types.size());
+                    if (ImGui::BeginChild("type-list", ImVec2(520.0F, 360.0F), ImGuiChildFlags_Borders))
+                    {
+                        ImGuiListClipper clipper;
+                        clipper.Begin(static_cast<int>(shown.size()));
+                        while (clipper.Step())
+                        {
+                            for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+                            {
+                                const auto& type = *shown[static_cast<std::size_t>(row)];
+                                ImGui::PushID(row);
+                                if (ImGui::Selectable(type.name.c_str()))
+                                {
+                                    spawn.type = type.name;
+                                    edited(true);
+                                    ImGui::CloseCurrentPopup();
+                                }
+                                ImGui::SameLine(330.0F);
+                                ImGui::TextDisabled("%s%s", type.kind.c_str(), type.land_model && type.space_model ? " (land, space)" : type.land_model ? " (land)" : " (space)");
+                                ImGui::PopID();
+                            }
+                        }
+                    }
+                    ImGui::EndChild();
+                    ImGui::EndPopup();
+                }
                 ImGui::SameLine();
                 int count = static_cast<int>(spawn.count);
                 ImGui::SetNextItemWidth(90.0F);
@@ -517,7 +603,7 @@ void DevLauncherApp::render(HWND window)
             option("Show bounds", scenario.show_bounds);
             option("Show passability", scenario.show_passability);
             option("Auto move", scenario.auto_move);
-            option("No overlay", scenario.no_overlay);
+            option("Statistics panel", scenario.overlay);
             option("No raw input", scenario.no_raw_input);
             ImGui::EndTable();
         }

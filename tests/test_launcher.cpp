@@ -2,6 +2,7 @@
 
 #include "eaw/child_process.hpp"
 #include "eaw/sandbox_scenario.hpp"
+#include "eaw/spawn_catalog.hpp"
 
 namespace {
 
@@ -88,8 +89,10 @@ void test_scenario_presets()
     const auto parsed = expect_ok(eaw::parse_scenarios(text), "parsing saved presets");
     require(parsed.scenarios == scenarios && parsed.warnings.empty(), "presets must survive a save and load unchanged");
 
-    // A newer build's keys and options load with warnings; structural damage is an error.
-    const auto future = expect_ok(eaw::parse_scenarios("# comment\n[scenario]\nname=Future\noption=time-travel\ncolor=blue\nframe-limit=abc\nspawn=:3\n"), "parsing a newer preset file");
+    // A newer build's keys and options load with warnings (options that became defaults, such as
+    // no-overlay, silently); structural damage is an error.
+    const auto future =
+        expect_ok(eaw::parse_scenarios("# comment\n[scenario]\nname=Future\noption=no-overlay\noption=time-travel\ncolor=blue\nframe-limit=abc\nspawn=:3\n"), "parsing a newer preset file");
     require(future.scenarios.size() == 1 && future.scenarios[0].name == "Future" && future.warnings.size() == 4, "unknown preset content must become warnings");
     require(!eaw::parse_scenarios("name=Orphan\n") && !eaw::parse_scenarios("[scenario]\nnot a pair\n"), "malformed preset structure must be reported");
 }
@@ -104,10 +107,38 @@ void test_command_line_quoting()
     require(eaw::build_command_line("C:\\Build\\EAWEngine.exe", arguments) == "\"C:\\Build\\EAWEngine.exe\" \"sandbox\" \"--map\" \"A B\"", "a command line must quote the program and arguments");
 }
 
+void test_spawn_catalog()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-spawn-catalog-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::filesystem::create_directories(root / "Data" / "XML");
+    {
+        std::ofstream file(root / "Data" / "XML" / "Units.xml", std::ios::binary);
+        file << "<Units>"
+                "<GroundVehicle Name=\"Tank\"><Land_Model_Name>EV_Tank.alo</Land_Model_Name></GroundVehicle>"
+                "<SpaceUnit Name=\"Frigate\"><Space_Model_Name>EV_Frigate.alo</Space_Model_Name></SpaceUnit>"
+                "<SpaceUnit Name=\"Frigate_Variant\"><Variant_Of_Existing_Type>Frigate</Variant_Of_Existing_Type></SpaceUnit>"
+                "<Props_Generic Name=\"barrel\"><Land_Model_Name>W_Barrel.alo</Land_Model_Name></Props_Generic>"
+                "<GroundCompany Name=\"Company_Without_Model\" />"
+                "<SFXEvent Name=\"Tank\" />"
+                "</Units>";
+    }
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    const auto types = eaw::list_spawn_types(vfs);
+    std::filesystem::remove_all(root, ignored);
+    require(types.size() == 4 && types[0].name == "barrel" && types[1].name == "Frigate" && types[2].name == "Frigate_Variant" && types[3].name == "Tank",
+            "spawnable types must be every named definition with a model, sorted case-insensitively");
+    require(!types[0].unit && types[1].unit && types[1].space_model && !types[1].land_model && types[2].space_model && types[3].land_model && types[3].kind == "GroundVehicle",
+            "spawnable types must record their kind and model contexts, through variants");
+}
+
 const ModuleRegistrar registrar("launcher", {
                                                 {"test_scenario_arguments", &test_scenario_arguments},
                                                 {"test_scenario_presets", &test_scenario_presets},
                                                 {"test_command_line_quoting", &test_command_line_quoting},
+                                                {"test_spawn_catalog", &test_spawn_catalog},
                                             });
 
 } // namespace

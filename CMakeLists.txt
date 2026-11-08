@@ -251,9 +251,9 @@ endif()
 target_compile_features(EAWEngine PRIVATE cxx_std_20)
 target_compile_definitions(EAWEngine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 
-# Launch configuration and process start: sandbox scenarios and presets (portable), child processes
-# (Windows).
-add_library(eaw_launch STATIC src/launcher/sandbox_scenario.cpp)
+# Launch configuration and process start: sandbox scenarios, presets, and spawnable types
+# (portable), child processes (Windows).
+add_library(eaw_launch STATIC src/launcher/sandbox_scenario.cpp src/launcher/spawn_catalog.cpp)
 if(WIN32)
     target_sources(eaw_launch PRIVATE src/launcher/child_process.cpp)
 endif()

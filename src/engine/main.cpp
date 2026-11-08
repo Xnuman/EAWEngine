@@ -78,7 +78,8 @@ struct Options
     // Start with the passability overlay drawn (G toggles at runtime).
     bool show_passability{};
     // On-screen statistics panel (F1 toggles at runtime).
-    bool overlay{true};
+    // The statistics panel starts hidden; F1 shows it.
+    bool overlay{};
     // Mouse movement and keys through raw input (--no-raw-input uses window messages).
     bool raw_input{true};
     // Deliberately fail in one way to check crash reporting: assert, exception, access-violation.
@@ -128,7 +129,7 @@ void print_usage()
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
               << "  --show-passability Start with the map's passability classes drawn (G toggles)\n"
-              << "  --no-overlay       Start without the on-screen statistics panel (F1 toggles)\n"
+              << "  --overlay          Start with the on-screen statistics panel shown (hidden by default; F1 toggles)\n"
               << "  --no-raw-input     Read mouse movement and keys from window messages instead of raw input\n"
               << "  --no-error-dialog  Report fatal errors on stderr only (no error window)\n"
               << "  --log-dir <path>   Folder for log files (default: logs next to the executable)\n"
@@ -213,8 +214,13 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
         {
             options.show_passability = true;
         }
+        else if (argument == "--overlay")
+        {
+            options.overlay = true;
+        }
         else if (argument == "--no-overlay")
         {
+            // The default since the panel starts hidden; still accepted for older scripts.
             options.overlay = false;
         }
         else if (argument == "--no-raw-input")

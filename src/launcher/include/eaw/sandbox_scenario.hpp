@@ -63,7 +63,8 @@ struct SandboxScenario
     bool show_bounds{};
     bool show_passability{};
     bool auto_move{};
-    bool no_overlay{};
+    // Start with the statistics panel shown (the engine hides it by default).
+    bool overlay{};
     bool no_raw_input{};
     std::uint32_t frame_limit{};
     std::optional<std::uint32_t> upload_budget;

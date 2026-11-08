@@ -137,7 +137,7 @@ spawnable on maps: the count spawns at the surface under the view center when
 the map appears, N spawns one at the cursor, and Tab cycles through the types,
 for example `--spawn T2B_Tank:9 --spawn AT_AT_Walker`. F1 toggles the on-screen statistics
 panel (FPS, CPU/GPU frame time, draw calls, triangles, video memory, streaming,
-scene, selection, hot reload); `--no-overlay` starts with it hidden.
+scene, selection, hot reload); it starts hidden, and `--overlay` starts with it shown.
 Mouse movement and keys use Windows raw input (unaccelerated mouse movement for
 camera rotation); `--no-raw-input` uses window messages instead. The panel
 can be dragged and resized, and its "-" button minimizes it to a small tab ("+"

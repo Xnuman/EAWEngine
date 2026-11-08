@@ -46,7 +46,7 @@ constexpr std::array<BoolOption, 8> bool_options{{
     {"show-bounds", &SandboxScenario::show_bounds},
     {"show-passability", &SandboxScenario::show_passability},
     {"auto-move", &SandboxScenario::auto_move},
-    {"no-overlay", &SandboxScenario::no_overlay},
+    {"overlay", &SandboxScenario::overlay},
     {"no-raw-input", &SandboxScenario::no_raw_input},
 }};
 
@@ -415,7 +415,8 @@ Result<ScenarioFile> parse_scenarios(const std::string_view text)
                     known = true;
                 }
             }
-            if (!known)
+            // Options that became defaults load silently.
+            if (!known && value != "no-overlay")
             {
                 file.warnings.push_back(where + ": unknown option '" + std::string(value) + "'");
             }

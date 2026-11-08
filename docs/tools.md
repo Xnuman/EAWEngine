@@ -11,8 +11,16 @@ instead of a hand-typed command line. A scenario names:
   (type, count, and owner slot, as `--spawn TYPE:N@OWNER`), a model with an
   optional animation, or the validation triangle;
 - engine options: WARP, GPU validation, v-sync, hot reload, bounds,
-  passability, auto move, overlay, raw input, frame limit, window size, upload
-  budget, and free-form extra arguments.
+  passability, auto move, statistics panel (hidden by default), raw input,
+  frame limit, window size, upload budget, and free-form extra arguments.
+
+Each spawn row has a **Pick...** list of spawnable XML types, built from the
+winning XML of the selected game, the inherited base game, and the mod stack:
+every named definition with a land or space model (2,710 in stock FoC, 1,046
+of them units and structures). It filters by the text typed in the row, by
+"units and structures only", and by whether the type has a model for the map's
+kind (land or space, from the stock `_SPACE` naming convention). It refreshes
+in the background with the asset lists.
 
 The window shows the exact command line (copyable), starts any number of runs
 without waiting, and lists each run's exit code. Presets are plain text in
