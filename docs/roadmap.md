@@ -292,6 +292,13 @@ Known provisional choices to verify against the original:
   failure fatal. Warnings may later also be shown while the engine, game, and
   mods load.
 
+- **Development launcher (done).** `EAWDevLauncher` edits, saves, and starts
+  sandbox scenarios (installation, mods, map or model, debug spawns with
+  owners, engine options) and tracks the runs it started. It shares the window
+  shell with EAWTools (`eaw_imgui_app`) and the scenario model and process
+  start with `EAWLauncher` (`eaw_launch`, unit-tested in the `launcher` test
+  module).
+
 ## Performance gates
 
 - Headless deterministic simulation benchmark before renderer optimization.

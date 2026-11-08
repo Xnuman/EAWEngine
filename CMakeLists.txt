@@ -133,8 +133,20 @@ if(WIN32)
 endif()
 
 if(EAW_BUILD_GUI AND WIN32)
+    # Shared Win32 + Direct3D 11 + Dear ImGui shell and file dialogs for the desktop tools.
+    add_library(eaw_imgui_app STATIC
+        src/imgui_app/file_dialogs.cpp
+        src/imgui_app/imgui_app.cpp
+    )
+    target_include_directories(eaw_imgui_app PUBLIC src/imgui_app/include)
+    target_compile_features(eaw_imgui_app PUBLIC cxx_std_20)
+    target_compile_definitions(eaw_imgui_app PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(eaw_imgui_app PUBLIC eaw_core eaw_imgui PRIVATE eaw_platform d3d11 dxgi ole32 shell32 uuid)
+    if(MSVC)
+        target_compile_options(eaw_imgui_app PRIVATE /W4 /permissive- /utf-8)
+    endif()
+
     add_executable(EAWTools WIN32
-        src/tools_gui/file_dialogs.cpp
         src/tools_gui/gui_app.cpp
         src/tools_gui/preview_renderer.cpp
         src/tools_gui/main.cpp
@@ -142,6 +154,7 @@ if(EAW_BUILD_GUI AND WIN32)
     target_link_libraries(EAWTools PRIVATE
         eaw_core
         eaw_imgui
+        eaw_imgui_app
         eaw_platform
         d3d11
         dxgi
@@ -238,10 +251,40 @@ endif()
 target_compile_features(EAWEngine PRIVATE cxx_std_20)
 target_compile_definitions(EAWEngine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 
-add_executable(EAWLauncher src/launcher/main.cpp)
-target_link_libraries(EAWLauncher PRIVATE eaw_core)
-target_compile_features(EAWLauncher PRIVATE cxx_std_20)
-target_compile_definitions(EAWLauncher PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+# Launch configuration and process start: sandbox scenarios and presets (portable), child processes
+# (Windows).
+add_library(eaw_launch STATIC src/launcher/sandbox_scenario.cpp)
+if(WIN32)
+    target_sources(eaw_launch PRIVATE src/launcher/child_process.cpp)
+endif()
+target_include_directories(eaw_launch PUBLIC src/launcher/include)
+target_compile_features(eaw_launch PUBLIC cxx_std_20)
+target_compile_definitions(eaw_launch PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(eaw_launch PUBLIC eaw_core)
+
+if(WIN32)
+    add_executable(EAWLauncher src/launcher/main.cpp)
+    target_link_libraries(EAWLauncher PRIVATE eaw_core eaw_launch)
+    target_compile_features(EAWLauncher PRIVATE cxx_std_20)
+    target_compile_definitions(EAWLauncher PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    if(MSVC)
+        target_compile_options(EAWLauncher PRIVATE /W4 /permissive- /utf-8)
+    endif()
+endif()
+
+if(EAW_BUILD_GUI AND WIN32)
+    # Development launcher: edit, save, and start sandbox scenarios.
+    add_executable(EAWDevLauncher WIN32
+        src/dev_launcher/dev_launcher_app.cpp
+        src/dev_launcher/main.cpp
+    )
+    target_link_libraries(EAWDevLauncher PRIVATE eaw_core eaw_launch eaw_imgui_app eaw_imgui shell32)
+    target_compile_features(EAWDevLauncher PRIVATE cxx_std_20)
+    target_compile_definitions(EAWDevLauncher PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    if(MSVC)
+        target_compile_options(EAWDevLauncher PRIVATE /W4 /permissive- /utf-8)
+    endif()
+endif()
 
 add_executable(EAWAssetInspector src/asset_inspector/main.cpp)
 target_link_libraries(EAWAssetInspector PRIVATE eaw_core)
@@ -255,7 +298,7 @@ target_compile_definitions(EAWDatEditor PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 if(MSVC)
     target_compile_options(eaw_engine PRIVATE /W4 /permissive- /utf-8)
     target_compile_options(EAWEngine PRIVATE /W4 /permissive- /utf-8)
-    target_compile_options(EAWLauncher PRIVATE /W4 /permissive- /utf-8)
+    target_compile_options(eaw_launch PRIVATE /W4 /permissive- /utf-8)
     target_compile_options(EAWAssetInspector PRIVATE /W4 /permissive- /utf-8)
     target_compile_options(EAWDatEditor PRIVATE /W4 /permissive- /utf-8)
 endif()
@@ -264,13 +307,13 @@ if(EAW_BUILD_TESTS)
     enable_testing()
     # Each module is tests/test_<module>.cpp, registers its tests under that name, and gets its own
     # ctest entry; add new modules here.
-    set(EAW_TEST_MODULES engine formats foundation render simulation vfs xml)
+    set(EAW_TEST_MODULES engine formats foundation launcher render simulation vfs xml)
     set(EAW_TEST_SOURCES tests/test_main.cpp tests/test_support.cpp)
     foreach(test_module IN LISTS EAW_TEST_MODULES)
         list(APPEND EAW_TEST_SOURCES tests/test_${test_module}.cpp)
     endforeach()
     add_executable(EAWEngineTests ${EAW_TEST_SOURCES})
-    target_link_libraries(EAWEngineTests PRIVATE eaw_core eaw_engine)
+    target_link_libraries(EAWEngineTests PRIVATE eaw_core eaw_engine eaw_launch)
     target_compile_features(EAWEngineTests PRIVATE cxx_std_20)
     if(MSVC)
         target_compile_options(EAWEngineTests PRIVATE /W4 /permissive- /utf-8)

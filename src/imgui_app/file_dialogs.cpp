@@ -1,4 +1,4 @@
-#include "file_dialogs.hpp"
+#include "eaw/file_dialogs.hpp"
 
 #include <windows.h>
 #include <shobjidl.h>

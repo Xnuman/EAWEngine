@@ -118,7 +118,9 @@ The authoritative milestone description is [docs/roadmap.md](docs/roadmap.md). U
 - `src/render`: rendering interfaces, visual-scene data, and graphics backends. It must consume engine-native visual data, not parse MEG/ALO/ALA/TED files or know VFS precedence.
 - `src/simulation`: the deterministic tactical simulation (entity ids, structure-of-arrays components, fixed-step scheduling, commands, snapshots). It must not depend on graphics, platform, or file access.
 - `src/engine`: runtime orchestration and the bridge from decoded assets to visual/runtime representations.
-- `src/launcher`: configuration and process launch only.
+- `src/launcher`: configuration and process launch only: `EAWLauncher` and the `eaw_launch` library (sandbox scenarios and presets, `ChildProcess`).
+- `src/dev_launcher`: `EAWDevLauncher`, the development GUI that edits and starts sandbox scenarios through `eaw_launch`.
+- `src/imgui_app`: `eaw_imgui_app`, the shared Win32 + Direct3D 11 + Dear ImGui window shell and file dialogs of the desktop tools.
 - `src/asset_inspector` and `src/dat_editor`: command-line tools built on `eaw_core`.
 - `src/tools_gui`: the Dear ImGui workbench. Tool UI may present core data but must not duplicate parsers.
 - `tests`: automated decoder, VFS, compatibility, and runtime-contract tests, one module per file (`test_<module>.cpp`, listed in `EAW_TEST_MODULES` in `CMakeLists.txt`, one ctest entry each); shared requirement helpers and synthetic format fixtures live in `test_support.*`. `EAWEngineTests <module>...` runs only the named modules.

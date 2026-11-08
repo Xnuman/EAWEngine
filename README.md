@@ -29,6 +29,10 @@ This repository is at milestone **M2: visual sandbox**. It currently:
 - provides `EAWTools.exe`, a native Dear ImGui/DirectX 11 workbench that combines
   the asset inspector and DAT localization studio in a fast modern GUI, with an
   initial textured and animated ALO/ALA inspection viewport.
+- provides `EAWDevLauncher.exe`, a development launcher for sandbox scenarios:
+  pick the game, installation, and mod stack, a map (with debug spawns and their
+  owners) or a model from the mounted asset lists, and engine options; save
+  scenarios as presets, start several runs, and see their exit codes.
 - provides an initial `EAWEngine.exe` Direct3D 12 visual sandbox with a native
   window/input layer, asynchronous copy-queue uploads, frame-buffered command
   allocators, fence-based lifetime tracking, and a waitable flip-model swap
@@ -58,7 +62,12 @@ Launch the graphical tools:
 
 ```powershell
 .\build\vs2022-x64\Debug\EAWTools.exe
+.\build\vs2022-x64\Debug\EAWDevLauncher.exe
 ```
+
+The development launcher stores its presets in `EAWDevLauncher.scenarios` next
+to the executable (the build folder) and shows the exact `EAWEngine` command
+line it runs, which can be copied for scripts.
 
 The GUI auto-detects the Steam installation, browses the winning asset from
 every base/patch/mod layer, and edits large DAT files without extracting the

@@ -1,6 +1,6 @@
 #include "gui_app.hpp"
 
-#include "file_dialogs.hpp"
+#include "eaw/file_dialogs.hpp"
 #include "preview_renderer.hpp"
 
 #include "eaw/ala_animation.hpp"
@@ -1013,8 +1013,7 @@ struct GuiApp::State
         }
         else
         {
-            game_root = "D:\\SteamLibrary\\steamapps\\common\\Star Wars Empire at War";
-            message = "Choose or verify the game installation folder";
+            message = "Choose the Empire at War installation folder";
         }
     }
 

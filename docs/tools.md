@@ -1,5 +1,39 @@
 # Asset and localization tools
 
+## EAWDevLauncher sandbox scenarios
+
+`EAWDevLauncher.exe` starts `EAWEngine sandbox` with a saved configuration
+instead of a hand-typed command line. A scenario names:
+
+- the game (EAW or FoC), an optional installation root, and the mod stack
+  (highest priority first);
+- the scene: a map from the mounted asset list with debug spawns
+  (type, count, and owner slot, as `--spawn TYPE:N@OWNER`), a model with an
+  optional animation, or the validation triangle;
+- engine options: WARP, GPU validation, v-sync, hot reload, bounds,
+  passability, auto move, overlay, raw input, frame limit, window size, upload
+  budget, and free-form extra arguments.
+
+The window shows the exact command line (copyable), starts any number of runs
+without waiting, and lists each run's exit code. Presets are plain text in
+`EAWDevLauncher.scenarios` next to the executable:
+
+```text
+[scenario]
+name=Bespin skirmish
+game=foc
+map=DATA/ART/MAPS/_LAND_PLANET_BESPIN_01.TED
+spawn=T2B_Tank:6@1
+spawn=AT_ST_Walker:6@2
+option=show-passability
+vsync=on
+```
+
+Unknown keys and options load with warnings in the log, so presets written by a
+newer build still open. The scenario model and process start live in the
+`eaw_launch` library (`src/launcher`), shared with `EAWLauncher`; the window
+shell is `eaw_imgui_app` (`src/imgui_app`), shared with EAWTools.
+
 ## EAWTools graphical workbench
 
 `EAWTools.exe` is the primary interactive interface. It is a native C++20
