@@ -127,6 +127,9 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model,
 // Decodes and appends a model referenced by a map (placed object, backdrop, or spawn type). Particle
 // ALOs and malformed models are reported once as scene warnings and yield nothing.
 std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std::string& model_path);
+// A rig per scene mesh (its model, inverse bind pose, role clips, and rest palette range), the
+// concatenated rest palette, every instance's bone offset, and the scene's palette size.
+void build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& rigs, std::vector<std::array<float, 16>>& rest_palette);
 
 // Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
 void update_scene_bounds(VisualScene& scene);

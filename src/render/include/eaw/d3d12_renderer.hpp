@@ -47,6 +47,8 @@ struct D3d12RendererStats
     std::size_t reused_textures{};
     // Debug lines beyond the per-frame capacity in the current set.
     std::size_t dropped_debug_lines{};
+    // Entries in the current bone palette.
+    std::size_t bone_transforms{};
     // Last recorded frame: draw calls, triangles, and instances submitted.
     std::uint32_t draw_calls{};
     std::uint64_t triangles{};
@@ -117,7 +119,13 @@ public:
     // Returns an error for an invalid scene (no geometry, capacities exceeded, references outside
     // the scene, non-finite data, textures D3D12 cannot lay out); the current scene then stays.
     [[nodiscard]] Status load_scene(VisualScene scene);
+    // Replaces the bone palette that instances index through bone_offset (at most
+    // max_bone_transforms() entries; at least the loaded scene's own palette size, padded with
+    // identity). Set it before the instances that use it: set_instances checks their bone ranges
+    // against the current palette. Frame buffers grow as needed; load_scene resets the palette to
+    // identity matrices of the scene's size.
     void set_bone_transforms(std::span<const std::array<float, 16>> transforms);
+    [[nodiscard]] static std::size_t max_bone_transforms() noexcept;
     // Replaces the instances drawn each frame with this list, until the next call or load_scene
     // (which returns to the scene's own instances). The loaded scene's meshes form the mesh library:
     // instances may reference any of them, appear, move, or disappear from frame to frame. Pick ids

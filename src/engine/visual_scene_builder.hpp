@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -19,6 +20,51 @@ namespace eaw {
 
 class AssetReader;
 class AssetCache;
+
+// What a unit is doing, as far as choosing its animation goes. Clips are found by the stock naming
+// convention <MODEL>_<ROLE>_<NN>.ALA beside the model (IDLE 539 stock files, MOVE 158, WALKMOVE 53,
+// ATTACK 160, ATTACKIDLE 108); NN numbers variants. Other roles (DIE, TURNL, CROUCHIDLE, ...) are
+// not used yet.
+enum class AnimationRole : std::uint8_t
+{
+    idle,
+    move,
+    walk_move,
+    attack,
+    attack_idle,
+};
+
+// The role a clip file name (without directory and extension) plays for `model_stem`, and its
+// variant number; nullopt for other files and roles. Case-insensitive.
+struct ClipName
+{
+    AnimationRole role{};
+    std::uint32_t variant{};
+};
+[[nodiscard]] std::optional<ClipName> parse_clip_name(std::string_view file_stem, std::string_view model_stem);
+
+struct VisualClip
+{
+    AnimationRole role{};
+    std::uint32_t variant{};
+    std::string path;
+    std::shared_ptr<const AlaAnimation> animation;
+};
+
+// A map mesh's skeleton for animation: the model, the inverse of its bind pose (empty when the bind
+// pose cannot be inverted; the mesh then stays in its rest pose), where its rest palette starts in
+// the scene palette, and its clips sorted by role and variant. A rest palette is the mesh's bind
+// pose: identity skin matrices, then the visibility half with attachments of bones hidden in the
+// bind pose collapsed (see sample_skin_palette).
+struct VisualRig
+{
+    std::shared_ptr<const AloModel> model;
+    std::vector<AloMatrix4> inverse_bind_pose;
+    std::uint32_t rest_offset{};
+    // Palette entries the mesh uses (its rest palette's size).
+    std::uint32_t palette_size{};
+    std::vector<VisualClip> clips;
+};
 
 struct VisualModelAsset
 {
@@ -120,6 +166,11 @@ struct VisualMapAsset
     GroundMap ground;
     // Damage multipliers from GameConstants.xml, with ids matching the entities' combat profiles.
     DamageTable damage_table;
+    // One rig per scene mesh (same index), and the scene palette of every mesh's rest pose; each
+    // instance's bone_offset is its mesh's rest offset. Upload it with the scene (the renderer
+    // resets its palette to identity on load).
+    std::vector<VisualRig> rigs;
+    std::vector<std::array<float, 16>> rest_palette;
 };
 
 // Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file
@@ -137,5 +188,8 @@ struct VisualMapAsset
 // Skin matrices for the model's bones (bind pose without an animation). With a visibility palette,
 // a second half repeats them, collapsed to a point for bones the pose hides.
 [[nodiscard]] std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimation* animation, float seconds);
+// Appends a rig's palette at `seconds` of `animation` (rig.palette_size entries) to `out`. Without
+// an inverse bind pose it appends the rest pose.
+void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, float seconds, std::vector<std::array<float, 16>>& out);
 
 } // namespace eaw

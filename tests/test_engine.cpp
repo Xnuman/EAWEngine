@@ -3,6 +3,7 @@
 #include "battle.hpp"
 #include "battle_log.hpp"
 #include "sandbox_options.hpp"
+#include "unit_animation.hpp"
 
 namespace {
 
@@ -771,12 +772,93 @@ void test_battle_log()
     require(replayed.world().state_hash() == *reread->end_hash, "replaying a recorded log must reproduce the battle's state hash");
 }
 
+// Unit animation: clip names map to roles, snapshots choose roles, entities share sampled poses,
+// and the palette budget leaves the rest in their rest pose.
+void test_unit_animation()
+{
+    const auto clip = [](const char* file) -> std::optional<eaw::ClipName>
+    {
+        return eaw::parse_clip_name(file, "ei_trooper");
+    };
+    require(clip("EI_TROOPER_IDLE_00") && clip("EI_TROOPER_IDLE_00")->role == eaw::AnimationRole::idle && clip("EI_TROOPER_IDLE_00")->variant == 0, "IDLE_00 must be an idle clip");
+    require(clip("EI_TROOPER_WALKMOVE_12") && clip("EI_TROOPER_WALKMOVE_12")->role == eaw::AnimationRole::walk_move && clip("EI_TROOPER_WALKMOVE_12")->variant == 12,
+            "WALKMOVE_12 must be walk-move variant 12");
+    require(clip("ei_trooper_attackidle_01") && clip("ei_trooper_attackidle_01")->role == eaw::AnimationRole::attack_idle, "clip names must be case-insensitive");
+    require(!clip("EI_TROOPER_DIE_00") && !clip("OTHER_IDLE_00") && !clip("EI_TROOPER_IDLE") && !clip("EI_TROOPER_IDLE_0X") && !clip("EI_TROOPER_ATTACKFLINCHL_00"),
+            "other roles, models, and malformed names must not be clips");
+
+    eaw::EntitySnapshot standing;
+    standing.id = {1, 1};
+    eaw::EntitySnapshot walking = standing;
+    walking.moving = true;
+    walking.target = {9, 1};
+    eaw::EntitySnapshot shooting = standing;
+    shooting.target = {9, 1};
+    require(eaw::wanted_animation_role(standing) == eaw::AnimationRole::idle && eaw::wanted_animation_role(walking) == eaw::AnimationRole::move &&
+                eaw::wanted_animation_role(shooting) == eaw::AnimationRole::attack,
+            "snapshots must ask for idle, move (even with a target), and attack");
+
+    // Mesh 0: a one-bone rig with idle and move clips; mesh 1: no clips.
+    const auto model = std::make_shared<const eaw::AloModel>(expect_ok(eaw::AloModel::parse(make_test_alo()), "ALO parse"));
+    const auto animation = std::make_shared<const eaw::AlaAnimation>(expect_ok(eaw::AlaAnimation::parse(make_test_ala()), "ALA parse"));
+    eaw::VisualRig rig;
+    rig.model = model;
+    for (const auto& transform : model->bind_pose())
+    {
+        rig.inverse_bind_pose.push_back(expect_ok(eaw::alo_inverse(transform), "bind pose inverse"));
+    }
+    rig.palette_size = 2;
+    rig.clips = {{eaw::AnimationRole::idle, 0, "IDLE_00", animation}, {eaw::AnimationRole::move, 0, "MOVE_00", animation}};
+    eaw::VisualRig still;
+    still.rest_offset = 2;
+    still.palette_size = 1;
+    const std::array<eaw::VisualRig, 2> rigs{rig, still};
+    const std::vector<std::array<float, 16>> rest(3, eaw::alo_identity_matrix().values);
+    eaw::UnitAnimator animator(rigs, rest);
+
+    // 100 standing units, one walking, one clipless unit, and a background.
+    std::vector<eaw::EntitySnapshot> snapshot;
+    std::vector<eaw::EntityId> entities{eaw::EntityId{}};
+    std::vector<eaw::VisualInstance> instances(1);
+    instances[0].mesh = 1;
+    instances[0].background = true;
+    for (std::uint32_t index = 0; index < 102; ++index)
+    {
+        eaw::EntitySnapshot entity;
+        entity.id = {index + 10U, 1};
+        entity.moving = index == 100;
+        snapshot.push_back(entity);
+        entities.push_back(entity.id);
+        eaw::VisualInstance instance;
+        instance.mesh = index == 101 ? 1U : 0U;
+        instances.push_back(instance);
+    }
+    std::vector<std::array<float, 16>> palette;
+    animator.animate(snapshot, entities, instances, 0.25, 1U << 20U, palette);
+    const auto& stats = animator.stats();
+    require(stats.animated == 101 && stats.over_budget == 0 && stats.poses <= 31 && stats.poses > 1 && stats.sampled == stats.poses, "standing units must share at most one pose per slot");
+    require(palette.size() == rest.size() + stats.poses * 2U && stats.palette_entries == palette.size(), "the palette must hold the rest pose and each pose once");
+    require(instances[0].bone_offset == 2 && instances[102].bone_offset == 2, "backgrounds and clipless meshes must stay in their rest pose");
+    require(std::ranges::all_of(instances.begin() + 1, instances.begin() + 102,
+                                [&](const eaw::VisualInstance& instance)
+                                {
+                                    return instance.bone_offset >= rest.size() && instance.bone_offset + 2U <= palette.size();
+                                }),
+            "animated units must point at a pose in the palette");
+    animator.animate(snapshot, entities, instances, 0.25, 1U << 20U, palette);
+    require(animator.stats().sampled == 0 && animator.stats().poses == stats.poses, "the same poses must come from the cache");
+    // A palette with room for nothing beyond the rest pose leaves everyone at rest.
+    animator.animate(snapshot, entities, instances, 0.5, rest.size(), palette);
+    require(animator.stats().over_budget == 101 && palette.size() == rest.size() && instances[5].bone_offset == 0, "units beyond the palette budget must stay in their rest pose");
+}
+
 const ModuleRegistrar registrar("engine", {
                                               {"test_asset_cache_dependencies", &test_asset_cache_dependencies},
                                               {"test_debug_draw", &test_debug_draw},
                                               {"test_scene_presentation", &test_scene_presentation},
                                               {"test_battle_orders", &test_battle_orders},
                                               {"test_battle_log", &test_battle_log},
+                                              {"test_unit_animation", &test_unit_animation},
                                               {"test_rts_control", &test_rts_control},
                                               {"test_terrain_height_field", &test_terrain_height_field},
                                               {"test_camera_controllers", &test_camera_controllers},

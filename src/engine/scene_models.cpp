@@ -12,9 +12,11 @@
 #include <cmath>
 #include <filesystem>
 #include <limits>
+#include <memory>
 #include <ranges>
 #include <span>
 #include <system_error>
+#include <unordered_map>
 
 namespace eaw::scene_build {
 
@@ -254,7 +256,8 @@ std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std
         builder.scene.warnings.push_back(model_path + ": " + model->error().message);
         return std::nullopt;
     }
-    auto mesh = append_model(builder, model->value(), model_path);
+    // Map meshes carry the visibility half of the palette so units can animate (VisualRig).
+    auto mesh = append_model(builder, model->value(), model_path, true);
     if (!mesh)
     {
         builder.scene.warnings.push_back(model_path + ": " + mesh.error().message);
@@ -424,6 +427,49 @@ std::optional<std::string> default_model_animation(const AssetReader& vfs, const
     return std::nullopt;
 }
 
+namespace {
+
+// Skin matrices of `pose` (and the visibility half) appended to `out`.
+void append_pose_palette(const AloModel& model, const std::span<const AloMatrix4> inverse_bind_pose, const std::span<const AlaPoseBone> pose, const bool visibility_palette,
+                         std::vector<std::array<float, 16>>& out)
+{
+    const auto bone_count = std::min({pose.size(), inverse_bind_pose.size(), model.bones.size()});
+    const auto first = out.size();
+    for (std::size_t index = 0; index < bone_count; ++index)
+    {
+        out.push_back(alo_multiply(inverse_bind_pose[index], pose[index].transform).values);
+    }
+    if (visibility_palette)
+    {
+        // Hidden bones collapse their attachments to a point, which rasterizes nothing.
+        std::array<float, 16> collapsed{};
+        collapsed[15] = 1.0F;
+        for (std::size_t index = 0; index < bone_count; ++index)
+        {
+            out.push_back(pose[index].visible ? out[first + index] : collapsed);
+        }
+    }
+}
+
+// A rig's rest palette: identity skin matrices, then the visibility half from the bind pose.
+void append_rest_palette(const AloModel& model, std::vector<std::array<float, 16>>& out)
+{
+    const auto identity = alo_identity_matrix().values;
+    std::array<float, 16> collapsed{};
+    collapsed[15] = 1.0F;
+    out.insert(out.end(), model.bones.size(), identity);
+    for (const auto& bone : model.bones)
+    {
+        out.push_back(bone.visible ? identity : collapsed);
+    }
+    if (model.bones.empty())
+    {
+        out.push_back(identity);
+    }
+}
+
+} // namespace
+
 std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimation* animation, const float seconds)
 {
     std::vector<AlaPoseBone> pose;
@@ -440,29 +486,169 @@ std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& a
             pose.push_back({bind_pose[index], asset.model.bones[index].visible});
         }
     }
-
-    const auto bone_count = std::min(pose.size(), asset.inverse_bind_pose.size());
     std::vector<std::array<float, 16>> result;
-    result.reserve(std::max<std::size_t>(bone_count * 2U, 1U));
-    for (std::size_t index = 0; index < bone_count; ++index)
-    {
-        result.push_back(alo_multiply(asset.inverse_bind_pose[index], pose[index].transform).values);
-    }
-    if (asset.visibility_palette)
-    {
-        // Hidden bones collapse their attachments to a point, which rasterizes nothing.
-        std::array<float, 16> collapsed{};
-        collapsed[15] = 1.0F;
-        for (std::size_t index = 0; index < bone_count; ++index)
-        {
-            result.push_back(pose[index].visible ? result[index] : collapsed);
-        }
-    }
+    result.reserve(std::max<std::size_t>(pose.size() * 2U, 1U));
+    append_pose_palette(asset.model, asset.inverse_bind_pose, pose, asset.visibility_palette, result);
     if (result.empty())
     {
         result.push_back(alo_identity_matrix().values);
     }
     return result;
+}
+
+void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, const float seconds, std::vector<std::array<float, 16>>& out)
+{
+    const auto first = out.size();
+    if (rig.model && rig.inverse_bind_pose.size() == rig.model->bones.size() && !rig.model->bones.empty())
+    {
+        const auto pose = animation.sample_pose(*rig.model, seconds);
+        append_pose_palette(*rig.model, rig.inverse_bind_pose, pose, true, out);
+    }
+    if (out.size() - first != rig.palette_size)
+    {
+        // A pose that does not cover the skeleton, or no rig: the rest pose keeps the mesh intact.
+        out.resize(first);
+        if (rig.model)
+        {
+            append_rest_palette(*rig.model, out);
+        }
+        out.resize(first + rig.palette_size, alo_identity_matrix().values);
+    }
+}
+
+std::optional<ClipName> parse_clip_name(const std::string_view file_stem, const std::string_view model_stem)
+{
+    const auto file = fold_ascii(std::string(file_stem));
+    const auto prefix = fold_ascii(std::string(model_stem)) + "_";
+    if (!file.starts_with(prefix))
+    {
+        return std::nullopt;
+    }
+    const auto rest = std::string_view(file).substr(prefix.size());
+    const auto underscore = rest.rfind('_');
+    if (underscore == std::string_view::npos || underscore + 1U >= rest.size())
+    {
+        return std::nullopt;
+    }
+    const auto digits = rest.substr(underscore + 1U);
+    std::uint32_t variant{};
+    const auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), variant);
+    if (error != std::errc{} || end != digits.data() + digits.size())
+    {
+        return std::nullopt;
+    }
+    static constexpr std::array<std::pair<std::string_view, AnimationRole>, 5> roles{{
+        {"idle", AnimationRole::idle},
+        {"move", AnimationRole::move},
+        {"walkmove", AnimationRole::walk_move},
+        {"attack", AnimationRole::attack},
+        {"attackidle", AnimationRole::attack_idle},
+    }};
+    const auto role = rest.substr(0, underscore);
+    for (const auto& [name, value] : roles)
+    {
+        if (role == name)
+        {
+            return ClipName{value, variant};
+        }
+    }
+    return std::nullopt;
+}
+
+void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& rigs, std::vector<std::array<float, 16>>& rest_palette)
+{
+    auto& scene = builder.scene;
+    rigs.assign(scene.meshes.size(), {});
+    rest_palette.clear();
+    // Clip files by folded directory, listed once each.
+    std::unordered_map<std::string, std::vector<std::string>> listings;
+    for (std::size_t mesh_index = 0; mesh_index < scene.meshes.size(); ++mesh_index)
+    {
+        auto& mesh = scene.meshes[mesh_index];
+        auto& rig = rigs[mesh_index];
+        rig.rest_offset = static_cast<std::uint32_t>(rest_palette.size());
+        const auto model = cached_model(builder, mesh.name);
+        if (model->ok())
+        {
+            rig.model = std::shared_ptr<const AloModel>(model, &model->value());
+            append_rest_palette(*rig.model, rest_palette);
+            for (const auto& transform : rig.model->bind_pose())
+            {
+                auto inverse = alo_inverse(transform);
+                if (!inverse)
+                {
+                    scene.warnings.push_back(mesh.name + ": bind pose cannot be inverted, so the model is not animated: " + inverse.error().message);
+                    rig.inverse_bind_pose.clear();
+                    break;
+                }
+                rig.inverse_bind_pose.push_back(*inverse);
+            }
+        }
+        // Every mesh owns at least its own palette range.
+        const auto used = static_cast<std::uint32_t>(rest_palette.size()) - rig.rest_offset;
+        if (used < std::max(mesh.bone_count, 1U))
+        {
+            rest_palette.resize(rig.rest_offset + std::max(mesh.bone_count, 1U), alo_identity_matrix().values);
+        }
+        rig.palette_size = static_cast<std::uint32_t>(rest_palette.size()) - rig.rest_offset;
+        if (!rig.model || rig.inverse_bind_pose.empty())
+        {
+            continue;
+        }
+        const auto path = std::filesystem::path(mesh.name);
+        const auto directory = path.parent_path().generic_string();
+        auto [listing, inserted] = listings.try_emplace(fold_ascii(directory));
+        if (inserted)
+        {
+            for (const auto& asset : builder.vfs.list(directory))
+            {
+                if (fold_ascii(std::filesystem::path(asset.virtual_path).extension().string()) == ".ala")
+                {
+                    listing->second.push_back(asset.virtual_path);
+                }
+            }
+            std::ranges::sort(listing->second);
+        }
+        const auto stem = path.stem().string();
+        for (const auto& clip_path : listing->second)
+        {
+            const auto name = parse_clip_name(std::filesystem::path(clip_path).stem().string(), stem);
+            if (!name)
+            {
+                continue;
+            }
+            const auto decoded = cached<Result<AlaAnimation>>(builder.cache, "ala", clip_path, builder.vfs,
+                                                              [&](const AssetReader& reader) -> Result<AlaAnimation>
+                                                              {
+                                                                  EAW_TRY_ASSIGN(const auto bytes, reader.read(clip_path));
+                                                                  return AlaAnimation::parse(bytes);
+                                                              });
+            if (!decoded->ok())
+            {
+                scene.warnings.push_back(clip_path + ": " + decoded->error().message);
+                continue;
+            }
+            if (decoded->value().duration_seconds() <= 0.0F)
+            {
+                continue;
+            }
+            rig.clips.push_back({name->role, name->variant, clip_path, std::shared_ptr<const AlaAnimation>(decoded, &decoded->value())});
+        }
+        std::ranges::sort(rig.clips,
+                          [](const VisualClip& left, const VisualClip& right)
+                          {
+                              return left.role != right.role ? left.role < right.role : left.variant < right.variant;
+                          });
+    }
+    // Instances start in their mesh's rest pose.
+    for (auto& instance : scene.instances)
+    {
+        if (instance.mesh < rigs.size())
+        {
+            instance.bone_offset = rigs[instance.mesh].rest_offset;
+        }
+    }
+    scene.bone_count = static_cast<std::uint32_t>(std::max<std::size_t>(rest_palette.size(), 1U));
 }
 
 } // namespace eaw

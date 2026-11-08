@@ -254,9 +254,12 @@ instances. Each instance carries a world transform, a tint, and a bone-palette
 offset in an immutable structured buffer. Instances are sorted by mesh at load
 so every draw of a mesh is issued once with `DrawIndexedInstanced` over a
 contiguous instance range; the range start is a root constant because
-`SV_InstanceID` restarts at zero for every draw. Map scenes share one
-bind-pose palette today; per-instance poses will come from simulation
-snapshots.
+`SV_InstanceID` restarts at zero for every draw. The bone palette is set per
+frame: map scenes start from every mesh's rest pose, and the engine's
+`UnitAnimator` appends the poses its units show this frame (chosen from
+simulation snapshots, shared between units at the same clip and pose slot) and
+points each instance at one. Animation is presentation: it never feeds back
+into the simulation.
 
 ## Multithreading direction
 

@@ -75,8 +75,8 @@ void D3d12Renderer::Impl::set_instances(const std::span<const VisualInstance> in
         const auto& instance = instances[index];
         EAW_ASSERT_MSG(instance.mesh < scene_mesh_draws.size(),
                        "visual instance " + std::to_string(index) + " references mesh " + std::to_string(instance.mesh) + ", but the scene has " + std::to_string(scene_mesh_draws.size()));
-        EAW_ASSERT_MSG(static_cast<std::uint64_t>(instance.bone_offset) + scene_mesh_bone_counts[instance.mesh] <= scene_bone_capacity,
-                       "visual instance " + std::to_string(index) + " bone range exceeds the scene bone palette");
+        EAW_ASSERT_MSG(static_cast<std::uint64_t>(instance.bone_offset) + scene_mesh_bone_counts[instance.mesh] <= bone_transforms.size(),
+                       "visual instance " + std::to_string(index) + " bone range exceeds the current bone palette (set it before the instances)");
         const auto finite = [](const auto& values)
         {
             return std::ranges::all_of(values,
@@ -273,7 +273,7 @@ bool D3d12Renderer::Impl::render()
     {
         direct_queue.wait_cpu(frame.fence_value);
     }
-    EAW_ASSERT_MSG(bone_transforms.size() <= frame.bone_capacity, "frame bone palette is smaller than the active visual scene");
+    ensure_bone_capacity(frame, bone_transforms.size());
     std::memcpy(frame.bone_buffer_mapped, bone_transforms.data(), bone_transforms.size() * sizeof(bone_transforms.front()));
     stream_scene_textures();
     write_texture_residency(frame);

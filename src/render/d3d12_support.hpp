@@ -44,7 +44,9 @@ using Microsoft::WRL::ComPtr;
 
 inline constexpr std::uint32_t frame_count = 3;
 
-inline constexpr std::uint32_t maximum_scene_bones = 4096;
+// Bone transforms per frame palette (16 MiB of matrices per frame buffer). A temporary, explicit
+// implementation limit: scenes and set_bone_transforms beyond it are rejected or asserted.
+inline constexpr std::uint32_t maximum_bone_transforms = 1U << 18U;
 
 // Size of the shader-visible texture table (matches numDescriptors in sandbox.hlsl). The first
 // fallback_texture_count slots hold the validation checker, white, and a flat normal map.

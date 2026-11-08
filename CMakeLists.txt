@@ -259,6 +259,7 @@ add_library(eaw_engine STATIC
     src/engine/sandbox_options.cpp
     src/engine/scene_presentation.cpp
     src/engine/terrain_height.cpp
+    src/engine/unit_animation.cpp
     src/engine/text_format.cpp
     src/engine/object_type_properties.cpp
     src/engine/scene_materials.cpp

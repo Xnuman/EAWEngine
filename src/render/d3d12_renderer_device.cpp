@@ -290,43 +290,33 @@ void D3d12Renderer::Impl::create_bone_buffers(const std::uint32_t requested_coun
 {
     const auto count = std::max(requested_count, 1U);
     // load_scene validates the scene's bone count before it gets here.
-    EAW_ASSERT_MSG(count <= maximum_scene_bones, "visual scene exceeds the D3D12 bone palette capacity");
+    EAW_ASSERT_MSG(count <= maximum_bone_transforms, "visual scene exceeds the D3D12 bone palette capacity");
     bone_transforms.assign(count, identity_matrix());
-    if (std::ranges::all_of(frames,
-                            [count](const FrameContext& frame)
-                            {
-                                return frame.bone_buffer && frame.bone_capacity >= count;
-                            }))
+}
+
+void D3d12Renderer::Impl::ensure_bone_capacity(FrameContext& frame, const std::size_t count)
+{
+    if (frame.bone_buffer && frame.bone_capacity >= count)
     {
         return;
     }
-    // In-flight frames may still read the old palettes, so they retire on the direct timeline.
-    std::vector<ComPtr<ID3D12Resource>> replaced;
+    // Called once this context is reusable; the GPU may still hold a reference through retirement
+    // bookkeeping, so the old buffer retires on the direct timeline like other replaced resources.
+    if (frame.bone_buffer)
+    {
+        frame.bone_buffer->Unmap(0, nullptr);
+        frame.bone_buffer_mapped = nullptr;
+        retired_resources.push({std::move(frame.bone_buffer)}, direct_queue.next_value());
+    }
+    const auto capacity = static_cast<std::uint32_t>(std::min<std::size_t>(std::max<std::size_t>({count, static_cast<std::size_t>(frame.bone_capacity) * 2U, 256U}), maximum_bone_transforms));
     const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
-    const auto description = buffer_description(static_cast<std::uint64_t>(count) * sizeof(std::array<float, 16>));
-    for (std::uint32_t index = 0; index < frame_count; ++index)
-    {
-        auto& frame = frames[index];
-        if (frame.bone_buffer && frame.bone_buffer_mapped != nullptr)
-        {
-            frame.bone_buffer->Unmap(0, nullptr);
-            frame.bone_buffer_mapped = nullptr;
-        }
-        if (frame.bone_buffer)
-        {
-            replaced.push_back(std::move(frame.bone_buffer));
-        }
-        check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.bone_buffer)),
-                      "CreateCommittedResource(frame bone palette)");
-        set_name(frame.bone_buffer.Get(), L"EAWEngine frame bone palette " + std::to_wstring(index));
-        const D3D12_RANGE no_read{0, 0};
-        check_hresult(frame.bone_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.bone_buffer_mapped)), "Map(frame bone palette)");
-        frame.bone_capacity = count;
-    }
-    if (!replaced.empty())
-    {
-        retired_resources.push(std::move(replaced), direct_queue.next_value());
-    }
+    const auto description = buffer_description(static_cast<std::uint64_t>(capacity) * sizeof(std::array<float, 16>));
+    check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.bone_buffer)),
+                  "CreateCommittedResource(frame bone palette)");
+    set_name(frame.bone_buffer.Get(), L"EAWEngine frame bone palette");
+    const D3D12_RANGE no_read{0, 0};
+    check_hresult(frame.bone_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.bone_buffer_mapped)), "Map(frame bone palette)");
+    frame.bone_capacity = capacity;
 }
 
 Status D3d12Renderer::Impl::check_required_features() const

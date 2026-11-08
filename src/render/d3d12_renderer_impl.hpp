@@ -327,7 +327,10 @@ struct D3d12Renderer::Impl
 
     void create_constant_buffers();
 
+    // Resets the palette to `requested_count` identity matrices (frame buffers grow at render).
     void create_bone_buffers(const std::uint32_t requested_count);
+    // Grows a reusable frame context's palette buffer to hold `count` matrices.
+    void ensure_bone_capacity(FrameContext& frame, std::size_t count);
 
     // --- Pipeline library cache -----------------------------------------------------------------
     // File layout: "EAWPSO01", u64 key (shader bytecode + layout version), u64 payload size,

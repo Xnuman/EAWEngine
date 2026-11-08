@@ -177,8 +177,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             ++asset.unrenderable_placements;
             continue;
         }
-        // Every instance shares the identity (bind-pose) palette; per-instance animation is a
-        // simulation-driven feature for later milestones.
+        // Instances start in their mesh's rest pose (build_map_rigs sets the bone offsets).
         VisualInstance instance{*entry->second, placement.transform.values};
         {
             const auto& matrix = placement.transform.values;
@@ -412,11 +411,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         (void)add_spawnable(type_name, 0);
     }
 
-    for (const auto& mesh : scene.meshes)
-    {
-        scene.bone_count = std::max(scene.bone_count, mesh.bone_count);
-    }
-    scene.bone_count = std::max(scene.bone_count, 1U);
+    build_map_rigs(builder, asset.rigs, asset.rest_palette);
     constexpr std::size_t maximum_reported_diagnostics = 50;
     for (std::size_t index = 0; index < layout.diagnostics.size() && index < maximum_reported_diagnostics; ++index)
     {

@@ -230,9 +230,9 @@ Status D3d12Renderer::Impl::load_scene(VisualScene scene)
     {
         return make_error("visual scene has " + std::to_string(scene.textures.size()) + " textures; the D3D12 texture table holds " + std::to_string(texture_slots.capacity()));
     }
-    if (scene.bone_count > maximum_scene_bones)
+    if (scene.bone_count > maximum_bone_transforms)
     {
-        return make_error("visual scene has " + std::to_string(scene.bone_count) + " bones; the D3D12 bone palette holds " + std::to_string(maximum_scene_bones));
+        return make_error("visual scene has " + std::to_string(scene.bone_count) + " bones; the D3D12 bone palette holds " + std::to_string(maximum_bone_transforms));
     }
     if ((scene.meshes.empty() || scene.instances.empty()) && scene.terrain.vertices.empty())
     {
@@ -622,9 +622,22 @@ void D3d12Renderer::Impl::reclaim_texture_slots()
 
 void D3d12Renderer::Impl::set_bone_transforms(const std::span<const std::array<float, 16>> transforms)
 {
-    EAW_ASSERT_MSG(transforms.size() <= bone_transforms.size(), "bone palette update exceeds the loaded visual scene capacity");
-    std::ranges::fill(bone_transforms, identity_matrix());
-    std::ranges::copy(transforms, bone_transforms.begin());
+    EAW_ASSERT_MSG(transforms.size() <= maximum_bone_transforms, "bone palette update exceeds the D3D12 bone palette capacity");
+    EAW_ASSERT_MSG(std::ranges::all_of(transforms,
+                                       [](const std::array<float, 16>& matrix)
+                                       {
+                                           return std::ranges::all_of(matrix,
+                                                                      [](const float value)
+                                                                      {
+                                                                          return std::isfinite(value);
+                                                                      });
+                                       }),
+                   "bone palette update has non-finite values");
+    bone_transforms.assign(transforms.begin(), transforms.end());
+    if (bone_transforms.size() < scene_bone_capacity)
+    {
+        bone_transforms.resize(scene_bone_capacity, identity_matrix());
+    }
 }
 
 auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size_t index) -> Result<GpuMaterial>

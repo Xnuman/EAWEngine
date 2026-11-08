@@ -430,6 +430,17 @@ Hardpoints as parts.
 - **Not used yet.** `Fire_Cone_Height` and the second fire bone
   (`Fire_Bone_B`).
 
+Unit animation clips. Animations sit beside their model as
+`<MODEL>_<ROLE>_<NN>.ALA`, NN numbering variants (the Dark Trooper has
+ATTACK_00 to _02, IDLE_00 and _01, DIE_00 and _01, and more). Across the 2,408
+resolved stock ALA files the most common roles are IDLE (539), DIE (301),
+ATTACK (160), MOVE (158), ATTACKIDLE (108), CINEMATIC (77), BUILD (64), LAND
+(55), WALKMOVE (53), TALK (43), FLY (40), and TURNL/TURNR (35 each), with
+crouch, flinch, deploy, take-off, and partial-turn variants. The engine uses
+IDLE, MOVE, WALKMOVE, ATTACK, and ATTACKIDLE so far; which clip the original
+plays when (and whether XML overrides names) is not established, so the
+selection rules in `unit_animation.hpp` are engine choices.
+
 Fighter flight.
 
 - **What the engine reads.** Types whose `SpaceBehavior` names

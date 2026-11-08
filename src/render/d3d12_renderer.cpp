@@ -91,6 +91,11 @@ std::size_t D3d12Renderer::max_debug_lines() noexcept
     return maximum_debug_lines;
 }
 
+std::size_t D3d12Renderer::max_bone_transforms() noexcept
+{
+    return maximum_bone_transforms;
+}
+
 Status D3d12Renderer::load_scene(VisualScene scene)
 {
     return impl_->load_scene(std::move(scene));
@@ -137,6 +142,7 @@ D3d12RendererStats D3d12Renderer::stats() const
         .pending_texture_uploads = impl_->pending_texture_count,
         .reused_textures = impl_->last_reused_textures,
         .dropped_debug_lines = impl_->debug_lines.size() - std::min(impl_->debug_lines.size(), maximum_debug_lines),
+        .bone_transforms = impl_->bone_transforms.size(),
         .draw_calls = impl_->last_draw_calls,
         .triangles = impl_->last_triangles,
         .instances = impl_->last_instances,

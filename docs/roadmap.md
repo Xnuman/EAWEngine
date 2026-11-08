@@ -238,8 +238,12 @@ Gaps toward the deliverable, in planned order:
    yet: game and mod identity in logs, and a headless map build that skips
    textures.
 4. **Unit animation on maps.** Per-instance bone palettes, with idle, move,
-   fire, and death animations chosen from simulation state. Models on maps
-   are still frozen in their bind pose.
+   fire, and death animations chosen from simulation state. The first slice
+   is done: map units play IDLE, MOVE/WALKMOVE, and ATTACK/ATTACKIDLE clips
+   chosen from their snapshots, with poses shared between units at the same
+   clip and pose slot, through a per-frame bone palette. Not yet: deaths
+   (entities vanish when they die), turns, flinches, crouching, clip
+   blending, and firing synchronized with shots.
 5. **Runtime mesh registration,** so types not requested at build time can be
    spawned.
 6. **Remaining M3 systems:**

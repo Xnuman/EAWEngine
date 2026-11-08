@@ -12,6 +12,7 @@
 #include "sandbox_overlay.hpp"
 #include "scene_presentation.hpp"
 #include "text_format.hpp"
+#include "unit_animation.hpp"
 #include "visual_scene_builder.hpp"
 
 #include "eaw/d3d12_renderer.hpp"
@@ -80,6 +81,10 @@ struct SandboxSession
     std::optional<eaw::Battle> battle;
     eaw::SimulationWorld* world = nullptr;
     std::optional<eaw::ScenePresentation> presentation;
+    // Map units' animation (presentation only) and the palette it fills each frame.
+    std::optional<eaw::UnitAnimator> animator;
+    std::vector<std::array<float, 16>> frame_palette;
+    std::chrono::steady_clock::time_point map_animation_start = std::chrono::steady_clock::now();
     eaw::FixedStepClock simulation_clock{30.0};
     eaw::SimSnapshot previous_snapshot;
     std::vector<eaw::VisualInstance> frame_instances;
@@ -268,6 +273,19 @@ struct SandboxSession
             scene_status = map_status;
             reload_scene = std::move(reload_copy);
             start_simulation(layout, eaw::battle_map(visual_map), *options.map);
+            animator.emplace(visual_map.rigs, visual_map.rest_palette);
+            map_animation_start = std::chrono::steady_clock::now();
+            {
+                std::size_t animated_meshes = 0;
+                std::size_t clips = 0;
+                for (const auto& rig : visual_map.rigs)
+                {
+                    animated_meshes += rig.clips.empty() ? 0U : 1U;
+                    clips += rig.clips.size();
+                }
+                std::cout << "Animation: " << animated_meshes << " of " << visual_map.rigs.size() << " meshes have clips (" << clips << " clips), rest palette " << visual_map.rest_palette.size()
+                          << " entries\n";
+            }
             spawnable = visual_map.spawnable;
             terrain_heights = visual_map.ground;
             spawn_choice = 0;
@@ -325,6 +343,7 @@ struct SandboxSession
                 return;
             }
             visual_model = std::move(content.model);
+            animator.reset();
             scene_status = model_status;
             animation_status = "bind pose";
             reload_scene = std::move(reload_copy);
@@ -496,6 +515,13 @@ struct SandboxSession
         if (visual_model)
         {
             view.animation_status = animation_status;
+        }
+        else if (animator)
+        {
+            const auto& animation = animator->stats();
+            view.animation_status = std::to_string(animation.animated) + " units animated, " + std::to_string(animation.poses) + " poses (" + std::to_string(animation.sampled) +
+                                    " sampled this frame), palette " + std::to_string(animation.palette_entries) +
+                                    (animation.over_budget > 0 ? ", " + std::to_string(animation.over_budget) + " in rest pose (palette full)" : std::string{});
         }
         view.animation_playing = animation_playing;
         std::string selected_text = "none";
@@ -874,6 +900,13 @@ struct SandboxSession
             }
             const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
             presentation->build(entities, selection, frame_instances, frame_entities);
+            if (animator)
+            {
+                // The palette goes first: set_instances checks bone ranges against it.
+                animator->animate(entities, frame_entities, frame_instances, std::chrono::duration<double>(now - map_animation_start).count(), eaw::D3d12Renderer::max_bone_transforms(),
+                                  frame_palette);
+                renderer.set_bone_transforms(frame_palette);
+            }
             for (const auto request : unbound_picks)
             {
                 pick_entities[request] = frame_entities;
