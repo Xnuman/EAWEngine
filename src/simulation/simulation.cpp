@@ -155,7 +155,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a non-finite position, heading, or speed");
     }
-    if (!valid_amount(spawn.radius) || !valid_amount(spawn.turn_rate) || !valid_amount(spawn.formation_spacing))
+    if (!valid_amount(spawn.radius) || !valid_amount(spawn.turn_rate) || !valid_amount(spawn.formation_spacing) || !valid_amount(spawn.min_speed))
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite radius, turn rate, or formation spacing");
     }
@@ -206,6 +206,8 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     }
     radii_.push_back(spawn.radius);
     turn_rates_.push_back(spawn.turn_rate);
+    min_speeds_.push_back(std::min(spawn.min_speed, spawn.max_speed));
+    loiter_points_.emplace_back();
     formation_orders_.push_back(spawn.formation_order);
     formation_spacings_.push_back(spawn.formation_spacing);
     speed_limits_.push_back(0.0F);
@@ -323,6 +325,12 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, combat.chase_timer);
         hash = hash_value(hash, radii_[index]);
         hash = hash_value(hash, turn_rates_[index]);
+        hash = hash_value(hash, min_speeds_[index]);
+        hash = hash_value(hash, loiter_points_[index].has_value());
+        if (loiter_points_[index])
+        {
+            hash = hash_value(hash, *loiter_points_[index]);
+        }
         hash = hash_value(hash, formation_orders_[index]);
         hash = hash_value(hash, formation_spacings_[index]);
         hash = hash_value(hash, speed_limits_[index]);
@@ -434,6 +442,7 @@ void SimulationWorld::apply(const SimCommand& command)
 
 void SimulationWorld::plan_move(const std::size_t index, const SimVector3& target)
 {
+    loiter_points_[index].reset();
     paths_[index].clear();
     path_pending_[index] = 0;
     if (follows_ground_[index] == 0 || passable_types_[index] == 0 || ground_.passability.size() != ground_.heights.size() || !ground_.valid())
@@ -860,6 +869,8 @@ void SimulationWorld::destroy(const std::size_t dense)
         combat_[dense] = combat_[last];
         radii_[dense] = radii_[last];
         turn_rates_[dense] = turn_rates_[last];
+        min_speeds_[dense] = min_speeds_[last];
+        loiter_points_[dense] = loiter_points_[last];
         formation_orders_[dense] = formation_orders_[last];
         formation_spacings_[dense] = formation_spacings_[last];
         speed_limits_[dense] = speed_limits_[last];
@@ -887,6 +898,8 @@ void SimulationWorld::destroy(const std::size_t dense)
     combat_.pop_back();
     radii_.pop_back();
     turn_rates_.pop_back();
+    min_speeds_.pop_back();
+    loiter_points_.pop_back();
     formation_orders_.pop_back();
     formation_spacings_.pop_back();
     speed_limits_.pop_back();
@@ -914,6 +927,11 @@ void SimulationWorld::run_movement()
     update_group_cohesion();
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
+        if (min_speeds_[index] > 0.0F)
+        {
+            fly(index, dt);
+            continue;
+        }
         auto& target = move_targets_[index];
         if (!target)
         {
@@ -1057,7 +1075,7 @@ void SimulationWorld::run_separation()
     const bool land = ground_.valid();
     const auto takes_part = [&](const std::size_t index)
     {
-        return radii_[index] > 0.0F && (!land || follows_ground_[index] != 0);
+        return radii_[index] > 0.0F && min_speeds_[index] <= 0.0F && (!land || follows_ground_[index] != 0);
     };
     grid_.build(positions_, grid_cell_size);
     separation_push_.assign(ids_.size(), SimVector3{});
@@ -1177,6 +1195,57 @@ void SimulationWorld::run_separation()
     }
 }
 
+// Flyers never stop: they move along their heading at between their minimum and maximum speed,
+// steering toward their combat target, their destination, or the point they circle. Within a few
+// ticks of flight of the destination they arrive (it becomes the circling point). Attack runs:
+// inside a third of its weapon range of the target a flyer holds its heading, so it passes the
+// target, flies on, and turns back once outside (engine choice; the original's fighter locomotor
+// is not documented).
+void SimulationWorld::fly(const std::size_t index, const float dt)
+{
+    auto& position = positions_[index];
+    auto& target = move_targets_[index];
+    std::optional<SimVector3> goal;
+    bool holding = false;
+    if (const auto& combat = combat_[index]; combat.target.valid())
+    {
+        if (const auto victim = dense_index(combat.target))
+        {
+            goal = positions_[*victim];
+            const auto pass = std::max(combat.profile.range() / 3.0F, (radii_[index] + radii_[*victim]) * 2.0F);
+            holding = distance_xy(position, *goal) < pass;
+        }
+    }
+    if (!goal && target)
+    {
+        goal = *target;
+        const auto dx = target->x - position.x;
+        const auto dy = target->y - position.y;
+        if (std::sqrt(dx * dx + dy * dy) <= travel_speed(index) * dt * 3.0F)
+        {
+            loiter_points_[index] = *target;
+            target.reset();
+            speed_limits_[index] = 0.0F;
+            group_ids_[index] = 0;
+        }
+    }
+    if (!goal)
+    {
+        if (!loiter_points_[index])
+        {
+            loiter_points_[index] = position;
+        }
+        goal = *loiter_points_[index];
+    }
+    const auto dx = goal->x - position.x;
+    const auto dy = goal->y - position.y;
+    const auto factor = holding || (dx == 0.0F && dy == 0.0F) ? 1.0F : steer(index, std::atan2(dy, dx), dt);
+    const auto top = travel_speed(index);
+    const auto speed = std::clamp(top * factor, std::min(min_speeds_[index], top), top);
+    const auto heading = headings_[index];
+    position = {position.x + std::cos(heading) * speed * dt, position.y + std::sin(heading) * speed * dt, position.z};
+}
+
 std::vector<SimVector3> SimulationWorld::route(const EntityId id) const
 {
     std::vector<SimVector3> points;
@@ -1267,14 +1336,15 @@ void SimulationWorld::update_target(const std::size_t index)
         const auto victim = *dense_index(combat.target);
         if (distance_xy(positions_[index], positions_[victim]) > range)
         {
-            if (max_speeds_[index] > 0.0F && (combat.chase_timer == 0 || !move_targets_[index]))
+            // Flyers (fighters) steer at their target themselves.
+            if (max_speeds_[index] > 0.0F && min_speeds_[index] <= 0.0F && (combat.chase_timer == 0 || !move_targets_[index]))
             {
                 // Flyers keep their altitude; ground units take theirs from the surface anyway.
                 plan_move(index, {positions_[victim].x, positions_[victim].y, follows_ground_[index] != 0 ? positions_[victim].z : positions_[index].z});
                 combat.chase_timer = chase_interval;
             }
         }
-        else if (move_targets_[index])
+        else if (move_targets_[index] && min_speeds_[index] <= 0.0F)
         {
             move_targets_[index].reset();
             paths_[index].clear();

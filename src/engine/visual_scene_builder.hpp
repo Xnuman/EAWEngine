@@ -75,6 +75,8 @@ struct SpawnableType
     // EntitySpawn.
     float radius{};
     float turn_rate{};
+    // Fighters' minimum flight speed (EntitySpawn::min_speed); 0 for other types.
+    float min_speed{};
     // XML FormationOrder and FormationSpacing (formation.hpp).
     std::uint32_t formation_order{2};
     float formation_spacing{0.5F};

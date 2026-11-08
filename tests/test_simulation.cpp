@@ -829,6 +829,82 @@ void test_hardpoints_and_fire_cones()
     }
 }
 
+void test_fighter_flight()
+{
+    // A fighter: 120 units/s top speed, 75 minimum, a quarter turn per second (turn circle radius
+    // about 48 at minimum speed).
+    const eaw::EntitySpawn fighter{.type_name = "Fighter", .owner = 1, .max_speed = 120.0F, .turn_rate = std::numbers::pi_v<float> / 2.0F, .min_speed = 75.0F};
+    const auto distance = [](const eaw::SimVector3& a, const eaw::SimVector3& b)
+    {
+        return std::hypot(a.x - b.x, a.y - b.y);
+    };
+
+    // Idle, it never stops but circles where it is; ordered away, it flies there and circles that point.
+    {
+        eaw::SimulationWorld world(0.1);
+        const auto id = world.spawn(fighter);
+        require(id.ok(), "test spawn must succeed");
+        // Snapshots exist from the first tick on; the fighter starts at the origin.
+        eaw::SimVector3 previous{};
+        for (int tick = 0; tick < 100; ++tick)
+        {
+            world.step();
+            const auto now = world.snapshot().entities[0].position;
+            require(distance(now, previous) >= 7.4F, "a fighter must keep at least its minimum speed");
+            require(distance(now, {}) < 150.0F, "an idle fighter must circle near where it idles");
+            previous = now;
+        }
+        world.submit({eaw::SimCommandKind::move, {*id}, {2000.0F, 0.0F, 0.0F}});
+        for (int tick = 0; tick < 300; ++tick)
+        {
+            world.step();
+        }
+        require(distance(world.snapshot().entities[0].position, {2000.0F, 0.0F, 0.0F}) < 150.0F, "a fighter must circle its destination");
+    }
+
+    // Attacking an immobile target, it makes passes: in close, past, out, and back, firing as it comes.
+    {
+        eaw::Hostility hostility;
+        hostility.set(1, 2, true);
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        auto armed = fighter;
+        armed.combat.health = 10.0F;
+        armed.combat.weapons = {eaw::WeaponProfile{.range = 450.0F, .recharge_seconds = 1.0F, .damage = 1.0F}};
+        eaw::CombatProfile station;
+        station.health = 1.0e6F;
+        const auto attacker = world.spawn(armed);
+        const auto target = world.spawn({.type_name = "Station", .owner = 2, .position = {300.0F, 0.0F, 0.0F}, .combat = station});
+        require(attacker.ok() && target.ok(), "test spawns must succeed");
+        world.submit({.kind = eaw::SimCommandKind::attack, .entities = {*attacker}, .target_entity = *target});
+        int passes = 0;
+        bool close = false;
+        float farthest = 0.0F;
+        for (int tick = 0; tick < 600; ++tick)
+        {
+            world.step();
+            const auto& entities = world.snapshot().entities;
+            const auto gap = distance(entities[0].position, entities[1].position);
+            if (!close && gap < 60.0F)
+            {
+                close = true;
+                ++passes;
+            }
+            else if (close && gap > 150.0F)
+            {
+                close = false;
+            }
+            if (passes > 0)
+            {
+                farthest = std::max(farthest, gap);
+            }
+        }
+        require(passes >= 3, "an attacking fighter must make repeated passes, got " + std::to_string(passes));
+        require(farthest < 450.0F, "a fighter must turn back for the next pass within its weapon range");
+        require(world.stats().shots_fired > 0, "a fighter must fire during its passes");
+    }
+}
+
 const ModuleRegistrar registrar("simulation", {
                                                   {"test_simulation_core", &test_simulation_core},
                                                   {"test_ground_movement", &test_ground_movement},
@@ -841,6 +917,7 @@ const ModuleRegistrar registrar("simulation", {
                                                   {"test_ground_footprints", &test_ground_footprints},
                                                   {"test_path_budget_and_shared_routes", &test_path_budget_and_shared_routes},
                                                   {"test_hardpoints_and_fire_cones", &test_hardpoints_and_fire_cones},
+                                                  {"test_fighter_flight", &test_fighter_flight},
                                               });
 
 } // namespace

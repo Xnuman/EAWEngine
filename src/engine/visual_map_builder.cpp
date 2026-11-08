@@ -214,6 +214,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                     const auto soft_radius = type_soft_footprint_radius(catalog, *placement.type);
                     spawn.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(scene, *entry->second, matrix);
                     spawn.turn_rate = type_turn_rate(catalog, *placement.type);
+                    spawn.min_speed = asset.land ? 0.0F : type_min_flight_speed(catalog, *placement.type, spawn.max_speed);
                     spawn.formation_order = type_formation_order(catalog, *placement.type);
                     spawn.formation_spacing = type_formation_spacing(catalog, *placement.type);
                 }
@@ -399,6 +400,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             const auto soft_radius = type_soft_footprint_radius(catalog, *definition);
             spawnable.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(scene, spawnable.mesh, identity);
             spawnable.turn_rate = type_turn_rate(catalog, *definition);
+            spawnable.min_speed = asset.land ? 0.0F : type_min_flight_speed(catalog, *definition, spawnable.max_speed);
             spawnable.formation_order = type_formation_order(catalog, *definition);
             spawnable.formation_spacing = type_formation_spacing(catalog, *definition);
         }

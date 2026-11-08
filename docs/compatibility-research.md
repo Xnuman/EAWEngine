@@ -429,3 +429,22 @@ Hardpoints as parts.
   - losing every engine slows the ship to a quarter speed.
 - **Not used yet.** `Fire_Cone_Height` and the second fire bone
   (`Fire_Bone_B`).
+
+Fighter flight.
+
+- **What the engine reads.** Types whose `SpaceBehavior` names
+  `FIGHTER_LOCOMOTOR` (the stock fighters and bombers in
+  `SpaceUnitsFighters.xml`; the X-wing has `Max_Speed` 4.0, `Min_Speed` 2.5,
+  `Max_Rate_Of_Turn` 3.0) fly at no less than `Min_Speed`, on the same
+  provisional scale as `Max_Speed`. Without a `Min_Speed`, half the top speed
+  is used.
+- **Engine choices, not measured from the original:**
+  - fighters never stop: idle or arrived, they circle a point (at their turn
+    rate, a turn circle of about 48 units for the X-wing);
+  - attack runs: within a third of their weapon range of the target they hold
+    their heading, fly past, and turn back once outside;
+  - fighters do not separate from other units, and weapons still fire all
+    around (fighter weapons come from `Projectile_Types`, which has no cone).
+- **Not used yet.** Bombing runs and the original's flight paths, banking,
+  `SpaceBehavior` entries other than the locomotor, and fighter launch and
+  docking from carriers.

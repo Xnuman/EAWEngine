@@ -195,6 +195,10 @@ float type_soft_footprint_radius(const GameObjectCatalog& catalog, const XmlDefi
 // XML Max_Rate_Of_Turn in radians per second (provisional_turn_rate_scale); 0 turns instantly.
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
+// Minimum flight speed of fighters and bombers (SpaceBehavior names FIGHTER_LOCOMOTOR): XML
+// Min_Speed on the Max_Speed scale, or half of `max_speed` without one; 0 for every other type.
+float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, float max_speed);
+
 // XML Max_Speed in world units per second (the provisional scale in visual_scene_builder.hpp);
 // unparsable values are 0 with a warning.
 float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings);

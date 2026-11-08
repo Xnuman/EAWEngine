@@ -71,6 +71,10 @@ struct EntitySpawn
     float formation_spacing{0.5F};
     // Ground occupied while the entity exists (structures, walls, obstacle props).
     std::optional<GroundFootprint> footprint;
+    // Flight (fighters): above zero the entity never stops. It flies along its heading at no less than
+    // this speed, steering toward its target (or its destination, which it circles on arrival) at
+    // its turn rate, so attack runs overshoot and come back.
+    float min_speed{};
 };
 
 enum class SimCommandKind : std::uint8_t
@@ -296,6 +300,7 @@ private:
     // Speed this tick: the entity's own, or its group's when that is slower.
     [[nodiscard]] float travel_speed(std::size_t index) const noexcept;
     void move_over_ground(std::size_t index, float dt);
+    void fly(std::size_t index, float dt);
     // Turns toward `desired` (radians) at the entity's turn rate and returns how much of its speed it
     // may use: 1 when facing the way, falling to 0 at 90 degrees or more off.
     [[nodiscard]] float steer(std::size_t index, float desired, float dt);
@@ -350,6 +355,9 @@ private:
     std::vector<CombatState> combat_;
     std::vector<float> radii_;
     std::vector<float> turn_rates_;
+    std::vector<float> min_speeds_;
+    // Where an idle flyer circles (set when it arrives or first idles).
+    std::vector<std::optional<SimVector3>> loiter_points_;
     std::vector<std::uint32_t> formation_orders_;
     std::vector<float> formation_spacings_;
     // Group speed of a formation move until the entity arrives; zero when none.

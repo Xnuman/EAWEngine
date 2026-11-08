@@ -155,6 +155,17 @@ float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& defi
     return rate > 0.0F ? rate * provisional_turn_rate_scale : 0.0F;
 }
 
+float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, const float max_speed)
+{
+    const auto behavior = catalog.field(definition, "SpaceBehavior").field;
+    if (behavior == nullptr || max_speed <= 0.0F || fold_ascii(behavior->text).find("fighter_locomotor") == std::string::npos)
+    {
+        return 0.0F;
+    }
+    const auto speed = type_float_field(catalog, definition, "Min_Speed") * provisional_max_speed_scale;
+    return speed > 0.0F && std::isfinite(speed) ? std::min(speed, max_speed) : max_speed * 0.5F;
+}
+
 float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings)
 {
     const auto speed = catalog.field(definition, "Max_Speed").field;

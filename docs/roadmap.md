@@ -205,7 +205,9 @@ Gaps toward the deliverable, in planned order:
    several weapons, ships separate, and squadrons expand fully and spawn.
    Step 2 is done: fire cones from the hardpoint fire bones, per-weapon
    targeting, and hardpoints as targetable, destroyable parts (shield
-   generators, engines, weapons). Fighter movement follows.
+   generators, engines, weapons). Fighter movement is done: fighters
+   (`FIGHTER_LOCOMOTOR`) never stop below their `Min_Speed`, circle when idle,
+   and make attack runs that pass the target and turn back.
    Covers:
    - weapons on `HardPoints` (94 stock uses);
    - space movement (turning, speed, and the space layer);

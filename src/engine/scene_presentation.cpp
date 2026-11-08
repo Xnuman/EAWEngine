@@ -116,6 +116,7 @@ Result<EntityId> ScenePresentation::spawn(SimulationWorld& world, const Spawnabl
     spawn.combat = type.combat;
     spawn.radius = type.radius;
     spawn.turn_rate = type.turn_rate;
+    spawn.min_speed = type.min_speed;
     spawn.formation_order = type.formation_order;
     spawn.formation_spacing = type.formation_spacing;
     EAW_TRY_ASSIGN(const auto id, world.spawn(spawn));
