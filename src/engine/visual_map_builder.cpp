@@ -38,7 +38,7 @@ template <class Member> void arrange_companies(VisualScene& scene, VisualMapAsse
         }
         const auto& origin = scene.instances[members[first].instance].transform;
         const SimVector3 center{origin[12], origin[13], origin[14]};
-        const auto facing = std::atan2(origin[1], origin[0]);
+        const auto facing = model_forward_heading(origin);
         std::vector<FormationMember> formation;
         for (auto index = first; index < last; ++index)
         {
@@ -186,8 +186,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             spawn.type_name = placement.type != nullptr ? placement.type->name : std::string{};
             spawn.owner = map.placed_objects[placement.object_index].player;
             spawn.position = {matrix[12], matrix[13], matrix[14]};
-            // Heading is the rotation of the model's X axis about +Z (row-vector transforms).
-            spawn.heading = std::atan2(matrix[1], matrix[0]);
+            // Heading is the direction of the model's forward (-Y) axis about +Z.
+            spawn.heading = model_forward_heading(matrix);
             spawn.visual = *entry->second;
             spawn.follows_ground = asset.land && placement.type != nullptr && type_follows_ground(catalog, *placement.type);
             if (spawn.follows_ground)

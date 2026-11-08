@@ -348,6 +348,12 @@ namespace eaw {
 
 using namespace scene_build;
 
+float model_forward_heading(const std::array<float, 16>& transform) noexcept
+{
+    // Row 1 is the model's +Y axis in world space; forward is its negation.
+    return std::atan2(-transform[5], -transform[4]);
+}
+
 Result<VisualModelAsset> build_visual_model(const AssetReader& vfs, const std::string_view model_path, AssetCache* cache)
 {
     const auto resolved = vfs.resolve(model_path);

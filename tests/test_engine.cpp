@@ -571,6 +571,17 @@ void test_sandbox_options()
             "invalid sandbox options must be rejected");
 }
 
+void test_model_forward_axis()
+{
+    // Alamo models face -Y: an unrotated model's heading is -pi/2, and posing one with heading 0
+    // (travel along +X) turns its forward (-Y) axis onto +X.
+    const std::array<float, 16> identity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    require(std::fabs(eaw::model_forward_heading(identity) - eaw::identity_model_heading) < 1.0e-6F, "an unrotated model must face -Y");
+    const auto posed = eaw::pose_transform(identity, eaw::identity_model_heading, {10.0F, 20.0F, 0.0F}, 0.0F);
+    require(std::fabs(-posed[4] - 1.0F) < 1.0e-5F && std::fabs(posed[5]) < 1.0e-5F && std::fabs(eaw::model_forward_heading(posed)) < 1.0e-5F && posed[12] == 10.0F,
+            "a model moving along +X must face +X");
+}
+
 const ModuleRegistrar registrar("engine", {
                                               {"test_asset_cache_dependencies", &test_asset_cache_dependencies},
                                               {"test_debug_draw", &test_debug_draw},
@@ -582,6 +593,7 @@ const ModuleRegistrar registrar("engine", {
                                               {"test_visual_terrain", &test_visual_terrain},
                                               {"test_combat_content", &test_combat_content},
                                               {"test_sandbox_options", &test_sandbox_options},
+                                              {"test_model_forward_axis", &test_model_forward_axis},
                                           });
 
 } // namespace

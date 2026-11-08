@@ -122,7 +122,7 @@ Result<EntityId> ScenePresentation::spawn(SimulationWorld& world, const Spawnabl
     // The template's transform is the model's own frame; pose_transform turns and places it.
     VisualInstance instance{type.mesh};
     instance.team_color = type.team_color;
-    templates_.emplace(entity_key(id), Template{instance, 0.0F, type.type_name});
+    templates_.emplace(entity_key(id), Template{instance, identity_model_heading, type.type_name});
     return id;
 }
 

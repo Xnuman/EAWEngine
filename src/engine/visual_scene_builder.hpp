@@ -43,6 +43,14 @@ struct MapEntitySpawn
 // XML Max_Speed values are small (infantry 0.8, AT-AT 0.5, TIE fighter 4.5), consistent with world
 // units per logic frame. The logic rate is unmeasured; until it is, speeds are scaled as if per 1/30 s.
 // This is a provisional engine assumption, not compatibility evidence.
+// Alamo models face -Y: every stock muzzle and fire bone sits at negative Y and points along -Y
+// (T2B, AT-ST, X-wing, Star Destroyer; see docs/compatibility-research.md). An entity's heading is
+// the direction of its model's forward axis about +Z, so an unrotated model has this heading.
+inline constexpr float identity_model_heading = -1.57079632679489662F;
+
+// The heading of a row-vector model transform: the direction of its forward (-Y) axis about +Z.
+[[nodiscard]] float model_forward_heading(const std::array<float, 16>& transform) noexcept;
+
 inline constexpr float provisional_max_speed_scale = 30.0F;
 // XML Max_Rate_Of_Turn read as degrees per 30 Hz frame, like Max_Speed: infantry 16 (480 degrees per
 // second), tanks 12-20, capital ships 0.4-1.5 (12-45 degrees per second). Provisional.

@@ -312,7 +312,7 @@ struct SandboxSession
                 eaw::EntitySpawn spawn;
                 spawn.type_name = scene.name;
                 spawn.position = {matrix[12], matrix[13], matrix[14]};
-                spawn.heading = std::atan2(matrix[1], matrix[0]);
+                spawn.heading = eaw::model_forward_heading(matrix);
                 spawn.visual = scene.instances.front().mesh;
                 model_entity.push_back({std::move(spawn), 0});
             }

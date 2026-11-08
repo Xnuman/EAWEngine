@@ -2,6 +2,8 @@
 
 #include "inspector.hpp"
 
+#include <iomanip>
+
 namespace eaw::inspector {
 namespace {
 
@@ -109,11 +111,20 @@ eaw::Status inspect_alo(const std::span<const std::byte> bytes, const std::size_
         std::cout << "Warning: " << warning << '\n';
     }
 
+    // Model-space bind pose: position and X axis (row-vector matrices: row 0 is the bone's X axis).
     std::cout << "Skeleton:\n";
+    const auto pose = model.bind_pose();
     for (std::size_t index = 0; index < std::min(limit, model.bones.size()); ++index)
     {
         const auto& bone = model.bones[index];
-        std::cout << "  [" << index << "] " << bone.name << " parent=" << bone.parent << ' ' << (bone.visible ? "visible" : "hidden") << '\n';
+        std::cout << "  [" << index << "] " << bone.name << " parent=" << bone.parent << ' ' << (bone.visible ? "visible" : "hidden");
+        if (index < pose.size())
+        {
+            const auto& m = pose[index].values;
+            std::cout << std::fixed << std::setprecision(1) << " at (" << m[12] << ", " << m[13] << ", " << m[14] << ") x-axis (" << std::setprecision(2) << m[0] << ", " << m[1] << ", " << m[2] << ")"
+                      << std::defaultfloat;
+        }
+        std::cout << '\n';
     }
     std::cout << "Meshes:\n";
     for (std::size_t index = 0; index < std::min(limit, model.meshes.size()); ++index)

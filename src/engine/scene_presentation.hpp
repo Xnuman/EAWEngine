@@ -18,7 +18,7 @@
 
 namespace eaw {
 
-// Re-poses `base` (row-vector transform whose model X axis points along `base_heading` about +Z):
+// Re-poses `base` (row-vector transform whose model forward axis points along `base_heading` about +Z):
 // keeps its scale and tilt, rotates it about world +Z by `heading - base_heading`, and moves it to
 // `position`.
 [[nodiscard]] std::array<float, 16> pose_transform(const std::array<float, 16>& base, float base_heading, const SimVector3& position, float heading);

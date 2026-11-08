@@ -398,3 +398,15 @@ Space weapons and squadrons.
   `Rebel_X-Wing_Squadron` writes "X-Wing, X-Wing" twice and "X-Wing" once
   beside five `Squadron_Offsets`. The layout used to take only the last
   entry; the stock maps hold 1,474 squadron members, not 1,026.
+
+Model forward axis. Alamo models face -Y. Every stock muzzle and fire bone
+inspected sits at negative Y and points along -Y in the bind pose:
+- T2B, AT-ST, and X-wing `Muzzle*` bones;
+- the Star Destroyer's `FP_*` fire bones (front hardpoints at y = -280,
+  engines at y = +183).
+
+The engine therefore defines an entity's heading as the direction of its
+model's -Y axis. Before this, moving units faced 90 degrees off their travel
+direction. A fire bone's X axis is its firing direction (`FP_F-L_00` points
+forward-left, (0.57, -0.82)). `EAWAssetInspector inspect` now prints each
+bone's bind-pose position and X axis.
