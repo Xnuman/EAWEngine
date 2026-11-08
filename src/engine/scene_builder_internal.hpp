@@ -33,6 +33,9 @@ struct SceneBuilder
     VisualScene& scene;
     std::unordered_map<std::string, std::uint32_t> texture_indices;
     AssetCache* cache{};
+    // Headless builds skip decoding what only drawing needs (MapBuildOptions).
+    bool textures{true};
+    bool animation_clips{true};
 };
 
 // Loads through the cache when there is one; otherwise decodes directly.

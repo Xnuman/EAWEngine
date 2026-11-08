@@ -265,7 +265,9 @@ public:
     [[nodiscard]] std::vector<SimVector3> route(EntityId id) const;
     [[nodiscard]] const SimSnapshot& snapshot() const noexcept;
     [[nodiscard]] Stats stats() const noexcept;
-    // FNV-1a over every component, in storage order: equal hashes mean identical simulation state.
+    // FNV-1a over every gameplay component, in storage order: equal hashes mean identical simulation
+    // state. Presentation keys (EntitySpawn::visual) are left out, so how a scene was built for
+    // drawing never changes a battle's hash.
     [[nodiscard]] std::uint64_t state_hash() const noexcept;
 
 private:

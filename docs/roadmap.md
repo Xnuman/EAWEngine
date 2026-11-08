@@ -234,9 +234,10 @@ Gaps toward the deliverable, in planned order:
    done: `EAWEngine battle` runs a map without a window and prints the state
    hash and statistics; order logs are text files with exact numbers and the
    final tick and hash, written with `--record` (also from the sandbox) and
-   checked with `--replay`; `--check-determinism` runs a battle twice. Not
-   yet: game and mod identity in logs, and a headless map build that skips
-   textures.
+   checked with `--replay`; `--check-determinism` runs a battle twice.
+   Headless builds skip textures and animation clips, and the simulation's
+   inputs and state hash no longer depend on what is drawn. Not yet: game and
+   mod identity in logs.
 4. **Unit animation on maps.** Per-instance bone palettes, with idle, move,
    fire, and death animations chosen from simulation state. The first slice
    is done: map units play IDLE, MOVE/WALKMOVE, and ATTACK/ATTACKIDLE clips

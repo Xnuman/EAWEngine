@@ -235,6 +235,10 @@ const LegacyTextureBinding* base_color_texture(const LegacyMaterial& material)
 // index, or invalid_visual_texture with a warning when it is missing or unsupported.
 std::uint32_t scene_texture(SceneBuilder& builder, const std::string& reference)
 {
+    if (!builder.textures)
+    {
+        return invalid_visual_texture;
+    }
     const auto key = fold_ascii(reference);
     if (const auto existing = builder.texture_indices.find(key); existing != builder.texture_indices.end())
     {

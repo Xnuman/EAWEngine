@@ -41,18 +41,21 @@ struct BattleRun
     bool failed{};
 };
 
-// The point groups spawn around and auto-move goes to: the map's center, on the ground of land
-// maps.
+// The point groups spawn around and auto-move goes to: the middle of the ground on land maps, at
+// its surface, and the middle of the placed objects in space. Both come from map data alone, so
+// a headless build (no textures) and a full one place battles alike.
 SimVector3 battle_center(const VisualMapAsset& asset)
 {
-    const auto& minimum = asset.scene.bounds_minimum;
-    const auto& maximum = asset.scene.bounds_maximum;
-    SimVector3 center{(minimum[0] + maximum[0]) * 0.5F, (minimum[1] + maximum[1]) * 0.5F, 0.0F};
     if (asset.ground.valid())
     {
-        center.z = asset.ground.surface_height(center.x, center.y);
+        const auto& ground = asset.ground;
+        SimVector3 center{static_cast<float>(ground.width - 1U) * ground.spacing * 0.5F, static_cast<float>(ground.height - 1U) * ground.spacing * 0.5F, 0.0F};
+        center.z = ground.surface_height(center.x, center.y);
+        return center;
     }
-    return center;
+    const auto& minimum = asset.scene.bounds_minimum;
+    const auto& maximum = asset.scene.bounds_maximum;
+    return {(minimum[0] + maximum[0]) * 0.5F, (minimum[1] + maximum[1]) * 0.5F, 0.0F};
 }
 
 BattleRun run_once(const VisualMapAsset& asset, const std::string& map_name, const SandboxOptions& options, const BattleLog* replay, const std::uint64_t ticks)
@@ -200,7 +203,8 @@ int run_battle(const SandboxOptions& options, const VirtualFileSystem& vfs)
         add_type(request.type);
     }
     const auto build_start = std::chrono::steady_clock::now();
-    auto built = build_visual_map(vfs, map_name, nullptr, spawn_types);
+    // Nothing is drawn: skip textures and animation clips.
+    auto built = build_visual_map(vfs, map_name, nullptr, spawn_types, MapBuildOptions{.textures = false, .animation_clips = false});
     if (!built)
     {
         std::cerr << "error: " << built.error().message << '\n';

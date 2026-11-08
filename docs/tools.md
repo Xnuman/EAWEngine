@@ -77,7 +77,9 @@ end 3000 1aed7f1f9e13345c
 
 Each order line starts with the tick it was given at (it applies in the next
 step); entity ids are `index.generation`. A replay needs the same game data
-and mods as the recording; logs do not record them yet.
+and mods as the recording; logs do not record them yet. Headless runs skip
+textures and animation clips, and the state hash covers gameplay state only,
+so a log recorded in the sandbox replays headless with the same hash.
 
 ## EAWTools graphical workbench
 

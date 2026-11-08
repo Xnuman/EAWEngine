@@ -591,7 +591,7 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
             rest_palette.resize(rig.rest_offset + std::max(mesh.bone_count, 1U), alo_identity_matrix().values);
         }
         rig.palette_size = static_cast<std::uint32_t>(rest_palette.size()) - rig.rest_offset;
-        if (!rig.model || rig.inverse_bind_pose.empty())
+        if (!rig.model || rig.inverse_bind_pose.empty() || !builder.animation_clips)
         {
             continue;
         }

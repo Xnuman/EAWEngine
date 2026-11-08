@@ -68,7 +68,7 @@ template <class Member> void arrange_companies(VisualScene& scene, VisualMapAsse
 
 } // namespace
 
-Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::string_view map_path, AssetCache* cache, const std::span<const std::string> spawn_types)
+Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::string_view map_path, AssetCache* cache, const std::span<const std::string> spawn_types, const MapBuildOptions& options)
 {
     const auto resolved = vfs.resolve(map_path);
     if (!resolved)
@@ -121,7 +121,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
 
     auto& scene = asset.scene;
     scene.name = resolved->virtual_path;
-    SceneBuilder builder{vfs, scene, {}, cache};
+    SceneBuilder builder{vfs, scene, {}, cache, options.textures, options.animation_clips};
     scene.warnings.insert(scene.warnings.end(), combat_entry->warnings.begin(), combat_entry->warnings.end());
     if (asset.land)
     {
@@ -140,7 +140,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             {
                 field.heights.push_back(static_cast<float>(map.elevation_map[index]) / terrain_elevation_scale);
             }
-            if (asset.water != TedWaterType::none)
+            // From map data alone, never from what is drawn (a missing texture must not change the
+            // ground): a liquid surface at or above the lowest ground, as append_water draws it.
+            const auto liquid = map.water.type == TedWaterType::water || map.water.type == TedWaterType::lava || map.water.type == TedWaterType::ice;
+            if (liquid && !field.heights.empty() && map.water.level >= *std::ranges::min_element(field.heights))
             {
                 field.liquid_level = map.water.level;
             }

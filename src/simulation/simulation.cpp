@@ -225,7 +225,8 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
             hash = hash_value(hash, *target);
         }
         hash = hash_value(hash, owners_[index]);
-        hash = hash_value(hash, visuals_[index]);
+        // Visual keys are presentation data the simulation never reads (a mesh index on maps), so
+        // they stay out of the hash: the same battle hashes alike however its scene was built.
         hash = hash_value(hash, selectable_[index]);
         hash = hash_value(hash, follows_ground_[index]);
         hash = hash_value(hash, passable_types_[index]);

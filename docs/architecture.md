@@ -78,7 +78,11 @@ points, and entity ids. Each order is validated, translated into simulation
 commands for the next tick (a spawn order becomes a `spawn` command carrying
 the entities laid out on a grid or in formation), and recorded with its tick.
 Entity ids are allocated deterministically, so the same map, game data, and
-order log reproduce the same battle, interactive or headless. Presentation
+order log reproduce the same battle, interactive or headless. Nothing the
+simulation reads may depend on how the scene is built for drawing: the ground
+(heights, passability, liquid level) and spawns come from map and XML data,
+and the state hash leaves out presentation keys, so a headless build without
+textures or animations hashes like the sandbox. Presentation
 draws order-spawned entities by their type's visual key, without knowing their
 ids in advance.
 
