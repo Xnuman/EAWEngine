@@ -233,6 +233,78 @@ void test_ala_animation()
     require(pose.size() == 1 && pose[0].visible, "ALA sampled pose decoding failed");
 }
 
+// Local poses: transforms decompose and recompose, local sampling composes to the same pose as
+// sample_pose, and blending moves between poses by weight.
+void test_ala_blending()
+{
+    const auto near = [](const eaw::AloMatrix4& a, const eaw::AloMatrix4& b, const float tolerance)
+    {
+        for (std::size_t index = 0; index < 16; ++index)
+        {
+            if (std::fabs(a.values[index] - b.values[index]) > tolerance)
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    // Rotations about several axes (including near 180 degrees, which takes the non-trace
+    // branches), with scale and translation, and a mirrored matrix.
+    const std::array<eaw::AloQuaternion, 5> rotations{{
+        {0.0F, 0.0F, 0.0F, 1.0F},
+        {0.2F, -0.5F, 0.3F, 0.787401F},
+        {0.99F, 0.1F, 0.0F, 0.0995F},
+        {0.05F, 0.998F, 0.02F, 0.03F},
+        {0.0F, 0.1F, 0.995F, 0.0F},
+    }};
+    for (auto rotation : rotations)
+    {
+        const auto length = std::sqrt(rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z + rotation.w * rotation.w);
+        rotation = {rotation.x / length, rotation.y / length, rotation.z / length, rotation.w / length};
+        for (const auto scale : {eaw::AloVector3{1.0F, 1.0F, 1.0F}, eaw::AloVector3{2.0F, 0.5F, 3.0F}, eaw::AloVector3{-1.5F, 1.0F, 2.0F}})
+        {
+            const auto matrix = eaw::alo_compose_transform(scale, rotation, {4.0F, -5.0F, 6.0F});
+            const auto parts = eaw::alo_decompose_transform(matrix);
+            require(near(eaw::alo_compose_transform(parts.scale, parts.rotation, parts.translation), matrix, 1.0e-4F), "a transform must recompose from its parts");
+        }
+    }
+
+    const auto model = expect_ok(eaw::AloModel::parse(make_test_alo()), "ALO parse");
+    const auto animation = expect_ok(eaw::AlaAnimation::parse(make_test_ala()), "ALA parse");
+    for (const auto seconds : {0.0F, 0.25F, 0.5F, 1.75F, -0.3F})
+    {
+        const auto direct = animation.sample_pose(model, seconds);
+        const auto composed = eaw::ala_compose_pose(model, animation.sample_local_pose(model, seconds));
+        require(direct.size() == composed.size() && near(direct[0].transform, composed[0].transform, 1.0e-4F) && direct[0].visible == composed[0].visible,
+                "a composed local pose must match sample_pose");
+    }
+    const auto bind = eaw::ala_compose_pose(model, eaw::ala_bind_local_pose(model));
+    require(near(bind[0].transform, model.bind_pose()[0], 1.0e-4F), "the bind local pose must compose to the bind pose");
+
+    // Identity versus 90 degrees about Z (with the sign flipped, to take the shorter arc), moved
+    // and scaled: halfway is 45 degrees, halfway translation and scale.
+    const auto half_turn = std::sqrt(0.5F);
+    std::vector<eaw::AlaLocalBone> pose{{{0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F}, {0.0F, 0.0F, 0.0F, 1.0F}, true}};
+    const std::vector<eaw::AlaLocalBone> turned{{{2.0F, 4.0F, -6.0F}, {3.0F, 3.0F, 3.0F}, {0.0F, 0.0F, -half_turn, -half_turn}, false}};
+    eaw::ala_blend_pose(pose, turned, 0.0F);
+    eaw::ala_blend_pose(pose, turned, std::numeric_limits<float>::quiet_NaN());
+    require(pose[0].translation.x == 0.0F && pose[0].rotation.w == 1.0F && pose[0].visible, "zero and non-finite weights must keep the pose");
+    eaw::ala_blend_pose(pose, turned, 0.5F);
+    const auto& q = pose[0].rotation;
+    const auto angle = 2.0F * std::atan2(q.z, q.w);
+    require(std::fabs(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w - 1.0F) < 1.0e-5F && std::fabs(angle - std::numbers::pi_v<float> / 4.0F) < 1.0e-4F,
+            "a half weight must turn halfway along the shorter arc and stay normalized");
+    require(pose[0].translation.y == 2.0F && pose[0].scale.x == 2.0F && pose[0].visible, "a half weight must land halfway and keep the heavier side's visibility");
+    eaw::ala_blend_pose(pose, turned, 1.0F);
+    require(near(eaw::alo_compose_transform(pose[0].scale, pose[0].rotation, pose[0].translation), eaw::alo_compose_transform(turned[0].scale, turned[0].rotation, turned[0].translation), 1.0e-5F) &&
+                !pose[0].visible,
+            "a full weight must take the target pose");
+    // A shorter target blends over the common bones and leaves the rest.
+    std::vector<eaw::AlaLocalBone> empty;
+    eaw::ala_blend_pose(pose, empty, 1.0F);
+    require(pose.size() == 1, "blending with an empty pose must keep the bones");
+}
+
 void test_ted_map()
 {
     const auto map = expect_ok(eaw::TedMap::parse(make_test_ted()), "TED parse");
@@ -331,6 +403,7 @@ const ModuleRegistrar registrar("formats", {
                                                {"test_texture_formats_and_materials", &test_texture_formats_and_materials},
                                                {"test_lua_inspection", &test_lua_inspection},
                                                {"test_ala_animation", &test_ala_animation},
+                                               {"test_ala_blending", &test_ala_blending},
                                                {"test_ted_map", &test_ted_map},
                                                {"test_dat_and_workspace", &test_dat_and_workspace},
                                                {"test_localization_scan", &test_localization_scan},

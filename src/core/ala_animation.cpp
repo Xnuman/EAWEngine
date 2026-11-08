@@ -559,4 +559,95 @@ std::vector<AlaPoseBone> AlaAnimation::sample_pose(const AloModel& model, float 
     return result;
 }
 
+std::vector<AlaLocalBone> ala_bind_local_pose(const AloModel& model)
+{
+    const auto local = model.local_bind_pose();
+    std::vector<AlaLocalBone> pose;
+    pose.reserve(local.size());
+    for (std::size_t index = 0; index < local.size(); ++index)
+    {
+        const auto parts = alo_decompose_transform(local[index]);
+        pose.push_back({parts.translation, parts.scale, parts.rotation, model.bones[index].visible});
+    }
+    return pose;
+}
+
+std::vector<AlaLocalBone> AlaAnimation::sample_local_pose(const AloModel& model, const float seconds) const
+{
+    auto pose = ala_bind_local_pose(model);
+    const auto playable = playable_frame_count();
+    if (playable == 0 || frames_per_second <= 0.0F)
+    {
+        return pose;
+    }
+    auto position = std::fmod(seconds * frames_per_second, static_cast<float>(playable));
+    if (position < 0.0F || !std::isfinite(position))
+    {
+        position = std::isfinite(position) ? position + static_cast<float>(playable) : 0.0F;
+    }
+    const auto first = static_cast<std::size_t>(std::floor(position));
+    const auto second = std::min(first + 1, static_cast<std::size_t>(stored_frame_count - 1));
+    const auto amount = position - static_cast<float>(first);
+    for (const auto& track : tracks)
+    {
+        if (track.bone_index >= pose.size() || first >= track.frames.size() || second >= track.frames.size())
+        {
+            continue;
+        }
+        const auto& left = track.frames[first];
+        const auto& right = track.frames[second];
+        const auto interpolation = track.stepped ? 0.0F : amount;
+        pose[track.bone_index] = {interpolate(left.translation, right.translation, interpolation), interpolate(left.scale, right.scale, interpolation),
+                                  slerp(left.rotation, right.rotation, interpolation), left.visible};
+    }
+    return pose;
+}
+
+void ala_blend_pose(std::vector<AlaLocalBone>& pose, const std::span<const AlaLocalBone> target, float weight)
+{
+    weight = std::isfinite(weight) ? std::clamp(weight, 0.0F, 1.0F) : 0.0F;
+    if (weight <= 0.0F)
+    {
+        return;
+    }
+    const auto count = std::min(pose.size(), target.size());
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        auto& bone = pose[index];
+        const auto& other = target[index];
+        auto rotation = other.rotation;
+        if (bone.rotation.x * rotation.x + bone.rotation.y * rotation.y + bone.rotation.z * rotation.z + bone.rotation.w * rotation.w < 0.0F)
+        {
+            rotation = {-rotation.x, -rotation.y, -rotation.z, -rotation.w};
+        }
+        AloQuaternion blended{bone.rotation.x + (rotation.x - bone.rotation.x) * weight, bone.rotation.y + (rotation.y - bone.rotation.y) * weight,
+                              bone.rotation.z + (rotation.z - bone.rotation.z) * weight, bone.rotation.w + (rotation.w - bone.rotation.w) * weight};
+        const auto length = std::sqrt(blended.x * blended.x + blended.y * blended.y + blended.z * blended.z + blended.w * blended.w);
+        bone.rotation = length > 1.0e-6F ? AloQuaternion{blended.x / length, blended.y / length, blended.z / length, blended.w / length} : other.rotation;
+        bone.translation = interpolate(bone.translation, other.translation, weight);
+        bone.scale = interpolate(bone.scale, other.scale, weight);
+        bone.visible = weight > 0.5F ? other.visible : bone.visible;
+    }
+}
+
+std::vector<AlaPoseBone> ala_compose_pose(const AloModel& model, const std::span<const AlaLocalBone> pose)
+{
+    const auto bind = model.local_bind_pose();
+    std::vector<AlaPoseBone> result;
+    result.reserve(model.bones.size());
+    for (std::size_t index = 0; index < model.bones.size(); ++index)
+    {
+        auto transform = index < pose.size() ? alo_compose_transform(pose[index].scale, pose[index].rotation, pose[index].translation) : bind[index];
+        auto visible = index < pose.size() ? pose[index].visible : model.bones[index].visible;
+        if (model.bones[index].parent >= 0 && static_cast<std::size_t>(model.bones[index].parent) < result.size())
+        {
+            const auto parent = static_cast<std::size_t>(model.bones[index].parent);
+            transform = alo_multiply(transform, result[parent].transform);
+            visible = visible && result[parent].visible;
+        }
+        result.push_back({transform, visible});
+    }
+    return result;
+}
+
 } // namespace eaw

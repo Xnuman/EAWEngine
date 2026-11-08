@@ -24,6 +24,16 @@ struct AlaPoseBone
     bool visible{true};
 };
 
+// A bone of a local pose: its transform relative to its parent, as parts that blend, and its own
+// visibility (before the parent's is applied).
+struct AlaLocalBone
+{
+    AloVector3 translation;
+    AloVector3 scale{1.0F, 1.0F, 1.0F};
+    AloQuaternion rotation;
+    bool visible{true};
+};
+
 struct AlaBoneTrack
 {
     std::string name;
@@ -57,6 +67,21 @@ public:
     [[nodiscard]] std::uint32_t playable_frame_count() const noexcept;
     [[nodiscard]] float duration_seconds() const noexcept;
     [[nodiscard]] std::vector<AlaPoseBone> sample_pose(const AloModel& model, float seconds) const;
+    // The pose at `seconds` (looping) relative to each bone's parent, for blending; bones without
+    // a track keep their bind transform. ala_compose_pose turns it into sample_pose's form.
+    [[nodiscard]] std::vector<AlaLocalBone> sample_local_pose(const AloModel& model, float seconds) const;
 };
+
+// A model's bind pose as a local pose.
+[[nodiscard]] std::vector<AlaLocalBone> ala_bind_local_pose(const AloModel& model);
+// Moves `pose` toward `target` by `weight` (0 keeps `pose`, 1 takes `target`): rotations by
+// normalized linear interpolation along the shorter arc, translations and scales linearly, and
+// each bone's visibility from whichever side weighs more. Poses of different sizes blend over
+// their common bones. Blending several clips one after another with weights w / (sum so far)
+// gives their weighted average.
+void ala_blend_pose(std::vector<AlaLocalBone>& pose, std::span<const AlaLocalBone> target, float weight);
+// Model-space transforms and inherited visibility of a local pose (bones beyond the pose keep
+// their bind transform).
+[[nodiscard]] std::vector<AlaPoseBone> ala_compose_pose(const AloModel& model, std::span<const AlaLocalBone> pose);
 
 } // namespace eaw

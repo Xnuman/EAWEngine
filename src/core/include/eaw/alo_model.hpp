@@ -71,6 +71,17 @@ struct AloNameVariant
 [[nodiscard]] AloVector3 alo_transform_point(const AloVector3& point, const AloMatrix4& matrix) noexcept;
 [[nodiscard]] AloMatrix4 alo_compose_transform(const AloVector3& scale, const AloQuaternion& rotation, const AloVector3& translation) noexcept;
 
+// Splits an affine transform into scale, rotation, and translation, so that alo_compose_transform
+// rebuilds it (exactly up to rounding when it has no shear). A mirrored matrix (negative
+// determinant) gets a negative X scale.
+struct AloTransformParts
+{
+    AloVector3 scale{1.0F, 1.0F, 1.0F};
+    AloQuaternion rotation;
+    AloVector3 translation;
+};
+[[nodiscard]] AloTransformParts alo_decompose_transform(const AloMatrix4& matrix) noexcept;
+
 struct AloVertex
 {
     AloVector3 position;

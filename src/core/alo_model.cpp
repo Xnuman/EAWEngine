@@ -745,6 +745,58 @@ AloVector3 alo_transform_point(const AloVector3& point, const AloMatrix4& matrix
             point.x * matrix.values[2] + point.y * matrix.values[6] + point.z * matrix.values[10] + matrix.values[14]};
 }
 
+AloTransformParts alo_decompose_transform(const AloMatrix4& matrix) noexcept
+{
+    const auto& m = matrix.values;
+    AloTransformParts parts;
+    parts.translation = {m[12], m[13], m[14]};
+    const auto length = [](const float x, const float y, const float z)
+    {
+        return std::sqrt(x * x + y * y + z * z);
+    };
+    parts.scale = {length(m[0], m[1], m[2]), length(m[4], m[5], m[6]), length(m[8], m[9], m[10])};
+    const auto determinant = m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) + m[2] * (m[4] * m[9] - m[5] * m[8]);
+    if (determinant < 0.0F)
+    {
+        parts.scale.x = -parts.scale.x;
+    }
+    if (parts.scale.x == 0.0F || parts.scale.y == 0.0F || parts.scale.z == 0.0F || !std::isfinite(determinant))
+    {
+        return parts;
+    }
+    // Rows of the rotation (row-vector convention, as alo_compose_transform writes them).
+    const std::array<float, 9> r{m[0] / parts.scale.x, m[1] / parts.scale.x, m[2] / parts.scale.x, m[4] / parts.scale.y, m[5] / parts.scale.y,
+                                 m[6] / parts.scale.y, m[8] / parts.scale.z, m[9] / parts.scale.z, m[10] / parts.scale.z};
+    const auto trace = r[0] + r[4] + r[8];
+    AloQuaternion q;
+    if (trace > 0.0F)
+    {
+        const auto s = 0.5F / std::sqrt(trace + 1.0F);
+        q = {(r[5] - r[7]) * s, (r[6] - r[2]) * s, (r[1] - r[3]) * s, 0.25F / s};
+    }
+    else if (r[0] > r[4] && r[0] > r[8])
+    {
+        const auto s = 2.0F * std::sqrt(std::max(1.0F + r[0] - r[4] - r[8], 0.0F));
+        q = {0.25F * s, (r[1] + r[3]) / s, (r[2] + r[6]) / s, (r[5] - r[7]) / s};
+    }
+    else if (r[4] > r[8])
+    {
+        const auto s = 2.0F * std::sqrt(std::max(1.0F + r[4] - r[0] - r[8], 0.0F));
+        q = {(r[1] + r[3]) / s, 0.25F * s, (r[5] + r[7]) / s, (r[6] - r[2]) / s};
+    }
+    else
+    {
+        const auto s = 2.0F * std::sqrt(std::max(1.0F + r[8] - r[0] - r[4], 0.0F));
+        q = {(r[2] + r[6]) / s, (r[5] + r[7]) / s, 0.25F * s, (r[1] - r[3]) / s};
+    }
+    const auto norm = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+    if (norm > 0.0F && std::isfinite(norm))
+    {
+        parts.rotation = {q.x / norm, q.y / norm, q.z / norm, q.w / norm};
+    }
+    return parts;
+}
+
 AloMatrix4 alo_compose_transform(const AloVector3& scale, const AloQuaternion& rotation, const AloVector3& translation) noexcept
 {
     const auto xx = rotation.x * rotation.x;
