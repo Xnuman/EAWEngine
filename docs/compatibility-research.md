@@ -476,7 +476,7 @@ and `Fire_When_Deployed`/`Fire_When_Undeployed` (deploying units),
 `TURRET` as "aims with its body": such ground units face their target before
 firing (within 20 degrees) and hold fire while moving; turreted units fire on
 the move. This is an inference from the behavior lists and the observation; the
-the original's exact rules (turn speed while aiming, crouching, the stationary
+original's exact rules (turn speed while aiming, crouching, the stationary
 flag's effect on movement) are not established.
 
 Crouching (the SPREAD_OUT ability; deferred to the abilities work in M4).
