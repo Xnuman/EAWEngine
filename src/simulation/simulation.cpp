@@ -170,6 +170,12 @@ void SimulationWorld::step()
     publish();
 }
 
+std::string_view SimulationWorld::type_name(const EntityId id) const noexcept
+{
+    const auto dense = dense_index(id);
+    return dense ? std::string_view(type_names_[*dense]) : std::string_view{};
+}
+
 bool SimulationWorld::alive(const EntityId id) const noexcept
 {
     return dense_index(id).has_value();
@@ -199,7 +205,8 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .projectiles = projectiles_.size(),
             .separated_pairs = separated_pairs_,
             .waiting_members = waiting_members_,
-            .released_members = released_members_};
+            .released_members = released_members_,
+            .rejected_spawns = rejected_spawns_};
 }
 
 std::uint64_t SimulationWorld::state_hash() const noexcept
@@ -250,6 +257,7 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, turn_rates_[index]);
         hash = hash_value(hash, min_speeds_[index]);
         hash = hash_value(hash, stances_[index]);
+        hash = fnv1a(hash, type_names_[index].data(), type_names_[index].size());
         hash = hash_value(hash, pitches_[index]);
         hash = hash_value(hash, cruise_heights_[index]);
         hash = hash_value(hash, looping_[index]);

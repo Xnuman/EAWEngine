@@ -72,6 +72,16 @@ from the state at the start of the tick, so decisions do not depend on storage
 order (fighters used to decide inside the movement loop, after units stored
 before them had already moved).
 
+Above the simulation, a `Battle` (`src/engine/battle.*`) sets a world up from
+a built map and takes orders in replayable terms: XML type names, owner slots,
+points, and entity ids. Each order is validated, translated into simulation
+commands for the next tick (a spawn order becomes a `spawn` command carrying
+the entities laid out on a grid or in formation), and recorded with its tick.
+Entity ids are allocated deterministically, so the same map, game data, and
+order log reproduce the same battle, interactive or headless. Presentation
+draws order-spawned entities by their type's visual key, without knowing their
+ids in advance.
+
 ## Rendering direction
 
 The first render target is legacy mode: newly written shaders driven by the

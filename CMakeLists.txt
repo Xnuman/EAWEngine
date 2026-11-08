@@ -246,6 +246,9 @@ endif()
 # consumes the render contract headers (engine-native data) but no graphics API.
 add_library(eaw_engine STATIC
     src/engine/asset_cache.cpp
+    src/engine/battle.cpp
+    src/engine/battle_log.cpp
+    src/engine/battle_runner.cpp
     src/engine/camera_controller.cpp
     src/engine/camera_math.cpp
     src/engine/debug_draw.cpp

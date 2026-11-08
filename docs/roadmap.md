@@ -228,7 +228,15 @@ Gaps toward the deliverable, in planned order:
    skirmish without a window for N ticks and prints the state hash and
    statistics. Spawning becomes a deterministic command, so a run can be
    replayed from its command log. This is also the headless benchmark the
-   performance gates require.
+   performance gates require. Step 1 is done: a `Battle` layer owns the world
+   for the sandbox and headless runs, takes orders in replayable terms, and
+   records them with their ticks; spawning is a simulation command. Step 2 is
+   done: `EAWEngine battle` runs a map without a window and prints the state
+   hash and statistics; order logs are text files with exact numbers and the
+   final tick and hash, written with `--record` (also from the sandbox) and
+   checked with `--replay`; `--check-determinism` runs a battle twice. Not
+   yet: game and mod identity in logs, and a headless map build that skips
+   textures.
 4. **Unit animation on maps.** Per-instance bone palettes, with idle, move,
    fire, and death animations chosen from simulation state. Models on maps
    are still frozen in their bind pose.

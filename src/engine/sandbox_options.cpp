@@ -48,8 +48,9 @@ Result<std::string> require_value(const int argc, const char* const* argv, int& 
 void print_sandbox_usage()
 {
     std::cout << "EAWEngine visual sandbox\n\n"
-              << "Usage: EAWEngine [sandbox|doctor|bootstrap] [options]\n"
+              << "Usage: EAWEngine [sandbox|battle|doctor|bootstrap] [options]\n"
               << "  sandbox            Open the Direct3D 12 visual sandbox (default)\n"
+              << "  battle             Run a battle on --map without a window and print its state hash and statistics\n"
               << "  doctor             Validate discovery, mounts, and an asset probe\n"
               << "  bootstrap          Alias for doctor for older launch scripts\n"
               << "  --game-root <path> Empire at War installation root\n"
@@ -80,6 +81,10 @@ void print_sandbox_usage()
               << "                     center when shown (OWNER slot, default 1; each request its own group), N key\n"
               << "                     spawns one at the cursor, Tab cycles types, O cycles the owner\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
+              << "  --ticks <count>    Battle: total simulation ticks to run (default 3000, or the replayed log's end)\n"
+              << "  --record <file>    Write the battle's order log when it ends (battle and sandbox)\n"
+              << "  --replay <file>    Battle: replay a recorded order log (its map unless --map is given) and check its state hash\n"
+              << "  --check-determinism  Battle: run twice and require identical state hashes\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
               << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
               << "  --validation-triangle  Skip model loading and show the fallback\n";
@@ -94,6 +99,33 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         if (argument == "sandbox")
         {
             options.mode = RunMode::sandbox;
+        }
+        else if (argument == "battle")
+        {
+            options.mode = RunMode::battle;
+        }
+        else if (argument == "--ticks")
+        {
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.ticks, parse_unsigned_64(text, argument));
+            if (*options.ticks == 0 || *options.ticks > 100'000'000ULL)
+            {
+                return make_error("--ticks must be from 1 to 100000000");
+            }
+        }
+        else if (argument == "--record")
+        {
+            EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
+            options.record = std::filesystem::path(value);
+        }
+        else if (argument == "--replay")
+        {
+            EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
+            options.replay = std::filesystem::path(value);
+        }
+        else if (argument == "--check-determinism")
+        {
+            options.check_determinism = true;
         }
         else if (argument == "doctor" || argument == "bootstrap")
         {
@@ -311,6 +343,14 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
     if (options.width == 0 || options.height == 0)
     {
         return make_error("sandbox width and height must be greater than zero");
+    }
+    if (options.mode == RunMode::battle && !options.map && !options.replay)
+    {
+        return make_error("battle needs --map or --replay");
+    }
+    if (options.replay && (options.mode != RunMode::battle || !options.spawns.empty() || options.auto_move))
+    {
+        return make_error("--replay runs in battle mode and takes its orders from the log, not --spawn or --auto-move");
     }
     return options;
 }

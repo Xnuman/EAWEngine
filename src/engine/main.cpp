@@ -3,6 +3,7 @@
 #include "eaw/status.hpp"
 #include "eaw/virtual_file_system.hpp"
 
+#include "battle_runner.hpp"
 #include "sandbox_options.hpp"
 
 #ifdef _WIN32
@@ -131,6 +132,10 @@ int main(const int argc, char** argv)
         {
             std::cout << "Status: compatibility bootstrap succeeded.\n";
             return 0;
+        }
+        if (options.mode == eaw::RunMode::battle)
+        {
+            return eaw::run_battle(options, vfs);
         }
 
 #ifdef _WIN32

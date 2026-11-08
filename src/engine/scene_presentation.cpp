@@ -62,8 +62,10 @@ float flight_bank(const float yaw_rate) noexcept
     return std::isfinite(yaw_rate) ? std::clamp(yaw_rate * 0.6F, -most, most) : 0.0F;
 }
 
-ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<const MapEntitySpawn> entities, SimulationWorld& world)
+ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<const MapEntitySpawn> entities, const std::span<const std::optional<EntityId>> ids,
+                                     const std::span<const SpawnableType> spawnable)
 {
+    EAW_ASSERT_MSG(ids.size() == entities.size(), "scene presentation needs one id slot per map entity");
     for (const auto& mesh : scene.meshes)
     {
         mesh_names_.push_back(mesh.name);
@@ -77,18 +79,23 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
             backgrounds_.push_back(instance);
         }
     }
-    for (const auto& entity : entities)
+    for (std::size_t index = 0; index < entities.size(); ++index)
     {
+        const auto& entity = entities[index];
         EAW_ASSERT_MSG(entity.instance < scene.instances.size() && !scene.instances[entity.instance].background,
                        "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(entity.instance) + ", which is missing or a background");
-        const auto id = world.spawn(entity.spawn);
-        if (!id)
+        if (ids[index])
         {
-            // Map data: one bad placement does not stop the rest of the map.
-            log_warning("simulation", with_context("skipping map entity", id.error()));
-            continue;
+            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[entity.instance], entity.spawn.heading});
         }
-        templates_.emplace(entity_key(*id), Template{scene.instances[entity.instance], entity.spawn.heading, entity.spawn.type_name});
+    }
+    for (const auto& type : spawnable)
+    {
+        EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which the scene does not have");
+        // The template's transform is the model's own frame; pose_transform turns and places it.
+        VisualInstance instance{type.mesh};
+        instance.team_color = type.team_color;
+        spawn_templates_.push_back({instance, identity_model_heading});
     }
 }
 
@@ -106,13 +113,21 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
     }
     for (const auto& entity : snapshot)
     {
-        const auto found = templates_.find(entity_key(entity.id));
-        if (found == templates_.end())
+        const Template* found = nullptr;
+        if (const auto placed = templates_.find(entity_key(entity.id)); placed != templates_.end())
+        {
+            found = &placed->second;
+        }
+        else if (entity.visual >= spawnable_visual_base && entity.visual - spawnable_visual_base < spawn_templates_.size())
+        {
+            found = &spawn_templates_[entity.visual - spawnable_visual_base];
+        }
+        if (found == nullptr)
         {
             continue;
         }
-        auto instance = found->second.instance;
-        instance.transform = pose_transform(instance.transform, found->second.base_heading, entity.position, entity.heading, entity.pitch, flight_bank(entity.yaw_rate) + entity.roll);
+        auto instance = found->instance;
+        instance.transform = pose_transform(instance.transform, found->base_heading, entity.position, entity.heading, entity.pitch, flight_bank(entity.yaw_rate) + entity.roll);
         instance.highlighted = selected.contains(entity_key(entity.id));
         instances_out.push_back(instance);
         entities_out.push_back(entity.id);
@@ -135,38 +150,6 @@ const std::array<float, 3>& ScenePresentation::mesh_maximum(const std::uint32_t 
 {
     EAW_ASSERT_MSG(mesh < mesh_maximum_.size(), "scene presentation mesh " + std::to_string(mesh) + " is out of range");
     return mesh_maximum_[mesh];
-}
-
-Result<EntityId> ScenePresentation::spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, const float heading, const std::uint32_t owner, const bool follows_ground)
-{
-    EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which the scene does not have");
-    EntitySpawn spawn;
-    spawn.type_name = type.type_name;
-    spawn.owner = owner;
-    spawn.position = position;
-    spawn.heading = heading;
-    spawn.max_speed = type.max_speed;
-    spawn.visual = type.mesh;
-    spawn.follows_ground = follows_ground;
-    spawn.passable_types = follows_ground ? type.passable_types : 0U;
-    spawn.combat = type.combat;
-    spawn.radius = type.radius;
-    spawn.turn_rate = type.turn_rate;
-    spawn.min_speed = type.min_speed;
-    spawn.formation_order = type.formation_order;
-    spawn.formation_spacing = type.formation_spacing;
-    EAW_TRY_ASSIGN(const auto id, world.spawn(spawn));
-    // The template's transform is the model's own frame; pose_transform turns and places it.
-    VisualInstance instance{type.mesh};
-    instance.team_color = type.team_color;
-    templates_.emplace(entity_key(id), Template{instance, identity_model_heading, type.type_name});
-    return id;
-}
-
-std::string ScenePresentation::type_name(const EntityId id) const
-{
-    const auto found = templates_.find(entity_key(id));
-    return found != templates_.end() ? found->second.type_name : std::string{};
 }
 
 } // namespace eaw

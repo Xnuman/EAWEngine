@@ -1,15 +1,19 @@
 #pragma once
 
 // Bridges simulation snapshots to renderer instances. A loaded scene's non-background instances
-// become entity templates (mesh, original transform, colors); each frame the interpolated snapshot
-// re-poses them. Background layers (sky domes) stay static.
+// become entity templates (mesh, original transform, colors) keyed by entity id, and each
+// spawnable type a template keyed by its visual (battle.hpp), so entities spawned by order are
+// drawn without their ids being known in advance. Each frame the interpolated snapshot re-poses
+// them. Background layers (sky domes) stay static.
 
+#include "battle.hpp"
 #include "eaw/simulation.hpp"
 #include "eaw/visual_scene.hpp"
 #include "visual_scene_builder.hpp"
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -37,9 +41,10 @@ namespace eaw {
 class ScenePresentation final
 {
 public:
-    // Spawns every listed entity into `world` and records its template from `scene.instances`.
-    // Entities the world rejects (non-finite map data) are logged as warnings and skipped.
-    ScenePresentation(const VisualScene& scene, std::span<const MapEntitySpawn> entities, SimulationWorld& world);
+    // Records each placed entity's template from `scene.instances` under its id (`ids` parallels
+    // `entities`, as Battle::map_entity_ids; empty ids are skipped) and one template per spawnable
+    // type under spawnable_visual(type index).
+    ScenePresentation(const VisualScene& scene, std::span<const MapEntitySpawn> entities, std::span<const std::optional<EntityId>> ids, std::span<const SpawnableType> spawnable);
 
     // Builds this frame's instances: static backgrounds first, then one per snapshot entity in
     // snapshot order. `entities_out[i]` names the entity behind `instances_out[i]` (invalid for
@@ -49,21 +54,17 @@ public:
     [[nodiscard]] const std::string& mesh_name(std::uint32_t mesh) const;
     [[nodiscard]] const std::array<float, 3>& mesh_minimum(std::uint32_t mesh) const;
     [[nodiscard]] const std::array<float, 3>& mesh_maximum(std::uint32_t mesh) const;
-    // XML type of a spawned entity (empty when unknown).
-    [[nodiscard]] std::string type_name(EntityId id) const;
-    // Spawns an entity of a runtime-spawnable type into `world` and records its template; fails
-    // (recording nothing) when the world rejects the spawn.
-    [[nodiscard]] Result<EntityId> spawn(SimulationWorld& world, const SpawnableType& type, const SimVector3& position, float heading, std::uint32_t owner, bool follows_ground = false);
 
 private:
     struct Template
     {
         VisualInstance instance;
         float base_heading{};
-        std::string type_name;
     };
     std::vector<VisualInstance> backgrounds_;
     std::unordered_map<std::uint64_t, Template> templates_;
+    // By spawnable type index (visual - spawnable_visual_base).
+    std::vector<Template> spawn_templates_;
     std::vector<std::string> mesh_names_;
     std::vector<std::array<float, 3>> mesh_minimum_;
     std::vector<std::array<float, 3>> mesh_maximum_;

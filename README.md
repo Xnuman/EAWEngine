@@ -89,6 +89,25 @@ Open the Direct3D 12 visual sandbox directly or through the separate launcher:
 .\build\vs2022-x64\Debug\EAWLauncher.exe --game foc
 ```
 
+Run a battle without a window (deterministic; prints the state hash, timing,
+and combat and path statistics):
+
+```powershell
+.\build\vs2022-x64\Release\EAWEngine.exe battle --game foc --map DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED `
+  --spawn Rebel_X-Wing_Squadron:2@1 --spawn TIE_Fighter_Squadron:2@2 --ticks 3000 --record kuat.log
+.\build\vs2022-x64\Release\EAWEngine.exe battle --game foc --replay kuat.log
+```
+
+`battle` spawns the `--spawn` groups at the map center (each request 180 units
+further along +X) and, with `--auto-move`, orders every mobile unit to the
+center. `--ticks` sets the total simulation ticks (default 3000).
+`--record <file>` writes the battle's order log (also from the sandbox, on
+exit, so an interactive session can be replayed headless), `--replay <file>`
+runs a recorded log and checks its final state hash (exit code 4 on a
+mismatch), and `--check-determinism` runs the battle twice and compares the
+hashes. Logs are text: one order per line with its tick, in replayable terms
+(type names, owner slots, points, entity ids).
+
 The sandbox defaults to vsync with two frames of CPU/GPU overlap. Development
 switches include `--vsync off`, `--frame-latency 1`, `--warp`, and
 `--gpu-validation`. Maps and models build on a worker thread while the window

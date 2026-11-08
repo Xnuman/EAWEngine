@@ -25,6 +25,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace eaw {
@@ -105,6 +106,9 @@ enum class SimCommandKind : std::uint8_t
     formation_move,
     // Sets the entities' `stance`; hold_fire also drops targets they picked on their own.
     set_stance,
+    // Creates `spawns` in order (reinforcements, debug spawns, scripted arrivals); spawns the world
+    // rejects are counted in Stats::rejected_spawns.
+    spawn,
 };
 
 struct SimCommand
@@ -117,6 +121,8 @@ struct SimCommand
     EntityId target_entity;
     // Stance of set_stance commands.
     Stance stance{Stance::aggressive};
+    // Entities of spawn commands.
+    std::vector<EntitySpawn> spawns;
 };
 
 // Snapshot of one entity after a tick.
@@ -221,11 +227,14 @@ public:
         // group because they stopped making progress.
         std::size_t waiting_members{};
         std::uint64_t released_members{};
+        // Entities of spawn commands the world rejected (invalid data or full storage).
+        std::uint64_t rejected_spawns{};
     };
 
     explicit SimulationWorld(double tick_seconds = 1.0 / 30.0);
 
-    // Spawning is immediate and intended for setup between ticks (map load, reinforcements). Spawn
+    // Spawning is immediate and intended for setup before the first tick (map load); during a battle
+    // spawns go through spawn commands, so they apply at a tick boundary like every order. Spawn
     // data comes from map and mod content: a non-finite position, heading, or speed, or full entity
     // storage, returns an error and spawns nothing.
     [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn);
@@ -249,6 +258,8 @@ public:
     void step();
 
     [[nodiscard]] bool alive(EntityId id) const noexcept;
+    // XML type name an entity was spawned with (empty when it is not alive).
+    [[nodiscard]] std::string_view type_name(EntityId id) const noexcept;
     // The points an entity is still moving through, in order, ending at its destination (empty
     // when it is not moving or unknown). For debugging and presentation; not part of snapshots.
     [[nodiscard]] std::vector<SimVector3> route(EntityId id) const;
@@ -474,6 +485,7 @@ private:
     SimSnapshot snapshot_;
     std::uint64_t commands_applied_{};
     std::uint64_t stale_references_{};
+    std::uint64_t rejected_spawns_{};
 };
 
 // Presentation helper: blends two consecutive snapshots by `alpha` (0 = previous, 1 = current).

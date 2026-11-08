@@ -42,6 +42,43 @@ newer build still open. The scenario model and process start live in the
 `eaw_launch` library (`src/launcher`), shared with `EAWLauncher`; the window
 shell is `eaw_imgui_app` (`src/imgui_app`), shared with EAWTools.
 
+## Headless battles
+
+`EAWEngine battle` runs a battle on a map without a window, as fast as it can,
+and prints the state hash, tick timing, and combat and path statistics. It is
+the determinism check and the simulation benchmark.
+
+```powershell
+# Two opposing fighter groups at the map center, 3000 ticks, order log written
+EAWEngine.exe battle --game foc --map DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED `
+  --spawn Rebel_X-Wing_Squadron:2@1 --spawn TIE_Fighter_Squadron:2@2 --record kuat.log
+
+# Replay a log (from battle or from the sandbox's --record) and check its state hash
+EAWEngine.exe battle --game foc --replay kuat.log
+
+# Every mobile unit of a land map ordered to the center, run twice and compared
+EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --auto-move --ticks 1500 --check-determinism
+```
+
+Exit codes: 0 success, 1 a map that cannot be built or an unreadable log, 4 a
+replay whose state hash differs from the recording or a failed determinism
+check. Logs are text, one order per line:
+
+```text
+EAWEngine battle log 1
+map DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED
+1 spawn Rebel_X-Wing_Squadron 2 1 -939.49023 239.85059 0
+40 move 600 200 0 17.1 18.1
+95 attack 23.1 17.1
+120 stop 17.1
+130 stance hold_fire 17.1
+end 3000 1aed7f1f9e13345c
+```
+
+Each order line starts with the tick it was given at (it applies in the next
+step); entity ids are `index.generation`. A replay needs the same game data
+and mods as the recording; logs do not record them yet.
+
 ## EAWTools graphical workbench
 
 `EAWTools.exe` is the primary interactive interface. It is a native C++20

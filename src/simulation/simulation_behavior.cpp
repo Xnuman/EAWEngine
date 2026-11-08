@@ -25,6 +25,17 @@ void SimulationWorld::apply(const SimCommand& command)
         apply_formation_move(command);
         return;
     }
+    if (command.kind == SimCommandKind::spawn)
+    {
+        for (const auto& entity : command.spawns)
+        {
+            if (!spawn(entity))
+            {
+                ++rejected_spawns_;
+            }
+        }
+        return;
+    }
     for (const auto id : command.entities)
     {
         const auto dense = dense_index(id);
@@ -36,6 +47,7 @@ void SimulationWorld::apply(const SimCommand& command)
         switch (command.kind)
         {
         case SimCommandKind::formation_move:
+        case SimCommandKind::spawn:
             break;
         case SimCommandKind::move:
             combat_[*dense].target = {};

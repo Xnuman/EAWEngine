@@ -1,5 +1,7 @@
 #include "test_support.hpp"
 
+#include "battle.hpp"
+#include "battle_log.hpp"
 #include "sandbox_options.hpp"
 
 namespace {
@@ -149,7 +151,6 @@ void test_scene_presentation()
     eaw::VisualInstance unit{0};
     unit.transform[12] = 10.0F;
     scene.instances = {sky, unit};
-    eaw::SimulationWorld world(0.1);
     eaw::EntitySpawn spawn;
     spawn.type_name = "Test_Unit";
     spawn.position = {10.0F, 0.0F, 0.0F};
@@ -159,9 +160,17 @@ void test_scene_presentation()
     broken.type_name = "Broken_Unit";
     broken.position.x = std::numeric_limits<float>::infinity();
     const std::array<eaw::MapEntitySpawn, 2> entities{{{spawn, 1}, {broken, 1}}};
-    const eaw::ScenePresentation presentation(scene, entities, world);
-    world.step();
-    require(world.snapshot().entities.size() == 1, "presentation must spawn the valid map entity and skip the broken one");
+    eaw::SpawnableType spawnable;
+    spawnable.type_name = "Spawned_Unit";
+    spawnable.mesh = 0;
+    spawnable.team_color = {0.25F, 0.5F, 1.0F, 1.0F};
+    eaw::BattleMap map;
+    map.entities = entities;
+    map.spawnable = std::span(&spawnable, 1);
+    eaw::Battle battle(map, "TEST.TED", 0.1);
+    auto& world = battle.world();
+    const eaw::ScenePresentation presentation(scene, entities, battle.map_entity_ids(), battle.spawnable());
+    require(world.snapshot().entities.size() == 1 && battle.map_entity_ids()[0] && !battle.map_entity_ids()[1], "a battle must spawn the valid map entity and skip the broken one");
     const auto id = world.snapshot().entities[0].id;
     world.submit({eaw::SimCommandKind::move, {id}, {10.0F, 5.0F, 0.0F}});
     world.step();
@@ -171,7 +180,13 @@ void test_scene_presentation()
     require(instances.size() == 2 && instances[0].background && !ids[0].valid() && ids[1] == id && instances[1].highlighted && instances[1].mesh == 0,
             "presentation must list backgrounds first, then entities with their selection state");
     require(std::fabs(instances[1].transform[13] - 1.0F) < 1.0e-5F && std::fabs(instances[1].transform[1] - 1.0F) < 1.0e-5F, "an entity's instance must follow its simulated position and heading");
-    require(presentation.type_name(id) == "Test_Unit" && presentation.mesh_name(0) == "UNIT.ALO", "presentation must name entities by type and mesh");
+    require(world.type_name(id) == "Test_Unit" && presentation.mesh_name(0) == "UNIT.ALO", "entities must be named by type and mesh");
+    // An entity spawned by order is drawn from its type's template without a recorded id.
+    expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {-20.0F, 0.0F, 0.0F}, .type = "Spawned_Unit", .count = 1, .owner = 2}), "spawn order");
+    battle.step();
+    presentation.build(world.snapshot().entities, {}, instances, ids);
+    require(instances.size() == 3 && instances[2].mesh == 0 && instances[2].team_color[2] == 1.0F && std::fabs(instances[2].transform[12] + 20.0F) < 1.0e-4F,
+            "an entity spawned by order must be drawn from its type's template");
 }
 
 void test_rts_control()
@@ -573,6 +588,13 @@ void test_sandbox_options()
     require(!parse({"--spawn", "Tank:1@64"}) && !parse({"--spawn", "Tank:1001"}) && !parse({"--spawn", ":3"}) && !parse({"--vsync", "maybe"}) && !parse({"--width", "0"}) && !parse({"--bogus"}) &&
                 !parse({"--map"}) && !parse({"--frame-latency", "3"}),
             "invalid sandbox options must be rejected");
+    const auto battle = expect_ok(parse({"battle", "--map", "DATA/ART/MAPS/X.TED", "--ticks", "500", "--record", "out.log", "--check-determinism", "--auto-move"}), "parsing battle options");
+    require(battle.mode == eaw::RunMode::battle && battle.ticks == 500U && battle.record == std::filesystem::path("out.log") && battle.check_determinism && battle.auto_move,
+            "battle options must be read");
+    require(expect_ok(parse({"battle", "--replay", "in.log"}), "parsing a replay").replay == std::filesystem::path("in.log"), "a replay needs no map");
+    require(!parse({"battle"}) && !parse({"battle", "--map", "X.TED", "--ticks", "0"}) && !parse({"battle", "--replay", "in.log", "--spawn", "Tank:1"}) &&
+                !parse({"battle", "--replay", "in.log", "--auto-move"}) && !parse({"sandbox", "--replay", "in.log"}),
+            "invalid battle options must be rejected");
 }
 
 void test_model_forward_axis()
@@ -604,10 +626,157 @@ void test_model_forward_axis()
             "a model moving along +X must face +X");
 }
 
+// Battles: orders in replayable terms become simulation commands at the next tick and are recorded
+// with that tick; invalid orders are rejected without effect; the same orders reproduce the same
+// battle.
+void test_battle_orders()
+{
+    eaw::SpawnableType fighter;
+    fighter.type_name = "Fighter";
+    fighter.max_speed = 120.0F;
+    fighter.min_speed = 75.0F;
+    fighter.turn_rate = 1.5F;
+    fighter.radius = 5.0F;
+    fighter.combat.health = 50.0F;
+    fighter.combat.weapons = {eaw::WeaponProfile{.range = 400.0F, .recharge_seconds = 0.5F, .damage = 2.0F}};
+    eaw::SpawnableType squadron;
+    squadron.type_name = "Fighter_Squadron";
+    squadron.members = {0, 0, 0};
+    const std::array<eaw::SpawnableType, 2> types{fighter, squadron};
+    eaw::BattleMap map;
+    map.spawnable = types;
+    map.hostility.set(1, 2, true);
+
+    const auto run = [&](const bool record)
+    {
+        eaw::Battle battle(map, "TEST.TED", 1.0 / 30.0);
+        expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {0.0F, 0.0F, 0.0F}, .type = "Fighter_Squadron", .count = 2, .owner = 1}), "squadron spawn");
+        expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {300.0F, 0.0F, 0.0F}, .type = "Fighter", .count = 4, .owner = 2}), "fighter spawn");
+        // Rejected orders change nothing and are not recorded.
+        require(!battle.submit({.order = eaw::BattleOrder::spawn, .type = "Unknown"}), "an unknown type must be rejected");
+        require(!battle.submit({.order = eaw::BattleOrder::spawn, .type = "Fighter", .count = 0}), "a zero count must be rejected");
+        require(!battle.submit({.order = eaw::BattleOrder::spawn, .type = "Fighter", .owner = eaw::Hostility::max_owners}), "an owner beyond the table must be rejected");
+        require(!battle.submit({.order = eaw::BattleOrder::move, .point = {1.0F, 2.0F, 3.0F}}), "an order without entities must be rejected");
+        require(!battle.submit({.order = eaw::BattleOrder::move, .entities = {eaw::EntityId{1, 1}}, .point = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F}}),
+                "a non-finite point must be rejected");
+        battle.step();
+        require(battle.world().snapshot().entities.size() == 10, "spawn orders must apply at the next tick (two squadrons of three and four fighters)");
+        if (record)
+        {
+            require(battle.log().entries.size() == 2 && battle.log().entries[0].tick == 1 && battle.log().entries[1].command.count == 4, "accepted orders must be recorded with their tick");
+        }
+        std::vector<eaw::EntityId> squadron_ids;
+        for (const auto& entity : battle.world().snapshot().entities)
+        {
+            if (entity.owner == 1)
+            {
+                squadron_ids.push_back(entity.id);
+            }
+        }
+        expect_ok(battle.submit({.order = eaw::BattleOrder::move, .entities = squadron_ids, .point = {600.0F, 200.0F, 0.0F}}), "move order");
+        for (int tick = 0; tick < 300; ++tick)
+        {
+            battle.step();
+        }
+        return std::pair{battle.world().state_hash(), battle.world().stats().kills};
+    };
+    const auto first = run(true);
+    const auto second = run(false);
+    require(first.first == second.first && first.second == second.second, "the same orders must reproduce the same battle");
+    require(first.second > 0, "the test battle must be a real fight");
+}
+
+// Battle logs: the text form round-trips every order bit-exactly, malformed logs are rejected with
+// their line, and replaying a recorded battle's log reproduces its state hash.
+void test_battle_log()
+{
+    eaw::BattleLog log;
+    log.map = "DATA/ART/MAPS/SOME MOD MAP.TED";
+    log.entries.push_back({1, {.order = eaw::BattleOrder::spawn, .point = {0.1F, -0.0F, 1.0e-30F}, .type = "Rebel_X-Wing_Squadron", .count = 2, .owner = 1}});
+    log.entries.push_back({40, {.order = eaw::BattleOrder::move, .entities = {{17, 1}, {18, 3}}, .point = {600.25F, -3.4028235e38F, 0.333333343F}}});
+    log.entries.push_back({40, {.order = eaw::BattleOrder::attack, .entities = {{17, 1}}, .target = {23, 2}}});
+    log.entries.push_back({95, {.order = eaw::BattleOrder::stop, .entities = {{18, 3}}}});
+    log.entries.push_back({96, {.order = eaw::BattleOrder::set_stance, .entities = {{18, 3}}, .stance = eaw::Stance::hold_position}});
+    log.end_tick = 3000;
+    log.end_hash = 0x9f3c0a1e5b7d2c44ULL;
+    const auto text = eaw::format_battle_log(log);
+    const auto parsed = eaw::parse_battle_log(text);
+    require(parsed.ok(), "a formatted battle log must parse: " + (parsed.ok() ? std::string{} : parsed.error().message));
+    require(eaw::format_battle_log(*parsed) == text, "a battle log must round-trip through its text form");
+    const auto& point = parsed->entries[0].command.point;
+    require(point.x == 0.1F && std::signbit(point.y) && point.z == 1.0e-30F && parsed->entries[1].command.point.y == -3.4028235e38F, "battle log numbers must read back bit-identically");
+    require(parsed->map == log.map && parsed->entries[1].command.entities[1] == eaw::EntityId{18, 3} && parsed->entries[4].command.stance == eaw::Stance::hold_position && parsed->end_tick == 3000U &&
+                parsed->end_hash == 0x9f3c0a1e5b7d2c44ULL,
+            "battle log fields must survive the round trip");
+    // Comments, blank lines, and CRLF line ends are accepted.
+    require(eaw::parse_battle_log("EAWEngine battle log 1\r\n# a comment\r\n\r\n5 stop 1.1\r\n").ok(), "comments, blank lines, and CRLF must be accepted");
+    const auto rejects = [](const std::string& body, const std::string& what, const std::string& line)
+    {
+        const auto result = eaw::parse_battle_log("EAWEngine battle log 1\n" + body);
+        require(!result.ok() && result.error().message.find("line " + line) != std::string::npos, "a battle log with " + what + " must be rejected naming line " + line);
+    };
+    require(!eaw::parse_battle_log("").ok() && !eaw::parse_battle_log("EAWEngine battle log 2\n").ok(), "an empty or unknown-version log must be rejected");
+    rejects("5 stop 1.1\n4 stop 1.1\n", "decreasing ticks", "3");
+    rejects("5 dance 1.1\n", "an unknown order", "2");
+    rejects("5 stop 1\n", "an id without a generation", "2");
+    rejects("5 stop\n", "an order without entities", "2");
+    rejects("5 move 1 nan 3 1.1\n", "a non-finite point", "2");
+    rejects("5 spawn X-Wing 2 1 0 0\n", "a short spawn", "2");
+    rejects("5 stance sleepy 1.1\n", "an unknown stance", "2");
+    rejects("end 10\n12 stop 1.1\n", "orders after the end", "3");
+    rejects("20 stop 1.1\nend 10\n", "an end before the last order", "3");
+    rejects("end 10 xyz\n", "an invalid hash", "2");
+
+    // Record a battle, write and read its log, and replay it into a fresh battle.
+    eaw::SpawnableType fighter;
+    fighter.type_name = "Fighter";
+    fighter.max_speed = 120.0F;
+    fighter.min_speed = 75.0F;
+    fighter.turn_rate = 1.5F;
+    fighter.radius = 5.0F;
+    fighter.combat.health = 30.0F;
+    fighter.combat.weapons = {eaw::WeaponProfile{.range = 400.0F, .recharge_seconds = 0.5F, .damage = 2.0F}};
+    eaw::BattleMap map;
+    map.spawnable = std::span(&fighter, 1);
+    map.hostility.set(1, 2, true);
+    eaw::Battle recorded(map, "TEST.TED");
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::spawn, .point = {0.1F, 0.2F, 0.3F}, .type = "Fighter", .count = 3, .owner = 1}), "spawn");
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::spawn, .point = {350.7F, 10.1F, 0.3F}, .type = "Fighter", .count = 3, .owner = 2}), "spawn");
+    for (int tick = 0; tick < 50; ++tick)
+    {
+        recorded.step();
+    }
+    const auto first = recorded.world().snapshot().entities.front().id;
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::set_stance, .entities = {first}, .stance = eaw::Stance::hold_fire}), "stance");
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::move, .entities = {first}, .point = {-500.3F, 77.7F, 0.0F}}), "move");
+    for (int tick = 0; tick < 250; ++tick)
+    {
+        recorded.step();
+    }
+    auto log_out = recorded.log();
+    log_out.end_tick = recorded.world().stats().tick;
+    log_out.end_hash = recorded.world().state_hash();
+    const auto reread = eaw::parse_battle_log(eaw::format_battle_log(log_out));
+    require(reread.ok(), "a recorded log must parse");
+    eaw::Battle replayed(map, reread->map);
+    std::size_t next = 0;
+    while (replayed.world().stats().tick < *reread->end_tick)
+    {
+        for (; next < reread->entries.size() && reread->entries[next].tick <= replayed.world().stats().tick; ++next)
+        {
+            expect_ok(replayed.submit(reread->entries[next].command), "replayed order");
+        }
+        replayed.step();
+    }
+    require(replayed.world().state_hash() == *reread->end_hash, "replaying a recorded log must reproduce the battle's state hash");
+}
+
 const ModuleRegistrar registrar("engine", {
                                               {"test_asset_cache_dependencies", &test_asset_cache_dependencies},
                                               {"test_debug_draw", &test_debug_draw},
                                               {"test_scene_presentation", &test_scene_presentation},
+                                              {"test_battle_orders", &test_battle_orders},
+                                              {"test_battle_log", &test_battle_log},
                                               {"test_rts_control", &test_rts_control},
                                               {"test_terrain_height_field", &test_terrain_height_field},
                                               {"test_camera_controllers", &test_camera_controllers},

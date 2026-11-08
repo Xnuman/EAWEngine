@@ -1,6 +1,6 @@
 #pragma once
 
-// Command line of EAWEngine: the run mode (sandbox or doctor) and the sandbox's options.
+// Command line of EAWEngine: the run mode (sandbox, battle, or doctor) and their options.
 
 #include "eaw/game_installation.hpp"
 #include "eaw/status.hpp"
@@ -17,6 +17,8 @@ namespace eaw {
 enum class RunMode
 {
     sandbox,
+    // A battle on a map without a window (battle_runner.hpp).
+    battle,
     doctor,
 };
 
@@ -71,6 +73,14 @@ struct SandboxOptions
     // XML object types made spawnable on maps; counts spawn when shown, each request as its own
     // group for its owner slot.
     std::vector<SandboxSpawnRequest> spawns;
+    // Battles: total simulation ticks to run (battle mode; default 3000, or the replayed log's end),
+    // a file to write the order log to when the battle ends (battle and sandbox modes), a log to
+    // replay instead of the spawn and auto-move options, and whether to run the battle twice and
+    // compare the state hashes.
+    std::optional<std::uint64_t> ticks;
+    std::optional<std::filesystem::path> record;
+    std::optional<std::filesystem::path> replay;
+    bool check_determinism{};
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};

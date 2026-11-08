@@ -1,6 +1,8 @@
 #include "sandbox_app.hpp"
 
 #include "asset_cache.hpp"
+#include "battle.hpp"
+#include "battle_log.hpp"
 #include "camera_controller.hpp"
 #include "camera_math.hpp"
 #include "combat_content.hpp"
@@ -70,9 +72,13 @@ struct SandboxSession
     std::vector<std::uint32_t> unbound_picks;
     std::unordered_set<std::uint32_t> attack_picks;
     bool initial_spawns_sent = false;
-    // Every shown object is a simulation entity; backdrops stay static. Presentation re-poses the
-    // scene's instances from interpolated snapshots each frame.
-    std::optional<eaw::SimulationWorld> world;
+    // Tick at which the initial spawn orders were given (they apply in the next step).
+    std::uint64_t initial_spawn_tick = 0;
+    // Every shown object is a simulation entity of the battle; backdrops stay static. Presentation
+    // re-poses the scene's instances from interpolated snapshots each frame. `world` is the
+    // battle's world (null before the first scene).
+    std::optional<eaw::Battle> battle;
+    eaw::SimulationWorld* world = nullptr;
     std::optional<eaw::ScenePresentation> presentation;
     eaw::FixedStepClock simulation_clock{30.0};
     eaw::SimSnapshot previous_snapshot;
@@ -152,16 +158,16 @@ struct SandboxSession
     std::string describe_instance(const std::size_t index) const
     {
         const auto& instance = frame_instances[index];
-        const auto type = frame_entities[index].valid() ? presentation->type_name(frame_entities[index]) : std::string{};
+        const auto type = frame_entities[index].valid() && world != nullptr ? std::string(world->type_name(frame_entities[index])) : std::string{};
         const auto& mesh = presentation->mesh_name(instance.mesh);
         return type.empty() || type == mesh ? mesh : type + " (" + mesh + ")";
     }
 
-    void start_simulation(const eaw::VisualScene& scene, const std::span<const eaw::MapEntitySpawn> entities)
+    void start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, std::string name)
     {
-        world.emplace(simulation_clock.tick_seconds());
-        presentation.emplace(scene, entities, *world);
-        world->step();
+        battle.emplace(map, std::move(name), simulation_clock.tick_seconds());
+        world = &battle->world();
+        presentation.emplace(scene, map.entities, battle->map_entity_ids(), battle->spawnable());
         previous_snapshot = world->snapshot();
         selection.clear();
         float extent = 0.0F;
@@ -261,12 +267,9 @@ struct SandboxSession
             }
             scene_status = map_status;
             reload_scene = std::move(reload_copy);
-            start_simulation(layout, visual_map.entities);
+            start_simulation(layout, eaw::battle_map(visual_map), *options.map);
             spawnable = visual_map.spawnable;
             terrain_heights = visual_map.ground;
-            world->set_ground(terrain_heights);
-            world->set_damage_table(visual_map.damage_table);
-            world->set_hostility(eaw::provisional_map_hostility());
             spawn_choice = 0;
             initial_spawns_sent = false;
             for (const auto& type : spawnable)
@@ -325,7 +328,9 @@ struct SandboxSession
             scene_status = model_status;
             animation_status = "bind pose";
             reload_scene = std::move(reload_copy);
-            start_simulation(layout, model_entity);
+            eaw::BattleMap model_map;
+            model_map.entities = model_entity;
+            start_simulation(layout, model_map, options.model);
             bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
             renderer.set_bone_transforms(bind_palette);
             if (!content.reload || !orbit_camera)
@@ -392,66 +397,33 @@ struct SandboxSession
                 movers.push_back(entity.id);
             }
         }
+        if (movers.empty())
+        {
+            return;
+        }
         std::ranges::sort(movers, {}, eaw::entity_key);
         const auto count = movers.size();
-        world->submit({.kind = eaw::SimCommandKind::formation_move, .entities = std::move(movers), .target = target});
+        if (const auto submitted = battle->submit({.order = eaw::BattleOrder::move, .entities = std::move(movers), .point = target}); !submitted)
+        {
+            eaw::log_warning("simulation", submitted.error());
+            return;
+        }
         ++orders_issued;
         std::cout << "Move " << count << " units to " << eaw::format_fixed(target.x, 0) << ", " << eaw::format_fixed(target.y, 0) << ", " << eaw::format_fixed(target.z, 0) << '\n';
     }
 
+    // Spawns `count` of a spawnable type (companies and squadrons as their members in formation) for
+    // the current spawn owner, by order: they appear at the next tick.
     void spawn_units(const std::size_t type_index, const eaw::SimVector3& point, const std::uint32_t count)
     {
-        if (!spawnable[type_index].members.empty())
+        const auto& type = spawnable[type_index];
+        if (const auto submitted = battle->submit({.order = eaw::BattleOrder::spawn, .point = point, .type = type.type_name, .count = count, .owner = spawn_owner}); !submitted)
         {
-            spawn_companies(type_index, point, count);
+            eaw::log_warning("simulation", submitted.error());
             return;
         }
-        const auto& type = spawnable[type_index];
-        const auto spots = eaw::grid_targets(point, count, 40.0F);
-        for (auto spot : spots)
-        {
-            if (terrain_heights.valid())
-            {
-                spot.z = terrain_heights.surface_height(spot.x, spot.y) + (type.follows_ground ? 0.0F : type.hover_offset);
-            }
-            if (const auto spawned = presentation->spawn(*world, type, spot, 0.0F, spawn_owner, type.follows_ground && terrain_heights.valid()); !spawned)
-            {
-                eaw::log_warning("simulation", spawned.error());
-            }
-        }
-        std::cout << "Spawned " << spots.size() << " " << type.type_name << " for owner " << spawn_owner << " at " << eaw::format_fixed(point.x, 0) << ", " << eaw::format_fixed(point.y, 0) << ", "
-                  << eaw::format_fixed(point.z, 0) << '\n';
-    }
-
-    // Spawns `count` companies of the type side by side, each as its members in formation.
-    void spawn_companies(const std::size_t type_index, const eaw::SimVector3& point, const std::uint32_t count)
-    {
-        const auto& company = spawnable[type_index];
-        const auto centers = eaw::grid_targets(point, count, 160.0F);
-        for (const auto& center : centers)
-        {
-            std::vector<eaw::FormationMember> members;
-            for (std::size_t member = 0; member < company.members.size(); ++member)
-            {
-                const auto& type = spawnable[company.members[member]];
-                members.push_back({eaw::EntityId{static_cast<std::uint32_t>(member + 1U), 1}, center, type.radius, type.formation_spacing, type.formation_order});
-            }
-            const auto slots = eaw::formation_slots(members, center, 0.0F);
-            for (std::size_t member = 0; member < company.members.size(); ++member)
-            {
-                const auto& type = spawnable[company.members[member]];
-                auto spot = slots[member].position;
-                if (terrain_heights.valid())
-                {
-                    spot.z = terrain_heights.surface_height(spot.x, spot.y) + (type.follows_ground ? 0.0F : type.hover_offset);
-                }
-                if (const auto spawned = presentation->spawn(*world, type, spot, 0.0F, spawn_owner, type.follows_ground && terrain_heights.valid()); !spawned)
-                {
-                    eaw::log_warning("simulation", spawned.error());
-                }
-            }
-        }
-        std::cout << "Spawned " << centers.size() << " " << company.type_name << " (" << company.members.size() << " units each) for owner " << spawn_owner << '\n';
+        std::cout << "Spawning " << count << " " << type.type_name << (type.members.empty() ? std::string{} : " (" + std::to_string(type.members.size()) + " units each)") << " for owner "
+                  << spawn_owner << " at " << eaw::format_fixed(point.x, 0) << ", " << eaw::format_fixed(point.y, 0) << ", " << eaw::format_fixed(point.z, 0) << '\n';
     }
 
     void order_attack(const eaw::EntityId victim)
@@ -477,16 +449,20 @@ struct SandboxSession
             return;
         }
         std::ranges::sort(attackers, {}, eaw::entity_key);
-        world->submit({.kind = eaw::SimCommandKind::attack, .entities = std::move(attackers), .target_entity = victim});
+        if (const auto submitted = battle->submit({.order = eaw::BattleOrder::attack, .entities = std::move(attackers), .target = victim}); !submitted)
+        {
+            eaw::log_warning("simulation", submitted.error());
+            return;
+        }
         ++orders_issued;
-        std::cout << "Attack " << presentation->type_name(victim) << " (owner " << found->owner << ")\n";
+        std::cout << "Attack " << world->type_name(victim) << " (owner " << found->owner << ")\n";
     }
 
     void update_debug_lines()
     {
         eaw::SandboxDebugView view;
         view.presentation = presentation ? &*presentation : nullptr;
-        view.world = world ? &*world : nullptr;
+        view.world = world;
         view.instances = frame_instances;
         view.entities = frame_entities;
         view.selection = &selection;
@@ -539,7 +515,7 @@ struct SandboxSession
             selected_text = std::to_string(selection.size()) + " objects";
         }
         view.selected_text = selected_text;
-        view.world = world ? &*world : nullptr;
+        view.world = world;
         view.selection = &selection;
         view.dropped_ticks = simulation_clock.dropped_ticks();
         view.last_tick_ms = last_tick_ms;
@@ -722,7 +698,7 @@ struct SandboxSession
             if (entity.valid())
             {
                 selection.insert(eaw::entity_key(entity));
-                std::cout << "Selected " << (presentation ? presentation->type_name(entity) : std::string{}) << '\n';
+                std::cout << "Selected " << (world != nullptr ? world->type_name(entity) : std::string_view{}) << '\n';
             }
             else
             {
@@ -914,6 +890,7 @@ struct SandboxSession
         if (!initial_spawns_sent && world && tactical_camera && content_shown_at && !spawnable.empty())
         {
             initial_spawns_sent = true;
+            initial_spawn_tick = world->stats().tick;
             // Each requested count spawns at the surface under the screen center.
             const auto stats = renderer.stats();
             const auto center = tactical_camera ? ground_target(static_cast<float>(stats.width) * 0.5F, static_cast<float>(stats.height) * 0.5F) : std::nullopt;
@@ -940,7 +917,7 @@ struct SandboxSession
             spawn_owner = default_owner;
         }
         // Waits for the initial spawns so they are part of the order.
-        if (options.auto_move && content_shown_at && world && !automated_move_sent && (spawnable.empty() || (initial_spawns_sent && world->snapshot().entities.size() == world->stats().entities)))
+        if (options.auto_move && content_shown_at && world && !automated_move_sent && (spawnable.empty() || (initial_spawns_sent && world->stats().tick > initial_spawn_tick)))
         {
             automated_move_sent = true;
             selection.clear();
@@ -1090,6 +1067,21 @@ struct SandboxSession
                       << simulation.blocked_moves << '\n';
             std::cout << "Combat: " << simulation.shots_fired << " shots, " << simulation.hits << " hits, " << simulation.kills << " kills, " << simulation.hardpoints_destroyed
                       << " hardpoints destroyed, " << simulation.projectiles << " in flight\n";
+        }
+        if (options.record && battle)
+        {
+            // The current battle's orders (a hot reload or scene replacement starts a new battle).
+            auto log = battle->log();
+            log.end_tick = world->stats().tick;
+            log.end_hash = world->state_hash();
+            if (const auto saved = eaw::save_battle_log(*options.record, log); !saved)
+            {
+                eaw::log_warning("battle", saved.error());
+            }
+            else
+            {
+                std::cout << "Recorded " << log.entries.size() << " orders to " << options.record->string() << " (replay with: EAWEngine battle --replay <file>)\n";
+            }
         }
         std::cout << "Resources after idle: " << stats.live_textures << " textures, " << stats.free_texture_slots << " free and " << stats.pending_texture_slots << " pending texture slots, "
                   << stats.pending_retirements << " pending retirements, " << stats.pending_texture_uploads << " textures still streaming\n";
