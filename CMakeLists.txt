@@ -189,6 +189,12 @@ if(WIN32)
 
     add_library(eaw_render_d3d12 STATIC
         src/render/d3d12_renderer.cpp
+        src/render/d3d12_renderer_device.cpp
+        src/render/d3d12_renderer_frame.cpp
+        src/render/d3d12_renderer_overlay.cpp
+        src/render/d3d12_renderer_pipelines.cpp
+        src/render/d3d12_renderer_resources.cpp
+        src/render/d3d12_support.cpp
     )
     target_include_directories(eaw_render_d3d12 PUBLIC src/render/include)
     target_compile_features(eaw_render_d3d12 PUBLIC cxx_std_20)
