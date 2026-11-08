@@ -529,20 +529,9 @@ struct SandboxSession
         overlay_frames = 0;
         overlay_refreshed = now;
     }
-
-    // One iteration of the window loop; false once the window is closing.
-    bool frame()
+    // Camera: keyboard panning on maps, mouse orbit/rotation/pan where the camera is free, the wheel.
+    void update_camera(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode)
     {
-        window.poll_events();
-        if (window.input().keys[static_cast<std::size_t>(eaw::Key::escape)].pressed)
-        {
-            window.request_close();
-        }
-        const auto& input = window.input();
-        // The overlay gets the mouse first; while it wants it, the scene ignores the mouse.
-        renderer.set_overlay_input({static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y), input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down,
-                                    input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down, input.wheel_delta});
-        const bool scene_mouse = !renderer.overlay_wants_mouse();
         const auto key_down = [&](const eaw::Key key)
         {
             return input.keys[static_cast<std::size_t>(key)].down;
@@ -553,7 +542,6 @@ struct SandboxSession
         eaw::CameraInput camera_input;
         camera_input.reset = input.keys[static_cast<std::size_t>(eaw::Key::space)].pressed;
         camera_input.zoom_steps = scene_mouse ? input.wheel_delta : 0.0F;
-        const bool rts_mode = tactical_camera && !free_camera;
         if (scene_mouse && !rts_mode && input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
         {
             // Rotation follows the device (raw, unaccelerated counts); dragging that should track
@@ -580,15 +568,15 @@ struct SandboxSession
             orbit_camera->apply(camera_input);
             renderer.set_camera(orbit_camera->camera());
         }
-        if (window.input().keys[static_cast<std::size_t>(eaw::Key::p)].pressed && visual_animation)
-        {
-            animation_playing = !animation_playing;
-        }
+    }
+
+    // Left button selection (click picks, RTS drag box-selects) and right-click orders.
+    void handle_pointer(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode, const std::array<float, 2>& mouse)
+    {
         // A left click that does not drag selects what is under the cursor; dragging orbits or
         // rotates as before.
         const auto& left_button = input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)];
         const auto& right_button = input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)];
-        const std::array<float, 2> mouse{static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y)};
         if (left_button.pressed)
         {
             // A press over the overlay never becomes a scene click.
@@ -647,6 +635,11 @@ struct SandboxSession
                 attack_picks.insert(request);
             }
         }
+    }
+
+    // Spawn keys (O owner, Tab type, N spawn at the cursor) and C (RTS or free camera).
+    void handle_command_keys(const eaw::InputState& input, const bool scene_mouse, const std::array<float, 2>& mouse)
+    {
         if (input.keys[static_cast<std::size_t>(eaw::Key::o)].pressed && !spawnable.empty())
         {
             do
@@ -672,6 +665,11 @@ struct SandboxSession
             free_camera = !free_camera;
             std::cout << (free_camera ? "Free debug camera (drag rotates, right-drag pans)\n" : "RTS camera (drag selects, right-click moves)\n");
         }
+    }
+
+    // Completed GPU picks: selections, or attack targets for right-clicks.
+    void process_picks()
+    {
         while (const auto pick = renderer.take_pick())
         {
             // Pick ids are positions in the instance list of the frame that drew the pick.
@@ -702,6 +700,15 @@ struct SandboxSession
             {
                 std::cout << "Selected: " << (pick->terrain ? "terrain" : "nothing") << '\n';
             }
+        }
+    }
+
+    // P pauses the animation, B and G toggle bounds and passability, Left/Right step animations (models).
+    void handle_view_keys(const eaw::InputState& input)
+    {
+        if (window.input().keys[static_cast<std::size_t>(eaw::Key::p)].pressed && visual_animation)
+        {
+            animation_playing = !animation_playing;
         }
         if (input.keys[static_cast<std::size_t>(eaw::Key::b)].pressed)
         {
@@ -746,18 +753,11 @@ struct SandboxSession
                 }
             }
         }
-        if (window.close_requested())
-        {
-            return false;
-        }
-        if (window.minimized())
-        {
-            animation_tick = std::chrono::steady_clock::now();
-            std::this_thread::sleep_for(std::chrono::milliseconds(16));
-            return true;
-        }
+    }
 
-        renderer.resize(window.client_width(), window.client_height());
+    // Shows a finished background build.
+    void poll_content()
+    {
         if (pending_content.valid() && pending_content.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
         {
             // A failed build or a scene the renderer rejects keeps the current view.
@@ -771,6 +771,11 @@ struct SandboxSession
             animation_tick = std::chrono::steady_clock::now();
             next_reload_check = animation_tick + std::chrono::seconds(1);
         }
+    }
+
+    // Hot reload checks and rebuilds.
+    void poll_hot_reload()
+    {
         // Hot reload: once a second (and never during a build) a worker compares the scene's
         // dependencies and the MEG archives with their recorded state. Rebuilt archives are
         // remounted here, while no other thread reads the file system, then the scene rebuilds
@@ -829,7 +834,11 @@ struct SandboxSession
                                            });
             }
         }
-        const auto now = std::chrono::steady_clock::now();
+    }
+
+    // Model animation and scene time.
+    void advance_animation(const std::chrono::steady_clock::time_point now)
+    {
         const auto animation_delta = std::chrono::duration<float>(now - animation_tick).count();
         animation_tick = now;
         if (animation_playing)
@@ -842,6 +851,11 @@ struct SandboxSession
             renderer.set_bone_transforms(skin_palette);
         }
         renderer.set_scene_time(std::chrono::duration<float>(now - scene_start).count());
+    }
+
+    // Fixed simulation ticks, then this frame's interpolated instances and debug lines.
+    void step_simulation(const std::chrono::steady_clock::time_point now)
+    {
         if (world && presentation)
         {
             const auto ticks = simulation_clock.advance(std::chrono::duration<double>(now - simulation_tick).count());
@@ -864,6 +878,11 @@ struct SandboxSession
             renderer.set_instances(frame_instances);
             update_debug_lines();
         }
+    }
+
+    // Command-line automation: initial spawns, --auto-move, and --pick, once the content is shown.
+    void run_automation()
+    {
         if (!initial_spawns_sent && world && tactical_camera && content_shown_at && !spawnable.empty())
         {
             initial_spawns_sent = true;
@@ -913,6 +932,11 @@ struct SandboxSession
             unbound_picks.push_back(renderer.request_pick((*options.pick)[0], (*options.pick)[1]));
             automated_pick_sent = true;
         }
+    }
+
+    // F1 and the statistics panel refresh.
+    void update_panel(const eaw::InputState& input, const std::chrono::steady_clock::time_point now)
+    {
         if (input.keys[static_cast<std::size_t>(eaw::Key::f1)].pressed)
         {
             overlay_visible = !overlay_visible;
@@ -927,6 +951,11 @@ struct SandboxSession
         {
             update_overlay(now);
         }
+    }
+
+    // Renders, runs the --reload-every test, reports streaming, and applies --frame-limit.
+    void present()
+    {
         const bool rendered = renderer.render();
         if (rendered && reload_scene && renderer.stats().frame_number % *options.reload_every == 0)
         {
@@ -961,6 +990,49 @@ struct SandboxSession
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(8));
         }
+    }
+
+    // One iteration of the window loop; false once the window is closing. The steps run in this
+    // order every frame.
+    bool frame()
+    {
+        window.poll_events();
+        if (window.input().keys[static_cast<std::size_t>(eaw::Key::escape)].pressed)
+        {
+            window.request_close();
+        }
+        const auto& input = window.input();
+        // The overlay gets the mouse first; while it wants it, the scene ignores the mouse.
+        renderer.set_overlay_input({static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y), input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down,
+                                    input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down, input.wheel_delta});
+        const bool scene_mouse = !renderer.overlay_wants_mouse();
+        const bool rts_mode = tactical_camera && !free_camera;
+        const std::array<float, 2> mouse{static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y)};
+        update_camera(input, scene_mouse, rts_mode);
+        handle_pointer(input, scene_mouse, rts_mode, mouse);
+        handle_command_keys(input, scene_mouse, mouse);
+        process_picks();
+        handle_view_keys(input);
+        if (window.close_requested())
+        {
+            return false;
+        }
+        if (window.minimized())
+        {
+            animation_tick = std::chrono::steady_clock::now();
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            return true;
+        }
+
+        renderer.resize(window.client_width(), window.client_height());
+        poll_content();
+        poll_hot_reload();
+        const auto now = std::chrono::steady_clock::now();
+        advance_animation(now);
+        step_simulation(now);
+        run_automation();
+        update_panel(input, now);
+        present();
         return true;
     }
 
