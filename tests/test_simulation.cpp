@@ -905,6 +905,89 @@ void test_fighter_flight()
     }
 }
 
+// Stances belong to the behavior layer: they decide whether a unit picks targets and moves for
+// them, while orders always apply.
+void test_stances()
+{
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    eaw::CombatProfile armed;
+    armed.health = 1.0e6F;
+    armed.weapons = {eaw::WeaponProfile{.range = 450.0F, .recharge_seconds = 1.0F, .damage = 1.0F}};
+    const auto run = [](eaw::SimulationWorld& world, const int ticks)
+    {
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            world.step();
+        }
+    };
+
+    // hold_fire never engages on its own; an attack order makes it fire anyway, and set_stance
+    // switches a unit back and forth.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        const auto quiet = world.spawn({.type_name = "Quiet", .owner = 1, .combat = armed, .stance = eaw::Stance::hold_fire});
+        eaw::CombatProfile target = armed;
+        target.weapons.clear();
+        const auto victim = world.spawn({.type_name = "Target", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .combat = target});
+        require(quiet.ok() && victim.ok(), "test spawns must succeed");
+        run(world, 30);
+        require(world.stats().shots_fired == 0 && !world.snapshot().entities[0].target.valid(), "a hold_fire unit must not pick targets or fire on its own");
+        world.submit({.kind = eaw::SimCommandKind::attack, .entities = {*quiet}, .target_entity = *victim});
+        run(world, 30);
+        const auto ordered_shots = world.stats().shots_fired;
+        require(ordered_shots > 0, "an attack order must engage even under hold_fire");
+        world.submit({.kind = eaw::SimCommandKind::stop, .entities = {*quiet}});
+        run(world, 30);
+        require(world.stats().shots_fired == ordered_shots, "after the order ends, hold_fire must hold fire again");
+        world.submit({.kind = eaw::SimCommandKind::set_stance, .entities = {*quiet}, .stance = eaw::Stance::aggressive});
+        run(world, 30);
+        require(world.stats().shots_fired > ordered_shots, "an aggressive unit must engage on its own");
+        world.submit({.kind = eaw::SimCommandKind::set_stance, .entities = {*quiet}, .stance = eaw::Stance::hold_fire});
+        run(world, 2);
+        const auto settled = world.stats().shots_fired;
+        run(world, 30);
+        require(world.stats().shots_fired == settled && !world.snapshot().entities[0].target.valid(), "switching to hold_fire must drop automatic targets");
+        world.submit({.kind = eaw::SimCommandKind::set_stance, .entities = {*quiet}, .stance = static_cast<eaw::Stance>(7)});
+        run(world, 1);
+        require(world.stats().stale_references == 1, "an unknown stance must be rejected");
+        require(!world.spawn({.type_name = "Bad", .stance = static_cast<eaw::Stance>(7)}).ok(), "a spawn with an unknown stance must be rejected");
+    }
+
+    // A fighter holding position keeps circling where it is and fires at what comes in range; an
+    // aggressive one leaves to fly attack runs at it.
+    for (const auto stance : {eaw::Stance::hold_position, eaw::Stance::aggressive})
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        const auto fighter =
+            world.spawn({.type_name = "Fighter", .owner = 1, .max_speed = 120.0F, .combat = armed, .turn_rate = std::numbers::pi_v<float> / 2.0F, .min_speed = 75.0F, .stance = stance});
+        eaw::CombatProfile station = armed;
+        station.weapons.clear();
+        const auto target = world.spawn({.type_name = "Station", .owner = 2, .position = {400.0F, 0.0F, 0.0F}, .combat = station});
+        require(fighter.ok() && target.ok(), "test spawns must succeed");
+        float closest = 1.0e9F;
+        float farthest_from_start = 0.0F;
+        for (int tick = 0; tick < 200; ++tick)
+        {
+            world.step();
+            const auto& entities = world.snapshot().entities;
+            closest = std::min(closest, std::hypot(entities[0].position.x - entities[1].position.x, entities[0].position.y - entities[1].position.y));
+            farthest_from_start = std::max(farthest_from_start, std::hypot(entities[0].position.x, entities[0].position.y));
+        }
+        require(world.stats().shots_fired > 0, "a fighter must fire at a hostile in range in either stance");
+        if (stance == eaw::Stance::hold_position)
+        {
+            require(farthest_from_start < 150.0F, "a fighter holding position must keep circling where it is");
+        }
+        else
+        {
+            require(closest < 150.0F, "an aggressive fighter must fly attack runs at its target");
+        }
+    }
+}
+
 const ModuleRegistrar registrar("simulation", {
                                                   {"test_simulation_core", &test_simulation_core},
                                                   {"test_ground_movement", &test_ground_movement},
@@ -918,6 +1001,7 @@ const ModuleRegistrar registrar("simulation", {
                                                   {"test_path_budget_and_shared_routes", &test_path_budget_and_shared_routes},
                                                   {"test_hardpoints_and_fire_cones", &test_hardpoints_and_fire_cones},
                                                   {"test_fighter_flight", &test_fighter_flight},
+                                                  {"test_stances", &test_stances},
                                               });
 
 } // namespace

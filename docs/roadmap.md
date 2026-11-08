@@ -207,7 +207,12 @@ Gaps toward the deliverable, in planned order:
    targeting, and hardpoints as targetable, destroyable parts (shield
    generators, engines, weapons). Fighter movement is done: fighters
    (`FIGHTER_LOCOMOTOR`) never stop below their `Min_Speed`, circle when idle,
-   and make attack runs that pass the target and turn back.
+   and make attack runs that pass the target and turn back. The simulation
+   then separated its tick into layers (commands, behavior, navigation,
+   locomotion, combat; [architecture](architecture.md#simulation-tick-layers)),
+   so decisions such as chasing, attack runs, and engaging on one's own live in
+   the behavior layer, with an engine-native `Stance` (aggressive, hold
+   position, hold fire) that AI and Lua can later drive through commands.
    Covers:
    - weapons on `HardPoints` (94 stock uses);
    - space movement (turning, speed, and the space layer);

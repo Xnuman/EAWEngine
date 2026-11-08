@@ -228,6 +228,10 @@ add_library(eaw_simulation STATIC
     src/simulation/ground_map.cpp
     src/simulation/pathfinding.cpp
     src/simulation/simulation.cpp
+    src/simulation/simulation_behavior.cpp
+    src/simulation/simulation_combat.cpp
+    src/simulation/simulation_locomotion.cpp
+    src/simulation/simulation_navigation.cpp
     src/simulation/spatial_grid.cpp
 )
 target_include_directories(eaw_simulation PUBLIC src/simulation/include)

@@ -42,6 +42,36 @@ layered VFS -> format decoders -> immutable asset database
 9. **Tools**: launcher, asset inspector, map/model viewers, converter, profiler,
    compatibility test runner, and mod SDK.
 
+## Simulation tick layers
+
+Each tick runs fixed layers in order. A layer reads what earlier layers
+decided and never does a later layer's job; this keeps AI, scripts, and new
+mechanics replaceable without touching movement or combat rules.
+
+1. **Commands** (`simulation_behavior.cpp`, `apply`): orders from players,
+   tools, and later AI and Lua (move, formation move, attack, stop, set
+   stance), applied in submission order.
+2. **Behavior** (`simulation_behavior.cpp`, `run_behavior`): what each unit
+   wants from its order, its `Stance`, and its target: a chase move request
+   for an ordered attack, or, for flyers, a steering intent (attack runs,
+   flying to a destination, circling). Stances decide whether a unit picks
+   targets and moves for them; orders always apply.
+3. **Navigation** (`simulation_navigation.cpp`): route requests under the
+   per-tick search budget, shared formation routes, and group cohesion.
+4. **Locomotion** (`simulation_locomotion.cpp`): physical movement only
+   (speed limits, turn rates, ground following and passability, flight at a
+   minimum speed), then separation.
+5. **Combat** (`simulation_combat.cpp`): shields, target selection (subject to
+   the stance), weapons, projectiles, damage, and removal of the dead. Combat
+   never moves a unit.
+
+`simulation.cpp` holds the world core: storage, spawning, the tick, the state
+hash, footprints, and snapshots. Behavior reads last tick's targets, so a
+target picked in combat steers a unit from the next tick on. Every unit decides
+from the state at the start of the tick, so decisions do not depend on storage
+order (fighters used to decide inside the movement loop, after units stored
+before them had already moved).
+
 ## Rendering direction
 
 The first render target is legacy mode: newly written shaders driven by the

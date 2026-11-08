@@ -42,6 +42,18 @@ struct GroundFootprint
     std::uint32_t passability{passability::obstacle};
 };
 
+// How a unit acts on its own, between and during orders (the behavior layer; orders always apply).
+// Engine-native: the original's stances are not mapped yet.
+enum class Stance : std::uint8_t
+{
+    // Targets the nearest hostile in range on its own; fighters fly attack runs at it.
+    aggressive,
+    // Fires at hostiles in range but never moves for them: fighters keep circling or flying their order.
+    hold_position,
+    // Never picks targets or fires on its own; only an attack order makes it engage.
+    hold_fire,
+};
+
 // Everything needed to create an entity. `type_name` is the XML object type (informational for
 // now); `visual` is an opaque presentation key chosen by the caller (for example a mesh index).
 struct EntitySpawn
@@ -75,6 +87,7 @@ struct EntitySpawn
     // this speed, steering toward its target (or its destination, which it circles on arrival) at
     // its turn rate, so attack runs overshoot and come back.
     float min_speed{};
+    Stance stance{Stance::aggressive};
 };
 
 enum class SimCommandKind : std::uint8_t
@@ -90,6 +103,8 @@ enum class SimCommandKind : std::uint8_t
     // (formation.hpp), all at the slowest member's speed, members ahead of the group waiting for
     // the rest. Clears attack orders like move.
     formation_move,
+    // Sets the entities' `stance`; hold_fire also drops targets they picked on their own.
+    set_stance,
 };
 
 struct SimCommand
@@ -100,6 +115,8 @@ struct SimCommand
     SimVector3 target;
     // Victim of attack commands.
     EntityId target_entity;
+    // Stance of set_stance commands.
+    Stance stance{Stance::aggressive};
 };
 
 // Snapshot of one entity after a tick.
@@ -212,8 +229,8 @@ public:
     void set_ground(GroundMap ground);
     [[nodiscard]] const GroundMap& ground() const noexcept;
     // Damage multipliers by damage and armor type, and which owners fight each other. Armed
-    // entities target the nearest damageable hostile within range on their own; an attack command
-    // names the target instead.
+    // entities target the nearest damageable hostile within range on their own (unless their stance
+    // is hold_fire); an attack command names the target instead.
     void set_damage_table(DamageTable table);
     void set_hostility(const Hostility& hostility) noexcept;
     [[nodiscard]] const Hostility& hostility() const noexcept;
@@ -275,8 +292,25 @@ private:
         float max_flight{};
     };
 
+    // What the behavior layer asks a locomotor for this tick. Ground and straight-line movers follow
+    // their move target and route (navigation); flyers steer at `point`, or hold their heading.
+    struct SteeringIntent
+    {
+        std::optional<SimVector3> point;
+        bool hold_heading{};
+    };
+
     [[nodiscard]] std::optional<std::size_t> dense_index(EntityId id) const noexcept;
+    // Behavior layer (simulation_behavior.cpp): orders from commands, then each tick what every
+    // unit wants from its order, stance, and target, as a move request or a steering intent.
     void apply(const SimCommand& command);
+    void run_behavior();
+    // An attack order's victim when it is still a valid one.
+    [[nodiscard]] std::optional<std::size_t> attack_victim(std::size_t index) const noexcept;
+    // Ground and straight-line movers: chase an ordered target until in range, then hold.
+    void pursue_ordered_target(std::size_t index);
+    // Flyers: steer at the target (attack runs), the destination, or the point they circle.
+    void plan_flight(std::size_t index, float dt);
     void destroy(std::size_t dense);
     void run_movement();
     // Requests a route to `target` (queued for the search budget when it needs a search).
@@ -299,7 +333,9 @@ private:
     void update_group_cohesion();
     // Speed this tick: the entity's own, or its group's when that is slower.
     [[nodiscard]] float travel_speed(std::size_t index) const noexcept;
+    // Locomotors (simulation_locomotion.cpp): physical movement only.
     void move_over_ground(std::size_t index, float dt);
+    // Never below the minimum speed; steers at the intent's point at the turn rate.
     void fly(std::size_t index, float dt);
     // Turns toward `desired` (radians) at the entity's turn rate and returns how much of its speed it
     // may use: 1 when facing the way, falling to 0 at 90 degrees or more off.
@@ -358,6 +394,9 @@ private:
     std::vector<float> min_speeds_;
     // Where an idle flyer circles (set when it arrives or first idles).
     std::vector<std::optional<SimVector3>> loiter_points_;
+    std::vector<Stance> stances_;
+    // Rebuilt by the behavior layer every tick before movement.
+    std::vector<SteeringIntent> intents_;
     std::vector<std::uint32_t> formation_orders_;
     std::vector<float> formation_spacings_;
     // Group speed of a formation move until the entity arrives; zero when none.
