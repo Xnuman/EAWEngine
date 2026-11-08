@@ -476,8 +476,28 @@ and `Fire_When_Deployed`/`Fire_When_Undeployed` (deploying units),
 `TURRET` as "aims with its body": such ground units face their target before
 firing (within 20 degrees) and hold fire while moving; turreted units fire on
 the move. This is an inference from the behavior lists and the observation; the
-original's exact rules (turn speed while aiming, crouching, the stationary
+the original's exact rules (turn speed while aiming, crouching, the stationary
 flag's effect on movement) are not established.
+
+Crouching (the SPREAD_OUT ability; deferred to the abilities work in M4).
+Infantry and their squads and teams (Rebel_Trooper, Stormtrooper, Plex_Soldier,
+pirates, field commanders, Rebel_Infantry_Squad, Imperial_Stormtrooper_Squad,
+...) carry a `Unit_Abilities_Data` entry of `Type` SPREAD_OUT (its sound events
+call it "Take Cover"). Rebel_Trooper's has `Mod_Multiplier` entries
+`SPEED_MULTIPLIER, 0.5f` and `TAKE_DAMAGE_MULTIPLIER, 0.5f`; GameConstants.xml
+sets `Spread_Out_Spacing_Coefficient` 1.8 and the posture blend times
+`CrouchIdleWalkBlendTime` 0.5, `CrouchMoveBlendTime` 0.75, and
+`TeamCrouchMoveBlendTime` 0.5; infantry types set `Crouch_Animation_Speed`
+(0.537 for Rebel troopers and stormtroopers, 17 uses). Clips: CROUCHIDLE (23
+files), CROUCHMOVE, CROUCHTURNL, and CROUCHTURNR (13 each), and no crouched
+attack clips. Observed in play (owner, Forces of Corruption): the ability
+toggles a whole squad; it changes idle and walking animations but not combat
+animations. Planned reading: a toggle that halves speed and damage taken,
+spreads the formation by 1.8, swaps IDLE and MOVE for CROUCHIDLE and CROUCHMOVE
+(played at `Crouch_Animation_Speed`) with the XML blend times, and keeps the
+attack clips. Unknown: how the multipliers combine with others, how the
+spacing coefficient applies, and when CROUCHTURN plays (probably turning in
+place).
 
 Fighter flight.
 

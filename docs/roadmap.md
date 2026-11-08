@@ -272,6 +272,10 @@ Known provisional choices to verify against the original:
 
 - Navigation/pathfinding for both modes, build pads, reinforcements, abilities,
   transports, shields, capture, retreat, tactical AI, UI and audio.
+- Abilities start from the XML `Unit_Abilities_Data` entries and their
+  `Mod_Multiplier` effects; the infantry crouch (SPREAD_OUT: half speed, half
+  damage taken, wider spacing, crouched idle and walking clips) is researched
+  in the compatibility notes and a natural first one.
 - Deliverable: complete skirmish matches with replay determinism.
 
 ## M5 — galactic and campaign
