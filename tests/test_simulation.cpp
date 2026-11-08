@@ -759,6 +759,76 @@ void test_path_budget_and_shared_routes()
     (void)group_hash;
 }
 
+void test_hardpoints_and_fire_cones()
+{
+    using Kind = eaw::HardpointProfile::Kind;
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    // A ship with a forward gun (a 90-degree arc on a weapon hardpoint), a shield generator, and an
+    // engine, all destroyable.
+    eaw::CombatProfile ship;
+    ship.health = 1000.0F;
+    ship.shield = 50.0F;
+    ship.shield_regen_per_second = 10.0F;
+    ship.hardpoints = {{Kind::weapon, 40.0F, true, {20.0F, 0.0F, 0.0F}}, {Kind::shield_generator, 30.0F, true, {0.0F, 10.0F, 0.0F}}, {Kind::engine, 30.0F, true, {-20.0F, 0.0F, 0.0F}}};
+    ship.weapons = {eaw::WeaponProfile{
+        .range = 500.0F, .recharge_seconds = 0.5F, .damage = 5.0F, .mount = {20.0F, 0.0F, 0.0F}, .cone_direction = 0.0F, .cone_half_angle = std::numbers::pi_v<float> / 4.0F, .hardpoint = 0}};
+    const auto make_world = [&]
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        return world;
+    };
+
+    // The gun only fires at targets inside its arc: a target behind the ship is safe, one ahead is not.
+    {
+        auto world = make_world();
+        eaw::CombatProfile target;
+        target.health = 100.0F;
+        (void)world.spawn({.type_name = "Ship", .owner = 1, .combat = ship});
+        const auto behind = world.spawn({.type_name = "Behind", .owner = 2, .position = {-200.0F, 0.0F, 0.0F}, .combat = target});
+        require(behind.ok(), "test spawn must succeed");
+        for (int tick = 0; tick < 20; ++tick)
+        {
+            world.step();
+        }
+        require(world.stats().shots_fired == 0, "a weapon must not fire outside its arc");
+        (void)world.spawn({.type_name = "Ahead", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .combat = target});
+        for (int tick = 0; tick < 20; ++tick)
+        {
+            world.step();
+        }
+        require(world.stats().shots_fired > 0 && world.snapshot().entities[1].health == 100.0F, "a weapon must fire at a target inside its arc and only there");
+    }
+
+    // Shots aim at the nearest live hardpoint and damage it and the hull; destroyed parts take
+    // their effects.
+    {
+        auto world = make_world();
+        auto victim_profile = ship;
+        victim_profile.weapons.clear();
+        eaw::CombatProfile gun;
+        gun.health = 100.0F;
+        gun.weapons = {eaw::WeaponProfile{.range = 500.0F, .recharge_seconds = 0.1F, .damage = 10.0F, .damages_shield = false}};
+        // The victim's engine (20 behind its center) faces the attacker, which stands behind it.
+        const auto victim = world.spawn({.type_name = "Victim", .owner = 2, .position = {0.0F, 0.0F, 0.0F}, .max_speed = 40.0F, .combat = victim_profile});
+        (void)world.spawn({.type_name = "Gun", .owner = 1, .position = {-200.0F, 0.0F, 0.0F}, .combat = gun});
+        require(victim.ok(), "test spawn must succeed");
+        // Four shots of 10: three destroy the 30-point engine, the fourth moves on to the next part.
+        for (int tick = 0; tick < 4; ++tick)
+        {
+            world.step();
+        }
+        const auto& damaged = world.snapshot().entities[0];
+        require(damaged.health < 1000.0F && damaged.hardpoints == 3 && damaged.hardpoints_destroyed == 1 && world.stats().hardpoints_destroyed == 1, "the nearest hardpoint must be hit and destroyed");
+        // Without its engine the ship moves at a quarter of its speed.
+        world.submit({eaw::SimCommandKind::move, {*victim}, {0.0F, 400.0F, 0.0F}});
+        const auto before = world.snapshot().entities[0].position.y;
+        world.step();
+        require(std::fabs(world.snapshot().entities[0].position.y - before - 1.0F) < 1.0e-3F, "a ship without engines must move at a quarter speed");
+    }
+}
+
 const ModuleRegistrar registrar("simulation", {
                                                   {"test_simulation_core", &test_simulation_core},
                                                   {"test_ground_movement", &test_ground_movement},
@@ -770,6 +840,7 @@ const ModuleRegistrar registrar("simulation", {
                                                   {"test_group_cohesion", &test_group_cohesion},
                                                   {"test_ground_footprints", &test_ground_footprints},
                                                   {"test_path_budget_and_shared_routes", &test_path_budget_and_shared_routes},
+                                                  {"test_hardpoints_and_fire_cones", &test_hardpoints_and_fire_cones},
                                               });
 
 } // namespace

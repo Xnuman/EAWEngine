@@ -203,7 +203,9 @@ Gaps toward the deliverable, in planned order:
      and 1 are skipped today, so maps start without their infantry.
 2. **Space combat.** Step 1 is done: weapon hardpoints fire, entities carry
    several weapons, ships separate, and squadrons expand fully and spawn.
-   Fire cones, destroyable hardpoint subsystems, and fighter movement follow.
+   Step 2 is done: fire cones from the hardpoint fire bones, per-weapon
+   targeting, and hardpoints as targetable, destroyable parts (shield
+   generators, engines, weapons). Fighter movement follows.
    Covers:
    - weapons on `HardPoints` (94 stock uses);
    - space movement (turning, speed, and the space layer);

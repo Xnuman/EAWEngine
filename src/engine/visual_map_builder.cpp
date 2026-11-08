@@ -103,12 +103,12 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     asset.damage_table = combat_entry->damage_table;
     // One profile per type, so a type's warnings are reported once however often it is placed.
     std::unordered_map<const XmlDefinition*, CombatProfile> combat_profiles;
-    const auto profile_of = [&](const XmlDefinition& definition) -> const CombatProfile&
+    const auto profile_of = [&](const XmlDefinition& definition, const AloModel* model) -> const CombatProfile&
     {
         auto found = combat_profiles.find(&definition);
         if (found == combat_profiles.end())
         {
-            found = combat_profiles.emplace(&definition, combat_profile(catalog, definition, *combat_entry, asset.scene.warnings)).first;
+            found = combat_profiles.emplace(&definition, combat_profile(catalog, definition, *combat_entry, asset.scene.warnings, model)).first;
         }
         return found->second;
     };
@@ -197,7 +197,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             if (placement.type != nullptr)
             {
                 spawn.max_speed = type_max_speed(catalog, *placement.type, scene.warnings);
-                spawn.combat = profile_of(*placement.type);
+                const auto decoded = cached_model(builder, placement.model_path);
+                spawn.combat = profile_of(*placement.type, decoded && decoded->ok() ? &decoded->value() : nullptr);
                 // Only mobile units take space for now; structures and props keep overlapping
                 // until their collision footprints are read.
                 if (spawn.max_speed <= 0.0F && asset.land)
@@ -389,7 +390,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         spawnable.team_color = catalog.affiliation_color(*definition).value_or(player_team_color(1));
         spawnable.follows_ground = asset.land && type_follows_ground(catalog, *definition);
         spawnable.passable_types = spawnable.follows_ground ? type_passable_types(catalog, *definition, movement_classes) : 0U;
-        spawnable.combat = profile_of(*definition);
+        const auto decoded = cached_model(builder, *path);
+        spawnable.combat = profile_of(*definition, decoded && decoded->ok() ? &decoded->value() : nullptr);
         spawnable.hover_offset = type_float_field(catalog, *definition, "Hover_Offset");
         if (spawnable.max_speed > 0.0F)
         {

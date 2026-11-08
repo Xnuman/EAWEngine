@@ -12,6 +12,35 @@
 
 namespace eaw {
 
+// Positions on an entity are given in its own frame: x forward (along its heading), y to its
+// left, z up, in world units.
+struct LocalPoint
+{
+    float forward{};
+    float left{};
+    float up{};
+
+    friend bool operator==(const LocalPoint&, const LocalPoint&) = default;
+};
+
+// A part of an entity that can be targeted and destroyed on its own (ship hardpoints).
+struct HardpointProfile
+{
+    enum class Kind : std::uint8_t
+    {
+        weapon,
+        shield_generator,
+        engine,
+        other,
+    };
+    Kind kind{Kind::other};
+    // Hit points; zero means it cannot be destroyed.
+    float health{};
+    // Shots may aim at it.
+    bool targetable{true};
+    LocalPoint offset;
+};
+
 // One projectile weapon: fires bursts of `pulse_count` shots `pulse_delay_seconds` apart, one
 // burst every `recharge_seconds` (measured from the start of the previous burst), at targets
 // within `range`.
@@ -30,6 +59,15 @@ struct WeaponProfile
     float max_flight_distance{};
     bool damages_shield{true};
     bool damages_health{true};
+    // Where shots leave the entity, and the horizontal arc the weapon covers: centered
+    // `cone_direction` radians from the entity's heading (counter-clockwise), `cone_half_angle` to
+    // either side (pi or more covers all around).
+    LocalPoint mount;
+    float cone_direction{};
+    float cone_half_angle{3.14159265F};
+    // The hardpoint the weapon is mounted on (its index in CombatProfile::hardpoints), or -1. The
+    // weapon is silent once that hardpoint is destroyed.
+    std::int32_t hardpoint{-1};
 };
 
 struct CombatProfile
@@ -45,6 +83,9 @@ struct CombatProfile
     // Every weapon (a land unit's projectile weapon, a ship's weapon hardpoints). Each fires at the
     // entity's target when it is within that weapon's range, with its own recharge and bursts.
     std::vector<WeaponProfile> weapons;
+    // Targetable parts (ship hardpoints). Shots aim at the nearest live targetable one; losing every
+    // shield generator stops shield recharge and losing every engine slows the entity to a quarter.
+    std::vector<HardpointProfile> hardpoints;
 
     // The longest weapon range (the entity's targeting range); 0 without weapons.
     [[nodiscard]] float range() const noexcept

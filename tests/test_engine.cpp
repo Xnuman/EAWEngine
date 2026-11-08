@@ -332,6 +332,10 @@ void test_combat_content()
     // the min/max range and a hardpoint's Damage_Type overrides its projectile's.
     const auto cruiser = eaw::combat_profile(catalog, *definition("Cruiser"), content, warnings);
     require(cruiser.weapons.size() == 2 && cruiser.range() == 2000.0F, "every weapon hardpoint must become a weapon");
+    using Kind = eaw::HardpointProfile::Kind;
+    require(cruiser.hardpoints.size() == 3 && cruiser.hardpoints[0].kind == Kind::weapon && cruiser.hardpoints[1].kind == Kind::shield_generator && cruiser.hardpoints[1].health == 375.0F &&
+                cruiser.hardpoints[0].health == 0.0F && cruiser.weapons[0].hardpoint == 0 && cruiser.weapons[1].hardpoint == 2 && cruiser.weapons[0].cone_half_angle >= 3.14F,
+            "every hardpoint must become a part (health, kind), weapons must name their hardpoint, and without bones cover all around");
     const auto& turbolaser = cruiser.weapons.front();
     require(turbolaser.recharge_seconds == 3.5F && turbolaser.pulse_count == 7 && turbolaser.pulse_delay_seconds == 0.2F && turbolaser.damage == 7.5F && turbolaser.damage_type == 0 &&
                 turbolaser.projectile_speed == 10.0F * eaw::provisional_max_speed_scale,

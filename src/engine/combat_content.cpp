@@ -250,6 +250,55 @@ void read_projectile(const FieldReader& projectile, const CombatContent& content
     weapon.damages_health = projectile.flag("Projectile_Does_Hitpoint_Damage", true);
 }
 
+// A bone of the model's bind pose by name (case-insensitive): its position in the entity frame
+// (models face -Y, so forward = -Y and left = +X) and the horizontal angle of its X axis from
+// forward, counter-clockwise.
+struct BonePlacement
+{
+    LocalPoint point;
+    float direction{};
+};
+
+std::optional<BonePlacement> find_bone(const AloModel* model, const std::vector<AloMatrix4>& pose, const std::string_view name)
+{
+    if (model == nullptr || name.empty())
+    {
+        return std::nullopt;
+    }
+    const auto wanted = fold(trim(name));
+    for (std::size_t index = 0; index < model->bones.size() && index < pose.size(); ++index)
+    {
+        if (fold(model->bones[index].name) != wanted)
+        {
+            continue;
+        }
+        const auto& m = pose[index].values;
+        BonePlacement placement;
+        placement.point = {-m[13], m[12], m[14]};
+        placement.direction = std::atan2(m[0], -m[1]);
+        return placement;
+    }
+    return std::nullopt;
+}
+
+HardpointProfile::Kind hardpoint_kind(const std::string_view type)
+{
+    const auto folded = fold(trim(type));
+    if (folded.find("weapon") != std::string::npos)
+    {
+        return HardpointProfile::Kind::weapon;
+    }
+    if (folded.find("shield_generator") != std::string::npos)
+    {
+        return HardpointProfile::Kind::shield_generator;
+    }
+    if (folded.find("engine") != std::string::npos)
+    {
+        return HardpointProfile::Kind::engine;
+    }
+    return HardpointProfile::Kind::other;
+}
+
 const XmlDefinition* find_hardpoint(const GameObjectCatalog& catalog, const std::string_view name)
 {
     const auto candidates = catalog.find(name);
@@ -265,8 +314,9 @@ const XmlDefinition* find_hardpoint(const GameObjectCatalog& catalog, const std:
 
 } // namespace
 
-CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings)
+CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings, const AloModel* model)
 {
+    const auto pose = model != nullptr ? model->bind_pose() : std::vector<AloMatrix4>{};
     const FieldReader type(catalog, definition, warnings);
     CombatProfile profile;
     profile.health = type.amount("Tactical_Health");
@@ -291,6 +341,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 weapon.pulse_count = std::max(1U, static_cast<std::uint32_t>(std::min(type.amount("Projectile_Fire_Pulse_Count", 1.0F), 1000.0F)));
                 weapon.pulse_delay_seconds = type.amount("Projectile_Fire_Pulse_Delay_Seconds");
                 read_projectile(FieldReader(catalog, *projectile_type, warnings), content, weapon);
+                weapon.mount.up = profile.aim_height;
                 profile.weapons.push_back(weapon);
             }
             else
@@ -315,8 +366,23 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 continue;
             }
             const FieldReader point(catalog, *hardpoint, warnings);
-            const auto* kind = point.node("Type");
-            if (kind == nullptr || fold(trim(kind->text)).find("weapon") == std::string::npos)
+            const auto* kind_node = point.node("Type");
+            const auto kind = kind_node != nullptr ? hardpoint_kind(kind_node->text) : HardpointProfile::Kind::other;
+            const auto bone_name = [&](const std::string_view field)
+            {
+                const auto* node = point.node(field);
+                return node != nullptr ? std::string(trim(node->text)) : std::string{};
+            };
+            const auto attachment = find_bone(model, pose, bone_name("Attachment_Bone"));
+            const auto fire_bone = find_bone(model, pose, bone_name("Fire_Bone_A"));
+            HardpointProfile part;
+            part.kind = kind;
+            part.health = point.flag("Is_Destroyable", true) ? point.amount("Health") : 0.0F;
+            part.targetable = point.flag("Is_Targetable", true);
+            part.offset = attachment ? attachment->point : fire_bone ? fire_bone->point : LocalPoint{};
+            profile.hardpoints.push_back(part);
+            const auto part_index = static_cast<std::int32_t>(profile.hardpoints.size() - 1U);
+            if (kind != HardpointProfile::Kind::weapon)
             {
                 continue;
             }
@@ -337,6 +403,14 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             if (point.node("Damage_Type") != nullptr)
             {
                 weapon.damage_type = point.type_id("Damage_Type", content);
+            }
+            weapon.hardpoint = part_index;
+            weapon.mount = fire_bone ? fire_bone->point : part.offset;
+            const auto cone = point.amount("Fire_Cone_Width");
+            if (fire_bone && cone > 0.0F && cone < 360.0F)
+            {
+                weapon.cone_direction = fire_bone->direction;
+                weapon.cone_half_angle = cone * 0.5F * 3.14159265F / 180.0F;
             }
             if (weapon.range > 0.0F)
             {

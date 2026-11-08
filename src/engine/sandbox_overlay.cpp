@@ -48,15 +48,17 @@ std::vector<std::string> sandbox_overlay_lines(const SandboxOverlayView& view)
                         " nodes expanded | " + std::to_string(simulation.queued_paths) + " queued, " + std::to_string(simulation.shared_routes) + " shared | tick " +
                         format_fixed(view.last_tick_ms, 2) + " ms, slowest " + format_fixed(view.slowest_tick_ms, 2) + " ms");
         lines.push_back("Combat: " + std::to_string(simulation.shots_fired) + " shots | " + std::to_string(simulation.hits) + " hits | " + std::to_string(simulation.kills) + " kills | " +
-                        std::to_string(simulation.projectiles) + " in flight");
+                        std::to_string(simulation.hardpoints_destroyed) + " hardpoints destroyed | " + std::to_string(simulation.projectiles) + " in flight");
         if (view.selection != nullptr && view.selection->size() == 1)
         {
             for (const auto& entity : view.world->snapshot().entities)
             {
                 if (view.selection->contains(entity_key(entity.id)) && entity.max_health > 0.0F)
                 {
-                    selected_text += " | owner " + std::to_string(entity.owner) + " | health " + format_fixed(entity.health, 0) + "/" + format_fixed(entity.max_health, 0) +
-                                     (entity.max_shield > 0.0F ? " | shield " + format_fixed(entity.shield, 0) + "/" + format_fixed(entity.max_shield, 0) : std::string{});
+                    selected_text +=
+                        " | owner " + std::to_string(entity.owner) + " | health " + format_fixed(entity.health, 0) + "/" + format_fixed(entity.max_health, 0) +
+                        (entity.max_shield > 0.0F ? " | shield " + format_fixed(entity.shield, 0) + "/" + format_fixed(entity.max_shield, 0) : std::string{}) +
+                        (entity.hardpoints > 0 ? " | hardpoints " + std::to_string(entity.hardpoints - entity.hardpoints_destroyed) + "/" + std::to_string(entity.hardpoints) : std::string{});
                 }
             }
         }

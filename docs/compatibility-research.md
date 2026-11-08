@@ -410,3 +410,22 @@ model's -Y axis. Before this, moving units faced 90 degrees off their travel
 direction. A fire bone's X axis is its firing direction (`FP_F-L_00` points
 forward-left, (0.57, -0.82)). `EAWAssetInspector inspect` now prints each
 bone's bind-pose position and X axis.
+
+Hardpoints as parts.
+
+- **What the engine reads.** Each `HardPoints` entry is a part: its kind from
+  `Type`, its hit points from `Health` (indestructible when `Is_Destroyable`
+  is No or `Health` is missing), and `Is_Targetable`. Its position is the
+  ship model's `Attachment_Bone` in the bind pose. A weapon hardpoint fires
+  from `Fire_Bone_A`, within `Fire_Cone_Width`, centered on that bone's X
+  axis.
+- **Engine choices, not measured from the original:**
+  - each weapon picks the entity's target when that target is in its range
+    and arc, otherwise the nearest hostile within them;
+  - shots aim at the victim's nearest live targetable part;
+  - the hull and the hit part both take the damage (the original's split is
+    not established);
+  - losing every shield generator stops shield recharge;
+  - losing every engine slows the ship to a quarter speed.
+- **Not used yet.** `Fire_Cone_Height` and the second fire bone
+  (`Fire_Bone_B`).

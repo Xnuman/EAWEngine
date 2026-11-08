@@ -117,6 +117,9 @@ struct EntitySnapshot
     // The entity its weapon is aimed at (invalid when none).
     EntityId target;
     float radius{};
+    // Destroyable hardpoints, and how many of them are destroyed.
+    std::uint32_t hardpoints{};
+    std::uint32_t hardpoints_destroyed{};
 };
 
 struct ProjectileSnapshot
@@ -181,6 +184,7 @@ public:
         std::uint64_t shots_fired{};
         std::uint64_t hits{};
         std::uint64_t kills{};
+        std::uint64_t hardpoints_destroyed{};
         std::size_t projectiles{};
         // Overlapping ground pairs pushed apart in the last tick.
         std::size_t separated_pairs{};
@@ -240,8 +244,11 @@ private:
             std::uint32_t cooldown{};
             std::uint32_t pulses_left{};
             std::uint32_t pulse_timer{};
+            // Victim of the current burst.
+            EntityId target;
         };
         std::vector<WeaponState> weapons;
+        std::vector<float> hardpoint_health;
         // Ticks until the next automatic target search, and until an ordered chase replans.
         std::uint32_t retarget_timer{};
         std::uint32_t chase_timer{};
@@ -252,6 +259,8 @@ private:
         SimVector3 aim;
         SimVector3 direction;
         EntityId target;
+        // The victim's hardpoint the shot aims at, or -1 for its hull.
+        std::int32_t target_hardpoint{-1};
         std::uint32_t owner{};
         float damage{};
         std::uint16_t damage_type{};
@@ -297,7 +306,15 @@ private:
     void update_target(std::size_t index);
     void run_weapon(std::size_t index);
     void launch(std::size_t shooter, std::size_t victim, const WeaponProfile& weapon);
-    void apply_damage(std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health);
+    void apply_damage(std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health, std::int32_t hardpoint);
+    // A point of an entity's own frame in world space.
+    [[nodiscard]] SimVector3 world_point(std::size_t index, const LocalPoint& point) const noexcept;
+    [[nodiscard]] bool hardpoint_alive(std::size_t index, std::size_t hardpoint) const noexcept;
+    // Whether any hardpoint of the kind survives (true when the entity has none of that kind).
+    [[nodiscard]] bool keeps(std::size_t index, HardpointProfile::Kind kind) const noexcept;
+    // The victim's live targetable hardpoint nearest to `from`, or -1.
+    [[nodiscard]] std::int32_t aim_hardpoint(std::size_t victim, const SimVector3& from) const noexcept;
+    [[nodiscard]] SimVector3 aim_point(std::size_t victim, std::int32_t hardpoint) const noexcept;
     void run_projectiles();
     void remove_dead();
     [[nodiscard]] bool damageable(std::size_t index) const noexcept;
@@ -385,6 +402,7 @@ private:
     std::uint64_t shots_fired_{};
     std::uint64_t hits_{};
     std::uint64_t kills_{};
+    std::uint64_t hardpoints_destroyed_{};
     std::vector<SimCommand> pending_;
     SimSnapshot snapshot_;
     std::uint64_t commands_applied_{};

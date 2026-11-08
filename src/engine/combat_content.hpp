@@ -5,6 +5,7 @@
 // established (shield refresh units, how shields and armor combine), the translation is marked as
 // provisional.
 
+#include "eaw/alo_model.hpp"
 #include "eaw/combat.hpp"
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/virtual_file_system.hpp"
@@ -37,9 +38,17 @@ struct CombatContent
 //   and from the projectile type: Projectile_Damage, Damage_Type, Max_Speed (same provisional scale
 //   as unit speeds), Projectile_Max_Flight_Distance, Projectile_Does_Shield_Damage,
 //   Projectile_Does_Hitpoint_Damage.
-// Unparsable or negative values become 0 with a warning naming the type and field. Weapons on
-// hardpoints (space ships) are not read yet.
-[[nodiscard]] CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings);
+// Unparsable or negative values become 0 with a warning naming the type and field.
+//
+// Hardpoints (HardPoints entries) become targetable parts: Type gives the kind (weapon, shield
+// generator, engine, other), Health their hit points (none or Is_Destroyable No: indestructible),
+// Is_Targetable whether shots aim at them, and the model's Attachment_Bone their position. A weapon
+// hardpoint's weapon fires from Fire_Bone_A within Fire_Cone_Width, centered on that bone's X axis
+// (a fire bone's X axis is its firing direction in the stock models). Bone positions come from
+// `model`'s bind pose (models face -Y; see model_forward_heading); without a model or bone they
+// are at the origin and the weapon covers all around.
+[[nodiscard]] CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings,
+                                           const AloModel* model = nullptr);
 
 // TED owner slot that holds the world's props and markers (179k of the stock placements, nearly
 // all of them props, markers, and decorations; see docs/compatibility-research.md).
