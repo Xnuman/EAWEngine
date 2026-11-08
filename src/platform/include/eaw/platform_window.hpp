@@ -33,6 +33,10 @@ enum class Key : std::uint8_t
     f1,
     shift,
     control,
+    backspace,
+    del,
+    home,
+    end,
     count,
 };
 
@@ -67,6 +71,8 @@ struct InputState
     std::int32_t raw_mouse_delta_x{};
     std::int32_t raw_mouse_delta_y{};
     float wheel_delta{};
+    // Characters typed this frame (WM_CHAR, as Unicode code points), for text fields.
+    std::u32string text;
     bool focused{};
     // Mouse movement and keys come from raw input (WM_INPUT) rather than window messages.
     bool raw_input{};

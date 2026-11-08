@@ -71,7 +71,8 @@ void print_sandbox_usage()
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
               << "  --show-passability Start with the map's passability classes drawn (G toggles)\n"
-              << "  --overlay          Start with the on-screen statistics panel shown (hidden by default; F1 toggles)\n"
+              << "  --overlay          Start with the on-screen statistics panel shown (hidden by default; the F1 menu toggles it)\n"
+              << "  --panel <menu|statistics|spawn>  Open a dev panel at start (repeatable; F1 opens the menu)\n"
               << "  --no-raw-input     Read mouse movement and keys from window messages instead of raw input\n"
               << "  --no-error-dialog  Report fatal errors on stderr only (no error window)\n"
               << "  --log-dir <path>   Folder for log files (default: logs next to the executable)\n"
@@ -159,6 +160,26 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         else if (argument == "--overlay")
         {
             options.overlay = true;
+        }
+        else if (argument == "--panel")
+        {
+            EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
+            if (value == "menu")
+            {
+                options.panels.menu = true;
+            }
+            else if (value == "statistics")
+            {
+                options.panels.statistics = true;
+            }
+            else if (value == "spawn")
+            {
+                options.panels.spawn = true;
+            }
+            else
+            {
+                return make_error("--panel must be menu, statistics, or spawn");
+            }
         }
         else if (argument == "--no-overlay")
         {

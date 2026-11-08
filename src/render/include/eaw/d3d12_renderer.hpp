@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -88,6 +89,21 @@ struct VisualOverlayInput
     bool right_button{};
     // Wheel steps since the previous call (positive away from the user).
     float wheel{};
+    // Characters typed since the previous call, and the editing keys held down, for text fields.
+    std::u32string text;
+    bool backspace{};
+    bool del{};
+    bool enter{};
+    bool escape{};
+    bool tab{};
+    bool left{};
+    bool right{};
+    bool up{};
+    bool down{};
+    bool home{};
+    bool end{};
+    bool control{};
+    bool shift{};
 };
 
 // Programming errors in calls (invalid camera, lighting, instances, debug lines, bone palettes, or
@@ -168,6 +184,13 @@ public:
     // True while the mouse is over the overlay or dragging it, as of the last rendered frame; the
     // caller should then not use the mouse for the scene.
     [[nodiscard]] bool overlay_wants_mouse() const noexcept;
+    // True while a text field of the overlay has the keyboard; the caller should then not use keys
+    // as hotkeys.
+    [[nodiscard]] bool overlay_wants_keyboard() const noexcept;
+    // Engine-built Dear ImGui windows, drawn every rendered frame after the statistics panel inside
+    // the overlay's ImGui frame (the callback may use the ImGui API; it runs on the render thread
+    // during render()). An empty function draws none.
+    void set_overlay_ui(std::function<void()> build);
 
     [[nodiscard]] const std::string& adapter_name() const;
     [[nodiscard]] D3d12RendererStats stats() const;

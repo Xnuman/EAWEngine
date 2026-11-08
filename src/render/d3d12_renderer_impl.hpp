@@ -202,6 +202,8 @@ struct D3d12Renderer::Impl
     ImVec2 overlay_position{10.0F, 10.0F};
     bool overlay_minimized{};
     bool overlay_wants_mouse{};
+    bool overlay_wants_keyboard{};
+    std::function<void()> overlay_ui;
     std::optional<std::array<float, 4>> selection_rectangle;
 
     // Frame statistics of the last recorded frame and of the last frame the GPU finished.

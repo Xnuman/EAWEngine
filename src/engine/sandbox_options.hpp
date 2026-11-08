@@ -60,8 +60,16 @@ struct SandboxOptions
     bool show_bounds{};
     // Start with the passability overlay drawn (G toggles at runtime).
     bool show_passability{};
-    // The statistics panel starts hidden; F1 shows it.
+    // The statistics panel starts hidden; the F1 menu shows it.
     bool overlay{};
+    // --panel menu|statistics|spawn (repeatable): dev panels open at start.
+    struct OpenPanels
+    {
+        bool menu{};
+        bool statistics{};
+        bool spawn{};
+    };
+    OpenPanels panels;
     // Mouse movement and keys through raw input (--no-raw-input uses window messages).
     bool raw_input{true};
     // Deliberately fail in one way to check crash reporting: assert, exception, access-violation.

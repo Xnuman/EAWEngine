@@ -164,9 +164,12 @@ for example `--spawn T2B_Tank:9 --spawn AT_AT_Walker`. Tab lists every unit type
 with a model for the map (Shift+Tab goes back, Ctrl moves ten at a time), and N
 on a type that is not loaded yet loads it in the background and spawns it when
 ready; `--spawn-later <XML type>[:count][@owner]` does the same from the
-command line. F1 toggles the on-screen statistics
-panel (FPS, CPU/GPU frame time, draw calls, triangles, video memory, streaming,
-scene, selection, hot reload); it starts hidden, and `--overlay` starts with it shown.
+command line. F1 opens the dev menu, which shows or hides the statistics panel
+(FPS, CPU/GPU frame time, draw calls, triangles, video memory, streaming,
+scene, selection, hot reload) and the spawn panel (search the spawnable types,
+pick the count and owner, spawn at the view center or with N at the cursor), and
+toggles bounds and passability; `--panel menu|statistics|spawn` opens panels at
+start, and `--overlay` the statistics panel.
 Mouse movement and keys use Windows raw input (unaccelerated mouse movement for
 camera rotation); `--no-raw-input` uses window messages instead. The panel
 can be dragged and resized, and its "-" button minimizes it to a small tab ("+"

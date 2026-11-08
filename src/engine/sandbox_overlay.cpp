@@ -70,9 +70,9 @@ std::vector<std::string> sandbox_overlay_lines(const SandboxOverlayView& view)
     }
     lines.push_back("Hot reload: " + view.reload_status);
     lines.push_back("");
-    lines.push_back(view.camera == SandboxCameraMode::model  ? "Click select | B bounds | F1 panel | drag orbit, wheel zoom, P pause, Left/Right animation"
-                    : view.camera == SandboxCameraMode::free ? "Free camera: click select | drag rotate, right-drag pan | C RTS camera | B bounds | F1 panel"
-                                                             : "RTS: click/drag select, right-click move/attack | WASD pan, wheel zoom | C free camera | B bounds | G passability | F1 panel");
+    lines.push_back(view.camera == SandboxCameraMode::model  ? "Click select | B bounds | F1 menu | drag orbit, wheel zoom, P pause, Left/Right animation"
+                    : view.camera == SandboxCameraMode::free ? "Free camera: click select | drag rotate, right-drag pan | C RTS camera | B bounds | F1 menu"
+                                                             : "RTS: click/drag select, right-click move/attack | WASD pan, wheel zoom | C free camera | B bounds | G passability | F1 menu");
     return lines;
 }
 

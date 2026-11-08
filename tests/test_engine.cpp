@@ -592,6 +592,8 @@ void test_sandbox_options()
     const auto battle = expect_ok(parse({"battle", "--map", "DATA/ART/MAPS/X.TED", "--ticks", "500", "--record", "out.log", "--check-determinism", "--auto-move"}), "parsing battle options");
     require(battle.mode == eaw::RunMode::battle && battle.ticks == 500U && battle.record == std::filesystem::path("out.log") && battle.check_determinism && battle.auto_move,
             "battle options must be read");
+    const auto opened = expect_ok(parse({"--panel", "spawn", "--panel", "menu"}), "parsing --panel");
+    require(opened.panels.spawn && opened.panels.menu && !opened.panels.statistics && !parse({"--panel", "bogus"}), "--panel must open the named panels and reject others");
     const auto later = expect_ok(parse({"--map", "X.TED", "--spawn-later", "AT_ST_Walker:2@2"}), "parsing --spawn-later");
     require(later.spawns.empty() && later.later_spawns.size() == 1 && later.later_spawns[0].type == "AT_ST_Walker" && later.later_spawns[0].count == 2 && later.later_spawns[0].owner == 2U,
             "--spawn-later must read like --spawn into its own list");
@@ -917,6 +919,16 @@ void test_unit_animation()
     drawn.clear();
     mourner.animate({}, none, drawn, 10.0 + 1.0 + 4.1, 1U << 20U, palette);
     require(drawn.empty() && mourner.stats().corpses == 0, "a corpse must be removed after lingering");
+    // A death clone's style: its DIE variant and persistence (30 s for the AT-ST's).
+    mourner.add_corpse(body, {5, 1}, 100.0, eaw::DeathStyle{0U, 12.0F});
+    none.clear();
+    drawn.clear();
+    mourner.animate({}, none, drawn, 111.0, 1U << 20U, palette);
+    require(drawn.size() == 1, "a death clone's corpse must stay for its persistence");
+    none.clear();
+    drawn.clear();
+    mourner.animate({}, none, drawn, 112.5, 1U << 20U, palette);
+    require(drawn.empty(), "a death clone's corpse must go once its persistence ends");
     // Shots: a mesh with ATTACK and ATTACKIDLE aims with ATTACKIDLE, plays ATTACK from its start on
     // each shot, and fades back to aiming after ATTACK ends (the test clip lasts 1 s).
     auto shooter_rig = rig;

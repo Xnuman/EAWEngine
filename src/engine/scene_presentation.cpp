@@ -86,7 +86,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
                        "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(entity.instance) + ", which is missing or a background");
         if (ids[index])
         {
-            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[entity.instance], entity.spawn.heading});
+            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[entity.instance], entity.spawn.heading, entity.death});
         }
     }
     for (const auto& type : spawnable)
@@ -95,7 +95,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         // The template's transform is the model's own frame; pose_transform turns and places it.
         VisualInstance instance{type.mesh};
         instance.team_color = type.team_color;
-        spawn_templates_.push_back({instance, identity_model_heading});
+        spawn_templates_.push_back({instance, identity_model_heading, type.death});
     }
 }
 
@@ -151,11 +151,11 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableType> types
         EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which presentation does not know");
         VisualInstance instance{type.mesh};
         instance.team_color = type.team_color;
-        spawn_templates_.push_back({instance, identity_model_heading});
+        spawn_templates_.push_back({instance, identity_model_heading, type.death});
     }
 }
 
-std::optional<VisualInstance> ScenePresentation::corpse_instance(const DeathSnapshot& death)
+std::optional<ScenePresentation::Corpse> ScenePresentation::corpse_instance(const DeathSnapshot& death)
 {
     const Template* found = nullptr;
     const auto placed = templates_.find(entity_key(death.id));
@@ -174,11 +174,12 @@ std::optional<VisualInstance> ScenePresentation::corpse_instance(const DeathSnap
     auto instance = found->instance;
     instance.transform = pose_transform(instance.transform, found->base_heading, death.position, death.heading, death.pitch);
     instance.highlighted = false;
+    const auto style = found->death;
     if (placed != templates_.end())
     {
         templates_.erase(placed);
     }
-    return instance;
+    return Corpse{instance, style};
 }
 
 const std::string& ScenePresentation::mesh_name(const std::uint32_t mesh) const

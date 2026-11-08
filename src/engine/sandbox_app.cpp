@@ -10,6 +10,7 @@
 #include "sandbox_content.hpp"
 #include "sandbox_debug_lines.hpp"
 #include "sandbox_overlay.hpp"
+#include "sandbox_panels.hpp"
 #include "scene_presentation.hpp"
 #include "text_format.hpp"
 #include "unit_animation.hpp"
@@ -240,7 +241,12 @@ struct SandboxSession
     bool textures_streamed = false;
     bool reload_check_reported = false;
     std::int64_t click_travel = 0;
-    bool overlay_visible = options.overlay;
+    // Dev panels (F1 opens their menu); statistics starts as --overlay says.
+    eaw::SandboxPanels panels{.menu = options.panels.menu, .statistics = options.overlay || options.panels.statistics, .spawn = options.panels.spawn};
+    bool statistics_shown = false;
+    // How many units N and the spawn panel spawn, and the panel's last button presses.
+    std::uint32_t spawn_count = 1;
+    eaw::SpawnPanelActions panel_actions;
     std::uint64_t overlay_frames = 0;
     std::chrono::steady_clock::time_point overlay_refreshed = std::chrono::steady_clock::now();
     bool automated_pick_sent = false;
@@ -260,6 +266,11 @@ struct SandboxSession
         : options(session_options), vfs(session_vfs), window(session_window), renderer(session_renderer)
     {
         watchdog.set_threshold(options.use_warp || options.gpu_validation ? std::chrono::seconds(60) : std::chrono::seconds(5));
+        renderer.set_overlay_ui(
+            [this]
+            {
+                draw_panels();
+            });
         if (!options.validation_triangle)
         {
             pending_content = std::async(std::launch::async, eaw::build_sandbox_content, std::cref(vfs), std::cref(options), &asset_cache, false, std::vector<std::string>{});
@@ -578,6 +589,57 @@ struct SandboxSession
         }
         std::cout << "Spawning " << count << " " << type.type_name << (type.members.empty() ? std::string{} : " (" + std::to_string(type.members.size()) + " units each)") << " for owner "
                   << spawn_owner << " at " << eaw::format_fixed(point.x, 0) << ", " << eaw::format_fixed(point.y, 0) << ", " << eaw::format_fixed(point.z, 0) << '\n';
+    }
+
+    ~SandboxSession()
+    {
+        renderer.set_overlay_ui({});
+    }
+    SandboxSession(const SandboxSession&) = delete;
+    SandboxSession& operator=(const SandboxSession&) = delete;
+
+    // The dev panels, drawn by the renderer inside its overlay frame; button presses are applied in
+    // the next frame (apply_panel_actions).
+    void draw_panels()
+    {
+        eaw::draw_sandbox_menu(panels, show_all_bounds, show_passability);
+        eaw::SpawnPanelView view;
+        view.names = spawn_names;
+        view.loaded = [this](const std::string& name)
+        {
+            return std::ranges::any_of(spawnable,
+                                       [&](const eaw::SpawnableType& type)
+                                       {
+                                           return fold_name(type.type_name) == fold_name(name);
+                                       });
+        };
+        view.choice = &spawn_choice;
+        view.count = &spawn_count;
+        view.owner = &spawn_owner;
+        view.neutral_owner = eaw::neutral_map_owner;
+        view.can_spawn = world != nullptr && tactical_camera.has_value() && !spawn_names.empty();
+        if (pending_package.valid())
+        {
+            view.status = "Loading " + building_type + "...";
+        }
+        else if (!pending_spawns.empty())
+        {
+            view.status = std::to_string(pending_spawns.size()) + " spawns waiting";
+        }
+        const auto actions = eaw::draw_spawn_panel(panels, view);
+        panel_actions.spawn_at_view_center = panel_actions.spawn_at_view_center || actions.spawn_at_view_center;
+    }
+
+    void apply_panel_actions()
+    {
+        if (std::exchange(panel_actions.spawn_at_view_center, false) && spawn_choice < spawn_names.size() && world && tactical_camera)
+        {
+            const auto stats = renderer.stats();
+            if (const auto center = ground_target(static_cast<float>(stats.width) * 0.5F, static_cast<float>(stats.height) * 0.5F))
+            {
+                spawn_named(spawn_names[spawn_choice], *center, spawn_count);
+            }
+        }
     }
 
     // Spawns `count` of a type by name: at once when it is loaded, otherwise after its package is
@@ -936,7 +998,7 @@ struct SandboxSession
         {
             if (const auto target = ground_target(mouse[0], mouse[1]))
             {
-                spawn_named(spawn_names[spawn_choice], *target, 1);
+                spawn_named(spawn_names[spawn_choice], *target, spawn_count);
             }
         }
         if (input.keys[static_cast<std::size_t>(eaw::Key::c)].pressed && tactical_camera)
@@ -1153,7 +1215,7 @@ struct SandboxSession
                 {
                     if (const auto corpse = presentation->corpse_instance(death); corpse && animator)
                     {
-                        animator->add_corpse(*corpse, death.id, std::chrono::duration<double>(now - map_animation_start).count());
+                        animator->add_corpse(corpse->instance, death.id, std::chrono::duration<double>(now - map_animation_start).count(), corpse->style);
                     }
                 }
             }
@@ -1251,15 +1313,21 @@ struct SandboxSession
     {
         if (input.keys[static_cast<std::size_t>(eaw::Key::f1)].pressed)
         {
-            overlay_visible = !overlay_visible;
-            if (!overlay_visible)
-            {
-                renderer.set_overlay_text({});
-            }
+            panels.menu = !panels.menu;
         }
+        if (!panels.statistics && statistics_shown)
+        {
+            renderer.set_overlay_text({});
+        }
+        // Shown now: refresh at once instead of waiting for the next quarter second.
+        if (panels.statistics && !statistics_shown)
+        {
+            overlay_refreshed = now - std::chrono::milliseconds(250);
+        }
+        statistics_shown = panels.statistics;
         // The panel is refreshed four times a second so the numbers stay readable.
         ++overlay_frames;
-        if (overlay_visible && now - overlay_refreshed >= std::chrono::milliseconds(250))
+        if (panels.statistics && now - overlay_refreshed >= std::chrono::milliseconds(250))
         {
             update_overlay(now);
         }
@@ -1309,14 +1377,44 @@ struct SandboxSession
     bool frame()
     {
         window.poll_events();
-        if (window.input().keys[static_cast<std::size_t>(eaw::Key::escape)].pressed)
+        if (window.input().keys[static_cast<std::size_t>(eaw::Key::escape)].pressed && !renderer.overlay_wants_keyboard())
         {
             window.request_close();
         }
-        const auto& input = window.input();
-        // The overlay gets the mouse first; while it wants it, the scene ignores the mouse.
-        renderer.set_overlay_input({static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y), input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down,
-                                    input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down, input.wheel_delta});
+        const auto& window_input = window.input();
+        const auto down = [&](const eaw::Key key)
+        {
+            return window_input.keys[static_cast<std::size_t>(key)].down;
+        };
+        // The overlay gets the mouse and keyboard first; while it wants the mouse the scene ignores
+        // the mouse, and while one of its text fields is active the scene gets no keys.
+        eaw::VisualOverlayInput overlay_input{static_cast<float>(window_input.mouse_x), static_cast<float>(window_input.mouse_y),
+                                              window_input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down,
+                                              window_input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down, window_input.wheel_delta};
+        overlay_input.text = window_input.text;
+        overlay_input.backspace = down(eaw::Key::backspace);
+        overlay_input.del = down(eaw::Key::del);
+        overlay_input.enter = down(eaw::Key::enter);
+        overlay_input.escape = down(eaw::Key::escape);
+        overlay_input.tab = down(eaw::Key::tab);
+        overlay_input.left = down(eaw::Key::left);
+        overlay_input.right = down(eaw::Key::right);
+        overlay_input.up = down(eaw::Key::up);
+        overlay_input.down = down(eaw::Key::down);
+        overlay_input.home = down(eaw::Key::home);
+        overlay_input.end = down(eaw::Key::end);
+        overlay_input.control = down(eaw::Key::control);
+        overlay_input.shift = down(eaw::Key::shift);
+        renderer.set_overlay_input(overlay_input);
+        auto scene_input = window_input;
+        if (renderer.overlay_wants_keyboard())
+        {
+            for (auto& key : scene_input.keys)
+            {
+                key = {};
+            }
+        }
+        const auto& input = scene_input;
         const bool scene_mouse = !renderer.overlay_wants_mouse();
         const bool rts_mode = tactical_camera && !free_camera;
         const std::array<float, 2> mouse{static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y)};
@@ -1326,6 +1424,7 @@ struct SandboxSession
         watchdog.enter("pointer and orders", tick);
         handle_pointer(input, scene_mouse, rts_mode, mouse);
         handle_command_keys(input, scene_mouse, mouse);
+        apply_panel_actions();
         watchdog.enter("picks", tick);
         process_picks();
         handle_view_keys(input);

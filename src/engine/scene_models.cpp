@@ -606,7 +606,16 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
         {
             continue;
         }
-        const auto path = std::filesystem::path(mesh.name);
+        // Clips come from the type's animation source when it names one, else from the model.
+        auto path = std::filesystem::path(mesh.name);
+        bool retarget = false;
+        if (const auto source = builder.animation_sources.find(fold_ascii(mesh.name)); source != builder.animation_sources.end())
+        {
+            const auto resolved = resolve_model_path(builder.vfs, source->second);
+            const auto source_path = resolved ? std::filesystem::path(*resolved) : path.parent_path() / std::filesystem::path(source->second).filename();
+            retarget = fold_ascii(source_path.stem().string()) != fold_ascii(path.stem().string());
+            path = source_path;
+        }
         const auto directory = path.parent_path().generic_string();
         auto [listing, inserted] = listings.try_emplace(fold_ascii(directory));
         if (inserted)
@@ -643,7 +652,12 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
             {
                 continue;
             }
-            rig.clips.push_back({name->role, name->variant, clip_path, std::shared_ptr<const AlaAnimation>(decoded, &decoded->value())});
+            auto animation = retarget ? std::make_shared<const AlaAnimation>(ala_retarget_by_bone_name(decoded->value(), *rig.model)) : std::shared_ptr<const AlaAnimation>(decoded, &decoded->value());
+            if (animation->tracks.empty())
+            {
+                continue;
+            }
+            rig.clips.push_back({name->role, name->variant, clip_path, std::move(animation)});
         }
         std::ranges::sort(rig.clips,
                           [](const VisualClip& left, const VisualClip& right)

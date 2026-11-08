@@ -1,5 +1,7 @@
 #include "test_support.hpp"
 
+#include <cctype>
+
 namespace {
 
 using namespace eaw_test;
@@ -305,6 +307,28 @@ void test_ala_blending()
     require(pose.size() == 1, "blending with an empty pose must keep the bones");
 }
 
+// Clips shared between models point at bones by name.
+void test_ala_retarget()
+{
+    const auto model = expect_ok(eaw::AloModel::parse(make_test_alo()), "ALO parse");
+    eaw::AlaAnimation animation = expect_ok(eaw::AlaAnimation::parse(make_test_ala()), "ALA parse");
+    require(!model.bones.empty() && !animation.tracks.empty(), "the fixtures must have a bone and a track");
+    // The authored skeleton put the bone elsewhere and had one the model lacks.
+    animation.tracks[0].bone_index = 7;
+    std::string upper = model.bones[0].name;
+    for (auto& character : upper)
+    {
+        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    }
+    animation.tracks[0].name = upper;
+    auto extra = animation.tracks[0];
+    extra.name = "NOT_A_BONE";
+    animation.tracks.push_back(extra);
+    const auto retargeted = eaw::ala_retarget_by_bone_name(animation, model);
+    require(retargeted.tracks.size() == 1 && retargeted.tracks[0].bone_index == 0 && retargeted.stored_frame_count == animation.stored_frame_count,
+            "retargeting must match bones by name regardless of case and drop unknown bones");
+}
+
 void test_ted_map()
 {
     const auto map = expect_ok(eaw::TedMap::parse(make_test_ted()), "TED parse");
@@ -404,6 +428,7 @@ const ModuleRegistrar registrar("formats", {
                                                {"test_lua_inspection", &test_lua_inspection},
                                                {"test_ala_animation", &test_ala_animation},
                                                {"test_ala_blending", &test_ala_blending},
+                                               {"test_ala_retarget", &test_ala_retarget},
                                                {"test_ted_map", &test_ted_map},
                                                {"test_dat_and_workspace", &test_dat_and_workspace},
                                                {"test_localization_scan", &test_localization_scan},

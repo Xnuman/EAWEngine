@@ -86,6 +86,16 @@ bool D3d12Renderer::overlay_wants_mouse() const noexcept
     return impl_->overlay_wants_mouse;
 }
 
+bool D3d12Renderer::overlay_wants_keyboard() const noexcept
+{
+    return impl_->overlay_wants_keyboard;
+}
+
+void D3d12Renderer::set_overlay_ui(std::function<void()> build)
+{
+    impl_->overlay_ui = std::move(build);
+}
+
 std::size_t D3d12Renderer::max_debug_lines() noexcept
 {
     return maximum_debug_lines;

@@ -14,6 +14,7 @@
 #include "eaw/xml_asset_database.hpp"
 
 #include <functional>
+#include <unordered_set>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -37,6 +38,9 @@ struct SceneBuilder
     // Headless builds skip decoding what only drawing needs (MapBuildOptions).
     bool textures{true};
     bool animation_clips{true};
+    // Folded model path -> the model whose clips it plays (XML Land_Model_Anim_Override_Name of the
+    // first type that appended it).
+    std::unordered_map<std::string, std::string> animation_sources;
 };
 
 // Loads through the cache when there is one; otherwise decodes directly.
@@ -225,6 +229,22 @@ float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& defi
 // Minimum flight speed of fighters and bombers (SpaceBehavior names FIGHTER_LOCOMOTOR): XML
 // Min_Speed on the Max_Speed scale, or half of `max_speed` without one; 0 for every other type.
 float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, float max_speed);
+
+// XML Land_Model_Anim_Override_Name (or Space_Model_Anim_Override_Name), inherited through
+// Variant_Of_Existing_Type: the model whose clips the type plays instead of its own (27 stock uses:
+// civilians, slaves, and field commanders on RI_INFANTRY, EI_TROOPER, or NI_GMale_Urban_A, Ewok
+// variants on NI_EWOK). Empty when the type plays its own model's clips.
+std::string type_animation_source(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// Records a type's animation source for a model it appended (the first type wins).
+void note_animation_source(SceneBuilder& builder, const std::string& model_path, const GameObjectCatalog& catalog, const XmlDefinition& definition);
+
+// The corpse style of a type from its normal death clone (DeathStyle).
+DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// Whether a type is a death clone, never spawned on its own: another type names it in a
+// Death_Clone entry, or it carries Specific_Death_Anim_Index or Death_Persistence_Duration.
+bool type_is_death_clone(const GameObjectCatalog& catalog, const XmlDefinition& definition, const std::unordered_set<std::string>& clone_names);
+// Folded names of every type some Death_Clone entry names.
+std::unordered_set<std::string> death_clone_names(const XmlAssetDatabase& database, const GameObjectCatalog& catalog);
 
 // Whether a type aims with its body: none of its behavior lists (LandBehavior, Behavior) names
 // TURRET. Stock infantry list WALK_LOCOMOTOR or LAND_TEAM_INFANTRY_LOCOMOTOR, IDLE, TARGETING, and

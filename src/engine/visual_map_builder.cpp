@@ -142,6 +142,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     {
         entry->second = append_scene_model(build.builder, *path);
     }
+    note_animation_source(build.builder, *path, build.catalog, *definition);
     if (!entry->second)
     {
         return std::nullopt;
@@ -156,6 +157,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     const auto decoded = cached_model(build.builder, *path);
     spawnable.combat = build.profile_of(*definition, decoded && decoded->ok() ? &decoded->value() : nullptr);
     spawnable.hover_offset = type_float_field(build.catalog, *definition, "Hover_Offset");
+    spawnable.death = type_death_style(build.catalog, *definition);
     if (spawnable.max_speed > 0.0F)
     {
         static constexpr std::array<float, 16> identity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
@@ -278,6 +280,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         {
             entry->second = append_scene_model(builder, placement.model_path);
         }
+        if (placement.type != nullptr)
+        {
+            note_animation_source(builder, placement.model_path, catalog, *placement.type);
+        }
         if (!entry->second)
         {
             ++asset.unrenderable_placements;
@@ -325,7 +331,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                     spawn.formation_spacing = type_formation_spacing(catalog, *placement.type);
                 }
             }
-            asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size())});
+            asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size()), placement.type != nullptr ? type_death_style(catalog, *placement.type) : DeathStyle{}});
             if (placement.needs_formation)
             {
                 company_members.push_back({placement.object_index, asset.entities.size() - 1U, scene.instances.size(), placement.type});
@@ -490,13 +496,21 @@ std::vector<std::string> spawnable_type_names(const AssetReader& vfs, const bool
                                                          auto catalog = GameObjectCatalog::build(*database);
                                                          return CachedCatalog{std::move(database), std::move(catalog)};
                                                      });
+    // Death clones are wrecks other types leave behind, not units to spawn.
+    const auto clones = death_clone_names(*catalog_entry->database, catalog_entry->catalog);
     std::vector<std::string> names;
     for (const auto& type : list_spawn_types(*catalog_entry->database, catalog_entry->catalog))
     {
-        if (type.unit && (land ? type.land_model : type.space_model))
+        if (!type.unit || !(land ? type.land_model : type.space_model))
         {
-            names.push_back(type.name);
+            continue;
         }
+        const auto definitions = catalog_entry->catalog.find(type.name);
+        if (!definitions.empty() && type_is_death_clone(catalog_entry->catalog, *definitions.front(), clones))
+        {
+            continue;
+        }
+        names.push_back(type.name);
     }
     return names;
 }

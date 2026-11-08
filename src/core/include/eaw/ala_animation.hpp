@@ -72,6 +72,11 @@ public:
     [[nodiscard]] std::vector<AlaLocalBone> sample_local_pose(const AloModel& model, float seconds) const;
 };
 
+// A copy of `animation` whose tracks point at `model`'s bones by name (case-insensitive) instead of
+// at the indices of the skeleton it was authored for; tracks naming no bone of the model are
+// dropped. Clips shared between models (XML Land_Model_Anim_Override_Name) need it.
+[[nodiscard]] AlaAnimation ala_retarget_by_bone_name(const AlaAnimation& animation, const AloModel& model);
+
 // A model's bind pose as a local pose.
 [[nodiscard]] std::vector<AlaLocalBone> ala_bind_local_pose(const AloModel& model);
 // Moves `pose` toward `target` by `weight` (0 keeps `pose`, 1 takes `target`): rotations by

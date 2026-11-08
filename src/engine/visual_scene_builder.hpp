@@ -81,10 +81,21 @@ struct VisualModelAsset
 // placed objects that could not be drawn and why.
 // A placed map object as a simulation entity: its spawn data and the scene instance that showed it
 // at load (mesh, original transform, colors), which presentation re-poses from snapshots.
+// How a unit's corpse looks, from the death clone it leaves under normal damage (XML Death_Clone
+// "Damage_Normal, <type>", else its first entry): the clone's Specific_Death_Anim_Index picks the
+// DIE variant and its Death_Persistence_Duration how long the wreck stays, in seconds (the AT-ST's
+// stays 30 s). Without a clone a corpse plays a DIE variant chosen by its id and stays 4 s after it.
+struct DeathStyle
+{
+    std::optional<std::uint32_t> die_variant;
+    std::optional<float> persistence_seconds;
+};
+
 struct MapEntitySpawn
 {
     EntitySpawn spawn;
     std::uint32_t instance{};
+    DeathStyle death;
 };
 
 // XML Max_Speed values are small (infantry 0.8, AT-AT 0.5, TIE fighter 4.5), consistent with world
@@ -126,6 +137,7 @@ struct SpawnableType
     float min_speed{};
     // Aims with its body (no TURRET behavior); applies when it walks on the ground.
     bool aims_with_body{};
+    DeathStyle death;
     // XML FormationOrder and FormationSpacing (formation.hpp).
     std::uint32_t formation_order{2};
     float formation_spacing{0.5F};

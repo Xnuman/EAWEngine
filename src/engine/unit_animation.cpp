@@ -209,13 +209,27 @@ std::optional<std::uint32_t> UnitAnimator::place(const PoseKey& key, const std::
     return offset;
 }
 
-void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id, const double seconds)
+void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id, const double seconds, const DeathStyle& style)
 {
     if (instance.mesh >= rigs_.size() || !rigs_[instance.mesh].model)
     {
         return;
     }
-    const auto clip = choose_clip(instance.mesh, AnimationRole::die, id);
+    auto clip = choose_clip(instance.mesh, AnimationRole::die, id);
+    if (style.die_variant)
+    {
+        // The death clone's DIE variant when the mesh has it.
+        const auto& clips = rigs_[instance.mesh].clips;
+        const auto specific = std::ranges::find_if(clips,
+                                                   [&](const VisualClip& candidate)
+                                                   {
+                                                       return candidate.role == AnimationRole::die && candidate.variant == *style.die_variant;
+                                                   });
+        if (specific != clips.end())
+        {
+            clip = static_cast<std::int32_t>(specific - clips.begin());
+        }
+    }
     if (clip < 0)
     {
         return;
@@ -224,7 +238,9 @@ void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id,
     {
         corpses_.erase(corpses_.begin());
     }
-    corpses_.push_back({instance, clip, seconds});
+    const auto duration = static_cast<double>(rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation->duration_seconds());
+    const auto lifetime = style.persistence_seconds ? std::max(static_cast<double>(*style.persistence_seconds), duration) : duration + corpse_linger_seconds;
+    corpses_.push_back({instance, clip, seconds, lifetime});
 }
 
 void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, const double seconds, const std::size_t max_palette,
@@ -404,8 +420,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
     std::erase_if(corpses_,
                   [&](const Corpse& corpse)
                   {
-                      const auto duration = static_cast<double>(rigs_[corpse.instance.mesh].clips[static_cast<std::size_t>(corpse.clip)].animation->duration_seconds());
-                      return seconds - corpse.died > duration + corpse_linger_seconds;
+                      return seconds - corpse.died > corpse.lifetime;
                   });
     for (const auto& corpse : corpses_)
     {

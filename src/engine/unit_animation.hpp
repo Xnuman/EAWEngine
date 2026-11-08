@@ -91,7 +91,8 @@ public:
     // Keeps a dead entity's instance (ScenePresentation::corpse_instance) as a corpse that plays a
     // DIE clip from `seconds` on; ignored when its mesh has none. At most 4096 corpses are kept (the
     // oldest go first).
-    void add_corpse(const VisualInstance& instance, EntityId id, double seconds);
+    // `style` picks the DIE variant and how long the corpse stays (DeathStyle).
+    void add_corpse(const VisualInstance& instance, EntityId id, double seconds, const DeathStyle& style = {});
     [[nodiscard]] const Stats& stats() const noexcept;
     // Rigs of meshes added to the scene at runtime (a SpawnablePackage's rigs and rest palette,
     // rest offsets relative to it); they must follow the meshes the animator already knows.
@@ -145,6 +146,8 @@ private:
         VisualInstance instance;
         std::int32_t clip{};
         double died{};
+        // When it is removed (seconds after `died`).
+        double lifetime{};
     };
     [[nodiscard]] std::int32_t choose_clip(std::uint32_t mesh, AnimationRole role, EntityId id) const;
     // This frame's palette offset of a pose, sampling it when needed; nullopt when the palette is

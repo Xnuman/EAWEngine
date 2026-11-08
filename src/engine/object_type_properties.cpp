@@ -166,6 +166,113 @@ float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinitio
     return speed > 0.0F && std::isfinite(speed) ? std::min(speed, max_speed) : max_speed * 0.5F;
 }
 
+std::string type_animation_source(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    for (const auto* field : {"Land_Model_Anim_Override_Name", "Space_Model_Anim_Override_Name"})
+    {
+        if (const auto* value = catalog.field(definition, field).field)
+        {
+            const auto name = trim_ascii(value->text);
+            if (!name.empty())
+            {
+                return std::string(name);
+            }
+        }
+    }
+    return {};
+}
+
+void note_animation_source(SceneBuilder& builder, const std::string& model_path, const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    if (auto source = type_animation_source(catalog, definition); !source.empty())
+    {
+        builder.animation_sources.try_emplace(fold_ascii(model_path), std::move(source));
+    }
+}
+
+namespace {
+
+// The clone type a Death_Clone entry ("Damage_Normal, AT_ST_Walker_Death_Clone_00") names, and its
+// damage type, both trimmed.
+std::pair<std::string_view, std::string_view> death_clone_entry(const std::string_view text)
+{
+    const auto comma = text.find(',');
+    if (comma == std::string_view::npos)
+    {
+        return {{}, trim_ascii(text)};
+    }
+    return {trim_ascii(text.substr(0, comma)), trim_ascii(text.substr(comma + 1U))};
+}
+
+} // namespace
+
+DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    DeathStyle style;
+    std::string_view chosen;
+    for (const auto* entry : catalog.fields(definition, "Death_Clone").fields)
+    {
+        const auto [damage, clone] = death_clone_entry(entry->text);
+        if (clone.empty())
+        {
+            continue;
+        }
+        if (chosen.empty() || fold_ascii(std::string(damage)) == "damage_normal")
+        {
+            chosen = clone;
+        }
+        if (fold_ascii(std::string(damage)) == "damage_normal")
+        {
+            break;
+        }
+    }
+    if (chosen.empty())
+    {
+        return style;
+    }
+    const auto clones = catalog.find(chosen);
+    if (clones.empty())
+    {
+        return style;
+    }
+    const auto& clone = *clones.front();
+    if (catalog.field(clone, "Specific_Death_Anim_Index").field != nullptr)
+    {
+        const auto index = type_float_field(catalog, clone, "Specific_Death_Anim_Index");
+        if (index >= 0.0F && index < 100.0F)
+        {
+            style.die_variant = static_cast<std::uint32_t>(index);
+        }
+    }
+    if (const auto seconds = type_float_field(catalog, clone, "Death_Persistence_Duration"); seconds > 0.0F && seconds < 3600.0F)
+    {
+        style.persistence_seconds = seconds;
+    }
+    return style;
+}
+
+std::unordered_set<std::string> death_clone_names(const XmlAssetDatabase& database, const GameObjectCatalog& catalog)
+{
+    std::unordered_set<std::string> names;
+    for (const auto& definition : database.definitions())
+    {
+        for (const auto* entry : catalog.fields(definition, "Death_Clone").fields)
+        {
+            if (const auto clone = death_clone_entry(entry->text).second; !clone.empty())
+            {
+                names.insert(fold_ascii(std::string(clone)));
+            }
+        }
+    }
+    return names;
+}
+
+bool type_is_death_clone(const GameObjectCatalog& catalog, const XmlDefinition& definition, const std::unordered_set<std::string>& clone_names)
+{
+    return clone_names.contains(fold_ascii(definition.name)) || catalog.field(definition, "Specific_Death_Anim_Index").field != nullptr ||
+           catalog.field(definition, "Death_Persistence_Duration").field != nullptr;
+}
+
 bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     for (const auto* field : {"LandBehavior", "Behavior"})

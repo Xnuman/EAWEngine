@@ -94,6 +94,24 @@ void D3d12Renderer::Impl::render_overlay(const D3D12_CPU_DESCRIPTOR_HANDLE rende
     io.AddMousePosEvent(overlay_input.mouse_x, overlay_input.mouse_y);
     io.AddMouseButtonEvent(ImGuiMouseButton_Left, overlay_input.left_button);
     io.AddMouseButtonEvent(ImGuiMouseButton_Right, overlay_input.right_button);
+    for (const auto character : overlay_input.text)
+    {
+        io.AddInputCharacter(static_cast<unsigned int>(character));
+    }
+    overlay_input.text.clear();
+    io.AddKeyEvent(ImGuiKey_Backspace, overlay_input.backspace);
+    io.AddKeyEvent(ImGuiKey_Delete, overlay_input.del);
+    io.AddKeyEvent(ImGuiKey_Enter, overlay_input.enter);
+    io.AddKeyEvent(ImGuiKey_Escape, overlay_input.escape);
+    io.AddKeyEvent(ImGuiKey_Tab, overlay_input.tab);
+    io.AddKeyEvent(ImGuiKey_LeftArrow, overlay_input.left);
+    io.AddKeyEvent(ImGuiKey_RightArrow, overlay_input.right);
+    io.AddKeyEvent(ImGuiKey_UpArrow, overlay_input.up);
+    io.AddKeyEvent(ImGuiKey_DownArrow, overlay_input.down);
+    io.AddKeyEvent(ImGuiKey_Home, overlay_input.home);
+    io.AddKeyEvent(ImGuiKey_End, overlay_input.end);
+    io.AddKeyEvent(ImGuiMod_Ctrl, overlay_input.control);
+    io.AddKeyEvent(ImGuiMod_Shift, overlay_input.shift);
     if (overlay_input.wheel != 0.0F)
     {
         io.AddMouseWheelEvent(0.0F, overlay_input.wheel);
@@ -169,7 +187,12 @@ void D3d12Renderer::Impl::render_overlay(const D3D12_CPU_DESCRIPTOR_HANDLE rende
         }
         ImGui::End();
     }
+    if (overlay_ui)
+    {
+        overlay_ui();
+    }
     overlay_wants_mouse = io.WantCaptureMouse;
+    overlay_wants_keyboard = io.WantTextInput;
     ImGui::Render();
     // The overlay pipeline has one color target and no depth.
     command_list->OMSetRenderTargets(1, &render_target, FALSE, nullptr);
@@ -179,7 +202,7 @@ void D3d12Renderer::Impl::render_overlay(const D3D12_CPU_DESCRIPTOR_HANDLE rende
 void D3d12Renderer::Impl::set_overlay_text(const std::span<const std::string> lines)
 {
     overlay_lines.assign(lines.begin(), lines.end());
-    if (overlay_lines.empty())
+    if (overlay_lines.empty() && !overlay_ui)
     {
         overlay_wants_mouse = false;
     }
@@ -187,10 +210,14 @@ void D3d12Renderer::Impl::set_overlay_text(const std::span<const std::string> li
 
 void D3d12Renderer::Impl::set_overlay_input(const VisualOverlayInput& input)
 {
-    // Wheel steps accumulate until the overlay consumes them in the next rendered frame.
+    // Wheel steps and typed characters accumulate until the overlay consumes them in the next
+    // rendered frame.
     const auto wheel = overlay_input.wheel + input.wheel;
+    auto text = std::move(overlay_input.text);
+    text += input.text;
     overlay_input = input;
     overlay_input.wheel = std::isfinite(wheel) ? wheel : 0.0F;
+    overlay_input.text = std::move(text);
 }
 
 } // namespace eaw

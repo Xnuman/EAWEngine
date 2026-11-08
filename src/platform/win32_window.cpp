@@ -108,6 +108,28 @@ struct PlatformWindow::Impl
                 handle_raw_input(reinterpret_cast<HRAWINPUT>(l_param));
             }
             return DefWindowProcW(handle, message, w_param, l_param);
+        case WM_CHAR:
+        {
+            // UTF-16 units; a surrogate pair arrives as two messages.
+            const auto unit = static_cast<char32_t>(w_param);
+            if (unit >= 0xD800U && unit <= 0xDBFFU)
+            {
+                pending_high_surrogate = unit;
+            }
+            else if (unit >= 0xDC00U && unit <= 0xDFFFU)
+            {
+                if (pending_high_surrogate != 0)
+                {
+                    input.text.push_back(0x10000U + ((pending_high_surrogate - 0xD800U) << 10U) + (unit - 0xDC00U));
+                }
+                pending_high_surrogate = 0;
+            }
+            else if (unit >= 0x20U && unit != 0x7FU)
+            {
+                input.text.push_back(unit);
+            }
+            return 0;
+        }
         case WM_KEYDOWN:
         case WM_KEYUP:
             // With raw input the keyboard state comes from WM_INPUT; these messages remain for
@@ -193,6 +215,7 @@ struct PlatformWindow::Impl
         input.raw_mouse_delta_x = 0;
         input.raw_mouse_delta_y = 0;
         input.raw_events = 0;
+        input.text.clear();
         input.wheel_delta = 0.0F;
     }
 
@@ -376,10 +399,20 @@ struct PlatformWindow::Impl
         }
     }
 
+    char32_t pending_high_surrogate{};
+
     static std::optional<Key> translate_key(const WPARAM virtual_key)
     {
         switch (virtual_key)
         {
+        case VK_BACK:
+            return Key::backspace;
+        case VK_DELETE:
+            return Key::del;
+        case VK_HOME:
+            return Key::home;
+        case VK_END:
+            return Key::end;
         case VK_ESCAPE:
             return Key::escape;
         case VK_RETURN:

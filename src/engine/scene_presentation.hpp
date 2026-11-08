@@ -56,9 +56,14 @@ public:
     void add_meshes(std::span<const VisualMesh> meshes);
     void add_spawnable(std::span<const SpawnableType> types);
 
-    // The instance a dead entity leaves behind, posed where it died, and forgets the entity's
-    // template; nullopt when the entity was never drawn.
-    [[nodiscard]] std::optional<VisualInstance> corpse_instance(const DeathSnapshot& death);
+    // The instance a dead entity leaves behind, posed where it died, with its type's corpse style,
+    // and forgets the entity's template; nullopt when the entity was never drawn.
+    struct Corpse
+    {
+        VisualInstance instance;
+        DeathStyle style;
+    };
+    [[nodiscard]] std::optional<Corpse> corpse_instance(const DeathSnapshot& death);
 
     [[nodiscard]] const std::string& mesh_name(std::uint32_t mesh) const;
     [[nodiscard]] const std::array<float, 3>& mesh_minimum(std::uint32_t mesh) const;
@@ -69,6 +74,7 @@ private:
     {
         VisualInstance instance;
         float base_heading{};
+        DeathStyle death;
     };
     std::vector<VisualInstance> backgrounds_;
     std::unordered_map<std::uint64_t, Template> templates_;

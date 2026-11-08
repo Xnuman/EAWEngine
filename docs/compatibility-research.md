@@ -499,6 +499,28 @@ attack clips. Unknown: how the multipliers combine with others, how the
 spacing coefficient applies, and when CROUCHTURN plays (probably turning in
 place).
 
+Animation sources and death clones.
+
+- **`Land_Model_Anim_Override_Name`** (27 stock uses, with or without `.ALO`)
+  names the model whose clips a type plays instead of its own; variants
+  inherit it (`Ewok_Hunter` names NI_EWOK.ALO, so `Ewok_Hunter_B` on
+  NI_EWOK_B.ALO plays NI_EWOK clips). Civilians and slaves use
+  NI_GMale_Urban_A or RI_INFANTRY, field commanders RI_INFANTRY or EI_TROOPER.
+  The engine matches such clips to the model's bones by name.
+- **Death clones.** A unit lists `Death_Clone` entries "damage type, clone
+  type" (`Damage_Normal, AT_ST_Walker_Death_Clone_00`; infantry list several
+  for force powers, fire, disruptors, infection, crushing). A clone is a
+  variant of the unit (same model) with `Specific_Death_Anim_Index` (the DIE
+  variant), `Death_Persistence_Duration` (the AT-ST's wreck stays 30 s),
+  `Death_Explosions_End`, `Death_Clone_Is_Obstacle`, and hard extents. The
+  engine leaves clones out of the spawn list and uses the normal clone's DIE
+  variant and persistence for corpses; damage-type-specific clones, the
+  explosions, and wrecks as obstacles are not modeled yet.
+- **Models without clips.** With the override, 290 of the land spawnable
+  types' models (mostly buildings and props) and the space ships have no
+  role clips; large ships only have `_D_DIE` clips of their destruction
+  models.
+
 Fighter flight.
 
 - **What the engine reads.** Types whose `SpaceBehavior` names
