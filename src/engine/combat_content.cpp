@@ -255,6 +255,7 @@ void read_projectile(const FieldReader& projectile, const CombatContent& content
 // forward, counter-clockwise.
 struct BonePlacement
 {
+    std::uint32_t index{};
     LocalPoint point;
     float direction{};
 };
@@ -274,6 +275,7 @@ std::optional<BonePlacement> find_bone(const AloModel* model, const std::vector<
         }
         const auto& m = pose[index].values;
         BonePlacement placement;
+        placement.index = static_cast<std::uint32_t>(index);
         placement.point = {-m[13], m[12], m[14]};
         placement.direction = std::atan2(m[0], -m[1]);
         return placement;
@@ -380,6 +382,14 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             part.health = point.flag("Is_Destroyable", true) ? point.amount("Health") : 0.0F;
             part.targetable = point.flag("Is_Targetable", true);
             part.offset = attachment ? attachment->point : fire_bone ? fire_bone->point : LocalPoint{};
+            if (const auto damage = find_bone(model, pose, bone_name("Damage_Particles")))
+            {
+                part.damage_bone = static_cast<std::int32_t>(damage->index);
+            }
+            if (const auto decal = find_bone(model, pose, bone_name("Damage_Decal")))
+            {
+                part.decal_bone = static_cast<std::int32_t>(decal->index);
+            }
             profile.hardpoints.push_back(part);
             const auto part_index = static_cast<std::int32_t>(profile.hardpoints.size() - 1U);
             if (kind != HardpointProfile::Kind::weapon)

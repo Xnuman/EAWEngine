@@ -48,9 +48,10 @@ void AttachedEffects::add_rigs(const std::span<const VisualRig> rigs)
             mesh.visibility_half = mesh.bone_count != 0 && rig.palette_size >= mesh.bone_count * 2U;
             for (const auto& attachment : rig.effects)
             {
-                if (attachment.effect && attachment.bone < bind_pose.size())
+                // Hardpoint damage effects wait for per-hardpoint damage in snapshots.
+                if (attachment.effect && attachment.bone < bind_pose.size() && attachment.damage_bone < 0)
                 {
-                    mesh.attachments.push_back({attachment.effect, attachment.bone, bind_pose[attachment.bone].values});
+                    mesh.attachments.push_back({attachment.effect, attachment.emit_mesh, attachment.bone, bind_pose[attachment.bone].values});
                 }
             }
         }
@@ -101,7 +102,7 @@ void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualI
                     continue;
                 }
                 const auto seed = key * 0x9e3779b97f4a7c15ULL + 1U;
-                const auto id = world.play(attachment.effect, world_transform, seed);
+                const auto id = world.play(attachment.effect, world_transform, seed, attachment.emit_mesh);
                 if (!id.valid())
                 {
                     continue;

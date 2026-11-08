@@ -18,9 +18,6 @@
 
 namespace eaw::scene_build {
 
-namespace {
-
-// Movement speed of an object type from its XML Max_Speed (zero when absent or invalid).
 std::string_view trim_ascii(std::string_view text)
 {
     while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0)
@@ -33,8 +30,6 @@ std::string_view trim_ascii(std::string_view text)
     }
     return text;
 }
-
-} // namespace
 
 // Whether a type walks on the ground of land maps. XML Space_Layer is "Land" for ground vehicles,
 // infantry, and heroes, and "None" for walkers such as Ewoks; air units (snowspeeders, air whales)

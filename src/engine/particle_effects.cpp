@@ -63,6 +63,55 @@ Vec3 origin(const std::array<float, 16>& m)
     return {m[12], m[13], m[14]};
 }
 
+// Inverse of an affine row-vector transform (identity when singular).
+std::array<float, 16> inverse_affine(const std::array<float, 16>& m)
+{
+    const auto a = m[0], b = m[1], c = m[2], d = m[4], e = m[5], f = m[6], g = m[8], h = m[9], i = m[10];
+    const auto c00 = e * i - f * h;
+    const auto c01 = c * h - b * i;
+    const auto c02 = b * f - c * e;
+    const auto determinant = a * c00 + d * c01 + g * c02;
+    if (std::abs(determinant) < 1e-12F)
+    {
+        return visual_identity_transform;
+    }
+    const auto s = 1.0F / determinant;
+    std::array<float, 16> r{};
+    r[0] = c00 * s;
+    r[1] = c01 * s;
+    r[2] = c02 * s;
+    r[4] = (f * g - d * i) * s;
+    r[5] = (a * i - c * g) * s;
+    r[6] = (c * d - a * f) * s;
+    r[8] = (d * h - e * g) * s;
+    r[9] = (b * g - a * h) * s;
+    r[10] = (a * e - b * d) * s;
+    r[12] = -(m[12] * r[0] + m[13] * r[4] + m[14] * r[8]);
+    r[13] = -(m[12] * r[1] + m[13] * r[5] + m[14] * r[9]);
+    r[14] = -(m[12] * r[2] + m[13] * r[6] + m[14] * r[10]);
+    r[15] = 1.0F;
+    return r;
+}
+
+// Row-vector product: `left` applied first.
+std::array<float, 16> multiply(const std::array<float, 16>& left, const std::array<float, 16>& right)
+{
+    std::array<float, 16> result{};
+    for (std::size_t row = 0; row < 4; ++row)
+    {
+        for (std::size_t column = 0; column < 4; ++column)
+        {
+            float sum = 0.0F;
+            for (std::size_t k = 0; k < 4; ++k)
+            {
+                sum += left[row * 4 + k] * right[k * 4 + column];
+            }
+            result[row * 4 + column] = sum;
+        }
+    }
+    return result;
+}
+
 // PCG32 (O'Neill): small, fast, and fully specified, so a seed replays the same effect everywhere.
 class Random
 {
@@ -210,6 +259,9 @@ struct ParticleWorld::Particle
     // Seconds until this particle's trail emitter emits again.
     float trail_clock{};
     bool resting{};
+    // Seconds of the current update this particle lives through when it was emitted during it
+    // (sub-frame emission); negative for the whole update.
+    float step{-1.0F};
 };
 
 struct ParticleWorld::EmitterState
@@ -218,6 +270,8 @@ struct ParticleWorld::EmitterState
     float clock{};
     float next_emission{};
     std::int64_t bursts{};
+    // Next vertex of an every-vertex mesh emitter.
+    std::size_t mesh_cursor{};
     bool finished{};
     // Spawned only by its parent emitter (a death or trail child), never on its own.
     bool child{};
@@ -227,8 +281,11 @@ struct ParticleWorld::EmitterState
 struct ParticleWorld::Instance
 {
     std::shared_ptr<const ParticleEffect> effect;
+    std::shared_ptr<const ParticleEmitMesh> mesh;
     std::array<float, 16> transform{visual_identity_transform};
     Vec3 previous_origin{};
+    // The transform at the previous update: linked particles move rigidly with the emitter.
+    std::array<float, 16> previous_transform{visual_identity_transform};
     std::vector<EmitterState> emitters;
     Random random;
     std::uint32_t generation{};
@@ -257,7 +314,7 @@ const ParticleWorld::Instance* ParticleWorld::find(const ParticleInstanceId id) 
     return const_cast<ParticleWorld*>(this)->find(id);
 }
 
-ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, const std::uint64_t seed)
+ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, const std::uint64_t seed, std::shared_ptr<const ParticleEmitMesh> mesh)
 {
     if (!effect || effect->system.emitters.empty())
     {
@@ -280,8 +337,13 @@ ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> eff
     instance.generation = generation;
     instance.live = true;
     instance.effect = std::move(effect);
+    if (mesh && !mesh->positions.empty() && mesh->normals.size() == mesh->positions.size())
+    {
+        instance.mesh = std::move(mesh);
+    }
     instance.transform = transform;
     instance.previous_origin = origin(transform);
+    instance.previous_transform = transform;
     instance.random = Random(seed);
     const auto& emitters = instance.effect->system.emitters;
     instance.emitters.resize(emitters.size());
@@ -389,7 +451,7 @@ void ParticleWorld::release(const std::uint32_t index)
     free_.push_back(index);
 }
 
-bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, const Particle* parent)
+bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, const Particle* parent, const std::array<float, 3>& offset, const float step)
 {
     if (live_particles_ >= capacity_)
     {
@@ -400,9 +462,56 @@ bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, co
     auto& random = instance.random;
     Particle particle;
     const auto& transform = instance.transform;
-    const auto local_position = sample_group(emitter.groups[2], random);
-    particle.position = transform_point(transform, local_position);
-    particle.velocity = transform_direction(transform, sample_group(emitter.groups[0], random));
+    auto local_position = sample_group(emitter.groups[2], random);
+    auto local_velocity = sample_group(emitter.groups[0], random);
+    if (emitter.emit_from_mesh != 0 && instance.mesh)
+    {
+        // On the emitter mesh: every vertex in turn (3), a random vertex (1), or a random point on a
+        // random triangle (2), pushed out along the normal; the velocity's +Z turns to the normal.
+        const auto& mesh = *instance.mesh;
+        const auto vertices = mesh.positions.size();
+        Vec3 point{};
+        Vec3 normal{0.0F, 0.0F, 1.0F};
+        if (emitter.emit_from_mesh == 2 && mesh.indices.size() >= 3)
+        {
+            const auto triangle = std::min<std::size_t>(static_cast<std::size_t>(random.unit() * static_cast<float>(mesh.indices.size() / 3U)), mesh.indices.size() / 3U - 1U) * 3U;
+            auto w1 = random.unit();
+            auto w2 = random.unit();
+            if (w1 + w2 > 1.0F)
+            {
+                w1 = 1.0F - w1;
+                w2 = 1.0F - w2;
+            }
+            const std::array<float, 3> weights{1.0F - w1 - w2, w1, w2};
+            for (std::size_t corner = 0; corner < 3; ++corner)
+            {
+                const auto vertex = std::min<std::size_t>(mesh.indices[triangle + corner], vertices - 1U);
+                point = point + mesh.positions[vertex] * weights[corner];
+                normal = corner == 0 ? mesh.normals[vertex] * weights[corner] : normal + mesh.normals[vertex] * weights[corner];
+            }
+        }
+        else
+        {
+            auto& cursor = instance.emitters[emitter_index].mesh_cursor;
+            const auto vertex = emitter.emit_from_mesh == 3 ? cursor++ % vertices : std::min<std::size_t>(static_cast<std::size_t>(random.unit() * static_cast<float>(vertices)), vertices - 1U);
+            point = mesh.positions[vertex];
+            normal = mesh.normals[vertex];
+        }
+        normal = normalized(normal);
+        if (length(normal) == 0.0F)
+        {
+            normal = {0.0F, 0.0F, 1.0F};
+        }
+        local_position = point + normal * emitter.emit_from_mesh_offset;
+        // A basis whose Z is the normal.
+        const Vec3 helper = std::abs(normal[2]) < 0.9F ? Vec3{0.0F, 0.0F, 1.0F} : Vec3{1.0F, 0.0F, 0.0F};
+        const auto side = normalized(Vec3{helper[1] * normal[2] - helper[2] * normal[1], helper[2] * normal[0] - helper[0] * normal[2], helper[0] * normal[1] - helper[1] * normal[0]});
+        const Vec3 up{normal[1] * side[2] - normal[2] * side[1], normal[2] * side[0] - normal[0] * side[2], normal[0] * side[1] - normal[1] * side[0]};
+        local_velocity = side * local_velocity[0] + up * local_velocity[1] + normal * local_velocity[2];
+    }
+    particle.position = transform_point(transform, local_position) + offset;
+    particle.step = step;
+    particle.velocity = transform_direction(transform, local_velocity);
     if (emitter.inward_speed != 0.0F)
     {
         // As in the reference, the stored value moves particles away from the emitter when positive.
@@ -474,6 +583,9 @@ void ParticleWorld::step_instance(Instance& instance, const float seconds)
     const auto current_origin = origin(instance.transform);
     const auto moved = current_origin - instance.previous_origin;
     instance.previous_origin = current_origin;
+    // Rigid motion of the emitter since the last update (translation and rotation).
+    const auto carried = multiply(inverse_affine(instance.previous_transform), instance.transform);
+    instance.previous_transform = instance.transform;
     const bool may_emit = instance.emitting && !instance.stopped;
     for (std::size_t e = 0; e < emitters.size(); ++e)
     {
@@ -484,12 +596,21 @@ void ParticleWorld::step_instance(Instance& instance, const float seconds)
         if (!state.child && !state.finished && may_emit && state.drawn)
         {
             const auto interval = emitter.use_bursts ? std::max(emitter.burst_delay, 1.0F / 120.0F) : 1.0F / static_cast<float>(std::max<std::uint32_t>(emitter.particles_per_second, 1U));
+            // Each emission happens at its own time within the update, where the emitter was then
+            // (its translation interpolated), so a moving emitter leaves an even trail.
+            const auto update_start = state.clock - seconds;
             while (state.clock >= state.next_emission && !state.finished)
             {
-                const auto count = emitter.use_bursts ? emitter.particles_per_burst : 1U;
+                const auto fraction = seconds > 0.0F ? std::clamp((state.next_emission - update_start) / seconds, 0.0F, 1.0F) : 1.0F;
+                // Linked particles spawn where the emitter is now (they move with it from then on).
+                const auto behind = emitter.link_to_system ? Vec3{} : moved * -(1.0F - fraction);
+                const auto remaining = seconds * (1.0F - fraction);
+                // Every-vertex mesh emitters emit once per vertex per spawn.
+                const auto per_vertex = emitter.emit_from_mesh == 3 && instance.mesh ? static_cast<std::uint32_t>(std::min<std::size_t>(instance.mesh->positions.size(), 4096U)) : 1U;
+                const auto count = (emitter.use_bursts ? emitter.particles_per_burst : 1U) * per_vertex;
                 for (std::uint32_t n = 0; n < count; ++n)
                 {
-                    if (!emit(instance, e, nullptr))
+                    if (!emit(instance, e, nullptr, behind, remaining))
                     {
                         break;
                     }
@@ -514,15 +635,20 @@ void ParticleWorld::step_instance(Instance& instance, const float seconds)
         for (std::size_t p = 0; p < state.particles.size();)
         {
             auto& particle = state.particles[p];
-            particle.age += seconds;
+            const bool fresh = particle.step >= 0.0F;
+            const auto dt = fresh ? particle.step : seconds;
+            particle.step = -1.0F;
+            particle.age += dt;
             if (particle.age >= particle.lifetime)
             {
                 kill(instance, e, p);
                 continue;
             }
-            if (emitter.link_to_system)
+            // Particles emitted in this update already sit at the current transform.
+            if (emitter.link_to_system && !fresh)
             {
-                particle.position = particle.position + moved;
+                particle.position = transform_point(carried, particle.position);
+                particle.velocity = transform_direction(carried, particle.velocity);
             }
             if (!particle.resting)
             {
@@ -531,12 +657,12 @@ void ParticleWorld::step_instance(Instance& instance, const float seconds)
                 {
                     pull = pull + normalized(current_origin - particle.position) * emitter.inward_acceleration;
                 }
-                particle.velocity = particle.velocity + pull * seconds;
-                particle.position = particle.position + particle.velocity * seconds;
+                particle.velocity = particle.velocity + pull * dt;
+                particle.position = particle.position + particle.velocity * dt;
             }
             if (!emitter.random_rotation)
             {
-                particle.rotation += seconds * particle.rotation_direction * sample_particle_track(rotation_track, particle.age / particle.lifetime);
+                particle.rotation += dt * particle.rotation_direction * sample_particle_track(rotation_track, particle.age / particle.lifetime);
             }
             if (emitter.ground_behavior != 0 && ground_)
             {
@@ -566,7 +692,7 @@ void ParticleWorld::step_instance(Instance& instance, const float seconds)
                 const auto& child_emitter = emitters[child];
                 const auto interval =
                     child_emitter.use_bursts ? std::max(child_emitter.burst_delay, 1.0F / 120.0F) : 1.0F / static_cast<float>(std::max<std::uint32_t>(child_emitter.particles_per_second, 1U));
-                particle.trail_clock -= seconds;
+                particle.trail_clock -= dt;
                 std::size_t emitted = 0;
                 while (particle.trail_clock <= 0.0F && emitted < maximum_trail_burst)
                 {

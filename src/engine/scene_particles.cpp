@@ -3,6 +3,7 @@
 
 #include "scene_builder_internal.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <unordered_map>
 
@@ -31,6 +32,57 @@ std::optional<std::string> resolve_effect_path(const AssetReader& vfs, const std
         name += ".alo";
     }
     return resolve_model_path(vfs, (std::filesystem::path("Data/Art/Models") / name).generic_string());
+}
+
+// The mesh rigidly attached to the proxy bone's parent (the reference's rule for a proxy's mesh), in
+// the proxy bone's space; null when there is none.
+std::shared_ptr<const ParticleEmitMesh> proxy_emit_mesh(const AloModel& model, const std::uint32_t proxy_bone)
+{
+    const auto parent = model.bones[proxy_bone].parent;
+    if (parent < 0)
+    {
+        return nullptr;
+    }
+    const auto bind_pose = model.bind_pose();
+    const auto to_proxy = alo_inverse(bind_pose[proxy_bone]);
+    if (!to_proxy || static_cast<std::size_t>(parent) >= bind_pose.size())
+    {
+        return nullptr;
+    }
+    for (const auto& mesh : model.meshes)
+    {
+        if (!mesh.attached_bone || *mesh.attached_bone != static_cast<std::uint32_t>(parent))
+        {
+            continue;
+        }
+        // Rigid mesh vertices are in their bone's space: to the model, then to the proxy bone.
+        const auto transform = alo_multiply(bind_pose[static_cast<std::size_t>(parent)], *to_proxy);
+        const auto origin = alo_transform_point({}, transform);
+        auto emit = std::make_shared<ParticleEmitMesh>();
+        for (const auto& submesh : mesh.submeshes)
+        {
+            const auto first = static_cast<std::uint32_t>(emit->positions.size());
+            for (const auto& vertex : submesh.vertices)
+            {
+                const auto position = alo_transform_point(vertex.position, transform);
+                const auto tip = alo_transform_point(vertex.normal, transform);
+                emit->positions.push_back({position.x, position.y, position.z});
+                emit->normals.push_back({tip.x - origin.x, tip.y - origin.y, tip.z - origin.z});
+            }
+            for (std::size_t index = 0; index + 2 < submesh.indices.size(); index += 3)
+            {
+                if (submesh.indices[index] < submesh.vertices.size() && submesh.indices[index + 1] < submesh.vertices.size() && submesh.indices[index + 2] < submesh.vertices.size())
+                {
+                    for (std::size_t corner = 0; corner < 3; ++corner)
+                    {
+                        emit->indices.push_back(first + submesh.indices[index + corner]);
+                    }
+                }
+            }
+        }
+        return emit->positions.empty() ? nullptr : emit;
+    }
+    return nullptr;
 }
 
 } // namespace
@@ -116,13 +168,51 @@ std::shared_ptr<const ParticleEffect> particle_effect(SceneBuilder& builder, con
     return slot;
 }
 
-std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModel& model)
+void note_damage_bones(SceneBuilder& builder, const std::string& model_path, const CombatProfile& combat)
+{
+    for (const auto& hardpoint : combat.hardpoints)
+    {
+        if (hardpoint.damage_bone >= 0)
+        {
+            builder.damage_bones[fold_ascii(model_path)].insert(static_cast<std::uint32_t>(hardpoint.damage_bone));
+        }
+        if (hardpoint.decal_bone >= 0)
+        {
+            builder.decal_bones[fold_ascii(model_path)].insert(static_cast<std::uint32_t>(hardpoint.decal_bone));
+        }
+    }
+}
+
+std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModel& model, const std::string& model_path)
 {
     std::vector<VisualEffectAttachment> attachments;
     if (!builder.textures)
     {
         return attachments;
     }
+    const auto damage = builder.damage_bones.find(fold_ascii(model_path));
+    // The damage bone at or above `bone`, or -1.
+    const auto damage_bone_of = [&](std::uint32_t bone) -> std::int32_t
+    {
+        if (damage == builder.damage_bones.end())
+        {
+            return -1;
+        }
+        for (std::size_t depth = 0; depth <= model.bones.size() && bone < model.bones.size(); ++depth)
+        {
+            if (damage->second.contains(bone))
+            {
+                return static_cast<std::int32_t>(bone);
+            }
+            const auto parent = model.bones[bone].parent;
+            if (parent < 0)
+            {
+                break;
+            }
+            bone = static_cast<std::uint32_t>(parent);
+        }
+        return -1;
+    };
     for (const auto& proxy : model.proxies)
     {
         // Hidden proxies (damage effects, alternate states) are shown by gameplay, which does not
@@ -144,7 +234,13 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const A
         }
         if (auto effect = particle_effect(builder, name))
         {
-            attachments.push_back({std::move(effect), proxy.bone, proxy.name});
+            const bool from_mesh = std::ranges::any_of(effect->system.emitters,
+                                                       [](const ParticleEmitter& emitter)
+                                                       {
+                                                           return emitter.emit_from_mesh != 0;
+                                                       });
+            auto emit_mesh = from_mesh ? proxy_emit_mesh(model, proxy.bone) : nullptr;
+            attachments.push_back({std::move(effect), proxy.bone, proxy.name, damage_bone_of(proxy.bone), std::move(emit_mesh)});
         }
     }
     return attachments;

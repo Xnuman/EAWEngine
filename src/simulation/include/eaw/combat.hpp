@@ -39,6 +39,12 @@ struct HardpointProfile
     // Shots may aim at it.
     bool targetable{true};
     LocalPoint offset;
+    // Presentation only (not simulation state): the model bone its XML Damage_Particles names, under
+    // which the model's damage-effect proxies hang, or -1.
+    std::int32_t damage_bone{-1};
+    // Presentation only: the bone its XML Damage_Decal names (scorch meshes shown once it is
+    // destroyed), or -1.
+    std::int32_t decal_bone{-1};
 };
 
 // One projectile weapon: fires bursts of `pulse_count` shots `pulse_delay_seconds` apart, one

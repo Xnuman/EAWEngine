@@ -40,6 +40,7 @@ private:
     struct Attachment
     {
         std::shared_ptr<const ParticleEffect> effect;
+        std::shared_ptr<const ParticleEmitMesh> emit_mesh;
         std::uint32_t bone{};
         // The bone's bind-pose transform in model space (row-vector convention).
         std::array<float, 16> bind{};

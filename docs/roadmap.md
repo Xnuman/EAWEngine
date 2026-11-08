@@ -264,9 +264,15 @@ Gaps toward the deliverable, in planned order:
       presentation-only particle world plays them, the renderer draws
       billboard, ground-plane, and kite particles with additive, alpha, and
       modulate blending, and models' visible proxies (engine glows, station
-      lights, fires) play their effects at their bones. Not yet: heat
-      distortion, weather, emission from meshes, wind, soft particles, and the
-      effects gameplay triggers (damage, weapons, deaths).
+      lights, fires) play their effects at their bones, emitting from meshes
+      where the effect asks for it. Ships carry their hardpoint models
+      (turrets, batteries) and hide hardpoint scorch marks and damage smoke
+      while intact. Not yet: heat distortion, weather, wind, soft particles,
+      and the
+      effects gameplay triggers (damage, weapons, deaths). Step 2 is done:
+      trails, which in the stock data are particles of moving emitters, are
+      emitted sub-frame along the emitter's path, so they stay continuous at
+      any speed and frame rate.
    2. Combat presentation and fidelity: hardpoint visuals and damage, turret
       rotation, damage-specific death clones and wreck explosions, real
       projectiles for weapons.

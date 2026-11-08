@@ -31,6 +31,15 @@ struct ParticleEffect
     std::vector<std::uint32_t> textures;
 };
 
+// The mesh an emitter with emit_from_mesh spawns on, in the effect's own space: for a proxy, the
+// mesh on the proxy bone's parent bone. Triangles index the vertices.
+struct ParticleEmitMesh
+{
+    std::vector<std::array<float, 3>> positions;
+    std::vector<std::array<float, 3>> normals;
+    std::vector<std::uint32_t> indices;
+};
+
 // Generation-checked handle of a playing effect.
 struct ParticleInstanceId
 {
@@ -67,7 +76,8 @@ public:
     // Starts an effect at `transform` (row-vector convention, translation in 12..14, as
     // VisualInstance). One-shot effects end on their own once their emitters are done and their
     // particles have died; looping effects run until stop() or remove().
-    ParticleInstanceId play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, std::uint64_t seed);
+    // `mesh` serves emitters that emit from a mesh (without one they use their position shape).
+    ParticleInstanceId play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, std::uint64_t seed, std::shared_ptr<const ParticleEmitMesh> mesh = {});
     // Moves a playing effect (attached effects follow their bone each frame). Unknown ids are ignored.
     void set_transform(ParticleInstanceId id, const std::array<float, 16>& transform);
     // Hides or shows a playing effect: hidden effects emit nothing, and their particles live out.
@@ -104,7 +114,9 @@ private:
     const Instance* find(ParticleInstanceId id) const noexcept;
     void release(std::uint32_t index);
     void step_instance(Instance& instance, float seconds);
-    bool emit(Instance& instance, std::size_t emitter, const Particle* parent);
+    // `offset` moves the spawn point (where a moving emitter was at the emission time); `step` is how
+    // much of the current update the particle still lives through (negative: all of it).
+    bool emit(Instance& instance, std::size_t emitter, const Particle* parent, const std::array<float, 3>& offset = {}, float step = -1.0F);
     void kill(Instance& instance, std::size_t emitter, std::size_t particle);
 
 public:

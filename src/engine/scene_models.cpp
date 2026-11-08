@@ -64,7 +64,7 @@ std::shared_ptr<const Result<AloModel>> cached_model(SceneBuilder& builder, cons
 // when an animation shows their bone. Without it (maps share one bind-pose palette), such meshes
 // are omitted.
 // A model that cannot be appended leaves no geometry, indices, or materials behind.
-Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model, const std::string_view name, const bool animated_visibility)
+Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model, const std::string_view name, const bool animated_visibility, const std::span<const ModelAttachment> attachments)
 {
     auto& scene = builder.scene;
     const auto bind_pose = model.bind_pose();
@@ -98,139 +98,175 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model,
         {0.78F, 0.43F, 0.61F, 1.0F},
     }};
 
-    const auto default_visible = alo_default_mesh_visibility(model, !animated_visibility);
-    for (std::size_t mesh_index = 0; mesh_index < model.meshes.size(); ++mesh_index)
+    // Appends `source`'s geometry. Attached models (host != null) are placed at the host bone's bind
+    // pose and bound rigidly to that bone, in the host's palette.
+    const auto append_geometry = [&](const AloModel& source, const std::vector<AloMatrix4>& source_bind, const AloMatrix4* host, const std::optional<std::uint32_t> host_bone) -> Status
     {
-        const auto& mesh = model.meshes[mesh_index];
-        // Default appearance: intact state and full detail. Bone visibility is either animated
-        // through the visibility palette or, for maps, fixed to the bind pose. Damage-state and
-        // distance switching are not modeled yet.
-        if (!default_visible[mesh_index])
+        const auto default_visible = alo_default_mesh_visibility(source, host != nullptr || !animated_visibility);
+        for (std::size_t mesh_index = 0; mesh_index < source.meshes.size(); ++mesh_index)
         {
-            continue;
-        }
-        for (const auto& submesh : mesh.submeshes)
-        {
-            if (submesh.vertices.empty() || submesh.indices.empty())
+            const auto& mesh = source.meshes[mesh_index];
+            // Default appearance: intact state and full detail. Bone visibility is either animated
+            // through the visibility palette or, for maps, fixed to the bind pose. Damage-state and
+            // distance switching are not modeled yet.
+            if (!default_visible[mesh_index])
             {
                 continue;
             }
-            const auto material = LegacyMaterial::translate(submesh);
-            if (material.family == LegacyMaterialFamily::collision || material.family == LegacyMaterialFamily::shadow)
+            for (const auto& submesh : mesh.submeshes)
             {
-                continue;
-            }
-            // Heat distortion and occluded-unit overlays target dedicated passes (a distortion buffer
-            // and a depth-greater silhouette) that the sandbox does not implement yet. Drawing them
-            // into the color pass would be wrong, so they are skipped with a diagnostic.
-            if (material.family == LegacyMaterialFamily::heat || material.family == LegacyMaterialFamily::occluded)
-            {
-                scene.warnings.push_back(mesh.name + ": skipped " + material.source_shader + " (" + std::string(to_string(material.family)) + " pass is not implemented)");
-                continue;
-            }
-
-            auto visual_material = make_visual_material(builder, material);
-            if (visual_material.base_color_texture == invalid_visual_texture)
-            {
-                visual_material.tint = palette[mesh_index % palette.size()];
-            }
-
-            if (scene.vertices.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
-            {
-                roll_back();
-                return make_error("visual scene has too many vertices for a D3D12 base-vertex draw");
-            }
-            const auto base_vertex = static_cast<std::int32_t>(scene.vertices.size());
-            const AloMatrix4* attachment = nullptr;
-            if (submesh.skin_bones.empty() && mesh.attached_bone && *mesh.attached_bone < bind_pose.size())
-            {
-                attachment = &bind_pose[*mesh.attached_bone];
-            }
-            for (const auto& vertex : submesh.vertices)
-            {
-                const auto position = attachment != nullptr ? alo_transform_point(vertex.position, *attachment) : vertex.position;
-                const auto normal = attachment != nullptr ? transform_direction(vertex.normal, *attachment) : vertex.normal;
-                const auto tangent = attachment != nullptr ? transform_direction(vertex.tangent, *attachment) : vertex.tangent;
-                const auto binormal = attachment != nullptr ? transform_direction(vertex.binormal, *attachment) : vertex.binormal;
-                std::array<std::uint32_t, 4> bone_indices{};
-                std::array<float, 4> bone_weights{};
-                if (!submesh.skin_bones.empty())
-                {
-                    for (std::size_t influence = 0; influence < bone_indices.size(); ++influence)
-                    {
-                        const auto palette_index = vertex.bone_indices[influence];
-                        if (vertex.bone_weights[influence] <= 0.0F || palette_index >= submesh.skin_bones.size())
-                        {
-                            continue;
-                        }
-                        const auto bone_index = submesh.skin_bones[palette_index];
-                        if (bone_index >= model.bones.size())
-                        {
-                            continue;
-                        }
-                        bone_indices[influence] = bone_index;
-                        bone_weights[influence] = vertex.bone_weights[influence];
-                    }
-                }
-                else if (mesh.attached_bone && *mesh.attached_bone < model.bones.size())
-                {
-                    bone_indices[0] = animated_visibility ? bone_count + *mesh.attached_bone : *mesh.attached_bone;
-                    bone_weights[0] = 1.0F;
-                }
-                // Authored vertex colors only drive materials whose legacy profile reads them; other
-                // files leave the channel unused, so it stays white.
-                std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
-                if (material.features.vertex_color)
-                {
-                    const std::array<float, 4> authored{vertex.color.x, vertex.color.y, vertex.color.z, vertex.color.w};
-                    if (std::ranges::all_of(authored,
-                                            [](const float value)
-                                            {
-                                                return std::isfinite(value);
-                                            }))
-                    {
-                        color = authored;
-                    }
-                }
-                scene.vertices.push_back({{position.x, position.y, position.z},
-                                          {normal.x, normal.y, normal.z},
-                                          {vertex.texture_coordinates[0].x, vertex.texture_coordinates[0].y},
-                                          bone_indices,
-                                          bone_weights,
-                                          {tangent.x, tangent.y, tangent.z},
-                                          {binormal.x, binormal.y, binormal.z},
-                                          color});
-                visual_mesh.bounds_minimum[0] = std::min(visual_mesh.bounds_minimum[0], position.x);
-                visual_mesh.bounds_minimum[1] = std::min(visual_mesh.bounds_minimum[1], position.y);
-                visual_mesh.bounds_minimum[2] = std::min(visual_mesh.bounds_minimum[2], position.z);
-                visual_mesh.bounds_maximum[0] = std::max(visual_mesh.bounds_maximum[0], position.x);
-                visual_mesh.bounds_maximum[1] = std::max(visual_mesh.bounds_maximum[1], position.y);
-                visual_mesh.bounds_maximum[2] = std::max(visual_mesh.bounds_maximum[2], position.z);
-            }
-
-            const auto first_index = static_cast<std::uint32_t>(scene.indices.size());
-            for (std::size_t index = 0; index + 2 < submesh.indices.size(); index += 3)
-            {
-                const auto a = submesh.indices[index];
-                const auto b = submesh.indices[index + 1];
-                const auto c = submesh.indices[index + 2];
-                if (a >= submesh.vertices.size() || b >= submesh.vertices.size() || c >= submesh.vertices.size())
+                if (submesh.vertices.empty() || submesh.indices.empty())
                 {
                     continue;
                 }
-                scene.indices.push_back(a);
-                scene.indices.push_back(b);
-                scene.indices.push_back(c);
+                const auto material = LegacyMaterial::translate(submesh);
+                if (material.family == LegacyMaterialFamily::collision || material.family == LegacyMaterialFamily::shadow)
+                {
+                    continue;
+                }
+                // Heat distortion and occluded-unit overlays target dedicated passes (a distortion buffer
+                // and a depth-greater silhouette) that the sandbox does not implement yet. Drawing them
+                // into the color pass would be wrong, so they are skipped with a diagnostic.
+                if (material.family == LegacyMaterialFamily::heat || material.family == LegacyMaterialFamily::occluded)
+                {
+                    scene.warnings.push_back(mesh.name + ": skipped " + material.source_shader + " (" + std::string(to_string(material.family)) + " pass is not implemented)");
+                    continue;
+                }
+
+                auto visual_material = make_visual_material(builder, material);
+                if (visual_material.base_color_texture == invalid_visual_texture)
+                {
+                    visual_material.tint = palette[mesh_index % palette.size()];
+                }
+
+                if (scene.vertices.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
+                {
+                    return make_error("visual scene has too many vertices for a D3D12 base-vertex draw");
+                }
+                const auto base_vertex = static_cast<std::int32_t>(scene.vertices.size());
+                const AloMatrix4* attachment = nullptr;
+                if (submesh.skin_bones.empty() && mesh.attached_bone && *mesh.attached_bone < source_bind.size())
+                {
+                    attachment = &source_bind[*mesh.attached_bone];
+                }
+                for (const auto& vertex : submesh.vertices)
+                {
+                    auto position = attachment != nullptr ? alo_transform_point(vertex.position, *attachment) : vertex.position;
+                    auto normal = attachment != nullptr ? transform_direction(vertex.normal, *attachment) : vertex.normal;
+                    auto tangent = attachment != nullptr ? transform_direction(vertex.tangent, *attachment) : vertex.tangent;
+                    auto binormal = attachment != nullptr ? transform_direction(vertex.binormal, *attachment) : vertex.binormal;
+                    if (host != nullptr)
+                    {
+                        position = alo_transform_point(position, *host);
+                        normal = transform_direction(normal, *host);
+                        tangent = transform_direction(tangent, *host);
+                        binormal = transform_direction(binormal, *host);
+                    }
+                    std::array<std::uint32_t, 4> bone_indices{};
+                    std::array<float, 4> bone_weights{};
+                    if (host_bone)
+                    {
+                        // Rigid on the host bone, through the visibility half when there is one.
+                        bone_indices[0] = animated_visibility ? bone_count + *host_bone : *host_bone;
+                        bone_weights[0] = 1.0F;
+                    }
+                    else if (!submesh.skin_bones.empty())
+                    {
+                        for (std::size_t influence = 0; influence < bone_indices.size(); ++influence)
+                        {
+                            const auto palette_index = vertex.bone_indices[influence];
+                            if (vertex.bone_weights[influence] <= 0.0F || palette_index >= submesh.skin_bones.size())
+                            {
+                                continue;
+                            }
+                            const auto bone_index = submesh.skin_bones[palette_index];
+                            if (bone_index >= source.bones.size())
+                            {
+                                continue;
+                            }
+                            bone_indices[influence] = bone_index;
+                            bone_weights[influence] = vertex.bone_weights[influence];
+                        }
+                    }
+                    else if (mesh.attached_bone && *mesh.attached_bone < source.bones.size())
+                    {
+                        bone_indices[0] = animated_visibility ? bone_count + *mesh.attached_bone : *mesh.attached_bone;
+                        bone_weights[0] = 1.0F;
+                    }
+                    // Authored vertex colors only drive materials whose legacy profile reads them; other
+                    // files leave the channel unused, so it stays white.
+                    std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
+                    if (material.features.vertex_color)
+                    {
+                        const std::array<float, 4> authored{vertex.color.x, vertex.color.y, vertex.color.z, vertex.color.w};
+                        if (std::ranges::all_of(authored,
+                                                [](const float value)
+                                                {
+                                                    return std::isfinite(value);
+                                                }))
+                        {
+                            color = authored;
+                        }
+                    }
+                    scene.vertices.push_back({{position.x, position.y, position.z},
+                                              {normal.x, normal.y, normal.z},
+                                              {vertex.texture_coordinates[0].x, vertex.texture_coordinates[0].y},
+                                              bone_indices,
+                                              bone_weights,
+                                              {tangent.x, tangent.y, tangent.z},
+                                              {binormal.x, binormal.y, binormal.z},
+                                              color});
+                    visual_mesh.bounds_minimum[0] = std::min(visual_mesh.bounds_minimum[0], position.x);
+                    visual_mesh.bounds_minimum[1] = std::min(visual_mesh.bounds_minimum[1], position.y);
+                    visual_mesh.bounds_minimum[2] = std::min(visual_mesh.bounds_minimum[2], position.z);
+                    visual_mesh.bounds_maximum[0] = std::max(visual_mesh.bounds_maximum[0], position.x);
+                    visual_mesh.bounds_maximum[1] = std::max(visual_mesh.bounds_maximum[1], position.y);
+                    visual_mesh.bounds_maximum[2] = std::max(visual_mesh.bounds_maximum[2], position.z);
+                }
+
+                const auto first_index = static_cast<std::uint32_t>(scene.indices.size());
+                for (std::size_t index = 0; index + 2 < submesh.indices.size(); index += 3)
+                {
+                    const auto a = submesh.indices[index];
+                    const auto b = submesh.indices[index + 1];
+                    const auto c = submesh.indices[index + 2];
+                    if (a >= submesh.vertices.size() || b >= submesh.vertices.size() || c >= submesh.vertices.size())
+                    {
+                        continue;
+                    }
+                    scene.indices.push_back(a);
+                    scene.indices.push_back(b);
+                    scene.indices.push_back(c);
+                }
+                const auto index_count = static_cast<std::uint32_t>(scene.indices.size()) - first_index;
+                if (index_count == 0)
+                {
+                    scene.vertices.resize(static_cast<std::size_t>(base_vertex));
+                    continue;
+                }
+                const auto material_index = static_cast<std::uint32_t>(scene.materials.size());
+                scene.materials.push_back(std::move(visual_material));
+                scene.draws.push_back({first_index, index_count, base_vertex, material_index});
             }
-            const auto index_count = static_cast<std::uint32_t>(scene.indices.size()) - first_index;
-            if (index_count == 0)
-            {
-                scene.vertices.resize(static_cast<std::size_t>(base_vertex));
-                continue;
-            }
-            const auto material_index = static_cast<std::uint32_t>(scene.materials.size());
-            scene.materials.push_back(std::move(visual_material));
-            scene.draws.push_back({first_index, index_count, base_vertex, material_index});
+        }
+        return {};
+    };
+
+    if (auto status = append_geometry(model, bind_pose, nullptr, std::nullopt); !status)
+    {
+        roll_back();
+        return status.error();
+    }
+    for (const auto& attached : attachments)
+    {
+        if (!attached.model || attached.bone >= bind_pose.size())
+        {
+            continue;
+        }
+        if (auto status = append_geometry(*attached.model, attached.model->bind_pose(), &bind_pose[attached.bone], attached.bone); !status)
+        {
+            roll_back();
+            return status.error();
         }
     }
 
@@ -246,9 +282,78 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model,
     return mesh_index;
 }
 
+std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& type, const AloModel* host)
+{
+    std::vector<ModelAttachment> attachments;
+    const auto* list = catalog.field(type, "HardPoints").field;
+    if (host == nullptr || list == nullptr || !builder.textures)
+    {
+        return attachments;
+    }
+    const auto text_of = [&](const XmlDefinition& definition, const std::string_view name)
+    {
+        const auto* node = catalog.field(definition, name).field;
+        return node != nullptr ? std::string(trim_ascii(node->text)) : std::string{};
+    };
+    for (const auto name : split_type_names(list->text))
+    {
+        const XmlDefinition* hardpoint = nullptr;
+        for (const auto* candidate : catalog.find(name))
+        {
+            if (fold_ascii(candidate->type) == "hardpoint" || hardpoint == nullptr)
+            {
+                hardpoint = candidate;
+            }
+        }
+        if (hardpoint == nullptr)
+        {
+            continue;
+        }
+        const auto model_name = text_of(*hardpoint, "Model_To_Attach");
+        if (model_name.empty())
+        {
+            continue;
+        }
+        const auto bone_name = fold_ascii(text_of(*hardpoint, "Attachment_Bone"));
+        std::optional<std::uint32_t> bone;
+        for (std::size_t index = 0; index < host->bones.size(); ++index)
+        {
+            if (fold_ascii(host->bones[index].name) == bone_name)
+            {
+                bone = static_cast<std::uint32_t>(index);
+                break;
+            }
+        }
+        const auto path = resolve_model_path(builder.vfs, model_name);
+        if (!bone || !path)
+        {
+            builder.scene.warnings.push_back(type.name + ": hardpoint " + std::string(name) + " attaches " + model_name + (path ? " to missing bone '" + bone_name + "'" : " (file not found)"));
+            continue;
+        }
+        const auto model = cached_model(builder, *path);
+        if (!model->ok())
+        {
+            builder.scene.warnings.push_back(*path + ": " + model->error().message);
+            continue;
+        }
+        attachments.push_back({*path, std::shared_ptr<const AloModel>(model, &model->value()), *bone});
+    }
+    return attachments;
+}
+
+std::string attached_mesh_key(const std::string& model_path, const std::span<const ModelAttachment> attachments)
+{
+    auto key = fold_ascii(model_path);
+    for (const auto& attachment : attachments)
+    {
+        key += "|" + fold_ascii(attachment.path) + "@" + std::to_string(attachment.bone);
+    }
+    return key;
+}
+
 // Decodes and appends a model referenced by a map (placed object, backdrop, or spawn type). Particle
 // ALOs and malformed models are reported once as scene warnings and yield nothing.
-std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std::string& model_path)
+std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std::string& model_path, const std::span<const ModelAttachment> attachments)
 {
     const auto model = cached_model(builder, model_path);
     if (!model->ok())
@@ -257,7 +362,7 @@ std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std
         return std::nullopt;
     }
     // Map meshes carry the visibility half of the palette so units can animate (VisualRig).
-    auto mesh = append_model(builder, model->value(), model_path, true);
+    auto mesh = append_model(builder, model->value(), model_path, true, attachments);
     if (!mesh)
     {
         builder.scene.warnings.push_back(model_path + ": " + mesh.error().message);
@@ -429,9 +534,14 @@ std::optional<std::string> default_model_animation(const AssetReader& vfs, const
 
 namespace {
 
-// Skin matrices of `pose` (and the visibility half) appended to `out`.
+bool intact_hidden(const std::vector<bool>& hidden, const std::size_t bone)
+{
+    return bone < hidden.size() && hidden[bone];
+}
+
+// Skin matrices of `pose` (and the visibility half) appended to `out`; `hidden` bones collapse too.
 void append_pose_palette(const AloModel& model, const std::span<const AloMatrix4> inverse_bind_pose, const std::span<const AlaPoseBone> pose, const bool visibility_palette,
-                         std::vector<std::array<float, 16>>& out)
+                         std::vector<std::array<float, 16>>& out, const std::vector<bool>& hidden = {})
 {
     const auto bone_count = std::min({pose.size(), inverse_bind_pose.size(), model.bones.size()});
     const auto first = out.size();
@@ -446,21 +556,21 @@ void append_pose_palette(const AloModel& model, const std::span<const AloMatrix4
         collapsed[15] = 1.0F;
         for (std::size_t index = 0; index < bone_count; ++index)
         {
-            out.push_back(pose[index].visible ? out[first + index] : collapsed);
+            out.push_back(pose[index].visible && !intact_hidden(hidden, index) ? out[first + index] : collapsed);
         }
     }
 }
 
 // A rig's rest palette: identity skin matrices, then the visibility half from the bind pose.
-void append_rest_palette(const AloModel& model, std::vector<std::array<float, 16>>& out)
+void append_rest_palette(const AloModel& model, std::vector<std::array<float, 16>>& out, const std::vector<bool>& hidden = {})
 {
     const auto identity = alo_identity_matrix().values;
     std::array<float, 16> collapsed{};
     collapsed[15] = 1.0F;
     out.insert(out.end(), model.bones.size(), identity);
-    for (const auto& bone : model.bones)
+    for (std::size_t index = 0; index < model.bones.size(); ++index)
     {
-        out.push_back(bone.visible ? identity : collapsed);
+        out.push_back(model.bones[index].visible && !intact_hidden(hidden, index) ? identity : collapsed);
     }
     if (model.bones.empty())
     {
@@ -512,7 +622,7 @@ void append_rig_local_palette(const VisualRig& rig, const std::span<const AlaLoc
     if (rig.model && rig.inverse_bind_pose.size() == rig.model->bones.size() && !rig.model->bones.empty() && local_pose.size() == rig.model->bones.size())
     {
         const auto pose = ala_compose_pose(*rig.model, local_pose);
-        append_pose_palette(*rig.model, rig.inverse_bind_pose, pose, true, out);
+        append_pose_palette(*rig.model, rig.inverse_bind_pose, pose, true, out, rig.intact_hidden);
     }
     if (out.size() - first != rig.palette_size)
     {
@@ -520,7 +630,7 @@ void append_rig_local_palette(const VisualRig& rig, const std::span<const AlaLoc
         out.resize(first);
         if (rig.model)
         {
-            append_rest_palette(*rig.model, out);
+            append_rest_palette(*rig.model, out, rig.intact_hidden);
         }
         out.resize(first + rig.palette_size, alo_identity_matrix().values);
     }
@@ -582,8 +692,29 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
         if (model->ok())
         {
             rig.model = std::shared_ptr<const AloModel>(model, &model->value());
-            append_rest_palette(*rig.model, rest_palette);
-            rig.effects = proxy_effects(builder, *rig.model);
+            // Scorch marks of hardpoints (their Damage_Decal bones and everything below) wait for
+            // the hardpoint's destruction.
+            if (const auto decals = builder.decal_bones.find(fold_ascii(mesh.name)); decals != builder.decal_bones.end())
+            {
+                const auto& bones = rig.model->bones;
+                rig.intact_hidden.assign(bones.size(), false);
+                for (std::size_t index = 0; index < bones.size(); ++index)
+                {
+                    // The bone itself or any ancestor named by a Damage_Decal hides it.
+                    auto bone = static_cast<std::int32_t>(index);
+                    for (std::size_t depth = 0; bone >= 0 && depth <= bones.size(); ++depth)
+                    {
+                        if (decals->second.contains(static_cast<std::uint32_t>(bone)))
+                        {
+                            rig.intact_hidden[index] = true;
+                            break;
+                        }
+                        bone = static_cast<std::size_t>(bone) < bones.size() ? bones[static_cast<std::size_t>(bone)].parent : -1;
+                    }
+                }
+            }
+            append_rest_palette(*rig.model, rest_palette, rig.intact_hidden);
+            rig.effects = proxy_effects(builder, *rig.model, mesh.name);
             for (const auto& transform : rig.model->bind_pose())
             {
                 auto inverse = alo_inverse(transform);

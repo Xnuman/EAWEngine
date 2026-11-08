@@ -628,26 +628,74 @@ particle-audit`.
     rotation track's first value as in the reference;
   - texture cells form a square atlas of ceil(sqrt(cells)) per side, indexed
     by the rounded texture track;
-  - "link to system" carries particles with the emitter's translation;
+  - "link to system" moves particles rigidly with the emitter (translation
+    and rotation, so engine glows stay on a turning ship); linked particles
+    spawn at the emitter's current transform;
   - ground behavior 1 kills particles below the ground, 2 bounces them, 3
     stops them;
   - blend modes 1 and 4 draw additively, 3, 6, 8, and 9 modulate, the rest
     alpha-blend (stock data uses only 1, 2, and 11);
   - kites stretch along the velocity by the tail size and turn toward the
     camera; world-oriented particles lie in the XY plane.
+- **Trails.** No stock XML field names a trail, and the classic particle
+  format has no ribbon renderer (the reference's chain renderers belong to the
+  plugin format). Engine and missile trails are particles that moving
+  emitters leave in the world; laser bolts are drawn from the projectile's
+  `Projectile_Width`, `Projectile_Length`, `Projectile_Texture_Slot`, and
+  `Projectile_Laser_Color` (`Projectile_Custom_Render` 1 or 2, 38 stock
+  projectiles). The engine emits each particle at its own time within a frame
+  where the emitter was then (an engine choice; the reference turns its
+  high-resolution emission off for this format, which leaves clumps behind
+  fast emitters).
 - **Engine choices:** sphere spawns use uniform directions (the reference
   samples angles uniformly); a death child emits one burst (or one particle)
   per dying parent; a trail child emits at its own rate from each living
   parent, at most 64 per parent per update; emitters that are only children
   never emit on their own; smooth interpolation is smoothstep between keys.
+- **Emission from meshes** (192 emitters): a proxy's mesh is the mesh
+  rigidly attached to the proxy bone's parent, as in the reference. Mode 3
+  emits once per vertex per spawn, 1 at a random vertex, 2 at a random point
+  of a random triangle; the particle is pushed out along the normal by
+  `emit_from_mesh_offset`, and its velocity's +Z turns to the normal. The
+  Star Destroyer's engine effect (`pe_stardestroyerengines`, every vertex,
+  size 70) sits on `engines_big`, a hidden three-vertex triangle whose corners
+  are the three main engines; without the mesh it was one ball at the bone.
+  Emitters without a mesh (effects played on their own) use their position
+  shape. The X-wing's `pe_Z95engines` emits from the four corners of its
+  hidden `engines` quad (one per nozzle), but its particles are 1 unit
+  across, red, and live 0.1 s: barely visible as authored. Whether the
+  original draws particles with a minimum screen size is not established.
 - **Not drawn yet:** heat distortion (170 emitters) and weather (5), which
-  need passes of their own; emission from meshes falls back to the shape;
-  wind is ignored; freeze time is kept but unused.
+  need passes of their own; wind is ignored; freeze time is kept but unused.
 - **Proxies.** Model proxies name their effect without directory or
   extension (`pe_Z95engines` is `Data/Art/Models/pe_Z95engines.alo`). The
   stock station and capital-ship models also carry proxies tagged like meshes:
   `p_explosion_med00_ALT1` and `_ALT2` show in damaged states and are skipped
   on the intact model, and the tag is not part of the file name. Hidden
-  proxies (hardpoint damage effects such as `p_hp_imperial_damage`) wait for
-  gameplay. Some proxies name files that do not exist (`Lensflare0`); they are
+  proxies wait for gameplay.
+- **Hardpoint damage effects.** Hardpoint XML names a `Damage_Particles` bone
+  (268 stock uses: `HP_F-R_EMITDAMAGE`, `HP_E_EMITDAMAGE`, ...), and the
+  models hang their damage proxies under it: the Star Destroyer's
+  `p_hp_imperial_damage` smoke sits on children of `HP_F-R_EmitDamage` and
+  its siblings, flagged visible like any other proxy. So visibility alone
+  does not separate them; the engine marks proxies at or below a hardpoint's
+  damage bone as that hardpoint's damage effect and does not play them on an
+  intact ship. Showing them when the hardpoint is damaged or destroyed is part
+  of hardpoint presentation. `Engine_Particles` likewise names the engine-glow
+  bone (`HP_E_MAINENGINES`, 21 uses).
+- **Hardpoint models.** A hardpoint's `Model_To_Attach` (226 stock uses,
+  e.g. `EV_StarDestroyer_HP00_M-C.alo`) is a separate model placed at its
+  `Attachment_Bone`; the host hull has openings where they sit, so without
+  them ships look gutted. The engine merges each into the host's mesh at the
+  bone's bind pose, bound rigidly to that bone. Hardpoint models are drawn in
+  their own bind pose; their animations (turret rotation) and their removal
+  when destroyed come with hardpoint presentation.
+- **Hardpoint scorch meshes.** `Damage_Decal` names a bone (`HP_*_BLAST`,
+  245 stock uses) that carries a small alpha-blended mesh of its own: the Star
+  Destroyer has seven (`HP_F-R_Blast` and so on, `MeshAlpha` with
+  `W_blast00.tga`), visible in the model like the hull, so drawn as authored
+  they char an intact ship. The engine hides the bone and its children through
+  the palette's visibility half until hardpoint damage is presented (an
+  inference from the field name and from intact ships in the original showing
+  no scorch marks). Some proxies name files that do not exist (`Lensflare0`); they are
   reported once per build.

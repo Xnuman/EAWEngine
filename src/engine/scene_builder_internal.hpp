@@ -50,6 +50,11 @@ struct SceneBuilder
     bool animation_clips{true};
     // Particle effects of model proxies (filled when textures are built; headless builds skip them).
     ParticleLibrary particles;
+    // Folded model path -> bones that the hardpoints of types using the model name in
+    // Damage_Particles (their proxies are damage effects, not shown on intact ships) and in
+    // Damage_Decal (their meshes are scorch marks, hidden on intact ships).
+    std::unordered_map<std::string, std::unordered_set<std::uint32_t>> damage_bones;
+    std::unordered_map<std::string, std::unordered_set<std::uint32_t>> decal_bones;
     // Folded model path -> the model whose clips it plays (XML Land_Model_Anim_Override_Name of the
     // first type that appended it).
     std::unordered_map<std::string, std::string> animation_sources;
@@ -106,6 +111,9 @@ struct MovementClasses
 // ASCII lowercase copy (case-insensitive keys).
 std::string fold_ascii(std::string value);
 
+// `text` without leading and trailing ASCII whitespace (object_type_properties.cpp).
+std::string_view trim_ascii(std::string_view text);
+
 const LegacyTextureBinding* base_color_texture(const LegacyMaterial& material);
 
 // Loads (once per scene) the DDS for an ALO texture reference and returns its scene texture
@@ -123,8 +131,13 @@ std::shared_ptr<const CachedTexture> cached_texture(const AssetReader& vfs, Asse
 // one for a mesh ALO (proxies may name meshes).
 std::shared_ptr<const ParticleEffect> particle_effect(SceneBuilder& builder, const std::string& reference);
 
-// The particle effects attached to a model's proxies (those not hidden by default).
-std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModel& model);
+// Notes the Damage_Particles and Damage_Decal bones of a type's hardpoints for the model at
+// `model_path`.
+void note_damage_bones(SceneBuilder& builder, const std::string& model_path, const CombatProfile& combat);
+
+// The particle effects attached to a model's proxies (those not hidden by default). Proxies under a
+// noted damage bone are marked as hardpoint damage effects.
+std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModel& model, const std::string& model_path);
 
 // Translates a legacy material profile plus its authored parameters into the engine-native
 // legacy-mode surface description (see docs/legacy-shader-mapping.md for the source behavior).
@@ -156,11 +169,31 @@ std::shared_ptr<const Result<AloModel>> cached_model(SceneBuilder& builder, cons
 // when an animation shows their bone. Without it (maps share one bind-pose palette), such meshes
 // are omitted.
 // A model that cannot be appended leaves no geometry, indices, or materials behind.
-Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model, std::string_view name, bool animated_visibility = false);
+// A model attached rigidly to a bone of the model it joins: an XML hardpoint's Model_To_Attach at
+// its Attachment_Bone (turrets, gun batteries, shield generators drawn as their own models).
+struct ModelAttachment
+{
+    std::string path;
+    std::shared_ptr<const AloModel> model;
+    std::uint32_t bone{};
+};
 
-// Decodes and appends a model referenced by a map (placed object, backdrop, or spawn type). Particle
-// ALOs and malformed models are reported once as scene warnings and yield nothing.
-std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std::string& model_path);
+// `attachments` are appended into the same mesh, placed at their bone's bind pose and bound to that
+// bone (so they follow its pose and visibility).
+Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model, std::string_view name, bool animated_visibility = false, std::span<const ModelAttachment> attachments = {});
+
+// Decodes and appends a model referenced by a map (placed object, backdrop, or spawn type), with its
+// attachments. Particle ALOs and malformed models are reported once as scene warnings and yield
+// nothing.
+std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std::string& model_path, std::span<const ModelAttachment> attachments = {});
+
+// The models a type's hardpoints attach to `host` (XML HardPoints entries with Model_To_Attach and
+// an Attachment_Bone the host has), in list order; problems become scene warnings.
+std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& type, const AloModel* host);
+
+// Key of a mesh built from `model_path` with `attachments` (types sharing a model but not their
+// hardpoints get meshes of their own).
+std::string attached_mesh_key(const std::string& model_path, std::span<const ModelAttachment> attachments);
 // What adding a spawnable type needs: the builder of the scene its meshes join, the XML catalog and
 // movement classes, the model context (land or space), the meshes already appended by model path,
 // a combat profile source (one per type), and the spawnable list to extend.

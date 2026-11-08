@@ -1051,6 +1051,21 @@ std::shared_ptr<const eaw::ParticleEffect> make_test_effect(std::vector<eaw::Par
     return effect;
 }
 
+void test_intact_hidden_bones()
+{
+    // A hardpoint scorch bone (and so its meshes) collapses in the visibility half while intact.
+    auto model = std::make_shared<eaw::AloModel>();
+    model->bones.push_back({"Root", -1, true, 0, {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0}});
+    model->bones.push_back({"HP_Blast", 0, true, 0, {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0}});
+    eaw::VisualRig rig;
+    rig.model = model;
+    rig.palette_size = 4;
+    rig.intact_hidden = {false, true};
+    std::vector<std::array<float, 16>> palette;
+    eaw::append_rig_local_palette(rig, {}, palette);
+    require(palette.size() == 4 && palette[2][0] == 1.0F && palette[3][0] == 0.0F && palette[3][5] == 0.0F && palette[1][0] == 1.0F, "intact-hidden bone was not collapsed");
+}
+
 void test_particle_tracks()
 {
     eaw::ParticleTrack track;
@@ -1171,6 +1186,82 @@ void test_particle_world()
     const auto count = family.stats().particles;
     require(count >= 14 && count <= 18, "particle child emitters failed: " + std::to_string(count));
 
+    // A moving emitter leaves an even trail: each particle spawns where the emitter was at its
+    // emission time, not where it is at the end of the update.
+    auto exhaust = make_test_emitter();
+    exhaust.particles_per_second = 100;
+    exhaust.lifetime = 10.0F;
+    eaw::ParticleWorld trail_world;
+    auto moving = eaw::visual_identity_transform;
+    const auto trail_id = trail_world.play(make_test_effect({exhaust}), moving, 4);
+    for (int frame = 1; frame <= 10; ++frame)
+    {
+        moving[12] = 10.0F * static_cast<float>(frame);
+        trail_world.set_transform(trail_id, moving);
+        trail_world.update(0.1F);
+    }
+    std::vector<eaw::VisualParticle> trail_sprites;
+    trail_world.build_sprites({0.0F, 0.0F, 100.0F}, trail_sprites);
+    std::vector<float> xs;
+    for (const auto& sprite : trail_sprites)
+    {
+        xs.push_back(sprite.position[0]);
+    }
+    std::ranges::sort(xs);
+    require(xs.size() >= 95 && xs.front() < 1.5F && xs.back() > 98.5F, "particle trail does not cover the emitter's path");
+    for (std::size_t index = 1; index < xs.size(); ++index)
+    {
+        require(xs[index] - xs[index - 1] < 1.5F, "particle trail has a gap at x = " + std::to_string(xs[index - 1]));
+    }
+
+    // Particles linked to the system turn with their emitter (an engine glow on a turning ship).
+    auto glow = make_test_emitter();
+    glow.use_bursts = true;
+    glow.burst_count = 1;
+    glow.link_to_system = true;
+    glow.lifetime = 10.0F;
+    glow.groups[2].type = 0;
+    glow.groups[2].value = {10.0F, 0.0F, 0.0F};
+    eaw::ParticleWorld turning;
+    const auto glow_id = turning.play(make_test_effect({glow}), eaw::visual_identity_transform, 3);
+    turning.update(0.01F);
+    // A quarter turn about +Z: X goes to Y.
+    std::array<float, 16> turned = eaw::visual_identity_transform;
+    turned[0] = 0.0F;
+    turned[1] = 1.0F;
+    turned[4] = -1.0F;
+    turned[5] = 0.0F;
+    turning.set_transform(glow_id, turned);
+    turning.update(0.01F);
+    std::vector<eaw::VisualParticle> turned_sprites;
+    turning.build_sprites({0.0F, 0.0F, 100.0F}, turned_sprites);
+    require(turned_sprites.size() == 1 && std::abs(turned_sprites[0].position[0]) < 1e-4F && std::abs(turned_sprites[0].position[1] - 10.0F) < 1e-4F, "linked particle did not turn with its emitter");
+
+    // Emitters that emit from a mesh spawn on it: every vertex in turn, pushed out along the normal.
+    auto nozzles = make_test_emitter();
+    nozzles.use_bursts = true;
+    nozzles.particles_per_burst = 1;
+    nozzles.burst_count = 1;
+    nozzles.emit_from_mesh = 3;
+    nozzles.emit_from_mesh_offset = 2.0F;
+    auto emit_mesh = std::make_shared<eaw::ParticleEmitMesh>();
+    emit_mesh->positions = {{-50.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 0.0F}, {50.0F, 0.0F, 0.0F}};
+    emit_mesh->normals = {{0.0F, 1.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 1.0F, 0.0F}};
+    emit_mesh->indices = {0, 1, 2};
+    eaw::ParticleWorld engines;
+    engines.play(make_test_effect({nozzles}), eaw::visual_identity_transform, 2, emit_mesh);
+    engines.update(0.01F);
+    std::vector<eaw::VisualParticle> glows;
+    engines.build_sprites({0.0F, 0.0F, 100.0F}, glows);
+    std::vector<float> glow_x;
+    for (const auto& sprite : glows)
+    {
+        glow_x.push_back(sprite.position[0]);
+        require(std::abs(sprite.position[1] - 2.0F) < 1e-4F, "mesh emission ignored the normal offset");
+    }
+    std::ranges::sort(glow_x);
+    require(glow_x == std::vector<float>{-50.0F, 0.0F, 50.0F}, "every-vertex mesh emission failed");
+
     // Heat particles have no pass yet: they are skipped, not drawn.
     auto heat = make_test_emitter();
     heat.heat = true;
@@ -1183,6 +1274,7 @@ void test_particle_world()
 }
 
 const ModuleRegistrar registrar("engine", {
+                                              {"test_intact_hidden_bones", &test_intact_hidden_bones},
                                               {"test_particle_tracks", &test_particle_tracks},
                                               {"test_particle_world", &test_particle_world},
                                               {"test_asset_cache_dependencies", &test_asset_cache_dependencies},

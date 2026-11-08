@@ -109,7 +109,8 @@ eaw::Status inspect_particles(const std::span<const std::byte> bytes, const std:
                   << (emitter.use_bursts ? " bursts " + std::to_string(emitter.particles_per_burst) + "x" + std::to_string(emitter.burst_count) + " every " + std::to_string(emitter.burst_delay)
                                          : " rate " + std::to_string(emitter.particles_per_second) + "/s")
                   << (emitter.has_tail ? " kite" : "") << (emitter.world_oriented ? " xy-aligned" : "") << (emitter.heat ? " heat" : "") << (emitter.weather ? " weather" : "")
-                  << (emitter.link_to_system ? " linked" : "") << " cells " << emitter.texture_cells << " groups " << emitter.groups[0].type << '/' << emitter.groups[2].type;
+                  << (emitter.emit_from_mesh != 0 ? " from-mesh " + std::to_string(emitter.emit_from_mesh) : std::string{}) << (emitter.link_to_system ? " linked" : "") << " cells "
+                  << emitter.texture_cells << " groups " << emitter.groups[0].type << '/' << emitter.groups[2].type;
         if (emitter.death_child >= 0)
         {
             std::cout << " on-death " << emitter.death_child;
@@ -172,7 +173,7 @@ eaw::Status inspect_alo(const std::span<const std::byte> bytes, const std::size_
     for (std::size_t index = 0; index < std::min(limit, model.meshes.size()); ++index)
     {
         const auto& mesh = model.meshes[index];
-        std::cout << "  [" << index << "] " << mesh.name << " submeshes=" << mesh.submeshes.size();
+        std::cout << "  [" << index << "] " << mesh.name << " submeshes=" << mesh.submeshes.size() << (mesh.hidden ? " hidden" : "");
         if (mesh.attached_bone)
         {
             std::cout << " bone=" << *mesh.attached_bone;

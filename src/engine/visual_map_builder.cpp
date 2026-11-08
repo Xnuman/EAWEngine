@@ -137,10 +137,12 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
         build.builder.scene.warnings.push_back("spawn type '" + type_name + "' has no resolvable " + std::string(to_string(build.context)) + " model");
         return std::nullopt;
     }
-    auto [entry, inserted] = build.meshes.try_emplace(*path);
+    const auto host = cached_model(build.builder, *path);
+    const auto attachments = type_hardpoint_models(build.builder, build.catalog, *definition, host->ok() ? &host->value() : nullptr);
+    auto [entry, inserted] = build.meshes.try_emplace(attached_mesh_key(*path, attachments));
     if (inserted)
     {
-        entry->second = append_scene_model(build.builder, *path);
+        entry->second = append_scene_model(build.builder, *path, attachments);
     }
     note_animation_source(build.builder, *path, build.catalog, *definition);
     if (!entry->second)
@@ -156,6 +158,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     spawnable.passable_types = spawnable.follows_ground ? type_passable_types(build.catalog, *definition, build.movement_classes) : 0U;
     const auto decoded = cached_model(build.builder, *path);
     spawnable.combat = build.profile_of(*definition, decoded && decoded->ok() ? &decoded->value() : nullptr);
+    note_damage_bones(build.builder, *path, spawnable.combat);
     spawnable.hover_offset = type_float_field(build.catalog, *definition, "Hover_Offset");
     spawnable.death = type_death_style(build.catalog, *definition);
     if (spawnable.max_speed > 0.0F)
@@ -275,10 +278,16 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         {
             continue;
         }
-        auto [entry, inserted] = meshes.try_emplace(placement.model_path);
+        std::vector<ModelAttachment> attachments;
+        if (placement.type != nullptr)
+        {
+            const auto host = cached_model(builder, placement.model_path);
+            attachments = type_hardpoint_models(builder, catalog, *placement.type, host->ok() ? &host->value() : nullptr);
+        }
+        auto [entry, inserted] = meshes.try_emplace(attached_mesh_key(placement.model_path, attachments));
         if (inserted)
         {
-            entry->second = append_scene_model(builder, placement.model_path);
+            entry->second = append_scene_model(builder, placement.model_path, attachments);
         }
         if (placement.type != nullptr)
         {
@@ -310,6 +319,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                 spawn.max_speed = type_max_speed(catalog, *placement.type, scene.warnings);
                 const auto decoded = cached_model(builder, placement.model_path);
                 spawn.combat = profile_of(*placement.type, decoded && decoded->ok() ? &decoded->value() : nullptr);
+                note_damage_bones(builder, placement.model_path, spawn.combat);
                 // Only mobile units take space for now; structures and props keep overlapping
                 // until their collision footprints are read.
                 if (spawn.max_speed <= 0.0F && asset.land)
