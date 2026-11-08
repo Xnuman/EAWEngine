@@ -329,3 +329,25 @@ the remainder reaches the hull through the armor type: an engine choice, not a
 measured rule. Ranges are measured in the ground plane. Weapons on hardpoints
 (space ships), `Targeting_Fire_Inaccuracy`, turret target priorities, and
 energy are not read yet.
+
+Movement fields used by the group-movement work.
+
+- **`Max_Rate_Of_Turn`** (442 stock uses) is read as degrees per 30 Hz frame,
+  the same convention as the ×30 `Max_Speed` scale. Infantry 16 becomes 480
+  degrees per second, tanks 12-20, and capital ships 0.4-1.5 become 12-45
+  degrees per second. 0.0, the most common value, turns instantly.
+  Provisional until compared with the original.
+- **Footprints.** Units turn at that rate and travel more slowly while facing
+  away from their way. Their separation footprint is a quarter of the summed
+  X and Y extents of the model bounds (an engine choice). The original's
+  collision meshes and `UnitCollisionClass` are not read yet, so only mobile
+  units take space; structures and props still overlap units.
+- **Formation fields** sit on unit types, often inherited from shared
+  `Container` base types through `Variant_Of_Existing_Type`:
+  - `FormationSpacing`: mostly 0.5.
+  - `FormationOrder`: 1-8.
+  - `FormationRaggedness`: 0-2.5.
+  - `FormationGrouping`: Standard 67, Solo 13.
+- **Companies** list their members in `Company_Units`; for example
+  `Rebel_Infantry_Squad` lists 15 `Squad_Rebel_Trooper` with
+  `Max_Squad_Size` 5.

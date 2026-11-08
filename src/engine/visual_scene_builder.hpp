@@ -44,6 +44,9 @@ struct MapEntitySpawn
 // units per logic frame. The logic rate is unmeasured; until it is, speeds are scaled as if per 1/30 s.
 // This is a provisional engine assumption, not compatibility evidence.
 inline constexpr float provisional_max_speed_scale = 30.0F;
+// XML Max_Rate_Of_Turn read as degrees per 30 Hz frame, like Max_Speed: infantry 16 (480 degrees per
+// second), tanks 12-20, capital ships 0.4-1.5 (12-45 degrees per second). Provisional.
+inline constexpr float provisional_turn_rate_scale = 30.0F * 3.14159265358979F / 180.0F;
 
 // An XML object type that can be spawned at runtime: its model is part of the map scene's meshes.
 struct SpawnableType
@@ -60,6 +63,10 @@ struct SpawnableType
     std::uint32_t passable_types{};
     // Health, shields, armor, and weapon from XML (combat_content.hpp).
     CombatProfile combat;
+    // Separation footprint (from the model bounds) and turn rate (XML Max_Rate_Of_Turn); see
+    // EntitySpawn.
+    float radius{};
+    float turn_rate{};
 };
 
 struct VisualMapAsset

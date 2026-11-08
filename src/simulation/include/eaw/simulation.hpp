@@ -47,6 +47,10 @@ struct EntitySpawn
     std::uint32_t passable_types{};
     // Health, shields, armor, and weapon; a default profile cannot be damaged and does not fight.
     CombatProfile combat;
+    // Footprint radius in world units for unit separation; zero takes no space.
+    float radius{};
+    // Turn rate in radians per second; zero turns instantly.
+    float turn_rate{};
 };
 
 enum class SimCommandKind : std::uint8_t
@@ -88,6 +92,7 @@ struct EntitySnapshot
     float max_shield{};
     // The entity its weapon is aimed at (invalid when none).
     EntityId target;
+    float radius{};
 };
 
 struct ProjectileSnapshot
@@ -137,7 +142,8 @@ public:
         std::uint64_t commands_applied{};
         // Commands or command targets that named destroyed or unknown entities.
         std::uint64_t stale_references{};
-        // Ground moves stopped at a cell their class may not enter (a route that no longer fits).
+        // Ground moves whose line reached a cell their class may not enter (pushed off their route, or
+        // the ground changed) and were planned again.
         std::uint64_t blocked_moves{};
         // Ground move orders planned through the pathfinder, how many of them end short of the
         // ordered point, and the nodes they expanded.
@@ -148,6 +154,8 @@ public:
         std::uint64_t hits{};
         std::uint64_t kills{};
         std::size_t projectiles{};
+        // Overlapping ground pairs pushed apart in the last tick.
+        std::size_t separated_pairs{};
     };
 
     explicit SimulationWorld(double tick_seconds = 1.0 / 30.0);
@@ -222,6 +230,10 @@ private:
     void run_movement();
     void plan_move(std::size_t index, const SimVector3& target);
     void move_over_ground(std::size_t index, float dt);
+    // Turns toward `desired` (radians) at the entity's turn rate and returns how much of its speed it
+    // may use: 1 when facing the way, falling to 0 at 90 degrees or more off.
+    [[nodiscard]] float steer(std::size_t index, float desired, float dt);
+    void run_separation();
     void run_combat();
     void update_target(std::size_t index);
     void run_weapon(std::size_t index);
@@ -260,6 +272,10 @@ private:
     std::uint64_t partial_paths_{};
     std::uint64_t path_expansions_{};
     std::vector<CombatState> combat_;
+    std::vector<float> radii_;
+    std::vector<float> turn_rates_;
+    std::vector<SimVector3> separation_push_;
+    std::size_t separated_pairs_{};
     std::vector<Projectile> projectiles_;
     SpatialGrid grid_;
     std::vector<std::uint32_t> query_;

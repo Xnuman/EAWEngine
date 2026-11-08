@@ -238,3 +238,73 @@ Black-box comparison with the original stays on the list for each stage:
 - how groups spread out and form up.
 
 Those are the behaviors players notice.
+
+## Group movement and formations
+
+How shipped games and published sources move groups. This is the basis for
+EAWEngine's group movement, which is built in steps.
+
+- **Age of Empires II.** Dave Pottinger, "Implementing Coordinated Movement",
+  Game Developer, 1999
+  ([article](https://www.gamedeveloper.com/programming/implementing-coordinated-movement)).
+  - A formation stores an orientation and slots (offset, orientation, unit
+    type) and is filled from the inside out; "a formation can't move until
+    it's formed".
+  - The group has a commander that pathfinds while the others follow, and it
+    moves at its slowest unit's speed.
+  - Around obstacles the formation scales its slots, breaks and re-forms
+    past the obstacle, or halves and rejoins.
+  - Units pushed aside by priority make way for the group; "unit overlap is
+    unavoidable or, at best, incredibly difficult to prevent in all cases".
+  - The [openage notes](https://simonsan.github.io/openage-webdocs/sphinx/doc/reverse_engineering/game_mechanics/formations.html)
+    record the same slowest-unit speed rule.
+- **StarCraft II** (secondhand; no primary Blizzard source found).
+  - A group order keeps the units' relative positions when they lie within a
+    fixed "magic box"
+    ([Liquipedia](https://liquipedia.net/starcraft/Magic_Boxes)).
+  - Overlapping separation radii push units apart
+    ([TL.net](https://tl.net/forum/starcraft-2-hots/377527-no-fix-to-clumpy-unit-movement)).
+  - The [AIIDE paper on StarCraft unit motion](https://ojs.aaai.org/index.php/AIIDE/article/view/12811)
+    analyses the original game.
+- **0 A.D.** An invisible formation controller moves like a unit and members
+  hold offsets from it; a motion manager handles pushing between units and
+  treats members of one formation specially
+  ([forum](https://wildfiregames.com/forum/topic/44848-proposals-for-formations);
+  [CCmpUnitMotionManager.h](https://sources.debian.org/src/0ad/0.27.1-3/source/simulation2/components/CCmpUnitMotionManager.h)).
+- **Company of Heroes.** Squads take a formation chosen by terrain: a wide
+  wedge in the open, a tight wedge in confined space, a staggered column on
+  roads
+  ([Jurney](https://forum.arongranberg.com/uploads/short-url/rWod3K2KhNWcOEdjewnsLXQKU6A.pdf)).
+- **Steering.** Reynolds-style separation, cohesion, and alignment
+  ([HowToRTS](https://howtorts.github.io/2014/01/03/steering-flocking.html)).
+  Hierarchical slots (fire team, squad, platoon) suit large groups
+  ([Georgia Tech lecture](https://faculty.cc.gatech.edu/~surban6/2018sp-gameAI/lectures/2018_02_08_formations.pdf)).
+
+The stock XML describes the original's model directly:
+
+- per-unit `FormationOrder` (rank), `FormationSpacing`, `FormationRaggedness`,
+  `FormationGrouping` (Standard or Solo), and `WaitsForFormationFormup`;
+- `UnitCollisionClass` (Infantry, Vehicle, Large Vehicle, Giant Vehicle, and
+  obstacle classes);
+- companies listing their units (`Company_Units`, `Max_Squad_Size`).
+
+EAWEngine's steps:
+
+1. **Footprints, separation, and turn rates** (done).
+   - Units push apart by their footprint, deterministically.
+   - Immobile entities are never pushed, idle units yield to moving ones, and
+     nobody is pushed onto ground they may not enter.
+   - A unit pushed off its route plans again.
+   - Units turn at their XML rate and slow down while facing away.
+2. **Formation slots for group orders.**
+   - Ranks follow `FormationOrder`, spacing follows footprints and
+     `FormationSpacing`, and units are assigned to slots deterministically.
+   - The group moves at its slowest member's speed.
+3. **Company expansion.** Placed and spawned companies become their units
+   (in formation) instead of being skipped.
+4. **Later.**
+   - A formation moving as one body (a controller with one shared path, as
+     in Age of Empires II and 0 A.D.), breaking and re-forming at narrow
+     passages.
+   - Terrain-dependent shapes, raggedness, and form-up waiting.
+   - Reciprocal avoidance between moving units (see above).

@@ -131,6 +131,11 @@ std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std
 // Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
 void update_scene_bounds(VisualScene& scene);
 
+// Separation footprint of a mesh placed with `transform` (row-vector): a quarter of the summed X and
+// Y extents of its bounds, scaled by the transform's horizontal scale. An engine choice until
+// collision meshes and UnitCollisionClass are interpreted.
+float mesh_footprint_radius(const VisualScene& scene, std::uint32_t mesh, const std::array<float, 16>& transform);
+
 // scene_terrain.cpp: land terrain, liquid surfaces, and tracks.
 
 // Builds the land heightfield as independent triangles whose vertices carry the triangle's corner
@@ -167,6 +172,9 @@ std::uint32_t type_passable_types(const GameObjectCatalog& catalog, const XmlDef
 
 // A numeric field through the variant chain; 0 when it is missing or not a finite number.
 float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::string_view field);
+
+// XML Max_Rate_Of_Turn in radians per second (provisional_turn_rate_scale); 0 turns instantly.
+float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
 // XML Max_Speed in world units per second (the provisional scale in visual_scene_builder.hpp);
 // unparsable values are 0 with a warning.

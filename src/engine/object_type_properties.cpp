@@ -109,6 +109,12 @@ float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& de
     return result.ec == std::errc{} && std::isfinite(value) ? value : 0.0F;
 }
 
+float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto rate = type_float_field(catalog, definition, "Max_Rate_Of_Turn");
+    return rate > 0.0F ? rate * provisional_turn_rate_scale : 0.0F;
+}
+
 float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings)
 {
     const auto speed = catalog.field(definition, "Max_Speed").field;

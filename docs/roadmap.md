@@ -187,7 +187,10 @@ Done:
 
 Gaps toward the deliverable, in planned order:
 
-1. **Group movement.** Covers:
+1. **Group movement.** Step 1 (footprints, separation, turn rates) is done;
+   formations and company expansion follow
+   ([plan and sources](pathfinding-research.md#group-movement-and-formations)).
+   Covers:
    - separation, so units do not stack;
    - formations for group orders;
    - turn rates (`Max_Rate_Of_Turn`, 442 stock uses);

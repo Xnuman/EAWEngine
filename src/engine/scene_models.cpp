@@ -264,6 +264,20 @@ std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std
 }
 
 // Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
+float mesh_footprint_radius(const VisualScene& scene, const std::uint32_t mesh, const std::array<float, 16>& transform)
+{
+    if (mesh >= scene.meshes.size())
+    {
+        return 0.0F;
+    }
+    const auto& bounds = scene.meshes[mesh];
+    const auto width = bounds.bounds_maximum[0] - bounds.bounds_minimum[0];
+    const auto depth = bounds.bounds_maximum[1] - bounds.bounds_minimum[1];
+    const auto scale = std::sqrt(transform[0] * transform[0] + transform[1] * transform[1] + transform[2] * transform[2]);
+    const auto radius = 0.25F * (width + depth) * scale;
+    return std::isfinite(radius) && radius > 0.0F ? radius : 0.0F;
+}
+
 void update_scene_bounds(VisualScene& scene)
 {
     scene.bounds_minimum.fill(std::numeric_limits<float>::max());

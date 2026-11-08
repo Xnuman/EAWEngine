@@ -140,6 +140,13 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             {
                 spawn.max_speed = type_max_speed(catalog, *placement.type, scene.warnings);
                 spawn.combat = profile_of(*placement.type);
+                // Only mobile units take space for now; structures and props keep overlapping
+                // until their collision footprints are read.
+                if (spawn.max_speed > 0.0F)
+                {
+                    spawn.radius = mesh_footprint_radius(scene, *entry->second, matrix);
+                    spawn.turn_rate = type_turn_rate(catalog, *placement.type);
+                }
             }
             asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size())});
         }
@@ -259,6 +266,12 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         spawnable.passable_types = spawnable.follows_ground ? type_passable_types(catalog, *definition, movement_classes) : 0U;
         spawnable.combat = profile_of(*definition);
         spawnable.hover_offset = type_float_field(catalog, *definition, "Hover_Offset");
+        if (spawnable.max_speed > 0.0F)
+        {
+            static constexpr std::array<float, 16> identity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+            spawnable.radius = mesh_footprint_radius(scene, spawnable.mesh, identity);
+            spawnable.turn_rate = type_turn_rate(catalog, *definition);
+        }
         asset.spawnable.push_back(std::move(spawnable));
     }
 

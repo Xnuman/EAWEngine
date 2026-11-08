@@ -1,5 +1,7 @@
 #include "test_support.hpp"
 
+#include <numbers>
+
 namespace {
 
 using namespace eaw_test;
@@ -370,11 +372,101 @@ void test_combat()
     require(!world.spawn({.type_name = "Invalid", .combat = invalid}), "a negative weapon range must be rejected");
 }
 
+void test_turning_and_separation()
+{
+    // A flat 20x20 clear field, 10 units per cell, with one steep cell at (15, 10).
+    eaw::GroundMap ground;
+    ground.width = 20;
+    ground.height = 20;
+    ground.spacing = 10.0F;
+    ground.heights.assign(400, 0.0F);
+    ground.passability.assign(400, eaw::passability::clear);
+    ground.passability[10 * 20 + 15] = eaw::passability::steep;
+
+    // Turning: a unit facing +X ordered to -X turns at its rate before it moves.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto pi = std::numbers::pi_v<float>;
+        const auto turner =
+            world.spawn({.type_name = "Turner", .position = {100.0F, 50.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .turn_rate = pi / 2.0F});
+        require(turner.ok(), "test spawn must succeed");
+        world.submit({eaw::SimCommandKind::move, {*turner}, {20.0F, 50.0F, 0.0F}});
+        world.step();
+        const auto& first = world.snapshot().entities[0];
+        require(std::fabs(first.heading - pi / 20.0F) < 1.0e-4F && first.position.x == 100.0F, "a unit facing away must turn at its rate without moving");
+        for (int tick = 0; tick < 19; ++tick)
+        {
+            world.step();
+        }
+        const auto& turned = world.snapshot().entities[0];
+        require(std::fabs(std::fabs(turned.heading) - pi) < 1.0e-4F && turned.position.x < 100.0F, "a unit must move once it faces its way");
+        for (int tick = 0; tick < 40; ++tick)
+        {
+            world.step();
+        }
+        require(world.snapshot().entities[0].position.x == 20.0F, "a turning unit must still arrive");
+    }
+
+    // Separation: overlapping idle units part, an immobile one stays put, and nobody is pushed onto
+    // ground its class may not enter.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto a = world.spawn({.type_name = "A", .position = {50.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto b = world.spawn({.type_name = "B", .position = {52.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto wall = world.spawn({.type_name = "Bunker", .position = {80.0F, 80.0F, 0.0F}, .follows_ground = true, .radius = 10.0F});
+        const auto c = world.spawn({.type_name = "C", .position = {82.0F, 80.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto d = world.spawn({.type_name = "D", .position = {141.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto e = world.spawn({.type_name = "E", .position = {139.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        require(a && b && wall && c && d && e, "test spawns must succeed");
+        for (int tick = 0; tick < 20; ++tick)
+        {
+            world.step();
+        }
+        const auto& entities = world.snapshot().entities;
+        const auto gap = [&](const std::size_t first, const std::size_t second)
+        {
+            return std::hypot(entities[second].position.x - entities[first].position.x, entities[second].position.y - entities[first].position.y);
+        };
+        require(gap(0, 1) >= 9.99F && std::fabs(entities[0].position.x + entities[1].position.x - 102.0F) < 1.0e-3F, "overlapping equal units must part symmetrically");
+        require(entities[2].position.x == 80.0F && entities[2].position.y == 80.0F && gap(2, 3) >= 14.99F, "an immobile entity must not be pushed but must push");
+        require(world.snapshot().entities[4].position.x < 145.0F, "a push must not move a unit onto a cell it may not enter");
+        require(world.stats().separated_pairs == 0, "separated units must stop pushing once apart");
+    }
+    {
+        const auto replay = [&]
+        {
+            eaw::SimulationWorld world(0.1);
+            world.set_ground(ground);
+            for (int index = 0; index < 12; ++index)
+            {
+                (void)world.spawn({.type_name = "Crowd",
+                                   .position = {60.0F + static_cast<float>(index % 3), 60.0F + static_cast<float>(index / 3), 0.0F},
+                                   .max_speed = 30.0F,
+                                   .follows_ground = true,
+                                   .passable_types = eaw::passability::clear,
+                                   .radius = 4.0F,
+                                   .turn_rate = 3.0F});
+            }
+            for (int tick = 0; tick < 30; ++tick)
+            {
+                world.step();
+            }
+            return world.state_hash();
+        };
+        require(replay() == replay(), "separation must be deterministic");
+    }
+    eaw::SimulationWorld world(0.1);
+    require(!world.spawn({.type_name = "Bad", .radius = -1.0F}) && !world.spawn({.type_name = "Bad", .turn_rate = std::nanf("")}), "invalid radii and turn rates must be rejected");
+}
+
 const ModuleRegistrar registrar("simulation", {
                                                   {"test_simulation_core", &test_simulation_core},
                                                   {"test_ground_movement", &test_ground_movement},
                                                   {"test_pathfinding", &test_pathfinding},
                                                   {"test_combat", &test_combat},
+                                                  {"test_turning_and_separation", &test_turning_and_separation},
                                               });
 
 } // namespace

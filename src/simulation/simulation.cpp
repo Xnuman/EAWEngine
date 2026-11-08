@@ -132,6 +132,10 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a non-finite position, heading, or speed");
     }
+    if (!valid_amount(spawn.radius) || !valid_amount(spawn.turn_rate))
+    {
+        return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite radius or turn rate");
+    }
     if (!valid_profile(spawn.combat))
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite combat value");
@@ -167,6 +171,8 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     passable_types_.push_back(spawn.passable_types);
     paths_.emplace_back();
     combat_.push_back({.profile = spawn.combat, .health = spawn.combat.health, .shield = spawn.combat.shield});
+    radii_.push_back(spawn.radius);
+    turn_rates_.push_back(spawn.turn_rate);
     if (spawn.follows_ground && ground_.valid())
     {
         positions_.back().z = ground_.surface_height(spawn.position.x, spawn.position.y);
@@ -189,6 +195,7 @@ void SimulationWorld::step()
         apply(command);
     }
     run_movement();
+    run_separation();
     run_combat();
     ++tick_;
     publish();
@@ -206,7 +213,8 @@ const SimSnapshot& SimulationWorld::snapshot() const noexcept
 
 SimulationWorld::Stats SimulationWorld::stats() const noexcept
 {
-    return {tick_, ids_.size(), commands_applied_, stale_references_, blocked_moves_, path_searches_, partial_paths_, path_expansions_, shots_fired_, hits_, kills_, projectiles_.size()};
+    return {tick_, ids_.size(), commands_applied_,   stale_references_, blocked_moves_, path_searches_, partial_paths_, path_expansions_, shots_fired_,
+            hits_, kills_,      projectiles_.size(), separated_pairs_};
 }
 
 std::uint64_t SimulationWorld::state_hash() const noexcept
@@ -245,6 +253,8 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, combat.pulse_timer);
         hash = hash_value(hash, combat.retarget_timer);
         hash = hash_value(hash, combat.chase_timer);
+        hash = hash_value(hash, radii_[index]);
+        hash = hash_value(hash, turn_rates_[index]);
     }
     for (const auto& projectile : projectiles_)
     {
@@ -378,6 +388,8 @@ void SimulationWorld::destroy(const std::size_t dense)
         passable_types_[dense] = passable_types_[last];
         paths_[dense] = std::move(paths_[last]);
         combat_[dense] = combat_[last];
+        radii_[dense] = radii_[last];
+        turn_rates_[dense] = turn_rates_[last];
         slot_dense_[ids_[dense].index] = static_cast<std::uint32_t>(dense);
     }
     ids_.pop_back();
@@ -393,6 +405,8 @@ void SimulationWorld::destroy(const std::size_t dense)
     passable_types_.pop_back();
     paths_.pop_back();
     combat_.pop_back();
+    radii_.pop_back();
+    turn_rates_.pop_back();
     slot_dense_[slot] = no_dense;
     // A slot whose generation would wrap is retired instead of reused.
     if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
@@ -420,7 +434,8 @@ void SimulationWorld::run_movement()
         }
         const SimVector3 delta{target->x - position.x, target->y - position.y, target->z - position.z};
         const auto distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
-        const auto step_length = max_speeds_[index] * dt;
+        const auto speed_factor = delta.x != 0.0F || delta.y != 0.0F ? steer(index, std::atan2(delta.y, delta.x), dt) : 1.0F;
+        const auto step_length = max_speeds_[index] * dt * speed_factor;
         if (distance <= std::max(step_length, arrival_distance))
         {
             position = *target;
@@ -429,11 +444,6 @@ void SimulationWorld::run_movement()
         }
         const auto scale = step_length / distance;
         position = {position.x + delta.x * scale, position.y + delta.y * scale, position.z + delta.z * scale};
-        // Instant turn toward the direction of travel; turn rates come with the movement model.
-        if (delta.x != 0.0F || delta.y != 0.0F)
-        {
-            headings_[index] = std::atan2(delta.y, delta.x);
-        }
     }
 }
 
@@ -452,6 +462,10 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
         const auto delta_x = waypoint.x - position.x;
         const auto delta_y = waypoint.y - position.y;
         const auto distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
+        if ((delta_x != 0.0F || delta_y != 0.0F) && distance > arrival_distance)
+        {
+            remaining *= steer(index, std::atan2(delta_y, delta_x), dt);
+        }
         const bool arrives = distance <= std::max(remaining, arrival_distance);
         const auto scale = arrives || distance <= 0.0F ? 1.0F : remaining / distance;
         const auto next_x = position.x + delta_x * scale;
@@ -463,18 +477,15 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
             const bool leaving_blocked = here && (*here & allowed) == 0;
             if (there && (*there & allowed) == 0 && !leaving_blocked)
             {
-                // Only reached when the route was not planned (or the ground changed under it).
-                target.reset();
-                path.clear();
+                // The planned line no longer fits: separation pushed the unit off it, or the ground
+                // changed. Plan again from here (plan_move drops a goal that is no longer reachable).
+                const auto goal = *target;
                 ++blocked_moves_;
+                plan_move(index, goal);
                 return;
             }
         }
         position = {next_x, next_y, ground_.surface_height(next_x, next_y)};
-        if (delta_x != 0.0F || delta_y != 0.0F)
-        {
-            headings_[index] = std::atan2(delta_y, delta_x);
-        }
         if (!arrives)
         {
             return;
@@ -486,10 +497,146 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
         }
         path.pop_back();
         remaining -= distance;
-        if (remaining <= 0.0F)
+        // A unit that turns at a finite rate faces each new segment over the next ticks.
+        if (remaining <= 0.0F || turn_rates_[index] > 0.0F)
         {
             return;
         }
+    }
+}
+
+float SimulationWorld::steer(const std::size_t index, const float desired, const float dt)
+{
+    auto& heading = headings_[index];
+    const auto rate = turn_rates_[index];
+    auto difference = wrap_angle(desired - heading);
+    if (rate <= 0.0F)
+    {
+        heading = wrap_angle(desired);
+        return 1.0F;
+    }
+    const auto step = rate * dt;
+    if (std::fabs(difference) <= step)
+    {
+        heading = wrap_angle(desired);
+        difference = 0.0F;
+    }
+    else
+    {
+        heading = wrap_angle(heading + (difference > 0.0F ? step : -step));
+        difference = wrap_angle(desired - heading);
+    }
+    return std::max(0.0F, std::cos(difference));
+}
+
+// Overlapping ground units are pushed apart, half each by default. Displacements are summed for
+// every pair first and applied afterwards, so the result does not depend on which unit of a pair
+// is visited first. Entities that cannot move are never pushed (they push the other unit the whole
+// way); idle units yield more than moving ones, so a moving unit shoulders through instead of
+// stopping. A push never moves a unit onto a cell its class may not enter, and it is limited per
+// tick so packed groups spread out over a few ticks instead of jumping.
+void SimulationWorld::run_separation()
+{
+    separated_pairs_ = 0;
+    if (!ground_.valid())
+    {
+        return;
+    }
+    grid_.build(positions_, grid_cell_size);
+    separation_push_.assign(ids_.size(), SimVector3{});
+    float largest_radius = 0.0F;
+    for (std::size_t index = 0; index < ids_.size(); ++index)
+    {
+        if (follows_ground_[index] != 0)
+        {
+            largest_radius = std::max(largest_radius, radii_[index]);
+        }
+    }
+    const auto weight = [&](const std::size_t index)
+    {
+        if (max_speeds_[index] <= 0.0F)
+        {
+            return 0.0F;
+        }
+        return move_targets_[index] ? 1.0F : 2.0F;
+    };
+    for (std::size_t index = 0; index < ids_.size(); ++index)
+    {
+        if (follows_ground_[index] == 0 || radii_[index] <= 0.0F)
+        {
+            continue;
+        }
+        query_.clear();
+        grid_.query(positions_[index], radii_[index] + largest_radius, query_);
+        for (const auto other : query_)
+        {
+            // Each pair once, from its lower dense index.
+            if (other <= index || follows_ground_[other] == 0 || radii_[other] <= 0.0F)
+            {
+                continue;
+            }
+            const auto dx = positions_[other].x - positions_[index].x;
+            const auto dy = positions_[other].y - positions_[index].y;
+            const auto distance = std::sqrt(dx * dx + dy * dy);
+            const auto overlap = radii_[index] + radii_[other] - distance;
+            const auto first_weight = weight(index);
+            const auto second_weight = weight(other);
+            if (overlap <= 0.0F || first_weight + second_weight <= 0.0F)
+            {
+                continue;
+            }
+            // Coincident units part along a direction fixed by their ids.
+            float nx = 0.0F;
+            float ny = 0.0F;
+            if (distance > 1.0e-4F)
+            {
+                nx = dx / distance;
+                ny = dy / distance;
+            }
+            else
+            {
+                const auto angle = static_cast<float>((ids_[index].index * 2654435761U + ids_[other].index) % 6283U) / 1000.0F;
+                nx = std::cos(angle);
+                ny = std::sin(angle);
+            }
+            const auto total = first_weight + second_weight;
+            const auto first_share = overlap * first_weight / total;
+            const auto second_share = overlap * second_weight / total;
+            separation_push_[index].x -= nx * first_share;
+            separation_push_[index].y -= ny * first_share;
+            separation_push_[other].x += nx * second_share;
+            separation_push_[other].y += ny * second_share;
+            ++separated_pairs_;
+        }
+    }
+    const auto dt = static_cast<float>(tick_seconds_);
+    for (std::size_t index = 0; index < ids_.size(); ++index)
+    {
+        auto push = separation_push_[index];
+        const auto length = std::sqrt(push.x * push.x + push.y * push.y);
+        if (length <= 0.0F)
+        {
+            continue;
+        }
+        // At most half a radius, or the unit's own speed, per tick.
+        const auto limit = std::max(radii_[index] * 0.5F, max_speeds_[index] * dt);
+        if (length > limit)
+        {
+            push.x *= limit / length;
+            push.y *= limit / length;
+        }
+        auto& position = positions_[index];
+        const auto next_x = position.x + push.x;
+        const auto next_y = position.y + push.y;
+        if (const auto allowed = passable_types_[index]; allowed != 0)
+        {
+            const auto there = ground_.passability_at(next_x, next_y);
+            if (there && (*there & allowed) == 0)
+            {
+                continue;
+            }
+        }
+        position = {next_x, next_y, ground_.surface_height(next_x, next_y)};
     }
 }
 
@@ -800,7 +947,7 @@ void SimulationWorld::publish()
     {
         const auto& combat = combat_[index];
         snapshot_.entities.push_back({ids_[index], positions_[index], headings_[index], visuals_[index], owners_[index], move_targets_[index].has_value(), selectable_[index] != 0, max_speeds_[index],
-                                      follows_ground_[index] != 0, combat.health, combat.profile.health, combat.shield, combat.profile.shield, combat.target});
+                                      follows_ground_[index] != 0, combat.health, combat.profile.health, combat.shield, combat.profile.shield, combat.target, radii_[index]});
     }
     snapshot_.projectiles.clear();
     snapshot_.projectiles.reserve(projectiles_.size());

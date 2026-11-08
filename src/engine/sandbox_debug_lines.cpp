@@ -80,6 +80,30 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
             }
         }
     }
+    if (view.world != nullptr && view.selection != nullptr)
+    {
+        // Footprint circles of selected units (the separation radius), just above the surface.
+        for (const auto& entity : view.world->snapshot().entities)
+        {
+            if (entity.radius <= 0.0F || !view.selection->contains(entity_key(entity.id)))
+            {
+                continue;
+            }
+            constexpr int segments = 24;
+            const auto point = [&](const int segment)
+            {
+                const auto angle = 6.2831853F * static_cast<float>(segment) / static_cast<float>(segments);
+                const auto x = entity.position.x + std::cos(angle) * entity.radius;
+                const auto y = entity.position.y + std::sin(angle) * entity.radius;
+                const auto z = entity.follows_ground && ground.valid() ? ground.surface_height(x, y) + 1.0F : entity.position.z;
+                return std::array<float, 3>{x, y, z};
+            };
+            for (int segment = 0; segment < segments; ++segment)
+            {
+                lines.push_back({point(segment), point(segment + 1), {1.0F, 0.85F, 0.25F, 0.7F}});
+            }
+        }
+    }
     if (view.world != nullptr && ground.valid())
     {
         // The remaining route of every selected moving unit, draped just above the surface.
