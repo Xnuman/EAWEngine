@@ -2,28 +2,64 @@
 
 #include "eaw/log.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace eaw {
 
-std::array<float, 16> pose_transform(const std::array<float, 16>& base, const float base_heading, const SimVector3& position, const float heading)
+std::array<float, 16> pose_transform(const std::array<float, 16>& base, const float base_heading, const SimVector3& position, const float heading, const float pitch, const float bank)
 {
-    const auto delta = heading - base_heading;
-    const auto cosine = std::cos(delta);
-    const auto sine = std::sin(delta);
+    // Row-vector convention: the new linear part is base * Rz(-base_heading) * Rx(bank) * Ry(pitch) *
+    // Rz(heading). Rz(-base_heading) turns the model's forward axis onto +X, where bank rolls about
+    // it and pitch lifts it toward +Z, before the heading turns it about +Z.
+    using Matrix = std::array<std::array<float, 3>, 3>;
+    const auto multiply = [](const Matrix& left, const Matrix& right)
+    {
+        Matrix product{};
+        for (std::size_t row = 0; row < 3; ++row)
+        {
+            for (std::size_t column = 0; column < 3; ++column)
+            {
+                product[row][column] = left[row][0] * right[0][column] + left[row][1] * right[1][column] + left[row][2] * right[2][column];
+            }
+        }
+        return product;
+    };
+    const auto about_z = [](const float angle) -> Matrix
+    {
+        const auto c = std::cos(angle);
+        const auto s = std::sin(angle);
+        return {{{c, s, 0.0F}, {-s, c, 0.0F}, {0.0F, 0.0F, 1.0F}}};
+    };
+    Matrix rotation = about_z(heading - base_heading);
+    if (pitch != 0.0F || bank != 0.0F)
+    {
+        const auto cb = std::cos(bank);
+        const auto sb = std::sin(bank);
+        const auto cp = std::cos(pitch);
+        const auto sp = std::sin(pitch);
+        const Matrix roll{{{1.0F, 0.0F, 0.0F}, {0.0F, cb, -sb}, {0.0F, sb, cb}}};
+        const Matrix lift{{{cp, 0.0F, sp}, {0.0F, 1.0F, 0.0F}, {-sp, 0.0F, cp}}};
+        rotation = multiply(multiply(multiply(about_z(-base_heading), roll), lift), about_z(heading));
+    }
     auto result = base;
-    // Row-vector convention: the new linear part is base * Rz(delta), Rz rows (c, s, 0), (-s, c, 0).
     for (std::size_t row = 0; row < 3; ++row)
     {
-        const auto x = base[row * 4U];
-        const auto y = base[row * 4U + 1U];
-        result[row * 4U] = x * cosine - y * sine;
-        result[row * 4U + 1U] = x * sine + y * cosine;
+        for (std::size_t column = 0; column < 3; ++column)
+        {
+            result[row * 4U + column] = base[row * 4U] * rotation[0][column] + base[row * 4U + 1U] * rotation[1][column] + base[row * 4U + 2U] * rotation[2][column];
+        }
     }
     result[12] = position.x;
     result[13] = position.y;
     result[14] = position.z;
     return result;
+}
+
+float flight_bank(const float yaw_rate) noexcept
+{
+    constexpr auto most = 3.14159265F / 3.0F;
+    return std::isfinite(yaw_rate) ? std::clamp(yaw_rate * 0.6F, -most, most) : 0.0F;
 }
 
 ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<const MapEntitySpawn> entities, SimulationWorld& world)
@@ -76,7 +112,7 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
             continue;
         }
         auto instance = found->second.instance;
-        instance.transform = pose_transform(instance.transform, found->second.base_heading, entity.position, entity.heading);
+        instance.transform = pose_transform(instance.transform, found->second.base_heading, entity.position, entity.heading, entity.pitch, flight_bank(entity.yaw_rate));
         instance.highlighted = selected.contains(entity_key(entity.id));
         instances_out.push_back(instance);
         entities_out.push_back(entity.id);

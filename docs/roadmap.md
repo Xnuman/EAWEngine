@@ -213,11 +213,12 @@ Gaps toward the deliverable, in planned order:
    so decisions such as chasing, attack runs, and engaging on one's own live in
    the behavior layer, with an engine-native `Stance` (aggressive, hold
    position, hold fire) that AI and Lua can later drive through commands.
-   Next, from observing the original (compatibility notes, "Fighter flight"):
-   fighters fly in 3D (a pitch beside the heading; presentation poses pitch
-   and bank), separate from squadron mates, reverse direction through a
-   vertical half-loop, and dogfight, chasing each other above and below their
-   plane before returning to it.
+   From observing the original (compatibility notes, "Fighter flight"):
+   fighters now fly in 3D (a pitch beside the heading; presentation poses
+   pitch and bank) and separate from squadron mates. Next they reverse
+   direction through a vertical half-loop and dogfight, chasing each other
+   above and below their plane before returning to it; dogfights involve every
+   flyer class (fighters, bombers, and mod units with the fighter locomotor).
    Covers:
    - weapons on `HardPoints` (94 stock uses);
    - space movement (turning, speed, and the space layer);

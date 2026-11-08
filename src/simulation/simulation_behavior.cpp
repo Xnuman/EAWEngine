@@ -160,7 +160,8 @@ void SimulationWorld::pursue_ordered_target(const std::size_t index)
 }
 
 // Flyers never stop (their locomotor keeps them at their minimum speed), so behavior only says
-// where to steer. Attack runs: inside a third of its weapon range of the target a flyer holds its
+// where to steer. They keep to the plane they cruise in (observed in the original: fighters fly
+// in one plane most of the time), so every point is taken at their cruise height. Attack runs: inside a third of its weapon range of the target a flyer holds its
 // heading, so it passes the target, flies on, and turns back once outside. An aggressive flyer
 // runs at any target it has; otherwise only at an ordered one. Without a target it flies to its
 // destination, arriving within a few ticks of flight of it, and circles where it arrived or idles.
@@ -175,7 +176,7 @@ void SimulationWorld::plan_flight(const std::size_t index, const float dt)
         if (const auto victim = attack_victim(index))
         {
             const auto pass = std::max(combat.profile.range() / 3.0F, (radii_[index] + radii_[*victim]) * 2.0F);
-            intent.point = positions_[*victim];
+            intent.point = SimVector3{positions_[*victim].x, positions_[*victim].y, cruise_heights_[index]};
             intent.hold_heading = distance_xy(position, positions_[*victim]) < pass;
             return;
         }
@@ -183,7 +184,7 @@ void SimulationWorld::plan_flight(const std::size_t index, const float dt)
     auto& target = move_targets_[index];
     if (target)
     {
-        intent.point = *target;
+        intent.point = SimVector3{target->x, target->y, cruise_heights_[index]};
         if (distance_xy(position, *target) <= travel_speed(index) * dt * 3.0F)
         {
             loiter_points_[index] = *target;
@@ -197,7 +198,7 @@ void SimulationWorld::plan_flight(const std::size_t index, const float dt)
     {
         loiter_points_[index] = position;
     }
-    intent.point = loiter_points_[index];
+    intent.point = SimVector3{loiter_points_[index]->x, loiter_points_[index]->y, cruise_heights_[index]};
 }
 
 } // namespace eaw

@@ -32,6 +32,8 @@ inline constexpr std::uint32_t cohesion_stall_ticks = 90;
 // Path search nodes expanded per tick at most (about 5 ms in a Release build), always at least one
 // request. An engine choice; requests beyond it wait for the next tick in order.
 inline constexpr std::uint64_t path_budget_per_tick = 30000;
+// Steepest climb or dive of a flyer (radians). An engine choice.
+inline constexpr float flight_max_pitch = std::numbers::pi_v<float> / 3.0F;
 
 inline bool finite(const SimVector3& value) noexcept
 {

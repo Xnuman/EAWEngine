@@ -582,6 +582,24 @@ void test_model_forward_axis()
     const std::array<float, 16> identity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
     require(std::fabs(eaw::model_forward_heading(identity) - eaw::identity_model_heading) < 1.0e-6F, "an unrotated model must face -Y");
     const auto posed = eaw::pose_transform(identity, eaw::identity_model_heading, {10.0F, 20.0F, 0.0F}, 0.0F);
+    {
+        // Pitch lifts the model's forward axis (-Y) toward +Z; a positive bank lowers its left side (+X).
+        const auto apply = [](const std::array<float, 16>& m, const std::array<float, 3>& v)
+        {
+            return std::array<float, 3>{v[0] * m[0] + v[1] * m[4] + v[2] * m[8], v[0] * m[1] + v[1] * m[5] + v[2] * m[9], v[0] * m[2] + v[1] * m[6] + v[2] * m[10]};
+        };
+        const auto near = [](const std::array<float, 3>& a, const std::array<float, 3>& b)
+        {
+            return std::fabs(a[0] - b[0]) < 1.0e-5F && std::fabs(a[1] - b[1]) < 1.0e-5F && std::fabs(a[2] - b[2]) < 1.0e-5F;
+        };
+        const auto climbing = eaw::pose_transform(identity, eaw::identity_model_heading, {}, 0.0F, std::numbers::pi_v<float> / 2.0F, 0.0F);
+        require(near(apply(climbing, {0.0F, -1.0F, 0.0F}), {0.0F, 0.0F, 1.0F}), "pitch must lift the model's nose toward +Z");
+        const auto banked = eaw::pose_transform(identity, eaw::identity_model_heading, {}, 0.0F, 0.0F, std::numbers::pi_v<float> / 2.0F);
+        require(near(apply(banked, {1.0F, 0.0F, 0.0F}), {0.0F, 0.0F, -1.0F}) && near(apply(banked, {0.0F, -1.0F, 0.0F}), {1.0F, 0.0F, 0.0F}),
+                "a positive bank must lower the model's left side about its nose");
+        require(eaw::flight_bank(0.0F) == 0.0F && eaw::flight_bank(100.0F) > 1.0F && eaw::flight_bank(-100.0F) < -1.0F && eaw::flight_bank(std::numeric_limits<float>::quiet_NaN()) == 0.0F,
+                "flight bank must follow the turn and stay bounded");
+    }
     require(std::fabs(-posed[4] - 1.0F) < 1.0e-5F && std::fabs(posed[5]) < 1.0e-5F && std::fabs(eaw::model_forward_heading(posed)) < 1.0e-5F && posed[12] == 10.0F,
             "a model moving along +X must face +X");
 }

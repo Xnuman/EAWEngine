@@ -141,6 +141,11 @@ struct EntitySnapshot
     // Destroyable hardpoints, and how many of them are destroyed.
     std::uint32_t hardpoints{};
     std::uint32_t hardpoints_destroyed{};
+    // Flyers: nose angle above the horizontal (radians), and how fast the heading turned in the last
+    // tick (radians per second, counter-clockwise positive; presentation banks by it). Zero for
+    // everything else.
+    float pitch{};
+    float yaw_rate{};
 };
 
 struct ProjectileSnapshot
@@ -335,7 +340,8 @@ private:
     [[nodiscard]] float travel_speed(std::size_t index) const noexcept;
     // Locomotors (simulation_locomotion.cpp): physical movement only.
     void move_over_ground(std::size_t index, float dt);
-    // Never below the minimum speed; steers at the intent's point at the turn rate.
+    // Never below the minimum speed; turns and pitches toward the intent's point at the turn rate
+    // (pitch limited to flight_max_pitch) and moves along the nose.
     void fly(std::size_t index, float dt);
     // Turns toward `desired` (radians) at the entity's turn rate and returns how much of its speed it
     // may use: 1 when facing the way, falling to 0 at 90 degrees or more off.
@@ -394,6 +400,11 @@ private:
     std::vector<float> min_speeds_;
     // Where an idle flyer circles (set when it arrives or first idles).
     std::vector<std::optional<SimVector3>> loiter_points_;
+    // Flyers: current pitch, the height of the plane they cruise in (their spawn height), and the
+    // heading change of the last tick per second.
+    std::vector<float> pitches_;
+    std::vector<float> cruise_heights_;
+    std::vector<float> yaw_rates_;
     std::vector<Stance> stances_;
     // Rebuilt by the behavior layer every tick before movement.
     std::vector<SteeringIntent> intents_;

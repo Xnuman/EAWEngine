@@ -905,6 +905,45 @@ void test_fighter_flight()
     }
 }
 
+// Flyers keep the plane they cruise in, report their turning for presentation, and push squadron
+// mates (same owner) apart sideways; flyers of other owners pass through each other.
+void test_flight_plane_and_separation()
+{
+    const eaw::EntitySpawn fighter{
+        .type_name = "Fighter", .owner = 1, .position = {0.0F, 0.0F, 100.0F}, .max_speed = 120.0F, .radius = 5.0F, .turn_rate = std::numbers::pi_v<float> / 2.0F, .min_speed = 75.0F};
+    {
+        eaw::SimulationWorld world(0.1);
+        const auto id = world.spawn(fighter);
+        require(id.ok(), "test spawn must succeed");
+        // An order to a point on another plane: the fighter turns left toward it but stays at its height.
+        world.submit({eaw::SimCommandKind::move, {*id}, {0.0F, 1000.0F, 0.0F}});
+        world.step();
+        require(world.snapshot().entities[0].yaw_rate > 1.0F, "a fighter turning left must report a positive yaw rate");
+        for (int tick = 0; tick < 200; ++tick)
+        {
+            world.step();
+            const auto& entity = world.snapshot().entities[0];
+            require(std::fabs(entity.position.z - 100.0F) < 1.0e-3F && entity.pitch == 0.0F, "a fighter must keep the plane it cruises in");
+        }
+    }
+    const auto separation = [&](const std::uint32_t second_owner)
+    {
+        eaw::SimulationWorld world(0.1);
+        auto other = fighter;
+        other.owner = second_owner;
+        require(world.spawn(fighter).ok() && world.spawn(other).ok(), "test spawns must succeed");
+        for (int tick = 0; tick < 60; ++tick)
+        {
+            world.step();
+        }
+        const auto& entities = world.snapshot().entities;
+        require(std::fabs(entities[0].position.z - 100.0F) < 1.0e-3F && std::fabs(entities[1].position.z - 100.0F) < 1.0e-3F, "separation must keep flyers in their plane");
+        return std::hypot(entities[0].position.x - entities[1].position.x, entities[0].position.y - entities[1].position.y);
+    };
+    require(separation(1) > 9.0F, "squadron mates must push each other apart");
+    require(separation(2) < 1.0e-3F, "flyers of different owners must not push each other");
+}
+
 // Stances belong to the behavior layer: they decide whether a unit picks targets and moves for
 // them, while orders always apply.
 void test_stances()
@@ -1002,6 +1041,7 @@ const ModuleRegistrar registrar("simulation", {
                                                   {"test_hardpoints_and_fire_cones", &test_hardpoints_and_fire_cones},
                                                   {"test_fighter_flight", &test_fighter_flight},
                                                   {"test_stances", &test_stances},
+                                                  {"test_flight_plane_and_separation", &test_flight_plane_and_separation},
                                               });
 
 } // namespace

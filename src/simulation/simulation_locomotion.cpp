@@ -174,9 +174,16 @@ void SimulationWorld::run_separation()
     // On land, ground units separate on the surface; without ground (space maps), every unit with a
     // footprint separates in the plane.
     const bool land = ground_.valid();
+    // Flyers separate only from flyers of their owner (observed in the original: squadron mates push
+    // each other apart), sideways so they keep their plane; overlap counts in 3D, so flyers passing
+    // above or below each other do not push.
+    const auto flyer = [&](const std::size_t index)
+    {
+        return radii_[index] > 0.0F && min_speeds_[index] > 0.0F;
+    };
     const auto takes_part = [&](const std::size_t index)
     {
-        return radii_[index] > 0.0F && min_speeds_[index] <= 0.0F && (!land || follows_ground_[index] != 0);
+        return flyer(index) || (radii_[index] > 0.0F && min_speeds_[index] <= 0.0F && (!land || follows_ground_[index] != 0));
     };
     grid_.build(positions_, grid_cell_size);
     separation_push_.assign(ids_.size(), SimVector3{});
@@ -230,12 +237,18 @@ void SimulationWorld::run_separation()
             {
                 continue;
             }
+            const bool flying = flyer(index);
+            if (flying != flyer(other) || (flying && owners_[index] != owners_[other]))
+            {
+                continue;
+            }
             const auto dx = positions_[other].x - positions_[index].x;
             const auto dy = positions_[other].y - positions_[index].y;
+            const auto dz = flying ? positions_[other].z - positions_[index].z : 0.0F;
             const auto distance = std::sqrt(dx * dx + dy * dy);
-            const auto overlap = radii_[index] + radii_[other] - distance;
-            const auto first_weight = weight(index, other);
-            const auto second_weight = weight(other, index);
+            const auto overlap = radii_[index] + radii_[other] - std::sqrt(distance * distance + dz * dz);
+            const auto first_weight = flying ? 1.0F : weight(index, other);
+            const auto second_weight = flying ? 1.0F : weight(other, index);
             // A hundredth of a world unit of overlap is tolerated, so units at rest stop pushing.
             if (overlap <= 0.01F || first_weight + second_weight <= 0.0F)
             {
@@ -292,18 +305,21 @@ void SimulationWorld::run_separation()
                 continue;
             }
         }
-        position = {next_x, next_y, land ? ground_.surface_height(next_x, next_y) : position.z};
+        position = {next_x, next_y, land && !flyer(index) ? ground_.surface_height(next_x, next_y) : position.z};
     }
 }
 
-// Flight: along the heading at between the minimum and maximum speed, turning toward the behavior
-// layer's point at the turn rate (slowing toward the minimum while facing away), or holding the
-// heading when asked to.
+// Flight: along the nose at between the minimum and maximum speed, turning toward the behavior
+// layer's point at the turn rate (slowing toward the minimum while facing away) and pitching toward
+// its height at the same rate, or holding heading and pitch when asked to.
 void SimulationWorld::fly(const std::size_t index, const float dt)
 {
     const auto& intent = intents_[index];
     auto& position = positions_[index];
+    auto& pitch = pitches_[index];
+    const auto heading_before = headings_[index];
     auto factor = 1.0F;
+    auto desired_pitch = intent.hold_heading ? pitch : 0.0F;
     if (intent.point && !intent.hold_heading)
     {
         const auto dx = intent.point->x - position.x;
@@ -312,11 +328,16 @@ void SimulationWorld::fly(const std::size_t index, const float dt)
         {
             factor = steer(index, std::atan2(dy, dx), dt);
         }
+        desired_pitch = std::clamp(std::atan2(intent.point->z - position.z, std::max(std::hypot(dx, dy), 1.0F)), -flight_max_pitch, flight_max_pitch);
     }
+    const auto pitch_step = turn_rates_[index] > 0.0F ? turn_rates_[index] * dt : flight_max_pitch * 2.0F;
+    pitch += std::clamp(desired_pitch - pitch, -pitch_step, pitch_step);
     const auto top = travel_speed(index);
     const auto speed = std::clamp(top * factor, std::min(min_speeds_[index], top), top);
     const auto heading = headings_[index];
-    position = {position.x + std::cos(heading) * speed * dt, position.y + std::sin(heading) * speed * dt, position.z};
+    const auto level = speed * std::cos(pitch) * dt;
+    position = {position.x + std::cos(heading) * level, position.y + std::sin(heading) * level, position.z + std::sin(pitch) * speed * dt};
+    yaw_rates_[index] = dt > 0.0F ? wrap_angle(heading - heading_before) / dt : 0.0F;
 }
 
 } // namespace eaw

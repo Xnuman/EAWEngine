@@ -21,7 +21,13 @@ namespace eaw {
 // Re-poses `base` (row-vector transform whose model forward axis points along `base_heading` about +Z):
 // keeps its scale and tilt, rotates it about world +Z by `heading - base_heading`, and moves it to
 // `position`.
-[[nodiscard]] std::array<float, 16> pose_transform(const std::array<float, 16>& base, float base_heading, const SimVector3& position, float heading);
+// `pitch` raises the nose above the horizontal and `bank` rolls about the forward axis (positive
+// lowers the left side, as in a left turn), both in radians.
+[[nodiscard]] std::array<float, 16> pose_transform(const std::array<float, 16>& base, float base_heading, const SimVector3& position, float heading, float pitch = 0.0F, float bank = 0.0F);
+
+// Presentation bank of a flyer turning at `yaw_rate` radians per second (an engine choice: about
+// 0.6 radians of bank per radian per second, at most 60 degrees).
+[[nodiscard]] float flight_bank(float yaw_rate) noexcept;
 
 [[nodiscard]] inline std::uint64_t entity_key(const EntityId id) noexcept
 {

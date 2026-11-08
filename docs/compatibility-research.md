@@ -443,8 +443,12 @@ Fighter flight.
     rate, a turn circle of about 48 units for the X-wing);
   - attack runs: within a third of their weapon range of the target they hold
     their heading, fly past, and turn back once outside;
-  - fighters do not separate from other units, and weapons still fire all
-    around (fighter weapons come from `Projectile_Types`, which has no cone).
+  - fighters separate only from flyers of their owner, sideways (overlap is
+    measured in 3D), and weapons still fire all around (fighter weapons come
+    from `Projectile_Types`, which has no cone);
+  - fighters pitch at their turn rate, at most 60 degrees, and keep the height
+    they spawned at as their plane; presentation banks them by their turn rate
+    (0.6 radians per radian per second, at most 60 degrees).
 - **Not used yet.** Bombing runs and the original's flight paths, banking,
   `SpaceBehavior` entries other than the locomotor, and fighter launch and
   docking from carriers.
@@ -457,8 +461,8 @@ Fighter flight.
   - a squadron ordered to roughly reverse its direction turns around through a
     vertical half-loop (a "backflip") outside its plane instead of a flat turn;
     the angle range that triggers it is not known;
-  - fighters of one squadron push overlapping squadron mates apart. The engine
-    does not separate flyers yet, so this contradicts the current choice above.
+  - fighters of one squadron push overlapping squadron mates apart (the engine
+    now does the same).
 - **Open measurements:** the vertical extent of dogfights, the reversal angle
   that triggers a half-loop, how fast fighters return to their plane, and
   whether separation also acts between squadrons or against other owners.
