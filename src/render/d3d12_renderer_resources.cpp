@@ -555,38 +555,8 @@ Result<std::uint32_t> D3d12Renderer::Impl::add_meshes(VisualScene fragment)
             return make_error("fragment draw references data outside the fragment");
         }
     }
-    // Textures: an identity already in the scene shares its logical id; the rest are new entries.
-    std::unordered_map<std::string, std::uint32_t> logical_by_identity;
-    for (std::size_t index = 0; index < scene_textures.size(); ++index)
-    {
-        if (!scene_textures[index].identity.empty())
-        {
-            logical_by_identity.try_emplace(scene_textures[index].identity, static_cast<std::uint32_t>(fallback_texture_count + index));
-        }
-    }
-    std::vector<std::uint32_t> texture_ids(fragment.textures.size());
-    std::vector<std::size_t> new_texture_sources;
-    for (std::size_t index = 0; index < fragment.textures.size(); ++index)
-    {
-        const auto& identity = fragment.textures[index].identity;
-        if (const auto shared = logical_by_identity.find(identity); !identity.empty() && shared != logical_by_identity.end())
-        {
-            texture_ids[index] = shared->second;
-            continue;
-        }
-        EAW_TRY(texture_description(fragment.textures[index]));
-        const auto logical = fallback_texture_count + scene_textures.size() + new_texture_sources.size();
-        if (logical >= maximum_scene_textures)
-        {
-            return make_error("adding meshes would exceed the " + std::to_string(maximum_scene_textures) + "-entry texture table");
-        }
-        texture_ids[index] = static_cast<std::uint32_t>(logical);
-        if (!identity.empty())
-        {
-            logical_by_identity.emplace(identity, texture_ids[index]);
-        }
-        new_texture_sources.push_back(index);
-    }
+    EAW_TRY_ASSIGN(const auto texture_plan, plan_textures(fragment.textures));
+    const auto& texture_ids = texture_plan.logical_ids;
     std::vector<GpuMaterial> materials = scene_gpu_materials;
     const auto first_material = static_cast<std::uint32_t>(materials.size());
     for (std::size_t index = 0; index < fragment.materials.size(); ++index)
@@ -628,18 +598,7 @@ Result<std::uint32_t> D3d12Renderer::Impl::add_meshes(VisualScene fragment)
         scene_mesh_bone_counts.push_back(mesh.bone_count);
     }
     // New textures join the streaming queue; normal maps fall back to the flat normal meanwhile.
-    for (const auto index : new_texture_sources)
-    {
-        StreamingTexture entry;
-        entry.identity = fragment.textures[index].identity;
-        entry.source = std::move(fragment.textures[index]);
-        for (const auto& mip : entry.source.mips)
-        {
-            entry.bytes += mip.data.size();
-        }
-        scene_textures.push_back(std::move(entry));
-        ++pending_texture_count;
-    }
+    commit_textures(fragment.textures, texture_plan);
     for (const auto& material : fragment.materials)
     {
         if (material.normal_texture != invalid_visual_texture && material.normal_texture < texture_ids.size())
@@ -656,6 +615,73 @@ Result<std::uint32_t> D3d12Renderer::Impl::add_meshes(VisualScene fragment)
         }
     }
     return first_mesh;
+}
+
+auto D3d12Renderer::Impl::plan_textures(const std::span<const VisualTexture> added) const -> Result<TexturePlan>
+{
+    // An identity already in the scene shares its logical id; the rest are new entries.
+    std::unordered_map<std::string, std::uint32_t> logical_by_identity;
+    for (std::size_t index = 0; index < scene_textures.size(); ++index)
+    {
+        if (!scene_textures[index].identity.empty())
+        {
+            logical_by_identity.try_emplace(scene_textures[index].identity, static_cast<std::uint32_t>(fallback_texture_count + index));
+        }
+    }
+    TexturePlan plan;
+    plan.logical_ids.resize(added.size());
+    for (std::size_t index = 0; index < added.size(); ++index)
+    {
+        const auto& identity = added[index].identity;
+        if (const auto shared = logical_by_identity.find(identity); !identity.empty() && shared != logical_by_identity.end())
+        {
+            plan.logical_ids[index] = shared->second;
+            continue;
+        }
+        EAW_TRY(texture_description(added[index]));
+        const auto logical = fallback_texture_count + scene_textures.size() + plan.new_sources.size();
+        if (logical >= maximum_scene_textures)
+        {
+            return make_error("adding textures would exceed the " + std::to_string(maximum_scene_textures) + "-entry texture table");
+        }
+        plan.logical_ids[index] = static_cast<std::uint32_t>(logical);
+        if (!identity.empty())
+        {
+            logical_by_identity.emplace(identity, plan.logical_ids[index]);
+        }
+        plan.new_sources.push_back(index);
+    }
+    return plan;
+}
+
+void D3d12Renderer::Impl::commit_textures(std::vector<VisualTexture>& added, const TexturePlan& plan)
+{
+    for (const auto index : plan.new_sources)
+    {
+        StreamingTexture entry;
+        entry.identity = added[index].identity;
+        entry.source = std::move(added[index]);
+        for (const auto& mip : entry.source.mips)
+        {
+            entry.bytes += mip.data.size();
+        }
+        scene_textures.push_back(std::move(entry));
+        ++pending_texture_count;
+    }
+}
+
+Result<std::vector<std::uint32_t>> D3d12Renderer::Impl::add_textures(std::vector<VisualTexture> added)
+{
+    EAW_ASSERT_MSG(scene_loaded, "add_textures needs a loaded scene");
+    EAW_TRY_ASSIGN(const auto plan, plan_textures(added));
+    commit_textures(added, plan);
+    std::vector<std::uint32_t> indices;
+    indices.reserve(plan.logical_ids.size());
+    for (const auto logical : plan.logical_ids)
+    {
+        indices.push_back(logical - fallback_texture_count);
+    }
+    return indices;
 }
 
 void D3d12Renderer::Impl::retire_textures(std::vector<StreamingTexture>& entries)

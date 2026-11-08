@@ -94,6 +94,48 @@ void inspect_chunks(const std::span<const std::byte> bytes, const std::size_t li
     std::cout << "Top-level bytes consumed: " << cursor << '/' << bytes.size() << '\n';
 }
 
+eaw::Status inspect_particles(const std::span<const std::byte> bytes, const std::size_t limit)
+{
+    EAW_TRY_ASSIGN(const auto system, eaw::ParticleSystem::parse(bytes));
+    static constexpr std::array<const char*, 7> track_names{"red", "green", "blue", "alpha", "scale", "texture", "rotation"};
+    std::cout << "Format: Alamo particle system\n"
+              << "Name: " << system.name << '\n'
+              << "Leave particles: " << (system.leave_particles ? "yes" : "no") << '\n'
+              << "Emitters: " << system.emitters.size() << '\n';
+    for (std::size_t index = 0; index < system.emitters.size() && index < limit; ++index)
+    {
+        const auto& emitter = system.emitters[index];
+        std::cout << "  [" << index << "] " << emitter.name << " texture " << emitter.texture << " blend " << emitter.blend_mode << " lifetime " << emitter.lifetime
+                  << (emitter.use_bursts ? " bursts " + std::to_string(emitter.particles_per_burst) + "x" + std::to_string(emitter.burst_count) + " every " + std::to_string(emitter.burst_delay)
+                                         : " rate " + std::to_string(emitter.particles_per_second) + "/s")
+                  << (emitter.has_tail ? " kite" : "") << (emitter.world_oriented ? " xy-aligned" : "") << (emitter.heat ? " heat" : "") << (emitter.weather ? " weather" : "")
+                  << (emitter.link_to_system ? " linked" : "") << " cells " << emitter.texture_cells << " groups " << emitter.groups[0].type << '/' << emitter.groups[2].type;
+        if (emitter.death_child >= 0)
+        {
+            std::cout << " on-death " << emitter.death_child;
+        }
+        if (emitter.life_child >= 0)
+        {
+            std::cout << " during-life " << emitter.life_child;
+        }
+        std::cout << '\n';
+        for (std::size_t track = 0; track < emitter.tracks.size(); ++track)
+        {
+            std::cout << "      " << track_names[track] << ':';
+            for (const auto& key : emitter.tracks[track].keys)
+            {
+                std::cout << ' ' << key.time << '=' << key.value;
+            }
+            std::cout << '\n';
+        }
+    }
+    for (const auto& warning : system.warnings)
+    {
+        std::cout << "Warning: " << warning << '\n';
+    }
+    return {};
+}
+
 eaw::Status inspect_alo(const std::span<const std::byte> bytes, const std::size_t limit)
 {
     EAW_TRY_ASSIGN(const auto model, eaw::AloModel::parse(bytes));
@@ -364,6 +406,14 @@ eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& 
     else if (extension == ".dds")
     {
         EAW_TRY(inspect_dds(bytes));
+    }
+    else if (extension == ".alo" && eaw::particle_file_kind(bytes) != eaw::ParticleFileKind::other)
+    {
+        if (const auto status = inspect_particles(bytes, limit); !status)
+        {
+            std::cout << "Particle system decoding unavailable: " << status.error().message << "\nFalling back to the chunk inventory.\n";
+            inspect_chunks(bytes, limit);
+        }
     }
     else if (extension == ".alo")
     {

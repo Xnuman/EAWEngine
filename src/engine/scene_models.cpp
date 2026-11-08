@@ -583,6 +583,7 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
         {
             rig.model = std::shared_ptr<const AloModel>(model, &model->value());
             append_rest_palette(*rig.model, rest_palette);
+            rig.effects = proxy_effects(builder, *rig.model);
             for (const auto& transform : rig.model->bind_pose())
             {
                 auto inverse = alo_inverse(transform);

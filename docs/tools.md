@@ -156,6 +156,9 @@ EAWAssetInspector.exe localization-refs Data/XML/Units.xml
 # Audit model references, material mappings, DDS formats, and MTD atlases
 EAWAssetInspector.exe texture-audit Data/Art/Models --game foc
 
+# Decode every particle ALO and summarize blend modes, renderers, and spawning
+EAWAssetInspector.exe particle-audit Data/Art/Models --game foc
+
 # Inventory Lua source/bytecode, dependencies, callbacks, and host API calls
 EAWAssetInspector.exe lua-audit Data/Scripts --game foc --limit 100
 
@@ -197,7 +200,9 @@ ALO reports skeletons, meshes, bounds, materials, texture references, geometry
 counts, attachments, proxies, lights, and dazzles. ALA reports format version,
 playback timing, bone tracks, packed
 translation/rotation/scale blocks, visibility, and stepped channels. Particle
-ALO particle files retain a safe top-level chunk fallback. TED
+ALOs list their emitters (texture, blend mode, spawning, renderer, shape
+groups, child links) and every keyframe track, falling back to the top-level
+chunk inventory when they cannot be decoded. TED
 inspection reports land/space properties, terrain dimensions and elevation,
 texture layers, water maps, tracks, decals, environments, passability, object
 CRC counts, AI zones, and embedded map previews. Land TED files also get an
@@ -232,6 +237,12 @@ DDS dependency, inventories format and material coverage (including translation
 source, render phase, lighting model, and heuristic-only shader names), and
 reports missing ALO texture references with an example model. The optional prefix scopes model
 inspection; the DDS/MTD corpus always covers the final mounted `Data` VFS.
+
+`particle-audit` decodes every ALO whose root chunk marks a particle system
+and reports failures, warnings by kind, the property mini-chunks with their
+sizes, blend modes, renderer kinds (billboard, ground-plane, kite, heat,
+weather), spawning, shape groups, track interpolation, and child links.
+`inspect` on a particle ALO lists its emitters and their tracks.
 
 `lua-audit` is read-only and never executes scripts. For source it ignores
 comments and string contents while collecting explicit `require`, `Script.Load`,

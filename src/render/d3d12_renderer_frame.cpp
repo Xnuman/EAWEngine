@@ -66,6 +66,62 @@ void D3d12Renderer::Impl::set_debug_lines(const std::span<const VisualDebugLine>
     debug_lines.assign(lines.begin(), lines.end());
 }
 
+void D3d12Renderer::Impl::set_particles(const std::span<const VisualParticle> next)
+{
+    EAW_ASSERT_MSG(next.size() < std::numeric_limits<std::uint32_t>::max(), "too many particles for one frame");
+    const auto finite = [](const auto& values)
+    {
+        return std::ranges::all_of(values,
+                                   [](const float value)
+                                   {
+                                       return std::isfinite(value);
+                                   });
+    };
+    EAW_ASSERT_MSG(std::ranges::all_of(next,
+                                       [&](const VisualParticle& particle)
+                                       {
+                                           return finite(particle.position) && finite(particle.color) && finite(particle.uv_rect) && finite(particle.axis) && std::isfinite(particle.half_size) &&
+                                                  std::isfinite(particle.rotation) && std::isfinite(particle.tail);
+                                       }),
+                   "particles contain non-finite values");
+    particles.assign(next.begin(), next.end());
+}
+
+void D3d12Renderer::Impl::write_particles(FrameContext& frame)
+{
+    gpu_particles.clear();
+    gpu_particles.reserve(particles.size());
+    for (const auto& particle : particles)
+    {
+        const auto logical = particle.texture < scene_textures.size() ? static_cast<std::uint32_t>(fallback_texture_count + particle.texture) : invalid_visual_texture;
+        gpu_particles.push_back(
+            {particle.position, particle.half_size, particle.color, particle.uv_rect, particle.axis, particle.rotation, particle.tail, logical, static_cast<std::uint32_t>(particle.shape), 0U});
+    }
+    if (gpu_particles.empty())
+    {
+        return;
+    }
+    if (gpu_particles.size() > frame.particle_capacity)
+    {
+        if (frame.particle_buffer)
+        {
+            frame.particle_buffer->Unmap(0, nullptr);
+            frame.particle_buffer_mapped = nullptr;
+            retired_resources.push({std::move(frame.particle_buffer)}, direct_queue.next_value());
+        }
+        const auto capacity = std::max<std::size_t>({gpu_particles.size(), frame.particle_capacity * 2U, 1024U});
+        const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
+        const auto description = buffer_description(static_cast<std::uint64_t>(capacity) * sizeof(GpuParticle));
+        check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.particle_buffer)),
+                      "CreateCommittedResource(frame particles)");
+        set_name(frame.particle_buffer.Get(), L"EAWEngine frame particles");
+        const D3D12_RANGE no_read{0, 0};
+        check_hresult(frame.particle_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.particle_buffer_mapped)), "Map(frame particles)");
+        frame.particle_capacity = capacity;
+    }
+    std::memcpy(frame.particle_buffer_mapped, gpu_particles.data(), gpu_particles.size() * sizeof(GpuParticle));
+}
+
 void D3d12Renderer::Impl::set_instances(const std::span<const VisualInstance> instances)
 {
     EAW_ASSERT_MSG(scene_loaded, "set_instances needs a loaded scene (its meshes are the mesh library)");
@@ -284,6 +340,7 @@ bool D3d12Renderer::Impl::render()
     }
     // This context's fence has completed (waited above), so any picks it still holds are ready;
     // collect them before recording new picks into the same readback slots.
+    write_particles(frame);
     collect_pick(frame);
     collect_timestamps(frame);
     if (frame_number % 30U == 0)
@@ -329,6 +386,18 @@ bool D3d12Renderer::Impl::render()
         constants.fill_diffuse[index] = rgb(lighting.fills[index].color);
     }
     constants.selection = {highlighted_pick_id, 0, 0, 0};
+    {
+        // The view basis of XMMatrixLookAtLH: right = up x forward, up' = forward x right.
+        const std::array<float, 3> forward{camera.target[0] - camera.eye[0], camera.target[1] - camera.eye[1], camera.target[2] - camera.eye[2]};
+        const auto cross = [](const std::array<float, 3>& a, const std::array<float, 3>& b)
+        {
+            return std::array<float, 3>{a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+        };
+        const auto right = unit(cross(camera.up, forward));
+        const auto view_up = unit(cross(forward, {right[0], right[1], right[2]}));
+        constants.camera_right = right;
+        constants.camera_up = view_up;
+    }
     std::memcpy(frame.constant_buffer_mapped, &constants, sizeof(constants));
 
     check_hresult(frame.allocator->Reset(), "ID3D12CommandAllocator::Reset");
@@ -446,6 +515,32 @@ bool D3d12Renderer::Impl::render()
         }
     }
 
+    // Particles: runs of one blend and depth mode, in the given (back-to-front) order.
+    if (!gpu_particles.empty())
+    {
+        command_list->SetGraphicsRootShaderResourceView(3, frame.particle_buffer->GetGPUVirtualAddress());
+        std::size_t run_start = 0;
+        const auto pipeline_of = [&](const VisualParticle& particle)
+        {
+            return particle_pipelines[static_cast<std::size_t>(particle.blend)][particle.depth_test ? 0U : 1U].Get();
+        };
+        for (std::size_t index = 1; index <= particles.size(); ++index)
+        {
+            if (index < particles.size() && pipeline_of(particles[index]) == pipeline_of(particles[run_start]))
+            {
+                continue;
+            }
+            command_list->SetPipelineState(pipeline_of(particles[run_start]));
+            const std::array<std::uint32_t, 2> particle_constants{static_cast<std::uint32_t>(run_start), 0U};
+            command_list->SetGraphicsRoot32BitConstants(5, 2, particle_constants.data(), 0);
+            command_list->DrawInstanced(6, static_cast<UINT>(index - run_start), 0, 0);
+            ++draw_calls;
+            triangles += static_cast<std::uint64_t>(index - run_start) * 2U;
+            run_start = index;
+        }
+    }
+    last_particles = gpu_particles.size();
+
     if (debug_line_count != 0)
     {
         command_list->SetPipelineState(debug_pipeline.Get());
@@ -461,7 +556,7 @@ bool D3d12Renderer::Impl::render()
     last_draw_calls = draw_calls;
     last_triangles = triangles;
     last_instances = instances_drawn;
-    if ((!overlay_lines.empty() || selection_rectangle) && overlay_backend_initialized)
+    if ((!overlay_lines.empty() || selection_rectangle || overlay_ui) && overlay_backend_initialized)
     {
         render_overlay(render_target);
     }

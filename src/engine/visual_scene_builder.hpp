@@ -6,6 +6,7 @@
 #include "eaw/alo_model.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/visual_scene.hpp"
+#include "particle_effects.hpp"
 
 #include <array>
 #include <cstddef>
@@ -57,6 +58,15 @@ struct VisualClip
 // the scene palette, and its clips sorted by role and variant. A rest palette is the mesh's bind
 // pose: identity skin matrices, then the visibility half with attachments of bones hidden in the
 // bind pose collapsed (see sample_skin_palette).
+// A particle effect attached to a model bone (an ALO proxy naming a particle system). The effect's
+// texture indices point into the build's particle texture list.
+struct VisualEffectAttachment
+{
+    std::shared_ptr<const ParticleEffect> effect;
+    std::uint32_t bone{};
+    std::string proxy;
+};
+
 struct VisualRig
 {
     std::shared_ptr<const AloModel> model;
@@ -65,6 +75,8 @@ struct VisualRig
     // Palette entries the mesh uses (its rest palette's size).
     std::uint32_t palette_size{};
     std::vector<VisualClip> clips;
+    // Particle effects on the model's visible proxies.
+    std::vector<VisualEffectAttachment> effects;
 };
 
 struct VisualModelAsset
@@ -186,6 +198,10 @@ struct VisualMapAsset
     // resets its palette to identity on load).
     std::vector<VisualRig> rigs;
     std::vector<std::array<float, 16>> rest_palette;
+    // Textures of the rigs' and named effects' particle effects, as in SpawnablePackage.
+    std::vector<VisualTexture> particle_textures;
+    // The effects MapBuildOptions::effects named, in order (null where one could not be loaded).
+    std::vector<std::shared_ptr<const ParticleEffect>> effects;
 };
 
 // Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file
@@ -202,6 +218,9 @@ struct MapBuildOptions
 {
     bool textures{true};
     bool animation_clips{true};
+    // Particle effects to load by name (model references, as proxies name them) into
+    // VisualMapAsset::effects, for viewing (sandbox --effect).
+    std::vector<std::string> effects;
 };
 [[nodiscard]] Result<VisualMapAsset> build_visual_map(const AssetReader& reader, std::string_view map_path, AssetCache* cache = nullptr, std::span<const std::string> spawn_types = {},
                                                       const MapBuildOptions& options = {});
@@ -215,6 +234,9 @@ struct SpawnablePackage
     std::vector<VisualRig> rigs;
     std::vector<std::array<float, 16>> rest_palette;
     std::vector<SpawnableType> types;
+    // Textures of the rigs' particle effects (register with D3d12Renderer::add_textures and renumber
+    // the effects with renumber_effect_textures).
+    std::vector<VisualTexture> particle_textures;
 };
 // Builds a type for a land or space map through the same cached XML catalog, movement classes, and
 // combat data as build_visual_map (an error when the type has no model for that context).
@@ -222,6 +244,10 @@ struct SpawnablePackage
 // Names of the unit and structure types with a model for land or space maps, sorted
 // case-insensitively (through the cached XML catalog).
 [[nodiscard]] std::vector<std::string> spawnable_type_names(const AssetReader& reader, bool land, AssetCache* cache = nullptr);
+// Points the rigs' effects at renderer texture indices: `renderer_textures[i]` is where the
+// renderer placed particle texture i (D3d12Renderer::add_textures). Effects shared between rigs stay
+// shared.
+void renumber_effect_textures(std::span<VisualRig> rigs, std::span<std::shared_ptr<const ParticleEffect>> effects, std::span<const std::uint32_t> renderer_textures);
 [[nodiscard]] std::optional<std::string> default_model_animation(const AssetReader& reader, std::string_view model_path);
 // Every <MODEL>_*.ALA beside the model, sorted by virtual path.
 [[nodiscard]] std::vector<std::string> model_animations(const AssetReader& reader, std::string_view model_path);

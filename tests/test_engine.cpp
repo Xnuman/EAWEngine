@@ -2,6 +2,7 @@
 
 #include "battle.hpp"
 #include "battle_log.hpp"
+#include "particle_effects.hpp"
 #include "sandbox_options.hpp"
 #include "unit_animation.hpp"
 
@@ -1026,7 +1027,164 @@ void test_runtime_spawnable_registration()
     require(animator.rig_count() == 2 && palette.size() == 5 && drawn[0].bone_offset == 3, "added rigs must take their rest poses after the existing ones");
 }
 
+eaw::ParticleEmitter make_test_emitter()
+{
+    eaw::ParticleEmitter emitter;
+    for (auto& track : emitter.tracks)
+    {
+        track.keys = {{0.0F, 1.0F}, {1.0F, 1.0F}};
+    }
+    emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::scale)].keys = {{0.0F, 4.0F}, {1.0F, 8.0F}};
+    emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::texture_index)].keys = {{0.0F, 0.0F}, {1.0F, 0.0F}};
+    emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::rotation_speed)].keys = {{0.0F, 0.0F}, {1.0F, 0.0F}};
+    emitter.lifetime = 1.0F;
+    return emitter;
+}
+
+std::shared_ptr<const eaw::ParticleEffect> make_test_effect(std::vector<eaw::ParticleEmitter> emitters, const bool leave_particles = true)
+{
+    auto effect = std::make_shared<eaw::ParticleEffect>();
+    effect->name = "test";
+    effect->system.emitters = std::move(emitters);
+    effect->system.leave_particles = leave_particles;
+    effect->textures.assign(effect->system.emitters.size(), 7U);
+    return effect;
+}
+
+void test_particle_tracks()
+{
+    eaw::ParticleTrack track;
+    track.keys = {{0.0F, 0.0F}, {0.5F, 10.0F}, {1.0F, 0.0F}};
+    require(eaw::sample_particle_track(track, 0.25F) == 5.0F && eaw::sample_particle_track(track, 0.75F) == 5.0F && eaw::sample_particle_track(track, 2.0F) == 0.0F,
+            "linear particle track sampling failed");
+    track.interpolation = eaw::ParticleInterpolation::step;
+    require(eaw::sample_particle_track(track, 0.4F) == 0.0F && eaw::sample_particle_track(track, 0.5F) == 10.0F, "step particle track sampling failed");
+    track.interpolation = eaw::ParticleInterpolation::smooth;
+    require(eaw::sample_particle_track(track, 0.125F) > 0.0F && eaw::sample_particle_track(track, 0.125F) < 2.5F, "smooth particle track sampling failed");
+}
+
+void test_particle_world()
+{
+    // Three bursts of four, 0.5 s apart, two-second particles: the effect ends on its own.
+    auto burst = make_test_emitter();
+    burst.use_bursts = true;
+    burst.particles_per_burst = 4;
+    burst.burst_count = 3;
+    burst.burst_delay = 0.5F;
+    burst.lifetime = 2.0F;
+    burst.groups[0].type = 0;
+    burst.groups[0].value = {0.0F, 0.0F, 10.0F};
+    eaw::ParticleWorld world;
+    const auto effect = make_test_effect({burst});
+    std::array<float, 16> transform = eaw::visual_identity_transform;
+    transform[12] = 100.0F;
+    const auto id = world.play(effect, transform, 42);
+    require(world.playing(id) && world.stats().particles == 0, "particle effect did not start");
+    world.update(0.01F);
+    require(world.stats().particles == 4, "first particle burst failed");
+    for (int frame = 0; frame < 60; ++frame)
+    {
+        world.update(0.02F);
+    }
+    require(world.stats().particles == 12, "particle bursts did not accumulate");
+    std::vector<eaw::VisualParticle> sprites;
+    world.build_sprites({0.0F, 0.0F, 0.0F}, sprites);
+    require(sprites.size() == 12 && sprites.front().texture == 7U && sprites.front().position[0] == 100.0F && sprites.front().position[2] > 0.0F, "particle sprites failed");
+    require(sprites.front().half_size > 2.0F && sprites.front().half_size < 4.0F, "particle size track failed");
+    for (std::size_t index = 1; index < sprites.size(); ++index)
+    {
+        require(sprites[index - 1].position[2] >= sprites[index].position[2], "particle sprites are not sorted back to front");
+    }
+    for (int frame = 0; frame < 100; ++frame)
+    {
+        world.update(0.02F);
+    }
+    require(!world.playing(id) && world.stats().particles == 0 && world.stats().instances == 0, "finished particle effect was not released");
+
+    // The same seed replays the same particles.
+    auto spray = make_test_emitter();
+    spray.particles_per_second = 50;
+    spray.groups[0].type = 3;
+    spray.groups[0].sphere_radius = 20.0F;
+    spray.random_scale = 0.5F;
+    const auto looping = make_test_effect({spray}, false);
+    const auto positions = [&](const std::uint64_t seed)
+    {
+        eaw::ParticleWorld replay;
+        replay.play(looping, eaw::visual_identity_transform, seed);
+        for (int frame = 0; frame < 30; ++frame)
+        {
+            replay.update(1.0F / 30.0F);
+        }
+        std::vector<eaw::VisualParticle> out;
+        replay.build_sprites({0.0F, -100.0F, 0.0F}, out);
+        std::vector<float> values;
+        for (const auto& sprite : out)
+        {
+            values.insert(values.end(), {sprite.position[0], sprite.position[1], sprite.position[2], sprite.half_size});
+        }
+        return values;
+    };
+    require(positions(5) == positions(5) && positions(5) != positions(6), "particle seeds do not replay");
+
+    // Looping effects run until stopped; without leave_particles they vanish at once.
+    const auto loop = world.play(looping, eaw::visual_identity_transform, 1);
+    for (int frame = 0; frame < 120; ++frame)
+    {
+        world.update(1.0F / 30.0F);
+    }
+    require(world.playing(loop) && world.stats().particles > 40, "looping particle effect stopped");
+    world.stop(loop);
+    require(!world.playing(loop) && world.stats().particles == 0, "stopped particle effect left particles");
+
+    // Capacity bounds the live particles and counts the rest.
+    eaw::ParticleWorld small(10);
+    small.play(looping, eaw::visual_identity_transform, 3);
+    for (int frame = 0; frame < 15; ++frame)
+    {
+        small.update(1.0F / 30.0F);
+    }
+    require(small.stats().particles == 10 && small.stats().dropped_particles > 0, "particle capacity failed");
+
+    // A trail child emits from each living parent particle; a death child at each death.
+    auto parent = make_test_emitter();
+    parent.use_bursts = true;
+    parent.particles_per_burst = 2;
+    parent.burst_count = 1;
+    parent.lifetime = 0.5F;
+    parent.life_child = 1;
+    parent.death_child = 2;
+    auto trail = make_test_emitter();
+    trail.particles_per_second = 10;
+    trail.lifetime = 5.0F;
+    auto debris = make_test_emitter();
+    debris.use_bursts = true;
+    debris.particles_per_burst = 3;
+    debris.lifetime = 5.0F;
+    eaw::ParticleWorld family;
+    family.play(make_test_effect({parent, trail, debris}), eaw::visual_identity_transform, 9);
+    for (int frame = 0; frame < 30; ++frame)
+    {
+        family.update(1.0F / 30.0F);
+    }
+    // Two parents for 0.5 s at 10 per second leave about ten trail particles, then six debris.
+    const auto count = family.stats().particles;
+    require(count >= 14 && count <= 18, "particle child emitters failed: " + std::to_string(count));
+
+    // Heat particles have no pass yet: they are skipped, not drawn.
+    auto heat = make_test_emitter();
+    heat.heat = true;
+    eaw::ParticleWorld hot;
+    hot.play(make_test_effect({heat}), eaw::visual_identity_transform, 1);
+    hot.update(0.1F);
+    std::vector<eaw::VisualParticle> none;
+    hot.build_sprites({}, none);
+    require(none.empty() && hot.stats().skipped_emitters == 1, "heat particles were drawn");
+}
+
 const ModuleRegistrar registrar("engine", {
+                                              {"test_particle_tracks", &test_particle_tracks},
+                                              {"test_particle_world", &test_particle_world},
                                               {"test_asset_cache_dependencies", &test_asset_cache_dependencies},
                                               {"test_debug_draw", &test_debug_draw},
                                               {"test_scene_presentation", &test_scene_presentation},

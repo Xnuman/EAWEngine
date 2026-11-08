@@ -170,6 +170,9 @@ scene, selection, hot reload) and the spawn panel (search the spawnable types,
 pick the count and owner, spawn at the view center or with N at the cursor), and
 toggles bounds and passability; `--panel menu|statistics|spawn` opens panels at
 start, and `--overlay` the statistics panel.
+Models' particle proxies (engine glows, lights, fires) play on maps;
+`--effect <name>` (repeatable) plays a particle effect such as
+`P_EXPLOSION_BIG00` at the map center, restarting it when it ends.
 Mouse movement and keys use Windows raw input (unaccelerated mouse movement for
 camera rotation); `--no-raw-input` uses window messages instead. The panel
 can be dragged and resized, and its "-" button minimizes it to a small tab ("+"

@@ -54,6 +54,8 @@ struct D3d12RendererStats
     std::uint32_t draw_calls{};
     std::uint64_t triangles{};
     std::uint64_t instances{};
+    // Particles drawn in the last recorded frame.
+    std::uint64_t particles{};
     // GPU time of the most recent frame the GPU finished (timestamp queries; no CPU wait).
     double gpu_frame_milliseconds{};
     // Local video memory in use by this process and the OS budget for it (bytes, refreshed every
@@ -148,6 +150,15 @@ public:
     // the scene is shared. Existing mesh indices stay valid; load_scene drops added meshes.
     // Returns an error (adding nothing) without a loaded scene or for an invalid fragment.
     [[nodiscard]] Result<std::uint32_t> add_meshes(VisualScene meshes);
+    // Adds textures to the loaded scene (particle textures) and returns each one's index in the
+    // renderer's texture list (the scene's textures, then those added since), as VisualParticle
+    // names them. They stream in like the scene's; an identity already present is shared.
+    // load_scene drops them. Returns an error (adding nothing) for an invalid texture.
+    [[nodiscard]] Result<std::vector<std::uint32_t>> add_textures(std::vector<VisualTexture> textures);
+    // Particles drawn every frame until replaced (any count; frame buffers grow as needed), after
+    // the scene and before debug lines, in list order, without depth or pick writes. Textures are
+    // indices into the renderer's texture list (see add_textures); out-of-range indices draw white.
+    void set_particles(std::span<const VisualParticle> particles);
     [[nodiscard]] static std::size_t max_bone_transforms() noexcept;
     // Replaces the instances drawn each frame with this list, until the next call or load_scene
     // (which returns to the scene's own instances). The loaded scene's meshes form the mesh library:

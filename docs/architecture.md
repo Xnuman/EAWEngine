@@ -95,6 +95,15 @@ can be stabilized. A modern physically based shading pipeline with
 engine-native materials follows, using the same profiles as conversion input.
 Legacy shaders are mapping evidence only and are never used at runtime.
 
+Particle effects are presentation, like unit animation. The core decodes
+particle ALOs into immutable systems; the engine's `ParticleWorld` plays them
+on the frame clock from a seeded random stream per effect and emits sorted
+`VisualParticle` sprites; the renderer expands those to quads on the GPU. The
+simulation never reads particle state, so effects can change, be skipped, or
+run at any frame rate without affecting state hashes. Effects attach to
+entities through model proxies (`AttachedEffects`), keyed by entity id, and
+follow the animated bone palette.
+
 The renderer uses an RHI with explicit resources, command lists, queues,
 barriers, descriptor tables, and pipeline objects. The first production backend
 should be Direct3D 12 because the target game and primary audience are on

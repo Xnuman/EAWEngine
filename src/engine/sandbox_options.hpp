@@ -84,6 +84,9 @@ struct SandboxOptions
     // --spawn-later: types not built into the map; once it is shown they are loaded at runtime
     // (built and registered like a first N press on an unloaded type) and spawned (automation).
     std::vector<SandboxSpawnRequest> later_spawns;
+    // --effect: particle effects (model references) played at the map center, restarting when they
+    // end (repeatable).
+    std::vector<std::string> effects;
     // Battles: total simulation ticks to run (battle mode; default 3000, or the replayed log's end),
     // a file to write the order log to when the battle ends (battle and sandbox modes), a log to
     // replay instead of the spawn and auto-move options, and whether to run the battle twice and

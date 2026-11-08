@@ -209,6 +209,49 @@ struct VisualLightRig
     std::array<float, 3> ambient{0.10F, 0.10F, 0.11F};
 };
 
+enum class VisualParticleShape : std::uint8_t
+{
+    // A quad facing the camera, rotated by `rotation` in the view plane.
+    billboard,
+    // A quad lying in the world XY plane (ground decals, shock rings), rotated about Z.
+    ground,
+    // A quad stretched along `axis` (the particle's velocity) and turned toward the camera around
+    // it, extended by `tail` behind the particle (sparks, streaks).
+    kite,
+};
+
+enum class VisualParticleBlend : std::uint8_t
+{
+    additive,
+    alpha,
+    // Destination times source color (darkening).
+    modulate,
+};
+
+// One particle sprite in world space, expanded to a quad on the GPU. Particles are drawn after the
+// scene's transparent surfaces in the order given (the engine sorts them back to front), without
+// writing depth.
+struct VisualParticle
+{
+    std::array<float, 3> position{};
+    float half_size{1.0F};
+    // Linear RGBA multiplier of the texture.
+    std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
+    // Texture rectangle: u, v of the top-left corner, then width and height (atlas cells).
+    std::array<float, 4> uv_rect{0.0F, 0.0F, 1.0F, 1.0F};
+    // Kites: the world-space direction of travel (any length; zero draws a billboard).
+    std::array<float, 3> axis{};
+    // Radians, counter-clockwise in the quad's plane.
+    float rotation{};
+    // Kites: extra length behind the particle along -axis, in world units.
+    float tail{};
+    // A texture registered with the renderer (D3d12Renderer::add_textures), or none (white).
+    std::uint32_t texture{invalid_visual_texture};
+    VisualParticleShape shape{VisualParticleShape::billboard};
+    VisualParticleBlend blend{VisualParticleBlend::additive};
+    bool depth_test{true};
+};
+
 // A perspective view in world space (Z up). The renderer derives the aspect ratio from its target.
 struct VisualCamera
 {

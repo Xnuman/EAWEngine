@@ -1,0 +1,697 @@
+#include "particle_effects.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <numbers>
+
+namespace eaw {
+namespace {
+
+using Vec3 = std::array<float, 3>;
+
+constexpr float two_pi = 2.0F * std::numbers::pi_v<float>;
+// Pre-simulation (skip time) runs in steps of this length, for at most this long.
+constexpr float skip_step = 1.0F / 30.0F;
+constexpr float maximum_skip = 10.0F;
+constexpr float maximum_update = 0.25F;
+// A trail emitter emits at most this many particles per parent per update (runaway rates).
+constexpr std::size_t maximum_trail_burst = 64;
+
+Vec3 operator+(const Vec3& a, const Vec3& b)
+{
+    return {a[0] + b[0], a[1] + b[1], a[2] + b[2]};
+}
+
+Vec3 operator-(const Vec3& a, const Vec3& b)
+{
+    return {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+}
+
+Vec3 operator*(const Vec3& a, const float s)
+{
+    return {a[0] * s, a[1] * s, a[2] * s};
+}
+
+float length(const Vec3& a)
+{
+    return std::sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+}
+
+Vec3 normalized(const Vec3& a)
+{
+    const auto l = length(a);
+    return l > 1e-6F ? a * (1.0F / l) : Vec3{};
+}
+
+Vec3 to_vec(const AloVector3& v)
+{
+    return {v.x, v.y, v.z};
+}
+
+Vec3 transform_point(const std::array<float, 16>& m, const Vec3& p)
+{
+    return {p[0] * m[0] + p[1] * m[4] + p[2] * m[8] + m[12], p[0] * m[1] + p[1] * m[5] + p[2] * m[9] + m[13], p[0] * m[2] + p[1] * m[6] + p[2] * m[10] + m[14]};
+}
+
+Vec3 transform_direction(const std::array<float, 16>& m, const Vec3& d)
+{
+    return {d[0] * m[0] + d[1] * m[4] + d[2] * m[8], d[0] * m[1] + d[1] * m[5] + d[2] * m[9], d[0] * m[2] + d[1] * m[6] + d[2] * m[10]};
+}
+
+Vec3 origin(const std::array<float, 16>& m)
+{
+    return {m[12], m[13], m[14]};
+}
+
+// PCG32 (O'Neill): small, fast, and fully specified, so a seed replays the same effect everywhere.
+class Random
+{
+public:
+    Random() : Random(0)
+    {}
+
+    explicit Random(const std::uint64_t seed)
+    {
+        state_ = 0;
+        increment_ = (seed << 1U) | 1U;
+        next();
+        state_ += 0x853c49e6748fea9bULL ^ seed;
+        next();
+    }
+
+    std::uint32_t next()
+    {
+        const auto old = state_;
+        state_ = old * 6364136223846793005ULL + increment_;
+        const auto xorshifted = static_cast<std::uint32_t>(((old >> 18U) ^ old) >> 27U);
+        const auto rotation = static_cast<std::uint32_t>(old >> 59U);
+        return (xorshifted >> rotation) | (xorshifted << ((32U - rotation) & 31U));
+    }
+
+    // Uniform in [0, 1).
+    float unit()
+    {
+        return static_cast<float>(next() >> 8U) * (1.0F / 16777216.0F);
+    }
+
+    float range(const float low, const float high)
+    {
+        return low + (high - low) * unit();
+    }
+
+private:
+    std::uint64_t state_{};
+    std::uint64_t increment_{};
+};
+
+// A spawn shape sample in emitter space (docs: shape group types 0..4).
+Vec3 sample_group(const ParticleGroup& group, Random& random)
+{
+    switch (group.type)
+    {
+    case 1:
+        return {random.range(group.minimum.x, group.maximum.x), random.range(group.minimum.y, group.maximum.y), random.range(group.minimum.z, group.maximum.z)};
+    case 2:
+    {
+        const auto half = group.side_length * 0.5F;
+        return {random.range(-half, half), random.range(-half, half), random.range(-half, half)};
+    }
+    case 3:
+    {
+        // Uniform direction; the radius is uniform in 0..R as in the reference (denser at the core).
+        const auto z = random.range(-1.0F, 1.0F);
+        const auto angle = random.range(0.0F, two_pi);
+        const auto planar = std::sqrt(std::max(0.0F, 1.0F - z * z));
+        const auto radius = group.sphere_hollow ? group.sphere_radius : random.range(0.0F, group.sphere_radius);
+        return Vec3{planar * std::cos(angle), planar * std::sin(angle), z} * radius;
+    }
+    case 4:
+    {
+        const auto angle = random.range(0.0F, two_pi);
+        const auto radius = group.cylinder_hollow ? group.cylinder_radius : random.range(0.0F, group.cylinder_radius);
+        return {radius * std::cos(angle), radius * std::sin(angle), random.range(0.0F, group.cylinder_height)};
+    }
+    default:
+        return to_vec(group.value);
+    }
+}
+
+VisualParticleBlend blend_of(const std::uint32_t mode)
+{
+    // The legacy particle shader table (docs/compatibility-research.md); stock data uses 1, 2, and 11.
+    switch (mode)
+    {
+    case 1:
+    case 4:
+        return VisualParticleBlend::additive;
+    case 3:
+    case 6:
+    case 8:
+    case 9:
+        return VisualParticleBlend::modulate;
+    default:
+        return VisualParticleBlend::alpha;
+    }
+}
+
+bool renderable(const ParticleEmitter& emitter)
+{
+    // No heat-distortion or weather pass exists yet.
+    return !emitter.heat && !emitter.weather && emitter.blend_mode != 10;
+}
+
+} // namespace
+
+float sample_particle_track(const ParticleTrack& track, const float t) noexcept
+{
+    const auto& keys = track.keys;
+    if (keys.empty())
+    {
+        return 0.0F;
+    }
+    if (t <= keys.front().time)
+    {
+        return keys.front().value;
+    }
+    for (std::size_t index = 1; index < keys.size(); ++index)
+    {
+        const auto& next = keys[index];
+        if (t > next.time)
+        {
+            continue;
+        }
+        const auto& previous = keys[index - 1];
+        if (track.interpolation == ParticleInterpolation::step)
+        {
+            return t < next.time ? previous.value : next.value;
+        }
+        const auto span = next.time - previous.time;
+        auto f = span > 1e-6F ? (t - previous.time) / span : 1.0F;
+        if (track.interpolation == ParticleInterpolation::smooth)
+        {
+            f = f * f * (3.0F - 2.0F * f);
+        }
+        return previous.value + (next.value - previous.value) * f;
+    }
+    return keys.back().value;
+}
+
+struct ParticleWorld::Particle
+{
+    Vec3 position{};
+    Vec3 velocity{};
+    float age{};
+    float lifetime{1.0F};
+    float size_factor{1.0F};
+    // Revolutions; integrated from the rotation-speed track unless fixed.
+    float rotation{};
+    float rotation_direction{1.0F};
+    std::array<float, 4> color_add{};
+    // Seconds until this particle's trail emitter emits again.
+    float trail_clock{};
+    bool resting{};
+};
+
+struct ParticleWorld::EmitterState
+{
+    std::vector<Particle> particles;
+    float clock{};
+    float next_emission{};
+    std::int64_t bursts{};
+    bool finished{};
+    // Spawned only by its parent emitter (a death or trail child), never on its own.
+    bool child{};
+    bool drawn{true};
+};
+
+struct ParticleWorld::Instance
+{
+    std::shared_ptr<const ParticleEffect> effect;
+    std::array<float, 16> transform{visual_identity_transform};
+    Vec3 previous_origin{};
+    std::vector<EmitterState> emitters;
+    Random random;
+    std::uint32_t generation{};
+    bool live{};
+    bool emitting{true};
+    bool stopped{};
+};
+
+ParticleWorld::ParticleWorld(const std::size_t capacity) : capacity_(capacity)
+{}
+ParticleWorld::~ParticleWorld() = default;
+ParticleWorld::ParticleWorld(ParticleWorld&&) noexcept = default;
+ParticleWorld& ParticleWorld::operator=(ParticleWorld&&) noexcept = default;
+
+ParticleWorld::Instance* ParticleWorld::find(const ParticleInstanceId id) noexcept
+{
+    if (id.index >= instances_.size() || !instances_[id.index].live || instances_[id.index].generation != id.generation)
+    {
+        return nullptr;
+    }
+    return &instances_[id.index];
+}
+
+const ParticleWorld::Instance* ParticleWorld::find(const ParticleInstanceId id) const noexcept
+{
+    return const_cast<ParticleWorld*>(this)->find(id);
+}
+
+ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, const std::uint64_t seed)
+{
+    if (!effect || effect->system.emitters.empty())
+    {
+        return {};
+    }
+    std::uint32_t index = 0;
+    if (!free_.empty())
+    {
+        index = free_.back();
+        free_.pop_back();
+    }
+    else
+    {
+        index = static_cast<std::uint32_t>(instances_.size());
+        instances_.emplace_back();
+    }
+    auto& instance = instances_[index];
+    const auto generation = instance.generation + 1U;
+    instance = Instance{};
+    instance.generation = generation;
+    instance.live = true;
+    instance.effect = std::move(effect);
+    instance.transform = transform;
+    instance.previous_origin = origin(transform);
+    instance.random = Random(seed);
+    const auto& emitters = instance.effect->system.emitters;
+    instance.emitters.resize(emitters.size());
+    for (std::size_t e = 0; e < emitters.size(); ++e)
+    {
+        auto& state = instance.emitters[e];
+        state.next_emission = std::max(0.0F, emitters[e].initial_delay);
+        state.drawn = renderable(emitters[e]);
+        if (!state.drawn)
+        {
+            // Never emits, so it does not keep a one-shot effect alive.
+            state.finished = true;
+            ++totals_.skipped_emitters;
+        }
+        for (const auto link : {emitters[e].death_child, emitters[e].life_child})
+        {
+            if (link >= 0 && static_cast<std::size_t>(link) < emitters.size())
+            {
+                instance.emitters[static_cast<std::size_t>(link)].child = true;
+            }
+        }
+    }
+    // Pre-simulate the longest skip time so looping effects start in full flow.
+    auto skip = 0.0F;
+    for (const auto& emitter : emitters)
+    {
+        skip = std::max(skip, emitter.skip_time);
+    }
+    for (auto elapsed = 0.0F; elapsed < std::min(skip, maximum_skip); elapsed += skip_step)
+    {
+        step_instance(instance, skip_step);
+    }
+    return {index, generation};
+}
+
+void ParticleWorld::set_transform(const ParticleInstanceId id, const std::array<float, 16>& transform)
+{
+    if (auto* instance = find(id))
+    {
+        instance->transform = transform;
+    }
+}
+
+void ParticleWorld::set_emitting(const ParticleInstanceId id, const bool emitting)
+{
+    if (auto* instance = find(id))
+    {
+        instance->emitting = emitting;
+    }
+}
+
+void ParticleWorld::stop(const ParticleInstanceId id)
+{
+    auto* instance = find(id);
+    if (instance == nullptr)
+    {
+        return;
+    }
+    instance->stopped = true;
+    if (!instance->effect->system.leave_particles)
+    {
+        release(id.index);
+    }
+}
+
+void ParticleWorld::remove(const ParticleInstanceId id)
+{
+    if (find(id) != nullptr)
+    {
+        release(id.index);
+    }
+}
+
+void ParticleWorld::clear()
+{
+    for (std::uint32_t index = 0; index < instances_.size(); ++index)
+    {
+        if (instances_[index].live)
+        {
+            release(index);
+        }
+    }
+}
+
+bool ParticleWorld::playing(const ParticleInstanceId id) const noexcept
+{
+    return find(id) != nullptr;
+}
+
+void ParticleWorld::set_ground(ParticleGroundHeight ground)
+{
+    ground_ = std::move(ground);
+}
+
+void ParticleWorld::release(const std::uint32_t index)
+{
+    auto& instance = instances_[index];
+    for (const auto& state : instance.emitters)
+    {
+        live_particles_ -= state.particles.size();
+    }
+    instance.emitters.clear();
+    instance.effect.reset();
+    instance.live = false;
+    free_.push_back(index);
+}
+
+bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, const Particle* parent)
+{
+    if (live_particles_ >= capacity_)
+    {
+        ++totals_.dropped_particles;
+        return false;
+    }
+    const auto& emitter = instance.effect->system.emitters[emitter_index];
+    auto& random = instance.random;
+    Particle particle;
+    const auto& transform = instance.transform;
+    const auto local_position = sample_group(emitter.groups[2], random);
+    particle.position = transform_point(transform, local_position);
+    particle.velocity = transform_direction(transform, sample_group(emitter.groups[0], random));
+    if (emitter.inward_speed != 0.0F)
+    {
+        // As in the reference, the stored value moves particles away from the emitter when positive.
+        const auto outward = normalized(transform_direction(transform, local_position));
+        if (length(outward) > 0.0F)
+        {
+            particle.velocity = outward * emitter.inward_speed;
+        }
+    }
+    if (parent != nullptr)
+    {
+        particle.position = particle.position - origin(transform) + parent->position;
+        if (emitter.parent_link_strength != 0.0F)
+        {
+            particle.velocity = particle.velocity + parent->velocity * emitter.parent_link_strength;
+        }
+    }
+    particle.lifetime = std::max(0.01F, emitter.lifetime * (1.0F + random.range(0.0F, std::max(0.0F, emitter.random_lifetime))));
+    const auto variance = std::max(0.0F, emitter.random_scale) * 0.5F;
+    particle.size_factor = (1.0F + random.range(-variance, variance)) / (1.0F + variance);
+    if (emitter.random_rotation)
+    {
+        // A fixed random angle: the reference derives its mean from the rotation track's first value
+        // (fractional revolutions) and its spread relative to that mean.
+        const auto first = emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::rotation_speed)].keys.front().value;
+        const auto mean = first > 0.0F ? first - std::floor(first) : 0.0F;
+        const auto spread = first > 0.0F ? emitter.random_rotation_variance / first : 0.0F;
+        particle.rotation = mean * (1.0F + random.range(-spread, spread));
+    }
+    if (emitter.random_rotation_direction && random.unit() < 0.5F)
+    {
+        particle.rotation_direction = -1.0F;
+        particle.rotation = -particle.rotation;
+    }
+    const auto& add = emitter.random_colors;
+    particle.color_add[0] = random.range(0.0F, std::max(0.0F, add[0]));
+    for (std::size_t channel = 1; channel < 4; ++channel)
+    {
+        particle.color_add[channel] = emitter.random_color_grayscale ? particle.color_add[0] : random.range(0.0F, std::max(0.0F, add[channel]));
+    }
+    instance.emitters[emitter_index].particles.push_back(particle);
+    ++live_particles_;
+    return true;
+}
+
+void ParticleWorld::kill(Instance& instance, const std::size_t emitter_index, const std::size_t particle_index)
+{
+    auto& particles = instance.emitters[emitter_index].particles;
+    const auto parent = particles[particle_index];
+    particles[particle_index] = particles.back();
+    particles.pop_back();
+    --live_particles_;
+    const auto& emitter = instance.effect->system.emitters[emitter_index];
+    if (emitter.death_child >= 0 && instance.emitters.size() > static_cast<std::size_t>(emitter.death_child))
+    {
+        // Engine choice: a death child emits one burst (or one particle when it is continuous).
+        const auto child = static_cast<std::size_t>(emitter.death_child);
+        const auto& child_emitter = instance.effect->system.emitters[child];
+        const auto count = child_emitter.use_bursts ? std::min<std::size_t>(child_emitter.particles_per_burst, maximum_trail_burst) : std::size_t{1};
+        for (std::size_t n = 0; n < count && emit(instance, child, &parent); ++n)
+        {
+        }
+    }
+}
+
+void ParticleWorld::step_instance(Instance& instance, const float seconds)
+{
+    const auto& emitters = instance.effect->system.emitters;
+    const auto current_origin = origin(instance.transform);
+    const auto moved = current_origin - instance.previous_origin;
+    instance.previous_origin = current_origin;
+    const bool may_emit = instance.emitting && !instance.stopped;
+    for (std::size_t e = 0; e < emitters.size(); ++e)
+    {
+        const auto& emitter = emitters[e];
+        auto& state = instance.emitters[e];
+        // Emission on the emitter's own clock.
+        state.clock += seconds;
+        if (!state.child && !state.finished && may_emit && state.drawn)
+        {
+            const auto interval = emitter.use_bursts ? std::max(emitter.burst_delay, 1.0F / 120.0F) : 1.0F / static_cast<float>(std::max<std::uint32_t>(emitter.particles_per_second, 1U));
+            while (state.clock >= state.next_emission && !state.finished)
+            {
+                const auto count = emitter.use_bursts ? emitter.particles_per_burst : 1U;
+                for (std::uint32_t n = 0; n < count; ++n)
+                {
+                    if (!emit(instance, e, nullptr))
+                    {
+                        break;
+                    }
+                }
+                state.next_emission += interval;
+                if (emitter.use_bursts && emitter.burst_count > 0 && ++state.bursts >= emitter.burst_count)
+                {
+                    state.finished = true;
+                }
+            }
+        }
+        if (!may_emit)
+        {
+            // Keep the schedule from piling up while hidden.
+            state.next_emission = std::max(state.next_emission, state.clock);
+        }
+
+        // Motion.
+        Vec3 acceleration{0.0F, 0.0F, -emitter.gravity};
+        acceleration = acceleration + (emitter.object_space_acceleration ? transform_direction(instance.transform, to_vec(emitter.acceleration)) : to_vec(emitter.acceleration));
+        const auto& rotation_track = emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::rotation_speed)];
+        for (std::size_t p = 0; p < state.particles.size();)
+        {
+            auto& particle = state.particles[p];
+            particle.age += seconds;
+            if (particle.age >= particle.lifetime)
+            {
+                kill(instance, e, p);
+                continue;
+            }
+            if (emitter.link_to_system)
+            {
+                particle.position = particle.position + moved;
+            }
+            if (!particle.resting)
+            {
+                auto pull = acceleration;
+                if (emitter.inward_acceleration != 0.0F)
+                {
+                    pull = pull + normalized(current_origin - particle.position) * emitter.inward_acceleration;
+                }
+                particle.velocity = particle.velocity + pull * seconds;
+                particle.position = particle.position + particle.velocity * seconds;
+            }
+            if (!emitter.random_rotation)
+            {
+                particle.rotation += seconds * particle.rotation_direction * sample_particle_track(rotation_track, particle.age / particle.lifetime);
+            }
+            if (emitter.ground_behavior != 0 && ground_)
+            {
+                if (const auto ground = ground_(particle.position[0], particle.position[1]); ground && particle.position[2] < *ground)
+                {
+                    if (emitter.ground_behavior == 1)
+                    {
+                        kill(instance, e, p);
+                        continue;
+                    }
+                    particle.position[2] = *ground;
+                    if (emitter.ground_behavior == 2 && std::abs(particle.velocity[2]) * emitter.bounciness > 1.0F)
+                    {
+                        particle.velocity[2] = -particle.velocity[2] * emitter.bounciness;
+                    }
+                    else
+                    {
+                        particle.velocity = {};
+                        particle.resting = true;
+                    }
+                }
+            }
+            // A trail child emits from every living particle at its own rate.
+            if (emitter.life_child >= 0 && may_emit && static_cast<std::size_t>(emitter.life_child) < emitters.size())
+            {
+                const auto child = static_cast<std::size_t>(emitter.life_child);
+                const auto& child_emitter = emitters[child];
+                const auto interval =
+                    child_emitter.use_bursts ? std::max(child_emitter.burst_delay, 1.0F / 120.0F) : 1.0F / static_cast<float>(std::max<std::uint32_t>(child_emitter.particles_per_second, 1U));
+                particle.trail_clock -= seconds;
+                std::size_t emitted = 0;
+                while (particle.trail_clock <= 0.0F && emitted < maximum_trail_burst)
+                {
+                    const auto parent = particle;
+                    const auto count = child_emitter.use_bursts ? child_emitter.particles_per_burst : 1U;
+                    for (std::uint32_t n = 0; n < count && emitted < maximum_trail_burst; ++n, ++emitted)
+                    {
+                        if (!emit(instance, child, &parent))
+                        {
+                            emitted = maximum_trail_burst;
+                            break;
+                        }
+                    }
+                    state.particles[p].trail_clock += interval;
+                }
+                state.particles[p].trail_clock = std::max(state.particles[p].trail_clock, -interval);
+            }
+            ++p;
+        }
+    }
+}
+
+void ParticleWorld::update(const float seconds)
+{
+    const auto step = std::clamp(seconds, 0.0F, maximum_update);
+    for (std::uint32_t index = 0; index < instances_.size(); ++index)
+    {
+        auto& instance = instances_[index];
+        if (!instance.live)
+        {
+            continue;
+        }
+        step_instance(instance, step);
+        // One-shot effects end once nothing can emit and nothing is alive.
+        // Hidden looping effects stay alive until shown again or stopped.
+        bool active = false;
+        for (const auto& state : instance.emitters)
+        {
+            active = active || !state.particles.empty() || (!state.child && !state.finished && !instance.stopped);
+        }
+        if (!active)
+        {
+            release(index);
+        }
+    }
+}
+
+void ParticleWorld::build_sprites(const std::array<float, 3>& eye, std::vector<VisualParticle>& sprites) const
+{
+    const auto first = sprites.size();
+    std::vector<float> depth;
+    for (const auto& instance : instances_)
+    {
+        if (!instance.live)
+        {
+            continue;
+        }
+        const auto& emitters = instance.effect->system.emitters;
+        for (std::size_t e = 0; e < emitters.size(); ++e)
+        {
+            const auto& state = instance.emitters[e];
+            if (!state.drawn || state.particles.empty())
+            {
+                continue;
+            }
+            const auto& emitter = emitters[e];
+            const auto grid = std::max(1U, static_cast<std::uint32_t>(std::ceil(std::sqrt(static_cast<float>(std::max(emitter.texture_cells, 1U))))));
+            const auto cell = 1.0F / static_cast<float>(grid);
+            const auto texture = e < instance.effect->textures.size() ? instance.effect->textures[e] : invalid_visual_texture;
+            const auto blend = blend_of(emitter.blend_mode);
+            const auto shape = emitter.has_tail ? VisualParticleShape::kite : (emitter.world_oriented ? VisualParticleShape::ground : VisualParticleShape::billboard);
+            for (const auto& particle : state.particles)
+            {
+                const auto t = std::clamp(particle.age / particle.lifetime, 0.0F, 1.0F);
+                VisualParticle sprite;
+                sprite.position = particle.position;
+                sprite.half_size = 0.5F * sample_particle_track(emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::scale)], t) * particle.size_factor;
+                for (std::size_t channel = 0; channel < 4; ++channel)
+                {
+                    sprite.color[channel] = std::clamp(sample_particle_track(emitter.tracks[channel], t) + particle.color_add[channel], 0.0F, 1.0F);
+                }
+                const auto index = static_cast<std::uint32_t>(std::max(0.0F, std::floor(sample_particle_track(emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::texture_index)], t) + 0.5F)));
+                sprite.uv_rect = {static_cast<float>(index % grid) * cell, static_cast<float>((index / grid) % grid) * cell, cell, cell};
+                sprite.rotation = particle.rotation * two_pi;
+                sprite.texture = texture;
+                sprite.shape = shape;
+                sprite.blend = blend;
+                sprite.depth_test = !emitter.no_depth_test;
+                if (shape == VisualParticleShape::kite)
+                {
+                    sprite.axis = particle.velocity;
+                    sprite.tail = emitter.tail_size;
+                }
+                sprites.push_back(sprite);
+                const auto offset = particle.position - eye;
+                depth.push_back(offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2]);
+            }
+        }
+    }
+    // Back to front; the stable sort keeps equal depths in emission order, so frames do not flicker.
+    std::vector<std::uint32_t> order(depth.size());
+    for (std::uint32_t index = 0; index < order.size(); ++index)
+    {
+        order[index] = index;
+    }
+    std::ranges::stable_sort(order,
+                             [&](const std::uint32_t a, const std::uint32_t b)
+                             {
+                                 return depth[a] > depth[b];
+                             });
+    std::vector<VisualParticle> sorted;
+    sorted.reserve(order.size());
+    for (const auto index : order)
+    {
+        sorted.push_back(sprites[first + index]);
+    }
+    std::ranges::copy(sorted, sprites.begin() + static_cast<std::ptrdiff_t>(first));
+}
+
+ParticleWorldStats ParticleWorld::stats() const noexcept
+{
+    auto stats = totals_;
+    stats.particles = live_particles_;
+    stats.instances = instances_.size() - free_.size();
+    return stats;
+}
+
+} // namespace eaw

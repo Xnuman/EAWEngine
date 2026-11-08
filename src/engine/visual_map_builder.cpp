@@ -426,6 +426,14 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     }
 
     build_map_rigs(builder, asset.rigs, asset.rest_palette);
+    if (options.textures)
+    {
+        for (const auto& name : options.effects)
+        {
+            asset.effects.push_back(particle_effect(builder, name));
+        }
+    }
+    asset.particle_textures = std::move(builder.particles.textures);
     constexpr std::size_t maximum_reported_diagnostics = 50;
     for (std::size_t index = 0; index < layout.diagnostics.size() && index < maximum_reported_diagnostics; ++index)
     {
@@ -484,6 +492,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
         return make_error("spawn type '" + std::string(type_name) + "' did not resolve to a single new type");
     }
     build_map_rigs(builder, package.rigs, package.rest_palette);
+    package.particle_textures = std::move(builder.particles.textures);
     return package;
 }
 

@@ -32,6 +32,7 @@
 #include "eaw/lua_script.hpp"
 #include "eaw/meg_archive.hpp"
 #include "eaw/mtd_directory.hpp"
+#include "eaw/particle_system.hpp"
 #include "eaw/text_encoding.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"

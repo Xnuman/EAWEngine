@@ -111,6 +111,20 @@ Status D3d12Renderer::load_scene(VisualScene scene)
     return impl_->load_scene(std::move(scene));
 }
 
+Result<std::vector<std::uint32_t>> D3d12Renderer::add_textures(std::vector<VisualTexture> textures)
+{
+    if (!impl_->scene_loaded)
+    {
+        return make_error("add_textures needs a loaded scene");
+    }
+    return impl_->add_textures(std::move(textures));
+}
+
+void D3d12Renderer::set_particles(const std::span<const VisualParticle> particles)
+{
+    impl_->set_particles(particles);
+}
+
 Result<std::uint32_t> D3d12Renderer::add_meshes(VisualScene meshes)
 {
     return impl_->add_meshes(std::move(meshes));
@@ -161,6 +175,7 @@ D3d12RendererStats D3d12Renderer::stats() const
         .draw_calls = impl_->last_draw_calls,
         .triangles = impl_->last_triangles,
         .instances = impl_->last_instances,
+        .particles = impl_->last_particles,
         .gpu_frame_milliseconds = impl_->last_gpu_milliseconds,
         .video_memory_usage = impl_->video_memory_usage,
         .video_memory_budget = impl_->video_memory_budget,

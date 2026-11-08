@@ -28,6 +28,16 @@
 
 namespace eaw::scene_build {
 
+// Particle effects a build loaded, with their own deduplicated texture list (effect texture
+// indices point into it; the caller registers it with the renderer, which renumbers them).
+struct ParticleLibrary
+{
+    // Folded model path -> effect (null when the file is missing or not a particle system).
+    std::unordered_map<std::string, std::shared_ptr<const ParticleEffect>> effects;
+    std::vector<VisualTexture> textures;
+    std::unordered_map<std::string, std::uint32_t> texture_indices;
+};
+
 // Accumulates models into one scene with a shared, deduplicated texture table.
 struct SceneBuilder
 {
@@ -38,6 +48,8 @@ struct SceneBuilder
     // Headless builds skip decoding what only drawing needs (MapBuildOptions).
     bool textures{true};
     bool animation_clips{true};
+    // Particle effects of model proxies (filled when textures are built; headless builds skip them).
+    ParticleLibrary particles;
     // Folded model path -> the model whose clips it plays (XML Land_Model_Anim_Override_Name of the
     // first type that appended it).
     std::unordered_map<std::string, std::string> animation_sources;
@@ -99,6 +111,20 @@ const LegacyTextureBinding* base_color_texture(const LegacyMaterial& material);
 // Loads (once per scene) the DDS for an ALO texture reference and returns its scene texture
 // index, or invalid_visual_texture with a warning when it is missing or unsupported.
 std::uint32_t scene_texture(SceneBuilder& builder, const std::string& reference);
+
+// The decoded DDS for a texture reference through the cache (or directly without one).
+std::shared_ptr<const CachedTexture> cached_texture(const AssetReader& vfs, AssetCache* cache, const std::string& reference);
+
+// scene_particles.cpp: particle effects.
+
+// The particle effect a model reference names (resolved like a model path; a proxy name without
+// directory or extension resolves under Data/Art/Models), loaded once per build with its textures
+// added to builder.particles; null with a warning when it is missing or malformed, and null without
+// one for a mesh ALO (proxies may name meshes).
+std::shared_ptr<const ParticleEffect> particle_effect(SceneBuilder& builder, const std::string& reference);
+
+// The particle effects attached to a model's proxies (those not hidden by default).
+std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModel& model);
 
 // Translates a legacy material profile plus its authored parameters into the engine-native
 // legacy-mode surface description (see docs/legacy-shader-mapping.md for the source behavior).

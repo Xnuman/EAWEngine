@@ -421,7 +421,166 @@ void test_localization_scan()
     std::filesystem::remove_all(root, ignored);
 }
 
+std::vector<std::byte> particle_bytes(std::initializer_list<std::uint8_t> values)
+{
+    std::vector<std::byte> bytes;
+    for (const auto value : values)
+    {
+        bytes.push_back(static_cast<std::byte>(value));
+    }
+    return bytes;
+}
+
+std::vector<std::byte> particle_u32(const std::uint32_t value)
+{
+    std::vector<std::byte> bytes;
+    append_u32(bytes, value);
+    return bytes;
+}
+
+std::vector<std::byte> particle_float(const float value)
+{
+    std::vector<std::byte> bytes;
+    append_float(bytes, value);
+    return bytes;
+}
+
+// One emitter: properties, texture, name, three shape groups, seven tracks, and optional links.
+std::vector<std::byte> make_test_particle_emitter(const std::string_view name, const std::int32_t death_child, const bool unknown_property, const bool short_group)
+{
+    std::vector<std::byte> properties;
+    append_mini(properties, 0x04, particle_u32(2));
+    append_mini(properties, 0x05, particle_u32(1));
+    append_mini(properties, 0x07, particle_bytes({1}));
+    append_mini(properties, 0x0F, particle_float(2.5F));
+    append_mini(properties, 0x26, particle_u32(8));
+    append_mini(properties, 0x27, particle_u32(0xffffffffU));
+    append_mini(properties, 0x28, particle_float(0.75F));
+    append_mini(properties, 0x41, particle_bytes({1}));
+    append_mini(properties, 0x14, particle_u32(3));
+    if (unknown_property)
+    {
+        append_mini(properties, 0x7E, particle_bytes({9, 9}));
+    }
+
+    std::vector<std::byte> groups;
+    for (std::uint32_t index = 0; index < 3; ++index)
+    {
+        std::vector<std::byte> group;
+        append_u32(group, index == 2 ? 3U : 1U);
+        for (int value = 0; value < 15; ++value)
+        {
+            append_float(group, static_cast<float>(value));
+        }
+        if (short_group)
+        {
+            group.resize(60);
+        }
+        std::vector<std::byte> data;
+        append_chunk(data, 0x1101, group);
+        append_chunk(groups, 0x1100, data, true);
+    }
+
+    std::vector<std::byte> tracks;
+    for (std::size_t index = 0; index < 7; ++index)
+    {
+        const auto colour = index < 4;
+        std::vector<std::byte> head;
+        append_mini(head, 0x02, colour ? particle_bytes({255}) : particle_float(1.0F));
+        append_mini(head, 0x03, colour ? particle_bytes({0}) : particle_float(3.0F));
+        append_mini(head, 0x04, particle_u32(index == 5 ? 2U : 0U));
+        std::vector<std::byte> keys;
+        if (index == 3)
+        {
+            std::vector<std::byte> key = particle_u32(51);
+            append_float(key, 0.5F);
+            append_mini(keys, 0x05, key);
+        }
+        append_chunk(tracks, 0x00, head);
+        append_chunk(tracks, 0x01, keys);
+    }
+
+    std::vector<std::byte> emitter;
+    append_chunk(emitter, 0x02, properties);
+    std::vector<std::byte> text;
+    append_string(text, "p_smoke.tga");
+    append_chunk(emitter, 0x03, text);
+    text.clear();
+    append_string(text, name);
+    append_chunk(emitter, 0x16, text);
+    append_chunk(emitter, 0x29, groups, true);
+    append_chunk(emitter, 0x01, tracks, true);
+    std::vector<std::byte> links;
+    append_mini(links, 0x37, particle_u32(static_cast<std::uint32_t>(death_child)));
+    append_mini(links, 0x39, particle_u32(0xffffffffU));
+    append_chunk(emitter, 0x36, links);
+    return emitter;
+}
+
+std::vector<std::byte> make_test_particle_system(const std::int32_t death_child, const bool unknown_property = false, const bool short_group = false)
+{
+    std::vector<std::byte> list;
+    append_chunk(list, 0x0700, make_test_particle_emitter("sparks", death_child, unknown_property, short_group), true);
+    append_chunk(list, 0x0700, make_test_particle_emitter("smoke", -1, false, false), true);
+    std::vector<std::byte> system;
+    std::vector<std::byte> text;
+    append_string(text, "p_test");
+    append_chunk(system, 0x0000, text);
+    append_chunk(system, 0x0001, particle_u32(4));
+    append_chunk(system, 0x0800, list, true);
+    append_chunk(system, 0x0002, particle_bytes({0}));
+    std::vector<std::byte> file;
+    append_chunk(file, 0x0900, system, true);
+    return file;
+}
+
+void test_particle_system()
+{
+    const auto bytes = make_test_particle_system(1);
+    require(eaw::particle_file_kind(bytes) == eaw::ParticleFileKind::classic, "particle file kind failed");
+    const auto system = expect_ok(eaw::ParticleSystem::parse(bytes), "particle parse");
+    require(system.name == "p_test" && !system.leave_particles && system.header_flags.size() == 4 && system.emitters.size() == 2, "particle system header failed");
+    require(system.warnings.empty(), "particle system produced unexpected warnings");
+    const auto& emitter = system.emitters.front();
+    require(emitter.name == "sparks" && emitter.texture == "p_smoke.tga" && emitter.normal_texture.empty(), "particle emitter names failed");
+    require(emitter.blend_mode == 2 && emitter.triangle_count == 2 && emitter.use_bursts && emitter.lifetime == 2.5F && emitter.particles_per_burst == 8 && emitter.burst_count == -1,
+            "particle emitter properties failed");
+    // The link strength counts only with its flag (0x43), which this emitter lacks.
+    require(emitter.parent_link_strength == 0.0F && emitter.has_tail, "particle link strength or tail failed");
+    require(emitter.properties.size() == 9 && emitter.properties[8].id == 0x14, "particle raw properties failed");
+    require(emitter.groups[0].type == 1 && emitter.groups[2].type == 3 && emitter.groups[0].minimum.x == 0.0F && emitter.groups[0].maximum.x == 3.0F && emitter.groups[0].side_length == 6.0F &&
+                emitter.groups[0].sphere_radius == 7.0F && emitter.groups[0].sphere_hollow && emitter.groups[0].cylinder_height == 11.0F && emitter.groups[0].value.z == 14.0F,
+            "particle shape groups failed");
+    const auto& alpha = emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::alpha)];
+    require(alpha.present && alpha.keys.size() == 3 && alpha.keys[0].value == 1.0F && alpha.keys[1].time == 0.5F && alpha.keys[1].value == 0.2F && alpha.keys[2].time == 1.0F &&
+                alpha.keys[2].value == 0.0F,
+            "particle colour track failed");
+    const auto& scale = emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::scale)];
+    require(scale.keys.size() == 2 && scale.keys[0].value == 1.0F && scale.keys[1].value == 3.0F, "particle scale track failed");
+    require(emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::texture_index)].interpolation == eaw::ParticleInterpolation::step, "particle step track failed");
+    require(emitter.death_child == 1 && emitter.life_child == -1, "particle links failed");
+
+    // Unknown properties are kept raw and reported; bad links are dropped with a warning.
+    const auto unusual = expect_ok(eaw::ParticleSystem::parse(make_test_particle_system(0, true)), "particle parse with oddities");
+    require(unusual.emitters.front().properties.back().id == 0x7E && unusual.emitters.front().properties.back().payload.size() == 2, "unknown particle property was not kept");
+    require(unusual.emitters.front().death_child == -1 && unusual.warnings.size() == 2, "particle oddities were not reported");
+
+    // Malformed input fails with a diagnostic instead of reading out of bounds.
+    const auto short_group = eaw::ParticleSystem::parse(make_test_particle_system(1, false, true));
+    require(!short_group && short_group.error().message.find("shape group") != std::string::npos, "short particle shape group was accepted");
+    for (std::size_t size = 0; size < bytes.size(); size += 7)
+    {
+        const std::span truncated(bytes.data(), size);
+        require(!eaw::ParticleSystem::parse(truncated), "truncated particle system was accepted at " + std::to_string(size) + " bytes");
+    }
+    std::vector<std::byte> plugin;
+    append_chunk(plugin, 0x1500, {}, true);
+    require(eaw::particle_file_kind(plugin) == eaw::ParticleFileKind::plugin && !eaw::ParticleSystem::parse(plugin), "plugin particle format was not recognized");
+    require(eaw::particle_file_kind(make_test_alo()) == eaw::ParticleFileKind::other, "mesh ALO was taken for a particle system");
+}
+
 const ModuleRegistrar registrar("formats", {
+                                               {"test_particle_system", &test_particle_system},
                                                {"test_alo_model", &test_alo_model},
                                                {"test_alo_default_mesh_visibility", &test_alo_default_mesh_visibility},
                                                {"test_texture_formats_and_materials", &test_texture_formats_and_materials},

@@ -54,6 +54,13 @@ struct SandboxOverlayView
     std::uint32_t spawn_owner{};
     std::string reload_status;
     SandboxCameraMode camera{SandboxCameraMode::model};
+    // Particle effects playing, live particles, attached (proxy) effects, and particles dropped at
+    // capacity and emitters skipped for lack of a pass (cumulative).
+    std::size_t particle_effects{};
+    std::size_t particles{};
+    std::size_t attached_effects{};
+    std::size_t dropped_particles{};
+    std::size_t skipped_emitters{};
 };
 
 [[nodiscard]] std::vector<std::string> sandbox_overlay_lines(const SandboxOverlayView& view);

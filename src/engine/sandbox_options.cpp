@@ -82,6 +82,7 @@ void print_sandbox_usage()
               << "                     center when shown (OWNER slot, default 1; each request its own group), N key\n"
               << "                     spawns one at the cursor, Tab cycles types, O cycles the owner\n"
               << "  --spawn-later <TYPE>[:N][@OWNER] Load a type at runtime once the map is shown and spawn N (automation)\n"
+              << "  --effect <NAME>          Play a particle effect (e.g. P_EXPLOSION_SMALL) at the map center, repeating (maps)\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
               << "  --ticks <count>    Battle: total simulation ticks to run (default 3000, or the replayed log's end)\n"
               << "  --record <file>    Write the battle's order log when it ends (battle and sandbox)\n"
@@ -242,6 +243,11 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
                 return make_error("--spawn needs an XML object type name");
             }
             (argument == "--spawn" ? options.spawns : options.later_spawns).push_back({std::move(type), count, owner});
+        }
+        else if (argument == "--effect")
+        {
+            EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
+            options.effects.emplace_back(value);
         }
         else if (argument == "--pick")
         {

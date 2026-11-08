@@ -46,6 +46,8 @@ cbuffer FrameConstants : register(b0)
     float4 fill_direction[2];    // unit vectors toward the fill lights
     float4 fill_diffuse[2];
     uint4 selection; // x: pick id drawn highlighted (0 = none)
+    float4 camera_right; // world-space view basis for camera-facing particles
+    float4 camera_up;
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and

@@ -30,6 +30,7 @@ void usage()
               << "  EAWAssetInspector map-objects [prefix] [options]\n"
               << "  EAWAssetInspector texture-audit [prefix] [options]\n"
               << "  EAWAssetInspector lua-audit [prefix] [options]\n"
+              << "  EAWAssetInspector particle-audit [prefix] [options]\n"
               << "  EAWAssetInspector xml-audit [prefix] [options]\n"
               << "  EAWAssetInspector localization-refs <xml-path> [options]\n\n"
               << "Options:\n"
@@ -55,7 +56,7 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
         options.operand = argv[index++];
     }
     else if ((options.command == "list" || options.command == "map-audit" || options.command == "map-objects" || options.command == "texture-audit" || options.command == "lua-audit" ||
-              options.command == "xml-audit") &&
+              options.command == "particle-audit" || options.command == "xml-audit") &&
              index < argc && argv[index][0] != '-')
     {
         options.prefix = argv[index++];

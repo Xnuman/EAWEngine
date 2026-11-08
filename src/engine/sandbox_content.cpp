@@ -41,7 +41,9 @@ SandboxContent build_sandbox_content(const VirtualFileSystem& vfs, const Sandbox
                 spawn_types.push_back(std::move(type));
             }
         }
-        if (auto map = build_visual_map(reader, *options.map, cache, spawn_types))
+        MapBuildOptions build_options;
+        build_options.effects = options.effects;
+        if (auto map = build_visual_map(reader, *options.map, cache, spawn_types, build_options))
         {
             content.map = std::move(map).value();
         }

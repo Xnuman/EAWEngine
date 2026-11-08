@@ -1,11 +1,13 @@
 #include "sandbox_app.hpp"
 
 #include "asset_cache.hpp"
+#include "attached_effects.hpp"
 #include "battle.hpp"
 #include "battle_log.hpp"
 #include "camera_controller.hpp"
 #include "camera_math.hpp"
 #include "combat_content.hpp"
+#include "particle_effects.hpp"
 #include "rts_control.hpp"
 #include "sandbox_content.hpp"
 #include "sandbox_debug_lines.hpp"
@@ -202,6 +204,18 @@ struct SandboxSession
     // Map units' animation (presentation only) and the palette it fills each frame.
     std::optional<eaw::UnitAnimator> animator;
     std::vector<std::array<float, 16>> frame_palette;
+    // Particle effects (presentation only): the proxies of drawn units and the --effect effects,
+    // which play at the map center and restart when they end.
+    eaw::ParticleWorld particles;
+    eaw::AttachedEffects attached_effects;
+    std::vector<eaw::VisualParticle> frame_particles;
+    std::vector<std::shared_ptr<const eaw::ParticleEffect>> shown_effects;
+    std::vector<eaw::ParticleInstanceId> shown_effect_ids;
+    std::array<float, 3> effect_center{};
+    std::uint64_t effect_seed = 1;
+    std::chrono::steady_clock::time_point particle_tick = std::chrono::steady_clock::now();
+    // Kept for --reload-every, which reloads the scene and so drops added textures.
+    std::vector<eaw::VisualTexture> particle_texture_copy;
     std::chrono::steady_clock::time_point map_animation_start = std::chrono::steady_clock::now();
     eaw::FixedStepClock simulation_clock{30.0};
     eaw::SimSnapshot previous_snapshot;
@@ -313,6 +327,25 @@ struct SandboxSession
         simulation_tick = std::chrono::steady_clock::now();
     }
 
+    // Registers particle textures with the renderer and points the effects at them (white when
+    // registration fails).
+    void register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs, std::span<std::shared_ptr<const eaw::ParticleEffect>> effects)
+    {
+        std::vector<std::uint32_t> placed;
+        if (!textures.empty())
+        {
+            if (auto added = renderer.add_textures(std::move(textures)))
+            {
+                placed = std::move(added).value();
+            }
+            else
+            {
+                eaw::log_warning("particles", added.error());
+            }
+        }
+        eaw::renumber_effect_textures(rigs, effects, placed);
+    }
+
     bool load_content_scene(eaw::VisualScene scene, const bool reload)
     {
         const auto loaded = renderer.load_scene(std::move(scene));
@@ -401,8 +434,37 @@ struct SandboxSession
             }
             scene_status = map_status;
             reload_scene = std::move(reload_copy);
+            if (options.reload_every)
+            {
+                particle_texture_copy = visual_map.particle_textures;
+            }
+            register_particle_textures(std::move(visual_map.particle_textures), visual_map.rigs, visual_map.effects);
             start_simulation(layout, eaw::battle_map(visual_map), *options.map);
             animator.emplace(visual_map.rigs, visual_map.rest_palette);
+            attached_effects.clear(particles);
+            particles.clear();
+            attached_effects.set_rigs(visual_map.rigs);
+            shown_effects = visual_map.effects;
+            shown_effect_ids.assign(shown_effects.size(), {});
+            effect_center = {(bounds.minimum[0] + bounds.maximum[0]) * 0.5F, (bounds.minimum[1] + bounds.maximum[1]) * 0.5F, 0.0F};
+            if (visual_map.land && visual_map.ground.valid())
+            {
+                effect_center[2] = visual_map.ground.surface_height(effect_center[0], effect_center[1]);
+                particles.set_ground(
+                    [this](const float x, const float y) -> std::optional<float>
+                    {
+                        return terrain_heights.valid() ? std::optional<float>(terrain_heights.surface_height(x, y)) : std::nullopt;
+                    });
+            }
+            else
+            {
+                particles.set_ground({});
+            }
+            for (std::size_t index = 0; index < shown_effects.size(); ++index)
+            {
+                std::cout << "Effect: " << options.effects[index] << (shown_effects[index] ? " (" + std::to_string(shown_effects[index]->system.emitters.size()) + " emitters)" : " not loaded")
+                          << '\n';
+            }
             map_animation_start = std::chrono::steady_clock::now();
             {
                 std::size_t animated_meshes = 0;
@@ -488,6 +550,11 @@ struct SandboxSession
             }
             visual_model = std::move(content.model);
             animator.reset();
+            attached_effects.clear(particles);
+            particles.clear();
+            attached_effects.set_rigs({});
+            shown_effects.clear();
+            shown_effect_ids.clear();
             spawn_names.clear();
             pending_spawns.clear();
             scene_status = model_status;
@@ -729,7 +796,9 @@ struct SandboxSession
         }
         presentation->add_meshes(meshes);
         presentation->add_spawnable(package.types);
+        register_particle_textures(std::move(package.particle_textures), package.rigs, {});
         animator->add_rigs(package.rigs, package.rest_palette);
+        attached_effects.add_rigs(package.rigs);
         (void)battle->add_spawnable(package.types);
         spawnable.assign(battle->spawnable().begin(), battle->spawnable().end());
         runtime_types.push_back(type);
@@ -811,6 +880,12 @@ struct SandboxSession
         view.frame_latency = options.frame_latency;
         view.raw_input = window.input().raw_input;
         view.raw_events = window.input().raw_events;
+        const auto particle_stats = particles.stats();
+        view.particle_effects = particle_stats.instances;
+        view.particles = particle_stats.particles;
+        view.attached_effects = attached_effects.playing();
+        view.dropped_particles = particle_stats.dropped_particles;
+        view.skipped_emitters = particle_stats.skipped_emitters;
         view.frames = overlay_frames;
         view.seconds = std::chrono::duration<double>(now - overlay_refreshed).count();
         view.scene_status = scene_status;
@@ -1229,6 +1304,7 @@ struct SandboxSession
                 animator->animate(entities, frame_entities, frame_instances, std::chrono::duration<double>(now - map_animation_start).count(), eaw::D3d12Renderer::max_bone_transforms(),
                                   frame_palette);
                 renderer.set_bone_transforms(frame_palette);
+                attached_effects.update(particles, frame_instances, frame_entities, frame_palette);
             }
             for (const auto request : unbound_picks)
             {
@@ -1238,6 +1314,29 @@ struct SandboxSession
             renderer.set_instances(frame_instances);
             update_debug_lines();
         }
+    }
+
+    // Particle effects advance on the frame clock and are drawn back to front from the camera.
+    void step_particles(const std::chrono::steady_clock::time_point now)
+    {
+        const auto seconds = std::chrono::duration<float>(now - particle_tick).count();
+        particle_tick = now;
+        for (std::size_t index = 0; index < shown_effects.size(); ++index)
+        {
+            if (shown_effects[index] && !particles.playing(shown_effect_ids[index]))
+            {
+                auto transform = eaw::visual_identity_transform;
+                transform[12] = effect_center[0];
+                transform[13] = effect_center[1];
+                transform[14] = effect_center[2];
+                shown_effect_ids[index] = particles.play(shown_effects[index], transform, effect_seed++);
+            }
+        }
+        particles.update(seconds);
+        frame_particles.clear();
+        const auto eye = tactical_camera ? tactical_camera->camera().eye : orbit_camera ? orbit_camera->camera().eye : std::array<float, 3>{};
+        particles.build_sprites(eye, frame_particles);
+        renderer.set_particles(frame_particles);
     }
 
     // Command-line automation: initial spawns, --auto-move, and --pick, once the content is shown.
@@ -1347,6 +1446,14 @@ struct SandboxSession
                 {
                     renderer.set_bone_transforms(bind_palette);
                 }
+                // The same textures in the same order land at the same indices again.
+                if (!particle_texture_copy.empty())
+                {
+                    if (const auto added = renderer.add_textures(particle_texture_copy); !added)
+                    {
+                        eaw::log_warning("particles", added.error());
+                    }
+                }
                 ++scene_reloads;
             }
             else
@@ -1448,6 +1555,8 @@ struct SandboxSession
         advance_animation(now);
         watchdog.enter("simulation and presentation", tick);
         step_simulation(now);
+        watchdog.enter("particles", tick);
+        step_particles(now);
         watchdog.enter("automation and panel", tick);
         run_automation();
         update_panel(input, now);
@@ -1471,6 +1580,9 @@ struct SandboxSession
         }
         const auto stats = renderer.stats();
         std::cout << "Rendered frames: " << stats.frame_number << '\n';
+        const auto particle_stats = particles.stats();
+        std::cout << "Particles at exit: " << particle_stats.particles << " in " << particle_stats.instances << " effects (" << attached_effects.playing() << " attached), " << stats.particles
+                  << " drawn in the last frame, " << particle_stats.dropped_particles << " dropped, " << particle_stats.skipped_emitters << " emitters without a pass\n";
         if (options.reload_every)
         {
             std::cout << "Scene reloads: " << scene_reloads << '\n';

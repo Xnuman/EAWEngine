@@ -32,6 +32,7 @@ add_library(eaw_core STATIC
     src/core/map_object_layout.cpp
     src/core/lua_script.cpp
     src/core/meg_archive.cpp
+    src/core/particle_system.cpp
     src/core/mtd_directory.cpp
     src/core/spawn_catalog.cpp
     src/core/text_encoding.cpp
@@ -207,14 +208,17 @@ if(WIN32)
     target_compile_features(eaw_render_d3d12 PUBLIC cxx_std_20)
     target_compile_definitions(eaw_render_d3d12 PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(eaw_render_d3d12 PUBLIC eaw_core PRIVATE d3d12 dxgi eaw_imgui)
-    target_sources(eaw_render_d3d12 PRIVATE src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/legacy_common.hlsli)
-    set_source_files_properties(src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/legacy_common.hlsli PROPERTIES VS_TOOL_OVERRIDE "None")
+    target_sources(eaw_render_d3d12 PRIVATE src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/particle.hlsl src/render/shaders/legacy_common.hlsli)
+    set_source_files_properties(src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/particle.hlsl src/render/shaders/legacy_common.hlsli PROPERTIES VS_TOOL_OVERRIDE "None")
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/terrain.hlsl terrain_vs vs_6_0 g_eaw_terrain_vs)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/terrain.hlsl terrain_ps ps_6_0 g_eaw_terrain_ps)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/sandbox.hlsl vs_main vs_6_0 g_eaw_sandbox_vs)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/sandbox.hlsl ps_main ps_6_0 g_eaw_sandbox_ps)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/debug.hlsl debug_vs vs_6_0 g_eaw_debug_vs)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/debug.hlsl debug_ps ps_6_0 g_eaw_debug_ps)
+    eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/particle.hlsl particle_vs vs_6_0 g_eaw_particle_vs)
+    eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/particle.hlsl particle_ps ps_6_0 g_eaw_particle_ps)
+    eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/particle.hlsl particle_modulate_ps ps_6_0 g_eaw_particle_modulate_ps)
 
     if(MSVC)
         target_compile_options(eaw_platform PRIVATE /W4 /permissive- /utf-8)
@@ -247,12 +251,14 @@ endif()
 # consumes the render contract headers (engine-native data) but no graphics API.
 add_library(eaw_engine STATIC
     src/engine/asset_cache.cpp
+    src/engine/attached_effects.cpp
     src/engine/battle.cpp
     src/engine/battle_log.cpp
     src/engine/battle_runner.cpp
     src/engine/camera_controller.cpp
     src/engine/camera_math.cpp
     src/engine/debug_draw.cpp
+    src/engine/particle_effects.cpp
     src/engine/rts_control.cpp
     src/engine/combat_content.cpp
     src/engine/sandbox_content.cpp
@@ -265,6 +271,7 @@ add_library(eaw_engine STATIC
     src/engine/object_type_properties.cpp
     src/engine/scene_materials.cpp
     src/engine/scene_models.cpp
+    src/engine/scene_particles.cpp
     src/engine/scene_terrain.cpp
     src/engine/visual_map_builder.cpp
 )
@@ -321,6 +328,7 @@ endif()
 add_executable(EAWAssetInspector
     src/asset_inspector/audit_lua.cpp
     src/asset_inspector/audit_maps.cpp
+    src/asset_inspector/audit_particles.cpp
     src/asset_inspector/audit_textures.cpp
     src/asset_inspector/audit_xml.cpp
     src/asset_inspector/inspect_asset.cpp

@@ -13,6 +13,7 @@
 #include "eaw/lua_script.hpp"
 #include "eaw/map_object_layout.hpp"
 #include "eaw/mtd_directory.hpp"
+#include "eaw/particle_system.hpp"
 #include "eaw/status.hpp"
 #include "eaw/text_encoding.hpp"
 #include "eaw/ted_map.hpp"
@@ -88,6 +89,9 @@ eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& 
 void audit_texture_references(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit);
 
 void audit_lua(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit);
+
+// Decodes every particle ALO and reports formats, failures, properties, blend modes, renderers, and links.
+void audit_particles(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit);
 
 struct AuditExample
 {

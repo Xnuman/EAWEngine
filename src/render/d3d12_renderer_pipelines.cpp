@@ -6,6 +6,9 @@
 // points embed the root signature, which the renderer creates from the vertex shader blob.
 #include "g_eaw_debug_ps.h"
 #include "g_eaw_debug_vs.h"
+#include "g_eaw_particle_modulate_ps.h"
+#include "g_eaw_particle_ps.h"
+#include "g_eaw_particle_vs.h"
 #include "g_eaw_sandbox_ps.h"
 #include "g_eaw_sandbox_vs.h"
 #include "g_eaw_terrain_ps.h"
@@ -298,6 +301,49 @@ void D3d12Renderer::Impl::create_pipeline()
     description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
     description.BlendState.RenderTarget[1].RenderTargetWriteMask = 0;
     create_pipeline_state(L"debug lines", description, debug_pipeline);
+
+    // Particles: no vertex input, no culling, depth-tested (or not) without depth or pick writes.
+    description.VS = {g_eaw_particle_vs, sizeof(g_eaw_particle_vs)};
+    description.InputLayout = {nullptr, 0};
+    description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    description.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+    for (std::size_t blend_index = 0; blend_index < particle_pipelines.size(); ++blend_index)
+    {
+        auto& target = description.BlendState.RenderTarget[0];
+        target.BlendEnable = TRUE;
+        target.BlendOp = D3D12_BLEND_OP_ADD;
+        target.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+        description.PS = {g_eaw_particle_ps, sizeof(g_eaw_particle_ps)};
+        const wchar_t* name = L"particles additive";
+        switch (static_cast<VisualParticleBlend>(blend_index))
+        {
+        case VisualParticleBlend::additive:
+            target.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+            target.DestBlend = D3D12_BLEND_ONE;
+            target.SrcBlendAlpha = D3D12_BLEND_ZERO;
+            target.DestBlendAlpha = D3D12_BLEND_ONE;
+            break;
+        case VisualParticleBlend::alpha:
+            target.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+            target.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+            target.SrcBlendAlpha = D3D12_BLEND_ONE;
+            target.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+            name = L"particles alpha";
+            break;
+        case VisualParticleBlend::modulate:
+            target.SrcBlend = D3D12_BLEND_ZERO;
+            target.DestBlend = D3D12_BLEND_SRC_COLOR;
+            target.SrcBlendAlpha = D3D12_BLEND_ZERO;
+            target.DestBlendAlpha = D3D12_BLEND_ONE;
+            description.PS = {g_eaw_particle_modulate_ps, sizeof(g_eaw_particle_modulate_ps)};
+            name = L"particles modulate";
+            break;
+        }
+        description.DepthStencilState.DepthEnable = TRUE;
+        create_pipeline_state(name, description, particle_pipelines[blend_index][0]);
+        description.DepthStencilState.DepthEnable = FALSE;
+        create_pipeline_state((std::wstring(name) + L" (no depth test)").c_str(), description, particle_pipelines[blend_index][1]);
+    }
 
     D3D12_DESCRIPTOR_HEAP_DESC shader_heap_description{};
     shader_heap_description.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;

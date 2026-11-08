@@ -52,6 +52,11 @@ eaw::Result<int> run(const Options& options)
         audit_texture_references(vfs, options.prefix, options.limit);
         return 0;
     }
+    if (options.command == "particle-audit")
+    {
+        audit_particles(vfs, options.prefix, options.limit);
+        return 0;
+    }
     if (options.command == "lua-audit")
     {
         audit_lua(vfs, options.prefix, options.limit);

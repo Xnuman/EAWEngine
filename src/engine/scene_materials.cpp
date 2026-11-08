@@ -233,6 +233,36 @@ const LegacyTextureBinding* base_color_texture(const LegacyMaterial& material)
 
 // Loads (once per scene) the DDS for an ALO texture reference and returns its scene texture
 // index, or invalid_visual_texture with a warning when it is missing or unsupported.
+std::shared_ptr<const CachedTexture> cached_texture(const AssetReader& vfs, AssetCache* cache, const std::string& reference)
+{
+    return cached<CachedTexture>(cache, "texture", fold_ascii(reference), vfs,
+                                 [&](const AssetReader& reader)
+                                 {
+                                     CachedTexture result;
+                                     const auto texture_path = resolve_texture(reader, reference);
+                                     if (!texture_path)
+                                     {
+                                         result.error = "matching DDS not found";
+                                         return result;
+                                     }
+                                     const auto bytes = reader.read(*texture_path);
+                                     if (!bytes)
+                                     {
+                                         result.error = bytes.error().message;
+                                         return result;
+                                     }
+                                     auto texture = make_visual_texture(reference, *bytes);
+                                     if (!texture)
+                                     {
+                                         result.error = texture.error().message;
+                                         return result;
+                                     }
+                                     result.texture = std::move(texture).value();
+                                     result.texture->identity = next_texture_identity();
+                                     return result;
+                                 });
+}
+
 std::uint32_t scene_texture(SceneBuilder& builder, const std::string& reference)
 {
     if (!builder.textures)
@@ -245,32 +275,7 @@ std::uint32_t scene_texture(SceneBuilder& builder, const std::string& reference)
         return existing->second;
     }
     auto index = invalid_visual_texture;
-    const auto loaded = cached<CachedTexture>(builder.cache, "texture", key, builder.vfs,
-                                              [&](const AssetReader& reader)
-                                              {
-                                                  CachedTexture result;
-                                                  const auto texture_path = resolve_texture(reader, reference);
-                                                  if (!texture_path)
-                                                  {
-                                                      result.error = "matching DDS not found";
-                                                      return result;
-                                                  }
-                                                  const auto bytes = reader.read(*texture_path);
-                                                  if (!bytes)
-                                                  {
-                                                      result.error = bytes.error().message;
-                                                      return result;
-                                                  }
-                                                  auto texture = make_visual_texture(reference, *bytes);
-                                                  if (!texture)
-                                                  {
-                                                      result.error = texture.error().message;
-                                                      return result;
-                                                  }
-                                                  result.texture = std::move(texture).value();
-                                                  result.texture->identity = next_texture_identity();
-                                                  return result;
-                                              });
+    const auto loaded = cached_texture(builder.vfs, builder.cache, reference);
     if (loaded->texture)
     {
         index = static_cast<std::uint32_t>(builder.scene.textures.size());

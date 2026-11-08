@@ -46,6 +46,10 @@ struct D3d12Renderer::Impl
         ComPtr<ID3D12Resource> instance_buffer;
         std::byte* instance_buffer_mapped{};
         std::size_t instance_capacity{};
+        // Particles submitted through set_particles, likewise.
+        ComPtr<ID3D12Resource> particle_buffer;
+        std::byte* particle_buffer_mapped{};
+        std::size_t particle_capacity{};
         std::uint64_t fence_value{};
     };
 
@@ -68,6 +72,9 @@ struct D3d12Renderer::Impl
         std::array<std::array<float, 4>, 2> fill_direction;
         std::array<std::array<float, 4>, 2> fill_diffuse;
         std::array<std::uint32_t, 4> selection{};
+        // World-space camera basis for camera-facing particles.
+        std::array<float, 4> camera_right{};
+        std::array<float, 4> camera_up{};
     };
     static_assert(sizeof(FrameConstants) <= frame_constant_bytes);
 
@@ -191,6 +198,28 @@ struct D3d12Renderer::Impl
     std::uint32_t highlighted_pick_id{};
     std::vector<VisualDebugLine> debug_lines;
     ComPtr<ID3D12PipelineState> debug_pipeline;
+
+    // Structured-buffer layout of ParticleData in particle.hlsl (80 bytes).
+    struct GpuParticle
+    {
+        std::array<float, 3> position{};
+        float half_size{};
+        std::array<float, 4> color{};
+        std::array<float, 4> uv_rect{};
+        std::array<float, 3> axis{};
+        float rotation{};
+        float tail{};
+        // Logical texture id, or invalid_visual_texture for white.
+        std::uint32_t texture{};
+        std::uint32_t shape{};
+        std::uint32_t padding{};
+    };
+    static_assert(sizeof(GpuParticle) == 80);
+    std::vector<VisualParticle> particles;
+    std::vector<GpuParticle> gpu_particles;
+    // Pipelines by blend (VisualParticleBlend) and depth test (0 tested, 1 not).
+    std::array<std::array<ComPtr<ID3D12PipelineState>, 2>, 3> particle_pipelines;
+    std::uint64_t last_particles{};
 
     // Debug overlay: a display-only Dear ImGui panel drawn last into the back buffer. Its font
     // texture takes slots from texture_slots through the backend's allocation callbacks.
@@ -416,6 +445,25 @@ struct D3d12Renderer::Impl
     std::uint32_t request_pick(const std::uint32_t x, const std::uint32_t y);
 
     void set_debug_lines(const std::span<const VisualDebugLine> lines);
+
+    void set_particles(const std::span<const VisualParticle> next);
+
+    // Writes the particles into this frame context's buffer, growing it when needed (the outgrown
+    // buffer retires on the direct timeline).
+    void write_particles(FrameContext& frame);
+
+    // Texture registration shared by add_meshes and add_textures, in two phases so a failed
+    // validation commits nothing: plan_textures maps each texture to a logical id (an identity
+    // already present shares its id) and lists the new ones; commit_textures queues those for
+    // streaming.
+    struct TexturePlan
+    {
+        std::vector<std::uint32_t> logical_ids;
+        std::vector<std::size_t> new_sources;
+    };
+    [[nodiscard]] Result<TexturePlan> plan_textures(std::span<const VisualTexture> textures) const;
+    void commit_textures(std::vector<VisualTexture>& textures, const TexturePlan& plan);
+    [[nodiscard]] Result<std::vector<std::uint32_t>> add_textures(std::vector<VisualTexture> added);
 
     void set_instances(const std::span<const VisualInstance> instances);
 

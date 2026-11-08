@@ -568,3 +568,86 @@ Fighter flight.
   that triggers a half-loop, how fast fighters return to their plane, and
   whether separation also acts between squadrons or against other owners.
   Video captures of the original would settle these.
+
+Particle systems. Particle effects are ALO files whose root chunk is 0x0900
+(578 of the 1,957 resolved stock ALO files; none use the 0x1500 plugin format
+of later Alamo games). The field meanings follow the MIT-licensed alo-viewer
+(Copyright (c) 2017 GlyphX Tools); `src/core/particle_system.cpp` is our own
+decoder, checked against the stock corpus with `EAWAssetInspector
+particle-audit`.
+
+- **Layout.** A system holds its name (chunk 0x0), a 4-byte chunk 0x1, an
+  emitter list (0x0800 of 0x0700 emitters), and an optional one-byte
+  "leave particles" chunk 0x2. Each emitter holds its property mini-chunks
+  (0x2), texture (0x3), name (0x16), three shape groups (0x29: speed,
+  lifetime, position), seven keyframe tracks (0x1: red, green, blue, alpha,
+  scale, texture cell, rotation speed), optional child links (0x36: spawn on
+  death, spawn during life) and an optional normal texture (0x45).
+- **Corrections to the reference.** A shape group (chunk 0x1101) is 64 bytes
+  (type, minimum, maximum, cube side, sphere radius and hollow flag, cylinder
+  radius, hollow flag, and height, exact value), not 68. Colour track keys
+  hold a 0..255 integer and then the time; other keys hold a float value and
+  then the time.
+- **Corpus.** All 578 systems decode without warnings: 1,464 emitters, 1 to
+  15 per system, 492 systems leave their particles behind. Blend modes are 1
+  (additive, 900 emitters), 2 (alpha, 543), and 11 (bump alpha, 21). 953
+  emitters are camera-facing billboards, 80 lie in the ground plane ("world
+  oriented"), and 65 are velocity-stretched kites; 170 are heat-distortion
+  particles and 5 weather particles. 685 emit limited bursts, 178 unlimited
+  bursts, and 601 continuously. Child links are rare (24 spawn during life, 3
+  on death). Every emitter writes the properties 0x04 to 0x2B; later ids
+  (0x2C to 0x49) are missing from some files, so they keep defaults. The
+  system chunk 0x1 holds 0 to 13 (350 files hold 0); its meaning is unknown,
+  and it is kept as stored.
+- **Not interpreted.** Properties 0x06, 0x11, 0x14, 0x15, 0x2B, 0x3F, 0x44,
+  and 0x49 are kept raw; the reference reads and ignores them too.
+- **Value ranges** (stock corpus): the random scale, lifetime, and rotation
+  variances (0x12, 0x13, 0x17) lie in 0..1, so they are fractions, not
+  percentages; continuous rates reach 3,500 particles per second, bursts
+  2,000 particles, and the shortest burst delay is 0.0003 s, so the engine
+  caps live particles explicitly (65,536 by default, drops counted) and
+  bounds emission per update.
+- **Playback** (`src/engine/particle_effects.cpp`), following the reference
+  where it is clear:
+  - emission starts after the initial delay: bursts of the per-burst count
+    every burst delay, limited by the burst count (0 or -1 unlimited), or one
+    particle every 1/rate seconds; skip time pre-simulates;
+  - particles spawn on the position group and take the speed group as
+    velocity, both in the emitter's frame; a nonzero "inward speed" replaces
+    the velocity along the spawn offset (positive moves outward, as in the
+    reference; the name suggests the opposite and is unverified);
+  - acceleration (optionally in the emitter's frame) plus -gravity along Z,
+    and "inward acceleration" toward the emitter;
+  - lifetime x (1 + random 0..variance); size factor (1 + random
+    -v..v) / (1 + v) with v = half the scale variance; the scale track is the
+    full size (sprites are drawn with half of it as half extent);
+  - colour tracks plus a random addition up to the random colours (grayscale
+    uses the red value for all channels);
+  - rotation speed in revolutions per second, randomly reversed when the
+    flag is set; "random rotation" gives a fixed angle derived from the
+    rotation track's first value as in the reference;
+  - texture cells form a square atlas of ceil(sqrt(cells)) per side, indexed
+    by the rounded texture track;
+  - "link to system" carries particles with the emitter's translation;
+  - ground behavior 1 kills particles below the ground, 2 bounces them, 3
+    stops them;
+  - blend modes 1 and 4 draw additively, 3, 6, 8, and 9 modulate, the rest
+    alpha-blend (stock data uses only 1, 2, and 11);
+  - kites stretch along the velocity by the tail size and turn toward the
+    camera; world-oriented particles lie in the XY plane.
+- **Engine choices:** sphere spawns use uniform directions (the reference
+  samples angles uniformly); a death child emits one burst (or one particle)
+  per dying parent; a trail child emits at its own rate from each living
+  parent, at most 64 per parent per update; emitters that are only children
+  never emit on their own; smooth interpolation is smoothstep between keys.
+- **Not drawn yet:** heat distortion (170 emitters) and weather (5), which
+  need passes of their own; emission from meshes falls back to the shape;
+  wind is ignored; freeze time is kept but unused.
+- **Proxies.** Model proxies name their effect without directory or
+  extension (`pe_Z95engines` is `Data/Art/Models/pe_Z95engines.alo`). The
+  stock station and capital-ship models also carry proxies tagged like meshes:
+  `p_explosion_med00_ALT1` and `_ALT2` show in damaged states and are skipped
+  on the intact model, and the tag is not part of the file name. Hidden
+  proxies (hardpoint damage effects such as `p_hp_imperial_damage`) wait for
+  gameplay. Some proxies name files that do not exist (`Lensflare0`); they are
+  reported once per build.
