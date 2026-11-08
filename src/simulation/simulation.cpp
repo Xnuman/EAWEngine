@@ -141,6 +141,11 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite radius, turn rate, or formation spacing");
     }
+    if (const auto& footprint = spawn.footprint;
+        footprint && (!finite(footprint->center) || !valid_amount(footprint->half_length) || !valid_amount(footprint->half_width) || !std::isfinite(footprint->heading)))
+    {
+        return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite footprint");
+    }
     if (!valid_profile(spawn.combat))
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite combat value");
@@ -185,6 +190,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     group_best_remaining_.push_back(0.0F);
     group_stall_ticks_.push_back(0);
     group_waiting_.push_back(0);
+    footprints_.push_back(spawn.footprint);
+    footprint_stamped_.push_back(0);
+    stamp_footprint(ids_.size() - 1U, true);
     if (spawn.follows_ground && ground_.valid())
     {
         positions_.back().z = ground_.surface_height(spawn.position.x, spawn.position.y);
@@ -538,6 +546,7 @@ float SimulationWorld::travel_speed(const std::size_t index) const noexcept
 
 void SimulationWorld::destroy(const std::size_t dense)
 {
+    stamp_footprint(dense, false);
     const auto slot = ids_[dense].index;
     const auto last = ids_.size() - 1U;
     if (dense != last)
@@ -565,6 +574,8 @@ void SimulationWorld::destroy(const std::size_t dense)
         group_best_remaining_[dense] = group_best_remaining_[last];
         group_stall_ticks_[dense] = group_stall_ticks_[last];
         group_waiting_[dense] = group_waiting_[last];
+        footprints_[dense] = footprints_[last];
+        footprint_stamped_[dense] = footprint_stamped_[last];
         slot_dense_[ids_[dense].index] = static_cast<std::uint32_t>(dense);
     }
     ids_.pop_back();
@@ -589,6 +600,8 @@ void SimulationWorld::destroy(const std::size_t dense)
     group_best_remaining_.pop_back();
     group_stall_ticks_.pop_back();
     group_waiting_.pop_back();
+    footprints_.pop_back();
+    footprint_stamped_.pop_back();
     slot_dense_[slot] = no_dense;
     // A slot whose generation would wrap is retired instead of reused.
     if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
@@ -1140,6 +1153,59 @@ void SimulationWorld::remove_dead()
 void SimulationWorld::set_ground(GroundMap ground)
 {
     ground_ = std::move(ground);
+    ground_passability_ = ground_.passability;
+    footprint_cover_.assign(ground_passability_.size(), 0);
+    std::ranges::fill(footprint_stamped_, std::uint8_t{0});
+    for (std::size_t index = 0; index < ids_.size(); ++index)
+    {
+        stamp_footprint(index, true);
+    }
+    pathfinder_.reset();
+}
+
+// Cells whose sample point lies inside the footprint rectangle take its passability type while any
+// footprint covers them; the last footprint removed restores the ground's own value. The cached
+// region labels are dropped, so paths see the change.
+void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
+{
+    const auto& footprint = footprints_[index];
+    if (!footprint || !ground_.valid() || ground_.passability.size() != ground_.heights.size() || footprint_cover_.size() != ground_.passability.size() || (footprint_stamped_[index] != 0) == add)
+    {
+        return;
+    }
+    const auto cos_heading = std::cos(footprint->heading);
+    const auto sin_heading = std::sin(footprint->heading);
+    const auto reach = std::hypot(footprint->half_length, footprint->half_width);
+    const auto spacing = ground_.spacing;
+    const auto first_column = std::max(0L, static_cast<long>(std::floor((footprint->center.x - reach) / spacing)));
+    const auto last_column = std::min(static_cast<long>(ground_.width) - 1, static_cast<long>(std::ceil((footprint->center.x + reach) / spacing)));
+    const auto first_row = std::max(0L, static_cast<long>(std::floor((footprint->center.y - reach) / spacing)));
+    const auto last_row = std::min(static_cast<long>(ground_.height) - 1, static_cast<long>(std::ceil((footprint->center.y + reach) / spacing)));
+    for (auto row = first_row; row <= last_row; ++row)
+    {
+        for (auto column = first_column; column <= last_column; ++column)
+        {
+            const auto dx = static_cast<float>(column) * spacing - footprint->center.x;
+            const auto dy = static_cast<float>(row) * spacing - footprint->center.y;
+            const auto along = dx * cos_heading + dy * sin_heading;
+            const auto across = -dx * sin_heading + dy * cos_heading;
+            if (std::fabs(along) > footprint->half_length || std::fabs(across) > footprint->half_width)
+            {
+                continue;
+            }
+            const auto cell = static_cast<std::size_t>(row) * ground_.width + static_cast<std::size_t>(column);
+            if (add)
+            {
+                ++footprint_cover_[cell];
+                ground_.passability[cell] = footprint->passability;
+            }
+            else if (footprint_cover_[cell] > 0 && --footprint_cover_[cell] == 0)
+            {
+                ground_.passability[cell] = ground_passability_[cell];
+            }
+        }
+    }
+    footprint_stamped_[index] = add ? 1U : 0U;
     pathfinder_.reset();
 }
 

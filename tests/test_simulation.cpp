@@ -650,6 +650,45 @@ void test_group_cohesion()
     }
 }
 
+void test_ground_footprints()
+{
+    // A clear 30x30 field; a wall footprint 10 cells long across the middle blocks the straight way.
+    eaw::GroundMap ground;
+    ground.width = 30;
+    ground.height = 30;
+    ground.spacing = 10.0F;
+    ground.heights.assign(900, 0.0F);
+    ground.passability.assign(900, eaw::passability::clear);
+    eaw::SimulationWorld world(0.1);
+    const auto wall = world.spawn({.type_name = "Empire_Wall", .footprint = eaw::GroundFootprint{{150.0F, 150.0F, 0.0F}, 5.0F, 60.0F, 0.0F, eaw::passability::empire_wall}});
+    require(wall.ok(), "test spawn must succeed");
+    // Footprints spawned before the ground is set are stamped when it arrives.
+    world.set_ground(ground);
+    require(world.ground().passability_at(150.0F, 150.0F) == eaw::passability::empire_wall && world.ground().passability_at(150.0F, 210.0F) == eaw::passability::empire_wall &&
+                world.ground().passability_at(150.0F, 220.0F) == eaw::passability::clear && world.ground().passability_at(140.0F, 150.0F) == eaw::passability::clear,
+            "a footprint must stamp exactly the cells inside its rectangle");
+    const auto walker = world.spawn({.type_name = "Walker", .position = {100.0F, 150.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
+    const auto large_walker = world.spawn(
+        {.type_name = "LargeWalker", .position = {100.0F, 160.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear | eaw::passability::empire_wall});
+    require(walker && large_walker, "test spawns must succeed");
+    world.submit({eaw::SimCommandKind::move, {*walker}, {200.0F, 150.0F, 0.0F}});
+    world.submit({eaw::SimCommandKind::move, {*large_walker}, {200.0F, 160.0F, 0.0F}});
+    world.step();
+    const auto detour = world.route(*walker);
+    require(detour.size() > 1 && world.route(*large_walker).size() == 1, "a class may not cross a wall it is not allowed on; one allowed on it walks straight over");
+    for (int tick = 0; tick < 200; ++tick)
+    {
+        world.step();
+    }
+    require(world.snapshot().entities[1].position.x == 200.0F && world.stats().blocked_moves == 0, "the walker must arrive around the wall");
+
+    // Destroying the wall restores the ground's own passability.
+    world.submit({eaw::SimCommandKind::destroy, {*wall}, {}});
+    world.step();
+    require(world.ground().passability_at(150.0F, 150.0F) == eaw::passability::clear, "a destroyed footprint must restore the ground");
+    require(!world.spawn({.type_name = "Bad", .footprint = eaw::GroundFootprint{{0.0F, 0.0F, 0.0F}, -1.0F, 1.0F, 0.0F, eaw::passability::obstacle}}), "an invalid footprint must be rejected");
+}
+
 const ModuleRegistrar registrar("simulation", {
                                                   {"test_simulation_core", &test_simulation_core},
                                                   {"test_ground_movement", &test_ground_movement},
@@ -659,6 +698,7 @@ const ModuleRegistrar registrar("simulation", {
                                                   {"test_formations", &test_formations},
                                                   {"test_narrow_passage", &test_narrow_passage},
                                                   {"test_group_cohesion", &test_group_cohesion},
+                                                  {"test_ground_footprints", &test_ground_footprints},
                                               });
 
 } // namespace

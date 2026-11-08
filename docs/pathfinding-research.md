@@ -301,6 +301,9 @@ EAWEngine's steps:
      in a test.
    - Only units of one owner make way for each other; idle enemies and
      neutrals stand their ground.
+   - Structures, walls, and obstacle props stamp their footprints into the
+     simulation's passability grid, so paths go around them; their cells
+     revert when they are destroyed.
    - Units turn at their XML rate and slow down while facing away.
 2. **Formation slots for group orders** (done). Members ahead of their
    group wait for the rest, as in Age of Empires II, so a group re-forms

@@ -364,3 +364,17 @@ group-move formation, facing the placed heading (an engine choice). Type-name
 lists are split on commas and whitespace, because one stock FoC list
 (`Underworld_Merc_Squad`) has no commas. 97 placed `Container` objects have
 no member list and stay unexpanded.
+
+Static obstacles. `Empire_Wall` and the matching Rebel wall (the
+`EB_/RB_BASEWALL-MID` barricades, 82 placements on Utapau alone) set
+`OverridePassability` to EmpireWall or RebelWall. The movement classes that
+list those types (Flying, LargeWalker for RebelWall, Space) may cross them. The
+engine stamps a wall's footprint with its own type and every other blocking
+structure with Obstacle.
+
+Blocking structures are the `GroundStructure`, `SpecialStructure`, and
+`SecondaryStructure` kinds, plus types whose `UnitCollisionClass` is High,
+Medium, or Low Obstacle. Build pads and other props do not block. This is a
+provisional reading, as are the footprints, which are rectangles from the
+model bounds until the ALO collision meshes are interpreted. Unit separation
+uses `Custom_Soft_Footprint_Radius` where present (3.5 for stock infantry).

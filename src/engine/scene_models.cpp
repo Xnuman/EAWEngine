@@ -278,6 +278,31 @@ float mesh_footprint_radius(const VisualScene& scene, const std::uint32_t mesh, 
     return std::isfinite(radius) && radius > 0.0F ? radius : 0.0F;
 }
 
+GroundFootprint mesh_ground_footprint(const VisualScene& scene, const std::uint32_t mesh, const std::array<float, 16>& transform, const std::uint32_t passability_type)
+{
+    GroundFootprint footprint;
+    footprint.passability = passability_type;
+    if (mesh >= scene.meshes.size())
+    {
+        return footprint;
+    }
+    const auto& bounds = scene.meshes[mesh];
+    const auto scale = std::sqrt(transform[0] * transform[0] + transform[1] * transform[1] + transform[2] * transform[2]);
+    const auto local_x = (bounds.bounds_minimum[0] + bounds.bounds_maximum[0]) * 0.5F;
+    const auto local_y = (bounds.bounds_minimum[1] + bounds.bounds_maximum[1]) * 0.5F;
+    // Row-vector transform: world = local.x * row0 + local.y * row1 + translation.
+    footprint.center = {local_x * transform[0] + local_y * transform[4] + transform[12], local_x * transform[1] + local_y * transform[5] + transform[13], transform[14]};
+    footprint.half_length = std::max(0.0F, (bounds.bounds_maximum[0] - bounds.bounds_minimum[0]) * 0.5F * scale);
+    footprint.half_width = std::max(0.0F, (bounds.bounds_maximum[1] - bounds.bounds_minimum[1]) * 0.5F * scale);
+    footprint.heading = std::atan2(transform[1], transform[0]);
+    if (!std::isfinite(footprint.center.x) || !std::isfinite(footprint.center.y) || !std::isfinite(footprint.half_length) || !std::isfinite(footprint.half_width) || !std::isfinite(footprint.heading))
+    {
+        footprint = GroundFootprint{};
+        footprint.passability = passability_type;
+    }
+    return footprint;
+}
+
 void update_scene_bounds(VisualScene& scene)
 {
     scene.bounds_minimum.fill(std::numeric_limits<float>::max());

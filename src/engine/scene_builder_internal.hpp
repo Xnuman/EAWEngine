@@ -136,6 +136,11 @@ void update_scene_bounds(VisualScene& scene);
 // collision meshes and UnitCollisionClass are interpreted.
 float mesh_footprint_radius(const VisualScene& scene, std::uint32_t mesh, const std::array<float, 16>& transform);
 
+// The ground rectangle of a mesh placed with `transform`: its bounds' X/Y extent, rotated and scaled
+// with the placement, with the given passability type. An engine choice until collision meshes
+// are read.
+GroundFootprint mesh_ground_footprint(const VisualScene& scene, std::uint32_t mesh, const std::array<float, 16>& transform, std::uint32_t passability_type);
+
 // scene_terrain.cpp: land terrain, liquid surfaces, and tracks.
 
 // Builds the land heightfield as independent triangles whose vertices carry the triangle's corner
@@ -176,6 +181,16 @@ float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& de
 // XML FormationOrder (default 2, the most common) and FormationSpacing (default 0.5, likewise).
 std::uint32_t type_formation_order(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+
+// The passability type an immobile placed object stamps on the ground, or nothing when it does not
+// block: its XML OverridePassability (walls: RebelWall, EmpireWall), otherwise Obstacle for
+// structures (GroundStructure, SpecialStructure, SecondaryStructure) and for types whose
+// UnitCollisionClass names an obstacle (High, Medium, or Low Obstacle). Build pads and other
+// props do not block. A provisional reading of the stock data.
+std::optional<std::uint32_t> type_obstacle_passability(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+
+// XML Custom_Soft_Footprint_Radius (infantry 3.5), or 0 when it is missing.
+float type_soft_footprint_radius(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
 // XML Max_Rate_Of_Turn in radians per second (provisional_turn_rate_scale); 0 turns instantly.
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition);

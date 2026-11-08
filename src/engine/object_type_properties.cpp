@@ -122,6 +122,33 @@ float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefiniti
     return spacing >= 0.0F && spacing <= 100.0F ? spacing : 0.5F;
 }
 
+std::optional<std::uint32_t> type_obstacle_passability(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    if (const auto* override_node = catalog.field(definition, "OverridePassability").field)
+    {
+        if (const auto mask = parse_passability_list(override_node->text); mask && *mask != 0)
+        {
+            return *mask;
+        }
+    }
+    const auto kind = fold_ascii(definition.type);
+    if (kind == "groundstructure" || kind == "specialstructure" || kind == "secondarystructure")
+    {
+        return passability::obstacle;
+    }
+    if (const auto* collision = catalog.field(definition, "UnitCollisionClass").field; collision != nullptr && fold_ascii(collision->text).find("obstacle") != std::string::npos)
+    {
+        return passability::obstacle;
+    }
+    return std::nullopt;
+}
+
+float type_soft_footprint_radius(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto radius = type_float_field(catalog, definition, "Custom_Soft_Footprint_Radius");
+    return radius > 0.0F && radius < 10000.0F ? radius : 0.0F;
+}
+
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto rate = type_float_field(catalog, definition, "Max_Rate_Of_Turn");

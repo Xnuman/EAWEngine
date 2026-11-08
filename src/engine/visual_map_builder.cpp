@@ -200,9 +200,18 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                 spawn.combat = profile_of(*placement.type);
                 // Only mobile units take space for now; structures and props keep overlapping
                 // until their collision footprints are read.
+                if (spawn.max_speed <= 0.0F && asset.land)
+                {
+                    if (const auto blocks = type_obstacle_passability(catalog, *placement.type))
+                    {
+                        spawn.footprint = mesh_ground_footprint(scene, *entry->second, matrix, *blocks);
+                        ++asset.obstacle_footprints;
+                    }
+                }
                 if (spawn.max_speed > 0.0F)
                 {
-                    spawn.radius = mesh_footprint_radius(scene, *entry->second, matrix);
+                    const auto soft_radius = type_soft_footprint_radius(catalog, *placement.type);
+                    spawn.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(scene, *entry->second, matrix);
                     spawn.turn_rate = type_turn_rate(catalog, *placement.type);
                     spawn.formation_order = type_formation_order(catalog, *placement.type);
                     spawn.formation_spacing = type_formation_spacing(catalog, *placement.type);
@@ -374,7 +383,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         if (spawnable.max_speed > 0.0F)
         {
             static constexpr std::array<float, 16> identity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
-            spawnable.radius = mesh_footprint_radius(scene, spawnable.mesh, identity);
+            const auto soft_radius = type_soft_footprint_radius(catalog, *definition);
+            spawnable.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(scene, spawnable.mesh, identity);
             spawnable.turn_rate = type_turn_rate(catalog, *definition);
             spawnable.formation_order = type_formation_order(catalog, *definition);
             spawnable.formation_spacing = type_formation_spacing(catalog, *definition);

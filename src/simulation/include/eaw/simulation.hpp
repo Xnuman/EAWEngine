@@ -28,6 +28,19 @@
 
 namespace eaw {
 
+// The ground an immobile obstacle occupies: a rectangle (half extents along and across its heading)
+// whose cells take `passability` while the entity exists (a wall's own type, so classes allowed on
+// that type still cross it, or Obstacle).
+struct GroundFootprint
+{
+    SimVector3 center;
+    float half_length{};
+    float half_width{};
+    // Rotation about +Z in radians.
+    float heading{};
+    std::uint32_t passability{passability::obstacle};
+};
+
 // Everything needed to create an entity. `type_name` is the XML object type (informational for
 // now); `visual` is an opaque presentation key chosen by the caller (for example a mesh index).
 struct EntitySpawn
@@ -55,6 +68,8 @@ struct EntitySpawn
     // Formation rank (lower stands in front) and spacing (see formation.hpp).
     std::uint32_t formation_order{2};
     float formation_spacing{0.5F};
+    // Ground occupied while the entity exists (structures, walls, obstacle props).
+    std::optional<GroundFootprint> footprint;
 };
 
 enum class SimCommandKind : std::uint8_t
@@ -176,7 +191,8 @@ public:
     // data comes from map and mod content: a non-finite position, heading, or speed, or full entity
     // storage, returns an error and spawns nothing.
     [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn);
-    // Ground for entities that follow it. A move order for a ground entity with passable_types is
+    // Ground for entities that follow it; entity footprints are stamped into a copy of its
+    // passability (and removed when their entity is destroyed). A move order for a ground entity with passable_types is
     // planned when it is applied (GridPathfinder): the entity follows the waypoints, ending at the
     // ordered point or, when that cannot be reached, at the closest point found. A ground entity
     // also stops before a cell its class may not enter; one standing on such a cell may leave it.
@@ -254,6 +270,8 @@ private:
     // may use: 1 when facing the way, falling to 0 at 90 degrees or more off.
     [[nodiscard]] float steer(std::size_t index, float desired, float dt);
     void run_separation();
+    // Stamps (or removes) an entity's footprint into the ground's passability.
+    void stamp_footprint(std::size_t index, bool add);
     void run_combat();
     void update_target(std::size_t index);
     void run_weapon(std::size_t index);
@@ -299,6 +317,11 @@ private:
     // Group speed of a formation move until the entity arrives; zero when none.
     std::vector<float> speed_limits_;
     std::vector<SimVector3> separation_push_;
+    std::vector<std::optional<GroundFootprint>> footprints_;
+    std::vector<std::uint8_t> footprint_stamped_;
+    // The ground's own passability, and how many footprints cover each cell.
+    std::vector<std::uint32_t> ground_passability_;
+    std::vector<std::uint16_t> footprint_cover_;
     std::vector<float> remaining_route_;
     // Formation group of a member (zero when none), the remaining route it last made progress at,
     // ticks since then, and whether it waits this tick.

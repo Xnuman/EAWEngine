@@ -86,6 +86,8 @@ struct VisualMapAsset
     std::size_t unexpanded_containers{};
     // Land companies arranged in formation, and their members.
     std::size_t expanded_companies{};
+    // Immobile obstacles whose footprints the simulation stamps into the ground.
+    std::size_t obstacle_footprints{};
     std::size_t company_members{};
     std::size_t unrenderable_placements{};
     // Resolved backdrop layers ("definition (model path)"), in draw order.
