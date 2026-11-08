@@ -21,6 +21,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <optional>
 #include <span>
 #include <string>
@@ -173,6 +174,10 @@ public:
         std::uint64_t path_searches{};
         std::uint64_t partial_paths{};
         std::uint64_t path_expansions{};
+        // Path requests waiting for the per-tick search budget, and formation routes planned on one
+        // shared path.
+        std::size_t queued_paths{};
+        std::uint64_t shared_routes{};
         std::uint64_t shots_fired{};
         std::uint64_t hits{};
         std::uint64_t kills{};
@@ -256,7 +261,18 @@ private:
     void apply(const SimCommand& command);
     void destroy(std::size_t dense);
     void run_movement();
+    // Requests a route to `target` (queued for the search budget when it needs a search).
     void plan_move(std::size_t index, const SimVector3& target);
+    // Plans now: a full search from the entity's position.
+    void plan_route_now(std::size_t index, const SimVector3& target);
+    // Sets an entity's route from planned waypoints (the last is its destination).
+    void set_route(std::size_t index, const std::vector<PathPoint>& waypoints, float height);
+    // Works through queued path requests until the tick's search budget is spent.
+    void process_path_queue();
+    struct PathRequest;
+    // Plans a shared request's members until the tick's budget is spent; false when members remain.
+    [[nodiscard]] bool plan_shared_route(PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
+    void plan_shared_member(const PathRequest& request, std::size_t index, const SimVector3& goal);
     void apply_formation_move(const SimCommand& command);
     // Remaining route length of every moving entity (zero for the rest).
     void measure_remaining_routes();
@@ -317,6 +333,29 @@ private:
     // Group speed of a formation move until the entity arrives; zero when none.
     std::vector<float> speed_limits_;
     std::vector<SimVector3> separation_push_;
+    // A queued route request: one entity, or the ground members of a formation move that share a
+    // movement class (planned on one shared path to `group_target`).
+    struct PathRequest
+    {
+        std::vector<EntityId> members;
+        std::vector<SimVector3> goals;
+        std::vector<std::uint32_t> serials;
+        SimVector3 group_target;
+        // Shared requests: the shared path once planned, the commander's start and movement class,
+        // and the next member to plan (a request can span several ticks).
+        bool shared_ready{};
+        std::vector<PathPoint> shared_waypoints;
+        PathPoint shared_start;
+        std::uint32_t mask{};
+        std::size_t next_member{};
+    };
+    std::deque<PathRequest> path_queue_;
+    // Serial of the entity's queued request (zero when none); a newer request supersedes it.
+    std::vector<std::uint32_t> path_pending_;
+    std::uint32_t next_path_serial_{1};
+    // Short legs onto and off a shared path search at most this many nodes.
+    GridPathfinder local_pathfinder_{4096};
+    std::uint64_t shared_routes_{};
     std::vector<std::optional<GroundFootprint>> footprints_;
     std::vector<std::uint8_t> footprint_stamped_;
     // The ground's own passability, and how many footprints cover each cell.

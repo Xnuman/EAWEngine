@@ -315,7 +315,14 @@ EAWEngine's steps:
 3. **Company expansion** (done). Placed and spawned companies become their
    units, in formation. This also applies when the company names a model of
    its own, as most stock companies do.
-4. **Later.**
+4. **Shared routes and the search budget** (done). Path requests wait in an
+   ordered queue planned up to a node budget per tick. A formation plans one
+   shared search per movement class from its commander (the member nearest
+   its centroid), then short legs onto and off it per member, straightened
+   against the ground; the request resumes over ticks when it exceeds the
+   budget. This is the commander rule of Age of Empires II, and stage 7
+   (budgeted searches) of the plan above in a first form.
+5. **Later.**
    - A formation moving as one body (a controller with one shared path, as
      in Age of Empires II and 0 A.D.), breaking and re-forming at narrow
      passages.

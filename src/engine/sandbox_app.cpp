@@ -1086,7 +1086,8 @@ struct SandboxSession
         {
             const auto simulation = world->stats();
             std::cout << "Simulation: " << simulation.tick << " ticks, slowest " << eaw::format_fixed(slowest_tick_ms, 2) << " ms | paths " << simulation.path_searches << " planned, "
-                      << simulation.partial_paths << " partial, " << simulation.path_expansions << " nodes expanded | blocked moves " << simulation.blocked_moves << '\n';
+                      << simulation.partial_paths << " partial, " << simulation.shared_routes << " shared, " << simulation.path_expansions << " nodes expanded | blocked moves "
+                      << simulation.blocked_moves << '\n';
             std::cout << "Combat: " << simulation.shots_fired << " shots, " << simulation.hits << " hits, " << simulation.kills << " kills, " << simulation.projectiles << " in flight\n";
         }
         std::cout << "Resources after idle: " << stats.live_textures << " textures, " << stats.free_texture_slots << " free and " << stats.pending_texture_slots << " pending texture slots, "

@@ -23,6 +23,9 @@ constexpr std::uint32_t chase_interval = 30;
 // progress while not waiting. Engine choices.
 constexpr float cohesion_slack = 30.0F;
 constexpr std::uint32_t cohesion_stall_ticks = 90;
+// Path search nodes expanded per tick at most (about 5 ms in a Release build), always at least one
+// request. An engine choice; requests beyond it wait for the next tick in order.
+constexpr std::uint64_t path_budget_per_tick = 30000;
 
 bool finite(const SimVector3& value) noexcept
 {
@@ -191,6 +194,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     group_stall_ticks_.push_back(0);
     group_waiting_.push_back(0);
     footprints_.push_back(spawn.footprint);
+    path_pending_.push_back(0);
     footprint_stamped_.push_back(0);
     stamp_footprint(ids_.size() - 1U, true);
     if (spawn.follows_ground && ground_.valid())
@@ -233,8 +237,23 @@ const SimSnapshot& SimulationWorld::snapshot() const noexcept
 
 SimulationWorld::Stats SimulationWorld::stats() const noexcept
 {
-    return {tick_, ids_.size(), commands_applied_,   stale_references_, blocked_moves_,   path_searches_,   partial_paths_, path_expansions_, shots_fired_,
-            hits_, kills_,      projectiles_.size(), separated_pairs_,  waiting_members_, released_members_};
+    return {.tick = tick_,
+            .entities = ids_.size(),
+            .commands_applied = commands_applied_,
+            .stale_references = stale_references_,
+            .blocked_moves = blocked_moves_,
+            .path_searches = path_searches_,
+            .partial_paths = partial_paths_,
+            .path_expansions = path_expansions_,
+            .queued_paths = path_queue_.size(),
+            .shared_routes = shared_routes_,
+            .shots_fired = shots_fired_,
+            .hits = hits_,
+            .kills = kills_,
+            .projectiles = projectiles_.size(),
+            .separated_pairs = separated_pairs_,
+            .waiting_members = waiting_members_,
+            .released_members = released_members_};
 }
 
 std::uint64_t SimulationWorld::state_hash() const noexcept
@@ -281,6 +300,17 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, group_ids_[index]);
         hash = hash_value(hash, group_best_remaining_[index]);
         hash = hash_value(hash, group_stall_ticks_[index]);
+        hash = hash_value(hash, path_pending_[index]);
+    }
+    for (const auto& request : path_queue_)
+    {
+        for (std::size_t member = 0; member < request.members.size(); ++member)
+        {
+            hash = hash_value(hash, request.members[member]);
+            hash = hash_value(hash, request.goals[member]);
+            hash = hash_value(hash, request.serials[member]);
+        }
+        hash = hash_value(hash, request.group_target);
     }
     for (const auto& projectile : projectiles_)
     {
@@ -374,17 +404,31 @@ void SimulationWorld::apply(const SimCommand& command)
 
 void SimulationWorld::plan_move(const std::size_t index, const SimVector3& target)
 {
-    auto& path = paths_[index];
-    path.clear();
-    if (follows_ground_[index] == 0 || passable_types_[index] == 0)
+    paths_[index].clear();
+    path_pending_[index] = 0;
+    if (follows_ground_[index] == 0 || passable_types_[index] == 0 || ground_.passability.size() != ground_.heights.size() || !ground_.valid())
     {
         move_targets_[index] = target;
         return;
     }
+    // The unit holds still (its target set, so it counts as moving) until the queue plans it.
+    move_targets_[index] = target;
+    const auto serial = next_path_serial_++;
+    if (next_path_serial_ == 0)
+    {
+        next_path_serial_ = 1;
+    }
+    path_pending_[index] = serial;
+    path_queue_.push_back({{ids_[index]}, {target}, {serial}, target});
+}
+
+void SimulationWorld::plan_route_now(const std::size_t index, const SimVector3& target)
+{
     const auto& position = positions_[index];
     const auto planned = pathfinder_.find(ground_, {position.x, position.y}, {target.x, target.y}, passable_types_[index]);
     if (planned.status == PathStatus::unavailable)
     {
+        paths_[index].clear();
         move_targets_[index] = target;
         return;
     }
@@ -394,17 +438,209 @@ void SimulationWorld::plan_move(const std::size_t index, const SimVector3& targe
     {
         ++partial_paths_;
     }
-    if (planned.waypoints.empty())
+    set_route(index, planned.waypoints, target.z);
+}
+
+void SimulationWorld::set_route(const std::size_t index, const std::vector<PathPoint>& waypoints, const float height)
+{
+    auto& path = paths_[index];
+    path.clear();
+    if (waypoints.empty())
     {
         move_targets_[index].reset();
         return;
     }
-    const auto destination = planned.waypoints.back();
-    move_targets_[index] = SimVector3{destination.x, destination.y, target.z};
-    for (auto waypoint = planned.waypoints.rbegin() + 1; waypoint != planned.waypoints.rend(); ++waypoint)
+    const auto destination = waypoints.back();
+    move_targets_[index] = SimVector3{destination.x, destination.y, height};
+    for (auto waypoint = waypoints.rbegin() + 1; waypoint != waypoints.rend(); ++waypoint)
     {
         path.push_back({waypoint->x, waypoint->y, 0.0F});
     }
+}
+
+// Requests are planned in the order they were made until the tick's node budget is spent (at least
+// one per tick), so a large order spreads over a few ticks instead of stalling one. Members whose
+// request was superseded or who died are skipped.
+void SimulationWorld::process_path_queue()
+{
+    std::uint64_t spent = 0;
+    bool first = true;
+    while (!path_queue_.empty() && (first || spent < path_budget_per_tick))
+    {
+        auto& request = path_queue_.front();
+        const auto before = path_expansions_;
+        bool finished = true;
+        if (request.members.size() == 1)
+        {
+            if (const auto dense = dense_index(request.members.front()); dense && path_pending_[*dense] == request.serials.front())
+            {
+                path_pending_[*dense] = 0;
+                plan_route_now(*dense, request.goals.front());
+            }
+        }
+        else
+        {
+            finished = plan_shared_route(request, spent, first);
+        }
+        first = false;
+        spent += path_expansions_ - before;
+        if (!finished)
+        {
+            // The rest of the group waits for the next tick's budget.
+            break;
+        }
+        path_queue_.pop_front();
+    }
+}
+
+// One search from the member nearest the group's centroid (the commander) to the group target, then
+// per member a short leg onto it (a straight line when one fits) and one from its end to the
+// member's slot. A member whose leg cannot be found gets a full search of its own. Members are
+// planned in order until the tick's budget is spent; the request keeps its shared path and resumes
+// with the next member in a later tick.
+bool SimulationWorld::plan_shared_route(PathRequest& request, std::uint64_t spent_before, const bool first_in_tick)
+{
+    const auto live = [&](const std::size_t member) -> std::optional<std::size_t>
+    {
+        const auto dense = dense_index(request.members[member]);
+        if (dense && path_pending_[*dense] == request.serials[member])
+        {
+            return dense;
+        }
+        return std::nullopt;
+    };
+    const auto call_start = path_expansions_;
+    const auto spent = [&]
+    {
+        return spent_before + (path_expansions_ - call_start);
+    };
+    bool planned_any = false;
+    if (!request.shared_ready)
+    {
+        request.shared_ready = true;
+        // The commander: the live member nearest the live members' centroid (ties to the lower id).
+        double cx = 0.0;
+        double cy = 0.0;
+        std::size_t count = 0;
+        for (std::size_t member = 0; member < request.members.size(); ++member)
+        {
+            if (const auto dense = live(member))
+            {
+                cx += positions_[*dense].x;
+                cy += positions_[*dense].y;
+                ++count;
+            }
+        }
+        if (count == 0)
+        {
+            return true;
+        }
+        cx /= static_cast<double>(count);
+        cy /= static_cast<double>(count);
+        std::optional<std::size_t> commander;
+        for (std::size_t member = 0; member < request.members.size(); ++member)
+        {
+            const auto dense = live(member);
+            if (!dense)
+            {
+                continue;
+            }
+            const auto distance = std::hypot(static_cast<double>(positions_[*dense].x) - cx, static_cast<double>(positions_[*dense].y) - cy);
+            if (!commander || distance < std::hypot(static_cast<double>(positions_[*commander].x) - cx, static_cast<double>(positions_[*commander].y) - cy))
+            {
+                commander = dense;
+            }
+        }
+        request.mask = passable_types_[*commander];
+        request.shared_start = {positions_[*commander].x, positions_[*commander].y};
+        const auto shared = pathfinder_.find(ground_, request.shared_start, {request.group_target.x, request.group_target.y}, request.mask);
+        ++path_searches_;
+        path_expansions_ += shared.expanded;
+        if (shared.status == PathStatus::partial)
+        {
+            ++partial_paths_;
+        }
+        request.shared_waypoints = shared.waypoints;
+        if (!request.shared_waypoints.empty())
+        {
+            ++shared_routes_;
+        }
+    }
+    for (; request.next_member < request.members.size(); ++request.next_member)
+    {
+        // The budget is spent and this tick already planned something: resume next tick.
+        if (spent() >= path_budget_per_tick && (planned_any || !first_in_tick))
+        {
+            return false;
+        }
+        const auto dense = live(request.next_member);
+        if (!dense)
+        {
+            continue;
+        }
+        path_pending_[*dense] = 0;
+        plan_shared_member(request, *dense, request.goals[request.next_member]);
+        planned_any = true;
+    }
+    return true;
+}
+
+void SimulationWorld::plan_shared_member(const PathRequest& request, const std::size_t index, const SimVector3& goal)
+{
+    if (request.shared_waypoints.empty())
+    {
+        plan_route_now(index, goal);
+        return;
+    }
+    const auto& shared_end = request.shared_waypoints.back();
+
+    const PathPoint position{positions_[index].x, positions_[index].y};
+    std::vector<PathPoint> route;
+    // Onto the shared path: straight to its first waypoint, or a short search to the commander.
+    if (!ground_line_passable(ground_, position, request.shared_waypoints.front(), request.mask))
+    {
+        const auto onto = local_pathfinder_.find(ground_, position, request.shared_start, request.mask);
+        path_expansions_ += onto.expanded;
+        if (onto.status != PathStatus::reached)
+        {
+            plan_route_now(index, goal);
+            return;
+        }
+        route = onto.waypoints;
+    }
+    route.insert(route.end(), request.shared_waypoints.begin(), request.shared_waypoints.end());
+    // Off it to the member's own slot.
+    const PathPoint slot{goal.x, goal.y};
+    if (slot != shared_end)
+    {
+        if (ground_line_passable(ground_, shared_end, slot, request.mask))
+        {
+            route.push_back(slot);
+        }
+        else
+        {
+            const auto off = local_pathfinder_.find(ground_, shared_end, slot, request.mask);
+            path_expansions_ += off.expanded;
+            route.insert(route.end(), off.waypoints.begin(), off.waypoints.end());
+        }
+    }
+    // Straighten the composed route from the member's position: keep a waypoint only where a
+    // straight line to the following one would cross ground the class may not enter. In open
+    // ground members head straight for their slots instead of converging on the shared path.
+    std::vector<PathPoint> straightened;
+    auto anchor = position;
+    for (std::size_t next = 0; next < route.size();)
+    {
+        auto furthest = next;
+        while (furthest + 1 < route.size() && ground_line_passable(ground_, anchor, route[furthest + 1], request.mask))
+        {
+            ++furthest;
+        }
+        straightened.push_back(route[furthest]);
+        anchor = route[furthest];
+        next = furthest + 1;
+    }
+    set_route(index, straightened, goal.z);
 }
 
 void SimulationWorld::apply_formation_move(const SimCommand& command)
@@ -441,6 +677,8 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     {
         group_speed = std::min(group_speed, max_speeds_[index]);
     }
+    // Ground members that search share one request per movement class; the rest plan as usual.
+    std::vector<PathRequest> shared;
     for (std::size_t member = 0; member < movers.size(); ++member)
     {
         const auto index = movers[member];
@@ -457,6 +695,30 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
             slot.z = positions_[index].z;
         }
         plan_move(index, slot);
+        if (path_pending_[index] == 0 || movers.size() < 2)
+        {
+            continue;
+        }
+        // Move the member's queued request into its class's shared request.
+        const auto serial = path_pending_[index];
+        path_queue_.pop_back();
+        auto found = std::ranges::find_if(shared,
+                                          [&](const PathRequest& request)
+                                          {
+                                              return passable_types_[*dense_index(request.members.front())] == passable_types_[index];
+                                          });
+        if (found == shared.end())
+        {
+            shared.push_back({{}, {}, {}, command.target});
+            found = shared.end() - 1;
+        }
+        found->members.push_back(ids_[index]);
+        found->goals.push_back(slot);
+        found->serials.push_back(serial);
+    }
+    for (auto& request : shared)
+    {
+        path_queue_.push_back(std::move(request));
     }
 }
 
@@ -575,6 +837,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         group_stall_ticks_[dense] = group_stall_ticks_[last];
         group_waiting_[dense] = group_waiting_[last];
         footprints_[dense] = footprints_[last];
+        path_pending_[dense] = path_pending_[last];
         footprint_stamped_[dense] = footprint_stamped_[last];
         slot_dense_[ids_[dense].index] = static_cast<std::uint32_t>(dense);
     }
@@ -601,6 +864,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     group_stall_ticks_.pop_back();
     group_waiting_.pop_back();
     footprints_.pop_back();
+    path_pending_.pop_back();
     footprint_stamped_.pop_back();
     slot_dense_[slot] = no_dense;
     // A slot whose generation would wrap is retired instead of reused.
@@ -614,6 +878,7 @@ void SimulationWorld::destroy(const std::size_t dense)
 void SimulationWorld::run_movement()
 {
     const auto dt = static_cast<float>(tick_seconds_);
+    process_path_queue();
     measure_remaining_routes();
     update_group_cohesion();
     for (std::size_t index = 0; index < ids_.size(); ++index)
@@ -625,7 +890,7 @@ void SimulationWorld::run_movement()
             group_ids_[index] = 0;
             continue;
         }
-        if (group_waiting_[index] != 0)
+        if (group_waiting_[index] != 0 || path_pending_[index] != 0)
         {
             continue;
         }
@@ -659,6 +924,21 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
     // Ground units move in the horizontal plane; their height always comes from the surface. A
     // tick's movement carries on past reached waypoints, so corners do not slow a unit down.
     auto remaining = travel_speed(index) * dt;
+    // An intermediate waypoint is passed once the one after it is in straight reach. A crowd keeps
+    // pushing units away from a shared corner waypoint, so requiring each unit to touch it left
+    // groups circling there (found by the path budget test).
+    if (allowed != 0)
+    {
+        while (!path.empty())
+        {
+            const auto& after = path.size() > 1 ? path[path.size() - 2] : *target;
+            if (!ground_line_passable(ground_, {position.x, position.y}, {after.x, after.y}, allowed))
+            {
+                break;
+            }
+            path.pop_back();
+        }
+    }
     while (target)
     {
         const auto waypoint = path.empty() ? *target : path.back();
@@ -1153,6 +1433,7 @@ void SimulationWorld::remove_dead()
 void SimulationWorld::set_ground(GroundMap ground)
 {
     ground_ = std::move(ground);
+    local_pathfinder_.reset();
     ground_passability_ = ground_.passability;
     footprint_cover_.assign(ground_passability_.size(), 0);
     std::ranges::fill(footprint_stamped_, std::uint8_t{0});
@@ -1207,6 +1488,7 @@ void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
     }
     footprint_stamped_[index] = add ? 1U : 0U;
     pathfinder_.reset();
+    local_pathfinder_.reset();
 }
 
 const GroundMap& SimulationWorld::ground() const noexcept

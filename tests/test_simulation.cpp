@@ -2,6 +2,8 @@
 
 #include "eaw/formation.hpp"
 
+#include <tuple>
+
 #include <numbers>
 
 namespace {
@@ -689,6 +691,74 @@ void test_ground_footprints()
     require(!world.spawn({.type_name = "Bad", .footprint = eaw::GroundFootprint{{0.0F, 0.0F, 0.0F}, -1.0F, 1.0F, 0.0F, eaw::passability::obstacle}}), "an invalid footprint must be rejected");
 }
 
+void test_path_budget_and_shared_routes()
+{
+    // A 200x200 field with a wall across x = 100 open only at rows 180-185, so every route detours.
+    eaw::GroundMap ground;
+    ground.width = 200;
+    ground.height = 200;
+    ground.spacing = 10.0F;
+    ground.heights.assign(40000, 0.0F);
+    ground.passability.assign(40000, eaw::passability::clear);
+    for (std::uint32_t y = 0; y < 180; ++y)
+    {
+        ground.passability[y * 200 + 100] = eaw::passability::steep;
+    }
+    const auto run = [&](const bool as_group)
+    {
+        eaw::SimulationWorld world(1.0 / 30.0);
+        world.set_ground(ground);
+        std::vector<eaw::EntityId> units;
+        for (int index = 0; index < 24; ++index)
+        {
+            const auto id = world.spawn({.type_name = "Trooper",
+                                         .position = {300.0F + static_cast<float>(index % 6) * 12.0F, 300.0F + static_cast<float>(index / 6) * 12.0F, 0.0F},
+                                         .max_speed = 60.0F,
+                                         .follows_ground = true,
+                                         .passable_types = eaw::passability::clear,
+                                         .radius = 4.0F});
+            require(id.ok(), "test spawn must succeed");
+            units.push_back(*id);
+        }
+        if (as_group)
+        {
+            world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = units, .target = {1700.0F, 300.0F, 0.0F}});
+        }
+        else
+        {
+            for (std::size_t index = 0; index < units.size(); ++index)
+            {
+                world.submit({eaw::SimCommandKind::move, {units[index]}, {1700.0F, 300.0F + static_cast<float>(index) * 10.0F, 0.0F}});
+            }
+        }
+        world.step();
+        const auto queued_after_first = world.stats().queued_paths;
+        const auto searches_after_first = world.stats().path_searches;
+        for (int tick = 0; tick < 4800; ++tick)
+        {
+            world.step();
+        }
+        std::size_t arrived = 0;
+        for (const auto& entity : world.snapshot().entities)
+        {
+            arrived += !entity.moving && entity.position.x > 1500.0F ? 1U : 0U;
+        }
+        return std::tuple{queued_after_first, searches_after_first, world.stats(), arrived, world.state_hash()};
+    };
+    // Individual orders: the budget spreads the 24 long searches over several ticks.
+    const auto [queued, first_searches, individual, individual_arrived, individual_hash] = run(false);
+    require(queued > 0 && first_searches >= 1 && first_searches < 24 && individual.queued_paths == 0 && individual_arrived == 24,
+            "the search budget must spread a large order over ticks and still plan every unit");
+    require(std::get<4>(run(false)) == individual_hash, "budgeted planning must be deterministic");
+    // One group order: one shared search instead of 24.
+    const auto [group_queued, group_first, grouped, grouped_arrived, group_hash] = run(true);
+    require(grouped.shared_routes == 1 && grouped.path_searches < 6 && group_queued == 0 && grouped_arrived == 24,
+            "a formation must plan one shared route and short legs, and every member must arrive");
+    require(grouped.path_expansions * 4 < individual.path_expansions, "a shared route must cost far less than searches per unit");
+    (void)group_first;
+    (void)group_hash;
+}
+
 const ModuleRegistrar registrar("simulation", {
                                                   {"test_simulation_core", &test_simulation_core},
                                                   {"test_ground_movement", &test_ground_movement},
@@ -699,6 +769,7 @@ const ModuleRegistrar registrar("simulation", {
                                                   {"test_narrow_passage", &test_narrow_passage},
                                                   {"test_group_cohesion", &test_group_cohesion},
                                                   {"test_ground_footprints", &test_ground_footprints},
+                                                  {"test_path_budget_and_shared_routes", &test_path_budget_and_shared_routes},
                                               });
 
 } // namespace

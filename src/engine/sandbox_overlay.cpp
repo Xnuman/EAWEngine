@@ -45,7 +45,8 @@ std::vector<std::string> sandbox_overlay_lines(const SandboxOverlayView& view)
                         std::to_string(view.dropped_ticks) + " | blocked moves " + std::to_string(simulation.blocked_moves) + " | separating " + std::to_string(simulation.separated_pairs) +
                         " pairs | waiting " + std::to_string(simulation.waiting_members) + " units");
         lines.push_back("Paths: " + std::to_string(simulation.path_searches) + " planned | " + std::to_string(simulation.partial_paths) + " partial | " + std::to_string(simulation.path_expansions) +
-                        " nodes expanded | tick " + format_fixed(view.last_tick_ms, 2) + " ms, slowest " + format_fixed(view.slowest_tick_ms, 2) + " ms");
+                        " nodes expanded | " + std::to_string(simulation.queued_paths) + " queued, " + std::to_string(simulation.shared_routes) + " shared | tick " +
+                        format_fixed(view.last_tick_ms, 2) + " ms, slowest " + format_fixed(view.slowest_tick_ms, 2) + " ms");
         lines.push_back("Combat: " + std::to_string(simulation.shots_fired) + " shots | " + std::to_string(simulation.hits) + " hits | " + std::to_string(simulation.kills) + " kills | " +
                         std::to_string(simulation.projectiles) + " in flight");
         if (view.selection != nullptr && view.selection->size() == 1)
