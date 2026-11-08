@@ -448,3 +448,18 @@ Fighter flight.
 - **Not used yet.** Bombing runs and the original's flight paths, banking,
   `SpaceBehavior` entries other than the locomotor, and fighter launch and
   docking from carriers.
+- **Observed in the original** (black-box play of Forces of Corruption by the
+  repository owner, 2026-11-08; qualitative, nothing measured yet):
+  - fighters fly in a single plane most of the time;
+  - when squadrons attack each other, the fight becomes a dogfight that
+    further squadrons can join: fighters chase each other and leave their
+    plane, climbing and diving in loops;
+  - a squadron ordered to roughly reverse its direction turns around through a
+    vertical half-loop (a "backflip") outside its plane instead of a flat turn;
+    the angle range that triggers it is not known;
+  - fighters of one squadron push overlapping squadron mates apart. The engine
+    does not separate flyers yet, so this contradicts the current choice above.
+- **Open measurements:** the vertical extent of dogfights, the reversal angle
+  that triggers a half-loop, how fast fighters return to their plane, and
+  whether separation also acts between squadrons or against other owners.
+  Video captures of the original would settle these.

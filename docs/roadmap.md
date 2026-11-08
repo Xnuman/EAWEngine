@@ -213,6 +213,11 @@ Gaps toward the deliverable, in planned order:
    so decisions such as chasing, attack runs, and engaging on one's own live in
    the behavior layer, with an engine-native `Stance` (aggressive, hold
    position, hold fire) that AI and Lua can later drive through commands.
+   Next, from observing the original (compatibility notes, "Fighter flight"):
+   fighters fly in 3D (a pitch beside the heading; presentation poses pitch
+   and bank), separate from squadron mates, reverse direction through a
+   vertical half-loop, and dogfight, chasing each other above and below their
+   plane before returning to it.
    Covers:
    - weapons on `HardPoints` (94 stock uses);
    - space movement (turning, speed, and the space layer);
@@ -253,6 +258,11 @@ Known provisional choices to verify against the original:
 - Planets, fleets, economy, construction, heroes, transitions to tactical,
   story events, campaign AI, persistence and save versioning.
 - Deliverable: one stock campaign playable end to end.
+
+Engine extensions (non-legacy mode, opt-in): player-controlled unit stances.
+The original gives players no stance control; the simulation's `Stance`
+already exists for AI and scripts, so a stance control can later be offered as
+an option outside legacy mode.
 
 ## M6 — compatibility and SDK
 
