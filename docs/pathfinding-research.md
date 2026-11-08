@@ -296,7 +296,7 @@ EAWEngine's steps:
      nobody is pushed onto ground they may not enter.
    - A unit pushed off its route plans again.
    - Units turn at their XML rate and slow down while facing away.
-2. **Formation slots for group orders.**
+2. **Formation slots for group orders** (done).
    - Ranks follow `FormationOrder`, spacing follows footprints and
      `FormationSpacing`, and units are assigned to slots deterministically.
    - The group moves at its slowest member's speed.

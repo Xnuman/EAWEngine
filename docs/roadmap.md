@@ -187,8 +187,9 @@ Done:
 
 Gaps toward the deliverable, in planned order:
 
-1. **Group movement.** Step 1 (footprints, separation, turn rates) is done;
-   formations and company expansion follow
+1. **Group movement.** Steps 1 (footprints, separation, turn rates) and 2
+   (formation slots for group orders, group speed) are done; company
+   expansion follows
    ([plan and sources](pathfinding-research.md#group-movement-and-formations)).
    Covers:
    - separation, so units do not stack;

@@ -109,6 +109,19 @@ float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& de
     return result.ec == std::errc{} && std::isfinite(value) ? value : 0.0F;
 }
 
+std::uint32_t type_formation_order(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto order = type_float_field(catalog, definition, "FormationOrder");
+    return order >= 1.0F && order <= 1000.0F ? static_cast<std::uint32_t>(order) : 2U;
+}
+
+float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto* node = catalog.field(definition, "FormationSpacing").field;
+    const auto spacing = node != nullptr ? type_float_field(catalog, definition, "FormationSpacing") : 0.5F;
+    return spacing >= 0.0F && spacing <= 100.0F ? spacing : 0.5F;
+}
+
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto rate = type_float_field(catalog, definition, "Max_Rate_Of_Turn");

@@ -173,6 +173,10 @@ std::uint32_t type_passable_types(const GameObjectCatalog& catalog, const XmlDef
 // A numeric field through the variant chain; 0 when it is missing or not a finite number.
 float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::string_view field);
 
+// XML FormationOrder (default 2, the most common) and FormationSpacing (default 0.5, likewise).
+std::uint32_t type_formation_order(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+
 // XML Max_Rate_Of_Turn in radians per second (provisional_turn_rate_scale); 0 turns instantly.
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 

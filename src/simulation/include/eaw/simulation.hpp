@@ -12,6 +12,7 @@
 #include "eaw/status.hpp"
 
 #include "eaw/combat.hpp"
+#include "eaw/formation.hpp"
 #include "eaw/ground_map.hpp"
 #include "eaw/pathfinding.hpp"
 #include "eaw/simulation_types.hpp"
@@ -51,6 +52,9 @@ struct EntitySpawn
     float radius{};
     // Turn rate in radians per second; zero turns instantly.
     float turn_rate{};
+    // Formation rank (lower stands in front) and spacing (see formation.hpp).
+    std::uint32_t formation_order{2};
+    float formation_spacing{0.5F};
 };
 
 enum class SimCommandKind : std::uint8_t
@@ -62,6 +66,9 @@ enum class SimCommandKind : std::uint8_t
     destroy,
     // Attack `target_entity`: armed entities chase it until it is in range and fire until it dies.
     attack,
+    // Move the mobile entities together: each to its slot of a formation centered on `target`
+    // (formation.hpp), all at the slowest member's speed. Clears attack orders like move.
+    formation_move,
 };
 
 struct SimCommand
@@ -229,6 +236,9 @@ private:
     void destroy(std::size_t dense);
     void run_movement();
     void plan_move(std::size_t index, const SimVector3& target);
+    void apply_formation_move(const SimCommand& command);
+    // Speed this tick: the entity's own, or its group's when that is slower.
+    [[nodiscard]] float travel_speed(std::size_t index) const noexcept;
     void move_over_ground(std::size_t index, float dt);
     // Turns toward `desired` (radians) at the entity's turn rate and returns how much of its speed it
     // may use: 1 when facing the way, falling to 0 at 90 degrees or more off.
@@ -274,6 +284,10 @@ private:
     std::vector<CombatState> combat_;
     std::vector<float> radii_;
     std::vector<float> turn_rates_;
+    std::vector<std::uint32_t> formation_orders_;
+    std::vector<float> formation_spacings_;
+    // Group speed of a formation move until the entity arrives; zero when none.
+    std::vector<float> speed_limits_;
     std::vector<SimVector3> separation_push_;
     std::size_t separated_pairs_{};
     std::vector<Projectile> projectiles_;

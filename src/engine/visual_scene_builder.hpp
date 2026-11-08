@@ -67,6 +67,9 @@ struct SpawnableType
     // EntitySpawn.
     float radius{};
     float turn_rate{};
+    // XML FormationOrder and FormationSpacing (formation.hpp).
+    std::uint32_t formation_order{2};
+    float formation_spacing{0.5F};
 };
 
 struct VisualMapAsset

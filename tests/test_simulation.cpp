@@ -1,5 +1,7 @@
 #include "test_support.hpp"
 
+#include "eaw/formation.hpp"
+
 #include <numbers>
 
 namespace {
@@ -461,12 +463,77 @@ void test_turning_and_separation()
     require(!world.spawn({.type_name = "Bad", .radius = -1.0F}) && !world.spawn({.type_name = "Bad", .turn_rate = std::nanf("")}), "invalid radii and turn rates must be rejected");
 }
 
+void test_formations()
+{
+    // Six equal members (pitch 2 x 5 x 1.5 = 15): rows of four and two facing +X.
+    std::vector<eaw::FormationMember> members;
+    for (std::uint32_t index = 0; index < 6; ++index)
+    {
+        members.push_back({{index + 1, 1}, {static_cast<float>(index) * 3.0F, 0.0F, 0.0F}, 5.0F, 0.5F, 2});
+    }
+    members[5].order = 1;
+    const eaw::SimVector3 target{100.0F, 200.0F, 7.0F};
+    const auto slots = eaw::formation_slots(members, target, 0.0F);
+    require(slots.size() == 6, "every member must get a slot");
+    float min_x = 1.0e9F;
+    float max_x = -1.0e9F;
+    float min_y = 1.0e9F;
+    float max_y = -1.0e9F;
+    for (std::size_t first = 0; first < slots.size(); ++first)
+    {
+        require(slots[first].id == members[first].id && slots[first].position.z == 7.0F, "slots must follow member order and take the target height");
+        min_x = std::min(min_x, slots[first].position.x);
+        max_x = std::max(max_x, slots[first].position.x);
+        min_y = std::min(min_y, slots[first].position.y);
+        max_y = std::max(max_y, slots[first].position.y);
+        for (auto second = first + 1; second < slots.size(); ++second)
+        {
+            require(std::hypot(slots[first].position.x - slots[second].position.x, slots[first].position.y - slots[second].position.y) >= 14.99F, "slots must keep the members' pitch");
+        }
+    }
+    require(std::fabs((min_x + max_x) * 0.5F - target.x) < 1.0e-3F && std::fabs((min_y + max_y) * 0.5F - target.y) < 1.0e-3F && std::fabs(max_x - min_x - 15.0F) < 1.0e-3F,
+            "the block must be centered on the target, two rows deep");
+    require(slots[5].position.x > target.x, "the lowest order must stand in the front row");
+    // Members take slots by where they stand across the facing: +X facing puts -Y on the right.
+    const std::vector<eaw::FormationMember> pair{{{1, 1}, {0.0F, 50.0F, 0.0F}, 5.0F, 0.5F, 2}, {{2, 1}, {0.0F, -50.0F, 0.0F}, 5.0F, 0.5F, 2}};
+    const auto paired = eaw::formation_slots(pair, {100.0F, 0.0F, 0.0F}, 0.0F);
+    require(paired[0].position.y > paired[1].position.y, "members must keep their side so their paths do not cross");
+    require(std::fabs(eaw::formation_facing(pair, {0.0F, 100.0F, 0.0F}) - std::numbers::pi_v<float> / 2.0F) < 1.0e-5F, "the facing must point from the centroid to the target");
+
+    // The world moves the group at its slowest member's speed into distinct slots.
+    eaw::GroundMap ground;
+    ground.width = 40;
+    ground.height = 40;
+    ground.spacing = 10.0F;
+    ground.heights.assign(1600, 0.0F);
+    ground.passability.assign(1600, eaw::passability::clear);
+    eaw::SimulationWorld world(0.1);
+    world.set_ground(ground);
+    const auto fast = world.spawn({.type_name = "Fast", .position = {50.0F, 100.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+    const auto slow = world.spawn({.type_name = "Slow", .position = {50.0F, 120.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+    const auto fixed = world.spawn({.type_name = "Turret", .position = {50.0F, 140.0F, 0.0F}, .follows_ground = true});
+    require(fast && slow && fixed, "test spawns must succeed");
+    world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = {*fast, *slow, *fixed}, .target = {300.0F, 110.0F, 0.0F}});
+    world.step();
+    const auto& moving = world.snapshot().entities;
+    require(std::fabs(moving[0].position.x - 52.0F) < 0.5F && std::fabs(moving[1].position.x - 52.0F) < 0.5F && !moving[2].moving, "a group must move at its slowest member's speed");
+    for (int tick = 0; tick < 200; ++tick)
+    {
+        world.step();
+    }
+    const auto& arrived = world.snapshot().entities;
+    require(!arrived[0].moving && !arrived[1].moving && std::hypot(arrived[0].position.x - arrived[1].position.x, arrived[0].position.y - arrived[1].position.y) >= 14.0F &&
+                std::fabs((arrived[0].position.x + arrived[1].position.x) * 0.5F - 300.0F) < 1.0F,
+            "a group must arrive in distinct slots around the target");
+}
+
 const ModuleRegistrar registrar("simulation", {
                                                   {"test_simulation_core", &test_simulation_core},
                                                   {"test_ground_movement", &test_ground_movement},
                                                   {"test_pathfinding", &test_pathfinding},
                                                   {"test_combat", &test_combat},
                                                   {"test_turning_and_separation", &test_turning_and_separation},
+                                                  {"test_formations", &test_formations},
                                               });
 
 } // namespace

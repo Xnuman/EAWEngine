@@ -132,9 +132,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a non-finite position, heading, or speed");
     }
-    if (!valid_amount(spawn.radius) || !valid_amount(spawn.turn_rate))
+    if (!valid_amount(spawn.radius) || !valid_amount(spawn.turn_rate) || !valid_amount(spawn.formation_spacing))
     {
-        return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite radius or turn rate");
+        return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite radius, turn rate, or formation spacing");
     }
     if (!valid_profile(spawn.combat))
     {
@@ -173,6 +173,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     combat_.push_back({.profile = spawn.combat, .health = spawn.combat.health, .shield = spawn.combat.shield});
     radii_.push_back(spawn.radius);
     turn_rates_.push_back(spawn.turn_rate);
+    formation_orders_.push_back(spawn.formation_order);
+    formation_spacings_.push_back(spawn.formation_spacing);
+    speed_limits_.push_back(0.0F);
     if (spawn.follows_ground && ground_.valid())
     {
         positions_.back().z = ground_.surface_height(spawn.position.x, spawn.position.y);
@@ -255,6 +258,9 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, combat.chase_timer);
         hash = hash_value(hash, radii_[index]);
         hash = hash_value(hash, turn_rates_[index]);
+        hash = hash_value(hash, formation_orders_[index]);
+        hash = hash_value(hash, formation_spacings_[index]);
+        hash = hash_value(hash, speed_limits_[index]);
     }
     for (const auto& projectile : projectiles_)
     {
@@ -280,9 +286,14 @@ std::optional<std::size_t> SimulationWorld::dense_index(const EntityId id) const
 void SimulationWorld::apply(const SimCommand& command)
 {
     ++commands_applied_;
-    if (command.kind == SimCommandKind::move && !finite(command.target))
+    if ((command.kind == SimCommandKind::move || command.kind == SimCommandKind::formation_move) && !finite(command.target))
     {
         ++stale_references_;
+        return;
+    }
+    if (command.kind == SimCommandKind::formation_move)
+    {
+        apply_formation_move(command);
         return;
     }
     for (const auto id : command.entities)
@@ -295,15 +306,19 @@ void SimulationWorld::apply(const SimCommand& command)
         }
         switch (command.kind)
         {
+        case SimCommandKind::formation_move:
+            break;
         case SimCommandKind::move:
             combat_[*dense].target = {};
             combat_[*dense].ordered = false;
+            speed_limits_[*dense] = 0.0F;
             if (max_speeds_[*dense] > 0.0F)
             {
                 plan_move(*dense, command.target);
             }
             break;
         case SimCommandKind::stop:
+            speed_limits_[*dense] = 0.0F;
             move_targets_[*dense].reset();
             paths_[*dense].clear();
             combat_[*dense].target = {};
@@ -322,6 +337,7 @@ void SimulationWorld::apply(const SimCommand& command)
             {
                 combat.target = command.target_entity;
                 combat.ordered = true;
+                speed_limits_[*dense] = 0.0F;
                 combat.chase_timer = 0;
             }
             break;
@@ -368,6 +384,57 @@ void SimulationWorld::plan_move(const std::size_t index, const SimVector3& targe
     }
 }
 
+void SimulationWorld::apply_formation_move(const SimCommand& command)
+{
+    std::vector<std::size_t> movers;
+    std::vector<FormationMember> members;
+    for (const auto id : command.entities)
+    {
+        const auto dense = dense_index(id);
+        if (!dense)
+        {
+            ++stale_references_;
+            continue;
+        }
+        if (max_speeds_[*dense] <= 0.0F || std::ranges::find(movers, *dense) != movers.end())
+        {
+            continue;
+        }
+        movers.push_back(*dense);
+        members.push_back({id, positions_[*dense], radii_[*dense], formation_spacings_[*dense], formation_orders_[*dense]});
+    }
+    if (movers.empty())
+    {
+        return;
+    }
+    const auto slots = formation_slots(members, command.target, formation_facing(members, command.target));
+    float group_speed = max_speeds_[movers.front()];
+    for (const auto index : movers)
+    {
+        group_speed = std::min(group_speed, max_speeds_[index]);
+    }
+    for (std::size_t member = 0; member < movers.size(); ++member)
+    {
+        const auto index = movers[member];
+        combat_[index].target = {};
+        combat_[index].ordered = false;
+        speed_limits_[index] = movers.size() > 1 ? group_speed : 0.0F;
+        auto slot = slots[member].position;
+        // Flyers keep their altitude; ground units take theirs from the surface anyway.
+        if (follows_ground_[index] == 0)
+        {
+            slot.z = positions_[index].z;
+        }
+        plan_move(index, slot);
+    }
+}
+
+float SimulationWorld::travel_speed(const std::size_t index) const noexcept
+{
+    const auto limit = speed_limits_[index];
+    return limit > 0.0F ? std::min(max_speeds_[index], limit) : max_speeds_[index];
+}
+
 void SimulationWorld::destroy(const std::size_t dense)
 {
     const auto slot = ids_[dense].index;
@@ -390,6 +457,9 @@ void SimulationWorld::destroy(const std::size_t dense)
         combat_[dense] = combat_[last];
         radii_[dense] = radii_[last];
         turn_rates_[dense] = turn_rates_[last];
+        formation_orders_[dense] = formation_orders_[last];
+        formation_spacings_[dense] = formation_spacings_[last];
+        speed_limits_[dense] = speed_limits_[last];
         slot_dense_[ids_[dense].index] = static_cast<std::uint32_t>(dense);
     }
     ids_.pop_back();
@@ -407,6 +477,9 @@ void SimulationWorld::destroy(const std::size_t dense)
     combat_.pop_back();
     radii_.pop_back();
     turn_rates_.pop_back();
+    formation_orders_.pop_back();
+    formation_spacings_.pop_back();
+    speed_limits_.pop_back();
     slot_dense_[slot] = no_dense;
     // A slot whose generation would wrap is retired instead of reused.
     if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
@@ -424,6 +497,7 @@ void SimulationWorld::run_movement()
         auto& target = move_targets_[index];
         if (!target)
         {
+            speed_limits_[index] = 0.0F;
             continue;
         }
         auto& position = positions_[index];
@@ -435,7 +509,7 @@ void SimulationWorld::run_movement()
         const SimVector3 delta{target->x - position.x, target->y - position.y, target->z - position.z};
         const auto distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto speed_factor = delta.x != 0.0F || delta.y != 0.0F ? steer(index, std::atan2(delta.y, delta.x), dt) : 1.0F;
-        const auto step_length = max_speeds_[index] * dt * speed_factor;
+        const auto step_length = travel_speed(index) * dt * speed_factor;
         if (distance <= std::max(step_length, arrival_distance))
         {
             position = *target;
@@ -455,7 +529,7 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
     const auto allowed = passable_types_[index];
     // Ground units move in the horizontal plane; their height always comes from the surface. A
     // tick's movement carries on past reached waypoints, so corners do not slow a unit down.
-    auto remaining = max_speeds_[index] * dt;
+    auto remaining = travel_speed(index) * dt;
     while (target)
     {
         const auto waypoint = path.empty() ? *target : path.back();

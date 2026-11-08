@@ -382,30 +382,20 @@ struct SandboxSession
 
     void order_move(const eaw::SimVector3& target)
     {
-        // Selected mobile units in a deterministic order (by id) spread on a grid.
-        std::vector<const eaw::EntitySnapshot*> movers;
+        // Selected mobile units, in id order, move as one formation centered on the target.
+        std::vector<eaw::EntityId> movers;
         for (const auto& entity : world->snapshot().entities)
         {
             if (selection.contains(eaw::entity_key(entity.id)) && entity.max_speed > 0.0F)
             {
-                movers.push_back(&entity);
+                movers.push_back(entity.id);
             }
         }
-        std::ranges::sort(movers, {},
-                          [](const eaw::EntitySnapshot* entity)
-                          {
-                              return eaw::entity_key(entity->id);
-                          });
-        const auto targets = eaw::grid_targets(target, movers.size(), 40.0F);
-        for (std::size_t index = 0; index < movers.size(); ++index)
-        {
-            auto spot = targets[index];
-            // Ground units take the surface height themselves; flyers keep their altitude.
-            spot.z = movers[index]->follows_ground || !terrain_heights.valid() ? spot.z : movers[index]->position.z;
-            world->submit({eaw::SimCommandKind::move, {movers[index]->id}, spot});
-        }
+        std::ranges::sort(movers, {}, eaw::entity_key);
+        const auto count = movers.size();
+        world->submit({.kind = eaw::SimCommandKind::formation_move, .entities = std::move(movers), .target = target});
         ++orders_issued;
-        std::cout << "Move " << movers.size() << " units to " << eaw::format_fixed(target.x, 0) << ", " << eaw::format_fixed(target.y, 0) << ", " << eaw::format_fixed(target.z, 0) << '\n';
+        std::cout << "Move " << count << " units to " << eaw::format_fixed(target.x, 0) << ", " << eaw::format_fixed(target.y, 0) << ", " << eaw::format_fixed(target.z, 0) << '\n';
     }
 
     void spawn_units(const std::size_t type_index, const eaw::SimVector3& point, const std::uint32_t count)
