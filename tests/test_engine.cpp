@@ -1,5 +1,7 @@
 #include "test_support.hpp"
 
+#include "sandbox_options.hpp"
+
 namespace {
 
 using namespace eaw_test;
@@ -524,6 +526,30 @@ void test_visual_terrain()
     std::filesystem::remove_all(root, ignored);
 }
 
+void test_sandbox_options()
+{
+    const auto parse = [](std::initializer_list<const char*> arguments)
+    {
+        std::vector<const char*> argv{"EAWEngine"};
+        argv.insert(argv.end(), arguments.begin(), arguments.end());
+        return eaw::parse_sandbox_options(static_cast<int>(argv.size()), argv.data());
+    };
+    const auto options = expect_ok(parse({"sandbox", "--map", "DATA/ART/MAPS/X.TED", "--spawn", "T2B_Tank:6@2", "--spawn", "AT_ST_Walker", "--vsync", "off", "--frame-limit", "10", "--overlay",
+                                          "--mod", "D:/Mods/A", "--game", "eaw"}),
+                                   "parsing sandbox options");
+    require(options.mode == eaw::RunMode::sandbox && options.map == "DATA/ART/MAPS/X.TED" && !options.vsync && options.frame_limit == 10U && options.overlay && options.mods.size() == 1 &&
+                options.variant == eaw::GameVariant::empire_at_war,
+            "sandbox options must be read");
+    require(options.spawns.size() == 2 && options.spawns[0].type == "T2B_Tank" && options.spawns[0].count == 6 && options.spawns[0].owner == 2U && options.spawns[1].type == "AT_ST_Walker" &&
+                options.spawns[1].count == 0 && !options.spawns[1].owner,
+            "--spawn must read its type, count, and owner");
+    require(expect_ok(parse({"--help"}), "parsing --help").show_help && expect_ok(parse({"doctor"}), "parsing doctor").mode == eaw::RunMode::doctor && !expect_ok(parse({}), "parsing nothing").overlay,
+            "the help flag, doctor mode, and the hidden statistics panel must be the defaults they claim");
+    require(!parse({"--spawn", "Tank:1@64"}) && !parse({"--spawn", "Tank:1001"}) && !parse({"--spawn", ":3"}) && !parse({"--vsync", "maybe"}) && !parse({"--width", "0"}) && !parse({"--bogus"}) &&
+                !parse({"--map"}) && !parse({"--frame-latency", "3"}),
+            "invalid sandbox options must be rejected");
+}
+
 const ModuleRegistrar registrar("engine", {
                                               {"test_asset_cache_dependencies", &test_asset_cache_dependencies},
                                               {"test_debug_draw", &test_debug_draw},
@@ -534,6 +560,7 @@ const ModuleRegistrar registrar("engine", {
                                               {"test_visual_material_translation", &test_visual_material_translation},
                                               {"test_visual_terrain", &test_visual_terrain},
                                               {"test_combat_content", &test_combat_content},
+                                              {"test_sandbox_options", &test_sandbox_options},
                                           });
 
 } // namespace

@@ -234,8 +234,12 @@ add_library(eaw_engine STATIC
     src/engine/debug_draw.cpp
     src/engine/rts_control.cpp
     src/engine/combat_content.cpp
+    src/engine/sandbox_content.cpp
+    src/engine/sandbox_debug_lines.cpp
+    src/engine/sandbox_options.cpp
     src/engine/scene_presentation.cpp
     src/engine/terrain_height.cpp
+    src/engine/text_format.cpp
     src/engine/visual_scene_builder.cpp
 )
 target_include_directories(eaw_engine PUBLIC src/engine src/render/include)
@@ -246,6 +250,8 @@ target_link_libraries(eaw_engine PUBLIC eaw_core eaw_simulation)
 add_executable(EAWEngine src/engine/main.cpp)
 target_link_libraries(EAWEngine PRIVATE eaw_core eaw_engine)
 if(WIN32)
+    # The sandbox session drives the window and the D3D12 renderer, so it lives in the executable.
+    target_sources(EAWEngine PRIVATE src/engine/sandbox_app.cpp src/engine/sandbox_overlay.cpp)
     target_link_libraries(EAWEngine PRIVATE eaw_platform eaw_render_d3d12)
 endif()
 target_compile_features(EAWEngine PRIVATE cxx_std_20)

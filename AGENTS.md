@@ -117,7 +117,7 @@ The authoritative milestone description is [docs/roadmap.md](docs/roadmap.md). U
 - `src/platform`: operating-system window, input, clock, and related platform services.
 - `src/render`: rendering interfaces, visual-scene data, and graphics backends. It must consume engine-native visual data, not parse MEG/ALO/ALA/TED files or know VFS precedence.
 - `src/simulation`: the deterministic tactical simulation (entity ids, structure-of-arrays components, fixed-step scheduling, commands, snapshots). It must not depend on graphics, platform, or file access.
-- `src/engine`: runtime orchestration and the bridge from decoded assets to visual/runtime representations.
+- `src/engine`: runtime orchestration and the bridge from decoded assets to visual/runtime representations. The sandbox is split by responsibility: `sandbox_options` (command line, unit-tested), `sandbox_content` (background scene builds and hot-reload checks), `sandbox_debug_lines` and `sandbox_overlay` (what is drawn and shown, pure functions of explicit view structs), and `sandbox_app` (the window and renderer session: one method per frame step, compiled into the executable); `main.cpp` only handles startup, discovery, and the doctor probe.
 - `src/launcher`: configuration and process launch only: `EAWLauncher` and the `eaw_launch` library (sandbox scenarios and presets, `ChildProcess`).
 - `src/dev_launcher`: `EAWDevLauncher`, the development GUI that edits and starts sandbox scenarios through `eaw_launch`.
 - `src/imgui_app`: `eaw_imgui_app`, the shared Win32 + Direct3D 11 + Dear ImGui window shell and file dialogs of the desktop tools.
