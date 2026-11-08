@@ -311,33 +311,63 @@ void SimulationWorld::run_separation()
 
 // Flight: along the nose at between the minimum and maximum speed, turning toward the behavior
 // layer's point at the turn rate (slowing toward the minimum while facing away) and pitching toward
-// its height at the same rate, or holding heading and pitch when asked to.
+// its height at the same rate, or holding heading and pitch when asked to. A half-loop pitches the
+// nose up at the turn rate through the vertical until the flyer is inverted and heading back; it
+// then flies level the other way (heading reversed) with a half roll left to unwind, which turns
+// back to upright at twice the turn rate.
 void SimulationWorld::fly(const std::size_t index, const float dt)
 {
     const auto& intent = intents_[index];
     auto& position = positions_[index];
     auto& pitch = pitches_[index];
+    auto& roll = rolls_[index];
     const auto heading_before = headings_[index];
+    const auto rate = turn_rates_[index] > 0.0F ? turn_rates_[index] : flight_max_pitch * 2.0F / std::max(dt, 1.0e-6F);
     auto factor = 1.0F;
-    auto desired_pitch = intent.hold_heading ? pitch : 0.0F;
-    if (intent.point && !intent.hold_heading)
+    if (intent.loop && looping_[index] == 0)
     {
-        const auto dx = intent.point->x - position.x;
-        const auto dy = intent.point->y - position.y;
-        if (dx != 0.0F || dy != 0.0F)
-        {
-            factor = steer(index, std::atan2(dy, dx), dt);
-        }
-        desired_pitch = std::clamp(std::atan2(intent.point->z - position.z, std::max(std::hypot(dx, dy), 1.0F)), -flight_max_pitch, flight_max_pitch);
+        looping_[index] = 1;
     }
-    const auto pitch_step = turn_rates_[index] > 0.0F ? turn_rates_[index] * dt : flight_max_pitch * 2.0F;
-    pitch += std::clamp(desired_pitch - pitch, -pitch_step, pitch_step);
+    if (looping_[index] != 0)
+    {
+        pitch = std::min(pitch + rate * dt, std::numbers::pi_v<float>);
+    }
+    else
+    {
+        auto desired_pitch = intent.hold_heading ? pitch : 0.0F;
+        if (intent.point && !intent.hold_heading)
+        {
+            const auto dx = intent.point->x - position.x;
+            const auto dy = intent.point->y - position.y;
+            if (dx != 0.0F || dy != 0.0F)
+            {
+                factor = steer(index, std::atan2(dy, dx), dt);
+            }
+            // The height is reached within a few turn circles, not over the whole way, so a flyer
+            // returns to its plane soon after leaving it.
+            const auto climb_distance = std::max(4.0F * travel_speed(index) / rate, 1.0F);
+            desired_pitch = std::clamp(std::atan2(intent.point->z - position.z, std::clamp(std::hypot(dx, dy), 1.0F, climb_distance)), -flight_max_pitch, flight_max_pitch);
+        }
+        pitch += std::clamp(desired_pitch - pitch, -rate * dt, rate * dt);
+        // Unwind a half-loop's roll.
+        const auto unwind = 2.0F * rate * dt;
+        roll = std::fabs(roll) <= unwind ? 0.0F : roll - std::copysign(unwind, roll);
+    }
     const auto top = travel_speed(index);
     const auto speed = std::clamp(top * factor, std::min(min_speeds_[index], top), top);
     const auto heading = headings_[index];
     const auto level = speed * std::cos(pitch) * dt;
     position = {position.x + std::cos(heading) * level, position.y + std::sin(heading) * level, position.z + std::sin(pitch) * speed * dt};
     yaw_rates_[index] = dt > 0.0F ? wrap_angle(heading - heading_before) / dt : 0.0F;
+    if (looping_[index] != 0 && pitch >= std::numbers::pi_v<float>)
+    {
+        // Inverted at the top, heading back: the same attitude as level flight the other way rolled
+        // upside down.
+        looping_[index] = 0;
+        headings_[index] = wrap_angle(heading + std::numbers::pi_v<float>);
+        pitch = 0.0F;
+        roll = std::numbers::pi_v<float>;
+    }
 }
 
 } // namespace eaw

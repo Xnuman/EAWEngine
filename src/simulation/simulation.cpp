@@ -125,6 +125,8 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     pitches_.push_back(0.0F);
     cruise_heights_.push_back(spawn.position.z);
     yaw_rates_.push_back(0.0F);
+    looping_.push_back(0);
+    rolls_.push_back(0.0F);
     intents_.emplace_back();
     formation_orders_.push_back(spawn.formation_order);
     formation_spacings_.push_back(spawn.formation_spacing);
@@ -250,6 +252,8 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, stances_[index]);
         hash = hash_value(hash, pitches_[index]);
         hash = hash_value(hash, cruise_heights_[index]);
+        hash = hash_value(hash, looping_[index]);
+        hash = hash_value(hash, rolls_[index]);
         hash = hash_value(hash, loiter_points_[index].has_value());
         if (loiter_points_[index])
         {
@@ -324,6 +328,8 @@ void SimulationWorld::destroy(const std::size_t dense)
         pitches_[dense] = pitches_[last];
         cruise_heights_[dense] = cruise_heights_[last];
         yaw_rates_[dense] = yaw_rates_[last];
+        looping_[dense] = looping_[last];
+        rolls_[dense] = rolls_[last];
         intents_[dense] = intents_[last];
         formation_orders_[dense] = formation_orders_[last];
         formation_spacings_[dense] = formation_spacings_[last];
@@ -358,6 +364,8 @@ void SimulationWorld::destroy(const std::size_t dense)
     pitches_.pop_back();
     cruise_heights_.pop_back();
     yaw_rates_.pop_back();
+    looping_.pop_back();
+    rolls_.pop_back();
     intents_.pop_back();
     formation_orders_.pop_back();
     formation_spacings_.pop_back();
@@ -475,9 +483,26 @@ void SimulationWorld::publish()
                 destroyed += combat.hardpoint_health[hardpoint] <= 0.0F ? 1U : 0U;
             }
         }
-        snapshot_.entities.push_back({ids_[index], positions_[index], headings_[index], visuals_[index], owners_[index], move_targets_[index].has_value(), selectable_[index] != 0, max_speeds_[index],
-                                      follows_ground_[index] != 0, combat.health, combat.profile.health, combat.shield, combat.profile.shield, combat.target, radii_[index], destroyable, destroyed,
-                                      pitches_[index], yaw_rates_[index]});
+        snapshot_.entities.push_back({ids_[index],
+                                      positions_[index],
+                                      headings_[index],
+                                      visuals_[index],
+                                      owners_[index],
+                                      move_targets_[index].has_value(),
+                                      selectable_[index] != 0,
+                                      max_speeds_[index],
+                                      follows_ground_[index] != 0,
+                                      combat.health,
+                                      combat.profile.health,
+                                      combat.shield,
+                                      combat.profile.shield,
+                                      combat.target,
+                                      radii_[index],
+                                      destroyable,
+                                      destroyed,
+                                      pitches_[index],
+                                      yaw_rates_[index],
+                                      rolls_[index]});
     }
     snapshot_.projectiles.clear();
     snapshot_.projectiles.reserve(projectiles_.size());
@@ -509,6 +534,7 @@ std::vector<EntitySnapshot> interpolate_snapshots(const SimSnapshot& previous, c
             blended.heading = old.heading + wrap_angle(entity.heading - old.heading) * t;
             blended.pitch = old.pitch + (entity.pitch - old.pitch) * t;
             blended.yaw_rate = old.yaw_rate + (entity.yaw_rate - old.yaw_rate) * t;
+            blended.roll = old.roll + wrap_angle(entity.roll - old.roll) * t;
         }
         result.push_back(blended);
     }

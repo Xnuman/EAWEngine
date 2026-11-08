@@ -215,10 +215,11 @@ Gaps toward the deliverable, in planned order:
    position, hold fire) that AI and Lua can later drive through commands.
    From observing the original (compatibility notes, "Fighter flight"):
    fighters now fly in 3D (a pitch beside the heading; presentation poses
-   pitch and bank) and separate from squadron mates. Next they reverse
-   direction through a vertical half-loop and dogfight, chasing each other
-   above and below their plane before returning to it; dogfights involve every
-   flyer class (fighters, bombers, and mod units with the fighter locomotor).
+   pitch and bank), separate from squadron mates, reverse direction through a
+   vertical half-loop, and dogfight, chasing each other above and below their
+   plane before returning to it; dogfights involve every flyer class
+   (fighters, bombers, and mod units with the fighter locomotor). The angles,
+   heights, and periods are engine choices awaiting measurement.
    Covers:
    - weapons on `HardPoints` (94 stock uses);
    - space movement (turning, speed, and the space layer);

@@ -446,9 +446,19 @@ Fighter flight.
   - fighters separate only from flyers of their owner, sideways (overlap is
     measured in 3D), and weapons still fire all around (fighter weapons come
     from `Projectile_Types`, which has no cone);
-  - fighters pitch at their turn rate, at most 60 degrees, and keep the height
-    they spawned at as their plane; presentation banks them by their turn rate
-    (0.6 radians per radian per second, at most 60 degrees).
+  - fighters pitch at their turn rate, at most 60 degrees, keep the height
+    they spawned at as their plane, and return to it within about four turn
+    circles; presentation banks them by their turn rate (0.6 radians per
+    radian per second, at most 60 degrees);
+  - reversal: a goal more than 135 degrees off the heading and more than four
+    turn circles away starts a half-loop (nose up through the vertical at the
+    turn rate, out heading back, then a half roll back to upright at twice the
+    turn rate);
+  - dogfights: against any flyer (any type with a minimum speed, so fighters,
+    bombers, and mod units alike), a flyer steers at the target in 3D,
+    weaving 60 units above and below it over 8 seconds on a per-unit phase,
+    within 150 units of its plane, and loops when the target is far behind.
+    Other squadrons join through ordinary targeting.
 - **Not used yet.** Bombing runs and the original's flight paths, banking,
   `SpaceBehavior` entries other than the locomotor, and fighter launch and
   docking from carriers.

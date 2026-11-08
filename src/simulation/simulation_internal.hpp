@@ -34,6 +34,15 @@ inline constexpr std::uint32_t cohesion_stall_ticks = 90;
 inline constexpr std::uint64_t path_budget_per_tick = 30000;
 // Steepest climb or dive of a flyer (radians). An engine choice.
 inline constexpr float flight_max_pitch = std::numbers::pi_v<float> / 3.0F;
+// A flyer reverses through a half-loop instead of a flat turn when its goal lies more than this far
+// off its heading (radians) and more than two turn circles away. Engine choices; the original's
+// trigger angle is not measured.
+inline constexpr float flight_reversal_angle = std::numbers::pi_v<float> * 0.75F;
+// Dogfights: flyers weave this far above and below their target (world units) over this many
+// seconds, staying within the band around their plane. Engine choices.
+inline constexpr float dogfight_weave = 60.0F;
+inline constexpr float dogfight_weave_seconds = 8.0F;
+inline constexpr float dogfight_band = 150.0F;
 
 inline bool finite(const SimVector3& value) noexcept
 {

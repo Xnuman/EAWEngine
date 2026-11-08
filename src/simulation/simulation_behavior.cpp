@@ -160,45 +160,82 @@ void SimulationWorld::pursue_ordered_target(const std::size_t index)
 }
 
 // Flyers never stop (their locomotor keeps them at their minimum speed), so behavior only says
-// where to steer. They keep to the plane they cruise in (observed in the original: fighters fly
-// in one plane most of the time), so every point is taken at their cruise height. Attack runs: inside a third of its weapon range of the target a flyer holds its
-// heading, so it passes the target, flies on, and turns back once outside. An aggressive flyer
-// runs at any target it has; otherwise only at an ordered one. Without a target it flies to its
-// destination, arriving within a few ticks of flight of it, and circles where it arrived or idles.
-// Engine choices; the original's fighter locomotor is not documented.
+// where to steer. Observed in the original (docs/compatibility-research.md, "Fighter flight"):
+// fighters fly in one plane most of the time, dogfight above and below it against other flyers,
+// and reverse direction through a vertical half-loop. Here:
+// - against a flyer (any class with a minimum speed: fighters, bombers, mod units), a dogfight:
+//   steer at the target in 3D, weaving above and below it, within a band around the plane;
+// - against anything else, attack runs in the plane: inside a third of its weapon range of the
+//   target a flyer holds its heading, passes, and turns back once outside;
+// - without a target, to the destination (arriving within a few ticks of flight of it), then
+//   circling where it arrived or idles, in the plane;
+// - a goal far behind starts a half-loop, which the locomotor finishes.
+// An aggressive flyer engages any target it has; otherwise only an ordered one. The numbers are
+// engine choices.
 void SimulationWorld::plan_flight(const std::size_t index, const float dt)
 {
     const auto& position = positions_[index];
     auto& intent = intents_[index];
-    const auto& combat = combat_[index];
-    if (combat.ordered || stances_[index] == Stance::aggressive)
+    if (looping_[index] != 0)
     {
-        if (const auto victim = attack_victim(index))
-        {
-            const auto pass = std::max(combat.profile.range() / 3.0F, (radii_[index] + radii_[*victim]) * 2.0F);
-            intent.point = SimVector3{positions_[*victim].x, positions_[*victim].y, cruise_heights_[index]};
-            intent.hold_heading = distance_xy(position, positions_[*victim]) < pass;
-            return;
-        }
-    }
-    auto& target = move_targets_[index];
-    if (target)
-    {
-        intent.point = SimVector3{target->x, target->y, cruise_heights_[index]};
-        if (distance_xy(position, *target) <= travel_speed(index) * dt * 3.0F)
-        {
-            loiter_points_[index] = *target;
-            target.reset();
-            speed_limits_[index] = 0.0F;
-            group_ids_[index] = 0;
-        }
+        intent.loop = true;
         return;
     }
-    if (!loiter_points_[index])
+    const auto& combat = combat_[index];
+    const auto plane = cruise_heights_[index];
+    const auto choose = [&]
     {
-        loiter_points_[index] = position;
+        if (combat.ordered || stances_[index] == Stance::aggressive)
+        {
+            if (const auto victim = attack_victim(index))
+            {
+                const auto& there = positions_[*victim];
+                if (min_speeds_[*victim] > 0.0F)
+                {
+                    // Each flyer weaves on its own phase (from its slot), so a fight spreads vertically.
+                    const auto seconds = static_cast<float>(static_cast<double>(tick_) * tick_seconds_);
+                    const auto phase = static_cast<float>(ids_[index].index % 16U) * (std::numbers::pi_v<float> / 8.0F);
+                    const auto weave = dogfight_weave * std::sin(seconds * (2.0F * std::numbers::pi_v<float> / dogfight_weave_seconds) + phase);
+                    intent.point = SimVector3{there.x, there.y, std::clamp(there.z + weave, plane - dogfight_band, plane + dogfight_band)};
+                    return;
+                }
+                const auto pass = std::max(combat.profile.range() / 3.0F, (radii_[index] + radii_[*victim]) * 2.0F);
+                intent.point = SimVector3{there.x, there.y, plane};
+                intent.hold_heading = distance_xy(position, there) < pass;
+                return;
+            }
+        }
+        auto& target = move_targets_[index];
+        if (target)
+        {
+            intent.point = SimVector3{target->x, target->y, plane};
+            if (distance_xy(position, *target) <= travel_speed(index) * dt * 3.0F)
+            {
+                loiter_points_[index] = *target;
+                target.reset();
+                speed_limits_[index] = 0.0F;
+                group_ids_[index] = 0;
+            }
+            return;
+        }
+        if (!loiter_points_[index])
+        {
+            loiter_points_[index] = position;
+        }
+        intent.point = SimVector3{loiter_points_[index]->x, loiter_points_[index]->y, plane};
+    };
+    choose();
+    if (intent.hold_heading || !intent.point || turn_rates_[index] <= 0.0F)
+    {
+        return;
     }
-    intent.point = SimVector3{loiter_points_[index]->x, loiter_points_[index]->y, cruise_heights_[index]};
+    const auto dx = intent.point->x - position.x;
+    const auto dy = intent.point->y - position.y;
+    const auto turn_circle = travel_speed(index) / turn_rates_[index];
+    if (std::hypot(dx, dy) > 4.0F * turn_circle && std::fabs(wrap_angle(std::atan2(dy, dx) - headings_[index])) > flight_reversal_angle)
+    {
+        intent.loop = true;
+    }
 }
 
 } // namespace eaw

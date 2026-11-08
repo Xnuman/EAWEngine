@@ -112,7 +112,7 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
             continue;
         }
         auto instance = found->second.instance;
-        instance.transform = pose_transform(instance.transform, found->second.base_heading, entity.position, entity.heading, entity.pitch, flight_bank(entity.yaw_rate));
+        instance.transform = pose_transform(instance.transform, found->second.base_heading, entity.position, entity.heading, entity.pitch, flight_bank(entity.yaw_rate) + entity.roll);
         instance.highlighted = selected.contains(entity_key(entity.id));
         instances_out.push_back(instance);
         entities_out.push_back(entity.id);

@@ -146,6 +146,9 @@ struct EntitySnapshot
     // everything else.
     float pitch{};
     float yaw_rate{};
+    // Flyers: roll left from a half-loop that has not unwound yet (radians; presentation adds it to
+    // the bank). Zero otherwise.
+    float roll{};
 };
 
 struct ProjectileSnapshot
@@ -303,6 +306,8 @@ private:
     {
         std::optional<SimVector3> point;
         bool hold_heading{};
+        // Flyers: reverse through a vertical half-loop (the locomotor finishes it once started).
+        bool loop{};
     };
 
     [[nodiscard]] std::optional<std::size_t> dense_index(EntityId id) const noexcept;
@@ -314,7 +319,8 @@ private:
     [[nodiscard]] std::optional<std::size_t> attack_victim(std::size_t index) const noexcept;
     // Ground and straight-line movers: chase an ordered target until in range, then hold.
     void pursue_ordered_target(std::size_t index);
-    // Flyers: steer at the target (attack runs), the destination, or the point they circle.
+    // Flyers: steer at the target (attack runs, or dogfights against flyers), the destination, or
+    // the point they circle; reverse through a half-loop when that point is far behind.
     void plan_flight(std::size_t index, float dt);
     void destroy(std::size_t dense);
     void run_movement();
@@ -405,6 +411,9 @@ private:
     std::vector<float> pitches_;
     std::vector<float> cruise_heights_;
     std::vector<float> yaw_rates_;
+    // Flyers inside a half-loop, and the roll they unwind after one.
+    std::vector<std::uint8_t> looping_;
+    std::vector<float> rolls_;
     std::vector<Stance> stances_;
     // Rebuilt by the behavior layer every tick before movement.
     std::vector<SteeringIntent> intents_;
