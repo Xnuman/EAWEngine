@@ -302,7 +302,16 @@ if(EAW_BUILD_GUI AND WIN32)
     endif()
 endif()
 
-add_executable(EAWAssetInspector src/asset_inspector/main.cpp)
+add_executable(EAWAssetInspector
+    src/asset_inspector/audit_lua.cpp
+    src/asset_inspector/audit_maps.cpp
+    src/asset_inspector/audit_textures.cpp
+    src/asset_inspector/audit_xml.cpp
+    src/asset_inspector/inspect_asset.cpp
+    src/asset_inspector/inspector_common.cpp
+    src/asset_inspector/inspector_options.cpp
+    src/asset_inspector/main.cpp
+)
 target_link_libraries(EAWAssetInspector PRIVATE eaw_core)
 target_compile_features(EAWAssetInspector PRIVATE cxx_std_20)
 

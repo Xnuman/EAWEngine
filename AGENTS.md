@@ -121,7 +121,7 @@ The authoritative milestone description is [docs/roadmap.md](docs/roadmap.md). U
 - `src/launcher`: configuration and process launch only: `EAWLauncher` and the `eaw_launch` library (sandbox scenarios and presets, `ChildProcess`).
 - `src/dev_launcher`: `EAWDevLauncher`, the development GUI that edits and starts sandbox scenarios through `eaw_launch`.
 - `src/imgui_app`: `eaw_imgui_app`, the shared Win32 + Direct3D 11 + Dear ImGui window shell and file dialogs of the desktop tools.
-- `src/asset_inspector` and `src/dat_editor`: command-line tools built on `eaw_core`.
+- `src/asset_inspector` and `src/dat_editor`: command-line tools built on `eaw_core`. The inspector has one source file per command group (`inspect_asset`, `audit_textures`, `audit_lua`, `audit_maps`, `audit_xml`) plus `inspector_options` and `inspector_common`, declared in `inspector.hpp`.
 - `src/tools_gui`: the Dear ImGui workbench. Tool UI may present core data but must not duplicate parsers.
 - `tests`: automated decoder, VFS, compatibility, and runtime-contract tests, one module per file (`test_<module>.cpp`, listed in `EAW_TEST_MODULES` in `CMakeLists.txt`, one ctest entry each); shared requirement helpers and synthetic format fixtures live in `test_support.*`. `EAWEngineTests <module>...` runs only the named modules.
 - `docs`: architecture, evidence, roadmap, and tool workflows.
