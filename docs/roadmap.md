@@ -259,10 +259,12 @@ Known provisional choices to verify against the original:
   story events, campaign AI, persistence and save versioning.
 - Deliverable: one stock campaign playable end to end.
 
-Engine extensions (non-legacy mode, opt-in): player-controlled unit stances.
-The original gives players no stance control; the simulation's `Stance`
-already exists for AI and scripts, so a stance control can later be offered as
-an option outside legacy mode.
+## Engine extensions (non-legacy mode, opt-in)
+
+- Player-controlled unit stances. The original gives players no stance
+  control; the simulation's `Stance`
+  already exists for AI and scripts, so a stance control can later be offered
+  as an option outside legacy mode.
 
 ## M6 — compatibility and SDK
 
