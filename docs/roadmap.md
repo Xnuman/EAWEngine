@@ -256,12 +256,20 @@ Gaps toward the deliverable, in planned order:
    builds a type's package (model, materials, textures, rigs, clips, and
    spawnable data) on a worker, and the sandbox can spawn any unit type of the
    map's context at any time; recorded sessions still replay headless.
-6. **Remaining M3 systems:**
-   - the dependency-aware job system, once measured budgets need it;
-   - fog of war;
-   - a minimal Lua host surface;
-   - a local-player concept (which owner the user commands, and team colors
-     by owner).
+6. **Remaining M3 work, in the order the owner set:**
+   1. Missing render features: particles (engine glows, muzzle flashes,
+      explosions, smoke), trails attached to moving objects, projectile
+      visuals, runtime decals, and the rest of the legacy-mode render backlog.
+   2. Combat presentation and fidelity: hardpoint visuals and damage, turret
+      rotation, damage-specific death clones and wreck explosions, real
+      projectiles for weapons.
+   3. Sound.
+   4. A review of the technical foundation, adding what the large layers
+      need.
+   5. Then the player layer (which owner the user commands, factions and
+      hostility from data, team colors by owner, fog of war) and a minimal
+      Lua host surface; the dependency-aware job system once measured budgets
+      need it.
 
 Known provisional choices to verify against the original:
 
