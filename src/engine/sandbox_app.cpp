@@ -21,6 +21,9 @@
 
 #include <algorithm>
 #include <array>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -43,6 +46,87 @@ namespace {
 
 // The sandbox's state between frames and the steps of one frame. Members keep the declaration
 // order the work depends on: the asset cache and archive watch outlive the futures that use them.
+// Reports a frame step that runs longer than its threshold (a stall or an endless loop), naming the
+// step and the simulation tick, from a background thread and every five seconds while it lasts, so
+// a frozen window still leaves a diagnosis on stderr and in the log file. The threshold is 5 s on a
+// hardware device and 60 s on WARP or with GPU validation, where whole frames take seconds.
+class FrameWatchdog final
+{
+public:
+    FrameWatchdog()
+        : thread_(
+              [this]
+              {
+                  run();
+              })
+    {}
+    ~FrameWatchdog()
+    {
+        {
+            const std::scoped_lock lock(mutex_);
+            stop_ = true;
+        }
+        wake_.notify_all();
+        thread_.join();
+    }
+    FrameWatchdog(const FrameWatchdog&) = delete;
+    FrameWatchdog& operator=(const FrameWatchdog&) = delete;
+
+    void set_threshold(const std::chrono::seconds threshold) noexcept
+    {
+        threshold_seconds_.store(threshold.count(), std::memory_order_relaxed);
+    }
+
+    // Marks the start of a frame step; `step` must be a string literal.
+    void enter(const char* step, const std::uint64_t tick) noexcept
+    {
+        tick_.store(tick, std::memory_order_relaxed);
+        since_.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
+        step_.store(step, std::memory_order_release);
+    }
+
+private:
+    void run()
+    {
+        using namespace std::chrono_literals;
+        std::unique_lock lock(mutex_);
+        std::int64_t reported_since = 0;
+        auto last_report = std::chrono::steady_clock::time_point{};
+        while (!wake_.wait_for(lock, 500ms,
+                               [&]
+                               {
+                                   return stop_;
+                               }))
+        {
+            const auto* step = step_.load(std::memory_order_acquire);
+            const auto since = since_.load(std::memory_order_relaxed);
+            if (step == nullptr)
+            {
+                continue;
+            }
+            const auto now = std::chrono::steady_clock::now();
+            const auto stuck = now - std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(since));
+            if (stuck < std::chrono::seconds(threshold_seconds_.load(std::memory_order_relaxed)) || (since == reported_since && now - last_report < 5s))
+            {
+                continue;
+            }
+            reported_since = since;
+            last_report = now;
+            eaw::log_warning("sandbox", eaw::Error{"frame step '" + std::string(step) + "' has run for " + eaw::format_fixed(std::chrono::duration<double>(stuck).count(), 1) + " s (simulation tick " +
+                                                   std::to_string(tick_.load(std::memory_order_relaxed)) + ")"});
+        }
+    }
+
+    std::atomic<const char*> step_{nullptr};
+    std::atomic<std::int64_t> since_{0};
+    std::atomic<std::uint64_t> tick_{0};
+    std::atomic<std::int64_t> threshold_seconds_{5};
+    std::mutex mutex_;
+    std::condition_variable wake_;
+    bool stop_{false};
+    std::thread thread_;
+};
+
 struct SandboxSession
 {
     const eaw::SandboxOptions& options;
@@ -78,6 +162,8 @@ struct SandboxSession
     // Every shown object is a simulation entity of the battle; backdrops stay static. Presentation
     // re-poses the scene's instances from interpolated snapshots each frame. `world` is the
     // battle's world (null before the first scene).
+    // Declared first among the frame state so it outlives nothing it reports on.
+    FrameWatchdog watchdog;
     std::optional<eaw::Battle> battle;
     eaw::SimulationWorld* world = nullptr;
     std::optional<eaw::ScenePresentation> presentation;
@@ -142,6 +228,7 @@ struct SandboxSession
     SandboxSession(const eaw::SandboxOptions& session_options, eaw::VirtualFileSystem& session_vfs, eaw::PlatformWindow& session_window, eaw::D3d12Renderer& session_renderer)
         : options(session_options), vfs(session_vfs), window(session_window), renderer(session_renderer)
     {
+        watchdog.set_threshold(options.use_warp || options.gpu_validation ? std::chrono::seconds(60) : std::chrono::seconds(5));
         if (!options.validation_triangle)
         {
             pending_content = std::async(std::launch::async, eaw::build_sandbox_content, std::cref(vfs), std::cref(options), &asset_cache, false);
@@ -893,15 +980,18 @@ struct SandboxSession
             for (std::uint32_t tick = 0; tick < ticks; ++tick)
             {
                 previous_snapshot = world->snapshot();
+                watchdog.enter("simulation tick", world->stats().tick);
                 const auto tick_start = std::chrono::steady_clock::now();
                 world->step();
                 last_tick_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tick_start).count();
                 slowest_tick_ms = std::max(slowest_tick_ms, last_tick_ms);
             }
             const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
+            watchdog.enter("presentation", world->stats().tick);
             presentation->build(entities, selection, frame_instances, frame_entities);
             if (animator)
             {
+                watchdog.enter("unit animation", world->stats().tick);
                 // The palette goes first: set_instances checks bone ranges against it.
                 animator->animate(entities, frame_entities, frame_instances, std::chrono::duration<double>(now - map_animation_start).count(), eaw::D3d12Renderer::max_bone_transforms(),
                                   frame_palette);
@@ -1046,9 +1136,13 @@ struct SandboxSession
         const bool scene_mouse = !renderer.overlay_wants_mouse();
         const bool rts_mode = tactical_camera && !free_camera;
         const std::array<float, 2> mouse{static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y)};
+        const auto tick = world != nullptr ? world->stats().tick : 0U;
+        watchdog.enter("camera", tick);
         update_camera(input, scene_mouse, rts_mode);
+        watchdog.enter("pointer and orders", tick);
         handle_pointer(input, scene_mouse, rts_mode, mouse);
         handle_command_keys(input, scene_mouse, mouse);
+        watchdog.enter("picks", tick);
         process_picks();
         handle_view_keys(input);
         if (window.close_requested())
@@ -1062,15 +1156,20 @@ struct SandboxSession
             return true;
         }
 
+        watchdog.enter("content", tick);
         renderer.resize(window.client_width(), window.client_height());
         poll_content();
         poll_hot_reload();
         const auto now = std::chrono::steady_clock::now();
         advance_animation(now);
+        watchdog.enter("simulation and presentation", tick);
         step_simulation(now);
+        watchdog.enter("automation and panel", tick);
         run_automation();
         update_panel(input, now);
+        watchdog.enter("render", tick);
         present();
+        watchdog.enter("events", tick);
         return true;
     }
 
