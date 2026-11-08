@@ -166,6 +166,26 @@ float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinitio
     return speed > 0.0F && std::isfinite(speed) ? std::min(speed, max_speed) : max_speed * 0.5F;
 }
 
+bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    for (const auto* field : {"LandBehavior", "Behavior"})
+    {
+        const auto list = catalog.field(definition, field).field;
+        if (list == nullptr)
+        {
+            continue;
+        }
+        for (const auto name : split_type_names(list->text))
+        {
+            if (fold_ascii(std::string(name)) == "turret")
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings)
 {
     const auto speed = catalog.field(definition, "Max_Speed").field;

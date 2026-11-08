@@ -205,6 +205,11 @@ float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& defi
 // Min_Speed on the Max_Speed scale, or half of `max_speed` without one; 0 for every other type.
 float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, float max_speed);
 
+// Whether a type aims with its body: none of its behavior lists (LandBehavior, Behavior) names
+// TURRET. Stock infantry list WALK_LOCOMOTOR or LAND_TEAM_INFANTRY_LOCOMOTOR, IDLE, TARGETING, and
+// WEAPON without TURRET; vehicles (T2-B, AT-ST) add TURRET. Only meaningful for ground units.
+bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+
 // XML Max_Speed in world units per second (the provisional scale in visual_scene_builder.hpp);
 // unparsable values are 0 with a warning.
 float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings);

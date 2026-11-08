@@ -89,6 +89,9 @@ struct EntitySpawn
     // its turn rate, so attack runs overshoot and come back.
     float min_speed{};
     Stance stance{Stance::aggressive};
+    // Aims with its body instead of a turret (infantry): standing, it turns to face its target, and
+    // it fires only while standing and facing the target within body_aim_tolerance.
+    bool aims_with_body{};
 };
 
 enum class SimCommandKind : std::uint8_t
@@ -126,6 +129,10 @@ struct SimCommand
 };
 
 // Snapshot of one entity after a tick.
+// How far off a body-aiming entity's heading its target may be for it to fire (20 degrees, after
+// the stock Crouch_Move_Fire_Angle_Cutoff; an engine choice).
+inline constexpr float body_aim_tolerance = 0.349066F;
+
 struct EntitySnapshot
 {
     EntityId id;
@@ -152,9 +159,16 @@ struct EntitySnapshot
     // everything else.
     float pitch{};
     float yaw_rate{};
+    // How fast the entity actually moved in the last tick (world units per second, in 3D, including
+    // separation pushes); zero for a spawn's first tick. Derived from positions, so not part of the
+    // state hash.
+    float speed{};
     // Flyers: roll left from a half-loop that has not unwound yet (radians; presentation adds it to
     // the bank). Zero otherwise.
     float roll{};
+    // Tick in which the entity last launched a shot (0: never); for animation and effects, not part
+    // of the state hash.
+    std::uint64_t last_shot_tick{};
 };
 
 struct ProjectileSnapshot
@@ -165,11 +179,25 @@ struct ProjectileSnapshot
     std::uint32_t owner{};
 };
 
+// An entity combat destroyed in the last tick, where and how it last stood (for death animations
+// and effects; a derived output, not part of the state hash).
+struct DeathSnapshot
+{
+    EntityId id;
+    SimVector3 position;
+    float heading{};
+    float pitch{};
+    std::uint32_t visual{};
+    std::uint32_t owner{};
+};
+
 struct SimSnapshot
 {
     std::uint64_t tick{};
     std::vector<EntitySnapshot> entities;
     std::vector<ProjectileSnapshot> projectiles;
+    // Entities killed in this tick, in removal order (destroy commands are not deaths).
+    std::vector<DeathSnapshot> deaths;
 };
 
 // Converts real elapsed time into whole simulation ticks. At most `max_ticks_per_advance` ticks are
@@ -266,8 +294,8 @@ public:
     [[nodiscard]] const SimSnapshot& snapshot() const noexcept;
     [[nodiscard]] Stats stats() const noexcept;
     // FNV-1a over every gameplay component, in storage order: equal hashes mean identical simulation
-    // state. Presentation keys (EntitySpawn::visual) are left out, so how a scene was built for
-    // drawing never changes a battle's hash.
+    // state. Presentation keys (EntitySpawn::visual) and derived outputs (snapshot speed) are left
+    // out, so how a scene was built for drawing never changes a battle's hash.
     [[nodiscard]] std::uint64_t state_hash() const noexcept;
 
 private:
@@ -424,10 +452,15 @@ private:
     std::vector<float> pitches_;
     std::vector<float> cruise_heights_;
     std::vector<float> yaw_rates_;
+    // Speed of the last tick (EntitySnapshot::speed), and positions before the tick's movement.
+    std::vector<float> speeds_;
+    std::vector<std::uint64_t> last_shot_ticks_;
+    std::vector<SimVector3> tick_start_positions_;
     // Flyers inside a half-loop, and the roll they unwind after one.
     std::vector<std::uint8_t> looping_;
     std::vector<float> rolls_;
     std::vector<Stance> stances_;
+    std::vector<std::uint8_t> aims_with_body_;
     // Rebuilt by the behavior layer every tick before movement.
     std::vector<SteeringIntent> intents_;
     std::vector<std::uint32_t> formation_orders_;
@@ -475,6 +508,8 @@ private:
     std::uint64_t released_members_{};
     std::size_t separated_pairs_{};
     std::vector<Projectile> projectiles_;
+    // Deaths of the current tick (SimSnapshot::deaths).
+    std::vector<DeathSnapshot> deaths_;
     SpatialGrid grid_;
     std::vector<std::uint32_t> query_;
     DamageTable damage_table_;

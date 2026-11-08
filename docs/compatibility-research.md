@@ -441,6 +441,44 @@ IDLE, MOVE, WALKMOVE, ATTACK, and ATTACKIDLE so far; which clip the original
 plays when (and whether XML overrides names) is not established, so the
 selection rules in `unit_animation.hpp` are engine choices.
 
+- **WALKMOVE and MOVE.** All 30 stock models with WALKMOVE clips also have
+  MOVE clips (infantry and heroes: Dark Troopers, stormtroopers, Vader, Mara
+  Jade, Gungans, Noghri, ...), so WALKMOVE reads as the walk and MOVE as the
+  run; about 73 more models (mostly vehicles) have MOVE alone. RUN occurs on
+  4 models only (two animals and two Force-power variants).
+- **Who chooses animations.** The stock Lua scripts have one animation
+  function, `Play_Animation`, with 79 call sites, all on named story,
+  mission, or cinematic objects (heroes in cutscenes, doors, alarms, a
+  shuttle, `Intro_Animation`); no script chooses idle, movement, or attack
+  animations or controls blending (`EAWAssetInspector lua-audit`). Everyday
+  selection is therefore the engine's job, and scripts only force a clip on a
+  scripted object. All 370 stock scripts are Lua source, so the calls can be
+  read: `Play_Animation(type, flag[, variant])`, where `type` names a clip
+  role in title case with underscores ("Idle", "Talk", "Attention",
+  "Cinematic", "Talk_Gesture", "Choke_Die"), matching the file role with the
+  underscores removed (TALKGESTURE), and `variant` (0 or 1 where given) picks
+  the `_NN` file. The flag is true for held poses ("Attention", "Idle" in a
+  loop) and false for one-shot gestures ("Talk", "Choke"), so it reads as a
+  loop flag; that reading is an inference until the original is observed.
+- **Blending.** Whether the original crossfades or cuts between clips is not
+  established. The engine blends by choice (see `unit_animation.hpp`).
+
+Firing while moving and facing. Stock infantry list a walking locomotor
+(`WALK_LOCOMOTOR`, or `LAND_TEAM_INFANTRY_LOCOMOTOR` for squad members),
+`IDLE`, `TARGETING`, and `WEAPON` in `LandBehavior`, while vehicles (T2-B,
+AT-ST) add `TURRET`. In play (owner observation, Forces of Corruption) infantry
+turn to face their target and do not fire while moving, and some stormtroopers
+crouch while firing. Related XML: `Is_Stationary_When_Attacking` (12 uses, 11
+Yes: Jedi, Vader, Palpatine, the Elite Guard, which stop to attack),
+`Turn_To_Face_Unblockable_Shots` (52, all No), `Must_Face_Target_To_Attack_When_Deployed`
+and `Fire_When_Deployed`/`Fire_When_Undeployed` (deploying units),
+`Crouch_Move_Fire_Angle_Cutoff` (20, once). The engine reads the missing
+`TURRET` as "aims with its body": such ground units face their target before
+firing (within 20 degrees) and hold fire while moving; turreted units fire on
+the move. This is an inference from the behavior lists and the observation; the
+original's exact rules (turn speed while aiming, crouching, the stationary
+flag's effect on movement) are not established.
+
 Fighter flight.
 
 - **What the engine reads.** Types whose `SpaceBehavior` names

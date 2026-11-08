@@ -784,8 +784,7 @@ void test_unit_animation()
     require(clip("EI_TROOPER_WALKMOVE_12") && clip("EI_TROOPER_WALKMOVE_12")->role == eaw::AnimationRole::walk_move && clip("EI_TROOPER_WALKMOVE_12")->variant == 12,
             "WALKMOVE_12 must be walk-move variant 12");
     require(clip("ei_trooper_attackidle_01") && clip("ei_trooper_attackidle_01")->role == eaw::AnimationRole::attack_idle, "clip names must be case-insensitive");
-    require(!clip("EI_TROOPER_DIE_00") && !clip("OTHER_IDLE_00") && !clip("EI_TROOPER_IDLE") && !clip("EI_TROOPER_IDLE_0X") && !clip("EI_TROOPER_ATTACKFLINCHL_00"),
-            "other roles, models, and malformed names must not be clips");
+    require(!clip("OTHER_IDLE_00") && !clip("EI_TROOPER_IDLE") && !clip("EI_TROOPER_IDLE_0X") && !clip("EI_TROOPER_ATTACKFLINCHL_00"), "other roles, models, and malformed names must not be clips");
 
     eaw::EntitySnapshot standing;
     standing.id = {1, 1};
@@ -808,7 +807,7 @@ void test_unit_animation()
         rig.inverse_bind_pose.push_back(expect_ok(eaw::alo_inverse(transform), "bind pose inverse"));
     }
     rig.palette_size = 2;
-    rig.clips = {{eaw::AnimationRole::idle, 0, "IDLE_00", animation}, {eaw::AnimationRole::move, 0, "MOVE_00", animation}};
+    rig.clips = {{eaw::AnimationRole::idle, 0, "IDLE_00", animation}, {eaw::AnimationRole::move, 0, "MOVE_00", animation}, {eaw::AnimationRole::attack, 0, "ATTACK_00", animation}};
     eaw::VisualRig still;
     still.rest_offset = 2;
     still.palette_size = 1;
@@ -827,6 +826,7 @@ void test_unit_animation()
         eaw::EntitySnapshot entity;
         entity.id = {index + 10U, 1};
         entity.moving = index == 100;
+        entity.max_speed = 10.0F;
         snapshot.push_back(entity);
         entities.push_back(entity.id);
         eaw::VisualInstance instance;
@@ -850,6 +850,106 @@ void test_unit_animation()
     // A palette with room for nothing beyond the rest pose leaves everyone at rest.
     animator.animate(snapshot, entities, instances, 0.5, rest.size(), palette);
     require(animator.stats().over_budget == 101 && palette.size() == rest.size() && instances[5].bone_offset == 0, "units beyond the palette budget must stay in their rest pose");
+
+    // The locomotion scale: idle, then WALKMOVE at 40% of top speed, then MOVE; without WALKMOVE,
+    // idle into MOVE by a quarter of top speed.
+    const auto at = [](const float speed, const bool walk)
+    {
+        return eaw::locomotion_blend(speed, 10.0F, walk);
+    };
+    require(at(0.0F, true).lower == eaw::AnimationRole::idle && at(0.0F, true).blend == 0.0F && at(std::numeric_limits<float>::quiet_NaN(), true).blend == 0.0F,
+            "a unit at rest (or with a broken speed) must idle");
+    require(at(2.0F, true).upper == eaw::AnimationRole::walk_move && std::fabs(at(2.0F, true).blend - 0.5F) < 1.0e-6F, "half the walking speed must be halfway into WALKMOVE");
+    require(at(7.0F, true).lower == eaw::AnimationRole::walk_move && at(7.0F, true).upper == eaw::AnimationRole::move && std::fabs(at(7.0F, true).blend - 0.5F) < 1.0e-6F,
+            "halfway between walking and top speed must be halfway into MOVE");
+    require(at(20.0F, true).blend == 1.0F && at(1.25F, false).upper == eaw::AnimationRole::move && std::fabs(at(1.25F, false).blend - 0.5F) < 1.0e-6F && at(5.0F, false).blend == 1.0F,
+            "the blend must saturate and blend straight into MOVE without WALKMOVE");
+
+    // A slow unit blends idle and move; a unit that starts moving out of an attack fades the attack
+    // out over 0.2 s.
+    eaw::UnitAnimator blender(rigs, rest);
+    std::vector<eaw::EntitySnapshot> pair(2);
+    pair[0].id = {1, 1};
+    pair[0].max_speed = 10.0F;
+    pair[0].speed = 1.0F;
+    pair[0].moving = true;
+    pair[1].id = {2, 1};
+    pair[1].max_speed = 10.0F;
+    pair[1].target = {1, 1};
+    std::vector<eaw::EntityId> pair_ids{pair[0].id, pair[1].id};
+    std::vector<eaw::VisualInstance> pair_instances(2);
+    blender.animate(pair, pair_ids, pair_instances, 1.0, 1U << 20U, palette);
+    require(blender.stats().animated == 2 && blender.stats().blending == 1, "a slow unit must blend idle and move, an attacking one play its attack alone");
+    pair[1].target = {};
+    pair[1].moving = true;
+    pair[1].speed = 10.0F;
+    blender.animate(pair, pair_ids, pair_instances, 1.1, 1U << 20U, palette);
+    require(blender.stats().blending == 2, "a unit leaving its attack must fade it out while it starts to move");
+    blender.animate(pair, pair_ids, pair_instances, 1.4, 1U << 20U, palette);
+    blender.animate(pair, pair_ids, pair_instances, 2.0, 1U << 20U, palette);
+    require(blender.stats().blending == 1, "the attack must have faded out and the fast unit settled into MOVE");
+
+    // Corpses: a mesh with a DIE clip keeps its dead for the clip plus 4 s, drawn after the living
+    // and not pickable; a mesh without one keeps nothing.
+    auto dying = rig;
+    dying.clips.push_back({eaw::AnimationRole::die, 0, "DIE_00", animation});
+    const std::array<eaw::VisualRig, 2> death_rigs{dying, still};
+    eaw::UnitAnimator mourner(death_rigs, rest);
+    eaw::VisualInstance body;
+    body.mesh = 0;
+    eaw::VisualInstance prop;
+    prop.mesh = 1;
+    mourner.add_corpse(body, {3, 1}, 10.0);
+    mourner.add_corpse(prop, {4, 1}, 10.0);
+    std::vector<eaw::EntityId> none;
+    std::vector<eaw::VisualInstance> drawn;
+    mourner.animate({}, none, drawn, 10.5, 1U << 20U, palette);
+    require(drawn.size() == 1 && none.size() == 1 && !none[0].valid() && mourner.stats().corpses == 1 && drawn[0].bone_offset >= rest.size(),
+            "a corpse with a DIE clip must be drawn, posed, and unpickable; one without must not be kept");
+    none.clear();
+    drawn.clear();
+    mourner.animate({}, none, drawn, 10.0 + 1.0 + 3.9, 1U << 20U, palette);
+    require(drawn.size() == 1, "a corpse must hold its last frame for a while after its clip");
+    none.clear();
+    drawn.clear();
+    mourner.animate({}, none, drawn, 10.0 + 1.0 + 4.1, 1U << 20U, palette);
+    require(drawn.empty() && mourner.stats().corpses == 0, "a corpse must be removed after lingering");
+    // Shots: a mesh with ATTACK and ATTACKIDLE aims with ATTACKIDLE, plays ATTACK from its start on
+    // each shot, and fades back to aiming after ATTACK ends (the test clip lasts 1 s).
+    auto shooter_rig = rig;
+    shooter_rig.clips.push_back({eaw::AnimationRole::attack_idle, 0, "ATTACKIDLE_00", animation});
+    std::ranges::sort(shooter_rig.clips, {}, &eaw::VisualClip::role);
+    const std::array<eaw::VisualRig, 2> shooter_rigs{shooter_rig, still};
+    eaw::UnitAnimator gunner(shooter_rigs, rest);
+    std::vector<eaw::EntitySnapshot> aiming(1);
+    aiming[0].id = {7, 1};
+    aiming[0].target = {8, 1};
+    std::vector<eaw::EntityId> aiming_ids{aiming[0].id};
+    std::vector<eaw::VisualInstance> aiming_instances(1);
+    double clock = 20.0;
+    // Advances in 50 ms frames up to `at` (longer frames count as 0.25 s).
+    const auto frame = [&](const double at)
+    {
+        do
+        {
+            clock = std::min(clock + 0.05, at);
+            aiming_ids.resize(1);
+            aiming_instances.resize(1);
+            gunner.animate(aiming, aiming_ids, aiming_instances, clock, 1U << 20U, palette);
+        } while (clock < at);
+        return gunner.stats().blending;
+    };
+    require(frame(20.0) == 0, "a unit with a target must aim with ATTACKIDLE alone");
+    aiming[0].last_shot_tick = 5;
+    require(frame(20.1) == 0 && frame(20.6) == 0, "a shot must play ATTACK alone while it runs");
+    require(frame(21.175) == 1, "ATTACK must fade back into aiming after it ends");
+    require(frame(21.5) == 0, "the unit must aim again once ATTACK has faded");
+    aiming[0].last_shot_tick = 9;
+    require(frame(21.6) == 0, "the next shot must restart ATTACK");
+
+    require(eaw::parse_clip_name("EI_TROOPER_DIE_01", "EI_TROOPER") && eaw::parse_clip_name("EI_TROOPER_DIE_01", "EI_TROOPER")->role == eaw::AnimationRole::die &&
+                !eaw::parse_clip_name("EI_TROOPER_FW_DIE_00", "EI_TROOPER"),
+            "DIE clips must be recognized, directional deaths not yet");
 }
 
 const ModuleRegistrar registrar("engine", {

@@ -498,10 +498,20 @@ std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& a
 
 void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, const float seconds, std::vector<std::array<float, 16>>& out)
 {
-    const auto first = out.size();
     if (rig.model && rig.inverse_bind_pose.size() == rig.model->bones.size() && !rig.model->bones.empty())
     {
-        const auto pose = animation.sample_pose(*rig.model, seconds);
+        append_rig_local_palette(rig, animation.sample_local_pose(*rig.model, seconds), out);
+        return;
+    }
+    append_rig_local_palette(rig, {}, out);
+}
+
+void append_rig_local_palette(const VisualRig& rig, const std::span<const AlaLocalBone> local_pose, std::vector<std::array<float, 16>>& out)
+{
+    const auto first = out.size();
+    if (rig.model && rig.inverse_bind_pose.size() == rig.model->bones.size() && !rig.model->bones.empty() && local_pose.size() == rig.model->bones.size())
+    {
+        const auto pose = ala_compose_pose(*rig.model, local_pose);
         append_pose_palette(*rig.model, rig.inverse_bind_pose, pose, true, out);
     }
     if (out.size() - first != rig.palette_size)
@@ -537,12 +547,13 @@ std::optional<ClipName> parse_clip_name(const std::string_view file_stem, const 
     {
         return std::nullopt;
     }
-    static constexpr std::array<std::pair<std::string_view, AnimationRole>, 5> roles{{
+    static constexpr std::array<std::pair<std::string_view, AnimationRole>, 6> roles{{
         {"idle", AnimationRole::idle},
         {"move", AnimationRole::move},
         {"walkmove", AnimationRole::walk_move},
         {"attack", AnimationRole::attack},
         {"attackidle", AnimationRole::attack_idle},
+        {"die", AnimationRole::die},
     }};
     const auto role = rest.substr(0, underscore);
     for (const auto& [name, value] : roles)

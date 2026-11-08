@@ -118,9 +118,20 @@ void SimulationWorld::run_behavior()
         {
             plan_flight(index, dt);
         }
-        else if (combat_[index].ordered)
+        else
         {
-            pursue_ordered_target(index);
+            if (combat_[index].ordered)
+            {
+                pursue_ordered_target(index);
+            }
+            // Standing body-aimers turn to face their target (ordered or picked on their own).
+            if (aims_with_body_[index] != 0 && !move_targets_[index])
+            {
+                if (const auto victim = attack_victim(index))
+                {
+                    intents_[index].point = positions_[*victim];
+                }
+            }
         }
     }
 }

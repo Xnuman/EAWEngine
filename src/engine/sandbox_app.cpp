@@ -606,8 +606,8 @@ struct SandboxSession
         else if (animator)
         {
             const auto& animation = animator->stats();
-            view.animation_status = std::to_string(animation.animated) + " units animated, " + std::to_string(animation.poses) + " poses (" + std::to_string(animation.sampled) +
-                                    " sampled this frame), palette " + std::to_string(animation.palette_entries) +
+            view.animation_status = std::to_string(animation.animated) + " units animated (" + std::to_string(animation.blending) + " blending), " + std::to_string(animation.corpses) + " corpses, " +
+                                    std::to_string(animation.poses) + " poses (" + std::to_string(animation.sampled) + " sampled this frame), palette " + std::to_string(animation.palette_entries) +
                                     (animation.over_budget > 0 ? ", " + std::to_string(animation.over_budget) + " in rest pose (palette full)" : std::string{});
         }
         view.animation_playing = animation_playing;
@@ -985,6 +985,14 @@ struct SandboxSession
                 world->step();
                 last_tick_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tick_start).count();
                 slowest_tick_ms = std::max(slowest_tick_ms, last_tick_ms);
+                // Every tick's deaths, so none is lost when a frame runs several ticks.
+                for (const auto& death : world->snapshot().deaths)
+                {
+                    if (const auto corpse = presentation->corpse_instance(death); corpse && animator)
+                    {
+                        animator->add_corpse(*corpse, death.id, std::chrono::duration<double>(now - map_animation_start).count());
+                    }
+                }
             }
             const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
             watchdog.enter("presentation", world->stats().tick);
@@ -1199,6 +1207,12 @@ struct SandboxSession
                       << simulation.blocked_moves << '\n';
             std::cout << "Combat: " << simulation.shots_fired << " shots, " << simulation.hits << " hits, " << simulation.kills << " kills, " << simulation.hardpoints_destroyed
                       << " hardpoints destroyed, " << simulation.projectiles << " in flight\n";
+        }
+        if (animator)
+        {
+            const auto& animation = animator->stats();
+            std::cout << "Animation (last frame): " << animation.animated << " units animated, " << animation.blending << " blending, " << animation.corpses << " corpses, " << animation.poses
+                      << " poses, palette " << animation.palette_entries << " entries, " << animation.over_budget << " in rest pose (palette full)\n";
         }
         if (options.record && battle)
         {

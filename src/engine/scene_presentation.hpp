@@ -51,6 +51,10 @@ public:
     // backgrounds), so picks and selections can be mapped back.
     void build(std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out, std::vector<EntityId>& entities_out) const;
 
+    // The instance a dead entity leaves behind, posed where it died, and forgets the entity's
+    // template; nullopt when the entity was never drawn.
+    [[nodiscard]] std::optional<VisualInstance> corpse_instance(const DeathSnapshot& death);
+
     [[nodiscard]] const std::string& mesh_name(std::uint32_t mesh) const;
     [[nodiscard]] const std::array<float, 3>& mesh_minimum(std::uint32_t mesh) const;
     [[nodiscard]] const std::array<float, 3>& mesh_maximum(std::uint32_t mesh) const;

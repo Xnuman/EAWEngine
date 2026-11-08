@@ -148,6 +148,11 @@ void SimulationWorld::run_weapon(const std::size_t index)
         {
             --state.pulse_timer;
         }
+        // Body-aimers hold fire while moving (a burst resumes once they stand again).
+        if (aims_with_body_[index] != 0 && move_targets_[index])
+        {
+            continue;
+        }
         if (state.pulses_left == 0)
         {
             if (state.cooldown != 0)
@@ -160,6 +165,15 @@ void SimulationWorld::run_weapon(const std::size_t index)
                 if (distance_xy(positions_[index], positions_[victim]) > weapon.range)
                 {
                     return false;
+                }
+                if (aims_with_body_[index] != 0)
+                {
+                    const auto& to = positions_[victim];
+                    const auto bearing = std::atan2(to.y - positions_[index].y, to.x - positions_[index].x);
+                    if (std::fabs(wrap_angle(bearing - headings_[index])) > body_aim_tolerance)
+                    {
+                        return false;
+                    }
                 }
                 if (weapon.cone_half_angle >= std::numbers::pi_v<float>)
                 {
@@ -210,6 +224,16 @@ void SimulationWorld::run_weapon(const std::size_t index)
             state.pulses_left = 0;
             continue;
         }
+        if (aims_with_body_[index] != 0)
+        {
+            const auto& to = positions_[*victim];
+            const auto bearing = std::atan2(to.y - positions_[index].y, to.x - positions_[index].x);
+            if (std::fabs(wrap_angle(bearing - headings_[index])) > body_aim_tolerance)
+            {
+                // Turned away mid-burst: the rest of the burst waits until it faces the victim again.
+                continue;
+            }
+        }
         while (state.pulses_left > 0 && state.pulse_timer == 0)
         {
             launch(index, *victim, weapon);
@@ -222,6 +246,8 @@ void SimulationWorld::run_weapon(const std::size_t index)
 void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim, const WeaponProfile& weapon)
 {
     ++shots_fired_;
+    // The tick being run: the snapshot published at its end carries it as its tick.
+    last_shot_ticks_[shooter] = tick_ + 1U;
     const auto origin = world_point(shooter, weapon.mount);
     const auto hardpoint = aim_hardpoint(victim, origin);
     if (weapon.projectile_speed <= 0.0F)
@@ -396,6 +422,7 @@ void SimulationWorld::remove_dead()
     {
         if (combat_[index].profile.health > 0.0F && combat_[index].health <= 0.0F)
         {
+            deaths_.push_back({ids_[index], positions_[index], headings_[index], pitches_[index], visuals_[index], owners_[index]});
             destroy(index);
             ++kills_;
         }

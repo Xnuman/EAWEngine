@@ -122,9 +122,12 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     min_speeds_.push_back(std::min(spawn.min_speed, spawn.max_speed));
     loiter_points_.emplace_back();
     stances_.push_back(spawn.stance);
+    aims_with_body_.push_back(spawn.aims_with_body ? 1U : 0U);
     pitches_.push_back(0.0F);
     cruise_heights_.push_back(spawn.position.z);
     yaw_rates_.push_back(0.0F);
+    speeds_.push_back(0.0F);
+    last_shot_ticks_.push_back(0);
     looping_.push_back(0);
     rolls_.push_back(0.0F);
     intents_.emplace_back();
@@ -162,9 +165,21 @@ void SimulationWorld::step()
     {
         apply(command);
     }
+    tick_start_positions_ = positions_;
+    deaths_.clear();
     run_behavior();
     run_movement();
     run_separation();
+    // Movement and separation are the only systems that move entities, and entities are only added
+    // (commands) before and removed (combat) after them, so dense indices line up here.
+    const auto dt = static_cast<float>(tick_seconds_);
+    for (std::size_t index = 0; index < positions_.size(); ++index)
+    {
+        const auto& from = tick_start_positions_[index];
+        const auto& to = positions_[index];
+        const auto moved = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y) + (to.z - from.z) * (to.z - from.z));
+        speeds_[index] = dt > 0.0F && std::isfinite(moved) ? moved / dt : 0.0F;
+    }
     run_combat();
     ++tick_;
     publish();
@@ -258,6 +273,7 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, turn_rates_[index]);
         hash = hash_value(hash, min_speeds_[index]);
         hash = hash_value(hash, stances_[index]);
+        hash = hash_value(hash, aims_with_body_[index]);
         hash = fnv1a(hash, type_names_[index].data(), type_names_[index].size());
         hash = hash_value(hash, pitches_[index]);
         hash = hash_value(hash, cruise_heights_[index]);
@@ -334,9 +350,12 @@ void SimulationWorld::destroy(const std::size_t dense)
         min_speeds_[dense] = min_speeds_[last];
         loiter_points_[dense] = loiter_points_[last];
         stances_[dense] = stances_[last];
+        aims_with_body_[dense] = aims_with_body_[last];
         pitches_[dense] = pitches_[last];
         cruise_heights_[dense] = cruise_heights_[last];
         yaw_rates_[dense] = yaw_rates_[last];
+        speeds_[dense] = speeds_[last];
+        last_shot_ticks_[dense] = last_shot_ticks_[last];
         looping_[dense] = looping_[last];
         rolls_[dense] = rolls_[last];
         intents_[dense] = intents_[last];
@@ -370,9 +389,12 @@ void SimulationWorld::destroy(const std::size_t dense)
     min_speeds_.pop_back();
     loiter_points_.pop_back();
     stances_.pop_back();
+    aims_with_body_.pop_back();
     pitches_.pop_back();
     cruise_heights_.pop_back();
     yaw_rates_.pop_back();
+    speeds_.pop_back();
+    last_shot_ticks_.pop_back();
     looping_.pop_back();
     rolls_.pop_back();
     intents_.pop_back();
@@ -511,8 +533,11 @@ void SimulationWorld::publish()
                                       destroyed,
                                       pitches_[index],
                                       yaw_rates_[index],
-                                      rolls_[index]});
+                                      speeds_[index],
+                                      rolls_[index],
+                                      last_shot_ticks_[index]});
     }
+    snapshot_.deaths = deaths_;
     snapshot_.projectiles.clear();
     snapshot_.projectiles.reserve(projectiles_.size());
     for (const auto& projectile : projectiles_)
@@ -543,6 +568,7 @@ std::vector<EntitySnapshot> interpolate_snapshots(const SimSnapshot& previous, c
             blended.heading = old.heading + wrap_angle(entity.heading - old.heading) * t;
             blended.pitch = old.pitch + (entity.pitch - old.pitch) * t;
             blended.yaw_rate = old.yaw_rate + (entity.yaw_rate - old.yaw_rate) * t;
+            blended.speed = old.speed + (entity.speed - old.speed) * t;
             blended.roll = old.roll + wrap_angle(entity.roll - old.roll) * t;
         }
         result.push_back(blended);

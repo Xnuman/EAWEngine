@@ -134,6 +134,32 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
     }
 }
 
+std::optional<VisualInstance> ScenePresentation::corpse_instance(const DeathSnapshot& death)
+{
+    const Template* found = nullptr;
+    const auto placed = templates_.find(entity_key(death.id));
+    if (placed != templates_.end())
+    {
+        found = &placed->second;
+    }
+    else if (death.visual >= spawnable_visual_base && death.visual - spawnable_visual_base < spawn_templates_.size())
+    {
+        found = &spawn_templates_[death.visual - spawnable_visual_base];
+    }
+    if (found == nullptr)
+    {
+        return std::nullopt;
+    }
+    auto instance = found->instance;
+    instance.transform = pose_transform(instance.transform, found->base_heading, death.position, death.heading, death.pitch);
+    instance.highlighted = false;
+    if (placed != templates_.end())
+    {
+        templates_.erase(placed);
+    }
+    return instance;
+}
+
 const std::string& ScenePresentation::mesh_name(const std::uint32_t mesh) const
 {
     EAW_ASSERT_MSG(mesh < mesh_names_.size(), "scene presentation mesh " + std::to_string(mesh) + " is out of range");

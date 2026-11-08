@@ -242,9 +242,15 @@ Gaps toward the deliverable, in planned order:
    fire, and death animations chosen from simulation state. The first slice
    is done: map units play IDLE, MOVE/WALKMOVE, and ATTACK/ATTACKIDLE clips
    chosen from their snapshots, with poses shared between units at the same
-   clip and pose slot, through a per-frame bone palette. Not yet: deaths
-   (entities vanish when they die), turns, flinches, crouching, clip
-   blending, and firing synchronized with shots.
+   clip and pose slot, through a per-frame bone palette. Blending followed:
+   poses blend in bone space; locomotion moves along IDLE - WALKMOVE - MOVE
+   by each unit's speed (now in snapshots) with a shared stride phase, and
+   attacks fade in and out over 0.2 s. Deaths followed: units killed in combat
+   leave corpses that play a DIE clip once and linger briefly. Attack clips
+   follow the shots, and infantry (units without a TURRET behavior) turn to
+   face their target, fire only facing it, and hold fire while moving. Not yet:
+   directional deaths, death effects, turns, flinches, crouching, simulation
+   acceleration, and firing synchronized with shots.
 5. **Runtime mesh registration,** so types not requested at build time can be
    spawned.
 6. **Remaining M3 systems:**

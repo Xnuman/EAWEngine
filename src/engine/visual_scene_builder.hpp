@@ -23,8 +23,8 @@ class AssetCache;
 
 // What a unit is doing, as far as choosing its animation goes. Clips are found by the stock naming
 // convention <MODEL>_<ROLE>_<NN>.ALA beside the model (IDLE 539 stock files, MOVE 158, WALKMOVE 53,
-// ATTACK 160, ATTACKIDLE 108); NN numbers variants. Other roles (DIE, TURNL, CROUCHIDLE, ...) are
-// not used yet.
+// ATTACK 160, ATTACKIDLE 108, DIE 301); NN numbers variants. Other roles (TURNL, CROUCHIDLE,
+// FW_DIE, ...) are not used yet.
 enum class AnimationRole : std::uint8_t
 {
     idle,
@@ -32,6 +32,7 @@ enum class AnimationRole : std::uint8_t
     walk_move,
     attack,
     attack_idle,
+    die,
 };
 
 // The role a clip file name (without directory and extension) plays for `model_stem`, and its
@@ -123,6 +124,8 @@ struct SpawnableType
     float turn_rate{};
     // Fighters' minimum flight speed (EntitySpawn::min_speed); 0 for other types.
     float min_speed{};
+    // Aims with its body (no TURRET behavior); applies when it walks on the ground.
+    bool aims_with_body{};
     // XML FormationOrder and FormationSpacing (formation.hpp).
     std::uint32_t formation_order{2};
     float formation_spacing{0.5F};
@@ -199,5 +202,7 @@ struct MapBuildOptions
 // Appends a rig's palette at `seconds` of `animation` (rig.palette_size entries) to `out`. Without
 // an inverse bind pose it appends the rest pose.
 void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, float seconds, std::vector<std::array<float, 16>>& out);
+// Appends a rig's palette for a local pose (a blend of clips; see ala_blend_pose).
+void append_rig_local_palette(const VisualRig& rig, std::span<const AlaLocalBone> pose, std::vector<std::array<float, 16>>& out);
 
 } // namespace eaw

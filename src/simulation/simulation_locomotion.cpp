@@ -38,6 +38,16 @@ void SimulationWorld::run_movement()
         {
             speed_limits_[index] = 0.0F;
             group_ids_[index] = 0;
+            // Standing: turn in place toward the behavior layer's point, if any.
+            if (const auto& face = intents_[index].point)
+            {
+                const auto dx = face->x - positions_[index].x;
+                const auto dy = face->y - positions_[index].y;
+                if (dx != 0.0F || dy != 0.0F)
+                {
+                    (void)steer(index, std::atan2(dy, dx), dt);
+                }
+            }
             continue;
         }
         if (group_waiting_[index] != 0 || path_pending_[index] != 0)

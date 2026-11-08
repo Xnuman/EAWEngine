@@ -262,8 +262,13 @@ contiguous instance range; the range start is a root constant because
 frame: map scenes start from every mesh's rest pose, and the engine's
 `UnitAnimator` appends the poses its units show this frame (chosen from
 simulation snapshots, shared between units at the same clip and pose slot) and
-points each instance at one. Animation is presentation: it never feeds back
-into the simulation.
+points each instance at one. Poses blend in bone space: up to three weighted
+clips (two neighbouring locomotion clips picked by the unit's speed, and an
+attack fading in or out), with weights rounded to eighths so units in the same
+state still share a pose. Units killed in combat (listed in the snapshot of
+their tick) leave corpses that presentation keeps for their DIE clip and a
+short linger; they are drawn but are no longer entities. Animation is
+presentation: it never feeds back into the simulation.
 
 ## Multithreading direction
 

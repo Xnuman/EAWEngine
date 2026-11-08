@@ -4,6 +4,7 @@
 
 #include <tuple>
 
+#include <memory>
 #include <numbers>
 
 namespace {
@@ -1037,6 +1038,113 @@ void test_half_loops_and_dogfights()
     }
 }
 
+// Snapshots report how fast each entity actually moved in the last tick.
+void test_snapshot_speed()
+{
+    eaw::SimulationWorld world(0.1);
+    const auto walker = world.spawn({.type_name = "Walker", .max_speed = 10.0F});
+    const auto fighter = world.spawn({.type_name = "Fighter", .position = {0.0F, 500.0F, 0.0F}, .max_speed = 120.0F, .turn_rate = 1.5F, .min_speed = 75.0F});
+    require(walker.ok() && fighter.ok(), "test spawns must succeed");
+    world.step();
+    require(world.snapshot().entities[0].speed == 0.0F && world.snapshot().entities[1].speed >= 74.9F, "an idle unit must report no speed and a fighter at least its minimum");
+    world.submit({eaw::SimCommandKind::move, {*walker}, {5.0F, 0.0F, 0.0F}});
+    world.step();
+    require(std::fabs(world.snapshot().entities[0].speed - 10.0F) < 1.0e-3F, "a moving unit must report its speed");
+    for (int tick = 0; tick < 10; ++tick)
+    {
+        world.step();
+    }
+    require(world.snapshot().entities[0].speed == 0.0F, "an arrived unit must report no speed");
+    const auto blended = eaw::interpolate_snapshots(world.snapshot(), world.snapshot(), 0.5F);
+    require(blended[1].speed == world.snapshot().entities[1].speed, "interpolation must carry the speed");
+}
+
+// Snapshots list the entities combat destroyed in their tick, and only then.
+void test_death_snapshots()
+{
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    eaw::SimulationWorld world(0.1);
+    world.set_hostility(hostility);
+    eaw::CombatProfile gun;
+    gun.health = 100.0F;
+    gun.weapons = {eaw::WeaponProfile{.range = 500.0F, .recharge_seconds = 0.1F, .damage = 50.0F}};
+    eaw::CombatProfile frail;
+    frail.health = 40.0F;
+    (void)world.spawn({.type_name = "Gun", .owner = 1, .combat = gun});
+    const auto victim = world.spawn({.type_name = "Victim", .owner = 2, .position = {100.0F, 20.0F, 0.0F}, .heading = 1.0F, .combat = frail});
+    const auto bystander = world.spawn({.type_name = "Bystander", .owner = 1, .position = {-50.0F, 0.0F, 0.0F}});
+    require(victim.ok() && bystander.ok(), "test spawns must succeed");
+    std::size_t deaths = 0;
+    for (int tick = 0; tick < 10 && world.alive(*victim); ++tick)
+    {
+        world.step();
+        deaths += world.snapshot().deaths.size();
+    }
+    require(!world.alive(*victim) && deaths == 1 && world.snapshot().deaths.size() == 1, "a kill must appear in its tick's snapshot");
+    const auto& death = world.snapshot().deaths.front();
+    require(death.id == *victim && death.owner == 2 && death.position.x == 100.0F && death.heading == 1.0F, "a death must say who died where, facing which way");
+    world.step();
+    require(world.snapshot().deaths.empty(), "deaths must only appear in their own tick");
+    world.submit({eaw::SimCommandKind::destroy, {*bystander}});
+    world.step();
+    require(world.snapshot().deaths.empty() && !world.alive(*bystander), "a destroy command is not a death");
+    // The gun fired in the tick the victim died; the bystander never fired.
+    const auto& gun_snapshot = world.snapshot().entities.front();
+    require(gun_snapshot.last_shot_tick > 0 && gun_snapshot.last_shot_tick < world.snapshot().tick, "a shooter must report the tick of its last shot");
+}
+
+// Body-aiming units (infantry) turn to face their target, fire only facing it, and never while
+// moving; turreted units fire on the move.
+void test_body_aiming()
+{
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    eaw::CombatProfile rifle;
+    rifle.health = 1000.0F;
+    rifle.weapons = {eaw::WeaponProfile{.range = 300.0F, .recharge_seconds = 0.1F, .damage = 1.0F}};
+    eaw::CombatProfile target;
+    target.health = 1.0e6F;
+    const auto make = [&](const bool body, const float heading, const eaw::SimVector3 target_at)
+    {
+        auto world = std::make_unique<eaw::SimulationWorld>(0.1);
+        world->set_hostility(hostility);
+        const auto shooter =
+            world->spawn({.type_name = "Trooper", .owner = 1, .heading = heading, .max_speed = 20.0F, .combat = rifle, .turn_rate = std::numbers::pi_v<float> / 2.0F, .aims_with_body = body});
+        const auto victim = world->spawn({.type_name = "Target", .owner = 2, .position = target_at, .combat = target});
+        require(shooter.ok() && victim.ok(), "test spawns must succeed");
+        return std::pair{std::move(world), *shooter};
+    };
+
+    // Facing away: no shot until it has turned to within 20 degrees, then it fires.
+    {
+        auto [world, shooter] = make(true, std::numbers::pi_v<float>, {200.0F, 0.0F, 0.0F});
+        for (int tick = 0; tick < 30; ++tick)
+        {
+            world->step();
+            const auto heading = world->snapshot().entities[0].heading;
+            const auto off = std::fabs(std::remainder(heading, 2.0F * std::numbers::pi_v<float>));
+            if (off > eaw::body_aim_tolerance + 0.16F)
+            {
+                require(world->stats().shots_fired == 0, "a body-aimer must not fire before it faces its target");
+            }
+        }
+        require(std::fabs(std::remainder(world->snapshot().entities[0].heading, 2.0F * std::numbers::pi_v<float>)) < 0.01F && world->stats().shots_fired > 0,
+                "a body-aimer must turn to its target and fire");
+    }
+    // Moving past a target in range: a body-aimer holds fire, a turreted unit does not.
+    for (const bool body : {true, false})
+    {
+        auto [world, shooter] = make(body, std::numbers::pi_v<float> / 2.0F, {100.0F, 0.0F, 0.0F});
+        world->submit({eaw::SimCommandKind::move, {shooter}, {0.0F, 150.0F, 0.0F}});
+        for (int tick = 0; tick < 40; ++tick)
+        {
+            world->step();
+        }
+        require((world->stats().shots_fired == 0) == body, body ? "a moving body-aimer must hold fire" : "a turreted unit must fire on the move");
+    }
+}
+
 // Stances belong to the behavior layer: they decide whether a unit picks targets and moves for
 // them, while orders always apply.
 void test_stances()
@@ -1134,6 +1242,9 @@ const ModuleRegistrar registrar("simulation", {
                                                   {"test_hardpoints_and_fire_cones", &test_hardpoints_and_fire_cones},
                                                   {"test_fighter_flight", &test_fighter_flight},
                                                   {"test_stances", &test_stances},
+                                                  {"test_snapshot_speed", &test_snapshot_speed},
+                                                  {"test_death_snapshots", &test_death_snapshots},
+                                                  {"test_body_aiming", &test_body_aiming},
                                                   {"test_flight_plane_and_separation", &test_flight_plane_and_separation},
                                                   {"test_half_loops_and_dogfights", &test_half_loops_and_dogfights},
                                               });
