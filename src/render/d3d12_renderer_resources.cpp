@@ -346,6 +346,7 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
                                          ComPtr<ID3D12Resource> new_instance_buffer, const std::size_t vertex_byte_count, const std::size_t index_byte_count)
 {
     auto new_material_buffer = upload_buffer(upload, std::as_bytes(std::span(gpu_materials)), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"EAWEngine scene material buffer");
+    auto materials_copy = gpu_materials;
 
     ComPtr<ID3D12Resource> new_terrain_buffer;
     const auto& terrain = scene.terrain;
@@ -438,6 +439,12 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
     const auto retire_value = direct_queue.next_value();
     std::vector<ComPtr<ID3D12Resource>> replaced{std::move(scene_vertex_buffer), std::move(scene_index_buffer), std::move(scene_instance_buffer), std::move(scene_material_buffer),
                                                  std::move(terrain_vertex_buffer)};
+    for (auto& block : added_blocks)
+    {
+        replaced.push_back(std::move(block.vertex_buffer));
+        replaced.push_back(std::move(block.index_buffer));
+    }
+    added_blocks.clear();
     std::erase(replaced, nullptr);
     if (!replaced.empty())
     {
@@ -483,6 +490,7 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
     scene_index_buffer = std::move(new_index_buffer);
     scene_instance_buffer = std::move(new_instance_buffer);
     scene_material_buffer = std::move(new_material_buffer);
+    scene_gpu_materials = std::move(materials_copy);
     terrain_vertex_buffer = std::move(new_terrain_buffer);
     terrain_vertex_count = static_cast<std::uint32_t>(terrain.vertices.size());
     terrain_first_material = terrain.first_material;
@@ -506,6 +514,148 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
     scene_index_view.SizeInBytes = static_cast<UINT>(index_byte_count);
     scene_index_view.Format = DXGI_FORMAT_R32_UINT;
     return Status::success();
+}
+
+Result<std::uint32_t> D3d12Renderer::Impl::add_meshes(VisualScene fragment)
+{
+    if (!scene_loaded)
+    {
+        return make_error("add_meshes needs a loaded scene");
+    }
+    if (fragment.vertices.empty() || fragment.indices.empty() || fragment.draws.empty() || fragment.meshes.empty())
+    {
+        return make_error("mesh fragment contains no renderable geometry");
+    }
+    if (!fragment.instances.empty() || !fragment.terrain.vertices.empty())
+    {
+        return make_error("mesh fragments carry meshes only (no instances or terrain)");
+    }
+    if (fragment.vertices.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) || fragment.indices.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        return make_error("mesh fragment has too many vertices or indices for one geometry block");
+    }
+    if (scene_mesh_draws.size() + fragment.meshes.size() > std::numeric_limits<std::uint32_t>::max() ||
+        scene_gpu_materials.size() + fragment.materials.size() > std::numeric_limits<std::uint32_t>::max() || added_blocks.size() + 1U >= std::numeric_limits<std::uint32_t>::max())
+    {
+        return make_error("mesh fragment exceeds the scene's mesh, material, or block index range");
+    }
+    for (std::size_t index = 0; index < fragment.meshes.size(); ++index)
+    {
+        const auto& mesh = fragment.meshes[index];
+        if (static_cast<std::uint64_t>(mesh.first_draw) + mesh.draw_count > fragment.draws.size() || mesh.bone_count > maximum_bone_transforms)
+        {
+            return make_error("fragment mesh " + std::to_string(index) + " (" + mesh.name + ") references draws outside the fragment or has too many bones");
+        }
+    }
+    for (const auto& draw : fragment.draws)
+    {
+        if (draw.material >= fragment.materials.size() || static_cast<std::uint64_t>(draw.first_index) + draw.index_count > fragment.indices.size() || draw.base_vertex < 0 ||
+            static_cast<std::uint64_t>(draw.base_vertex) >= fragment.vertices.size())
+        {
+            return make_error("fragment draw references data outside the fragment");
+        }
+    }
+    // Textures: an identity already in the scene shares its logical id; the rest are new entries.
+    std::unordered_map<std::string, std::uint32_t> logical_by_identity;
+    for (std::size_t index = 0; index < scene_textures.size(); ++index)
+    {
+        if (!scene_textures[index].identity.empty())
+        {
+            logical_by_identity.try_emplace(scene_textures[index].identity, static_cast<std::uint32_t>(fallback_texture_count + index));
+        }
+    }
+    std::vector<std::uint32_t> texture_ids(fragment.textures.size());
+    std::vector<std::size_t> new_texture_sources;
+    for (std::size_t index = 0; index < fragment.textures.size(); ++index)
+    {
+        const auto& identity = fragment.textures[index].identity;
+        if (const auto shared = logical_by_identity.find(identity); !identity.empty() && shared != logical_by_identity.end())
+        {
+            texture_ids[index] = shared->second;
+            continue;
+        }
+        EAW_TRY(texture_description(fragment.textures[index]));
+        const auto logical = fallback_texture_count + scene_textures.size() + new_texture_sources.size();
+        if (logical >= maximum_scene_textures)
+        {
+            return make_error("adding meshes would exceed the " + std::to_string(maximum_scene_textures) + "-entry texture table");
+        }
+        texture_ids[index] = static_cast<std::uint32_t>(logical);
+        if (!identity.empty())
+        {
+            logical_by_identity.emplace(identity, texture_ids[index]);
+        }
+        new_texture_sources.push_back(index);
+    }
+    std::vector<GpuMaterial> materials = scene_gpu_materials;
+    const auto first_material = static_cast<std::uint32_t>(materials.size());
+    for (std::size_t index = 0; index < fragment.materials.size(); ++index)
+    {
+        EAW_TRY_ASSIGN(auto material, gpu_material(fragment, index, texture_ids));
+        materials.push_back(material);
+    }
+
+    // Everything is validated: upload and commit.
+    auto upload = begin_upload(L"EAWEngine added meshes upload");
+    const auto vertex_bytes = std::as_bytes(std::span(fragment.vertices));
+    const auto index_bytes = std::as_bytes(std::span(fragment.indices));
+    GeometryBlock block;
+    block.vertex_buffer = upload_buffer(upload, vertex_bytes, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, L"EAWEngine added vertex buffer");
+    block.index_buffer = upload_buffer(upload, index_bytes, D3D12_RESOURCE_STATE_INDEX_BUFFER, L"EAWEngine added index buffer");
+    auto new_material_buffer = upload_buffer(upload, std::as_bytes(std::span(materials)), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"EAWEngine scene material buffer");
+    submit_upload(std::move(upload));
+    // Frames in flight may still read the previous material buffer.
+    retired_resources.push({std::move(scene_material_buffer)}, direct_queue.next_value());
+    scene_material_buffer = std::move(new_material_buffer);
+    scene_gpu_materials = std::move(materials);
+    block.vertex_view = {block.vertex_buffer->GetGPUVirtualAddress(), static_cast<UINT>(vertex_bytes.size()), sizeof(VisualVertex)};
+    block.index_view = {block.index_buffer->GetGPUVirtualAddress(), static_cast<UINT>(index_bytes.size()), DXGI_FORMAT_R32_UINT};
+    added_blocks.push_back(std::move(block));
+    const auto block_index = static_cast<std::uint32_t>(added_blocks.size());
+
+    const auto first_mesh = static_cast<std::uint32_t>(scene_mesh_draws.size());
+    for (const auto& mesh : fragment.meshes)
+    {
+        std::vector<GpuDraw> draws;
+        for (auto draw_index = mesh.first_draw; draw_index < mesh.first_draw + mesh.draw_count; ++draw_index)
+        {
+            const auto& draw = fragment.draws[draw_index];
+            GpuDraw gpu_draw{draw, first_material + draw.material, fragment.materials[draw.material].blend, 0, 0, false};
+            gpu_draw.block = block_index;
+            draws.push_back(gpu_draw);
+        }
+        scene_mesh_draws.push_back(std::move(draws));
+        scene_mesh_bone_counts.push_back(mesh.bone_count);
+    }
+    // New textures join the streaming queue; normal maps fall back to the flat normal meanwhile.
+    for (const auto index : new_texture_sources)
+    {
+        StreamingTexture entry;
+        entry.identity = fragment.textures[index].identity;
+        entry.source = std::move(fragment.textures[index]);
+        for (const auto& mip : entry.source.mips)
+        {
+            entry.bytes += mip.data.size();
+        }
+        scene_textures.push_back(std::move(entry));
+        ++pending_texture_count;
+    }
+    for (const auto& material : fragment.materials)
+    {
+        if (material.normal_texture != invalid_visual_texture && material.normal_texture < texture_ids.size())
+        {
+            const auto logical = texture_ids[material.normal_texture];
+            if (logical >= fallback_texture_count && logical - fallback_texture_count < scene_textures.size())
+            {
+                auto& entry = scene_textures[logical - fallback_texture_count];
+                if (!textures.contains(entry.handle))
+                {
+                    entry.fallback_slot = flat_normal_texture_slot;
+                }
+            }
+        }
+    }
+    return first_mesh;
 }
 
 void D3d12Renderer::Impl::retire_textures(std::vector<StreamingTexture>& entries)
@@ -640,7 +790,7 @@ void D3d12Renderer::Impl::set_bone_transforms(const std::span<const std::array<f
     }
 }
 
-auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size_t index) -> Result<GpuMaterial>
+auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size_t index, const std::span<const std::uint32_t> texture_ids) -> Result<GpuMaterial>
 {
     const auto& material = scene.materials[index];
     const auto slot = [&](const std::uint32_t texture, const std::uint32_t fallback, const char* role) -> Result<std::uint32_t>
@@ -653,7 +803,7 @@ auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size
         {
             return make_error("visual material " + std::to_string(index) + " (" + material.name + ") references a missing " + role + " texture");
         }
-        return fallback_texture_count + texture;
+        return texture_ids.empty() ? fallback_texture_count + texture : texture_ids[texture];
     };
     const auto finite = [](const auto& values)
     {

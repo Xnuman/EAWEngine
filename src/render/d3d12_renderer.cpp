@@ -101,6 +101,11 @@ Status D3d12Renderer::load_scene(VisualScene scene)
     return impl_->load_scene(std::move(scene));
 }
 
+Result<std::uint32_t> D3d12Renderer::add_meshes(VisualScene meshes)
+{
+    return impl_->add_meshes(std::move(meshes));
+}
+
 void D3d12Renderer::set_bone_transforms(const std::span<const std::array<float, 16>> transforms)
 {
     impl_->set_bone_transforms(transforms);

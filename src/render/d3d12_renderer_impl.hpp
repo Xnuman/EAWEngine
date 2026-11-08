@@ -113,6 +113,9 @@ struct D3d12Renderer::Impl
         std::uint32_t first_instance{};
         std::uint32_t instance_count{1};
         bool background{};
+        // Geometry block holding the draw's vertices and indices: 0 is the loaded scene's, others
+        // were added with add_meshes (added_blocks[block - 1]).
+        std::uint32_t block{};
     };
 
     // Structured-buffer layout shared with the vertex shader (112 bytes).
@@ -238,6 +241,15 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12Resource> scene_index_buffer;
     D3D12_VERTEX_BUFFER_VIEW scene_vertex_view{};
     D3D12_INDEX_BUFFER_VIEW scene_index_view{};
+    // Geometry of meshes added after load_scene, one block per add_meshes call.
+    struct GeometryBlock
+    {
+        ComPtr<ID3D12Resource> vertex_buffer;
+        ComPtr<ID3D12Resource> index_buffer;
+        D3D12_VERTEX_BUFFER_VIEW vertex_view{};
+        D3D12_INDEX_BUFFER_VIEW index_view{};
+    };
+    std::vector<GeometryBlock> added_blocks;
     // Scene textures are pool entries owning their resource and shader-table slot; the scene keeps
     // generation-checked handles. Replaced resources retire on the direct queue's timeline.
     struct GpuTexture
@@ -283,6 +295,8 @@ struct D3d12Renderer::Impl
     // any scene because its pending state transition holds a raw resource pointer.
     ComPtr<ID3D12Resource> identity_material_buffer;
     ComPtr<ID3D12Resource> scene_material_buffer;
+    // CPU copy of the material buffer's contents, so add_meshes can append to it.
+    std::vector<GpuMaterial> scene_gpu_materials;
     VisualLightRig lighting;
     float scene_time{};
     std::vector<UploadBatch> pending_uploads;
@@ -429,7 +443,10 @@ struct D3d12Renderer::Impl
     void set_bone_transforms(const std::span<const std::array<float, 16>> transforms);
 
     // Validates one scene material and converts it to the shader layout.
-    static Result<GpuMaterial> gpu_material(const VisualScene& scene, const std::size_t index);
+    // `texture_ids` maps the scene's texture indices to logical texture ids (empty: fallback count +
+    // index, as load_scene assigns them).
+    static Result<GpuMaterial> gpu_material(const VisualScene& scene, const std::size_t index, std::span<const std::uint32_t> texture_ids = {});
+    [[nodiscard]] Result<std::uint32_t> add_meshes(VisualScene fragment);
 
     void set_lighting(const VisualLightRig& next);
 

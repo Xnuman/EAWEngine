@@ -399,16 +399,29 @@ bool D3d12Renderer::Impl::render()
             command_list->DrawInstanced(terrain_vertex_count, 1, 0, 0);
             ++draw_calls;
             triangles += terrain_vertex_count / 3U;
-            command_list->IASetVertexBuffers(0, 1, &scene_vertex_view);
             terrain_drawn = true;
         };
-        command_list->IASetVertexBuffers(0, 1, &scene_vertex_view);
-        command_list->IASetIndexBuffer(&scene_index_view);
+        // Geometry blocks: 0 is the scene's, others came from add_meshes.
+        std::uint32_t bound_block = 0;
+        const auto bind_block = [&](const std::uint32_t block)
+        {
+            const auto& vertex_view = block == 0 ? scene_vertex_view : added_blocks[block - 1U].vertex_view;
+            const auto& index_view = block == 0 ? scene_index_view : added_blocks[block - 1U].index_view;
+            command_list->IASetVertexBuffers(0, 1, &vertex_view);
+            command_list->IASetIndexBuffer(&index_view);
+            bound_block = block;
+        };
+        bind_block(0);
         for (const auto& draw : dynamic ? dynamic_draws : scene_draws)
         {
             if (!terrain_drawn && !draw.background)
             {
                 draw_terrain();
+                bind_block(bound_block);
+            }
+            if (draw.block != bound_block)
+            {
+                bind_block(draw.block);
             }
             ID3D12PipelineState* pipeline = draw.background ? background_opaque_pipeline.Get() : opaque_pipeline.Get();
             if (draw.blend == VisualBlendMode::alpha_blend)

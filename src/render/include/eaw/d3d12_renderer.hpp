@@ -125,6 +125,13 @@ public:
     // against the current palette. Frame buffers grow as needed; load_scene resets the palette to
     // identity matrices of the scene's size.
     void set_bone_transforms(std::span<const std::array<float, 16>> transforms);
+    // Adds meshes to the loaded scene's mesh library and returns the index of the first: `meshes`
+    // carries vertices, indices, textures, materials, draws, and meshes with indices local to it
+    // (no instances or terrain). Geometry and materials upload at once into a geometry block of
+    // their own; textures stream in like the scene's, and a texture whose identity is already in
+    // the scene is shared. Existing mesh indices stay valid; load_scene drops added meshes.
+    // Returns an error (adding nothing) without a loaded scene or for an invalid fragment.
+    [[nodiscard]] Result<std::uint32_t> add_meshes(VisualScene meshes);
     [[nodiscard]] static std::size_t max_bone_transforms() noexcept;
     // Replaces the instances drawn each frame with this list, until the next call or load_scene
     // (which returns to the scene's own instances). The loaded scene's meshes form the mesh library:
