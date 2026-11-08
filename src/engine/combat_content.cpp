@@ -125,6 +125,23 @@ public:
         return *value;
     }
 
+    // A finite number of either sign, 0 when the field is missing; bad values warn and give 0.
+    [[nodiscard]] float signed_value(const std::string_view field) const
+    {
+        const auto* found = node(field);
+        if (found == nullptr)
+        {
+            return 0.0F;
+        }
+        const auto value = parse_float(found->text);
+        if (!value)
+        {
+            warnings_.push_back(definition_.name + ": " + std::string(field) + " '" + found->text + "' is not a number");
+            return 0.0F;
+        }
+        return *value;
+    }
+
     [[nodiscard]] bool flag(const std::string_view field, const bool fallback) const
     {
         const auto* found = node(field);
@@ -226,7 +243,8 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     profile.shield_regen_per_second = type.amount("Shield_Refresh_Rate");
     profile.armor_type = type.type_id("Armor_Type", content);
     profile.shield_armor_type = type.type_id("Shield_Armor_Type", content);
-    profile.aim_height = type.amount("Ranged_Target_Z_Adjust");
+    // Below the origin is legitimate (stock Underworld_Hero_Shuttle_Landing uses -5.0).
+    profile.aim_height = type.signed_value("Ranged_Target_Z_Adjust");
 
     const auto* projectiles = type.node("Projectile_Types");
     const auto range = type.amount("Targeting_Max_Attack_Distance");

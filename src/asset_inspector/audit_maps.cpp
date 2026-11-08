@@ -20,6 +20,7 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
     std::size_t model_files = 0;
     std::size_t squadron_members = 0;
     std::size_t unexpanded_containers = 0;
+    std::size_t company_members = 0;
     std::map<std::uint32_t, AuditExample> unknown_crcs;
     std::map<std::string, std::size_t> element_types;
     // Placements per TED owner slot, by XML element type (untyped objects as "?").
@@ -50,6 +51,7 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
         const auto layout = eaw::build_map_object_layout(map, catalog, vfs);
         squadron_members += layout.expanded_members;
         unexpanded_containers += layout.unexpanded_containers;
+        company_members += layout.company_members;
         for (const auto& object : map.placed_objects)
         {
             ++placed;
@@ -113,7 +115,8 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
               << "Model files resolved: " << model_files << " (" << percent(model_files, placed) << "), unique models: " << unique_models.size() << '\n'
               << "Unknown CRCs: " << unknown_crcs.size() << '\n'
               << "Space squadron members expanded: " << squadron_members << '\n'
-              << "Land teams/companies not expanded: " << unexpanded_containers << '\n';
+              << "Land company members expanded (arranged at runtime): " << company_members << '\n'
+              << "Containers without members: " << unexpanded_containers << '\n';
     for (std::size_t axis = 0; axis < rotation_minimum.size() && placed > 0; ++axis)
     {
         std::cout << "Rotation component " << axis << ": " << rotation_minimum[axis] << " .. " << rotation_maximum[axis] << ", non-zero " << rotation_nonzero[axis] << '\n';

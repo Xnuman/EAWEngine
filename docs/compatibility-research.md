@@ -351,3 +351,16 @@ Movement fields used by the group-movement work.
 - **Companies** list their members in `Company_Units`; for example
   `Rebel_Infantry_Squad` lists 15 `Squad_Rebel_Trooper` with
   `Max_Squad_Size` 5.
+
+Companies on maps. A placed `GroundCompany`, `HeroCompany`, or `SlaveCompany`
+is its `Company_Units` members even though most stock companies also name a
+`Land_Model_Name` (for example `RI_INFANTRY.ALO` on `Rebel_Infantry_Squad`). That
+model appears to be a galactic or GUI representation; tactical companies
+always appear as their members. Counting that way, the stock maps hold 4,665
+company members.
+
+The data gives no member offsets, so the engine arranges each company in its
+group-move formation, facing the placed heading (an engine choice). Type-name
+lists are split on commas and whitespace, because one stock FoC list
+(`Underworld_Merc_Squad`) has no commas. 97 placed `Container` objects have
+no member list and stay unexpanded.

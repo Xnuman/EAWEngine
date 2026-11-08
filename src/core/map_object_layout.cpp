@@ -17,6 +17,7 @@ namespace {
 
 // Bounds expansion of malformed mod data; stock squadrons list at most a handful of members.
 constexpr std::size_t maximum_squadron_members = 64;
+constexpr std::size_t maximum_company_members = 64;
 
 AloQuaternion axis_rotation(const float degrees, const int axis) noexcept
 {
@@ -47,27 +48,6 @@ std::string_view trim(const std::string_view value) noexcept
         --last;
     }
     return value.substr(first, last - first);
-}
-
-std::vector<std::string_view> split_list(const std::string_view text)
-{
-    std::vector<std::string_view> result;
-    std::size_t start = 0;
-    while (start <= text.size())
-    {
-        const auto end = text.find(',', start);
-        const auto item = trim(text.substr(start, end == std::string_view::npos ? std::string_view::npos : end - start));
-        if (!item.empty())
-        {
-            result.push_back(item);
-        }
-        if (end == std::string_view::npos)
-        {
-            break;
-        }
-        start = end + 1;
-    }
-    return result;
 }
 
 // Parses "x,y,z" (commas and/or whitespace). Returns nullopt for malformed or non-finite values.
@@ -107,11 +87,70 @@ std::string location(const XmlDefinition& definition)
     return definition.source_path + ":" + std::to_string(definition.line) + " " + definition.type + " '" + definition.name + "'";
 }
 
-// Land teams and companies are arranged by runtime formation behavior that the data does not
-// describe (no member offsets), so they are counted rather than guessed.
+// Containers without a member list are counted, not guessed.
 bool is_unexpanded_container(const XmlDefinition& type, const GameObjectCatalog& catalog)
 {
     return type.type == "Container" || type.type == "GroundCompany" || type.type == "HeroCompany" || catalog.field(type, "Company_Units").field != nullptr;
+}
+
+// The definition a member name refers to: one with a model for the context when there is one.
+const XmlDefinition* member_type(const GameObjectCatalog& catalog, const std::string_view name, const GameModelContext context)
+{
+    const auto candidates = catalog.find(name);
+    for (const auto* candidate : candidates)
+    {
+        if (catalog.model(*candidate, context))
+        {
+            return candidate;
+        }
+    }
+    return candidates.empty() ? nullptr : candidates.front();
+}
+
+// Land companies list their members in Company_Units (GroundCompany, HeroCompany, SlaveCompany in
+// the stock data; the field never repeats there). The data gives no offsets, so every member takes
+// the company's transform and is flagged for the consumer to arrange.
+template <typename AssignModel> bool expand_company(const MapObjectPlacement& company, const GameObjectCatalog& catalog, MapObjectLayout& layout, const AssignModel& assign_model)
+{
+    const auto units = catalog.field(*company.type, "Company_Units", &layout.diagnostics);
+    if (units.field == nullptr)
+    {
+        return false;
+    }
+    const auto members = split_type_names(units.field->text);
+    if (members.empty())
+    {
+        return false;
+    }
+    if (members.size() > maximum_company_members)
+    {
+        layout.diagnostics.push_back(location(*company.type) + ": Company_Units lists " + std::to_string(members.size()) + " members; only the first " + std::to_string(maximum_company_members) +
+                                     " are placed");
+    }
+    const auto count = std::min(members.size(), maximum_company_members);
+    for (std::size_t member = 0; member < count; ++member)
+    {
+        MapObjectPlacement placement;
+        placement.object_index = company.object_index;
+        placement.container = company.type;
+        placement.member = static_cast<std::uint32_t>(member);
+        placement.needs_formation = true;
+        placement.transform = company.transform;
+        placement.type = member_type(catalog, members[member], layout.context);
+        if (placement.type == nullptr)
+        {
+            layout.diagnostics.push_back(location(*company.type) + ": company member '" + std::string(members[member]) + "' is not defined");
+            ++layout.untyped;
+            continue;
+        }
+        if (!assign_model(placement))
+        {
+            ++layout.without_model;
+        }
+        ++layout.company_members;
+        layout.placements.push_back(std::move(placement));
+    }
+    return true;
 }
 
 // Space squadrons list their members in Squadron_Units and give each member's offset, in the
@@ -124,7 +163,7 @@ template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& s
     {
         return false;
     }
-    const auto members = split_list(units.field->text);
+    const auto members = split_type_names(units.field->text);
     if (members.empty())
     {
         return false;
@@ -199,6 +238,34 @@ float finite_or(const float value, const float fallback) noexcept
 
 } // namespace
 
+std::vector<std::string_view> split_type_names(const std::string_view text)
+{
+    std::vector<std::string_view> result;
+    std::size_t start = 0;
+    const auto separator = [](const char character)
+    {
+        return character == ',' || std::isspace(static_cast<unsigned char>(character)) != 0;
+    };
+    while (start < text.size())
+    {
+        while (start < text.size() && separator(text[start]))
+        {
+            ++start;
+        }
+        auto end = start;
+        while (end < text.size() && !separator(text[end]))
+        {
+            ++end;
+        }
+        if (end > start)
+        {
+            result.push_back(text.substr(start, end - start));
+        }
+        start = end;
+    }
+    return result;
+}
+
 AloMatrix4 placed_object_transform(const TedPlacedObject& object) noexcept
 {
     const auto rotation =
@@ -249,6 +316,12 @@ MapObjectLayout build_map_object_layout(const TedMap& map, const GameObjectCatal
         if (placement.type == nullptr)
         {
             ++layout.untyped;
+        }
+        // A land company is its members even when it names a model of its own (stock companies
+        // such as Rebel_Infantry_Squad carry a galactic-style Land_Model_Name).
+        else if (layout.context == GameModelContext::land && expand_company(placement, catalog, layout, assign_model))
+        {
+            continue;
         }
         else if (!assign_model(placement))
         {

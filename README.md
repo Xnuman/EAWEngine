@@ -120,7 +120,11 @@ on the nearest hostile in range by themselves; shots are drawn as streaks and
 damaged or selected units show health (green) and shield (blue) bars. Debug
 spawns take an owner slot: `--spawn T2B_Tank:6@1 --spawn AT_ST_Walker:6@2`
 places two opposing groups side by side, and O cycles the owner of units
-spawned with N. Map owner slot 3 is treated as neutral and all other slots as
+spawned with N. Company types spawn as their members in formation
+(`--spawn Rebel_Infantry_Squad:2@1`), and placed companies on maps appear as
+their units. Group orders form ranked rows around the clicked point and move at
+the slowest unit's speed; units keep apart by their footprints and turn at
+their XML turn rates. Map owner slot 3 is treated as neutral and all other slots as
 hostile for now. C switches to the free debug
 camera. `--auto-move` orders every mobile unit to the view center for
 automated runs. Warnings (for example malformed mod data) go to stderr, the Visual Studio

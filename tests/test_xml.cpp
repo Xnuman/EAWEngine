@@ -97,6 +97,7 @@ void test_game_object_catalog()
                 "<Squadron Name=\"Test_Squadron\"><Squadron_Units>Unit_A</Squadron_Units><Squadron_Units>Unit_A, Unit_A_Variant, Missing_Member</Squadron_Units>"
                 "<Squadron_Offsets>10.0, 0.0, 0.0</Squadron_Offsets><Squadron_Offsets>bad</Squadron_Offsets></Squadron>"
                 "<Container Name=\"Test_Team\" />"
+                "<GroundCompany Name=\"Test_Company\"><Land_Model_Name>EI_Unit</Land_Model_Name><Company_Units>Unit_A Unit_A, Missing_Member</Company_Units></GroundCompany>"
                 "<Faction Name=\"Test_Empire\"><Color> 54, 134, 242, 255 </Color></Faction>"
                 "<Faction Name=\"Broken_Faction\"><Color>red</Color></Faction>"
                 "<SpaceUnit Name=\"Imperial_Unit\"><Affiliation>Test_Empire, Rebel</Affiliation></SpaceUnit>"
@@ -205,6 +206,22 @@ void test_game_object_catalog()
     const auto wing_origin = eaw::alo_transform_point({}, squadron_layout.placements[1].transform);
     require(squadron_layout.placements[1].member == 1 && std::fabs(wing_origin.x - 10.0F) < 1.0e-4F && std::fabs(wing_origin.y - 20.0F) < 1.0e-4F,
             "malformed squadron offset did not fall back to the squadron origin");
+    // A land company expands into its members (listed with commas or whitespace) at the company's
+    // transform, flagged for arrangement, even though it names a model of its own; a container
+    // without a member list is still counted.
+    eaw::TedMap land_map;
+    land_map.type = eaw::TedMapType::land;
+    auto company_object = placed;
+    company_object.crc = eaw::game_object_name_crc("Test_Company");
+    land_map.placed_objects.push_back(company_object);
+    land_map.placed_objects.push_back(team);
+    const auto company_layout = eaw::build_map_object_layout(land_map, catalog, vfs);
+    require(company_layout.company_members == 2 && company_layout.untyped == 1 && company_layout.unexpanded_containers == 1 && company_layout.placements.size() == 3,
+            "company expansion counts are wrong");
+    const auto& soldier = company_layout.placements[0];
+    require(soldier.needs_formation && soldier.member == 0 && company_layout.placements[1].member == 1 && soldier.type == unit.definition &&
+                soldier.transform.values == eaw::placed_object_transform(company_object).values && !company_layout.placements[2].needs_formation,
+            "company members must take the company transform and be flagged for arrangement");
     const auto mentions = [&](const std::string_view text)
     {
         return std::ranges::any_of(squadron_layout.diagnostics,

@@ -70,6 +70,9 @@ struct SpawnableType
     // XML FormationOrder and FormationSpacing (formation.hpp).
     std::uint32_t formation_order{2};
     float formation_spacing{0.5F};
+    // A company (Company_Units): the spawnable types of its members, in list order, spawned
+    // together in formation. Empty for ordinary types; a company's own mesh is unused.
+    std::vector<std::size_t> members;
 };
 
 struct VisualMapAsset
@@ -81,6 +84,9 @@ struct VisualMapAsset
     std::size_t missing_model_files{};
     std::size_t expanded_members{};
     std::size_t unexpanded_containers{};
+    // Land companies arranged in formation, and their members.
+    std::size_t expanded_companies{};
+    std::size_t company_members{};
     std::size_t unrenderable_placements{};
     // Resolved backdrop layers ("definition (model path)"), in draw order.
     std::vector<std::string> backdrops;

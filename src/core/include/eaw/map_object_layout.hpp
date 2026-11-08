@@ -20,6 +20,10 @@ class AssetReader;
 // comparison; see docs/compatibility-research.md.
 [[nodiscard]] AloMatrix4 placed_object_transform(const TedPlacedObject& object) noexcept;
 
+// Splits a list of XML type names (Squadron_Units, Company_Units) on commas and whitespace. Stock
+// FoC data writes one Company_Units list without commas; type names never contain whitespace.
+[[nodiscard]] std::vector<std::string_view> split_type_names(std::string_view text);
+
 struct MapObjectPlacement
 {
     std::size_t object_index{};
@@ -29,10 +33,14 @@ struct MapObjectPlacement
     // context or the referenced file is missing from every layer.
     std::string model_path;
     AloMatrix4 transform{};
-    // Set for members expanded from a space squadron: the squadron type and the member's index.
-    // Several placements then share one object_index.
+    // Set for members expanded from a space squadron or a land company: the container type and
+    // the member's index. Several placements then share one object_index.
     const XmlDefinition* container{};
     std::uint32_t member{};
+    // A land company member: the data gives no member offsets (the original arranges companies by
+    // runtime formation behavior), so the transform is the company's and the consumer arranges
+    // the members.
+    bool needs_formation{};
 };
 
 struct MapObjectLayout
@@ -43,7 +51,9 @@ struct MapObjectLayout
     std::size_t without_model{};
     std::size_t missing_model_files{};
     std::size_t expanded_members{};
-    // Land teams and companies whose members are arranged by runtime formation behavior.
+    // Members expanded from land companies (Company_Units), placed at their company's origin.
+    std::size_t company_members{};
+    // Placed containers with no member list (Container types without Company_Units).
     std::size_t unexpanded_containers{};
     std::vector<std::string> diagnostics;
 };

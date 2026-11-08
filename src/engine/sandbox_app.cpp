@@ -226,9 +226,10 @@ struct SandboxSession
                                                                                                               : "") +
                                                                ", " + std::to_string(visual_map.tracks) + " tracks")
                       << '\n'
-                      << "Objects: " << scene.instances.size() << " instances of " << scene.meshes.size() << " models | squadron members expanded: " << visual_map.expanded_members << '\n'
+                      << "Objects: " << scene.instances.size() << " instances of " << scene.meshes.size() << " models | squadron members expanded: " << visual_map.expanded_members
+                      << " | companies: " << visual_map.expanded_companies << " (" << visual_map.company_members << " members)\n"
                       << "Not drawn: " << visual_map.untyped << " untyped, " << visual_map.without_model << " without model, " << visual_map.missing_model_files << " missing model files, "
-                      << visual_map.unexpanded_containers << " land teams/companies, " << visual_map.unrenderable_placements << " unrenderable models\n"
+                      << visual_map.unexpanded_containers << " containers without members, " << visual_map.unrenderable_placements << " unrenderable models\n"
                       << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size() << " draws | Textures: " << scene.textures.size()
                       << " | Built in " << content.build_seconds << " s\n"
                       << "Lighting: " << (visual_map.lighting ? "environment '" + visual_map.environment_name + "'" : std::string("engine default")) << " | team colors: " << visual_map.faction_colored
@@ -400,6 +401,11 @@ struct SandboxSession
 
     void spawn_units(const std::size_t type_index, const eaw::SimVector3& point, const std::uint32_t count)
     {
+        if (!spawnable[type_index].members.empty())
+        {
+            spawn_companies(type_index, point, count);
+            return;
+        }
         const auto& type = spawnable[type_index];
         const auto spots = eaw::grid_targets(point, count, 40.0F);
         for (auto spot : spots)
@@ -415,6 +421,37 @@ struct SandboxSession
         }
         std::cout << "Spawned " << spots.size() << " " << type.type_name << " for owner " << spawn_owner << " at " << eaw::format_fixed(point.x, 0) << ", " << eaw::format_fixed(point.y, 0) << ", "
                   << eaw::format_fixed(point.z, 0) << '\n';
+    }
+
+    // Spawns `count` companies of the type side by side, each as its members in formation.
+    void spawn_companies(const std::size_t type_index, const eaw::SimVector3& point, const std::uint32_t count)
+    {
+        const auto& company = spawnable[type_index];
+        const auto centers = eaw::grid_targets(point, count, 160.0F);
+        for (const auto& center : centers)
+        {
+            std::vector<eaw::FormationMember> members;
+            for (std::size_t member = 0; member < company.members.size(); ++member)
+            {
+                const auto& type = spawnable[company.members[member]];
+                members.push_back({eaw::EntityId{static_cast<std::uint32_t>(member + 1U), 1}, center, type.radius, type.formation_spacing, type.formation_order});
+            }
+            const auto slots = eaw::formation_slots(members, center, 0.0F);
+            for (std::size_t member = 0; member < company.members.size(); ++member)
+            {
+                const auto& type = spawnable[company.members[member]];
+                auto spot = slots[member].position;
+                if (terrain_heights.valid())
+                {
+                    spot.z = terrain_heights.surface_height(spot.x, spot.y) + (type.follows_ground ? 0.0F : type.hover_offset);
+                }
+                if (const auto spawned = presentation->spawn(*world, type, spot, 0.0F, spawn_owner, type.follows_ground && terrain_heights.valid()); !spawned)
+                {
+                    eaw::log_warning("simulation", spawned.error());
+                }
+            }
+        }
+        std::cout << "Spawned " << centers.size() << " " << company.type_name << " (" << company.members.size() << " units each) for owner " << spawn_owner << '\n';
     }
 
     void order_attack(const eaw::EntityId victim)

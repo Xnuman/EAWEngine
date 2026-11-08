@@ -300,8 +300,9 @@ EAWEngine's steps:
    - Ranks follow `FormationOrder`, spacing follows footprints and
      `FormationSpacing`, and units are assigned to slots deterministically.
    - The group moves at its slowest member's speed.
-3. **Company expansion.** Placed and spawned companies become their units
-   (in formation) instead of being skipped.
+3. **Company expansion** (done). Placed and spawned companies become their
+   units, in formation. This also applies when the company names a model of
+   its own, as most stock companies do.
 4. **Later.**
    - A formation moving as one body (a controller with one shared path, as
      in Age of Empires II and 0 A.D.), breaking and re-forming at narrow

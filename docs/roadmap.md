@@ -187,9 +187,11 @@ Done:
 
 Gaps toward the deliverable, in planned order:
 
-1. **Group movement.** Steps 1 (footprints, separation, turn rates) and 2
-   (formation slots for group orders, group speed) are done; company
-   expansion follows
+1. **Group movement.** Steps 1 (footprints, separation, turn rates), 2
+   (formation slots for group orders, group speed), and 3 (company
+   expansion on maps and as spawns) are done; a formation moving on one
+   shared path and the per-tick search budget follow, since per-unit searches
+   now dominate large orders
    ([plan and sources](pathfinding-research.md#group-movement-and-formations)).
    Covers:
    - separation, so units do not stack;

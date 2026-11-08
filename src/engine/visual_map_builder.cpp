@@ -6,6 +6,7 @@
 #include "eaw/xml_document.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <atomic>
 #include <cctype>
 #include <charconv>
@@ -19,6 +20,53 @@
 namespace eaw {
 
 using namespace scene_build;
+
+namespace {
+
+// Lays each company's members (consecutive entries with one object index) out with the formation
+// used for group orders, centered on the company's placed position and facing its heading, and
+// moves their instances and spawns there (heights from the ground surface). The original arranges
+// companies at runtime; this layout is an engine choice.
+template <class Member> void arrange_companies(VisualScene& scene, VisualMapAsset& asset, const std::vector<Member>& members, const GameObjectCatalog& catalog)
+{
+    for (std::size_t first = 0; first < members.size();)
+    {
+        auto last = first;
+        while (last < members.size() && members[last].object_index == members[first].object_index)
+        {
+            ++last;
+        }
+        const auto& origin = scene.instances[members[first].instance].transform;
+        const SimVector3 center{origin[12], origin[13], origin[14]};
+        const auto facing = std::atan2(origin[1], origin[0]);
+        std::vector<FormationMember> formation;
+        for (auto index = first; index < last; ++index)
+        {
+            const auto& member = members[index];
+            const auto& spawn = asset.entities[member.entity].spawn;
+            const auto radius = spawn.radius > 0.0F ? spawn.radius : mesh_footprint_radius(scene, scene.instances[member.instance].mesh, scene.instances[member.instance].transform);
+            formation.push_back({EntityId{static_cast<std::uint32_t>(index + 1U), 1}, center, radius, type_formation_spacing(catalog, *member.type), type_formation_order(catalog, *member.type)});
+        }
+        const auto slots = formation_slots(formation, center, facing);
+        for (auto index = first; index < last; ++index)
+        {
+            auto position = slots[index - first].position;
+            if (asset.ground.valid())
+            {
+                position.z = asset.ground.surface_height(position.x, position.y);
+            }
+            auto& transform = scene.instances[members[index].instance].transform;
+            transform[12] = position.x;
+            transform[13] = position.y;
+            transform[14] = position.z;
+            asset.entities[members[index].entity].spawn.position = position;
+        }
+        ++asset.expanded_companies;
+        first = last;
+    }
+}
+
+} // namespace
 
 Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::string_view map_path, AssetCache* cache, const std::span<const std::string> spawn_types)
 {
@@ -68,6 +116,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     asset.without_model = layout.without_model;
     asset.missing_model_files = layout.missing_model_files;
     asset.expanded_members = layout.expanded_members;
+    asset.company_members = layout.company_members;
     asset.unexpanded_containers = layout.unexpanded_containers;
 
     auto& scene = asset.scene;
@@ -103,6 +152,15 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         asset.tracks = append_tracks(builder, map);
     }
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
+    // Company members (placed at their company's origin) are arranged after the loop.
+    struct CompanyMember
+    {
+        std::size_t object_index{};
+        std::size_t entity{};
+        std::size_t instance{};
+        const XmlDefinition* type{};
+    };
+    std::vector<CompanyMember> company_members;
     for (const auto& placement : layout.placements)
     {
         if (placement.model_path.empty())
@@ -151,6 +209,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                 }
             }
             asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size())});
+            if (placement.needs_formation)
+            {
+                company_members.push_back({placement.object_index, asset.entities.size() - 1U, scene.instances.size(), placement.type});
+            }
         }
         if (const auto faction = placement.type != nullptr ? catalog.affiliation_color(*placement.type) : std::nullopt)
         {
@@ -164,6 +226,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         }
         scene.instances.push_back(instance);
     }
+    arrange_companies(scene, asset, company_members, catalog);
 
     // Backdrop: the active environment names primary and secondary sky domes. Each name is an XML
     // object (SpacePrimarySkydome, LandPrimarySkydome, ...) whose model is drawn as a camera-
@@ -232,8 +295,23 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
 
     // Types requested for runtime spawning: their models join the mesh library without instances.
     const auto spawn_context = asset.land ? GameModelContext::land : GameModelContext::space;
-    for (const auto& type_name : spawn_types)
+    // Each requested name once: an existing entry is reused (company members are often repeated).
+    std::function<std::optional<std::size_t>(const std::string&, int)> add_spawnable = [&](const std::string& type_name, const int depth) -> std::optional<std::size_t>
     {
+        for (std::size_t index = 0; index < asset.spawnable.size(); ++index)
+        {
+            if (fold_ascii(asset.spawnable[index].type_name) == fold_ascii(type_name))
+            {
+                return index;
+            }
+        }
+
+        // A company is its members even when it names a model of its own.
+        const auto is_company = std::ranges::any_of(catalog.find(type_name),
+                                                    [&](const XmlDefinition* candidate)
+                                                    {
+                                                        return catalog.field(*candidate, "Company_Units").field != nullptr;
+                                                    });
         const XmlDefinition* definition = nullptr;
         std::optional<GameObjectModelReference> model;
         for (const auto* candidate : catalog.find(type_name))
@@ -245,10 +323,35 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             }
         }
         const auto path = model ? resolve_model_path(vfs, model->value) : std::nullopt;
-        if (definition == nullptr || !path)
+        if (definition == nullptr || !path || (is_company && depth == 0))
         {
+            // A company spawns its members instead (each resolved like a requested type).
+            for (const auto* candidate : catalog.find(type_name))
+            {
+                const auto* units = catalog.field(*candidate, "Company_Units").field;
+                if (units == nullptr || depth > 0)
+                {
+                    continue;
+                }
+                SpawnableType company;
+                company.type_name = candidate->name;
+                for (const auto member : split_type_names(units->text))
+                {
+                    if (const auto index = add_spawnable(std::string(member), depth + 1))
+                    {
+                        company.members.push_back(*index);
+                    }
+                }
+                if (company.members.empty())
+                {
+                    break;
+                }
+                company.mesh = asset.spawnable[company.members.front()].mesh;
+                asset.spawnable.push_back(std::move(company));
+                return asset.spawnable.size() - 1U;
+            }
             scene.warnings.push_back("spawn type '" + type_name + "' has no resolvable " + std::string(to_string(spawn_context)) + " model");
-            continue;
+            return std::nullopt;
         }
         auto [entry, inserted] = meshes.try_emplace(*path);
         if (inserted)
@@ -257,7 +360,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         }
         if (!entry->second)
         {
-            continue;
+            return std::nullopt;
         }
         SpawnableType spawnable;
         spawnable.type_name = definition->name;
@@ -277,6 +380,11 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             spawnable.formation_spacing = type_formation_spacing(catalog, *definition);
         }
         asset.spawnable.push_back(std::move(spawnable));
+        return asset.spawnable.size() - 1U;
+    };
+    for (const auto& type_name : spawn_types)
+    {
+        (void)add_spawnable(type_name, 0);
     }
 
     for (const auto& mesh : scene.meshes)
