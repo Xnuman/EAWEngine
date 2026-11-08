@@ -53,6 +53,7 @@ struct HotReloadCheck
 // VFS from a worker is safe because its const reads open their own streams, and the main thread
 // does not use the VFS while a build runs. A rebuild (`reload`) first drops cache entries whose
 // files changed.
-[[nodiscard]] SandboxContent build_sandbox_content(const VirtualFileSystem& vfs, const SandboxOptions& options, AssetCache* cache, bool reload);
+// `extra_spawn_types` are types added at runtime, kept spawnable across rebuilds.
+[[nodiscard]] SandboxContent build_sandbox_content(const VirtualFileSystem& vfs, const SandboxOptions& options, AssetCache* cache, bool reload, std::vector<std::string> extra_spawn_types = {});
 
 } // namespace eaw

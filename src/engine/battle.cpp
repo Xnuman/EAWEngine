@@ -92,6 +92,20 @@ std::span<const SpawnableType> Battle::spawnable() const noexcept
     return spawnable_;
 }
 
+std::size_t Battle::add_spawnable(const std::span<const SpawnableType> types)
+{
+    const auto first = spawnable_.size();
+    for (auto type : types)
+    {
+        for (auto& member : type.members)
+        {
+            member += first;
+        }
+        spawnable_.push_back(std::move(type));
+    }
+    return first;
+}
+
 const BattleLog& Battle::log() const noexcept
 {
     return log_;

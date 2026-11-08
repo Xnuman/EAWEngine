@@ -33,6 +33,7 @@ add_library(eaw_core STATIC
     src/core/lua_script.cpp
     src/core/meg_archive.cpp
     src/core/mtd_directory.cpp
+    src/core/spawn_catalog.cpp
     src/core/text_encoding.cpp
     src/core/ted_map.cpp
     src/core/virtual_file_system.cpp
@@ -284,7 +285,7 @@ target_compile_definitions(EAWEngine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 
 # Launch configuration and process start: sandbox scenarios, presets, and spawnable types
 # (portable), child processes (Windows).
-add_library(eaw_launch STATIC src/launcher/sandbox_scenario.cpp src/launcher/spawn_catalog.cpp)
+add_library(eaw_launch STATIC src/launcher/sandbox_scenario.cpp)
 if(WIN32)
     target_sources(eaw_launch PRIVATE src/launcher/child_process.cpp)
 endif()

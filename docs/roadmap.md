@@ -252,7 +252,10 @@ Gaps toward the deliverable, in planned order:
    directional deaths, death effects, turns, flinches, crouching, simulation
    acceleration, and firing synchronized with shots.
 5. **Runtime mesh registration,** so types not requested at build time can be
-   spawned.
+   spawned. Done: the renderer adds meshes to a loaded scene, the engine
+   builds a type's package (model, materials, textures, rigs, clips, and
+   spawnable data) on a worker, and the sandbox can spawn any unit type of the
+   map's context at any time; recorded sessions still replay headless.
 6. **Remaining M3 systems:**
    - the dependency-aware job system, once measured budgets need it;
    - fog of war;

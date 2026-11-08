@@ -51,6 +51,11 @@ public:
     // backgrounds), so picks and selections can be mapped back.
     void build(std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out, std::vector<EntityId>& entities_out) const;
 
+    // Meshes added to the renderer's mesh library at runtime (D3d12Renderer::add_meshes), in order,
+    // and spawnable types added to the battle (Battle::add_spawnable), in the same order as there.
+    void add_meshes(std::span<const VisualMesh> meshes);
+    void add_spawnable(std::span<const SpawnableType> types);
+
     // The instance a dead entity leaves behind, posed where it died, and forgets the entity's
     // template; nullopt when the entity was never drawn.
     [[nodiscard]] std::optional<VisualInstance> corpse_instance(const DeathSnapshot& death);

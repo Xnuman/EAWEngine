@@ -85,6 +85,22 @@ UnitAnimator::UnitAnimator(const std::span<const VisualRig> rigs, const std::spa
     : rigs_(rigs.begin(), rigs.end()), rest_palette_(rest_palette.begin(), rest_palette.end())
 {}
 
+void UnitAnimator::add_rigs(const std::span<const VisualRig> rigs, const std::span<const std::array<float, 16>> rest_palette)
+{
+    const auto offset = static_cast<std::uint32_t>(rest_palette_.size());
+    rest_palette_.insert(rest_palette_.end(), rest_palette.begin(), rest_palette.end());
+    for (auto rig : rigs)
+    {
+        rig.rest_offset += offset;
+        rigs_.push_back(std::move(rig));
+    }
+}
+
+std::size_t UnitAnimator::rig_count() const noexcept
+{
+    return rigs_.size();
+}
+
 const UnitAnimator::Stats& UnitAnimator::stats() const noexcept
 {
     return stats_;

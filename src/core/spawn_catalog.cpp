@@ -35,6 +35,11 @@ std::vector<SpawnTypeInfo> list_spawn_types(const AssetReader& reader)
 {
     const auto database = XmlAssetDatabase::build(reader);
     const auto catalog = GameObjectCatalog::build(database);
+    return list_spawn_types(database, catalog);
+}
+
+std::vector<SpawnTypeInfo> list_spawn_types(const XmlAssetDatabase& database, const GameObjectCatalog& catalog)
+{
     std::vector<SpawnTypeInfo> types;
     std::unordered_set<std::string> seen;
     for (const auto& definition : database.definitions())

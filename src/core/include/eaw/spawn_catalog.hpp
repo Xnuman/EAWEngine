@@ -3,7 +3,9 @@
 // The XML object types a sandbox scenario can spawn: every named definition with a land or space
 // model, taken from the winning XML of the mounted layers (base game, expansion, and mods).
 
+#include "eaw/game_object_catalog.hpp"
 #include "eaw/virtual_file_system.hpp"
+#include "eaw/xml_asset_database.hpp"
 
 #include <string>
 #include <vector>
@@ -23,5 +25,7 @@ struct SpawnTypeInfo
 
 // Sorted by name (case-insensitive); one entry per name, from the first definition with a model.
 [[nodiscard]] std::vector<SpawnTypeInfo> list_spawn_types(const AssetReader& reader);
+// The same from an already built database and its catalog (the engine keeps them cached).
+[[nodiscard]] std::vector<SpawnTypeInfo> list_spawn_types(const XmlAssetDatabase& database, const GameObjectCatalog& catalog);
 
 } // namespace eaw

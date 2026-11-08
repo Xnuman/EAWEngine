@@ -93,6 +93,10 @@ public:
     // oldest go first).
     void add_corpse(const VisualInstance& instance, EntityId id, double seconds);
     [[nodiscard]] const Stats& stats() const noexcept;
+    // Rigs of meshes added to the scene at runtime (a SpawnablePackage's rigs and rest palette,
+    // rest offsets relative to it); they must follow the meshes the animator already knows.
+    void add_rigs(std::span<const VisualRig> rigs, std::span<const std::array<float, 16>> rest_palette);
+    [[nodiscard]] std::size_t rig_count() const noexcept;
 
 private:
     // One weighted clip of a pose: clip index in the rig (-1 for none, -2 for the rest pose), pose

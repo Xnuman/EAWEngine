@@ -1,6 +1,7 @@
 #include "scene_builder_internal.hpp"
 
 #include "combat_content.hpp"
+#include "eaw/spawn_catalog.hpp"
 #include "eaw/dds_texture.hpp"
 #include "eaw/map_object_layout.hpp"
 #include "eaw/xml_document.hpp"
@@ -67,6 +68,108 @@ template <class Member> void arrange_companies(VisualScene& scene, VisualMapAsse
 }
 
 } // namespace
+
+std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build, const std::string& type_name, const int depth)
+{
+    for (std::size_t index = 0; index < build.spawnable.size(); ++index)
+    {
+        if (fold_ascii(build.spawnable[index].type_name) == fold_ascii(type_name))
+        {
+            return index;
+        }
+    }
+
+    // A company is its members even when it names a model of its own.
+    const auto is_company = std::ranges::any_of(build.catalog.find(type_name),
+                                                [&](const XmlDefinition* candidate)
+                                                {
+                                                    return build.catalog.field(*candidate, "Company_Units").field != nullptr || build.catalog.field(*candidate, "Squadron_Units").field != nullptr;
+                                                });
+    const XmlDefinition* definition = nullptr;
+    std::optional<GameObjectModelReference> model;
+    for (const auto* candidate : build.catalog.find(type_name))
+    {
+        if ((model = build.catalog.model(*candidate, build.context)))
+        {
+            definition = candidate;
+            break;
+        }
+    }
+    const auto path = model ? resolve_model_path(build.builder.vfs, model->value) : std::nullopt;
+    if (definition == nullptr || !path || (is_company && depth == 0))
+    {
+        // A company spawns its members instead (each resolved like a requested type).
+        for (const auto* candidate : build.catalog.find(type_name))
+        {
+            // Land companies and space squadrons both spawn as their members (a repeated
+            // Squadron_Units continues the list).
+            std::vector<std::string_view> names;
+            if (const auto* company_units = build.catalog.field(*candidate, "Company_Units").field)
+            {
+                names = split_type_names(company_units->text);
+            }
+            for (const auto* squadron_units : build.catalog.fields(*candidate, "Squadron_Units").fields)
+            {
+                const auto more = split_type_names(squadron_units->text);
+                names.insert(names.end(), more.begin(), more.end());
+            }
+            if (names.empty() || depth > 0)
+            {
+                continue;
+            }
+            SpawnableType company;
+            company.type_name = candidate->name;
+            for (const auto member : names)
+            {
+                if (const auto index = add_spawnable_type(build, std::string(member), depth + 1))
+                {
+                    company.members.push_back(*index);
+                }
+            }
+            if (company.members.empty())
+            {
+                break;
+            }
+            company.mesh = build.spawnable[company.members.front()].mesh;
+            build.spawnable.push_back(std::move(company));
+            return build.spawnable.size() - 1U;
+        }
+        build.builder.scene.warnings.push_back("spawn type '" + type_name + "' has no resolvable " + std::string(to_string(build.context)) + " model");
+        return std::nullopt;
+    }
+    auto [entry, inserted] = build.meshes.try_emplace(*path);
+    if (inserted)
+    {
+        entry->second = append_scene_model(build.builder, *path);
+    }
+    if (!entry->second)
+    {
+        return std::nullopt;
+    }
+    SpawnableType spawnable;
+    spawnable.type_name = definition->name;
+    spawnable.mesh = *entry->second;
+    spawnable.max_speed = type_max_speed(build.catalog, *definition, build.builder.scene.warnings);
+    spawnable.team_color = build.catalog.affiliation_color(*definition).value_or(player_team_color(1));
+    spawnable.follows_ground = build.land && type_follows_ground(build.catalog, *definition);
+    spawnable.passable_types = spawnable.follows_ground ? type_passable_types(build.catalog, *definition, build.movement_classes) : 0U;
+    const auto decoded = cached_model(build.builder, *path);
+    spawnable.combat = build.profile_of(*definition, decoded && decoded->ok() ? &decoded->value() : nullptr);
+    spawnable.hover_offset = type_float_field(build.catalog, *definition, "Hover_Offset");
+    if (spawnable.max_speed > 0.0F)
+    {
+        static constexpr std::array<float, 16> identity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+        const auto soft_radius = type_soft_footprint_radius(build.catalog, *definition);
+        spawnable.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(build.builder.scene, spawnable.mesh, identity);
+        spawnable.turn_rate = type_turn_rate(build.catalog, *definition);
+        spawnable.min_speed = build.land ? 0.0F : type_min_flight_speed(build.catalog, *definition, spawnable.max_speed);
+        spawnable.aims_with_body = type_aims_with_body(build.catalog, *definition);
+        spawnable.formation_order = type_formation_order(build.catalog, *definition);
+        spawnable.formation_spacing = type_formation_spacing(build.catalog, *definition);
+    }
+    build.spawnable.push_back(std::move(spawnable));
+    return build.spawnable.size() - 1U;
+}
 
 Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::string_view map_path, AssetCache* cache, const std::span<const std::string> spawn_types, const MapBuildOptions& options)
 {
@@ -310,110 +413,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     // Types requested for runtime spawning: their models join the mesh library without instances.
     const auto spawn_context = asset.land ? GameModelContext::land : GameModelContext::space;
     // Each requested name once: an existing entry is reused (company members are often repeated).
-    std::function<std::optional<std::size_t>(const std::string&, int)> add_spawnable = [&](const std::string& type_name, const int depth) -> std::optional<std::size_t>
-    {
-        for (std::size_t index = 0; index < asset.spawnable.size(); ++index)
-        {
-            if (fold_ascii(asset.spawnable[index].type_name) == fold_ascii(type_name))
-            {
-                return index;
-            }
-        }
-
-        // A company is its members even when it names a model of its own.
-        const auto is_company = std::ranges::any_of(catalog.find(type_name),
-                                                    [&](const XmlDefinition* candidate)
-                                                    {
-                                                        return catalog.field(*candidate, "Company_Units").field != nullptr || catalog.field(*candidate, "Squadron_Units").field != nullptr;
-                                                    });
-        const XmlDefinition* definition = nullptr;
-        std::optional<GameObjectModelReference> model;
-        for (const auto* candidate : catalog.find(type_name))
-        {
-            if ((model = catalog.model(*candidate, spawn_context)))
-            {
-                definition = candidate;
-                break;
-            }
-        }
-        const auto path = model ? resolve_model_path(vfs, model->value) : std::nullopt;
-        if (definition == nullptr || !path || (is_company && depth == 0))
-        {
-            // A company spawns its members instead (each resolved like a requested type).
-            for (const auto* candidate : catalog.find(type_name))
-            {
-                // Land companies and space squadrons both spawn as their members (a repeated
-                // Squadron_Units continues the list).
-                std::vector<std::string_view> names;
-                if (const auto* company_units = catalog.field(*candidate, "Company_Units").field)
-                {
-                    names = split_type_names(company_units->text);
-                }
-                for (const auto* squadron_units : catalog.fields(*candidate, "Squadron_Units").fields)
-                {
-                    const auto more = split_type_names(squadron_units->text);
-                    names.insert(names.end(), more.begin(), more.end());
-                }
-                if (names.empty() || depth > 0)
-                {
-                    continue;
-                }
-                SpawnableType company;
-                company.type_name = candidate->name;
-                for (const auto member : names)
-                {
-                    if (const auto index = add_spawnable(std::string(member), depth + 1))
-                    {
-                        company.members.push_back(*index);
-                    }
-                }
-                if (company.members.empty())
-                {
-                    break;
-                }
-                company.mesh = asset.spawnable[company.members.front()].mesh;
-                asset.spawnable.push_back(std::move(company));
-                return asset.spawnable.size() - 1U;
-            }
-            scene.warnings.push_back("spawn type '" + type_name + "' has no resolvable " + std::string(to_string(spawn_context)) + " model");
-            return std::nullopt;
-        }
-        auto [entry, inserted] = meshes.try_emplace(*path);
-        if (inserted)
-        {
-            entry->second = append_scene_model(builder, *path);
-        }
-        if (!entry->second)
-        {
-            return std::nullopt;
-        }
-        SpawnableType spawnable;
-        spawnable.type_name = definition->name;
-        spawnable.mesh = *entry->second;
-        spawnable.max_speed = type_max_speed(catalog, *definition, scene.warnings);
-        spawnable.team_color = catalog.affiliation_color(*definition).value_or(player_team_color(1));
-        spawnable.follows_ground = asset.land && type_follows_ground(catalog, *definition);
-        spawnable.passable_types = spawnable.follows_ground ? type_passable_types(catalog, *definition, movement_classes) : 0U;
-        const auto decoded = cached_model(builder, *path);
-        spawnable.combat = profile_of(*definition, decoded && decoded->ok() ? &decoded->value() : nullptr);
-        spawnable.hover_offset = type_float_field(catalog, *definition, "Hover_Offset");
-        if (spawnable.max_speed > 0.0F)
-        {
-            static constexpr std::array<float, 16> identity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
-            const auto soft_radius = type_soft_footprint_radius(catalog, *definition);
-            spawnable.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(scene, spawnable.mesh, identity);
-            spawnable.turn_rate = type_turn_rate(catalog, *definition);
-            spawnable.min_speed = asset.land ? 0.0F : type_min_flight_speed(catalog, *definition, spawnable.max_speed);
-            spawnable.aims_with_body = type_aims_with_body(catalog, *definition);
-            spawnable.formation_order = type_formation_order(catalog, *definition);
-            spawnable.formation_spacing = type_formation_spacing(catalog, *definition);
-        }
-        asset.spawnable.push_back(std::move(spawnable));
-        return asset.spawnable.size() - 1U;
-    };
+    SpawnableBuild spawnable_build{builder, catalog, movement_classes, spawn_context, asset.land, meshes, profile_of, asset.spawnable};
     for (const auto& type_name : spawn_types)
     {
-        (void)add_spawnable(type_name, 0);
+        (void)add_spawnable_type(spawnable_build, type_name, 0);
     }
 
     build_map_rigs(builder, asset.rigs, asset.rest_palette);
@@ -436,6 +439,66 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     }
     update_scene_bounds(scene);
     return asset;
+}
+
+Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const std::string_view type_name, const bool land, AssetCache* cache, const MapBuildOptions& options)
+{
+    const auto catalog_entry = cached<CachedCatalog>(cache, "xml-catalog", "Data/XML", vfs,
+                                                     [](const AssetReader& reader)
+                                                     {
+                                                         auto database = std::make_unique<XmlAssetDatabase>(XmlAssetDatabase::build(reader));
+                                                         auto catalog = GameObjectCatalog::build(*database);
+                                                         return CachedCatalog{std::move(database), std::move(catalog)};
+                                                     });
+    const auto movement_entry = cached<MovementClasses>(cache, "movement-classes", std::string(movement_class_path), vfs, load_movement_classes);
+    const auto combat_entry = cached<CombatContent>(cache, "combat-content", "Data/XML/GameConstants.xml", vfs, load_combat_content);
+    SpawnablePackage package;
+    package.meshes.name = std::string(type_name);
+    SceneBuilder builder{vfs, package.meshes, {}, cache, options.textures, options.animation_clips};
+    std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
+    std::unordered_map<const XmlDefinition*, CombatProfile> profiles;
+    const auto profile_of = [&](const XmlDefinition& definition, const AloModel* model) -> const CombatProfile&
+    {
+        auto found = profiles.find(&definition);
+        if (found == profiles.end())
+        {
+            found = profiles.emplace(&definition, combat_profile(catalog_entry->catalog, definition, *combat_entry, package.meshes.warnings, model)).first;
+        }
+        return found->second;
+    };
+    SpawnableBuild build{builder, catalog_entry->catalog, movement_entry->classes, land ? GameModelContext::land : GameModelContext::space, land, meshes, profile_of, package.types};
+    const auto index = add_spawnable_type(build, std::string(type_name), 0);
+    if (!index || package.meshes.meshes.empty())
+    {
+        return make_error("spawn type '" + std::string(type_name) + "' has no resolvable " + std::string(land ? "land" : "space") + " model");
+    }
+    // The requested type comes last (members are added before their company).
+    if (*index + 1U != package.types.size())
+    {
+        return make_error("spawn type '" + std::string(type_name) + "' did not resolve to a single new type");
+    }
+    build_map_rigs(builder, package.rigs, package.rest_palette);
+    return package;
+}
+
+std::vector<std::string> spawnable_type_names(const AssetReader& vfs, const bool land, AssetCache* cache)
+{
+    const auto catalog_entry = cached<CachedCatalog>(cache, "xml-catalog", "Data/XML", vfs,
+                                                     [](const AssetReader& reader)
+                                                     {
+                                                         auto database = std::make_unique<XmlAssetDatabase>(XmlAssetDatabase::build(reader));
+                                                         auto catalog = GameObjectCatalog::build(*database);
+                                                         return CachedCatalog{std::move(database), std::move(catalog)};
+                                                     });
+    std::vector<std::string> names;
+    for (const auto& type : list_spawn_types(*catalog_entry->database, catalog_entry->catalog))
+    {
+        if (type.unit && (land ? type.land_model : type.space_model))
+        {
+            names.push_back(type.name);
+        }
+    }
+    return names;
 }
 
 } // namespace eaw

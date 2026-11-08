@@ -13,6 +13,7 @@
 #include "eaw/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
 
+#include <functional>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -130,6 +131,26 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model,
 // Decodes and appends a model referenced by a map (placed object, backdrop, or spawn type). Particle
 // ALOs and malformed models are reported once as scene warnings and yield nothing.
 std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std::string& model_path);
+// What adding a spawnable type needs: the builder of the scene its meshes join, the XML catalog and
+// movement classes, the model context (land or space), the meshes already appended by model path,
+// a combat profile source (one per type), and the spawnable list to extend.
+struct SpawnableBuild
+{
+    SceneBuilder& builder;
+    const GameObjectCatalog& catalog;
+    const std::unordered_map<std::string, std::uint32_t>& movement_classes;
+    GameModelContext context{};
+    bool land{};
+    std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes;
+    std::function<const CombatProfile&(const XmlDefinition&, const AloModel*)> profile_of;
+    std::vector<SpawnableType>& spawnable;
+};
+
+// Adds an XML type (by name, case-insensitive) to build.spawnable with its model appended to the
+// scene, or, for a company or squadron, its members and then itself; returns its index (an
+// existing entry is reused) or nullopt with a warning when it has no model for the context.
+std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::string& type_name, int depth);
+
 // A rig per scene mesh (its model, inverse bind pose, role clips, and rest palette range), the
 // concatenated rest palette, every instance's bone offset, and the scene's palette size.
 void build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& rigs, std::vector<std::array<float, 16>>& rest_palette);

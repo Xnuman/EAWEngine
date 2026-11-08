@@ -73,6 +73,9 @@ struct SandboxOptions
     // XML object types made spawnable on maps; counts spawn when shown, each request as its own
     // group for its owner slot.
     std::vector<SandboxSpawnRequest> spawns;
+    // --spawn-later: types not built into the map; once it is shown they are loaded at runtime
+    // (built and registered like a first N press on an unloaded type) and spawned (automation).
+    std::vector<SandboxSpawnRequest> later_spawns;
     // Battles: total simulation ticks to run (battle mode; default 3000, or the replayed log's end),
     // a file to write the order log to when the battle ends (battle and sandbox modes), a log to
     // replay instead of the spawn and auto-move options, and whether to run the battle twice and

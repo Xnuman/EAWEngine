@@ -12,7 +12,7 @@ Result<AlaAnimation> read_animation(const AssetReader& reader, const std::string
     return AlaAnimation::parse(bytes);
 }
 
-SandboxContent build_sandbox_content(const VirtualFileSystem& vfs, const SandboxOptions& options, AssetCache* cache, const bool reload)
+SandboxContent build_sandbox_content(const VirtualFileSystem& vfs, const SandboxOptions& options, AssetCache* cache, const bool reload, std::vector<std::string> extra_spawn_types)
 {
     SandboxContent content;
     content.reload = reload;
@@ -32,6 +32,13 @@ SandboxContent build_sandbox_content(const VirtualFileSystem& vfs, const Sandbox
             if (std::ranges::find(spawn_types, request.type) == spawn_types.end())
             {
                 spawn_types.push_back(request.type);
+            }
+        }
+        for (auto& type : extra_spawn_types)
+        {
+            if (std::ranges::find(spawn_types, type) == spawn_types.end())
+            {
+                spawn_types.push_back(std::move(type));
             }
         }
         if (auto map = build_visual_map(reader, *options.map, cache, spawn_types))

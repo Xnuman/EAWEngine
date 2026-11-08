@@ -103,6 +103,10 @@ public:
     // Id of each placed entity in map order (empty where the world rejected it).
     [[nodiscard]] std::span<const std::optional<EntityId>> map_entity_ids() const noexcept;
     [[nodiscard]] std::span<const SpawnableType> spawnable() const noexcept;
+    // Adds spawnable types at runtime (a SpawnablePackage's types, with mesh indices already in
+    // the scene's mesh library and member indices relative to `types`); returns the index of the
+    // first. Their visual keys follow the existing types (spawnable_visual).
+    std::size_t add_spawnable(std::span<const SpawnableType> types);
 
     // Validates an order, queues its simulation commands for the next tick, and records it. Unknown
     // types, counts above 1000, owners beyond the hostility table, non-finite points, type names

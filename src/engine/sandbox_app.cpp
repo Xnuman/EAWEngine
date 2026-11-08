@@ -24,6 +24,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -46,6 +47,17 @@ namespace {
 
 // The sandbox's state between frames and the steps of one frame. Members keep the declaration
 // order the work depends on: the asset cache and archive watch outlive the futures that use them.
+// XML type names compare case-insensitively.
+std::string fold_name(std::string text)
+{
+    std::ranges::transform(text, text.begin(),
+                           [](const unsigned char character)
+                           {
+                               return static_cast<char>(std::tolower(character));
+                           });
+    return text;
+}
+
 // Reports a frame step that runs longer than its threshold (a stall or an endless loop), naming the
 // step and the simulation tick, from a background thread and every five seconds while it lasts, so
 // a frozen window still leaves a diagnosis on stderr and in the log file. The threshold is 5 s on a
@@ -143,11 +155,30 @@ struct SandboxSession
     // Kept only for --reload-every; otherwise the CPU copy moves into the renderer.
     std::optional<eaw::VisualScene> reload_scene;
     std::vector<std::array<float, 16>> bind_palette;
-    // Runtime-spawnable types of the current map; N spawns `spawn_choice` at the cursor.
+    // Runtime-spawnable types of the current map (the battle's); N spawns the chosen name at the
+    // cursor, building its package first when it is not loaded yet.
     std::vector<eaw::SpawnableType> spawnable;
     // The map's ground surface for CPU order targets (invalid on space maps and models).
     eaw::GroundMap terrain_heights;
+    bool map_land = false;
+    // Names Tab cycles through: every unit type with a model for the map (listed in the
+    // background once the map is shown), or the loaded spawnable types until then.
+    std::vector<std::string> spawn_names;
+    std::future<std::vector<std::string>> pending_spawn_names;
     std::size_t spawn_choice = 0;
+    // Types added at runtime (kept across hot-reload rebuilds), the package being built, and spawns
+    // waiting for their type.
+    std::vector<std::string> runtime_types;
+    struct PendingSpawn
+    {
+        std::string type;
+        eaw::SimVector3 point;
+        std::uint32_t count{};
+        std::uint32_t owner{};
+    };
+    std::vector<PendingSpawn> pending_spawns;
+    std::string building_type;
+    std::future<eaw::Result<eaw::SpawnablePackage>> pending_package;
     // Owner slot of debug spawns (O cycles through the non-neutral slots 0..7).
     std::uint32_t spawn_owner = 1;
     // Pick requests: the instance-to-entity list of the frame that drew each one (instance order
@@ -231,7 +262,7 @@ struct SandboxSession
         watchdog.set_threshold(options.use_warp || options.gpu_validation ? std::chrono::seconds(60) : std::chrono::seconds(5));
         if (!options.validation_triangle)
         {
-            pending_content = std::async(std::launch::async, eaw::build_sandbox_content, std::cref(vfs), std::cref(options), &asset_cache, false);
+            pending_content = std::async(std::launch::async, eaw::build_sandbox_content, std::cref(vfs), std::cref(options), &asset_cache, false, std::vector<std::string>{});
             std::cout << "Building " << (options.map ? "map " + *options.map : "model " + options.model) << " in the background...\n";
         }
         if (options.validation_triangle)
@@ -375,6 +406,21 @@ struct SandboxSession
             }
             spawnable = visual_map.spawnable;
             terrain_heights = visual_map.ground;
+            map_land = visual_map.land;
+            spawn_names.clear();
+            for (const auto& type : spawnable)
+            {
+                spawn_names.push_back(type.type_name);
+            }
+            // The full list comes from the cached XML catalog on a worker (no remount runs meanwhile).
+            if (!pending_spawn_names.valid())
+            {
+                pending_spawn_names = std::async(std::launch::async,
+                                                 [&files = vfs, land = map_land, cache = &asset_cache]
+                                                 {
+                                                     return eaw::spawnable_type_names(files, land, cache);
+                                                 });
+            }
             spawn_choice = 0;
             initial_spawns_sent = false;
             for (const auto& type : spawnable)
@@ -431,6 +477,8 @@ struct SandboxSession
             }
             visual_model = std::move(content.model);
             animator.reset();
+            spawn_names.clear();
+            pending_spawns.clear();
             scene_status = model_status;
             animation_status = "bind pose";
             reload_scene = std::move(reload_copy);
@@ -530,6 +578,112 @@ struct SandboxSession
         }
         std::cout << "Spawning " << count << " " << type.type_name << (type.members.empty() ? std::string{} : " (" + std::to_string(type.members.size()) + " units each)") << " for owner "
                   << spawn_owner << " at " << eaw::format_fixed(point.x, 0) << ", " << eaw::format_fixed(point.y, 0) << ", " << eaw::format_fixed(point.z, 0) << '\n';
+    }
+
+    // Spawns `count` of a type by name: at once when it is loaded, otherwise after its package is
+    // built (on a worker) and registered with the renderer, presentation, animation, and battle.
+    void spawn_named(const std::string& type, const eaw::SimVector3& point, const std::uint32_t count)
+    {
+        const auto loaded = std::ranges::find_if(spawnable,
+                                                 [&](const eaw::SpawnableType& candidate)
+                                                 {
+                                                     return fold_name(candidate.type_name) == fold_name(type);
+                                                 });
+        if (loaded != spawnable.end())
+        {
+            spawn_units(static_cast<std::size_t>(loaded - spawnable.begin()), point, count);
+            return;
+        }
+        pending_spawns.push_back({type, point, count, spawn_owner});
+        std::cout << "Loading " << type << " for spawning...\n";
+        start_next_package();
+    }
+
+    void start_next_package()
+    {
+        if (pending_package.valid() || pending_spawns.empty() || pending_content.valid() || pending_check.valid())
+        {
+            return;
+        }
+        building_type = pending_spawns.front().type;
+        pending_package = std::async(std::launch::async,
+                                     [&files = vfs, type = building_type, land = map_land, cache = &asset_cache]
+                                     {
+                                         return eaw::build_spawnable_package(files, type, land, cache);
+                                     });
+    }
+
+    // A finished package: its meshes join the renderer's library, its types the battle, and the
+    // spawns waiting for it are given.
+    void poll_packages()
+    {
+        if (pending_spawn_names.valid() && pending_spawn_names.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        {
+            auto names = pending_spawn_names.get();
+            if (!names.empty() && battle)
+            {
+                const auto current = spawn_choice < spawn_names.size() ? spawn_names[spawn_choice] : std::string{};
+                spawn_names = std::move(names);
+                const auto found = std::ranges::find(spawn_names, current);
+                spawn_choice = found != spawn_names.end() ? static_cast<std::size_t>(found - spawn_names.begin()) : 0U;
+                std::cout << "Spawn list: " << spawn_names.size() << " types (Tab/Shift+Tab, Ctrl for 10 at a time)\n";
+            }
+        }
+        if (!pending_package.valid() || pending_package.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+        {
+            start_next_package();
+            return;
+        }
+        auto built = pending_package.get();
+        const auto type = building_type;
+        const auto waiting = [&](const PendingSpawn& spawn)
+        {
+            return fold_name(spawn.type) == fold_name(type);
+        };
+        if (!built || !battle || !presentation || !animator)
+        {
+            eaw::log_warning("sandbox", built ? eaw::Error{"the map changed while " + type + " was being built"} : built.error());
+            std::erase_if(pending_spawns, waiting);
+            start_next_package();
+            return;
+        }
+        auto package = std::move(built).value();
+        for (const auto& warning : package.meshes.warnings)
+        {
+            std::cerr << "spawn warning: " << warning << '\n';
+        }
+        const std::vector<eaw::VisualMesh> meshes = package.meshes.meshes;
+        auto added = renderer.add_meshes(std::move(package.meshes));
+        if (!added || *added != animator->rig_count())
+        {
+            eaw::log_warning("sandbox", added ? eaw::Error{"mesh library and animation rigs are out of step"} : added.error());
+            std::erase_if(pending_spawns, waiting);
+            start_next_package();
+            return;
+        }
+        for (auto& added_type : package.types)
+        {
+            added_type.mesh += *added;
+        }
+        presentation->add_meshes(meshes);
+        presentation->add_spawnable(package.types);
+        animator->add_rigs(package.rigs, package.rest_palette);
+        (void)battle->add_spawnable(package.types);
+        spawnable.assign(battle->spawnable().begin(), battle->spawnable().end());
+        runtime_types.push_back(type);
+        std::cout << "Loaded " << type << " (" << meshes.size() << " meshes)\n";
+        const auto owner = spawn_owner;
+        for (const auto& spawn : pending_spawns)
+        {
+            if (waiting(spawn))
+            {
+                spawn_owner = spawn.owner;
+                spawn_named(spawn.type, spawn.point, spawn.count);
+            }
+        }
+        spawn_owner = owner;
+        std::erase_if(pending_spawns, waiting);
+        start_next_package();
     }
 
     void order_attack(const eaw::EntityId victim)
@@ -634,11 +788,11 @@ struct SandboxSession
         view.last_tick_ms = last_tick_ms;
         view.slowest_tick_ms = slowest_tick_ms;
         view.orders_issued = orders_issued;
-        if (!spawnable.empty())
+        if (spawn_choice < spawn_names.size())
         {
-            view.spawn_type = spawnable[spawn_choice].type_name;
+            view.spawn_type = spawn_names[spawn_choice] + (building_type.empty() || !pending_package.valid() ? std::string{} : " (loading " + building_type + ")");
         }
-        view.spawn_types = spawnable.size();
+        view.spawn_types = spawn_names.size();
         view.spawn_owner = spawn_owner;
         view.reload_status = reload_status;
         view.camera = !tactical_camera ? eaw::SandboxCameraMode::model : free_camera ? eaw::SandboxCameraMode::free : eaw::SandboxCameraMode::rts;
@@ -757,7 +911,7 @@ struct SandboxSession
     // Spawn keys (O owner, Tab type, N spawn at the cursor) and C (RTS or free camera).
     void handle_command_keys(const eaw::InputState& input, const bool scene_mouse, const std::array<float, 2>& mouse)
     {
-        if (input.keys[static_cast<std::size_t>(eaw::Key::o)].pressed && !spawnable.empty())
+        if (input.keys[static_cast<std::size_t>(eaw::Key::o)].pressed && !spawn_names.empty())
         {
             do
             {
@@ -765,16 +919,24 @@ struct SandboxSession
             } while (spawn_owner == eaw::neutral_map_owner);
             std::cout << "Spawn owner: " << spawn_owner << '\n';
         }
-        if (input.keys[static_cast<std::size_t>(eaw::Key::tab)].pressed && !spawnable.empty())
+        if (input.keys[static_cast<std::size_t>(eaw::Key::tab)].pressed && !spawn_names.empty())
         {
-            spawn_choice = (spawn_choice + 1U) % spawnable.size();
-            std::cout << "Spawn type: " << spawnable[spawn_choice].type_name << '\n';
+            // Tab next, Shift+Tab previous, with Ctrl ten at a time.
+            const auto size = spawn_names.size();
+            const auto step = (input.keys[static_cast<std::size_t>(eaw::Key::control)].down ? 10U : 1U) % size;
+            spawn_choice = input.keys[static_cast<std::size_t>(eaw::Key::shift)].down ? (spawn_choice + size - step) % size : (spawn_choice + step) % size;
+            const bool loaded = std::ranges::any_of(spawnable,
+                                                    [&](const eaw::SpawnableType& type)
+                                                    {
+                                                        return fold_name(type.type_name) == fold_name(spawn_names[spawn_choice]);
+                                                    });
+            std::cout << "Spawn type: " << spawn_names[spawn_choice] << (loaded ? "" : " (loads on first spawn)") << " [" << spawn_choice + 1U << "/" << size << "]\n";
         }
-        if (input.keys[static_cast<std::size_t>(eaw::Key::n)].pressed && !spawnable.empty() && world && presentation && tactical_camera && scene_mouse)
+        if (input.keys[static_cast<std::size_t>(eaw::Key::n)].pressed && spawn_choice < spawn_names.size() && world && presentation && tactical_camera && scene_mouse)
         {
             if (const auto target = ground_target(mouse[0], mouse[1]))
             {
-                spawn_units(spawn_choice, *target, 1);
+                spawn_named(spawn_names[spawn_choice], *target, 1);
             }
         }
         if (input.keys[static_cast<std::size_t>(eaw::Key::c)].pressed && tactical_camera)
@@ -897,7 +1059,8 @@ struct SandboxSession
         // dependencies and the MEG archives with their recorded state. Rebuilt archives are
         // remounted here, while no other thread reads the file system, then the scene rebuilds
         // in the background from the cache.
-        if (options.hot_reload && scene_dependencies && !pending_content.valid())
+        // Archives are remounted only while no worker reads through the file system.
+        if (options.hot_reload && scene_dependencies && !pending_content.valid() && !pending_package.valid() && !pending_spawn_names.valid())
         {
             if (pending_check.valid() && pending_check.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
             {
@@ -935,7 +1098,7 @@ struct SandboxSession
                         std::cout << (index == 0 ? " (" : ", ") << check.files[index];
                     }
                     std::cout << (check.files.size() > 3 ? ", ...)" : check.files.empty() ? "" : ")") << "; rebuilding\n";
-                    pending_content = std::async(std::launch::async, eaw::build_sandbox_content, std::cref(vfs), std::cref(options), &asset_cache, true);
+                    pending_content = std::async(std::launch::async, eaw::build_sandbox_content, std::cref(vfs), std::cref(options), &asset_cache, true, runtime_types);
                     reload_status = std::to_string(check.files.size()) + " changes, rebuilding...";
                 }
             }
@@ -1018,7 +1181,7 @@ struct SandboxSession
     // Command-line automation: initial spawns, --auto-move, and --pick, once the content is shown.
     void run_automation()
     {
-        if (!initial_spawns_sent && world && tactical_camera && content_shown_at && !spawnable.empty())
+        if (!initial_spawns_sent && world && tactical_camera && content_shown_at && (!spawnable.empty() || !options.later_spawns.empty()))
         {
             initial_spawns_sent = true;
             initial_spawn_tick = world->stats().tick;
@@ -1044,6 +1207,19 @@ struct SandboxSession
                     point.z = terrain_heights.surface_height(point.x, point.y);
                 }
                 spawn_units(static_cast<std::size_t>(type - spawnable.begin()), point, entry.count);
+            }
+            // Types loaded at runtime spawn beside them once their packages are built.
+            for (std::size_t request = 0; center && request < options.later_spawns.size(); ++request)
+            {
+                const auto& entry = options.later_spawns[request];
+                spawn_owner = entry.owner.value_or(default_owner);
+                auto point = *center;
+                point.y += 180.0F * static_cast<float>(request + 1U);
+                if (terrain_heights.valid())
+                {
+                    point.z = terrain_heights.surface_height(point.x, point.y);
+                }
+                spawn_named(entry.type, point, std::max(entry.count, 1U));
             }
             spawn_owner = default_owner;
         }
@@ -1168,6 +1344,7 @@ struct SandboxSession
         renderer.resize(window.client_width(), window.client_height());
         poll_content();
         poll_hot_reload();
+        poll_packages();
         const auto now = std::chrono::steady_clock::now();
         advance_animation(now);
         watchdog.enter("simulation and presentation", tick);

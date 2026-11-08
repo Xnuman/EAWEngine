@@ -193,6 +193,23 @@ struct MapBuildOptions
 };
 [[nodiscard]] Result<VisualMapAsset> build_visual_map(const AssetReader& reader, std::string_view map_path, AssetCache* cache = nullptr, std::span<const std::string> spawn_types = {},
                                                       const MapBuildOptions& options = {});
+// A spawnable type built on its own, to add to a loaded map at runtime: its meshes as a fragment for
+// D3d12Renderer::add_meshes (no instances or terrain), their rigs and rest palette (rest offsets
+// relative to it), and the types: the requested one last, after any company or squadron members,
+// with mesh indices relative to the fragment and member indices relative to `types`.
+struct SpawnablePackage
+{
+    VisualScene meshes;
+    std::vector<VisualRig> rigs;
+    std::vector<std::array<float, 16>> rest_palette;
+    std::vector<SpawnableType> types;
+};
+// Builds a type for a land or space map through the same cached XML catalog, movement classes, and
+// combat data as build_visual_map (an error when the type has no model for that context).
+[[nodiscard]] Result<SpawnablePackage> build_spawnable_package(const AssetReader& reader, std::string_view type_name, bool land, AssetCache* cache = nullptr, const MapBuildOptions& options = {});
+// Names of the unit and structure types with a model for land or space maps, sorted
+// case-insensitively (through the cached XML catalog).
+[[nodiscard]] std::vector<std::string> spawnable_type_names(const AssetReader& reader, bool land, AssetCache* cache = nullptr);
 [[nodiscard]] std::optional<std::string> default_model_animation(const AssetReader& reader, std::string_view model_path);
 // Every <MODEL>_*.ALA beside the model, sorted by virtual path.
 [[nodiscard]] std::vector<std::string> model_animations(const AssetReader& reader, std::string_view model_path);

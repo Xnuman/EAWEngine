@@ -254,7 +254,10 @@ so one terrain pipeline blends three layer materials per pixel and lights the
 result with the same shared legacy lighting code as meshes.
 
 A visual scene groups draws into meshes (one per model) and places them with
-instances. Each instance carries a world transform, a tint, and a bone-palette
+instances. Meshes can be added to a loaded scene at runtime (`add_meshes`):
+each addition is a geometry block with its own vertex and index buffers, its
+materials join the material buffer, and its textures stream like the scene's,
+so spawning a type the map was not built with needs no scene reload. Each instance carries a world transform, a tint, and a bone-palette
 offset in an immutable structured buffer. Instances are sorted by mesh at load
 so every draw of a mesh is issued once with `DrawIndexedInstanced` over a
 contiguous instance range; the range start is a root constant because

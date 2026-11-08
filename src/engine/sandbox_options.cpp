@@ -80,6 +80,7 @@ void print_sandbox_usage()
               << "  --spawn <TYPE>[:N][@OWNER] Make an XML object type spawnable on maps (repeatable); N spawn at the view\n"
               << "                     center when shown (OWNER slot, default 1; each request its own group), N key\n"
               << "                     spawns one at the cursor, Tab cycles types, O cycles the owner\n"
+              << "  --spawn-later <TYPE>[:N][@OWNER] Load a type at runtime once the map is shown and spawn N (automation)\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
               << "  --ticks <count>    Battle: total simulation ticks to run (default 3000, or the replayed log's end)\n"
               << "  --record <file>    Write the battle's order log when it ends (battle and sandbox)\n"
@@ -189,7 +190,7 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         {
             options.auto_move = true;
         }
-        else if (argument == "--spawn")
+        else if (argument == "--spawn" || argument == "--spawn-later")
         {
             EAW_TRY_ASSIGN(std::string value, require_value(argc, argv, index, argument));
             std::optional<std::uint32_t> owner;
@@ -219,7 +220,7 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
             {
                 return make_error("--spawn needs an XML object type name");
             }
-            options.spawns.push_back({std::move(type), count, owner});
+            (argument == "--spawn" ? options.spawns : options.later_spawns).push_back({std::move(type), count, owner});
         }
         else if (argument == "--pick")
         {

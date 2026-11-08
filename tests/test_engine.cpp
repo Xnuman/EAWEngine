@@ -592,6 +592,9 @@ void test_sandbox_options()
     const auto battle = expect_ok(parse({"battle", "--map", "DATA/ART/MAPS/X.TED", "--ticks", "500", "--record", "out.log", "--check-determinism", "--auto-move"}), "parsing battle options");
     require(battle.mode == eaw::RunMode::battle && battle.ticks == 500U && battle.record == std::filesystem::path("out.log") && battle.check_determinism && battle.auto_move,
             "battle options must be read");
+    const auto later = expect_ok(parse({"--map", "X.TED", "--spawn-later", "AT_ST_Walker:2@2"}), "parsing --spawn-later");
+    require(later.spawns.empty() && later.later_spawns.size() == 1 && later.later_spawns[0].type == "AT_ST_Walker" && later.later_spawns[0].count == 2 && later.later_spawns[0].owner == 2U,
+            "--spawn-later must read like --spawn into its own list");
     require(expect_ok(parse({"battle", "--replay", "in.log"}), "parsing a replay").replay == std::filesystem::path("in.log"), "a replay needs no map");
     require(!parse({"battle"}) && !parse({"battle", "--map", "X.TED", "--ticks", "0"}) && !parse({"battle", "--replay", "in.log", "--spawn", "Tank:1"}) &&
                 !parse({"battle", "--replay", "in.log", "--auto-move"}) && !parse({"sandbox", "--replay", "in.log"}),
@@ -952,6 +955,65 @@ void test_unit_animation()
             "DIE clips must be recognized, directional deaths not yet");
 }
 
+// Types added at runtime: the battle offsets company members, presentation draws spawned entities
+// of the new types from their meshes, and the animator places the new rigs after the old ones.
+void test_runtime_spawnable_registration()
+{
+    eaw::SpawnableType trooper;
+    trooper.type_name = "Trooper";
+    trooper.max_speed = 10.0F;
+    eaw::BattleMap map;
+    map.spawnable = std::span(&trooper, 1);
+    eaw::Battle battle(map, "TEST.TED", 0.1);
+    // A package: a member type and its squad (members relative to the package).
+    eaw::SpawnableType walker;
+    walker.type_name = "Walker";
+    walker.mesh = 1;
+    walker.max_speed = 5.0F;
+    walker.team_color = {0.0F, 1.0F, 0.0F, 1.0F};
+    eaw::SpawnableType squad;
+    squad.type_name = "Walker_Squad";
+    squad.mesh = 1;
+    squad.members = {0, 0};
+    const std::array<eaw::SpawnableType, 2> package{walker, squad};
+    const auto first = battle.add_spawnable(package);
+    require(first == 1 && battle.spawnable().size() == 3 && battle.spawnable()[2].members == std::vector<std::size_t>{1, 1}, "added company members must point at the added member type");
+    expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {50.0F, 0.0F, 0.0F}, .type = "Walker_Squad", .count = 1, .owner = 2}), "spawn of an added squad");
+    battle.step();
+    require(battle.world().snapshot().entities.size() == 2 && battle.world().snapshot().entities[0].visual == eaw::spawnable_visual(1),
+            "an added squad must spawn its members with the member type's visual key");
+
+    eaw::VisualScene scene;
+    scene.meshes.resize(1);
+    scene.meshes[0].name = "TROOPER.ALO";
+    eaw::ScenePresentation presentation(scene, {}, {}, std::span(&trooper, 1));
+    eaw::VisualMesh walker_mesh;
+    walker_mesh.name = "WALKER.ALO";
+    presentation.add_meshes(std::span(&walker_mesh, 1));
+    presentation.add_spawnable(package);
+    std::vector<eaw::VisualInstance> instances;
+    std::vector<eaw::EntityId> ids;
+    presentation.build(battle.world().snapshot().entities, {}, instances, ids);
+    require(instances.size() == 2 && instances[0].mesh == 1 && instances[0].team_color[1] == 1.0F && presentation.mesh_name(1) == "WALKER.ALO",
+            "presentation must draw entities of added types from their added meshes");
+
+    eaw::VisualRig base_rig;
+    base_rig.palette_size = 3;
+    const std::vector<std::array<float, 16>> base_rest(3, eaw::alo_identity_matrix().values);
+    eaw::UnitAnimator animator(std::span(&base_rig, 1), base_rest);
+    eaw::VisualRig added_rig;
+    added_rig.rest_offset = 0;
+    added_rig.palette_size = 2;
+    const std::vector<std::array<float, 16>> added_rest(2, eaw::alo_identity_matrix().values);
+    animator.add_rigs(std::span(&added_rig, 1), added_rest);
+    std::vector<eaw::VisualInstance> drawn(1);
+    drawn[0].mesh = 1;
+    std::vector<eaw::EntityId> none(1);
+    std::vector<std::array<float, 16>> palette;
+    animator.animate({}, none, drawn, 1.0, 1U << 20U, palette);
+    require(animator.rig_count() == 2 && palette.size() == 5 && drawn[0].bone_offset == 3, "added rigs must take their rest poses after the existing ones");
+}
+
 const ModuleRegistrar registrar("engine", {
                                               {"test_asset_cache_dependencies", &test_asset_cache_dependencies},
                                               {"test_debug_draw", &test_debug_draw},
@@ -959,6 +1021,7 @@ const ModuleRegistrar registrar("engine", {
                                               {"test_battle_orders", &test_battle_orders},
                                               {"test_battle_log", &test_battle_log},
                                               {"test_unit_animation", &test_unit_animation},
+                                              {"test_runtime_spawnable_registration", &test_runtime_spawnable_registration},
                                               {"test_rts_control", &test_rts_control},
                                               {"test_terrain_height_field", &test_terrain_height_field},
                                               {"test_camera_controllers", &test_camera_controllers},

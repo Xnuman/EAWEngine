@@ -134,6 +134,27 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
     }
 }
 
+void ScenePresentation::add_meshes(const std::span<const VisualMesh> meshes)
+{
+    for (const auto& mesh : meshes)
+    {
+        mesh_names_.push_back(mesh.name);
+        mesh_minimum_.push_back(mesh.bounds_minimum);
+        mesh_maximum_.push_back(mesh.bounds_maximum);
+    }
+}
+
+void ScenePresentation::add_spawnable(const std::span<const SpawnableType> types)
+{
+    for (const auto& type : types)
+    {
+        EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which presentation does not know");
+        VisualInstance instance{type.mesh};
+        instance.team_color = type.team_color;
+        spawn_templates_.push_back({instance, identity_model_heading});
+    }
+}
+
 std::optional<VisualInstance> ScenePresentation::corpse_instance(const DeathSnapshot& death)
 {
     const Template* found = nullptr;
