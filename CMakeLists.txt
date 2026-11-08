@@ -240,7 +240,11 @@ add_library(eaw_engine STATIC
     src/engine/scene_presentation.cpp
     src/engine/terrain_height.cpp
     src/engine/text_format.cpp
-    src/engine/visual_scene_builder.cpp
+    src/engine/object_type_properties.cpp
+    src/engine/scene_materials.cpp
+    src/engine/scene_models.cpp
+    src/engine/scene_terrain.cpp
+    src/engine/visual_map_builder.cpp
 )
 target_include_directories(eaw_engine PUBLIC src/engine src/render/include)
 target_compile_features(eaw_engine PUBLIC cxx_std_20)
