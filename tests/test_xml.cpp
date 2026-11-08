@@ -184,7 +184,8 @@ void test_game_object_catalog()
                 catalog.field(*squadron_type.front(), "Squadron_Units").field->text.find("Missing_Member") != std::string::npos,
             "repeated XML field lookup failed");
 
-    // A placed space squadron expands into its members at their rotated Squadron_Offsets; a land
+    // A placed space squadron expands into its members at their rotated Squadron_Offsets (a repeated
+    // Squadron_Units continues the list: Unit_A, then Unit_A, Unit_A_Variant, Missing_Member); a land
     // team container is counted instead of guessed.
     eaw::TedMap squadron_map;
     squadron_map.type = eaw::TedMapType::space;
@@ -196,7 +197,8 @@ void test_game_object_catalog()
     team.crc = eaw::game_object_name_crc("Test_Team");
     squadron_map.placed_objects.push_back(team);
     const auto squadron_layout = eaw::build_map_object_layout(squadron_map, catalog, vfs);
-    require(squadron_layout.expanded_members == 2 && squadron_layout.untyped == 1 && squadron_layout.unexpanded_containers == 1 && squadron_layout.placements.size() == 3,
+    require(squadron_layout.expanded_members == 3 && squadron_layout.untyped == 1 && squadron_layout.unexpanded_containers == 1 && squadron_layout.placements.size() == 4 &&
+                squadron_layout.placements[2].type != nullptr && squadron_layout.placements[2].type->name == "Unit_A_Variant",
             "squadron expansion counts are wrong");
     const auto& lead = squadron_layout.placements[0];
     const auto lead_origin = eaw::alo_transform_point({}, lead.transform);

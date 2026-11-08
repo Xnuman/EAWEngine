@@ -201,7 +201,10 @@ Gaps toward the deliverable, in planned order:
    - expanding land companies and teams into their units. `Company_Units`
      occurs in 179 definitions, and 358 company placements in owner slots 0
      and 1 are skipped today, so maps start without their infantry.
-2. **Space combat.** Covers:
+2. **Space combat.** Step 1 is done: weapon hardpoints fire, entities carry
+   several weapons, ships separate, and squadrons expand fully and spawn.
+   Fire cones, destroyable hardpoint subsystems, and fighter movement follow.
+   Covers:
    - weapons on `HardPoints` (94 stock uses);
    - space movement (turning, speed, and the space layer);
    - squadron behavior.

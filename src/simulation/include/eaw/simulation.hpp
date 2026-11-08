@@ -233,11 +233,16 @@ private:
         EntityId target;
         // The target came from an attack command: chase it out of range instead of dropping it.
         bool ordered{};
-        // Ticks until the next burst may start, until the next shot of a burst, until the next
-        // automatic target search, and until an ordered chase replans.
-        std::uint32_t cooldown{};
-        std::uint32_t pulses_left{};
-        std::uint32_t pulse_timer{};
+        // Per weapon: ticks until the next burst may start, shots left in the burst, and ticks until
+        // the burst's next shot.
+        struct WeaponState
+        {
+            std::uint32_t cooldown{};
+            std::uint32_t pulses_left{};
+            std::uint32_t pulse_timer{};
+        };
+        std::vector<WeaponState> weapons;
+        // Ticks until the next automatic target search, and until an ordered chase replans.
         std::uint32_t retarget_timer{};
         std::uint32_t chase_timer{};
     };
@@ -291,7 +296,7 @@ private:
     void run_combat();
     void update_target(std::size_t index);
     void run_weapon(std::size_t index);
-    void launch(std::size_t shooter, std::size_t victim);
+    void launch(std::size_t shooter, std::size_t victim, const WeaponProfile& weapon);
     void apply_damage(std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health);
     void run_projectiles();
     void remove_dead();

@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 #include <unordered_map>
 
 namespace eaw {
@@ -41,7 +42,20 @@ struct CombatProfile
     std::uint16_t shield_armor_type{};
     // Height above the entity's position that shots aim at.
     float aim_height{};
-    std::optional<WeaponProfile> weapon;
+    // Every weapon (a land unit's projectile weapon, a ship's weapon hardpoints). Each fires at the
+    // entity's target when it is within that weapon's range, with its own recharge and bursts.
+    std::vector<WeaponProfile> weapons;
+
+    // The longest weapon range (the entity's targeting range); 0 without weapons.
+    [[nodiscard]] float range() const noexcept
+    {
+        float longest = 0.0F;
+        for (const auto& weapon : weapons)
+        {
+            longest = weapon.range > longest ? weapon.range : longest;
+        }
+        return longest;
+    }
 };
 
 // Damage multipliers by (damage type, armor type); pairs that were never set multiply by 1.

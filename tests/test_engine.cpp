@@ -288,6 +288,12 @@ void test_combat_content()
                 "<Projectile_Fire_Recharge_Seconds>1.5</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>3</Projectile_Fire_Pulse_Count>"
                 "<Projectile_Fire_Pulse_Delay_Seconds>0.2</Projectile_Fire_Pulse_Delay_Seconds></GroundVehicle>"
                 "<GroundStructure Name=\"Wall\"><Tactical_Health>-5</Tactical_Health></GroundStructure>"
+                "<HardPoint Name=\"HP_Gun\"><Type> HARD_POINT_WEAPON_LASER </Type><Fire_Projectile_Type>Proj_Tank</Fire_Projectile_Type>"
+                "<Fire_Min_Recharge_Seconds>3</Fire_Min_Recharge_Seconds><Fire_Max_Recharge_Seconds>4</Fire_Max_Recharge_Seconds><Fire_Pulse_Count>7</Fire_Pulse_Count>"
+                "<Fire_Pulse_Delay_Seconds>0.2</Fire_Pulse_Delay_Seconds><Fire_Range_Distance>2000</Fire_Range_Distance><Damage_Type>Damage_Unknown</Damage_Type></HardPoint>"
+                "<HardPoint Name=\"HP_Shield\"><Type>HARD_POINT_SHIELD_GENERATOR</Type><Health>375</Health></HardPoint>"
+                "<SpaceUnit Name=\"Cruiser\"><Tactical_Health>500</Tactical_Health><Targeting_Max_Attack_Distance>1500</Targeting_Max_Attack_Distance>"
+                "<HardPoints>HP_Gun, HP_Shield,\n HP_Gun HP_Missing</HardPoints></SpaceUnit>"
                 "<GroundVehicle Name=\"Broken_Gun\"><Tactical_Health>10</Tactical_Health><Projectile_Types>Proj_Missing</Projectile_Types>"
                 "<Targeting_Max_Attack_Distance>100</Targeting_Max_Attack_Distance></GroundVehicle>"
                 "</Units>";
@@ -310,17 +316,32 @@ void test_combat_content()
     };
     std::vector<std::string> warnings;
     const auto tank = eaw::combat_profile(catalog, *definition("Tank"), content, warnings);
-    require(tank.health == 100.0F && tank.shield == 50.0F && tank.shield_regen_per_second == 4.0F && tank.armor_type == tank_armor && tank.aim_height == 12.0F && tank.weapon,
+    require(tank.health == 100.0F && tank.shield == 50.0F && tank.shield_regen_per_second == 4.0F && tank.armor_type == tank_armor && tank.aim_height == 12.0F && tank.weapons.size() == 1,
             "a type's health, shields, armor, and weapon must be read");
-    const auto& weapon = *tank.weapon;
+    const auto& weapon = tank.weapons.front();
     require(weapon.range == 200.0F && weapon.recharge_seconds == 1.5F && weapon.pulse_count == 3 && weapon.pulse_delay_seconds == 0.2F && weapon.damage == 7.5F && weapon.damage_type == laser &&
                 weapon.projectile_speed == 10.0F * eaw::provisional_max_speed_scale && weapon.max_flight_distance == 400.0F && !weapon.damages_shield && weapon.damages_health,
             "the first projectile type must supply the shot, through its variant chain");
     require(warnings.empty(), "a well-formed type must not warn");
     const auto wall = eaw::combat_profile(catalog, *definition("Wall"), content, warnings);
-    require(wall.health == 0.0F && !wall.weapon && warnings.size() == 1 && warnings[0].find("Tactical_Health") != std::string::npos, "a negative health must be reported and ignored");
+    require(wall.health == 0.0F && wall.weapons.empty() && warnings.size() == 1 && warnings[0].find("Tactical_Health") != std::string::npos, "a negative health must be reported and ignored");
     const auto broken = eaw::combat_profile(catalog, *definition("Broken_Gun"), content, warnings);
-    require(broken.health == 10.0F && !broken.weapon && warnings.size() == 2 && warnings[1].find("Proj_Missing") != std::string::npos, "an undefined projectile type must be reported");
+    require(broken.health == 10.0F && broken.weapons.empty() && warnings.size() == 2 && warnings[1].find("Proj_Missing") != std::string::npos, "an undefined projectile type must be reported");
+
+    // Weapon hardpoints become weapons (other hardpoint types do not); the recharge is the midpoint of
+    // the min/max range and a hardpoint's Damage_Type overrides its projectile's.
+    const auto cruiser = eaw::combat_profile(catalog, *definition("Cruiser"), content, warnings);
+    require(cruiser.weapons.size() == 2 && cruiser.range() == 2000.0F, "every weapon hardpoint must become a weapon");
+    const auto& turbolaser = cruiser.weapons.front();
+    require(turbolaser.recharge_seconds == 3.5F && turbolaser.pulse_count == 7 && turbolaser.pulse_delay_seconds == 0.2F && turbolaser.damage == 7.5F && turbolaser.damage_type == 0 &&
+                turbolaser.projectile_speed == 10.0F * eaw::provisional_max_speed_scale,
+            "a weapon hardpoint must read its fire fields and its projectile");
+    require(std::ranges::any_of(warnings,
+                                [](const std::string& warning)
+                                {
+                                    return warning.find("HP_Missing") != std::string::npos;
+                                }),
+            "an undefined hardpoint must be reported");
 
     const auto hostility = eaw::provisional_map_hostility();
     require(hostility.hostile(0, 1) && hostility.hostile(2, 6) && !hostility.hostile(eaw::neutral_map_owner, 1) && !hostility.hostile(1, 1), "map owners must be hostile except the neutral slot");

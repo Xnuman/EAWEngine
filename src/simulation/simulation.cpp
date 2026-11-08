@@ -43,10 +43,13 @@ bool valid_profile(const CombatProfile& profile) noexcept
     {
         return false;
     }
-    if (const auto& weapon = profile.weapon)
+    for (const auto& weapon : profile.weapons)
     {
-        return valid_amount(weapon->range) && valid_amount(weapon->recharge_seconds) && valid_amount(weapon->pulse_delay_seconds) && valid_amount(weapon->damage) &&
-               valid_amount(weapon->projectile_speed) && valid_amount(weapon->max_flight_distance);
+        if (!valid_amount(weapon.range) || !valid_amount(weapon.recharge_seconds) || !valid_amount(weapon.pulse_delay_seconds) || !valid_amount(weapon.damage) ||
+            !valid_amount(weapon.projectile_speed) || !valid_amount(weapon.max_flight_distance))
+        {
+            return false;
+        }
     }
     return true;
 }
@@ -184,6 +187,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     passable_types_.push_back(spawn.passable_types);
     paths_.emplace_back();
     combat_.push_back({.profile = spawn.combat, .health = spawn.combat.health, .shield = spawn.combat.shield});
+    combat_.back().weapons.resize(spawn.combat.weapons.size());
     radii_.push_back(spawn.radius);
     turn_rates_.push_back(spawn.turn_rate);
     formation_orders_.push_back(spawn.formation_order);
@@ -287,9 +291,12 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, combat.shield);
         hash = hash_value(hash, combat.target);
         hash = hash_value(hash, combat.ordered);
-        hash = hash_value(hash, combat.cooldown);
-        hash = hash_value(hash, combat.pulses_left);
-        hash = hash_value(hash, combat.pulse_timer);
+        for (const auto& weapon : combat.weapons)
+        {
+            hash = hash_value(hash, weapon.cooldown);
+            hash = hash_value(hash, weapon.pulses_left);
+            hash = hash_value(hash, weapon.pulse_timer);
+        }
         hash = hash_value(hash, combat.retarget_timer);
         hash = hash_value(hash, combat.chase_timer);
         hash = hash_value(hash, radii_[index]);
@@ -385,7 +392,7 @@ void SimulationWorld::apply(const SimCommand& command)
                 ++stale_references_;
                 break;
             }
-            if (combat.profile.weapon && *victim != *dense && hostility_.hostile(owners_[*dense], owners_[*victim]))
+            if (!combat.profile.weapons.empty() && *victim != *dense && hostility_.hostile(owners_[*dense], owners_[*victim]))
             {
                 combat.target = command.target_entity;
                 combat.ordered = true;
@@ -1021,16 +1028,19 @@ float SimulationWorld::steer(const std::size_t index, const float desired, const
 void SimulationWorld::run_separation()
 {
     separated_pairs_ = 0;
-    if (!ground_.valid())
+    // On land, ground units separate on the surface; without ground (space maps), every unit with a
+    // footprint separates in the plane.
+    const bool land = ground_.valid();
+    const auto takes_part = [&](const std::size_t index)
     {
-        return;
-    }
+        return radii_[index] > 0.0F && (!land || follows_ground_[index] != 0);
+    };
     grid_.build(positions_, grid_cell_size);
     separation_push_.assign(ids_.size(), SimVector3{});
     float largest_radius = 0.0F;
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
-        if (follows_ground_[index] != 0)
+        if (takes_part(index))
         {
             largest_radius = std::max(largest_radius, radii_[index]);
         }
@@ -1064,7 +1074,7 @@ void SimulationWorld::run_separation()
     };
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
-        if (follows_ground_[index] == 0 || radii_[index] <= 0.0F)
+        if (!takes_part(index))
         {
             continue;
         }
@@ -1073,7 +1083,7 @@ void SimulationWorld::run_separation()
         for (const auto other : query_)
         {
             // Each pair once, from its lower dense index.
-            if (other <= index || follows_ground_[other] == 0 || radii_[other] <= 0.0F)
+            if (other <= index || !takes_part(other))
             {
                 continue;
             }
@@ -1139,7 +1149,7 @@ void SimulationWorld::run_separation()
                 continue;
             }
         }
-        position = {next_x, next_y, ground_.surface_height(next_x, next_y)};
+        position = {next_x, next_y, land ? ground_.surface_height(next_x, next_y) : position.z};
     }
 }
 
@@ -1198,7 +1208,7 @@ void SimulationWorld::run_combat()
     }
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
-        if (combat_[index].profile.weapon)
+        if (!combat_[index].profile.weapons.empty())
         {
             update_target(index);
             run_weapon(index);
@@ -1211,14 +1221,14 @@ void SimulationWorld::run_combat()
 void SimulationWorld::update_target(const std::size_t index)
 {
     auto& combat = combat_[index];
-    const auto& weapon = *combat.profile.weapon;
+    const auto range = combat.profile.range();
     if (combat.target.valid())
     {
         const auto victim = dense_index(combat.target);
         bool keep = victim && damageable(*victim) && hostility_.hostile(owners_[index], owners_[*victim]);
         if (keep && !combat.ordered)
         {
-            keep = distance_xy(positions_[index], positions_[*victim]) <= weapon.range;
+            keep = distance_xy(positions_[index], positions_[*victim]) <= range;
         }
         if (!keep)
         {
@@ -1230,7 +1240,7 @@ void SimulationWorld::update_target(const std::size_t index)
     {
         // Chase an ordered target until it is in range, then hold position and fire.
         const auto victim = *dense_index(combat.target);
-        if (distance_xy(positions_[index], positions_[victim]) > weapon.range)
+        if (distance_xy(positions_[index], positions_[victim]) > range)
         {
             if (max_speeds_[index] > 0.0F && (combat.chase_timer == 0 || !move_targets_[index]))
             {
@@ -1262,7 +1272,7 @@ void SimulationWorld::update_target(const std::size_t index)
     combat.retarget_timer = retarget_interval;
     // The nearest damageable hostile in range; equal distances go to the lower entity id.
     query_.clear();
-    grid_.query(positions_[index], weapon.range, query_);
+    grid_.query(positions_[index], range, query_);
     std::optional<std::size_t> best;
     float best_distance = 0.0F;
     for (const auto candidate : query_)
@@ -1291,43 +1301,47 @@ void SimulationWorld::update_target(const std::size_t index)
 void SimulationWorld::run_weapon(const std::size_t index)
 {
     auto& combat = combat_[index];
-    const auto& weapon = *combat.profile.weapon;
-    if (combat.cooldown > 0)
-    {
-        --combat.cooldown;
-    }
-    if (combat.pulse_timer > 0)
-    {
-        --combat.pulse_timer;
-    }
     const auto victim = combat.target.valid() ? dense_index(combat.target) : std::nullopt;
-    if (!victim)
+    const auto distance = victim ? distance_xy(positions_[index], positions_[*victim]) : 0.0F;
+    for (std::size_t slot = 0; slot < combat.profile.weapons.size(); ++slot)
     {
-        combat.pulses_left = 0;
-        return;
-    }
-    if (combat.pulses_left == 0)
-    {
-        if (combat.cooldown != 0 || distance_xy(positions_[index], positions_[*victim]) > weapon.range)
+        const auto& weapon = combat.profile.weapons[slot];
+        auto& state = combat.weapons[slot];
+        if (state.cooldown > 0)
         {
-            return;
+            --state.cooldown;
         }
-        combat.pulses_left = std::max(1U, weapon.pulse_count);
-        combat.pulse_timer = 0;
-        combat.cooldown = std::max(1U, ticks_for(weapon.recharge_seconds));
-    }
-    // A burst keeps firing at its target, in range or not, until its shots are spent.
-    while (combat.pulses_left > 0 && combat.pulse_timer == 0)
-    {
-        launch(index, *victim);
-        --combat.pulses_left;
-        combat.pulse_timer = ticks_for(weapon.pulse_delay_seconds);
+        if (state.pulse_timer > 0)
+        {
+            --state.pulse_timer;
+        }
+        if (!victim)
+        {
+            state.pulses_left = 0;
+            continue;
+        }
+        if (state.pulses_left == 0)
+        {
+            if (state.cooldown != 0 || distance > weapon.range)
+            {
+                continue;
+            }
+            state.pulses_left = std::max(1U, weapon.pulse_count);
+            state.pulse_timer = 0;
+            state.cooldown = std::max(1U, ticks_for(weapon.recharge_seconds));
+        }
+        // A burst keeps firing at its target, in range or not, until its shots are spent.
+        while (state.pulses_left > 0 && state.pulse_timer == 0)
+        {
+            launch(index, *victim, weapon);
+            --state.pulses_left;
+            state.pulse_timer = ticks_for(weapon.pulse_delay_seconds);
+        }
     }
 }
 
-void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim)
+void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim, const WeaponProfile& weapon)
 {
-    const auto& weapon = *combat_[shooter].profile.weapon;
     ++shots_fired_;
     if (weapon.projectile_speed <= 0.0F)
     {

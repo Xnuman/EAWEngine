@@ -378,3 +378,23 @@ Medium, or Low Obstacle. Build pads and other props do not block. This is a
 provisional reading, as are the footprints, which are rectangles from the
 model bounds until the ALO collision meshes are interpreted. Unit separation
 uses `Custom_Soft_Footprint_Radius` where present (3.5 for stock infantry).
+
+Space weapons and squadrons.
+
+- **Weapon hardpoints.** A ship's weapons are its `HardPoints` whose `Type`
+  is a weapon (stock: 174 `HARD_POINT_WEAPON_LASER`, 37 ion cannons, 35
+  missiles, 26 torpedoes). Each names `Fire_Projectile_Type`,
+  `Fire_Range_Distance`, `Fire_Pulse_Count`, `Fire_Pulse_Delay_Seconds`, a
+  recharge range (`Fire_Min/Max_Recharge_Seconds`), a fire cone
+  (`Fire_Cone_Width/Height`, mostly 160-180 degrees), and sometimes a
+  `Damage_Type`, which the engine lets override the projectile's.
+- **Recharge.** The engine uses the midpoint of the recharge range. The
+  original presumably draws within it at random; a seeded deterministic
+  stream will replace the midpoint.
+- **Not used yet.** Fire cones (they need the hardpoint bones' orientation),
+  `Fire_Inaccuracy_Distance` by target category, and hardpoint `Health`,
+  `Is_Targetable`, and `Is_Destroyable`.
+- **Squadron lists.** A repeated `Squadron_Units` continues the list:
+  `Rebel_X-Wing_Squadron` writes "X-Wing, X-Wing" twice and "X-Wing" once
+  beside five `Squadron_Offsets`. The layout used to take only the last
+  entry; the stock maps hold 1,474 squadron members, not 1,026.

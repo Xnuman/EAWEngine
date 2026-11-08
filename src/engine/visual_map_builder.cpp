@@ -319,7 +319,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         const auto is_company = std::ranges::any_of(catalog.find(type_name),
                                                     [&](const XmlDefinition* candidate)
                                                     {
-                                                        return catalog.field(*candidate, "Company_Units").field != nullptr;
+                                                        return catalog.field(*candidate, "Company_Units").field != nullptr || catalog.field(*candidate, "Squadron_Units").field != nullptr;
                                                     });
         const XmlDefinition* definition = nullptr;
         std::optional<GameObjectModelReference> model;
@@ -337,14 +337,25 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             // A company spawns its members instead (each resolved like a requested type).
             for (const auto* candidate : catalog.find(type_name))
             {
-                const auto* units = catalog.field(*candidate, "Company_Units").field;
-                if (units == nullptr || depth > 0)
+                // Land companies and space squadrons both spawn as their members (a repeated
+                // Squadron_Units continues the list).
+                std::vector<std::string_view> names;
+                if (const auto* company_units = catalog.field(*candidate, "Company_Units").field)
+                {
+                    names = split_type_names(company_units->text);
+                }
+                for (const auto* squadron_units : catalog.fields(*candidate, "Squadron_Units").fields)
+                {
+                    const auto more = split_type_names(squadron_units->text);
+                    names.insert(names.end(), more.begin(), more.end());
+                }
+                if (names.empty() || depth > 0)
                 {
                     continue;
                 }
                 SpawnableType company;
                 company.type_name = candidate->name;
-                for (const auto member : split_type_names(units->text))
+                for (const auto member : names)
                 {
                     if (const auto index = add_spawnable(std::string(member), depth + 1))
                     {

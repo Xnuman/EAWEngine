@@ -283,7 +283,7 @@ void test_combat()
     };
     eaw::CombatProfile gun;
     gun.health = 50.0F;
-    gun.weapon = eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 1.0F, .pulse_count = 2, .pulse_delay_seconds = 0.1F, .damage = 10.0F, .damage_type = 1};
+    gun.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 1.0F, .pulse_count = 2, .pulse_delay_seconds = 0.1F, .damage = 10.0F, .damage_type = 1}};
     eaw::CombatProfile target;
     target.health = 25.0F;
     target.armor_type = 2;
@@ -326,8 +326,8 @@ void test_combat()
     {
         auto flight_world = make_world();
         auto cannon = gun;
-        cannon.weapon->projectile_speed = 100.0F;
-        cannon.weapon->pulse_count = 1;
+        cannon.weapons[0].projectile_speed = 100.0F;
+        cannon.weapons[0].pulse_count = 1;
         (void)flight_world.spawn({.type_name = "Cannon", .owner = 1, .combat = cannon});
         (void)flight_world.spawn({.type_name = "Victim", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = target});
         flight_world.step();
@@ -372,7 +372,7 @@ void test_combat()
     require(run() == run(), "combat must be deterministic");
 
     auto invalid = gun;
-    invalid.weapon->range = -1.0F;
+    invalid.weapons[0].range = -1.0F;
     require(!world.spawn({.type_name = "Invalid", .combat = invalid}), "a negative weapon range must be rejected");
 }
 

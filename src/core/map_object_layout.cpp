@@ -154,16 +154,18 @@ template <typename AssignModel> bool expand_company(const MapObjectPlacement& co
 }
 
 // Space squadrons list their members in Squadron_Units and give each member's offset, in the
-// squadron's local frame, in repeated Squadron_Offsets fields. When Squadron_Units repeats, the
-// last occurrence is used (the ordinary override rule; unconfirmed against the original game).
+// squadron's local frame, in repeated Squadron_Offsets fields. A repeated Squadron_Units continues
+// the list: stock Rebel_X-Wing_Squadron writes "X-Wing, X-Wing" twice and "X-Wing" once beside five
+// Squadron_Offsets, one per fighter.
 template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& squadron, const GameObjectCatalog& catalog, MapObjectLayout& layout, const AssignModel& assign_model)
 {
-    const auto units = catalog.field(*squadron.type, "Squadron_Units", &layout.diagnostics);
-    if (units.field == nullptr)
+    const auto units = catalog.fields(*squadron.type, "Squadron_Units", &layout.diagnostics);
+    std::vector<std::string_view> members;
+    for (const auto* field : units.fields)
     {
-        return false;
+        const auto names = split_type_names(field->text);
+        members.insert(members.end(), names.begin(), names.end());
     }
-    const auto members = split_type_names(units.field->text);
     if (members.empty())
     {
         return false;

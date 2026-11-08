@@ -2,6 +2,8 @@
 
 #include "visual_scene_builder.hpp"
 
+#include "eaw/map_object_layout.hpp"
+
 #include "eaw/xml_document.hpp"
 
 #include <algorithm>
@@ -234,6 +236,35 @@ CombatContent load_combat_content(const AssetReader& reader)
     return content;
 }
 
+namespace {
+
+// The shot of a projectile type: damage, damage type, speed (scaled like unit speeds), flight limit,
+// and what it damages.
+void read_projectile(const FieldReader& projectile, const CombatContent& content, WeaponProfile& weapon)
+{
+    weapon.damage = projectile.amount("Projectile_Damage");
+    weapon.damage_type = projectile.type_id("Damage_Type", content);
+    weapon.projectile_speed = projectile.amount("Max_Speed") * provisional_max_speed_scale;
+    weapon.max_flight_distance = projectile.amount("Projectile_Max_Flight_Distance");
+    weapon.damages_shield = projectile.flag("Projectile_Does_Shield_Damage", true);
+    weapon.damages_health = projectile.flag("Projectile_Does_Hitpoint_Damage", true);
+}
+
+const XmlDefinition* find_hardpoint(const GameObjectCatalog& catalog, const std::string_view name)
+{
+    const auto candidates = catalog.find(name);
+    for (const auto* candidate : candidates)
+    {
+        if (fold(candidate->type) == "hardpoint")
+        {
+            return candidate;
+        }
+    }
+    return candidates.empty() ? nullptr : candidates.front();
+}
+
+} // namespace
+
 CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings)
 {
     const FieldReader type(catalog, definition, warnings);
@@ -245,37 +276,74 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     profile.shield_armor_type = type.type_id("Shield_Armor_Type", content);
     // Below the origin is legitimate (stock Underworld_Hero_Shuttle_Landing uses -5.0).
     profile.aim_height = type.signed_value("Ranged_Target_Z_Adjust");
-
-    const auto* projectiles = type.node("Projectile_Types");
     const auto range = type.amount("Targeting_Max_Attack_Distance");
-    if (projectiles == nullptr || range <= 0.0F)
+
+    // The type's own weapon: the first of Projectile_Types.
+    if (const auto* projectiles = type.node("Projectile_Types"); projectiles != nullptr && range > 0.0F)
     {
-        return profile;
+        if (const auto names = split_list(projectiles->text); !names.empty())
+        {
+            if (const auto* projectile_type = find_projectile(catalog, names.front()))
+            {
+                WeaponProfile weapon;
+                weapon.range = range;
+                weapon.recharge_seconds = type.amount("Projectile_Fire_Recharge_Seconds");
+                weapon.pulse_count = std::max(1U, static_cast<std::uint32_t>(std::min(type.amount("Projectile_Fire_Pulse_Count", 1.0F), 1000.0F)));
+                weapon.pulse_delay_seconds = type.amount("Projectile_Fire_Pulse_Delay_Seconds");
+                read_projectile(FieldReader(catalog, *projectile_type, warnings), content, weapon);
+                profile.weapons.push_back(weapon);
+            }
+            else
+            {
+                warnings.push_back(definition.name + ": projectile type '" + std::string(names.front()) + "' is not defined");
+            }
+        }
     }
-    const auto names = split_list(projectiles->text);
-    if (names.empty())
+
+    // Weapon hardpoints (ships and space structures): every HardPoints entry whose Type is a weapon.
+    // The recharge is the midpoint of Fire_Min/Max_Recharge_Seconds (the original presumably picks
+    // within the range at random; a fixed value keeps the simulation deterministic until a seeded
+    // random stream exists). A hardpoint's Damage_Type overrides its projectile's.
+    if (const auto* hardpoints = type.node("HardPoints"))
     {
-        return profile;
+        for (const auto name : split_type_names(hardpoints->text))
+        {
+            const auto* hardpoint = find_hardpoint(catalog, name);
+            if (hardpoint == nullptr)
+            {
+                warnings.push_back(definition.name + ": hardpoint '" + std::string(name) + "' is not defined");
+                continue;
+            }
+            const FieldReader point(catalog, *hardpoint, warnings);
+            const auto* kind = point.node("Type");
+            if (kind == nullptr || fold(trim(kind->text)).find("weapon") == std::string::npos)
+            {
+                continue;
+            }
+            const auto* projectile_name = point.node("Fire_Projectile_Type");
+            const auto* projectile_type = projectile_name != nullptr ? find_projectile(catalog, trim(projectile_name->text)) : nullptr;
+            if (projectile_type == nullptr)
+            {
+                warnings.push_back(hardpoint->name + ": weapon hardpoint without a defined Fire_Projectile_Type");
+                continue;
+            }
+            WeaponProfile weapon;
+            weapon.range = point.amount("Fire_Range_Distance", range);
+            const auto minimum = point.amount("Fire_Min_Recharge_Seconds");
+            weapon.recharge_seconds = (minimum + point.amount("Fire_Max_Recharge_Seconds", minimum)) * 0.5F;
+            weapon.pulse_count = std::max(1U, static_cast<std::uint32_t>(std::min(point.amount("Fire_Pulse_Count", 1.0F), 1000.0F)));
+            weapon.pulse_delay_seconds = point.amount("Fire_Pulse_Delay_Seconds");
+            read_projectile(FieldReader(catalog, *projectile_type, warnings), content, weapon);
+            if (point.node("Damage_Type") != nullptr)
+            {
+                weapon.damage_type = point.type_id("Damage_Type", content);
+            }
+            if (weapon.range > 0.0F)
+            {
+                profile.weapons.push_back(weapon);
+            }
+        }
     }
-    const auto* projectile_type = find_projectile(catalog, names.front());
-    if (projectile_type == nullptr)
-    {
-        warnings.push_back(definition.name + ": projectile type '" + std::string(names.front()) + "' is not defined");
-        return profile;
-    }
-    const FieldReader projectile(catalog, *projectile_type, warnings);
-    WeaponProfile weapon;
-    weapon.range = range;
-    weapon.recharge_seconds = type.amount("Projectile_Fire_Recharge_Seconds");
-    weapon.pulse_count = std::max(1U, static_cast<std::uint32_t>(std::min(type.amount("Projectile_Fire_Pulse_Count", 1.0F), 1000.0F)));
-    weapon.pulse_delay_seconds = type.amount("Projectile_Fire_Pulse_Delay_Seconds");
-    weapon.damage = projectile.amount("Projectile_Damage");
-    weapon.damage_type = projectile.type_id("Damage_Type", content);
-    weapon.projectile_speed = projectile.amount("Max_Speed") * provisional_max_speed_scale;
-    weapon.max_flight_distance = projectile.amount("Projectile_Max_Flight_Distance");
-    weapon.damages_shield = projectile.flag("Projectile_Does_Shield_Damage", true);
-    weapon.damages_health = projectile.flag("Projectile_Does_Hitpoint_Damage", true);
-    profile.weapon = weapon;
     return profile;
 }
 
