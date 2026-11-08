@@ -146,57 +146,82 @@ it.
   transparency sorting, and streaming are not implemented yet.
 - Add production D3D12 tactical-map rendering. Further tool-only map/model
   preview polish is deferred until it can support the renderer and map editor.
-- Deliverable: load and inspect a stock space unit and a tactical map. Both now
-  load in `EAWEngine sandbox` (`--model`, `--map` for space and land); M2 stays
-  open until resource handles, streaming, and the remaining map layers exist.
+- Deliverable: load and inspect a stock space unit and a tactical map. Both
+  load in `EAWEngine sandbox` (`--model`, `--map` for space and land), with
+  resource handles, streaming, and hot reload.
 
 ## M3 — tactical simulation slice (active)
 
-- First vertical slice: a graphics-free simulation core (generation-checked
-  entity ids, structure-of-arrays components, fixed-step scheduler,
-  deterministic commands applied at tick boundaries, immutable snapshots),
-  map objects spawned as entities from their XML types, a renderer object API
-  fed from interpolated snapshots, and the legacy RTS camera with click/box
-  selection and right-click straight-line movement. Done so far: the
-  simulation core, entity spawning from map placements and XML types, the
-  renderer instance API with snapshot interpolation, and the first interaction
-  (RTS camera, click and box selection, right-click move to the clicked surface).
-  A debug spawn (`--spawn TYPE[:N]`, N at the cursor) places units of any XML
-  type whose model is resolvable. Next: terrain following and passability,
-  pathfinding, formations, and turn rates, then targeting and combat; spawning
-  becomes a deterministic command, and meshes can be registered at runtime.
-  Terrain following and passability data are in: ground units (`Space_Layer`
-  Land/None) move over the map's surface and stop before cells their XML
-  `MovementClass` may not enter (types from `MovementClassTypeDefs.xml`; the
-  Obstacle bit and runtime wall/shield bits are unconfirmed); flyers keep
-  their altitude. Ground orders are planned by deterministic grid A* over the
-  passability cells per movement class (regions labeled once per class, so an
-  unreachable goal ends at the nearest reachable point at once; smoothed
-  waypoints); the sandbox draws selected units' routes. Searches run inside
-  the tick for now (about 1 ms per cross-map path); a per-tick budget or the
-  job system takes over before large armies. Next: unit clearance,
-  separation, formations, and turn rates. The staged plan toward large
-  battles (pathfinding audit, clearance, JPS, hierarchy, flow fields for
-  group orders, reciprocal avoidance, budgeted jobs) and its sources are in
-  [pathfinding-research.md](pathfinding-research.md).
-  The first combat slice is in: health, regenerating shields, armor types with
-  `GameConstants.xml` damage modifiers, and one projectile weapon per unit from
-  XML; a deterministic spatial grid; automatic targeting of the nearest hostile
-  in range; attack orders that chase; homing projectiles; and death. Map owner
-  slot 3 is provisionally neutral. Next for combat: hardpoints for space
-  ships, several weapons, inaccuracy, splash, and death effects.
+Deliverable: a deterministic headless battle and a rendered space skirmish
+slice. Status as of the first combat slice:
 
-- ECS/storage, fixed-step scheduler, job system, transforms, spatial index,
-  movement, formations, targeting, projectiles, damage, hardpoints, fog of war.
-- Minimal Lua compatibility surface and XML object construction.
-- Legacy-mode RTS camera and input, following the original: the camera does not
-  rotate (fixed pitch and heading), zooms in and out, and pans with the
-  keyboard; the left mouse button selects (click, or drag a rectangle for several
-  units) and the right mouse button issues move and attack commands. Exact
-  angles, zoom range, and pan speeds still need measurement. A free camera may
-  become an option later, as an engine extension. The sandbox's free debug
-  cameras remain for inspection.
-- Deliverable: deterministic headless battle plus rendered space skirmish slice.
+Done:
+
+- Simulation core (`src/simulation`, no graphics, platform, or file access):
+  generation-checked entity ids, structure-of-arrays components, a fixed-step
+  scheduler, commands applied at tick boundaries, immutable snapshots, and a
+  state hash for determinism checks.
+- Map objects spawned as entities from their XML types; a renderer instance
+  API fed from interpolated snapshots.
+- Legacy RTS camera and input following the original: no rotation (fixed pitch
+  and heading), zoom, and keyboard panning. Left button click and box
+  selection; right button move and attack orders; raw input. Exact angles,
+  zoom range, and pan speeds still need measurement. A free camera may become
+  an engine extension later; the sandbox's free debug cameras stay for
+  inspection.
+- Terrain following and passability by movement class
+  (`MovementClassTypeDefs.xml`; the Obstacle bit and runtime wall and shield
+  bits are unconfirmed). Flyers keep their altitude.
+- Deterministic grid A* per movement class, with region labels and smoothed
+  waypoints. The staged plan toward large battles is in
+  [pathfinding-research.md](pathfinding-research.md); it is deferred until
+  the game runs stably.
+- First combat slice:
+  - health, regenerating shields, and armor types with `GameConstants.xml`
+    damage modifiers;
+  - one projectile weapon per unit;
+  - a spatial grid, automatic targeting, and attack orders that chase;
+  - homing shots and death.
+
+  Map owner slot 3 is provisionally neutral.
+
+Gaps toward the deliverable, in planned order:
+
+1. **Group movement.** Covers:
+   - separation, so units do not stack;
+   - formations for group orders;
+   - turn rates (`Max_Rate_Of_Turn`, 442 stock uses);
+   - expanding land companies and teams into their units. `Company_Units`
+     occurs in 179 definitions, and 358 company placements in owner slots 0
+     and 1 are skipped today, so maps start without their infantry.
+2. **Space combat.** Covers:
+   - weapons on `HardPoints` (94 stock uses);
+   - space movement (turning, speed, and the space layer);
+   - squadron behavior.
+3. **Headless battle.** An `EAWEngine` command runs a map or a scripted
+   skirmish without a window for N ticks and prints the state hash and
+   statistics. Spawning becomes a deterministic command, so a run can be
+   replayed from its command log. This is also the headless benchmark the
+   performance gates require.
+4. **Unit animation on maps.** Per-instance bone palettes, with idle, move,
+   fire, and death animations chosen from simulation state. Models on maps
+   are still frozen in their bind pose.
+5. **Runtime mesh registration,** so types not requested at build time can be
+   spawned.
+6. **Remaining M3 systems:**
+   - the dependency-aware job system, once measured budgets need it;
+   - fog of war;
+   - a minimal Lua host surface;
+   - a local-player concept (which owner the user commands, and team colors
+     by owner).
+
+Known provisional choices to verify against the original:
+
+- the ×30 XML speed scale;
+- shield refresh units, and how shields and armor combine;
+- ranges measured in the ground plane;
+- the owner-slot hostility rule;
+- world handedness.
 
 ## M4 — space and land modes
 
