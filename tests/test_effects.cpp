@@ -69,7 +69,7 @@ void test_attached_effect_scale()
     rig.palette_size = 1;
     rig.effects.push_back({make_test_effect({burst}), 0U, "pe_test", -1, nullptr, false});
     const std::vector<eaw::VisualRig> rigs{rig};
-    const std::vector<eaw::Matrix4> palette{eaw::Matrix4{}};
+    const std::vector<eaw::Matrix4> palette{eaw::Matrix4::identity()};
     const auto sprite_at = [&](const float scale)
     {
         eaw::ParticleWorld world;
@@ -152,7 +152,7 @@ void test_particle_world()
     burst.groups[0].value = {0.0F, 0.0F, 10.0F};
     eaw::ParticleWorld world;
     const auto effect = make_test_effect({burst});
-    eaw::Matrix4 transform = eaw::Matrix4{};
+    eaw::Matrix4 transform = eaw::Matrix4::identity();
     transform.values[12] = 100.0F;
     const auto id = world.play(effect, transform, 42);
     require(world.playing(id) && world.stats().particles == 0, "particle effect did not start");
@@ -202,7 +202,7 @@ void test_particle_world()
     const auto positions = [&](const std::uint64_t seed)
     {
         eaw::ParticleWorld replay;
-        replay.play(looping, eaw::Matrix4{}, seed);
+        replay.play(looping, eaw::Matrix4::identity(), seed);
         for (int frame = 0; frame < 30; ++frame)
         {
             replay.update(1.0F / 30.0F);
@@ -219,7 +219,7 @@ void test_particle_world()
     require(positions(5) == positions(5) && positions(5) != positions(6), "particle seeds do not replay");
 
     // Looping effects run until stopped; without leave_particles they vanish at once.
-    const auto loop = world.play(looping, eaw::Matrix4{}, 1);
+    const auto loop = world.play(looping, eaw::Matrix4::identity(), 1);
     for (int frame = 0; frame < 120; ++frame)
     {
         world.update(1.0F / 30.0F);
@@ -230,7 +230,7 @@ void test_particle_world()
 
     // Capacity bounds the live particles and counts the rest.
     eaw::ParticleWorld small(10);
-    small.play(looping, eaw::Matrix4{}, 3);
+    small.play(looping, eaw::Matrix4::identity(), 3);
     for (int frame = 0; frame < 15; ++frame)
     {
         small.update(1.0F / 30.0F);
@@ -253,7 +253,7 @@ void test_particle_world()
     debris.particles_per_burst = 3;
     debris.lifetime = 5.0F;
     eaw::ParticleWorld family;
-    family.play(make_test_effect({parent, trail, debris}), eaw::Matrix4{}, 9);
+    family.play(make_test_effect({parent, trail, debris}), eaw::Matrix4::identity(), 9);
     for (int frame = 0; frame < 30; ++frame)
     {
         family.update(1.0F / 30.0F);
@@ -268,7 +268,7 @@ void test_particle_world()
     exhaust.particles_per_second = 100;
     exhaust.lifetime = 10.0F;
     eaw::ParticleWorld trail_world;
-    auto moving = eaw::Matrix4{};
+    auto moving = eaw::Matrix4::identity();
     const auto trail_id = trail_world.play(make_test_effect({exhaust}), moving, 4);
     for (int frame = 1; frame <= 10; ++frame)
     {
@@ -300,7 +300,7 @@ void test_particle_world()
         short_lived.lifetime = 1.0F;
         short_lived.random_lifetime = 0.5F;
         eaw::ParticleWorld lifetimes;
-        lifetimes.play(make_test_effect({short_lived}), eaw::Matrix4{}, 11);
+        lifetimes.play(make_test_effect({short_lived}), eaw::Matrix4::identity(), 11);
         lifetimes.update(0.01F);
         require(lifetimes.stats().particles == 50, "lifetime test burst failed");
         for (int frame = 0; frame < 11; ++frame)
@@ -317,7 +317,7 @@ void test_particle_world()
         pushed.groups[2].value = {10.0F, 0.0F, 0.0F};
         pushed.inward_acceleration = 100.0F;
         eaw::ParticleWorld outward;
-        outward.play(make_test_effect({pushed}), eaw::Matrix4{}, 12);
+        outward.play(make_test_effect({pushed}), eaw::Matrix4::identity(), 12);
         outward.update(0.01F);
         for (int frame = 0; frame < 10; ++frame)
         {
@@ -334,7 +334,7 @@ void test_particle_world()
         frozen.groups[0].type = 0;
         frozen.groups[0].value = {0.0F, 0.0F, 10.0F};
         eaw::ParticleWorld freezing;
-        freezing.play(make_test_effect({frozen}), eaw::Matrix4{}, 13);
+        freezing.play(make_test_effect({frozen}), eaw::Matrix4::identity(), 13);
         for (int frame = 0; frame < 10; ++frame)
         {
             freezing.update(0.1F);
@@ -354,7 +354,7 @@ void test_particle_world()
         steady.burst_count = 1;
         steady.lifetime = 10.0F;
         eaw::ParticleWorld dimmed;
-        const auto dim_id = dimmed.play(make_test_effect({steady}), eaw::Matrix4{}, 8);
+        const auto dim_id = dimmed.play(make_test_effect({steady}), eaw::Matrix4::identity(), 8);
         dimmed.update(0.01F);
         std::vector<eaw::VisualParticle> full;
         dimmed.build_sprites({}, full);
@@ -377,10 +377,10 @@ void test_particle_world()
     const auto turn = [&](const eaw::ParticleFidelity fidelity)
     {
         eaw::ParticleWorld turning;
-        const auto glow_id = turning.play(make_test_effect({glow}, true, fidelity), eaw::Matrix4{}, 3);
+        const auto glow_id = turning.play(make_test_effect({glow}, true, fidelity), eaw::Matrix4::identity(), 3);
         turning.update(0.01F);
         // A quarter turn about +Z: X goes to Y.
-        eaw::Matrix4 turned = eaw::Matrix4{};
+        eaw::Matrix4 turned = eaw::Matrix4::identity();
         turned.values[0] = 0.0F;
         turned.values[1] = 1.0F;
         turned.values[4] = -1.0F;
@@ -419,7 +419,7 @@ void test_particle_world()
     emit_mesh->normals = {{0.0F, 1.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 1.0F, 0.0F}};
     emit_mesh->indices = {0, 1, 2};
     eaw::ParticleWorld engines;
-    engines.play(make_test_effect({nozzles}), eaw::Matrix4{}, 2, emit_mesh);
+    engines.play(make_test_effect({nozzles}), eaw::Matrix4::identity(), 2, emit_mesh);
     engines.update(0.01F);
     std::vector<eaw::VisualParticle> glows;
     engines.build_sprites({0.0F, 0.0F, 100.0F}, glows);
@@ -436,7 +436,7 @@ void test_particle_world()
     auto heat = make_test_emitter();
     heat.heat = true;
     eaw::ParticleWorld hot;
-    hot.play(make_test_effect({heat}), eaw::Matrix4{}, 1);
+    hot.play(make_test_effect({heat}), eaw::Matrix4::identity(), 1);
     hot.update(0.1F);
     std::vector<eaw::VisualParticle> none;
     hot.build_sprites({}, none);

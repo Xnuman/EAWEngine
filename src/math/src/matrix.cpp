@@ -15,7 +15,7 @@ constexpr float singular_determinant = 1.0e-12F;
 
 Matrix3 operator*(const Matrix3& left, const Matrix3& right) noexcept
 {
-    Matrix3 product;
+    auto product = Matrix3::zero();
     for (std::size_t row = 0; row < 3; ++row)
     {
         for (std::size_t column = 0; column < 3; ++column)
@@ -32,26 +32,26 @@ Matrix3 rotation_x(const float radians) noexcept
 {
     const auto c = std::cos(radians);
     const auto s = std::sin(radians);
-    return {{1.0F, 0.0F, 0.0F, 0.0F, c, s, 0.0F, -s, c}};
+    return Matrix3{{1.0F, 0.0F, 0.0F, 0.0F, c, s, 0.0F, -s, c}};
 }
 
 Matrix3 rotation_y(const float radians) noexcept
 {
     const auto c = std::cos(radians);
     const auto s = std::sin(radians);
-    return {{c, 0.0F, -s, 0.0F, 1.0F, 0.0F, s, 0.0F, c}};
+    return Matrix3{{c, 0.0F, -s, 0.0F, 1.0F, 0.0F, s, 0.0F, c}};
 }
 
 Matrix3 rotation_z(const float radians) noexcept
 {
     const auto c = std::cos(radians);
     const auto s = std::sin(radians);
-    return {{c, s, 0.0F, -s, c, 0.0F, 0.0F, 0.0F, 1.0F}};
+    return Matrix3{{c, s, 0.0F, -s, c, 0.0F, 0.0F, 0.0F, 1.0F}};
 }
 
 Matrix4 operator*(const Matrix4& left, const Matrix4& right) noexcept
 {
-    Matrix4 product;
+    auto product = Matrix4::zero();
     for (std::size_t row = 0; row < 4; ++row)
     {
         for (std::size_t column = 0; column < 4; ++column)
@@ -120,7 +120,7 @@ std::optional<Matrix4> inverse(const Matrix4& matrix) noexcept
             }
         }
     }
-    Matrix4 result;
+    auto result = Matrix4::zero();
     for (std::size_t row = 0; row < size; ++row)
     {
         for (std::size_t column = 0; column < size; ++column)
@@ -144,7 +144,7 @@ std::optional<Matrix4> inverse_affine(const Matrix4& matrix) noexcept
         return std::nullopt;
     }
     const auto s = 1.0F / determinant;
-    Matrix4 result;
+    auto result = Matrix4::identity();
     auto& r = result.values;
     r[0] = c00 * s;
     r[1] = c01 * s;

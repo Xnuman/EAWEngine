@@ -263,7 +263,7 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
                              });
     if (gpu_instances.empty())
     {
-        gpu_instances.push_back({Matrix4{}, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0});
+        gpu_instances.push_back({Matrix4::identity(), {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0});
     }
 }
 

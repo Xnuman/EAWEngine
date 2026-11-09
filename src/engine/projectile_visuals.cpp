@@ -206,7 +206,7 @@ Matrix4 projectile_model_transform(const ProjectileSnapshot& projectile, const P
     const Vector3 position{projectile.position.x - d.x * back, projectile.position.y - d.y * back, projectile.position.z - d.z * back};
     const auto heading = std::atan2(d.y, d.x);
     const auto pitch = std::asin(std::clamp(d.z, -1.0F, 1.0F));
-    Matrix4 scale;
+    auto scale = Matrix4::identity();
     scale(0, 0) = scale(1, 1) = scale(2, 2) = visual.scale;
     return pose_transform(scale, identity_model_heading, position, heading, pitch);
 }

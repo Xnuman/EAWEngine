@@ -47,7 +47,7 @@ private:
         std::shared_ptr<const ParticleEmitMesh> emit_mesh;
         std::uint32_t bone{};
         // The bone's bind-pose transform in model space (row-vector convention).
-        Matrix4 bind;
+        Matrix4 bind{Matrix4::identity()};
         bool engine{};
     };
     struct MeshEffects

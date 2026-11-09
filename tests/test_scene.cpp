@@ -144,7 +144,7 @@ void test_visual_material_translation()
             "a rigid attachment must reference the visibility half of the palette");
     const auto hidden_palette = eaw::sample_skin_palette(hidden, nullptr, 0.0F);
     // All zero but the last element: every vertex of a hidden bone collapses onto the origin.
-    eaw::Matrix4 collapsed{{}};
+    auto collapsed = eaw::Matrix4::zero();
     collapsed.values[15] = 1.0F;
     require(hidden_palette.size() == 2 && hidden_palette[1] == collapsed && hidden_palette[0].values[0] == 1.0F, "a bone hidden in the bind pose must collapse its attachments");
     const auto shown_palette = eaw::sample_skin_palette(asset, nullptr, 0.0F);

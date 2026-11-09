@@ -141,7 +141,7 @@ struct D3d12Renderer::Impl
     // Structured-buffer layout shared with the vertex shader (112 bytes).
     struct GpuInstance
     {
-        Matrix4 transform{};
+        Matrix4 transform{Matrix4::zero()};
         std::array<float, 4> tint{};
         std::array<float, 4> team_color{};
         std::uint32_t bone_offset{};

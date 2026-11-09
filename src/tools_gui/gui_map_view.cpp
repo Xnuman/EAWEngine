@@ -205,7 +205,7 @@ void update_map_instances(GuiApp::State& state, const std::function<Vector3(cons
     std::unordered_map<std::string, std::vector<PreviewInstance>> instances;
     if (state.map_object_layout)
     {
-        auto scale = Matrix4{};
+        auto scale = Matrix4::identity();
         scale(0, 0) = scale(1, 1) = scale(2, 2) = unit_scale;
         for (const auto& placement : state.map_object_layout->placements)
         {

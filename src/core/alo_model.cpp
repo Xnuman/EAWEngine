@@ -555,7 +555,7 @@ std::vector<Matrix4> AloModel::local_bind_pose() const
     pose.reserve(bones.size());
     for (const auto& bone : bones)
     {
-        auto local = Matrix4{};
+        auto local = Matrix4::identity();
         for (std::size_t row = 0; row < 3; ++row)
         {
             for (std::size_t column = 0; column < 4; ++column)

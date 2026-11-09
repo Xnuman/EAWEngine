@@ -60,7 +60,7 @@ void D3d12Renderer::Impl::create_initial_assets()
     GpuMaterial checker_material;
     checker_material.base_texture = checker_texture_slot;
     identity_material_buffer = upload_buffer(upload, std::as_bytes(std::span(&checker_material, 1)), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"EAWEngine validation material buffer");
-    const GpuInstance identity{Matrix4{}, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0};
+    const GpuInstance identity{Matrix4::identity(), {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0};
     identity_instance_buffer = upload_buffer(upload, std::as_bytes(std::span(&identity, 1)), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"EAWEngine identity instance buffer");
     submit_upload(std::move(upload));
 }
@@ -303,7 +303,7 @@ Status D3d12Renderer::Impl::load_scene(VisualScene scene)
     auto new_index_buffer = upload_buffer(upload, index_bytes, D3D12_RESOURCE_STATE_INDEX_BUFFER, L"EAWEngine scene index buffer");
     if (gpu_instances.empty())
     {
-        gpu_instances.push_back({Matrix4{}, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0});
+        gpu_instances.push_back({Matrix4::identity(), {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0});
     }
     auto new_instance_buffer = upload_buffer(upload, std::as_bytes(std::span(gpu_instances)), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"EAWEngine scene instance buffer");
 
@@ -795,7 +795,7 @@ void D3d12Renderer::Impl::set_bone_transforms(const std::span<const Matrix4> tra
     bone_transforms.assign(transforms.begin(), transforms.end());
     if (bone_transforms.size() < scene_bone_capacity)
     {
-        bone_transforms.resize(scene_bone_capacity, Matrix4{});
+        bone_transforms.resize(scene_bone_capacity, Matrix4::identity());
     }
 }
 

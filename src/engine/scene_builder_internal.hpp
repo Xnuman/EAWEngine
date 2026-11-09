@@ -33,7 +33,7 @@ namespace eaw::scene_build {
 
 // A skin matrix that collapses every vertex of a hidden bone onto the origin, so it rasterizes
 // nothing.
-constexpr Matrix4 collapsed_bone{{0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F}};
+constexpr Matrix4 collapsed_bone{std::array<float, 16>{0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F}};
 
 // Bounds that any point extends: every axis starts inverted.
 constexpr Vector3 empty_bounds_minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};

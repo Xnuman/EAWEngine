@@ -180,7 +180,7 @@ struct VisualMesh
 struct VisualInstance
 {
     std::uint32_t mesh{};
-    Matrix4 transform;
+    Matrix4 transform{Matrix4::identity()};
     std::array<float, 4> tint{1.0F, 1.0F, 1.0F, 1.0F};
     std::uint32_t bone_offset{};
     // Player color applied through materials with a team-color mask.

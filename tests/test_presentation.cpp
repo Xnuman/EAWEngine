@@ -17,7 +17,7 @@ using namespace eaw_test;
 void test_scene_presentation()
 {
     // pose_transform keeps scale and tilt, turns about +Z by the heading change, and moves.
-    const eaw::Matrix4 base{2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 5, 6, 7, 1};
+    const eaw::Matrix4 base{{2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 5, 6, 7, 1}};
     const auto same = eaw::pose_transform(base, 0.0F, {1.0F, 2.0F, 3.0F}, 0.0F);
     require(same.values[0] == 2.0F && same.values[5] == 2.0F && same.values[12] == 1.0F && same.values[13] == 2.0F && same.values[14] == 3.0F, "an unchanged heading must only move the transform");
     const auto turned = eaw::pose_transform(base, 0.0F, {0.0F, 0.0F, 0.0F}, std::numbers::pi_v<float> / 2.0F);
@@ -120,7 +120,7 @@ void test_unit_animation()
     still.rest_offset = 2;
     still.palette_size = 1;
     const std::array<eaw::VisualRig, 2> rigs{rig, still};
-    const std::vector<eaw::Matrix4> rest(3, eaw::Matrix4{});
+    const std::vector<eaw::Matrix4> rest(3, eaw::Matrix4::identity());
     eaw::UnitAnimator animator(rigs, rest);
 
     // 100 standing units, one walking, one clipless unit, and a background.
@@ -274,7 +274,7 @@ void test_model_forward_axis()
 {
     // Alamo models face -Y: an unrotated model's heading is -pi/2, and posing one with heading 0
     // (travel along +X) turns its forward (-Y) axis onto +X.
-    const eaw::Matrix4 identity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    const auto identity = eaw::Matrix4::identity();
     require(std::fabs(eaw::model_forward_heading(identity) - eaw::identity_model_heading) < 1.0e-6F, "an unrotated model must face -Y");
     const auto posed = eaw::pose_transform(identity, eaw::identity_model_heading, {10.0F, 20.0F, 0.0F}, 0.0F);
     {
@@ -449,7 +449,7 @@ void test_debug_draw()
 {
     // A unit box translated by (10, 20, 30): 12 edges, each of length 1 along one axis, all corners
     // inside the translated box.
-    eaw::Matrix4 transform{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1};
+    eaw::Matrix4 transform{{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1}};
     std::vector<eaw::VisualDebugLine> lines;
     eaw::append_debug_box(lines, {0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F}, transform, {1.0F, 0.0F, 0.0F, 1.0F});
     require(lines.size() == 12, "a debug box must have 12 edges");

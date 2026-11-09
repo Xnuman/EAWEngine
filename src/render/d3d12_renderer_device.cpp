@@ -357,7 +357,7 @@ void D3d12Renderer::Impl::create_bone_buffers(const std::uint32_t requested_coun
     const auto count = std::max(requested_count, 1U);
     // load_scene validates the scene's bone count before it gets here.
     EAW_ASSERT_MSG(count <= maximum_bone_transforms, "visual scene exceeds the D3D12 bone palette capacity");
-    bone_transforms.assign(count, Matrix4{});
+    bone_transforms.assign(count, Matrix4::identity());
 }
 
 void D3d12Renderer::Impl::ensure_bone_capacity(FrameContext& frame, const std::size_t count)

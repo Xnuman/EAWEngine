@@ -6,12 +6,22 @@
 
 namespace eaw {
 
+// No default value: a rotation is built as identity() or from its components, so a declaration
+// always says which it starts as. (There is no zero(): a zero quaternion is not a rotation.)
 struct Quaternion
 {
-    float x{};
-    float y{};
-    float z{};
-    float w{1.0F};
+    float x;
+    float y;
+    float z;
+    float w;
+
+    Quaternion() = delete;
+    constexpr Quaternion(const float x_part, const float y_part, const float z_part, const float w_part) noexcept : x(x_part), y(y_part), z(z_part), w(w_part)
+    {}
+    [[nodiscard]] static constexpr Quaternion identity() noexcept
+    {
+        return {0.0F, 0.0F, 0.0F, 1.0F};
+    }
 
     friend constexpr bool operator==(const Quaternion&, const Quaternion&) = default;
 };

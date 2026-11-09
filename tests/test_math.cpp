@@ -69,14 +69,17 @@ void test_math_matrices()
     require(close_to(eaw::transform_point({1.0F, 0.0F, 0.0F}, transform), {10.0F, 2.0F, 5.0F}) && close_to(eaw::transform_direction({1.0F, 0.0F, 0.0F}, transform), {0.0F, 2.0F, 0.0F}) &&
                 eaw::translation(transform) == eaw::Vector3{10.0F, 0.0F, 5.0F},
             "points are scaled, rotated, and translated; directions are not translated");
-    eaw::Matrix4 moved;
+    require(eaw::Matrix4::zero().values == std::array<float, 16>{} && eaw::Matrix4::identity()(3, 3) == 1.0F && eaw::Matrix4::identity()(3, 0) == 0.0F && eaw::Matrix3::identity()(1, 1) == 1.0F &&
+                eaw::Matrix3::zero()(1, 1) == 0.0F,
+            "identity and zero must be what they say");
+    auto moved = eaw::Matrix4::identity();
     eaw::set_translation(moved, {1.0F, 2.0F, 3.0F});
     require(eaw::translation(moved) == eaw::Vector3{1.0F, 2.0F, 3.0F}, "set_translation must write the translation row");
     const auto inverse = eaw::inverse(transform);
-    require(inverse.has_value() && close_to(transform * *inverse, eaw::Matrix4{}), "a transform times its inverse must be the identity");
+    require(inverse.has_value() && close_to(transform * *inverse, eaw::Matrix4::identity()), "a transform times its inverse must be the identity");
     const auto affine = eaw::inverse_affine(transform);
-    require(affine.has_value() && close_to(transform * *affine, eaw::Matrix4{}) && eaw::is_finite(*affine), "the affine inverse must undo the transform");
-    eaw::Matrix4 singular;
+    require(affine.has_value() && close_to(transform * *affine, eaw::Matrix4::identity()) && eaw::is_finite(*affine), "the affine inverse must undo the transform");
+    auto singular = eaw::Matrix4::identity();
     singular(2, 2) = 0.0F;
     require(!eaw::inverse(singular).has_value() && !eaw::inverse_affine(singular).has_value(), "a singular matrix must have no inverse");
 }
@@ -84,14 +87,15 @@ void test_math_matrices()
 void test_math_quaternions_and_transforms()
 {
     const auto about_z = eaw::axis_angle({0.0F, 0.0F, 1.0F}, eaw::half_pi);
+    require(eaw::Quaternion::identity() * about_z == about_z, "the identity rotation must leave a rotation unchanged");
     require(close_to(about_z * about_z, eaw::axis_angle({0.0F, 0.0F, 1.0F}, eaw::pi)), "composing rotations about one axis must add their angles");
-    require(close_to(eaw::slerp(eaw::Quaternion{}, eaw::axis_angle({0.0F, 0.0F, 1.0F}, eaw::pi * 0.5F), 0.5F), eaw::axis_angle({0.0F, 0.0F, 1.0F}, eaw::pi * 0.25F)),
+    require(close_to(eaw::slerp(eaw::Quaternion::identity(), eaw::axis_angle({0.0F, 0.0F, 1.0F}, eaw::pi * 0.5F), 0.5F), eaw::axis_angle({0.0F, 0.0F, 1.0F}, eaw::pi * 0.25F)),
             "slerp halfway must rotate half the angle");
     const eaw::Quaternion flipped{-about_z.x, -about_z.y, -about_z.z, -about_z.w};
     require(close_to(eaw::slerp(about_z, flipped, 0.5F), about_z), "slerp must take the shorter arc between equivalent rotations");
 
     const eaw::Vector3 scale{1.5F, 2.0F, 0.5F};
-    const auto rotation = eaw::normalize_or(eaw::Quaternion{0.2F, -0.4F, 0.1F, 0.9F}, {});
+    const auto rotation = eaw::normalize_or(eaw::Quaternion{0.2F, -0.4F, 0.1F, 0.9F}, eaw::Quaternion::identity());
     const eaw::Vector3 offset{3.0F, -7.0F, 11.0F};
     const auto parts = eaw::decompose_transform(eaw::compose_transform(scale, rotation, offset));
     require(close_to(parts.scale, scale) && close_to(parts.rotation, rotation) && close_to(parts.translation, offset), "decompose must recover the parts compose was given");

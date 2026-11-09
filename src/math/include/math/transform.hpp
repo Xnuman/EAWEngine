@@ -12,7 +12,7 @@ namespace eaw {
 struct TransformParts
 {
     Vector3 scale{1.0F, 1.0F, 1.0F};
-    Quaternion rotation;
+    Quaternion rotation{Quaternion::identity()};
     Vector3 translation;
 };
 

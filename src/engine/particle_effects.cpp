@@ -166,10 +166,10 @@ struct ParticleWorld::Instance
 {
     std::shared_ptr<const ParticleEffect> effect;
     std::shared_ptr<const ParticleEmitMesh> mesh;
-    Matrix4 transform{Matrix4{}};
+    Matrix4 transform{Matrix4::identity()};
     Vector3 previous_origin{};
     // The transform at the previous update: linked particles move rigidly with the emitter.
-    Matrix4 previous_transform{Matrix4{}};
+    Matrix4 previous_transform{Matrix4::identity()};
     std::vector<EmitterState> emitters;
     Random random;
     std::uint32_t generation{};
@@ -479,7 +479,7 @@ void ParticleWorld::step_instance(Instance& instance, const float update_seconds
     instance.previous_origin = current_origin;
     // Rigid motion of the emitter since the last update (translation and rotation).
     // A singular previous transform carries nothing over (identity), as before.
-    const auto carried = inverse_affine(instance.previous_transform).value_or(Matrix4{}) * instance.transform;
+    const auto carried = inverse_affine(instance.previous_transform).value_or(Matrix4::identity()) * instance.transform;
     instance.previous_transform = instance.transform;
     const bool may_emit = instance.emitting && !instance.stopped;
     for (std::size_t e = 0; e < emitters.size(); ++e)

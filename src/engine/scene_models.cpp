@@ -562,7 +562,7 @@ void append_pose_palette(const AloModel& model, const std::span<const Matrix4> i
 // A rig's rest palette: identity skin matrices, then the visibility half from the bind pose.
 void append_rest_palette(const AloModel& model, std::vector<Matrix4>& out, const std::vector<bool>& hidden = {})
 {
-    const Matrix4 identity;
+    const auto identity = Matrix4::identity();
     out.insert(out.end(), model.bones.size(), identity);
     for (std::size_t index = 0; index < model.bones.size(); ++index)
     {
@@ -597,7 +597,7 @@ std::vector<Matrix4> sample_skin_palette(const VisualModelAsset& asset, const Al
     append_pose_palette(asset.model, asset.inverse_bind_pose, pose, asset.visibility_palette, result);
     if (result.empty())
     {
-        result.push_back(Matrix4{});
+        result.push_back(Matrix4::identity());
     }
     return result;
 }
@@ -623,12 +623,12 @@ void append_rig_local_palette(const VisualRig& rig, const std::span<const AlaLoc
     if (out.size() - first != rig.palette_size)
     {
         // A pose that does not cover the skeleton, or no rig: the rest pose keeps the mesh intact.
-        out.resize(first);
+        out.erase(out.begin() + static_cast<std::ptrdiff_t>(first), out.end());
         if (rig.model)
         {
             append_rest_palette(*rig.model, out, rig.intact_hidden);
         }
-        out.resize(first + rig.palette_size, Matrix4{});
+        out.resize(first + rig.palette_size, Matrix4::identity());
     }
 }
 
@@ -727,7 +727,7 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
         const auto used = static_cast<std::uint32_t>(rest_palette.size()) - rig.rest_offset;
         if (used < std::max(mesh.bone_count, 1U))
         {
-            rest_palette.resize(rig.rest_offset + std::max(mesh.bone_count, 1U), Matrix4{});
+            rest_palette.resize(rig.rest_offset + std::max(mesh.bone_count, 1U), Matrix4::identity());
         }
         rig.palette_size = static_cast<std::uint32_t>(rest_palette.size()) - rig.rest_offset;
         if (!rig.model || rig.inverse_bind_pose.empty() || !builder.animation_clips)

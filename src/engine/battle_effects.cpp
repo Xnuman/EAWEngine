@@ -144,7 +144,7 @@ void BattleEffects::play_object(const std::uint32_t key, const Vector3& position
     {
         return;
     }
-    Matrix4 transform;
+    auto transform = Matrix4::identity();
     set_translation(transform, position);
     (void)particles_.play(found->second.effect, transform, seed_++, {}, found->second.scale);
 }

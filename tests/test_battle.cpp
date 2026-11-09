@@ -310,12 +310,12 @@ void test_runtime_spawnable_registration()
 
     eaw::VisualRig base_rig;
     base_rig.palette_size = 3;
-    const std::vector<eaw::Matrix4> base_rest(3, eaw::Matrix4{});
+    const std::vector<eaw::Matrix4> base_rest(3, eaw::Matrix4::identity());
     eaw::UnitAnimator animator(std::span(&base_rig, 1), base_rest);
     eaw::VisualRig added_rig;
     added_rig.rest_offset = 0;
     added_rig.palette_size = 2;
-    const std::vector<eaw::Matrix4> added_rest(2, eaw::Matrix4{});
+    const std::vector<eaw::Matrix4> added_rest(2, eaw::Matrix4::identity());
     animator.add_rigs(std::span(&added_rig, 1), added_rest);
     std::vector<eaw::VisualInstance> drawn(1);
     drawn[0].mesh = 1;

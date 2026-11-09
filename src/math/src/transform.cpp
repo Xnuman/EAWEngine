@@ -16,7 +16,7 @@ Matrix4 compose_transform(const Vector3& scale, const Quaternion& rotation, cons
     const auto wx = rotation.w * rotation.x;
     const auto wy = rotation.w * rotation.y;
     const auto wz = rotation.w * rotation.z;
-    Matrix4 matrix;
+    auto matrix = Matrix4::identity();
     matrix(0, 0) = (1.0F - 2.0F * (yy + zz)) * scale.x;
     matrix(0, 1) = (2.0F * (xy + wz)) * scale.x;
     matrix(0, 2) = (2.0F * (xz - wy)) * scale.x;
@@ -51,7 +51,7 @@ TransformParts decompose_transform(const Matrix4& matrix) noexcept
     const Matrix3 r{{m[0] / parts.scale.x, m[1] / parts.scale.x, m[2] / parts.scale.x, m[4] / parts.scale.y, m[5] / parts.scale.y, m[6] / parts.scale.y, m[8] / parts.scale.z, m[9] / parts.scale.z,
                      m[10] / parts.scale.z}};
     const auto trace = r(0, 0) + r(1, 1) + r(2, 2);
-    Quaternion q;
+    auto q = Quaternion::identity();
     if (trace > 0.0F)
     {
         const auto s = 0.5F / std::sqrt(trace + 1.0F);

@@ -16,7 +16,7 @@ using Microsoft::WRL::ComPtr;
 
 struct FrameConstants
 {
-    Matrix4 view_projection{};
+    Matrix4 view_projection{Matrix4::zero()};
 };
 
 struct PartConstants
@@ -377,7 +377,7 @@ Matrix4 orbit_view_projection(const Vector3& center, const float yaw, const floa
     const Vector3 x{yc * sx, ys * sx, 0.0F};
     const Vector3 y{ps * ys * sy, -ps * yc * sy, pc * sy};
     const Vector3 z{pc * ys * sz, -pc * yc * sz, -ps * sz};
-    return {x.x, y.x, z.x, 0.0F, x.y, y.y, z.y, 0.0F, x.z, y.z, z.z, 0.0F, -dot(x, center), -dot(y, center), 0.5F - dot(z, center), 1.0F};
+    return Matrix4{{x.x, y.x, z.x, 0.0F, x.y, y.y, z.y, 0.0F, x.z, y.z, z.z, 0.0F, -dot(x, center), -dot(y, center), 0.5F - dot(z, center), 1.0F}};
 }
 
 } // namespace eaw::tools

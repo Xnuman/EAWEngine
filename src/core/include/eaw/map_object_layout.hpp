@@ -32,7 +32,7 @@ struct MapObjectPlacement
     // Winning virtual path of the model, or empty when the type has no model for the map's
     // context or the referenced file is missing from every layer.
     std::string model_path;
-    Matrix4 transform{};
+    Matrix4 transform{Matrix4::identity()};
     // Set for members expanded from a space squadron or a land company: the container type and
     // the member's index. Several placements then share one object_index.
     const XmlDefinition* container{};

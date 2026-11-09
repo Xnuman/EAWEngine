@@ -79,7 +79,7 @@ struct TrackDecodeInfo
     Vector3 translation_scale;
     Vector3 scale_offset{1.0F, 1.0F, 1.0F};
     Vector3 scale_scale;
-    Quaternion default_rotation;
+    Quaternion default_rotation{Quaternion::identity()};
     std::int32_t translation_index{-1};
     std::int32_t scale_index{-1};
     std::int32_t rotation_index{-1};

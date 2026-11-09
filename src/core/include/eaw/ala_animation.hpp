@@ -17,13 +17,13 @@ struct AlaBoneFrame
 {
     Vector3 translation;
     Vector3 scale{1.0F, 1.0F, 1.0F};
-    Quaternion rotation;
+    Quaternion rotation{Quaternion::identity()};
     bool visible{true};
 };
 
 struct AlaPoseBone
 {
-    Matrix4 transform;
+    Matrix4 transform{Matrix4::identity()};
     bool visible{true};
 };
 
@@ -33,7 +33,7 @@ struct AlaLocalBone
 {
     Vector3 translation;
     Vector3 scale{1.0F, 1.0F, 1.0F};
-    Quaternion rotation;
+    Quaternion rotation{Quaternion::identity()};
     bool visible{true};
 };
 

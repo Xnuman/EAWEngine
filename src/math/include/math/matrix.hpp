@@ -13,9 +13,23 @@
 
 namespace eaw {
 
+// Neither matrix has a default value: a matrix is built as identity(), zero(), or from its
+// elements, so a declaration always says which it starts as.
 struct Matrix3
 {
-    std::array<float, 9> values{1.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    std::array<float, 9> values;
+
+    Matrix3() = delete;
+    constexpr explicit Matrix3(const std::array<float, 9>& elements) noexcept : values(elements)
+    {}
+    [[nodiscard]] static constexpr Matrix3 identity() noexcept
+    {
+        return Matrix3{{1.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 1.0F}};
+    }
+    [[nodiscard]] static constexpr Matrix3 zero() noexcept
+    {
+        return Matrix3{std::array<float, 9>{}};
+    }
 
     [[nodiscard]] constexpr float operator()(const std::size_t row, const std::size_t column) const noexcept
     {
@@ -30,7 +44,19 @@ struct Matrix3
 
 struct Matrix4
 {
-    std::array<float, 16> values{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    std::array<float, 16> values;
+
+    Matrix4() = delete;
+    constexpr explicit Matrix4(const std::array<float, 16>& elements) noexcept : values(elements)
+    {}
+    [[nodiscard]] static constexpr Matrix4 identity() noexcept
+    {
+        return Matrix4{{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F}};
+    }
+    [[nodiscard]] static constexpr Matrix4 zero() noexcept
+    {
+        return Matrix4{std::array<float, 16>{}};
+    }
 
     [[nodiscard]] constexpr float operator()(const std::size_t row, const std::size_t column) const noexcept
     {

@@ -44,7 +44,7 @@ struct PreviewPart
 // Row-vector 4x4 transform (translation in elements 12..14) plus an RGBA8 tint.
 struct PreviewInstance
 {
-    Matrix4 transform{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    Matrix4 transform{Matrix4::identity()};
     std::uint32_t tint{0xffffffffU};
 };
 

@@ -163,7 +163,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     if (spawnable.max_speed > 0.0F)
     {
         const auto soft_radius = type_soft_footprint_radius(build.catalog, *definition);
-        spawnable.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(build.builder.scene, spawnable.mesh, scaled_model_transform(Matrix4{}, spawnable.scale));
+        spawnable.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(build.builder.scene, spawnable.mesh, scaled_model_transform(Matrix4::identity(), spawnable.scale));
         spawnable.turn_rate = type_turn_rate(build.catalog, *definition);
         spawnable.min_speed = build.land ? 0.0F : type_min_flight_speed(build.catalog, *definition, spawnable.max_speed);
         spawnable.aims_with_body = type_aims_with_body(build.catalog, *definition);

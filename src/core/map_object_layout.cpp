@@ -212,7 +212,7 @@ template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& s
         {
             layout.diagnostics.push_back(location(*squadron.type) + ": no Squadron_Offsets entry for member " + std::to_string(member) + "; placed at the squadron origin");
         }
-        auto local = Matrix4{};
+        auto local = Matrix4::identity();
         set_translation(local, offset);
         placement.transform = local * squadron.transform;
         if (!assign_model(placement))
