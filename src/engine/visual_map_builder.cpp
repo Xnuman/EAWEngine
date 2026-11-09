@@ -453,6 +453,17 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             collect_projectile_keys(type.combat, keys);
         }
         load_projectile_visuals(builder, catalog, keys, asset.projectile_visuals, asset.projectile_atlas);
+        keys.clear();
+        collect_impact_effect_keys(asset.projectile_visuals, keys);
+        for (const auto& entity : asset.entities)
+        {
+            keys.push_back(entity.spawn.combat.death_effect);
+        }
+        for (const auto& type : asset.spawnable)
+        {
+            keys.push_back(type.combat.death_effect);
+        }
+        load_effect_objects(builder, catalog, keys, asset.land, asset.effect_objects);
     }
     asset.particle_textures = std::move(builder.particles.textures);
     constexpr std::size_t maximum_reported_diagnostics = 50;
@@ -522,6 +533,13 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
             collect_projectile_keys(type.combat, keys);
         }
         load_projectile_visuals(builder, catalog_entry->catalog, keys, package.projectile_visuals, package.projectile_atlas);
+        keys.clear();
+        collect_impact_effect_keys(package.projectile_visuals, keys);
+        for (const auto& type : package.types)
+        {
+            keys.push_back(type.combat.death_effect);
+        }
+        load_effect_objects(builder, catalog_entry->catalog, keys, land, package.effect_objects);
     }
     package.particle_textures = std::move(builder.particles.textures);
     return package;

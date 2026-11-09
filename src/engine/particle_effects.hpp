@@ -19,6 +19,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace eaw {
@@ -31,6 +32,17 @@ struct ParticleEmitMesh
     std::vector<std::array<float, 3>> normals;
     std::vector<std::uint32_t> indices;
 };
+
+// An XML Particle object: the effect it names for the map's context and its Scale_Factor. Units,
+// hardpoints, and projectiles name these (Death_Explosions, the Projectile_*_Particle fields).
+struct ParticleEffectObject
+{
+    std::shared_ptr<const ParticleEffect> effect;
+    float scale{1.0F};
+};
+
+// Particle objects by the CRC-32 of their name (game_object_name_crc).
+using ParticleEffectObjectTable = std::unordered_map<std::uint32_t, ParticleEffectObject>;
 
 // Generation-checked handle of a playing effect.
 struct ParticleInstanceId
@@ -69,7 +81,9 @@ public:
     // VisualInstance). One-shot effects end on their own once their emitters are done and their
     // particles have died; looping effects run until stop() or remove().
     // `mesh` serves emitters that emit from a mesh (without one they use their position shape).
-    ParticleInstanceId play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, std::uint64_t seed, std::shared_ptr<const ParticleEmitMesh> mesh = {});
+    // `scale` sizes the effect (an XML Scale_Factor): spawn shapes, speeds, and particle sizes.
+    ParticleInstanceId play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, std::uint64_t seed, std::shared_ptr<const ParticleEmitMesh> mesh = {},
+                            float scale = 1.0F);
     // Moves a playing effect (attached effects follow their bone each frame). Unknown ids are ignored.
     void set_transform(ParticleInstanceId id, const std::array<float, 16>& transform);
     // Hides or shows a playing effect: hidden effects emit nothing, and their particles live out.

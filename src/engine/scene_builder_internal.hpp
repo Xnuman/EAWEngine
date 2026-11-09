@@ -142,6 +142,9 @@ std::uint32_t particle_library_texture(SceneBuilder& builder, const std::string&
 // Reads the projectile visuals `keys` name into `table` and, when any exists, loads the bolt atlas
 // into builder.particles (its index in `atlas`).
 void load_projectile_visuals(SceneBuilder& builder, const GameObjectCatalog& catalog, std::span<const std::uint32_t> keys, ProjectileVisualTable& table, std::uint32_t& atlas);
+// Resolves XML Particle objects (by name CRC) to the effect their land or space model names and their
+// Scale_Factor; undefined objects and unloadable effects stay in the table with no effect.
+void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog, std::span<const std::uint32_t> keys, bool land, ParticleEffectObjectTable& table);
 
 // Notes the Damage_Particles and Damage_Decal bones of a type's hardpoints for the model at
 // `model_path`.

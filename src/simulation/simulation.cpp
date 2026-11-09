@@ -167,6 +167,7 @@ void SimulationWorld::step()
     }
     tick_start_positions_ = positions_;
     deaths_.clear();
+    impacts_.clear();
     run_behavior();
     run_movement();
     run_separation();
@@ -538,6 +539,7 @@ void SimulationWorld::publish()
                                       last_shot_ticks_[index]});
     }
     snapshot_.deaths = deaths_;
+    snapshot_.impacts = impacts_;
     snapshot_.projectiles.clear();
     snapshot_.projectiles.reserve(projectiles_.size());
     for (const auto& projectile : projectiles_)

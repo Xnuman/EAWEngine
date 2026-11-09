@@ -74,11 +74,20 @@ void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<c
             return node != nullptr ? trim(node->text) : std::string_view{};
         };
         const auto render = numbers<int>(text("Projectile_Custom_Render"));
-        if (render.size() != 1 || (render.front() != 1 && render.front() != 2))
+        ProjectileVisual visual;
+        const auto particle_key = [&](const std::string_view field) -> std::uint32_t
         {
+            const auto name = text(field);
+            return name.empty() ? 0U : game_object_name_crc(name);
+        };
+        visual.impact_effects = {particle_key("Projectile_Absorbed_By_Shields_Particle"), particle_key("Projectile_Object_Detonation_Particle"),
+                                 particle_key("Projectile_Object_Armor_Reduced_Detonation_Particle"), particle_key("Projectile_Lifetime_Detonation_Particle")};
+        visual.bolt = render.size() == 1 && (render.front() == 1 || render.front() == 2);
+        if (!visual.bolt)
+        {
+            table.emplace(key, visual);
             continue;
         }
-        ProjectileVisual visual;
         visual.tinted = render.front() == 2;
         const auto number = [&](const std::string_view field, const float fallback)
         {
@@ -139,6 +148,26 @@ void collect_projectile_keys(const CombatProfile& profile, std::vector<std::uint
     }
 }
 
+void collect_impact_effect_keys(const ProjectileVisualTable& table, std::vector<std::uint32_t>& keys)
+{
+    for (const auto& [key, visual] : table)
+    {
+        for (const auto effect : visual.impact_effects)
+        {
+            if (effect != 0)
+            {
+                keys.push_back(effect);
+            }
+        }
+    }
+}
+
+std::uint32_t impact_effect(const ProjectileVisual& visual, const ImpactKind kind) noexcept
+{
+    const auto index = static_cast<std::size_t>(kind);
+    return index < visual.impact_effects.size() ? visual.impact_effects[index] : 0U;
+}
+
 void append_projectile_sprites(const std::span<const ProjectileSnapshot> current, const ProjectileVisualTable& table, const std::uint32_t atlas, const float interpolation, const float tick_seconds,
                                std::vector<VisualParticle>& sprites)
 {
@@ -146,7 +175,7 @@ void append_projectile_sprites(const std::span<const ProjectileSnapshot> current
     for (const auto& projectile : current)
     {
         const auto found = table.find(projectile.visual);
-        if (found == table.end())
+        if (found == table.end() || !found->second.bolt)
         {
             continue;
         }

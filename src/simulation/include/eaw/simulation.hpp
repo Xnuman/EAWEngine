@@ -193,6 +193,33 @@ struct DeathSnapshot
     float pitch{};
     std::uint32_t visual{};
     std::uint32_t owner{};
+    // Presentation key of the effect its death plays (CombatProfile::death_effect), or 0.
+    std::uint32_t death_effect{};
+};
+
+// What a shot did when it ended.
+enum class ImpactKind : std::uint8_t
+{
+    // Shields took all of it.
+    shield,
+    // It reached the hull (or a hardpoint).
+    hull,
+    // It reached the hull, but armor reduced it (provisional: an armor modifier below 1).
+    hull_reduced,
+    // It flew its maximum distance without hitting anything.
+    expired,
+};
+
+// A shot that ended in the last tick, for impact effects (a derived output, not part of the state
+// hash). Instant weapons report their hits too.
+struct ImpactSnapshot
+{
+    SimVector3 position;
+    // Unit direction the shot was flying.
+    SimVector3 direction;
+    // The weapon's projectile visual key (WeaponProfile::projectile_visual).
+    std::uint32_t visual{};
+    ImpactKind kind{ImpactKind::hull};
 };
 
 struct SimSnapshot
@@ -202,6 +229,8 @@ struct SimSnapshot
     std::vector<ProjectileSnapshot> projectiles;
     // Entities killed in this tick, in removal order (destroy commands are not deaths).
     std::vector<DeathSnapshot> deaths;
+    // Shots that ended in this tick, in the order they ended.
+    std::vector<ImpactSnapshot> impacts;
 };
 
 // Converts real elapsed time into whole simulation ticks. At most `max_ticks_per_advance` ticks are
@@ -406,7 +435,8 @@ private:
     void update_target(std::size_t index);
     void run_weapon(std::size_t index);
     void launch(std::size_t shooter, std::size_t victim, const WeaponProfile& weapon);
-    void apply_damage(std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health, std::int32_t hardpoint);
+    // Returns what the shot did (shields only, hull, or hull with armor reducing it).
+    ImpactKind apply_damage(std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health, std::int32_t hardpoint);
     // A point of an entity's own frame in world space.
     [[nodiscard]] SimVector3 world_point(std::size_t index, const LocalPoint& point) const noexcept;
     [[nodiscard]] bool hardpoint_alive(std::size_t index, std::size_t hardpoint) const noexcept;
@@ -516,6 +546,7 @@ private:
     std::vector<Projectile> projectiles_;
     // Deaths of the current tick (SimSnapshot::deaths).
     std::vector<DeathSnapshot> deaths_;
+    std::vector<ImpactSnapshot> impacts_;
     SpatialGrid grid_;
     std::vector<std::uint32_t> query_;
     DamageTable damage_table_;

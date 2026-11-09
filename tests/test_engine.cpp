@@ -1079,8 +1079,15 @@ void test_projectile_sprites()
     bolt.column = 3;
     bolt.tinted = true;
     bolt.color = {0.4F, 0.7F, 0.9F, 1.0F};
+    bolt.bolt = true;
+    bolt.impact_effects = {11U, 12U, 0U, 14U};
     table.emplace(5U, bolt);
-    std::vector<eaw::ProjectileSnapshot> shots{{{100.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 5U, 300.0F}, {{0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, 1U, 6U, 300.0F}};
+    // A projectile without a custom render keeps its impacts but draws no bolt.
+    eaw::ProjectileVisual model_shot;
+    model_shot.impact_effects = {0U, 22U, 0U, 0U};
+    table.emplace(7U, model_shot);
+    std::vector<eaw::ProjectileSnapshot> shots{
+        {{100.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 5U, 300.0F}, {{0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, 1U, 6U, 300.0F}, {{0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, 1U, 7U, 300.0F}};
     std::vector<eaw::VisualParticle> sprites;
     eaw::append_projectile_sprites(shots, table, 9U, 0.5F, 1.0F / 30.0F, sprites);
     require(sprites.size() == 1, "untyped shots were drawn as bolts");
@@ -1089,6 +1096,13 @@ void test_projectile_sprites()
     require(std::abs(sprite.position[0] - 92.0F) < 1e-4F && sprite.tail == 6.0F && sprite.half_size == 0.5F, "bolt placement failed");
     require(sprite.shape == eaw::VisualParticleShape::teardrop && sprite.texture == 9U && sprite.uv_rect[0] == 0.75F && sprite.uv_rect[2] == 0.25F && sprite.color[2] == 0.9F,
             "bolt appearance failed");
+    require(eaw::impact_effect(bolt, eaw::ImpactKind::shield) == 11U && eaw::impact_effect(bolt, eaw::ImpactKind::hull) == 12U && eaw::impact_effect(bolt, eaw::ImpactKind::hull_reduced) == 0U &&
+                eaw::impact_effect(bolt, eaw::ImpactKind::expired) == 14U,
+            "impact effects by kind failed");
+    std::vector<std::uint32_t> keys;
+    eaw::collect_impact_effect_keys(table, keys);
+    std::ranges::sort(keys);
+    require(keys == std::vector<std::uint32_t>{11U, 12U, 14U, 22U}, "impact effect keys failed");
 }
 
 void test_particle_tracks()
@@ -1131,6 +1145,21 @@ void test_particle_world()
     world.build_sprites({0.0F, 0.0F, 0.0F}, sprites);
     require(sprites.size() == 12 && sprites.front().texture == 7U && sprites.front().position[0] == 100.0F && sprites.front().position[2] > 0.0F, "particle sprites failed");
     require(sprites.front().half_size > 4.0F && sprites.front().half_size < 7.0F, "particle size track failed");
+    {
+        // A Scale_Factor sizes the particles and the effect's own space around its origin.
+        eaw::ParticleWorld scaled;
+        (void)scaled.play(effect, transform, 42, {}, 2.0F);
+        scaled.update(0.01F);
+        for (int frame = 0; frame < 60; ++frame)
+        {
+            scaled.update(0.02F);
+        }
+        std::vector<eaw::VisualParticle> doubled;
+        scaled.build_sprites({0.0F, 0.0F, 0.0F}, doubled);
+        require(doubled.size() == sprites.size() && std::abs(doubled.front().half_size - 2.0F * sprites.front().half_size) < 1e-3F &&
+                    std::abs(doubled.front().position[2] - 2.0F * sprites.front().position[2]) < 1e-2F && doubled.front().position[0] == 100.0F,
+                "scaled particle effect failed");
+    }
     for (std::size_t index = 1; index < sprites.size(); ++index)
     {
         require(sprites[index - 1].position[2] >= sprites[index].position[2], "particle sprites are not sorted back to front");

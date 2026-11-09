@@ -217,6 +217,8 @@ struct SandboxSession
     // How shots look (by projectile visual key) and the bolt atlas's renderer texture.
     eaw::ProjectileVisualTable projectile_visuals;
     std::uint32_t projectile_atlas = eaw::invalid_visual_texture;
+    // The XML Particle objects played one-shot where shots end and units die.
+    eaw::ParticleEffectObjectTable effect_objects;
     // Kept for --reload-every, which reloads the scene and so drops added textures.
     std::vector<eaw::VisualTexture> particle_texture_copy;
     std::chrono::steady_clock::time_point map_animation_start = std::chrono::steady_clock::now();
@@ -337,7 +339,8 @@ struct SandboxSession
 
     // Registers particle textures with the renderer and points the effects at them (white when
     // registration fails); returns where each texture landed (empty on failure).
-    std::vector<std::uint32_t> register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs, std::span<std::shared_ptr<const eaw::ParticleEffect>> effects)
+    std::vector<std::uint32_t> register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs, std::span<std::shared_ptr<const eaw::ParticleEffect>> effects,
+                                                          eaw::ParticleEffectObjectTable* objects = nullptr)
     {
         std::vector<std::uint32_t> placed;
         if (!textures.empty())
@@ -351,7 +354,7 @@ struct SandboxSession
                 eaw::log_warning("particles", added.error());
             }
         }
-        eaw::renumber_effect_textures(rigs, effects, placed);
+        eaw::renumber_effect_textures(rigs, effects, placed, objects);
         return placed;
     }
 
@@ -458,10 +461,11 @@ struct SandboxSession
                 particle_texture_copy = visual_map.particle_textures;
             }
             {
-                const auto placed = register_particle_textures(std::move(visual_map.particle_textures), visual_map.rigs, visual_map.effects);
+                const auto placed = register_particle_textures(std::move(visual_map.particle_textures), visual_map.rigs, visual_map.effects, &visual_map.effect_objects);
                 projectile_visuals.clear();
                 projectile_atlas = eaw::invalid_visual_texture;
                 add_projectile_visuals(visual_map.projectile_visuals, visual_map.projectile_atlas, placed);
+                effect_objects = std::move(visual_map.effect_objects);
             }
             start_simulation(layout, eaw::battle_map(visual_map), *options.map);
             animator.emplace(visual_map.rigs, visual_map.rest_palette);
@@ -500,6 +504,12 @@ struct SandboxSession
                 }
                 std::cout << "Animation: " << animated_meshes << " of " << visual_map.rigs.size() << " meshes have clips (" << clips << " clips), rest palette " << visual_map.rest_palette.size()
                           << " entries\n";
+                const auto playable = std::ranges::count_if(effect_objects,
+                                                            [](const auto& entry)
+                                                            {
+                                                                return entry.second.effect != nullptr;
+                                                            });
+                std::cout << "Impact and death effects: " << playable << " of " << effect_objects.size() << " particle objects playable\n";
             }
             spawnable = visual_map.spawnable;
             terrain_heights = visual_map.ground;
@@ -823,8 +833,9 @@ struct SandboxSession
         presentation->add_meshes(meshes);
         presentation->add_spawnable(package.types);
         {
-            const auto placed = register_particle_textures(std::move(package.particle_textures), package.rigs, {});
+            const auto placed = register_particle_textures(std::move(package.particle_textures), package.rigs, {}, &package.effect_objects);
             add_projectile_visuals(package.projectile_visuals, package.projectile_atlas, placed);
+            effect_objects.insert(package.effect_objects.begin(), package.effect_objects.end());
         }
         animator->add_rigs(package.rigs, package.rest_palette);
         attached_effects.add_rigs(package.rigs);
@@ -1357,6 +1368,14 @@ struct SandboxSession
                     {
                         animator->add_corpse(corpse->instance, death.id, world_seconds, corpse->style);
                     }
+                    play_effect_object(death.death_effect, death.position);
+                }
+                for (const auto& impact : world->snapshot().impacts)
+                {
+                    if (const auto found = projectile_visuals.find(impact.visual); found != projectile_visuals.end())
+                    {
+                        play_effect_object(eaw::impact_effect(found->second, impact.kind), impact.position);
+                    }
                 }
             }
             const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
@@ -1378,6 +1397,22 @@ struct SandboxSession
             renderer.set_instances(frame_instances);
             update_debug_lines();
         }
+    }
+
+    // Plays an XML Particle object once at `position`, upright (the effect's own axes; an engine
+    // choice until the original's orientation of impacts and explosions is known).
+    void play_effect_object(const std::uint32_t key, const eaw::SimVector3& position)
+    {
+        const auto found = effect_objects.find(key);
+        if (key == 0 || found == effect_objects.end() || !found->second.effect)
+        {
+            return;
+        }
+        auto transform = eaw::visual_identity_transform;
+        transform[12] = position.x;
+        transform[13] = position.y;
+        transform[14] = position.z;
+        (void)particles.play(found->second.effect, transform, effect_seed++, {}, found->second.scale);
     }
 
     // Particle effects advance on the frame clock and are drawn back to front from the camera.

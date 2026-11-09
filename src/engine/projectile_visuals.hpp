@@ -27,6 +27,14 @@ inline constexpr std::uint32_t projectile_atlas_cells = 4;
 
 struct ProjectileVisual
 {
+    // Drawn as a bolt (Projectile_Custom_Render 1 or 2); otherwise only its impacts show.
+    bool bolt{};
+    // XML Particle objects (CRC-32 of the name, 0 none) played where a shot ends, by ImpactKind:
+    // absorbed by shields (Projectile_Absorbed_By_Shields_Particle), on the hull
+    // (Projectile_Object_Detonation_Particle), on the hull with armor reducing it
+    // (Projectile_Object_Armor_Reduced_Detonation_Particle), and at the end of its flight
+    // (Projectile_Lifetime_Detonation_Particle).
+    std::array<std::uint32_t, 4> impact_effects{};
     float width{1.0F};
     float length{1.0F};
     std::uint32_t column{};
@@ -39,12 +47,18 @@ struct ProjectileVisual
 // Projectile visuals by WeaponProfile::projectile_visual (the CRC-32 of the type name).
 using ProjectileVisualTable = std::unordered_map<std::uint32_t, ProjectileVisual>;
 
-// Reads the visual of each projectile type in `keys` that has a custom render; problems become
-// warnings naming the type and field.
+// Reads the visual of each projectile type in `keys` (its bolt when it has a custom render, and its
+// impact effects); problems become warnings naming the type and field.
 void read_projectile_visuals(const GameObjectCatalog& catalog, std::span<const std::uint32_t> keys, ProjectileVisualTable& table, std::vector<std::string>& warnings);
 
 // The projectile visual keys of every weapon in `profile`.
 void collect_projectile_keys(const CombatProfile& profile, std::vector<std::uint32_t>& keys);
+
+// The Particle objects the table's impacts name.
+void collect_impact_effect_keys(const ProjectileVisualTable& table, std::vector<std::uint32_t>& keys);
+
+// The Particle object played for an impact of `kind` (0 none).
+[[nodiscard]] std::uint32_t impact_effect(const ProjectileVisual& visual, ImpactKind kind) noexcept;
 
 // Appends a bolt sprite for every projectile in `current` that has a visual, placed `interpolation`
 // (0..1) of a tick after the previous tick (shots are drawn where they were between ticks, like

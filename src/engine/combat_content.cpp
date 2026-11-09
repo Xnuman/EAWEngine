@@ -330,6 +330,14 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     // Below the origin is legitimate (stock Underworld_Hero_Shuttle_Landing uses -5.0).
     profile.aim_height = type.signed_value("Ranged_Target_Z_Adjust");
     const auto range = type.amount("Targeting_Max_Attack_Distance");
+    // Presentation: the Particle object its death plays (the first Death_Explosions entry).
+    if (const auto* explosions = type.node("Death_Explosions"))
+    {
+        if (const auto names = split_list(explosions->text); !names.empty())
+        {
+            profile.death_effect = game_object_name_crc(names.front());
+        }
+    }
 
     // The type's own weapon: the first of Projectile_Types.
     if (const auto* projectiles = type.node("Projectile_Types"); projectiles != nullptr && range > 0.0F)

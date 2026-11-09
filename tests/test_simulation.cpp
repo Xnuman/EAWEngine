@@ -1069,23 +1069,32 @@ void test_death_snapshots()
     eaw::CombatProfile gun;
     gun.health = 100.0F;
     gun.weapons = {eaw::WeaponProfile{.range = 500.0F, .recharge_seconds = 0.1F, .damage = 50.0F}};
+    gun.weapons[0].projectile_visual = 9U;
     eaw::CombatProfile frail;
     frail.health = 40.0F;
+    frail.death_effect = 77U;
     (void)world.spawn({.type_name = "Gun", .owner = 1, .combat = gun});
     const auto victim = world.spawn({.type_name = "Victim", .owner = 2, .position = {100.0F, 20.0F, 0.0F}, .heading = 1.0F, .combat = frail});
     const auto bystander = world.spawn({.type_name = "Bystander", .owner = 1, .position = {-50.0F, 0.0F, 0.0F}});
     require(victim.ok() && bystander.ok(), "test spawns must succeed");
     std::size_t deaths = 0;
+    std::size_t hull_impacts = 0;
     for (int tick = 0; tick < 10 && world.alive(*victim); ++tick)
     {
         world.step();
         deaths += world.snapshot().deaths.size();
+        for (const auto& impact : world.snapshot().impacts)
+        {
+            hull_impacts += impact.visual == 9U && impact.kind == eaw::ImpactKind::hull && impact.position.x == 100.0F ? 1U : 0U;
+        }
     }
+    require(hull_impacts >= 1, "hits must appear as impacts in their tick's snapshot");
     require(!world.alive(*victim) && deaths == 1 && world.snapshot().deaths.size() == 1, "a kill must appear in its tick's snapshot");
     const auto& death = world.snapshot().deaths.front();
     require(death.id == *victim && death.owner == 2 && death.position.x == 100.0F && death.heading == 1.0F, "a death must say who died where, facing which way");
+    require(death.death_effect == 77U, "a death must carry its type's death effect");
     world.step();
-    require(world.snapshot().deaths.empty(), "deaths must only appear in their own tick");
+    require(world.snapshot().deaths.empty() && world.snapshot().impacts.empty(), "deaths and impacts must only appear in their own tick");
     world.submit({eaw::SimCommandKind::destroy, {*bystander}});
     world.step();
     require(world.snapshot().deaths.empty() && !world.alive(*bystander), "a destroy command is not a death");

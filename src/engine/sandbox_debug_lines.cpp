@@ -36,9 +36,12 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
         // Shots in flight as short streaks, green for the debug-spawn owner's side.
         for (const auto& projectile : snapshot.projectiles)
         {
-            if (view.projectile_visuals != nullptr && view.projectile_visuals->contains(projectile.visual))
+            if (view.projectile_visuals != nullptr)
             {
-                continue;
+                if (const auto found = view.projectile_visuals->find(projectile.visual); found != view.projectile_visuals->end() && found->second.bolt)
+                {
+                    continue;
+                }
             }
             const auto& p = projectile.position;
             const auto& d = projectile.direction;

@@ -253,7 +253,12 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
     if (weapon.projectile_speed <= 0.0F)
     {
         ++hits_;
-        apply_damage(victim, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, hardpoint);
+        const auto kind = apply_damage(victim, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, hardpoint);
+        const auto point = aim_point(victim, hardpoint);
+        const SimVector3 delta{point.x - origin.x, point.y - origin.y, point.z - origin.z};
+        const auto length = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+        const auto direction = length > 0.0F ? SimVector3{delta.x / length, delta.y / length, delta.z / length} : SimVector3{};
+        impacts_.push_back({point, direction, weapon.projectile_visual, kind});
         return;
     }
     Projectile projectile;
@@ -340,7 +345,7 @@ SimVector3 SimulationWorld::aim_point(const std::size_t victim, const std::int32
 
 // Provisional semantics: shields absorb a shot first (scaled by the shield armor type); what the
 // shield cannot absorb, converted back to raw damage, reaches the hull scaled by the armor type.
-void SimulationWorld::apply_damage(const std::size_t victim, float damage, const std::uint16_t damage_type, const bool damages_shield, const bool damages_health, const std::int32_t hardpoint)
+ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage, const std::uint16_t damage_type, const bool damages_shield, const bool damages_health, const std::int32_t hardpoint)
 {
     auto& combat = combat_[victim];
     if (damages_shield && combat.shield > 0.0F)
@@ -350,14 +355,20 @@ void SimulationWorld::apply_damage(const std::size_t victim, float damage, const
         if (dealt <= combat.shield)
         {
             combat.shield -= dealt;
-            return;
+            return ImpactKind::shield;
         }
         damage = modifier > 0.0F ? (dealt - combat.shield) / modifier : 0.0F;
         combat.shield = 0.0F;
     }
+    auto kind = ImpactKind::hull;
     if (damages_health)
     {
-        const auto dealt = damage * damage_table_.modifier(damage_type, combat.profile.armor_type);
+        const auto modifier = damage_table_.modifier(damage_type, combat.profile.armor_type);
+        if (modifier < 1.0F)
+        {
+            kind = ImpactKind::hull_reduced;
+        }
+        const auto dealt = damage * modifier;
         combat.health -= dealt;
         // A shot at a hardpoint damages it too (provisional: the hull and the hit part share the
         // damage; the original's split is not established).
@@ -371,6 +382,7 @@ void SimulationWorld::apply_damage(const std::size_t victim, float damage, const
             }
         }
     }
+    return kind;
 }
 
 void SimulationWorld::run_projectiles()
@@ -400,7 +412,13 @@ void SimulationWorld::run_projectiles()
             if (victim && damageable(*victim))
             {
                 ++hits_;
-                apply_damage(*victim, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, projectile.target_hardpoint);
+                const auto kind = apply_damage(*victim, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, projectile.target_hardpoint);
+                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind});
+            }
+            else
+            {
+                // A dead target's shot reaches the last aim point and is lost there.
+                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, ImpactKind::expired});
             }
             continue;
         }
@@ -409,6 +427,7 @@ void SimulationWorld::run_projectiles()
         projectile.flown += step_length;
         if (projectile.max_flight > 0.0F && projectile.flown > projectile.max_flight)
         {
+            impacts_.push_back({projectile.position, projectile.direction, projectile.visual, ImpactKind::expired});
             continue;
         }
         projectiles_[kept++] = projectile;
@@ -423,7 +442,7 @@ void SimulationWorld::remove_dead()
     {
         if (combat_[index].profile.health > 0.0F && combat_[index].health <= 0.0F)
         {
-            deaths_.push_back({ids_[index], positions_[index], headings_[index], pitches_[index], visuals_[index], owners_[index]});
+            deaths_.push_back({ids_[index], positions_[index], headings_[index], pitches_[index], visuals_[index], owners_[index], combat_[index].profile.death_effect});
             destroy(index);
             ++kills_;
         }

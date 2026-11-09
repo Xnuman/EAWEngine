@@ -269,6 +269,7 @@ struct ParticleWorld::Instance
     std::uint32_t generation{};
     bool live{};
     float intensity{1.0F};
+    float scale{1.0F};
     bool emitting{true};
     bool stopped{};
 };
@@ -293,7 +294,8 @@ const ParticleWorld::Instance* ParticleWorld::find(const ParticleInstanceId id) 
     return const_cast<ParticleWorld*>(this)->find(id);
 }
 
-ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, const std::uint64_t seed, std::shared_ptr<const ParticleEmitMesh> mesh)
+ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, const std::uint64_t seed, std::shared_ptr<const ParticleEmitMesh> mesh,
+                                       const float scale)
 {
     if (!effect || effect->emitters.empty())
     {
@@ -320,9 +322,16 @@ ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> eff
     {
         instance.mesh = std::move(mesh);
     }
+    // The scale goes into the transform (spawn shapes, speeds, accelerations in the effect's frame)
+    // and into particle sizes.
+    instance.scale = std::isfinite(scale) && scale > 0.0F ? scale : 1.0F;
     instance.transform = transform;
-    instance.previous_origin = origin(transform);
-    instance.previous_transform = transform;
+    for (std::size_t element = 0; element < 12; ++element)
+    {
+        instance.transform[element] *= instance.scale;
+    }
+    instance.previous_origin = origin(instance.transform);
+    instance.previous_transform = instance.transform;
     instance.random = Random(seed);
     const auto& emitters = instance.effect->emitters;
     instance.emitters.resize(emitters.size());
@@ -363,6 +372,10 @@ void ParticleWorld::set_transform(const ParticleInstanceId id, const std::array<
     if (auto* instance = find(id))
     {
         instance->transform = transform;
+        for (std::size_t element = 0; element < 12; ++element)
+        {
+            instance->transform[element] *= instance->scale;
+        }
     }
 }
 
@@ -753,7 +766,7 @@ void ParticleWorld::build_sprites(const std::array<float, 3>& eye, std::vector<V
             const auto texture = e < instance.effect->textures.size() ? instance.effect->textures[e] : invalid_visual_texture;
             const auto blend = emitter.blend;
             const auto shape = emitter.shape;
-            const auto size_scale = 0.55F + 0.45F * instance.intensity;
+            const auto size_scale = (0.55F + 0.45F * instance.intensity) * instance.scale;
             const auto alpha_scale = 0.45F + 0.55F * instance.intensity;
             for (const auto& particle : state.particles)
             {

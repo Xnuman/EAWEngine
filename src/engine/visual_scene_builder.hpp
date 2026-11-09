@@ -219,6 +219,8 @@ struct VisualMapAsset
     // How shots look, as in SpawnablePackage.
     ProjectileVisualTable projectile_visuals;
     std::uint32_t projectile_atlas{invalid_visual_texture};
+    // The Particle objects shot impacts and deaths name, as in SpawnablePackage.
+    ParticleEffectObjectTable effect_objects;
 };
 
 // Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file
@@ -261,6 +263,9 @@ struct SpawnablePackage
     // invalid_visual_texture).
     ProjectileVisualTable projectile_visuals;
     std::uint32_t projectile_atlas{invalid_visual_texture};
+    // The XML Particle objects the types' shot impacts and deaths name (effects index
+    // particle_textures).
+    ParticleEffectObjectTable effect_objects;
 };
 // Builds a type for a land or space map through the same cached XML catalog, movement classes, and
 // combat data as build_visual_map (an error when the type has no model for that context).
@@ -271,7 +276,8 @@ struct SpawnablePackage
 // Points the rigs' effects at renderer texture indices: `renderer_textures[i]` is where the
 // renderer placed particle texture i (D3d12Renderer::add_textures). Effects shared between rigs stay
 // shared.
-void renumber_effect_textures(std::span<VisualRig> rigs, std::span<std::shared_ptr<const ParticleEffect>> effects, std::span<const std::uint32_t> renderer_textures);
+void renumber_effect_textures(std::span<VisualRig> rigs, std::span<std::shared_ptr<const ParticleEffect>> effects, std::span<const std::uint32_t> renderer_textures,
+                              ParticleEffectObjectTable* objects = nullptr);
 [[nodiscard]] std::optional<std::string> default_model_animation(const AssetReader& reader, std::string_view model_path);
 // Every <MODEL>_*.ALA beside the model, sorted by virtual path.
 [[nodiscard]] std::vector<std::string> model_animations(const AssetReader& reader, std::string_view model_path);

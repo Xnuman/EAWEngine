@@ -4,6 +4,8 @@
 #include "scene_builder_internal.hpp"
 
 #include <algorithm>
+#include <charconv>
+#include <cmath>
 #include <filesystem>
 #include <unordered_map>
 
@@ -18,6 +20,17 @@ struct CachedParticleSystem
     std::string error;
     bool mesh{};
 };
+
+std::string_view trim_field(std::string_view text)
+{
+    constexpr std::string_view space = " \t\r\n";
+    const auto first = text.find_first_not_of(space);
+    if (first == std::string_view::npos)
+    {
+        return {};
+    }
+    return text.substr(first, text.find_last_not_of(space) - first + 1);
+}
 
 std::optional<std::string> resolve_effect_path(const AssetReader& vfs, const std::string& reference)
 {
@@ -198,6 +211,65 @@ void load_projectile_visuals(SceneBuilder& builder, const GameObjectCatalog& cat
     }
 }
 
+void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog, const std::span<const std::uint32_t> keys, const bool land, ParticleEffectObjectTable& table)
+{
+    if (!builder.textures)
+    {
+        return;
+    }
+    for (const auto key : keys)
+    {
+        if (key == 0 || table.contains(key))
+        {
+            continue;
+        }
+        const XmlDefinition* object = nullptr;
+        for (const auto* candidate : catalog.find_crc(key))
+        {
+            if (object == nullptr || candidate->type == "Particle")
+            {
+                object = candidate;
+            }
+        }
+        if (object == nullptr)
+        {
+            builder.scene.warnings.push_back("particle object " + std::to_string(key) + " is not defined");
+            table.emplace(key, ParticleEffectObject{});
+            continue;
+        }
+        const auto text = [&](const std::string_view field) -> std::string
+        {
+            const auto* node = catalog.field(*object, field).field;
+            return node != nullptr ? std::string(trim_field(node->text)) : std::string{};
+        };
+        ParticleEffectObject entry;
+        // The model for the map's context, else the other one (most objects name both).
+        auto model = text(land ? "Land_Model_Name" : "Space_Model_Name");
+        if (model.empty())
+        {
+            model = text(land ? "Space_Model_Name" : "Land_Model_Name");
+        }
+        if (!model.empty())
+        {
+            entry.effect = particle_effect(builder, model);
+        }
+        if (const auto scale = text("Scale_Factor"); !scale.empty())
+        {
+            float value{};
+            const auto [end, error] = std::from_chars(scale.data(), scale.data() + scale.size(), value);
+            if (error == std::errc{} && end == scale.data() + scale.size() && std::isfinite(value) && value > 0.0F)
+            {
+                entry.scale = value;
+            }
+            else
+            {
+                builder.scene.warnings.push_back(object->name + ": Scale_Factor '" + scale + "' is not a positive number");
+            }
+        }
+        table.emplace(key, std::move(entry));
+    }
+}
+
 std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModel& model, const std::string& model_path)
 {
     std::vector<VisualEffectAttachment> attachments;
@@ -284,7 +356,8 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const A
 
 } // namespace scene_build
 
-void renumber_effect_textures(const std::span<VisualRig> rigs, const std::span<std::shared_ptr<const ParticleEffect>> effects, const std::span<const std::uint32_t> renderer_textures)
+void renumber_effect_textures(const std::span<VisualRig> rigs, const std::span<std::shared_ptr<const ParticleEffect>> effects, const std::span<const std::uint32_t> renderer_textures,
+                              ParticleEffectObjectTable* const objects)
 {
     std::unordered_map<const ParticleEffect*, std::shared_ptr<const ParticleEffect>> renumbered;
     const auto renumber = [&](std::shared_ptr<const ParticleEffect>& effect)
@@ -315,6 +388,13 @@ void renumber_effect_textures(const std::span<VisualRig> rigs, const std::span<s
     for (auto& effect : effects)
     {
         renumber(effect);
+    }
+    if (objects != nullptr)
+    {
+        for (auto& [key, object] : *objects)
+        {
+            renumber(object.effect);
+        }
     }
 }
 

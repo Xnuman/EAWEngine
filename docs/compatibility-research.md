@@ -824,6 +824,25 @@ particle-audit`.
   cell index (read as column 2, row 0), and whether `Scale_Factor` scales
   custom-render bolts is open (stock projectiles all use 1.0, so the engine
   ignores it for now).
+- **Impact and death effects.** Gameplay effects are not hard-coded per
+  weapon class: the game names them through XML `Particle` objects
+  (`Particles.xml`, 165 stock objects), each giving a `Space_Model_Name` and
+  `Land_Model_Name` (a particle ALO), a `Scale_Factor`, and lifetime and
+  explosion fields. Projectiles name one per outcome:
+  `Projectile_Absorbed_By_Shields_Particle` (88 stock uses),
+  `Projectile_Object_Detonation_Particle` (91),
+  `Projectile_Object_Armor_Reduced_Detonation_Particle` (56),
+  `Projectile_Lifetime_Detonation_Particle` (54), and
+  `Projectile_Ground_Detonation_Particle` (70); types name
+  `Death_Explosions` (610) and hardpoints `Death_Explosion_Particles` (267).
+  The engine plays the shield, hull, armor-reduced, and lifetime ones where
+  a shot ends, and a type's first death explosion where it dies, one-shot,
+  upright, and scaled by `Scale_Factor` (positions, speeds, and sizes). When
+  the original counts a hit as "armor reduced" is not documented; the engine
+  uses a damage-versus-armor modifier below 1 (provisional). A shot whose
+  target died, or that outlived its flight limit, plays its lifetime effect.
+  Whether impacts face the shooter or the surface normal, and how several
+  `Death_Explosions` entries are chosen, are open.
 - **Not drawn yet:** heat distortion (170 emitters) and weather (5), which
   need passes of their own; wind is ignored; freeze time is kept but unused.
 - **Proxies.** Model proxies name their effect without directory or

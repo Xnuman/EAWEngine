@@ -97,6 +97,9 @@ struct CombatProfile
     // Targetable parts (ship hardpoints). Shots aim at the nearest live targetable one; losing every
     // shield generator stops shield recharge and losing every engine slows the entity to a quarter.
     std::vector<HardpointProfile> hardpoints;
+    // Presentation only (not simulation state): the effect played when the entity dies (the CRC-32 of
+    // the XML Particle object its Death_Explosions names), or 0.
+    std::uint32_t death_effect{};
 
     // The longest weapon range (the entity's targeting range); 0 without weapons.
     [[nodiscard]] float range() const noexcept

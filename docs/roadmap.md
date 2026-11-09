@@ -276,8 +276,12 @@ Gaps toward the deliverable, in planned order:
       bright pass, blurred and added back) as the engine's stand-in for the
       original's glow, and engine effects that grow and brighten with their
       unit's speed. Step 4 has begun: laser bolts (custom-render
-      projectiles) draw from their XML width, length, atlas cell, and colour;
-      model projectiles (missiles, torpedoes) and impact effects follow.
+      projectiles) draw from their XML width, length, atlas cell, and colour,
+      and shots and deaths play the XML `Particle` objects their projectile
+      and type name (shield absorption, hull and armor-reduced detonation,
+      flight end, death explosion) at their `Scale_Factor`; model
+      projectiles (missiles, torpedoes), ground detonations, hardpoint
+      destruction, and debris follow.
    2. Combat presentation and fidelity: hardpoint visuals and damage, turret
       rotation, damage-specific death clones and wreck explosions, real
       projectiles for weapons.
