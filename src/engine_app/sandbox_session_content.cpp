@@ -262,7 +262,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
             const auto& matrix = scene.instances.front().transform;
             eaw::EntitySpawn spawn;
             spawn.type_name = scene.name;
-            spawn.position = {matrix[12], matrix[13], matrix[14]};
+            spawn.position = eaw::translation(matrix);
             spawn.heading = eaw::model_forward_heading(matrix);
             spawn.visual = scene.instances.front().mesh;
             model_entity.push_back({std::move(spawn), 0});

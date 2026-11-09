@@ -133,7 +133,7 @@ struct MapEntitySpawn
 inline constexpr float identity_model_heading = -1.57079632679489662F;
 
 // The heading of a row-vector model transform: the direction of its forward (-Y) axis about +Z.
-[[nodiscard]] float model_forward_heading(const std::array<float, 16>& transform) noexcept;
+[[nodiscard]] float model_forward_heading(const Matrix4& transform) noexcept;
 
 inline constexpr float provisional_max_speed_scale = 30.0F;
 // XML Max_Rate_Of_Turn read as degrees per 30 Hz frame, like Max_Speed: infantry 16 (480 degrees per
@@ -214,7 +214,7 @@ struct VisualMapAsset
     // instance's bone_offset is its mesh's rest offset. Upload it with the scene (the renderer
     // resets its palette to identity on load).
     std::vector<VisualRig> rigs;
-    std::vector<std::array<float, 16>> rest_palette;
+    std::vector<Matrix4> rest_palette;
     // Textures of the rigs' and named effects' particle effects, as in SpawnablePackage.
     std::vector<VisualTexture> particle_textures;
     // The effects MapBuildOptions::effects named, in order (null where one could not be loaded).
@@ -257,7 +257,7 @@ struct SpawnablePackage
 {
     VisualScene meshes;
     std::vector<VisualRig> rigs;
-    std::vector<std::array<float, 16>> rest_palette;
+    std::vector<Matrix4> rest_palette;
     std::vector<SpawnableType> types;
     // Textures of the rigs' particle effects (register with D3d12Renderer::add_textures and renumber
     // the effects with renumber_effect_textures).
@@ -286,11 +286,11 @@ void renumber_effect_textures(std::span<VisualRig> rigs, std::span<std::shared_p
 [[nodiscard]] std::vector<std::string> model_animations(const AssetReader& reader, std::string_view model_path);
 // Skin matrices for the model's bones (bind pose without an animation). With a visibility palette,
 // a second half repeats them, collapsed to a point for bones the pose hides.
-[[nodiscard]] std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimation* animation, float seconds);
+[[nodiscard]] std::vector<Matrix4> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimation* animation, float seconds);
 // Appends a rig's palette at `seconds` of `animation` (rig.palette_size entries) to `out`. Without
 // an inverse bind pose it appends the rest pose.
-void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, float seconds, std::vector<std::array<float, 16>>& out);
+void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, float seconds, std::vector<Matrix4>& out);
 // Appends a rig's palette for a local pose (a blend of clips; see ala_blend_pose).
-void append_rig_local_palette(const VisualRig& rig, std::span<const AlaLocalBone> pose, std::vector<std::array<float, 16>>& out);
+void append_rig_local_palette(const VisualRig& rig, std::span<const AlaLocalBone> pose, std::vector<Matrix4>& out);
 
 } // namespace eaw

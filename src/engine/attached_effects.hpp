@@ -29,8 +29,8 @@ public:
     // effects); `palette` is the bone palette the instances' bone offsets index. `snapshot` supplies
     // speeds for engine effects, whose intensity follows the entity's speed over its top speed,
     // smoothed over about half a second of `seconds` (presentation time).
-    void update(ParticleWorld& world, std::span<const VisualInstance> instances, std::span<const EntityId> entities, std::span<const std::array<float, 16>> palette,
-                std::span<const EntitySnapshot> snapshot = {}, double seconds = 0.0);
+    void update(ParticleWorld& world, std::span<const VisualInstance> instances, std::span<const EntityId> entities, std::span<const Matrix4> palette, std::span<const EntitySnapshot> snapshot = {},
+                double seconds = 0.0);
 
     // Stops every attached effect (a scene change).
     void clear(ParticleWorld& world);
@@ -47,7 +47,7 @@ private:
         std::shared_ptr<const ParticleEmitMesh> emit_mesh;
         std::uint32_t bone{};
         // The bone's bind-pose transform in model space (row-vector convention).
-        std::array<float, 16> bind{};
+        Matrix4 bind;
         bool engine{};
     };
     struct MeshEffects

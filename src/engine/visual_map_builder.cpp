@@ -38,7 +38,7 @@ template <class Member> void arrange_companies(VisualScene& scene, VisualMapAsse
             ++last;
         }
         const auto& origin = scene.instances[members[first].instance].transform;
-        const Vector3 center{origin[12], origin[13], origin[14]};
+        const auto center = translation(origin);
         const auto facing = model_forward_heading(origin);
         std::vector<FormationMember> formation;
         for (auto index = first; index < last; ++index)
@@ -57,9 +57,7 @@ template <class Member> void arrange_companies(VisualScene& scene, VisualMapAsse
                 position.z = asset.ground.surface_height(position.x, position.y);
             }
             auto& transform = scene.instances[members[index].instance].transform;
-            transform[12] = position.x;
-            transform[13] = position.y;
-            transform[14] = position.z;
+            set_translation(transform, position);
             asset.entities[members[index].entity].spawn.position = position;
         }
         ++asset.expanded_companies;
@@ -165,7 +163,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     if (spawnable.max_speed > 0.0F)
     {
         const auto soft_radius = type_soft_footprint_radius(build.catalog, *definition);
-        spawnable.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(build.builder.scene, spawnable.mesh, scaled_model_transform(visual_identity_transform, spawnable.scale));
+        spawnable.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(build.builder.scene, spawnable.mesh, scaled_model_transform(Matrix4{}, spawnable.scale));
         spawnable.turn_rate = type_turn_rate(build.catalog, *definition);
         spawnable.min_speed = build.land ? 0.0F : type_min_flight_speed(build.catalog, *definition, spawnable.max_speed);
         spawnable.aims_with_body = type_aims_with_body(build.catalog, *definition);
@@ -303,13 +301,13 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         // Instances start in their mesh's rest pose (build_map_rigs sets the bone offsets). The type's
         // Scale_Factor sizes the model; separation and obstacle footprints are measured through it.
         const auto model_scale = placement.type != nullptr ? type_scale_factor(catalog, *placement.type, scene.warnings) : 1.0F;
-        VisualInstance instance{*entry->second, scaled_model_transform(placement.transform.values, model_scale)};
+        VisualInstance instance{*entry->second, scaled_model_transform(placement.transform, model_scale)};
         {
             const auto& matrix = instance.transform;
             EntitySpawn spawn;
             spawn.type_name = placement.type != nullptr ? placement.type->name : std::string{};
             spawn.owner = map.placed_objects[placement.object_index].player;
-            spawn.position = {matrix[12], matrix[13], matrix[14]};
+            spawn.position = translation(matrix);
             // Heading is the direction of the model's forward (-Y) axis about +Z.
             spawn.heading = model_forward_heading(matrix);
             spawn.visual = *entry->second;

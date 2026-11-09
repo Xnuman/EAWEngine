@@ -67,13 +67,13 @@ void BattleEffects::play_tick_events(const SimSnapshot& snapshot)
     }
 }
 
-void BattleEffects::attach(const std::span<const VisualInstance> instances, const std::span<const EntityId> entities, const std::span<const std::array<float, 16>> palette,
+void BattleEffects::attach(const std::span<const VisualInstance> instances, const std::span<const EntityId> entities, const std::span<const Matrix4> palette,
                            const std::span<const EntitySnapshot> snapshot, const double seconds)
 {
     attached_.update(particles_, instances, entities, palette, snapshot, seconds);
 }
 
-void BattleEffects::follow_projectiles(const std::span<const VisualInstance> instances, const std::span<const std::uint32_t> serials, const std::span<const std::array<float, 16>> palette,
+void BattleEffects::follow_projectiles(const std::span<const VisualInstance> instances, const std::span<const std::uint32_t> serials, const std::span<const Matrix4> palette,
                                        const std::span<const ProjectileSnapshot> projectiles, const float interpolation, const float tick_seconds)
 {
     // Shot serials stand in for entity ids (generation 1 marks them valid).
@@ -144,10 +144,8 @@ void BattleEffects::play_object(const std::uint32_t key, const Vector3& position
     {
         return;
     }
-    auto transform = visual_identity_transform;
-    transform[12] = position.x;
-    transform[13] = position.y;
-    transform[14] = position.z;
+    Matrix4 transform;
+    set_translation(transform, position);
     (void)particles_.play(found->second.effect, transform, seed_++, {}, found->second.scale);
 }
 

@@ -8,6 +8,8 @@ namespace {
 
 // Gauss-Jordan elimination treats a pivot this small as zero: the matrix is singular.
 constexpr float singular_pivot = 1.0e-8F;
+// inverse_affine treats a 3x3 determinant this small as zero.
+constexpr float singular_determinant = 1.0e-12F;
 
 } // namespace
 
@@ -126,6 +128,37 @@ std::optional<Matrix4> inverse(const Matrix4& matrix) noexcept
             result(row, column) = augmented[row][column + size];
         }
     }
+    return result;
+}
+
+std::optional<Matrix4> inverse_affine(const Matrix4& matrix) noexcept
+{
+    const auto& m = matrix.values;
+    const auto a = m[0], b = m[1], c = m[2], d = m[4], e = m[5], f = m[6], g = m[8], h = m[9], i = m[10];
+    const auto c00 = e * i - f * h;
+    const auto c01 = c * h - b * i;
+    const auto c02 = b * f - c * e;
+    const auto determinant = a * c00 + d * c01 + g * c02;
+    if (std::abs(determinant) < singular_determinant)
+    {
+        return std::nullopt;
+    }
+    const auto s = 1.0F / determinant;
+    Matrix4 result;
+    auto& r = result.values;
+    r[0] = c00 * s;
+    r[1] = c01 * s;
+    r[2] = c02 * s;
+    r[4] = (f * g - d * i) * s;
+    r[5] = (a * i - c * g) * s;
+    r[6] = (c * d - a * f) * s;
+    r[8] = (d * h - e * g) * s;
+    r[9] = (b * g - a * h) * s;
+    r[10] = (a * e - b * d) * s;
+    r[12] = -(m[12] * r[0] + m[13] * r[4] + m[14] * r[8]);
+    r[13] = -(m[12] * r[1] + m[13] * r[5] + m[14] * r[9]);
+    r[14] = -(m[12] * r[2] + m[13] * r[6] + m[14] * r[10]);
+    r[15] = 1.0F;
     return result;
 }
 

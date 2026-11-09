@@ -149,7 +149,7 @@ public:
     // identity). Set it before the instances that use it: set_instances checks their bone ranges
     // against the current palette. Frame buffers grow as needed; load_scene resets the palette to
     // identity matrices of the scene's size.
-    void set_bone_transforms(std::span<const std::array<float, 16>> transforms);
+    void set_bone_transforms(std::span<const Matrix4> transforms);
     // Adds meshes to the loaded scene's mesh library and returns the index of the first: `meshes`
     // carries vertices, indices, textures, materials, draws, and meshes with indices local to it
     // (no instances or terrain). Geometry and materials upload at once into a geometry block of

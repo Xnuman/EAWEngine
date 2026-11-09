@@ -248,8 +248,6 @@ D3D12_RESOURCE_DESC buffer_description(const std::uint64_t size);
 
 D3D12_RESOURCE_BARRIER transition_barrier(ID3D12Resource* resource, const D3D12_RESOURCE_STATES before, const D3D12_RESOURCE_STATES after);
 
-std::array<float, 16> identity_matrix();
-
 bool query_tearing_support(IDXGIFactory7* factory);
 
 DXGI_FORMAT dxgi_format(const VisualTextureFormat format);

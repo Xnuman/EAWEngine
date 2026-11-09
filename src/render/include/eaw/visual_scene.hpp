@@ -1,5 +1,6 @@
 #pragma once
 
+#include "math/matrix.hpp"
 #include "math/vector.hpp"
 
 #include <array>
@@ -173,15 +174,13 @@ struct VisualMesh
     Vector3 bounds_maximum{};
 };
 
-inline constexpr std::array<float, 16> visual_identity_transform{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
-
 // One placed copy of a mesh. `transform` maps mesh space to world space in the row-vector
 // convention (translation in elements 12..14). Vertex bone indices are offset by `bone_offset`
 // into the scene bone palette, so instances can share a pose or own one.
 struct VisualInstance
 {
     std::uint32_t mesh{};
-    std::array<float, 16> transform{visual_identity_transform};
+    Matrix4 transform;
     std::array<float, 4> tint{1.0F, 1.0F, 1.0F, 1.0F};
     std::uint32_t bone_offset{};
     // Player color applied through materials with a team-color mask.

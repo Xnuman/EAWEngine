@@ -6,25 +6,6 @@
 namespace eaw {
 namespace {
 
-// Row-vector product: `left` applied first.
-std::array<float, 16> multiply(const std::array<float, 16>& left, const std::array<float, 16>& right)
-{
-    std::array<float, 16> result{};
-    for (std::size_t row = 0; row < 4; ++row)
-    {
-        for (std::size_t column = 0; column < 4; ++column)
-        {
-            float sum = 0.0F;
-            for (std::size_t k = 0; k < 4; ++k)
-            {
-                sum += left[row * 4 + k] * right[k * 4 + column];
-            }
-            result[row * 4 + column] = sum;
-        }
-    }
-    return result;
-}
-
 std::uint64_t key_of(const EntityId entity, const std::size_t attachment)
 {
     // Generations wrap at 16 bits here; an aliased key only restarts an effect.
@@ -54,7 +35,7 @@ void AttachedEffects::add_rigs(const std::span<const VisualRig> rigs)
                 // Hardpoint damage effects wait for per-hardpoint damage in snapshots.
                 if (attachment.effect && attachment.bone < bind_pose.size() && attachment.damage_bone < 0)
                 {
-                    mesh.attachments.push_back({attachment.effect, attachment.emit_mesh, attachment.bone, bind_pose[attachment.bone].values, attachment.engine});
+                    mesh.attachments.push_back({attachment.effect, attachment.emit_mesh, attachment.bone, bind_pose[attachment.bone], attachment.engine});
                 }
             }
         }
@@ -62,7 +43,7 @@ void AttachedEffects::add_rigs(const std::span<const VisualRig> rigs)
     }
 }
 
-void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualInstance> instances, const std::span<const EntityId> entities, const std::span<const std::array<float, 16>> palette,
+void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualInstance> instances, const std::span<const EntityId> entities, const std::span<const Matrix4> palette,
                              const std::span<const EntitySnapshot> snapshot, const double seconds)
 {
     ++frame_;
@@ -108,7 +89,7 @@ void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualI
             bool shown = true;
             if (skin < palette.size())
             {
-                bone = multiply(attachment.bind, palette[skin]);
+                bone = attachment.bind * palette[skin];
             }
             if (mesh.visibility_half)
             {
@@ -116,18 +97,19 @@ void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualI
                 const auto visibility = skin + mesh.bone_count;
                 if (visibility < palette.size())
                 {
-                    const auto& m = palette[visibility];
+                    const auto& m = palette[visibility].values;
                     shown = m[0] != 0.0F || m[5] != 0.0F || m[10] != 0.0F;
                 }
             }
             // The instance's uniform scale (a type's Scale_Factor) sizes the effect, particles
             // included: it is taken out of the transform and given to the particle world.
-            auto world_transform = multiply(bone, instance.transform);
-            const auto scale = std::sqrt(instance.transform[0] * instance.transform[0] + instance.transform[1] * instance.transform[1] + instance.transform[2] * instance.transform[2]);
+            auto world_transform = bone * instance.transform;
+            const auto& placed = instance.transform.values;
+            const auto scale = std::sqrt(placed[0] * placed[0] + placed[1] * placed[1] + placed[2] * placed[2]);
             const auto effect_scale = std::isfinite(scale) && scale > 0.0F ? scale : 1.0F;
             for (std::size_t element = 0; element < 12; ++element)
             {
-                world_transform[element] /= effect_scale;
+                world_transform.values[element] /= effect_scale;
             }
             const auto key = key_of(entity, a);
             auto found = playing_.find(key);

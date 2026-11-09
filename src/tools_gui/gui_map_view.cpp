@@ -206,7 +206,7 @@ void update_map_instances(GuiApp::State& state, const std::function<Vector3(cons
     if (state.map_object_layout)
     {
         auto scale = Matrix4{};
-        scale.values[0] = scale.values[5] = scale.values[10] = unit_scale;
+        scale(0, 0) = scale(1, 1) = scale(2, 2) = unit_scale;
         for (const auto& placement : state.map_object_layout->placements)
         {
             const auto found = state.map_models.find(placement.model_path);
@@ -217,11 +217,9 @@ void update_map_instances(GuiApp::State& state, const std::function<Vector3(cons
             const auto& object = map.placed_objects[placement.object_index];
             auto transform = placement.transform * scale;
             const auto origin = anchor(object);
-            transform.values[12] = origin.x;
-            transform.values[13] = origin.y;
-            transform.values[14] = origin.z;
+            set_translation(transform, origin);
             PreviewInstance instance;
-            std::ranges::copy(transform.values, instance.transform.begin());
+            instance.transform = transform;
             instances[placement.model_path].push_back(instance);
             state.map_object_drawn[placement.object_index] = 1;
         }

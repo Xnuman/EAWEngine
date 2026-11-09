@@ -141,7 +141,7 @@ struct D3d12Renderer::Impl
     // Structured-buffer layout shared with the vertex shader (112 bytes).
     struct GpuInstance
     {
-        std::array<float, 16> transform{};
+        Matrix4 transform{};
         std::array<float, 4> tint{};
         std::array<float, 4> team_color{};
         std::uint32_t bone_offset{};
@@ -351,7 +351,7 @@ struct D3d12Renderer::Impl
     std::optional<std::vector<VisualInstance>> dynamic_instances;
     std::vector<GpuInstance> dynamic_gpu_instances;
     std::vector<GpuDraw> dynamic_draws;
-    std::vector<std::array<float, 16>> bone_transforms;
+    std::vector<Matrix4> bone_transforms;
     ComPtr<ID3D12Resource> fallback_white_texture;
     ComPtr<ID3D12Resource> fallback_normal_texture;
     // The validation fallback keeps its own material; like the identity instance it must outlive
@@ -525,7 +525,7 @@ struct D3d12Renderer::Impl
     // table never names a released resource.
     void reclaim_texture_slots();
 
-    void set_bone_transforms(const std::span<const std::array<float, 16>> transforms);
+    void set_bone_transforms(const std::span<const Matrix4> transforms);
 
     // Validates one scene material and converts it to the shader layout.
     // `texture_ids` maps the scene's texture indices to logical texture ids (empty: fallback count +

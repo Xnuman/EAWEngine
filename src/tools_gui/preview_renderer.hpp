@@ -1,5 +1,6 @@
 #pragma once
 
+#include "math/matrix.hpp"
 #include "math/vector.hpp"
 
 #include <array>
@@ -43,7 +44,7 @@ struct PreviewPart
 // Row-vector 4x4 transform (translation in elements 12..14) plus an RGBA8 tint.
 struct PreviewInstance
 {
-    std::array<float, 16> transform{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    Matrix4 transform{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
     std::uint32_t tint{0xffffffffU};
 };
 
@@ -110,8 +111,7 @@ public:
     // Draws opaque and alpha-tested parts of every mesh with depth writes, then blended and
     // additive parts without depth writes. `view_projection` maps preview space to clip space
     // (row-vector convention). The caller's render targets and viewport are restored afterwards.
-    bool render(PreviewTarget& target, std::uint32_t width, std::uint32_t height, const std::array<float, 16>& view_projection, std::span<const PreviewMesh* const> meshes,
-                const std::array<float, 4>& clear_color);
+    bool render(PreviewTarget& target, std::uint32_t width, std::uint32_t height, const Matrix4& view_projection, std::span<const PreviewMesh* const> meshes, const std::array<float, 4>& clear_color);
 
     [[nodiscard]] ID3D11Device* device() const noexcept
     {
@@ -146,6 +146,6 @@ private:
 // Orthographic orbit projection shared by the GPU preview and its ImGui overlays: yaw about +Z,
 // pitch toward the viewer, `scale` pixels per preview unit, and `depth_radius` bounding the depth
 // range. Returns the clip-space transform for a `width` x `height` target centered on `center`.
-[[nodiscard]] std::array<float, 16> orbit_view_projection(const Vector3& center, float yaw, float pitch, float scale, float width, float height, float depth_radius) noexcept;
+[[nodiscard]] Matrix4 orbit_view_projection(const Vector3& center, float yaw, float pitch, float scale, float width, float height, float depth_radius) noexcept;
 
 } // namespace eaw::tools

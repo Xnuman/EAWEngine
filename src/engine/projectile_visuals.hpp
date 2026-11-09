@@ -80,7 +80,7 @@ void collect_impact_effect_keys(const ProjectileVisualTable& table, std::vector<
 
 // The world transform of a model projectile `visual` for `projectile`, placed between ticks like a
 // bolt (`interpolation` of a tick after the previous one), its model's -Y axis along the flight.
-[[nodiscard]] std::array<float, 16> projectile_model_transform(const ProjectileSnapshot& projectile, const ProjectileVisual& visual, float interpolation, float tick_seconds);
+[[nodiscard]] Matrix4 projectile_model_transform(const ProjectileSnapshot& projectile, const ProjectileVisual& visual, float interpolation, float tick_seconds);
 
 // Appends an instance (in its mesh's rest pose, bone offsets set by the caller's animation) for every
 // projectile in `current` whose visual is a mesh, and its serial to `serials`.

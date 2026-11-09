@@ -6,7 +6,7 @@
 
 namespace eaw {
 
-void append_debug_box(std::vector<VisualDebugLine>& lines, const Vector3& minimum, const Vector3& maximum, const std::array<float, 16>& transform, const std::array<float, 4>& color)
+void append_debug_box(std::vector<VisualDebugLine>& lines, const Vector3& minimum, const Vector3& maximum, const Matrix4& transform, const std::array<float, 4>& color)
 {
     // Corner bit 0 selects X, bit 1 Y, bit 2 Z (0 = minimum, 1 = maximum).
     std::array<Vector3, 8> corners{};

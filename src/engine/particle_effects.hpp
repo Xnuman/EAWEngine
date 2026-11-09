@@ -82,10 +82,9 @@ public:
     // particles have died; looping effects run until stop() or remove().
     // `mesh` serves emitters that emit from a mesh (without one they use their position shape).
     // `scale` sizes the effect (an XML Scale_Factor): spawn shapes, speeds, and particle sizes.
-    ParticleInstanceId play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, std::uint64_t seed, std::shared_ptr<const ParticleEmitMesh> mesh = {},
-                            float scale = 1.0F);
+    ParticleInstanceId play(std::shared_ptr<const ParticleEffect> effect, const Matrix4& transform, std::uint64_t seed, std::shared_ptr<const ParticleEmitMesh> mesh = {}, float scale = 1.0F);
     // Moves a playing effect (attached effects follow their bone each frame). Unknown ids are ignored.
-    void set_transform(ParticleInstanceId id, const std::array<float, 16>& transform);
+    void set_transform(ParticleInstanceId id, const Matrix4& transform);
     // Hides or shows a playing effect: hidden effects emit nothing, and their particles live out.
     void set_emitting(ParticleInstanceId id, bool emitting);
     // Scales a playing effect's drawn particles: 1 is as authored, 0 its idle look (engine effects

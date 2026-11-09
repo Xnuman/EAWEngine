@@ -154,13 +154,13 @@ float type_scale_factor(const GameObjectCatalog& catalog, const XmlDefinition& d
     return scale;
 }
 
-std::array<float, 16> scaled_model_transform(std::array<float, 16> transform, const float scale) noexcept
+Matrix4 scaled_model_transform(Matrix4 transform, const float scale) noexcept
 {
     for (std::size_t row = 0; row < 3; ++row)
     {
         for (std::size_t column = 0; column < 3; ++column)
         {
-            transform[row * 4 + column] *= scale;
+            transform(row, column) *= scale;
         }
     }
     return transform;

@@ -17,11 +17,11 @@ using namespace eaw_test;
 void test_scene_presentation()
 {
     // pose_transform keeps scale and tilt, turns about +Z by the heading change, and moves.
-    const std::array<float, 16> base{2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 5, 6, 7, 1};
+    const eaw::Matrix4 base{2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 5, 6, 7, 1};
     const auto same = eaw::pose_transform(base, 0.0F, {1.0F, 2.0F, 3.0F}, 0.0F);
-    require(same[0] == 2.0F && same[5] == 2.0F && same[12] == 1.0F && same[13] == 2.0F && same[14] == 3.0F, "an unchanged heading must only move the transform");
+    require(same.values[0] == 2.0F && same.values[5] == 2.0F && same.values[12] == 1.0F && same.values[13] == 2.0F && same.values[14] == 3.0F, "an unchanged heading must only move the transform");
     const auto turned = eaw::pose_transform(base, 0.0F, {0.0F, 0.0F, 0.0F}, std::numbers::pi_v<float> / 2.0F);
-    require(std::fabs(turned[0]) < 1.0e-5F && std::fabs(turned[1] - 2.0F) < 1.0e-5F && std::fabs(turned[4] + 2.0F) < 1.0e-5F && turned[10] == 2.0F,
+    require(std::fabs(turned.values[0]) < 1.0e-5F && std::fabs(turned.values[1] - 2.0F) < 1.0e-5F && std::fabs(turned.values[4] + 2.0F) < 1.0e-5F && turned.values[10] == 2.0F,
             "a quarter turn must rotate the model X axis onto +Y and keep its scale");
 
     // The presentation spawns entities from scene instances, keeps backgrounds static, and maps
@@ -33,7 +33,7 @@ void test_scene_presentation()
     eaw::VisualInstance sky{1};
     sky.background = true;
     eaw::VisualInstance unit{0};
-    unit.transform[12] = 10.0F;
+    unit.transform.values[12] = 10.0F;
     scene.instances = {sky, unit};
     eaw::EntitySpawn spawn;
     spawn.type_name = "Test_Unit";
@@ -64,16 +64,18 @@ void test_scene_presentation()
     presentation.build(world.snapshot().entities, {eaw::entity_key(id)}, instances, ids);
     require(instances.size() == 2 && instances[0].background && !ids[0].valid() && ids[1] == id && instances[1].highlighted && instances[1].mesh == 0,
             "presentation must list backgrounds first, then entities with their selection state");
-    require(std::fabs(instances[1].transform[13] - 1.0F) < 1.0e-5F && std::fabs(instances[1].transform[1] - 1.0F) < 1.0e-5F, "an entity's instance must follow its simulated position and heading");
+    require(std::fabs(instances[1].transform.values[13] - 1.0F) < 1.0e-5F && std::fabs(instances[1].transform.values[1] - 1.0F) < 1.0e-5F,
+            "an entity's instance must follow its simulated position and heading");
     require(world.type_name(id) == "Test_Unit" && presentation.mesh_name(0) == "UNIT.ALO", "entities must be named by type and mesh");
     // An entity spawned by order is drawn from its type's template without a recorded id.
     expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {-20.0F, 0.0F, 0.0F}, .type = "Spawned_Unit", .count = 1, .owner = 2}), "spawn order");
     battle.step();
     presentation.build(world.snapshot().entities, {}, instances, ids);
-    require(instances.size() == 3 && instances[2].mesh == 0 && instances[2].team_color[2] == 1.0F && std::fabs(instances[2].transform[12] + 20.0F) < 1.0e-4F,
+    require(instances.size() == 3 && instances[2].mesh == 0 && instances[2].team_color[2] == 1.0F && std::fabs(instances[2].transform.values[12] + 20.0F) < 1.0e-4F,
             "an entity spawned by order must be drawn from its type's template");
     const auto& m = instances[2].transform;
-    require(std::fabs(std::sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]) - 0.5F) < 1.0e-5F && std::fabs(m[10] - 0.5F) < 1.0e-5F, "a spawned type must be drawn at its Scale_Factor");
+    require(std::fabs(std::sqrt(m.values[0] * m.values[0] + m.values[1] * m.values[1] + m.values[2] * m.values[2]) - 0.5F) < 1.0e-5F && std::fabs(m.values[10] - 0.5F) < 1.0e-5F,
+            "a spawned type must be drawn at its Scale_Factor");
 }
 
 // Unit animation: clip names map to roles, snapshots choose roles, entities share sampled poses,
@@ -118,7 +120,7 @@ void test_unit_animation()
     still.rest_offset = 2;
     still.palette_size = 1;
     const std::array<eaw::VisualRig, 2> rigs{rig, still};
-    const std::vector<std::array<float, 16>> rest(3, eaw::Matrix4{}.values);
+    const std::vector<eaw::Matrix4> rest(3, eaw::Matrix4{});
     eaw::UnitAnimator animator(rigs, rest);
 
     // 100 standing units, one walking, one clipless unit, and a background.
@@ -139,7 +141,7 @@ void test_unit_animation()
         instance.mesh = index == 101 ? 1U : 0U;
         instances.push_back(instance);
     }
-    std::vector<std::array<float, 16>> palette;
+    std::vector<eaw::Matrix4> palette;
     animator.animate(snapshot, entities, instances, 0.25, 1U << 20U, palette);
     const auto& stats = animator.stats();
     require(stats.animated == 101 && stats.over_budget == 0 && stats.poses <= 31 && stats.poses > 1 && stats.sampled == stats.poses, "standing units must share at most one pose per slot");
@@ -272,12 +274,12 @@ void test_model_forward_axis()
 {
     // Alamo models face -Y: an unrotated model's heading is -pi/2, and posing one with heading 0
     // (travel along +X) turns its forward (-Y) axis onto +X.
-    const std::array<float, 16> identity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    const eaw::Matrix4 identity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
     require(std::fabs(eaw::model_forward_heading(identity) - eaw::identity_model_heading) < 1.0e-6F, "an unrotated model must face -Y");
     const auto posed = eaw::pose_transform(identity, eaw::identity_model_heading, {10.0F, 20.0F, 0.0F}, 0.0F);
     {
         // Pitch lifts the model's forward axis (-Y) toward +Z; a positive bank lowers its left side (+X).
-        const auto apply = [](const std::array<float, 16>& m, const eaw::Vector3& v)
+        const auto apply = [](const eaw::Matrix4& m, const eaw::Vector3& v)
         {
             return eaw::transform_direction(v, eaw::Matrix4{m});
         };
@@ -293,7 +295,7 @@ void test_model_forward_axis()
         require(eaw::flight_bank(0.0F) == 0.0F && eaw::flight_bank(100.0F) > 1.0F && eaw::flight_bank(-100.0F) < -1.0F && eaw::flight_bank(std::numeric_limits<float>::quiet_NaN()) == 0.0F,
                 "flight bank must follow the turn and stay bounded");
     }
-    require(std::fabs(-posed[4] - 1.0F) < 1.0e-5F && std::fabs(posed[5]) < 1.0e-5F && std::fabs(eaw::model_forward_heading(posed)) < 1.0e-5F && posed[12] == 10.0F,
+    require(std::fabs(-posed.values[4] - 1.0F) < 1.0e-5F && std::fabs(posed.values[5]) < 1.0e-5F && std::fabs(eaw::model_forward_heading(posed)) < 1.0e-5F && posed.values[12] == 10.0F,
             "a model moving along +X must face +X");
 }
 
@@ -447,7 +449,7 @@ void test_debug_draw()
 {
     // A unit box translated by (10, 20, 30): 12 edges, each of length 1 along one axis, all corners
     // inside the translated box.
-    std::array<float, 16> transform{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1};
+    eaw::Matrix4 transform{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1};
     std::vector<eaw::VisualDebugLine> lines;
     eaw::append_debug_box(lines, {0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F}, transform, {1.0F, 0.0F, 0.0F, 1.0F});
     require(lines.size() == 12, "a debug box must have 12 edges");

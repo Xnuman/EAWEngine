@@ -62,7 +62,7 @@ struct SandboxSession
     std::optional<eaw::TacticalCamera> tactical_camera;
     // Kept only for --reload-every; otherwise the CPU copy moves into the renderer.
     std::optional<eaw::VisualScene> reload_scene;
-    std::vector<std::array<float, 16>> bind_palette;
+    std::vector<Matrix4> bind_palette;
     // Runtime-spawnable types of the current map (the battle's); N spawns the chosen name at the
     // cursor, building its package first when it is not loaded yet.
     std::vector<eaw::SpawnableType> spawnable;
@@ -108,7 +108,7 @@ struct SandboxSession
     std::optional<eaw::ScenePresentation> presentation;
     // Map units' animation (presentation only) and the palette it fills each frame.
     std::optional<eaw::UnitAnimator> animator;
-    std::vector<std::array<float, 16>> frame_palette;
+    std::vector<Matrix4> frame_palette;
     // The battle's effects (presentation only: drawn units' proxies, impacts and deaths, bolts), and
     // the --effect effects, which play at the map center and restart when they end.
     eaw::BattleEffects effects{eaw::particle_interpretation(options.particle_fidelity).draw_order};

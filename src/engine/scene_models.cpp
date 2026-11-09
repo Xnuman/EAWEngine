@@ -374,7 +374,7 @@ std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std
 }
 
 // Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
-float mesh_footprint_radius(const VisualScene& scene, const std::uint32_t mesh, const std::array<float, 16>& transform)
+float mesh_footprint_radius(const VisualScene& scene, const std::uint32_t mesh, const Matrix4& transform)
 {
     if (mesh >= scene.meshes.size())
     {
@@ -383,12 +383,12 @@ float mesh_footprint_radius(const VisualScene& scene, const std::uint32_t mesh, 
     const auto& bounds = scene.meshes[mesh];
     const auto width = bounds.bounds_maximum[0] - bounds.bounds_minimum[0];
     const auto depth = bounds.bounds_maximum[1] - bounds.bounds_minimum[1];
-    const auto scale = std::sqrt(transform[0] * transform[0] + transform[1] * transform[1] + transform[2] * transform[2]);
+    const auto scale = std::sqrt(transform.values[0] * transform.values[0] + transform.values[1] * transform.values[1] + transform.values[2] * transform.values[2]);
     const auto radius = 0.25F * (width + depth) * scale;
     return std::isfinite(radius) && radius > 0.0F ? radius : 0.0F;
 }
 
-GroundFootprint mesh_ground_footprint(const VisualScene& scene, const std::uint32_t mesh, const std::array<float, 16>& transform, const std::uint32_t passability_type)
+GroundFootprint mesh_ground_footprint(const VisualScene& scene, const std::uint32_t mesh, const Matrix4& transform, const std::uint32_t passability_type)
 {
     GroundFootprint footprint;
     footprint.passability = passability_type;
@@ -397,14 +397,15 @@ GroundFootprint mesh_ground_footprint(const VisualScene& scene, const std::uint3
         return footprint;
     }
     const auto& bounds = scene.meshes[mesh];
-    const auto scale = std::sqrt(transform[0] * transform[0] + transform[1] * transform[1] + transform[2] * transform[2]);
+    const auto scale = std::sqrt(transform.values[0] * transform.values[0] + transform.values[1] * transform.values[1] + transform.values[2] * transform.values[2]);
     const auto local_x = (bounds.bounds_minimum[0] + bounds.bounds_maximum[0]) * 0.5F;
     const auto local_y = (bounds.bounds_minimum[1] + bounds.bounds_maximum[1]) * 0.5F;
     // Row-vector transform: world = local.x * row0 + local.y * row1 + translation.
-    footprint.center = {local_x * transform[0] + local_y * transform[4] + transform[12], local_x * transform[1] + local_y * transform[5] + transform[13], transform[14]};
+    footprint.center = {local_x * transform.values[0] + local_y * transform.values[4] + transform.values[12], local_x * transform.values[1] + local_y * transform.values[5] + transform.values[13],
+                        transform.values[14]};
     footprint.half_length = std::max(0.0F, (bounds.bounds_maximum[0] - bounds.bounds_minimum[0]) * 0.5F * scale);
     footprint.half_width = std::max(0.0F, (bounds.bounds_maximum[1] - bounds.bounds_minimum[1]) * 0.5F * scale);
-    footprint.heading = std::atan2(transform[1], transform[0]);
+    footprint.heading = std::atan2(transform.values[1], transform.values[0]);
     if (!std::isfinite(footprint.center.x) || !std::isfinite(footprint.center.y) || !std::isfinite(footprint.half_length) || !std::isfinite(footprint.half_width) || !std::isfinite(footprint.heading))
     {
         footprint = GroundFootprint{};
@@ -434,7 +435,7 @@ void update_scene_bounds(VisualScene& scene)
         {
             const Vector3 local{(corner & 1U) != 0 ? mesh.bounds_maximum[0] : mesh.bounds_minimum[0], (corner & 2U) != 0 ? mesh.bounds_maximum[1] : mesh.bounds_minimum[1],
                                 (corner & 4U) != 0 ? mesh.bounds_maximum[2] : mesh.bounds_minimum[2]};
-            const auto point = transform_point(local, Matrix4{instance.transform});
+            const auto point = transform_point(local, instance.transform);
             // Malformed vertex data must not leave the camera framing non-finite.
             if (!is_finite(point))
             {
@@ -455,10 +456,10 @@ namespace eaw {
 
 using namespace scene_build;
 
-float model_forward_heading(const std::array<float, 16>& transform) noexcept
+float model_forward_heading(const Matrix4& transform) noexcept
 {
     // Row 1 is the model's +Y axis in world space; forward is its negation.
-    return std::atan2(-transform[5], -transform[4]);
+    return std::atan2(-transform.values[5], -transform.values[4]);
 }
 
 Result<VisualModelAsset> build_visual_model(const AssetReader& vfs, const std::string_view model_path, AssetCache* cache)
@@ -539,37 +540,33 @@ bool intact_hidden(const std::vector<bool>& hidden, const std::size_t bone)
 }
 
 // Skin matrices of `pose` (and the visibility half) appended to `out`; `hidden` bones collapse too.
-void append_pose_palette(const AloModel& model, const std::span<const Matrix4> inverse_bind_pose, const std::span<const AlaPoseBone> pose, const bool visibility_palette,
-                         std::vector<std::array<float, 16>>& out, const std::vector<bool>& hidden = {})
+void append_pose_palette(const AloModel& model, const std::span<const Matrix4> inverse_bind_pose, const std::span<const AlaPoseBone> pose, const bool visibility_palette, std::vector<Matrix4>& out,
+                         const std::vector<bool>& hidden = {})
 {
     const auto bone_count = std::min({pose.size(), inverse_bind_pose.size(), model.bones.size()});
     const auto first = out.size();
     for (std::size_t index = 0; index < bone_count; ++index)
     {
-        out.push_back((inverse_bind_pose[index] * pose[index].transform).values);
+        out.push_back(inverse_bind_pose[index] * pose[index].transform);
     }
     if (visibility_palette)
     {
         // Hidden bones collapse their attachments to a point, which rasterizes nothing.
-        std::array<float, 16> collapsed{};
-        collapsed[15] = 1.0F;
         for (std::size_t index = 0; index < bone_count; ++index)
         {
-            out.push_back(pose[index].visible && !intact_hidden(hidden, index) ? out[first + index] : collapsed);
+            out.push_back(pose[index].visible && !intact_hidden(hidden, index) ? out[first + index] : collapsed_bone);
         }
     }
 }
 
 // A rig's rest palette: identity skin matrices, then the visibility half from the bind pose.
-void append_rest_palette(const AloModel& model, std::vector<std::array<float, 16>>& out, const std::vector<bool>& hidden = {})
+void append_rest_palette(const AloModel& model, std::vector<Matrix4>& out, const std::vector<bool>& hidden = {})
 {
-    const auto identity = Matrix4{}.values;
-    std::array<float, 16> collapsed{};
-    collapsed[15] = 1.0F;
+    const Matrix4 identity;
     out.insert(out.end(), model.bones.size(), identity);
     for (std::size_t index = 0; index < model.bones.size(); ++index)
     {
-        out.push_back(model.bones[index].visible && !intact_hidden(hidden, index) ? identity : collapsed);
+        out.push_back(model.bones[index].visible && !intact_hidden(hidden, index) ? identity : collapsed_bone);
     }
     if (model.bones.empty())
     {
@@ -579,7 +576,7 @@ void append_rest_palette(const AloModel& model, std::vector<std::array<float, 16
 
 } // namespace
 
-std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimation* animation, const float seconds)
+std::vector<Matrix4> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimation* animation, const float seconds)
 {
     std::vector<AlaPoseBone> pose;
     if (animation != nullptr)
@@ -595,17 +592,17 @@ std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& a
             pose.push_back({bind_pose[index], asset.model.bones[index].visible});
         }
     }
-    std::vector<std::array<float, 16>> result;
+    std::vector<Matrix4> result;
     result.reserve(std::max<std::size_t>(pose.size() * 2U, 1U));
     append_pose_palette(asset.model, asset.inverse_bind_pose, pose, asset.visibility_palette, result);
     if (result.empty())
     {
-        result.push_back(Matrix4{}.values);
+        result.push_back(Matrix4{});
     }
     return result;
 }
 
-void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, const float seconds, std::vector<std::array<float, 16>>& out)
+void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, const float seconds, std::vector<Matrix4>& out)
 {
     if (rig.model && rig.inverse_bind_pose.size() == rig.model->bones.size() && !rig.model->bones.empty())
     {
@@ -615,7 +612,7 @@ void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, con
     append_rig_local_palette(rig, {}, out);
 }
 
-void append_rig_local_palette(const VisualRig& rig, const std::span<const AlaLocalBone> local_pose, std::vector<std::array<float, 16>>& out)
+void append_rig_local_palette(const VisualRig& rig, const std::span<const AlaLocalBone> local_pose, std::vector<Matrix4>& out)
 {
     const auto first = out.size();
     if (rig.model && rig.inverse_bind_pose.size() == rig.model->bones.size() && !rig.model->bones.empty() && local_pose.size() == rig.model->bones.size())
@@ -631,7 +628,7 @@ void append_rig_local_palette(const VisualRig& rig, const std::span<const AlaLoc
         {
             append_rest_palette(*rig.model, out, rig.intact_hidden);
         }
-        out.resize(first + rig.palette_size, Matrix4{}.values);
+        out.resize(first + rig.palette_size, Matrix4{});
     }
 }
 
@@ -675,7 +672,7 @@ std::optional<ClipName> parse_clip_name(const std::string_view file_stem, const 
     return std::nullopt;
 }
 
-void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& rigs, std::vector<std::array<float, 16>>& rest_palette)
+void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& rigs, std::vector<Matrix4>& rest_palette)
 {
     auto& scene = builder.scene;
     rigs.assign(scene.meshes.size(), {});
@@ -730,7 +727,7 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
         const auto used = static_cast<std::uint32_t>(rest_palette.size()) - rig.rest_offset;
         if (used < std::max(mesh.bone_count, 1U))
         {
-            rest_palette.resize(rig.rest_offset + std::max(mesh.bone_count, 1U), Matrix4{}.values);
+            rest_palette.resize(rig.rest_offset + std::max(mesh.bone_count, 1U), Matrix4{});
         }
         rig.palette_size = static_cast<std::uint32_t>(rest_palette.size()) - rig.rest_offset;
         if (!rig.model || rig.inverse_bind_pose.empty() || !builder.animation_clips)

@@ -310,17 +310,17 @@ void test_runtime_spawnable_registration()
 
     eaw::VisualRig base_rig;
     base_rig.palette_size = 3;
-    const std::vector<std::array<float, 16>> base_rest(3, eaw::Matrix4{}.values);
+    const std::vector<eaw::Matrix4> base_rest(3, eaw::Matrix4{});
     eaw::UnitAnimator animator(std::span(&base_rig, 1), base_rest);
     eaw::VisualRig added_rig;
     added_rig.rest_offset = 0;
     added_rig.palette_size = 2;
-    const std::vector<std::array<float, 16>> added_rest(2, eaw::Matrix4{}.values);
+    const std::vector<eaw::Matrix4> added_rest(2, eaw::Matrix4{});
     animator.add_rigs(std::span(&added_rig, 1), added_rest);
     std::vector<eaw::VisualInstance> drawn(1);
     drawn[0].mesh = 1;
     std::vector<eaw::EntityId> none(1);
-    std::vector<std::array<float, 16>> palette;
+    std::vector<eaw::Matrix4> palette;
     animator.animate({}, none, drawn, 1.0, 1U << 20U, palette);
     require(animator.rig_count() == 2 && palette.size() == 5 && drawn[0].bone_offset == 3, "added rigs must take their rest poses after the existing ones");
 }

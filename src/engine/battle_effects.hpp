@@ -47,14 +47,13 @@ public:
     // missed when a frame runs several.
     void play_tick_events(const SimSnapshot& snapshot);
     // Keeps attached effects on this frame's drawn units (see AttachedEffects::update).
-    void attach(std::span<const VisualInstance> instances, std::span<const EntityId> entities, std::span<const std::array<float, 16>> palette, std::span<const EntitySnapshot> snapshot,
-                double seconds);
+    void attach(std::span<const VisualInstance> instances, std::span<const EntityId> entities, std::span<const Matrix4> palette, std::span<const EntitySnapshot> snapshot, double seconds);
     // Keeps the effects of shots in flight: the proxies (trails) of model projectiles drawn this frame
     // (`instances` with their shots' `serials`; `palette` as for attach) and the particle systems of
     // shots whose model is one, placed where `projectiles` are drawn. Effects of shots that ended stop
     // emitting, and their particles live out.
-    void follow_projectiles(std::span<const VisualInstance> instances, std::span<const std::uint32_t> serials, std::span<const std::array<float, 16>> palette,
-                            std::span<const ProjectileSnapshot> projectiles, float interpolation, float tick_seconds);
+    void follow_projectiles(std::span<const VisualInstance> instances, std::span<const std::uint32_t> serials, std::span<const Matrix4> palette, std::span<const ProjectileSnapshot> projectiles,
+                            float interpolation, float tick_seconds);
     // Advances every effect by `seconds` of presentation time (0 while the world is paused).
     void update(float seconds);
     // Appends the particles, sorted as the fidelity profile says from `eye`, then a bolt for each

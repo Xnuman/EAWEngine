@@ -189,9 +189,8 @@ void render_model_viewport(GuiApp::State& state)
             {
                 continue;
             }
-            const Vector3 point{pose[index].transform.values[12], pose[index].transform.values[13], pose[index].transform.values[14]};
-            const Vector3 parent_point{pose[static_cast<std::size_t>(parent)].transform.values[12], pose[static_cast<std::size_t>(parent)].transform.values[13],
-                                       pose[static_cast<std::size_t>(parent)].transform.values[14]};
+            const auto point = translation(pose[index].transform);
+            const auto parent_point = translation(pose[static_cast<std::size_t>(parent)].transform);
             draw->AddLine(project(parent_point), project(point), IM_COL32(255, 202, 74, 230), 1.5F);
         }
     }

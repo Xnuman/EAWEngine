@@ -18,55 +18,6 @@ constexpr float maximum_update = 0.25F;
 // A trail emitter emits at most this many particles per parent per update (runaway rates).
 constexpr std::size_t maximum_trail_burst = 64;
 
-// Inverse of an affine row-vector transform (identity when singular).
-std::array<float, 16> inverse_affine(const std::array<float, 16>& m)
-{
-    const auto a = m[0], b = m[1], c = m[2], d = m[4], e = m[5], f = m[6], g = m[8], h = m[9], i = m[10];
-    const auto c00 = e * i - f * h;
-    const auto c01 = c * h - b * i;
-    const auto c02 = b * f - c * e;
-    const auto determinant = a * c00 + d * c01 + g * c02;
-    if (std::abs(determinant) < 1e-12F)
-    {
-        return visual_identity_transform;
-    }
-    const auto s = 1.0F / determinant;
-    std::array<float, 16> r{};
-    r[0] = c00 * s;
-    r[1] = c01 * s;
-    r[2] = c02 * s;
-    r[4] = (f * g - d * i) * s;
-    r[5] = (a * i - c * g) * s;
-    r[6] = (c * d - a * f) * s;
-    r[8] = (d * h - e * g) * s;
-    r[9] = (b * g - a * h) * s;
-    r[10] = (a * e - b * d) * s;
-    r[12] = -(m[12] * r[0] + m[13] * r[4] + m[14] * r[8]);
-    r[13] = -(m[12] * r[1] + m[13] * r[5] + m[14] * r[9]);
-    r[14] = -(m[12] * r[2] + m[13] * r[6] + m[14] * r[10]);
-    r[15] = 1.0F;
-    return r;
-}
-
-// Row-vector product: `left` applied first.
-std::array<float, 16> multiply(const std::array<float, 16>& left, const std::array<float, 16>& right)
-{
-    std::array<float, 16> result{};
-    for (std::size_t row = 0; row < 4; ++row)
-    {
-        for (std::size_t column = 0; column < 4; ++column)
-        {
-            float sum = 0.0F;
-            for (std::size_t k = 0; k < 4; ++k)
-            {
-                sum += left[row * 4 + k] * right[k * 4 + column];
-            }
-            result[row * 4 + column] = sum;
-        }
-    }
-    return result;
-}
-
 // PCG32 (O'Neill): small, fast, and fully specified, so a seed replays the same effect everywhere.
 class Random
 {
@@ -215,10 +166,10 @@ struct ParticleWorld::Instance
 {
     std::shared_ptr<const ParticleEffect> effect;
     std::shared_ptr<const ParticleEmitMesh> mesh;
-    std::array<float, 16> transform{visual_identity_transform};
+    Matrix4 transform{Matrix4{}};
     Vector3 previous_origin{};
     // The transform at the previous update: linked particles move rigidly with the emitter.
-    std::array<float, 16> previous_transform{visual_identity_transform};
+    Matrix4 previous_transform{Matrix4{}};
     std::vector<EmitterState> emitters;
     Random random;
     std::uint32_t generation{};
@@ -249,7 +200,7 @@ const ParticleWorld::Instance* ParticleWorld::find(const ParticleInstanceId id) 
     return const_cast<ParticleWorld*>(this)->find(id);
 }
 
-ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, const std::uint64_t seed, std::shared_ptr<const ParticleEmitMesh> mesh,
+ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> effect, const Matrix4& transform, const std::uint64_t seed, std::shared_ptr<const ParticleEmitMesh> mesh,
                                        const float scale)
 {
     if (!effect || effect->emitters.empty())
@@ -283,9 +234,9 @@ ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> eff
     instance.transform = transform;
     for (std::size_t element = 0; element < 12; ++element)
     {
-        instance.transform[element] *= instance.scale;
+        instance.transform.values[element] *= instance.scale;
     }
-    instance.previous_origin = translation(Matrix4{instance.transform});
+    instance.previous_origin = translation(instance.transform);
     instance.previous_transform = instance.transform;
     instance.random = Random(seed);
     const auto& emitters = instance.effect->emitters;
@@ -322,14 +273,14 @@ ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> eff
     return {index, generation};
 }
 
-void ParticleWorld::set_transform(const ParticleInstanceId id, const std::array<float, 16>& transform)
+void ParticleWorld::set_transform(const ParticleInstanceId id, const Matrix4& transform)
 {
     if (auto* instance = find(id))
     {
         instance->transform = transform;
         for (std::size_t element = 0; element < 12; ++element)
         {
-            instance->transform[element] *= instance->scale;
+            instance->transform.values[element] *= instance->scale;
         }
     }
 }
@@ -523,11 +474,12 @@ void ParticleWorld::kill(Instance& instance, const std::size_t emitter_index, co
 void ParticleWorld::step_instance(Instance& instance, const float update_seconds)
 {
     const auto& emitters = instance.effect->emitters;
-    const auto current_origin = translation(Matrix4{instance.transform});
+    const auto current_origin = translation(instance.transform);
     const auto moved = current_origin - instance.previous_origin;
     instance.previous_origin = current_origin;
     // Rigid motion of the emitter since the last update (translation and rotation).
-    const Matrix4 carried{multiply(inverse_affine(instance.previous_transform), instance.transform)};
+    // A singular previous transform carries nothing over (identity), as before.
+    const auto carried = inverse_affine(instance.previous_transform).value_or(Matrix4{}) * instance.transform;
     instance.previous_transform = instance.transform;
     const bool may_emit = instance.emitting && !instance.stopped;
     for (std::size_t e = 0; e < emitters.size(); ++e)
@@ -581,7 +533,7 @@ void ParticleWorld::step_instance(Instance& instance, const float update_seconds
 
         // Motion.
         Vector3 acceleration{0.0F, 0.0F, -emitter.gravity};
-        acceleration = acceleration + (emitter.acceleration_in_emitter_frame ? transform_direction(emitter.acceleration, Matrix4{instance.transform}) : emitter.acceleration);
+        acceleration = acceleration + (emitter.acceleration_in_emitter_frame ? transform_direction(emitter.acceleration, instance.transform) : emitter.acceleration);
         const auto& rotation_track = emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::rotation_speed)];
         for (std::size_t p = 0; p < state.particles.size();)
         {
@@ -701,7 +653,7 @@ void ParticleWorld::build_sprites(const Vector3& eye, std::vector<VisualParticle
             continue;
         }
         const auto& emitters = instance.effect->emitters;
-        const auto effect_offset = translation(Matrix4{instance.transform}) - eye;
+        const auto effect_offset = translation(instance.transform) - eye;
         const auto effect_depth = dot(effect_offset, effect_offset);
         for (std::size_t e = 0; e < emitters.size(); ++e)
         {

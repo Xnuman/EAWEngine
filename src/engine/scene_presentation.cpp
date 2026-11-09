@@ -7,52 +7,33 @@
 
 namespace eaw {
 
-std::array<float, 16> pose_transform(const std::array<float, 16>& base, const float base_heading, const Vector3& position, const float heading, const float pitch, const float bank)
+Matrix4 pose_transform(const Matrix4& base, const float base_heading, const Vector3& position, const float heading, const float pitch, const float bank)
 {
     // Row-vector convention: the new linear part is base * Rz(-base_heading) * Rx(bank) * Ry(pitch) *
     // Rz(heading). Rz(-base_heading) turns the model's forward axis onto +X, where bank rolls about
     // it and pitch lifts it toward +Z, before the heading turns it about +Z.
-    using Matrix = std::array<std::array<float, 3>, 3>;
-    const auto multiply = [](const Matrix& left, const Matrix& right)
-    {
-        Matrix product{};
-        for (std::size_t row = 0; row < 3; ++row)
-        {
-            for (std::size_t column = 0; column < 3; ++column)
-            {
-                product[row][column] = left[row][0] * right[0][column] + left[row][1] * right[1][column] + left[row][2] * right[2][column];
-            }
-        }
-        return product;
-    };
-    const auto about_z = [](const float angle) -> Matrix
-    {
-        const auto c = std::cos(angle);
-        const auto s = std::sin(angle);
-        return {{{c, s, 0.0F}, {-s, c, 0.0F}, {0.0F, 0.0F, 1.0F}}};
-    };
-    Matrix rotation = about_z(heading - base_heading);
+    auto rotation = rotation_z(heading - base_heading);
     if (pitch != 0.0F || bank != 0.0F)
     {
+        // Bank and pitch turn the opposite way to rotation_x and rotation_y; written out so the
+        // sines are those of the given angles.
         const auto cb = std::cos(bank);
         const auto sb = std::sin(bank);
         const auto cp = std::cos(pitch);
         const auto sp = std::sin(pitch);
-        const Matrix roll{{{1.0F, 0.0F, 0.0F}, {0.0F, cb, -sb}, {0.0F, sb, cb}}};
-        const Matrix lift{{{cp, 0.0F, sp}, {0.0F, 1.0F, 0.0F}, {-sp, 0.0F, cp}}};
-        rotation = multiply(multiply(multiply(about_z(-base_heading), roll), lift), about_z(heading));
+        const Matrix3 roll{{1.0F, 0.0F, 0.0F, 0.0F, cb, -sb, 0.0F, sb, cb}};
+        const Matrix3 lift{{cp, 0.0F, sp, 0.0F, 1.0F, 0.0F, -sp, 0.0F, cp}};
+        rotation = rotation_z(-base_heading) * roll * lift * rotation_z(heading);
     }
     auto result = base;
     for (std::size_t row = 0; row < 3; ++row)
     {
         for (std::size_t column = 0; column < 3; ++column)
         {
-            result[row * 4U + column] = base[row * 4U] * rotation[0][column] + base[row * 4U + 1U] * rotation[1][column] + base[row * 4U + 2U] * rotation[2][column];
+            result(row, column) = base(row, 0) * rotation(0, column) + base(row, 1) * rotation(1, column) + base(row, 2) * rotation(2, column);
         }
     }
-    result[12] = position.x;
-    result[13] = position.y;
-    result[14] = position.z;
+    set_translation(result, position);
     return result;
 }
 
@@ -97,7 +78,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         VisualInstance instance{type.mesh};
         for (std::size_t axis = 0; axis < 3; ++axis)
         {
-            instance.transform[axis * 5] = type.scale;
+            instance.transform(axis, axis) = type.scale;
         }
         instance.team_color = type.team_color;
         spawn_templates_.push_back({instance, identity_model_heading, type.death});
@@ -157,7 +138,7 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableType> types
         VisualInstance instance{type.mesh};
         for (std::size_t axis = 0; axis < 3; ++axis)
         {
-            instance.transform[axis * 5] = type.scale;
+            instance.transform(axis, axis) = type.scale;
         }
         instance.team_color = type.team_color;
         spawn_templates_.push_back({instance, identity_model_heading, type.death});

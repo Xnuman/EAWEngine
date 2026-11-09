@@ -7,6 +7,7 @@
 #include "math/vector.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <optional>
 
@@ -61,6 +62,21 @@ static_assert(sizeof(Matrix4) == 16 * sizeof(float));
 [[nodiscard]] Matrix4 operator*(const Matrix4& left, const Matrix4& right) noexcept;
 // Nothing when the matrix is singular.
 [[nodiscard]] std::optional<Matrix4> inverse(const Matrix4& matrix) noexcept;
+// Inverse of an affine transform (last column 0, 0, 0, 1) through the 3x3 adjugate: cheaper than
+// inverse() and exact for rotation, scale, and translation. Nothing when the 3x3 part is singular.
+[[nodiscard]] std::optional<Matrix4> inverse_affine(const Matrix4& matrix) noexcept;
+
+[[nodiscard]] inline bool is_finite(const Matrix4& m) noexcept
+{
+    for (const auto value : m.values)
+    {
+        if (!std::isfinite(value))
+        {
+            return false;
+        }
+    }
+    return true;
+}
 
 // A position: rotated, scaled, and translated.
 [[nodiscard]] constexpr Vector3 transform_point(const Vector3& p, const Matrix4& m) noexcept
@@ -78,6 +94,13 @@ static_assert(sizeof(Matrix4) == 16 * sizeof(float));
 [[nodiscard]] constexpr Vector3 translation(const Matrix4& m) noexcept
 {
     return {m.values[12], m.values[13], m.values[14]};
+}
+
+constexpr void set_translation(Matrix4& m, const Vector3& t) noexcept
+{
+    m.values[12] = t.x;
+    m.values[13] = t.y;
+    m.values[14] = t.z;
 }
 
 } // namespace eaw

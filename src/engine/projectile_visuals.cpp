@@ -199,15 +199,15 @@ void append_projectile_sprites(const std::span<const ProjectileSnapshot> current
     }
 }
 
-std::array<float, 16> projectile_model_transform(const ProjectileSnapshot& projectile, const ProjectileVisual& visual, const float interpolation, const float tick_seconds)
+Matrix4 projectile_model_transform(const ProjectileSnapshot& projectile, const ProjectileVisual& visual, const float interpolation, const float tick_seconds)
 {
     const auto& d = projectile.direction;
     const auto back = projectile.speed * tick_seconds * (1.0F - std::clamp(interpolation, 0.0F, 1.0F));
     const Vector3 position{projectile.position.x - d.x * back, projectile.position.y - d.y * back, projectile.position.z - d.z * back};
     const auto heading = std::atan2(d.y, d.x);
     const auto pitch = std::asin(std::clamp(d.z, -1.0F, 1.0F));
-    auto scale = visual_identity_transform;
-    scale[0] = scale[5] = scale[10] = visual.scale;
+    Matrix4 scale;
+    scale(0, 0) = scale(1, 1) = scale(2, 2) = visual.scale;
     return pose_transform(scale, identity_model_heading, position, heading, pitch);
 }
 

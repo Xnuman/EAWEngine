@@ -16,7 +16,7 @@ using Microsoft::WRL::ComPtr;
 
 struct FrameConstants
 {
-    std::array<float, 16> view_projection{};
+    Matrix4 view_projection{};
 };
 
 struct PartConstants
@@ -89,7 +89,7 @@ bool PreviewMesh::set_instances(ID3D11Device* device, ID3D11DeviceContext* conte
     packed.reserve(instances.size() * 20);
     for (const auto& instance : instances)
     {
-        packed.insert(packed.end(), instance.transform.begin(), instance.transform.end());
+        packed.insert(packed.end(), instance.transform.values.begin(), instance.transform.values.end());
         for (unsigned shift = 0; shift < 32; shift += 8)
         {
             packed.push_back(static_cast<float>((instance.tint >> shift) & 0xffU) / 255.0F);
@@ -291,8 +291,8 @@ void PreviewRenderer::draw_parts(const PreviewMesh& mesh, const bool transparent
     }
 }
 
-bool PreviewRenderer::render(PreviewTarget& target, const std::uint32_t width, const std::uint32_t height, const std::array<float, 16>& view_projection,
-                             const std::span<const PreviewMesh* const> meshes, const std::array<float, 4>& clear_color)
+bool PreviewRenderer::render(PreviewTarget& target, const std::uint32_t width, const std::uint32_t height, const Matrix4& view_projection, const std::span<const PreviewMesh* const> meshes,
+                             const std::array<float, 4>& clear_color)
 {
     if (!ready() || width == 0 || height == 0 || width > 16384 || height > 16384 || !resize(target, width, height))
     {
@@ -363,7 +363,7 @@ bool PreviewRenderer::render(PreviewTarget& target, const std::uint32_t width, c
     return true;
 }
 
-std::array<float, 16> orbit_view_projection(const Vector3& center, const float yaw, const float pitch, const float scale, const float width, const float height, const float depth_radius) noexcept
+Matrix4 orbit_view_projection(const Vector3& center, const float yaw, const float pitch, const float scale, const float width, const float height, const float depth_radius) noexcept
 {
     const auto yc = std::cos(yaw);
     const auto ys = std::sin(yaw);

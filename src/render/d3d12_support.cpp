@@ -87,11 +87,6 @@ D3D12_RESOURCE_BARRIER transition_barrier(ID3D12Resource* resource, const D3D12_
     return barrier;
 }
 
-std::array<float, 16> identity_matrix()
-{
-    return {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
-}
-
 bool query_tearing_support(IDXGIFactory7* factory)
 {
     BOOL supported = FALSE;

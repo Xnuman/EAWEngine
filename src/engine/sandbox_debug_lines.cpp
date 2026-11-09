@@ -70,7 +70,7 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
             {
                 continue;
             }
-            const auto& t = view.instances[index].transform;
+            const auto& t = view.instances[index].transform.values;
             const auto z_scale = std::sqrt(t[8] * t[8] + t[9] * t[9] + t[10] * t[10]);
             const auto top = t[14] + view.presentation->mesh_maximum(view.instances[index].mesh)[2] * z_scale + 6.0F;
             const float half = 15.0F;

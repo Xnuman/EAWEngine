@@ -81,11 +81,11 @@ LocomotionBlend locomotion_blend(const float speed, const float top_speed, const
     return {AnimationRole::walk_move, AnimationRole::move, std::min((speed - walk) / (top_speed - walk), 1.0F)};
 }
 
-UnitAnimator::UnitAnimator(const std::span<const VisualRig> rigs, const std::span<const std::array<float, 16>> rest_palette)
+UnitAnimator::UnitAnimator(const std::span<const VisualRig> rigs, const std::span<const Matrix4> rest_palette)
     : rigs_(rigs.begin(), rigs.end()), rest_palette_(rest_palette.begin(), rest_palette.end())
 {}
 
-void UnitAnimator::add_rigs(const std::span<const VisualRig> rigs, const std::span<const std::array<float, 16>> rest_palette)
+void UnitAnimator::add_rigs(const std::span<const VisualRig> rigs, const std::span<const Matrix4> rest_palette)
 {
     const auto offset = static_cast<std::uint32_t>(rest_palette_.size());
     rest_palette_.insert(rest_palette_.end(), rest_palette.begin(), rest_palette.end());
@@ -145,7 +145,7 @@ std::uint32_t UnitAnimator::slot_of(const std::uint32_t mesh, const std::int32_t
     return std::min(static_cast<std::uint32_t>(position * static_cast<double>(slots)), slots - 1U);
 }
 
-void UnitAnimator::sample(const PoseKey& key, std::vector<std::array<float, 16>>& out) const
+void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
 {
     const auto& rig = rigs_[key.mesh];
     std::vector<AlaLocalBone> pose;
@@ -181,7 +181,7 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<std::array<float, 16>>
     append_rig_local_palette(rig, pose, out);
 }
 
-std::optional<std::uint32_t> UnitAnimator::place(const PoseKey& key, const std::size_t max_palette, std::vector<std::array<float, 16>>& palette)
+std::optional<std::uint32_t> UnitAnimator::place(const PoseKey& key, const std::size_t max_palette, std::vector<Matrix4>& palette)
 {
     if (const auto placed = frame_offsets_.find(key); placed != frame_offsets_.end())
     {
@@ -196,7 +196,7 @@ std::optional<std::uint32_t> UnitAnimator::place(const PoseKey& key, const std::
     auto cached = pose_cache_.find(key);
     if (cached == pose_cache_.end())
     {
-        std::vector<std::array<float, 16>> pose;
+        std::vector<Matrix4> pose;
         pose.reserve(rig.palette_size);
         sample(key, pose);
         cached_entries_ += pose.size();
@@ -244,7 +244,7 @@ void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id,
 }
 
 void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, const double seconds, const std::size_t max_palette,
-                           std::vector<std::array<float, 16>>& palette)
+                           std::vector<Matrix4>& palette)
 {
     EAW_ASSERT_MSG(entities.size() == instances.size(), "unit animation needs one entity slot per instance");
     ++frame_;

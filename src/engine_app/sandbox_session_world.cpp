@@ -110,10 +110,8 @@ void SandboxSession::step_particles(const std::chrono::steady_clock::time_point 
     {
         if (shown_effects[index] && !effects.particles().playing(shown_effect_ids[index]))
         {
-            auto transform = eaw::visual_identity_transform;
-            transform[12] = effect_center[0];
-            transform[13] = effect_center[1];
-            transform[14] = effect_center[2];
+            auto transform = eaw::Matrix4{};
+            eaw::set_translation(transform, effect_center);
             shown_effect_ids[index] = effects.particles().play(shown_effects[index], transform, shown_effect_seed++);
         }
     }

@@ -143,9 +143,10 @@ void test_visual_material_translation()
     require(hidden.visibility_palette && hidden.scene.bone_count == 2 && hidden.scene.vertices.size() == 3 && hidden.scene.vertices[0].bone_indices[0] == 1,
             "a rigid attachment must reference the visibility half of the palette");
     const auto hidden_palette = eaw::sample_skin_palette(hidden, nullptr, 0.0F);
-    std::array<float, 16> collapsed{};
-    collapsed[15] = 1.0F;
-    require(hidden_palette.size() == 2 && hidden_palette[1] == collapsed && hidden_palette[0][0] == 1.0F, "a bone hidden in the bind pose must collapse its attachments");
+    // All zero but the last element: every vertex of a hidden bone collapses onto the origin.
+    eaw::Matrix4 collapsed{{}};
+    collapsed.values[15] = 1.0F;
+    require(hidden_palette.size() == 2 && hidden_palette[1] == collapsed && hidden_palette[0].values[0] == 1.0F, "a bone hidden in the bind pose must collapse its attachments");
     const auto shown_palette = eaw::sample_skin_palette(asset, nullptr, 0.0F);
     require(shown_palette.size() == 2 && shown_palette[1] == shown_palette[0], "a visible bone's visibility entry must match its skin matrix");
     std::filesystem::remove_all(root, ignored);
@@ -255,9 +256,10 @@ void test_intact_hidden_bones()
     rig.model = model;
     rig.palette_size = 4;
     rig.intact_hidden = {false, true};
-    std::vector<std::array<float, 16>> palette;
+    std::vector<eaw::Matrix4> palette;
     eaw::append_rig_local_palette(rig, {}, palette);
-    require(palette.size() == 4 && palette[2][0] == 1.0F && palette[3][0] == 0.0F && palette[3][5] == 0.0F && palette[1][0] == 1.0F, "intact-hidden bone was not collapsed");
+    require(palette.size() == 4 && palette[2].values[0] == 1.0F && palette[3].values[0] == 0.0F && palette[3].values[5] == 0.0F && palette[1].values[0] == 1.0F,
+            "intact-hidden bone was not collapsed");
 }
 
 const ModuleRegistrar registrar("scene", {

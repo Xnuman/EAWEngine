@@ -12,6 +12,7 @@
 #include "eaw/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
+#include "math/matrix.hpp"
 #include "math/vector.hpp"
 
 #include <functional>
@@ -29,6 +30,10 @@
 #include <vector>
 
 namespace eaw::scene_build {
+
+// A skin matrix that collapses every vertex of a hidden bone onto the origin, so it rasterizes
+// nothing.
+constexpr Matrix4 collapsed_bone{{0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F}};
 
 // Bounds that any point extends: every axis starts inverted.
 constexpr Vector3 empty_bounds_minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
@@ -241,7 +246,7 @@ std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::
 
 // A rig per scene mesh (its model, inverse bind pose, role clips, and rest palette range), the
 // concatenated rest palette, every instance's bone offset, and the scene's palette size.
-void build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& rigs, std::vector<std::array<float, 16>>& rest_palette);
+void build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& rigs, std::vector<Matrix4>& rest_palette);
 
 // Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
 void update_scene_bounds(VisualScene& scene);
@@ -249,12 +254,12 @@ void update_scene_bounds(VisualScene& scene);
 // Separation footprint of a mesh placed with `transform` (row-vector): a quarter of the summed X and
 // Y extents of its bounds, scaled by the transform's horizontal scale. An engine choice until
 // collision meshes and UnitCollisionClass are interpreted.
-float mesh_footprint_radius(const VisualScene& scene, std::uint32_t mesh, const std::array<float, 16>& transform);
+float mesh_footprint_radius(const VisualScene& scene, std::uint32_t mesh, const Matrix4& transform);
 
 // The ground rectangle of a mesh placed with `transform`: its bounds' X/Y extent, rotated and scaled
 // with the placement, with the given passability type. An engine choice until collision meshes
 // are read.
-GroundFootprint mesh_ground_footprint(const VisualScene& scene, std::uint32_t mesh, const std::array<float, 16>& transform, std::uint32_t passability_type);
+GroundFootprint mesh_ground_footprint(const VisualScene& scene, std::uint32_t mesh, const Matrix4& transform, std::uint32_t passability_type);
 
 // scene_terrain.cpp: land terrain, liquid surfaces, and tracks.
 
@@ -311,7 +316,7 @@ float type_soft_footprint_radius(const GameObjectCatalog& catalog, const XmlDefi
 float type_scale_factor(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings);
 // `transform` (row-vector) with its model axes scaled by `scale`, so the model is drawn `scale` times
 // its file size about its own origin.
-std::array<float, 16> scaled_model_transform(std::array<float, 16> transform, float scale) noexcept;
+Matrix4 scaled_model_transform(Matrix4 transform, float scale) noexcept;
 
 // XML Max_Rate_Of_Turn in radians per second (provisional_turn_rate_scale); 0 turns instantly.
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition);

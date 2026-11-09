@@ -63,7 +63,7 @@ class UnitAnimator final
 public:
     // `rigs` parallel the scene's meshes; `rest_palette` is the scene's rest palette
     // (VisualMapAsset). Both are copied (clips and models are shared).
-    UnitAnimator(std::span<const VisualRig> rigs, std::span<const std::array<float, 16>> rest_palette);
+    UnitAnimator(std::span<const VisualRig> rigs, std::span<const Matrix4> rest_palette);
 
     struct Stats
     {
@@ -87,7 +87,7 @@ public:
     // `max_palette` entries. `seconds` is presentation time and should not go backwards (a step back
     // counts as no time passing).
     void animate(std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, double seconds, std::size_t max_palette,
-                 std::vector<std::array<float, 16>>& palette);
+                 std::vector<Matrix4>& palette);
     // Keeps a dead entity's instance (ScenePresentation::corpse_instance) as a corpse that plays a
     // DIE clip from `seconds` on; ignored when its mesh has none. At most 4096 corpses are kept (the
     // oldest go first).
@@ -96,7 +96,7 @@ public:
     [[nodiscard]] const Stats& stats() const noexcept;
     // Rigs of meshes added to the scene at runtime (a SpawnablePackage's rigs and rest palette,
     // rest offsets relative to it); they must follow the meshes the animator already knows.
-    void add_rigs(std::span<const VisualRig> rigs, std::span<const std::array<float, 16>> rest_palette);
+    void add_rigs(std::span<const VisualRig> rigs, std::span<const Matrix4> rest_palette);
     [[nodiscard]] std::size_t rig_count() const noexcept;
 
 private:
@@ -152,16 +152,16 @@ private:
     [[nodiscard]] std::int32_t choose_clip(std::uint32_t mesh, AnimationRole role, EntityId id) const;
     // This frame's palette offset of a pose, sampling it when needed; nullopt when the palette is
     // full.
-    [[nodiscard]] std::optional<std::uint32_t> place(const PoseKey& key, std::size_t max_palette, std::vector<std::array<float, 16>>& palette);
+    [[nodiscard]] std::optional<std::uint32_t> place(const PoseKey& key, std::size_t max_palette, std::vector<Matrix4>& palette);
     [[nodiscard]] std::uint32_t slot_of(std::uint32_t mesh, std::int32_t clip, double seconds) const;
     [[nodiscard]] std::uint32_t slot_count(std::uint32_t mesh, std::int32_t clip) const;
-    void sample(const PoseKey& key, std::vector<std::array<float, 16>>& out) const;
+    void sample(const PoseKey& key, std::vector<Matrix4>& out) const;
 
     std::vector<VisualRig> rigs_;
-    std::vector<std::array<float, 16>> rest_palette_;
+    std::vector<Matrix4> rest_palette_;
     std::unordered_map<std::uint64_t, EntityState> states_;
     // Sampled poses, kept across frames up to a size limit.
-    std::unordered_map<PoseKey, std::vector<std::array<float, 16>>, PoseKeyHash> pose_cache_;
+    std::unordered_map<PoseKey, std::vector<Matrix4>, PoseKeyHash> pose_cache_;
     std::size_t cached_entries_{};
     // This frame's palette offset of each pose.
     std::unordered_map<PoseKey, std::uint32_t, PoseKeyHash> frame_offsets_;

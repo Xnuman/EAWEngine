@@ -69,11 +69,16 @@ void test_math_matrices()
     require(close_to(eaw::transform_point({1.0F, 0.0F, 0.0F}, transform), {10.0F, 2.0F, 5.0F}) && close_to(eaw::transform_direction({1.0F, 0.0F, 0.0F}, transform), {0.0F, 2.0F, 0.0F}) &&
                 eaw::translation(transform) == eaw::Vector3{10.0F, 0.0F, 5.0F},
             "points are scaled, rotated, and translated; directions are not translated");
+    eaw::Matrix4 moved;
+    eaw::set_translation(moved, {1.0F, 2.0F, 3.0F});
+    require(eaw::translation(moved) == eaw::Vector3{1.0F, 2.0F, 3.0F}, "set_translation must write the translation row");
     const auto inverse = eaw::inverse(transform);
     require(inverse.has_value() && close_to(transform * *inverse, eaw::Matrix4{}), "a transform times its inverse must be the identity");
+    const auto affine = eaw::inverse_affine(transform);
+    require(affine.has_value() && close_to(transform * *affine, eaw::Matrix4{}) && eaw::is_finite(*affine), "the affine inverse must undo the transform");
     eaw::Matrix4 singular;
     singular(2, 2) = 0.0F;
-    require(!eaw::inverse(singular).has_value(), "a singular matrix must have no inverse");
+    require(!eaw::inverse(singular).has_value() && !eaw::inverse_affine(singular).has_value(), "a singular matrix must have no inverse");
 }
 
 void test_math_quaternions_and_transforms()

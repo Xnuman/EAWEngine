@@ -212,7 +212,7 @@ void D3d12Renderer::Impl::set_instances(const std::span<const VisualInstance> in
                                            return std::isfinite(value);
                                        });
         };
-        EAW_ASSERT_MSG(finite(instance.transform) && finite(instance.tint) && finite(instance.team_color), "visual instance " + std::to_string(index) + " has non-finite values");
+        EAW_ASSERT_MSG(is_finite(instance.transform) && finite(instance.tint) && finite(instance.team_color), "visual instance " + std::to_string(index) + " has non-finite values");
     }
     dynamic_instances.emplace(instances.begin(), instances.end());
 }
@@ -263,7 +263,7 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
                              });
     if (gpu_instances.empty())
     {
-        gpu_instances.push_back({visual_identity_transform, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0});
+        gpu_instances.push_back({Matrix4{}, {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0});
     }
 }
 
