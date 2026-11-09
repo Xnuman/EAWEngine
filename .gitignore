@@ -13,3 +13,6 @@
 
 # Owner-provided reference copies (legacy shaders, saved web pages): local evidence only, never distributed.
 /Reference Materials/
+
+# Dear ImGui window layouts saved by the tools and the sandbox overlay.
+*imgui.ini
