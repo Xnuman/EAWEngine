@@ -2,9 +2,12 @@
 # presentation code.
 set(EAW_CORE_HEADERS
     include/eaw/ala_animation.hpp
+    include/eaw/alo_interpretation.hpp
+    include/eaw/alo_math.hpp
     include/eaw/alo_model.hpp
     include/eaw/asset_environment.hpp
     include/eaw/asset_path.hpp
+    include/eaw/chunk_file.hpp
     include/eaw/dat_file.hpp
     include/eaw/dds_texture.hpp
     include/eaw/fatal_error.hpp
@@ -32,9 +35,12 @@ set(EAW_CORE_HEADERS
 
 set(EAW_CORE_SOURCES
     ala_animation.cpp
+    alo_interpretation.cpp
+    alo_math.cpp
     alo_model.cpp
     asset_environment.cpp
     asset_path.cpp
+    chunk_file.cpp
     dat_file.cpp
     dds_texture.cpp
     fatal_error.cpp

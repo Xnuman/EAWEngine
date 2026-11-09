@@ -1,3 +1,4 @@
+#include "eaw/chunk_file.hpp"
 #include "eaw/ted_map.hpp"
 
 #include "eaw/text_encoding.hpp"
@@ -12,59 +13,25 @@
 namespace eaw {
 namespace {
 
-struct Chunk
-{
-    std::uint32_t type{};
-    bool container{};
-    std::size_t payload{};
-    std::size_t end{};
-};
+// The shared chunk container (eaw/chunk_file.hpp), with this format named in diagnostics.
+using Chunk = ChunkRange;
+using MiniChunk = MiniChunkRange;
+using chunk::find_chunk;
+using chunk::find_mini;
+using chunk::read_float;
+using chunk::read_i32;
+using chunk::read_string;
+using chunk::read_u16;
+using chunk::read_u32;
 
-struct MiniChunk
+Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
 {
-    std::uint8_t type{};
-    std::size_t payload{};
-    std::size_t end{};
-};
-
-// Value readers: every caller checks the enclosing chunk or mini-chunk size first, so an
-// out-of-range read is a bug.
-std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    EAW_ASSERT_MSG(offset + 4 <= bytes.size(), "TED ended while reading a 32-bit value");
-    std::uint32_t value = 0;
-    for (unsigned index = 0; index < 4; ++index)
-    {
-        value |= static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(bytes[offset + index])) << (index * 8U);
-    }
-    return value;
+    return chunk::read_chunks(bytes, begin, end, "TED");
 }
 
-std::uint16_t read_u16(const std::span<const std::byte> bytes, const std::size_t offset)
+Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes, const Chunk& parent)
 {
-    EAW_ASSERT_MSG(offset + 2 <= bytes.size(), "TED ended while reading a 16-bit value");
-    return static_cast<std::uint16_t>(std::to_integer<std::uint8_t>(bytes[offset]) | (std::to_integer<std::uint8_t>(bytes[offset + 1]) << 8U));
-}
-
-std::int32_t read_i32(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    return std::bit_cast<std::int32_t>(read_u32(bytes, offset));
-}
-
-float read_float(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    return std::bit_cast<float>(read_u32(bytes, offset));
-}
-
-std::string read_string(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
-{
-    EAW_ASSERT_MSG(begin <= end && end <= bytes.size(), "TED string range is invalid");
-    auto finish = begin;
-    while (finish < end && bytes[finish] != std::byte{})
-    {
-        ++finish;
-    }
-    return {reinterpret_cast<const char*>(bytes.data() + begin), finish - begin};
+    return chunk::read_minis(bytes, parent, "TED");
 }
 
 Result<std::string> read_wide_string(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
@@ -85,63 +52,6 @@ Result<std::string> read_wide_string(const std::span<const std::byte> bytes, con
         value.push_back(character);
     }
     return utf16_to_utf8(value);
-}
-
-Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
-{
-    if (begin > end || end > bytes.size())
-    {
-        return make_error("TED chunk range is invalid");
-    }
-    std::vector<Chunk> result;
-    auto cursor = begin;
-    while (cursor < end)
-    {
-        if (cursor + 8 > end)
-        {
-            return make_error("TED contains a truncated chunk header");
-        }
-        const auto type = read_u32(bytes, cursor);
-        const auto encoded_size = read_u32(bytes, cursor + 4);
-        const auto size = static_cast<std::size_t>(encoded_size & 0x7fffffffU);
-        const auto payload = cursor + 8;
-        if (payload + size > end)
-        {
-            return make_error("TED chunk extends past its parent");
-        }
-        result.push_back({type, (encoded_size & 0x80000000U) != 0, payload, payload + size});
-        cursor = payload + size;
-    }
-    return result;
-}
-
-Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes, const Chunk& chunk)
-{
-    std::vector<MiniChunk> result;
-    auto cursor = chunk.payload;
-    while (cursor < chunk.end)
-    {
-        if (cursor + 2 > chunk.end)
-        {
-            return make_error("TED contains a truncated mini-chunk header");
-        }
-        const auto type = std::to_integer<std::uint8_t>(bytes[cursor]);
-        const auto size = std::to_integer<std::uint8_t>(bytes[cursor + 1]);
-        const auto payload = cursor + 2;
-        if (payload + size > chunk.end)
-        {
-            return make_error("TED mini-chunk extends past its parent");
-        }
-        result.push_back({type, payload, payload + size});
-        cursor = payload + size;
-    }
-    return result;
-}
-
-const Chunk* find_chunk(const std::vector<Chunk>& chunks, const std::uint32_t type)
-{
-    const auto found = std::ranges::find(chunks, type, &Chunk::type);
-    return found == chunks.end() ? nullptr : &*found;
 }
 
 Status parse_properties(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)

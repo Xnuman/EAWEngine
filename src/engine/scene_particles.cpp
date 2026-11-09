@@ -3,6 +3,8 @@
 
 #include "scene_builder_internal.hpp"
 
+#include "eaw/alo_interpretation.hpp"
+
 #include <algorithm>
 #include <charconv>
 #include <cmath>

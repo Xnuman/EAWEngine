@@ -357,7 +357,12 @@ physically based pipeline).
 How the larger modules are split into files. `AGENTS.md` keeps the directory-level map and the
 dependency rules; this is the file-level detail.
 
-- `src/core`: one file per format or subject. `XmlSchema` (`eaw/xml_schema.hpp`) is split into
+- `src/core`: one file per format or subject. The Petroglyph chunk container (chunks and
+  mini-chunks with bounds-checked ranges and little-endian values) is `chunk_file`, shared by the
+  ALO, particle, ALA, and TED decoders, which keep only their format's own readers. ALO is split
+  into `alo_model` (decoding and the model's own queries: counts, bind pose), `alo_math` (vectors,
+  quaternions, matrices, transform composition), and `alo_interpretation` (the `_ALT<n>`/`_LOD<n>`
+  naming convention and default mesh visibility, rules about what the decoded facts mean). `XmlSchema` (`eaw/xml_schema.hpp`) is split into
   `xml_schema_load.cpp` (the optional eaw-schema YAML, its base and FoC layers, accessors) and
   `xml_schema_validate.cpp` (validating a resolved XML database against it), sharing
   `xml_schema_internal.hpp`. Localization is `localization_workspace` (TSV workspaces, DAT rows,

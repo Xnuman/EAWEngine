@@ -2,6 +2,8 @@
 
 #include "inspector.hpp"
 
+#include "eaw/alo_interpretation.hpp"
+
 namespace eaw::inspector {
 namespace {
 

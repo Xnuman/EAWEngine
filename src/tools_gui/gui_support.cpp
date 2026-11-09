@@ -2,6 +2,8 @@
 
 #include "gui_internal.hpp"
 
+#include "eaw/alo_interpretation.hpp"
+
 namespace eaw::tools {
 namespace {
 

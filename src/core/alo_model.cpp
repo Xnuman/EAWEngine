@@ -1,3 +1,4 @@
+#include "eaw/chunk_file.hpp"
 #include "eaw/alo_model.hpp"
 
 #include <algorithm>
@@ -13,135 +14,30 @@
 namespace eaw {
 namespace {
 
-struct Chunk
-{
-    std::uint32_t type{};
-    bool container{};
-    std::size_t payload{};
-    std::size_t end{};
-};
+// The shared chunk container (eaw/chunk_file.hpp), with this format named in diagnostics.
+using Chunk = ChunkRange;
+using MiniChunk = MiniChunkRange;
+using chunk::find_chunk;
+using chunk::find_mini;
+using chunk::read_float;
+using chunk::read_i32;
+using chunk::read_string;
+using chunk::read_u16;
+using chunk::read_u32;
 
-struct MiniChunk
+Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
 {
-    std::uint8_t type{};
-    std::size_t payload{};
-    std::size_t end{};
-};
-
-// Value readers: every caller checks the enclosing chunk or mini-chunk size first, so an
-// out-of-range read is a bug.
-std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    EAW_ASSERT_MSG(offset + 4 <= bytes.size(), "ALO ended while reading a 32-bit value");
-    std::uint32_t value = 0;
-    for (unsigned index = 0; index < 4; ++index)
-    {
-        value |= static_cast<std::uint32_t>(std::to_integer<unsigned char>(bytes[offset + index])) << (index * 8U);
-    }
-    return value;
+    return chunk::read_chunks(bytes, begin, end, "ALO");
 }
 
-std::int32_t read_i32(const std::span<const std::byte> bytes, const std::size_t offset)
+Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes, const Chunk& parent)
 {
-    return static_cast<std::int32_t>(read_u32(bytes, offset));
-}
-
-std::uint16_t read_u16(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    EAW_ASSERT_MSG(offset + 2 <= bytes.size(), "ALO ended while reading a 16-bit value");
-    return static_cast<std::uint16_t>(std::to_integer<unsigned char>(bytes[offset]) | (std::to_integer<unsigned char>(bytes[offset + 1]) << 8U));
-}
-
-float read_float(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    return std::bit_cast<float>(read_u32(bytes, offset));
+    return chunk::read_minis(bytes, parent, "ALO");
 }
 
 AloVector3 read_vector3(const std::span<const std::byte> bytes, const std::size_t offset)
 {
     return {read_float(bytes, offset), read_float(bytes, offset + 4), read_float(bytes, offset + 8)};
-}
-
-std::string read_string(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
-{
-    EAW_ASSERT_MSG(begin <= end && end <= bytes.size(), "ALO string range is invalid");
-    std::string value;
-    value.reserve(end - begin);
-    for (auto offset = begin; offset < end; ++offset)
-    {
-        const auto character = std::to_integer<unsigned char>(bytes[offset]);
-        if (character == 0)
-        {
-            break;
-        }
-        value.push_back(static_cast<char>(character));
-    }
-    return value;
-}
-
-Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
-{
-    if (begin > end || end > bytes.size())
-    {
-        return make_error("ALO chunk range is invalid");
-    }
-    std::vector<Chunk> chunks;
-    auto cursor = begin;
-    while (cursor < end)
-    {
-        if (end - cursor < 8)
-        {
-            return make_error("ALO contains a truncated chunk header");
-        }
-        const auto type = read_u32(bytes, cursor);
-        const auto encoded_size = read_u32(bytes, cursor + 4);
-        const auto size = static_cast<std::size_t>(encoded_size & 0x7fffffffU);
-        const auto payload = cursor + 8;
-        if (size > end - payload)
-        {
-            std::ostringstream message;
-            message << "ALO chunk 0x" << std::hex << type << " extends past its parent";
-            return make_error(message.str());
-        }
-        chunks.push_back({type, (encoded_size & 0x80000000U) != 0, payload, payload + size});
-        cursor = payload + size;
-    }
-    return chunks;
-}
-
-Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes, const Chunk& chunk)
-{
-    std::vector<MiniChunk> chunks;
-    auto cursor = chunk.payload;
-    while (cursor < chunk.end)
-    {
-        if (chunk.end - cursor < 2)
-        {
-            return make_error("ALO contains a truncated mini-chunk header");
-        }
-        const auto type = std::to_integer<std::uint8_t>(bytes[cursor]);
-        const auto size = std::to_integer<std::uint8_t>(bytes[cursor + 1]);
-        const auto payload = cursor + 2;
-        if (size > chunk.end - payload)
-        {
-            return make_error("ALO mini-chunk extends past its parent");
-        }
-        chunks.push_back({type, payload, payload + size});
-        cursor = payload + size;
-    }
-    return chunks;
-}
-
-const Chunk* find_chunk(const std::vector<Chunk>& chunks, const std::uint32_t type)
-{
-    const auto found = std::ranges::find(chunks, type, &Chunk::type);
-    return found == chunks.end() ? nullptr : &*found;
-}
-
-const MiniChunk* find_mini(const std::vector<MiniChunk>& chunks, const std::uint8_t type)
-{
-    const auto found = std::ranges::find(chunks, type, &MiniChunk::type);
-    return found == chunks.end() ? nullptr : &*found;
 }
 
 // Decodes numeric parameter components from the parameter's own data chunk. A chunk shorter than
@@ -577,252 +473,6 @@ Status parse_connections(const std::span<const std::byte> bytes, const Chunk& ch
 }
 
 } // namespace
-
-AloMatrix4 alo_identity_matrix() noexcept
-{
-    AloMatrix4 matrix;
-    matrix.values[0] = 1.0F;
-    matrix.values[5] = 1.0F;
-    matrix.values[10] = 1.0F;
-    matrix.values[15] = 1.0F;
-    return matrix;
-}
-
-AloNameVariant alo_name_variant(const std::string_view name) noexcept
-{
-    std::size_t digits = 0;
-    while (digits < name.size() && digits < 9 && std::isdigit(static_cast<unsigned char>(name[name.size() - 1 - digits])) != 0)
-    {
-        ++digits;
-    }
-    if (digits == 0 || digits == 9 || name.size() < digits + 4)
-    {
-        return {};
-    }
-    const auto marker = name.substr(name.size() - digits - 4, 4);
-    const auto upper = [](const char character)
-    {
-        return static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
-    };
-    std::string folded(marker);
-    std::ranges::transform(folded, folded.begin(), upper);
-    AloVariantKind kind = AloVariantKind::none;
-    if (folded == "_ALT")
-    {
-        kind = AloVariantKind::alternate;
-    }
-    else if (folded == "_LOD")
-    {
-        kind = AloVariantKind::level_of_detail;
-    }
-    else
-    {
-        return {};
-    }
-    std::uint32_t index = 0;
-    for (const auto character : name.substr(name.size() - digits))
-    {
-        index = index * 10U + static_cast<std::uint32_t>(character - '0');
-    }
-    return {kind, index};
-}
-
-std::vector<bool> alo_default_mesh_visibility(const AloModel& model, const bool apply_bind_pose_bones)
-{
-    const auto variant_of = [&](const AloMesh& mesh)
-    {
-        auto variant = alo_name_variant(mesh.name);
-        if (variant.kind == AloVariantKind::none && mesh.attached_bone && *mesh.attached_bone < model.bones.size())
-        {
-            variant = alo_name_variant(model.bones[*mesh.attached_bone].name);
-        }
-        return variant;
-    };
-    std::uint32_t highest_lod = 0;
-    for (const auto& mesh : model.meshes)
-    {
-        if (const auto variant = variant_of(mesh); variant.kind == AloVariantKind::level_of_detail)
-        {
-            highest_lod = std::max(highest_lod, variant.index);
-        }
-    }
-    std::vector<bool> visible;
-    visible.reserve(model.meshes.size());
-    for (const auto& mesh : model.meshes)
-    {
-        const auto variant = variant_of(mesh);
-        const bool hidden_bone = apply_bind_pose_bones && mesh.attached_bone && *mesh.attached_bone < model.bones.size() && !model.bones[*mesh.attached_bone].visible;
-        const bool other_state = variant.kind == AloVariantKind::alternate && variant.index != 0;
-        const bool other_lod = variant.kind == AloVariantKind::level_of_detail && variant.index != highest_lod;
-        visible.push_back(!mesh.hidden && !hidden_bone && !other_state && !other_lod);
-    }
-    return visible;
-}
-
-AloMatrix4 alo_multiply(const AloMatrix4& left, const AloMatrix4& right) noexcept
-{
-    AloMatrix4 result;
-    for (std::size_t row = 0; row < 4; ++row)
-    {
-        for (std::size_t column = 0; column < 4; ++column)
-        {
-            float value = 0.0F;
-            for (std::size_t inner = 0; inner < 4; ++inner)
-            {
-                value += left.values[row * 4 + inner] * right.values[inner * 4 + column];
-            }
-            result.values[row * 4 + column] = value;
-        }
-    }
-    return result;
-}
-
-Result<AloMatrix4> alo_inverse(const AloMatrix4& matrix)
-{
-    float augmented[4][8]{};
-    for (std::size_t row = 0; row < 4; ++row)
-    {
-        for (std::size_t column = 0; column < 4; ++column)
-        {
-            augmented[row][column] = matrix.values[row * 4 + column];
-        }
-        augmented[row][row + 4] = 1.0F;
-    }
-    for (std::size_t pivot = 0; pivot < 4; ++pivot)
-    {
-        auto best = pivot;
-        for (std::size_t row = pivot + 1; row < 4; ++row)
-        {
-            if (std::fabs(augmented[row][pivot]) > std::fabs(augmented[best][pivot]))
-            {
-                best = row;
-            }
-        }
-        if (std::fabs(augmented[best][pivot]) < 1.0e-8F)
-        {
-            return make_error("ALO bone transform is singular");
-        }
-        if (best != pivot)
-        {
-            for (std::size_t column = 0; column < 8; ++column)
-            {
-                std::swap(augmented[pivot][column], augmented[best][column]);
-            }
-        }
-        const auto divisor = augmented[pivot][pivot];
-        for (float& value : augmented[pivot])
-        {
-            value /= divisor;
-        }
-        for (std::size_t row = 0; row < 4; ++row)
-        {
-            if (row == pivot)
-            {
-                continue;
-            }
-            const auto factor = augmented[row][pivot];
-            for (std::size_t column = 0; column < 8; ++column)
-            {
-                augmented[row][column] -= factor * augmented[pivot][column];
-            }
-        }
-    }
-    AloMatrix4 result;
-    for (std::size_t row = 0; row < 4; ++row)
-    {
-        for (std::size_t column = 0; column < 4; ++column)
-        {
-            result.values[row * 4 + column] = augmented[row][column + 4];
-        }
-    }
-    return result;
-}
-
-AloVector3 alo_transform_point(const AloVector3& point, const AloMatrix4& matrix) noexcept
-{
-    return {point.x * matrix.values[0] + point.y * matrix.values[4] + point.z * matrix.values[8] + matrix.values[12],
-            point.x * matrix.values[1] + point.y * matrix.values[5] + point.z * matrix.values[9] + matrix.values[13],
-            point.x * matrix.values[2] + point.y * matrix.values[6] + point.z * matrix.values[10] + matrix.values[14]};
-}
-
-AloTransformParts alo_decompose_transform(const AloMatrix4& matrix) noexcept
-{
-    const auto& m = matrix.values;
-    AloTransformParts parts;
-    parts.translation = {m[12], m[13], m[14]};
-    const auto length = [](const float x, const float y, const float z)
-    {
-        return std::sqrt(x * x + y * y + z * z);
-    };
-    parts.scale = {length(m[0], m[1], m[2]), length(m[4], m[5], m[6]), length(m[8], m[9], m[10])};
-    const auto determinant = m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) + m[2] * (m[4] * m[9] - m[5] * m[8]);
-    if (determinant < 0.0F)
-    {
-        parts.scale.x = -parts.scale.x;
-    }
-    if (parts.scale.x == 0.0F || parts.scale.y == 0.0F || parts.scale.z == 0.0F || !std::isfinite(determinant))
-    {
-        return parts;
-    }
-    // Rows of the rotation (row-vector convention, as alo_compose_transform writes them).
-    const std::array<float, 9> r{m[0] / parts.scale.x, m[1] / parts.scale.x, m[2] / parts.scale.x, m[4] / parts.scale.y, m[5] / parts.scale.y,
-                                 m[6] / parts.scale.y, m[8] / parts.scale.z, m[9] / parts.scale.z, m[10] / parts.scale.z};
-    const auto trace = r[0] + r[4] + r[8];
-    AloQuaternion q;
-    if (trace > 0.0F)
-    {
-        const auto s = 0.5F / std::sqrt(trace + 1.0F);
-        q = {(r[5] - r[7]) * s, (r[6] - r[2]) * s, (r[1] - r[3]) * s, 0.25F / s};
-    }
-    else if (r[0] > r[4] && r[0] > r[8])
-    {
-        const auto s = 2.0F * std::sqrt(std::max(1.0F + r[0] - r[4] - r[8], 0.0F));
-        q = {0.25F * s, (r[1] + r[3]) / s, (r[2] + r[6]) / s, (r[5] - r[7]) / s};
-    }
-    else if (r[4] > r[8])
-    {
-        const auto s = 2.0F * std::sqrt(std::max(1.0F + r[4] - r[0] - r[8], 0.0F));
-        q = {(r[1] + r[3]) / s, 0.25F * s, (r[5] + r[7]) / s, (r[6] - r[2]) / s};
-    }
-    else
-    {
-        const auto s = 2.0F * std::sqrt(std::max(1.0F + r[8] - r[0] - r[4], 0.0F));
-        q = {(r[2] + r[6]) / s, (r[5] + r[7]) / s, 0.25F * s, (r[1] - r[3]) / s};
-    }
-    const auto norm = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
-    if (norm > 0.0F && std::isfinite(norm))
-    {
-        parts.rotation = {q.x / norm, q.y / norm, q.z / norm, q.w / norm};
-    }
-    return parts;
-}
-
-AloMatrix4 alo_compose_transform(const AloVector3& scale, const AloQuaternion& rotation, const AloVector3& translation) noexcept
-{
-    const auto xx = rotation.x * rotation.x;
-    const auto yy = rotation.y * rotation.y;
-    const auto zz = rotation.z * rotation.z;
-    const auto xy = rotation.x * rotation.y;
-    const auto xz = rotation.x * rotation.z;
-    const auto yz = rotation.y * rotation.z;
-    const auto wx = rotation.w * rotation.x;
-    const auto wy = rotation.w * rotation.y;
-    const auto wz = rotation.w * rotation.z;
-    auto matrix = alo_identity_matrix();
-    matrix.values[0] = (1.0F - 2.0F * (yy + zz)) * scale.x;
-    matrix.values[1] = (2.0F * (xy + wz)) * scale.x;
-    matrix.values[2] = (2.0F * (xz - wy)) * scale.x;
-    matrix.values[4] = (2.0F * (xy - wz)) * scale.y;
-    matrix.values[5] = (1.0F - 2.0F * (xx + zz)) * scale.y;
-    matrix.values[6] = (2.0F * (yz + wx)) * scale.y;
-    matrix.values[8] = (2.0F * (xz + wy)) * scale.z;
-    matrix.values[9] = (2.0F * (yz - wx)) * scale.z;
-    matrix.values[10] = (1.0F - 2.0F * (xx + yy)) * scale.z;
-    matrix.values[12] = translation.x;
-    matrix.values[13] = translation.y;
-    matrix.values[14] = translation.z;
-    return matrix;
-}
 
 Result<AloModel> AloModel::parse(const std::span<const std::byte> bytes)
 {

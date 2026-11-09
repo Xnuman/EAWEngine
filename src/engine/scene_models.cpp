@@ -1,6 +1,7 @@
 #include "scene_builder_internal.hpp"
 
 #include "combat_content.hpp"
+#include "eaw/alo_interpretation.hpp"
 #include "eaw/dds_texture.hpp"
 #include "eaw/map_object_layout.hpp"
 #include "eaw/xml_document.hpp"

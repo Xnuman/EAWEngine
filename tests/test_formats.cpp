@@ -1,5 +1,7 @@
 #include "test_support.hpp"
 
+#include "eaw/alo_interpretation.hpp"
+#include "eaw/chunk_file.hpp"
 #include "eaw/localization_validation.hpp"
 
 #include <cctype>
@@ -425,6 +427,49 @@ void test_localization_scan()
 
 // Translation checks against a reference DAT, and the workspace helpers the DAT editor and EAWTools
 // share (rows from a DAT, unit ids, new-unit rows, workspace order).
+// The shared chunk container: ranges, the container flag, nesting, and every malformed header named
+// with its format, part, offset, and type.
+void test_chunk_file()
+{
+    std::vector<std::byte> inner;
+    append_mini(inner, 0x05, {std::byte{1}, std::byte{2}});
+    append_mini(inner, 0x06, {});
+    std::vector<std::byte> file;
+    append_chunk(file, 0x0200, inner);
+    std::vector<std::byte> nested;
+    append_chunk(nested, 0x0201, {std::byte{'h'}, std::byte{'i'}, std::byte{0}, std::byte{'x'}});
+    append_chunk(file, 0x0300, nested, true);
+
+    const auto chunks = expect_ok(eaw::chunk::read_chunks(file, 0, file.size(), "TEST"), "chunk read");
+    require(chunks.size() == 2 && chunks[0].type == 0x0200 && !chunks[0].container && chunks[1].type == 0x0300 && chunks[1].container && chunks[1].end == file.size(), "chunk ranges failed");
+    const auto minis = expect_ok(eaw::chunk::read_minis(file, chunks[0], "TEST"), "mini read");
+    require(minis.size() == 2 && minis[0].type == 0x05 && minis[0].size() == 2 && minis[1].size() == 0 && eaw::chunk::find_mini(minis, 0x06) == &minis[1] &&
+                eaw::chunk::find_mini(minis, 0x07) == nullptr,
+            "mini-chunk ranges failed");
+    const auto children = expect_ok(eaw::chunk::read_chunks(file, chunks[1].payload, chunks[1].end, "TEST"), "nested read");
+    require(children.size() == 1 && eaw::chunk::read_string(file, children[0].payload, children[0].end) == "hi" && eaw::chunk::find_chunk(chunks, 0x0300) == &chunks[1],
+            "nested chunks or strings failed");
+    require(eaw::chunk::read_u16(file, minis[0].payload) == 0x0201 && eaw::chunk::read_u32(file, 0) == 0x0200, "little-endian values failed");
+
+    const auto failure = [](const auto& result, const std::string_view text)
+    {
+        return !result && result.error().message.find(text) != std::string::npos;
+    };
+    auto truncated = file;
+    truncated.resize(5);
+    require(failure(eaw::chunk::read_chunks(truncated, 0, truncated.size(), "TEST", "root"), "TEST in root ends in a truncated chunk header at offset 0"), "truncated header not reported");
+    auto overlong = file;
+    overlong.resize(overlong.size() - 1);
+    require(failure(eaw::chunk::read_chunks(overlong, 0, overlong.size(), "TEST"), "TEST chunk 0x300 at offset"), "overlong chunk not reported");
+    require(failure(eaw::chunk::read_chunks(file, 4, 2, "TEST"), "chunk range is invalid") && failure(eaw::chunk::read_chunks(file, 0, file.size() + 1, "TEST"), "chunk range is invalid"),
+            "invalid range not reported");
+    auto short_mini = chunks[0];
+    short_mini.end = short_mini.payload + 3;
+    require(failure(eaw::chunk::read_minis(file, short_mini, "TEST"), "TEST mini-chunk 0x5 at offset"), "overlong mini-chunk not reported");
+    short_mini.end = short_mini.payload + 1;
+    require(failure(eaw::chunk::read_minis(file, short_mini, "TEST"), "truncated mini-chunk header"), "truncated mini-chunk not reported");
+}
+
 void test_localization_validation()
 {
     const auto tokens = [](const std::u16string_view text)
@@ -517,6 +562,7 @@ void test_particle_system()
 }
 
 const ModuleRegistrar registrar("formats", {
+                                               {"test_chunk_file", &test_chunk_file},
                                                {"test_localization_validation", &test_localization_validation},
                                                {"test_particle_system", &test_particle_system},
                                                {"test_alo_model", &test_alo_model},

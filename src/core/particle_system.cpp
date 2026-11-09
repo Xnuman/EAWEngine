@@ -1,3 +1,4 @@
+#include "eaw/chunk_file.hpp"
 #include "eaw/particle_system.hpp"
 
 #include <algorithm>
@@ -7,57 +8,31 @@
 namespace eaw {
 namespace {
 
+// The shared chunk container (eaw/chunk_file.hpp), with this format named in diagnostics.
+using Chunk = ChunkRange;
+using MiniChunk = MiniChunkRange;
+using chunk::read_float;
+using chunk::read_u32;
+
+Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end, const std::string_view where)
+{
+    return chunk::read_chunks(bytes, begin, end, "particle ALO", where);
+}
+
+Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes, const Chunk& parent, const std::string_view where)
+{
+    return chunk::read_minis(bytes, parent, "particle ALO", where);
+}
+
 constexpr std::uint32_t classic_root = 0x0900;
 constexpr std::uint32_t plugin_root = 0x1500;
 constexpr std::size_t group_size = 64;
 // The legacy particle shader table has 14 entries (docs/compatibility-research.md).
 constexpr std::uint32_t known_blend_modes = 14;
 
-struct Chunk
+template <class Range> std::string read_string(const std::span<const std::byte> bytes, const Range& range)
 {
-    std::uint32_t type{};
-    std::size_t payload{};
-    std::size_t end{};
-
-    [[nodiscard]] std::size_t size() const noexcept
-    {
-        return end - payload;
-    }
-};
-
-using MiniChunk = Chunk;
-
-// Value readers: every caller checks the enclosing chunk or mini-chunk size first, so an
-// out-of-range read is a bug.
-std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    EAW_ASSERT_MSG(offset + 4 <= bytes.size(), "particle ALO ended while reading a 32-bit value");
-    std::uint32_t value = 0;
-    for (unsigned index = 0; index < 4; ++index)
-    {
-        value |= static_cast<std::uint32_t>(std::to_integer<unsigned char>(bytes[offset + index])) << (index * 8U);
-    }
-    return value;
-}
-
-float read_float(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    return std::bit_cast<float>(read_u32(bytes, offset));
-}
-
-std::string read_string(const std::span<const std::byte> bytes, const Chunk& chunk)
-{
-    std::string value;
-    for (auto offset = chunk.payload; offset < chunk.end; ++offset)
-    {
-        const auto character = std::to_integer<unsigned char>(bytes[offset]);
-        if (character == 0)
-        {
-            break;
-        }
-        value.push_back(static_cast<char>(character));
-    }
-    return value;
+    return chunk::read_string(bytes, range.payload, range.end);
 }
 
 std::string hex(const std::uint32_t value)
@@ -65,53 +40,6 @@ std::string hex(const std::uint32_t value)
     std::ostringstream text;
     text << "0x" << std::hex << value;
     return text.str();
-}
-
-Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end, const std::string_view where)
-{
-    EAW_ASSERT_MSG(begin <= end && end <= bytes.size(), "particle ALO chunk range is invalid");
-    std::vector<Chunk> chunks;
-    auto cursor = begin;
-    while (cursor < end)
-    {
-        if (end - cursor < 8)
-        {
-            return make_error("particle ALO " + std::string(where) + " ends in a truncated chunk header at offset " + std::to_string(cursor));
-        }
-        const auto type = read_u32(bytes, cursor);
-        const auto size = static_cast<std::size_t>(read_u32(bytes, cursor + 4) & 0x7fffffffU);
-        const auto payload = cursor + 8;
-        if (size > end - payload)
-        {
-            return make_error("particle ALO chunk " + hex(type) + " in " + std::string(where) + " at offset " + std::to_string(cursor) + " extends past its parent");
-        }
-        chunks.push_back({type, payload, payload + size});
-        cursor = payload + size;
-    }
-    return chunks;
-}
-
-Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes, const Chunk& chunk, const std::string_view where)
-{
-    std::vector<MiniChunk> minis;
-    auto cursor = chunk.payload;
-    while (cursor < chunk.end)
-    {
-        if (chunk.end - cursor < 2)
-        {
-            return make_error("particle ALO " + std::string(where) + " ends in a truncated mini-chunk header at offset " + std::to_string(cursor));
-        }
-        const auto type = std::to_integer<std::uint8_t>(bytes[cursor]);
-        const auto size = std::to_integer<std::uint8_t>(bytes[cursor + 1]);
-        const auto payload = cursor + 2;
-        if (size > chunk.end - payload)
-        {
-            return make_error("particle ALO mini-chunk " + hex(type) + " in " + std::string(where) + " at offset " + std::to_string(cursor) + " extends past its parent");
-        }
-        minis.push_back({type, payload, payload + size});
-        cursor = payload + size;
-    }
-    return minis;
 }
 
 // Property payload sizes by kind.

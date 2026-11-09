@@ -1,3 +1,4 @@
+#include "eaw/chunk_file.hpp"
 #include "eaw/ala_animation.hpp"
 
 #include <algorithm>
@@ -11,139 +12,25 @@
 namespace eaw {
 namespace {
 
-struct Chunk
-{
-    std::uint32_t type{};
-    std::size_t payload{};
-    std::size_t end{};
-};
-
-struct MiniChunk
-{
-    std::uint8_t type{};
-    std::size_t payload{};
-    std::size_t end{};
-};
-
-// Value readers: every caller checks the enclosing chunk or mini-chunk size first, so an
-// out-of-range read is a bug.
-std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    EAW_ASSERT_MSG(offset + 4 <= bytes.size(), "ALA ended while reading a 32-bit value");
-    std::uint32_t value = 0;
-    for (unsigned index = 0; index < 4; ++index)
-    {
-        value |= static_cast<std::uint32_t>(std::to_integer<unsigned char>(bytes[offset + index])) << (index * 8U);
-    }
-    return value;
-}
-
-std::uint16_t read_u16(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    EAW_ASSERT_MSG(offset + 2 <= bytes.size(), "ALA ended while reading a 16-bit value");
-    return static_cast<std::uint16_t>(std::to_integer<unsigned char>(bytes[offset]) | (std::to_integer<unsigned char>(bytes[offset + 1]) << 8U));
-}
-
-std::int16_t read_i16(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    return static_cast<std::int16_t>(read_u16(bytes, offset));
-}
-
-float read_float(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    return std::bit_cast<float>(read_u32(bytes, offset));
-}
-
-std::string read_string(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
-{
-    EAW_ASSERT_MSG(begin <= end && end <= bytes.size(), "ALA string range is invalid");
-    std::string value;
-    for (auto offset = begin; offset < end; ++offset)
-    {
-        const auto character = std::to_integer<unsigned char>(bytes[offset]);
-        if (character == 0)
-        {
-            break;
-        }
-        value.push_back(static_cast<char>(character));
-    }
-    return value;
-}
+// The shared chunk container (eaw/chunk_file.hpp), with this format named in diagnostics.
+using Chunk = ChunkRange;
+using MiniChunk = MiniChunkRange;
+using chunk::find_chunk;
+using chunk::find_mini;
+using chunk::read_float;
+using chunk::read_i16;
+using chunk::read_string;
+using chunk::read_u16;
+using chunk::read_u32;
 
 Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
 {
-    if (begin > end || end > bytes.size())
-    {
-        return make_error("ALA chunk range is invalid");
-    }
-    std::vector<Chunk> chunks;
-    auto cursor = begin;
-    while (cursor < end)
-    {
-        if (end - cursor < 8)
-        {
-            return make_error("ALA contains a truncated chunk header");
-        }
-        const auto type = read_u32(bytes, cursor);
-        const auto size = static_cast<std::size_t>(read_u32(bytes, cursor + 4) & 0x7fffffffU);
-        const auto payload = cursor + 8;
-        if (size > end - payload)
-        {
-            std::ostringstream message;
-            message << "ALA chunk 0x" << std::hex << type << " extends past its parent";
-            return make_error(message.str());
-        }
-        chunks.push_back({type, payload, payload + size});
-        cursor = payload + size;
-    }
-    return chunks;
+    return chunk::read_chunks(bytes, begin, end, "ALA");
 }
 
-Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes, const Chunk& chunk)
+Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes, const Chunk& parent)
 {
-    std::vector<MiniChunk> chunks;
-    auto cursor = chunk.payload;
-    while (cursor < chunk.end)
-    {
-        if (chunk.end - cursor < 2)
-        {
-            return make_error("ALA contains a truncated mini-chunk header");
-        }
-        const auto type = std::to_integer<std::uint8_t>(bytes[cursor]);
-        const auto size = std::to_integer<std::uint8_t>(bytes[cursor + 1]);
-        const auto payload = cursor + 2;
-        if (size > chunk.end - payload)
-        {
-            return make_error("ALA mini-chunk extends past its parent");
-        }
-        chunks.push_back({type, payload, payload + size});
-        cursor = payload + size;
-    }
-    return chunks;
-}
-
-const Chunk* find_chunk(const std::vector<Chunk>& chunks, const std::uint32_t type)
-{
-    for (const auto& chunk : chunks)
-    {
-        if (chunk.type == type)
-        {
-            return &chunk;
-        }
-    }
-    return nullptr;
-}
-
-const MiniChunk* find_mini(const std::vector<MiniChunk>& chunks, const std::uint8_t type)
-{
-    for (const auto& chunk : chunks)
-    {
-        if (chunk.type == type)
-        {
-            return &chunk;
-        }
-    }
-    return nullptr;
+    return chunk::read_minis(bytes, parent, "ALA");
 }
 
 std::uint32_t mini_u32(const std::span<const std::byte> bytes, const MiniChunk* chunk, const std::uint32_t fallback = 0)
