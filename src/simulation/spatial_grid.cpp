@@ -13,14 +13,14 @@ namespace {
 // far-away entity cannot make the grid allocate without bound.
 constexpr std::uint32_t max_cells_per_axis = 1024;
 
-bool finite_xy(const SimVector3& position) noexcept
+bool finite_xy(const Vector3& position) noexcept
 {
     return std::isfinite(position.x) && std::isfinite(position.y);
 }
 
 } // namespace
 
-void SpatialGrid::build(const std::span<const SimVector3> positions, const float cell_size)
+void SpatialGrid::build(const std::span<const Vector3> positions, const float cell_size)
 {
     EAW_ASSERT_MSG(cell_size > 0.0F && std::isfinite(cell_size), "spatial grid cells must have a positive size");
     positions_.assign(positions.begin(), positions.end());
@@ -52,7 +52,7 @@ void SpatialGrid::build(const std::span<const SimVector3> positions, const float
     origin_y_ = minimum_y;
     columns_ = std::min(max_cells_per_axis, static_cast<std::uint32_t>((maximum_x - minimum_x) / cell_size_) + 1U);
     rows_ = std::min(max_cells_per_axis, static_cast<std::uint32_t>((maximum_y - minimum_y) / cell_size_) + 1U);
-    const auto cell_of = [&](const SimVector3& position)
+    const auto cell_of = [&](const Vector3& position)
     {
         const auto column = std::min(columns_ - 1U, static_cast<std::uint32_t>((position.x - origin_x_) / cell_size_));
         const auto row = std::min(rows_ - 1U, static_cast<std::uint32_t>((position.y - origin_y_) / cell_size_));
@@ -81,7 +81,7 @@ void SpatialGrid::build(const std::span<const SimVector3> positions, const float
     }
 }
 
-void SpatialGrid::query(const SimVector3 center, const float radius, std::vector<std::uint32_t>& out) const
+void SpatialGrid::query(const Vector3 center, const float radius, std::vector<std::uint32_t>& out) const
 {
     if (columns_ == 0 || !finite_xy(center) || !std::isfinite(radius) || radius < 0.0F)
     {

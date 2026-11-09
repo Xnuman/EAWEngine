@@ -137,7 +137,7 @@ void BattleEffects::build_sprites(const std::array<float, 3>& eye, const std::sp
     }
 }
 
-void BattleEffects::play_object(const std::uint32_t key, const SimVector3& position)
+void BattleEffects::play_object(const std::uint32_t key, const Vector3& position)
 {
     const auto found = effect_objects_.find(key);
     if (key == 0 || found == effect_objects_.end() || !found->second.effect)

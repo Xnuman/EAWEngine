@@ -255,9 +255,9 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
         ++hits_;
         const auto kind = apply_damage(victim, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, hardpoint);
         const auto point = aim_point(victim, hardpoint);
-        const SimVector3 delta{point.x - origin.x, point.y - origin.y, point.z - origin.z};
+        const Vector3 delta{point.x - origin.x, point.y - origin.y, point.z - origin.z};
         const auto length = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
-        const auto direction = length > 0.0F ? SimVector3{delta.x / length, delta.y / length, delta.z / length} : SimVector3{};
+        const auto direction = length > 0.0F ? Vector3{delta.x / length, delta.y / length, delta.z / length} : Vector3{};
         impacts_.push_back({point, direction, weapon.projectile_visual, kind});
         return;
     }
@@ -278,7 +278,7 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
     projectiles_.push_back(projectile);
 }
 
-SimVector3 SimulationWorld::world_point(const std::size_t index, const LocalPoint& point) const noexcept
+Vector3 SimulationWorld::world_point(const std::size_t index, const LocalPoint& point) const noexcept
 {
     const auto heading = headings_[index];
     const auto cos_heading = std::cos(heading);
@@ -311,7 +311,7 @@ bool SimulationWorld::keeps(const std::size_t index, const HardpointProfile::Kin
     return !any;
 }
 
-std::int32_t SimulationWorld::aim_hardpoint(const std::size_t victim, const SimVector3& from) const noexcept
+std::int32_t SimulationWorld::aim_hardpoint(const std::size_t victim, const Vector3& from) const noexcept
 {
     std::int32_t best = -1;
     float best_distance = 0.0F;
@@ -334,7 +334,7 @@ std::int32_t SimulationWorld::aim_hardpoint(const std::size_t victim, const SimV
     return best;
 }
 
-SimVector3 SimulationWorld::aim_point(const std::size_t victim, const std::int32_t hardpoint) const noexcept
+Vector3 SimulationWorld::aim_point(const std::size_t victim, const std::int32_t hardpoint) const noexcept
 {
     if (hardpoint >= 0)
     {
@@ -401,7 +401,7 @@ void SimulationWorld::run_projectiles()
             // A part destroyed meanwhile still takes the shot's aim; the hit lands on the hull.
             projectile.aim = aim_point(*victim, projectile.target_hardpoint);
         }
-        const SimVector3 delta{projectile.aim.x - projectile.position.x, projectile.aim.y - projectile.position.y, projectile.aim.z - projectile.position.z};
+        const Vector3 delta{projectile.aim.x - projectile.position.x, projectile.aim.y - projectile.position.y, projectile.aim.z - projectile.position.z};
         const auto distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto step_length = projectile.speed * dt;
         if (distance > 0.0F)

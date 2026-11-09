@@ -1,19 +1,12 @@
 #pragma once
 
-// Basic value types shared by the simulation's headers.
+// Basic value types shared by the simulation's headers (positions are eaw_math vectors).
+
+#include "math/vector.hpp"
 
 #include <cstdint>
 
 namespace eaw {
-
-struct SimVector3
-{
-    float x{};
-    float y{};
-    float z{};
-
-    friend bool operator==(const SimVector3&, const SimVector3&) = default;
-};
 
 // Generation-checked entity reference. Generation 0 is never issued, so a default id is invalid and a
 // destroyed entity's id never aliases a later entity in the same slot.

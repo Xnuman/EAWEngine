@@ -20,6 +20,6 @@ namespace eaw {
 
 // Destinations for `count` units ordered to `target`: a centered square grid with `spacing` world
 // units between neighbors (straight-line movement has no formations or collision yet).
-[[nodiscard]] std::vector<SimVector3> grid_targets(const SimVector3& target, std::size_t count, float spacing);
+[[nodiscard]] std::vector<Vector3> grid_targets(const Vector3& target, std::size_t count, float spacing);
 
 } // namespace eaw

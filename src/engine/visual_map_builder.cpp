@@ -38,7 +38,7 @@ template <class Member> void arrange_companies(VisualScene& scene, VisualMapAsse
             ++last;
         }
         const auto& origin = scene.instances[members[first].instance].transform;
-        const SimVector3 center{origin[12], origin[13], origin[14]};
+        const Vector3 center{origin[12], origin[13], origin[14]};
         const auto facing = model_forward_heading(origin);
         std::vector<FormationMember> formation;
         for (auto index = first; index < last; ++index)

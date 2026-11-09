@@ -203,7 +203,7 @@ std::array<float, 16> projectile_model_transform(const ProjectileSnapshot& proje
 {
     const auto& d = projectile.direction;
     const auto back = projectile.speed * tick_seconds * (1.0F - std::clamp(interpolation, 0.0F, 1.0F));
-    const SimVector3 position{projectile.position.x - d.x * back, projectile.position.y - d.y * back, projectile.position.z - d.z * back};
+    const Vector3 position{projectile.position.x - d.x * back, projectile.position.y - d.y * back, projectile.position.z - d.z * back};
     const auto heading = std::atan2(d.y, d.x);
     const auto pitch = std::asin(std::clamp(d.z, -1.0F, 1.0F));
     auto scale = visual_identity_transform;

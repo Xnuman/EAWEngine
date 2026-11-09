@@ -44,7 +44,7 @@ inline constexpr float dogfight_weave = 60.0F;
 inline constexpr float dogfight_weave_seconds = 8.0F;
 inline constexpr float dogfight_band = 150.0F;
 
-inline bool finite(const SimVector3& value) noexcept
+inline bool finite(const Vector3& value) noexcept
 {
     return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
@@ -83,7 +83,7 @@ inline bool valid_profile(const CombatProfile& profile) noexcept
     return true;
 }
 
-inline float distance_xy(const SimVector3& from, const SimVector3& to) noexcept
+inline float distance_xy(const Vector3& from, const Vector3& to) noexcept
 {
     return std::hypot(to.x - from.x, to.y - from.y);
 }

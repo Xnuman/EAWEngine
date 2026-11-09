@@ -64,7 +64,7 @@ struct BattleCommand
 {
     BattleOrder order{BattleOrder::move};
     std::vector<EntityId> entities;
-    SimVector3 point;
+    Vector3 point;
     EntityId target;
     std::string type;
     std::uint32_t count{1};
@@ -118,7 +118,7 @@ public:
 
 private:
     [[nodiscard]] Result<SimCommand> translate(const BattleCommand& command) const;
-    [[nodiscard]] EntitySpawn spawn_of(std::size_t type_index, SimVector3 position, std::uint32_t owner) const;
+    [[nodiscard]] EntitySpawn spawn_of(std::size_t type_index, Vector3 position, std::uint32_t owner) const;
 
     SimulationWorld world_;
     std::vector<SpawnableType> spawnable_;

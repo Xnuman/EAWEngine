@@ -35,7 +35,7 @@ namespace eaw {
 // that type still cross it, or Obstacle).
 struct GroundFootprint
 {
-    SimVector3 center;
+    Vector3 center;
     float half_length{};
     float half_width{};
     // Rotation about +Z in radians.
@@ -61,7 +61,7 @@ struct EntitySpawn
 {
     std::string type_name;
     std::uint32_t owner{};
-    SimVector3 position;
+    Vector3 position;
     // Rotation about +Z in radians.
     float heading{};
     // World units per second; zero means the entity cannot move.
@@ -119,7 +119,7 @@ struct SimCommand
     SimCommandKind kind{SimCommandKind::move};
     std::vector<EntityId> entities;
     // Destination for move commands.
-    SimVector3 target;
+    Vector3 target;
     // Victim of attack commands.
     EntityId target_entity;
     // Stance of set_stance commands.
@@ -136,7 +136,7 @@ inline constexpr float body_aim_tolerance = 0.349066F;
 struct EntitySnapshot
 {
     EntityId id;
-    SimVector3 position;
+    Vector3 position;
     float heading{};
     std::uint32_t visual{};
     std::uint32_t owner{};
@@ -173,9 +173,9 @@ struct EntitySnapshot
 
 struct ProjectileSnapshot
 {
-    SimVector3 position;
+    Vector3 position;
     // Unit direction of flight.
-    SimVector3 direction;
+    Vector3 direction;
     std::uint32_t owner{};
     // Presentation only (not hashed): the weapon's projectile visual key, and the speed in world
     // units per second (to place the shot between ticks).
@@ -191,7 +191,7 @@ struct ProjectileSnapshot
 struct DeathSnapshot
 {
     EntityId id;
-    SimVector3 position;
+    Vector3 position;
     float heading{};
     float pitch{};
     std::uint32_t visual{};
@@ -217,9 +217,9 @@ enum class ImpactKind : std::uint8_t
 // hash). Instant weapons report their hits too.
 struct ImpactSnapshot
 {
-    SimVector3 position;
+    Vector3 position;
     // Unit direction the shot was flying.
-    SimVector3 direction;
+    Vector3 direction;
     // The weapon's projectile visual key (WeaponProfile::projectile_visual).
     std::uint32_t visual{};
     ImpactKind kind{ImpactKind::hull};
@@ -326,7 +326,7 @@ public:
     [[nodiscard]] std::string_view type_name(EntityId id) const noexcept;
     // The points an entity is still moving through, in order, ending at its destination (empty
     // when it is not moving or unknown). For debugging and presentation; not part of snapshots.
-    [[nodiscard]] std::vector<SimVector3> route(EntityId id) const;
+    [[nodiscard]] std::vector<Vector3> route(EntityId id) const;
     [[nodiscard]] const SimSnapshot& snapshot() const noexcept;
     [[nodiscard]] Stats stats() const noexcept;
     // FNV-1a over every gameplay component, in storage order: equal hashes mean identical simulation
@@ -361,9 +361,9 @@ private:
     };
     struct Projectile
     {
-        SimVector3 position;
-        SimVector3 aim;
-        SimVector3 direction;
+        Vector3 position;
+        Vector3 aim;
+        Vector3 direction;
         EntityId target;
         // The victim's hardpoint the shot aims at, or -1 for its hull.
         std::int32_t target_hardpoint{-1};
@@ -384,7 +384,7 @@ private:
     // their move target and route (navigation); flyers steer at `point`, or hold their heading.
     struct SteeringIntent
     {
-        std::optional<SimVector3> point;
+        std::optional<Vector3> point;
         bool hold_heading{};
         // Flyers: reverse through a vertical half-loop (the locomotor finishes it once started).
         bool loop{};
@@ -405,9 +405,9 @@ private:
     void destroy(std::size_t dense);
     void run_movement();
     // Requests a route to `target` (queued for the search budget when it needs a search).
-    void plan_move(std::size_t index, const SimVector3& target);
+    void plan_move(std::size_t index, const Vector3& target);
     // Plans now: a full search from the entity's position.
-    void plan_route_now(std::size_t index, const SimVector3& target);
+    void plan_route_now(std::size_t index, const Vector3& target);
     // Sets an entity's route from planned waypoints (the last is its destination).
     void set_route(std::size_t index, const std::vector<PathPoint>& waypoints, float height);
     // Works through queued path requests until the tick's search budget is spent.
@@ -415,7 +415,7 @@ private:
     struct PathRequest;
     // Plans a shared request's members until the tick's budget is spent; false when members remain.
     [[nodiscard]] bool plan_shared_route(PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
-    void plan_shared_member(const PathRequest& request, std::size_t index, const SimVector3& goal);
+    void plan_shared_member(const PathRequest& request, std::size_t index, const Vector3& goal);
     void apply_formation_move(const SimCommand& command);
     // Remaining route length of every moving entity (zero for the rest).
     void measure_remaining_routes();
@@ -442,13 +442,13 @@ private:
     // Returns what the shot did (shields only, hull, or hull with armor reducing it).
     ImpactKind apply_damage(std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health, std::int32_t hardpoint);
     // A point of an entity's own frame in world space.
-    [[nodiscard]] SimVector3 world_point(std::size_t index, const LocalPoint& point) const noexcept;
+    [[nodiscard]] Vector3 world_point(std::size_t index, const LocalPoint& point) const noexcept;
     [[nodiscard]] bool hardpoint_alive(std::size_t index, std::size_t hardpoint) const noexcept;
     // Whether any hardpoint of the kind survives (true when the entity has none of that kind).
     [[nodiscard]] bool keeps(std::size_t index, HardpointProfile::Kind kind) const noexcept;
     // The victim's live targetable hardpoint nearest to `from`, or -1.
-    [[nodiscard]] std::int32_t aim_hardpoint(std::size_t victim, const SimVector3& from) const noexcept;
-    [[nodiscard]] SimVector3 aim_point(std::size_t victim, std::int32_t hardpoint) const noexcept;
+    [[nodiscard]] std::int32_t aim_hardpoint(std::size_t victim, const Vector3& from) const noexcept;
+    [[nodiscard]] Vector3 aim_point(std::size_t victim, std::int32_t hardpoint) const noexcept;
     void run_projectiles();
     void remove_dead();
     [[nodiscard]] bool damageable(std::size_t index) const noexcept;
@@ -463,10 +463,10 @@ private:
     std::vector<std::uint32_t> free_slots_;
     // Dense structure-of-arrays components.
     std::vector<EntityId> ids_;
-    std::vector<SimVector3> positions_;
+    std::vector<Vector3> positions_;
     std::vector<float> headings_;
     std::vector<float> max_speeds_;
-    std::vector<std::optional<SimVector3>> move_targets_;
+    std::vector<std::optional<Vector3>> move_targets_;
     std::vector<std::uint32_t> owners_;
     std::vector<std::uint32_t> visuals_;
     std::vector<std::uint8_t> selectable_;
@@ -475,7 +475,7 @@ private:
     GroundMap ground_;
     std::vector<std::uint32_t> passable_types_;
     // Waypoints before the move target, last first (back() is the next one to reach).
-    std::vector<std::vector<SimVector3>> paths_;
+    std::vector<std::vector<Vector3>> paths_;
     GridPathfinder pathfinder_;
     std::uint64_t blocked_moves_{};
     std::uint64_t path_searches_{};
@@ -486,7 +486,7 @@ private:
     std::vector<float> turn_rates_;
     std::vector<float> min_speeds_;
     // Where an idle flyer circles (set when it arrives or first idles).
-    std::vector<std::optional<SimVector3>> loiter_points_;
+    std::vector<std::optional<Vector3>> loiter_points_;
     // Flyers: current pitch, the height of the plane they cruise in (their spawn height), and the
     // heading change of the last tick per second.
     std::vector<float> pitches_;
@@ -495,7 +495,7 @@ private:
     // Speed of the last tick (EntitySnapshot::speed), and positions before the tick's movement.
     std::vector<float> speeds_;
     std::vector<std::uint64_t> last_shot_ticks_;
-    std::vector<SimVector3> tick_start_positions_;
+    std::vector<Vector3> tick_start_positions_;
     // Flyers inside a half-loop, and the roll they unwind after one.
     std::vector<std::uint8_t> looping_;
     std::vector<float> rolls_;
@@ -507,15 +507,15 @@ private:
     std::vector<float> formation_spacings_;
     // Group speed of a formation move until the entity arrives; zero when none.
     std::vector<float> speed_limits_;
-    std::vector<SimVector3> separation_push_;
+    std::vector<Vector3> separation_push_;
     // A queued route request: one entity, or the ground members of a formation move that share a
     // movement class (planned on one shared path to `group_target`).
     struct PathRequest
     {
         std::vector<EntityId> members;
-        std::vector<SimVector3> goals;
+        std::vector<Vector3> goals;
         std::vector<std::uint32_t> serials;
-        SimVector3 group_target;
+        Vector3 group_target;
         // Shared requests: the shared path once planned, the commander's start and movement class,
         // and the next member to plan (a request can span several ticks).
         bool shared_ready{};

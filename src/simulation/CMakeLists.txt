@@ -28,4 +28,4 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_SIMULATION_HEADERS} ${
 add_library(eaw_simulation STATIC ${EAW_SIMULATION_HEADERS} ${EAW_SIMULATION_SOURCES})
 target_include_directories(eaw_simulation PUBLIC include)
 # Only for Status/Result and fatal errors; the simulation still reads no files.
-target_link_libraries(eaw_simulation PUBLIC eaw_core)
+target_link_libraries(eaw_simulation PUBLIC eaw_core eaw_math)

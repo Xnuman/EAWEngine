@@ -24,7 +24,7 @@ std::string fold_name(std::string text)
     return text;
 }
 
-void SandboxSession::spawn_units(const std::size_t type_index, const eaw::SimVector3& point, const std::uint32_t count)
+void SandboxSession::spawn_units(const std::size_t type_index, const eaw::Vector3& point, const std::uint32_t count)
 {
     const auto& type = spawnable[type_index];
     if (const auto submitted = battle->submit({.order = eaw::BattleOrder::spawn, .point = point, .type = type.type_name, .count = count, .owner = spawn_owner}); !submitted)
@@ -36,7 +36,7 @@ void SandboxSession::spawn_units(const std::size_t type_index, const eaw::SimVec
               << " at " << eaw::format_fixed(point.x, 0) << ", " << eaw::format_fixed(point.y, 0) << ", " << eaw::format_fixed(point.z, 0) << '\n';
 }
 
-void SandboxSession::spawn_named(const std::string& type, const eaw::SimVector3& point, const std::uint32_t count)
+void SandboxSession::spawn_named(const std::string& type, const eaw::Vector3& point, const std::uint32_t count)
 {
     const auto loaded = std::ranges::find_if(spawnable,
                                              [&](const eaw::SpawnableType& candidate)

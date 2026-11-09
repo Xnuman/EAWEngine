@@ -22,7 +22,7 @@ float pitch(const FormationMember& member) noexcept
 
 } // namespace
 
-float formation_facing(const std::span<const FormationMember> members, const SimVector3 target)
+float formation_facing(const std::span<const FormationMember> members, const Vector3 target)
 {
     if (members.empty())
     {
@@ -41,7 +41,7 @@ float formation_facing(const std::span<const FormationMember> members, const Sim
     return dx * dx + dy * dy > 1.0e-6F ? std::atan2(dy, dx) : 0.0F;
 }
 
-std::vector<FormationSlot> formation_slots(const std::span<const FormationMember> members, const SimVector3 target, const float facing)
+std::vector<FormationSlot> formation_slots(const std::span<const FormationMember> members, const Vector3 target, const float facing)
 {
     std::vector<FormationSlot> slots(members.size());
     if (members.empty())

@@ -60,7 +60,7 @@ void SimulationWorld::run_movement()
             move_over_ground(index, dt);
             continue;
         }
-        const SimVector3 delta{target->x - position.x, target->y - position.y, target->z - position.z};
+        const Vector3 delta{target->x - position.x, target->y - position.y, target->z - position.z};
         const auto distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto speed_factor = delta.x != 0.0F || delta.y != 0.0F ? steer(index, std::atan2(delta.y, delta.x), dt) : 1.0F;
         const auto step_length = travel_speed(index) * dt * speed_factor;
@@ -196,7 +196,7 @@ void SimulationWorld::run_separation()
         return flyer(index) || (radii_[index] > 0.0F && min_speeds_[index] <= 0.0F && (!land || follows_ground_[index] != 0));
     };
     grid_.build(positions_, grid_cell_size);
-    separation_push_.assign(ids_.size(), SimVector3{});
+    separation_push_.assign(ids_.size(), Vector3{});
     float largest_radius = 0.0F;
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {

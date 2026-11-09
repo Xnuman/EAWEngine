@@ -219,11 +219,11 @@ void SimulationWorld::plan_flight(const std::size_t index, const float dt)
                     const auto seconds = static_cast<float>(static_cast<double>(tick_) * tick_seconds_);
                     const auto phase = static_cast<float>(ids_[index].index % 16U) * (std::numbers::pi_v<float> / 8.0F);
                     const auto weave = dogfight_weave * std::sin(seconds * (2.0F * std::numbers::pi_v<float> / dogfight_weave_seconds) + phase);
-                    intent.point = SimVector3{there.x, there.y, std::clamp(there.z + weave, plane - dogfight_band, plane + dogfight_band)};
+                    intent.point = Vector3{there.x, there.y, std::clamp(there.z + weave, plane - dogfight_band, plane + dogfight_band)};
                     return;
                 }
                 const auto pass = std::max(combat.profile.range() / 3.0F, (radii_[index] + radii_[*victim]) * 2.0F);
-                intent.point = SimVector3{there.x, there.y, plane};
+                intent.point = Vector3{there.x, there.y, plane};
                 intent.hold_heading = distance_xy(position, there) < pass;
                 return;
             }
@@ -231,7 +231,7 @@ void SimulationWorld::plan_flight(const std::size_t index, const float dt)
         auto& target = move_targets_[index];
         if (target)
         {
-            intent.point = SimVector3{target->x, target->y, plane};
+            intent.point = Vector3{target->x, target->y, plane};
             if (distance_xy(position, *target) <= travel_speed(index) * dt * 3.0F)
             {
                 loiter_points_[index] = *target;
@@ -245,7 +245,7 @@ void SimulationWorld::plan_flight(const std::size_t index, const float dt)
         {
             loiter_points_[index] = position;
         }
-        intent.point = SimVector3{loiter_points_[index]->x, loiter_points_[index]->y, plane};
+        intent.point = Vector3{loiter_points_[index]->x, loiter_points_[index]->y, plane};
     };
     choose();
     if (intent.hold_heading || !intent.point || turn_rates_[index] <= 0.0F)

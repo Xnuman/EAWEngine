@@ -17,10 +17,10 @@ class SpatialGrid final
 public:
     // Items are indices into `positions`; `cell_size` must be positive and finite. Non-finite
     // positions are left out of the grid.
-    void build(std::span<const SimVector3> positions, float cell_size);
+    void build(std::span<const Vector3> positions, float cell_size);
 
     // Appends to `out` every item within `radius` of `center` (XY distance), in the fixed order.
-    void query(SimVector3 center, float radius, std::vector<std::uint32_t>& out) const;
+    void query(Vector3 center, float radius, std::vector<std::uint32_t>& out) const;
 
     [[nodiscard]] std::size_t size() const noexcept;
 
@@ -33,7 +33,7 @@ private:
     // Counting-sort layout: items of cell c are items_[starts_[c] .. starts_[c + 1]).
     std::vector<std::uint32_t> starts_;
     std::vector<std::uint32_t> items_;
-    std::vector<SimVector3> positions_;
+    std::vector<Vector3> positions_;
 };
 
 } // namespace eaw

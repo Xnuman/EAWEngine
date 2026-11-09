@@ -13,7 +13,7 @@ namespace eaw {
 
 using namespace simulation_detail;
 
-void SimulationWorld::plan_move(const std::size_t index, const SimVector3& target)
+void SimulationWorld::plan_move(const std::size_t index, const Vector3& target)
 {
     loiter_points_[index].reset();
     paths_[index].clear();
@@ -34,7 +34,7 @@ void SimulationWorld::plan_move(const std::size_t index, const SimVector3& targe
     path_queue_.push_back({{ids_[index]}, {target}, {serial}, target});
 }
 
-void SimulationWorld::plan_route_now(const std::size_t index, const SimVector3& target)
+void SimulationWorld::plan_route_now(const std::size_t index, const Vector3& target)
 {
     const auto& position = positions_[index];
     const auto planned = pathfinder_.find(ground_, {position.x, position.y}, {target.x, target.y}, passable_types_[index]);
@@ -63,7 +63,7 @@ void SimulationWorld::set_route(const std::size_t index, const std::vector<PathP
         return;
     }
     const auto destination = waypoints.back();
-    move_targets_[index] = SimVector3{destination.x, destination.y, height};
+    move_targets_[index] = Vector3{destination.x, destination.y, height};
     for (auto waypoint = waypoints.rbegin() + 1; waypoint != waypoints.rend(); ++waypoint)
     {
         path.push_back({waypoint->x, waypoint->y, 0.0F});
@@ -197,7 +197,7 @@ bool SimulationWorld::plan_shared_route(PathRequest& request, std::uint64_t spen
     return true;
 }
 
-void SimulationWorld::plan_shared_member(const PathRequest& request, const std::size_t index, const SimVector3& goal)
+void SimulationWorld::plan_shared_member(const PathRequest& request, const std::size_t index, const Vector3& goal)
 {
     if (request.shared_waypoints.empty())
     {

@@ -16,7 +16,7 @@ void test_combat()
 {
     // Broad phase: items within the radius, cells row by row, ascending index within a cell.
     eaw::SpatialGrid grid;
-    const std::vector<eaw::SimVector3> points{{0.0F, 0.0F, 0.0F}, {300.0F, 0.0F, 0.0F}, {10.0F, 5.0F, 0.0F}, {0.0F, 600.0F, 0.0F}, {std::nanf(""), 0.0F, 0.0F}};
+    const std::vector<eaw::Vector3> points{{0.0F, 0.0F, 0.0F}, {300.0F, 0.0F, 0.0F}, {10.0F, 5.0F, 0.0F}, {0.0F, 600.0F, 0.0F}, {std::nanf(""), 0.0F, 0.0F}};
     grid.build(points, 256.0F);
     std::vector<std::uint32_t> near;
     grid.query({0.0F, 0.0F, 0.0F}, 50.0F, near);
@@ -223,7 +223,7 @@ void test_body_aiming()
     rifle.weapons = {eaw::WeaponProfile{.range = 300.0F, .recharge_seconds = 0.1F, .damage = 1.0F}};
     eaw::CombatProfile target;
     target.health = 1.0e6F;
-    const auto make = [&](const bool body, const float heading, const eaw::SimVector3 target_at)
+    const auto make = [&](const bool body, const float heading, const eaw::Vector3 target_at)
     {
         auto world = std::make_unique<eaw::SimulationWorld>(0.1);
         world->set_hostility(hostility);

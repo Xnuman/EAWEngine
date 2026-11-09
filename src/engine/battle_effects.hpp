@@ -63,7 +63,7 @@ public:
 
     // Plays a Particle object once at `position`, upright (the effect's own axes: an engine choice
     // until the original's orientation of impacts and explosions is known). Unknown keys are ignored.
-    void play_object(std::uint32_t key, const SimVector3& position);
+    void play_object(std::uint32_t key, const Vector3& position);
 
     // The particle world, for effects the caller plays itself (sandbox --effect).
     [[nodiscard]] ParticleWorld& particles() noexcept

@@ -7,7 +7,7 @@
 
 namespace eaw {
 
-std::array<float, 16> pose_transform(const std::array<float, 16>& base, const float base_heading, const SimVector3& position, const float heading, const float pitch, const float bank)
+std::array<float, 16> pose_transform(const std::array<float, 16>& base, const float base_heading, const Vector3& position, const float heading, const float pitch, const float bank)
 {
     // Row-vector convention: the new linear part is base * Rz(-base_heading) * Rx(bank) * Ry(pitch) *
     // Rz(heading). Rz(-base_heading) turns the model's forward axis onto +X, where bank rolls about

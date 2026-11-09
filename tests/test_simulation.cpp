@@ -24,12 +24,12 @@ void test_simulation_core()
     require(first.tick == 1 && first.entities.size() == 2 && first.entities[0].id == mover && std::fabs(first.entities[0].position.x - 0.3F) < 1.0e-5F && first.entities[0].moving &&
                 first.entities[0].visual == 7 && first.entities[0].owner == 1,
             "a moving entity must advance by speed times tick length");
-    require(!first.entities[1].moving && first.entities[1].position == eaw::SimVector3{5.0F, 5.0F, 0.0F}, "an entity without speed must ignore move commands");
+    require(!first.entities[1].moving && first.entities[1].position == eaw::Vector3{5.0F, 5.0F, 0.0F}, "an entity without speed must ignore move commands");
     for (int tick = 0; tick < 3; ++tick)
     {
         world.step();
     }
-    require(world.snapshot().entities[0].position == eaw::SimVector3{1.0F, 0.0F, 0.0F} && !world.snapshot().entities[0].moving, "an entity must stop exactly at its target");
+    require(world.snapshot().entities[0].position == eaw::Vector3{1.0F, 0.0F, 0.0F} && !world.snapshot().entities[0].moving, "an entity must stop exactly at its target");
 
     // Destruction: ids are generation-checked, stale references are counted, slots are reused.
     world.submit({eaw::SimCommandKind::destroy, {mover}, {}});

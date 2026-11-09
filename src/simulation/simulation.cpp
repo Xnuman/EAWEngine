@@ -418,9 +418,9 @@ void SimulationWorld::destroy(const std::size_t dense)
     }
 }
 
-std::vector<SimVector3> SimulationWorld::route(const EntityId id) const
+std::vector<Vector3> SimulationWorld::route(const EntityId id) const
 {
-    std::vector<SimVector3> points;
+    std::vector<Vector3> points;
     const auto dense = dense_index(id);
     if (!dense || !move_targets_[*dense])
     {

@@ -20,7 +20,7 @@ constexpr std::uint32_t max_spawn_count = 1000;
 constexpr float unit_spacing = 40.0F;
 constexpr float group_spacing = 160.0F;
 
-bool finite_point(const SimVector3& point) noexcept
+bool finite_point(const Vector3& point) noexcept
 {
     return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
 }
@@ -124,7 +124,7 @@ void Battle::step()
     world_.step();
 }
 
-EntitySpawn Battle::spawn_of(const std::size_t type_index, SimVector3 position, const std::uint32_t owner) const
+EntitySpawn Battle::spawn_of(const std::size_t type_index, Vector3 position, const std::uint32_t owner) const
 {
     const auto& type = spawnable_[type_index];
     const auto& ground = world_.ground();

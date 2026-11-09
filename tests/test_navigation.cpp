@@ -299,7 +299,7 @@ void test_formations()
         members.push_back({{index + 1, 1}, {static_cast<float>(index) * 3.0F, 0.0F, 0.0F}, 5.0F, 0.5F, 2});
     }
     members[5].order = 1;
-    const eaw::SimVector3 target{100.0F, 200.0F, 7.0F};
+    const eaw::Vector3 target{100.0F, 200.0F, 7.0F};
     const auto slots = eaw::formation_slots(members, target, 0.0F);
     require(slots.size() == 6, "every member must get a slot");
     float min_x = 1.0e9F;

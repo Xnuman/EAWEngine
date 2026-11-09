@@ -30,9 +30,9 @@ std::vector<EntityId> entities_in_rectangle(const std::span<const EntitySnapshot
     return result;
 }
 
-std::vector<SimVector3> grid_targets(const SimVector3& target, const std::size_t count, const float spacing)
+std::vector<Vector3> grid_targets(const Vector3& target, const std::size_t count, const float spacing)
 {
-    std::vector<SimVector3> result;
+    std::vector<Vector3> result;
     if (count == 0)
     {
         return result;

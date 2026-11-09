@@ -17,7 +17,7 @@ void test_fighter_flight()
     // A fighter: 120 units/s top speed, 75 minimum, a quarter turn per second (turn circle radius
     // about 48 at minimum speed).
     const eaw::EntitySpawn fighter{.type_name = "Fighter", .owner = 1, .max_speed = 120.0F, .turn_rate = std::numbers::pi_v<float> / 2.0F, .min_speed = 75.0F};
-    const auto distance = [](const eaw::SimVector3& a, const eaw::SimVector3& b)
+    const auto distance = [](const eaw::Vector3& a, const eaw::Vector3& b)
     {
         return std::hypot(a.x - b.x, a.y - b.y);
     };
@@ -28,7 +28,7 @@ void test_fighter_flight()
         const auto id = world.spawn(fighter);
         require(id.ok(), "test spawn must succeed");
         // Snapshots exist from the first tick on; the fighter starts at the origin.
-        eaw::SimVector3 previous{};
+        eaw::Vector3 previous{};
         for (int tick = 0; tick < 100; ++tick)
         {
             world.step();

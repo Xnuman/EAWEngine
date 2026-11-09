@@ -44,12 +44,12 @@ struct BattleRun
 // The point groups spawn around and auto-move goes to: the middle of the ground on land maps, at
 // its surface, and the middle of the placed objects in space. Both come from map data alone, so
 // a headless build (no textures) and a full one place battles alike.
-SimVector3 battle_center(const VisualMapAsset& asset)
+Vector3 battle_center(const VisualMapAsset& asset)
 {
     if (asset.ground.valid())
     {
         const auto& ground = asset.ground;
-        SimVector3 center{static_cast<float>(ground.width - 1U) * ground.spacing * 0.5F, static_cast<float>(ground.height - 1U) * ground.spacing * 0.5F, 0.0F};
+        Vector3 center{static_cast<float>(ground.width - 1U) * ground.spacing * 0.5F, static_cast<float>(ground.height - 1U) * ground.spacing * 0.5F, 0.0F};
         center.z = ground.surface_height(center.x, center.y);
         return center;
     }
@@ -79,7 +79,7 @@ BattleRun run_once(const VisualMapAsset& asset, const std::string& map_name, con
             {
                 continue;
             }
-            const SimVector3 point{center.x + 180.0F * static_cast<float>(request), center.y, center.z};
+            const Vector3 point{center.x + 180.0F * static_cast<float>(request), center.y, center.z};
             if (const auto submitted = battle.submit({.order = BattleOrder::spawn, .point = point, .type = entry.type, .count = entry.count, .owner = entry.owner.value_or(1U)}); !submitted)
             {
                 log_warning("battle", submitted.error());

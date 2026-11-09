@@ -80,7 +80,7 @@ struct SandboxSession
     struct PendingSpawn
     {
         std::string type;
-        eaw::SimVector3 point;
+        eaw::Vector3 point;
         std::uint32_t count{};
         std::uint32_t owner{};
     };
@@ -234,8 +234,8 @@ struct SandboxSession
     void poll_hot_reload();
 
     // Cameras, selection, picks, and orders (sandbox_session_input.cpp).
-    std::optional<eaw::SimVector3> ground_target(const float x, const float y) const;
-    void order_move(const eaw::SimVector3& target);
+    std::optional<eaw::Vector3> ground_target(const float x, const float y) const;
+    void order_move(const eaw::Vector3& target);
     void order_attack(const eaw::EntityId victim);
     // Camera: keyboard panning on maps, mouse orbit/rotation/pan where the camera is free, the wheel.
     void update_camera(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode);
@@ -252,10 +252,10 @@ struct SandboxSession
     // Runtime spawning and command-line automation (sandbox_session_spawning.cpp).
     // Spawns `count` of a spawnable type (companies and squadrons as their members in formation) for
     // the current spawn owner, by order: they appear at the next tick.
-    void spawn_units(const std::size_t type_index, const eaw::SimVector3& point, const std::uint32_t count);
+    void spawn_units(const std::size_t type_index, const eaw::Vector3& point, const std::uint32_t count);
     // Spawns `count` of a type by name: at once when it is loaded, otherwise after its package is
     // built (on a worker) and registered with the renderer, presentation, animation, and battle.
-    void spawn_named(const std::string& type, const eaw::SimVector3& point, const std::uint32_t count);
+    void spawn_named(const std::string& type, const eaw::Vector3& point, const std::uint32_t count);
     void start_next_package();
     // A finished package: its meshes join the renderer's library, its types the battle, and the
     // spawns waiting for it are given.

@@ -14,7 +14,7 @@
 
 namespace eaw {
 
-std::optional<eaw::SimVector3> SandboxSession::ground_target(const float x, const float y) const
+std::optional<eaw::Vector3> SandboxSession::ground_target(const float x, const float y) const
 {
     const auto stats = renderer.stats();
     const auto camera = tactical_camera->camera();
@@ -25,10 +25,10 @@ std::optional<eaw::SimVector3> SandboxSession::ground_target(const float x, cons
     {
         point = eaw::intersect_ground_plane(camera, width, height, x, y, terrain_heights.liquid_level.value_or(0.0F));
     }
-    return point ? std::optional(eaw::SimVector3{(*point)[0], (*point)[1], (*point)[2]}) : std::nullopt;
+    return point ? std::optional(eaw::Vector3{(*point)[0], (*point)[1], (*point)[2]}) : std::nullopt;
 }
 
-void SandboxSession::order_move(const eaw::SimVector3& target)
+void SandboxSession::order_move(const eaw::Vector3& target)
 {
     // Selected mobile units, in id order, move as one formation centered on the target.
     std::vector<eaw::EntityId> movers;
