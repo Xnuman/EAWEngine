@@ -1,6 +1,7 @@
 #include "test_support.hpp"
 
 #include "battle.hpp"
+#include "battle_effects.hpp"
 #include "battle_log.hpp"
 #include "particle_effects.hpp"
 #include "projectile_visuals.hpp"
@@ -1117,6 +1118,65 @@ void test_particle_tracks()
     require(eaw::sample_particle_track(track, 0.125F) > 0.0F && eaw::sample_particle_track(track, 0.125F) < 2.5F, "smooth particle track sampling failed");
 }
 
+// Impacts and deaths play the Particle objects their projectile and type name, scaled; bolts draw
+// only once an atlas is known; a reset stops everything.
+void test_battle_effects()
+{
+    auto burst = make_test_emitter();
+    burst.use_bursts = true;
+    burst.particles_per_burst = 3;
+    burst.burst_count = 1;
+    burst.lifetime = 1.0F;
+    eaw::ParticleEffectObjectTable objects;
+    objects.emplace(21U, eaw::ParticleEffectObject{make_test_effect({burst}), 2.0F});
+    objects.emplace(22U, eaw::ParticleEffectObject{make_test_effect({burst}), 1.0F});
+    objects.emplace(23U, eaw::ParticleEffectObject{});
+    eaw::ProjectileVisualTable visuals;
+    eaw::ProjectileVisual laser;
+    laser.bolt = true;
+    laser.impact_effects = {0U, 21U, 0U, 23U};
+    visuals.emplace(5U, laser);
+
+    eaw::BattleEffects effects;
+    effects.reset({{}, &visuals, eaw::invalid_visual_texture, &objects});
+    require(effects.effect_objects() == 3 && effects.playable_effect_objects() == 2 && effects.bolts() == nullptr, "battle effect content failed");
+
+    eaw::SimSnapshot snapshot;
+    snapshot.impacts.push_back({{10.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 5U, eaw::ImpactKind::hull});
+    snapshot.impacts.push_back({{20.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 5U, eaw::ImpactKind::shield});
+    snapshot.impacts.push_back({{30.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 5U, eaw::ImpactKind::expired});
+    snapshot.impacts.push_back({{40.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 9U, eaw::ImpactKind::hull});
+    eaw::DeathSnapshot death;
+    death.position = {50.0F, 0.0F, 0.0F};
+    death.death_effect = 22U;
+    snapshot.deaths.push_back(death);
+    effects.play_tick_events(snapshot);
+    // The hull impact and the death play; the shield impact names nothing, the expired one an object
+    // without an effect, and projectile 9 is unknown.
+    require(effects.particles().stats().instances == 2, "impacts and deaths did not play their effects");
+    effects.update(0.01F);
+    std::vector<eaw::VisualParticle> sprites;
+    std::vector<eaw::ProjectileSnapshot> shots{{{0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 5U, 300.0F}};
+    effects.build_sprites({0.0F, -100.0F, 0.0F}, shots, 0.5F, 1.0F / 30.0F, sprites);
+    require(sprites.size() == 6, "battle effect sprites failed");
+    float impact_size = 0.0F;
+    float death_size = 0.0F;
+    for (const auto& sprite : sprites)
+    {
+        (sprite.position[0] < 30.0F ? impact_size : death_size) = sprite.half_size;
+    }
+    require(std::abs(impact_size - 2.0F * death_size) < 1e-4F, "an effect object's Scale_Factor did not size its effect");
+
+    // With an atlas, shots in flight draw as bolts after the particles.
+    effects.add({{}, nullptr, 9U, nullptr});
+    sprites.clear();
+    effects.build_sprites({0.0F, -100.0F, 0.0F}, shots, 0.5F, 1.0F / 30.0F, sprites);
+    require(effects.bolts() != nullptr && sprites.size() == 7 && sprites.back().texture == 9U, "bolts did not join the battle effects");
+
+    effects.reset({});
+    require(effects.particles().stats().instances == 0 && effects.effect_objects() == 0 && effects.bolts() == nullptr, "a battle effect reset kept effects");
+}
+
 void test_particle_world()
 {
     // Three bursts of four, 0.5 s apart, two-second particles: the effect ends on its own.
@@ -1425,6 +1485,7 @@ const ModuleRegistrar registrar("engine", {
                                               {"test_intact_hidden_bones", &test_intact_hidden_bones},
                                               {"test_projectile_sprites", &test_projectile_sprites},
                                               {"test_particle_tracks", &test_particle_tracks},
+                                              {"test_battle_effects", &test_battle_effects},
                                               {"test_particle_world", &test_particle_world},
                                               {"test_asset_cache_dependencies", &test_asset_cache_dependencies},
                                               {"test_debug_draw", &test_debug_draw},

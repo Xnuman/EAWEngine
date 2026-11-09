@@ -380,11 +380,19 @@ dependency rules; this is the file-level detail.
   tracks), `object_type_properties` (movement and speed fields of XML types), and
   `visual_map_builder` (the map and spawnable-package builds), sharing
   `scene_builder_internal.hpp`. Particles are `particle_rules` (interpretation under a fidelity
-  profile), `particle_effects` (`ParticleWorld`), and `attached_effects` (effects on model bones).
+  profile), `particle_effects` (`ParticleWorld`), `attached_effects` (effects on model bones),
+  and `battle_effects` (`BattleEffects`: a battle's effects from its snapshots, meaning attached
+  effects of drawn units, the Particle objects that impacts and deaths name, and bolts; no
+  graphics API, so the game and tests use it as the sandbox does).
 - `src/engine_app` (`EAWEngine`): `main.cpp` handles startup, discovery, the doctor probe, and
-  dispatch to `battle` or `sandbox`; `sandbox_app` is the window and renderer session (one method
-  per frame step), `sandbox_overlay` builds the statistics text (a pure function of a view
-  struct), and `sandbox_panels` the Dear ImGui panels.
+  dispatch to `battle` or `sandbox`. The sandbox session (`SandboxSession`, declared in the private
+  `sandbox_session.hpp`) is defined by subject: `sandbox_app.cpp` (lifetime, the frame loop, the
+  run summary), `sandbox_session_content` (showing finished builds, hot reload),
+  `sandbox_session_input` (cameras, selection, picks, orders), `sandbox_session_spawning`
+  (runtime types, command-line automation), `sandbox_session_world` (simulation ticks,
+  presentation, animation, effects over time), and `sandbox_session_ui` (panels, statistics,
+  debug lines); `frame_watchdog` reports stalled frame steps, `sandbox_overlay` builds the
+  statistics text (a pure function of a view struct), and `sandbox_panels` the Dear ImGui panels.
 - `src/asset_inspector`: one source file per command group (`inspect_asset`, `audit_textures`,
   `audit_lua`, `audit_maps`, `audit_particles`, `audit_xml`) plus `inspector_options` and
   `inspector_common`, declared in `inspector.hpp`.

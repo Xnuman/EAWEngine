@@ -123,11 +123,9 @@ void SandboxSession::poll_packages()
     presentation->add_spawnable(package.types);
     {
         const auto placed = register_particle_textures(std::move(package.particle_textures), package.rigs, {}, &package.effect_objects);
-        add_projectile_visuals(package.projectile_visuals, package.projectile_atlas, placed);
-        effect_objects.insert(package.effect_objects.begin(), package.effect_objects.end());
+        effects.add({package.rigs, &package.projectile_visuals, placed_atlas(package.projectile_atlas, placed), &package.effect_objects});
     }
     animator->add_rigs(package.rigs, package.rest_palette);
-    attached_effects.add_rigs(package.rigs);
     (void)battle->add_spawnable(package.types);
     spawnable.assign(battle->spawnable().begin(), battle->spawnable().end());
     runtime_types.push_back(type);

@@ -17,7 +17,6 @@ SandboxSession::SandboxSession(const eaw::SandboxOptions& session_options, eaw::
     : options(session_options), vfs(session_vfs), window(session_window), renderer(session_renderer)
 {
     watchdog.set_threshold(options.use_warp || options.gpu_validation ? std::chrono::seconds(60) : std::chrono::seconds(5));
-    particles.set_draw_order(eaw::particle_interpretation(options.particle_fidelity).draw_order);
     renderer.set_overlay_ui(
         [this]
         {
@@ -197,8 +196,8 @@ int SandboxSession::finish()
     }
     const auto stats = renderer.stats();
     std::cout << "Rendered frames: " << stats.frame_number << '\n';
-    const auto particle_stats = particles.stats();
-    std::cout << "Particles at exit: " << particle_stats.particles << " in " << particle_stats.instances << " effects (" << attached_effects.playing() << " attached), " << stats.particles
+    const auto particle_stats = effects.particles().stats();
+    std::cout << "Particles at exit: " << particle_stats.particles << " in " << particle_stats.instances << " effects (" << effects.attached_playing() << " attached), " << stats.particles
               << " drawn in the last frame, " << particle_stats.dropped_particles << " dropped, " << particle_stats.skipped_emitters << " emitters without a pass\n";
     if (options.reload_every)
     {

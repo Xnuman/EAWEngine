@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <span>
 
 namespace eaw {
 
@@ -62,22 +63,15 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
             world->step();
             last_tick_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tick_start).count();
             slowest_tick_ms = std::max(slowest_tick_ms, last_tick_ms);
-            // Every tick's deaths, so none is lost when a frame runs several ticks.
+            // Every tick's deaths and impacts, so none is lost when a frame runs several ticks.
             for (const auto& death : world->snapshot().deaths)
             {
                 if (const auto corpse = presentation->corpse_instance(death); corpse && animator)
                 {
                     animator->add_corpse(corpse->instance, death.id, world_seconds, corpse->style);
                 }
-                play_effect_object(death.death_effect, death.position);
             }
-            for (const auto& impact : world->snapshot().impacts)
-            {
-                if (const auto found = projectile_visuals.find(impact.visual); found != projectile_visuals.end())
-                {
-                    play_effect_object(eaw::impact_effect(found->second, impact.kind), impact.position);
-                }
-            }
+            effects.play_tick_events(world->snapshot());
         }
         const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
         watchdog.enter("presentation", world->stats().tick);
@@ -88,7 +82,7 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
             // The palette goes first: set_instances checks bone ranges against it.
             animator->animate(entities, frame_entities, frame_instances, world_seconds, eaw::D3d12Renderer::max_bone_transforms(), frame_palette);
             renderer.set_bone_transforms(frame_palette);
-            attached_effects.update(particles, frame_instances, frame_entities, frame_palette, entities, world_seconds);
+            effects.attach(frame_instances, frame_entities, frame_palette, entities, world_seconds);
         }
         for (const auto request : unbound_picks)
         {
@@ -100,45 +94,26 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
     }
 }
 
-void SandboxSession::play_effect_object(const std::uint32_t key, const eaw::SimVector3& position)
-{
-    const auto found = effect_objects.find(key);
-    if (key == 0 || found == effect_objects.end() || !found->second.effect)
-    {
-        return;
-    }
-    auto transform = eaw::visual_identity_transform;
-    transform[12] = position.x;
-    transform[13] = position.y;
-    transform[14] = position.z;
-    (void)particles.play(found->second.effect, transform, effect_seed++, {}, found->second.scale);
-}
-
 void SandboxSession::step_particles(const std::chrono::steady_clock::time_point now)
 {
     const auto seconds = world_paused ? 0.0F : std::chrono::duration<float>(now - particle_tick).count();
     particle_tick = now;
     for (std::size_t index = 0; index < shown_effects.size(); ++index)
     {
-        if (shown_effects[index] && !particles.playing(shown_effect_ids[index]))
+        if (shown_effects[index] && !effects.particles().playing(shown_effect_ids[index]))
         {
             auto transform = eaw::visual_identity_transform;
             transform[12] = effect_center[0];
             transform[13] = effect_center[1];
             transform[14] = effect_center[2];
-            shown_effect_ids[index] = particles.play(shown_effects[index], transform, effect_seed++);
+            shown_effect_ids[index] = effects.particles().play(shown_effects[index], transform, shown_effect_seed++);
         }
     }
-    particles.update(seconds);
+    effects.update(seconds);
     frame_particles.clear();
     const auto eye = tactical_camera ? tactical_camera->camera().eye : orbit_camera ? orbit_camera->camera().eye : std::array<float, 3>{};
-    particles.build_sprites(eye, frame_particles);
-    // Shots in flight as bolts (additive, so their order among the particles does not matter).
-    if (world != nullptr && projectile_atlas != eaw::invalid_visual_texture)
-    {
-        eaw::append_projectile_sprites(world->snapshot().projectiles, projectile_visuals, projectile_atlas, static_cast<float>(simulation_clock.interpolation()),
-                                       static_cast<float>(simulation_clock.tick_seconds()), frame_particles);
-    }
+    const auto projectiles = world != nullptr ? std::span<const eaw::ProjectileSnapshot>(world->snapshot().projectiles) : std::span<const eaw::ProjectileSnapshot>{};
+    effects.build_sprites(eye, projectiles, static_cast<float>(simulation_clock.interpolation()), static_cast<float>(simulation_clock.tick_seconds()), frame_particles);
     renderer.set_particles(frame_particles);
 }
 

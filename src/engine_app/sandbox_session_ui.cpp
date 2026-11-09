@@ -67,7 +67,7 @@ void SandboxSession::update_debug_lines()
     view.show_passability = show_passability;
     view.axis_length = axis_length;
     view.friendly_owner = spawn_owner;
-    view.projectile_visuals = projectile_atlas != eaw::invalid_visual_texture ? &projectile_visuals : nullptr;
+    view.projectile_visuals = effects.bolts();
     renderer.set_debug_lines(eaw::build_sandbox_debug_lines(view));
 }
 
@@ -80,11 +80,11 @@ void SandboxSession::update_overlay(const std::chrono::steady_clock::time_point 
     view.frame_latency = options.frame_latency;
     view.raw_input = window.input().raw_input;
     view.raw_events = window.input().raw_events;
-    const auto particle_stats = particles.stats();
+    const auto particle_stats = effects.particles().stats();
     view.paused = world_paused;
     view.particle_effects = particle_stats.instances;
     view.particles = particle_stats.particles;
-    view.attached_effects = attached_effects.playing();
+    view.attached_effects = effects.attached_playing();
     view.dropped_particles = particle_stats.dropped_particles;
     view.skipped_emitters = particle_stats.skipped_emitters;
     view.frames = overlay_frames;

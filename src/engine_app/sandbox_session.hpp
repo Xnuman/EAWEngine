@@ -7,7 +7,7 @@
 #include "frame_watchdog.hpp"
 
 #include "asset_cache.hpp"
-#include "attached_effects.hpp"
+#include "battle_effects.hpp"
 #include "battle.hpp"
 #include "battle_log.hpp"
 #include "camera_controller.hpp"
@@ -109,21 +109,15 @@ struct SandboxSession
     // Map units' animation (presentation only) and the palette it fills each frame.
     std::optional<eaw::UnitAnimator> animator;
     std::vector<std::array<float, 16>> frame_palette;
-    // Particle effects (presentation only): the proxies of drawn units and the --effect effects,
-    // which play at the map center and restart when they end.
-    eaw::ParticleWorld particles;
-    eaw::AttachedEffects attached_effects;
+    // The battle's effects (presentation only: drawn units' proxies, impacts and deaths, bolts), and
+    // the --effect effects, which play at the map center and restart when they end.
+    eaw::BattleEffects effects{eaw::particle_interpretation(options.particle_fidelity).draw_order};
     std::vector<eaw::VisualParticle> frame_particles;
     std::vector<std::shared_ptr<const eaw::ParticleEffect>> shown_effects;
     std::vector<eaw::ParticleInstanceId> shown_effect_ids;
     std::array<float, 3> effect_center{};
-    std::uint64_t effect_seed = 1;
+    std::uint64_t shown_effect_seed = 1;
     std::chrono::steady_clock::time_point particle_tick = std::chrono::steady_clock::now();
-    // How shots look (by projectile visual key) and the bolt atlas's renderer texture.
-    eaw::ProjectileVisualTable projectile_visuals;
-    std::uint32_t projectile_atlas = eaw::invalid_visual_texture;
-    // The XML Particle objects played one-shot where shots end and units die.
-    eaw::ParticleEffectObjectTable effect_objects;
     // Kept for --reload-every, which reloads the scene and so drops added textures.
     std::vector<eaw::VisualTexture> particle_texture_copy;
     std::chrono::steady_clock::time_point map_animation_start = std::chrono::steady_clock::now();
@@ -209,10 +203,11 @@ struct SandboxSession
     void start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, std::string name);
     // Registers particle textures with the renderer and points the effects at them (white when
     // registration fails); returns where each texture landed (empty on failure).
-    std::vector<std::uint32_t> register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs, std::span<std::shared_ptr<const eaw::ParticleEffect>> effects,
+    std::vector<std::uint32_t> register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs, std::span<std::shared_ptr<const eaw::ParticleEffect>> named_effects,
                                                           eaw::ParticleEffectObjectTable* objects = nullptr);
-    // Takes over a build's projectile visuals; `atlas` indexes its particle textures (`placed`).
-    void add_projectile_visuals(const eaw::ProjectileVisualTable& visuals, const std::uint32_t atlas, std::span<const std::uint32_t> placed);
+    // The renderer texture of a build's bolt atlas (`atlas` indexes its particle textures, `placed`
+    // says where they landed), or invalid_visual_texture.
+    static std::uint32_t placed_atlas(std::uint32_t atlas, std::span<const std::uint32_t> placed);
     bool load_content_scene(eaw::VisualScene scene, const bool reload);
     static eaw::VisualScene presentation_layout(const eaw::VisualScene& scene);
     void apply_content(eaw::SandboxContent content);
@@ -260,9 +255,6 @@ struct SandboxSession
     void advance_animation(const std::chrono::steady_clock::time_point now);
     // Fixed simulation ticks, then this frame's interpolated instances and debug lines.
     void step_simulation(const std::chrono::steady_clock::time_point now);
-    // Plays an XML Particle object once at `position`, upright (the effect's own axes; an engine
-    // choice until the original's orientation of impacts and explosions is known).
-    void play_effect_object(const std::uint32_t key, const eaw::SimVector3& position);
     // Particle effects advance on the frame clock and are drawn back to front from the camera.
     void step_particles(const std::chrono::steady_clock::time_point now);
 

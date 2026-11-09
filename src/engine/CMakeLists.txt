@@ -8,6 +8,8 @@ set(EAW_ENGINE_SOURCES
     attached_effects.hpp
     battle.cpp
     battle.hpp
+    battle_effects.cpp
+    battle_effects.hpp
     battle_log.cpp
     battle_log.hpp
     battle_runner.cpp
