@@ -56,6 +56,8 @@ struct SandboxOverlayView
     SandboxCameraMode camera{SandboxCameraMode::model};
     // Particle effects playing, live particles, attached (proxy) effects, and particles dropped at
     // capacity and emitters skipped for lack of a pass (cumulative).
+    // The world is paused (P on maps).
+    bool paused{};
     std::size_t particle_effects{};
     std::size_t particles{};
     std::size_t attached_effects{};

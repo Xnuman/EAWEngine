@@ -398,6 +398,7 @@ bool D3d12Renderer::Impl::render()
         constants.camera_right = right;
         constants.camera_up = view_up;
     }
+    constants.post_parameters = {options.bloom_threshold, options.bloom_strength, 0.15F, 0.0F};
     std::memcpy(frame.constant_buffer_mapped, &constants, sizeof(constants));
 
     check_hresult(frame.allocator->Reset(), "ID3D12CommandAllocator::Reset");
@@ -424,11 +425,14 @@ bool D3d12Renderer::Impl::render()
     auto render_target = rtv_heap->GetCPUDescriptorHandleForHeapStart();
     render_target.ptr += static_cast<SIZE_T>(frame_index) * rtv_increment;
     const auto depth_target = dsv_heap->GetCPUDescriptorHandleForHeapStart();
-    const std::array targets{render_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};
+    // With bloom the scene renders into its own target, and the composite fills the back buffer.
+    const bool bloom = options.bloom;
+    const auto scene_target = bloom ? post_rtv(0) : render_target;
+    const std::array targets{scene_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};
     command_list->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), FALSE, &depth_target);
     constexpr std::array clear_color{0.018F, 0.031F, 0.043F, 1.0F};
     constexpr std::array clear_pick{0.0F, 0.0F, 0.0F, 0.0F};
-    command_list->ClearRenderTargetView(render_target, clear_color.data(), 0, nullptr);
+    command_list->ClearRenderTargetView(scene_target, clear_color.data(), 0, nullptr);
     command_list->ClearRenderTargetView(targets[1], clear_pick.data(), 0, nullptr);
     command_list->ClearDepthStencilView(depth_target, D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
 
@@ -540,6 +544,57 @@ bool D3d12Renderer::Impl::render()
         }
     }
     last_particles = gpu_particles.size();
+
+    if (bloom)
+    {
+        // Bright pass at reduced size, two horizontal-then-vertical blur rounds ping-ponging between
+        // the bloom targets, then scene plus bloom into the back buffer. Every target returns to
+        // RENDER_TARGET by the end of the frame.
+        const auto barrier = [&](ID3D12Resource* resource, const D3D12_RESOURCE_STATES before, const D3D12_RESOURCE_STATES after)
+        {
+            auto transition = transition_barrier(resource, before, after);
+            command_list->ResourceBarrier(1, &transition);
+        };
+        const auto pass = [&](ID3D12PipelineState* pipeline, const D3D12_CPU_DESCRIPTOR_HANDLE target, const std::uint32_t source_slot, const std::uint32_t parameter)
+        {
+            command_list->OMSetRenderTargets(1, &target, FALSE, nullptr);
+            command_list->SetPipelineState(pipeline);
+            const std::array<std::uint32_t, 2> post_constants{source_slot, parameter};
+            command_list->SetGraphicsRoot32BitConstants(5, 2, post_constants.data(), 0);
+            command_list->DrawInstanced(3, 1, 0, 0);
+            ++draw_calls;
+        };
+        constexpr auto shader_read = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        constexpr auto target_write = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        D3D12_VIEWPORT bloom_viewport{};
+        bloom_viewport.Width = static_cast<float>(bloom_width);
+        bloom_viewport.Height = static_cast<float>(bloom_height);
+        bloom_viewport.MaxDepth = 1.0F;
+        const D3D12_RECT bloom_scissor{0, 0, static_cast<LONG>(bloom_width), static_cast<LONG>(bloom_height)};
+        command_list->RSSetViewports(1, &bloom_viewport);
+        command_list->RSSetScissorRects(1, &bloom_scissor);
+        barrier(scene_color.Get(), target_write, shader_read);
+        pass(bloom_extract_pipeline.Get(), post_rtv(1), post_slots[0], 0U);
+        for (int round = 0; round < 2; ++round)
+        {
+            barrier(bloom_targets[0].Get(), target_write, shader_read);
+            pass(bloom_blur_pipeline.Get(), post_rtv(2), post_slots[1], 0U);
+            barrier(bloom_targets[1].Get(), target_write, shader_read);
+            barrier(bloom_targets[0].Get(), shader_read, target_write);
+            pass(bloom_blur_pipeline.Get(), post_rtv(1), post_slots[2], 1U);
+            barrier(bloom_targets[1].Get(), shader_read, target_write);
+        }
+        barrier(bloom_targets[0].Get(), target_write, shader_read);
+        command_list->RSSetViewports(1, &viewport);
+        command_list->RSSetScissorRects(1, &scissor);
+        pass(bloom_composite_pipeline.Get(), render_target, post_slots[0], post_slots[1]);
+        barrier(bloom_targets[0].Get(), shader_read, target_write);
+        barrier(scene_color.Get(), shader_read, target_write);
+        // Debug lines and the overlay draw over the composite, with the scene's depth and pick target.
+        const std::array final_targets{render_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};
+        command_list->OMSetRenderTargets(static_cast<UINT>(final_targets.size()), final_targets.data(), FALSE, &depth_target);
+    }
 
     if (debug_line_count != 0)
     {

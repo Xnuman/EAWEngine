@@ -61,7 +61,10 @@ inline constexpr std::uint32_t flat_normal_texture_slot = 2;
 inline constexpr std::uint32_t fallback_texture_count = 3;
 
 // Per-frame constant buffers are 256-byte aligned, as D3D12 requires for CBVs.
-inline constexpr std::uint64_t frame_constant_bytes = 256;
+inline constexpr std::uint64_t frame_constant_bytes = 512;
+// Bloom works at a quarter of the screen resolution in a small floating-point format.
+inline constexpr DXGI_FORMAT bloom_format = DXGI_FORMAT_R11G11B10_FLOAT;
+inline constexpr std::uint32_t bloom_downscale = 4;
 
 inline constexpr DXGI_FORMAT back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 

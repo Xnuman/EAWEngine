@@ -620,7 +620,12 @@ particle-audit`.
     and "inward acceleration" toward the emitter;
   - lifetime x (1 + random 0..variance); size factor (1 + random
     -v..v) / (1 + v) with v = half the scale variance; the scale track is the
-    full size (sprites are drawn with half of it as half extent);
+    sprite's radius (half extent). The reference halves it (the value is the
+    full width there); the owner's screenshots of the original fit the
+    radius reading: the X-wing's scale-1 engine glows fill nozzles about 2
+    units across, and the Star Destroyer's scale-70 glows show a core about
+    70 units across, twice what the halved size gives with the soft particle
+    texture;
   - colour tracks plus a random addition up to the random colours (grayscale
     uses the red value for all channels);
   - rotation speed in revolutions per second, randomly reversed when the
@@ -665,6 +670,20 @@ particle-audit`.
   hidden `engines` quad (one per nozzle), but its particles are 1 unit
   across, red, and live 0.1 s: barely visible as authored. Whether the
   original draws particles with a minimum screen size is not established.
+- **Bloom and engine intensity** (owner's screenshots of the original,
+  2026-11-08). The original renders with a glow (bloom) option: bright hull
+  panels and engine glows bleed light, which is what makes small additive
+  engine particles such as the X-wing's 1-unit red dots visible. The engine
+  draws bloom of its own (threshold 0.6 on the brightest channel per texel,
+  soft knee, the block mean mixed with its brightest texel so small glows
+  survive the downsample,
+  quarter resolution, strength 0.8), chosen by eye, not measured. In the same
+  screenshots a Star Destroyer's engine glows are small and dim at rest and
+  grow and brighten as it accelerates. No XML field governs this (the only
+  engine field is `Engine_Particles`), so engine effects (proxies named
+  `pe_*`, the stock naming, or under an `Engine_Particles` bone) scale with
+  the unit's speed over its top speed, smoothed over 0.5 s: size from 55% and
+  opacity from 45% at rest. Both mappings are engine choices.
 - **Not drawn yet:** heat distortion (170 emitters) and weather (5), which
   need passes of their own; wind is ignored; freeze time is kept but unused.
 - **Proxies.** Model proxies name their effect without directory or

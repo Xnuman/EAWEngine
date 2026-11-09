@@ -67,6 +67,8 @@ void print_sandbox_usage()
               << "  --frame-latency <1|2>  Maximum queued presentation frames\n"
               << "  --frame-limit <count>  Exit after this many frames once the scene is shown (automation)\n"
               << "  --upload-budget <MiB>  Texture bytes streamed per frame (default 64; 0 uploads all at once)\n"
+              << "  --bloom <strength>     Bloom strength (default 0.8; 0 disables it)\n"
+              << "  --no-bloom             Disable bloom\n"
               << "  --hot-reload       Rebuild the scene when its loose files or MEG archives change\n"
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
@@ -318,6 +320,21 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
             {
                 return make_error("--frame-latency must be 1 or 2");
             }
+        }
+        else if (argument == "--no-bloom")
+        {
+            options.bloom_strength = 0.0F;
+        }
+        else if (argument == "--bloom")
+        {
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            float strength = 0.0F;
+            const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), strength);
+            if (error != std::errc{} || end != text.data() + text.size() || !(strength >= 0.0F && strength <= 10.0F))
+            {
+                return make_error("--bloom needs a strength from 0 to 10, got '" + std::string(text) + "'");
+            }
+            options.bloom_strength = strength;
         }
         else if (argument == "--upload-budget")
         {

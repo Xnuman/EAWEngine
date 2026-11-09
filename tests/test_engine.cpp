@@ -1105,7 +1105,7 @@ void test_particle_world()
     std::vector<eaw::VisualParticle> sprites;
     world.build_sprites({0.0F, 0.0F, 0.0F}, sprites);
     require(sprites.size() == 12 && sprites.front().texture == 7U && sprites.front().position[0] == 100.0F && sprites.front().position[2] > 0.0F, "particle sprites failed");
-    require(sprites.front().half_size > 2.0F && sprites.front().half_size < 4.0F, "particle size track failed");
+    require(sprites.front().half_size > 4.0F && sprites.front().half_size < 7.0F, "particle size track failed");
     for (std::size_t index = 1; index < sprites.size(); ++index)
     {
         require(sprites[index - 1].position[2] >= sprites[index].position[2], "particle sprites are not sorted back to front");
@@ -1212,6 +1212,24 @@ void test_particle_world()
     for (std::size_t index = 1; index < xs.size(); ++index)
     {
         require(xs[index] - xs[index - 1] < 1.5F, "particle trail has a gap at x = " + std::to_string(xs[index - 1]));
+    }
+
+    // Intensity scales drawn size and opacity (engine glows at rest versus at full speed).
+    {
+        auto steady = make_test_emitter();
+        steady.use_bursts = true;
+        steady.burst_count = 1;
+        steady.lifetime = 10.0F;
+        eaw::ParticleWorld dimmed;
+        const auto dim_id = dimmed.play(make_test_effect({steady}), eaw::visual_identity_transform, 8);
+        dimmed.update(0.01F);
+        std::vector<eaw::VisualParticle> full;
+        dimmed.build_sprites({}, full);
+        dimmed.set_intensity(dim_id, 0.0F);
+        std::vector<eaw::VisualParticle> idle;
+        dimmed.build_sprites({}, idle);
+        require(full.size() == 1 && idle.size() == 1 && std::abs(idle[0].half_size - full[0].half_size * 0.55F) < 1e-4F && std::abs(idle[0].color[3] - full[0].color[3] * 0.45F) < 1e-4F,
+                "particle intensity did not scale size and opacity");
     }
 
     // Particles linked to the system turn with their emitter (an engine glow on a turning ship).

@@ -272,7 +272,10 @@ Gaps toward the deliverable, in planned order:
       effects gameplay triggers (damage, weapons, deaths). Step 2 is done:
       trails, which in the stock data are particles of moving emitters, are
       emitted sub-frame along the emitter's path, so they stay continuous at
-      any speed and frame rate.
+      any speed and frame rate. Step 3 is done: bloom (a quarter-resolution
+      bright pass, blurred and added back) as the engine's stand-in for the
+      original's glow, and engine effects that grow and brighten with their
+      unit's speed.
    2. Combat presentation and fidelity: hardpoint visuals and damage, turret
       rotation, damage-specific death clones and wreck explosions, real
       projectiles for weapons.
@@ -314,6 +317,22 @@ Known provisional choices to verify against the original:
   control; the simulation's `Stance`
   already exists for AI and scripts, so a stance control can later be offered
   as an option outside legacy mode.
+- Explicit asset metadata. Legacy mode infers the role of model parts from
+  naming conventions and bone placement, as the stock data implies: proxies
+  named `pe_*` are engine effects, `_ALT<n>` and `_LOD<n>` tags mark damage
+  states and detail levels, proxies under a hardpoint's `Damage_Particles`
+  bone are damage effects, a `Damage_Decal` bone carries scorch meshes, and an
+  emitter's mesh is the one on its proxy's parent bone. The engine will let
+  authors state these roles explicitly instead: optional, namespaced fields
+  (in XML or a sidecar file beside the asset) that declare a proxy's or mesh's
+  category (engine, damage, state, detail level, and categories the engine
+  adds later, such as lights or weapon muzzles), with explicit declarations
+  overriding the inferred ones and unknown categories reported, not fatal.
+  This covers effects first and then other asset parts that are now
+  identified by name. Stock data and existing mods keep working through the
+  naming rules unchanged; the inferred roles are collected in one place
+  (today they are spread over `scene_particles.cpp`, `scene_models.cpp`, and
+  `alo_model.cpp`) so both paths feed the same engine-native categories.
 
 ## M6 — compatibility and SDK
 

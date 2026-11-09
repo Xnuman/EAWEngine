@@ -45,6 +45,8 @@ struct HardpointProfile
     // Presentation only: the bone its XML Damage_Decal names (scorch meshes shown once it is
     // destroyed), or -1.
     std::int32_t decal_bone{-1};
+    // Presentation only: the bone its XML Engine_Particles names (engine glows), or -1.
+    std::int32_t engine_bone{-1};
 };
 
 // One projectile weapon: fires bursts of `pulse_count` shots `pulse_delay_seconds` apart, one

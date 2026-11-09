@@ -290,6 +290,7 @@ struct ParticleWorld::Instance
     Random random;
     std::uint32_t generation{};
     bool live{};
+    float intensity{1.0F};
     bool emitting{true};
     bool stopped{};
 };
@@ -392,6 +393,14 @@ void ParticleWorld::set_emitting(const ParticleInstanceId id, const bool emittin
     if (auto* instance = find(id))
     {
         instance->emitting = emitting;
+    }
+}
+
+void ParticleWorld::set_intensity(const ParticleInstanceId id, const float intensity)
+{
+    if (auto* instance = find(id))
+    {
+        instance->intensity = std::clamp(intensity, 0.0F, 1.0F);
     }
 }
 
@@ -764,16 +773,20 @@ void ParticleWorld::build_sprites(const std::array<float, 3>& eye, std::vector<V
             const auto texture = e < instance.effect->textures.size() ? instance.effect->textures[e] : invalid_visual_texture;
             const auto blend = blend_of(emitter.blend_mode);
             const auto shape = emitter.has_tail ? VisualParticleShape::kite : (emitter.world_oriented ? VisualParticleShape::ground : VisualParticleShape::billboard);
+            const auto size_scale = 0.55F + 0.45F * instance.intensity;
+            const auto alpha_scale = 0.45F + 0.55F * instance.intensity;
             for (const auto& particle : state.particles)
             {
                 const auto t = std::clamp(particle.age / particle.lifetime, 0.0F, 1.0F);
                 VisualParticle sprite;
                 sprite.position = particle.position;
-                sprite.half_size = 0.5F * sample_particle_track(emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::scale)], t) * particle.size_factor;
+                // The scale track is the radius (the reference halves it; see docs/compatibility-research.md).
+                sprite.half_size = sample_particle_track(emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::scale)], t) * particle.size_factor * size_scale;
                 for (std::size_t channel = 0; channel < 4; ++channel)
                 {
                     sprite.color[channel] = std::clamp(sample_particle_track(emitter.tracks[channel], t) + particle.color_add[channel], 0.0F, 1.0F);
                 }
+                sprite.color[3] *= alpha_scale;
                 const auto index = static_cast<std::uint32_t>(std::max(0.0F, std::floor(sample_particle_track(emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::texture_index)], t) + 0.5F)));
                 sprite.uv_rect = {static_cast<float>(index % grid) * cell, static_cast<float>((index / grid) % grid) * cell, cell, cell};
                 sprite.rotation = particle.rotation * two_pi;

@@ -172,7 +172,11 @@ toggles bounds and passability; `--panel menu|statistics|spawn` opens panels at
 start, and `--overlay` the statistics panel.
 Models' particle proxies (engine glows, lights, fires) play on maps;
 `--effect <name>` (repeatable) plays a particle effect such as
-`P_EXPLOSION_BIG00` at the map center, restarting it when it ends.
+`P_EXPLOSION_BIG00` at the map center, restarting it when it ends. Bright
+parts of the image bloom (`--bloom <strength>`, default 0.8; `--no-bloom`
+turns it off), and engine glows grow and brighten with a unit's speed. On
+maps, P pauses and resumes the world (simulation, animation, particles) while
+the cameras keep working, so C's free camera can inspect a frozen scene.
 Mouse movement and keys use Windows raw input (unaccelerated mouse movement for
 camera rotation); `--no-raw-input` uses window messages instead. The panel
 can be dragged and resized, and its "-" button minimizes it to a small tab ("+"

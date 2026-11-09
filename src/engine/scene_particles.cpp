@@ -180,6 +180,10 @@ void note_damage_bones(SceneBuilder& builder, const std::string& model_path, con
         {
             builder.decal_bones[fold_ascii(model_path)].insert(static_cast<std::uint32_t>(hardpoint.decal_bone));
         }
+        if (hardpoint.engine_bone >= 0)
+        {
+            builder.engine_bones[fold_ascii(model_path)].insert(static_cast<std::uint32_t>(hardpoint.engine_bone));
+        }
     }
 }
 
@@ -191,6 +195,25 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const A
         return attachments;
     }
     const auto damage = builder.damage_bones.find(fold_ascii(model_path));
+    const auto engines = builder.engine_bones.find(fold_ascii(model_path));
+    // Whether `bone` or an ancestor is in `bones`.
+    const auto under = [&](std::uint32_t bone, const std::unordered_set<std::uint32_t>& bones)
+    {
+        for (std::size_t depth = 0; depth <= model.bones.size() && bone < model.bones.size(); ++depth)
+        {
+            if (bones.contains(bone))
+            {
+                return true;
+            }
+            const auto parent = model.bones[bone].parent;
+            if (parent < 0)
+            {
+                break;
+            }
+            bone = static_cast<std::uint32_t>(parent);
+        }
+        return false;
+    };
     // The damage bone at or above `bone`, or -1.
     const auto damage_bone_of = [&](std::uint32_t bone) -> std::int32_t
     {
@@ -240,7 +263,9 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const A
                                                            return emitter.emit_from_mesh != 0;
                                                        });
             auto emit_mesh = from_mesh ? proxy_emit_mesh(model, proxy.bone) : nullptr;
-            attachments.push_back({std::move(effect), proxy.bone, proxy.name, damage_bone_of(proxy.bone), std::move(emit_mesh)});
+            // Engine effects: the stock "pe_" naming, or a proxy under a hardpoint's Engine_Particles bone.
+            const bool engine = fold_ascii(name).starts_with("pe_") || (engines != builder.engine_bones.end() && under(proxy.bone, engines->second));
+            attachments.push_back({std::move(effect), proxy.bone, proxy.name, damage_bone_of(proxy.bone), std::move(emit_mesh), engine});
         }
     }
     return attachments;

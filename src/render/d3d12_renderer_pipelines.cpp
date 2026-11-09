@@ -9,6 +9,10 @@
 #include "g_eaw_particle_modulate_ps.h"
 #include "g_eaw_particle_ps.h"
 #include "g_eaw_particle_vs.h"
+#include "g_eaw_post_blur_ps.h"
+#include "g_eaw_post_composite_ps.h"
+#include "g_eaw_post_extract_ps.h"
+#include "g_eaw_post_vs.h"
 #include "g_eaw_sandbox_ps.h"
 #include "g_eaw_sandbox_vs.h"
 #include "g_eaw_terrain_ps.h"
@@ -343,6 +347,38 @@ void D3d12Renderer::Impl::create_pipeline()
         create_pipeline_state(name, description, particle_pipelines[blend_index][0]);
         description.DepthStencilState.DepthEnable = FALSE;
         create_pipeline_state((std::wstring(name) + L" (no depth test)").c_str(), description, particle_pipelines[blend_index][1]);
+    }
+
+    // Post-processing: fullscreen triangles into one target, no depth, no blending.
+    {
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC post{};
+        post.pRootSignature = root_signature.Get();
+        post.VS = {g_eaw_post_vs, sizeof(g_eaw_post_vs)};
+        post.BlendState.RenderTarget[0].BlendEnable = FALSE;
+        post.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+        post.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
+        post.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+        post.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+        post.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+        post.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+        post.BlendState.RenderTarget[0].LogicOp = D3D12_LOGIC_OP_NOOP;
+        post.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        post.SampleMask = UINT_MAX;
+        post.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+        post.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+        post.RasterizerState.DepthClipEnable = TRUE;
+        post.DepthStencilState.DepthEnable = FALSE;
+        post.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        post.NumRenderTargets = 1;
+        post.SampleDesc.Count = 1;
+        post.RTVFormats[0] = bloom_format;
+        post.PS = {g_eaw_post_extract_ps, sizeof(g_eaw_post_extract_ps)};
+        create_pipeline_state(L"bloom extract", post, bloom_extract_pipeline);
+        post.PS = {g_eaw_post_blur_ps, sizeof(g_eaw_post_blur_ps)};
+        create_pipeline_state(L"bloom blur", post, bloom_blur_pipeline);
+        post.RTVFormats[0] = back_buffer_format;
+        post.PS = {g_eaw_post_composite_ps, sizeof(g_eaw_post_composite_ps)};
+        create_pipeline_state(L"bloom composite", post, bloom_composite_pipeline);
     }
 
     D3D12_DESCRIPTOR_HEAP_DESC shader_heap_description{};

@@ -93,6 +93,7 @@ Status D3d12Renderer::Impl::initialize()
     open_pipeline_cache();
     create_pipeline();
     save_pipeline_cache();
+    create_post_targets();
     create_initial_assets();
     create_statistics_queries();
     return create_overlay();
@@ -247,6 +248,71 @@ void D3d12Renderer::Impl::create_depth_buffer()
     device->CreateRenderTargetView(pick_target.Get(), nullptr, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart());
 }
 
+D3D12_CPU_DESCRIPTOR_HANDLE D3d12Renderer::Impl::post_rtv(const std::size_t index) const
+{
+    auto handle = post_rtv_heap->GetCPUDescriptorHandleForHeapStart();
+    handle.ptr += index * rtv_increment;
+    return handle;
+}
+
+void D3d12Renderer::Impl::create_post_targets()
+{
+    if (!post_rtv_heap)
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC heap{};
+        heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        heap.NumDescriptors = 3;
+        check_hresult(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&post_rtv_heap)), "CreateDescriptorHeap(post RTV)");
+        set_name(post_rtv_heap.Get(), L"EAWEngine post-processing RTV heap");
+        // Startup: the texture table is nearly empty, and these slots are never released.
+        for (auto& slot : post_slots)
+        {
+            const auto allocated = texture_slots.allocate();
+            EAW_ASSERT_MSG(allocated.has_value(), "the D3D12 texture table has no slot for a post-processing target");
+            slot = *allocated;
+        }
+    }
+    bloom_width = std::max(1U, (width + bloom_downscale - 1U) / bloom_downscale);
+    bloom_height = std::max(1U, (height + bloom_downscale - 1U) / bloom_downscale);
+    const auto default_heap = heap_properties(D3D12_HEAP_TYPE_DEFAULT);
+    const auto increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    const auto make_target =
+        [&](ComPtr<ID3D12Resource>& target, const std::uint32_t target_width, const std::uint32_t target_height, const DXGI_FORMAT format, const std::size_t index, const wchar_t* name)
+    {
+        D3D12_RESOURCE_DESC description{};
+        description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        description.Width = target_width;
+        description.Height = target_height;
+        description.DepthOrArraySize = 1;
+        description.MipLevels = 1;
+        description.Format = format;
+        description.SampleDesc.Count = 1;
+        description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+        D3D12_CLEAR_VALUE clear{};
+        clear.Format = format;
+        clear.Color[0] = 0.018F;
+        clear.Color[1] = 0.031F;
+        clear.Color[2] = 0.043F;
+        clear.Color[3] = 1.0F;
+        check_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_RENDER_TARGET, &clear, IID_PPV_ARGS(&target)),
+                      "CreateCommittedResource(post-processing target)");
+        set_name(target.Get(), name);
+        device->CreateRenderTargetView(target.Get(), nullptr, post_rtv(index));
+        D3D12_SHADER_RESOURCE_VIEW_DESC view{};
+        view.Format = format;
+        view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        view.Texture2D.MipLevels = 1;
+        auto handle = shader_heap->GetCPUDescriptorHandleForHeapStart();
+        handle.ptr += static_cast<SIZE_T>(post_slots[index]) * increment;
+        device->CreateShaderResourceView(target.Get(), &view, handle);
+    };
+    make_target(scene_color, width, height, back_buffer_format, 0, L"EAWEngine scene color");
+    make_target(bloom_targets[0], bloom_width, bloom_height, bloom_format, 1, L"EAWEngine bloom A");
+    make_target(bloom_targets[1], bloom_width, bloom_height, bloom_format, 2, L"EAWEngine bloom B");
+}
+
 void D3d12Renderer::Impl::create_constant_buffers()
 {
     const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
@@ -374,6 +440,8 @@ void D3d12Renderer::Impl::resize(const std::uint32_t new_width, const std::uint3
     direct_queue.flush();
     depth_buffer.Reset();
     pick_target.Reset();
+    scene_color.Reset();
+    bloom_targets = {};
     for (auto& frame : frames)
     {
         frame.back_buffer.Reset();
@@ -385,6 +453,7 @@ void D3d12Renderer::Impl::resize(const std::uint32_t new_width, const std::uint3
     check_device_result(swap_chain->ResizeBuffers(frame_count, width, height, back_buffer_format, swap_chain_flags), "IDXGISwapChain::ResizeBuffers");
     acquire_back_buffers();
     create_depth_buffer();
+    create_post_targets();
     occluded = false;
 }
 

@@ -390,6 +390,10 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             {
                 part.decal_bone = static_cast<std::int32_t>(decal->index);
             }
+            if (const auto engine = find_bone(model, pose, bone_name("Engine_Particles")))
+            {
+                part.engine_bone = static_cast<std::int32_t>(engine->index);
+            }
             profile.hardpoints.push_back(part);
             const auto part_index = static_cast<std::int32_t>(profile.hardpoints.size() - 1U);
             if (kind != HardpointProfile::Kind::weapon)

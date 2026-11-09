@@ -43,9 +43,9 @@ std::vector<std::string> sandbox_overlay_lines(const SandboxOverlayView& view)
     if (view.world != nullptr)
     {
         const auto simulation = view.world->stats();
-        lines.push_back("Simulation: tick " + std::to_string(simulation.tick) + " at 30 Hz | " + std::to_string(simulation.entities) + " entities | dropped ticks " +
-                        std::to_string(view.dropped_ticks) + " | blocked moves " + std::to_string(simulation.blocked_moves) + " | separating " + std::to_string(simulation.separated_pairs) +
-                        " pairs | waiting " + std::to_string(simulation.waiting_members) + " units");
+        lines.push_back("Simulation: tick " + std::to_string(simulation.tick) + (view.paused ? " PAUSED (P resumes)" : " at 30 Hz") + " | " + std::to_string(simulation.entities) +
+                        " entities | dropped ticks " + std::to_string(view.dropped_ticks) + " | blocked moves " + std::to_string(simulation.blocked_moves) + " | separating " +
+                        std::to_string(simulation.separated_pairs) + " pairs | waiting " + std::to_string(simulation.waiting_members) + " units");
         lines.push_back("Paths: " + std::to_string(simulation.path_searches) + " planned | " + std::to_string(simulation.partial_paths) + " partial | " + std::to_string(simulation.path_expansions) +
                         " nodes expanded | " + std::to_string(simulation.queued_paths) + " queued, " + std::to_string(simulation.shared_routes) + " shared | tick " +
                         format_fixed(view.last_tick_ms, 2) + " ms, slowest " + format_fixed(view.slowest_tick_ms, 2) + " ms");

@@ -4,6 +4,7 @@
 // glows) for every drawn entity, keeps them at their bones as the entity moves and animates, hides
 // them while their bone is hidden, and stops them when the entity is no longer drawn.
 
+#include "eaw/simulation.hpp"
 #include "eaw/simulation_types.hpp"
 #include "eaw/visual_scene.hpp"
 #include "particle_effects.hpp"
@@ -25,8 +26,11 @@ public:
     void add_rigs(std::span<const VisualRig> rigs);
 
     // `instances` and `entities` are this frame's drawn list (invalid ids, such as corpses, carry no
-    // effects); `palette` is the bone palette the instances' bone offsets index.
-    void update(ParticleWorld& world, std::span<const VisualInstance> instances, std::span<const EntityId> entities, std::span<const std::array<float, 16>> palette);
+    // effects); `palette` is the bone palette the instances' bone offsets index. `snapshot` supplies
+    // speeds for engine effects, whose intensity follows the entity's speed over its top speed,
+    // smoothed over about half a second of `seconds` (presentation time).
+    void update(ParticleWorld& world, std::span<const VisualInstance> instances, std::span<const EntityId> entities, std::span<const std::array<float, 16>> palette,
+                std::span<const EntitySnapshot> snapshot = {}, double seconds = 0.0);
 
     // Stops every attached effect (a scene change).
     void clear(ParticleWorld& world);
@@ -44,6 +48,7 @@ private:
         std::uint32_t bone{};
         // The bone's bind-pose transform in model space (row-vector convention).
         std::array<float, 16> bind{};
+        bool engine{};
     };
     struct MeshEffects
     {
@@ -61,6 +66,14 @@ private:
     std::vector<MeshEffects> meshes_;
     // (entity index, generation, attachment) -> playing effect.
     std::unordered_map<std::uint64_t, Playing> playing_;
+    // Smoothed speed fraction per entity (by entity key), and when it was last updated.
+    struct Power
+    {
+        float value{};
+        std::uint64_t frame{};
+    };
+    std::unordered_map<std::uint64_t, Power> power_;
+    double last_seconds_{};
     std::uint64_t frame_{};
 };
 

@@ -71,6 +71,9 @@ struct VisualEffectAttachment
     // The mesh emit-from-mesh emitters spawn on (the mesh on the proxy bone's parent, in the proxy
     // bone's space), when the effect has such emitters and the model has that mesh.
     std::shared_ptr<const ParticleEmitMesh> emit_mesh;
+    // An engine effect (named pe_*, or under a hardpoint's Engine_Particles bone): it glows with the
+    // unit's speed.
+    bool engine{};
 };
 
 struct VisualRig

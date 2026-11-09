@@ -104,6 +104,11 @@ run at any frame rate without affecting state hashes. Effects attach to
 entities through model proxies (`AttachedEffects`), keyed by entity id, and
 follow the animated bone palette.
 
+Post-processing runs after the scene and particles and before debug drawing
+and the overlay: the scene renders into an offscreen colour target, bloom
+works at reduced resolution, and a composite writes the back buffer. Debug
+lines and panels therefore never bloom.
+
 The renderer uses an RHI with explicit resources, command lists, queues,
 barriers, descriptor tables, and pipeline objects. The first production backend
 should be Direct3D 12 because the target game and primary audience are on

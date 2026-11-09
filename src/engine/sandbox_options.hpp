@@ -52,6 +52,8 @@ struct SandboxOptions
     std::optional<std::uint64_t> reload_every;
     // Per-frame texture upload budget in MiB; zero uploads everything at once.
     std::uint64_t upload_budget_mib{64};
+    // Bloom strength (0 turns bloom off; --no-bloom is the same).
+    float bloom_strength{0.8F};
     // Watch the scene's source files and archives and rebuild when they change.
     bool hot_reload{};
     // Pick this client pixel once the scene is shown (automation for the selection path).

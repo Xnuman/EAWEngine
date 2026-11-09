@@ -1,5 +1,8 @@
 #include "attached_effects.hpp"
 
+#include <algorithm>
+#include <cmath>
+
 namespace eaw {
 namespace {
 
@@ -51,7 +54,7 @@ void AttachedEffects::add_rigs(const std::span<const VisualRig> rigs)
                 // Hardpoint damage effects wait for per-hardpoint damage in snapshots.
                 if (attachment.effect && attachment.bone < bind_pose.size() && attachment.damage_bone < 0)
                 {
-                    mesh.attachments.push_back({attachment.effect, attachment.emit_mesh, attachment.bone, bind_pose[attachment.bone].values});
+                    mesh.attachments.push_back({attachment.effect, attachment.emit_mesh, attachment.bone, bind_pose[attachment.bone].values, attachment.engine});
                 }
             }
         }
@@ -59,9 +62,35 @@ void AttachedEffects::add_rigs(const std::span<const VisualRig> rigs)
     }
 }
 
-void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualInstance> instances, const std::span<const EntityId> entities, const std::span<const std::array<float, 16>> palette)
+void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualInstance> instances, const std::span<const EntityId> entities, const std::span<const std::array<float, 16>> palette,
+                             const std::span<const EntitySnapshot> snapshot, const double seconds)
 {
     ++frame_;
+    const auto elapsed = static_cast<float>(std::clamp(seconds - last_seconds_, 0.0, 0.25));
+    last_seconds_ = seconds;
+    // Speed fractions this frame, by entity key, smoothed toward the target.
+    constexpr float smoothing_seconds = 0.5F;
+    const auto blend = 1.0F - std::exp(-elapsed / smoothing_seconds);
+    for (const auto& entity : snapshot)
+    {
+        if (entity.max_speed <= 0.0F)
+        {
+            continue;
+        }
+        const auto key = (static_cast<std::uint64_t>(entity.id.index) << 32U) | entity.id.generation;
+        const auto target = std::clamp(entity.speed / entity.max_speed, 0.0F, 1.0F);
+        auto [entry, inserted] = power_.try_emplace(key, Power{target, frame_});
+        if (!inserted)
+        {
+            entry->second.value += (target - entry->second.value) * blend;
+            entry->second.frame = frame_;
+        }
+    }
+    std::erase_if(power_,
+                  [&](const auto& entry)
+                  {
+                      return entry.second.frame != frame_;
+                  });
     for (std::size_t index = 0; index < instances.size() && index < entities.size(); ++index)
     {
         const auto& instance = instances[index];
@@ -111,6 +140,12 @@ void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualI
             }
             world.set_transform(found->second.instance, world_transform);
             world.set_emitting(found->second.instance, shown);
+            if (attachment.engine)
+            {
+                // Immobile entities and those without a snapshot keep full intensity.
+                const auto power = power_.find((static_cast<std::uint64_t>(entity.index) << 32U) | entity.generation);
+                world.set_intensity(found->second.instance, power != power_.end() ? power->second.value : 1.0F);
+            }
             found->second.frame = frame_;
         }
     }

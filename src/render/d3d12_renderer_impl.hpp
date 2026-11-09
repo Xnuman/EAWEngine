@@ -75,6 +75,7 @@ struct D3d12Renderer::Impl
         // World-space camera basis for camera-facing particles.
         std::array<float, 4> camera_right{};
         std::array<float, 4> camera_up{};
+        std::array<float, 4> post_parameters{};
     };
     static_assert(sizeof(FrameConstants) <= frame_constant_bytes);
 
@@ -198,6 +199,22 @@ struct D3d12Renderer::Impl
     std::uint32_t highlighted_pick_id{};
     std::vector<VisualDebugLine> debug_lines;
     ComPtr<ID3D12PipelineState> debug_pipeline;
+
+    // Post-processing (bloom): the scene renders into scene_color, a bright pass fills
+    // bloom_targets[0] at reduced size, blurs ping-pong between the two, and a composite writes the
+    // back buffer. Their shader views sit in texture-table slots reserved at startup.
+    ComPtr<ID3D12Resource> scene_color;
+    std::array<ComPtr<ID3D12Resource>, 2> bloom_targets;
+    ComPtr<ID3D12DescriptorHeap> post_rtv_heap;
+    std::array<std::uint32_t, 3> post_slots{};
+    std::uint32_t bloom_width{1};
+    std::uint32_t bloom_height{1};
+    ComPtr<ID3D12PipelineState> bloom_extract_pipeline;
+    ComPtr<ID3D12PipelineState> bloom_blur_pipeline;
+    ComPtr<ID3D12PipelineState> bloom_composite_pipeline;
+    // Creates (or, after a resize, recreates) the post-processing targets and their views.
+    void create_post_targets();
+    [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE post_rtv(std::size_t index) const;
 
     // Structured-buffer layout of ParticleData in particle.hlsl (80 bytes).
     struct GpuParticle

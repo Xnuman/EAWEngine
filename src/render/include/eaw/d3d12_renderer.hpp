@@ -26,6 +26,12 @@ struct D3d12RendererOptions
     // Texture bytes uploaded per frame while a scene streams in; at least one texture is always
     // uploaded. Zero uploads every queued texture in the first frame.
     std::uint64_t texture_upload_budget_bytes{64ULL * 1024ULL * 1024ULL};
+    // Bloom: bright parts of the frame (brightest channel above `bloom_threshold`, 0..1) blurred
+    // at quarter resolution and added back scaled by `bloom_strength`. An engine choice standing in
+    // for the original's glow option; the values are tuned by eye against the original.
+    bool bloom{true};
+    float bloom_threshold{0.6F};
+    float bloom_strength{0.8F};
 };
 
 struct D3d12RendererStats

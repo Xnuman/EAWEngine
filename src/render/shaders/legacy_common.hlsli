@@ -16,6 +16,9 @@
     "SRV(t4, visibility = SHADER_VISIBILITY_PIXEL), " \
     "StaticSampler(s0, filter = FILTER_ANISOTROPIC, maxAnisotropy = 8, addressU = TEXTURE_ADDRESS_WRAP, addressV = TEXTURE_ADDRESS_WRAP, " \
     "addressW = TEXTURE_ADDRESS_WRAP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK, " \
+    "visibility = SHADER_VISIBILITY_PIXEL), " \
+    "StaticSampler(s1, filter = FILTER_MIN_MAG_MIP_LINEAR, addressU = TEXTURE_ADDRESS_CLAMP, addressV = TEXTURE_ADDRESS_CLAMP, " \
+    "addressW = TEXTURE_ADDRESS_CLAMP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK, " \
     "visibility = SHADER_VISIBILITY_PIXEL)"
 
 // Material flags (keep in sync with d3d12_renderer.cpp).
@@ -48,6 +51,7 @@ cbuffer FrameConstants : register(b0)
     uint4 selection; // x: pick id drawn highlighted (0 = none)
     float4 camera_right; // world-space view basis for camera-facing particles
     float4 camera_up;
+    float4 post_parameters; // x bloom threshold, y bloom strength, z bloom knee
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and

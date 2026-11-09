@@ -55,6 +55,8 @@ struct SceneBuilder
     // Damage_Decal (their meshes are scorch marks, hidden on intact ships).
     std::unordered_map<std::string, std::unordered_set<std::uint32_t>> damage_bones;
     std::unordered_map<std::string, std::unordered_set<std::uint32_t>> decal_bones;
+    // Folded model path -> Engine_Particles bones (proxies under them are engine effects).
+    std::unordered_map<std::string, std::unordered_set<std::uint32_t>> engine_bones;
     // Folded model path -> the model whose clips it plays (XML Land_Model_Anim_Override_Name of the
     // first type that appended it).
     std::unordered_map<std::string, std::string> animation_sources;

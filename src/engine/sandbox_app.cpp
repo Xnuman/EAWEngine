@@ -217,6 +217,10 @@ struct SandboxSession
     // Kept for --reload-every, which reloads the scene and so drops added textures.
     std::vector<eaw::VisualTexture> particle_texture_copy;
     std::chrono::steady_clock::time_point map_animation_start = std::chrono::steady_clock::now();
+    // P on maps freezes the world (simulation ticks, unit animation, particles, texture scrolling)
+    // while the cameras keep working; orders given meanwhile apply after it resumes.
+    bool world_paused = false;
+    std::chrono::steady_clock::time_point paused_since;
     eaw::FixedStepClock simulation_clock{30.0};
     eaw::SimSnapshot previous_snapshot;
     std::vector<eaw::VisualInstance> frame_instances;
@@ -466,6 +470,7 @@ struct SandboxSession
                           << '\n';
             }
             map_animation_start = std::chrono::steady_clock::now();
+            world_paused = false;
             {
                 std::size_t animated_meshes = 0;
                 std::size_t clips = 0;
@@ -510,7 +515,7 @@ struct SandboxSession
                 tactical_camera.emplace(bounds);
                 orbit_camera.reset();
                 renderer.set_camera(tactical_camera->camera());
-                std::cout << "Tactical camera: WASD/arrows or right-drag pan (Shift is faster), left-drag rotates, wheel zooms, Space resets.\n";
+                std::cout << "Tactical camera: WASD/arrows or right-drag pan (Shift is faster), left-drag rotates, wheel zooms, Space resets, C toggles the free camera, P pauses the world.\n";
             }
         }
         else if (content.model)
@@ -881,6 +886,7 @@ struct SandboxSession
         view.raw_input = window.input().raw_input;
         view.raw_events = window.input().raw_events;
         const auto particle_stats = particles.stats();
+        view.paused = world_paused;
         view.particle_effects = particle_stats.instances;
         view.particles = particle_stats.particles;
         view.attached_effects = attached_effects.playing();
@@ -1119,12 +1125,45 @@ struct SandboxSession
         }
     }
 
-    // P pauses the animation, B and G toggle bounds and passability, Left/Right step animations (models).
+    // Presentation time of the map world: frozen while paused (resuming shifts the clocks' origins by
+    // the paused span, so nothing jumps).
+    [[nodiscard]] std::chrono::steady_clock::time_point world_now(const std::chrono::steady_clock::time_point now) const
+    {
+        return world_paused ? paused_since : now;
+    }
+
+    void toggle_world_pause()
+    {
+        const auto now = std::chrono::steady_clock::now();
+        if (!world_paused)
+        {
+            world_paused = true;
+            paused_since = now;
+        }
+        else
+        {
+            const auto span = now - paused_since;
+            map_animation_start += span;
+            scene_start += span;
+            world_paused = false;
+        }
+        std::cout << (world_paused ? "World paused" : "World resumed") << '\n';
+    }
+
+    // P pauses the animation (models) or the world (maps), B and G toggle bounds and passability,
+    // Left/Right step animations (models).
     void handle_view_keys(const eaw::InputState& input)
     {
-        if (window.input().keys[static_cast<std::size_t>(eaw::Key::p)].pressed && visual_animation)
+        if (input.keys[static_cast<std::size_t>(eaw::Key::p)].pressed)
         {
-            animation_playing = !animation_playing;
+            if (tactical_camera && world)
+            {
+                toggle_world_pause();
+            }
+            else if (visual_animation)
+            {
+                animation_playing = !animation_playing;
+            }
         }
         if (input.keys[static_cast<std::size_t>(eaw::Key::b)].pressed)
         {
@@ -1267,7 +1306,7 @@ struct SandboxSession
             const auto skin_palette = eaw::sample_skin_palette(*visual_model, &*visual_animation, animation_time);
             renderer.set_bone_transforms(skin_palette);
         }
-        renderer.set_scene_time(std::chrono::duration<float>(now - scene_start).count());
+        renderer.set_scene_time(std::chrono::duration<float>(world_now(now) - scene_start).count());
     }
 
     // Fixed simulation ticks, then this frame's interpolated instances and debug lines.
@@ -1275,8 +1314,9 @@ struct SandboxSession
     {
         if (world && presentation)
         {
-            const auto ticks = simulation_clock.advance(std::chrono::duration<double>(now - simulation_tick).count());
+            const auto ticks = world_paused ? 0U : simulation_clock.advance(std::chrono::duration<double>(now - simulation_tick).count());
             simulation_tick = now;
+            const auto world_seconds = std::chrono::duration<double>(world_now(now) - map_animation_start).count();
             for (std::uint32_t tick = 0; tick < ticks; ++tick)
             {
                 previous_snapshot = world->snapshot();
@@ -1290,7 +1330,7 @@ struct SandboxSession
                 {
                     if (const auto corpse = presentation->corpse_instance(death); corpse && animator)
                     {
-                        animator->add_corpse(corpse->instance, death.id, std::chrono::duration<double>(now - map_animation_start).count(), corpse->style);
+                        animator->add_corpse(corpse->instance, death.id, world_seconds, corpse->style);
                     }
                 }
             }
@@ -1301,10 +1341,9 @@ struct SandboxSession
             {
                 watchdog.enter("unit animation", world->stats().tick);
                 // The palette goes first: set_instances checks bone ranges against it.
-                animator->animate(entities, frame_entities, frame_instances, std::chrono::duration<double>(now - map_animation_start).count(), eaw::D3d12Renderer::max_bone_transforms(),
-                                  frame_palette);
+                animator->animate(entities, frame_entities, frame_instances, world_seconds, eaw::D3d12Renderer::max_bone_transforms(), frame_palette);
                 renderer.set_bone_transforms(frame_palette);
-                attached_effects.update(particles, frame_instances, frame_entities, frame_palette);
+                attached_effects.update(particles, frame_instances, frame_entities, frame_palette, entities, world_seconds);
             }
             for (const auto request : unbound_picks)
             {
@@ -1319,7 +1358,7 @@ struct SandboxSession
     // Particle effects advance on the frame clock and are drawn back to front from the camera.
     void step_particles(const std::chrono::steady_clock::time_point now)
     {
-        const auto seconds = std::chrono::duration<float>(now - particle_tick).count();
+        const auto seconds = world_paused ? 0.0F : std::chrono::duration<float>(now - particle_tick).count();
         particle_tick = now;
         for (std::size_t index = 0; index < shown_effects.size(); ++index)
         {
@@ -1647,6 +1686,8 @@ int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const Gam
     renderer_options.maximum_frame_latency = options.frame_latency;
     renderer_options.pipeline_cache_directory = options.pipeline_cache;
     renderer_options.texture_upload_budget_bytes = options.upload_budget_mib * 1024ULL * 1024ULL;
+    renderer_options.bloom = options.bloom_strength > 0.0F;
+    renderer_options.bloom_strength = options.bloom_strength;
     auto created_renderer = eaw::D3d12Renderer::create(window.native_handle(), window.client_width(), window.client_height(), renderer_options);
     if (!created_renderer)
     {
