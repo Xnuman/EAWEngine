@@ -1,0 +1,281 @@
+#pragma once
+
+// The sandbox session: its state between frames and the steps of one frame. Private to the EAWEngine
+// executable; the member functions are defined by subject in sandbox_app.cpp and the
+// sandbox_session_*.cpp files named below.
+
+#include "frame_watchdog.hpp"
+
+#include "asset_cache.hpp"
+#include "attached_effects.hpp"
+#include "battle.hpp"
+#include "battle_log.hpp"
+#include "camera_controller.hpp"
+#include "camera_math.hpp"
+#include "combat_content.hpp"
+#include "particle_effects.hpp"
+#include "rts_control.hpp"
+#include "sandbox_content.hpp"
+#include "sandbox_debug_lines.hpp"
+#include "sandbox_overlay.hpp"
+#include "sandbox_panels.hpp"
+#include "scene_presentation.hpp"
+#include "text_format.hpp"
+#include "unit_animation.hpp"
+#include "visual_scene_builder.hpp"
+
+#include "eaw/d3d12_renderer.hpp"
+#include "eaw/log.hpp"
+#include "eaw/platform_window.hpp"
+
+#include <array>
+#include <chrono>
+#include <cstdint>
+#include <future>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+namespace eaw {
+
+// XML type names compare case-insensitively.
+[[nodiscard]] std::string fold_name(std::string text);
+
+// Members keep the declaration order the work depends on: the asset cache and archive watch
+// outlive the futures that use them.
+struct SandboxSession
+{
+    const eaw::SandboxOptions& options;
+    eaw::VirtualFileSystem& vfs;
+    eaw::PlatformWindow& window;
+    eaw::D3d12Renderer& renderer;
+
+    std::optional<eaw::VisualModelAsset> visual_model;
+    std::optional<eaw::AlaAnimation> visual_animation;
+    // Model inspection orbits the model; a map uses the tactical camera. The validation
+    // triangle, shown while content builds, gets an orbit over its small extent.
+    std::optional<eaw::OrbitCamera> orbit_camera{std::in_place, eaw::CameraBounds{{-0.8F, -0.7F, -0.1F}, {0.8F, 0.8F, 0.1F}}};
+    std::optional<eaw::TacticalCamera> tactical_camera;
+    // Kept only for --reload-every; otherwise the CPU copy moves into the renderer.
+    std::optional<eaw::VisualScene> reload_scene;
+    std::vector<std::array<float, 16>> bind_palette;
+    // Runtime-spawnable types of the current map (the battle's); N spawns the chosen name at the
+    // cursor, building its package first when it is not loaded yet.
+    std::vector<eaw::SpawnableType> spawnable;
+    // The map's ground surface for CPU order targets (invalid on space maps and models).
+    eaw::GroundMap terrain_heights;
+    bool map_land = false;
+    // Names Tab cycles through: every unit type with a model for the map (listed in the
+    // background once the map is shown), or the loaded spawnable types until then.
+    std::vector<std::string> spawn_names;
+    std::future<std::vector<std::string>> pending_spawn_names;
+    std::size_t spawn_choice = 0;
+    // Types added at runtime (kept across hot-reload rebuilds), the package being built, and spawns
+    // waiting for their type.
+    std::vector<std::string> runtime_types;
+    struct PendingSpawn
+    {
+        std::string type;
+        eaw::SimVector3 point;
+        std::uint32_t count{};
+        std::uint32_t owner{};
+    };
+    std::vector<PendingSpawn> pending_spawns;
+    std::string building_type;
+    std::future<eaw::Result<eaw::SpawnablePackage>> pending_package;
+    // Owner slot of debug spawns (O cycles through the non-neutral slots 0..7).
+    std::uint32_t spawn_owner = 1;
+    // Pick requests: the instance-to-entity list of the frame that drew each one (instance order
+    // changes whenever an entity dies), requests still waiting for that frame, and which
+    // requests are right-click attack orders rather than selections.
+    std::unordered_map<std::uint32_t, std::vector<eaw::EntityId>> pick_entities;
+    std::vector<std::uint32_t> unbound_picks;
+    std::unordered_set<std::uint32_t> attack_picks;
+    bool initial_spawns_sent = false;
+    // Tick at which the initial spawn orders were given (they apply in the next step).
+    std::uint64_t initial_spawn_tick = 0;
+    // Every shown object is a simulation entity of the battle; backdrops stay static. Presentation
+    // re-poses the scene's instances from interpolated snapshots each frame. `world` is the
+    // battle's world (null before the first scene).
+    // Declared first among the frame state so it outlives nothing it reports on.
+    FrameWatchdog watchdog;
+    std::optional<eaw::Battle> battle;
+    eaw::SimulationWorld* world = nullptr;
+    std::optional<eaw::ScenePresentation> presentation;
+    // Map units' animation (presentation only) and the palette it fills each frame.
+    std::optional<eaw::UnitAnimator> animator;
+    std::vector<std::array<float, 16>> frame_palette;
+    // Particle effects (presentation only): the proxies of drawn units and the --effect effects,
+    // which play at the map center and restart when they end.
+    eaw::ParticleWorld particles;
+    eaw::AttachedEffects attached_effects;
+    std::vector<eaw::VisualParticle> frame_particles;
+    std::vector<std::shared_ptr<const eaw::ParticleEffect>> shown_effects;
+    std::vector<eaw::ParticleInstanceId> shown_effect_ids;
+    std::array<float, 3> effect_center{};
+    std::uint64_t effect_seed = 1;
+    std::chrono::steady_clock::time_point particle_tick = std::chrono::steady_clock::now();
+    // How shots look (by projectile visual key) and the bolt atlas's renderer texture.
+    eaw::ProjectileVisualTable projectile_visuals;
+    std::uint32_t projectile_atlas = eaw::invalid_visual_texture;
+    // The XML Particle objects played one-shot where shots end and units die.
+    eaw::ParticleEffectObjectTable effect_objects;
+    // Kept for --reload-every, which reloads the scene and so drops added textures.
+    std::vector<eaw::VisualTexture> particle_texture_copy;
+    std::chrono::steady_clock::time_point map_animation_start = std::chrono::steady_clock::now();
+    // P on maps freezes the world (simulation ticks, unit animation, particles, texture scrolling)
+    // while the cameras keep working; orders given meanwhile apply after it resumes.
+    bool world_paused = false;
+    std::chrono::steady_clock::time_point paused_since;
+    eaw::FixedStepClock simulation_clock{30.0};
+    eaw::SimSnapshot previous_snapshot;
+    std::vector<eaw::VisualInstance> frame_instances;
+    std::vector<eaw::EntityId> frame_entities;
+    std::unordered_set<std::uint64_t> selection;
+    std::chrono::steady_clock::time_point simulation_tick = std::chrono::steady_clock::now();
+    float axis_length = 1.0F;
+    bool show_all_bounds = options.show_bounds;
+    // G: passability classes drawn around the camera focus (land maps).
+    bool show_passability = options.show_passability;
+    // Text shown on the statistics overlay; updated where the console reports the same events.
+    std::string scene_status = options.validation_triangle ? "validation triangle" : "building in the background...";
+    std::string animation_status;
+    std::string reload_status = options.hot_reload ? "waiting for the scene" : "off (--hot-reload)";
+    // Model mode: Left/Right step through [bind pose, animations...].
+    std::vector<std::string> animation_paths;
+    std::size_t animation_choice = 0;
+
+    // The window stays responsive while the map or model builds on a worker thread. The future
+    // is declared after the VFS, so leaving early waits for the worker before the VFS goes away.
+    // Decoded assets shared by every build; a hot reload re-decodes only what changed.
+    eaw::AssetCache asset_cache;
+    eaw::ArchiveWatch archive_watch{vfs};
+    std::optional<eaw::DependencySet> scene_dependencies;
+    std::future<eaw::SandboxContent> pending_content;
+    std::future<eaw::HotReloadCheck> pending_check;
+    std::chrono::steady_clock::time_point next_reload_check = std::chrono::steady_clock::now();
+    // Frame count at which the content was shown; --frame-limit counts from here.
+    std::optional<std::uint64_t> content_shown_at;
+    std::chrono::steady_clock::time_point animation_tick = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point scene_start = animation_tick;
+    std::chrono::steady_clock::time_point camera_tick = animation_tick;
+    float animation_time = 0.0F;
+    bool animation_playing = true;
+    std::uint64_t scene_reloads = 0;
+    bool textures_streamed = false;
+    bool reload_check_reported = false;
+    std::int64_t click_travel = 0;
+    // Dev panels (F1 opens their menu); statistics starts as --overlay says.
+    eaw::SandboxPanels panels{.menu = options.panels.menu, .statistics = options.overlay || options.panels.statistics, .spawn = options.panels.spawn};
+    bool statistics_shown = false;
+    // How many units N and the spawn panel spawn, and the panel's last button presses.
+    std::uint32_t spawn_count = 1;
+    eaw::SpawnPanelActions panel_actions;
+    std::uint64_t overlay_frames = 0;
+    std::chrono::steady_clock::time_point overlay_refreshed = std::chrono::steady_clock::now();
+    bool automated_pick_sent = false;
+    bool automated_move_sent = false;
+    // Maps use the legacy RTS camera (no rotation; left-drag box-selects, right-click moves);
+    // C switches to the free debug camera (drag rotates, right-drag pans).
+    bool free_camera = false;
+    std::optional<std::array<float, 2>> drag_start;
+    bool box_active = false;
+    std::uint64_t orders_issued = 0;
+    // Simulation step cost (move orders are planned inside the step that applies them).
+    double last_tick_ms = 0.0;
+    double slowest_tick_ms = 0.0;
+    std::uint64_t streaming_since = 0;
+
+    SandboxSession(const SandboxSession&) = delete;
+    SandboxSession& operator=(const SandboxSession&) = delete;
+
+    // Session lifetime and the frame loop (sandbox_app.cpp).
+    SandboxSession(const eaw::SandboxOptions& session_options, eaw::VirtualFileSystem& session_vfs, eaw::PlatformWindow& session_window, eaw::D3d12Renderer& session_renderer);
+    std::string describe_instance(const std::size_t index) const;
+    ~SandboxSession();
+    // Renders, runs the --reload-every test, reports streaming, and applies --frame-limit.
+    void present();
+    // One iteration of the window loop; false once the window is closing. The steps run in this
+    // order every frame.
+    bool frame();
+    // Waits for the GPU and prints the run summary.
+    int finish();
+
+    // Showing built content, hot reload (sandbox_session_content.cpp).
+    void start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, std::string name);
+    // Registers particle textures with the renderer and points the effects at them (white when
+    // registration fails); returns where each texture landed (empty on failure).
+    std::vector<std::uint32_t> register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs, std::span<std::shared_ptr<const eaw::ParticleEffect>> effects,
+                                                          eaw::ParticleEffectObjectTable* objects = nullptr);
+    // Takes over a build's projectile visuals; `atlas` indexes its particle textures (`placed`).
+    void add_projectile_visuals(const eaw::ProjectileVisualTable& visuals, const std::uint32_t atlas, std::span<const std::uint32_t> placed);
+    bool load_content_scene(eaw::VisualScene scene, const bool reload);
+    static eaw::VisualScene presentation_layout(const eaw::VisualScene& scene);
+    void apply_content(eaw::SandboxContent content);
+    // Shows a finished background build.
+    void poll_content();
+    // Hot reload checks and rebuilds.
+    void poll_hot_reload();
+
+    // Cameras, selection, picks, and orders (sandbox_session_input.cpp).
+    std::optional<eaw::SimVector3> ground_target(const float x, const float y) const;
+    void order_move(const eaw::SimVector3& target);
+    void order_attack(const eaw::EntityId victim);
+    // Camera: keyboard panning on maps, mouse orbit/rotation/pan where the camera is free, the wheel.
+    void update_camera(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode);
+    // Left button selection (click picks, RTS drag box-selects) and right-click orders.
+    void handle_pointer(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode, const std::array<float, 2>& mouse);
+    // Spawn keys (O owner, Tab type, N spawn at the cursor) and C (RTS or free camera).
+    void handle_command_keys(const eaw::InputState& input, const bool scene_mouse, const std::array<float, 2>& mouse);
+    // Completed GPU picks: selections, or attack targets for right-clicks.
+    void process_picks();
+    // P pauses the animation (models) or the world (maps), B and G toggle bounds and passability,
+    // Left/Right step animations (models).
+    void handle_view_keys(const eaw::InputState& input);
+
+    // Runtime spawning and command-line automation (sandbox_session_spawning.cpp).
+    // Spawns `count` of a spawnable type (companies and squadrons as their members in formation) for
+    // the current spawn owner, by order: they appear at the next tick.
+    void spawn_units(const std::size_t type_index, const eaw::SimVector3& point, const std::uint32_t count);
+    // Spawns `count` of a type by name: at once when it is loaded, otherwise after its package is
+    // built (on a worker) and registered with the renderer, presentation, animation, and battle.
+    void spawn_named(const std::string& type, const eaw::SimVector3& point, const std::uint32_t count);
+    void start_next_package();
+    // A finished package: its meshes join the renderer's library, its types the battle, and the
+    // spawns waiting for it are given.
+    void poll_packages();
+    // Command-line automation: initial spawns, --auto-move, and --pick, once the content is shown.
+    void run_automation();
+
+    // The simulation, its presentation, and effects over time (sandbox_session_world.cpp).
+    // Presentation time of the map world: frozen while paused (resuming shifts the clocks' origins by
+    // the paused span, so nothing jumps).
+    [[nodiscard]] std::chrono::steady_clock::time_point world_now(const std::chrono::steady_clock::time_point now) const;
+    void toggle_world_pause();
+    // Model animation and scene time.
+    void advance_animation(const std::chrono::steady_clock::time_point now);
+    // Fixed simulation ticks, then this frame's interpolated instances and debug lines.
+    void step_simulation(const std::chrono::steady_clock::time_point now);
+    // Plays an XML Particle object once at `position`, upright (the effect's own axes; an engine
+    // choice until the original's orientation of impacts and explosions is known).
+    void play_effect_object(const std::uint32_t key, const eaw::SimVector3& position);
+    // Particle effects advance on the frame clock and are drawn back to front from the camera.
+    void step_particles(const std::chrono::steady_clock::time_point now);
+
+    // Dev panels, the statistics panel, and debug lines (sandbox_session_ui.cpp).
+    // The dev panels, drawn by the renderer inside its overlay frame; button presses are applied in
+    // the next frame (apply_panel_actions).
+    void draw_panels();
+    void apply_panel_actions();
+    void update_debug_lines();
+    // Refreshes the statistics panel (four times a second, so the numbers stay readable).
+    void update_overlay(const std::chrono::steady_clock::time_point now);
+    // F1 and the statistics panel refresh.
+    void update_panel(const eaw::InputState& input, const std::chrono::steady_clock::time_point now);
+};
+
+} // namespace eaw

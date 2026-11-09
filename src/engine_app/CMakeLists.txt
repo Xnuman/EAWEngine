@@ -5,12 +5,20 @@ set(EAW_ENGINE_APP_SOURCES
 )
 if(WIN32)
     list(APPEND EAW_ENGINE_APP_SOURCES
+        frame_watchdog.cpp
+        frame_watchdog.hpp
         sandbox_app.cpp
         sandbox_app.hpp
         sandbox_overlay.cpp
         sandbox_overlay.hpp
         sandbox_panels.cpp
         sandbox_panels.hpp
+        sandbox_session.hpp
+        sandbox_session_content.cpp
+        sandbox_session_input.cpp
+        sandbox_session_spawning.cpp
+        sandbox_session_ui.cpp
+        sandbox_session_world.cpp
     )
 endif()
 
