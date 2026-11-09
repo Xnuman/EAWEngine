@@ -223,24 +223,58 @@ void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog
         {
             continue;
         }
-        const XmlDefinition* object = nullptr;
-        for (const auto* candidate : catalog.find_crc(key))
+        // The definition a key names: a Particle object when there is one, else a Projectile.
+        const auto definition_of = [&](const std::uint32_t crc) -> const XmlDefinition*
         {
-            if (object == nullptr || candidate->type == "Particle")
+            const XmlDefinition* found = nullptr;
+            for (const auto* candidate : catalog.find_crc(crc))
             {
-                object = candidate;
+                if (found == nullptr || candidate->type == "Particle" || (candidate->type == "Projectile" && found->type != "Particle"))
+                {
+                    found = candidate;
+                }
             }
-        }
+            return found;
+        };
+        const auto field_text = [&](const XmlDefinition& definition, const std::string_view field) -> std::string
+        {
+            const auto* node = catalog.field(definition, field).field;
+            return node != nullptr ? std::string(trim_field(node->text)) : std::string{};
+        };
+        const XmlDefinition* object = definition_of(key);
         if (object == nullptr)
         {
             builder.scene.warnings.push_back("particle object " + std::to_string(key) + " is not defined");
             table.emplace(key, ParticleEffectObject{});
             continue;
         }
-        const auto text = [&](const std::string_view field) -> std::string
+        // Death_Explosions may name a Projectile instead of a Particle object (12 stock uses: mines,
+        // remote bombs, construction pods, wall destruction). All of them detonate at once (no
+        // flight distance), so their look is their detonation particle: lifetime, else object, else
+        // ground (an inference from the stock data; their blast damage is gameplay, not played here).
+        if (object->type == "Projectile")
         {
-            const auto* node = catalog.field(*object, field).field;
-            return node != nullptr ? std::string(trim_field(node->text)) : std::string{};
+            const auto& projectile = *object;
+            std::string particle;
+            for (const auto field : {"Projectile_Lifetime_Detonation_Particle", "Projectile_Object_Detonation_Particle", "Projectile_Ground_Detonation_Particle"})
+            {
+                if (particle = field_text(projectile, field); !particle.empty())
+                {
+                    break;
+                }
+            }
+            object = particle.empty() ? nullptr : definition_of(game_object_name_crc(particle));
+            if (object == nullptr || object->type != "Particle")
+            {
+                builder.scene.warnings.push_back(projectile.name + ": projectile named as an explosion has no detonation Particle object" +
+                                                 (particle.empty() ? std::string{} : " ('" + particle + "' is not one") + "; it plays nothing");
+                table.emplace(key, ParticleEffectObject{});
+                continue;
+            }
+        }
+        const auto text = [&](const std::string_view field)
+        {
+            return field_text(*object, field);
         };
         ParticleEffectObject entry;
         // The model for the map's context, else the other one (most objects name both).
@@ -249,9 +283,22 @@ void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog
         {
             model = text(land ? "Space_Model_Name" : "Land_Model_Name");
         }
-        if (!model.empty())
+        // An object without a playable effect stays in the table (its impacts play nothing), but is
+        // reported: proxies may name meshes, a gameplay Particle object should not.
+        if (model.empty())
         {
+            builder.scene.warnings.push_back(object->name + ": Particle object names no Space_Model_Name or Land_Model_Name; it plays nothing");
+        }
+        else
+        {
+            const auto reported = builder.scene.warnings.size();
             entry.effect = particle_effect(builder, model);
+            // particle_effect reports missing and malformed files itself and is silent only for a
+            // file that is a model rather than a particle system.
+            if (!entry.effect && builder.scene.warnings.size() == reported)
+            {
+                builder.scene.warnings.push_back(object->name + ": Particle object model " + model + " is a mesh, not a particle system; it plays nothing");
+            }
         }
         if (const auto scale = text("Scale_Factor"); !scale.empty())
         {

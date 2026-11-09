@@ -5,6 +5,7 @@
 #include "battle_log.hpp"
 #include "particle_effects.hpp"
 #include "projectile_visuals.hpp"
+#include "scene_builder_internal.hpp"
 #include "sandbox_options.hpp"
 #include "unit_animation.hpp"
 
@@ -278,6 +279,76 @@ void test_terrain_height_field()
     camera.target = {-40.0F, 30.0F, 500.0F};
     camera.up = {1.0F, 0.0F, 0.0F};
     require(!eaw::intersect_terrain(camera, width, height, 320.0F, 240.0F, field), "a ray pointing away from the map must miss");
+}
+
+// XML Particle objects resolve to their effect and Scale_Factor; Death_Explosions entries that name
+// a Projectile play its detonation particle; objects that cannot play are kept and reported.
+void test_effect_objects()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-effect-objects-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::filesystem::create_directories(root / "Data" / "XML");
+    std::filesystem::create_directories(root / "Data" / "Art" / "Models");
+    const auto write = [&](const std::filesystem::path& path, const std::vector<std::byte>& bytes)
+    {
+        std::ofstream file(path, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    };
+    write(root / "Data" / "Art" / "Models" / "P_TEST.ALO", make_test_particle_system(-1));
+    write(root / "Data" / "Art" / "Models" / "W_MESH.ALO", make_test_alo());
+    {
+        std::ofstream file(root / "Data" / "XML" / "Particles.xml", std::ios::binary);
+        file << "<Particles>"
+                "<Particle Name=\"Boom\"><Space_Model_Name>p_test.alo</Space_Model_Name><Scale_Factor>2</Scale_Factor></Particle>"
+                "<Particle Name=\"Land_Boom\"><Land_Model_Name>p_test.alo</Land_Model_Name></Particle>"
+                "<Particle Name=\"Empty\"><Scale_Factor>1</Scale_Factor></Particle>"
+                "<Particle Name=\"Mesh_Boom\"><Space_Model_Name>w_mesh.alo</Space_Model_Name></Particle>"
+                "<Particle Name=\"Bad_Scale\"><Space_Model_Name>p_test.alo</Space_Model_Name><Scale_Factor>-1</Scale_Factor></Particle>"
+                "</Particles>";
+    }
+    {
+        std::ofstream file(root / "Data" / "XML" / "Projectiles.xml", std::ios::binary);
+        file << "<Projectiles>"
+                "<Projectile Name=\"Mine_Blast\"><Projectile_Max_Flight_Distance>0</Projectile_Max_Flight_Distance>"
+                "<Projectile_Object_Detonation_Particle>Land_Boom</Projectile_Object_Detonation_Particle>"
+                "<Projectile_Lifetime_Detonation_Particle>Boom</Projectile_Lifetime_Detonation_Particle></Projectile>"
+                "<Projectile Name=\"Dud\"><Projectile_Max_Flight_Distance>0</Projectile_Max_Flight_Distance></Projectile>"
+                "</Projectiles>";
+    }
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    const auto database = eaw::XmlAssetDatabase::build(vfs);
+    const auto catalog = eaw::GameObjectCatalog::build(database);
+    eaw::VisualScene scene;
+    eaw::scene_build::SceneBuilder builder{vfs, scene};
+    const auto key = [](const std::string_view name)
+    {
+        return eaw::game_object_name_crc(name);
+    };
+    const std::vector<std::uint32_t> keys{key("Boom"), key("Land_Boom"), key("Empty"), key("Mesh_Boom"), key("Bad_Scale"), key("Mine_Blast"), key("Dud"), key("Undefined"), 0U};
+    eaw::ParticleEffectObjectTable table;
+    eaw::scene_build::load_effect_objects(builder, catalog, keys, false, table);
+    const auto warned = [&](const std::string_view text)
+    {
+        return std::ranges::count_if(scene.warnings,
+                                     [&](const std::string& warning)
+                                     {
+                                         return warning.find(text) != std::string::npos;
+                                     });
+    };
+    require(table.size() == 8, "every named effect object must have an entry");
+    const auto& boom = table.at(key("Boom"));
+    require(boom.effect && boom.effect->emitters.size() == 2 && boom.scale == 2.0F, "a Particle object must resolve to its effect and Scale_Factor");
+    require(table.at(key("Land_Boom")).effect && table.at(key("Land_Boom")).scale == 1.0F, "a space map must fall back to the land model");
+    const auto& mine = table.at(key("Mine_Blast"));
+    require(mine.effect == boom.effect && mine.scale == 2.0F, "a projectile named as an explosion must play its lifetime detonation Particle object");
+    require(!table.at(key("Empty")).effect && warned("Empty: Particle object names no") == 1, "a Particle object without a model must be reported");
+    require(!table.at(key("Mesh_Boom")).effect && warned("Mesh_Boom: Particle object model w_mesh.alo is a mesh") == 1, "a Particle object naming a mesh must be reported");
+    require(!table.at(key("Dud")).effect && warned("Dud: projectile named as an explosion has no detonation") == 1, "a projectile without a detonation particle must be reported");
+    require(table.at(key("Bad_Scale")).effect && table.at(key("Bad_Scale")).scale == 1.0F && warned("Bad_Scale: Scale_Factor '-1'") == 1, "a bad Scale_Factor must be reported");
+    require(!table.at(key("Undefined")).effect && warned("is not defined") == 1, "an undefined effect object must be reported");
+    std::filesystem::remove_all(root, ignored);
 }
 
 void test_combat_content()
@@ -1500,6 +1571,7 @@ const ModuleRegistrar registrar("engine", {
                                               {"test_visual_material_translation", &test_visual_material_translation},
                                               {"test_visual_terrain", &test_visual_terrain},
                                               {"test_combat_content", &test_combat_content},
+                                              {"test_effect_objects", &test_effect_objects},
                                               {"test_sandbox_options", &test_sandbox_options},
                                               {"test_model_forward_axis", &test_model_forward_axis},
                                           });

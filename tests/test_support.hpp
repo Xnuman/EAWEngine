@@ -128,4 +128,9 @@ std::vector<std::byte> make_test_ted();
 
 std::vector<std::byte> make_test_dat();
 
+// A classic particle ALO (root chunk 0x0900) named p_test with two emitters, "sparks" and "smoke";
+// `death_child` links sparks' death emitter, and the flags add an unknown property or truncate a
+// shape group.
+std::vector<std::byte> make_test_particle_system(const std::int32_t death_child, const bool unknown_property = false, const bool short_group = false);
+
 } // namespace eaw_test

@@ -561,4 +561,121 @@ std::vector<std::byte> make_test_dat()
     return bytes;
 }
 
+namespace {
+
+std::vector<std::byte> particle_bytes(std::initializer_list<std::uint8_t> values)
+{
+    std::vector<std::byte> bytes;
+    for (const auto value : values)
+    {
+        bytes.push_back(static_cast<std::byte>(value));
+    }
+    return bytes;
+}
+
+std::vector<std::byte> particle_u32(const std::uint32_t value)
+{
+    std::vector<std::byte> bytes;
+    append_u32(bytes, value);
+    return bytes;
+}
+
+std::vector<std::byte> particle_float(const float value)
+{
+    std::vector<std::byte> bytes;
+    append_float(bytes, value);
+    return bytes;
+}
+
+// One emitter: properties, texture, name, three shape groups, seven tracks, and optional links.
+std::vector<std::byte> make_test_particle_emitter(const std::string_view name, const std::int32_t death_child, const bool unknown_property, const bool short_group)
+{
+    std::vector<std::byte> properties;
+    append_mini(properties, 0x04, particle_u32(2));
+    append_mini(properties, 0x05, particle_u32(1));
+    append_mini(properties, 0x07, particle_bytes({1}));
+    append_mini(properties, 0x0F, particle_float(2.5F));
+    append_mini(properties, 0x26, particle_u32(8));
+    append_mini(properties, 0x27, particle_u32(0xffffffffU));
+    append_mini(properties, 0x28, particle_float(0.75F));
+    append_mini(properties, 0x41, particle_bytes({1}));
+    append_mini(properties, 0x14, particle_u32(3));
+    if (unknown_property)
+    {
+        append_mini(properties, 0x7E, particle_bytes({9, 9}));
+    }
+
+    std::vector<std::byte> groups;
+    for (std::uint32_t index = 0; index < 3; ++index)
+    {
+        std::vector<std::byte> group;
+        append_u32(group, index == 2 ? 3U : 1U);
+        for (int value = 0; value < 15; ++value)
+        {
+            append_float(group, static_cast<float>(value));
+        }
+        if (short_group)
+        {
+            group.resize(60);
+        }
+        std::vector<std::byte> data;
+        append_chunk(data, 0x1101, group);
+        append_chunk(groups, 0x1100, data, true);
+    }
+
+    std::vector<std::byte> tracks;
+    for (std::size_t index = 0; index < 7; ++index)
+    {
+        const auto colour = index < 4;
+        std::vector<std::byte> head;
+        append_mini(head, 0x02, colour ? particle_bytes({255}) : particle_float(1.0F));
+        append_mini(head, 0x03, colour ? particle_bytes({0}) : particle_float(3.0F));
+        append_mini(head, 0x04, particle_u32(index == 5 ? 2U : 0U));
+        std::vector<std::byte> keys;
+        if (index == 3)
+        {
+            std::vector<std::byte> key = particle_u32(51);
+            append_float(key, 0.5F);
+            append_mini(keys, 0x05, key);
+        }
+        append_chunk(tracks, 0x00, head);
+        append_chunk(tracks, 0x01, keys);
+    }
+
+    std::vector<std::byte> emitter;
+    append_chunk(emitter, 0x02, properties);
+    std::vector<std::byte> text;
+    append_string(text, "p_smoke.tga");
+    append_chunk(emitter, 0x03, text);
+    text.clear();
+    append_string(text, name);
+    append_chunk(emitter, 0x16, text);
+    append_chunk(emitter, 0x29, groups, true);
+    append_chunk(emitter, 0x01, tracks, true);
+    std::vector<std::byte> links;
+    append_mini(links, 0x37, particle_u32(static_cast<std::uint32_t>(death_child)));
+    append_mini(links, 0x39, particle_u32(0xffffffffU));
+    append_chunk(emitter, 0x36, links);
+    return emitter;
+}
+
+} // namespace
+
+std::vector<std::byte> make_test_particle_system(const std::int32_t death_child, const bool unknown_property, const bool short_group)
+{
+    std::vector<std::byte> list;
+    append_chunk(list, 0x0700, make_test_particle_emitter("sparks", death_child, unknown_property, short_group), true);
+    append_chunk(list, 0x0700, make_test_particle_emitter("smoke", -1, false, false), true);
+    std::vector<std::byte> system;
+    std::vector<std::byte> text;
+    append_string(text, "p_test");
+    append_chunk(system, 0x0000, text);
+    append_chunk(system, 0x0001, particle_u32(4));
+    append_chunk(system, 0x0800, list, true);
+    append_chunk(system, 0x0002, particle_bytes({0}));
+    std::vector<std::byte> file;
+    append_chunk(file, 0x0900, system, true);
+    return file;
+}
+
 } // namespace eaw_test

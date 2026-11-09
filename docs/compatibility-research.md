@@ -840,7 +840,20 @@ particle-audit`.
   uses a damage-versus-armor modifier below 1 (provisional). A shot whose
   target died, or that outlived its flight limit, plays its lifetime effect.
   Whether impacts face the shooter or the surface normal, and how several
-  `Death_Explosions` entries are chosen, are open.
+  `Death_Explosions` entries are chosen, are open. `Death_Explosions` does
+  not always name a `Particle` object: 12 of 617 stock entries name a
+  `Projectile` (`Proj_Construction_Pod_Detonation`, `Proj_Wall_Destruction`,
+  `Proximity_Mine_Blast_Effect`, `Remote_Bomb_Blast_Effect`). Each has no
+  model, a zero `Projectile_Max_Flight_Distance`, and a
+  `Projectile_Lifetime_Detonation_Particle`, so the death spawns a shot that
+  detonates on the spot; the engine plays that detonation particle (lifetime,
+  else object, else ground) with the particle's own `Scale_Factor`. That is
+  an inference from the data. The projectile's area blast
+  (`Projectile_Blast_Area_Range`, `_Damage`) is gameplay the simulation does
+  not model yet. All 267 hardpoint `Death_Explosion_Particles` entries name
+  `Particle` objects. Objects that cannot play (no model, a mesh instead of a
+  particle system, a projectile without a detonation particle, an undefined
+  name) are kept, play nothing, and are reported once per build.
 - **Not drawn yet:** heat distortion (170 emitters) and weather (5), which
   need passes of their own; wind is ignored; freeze time is kept but unused.
 - **Proxies.** Model proxies name their effect without directory or
