@@ -23,6 +23,8 @@ set(EAW_CORE_HEADERS
     include/eaw/meg_archive.hpp
     include/eaw/mtd_directory.hpp
     include/eaw/particle_system.hpp
+    include/eaw/png_file.hpp
+    include/eaw/rgba_image.hpp
     include/eaw/spawn_catalog.hpp
     include/eaw/status.hpp
     include/eaw/ted_map.hpp
@@ -56,6 +58,8 @@ set(EAW_CORE_SOURCES
     meg_archive.cpp
     mtd_directory.cpp
     particle_system.cpp
+    png_file.cpp
+    rgba_image.cpp
     spawn_catalog.cpp
     ted_map.cpp
     text_encoding.cpp

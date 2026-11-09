@@ -1,3 +1,4 @@
+#include "image_compare_command.hpp"
 #include "eaw/asset_environment.hpp"
 #include "eaw/game_installation.hpp"
 #include "eaw/status.hpp"
@@ -36,6 +37,11 @@ int main(const int argc, char** argv)
 #endif
     // Status lines (builds, streaming, hot reload) appear as they happen even when redirected.
     std::cout << std::unitbuf;
+    // Image regression needs no game installation, window, or device.
+    if (argc >= 2 && std::string_view(argv[1]) == "compare-images")
+    {
+        return eaw::run_image_compare(argc, argv);
+    }
     auto parse_result = eaw::parse_sandbox_options(argc, argv);
     if (!parse_result)
     {

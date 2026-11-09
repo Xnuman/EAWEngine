@@ -2,6 +2,7 @@
 
 #include "eaw/combat.hpp"
 
+#include <cmath>
 #include <charconv>
 #include <iostream>
 #include <limits>
@@ -34,6 +35,17 @@ Result<std::uint32_t> parse_unsigned(const std::string_view value, const std::st
     return static_cast<std::uint32_t>(parsed);
 }
 
+Result<float> parse_float(const std::string_view value, const std::string_view option)
+{
+    float parsed = 0.0F;
+    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
+    if (value.empty() || error != std::errc{} || end != value.data() + value.size() || !std::isfinite(parsed))
+    {
+        return make_error(std::string(option) + " needs a number, got '" + std::string(value) + "'");
+    }
+    return parsed;
+}
+
 Result<std::string> require_value(const int argc, const char* const* argv, int& index, const std::string& option)
 {
     if (index + 1 >= argc)
@@ -48,10 +60,11 @@ Result<std::string> require_value(const int argc, const char* const* argv, int& 
 void print_sandbox_usage()
 {
     std::cout << "EAWEngine visual sandbox\n\n"
-              << "Usage: EAWEngine [sandbox|battle|doctor|bootstrap] [options]\n"
+              << "Usage: EAWEngine [sandbox|battle|doctor|bootstrap|compare-images] [options]\n"
               << "  sandbox            Open the Direct3D 12 visual sandbox (default)\n"
               << "  battle             Run a battle on --map without a window and print its state hash and statistics\n"
               << "  doctor             Validate discovery, mounts, and an asset probe\n"
+              << "  compare-images     Compare two captures (EAWEngine compare-images --help)\n"
               << "  bootstrap          Alias for doctor for older launch scripts\n"
               << "  --game-root <path> Empire at War installation root\n"
               << "  --game <eaw|foc>   Select the base game or expansion\n"
@@ -66,6 +79,11 @@ void print_sandbox_usage()
               << "  --vsync <on|off>   Select synchronized or tearing-capable present\n"
               << "  --frame-latency <1|2>  Maximum queued presentation frames\n"
               << "  --frame-limit <count>  Exit after this many frames once the scene is shown (automation)\n"
+              << "  --capture <file.png>   Write the scene (no debug lines or overlay) as PNG and exit; runs on a fixed\n"
+              << "                         frame time that starts once textures are resident, so it repeats exactly\n"
+              << "  --capture-frame <n>    Capture the nth presented frame after textures are resident (default 1)\n"
+              << "  --fixed-frame-time <s> Advance presentation by s seconds per frame instead of the wall clock\n"
+              << "  --camera <x> <y> <d>   Map camera focus and view distance\n"
               << "  --upload-budget <MiB>  Texture bytes streamed per frame (default 64; 0 uploads all at once)\n"
               << "  --bloom <strength>     Bloom strength (default 0.8; 0 disables it)\n"
               << "  --no-bloom             Disable bloom\n"
@@ -370,6 +388,43 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
             {
                 return make_error("--reload-every must be greater than zero");
             }
+        }
+        else if (argument == "--capture")
+        {
+            EAW_TRY_ASSIGN(options.capture, require_value(argc, argv, index, argument));
+        }
+        else if (argument == "--capture-frame")
+        {
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.capture_frame, parse_unsigned_64(text, argument));
+            if (options.capture_frame == 0)
+            {
+                return make_error("--capture-frame must be greater than zero");
+            }
+        }
+        else if (argument == "--fixed-frame-time")
+        {
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(const auto seconds, parse_float(text, argument));
+            if (!(seconds > 0.0F && seconds <= 1.0F))
+            {
+                return make_error("--fixed-frame-time must be above 0 and at most 1 second");
+            }
+            options.fixed_frame_time = seconds;
+        }
+        else if (argument == "--camera")
+        {
+            std::array<float, 3> view{};
+            for (auto& value : view)
+            {
+                EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+                EAW_TRY_ASSIGN(value, parse_float(text, argument));
+            }
+            if (!(view[2] > 0.0F))
+            {
+                return make_error("--camera needs a positive view distance");
+            }
+            options.camera_view = view;
         }
         else if (argument == "--frame-limit")
         {

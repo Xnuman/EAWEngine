@@ -49,6 +49,17 @@ struct SandboxOptions
     std::uint32_t height{900};
     std::uint32_t frame_latency{2};
     std::optional<std::uint64_t> frame_limit;
+    // Screen capture for image regression: the scene (without debug lines or the overlay) is written
+    // as PNG `capture_frame` presented frames after its textures became resident, then the window
+    // closes. Captures run on a fixed frame time (default 1/30 s when none is given), and that clock
+    // holds still until the textures are resident, so the same command renders the same frame.
+    std::optional<std::filesystem::path> capture;
+    std::uint64_t capture_frame{1};
+    // Presentation advances by this many seconds per frame instead of the wall clock (simulation
+    // ticks, animation, particles, cameras), so runs repeat frame for frame.
+    std::optional<float> fixed_frame_time;
+    // Tactical camera on maps: focus (x, y) and view distance, instead of the map's default view.
+    std::optional<std::array<float, 3>> camera_view;
     // Reload the scene every N rendered frames to exercise resource replacement and retirement.
     std::optional<std::uint64_t> reload_every;
     // Per-frame texture upload budget in MiB; zero uploads everything at once.

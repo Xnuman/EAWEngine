@@ -2,6 +2,7 @@
 
 #include "eaw/alo_interpretation.hpp"
 #include "eaw/chunk_file.hpp"
+#include "eaw/png_file.hpp"
 #include "eaw/localization_validation.hpp"
 
 #include <cctype>
@@ -429,6 +430,75 @@ void test_localization_scan()
 // share (rows from a DAT, unit ids, new-unit rows, workspace order).
 // The shared chunk container: ranges, the container flag, nesting, and every malformed header named
 // with its format, part, offset, and type.
+// PNG captures round-trip exactly (including images spanning several stored deflate blocks), the
+// reader rejects what it does not support with a reason, and comparison measures differences.
+void test_png_and_image_compare()
+{
+    eaw::RgbaImage image;
+    image.width = 200;
+    image.height = 120; // 96,120 bytes of rows: two stored blocks.
+    image.pixels.resize(static_cast<std::size_t>(image.width) * image.height * 4U);
+    for (std::size_t index = 0; index < image.pixels.size(); ++index)
+    {
+        image.pixels[index] = static_cast<std::uint8_t>((index * 7U + index / 997U) & 0xFFU);
+    }
+    const auto bytes = expect_ok(eaw::encode_png(image), "PNG encode");
+    const auto decoded = expect_ok(eaw::decode_png(bytes), "PNG decode");
+    require(decoded.width == 200 && decoded.height == 120 && decoded.pixels == image.pixels, "PNG must round-trip exactly");
+
+    const auto rejected = [&](std::vector<std::byte> modified, const std::string_view reason)
+    {
+        const auto result = eaw::decode_png(modified);
+        return !result && result.error().message.find(reason) != std::string::npos;
+    };
+    auto bad_signature = bytes;
+    bad_signature[1] = std::byte{'X'};
+    require(rejected(bad_signature, "signature"), "a bad PNG signature must be rejected");
+    auto bad_crc = bytes;
+    bad_crc[20] ^= std::byte{1};
+    require(rejected(bad_crc, "wrong CRC"), "a PNG chunk with a wrong CRC must be rejected");
+    require(rejected(std::vector<std::byte>(bytes.begin(), bytes.begin() + 40), "truncated"), "a truncated PNG must be rejected");
+    // Byte 41 is the first IDAT byte past the zlib header: mark the first block as compressed (and
+    // fix the chunk CRC so the block check is what fails).
+    auto compressed = bytes;
+    const auto idat = static_cast<std::size_t>(8 + 25);
+    const auto idat_length = (std::to_integer<std::size_t>(compressed[idat]) << 24U) | (std::to_integer<std::size_t>(compressed[idat + 1]) << 16U) |
+                             (std::to_integer<std::size_t>(compressed[idat + 2]) << 8U) | std::to_integer<std::size_t>(compressed[idat + 3]);
+    compressed[idat + 10] = std::byte{0x04};
+    {
+        // Recompute the IDAT CRC with the same polynomial the writer uses.
+        std::uint32_t crc = 0xFFFFFFFFU;
+        for (std::size_t index = idat + 4; index < idat + 8 + idat_length; ++index)
+        {
+            crc ^= std::to_integer<std::uint32_t>(compressed[index]);
+            for (int bit = 0; bit < 8; ++bit)
+            {
+                crc = (crc & 1U) != 0 ? 0xEDB88320U ^ (crc >> 1U) : crc >> 1U;
+            }
+        }
+        crc ^= 0xFFFFFFFFU;
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            compressed[idat + 8 + idat_length + index] = static_cast<std::byte>((crc >> (24U - index * 8U)) & 0xFFU);
+        }
+    }
+    require(rejected(compressed, "compressed PNG data is not supported"), "a compressed PNG block must be reported as unsupported");
+
+    auto changed = image;
+    changed.pixels[0] = static_cast<std::uint8_t>(changed.pixels[0] + 100U);
+    changed.pixels[4 * 50 + 1] = static_cast<std::uint8_t>(changed.pixels[4 * 50 + 1] + 3U);
+    const auto difference = expect_ok(eaw::compare_images(image, changed), "image compare");
+    require(difference.max_error == 100 && difference.changed_pixels == 1 && difference.pixels == 24000 && difference.mean_error > 0.0 && difference.visualization.valid() &&
+                difference.visualization.pixels[0] == 255 && difference.visualization.pixels[1] == 0,
+            "image comparison must measure and mark differences");
+    const auto same = expect_ok(eaw::compare_images(image, image), "image compare");
+    require(same.max_error == 0 && same.changed_pixels == 0 && same.mean_error == 0.0, "identical images must not differ");
+    auto smaller = image;
+    smaller.height = 10;
+    smaller.pixels.resize(static_cast<std::size_t>(smaller.width) * smaller.height * 4U);
+    require(!eaw::compare_images(image, smaller), "images of different sizes must not compare");
+}
+
 void test_chunk_file()
 {
     std::vector<std::byte> inner;
@@ -562,6 +632,7 @@ void test_particle_system()
 }
 
 const ModuleRegistrar registrar("formats", {
+                                               {"test_png_and_image_compare", &test_png_and_image_compare},
                                                {"test_chunk_file", &test_chunk_file},
                                                {"test_localization_validation", &test_localization_validation},
                                                {"test_particle_system", &test_particle_system},

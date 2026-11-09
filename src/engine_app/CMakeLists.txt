@@ -1,6 +1,8 @@
 # EAWEngine: startup, discovery, the doctor probe, headless battles, and (Windows) the sandbox
 # session, which drives the window and the D3D12 renderer.
 set(EAW_ENGINE_APP_SOURCES
+    image_compare_command.cpp
+    image_compare_command.hpp
     main.cpp
 )
 if(WIN32)

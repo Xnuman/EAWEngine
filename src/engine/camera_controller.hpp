@@ -54,6 +54,9 @@ public:
 
     void apply(const CameraInput& input) noexcept;
     [[nodiscard]] VisualCamera camera() const noexcept;
+    // Places the view: `focus` (x, y; clamped to the bounds, height kept) seen from `distance`
+    // (clamped to the camera's range), heading and pitch unchanged.
+    void set_view(std::array<float, 2> focus, float distance) noexcept;
 
     [[nodiscard]] std::array<float, 3> focus() const noexcept
     {

@@ -40,6 +40,77 @@ void D3d12Renderer::Impl::collect_pick(FrameContext& frame)
     frame.picks.clear();
 }
 
+void D3d12Renderer::Impl::collect_capture(FrameContext& frame)
+{
+    if (!frame.capture)
+    {
+        return;
+    }
+    const auto copy = *frame.capture;
+    frame.capture.reset();
+    const D3D12_RANGE read_range{0, static_cast<SIZE_T>(copy.bytes)};
+    void* mapped{};
+    check_hresult(frame.capture_readback->Map(0, &read_range, &mapped), "Map(capture readback)");
+    RgbaImage image;
+    image.width = copy.width;
+    image.height = copy.height;
+    image.pixels.resize(static_cast<std::size_t>(copy.width) * copy.height * 4U);
+    for (std::uint32_t row = 0; row < copy.height; ++row)
+    {
+        std::memcpy(image.pixels.data() + static_cast<std::size_t>(row) * copy.width * 4U, static_cast<const std::byte*>(mapped) + static_cast<std::size_t>(row) * copy.row_pitch,
+                    static_cast<std::size_t>(copy.width) * 4U);
+    }
+    const D3D12_RANGE no_write{0, 0};
+    frame.capture_readback->Unmap(0, &no_write);
+    // The back buffer's alpha is whatever blending left; a capture is opaque.
+    for (std::size_t pixel = 3; pixel < image.pixels.size(); pixel += 4)
+    {
+        image.pixels[pixel] = 255;
+    }
+    completed_captures.push_back(std::move(image));
+}
+
+void D3d12Renderer::Impl::record_capture(FrameContext& frame)
+{
+    if (!capture_requested)
+    {
+        return;
+    }
+    capture_requested = false;
+    const auto description = frame.back_buffer->GetDesc();
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+    UINT64 total_bytes = 0;
+    device->GetCopyableFootprints(&description, 0, 1, 0, &footprint, nullptr, nullptr, &total_bytes);
+    // A new buffer per capture: this context's previous one was read before the context was reused.
+    D3D12_HEAP_PROPERTIES readback_heap{};
+    readback_heap.Type = D3D12_HEAP_TYPE_READBACK;
+    D3D12_RESOURCE_DESC buffer{};
+    buffer.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    buffer.Width = total_bytes;
+    buffer.Height = 1;
+    buffer.DepthOrArraySize = 1;
+    buffer.MipLevels = 1;
+    buffer.SampleDesc.Count = 1;
+    buffer.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    frame.capture_readback.Reset();
+    check_hresult(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &buffer, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.capture_readback)),
+                  "CreateCommittedResource(capture readback)");
+    set_name(frame.capture_readback.Get(), L"EAWEngine frame capture readback");
+    auto to_copy = transition_barrier(frame.back_buffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    command_list->ResourceBarrier(1, &to_copy);
+    D3D12_TEXTURE_COPY_LOCATION source{};
+    source.pResource = frame.back_buffer.Get();
+    source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    D3D12_TEXTURE_COPY_LOCATION destination{};
+    destination.pResource = frame.capture_readback.Get();
+    destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    destination.PlacedFootprint = footprint;
+    command_list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+    auto to_target = transition_barrier(frame.back_buffer.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    command_list->ResourceBarrier(1, &to_target);
+    frame.capture = FrameContext::CaptureCopy{static_cast<std::uint32_t>(description.Width), description.Height, footprint.Footprint.RowPitch, total_bytes};
+}
+
 std::uint32_t D3d12Renderer::Impl::request_pick(const std::uint32_t x, const std::uint32_t y)
 {
     const auto id = next_pick_request++;
@@ -306,6 +377,10 @@ bool D3d12Renderer::Impl::render()
             {
                 collect_pick(context);
             }
+            if (context.capture && context.fence_value != 0 && completed >= context.fence_value)
+            {
+                collect_capture(context);
+            }
         }
     }
     if (occluded)
@@ -329,6 +404,8 @@ bool D3d12Renderer::Impl::render()
     {
         direct_queue.wait_cpu(frame.fence_value);
     }
+    // This context's capture finished with its fence; read it before the context is reused.
+    collect_capture(frame);
     ensure_bone_capacity(frame, bone_transforms.size());
     std::memcpy(frame.bone_buffer_mapped, bone_transforms.data(), bone_transforms.size() * sizeof(bone_transforms.front()));
     stream_scene_textures();
@@ -595,6 +672,9 @@ bool D3d12Renderer::Impl::render()
         const std::array final_targets{render_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};
         command_list->OMSetRenderTargets(static_cast<UINT>(final_targets.size()), final_targets.data(), FALSE, &depth_target);
     }
+
+    // A requested capture copies the frame as the scene and post-processing left it.
+    record_capture(frame);
 
     if (debug_line_count != 0)
     {

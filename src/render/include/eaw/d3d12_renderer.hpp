@@ -1,5 +1,6 @@
 #pragma once
 
+#include "eaw/rgba_image.hpp"
 #include "eaw/status.hpp"
 #include "eaw/visual_scene.hpp"
 
@@ -184,6 +185,11 @@ public:
     std::uint32_t request_pick(std::uint32_t x, std::uint32_t y);
     // The oldest completed pick, if any; call until it returns nothing.
     [[nodiscard]] std::optional<VisualPick> take_pick();
+    // Copies the next rendered frame as it is after the scene and post-processing, before debug lines
+    // and the overlay (for screenshots and image regression). The image arrives through
+    // take_capture() once that frame has finished on the GPU; the CPU never waits for it.
+    void request_capture();
+    [[nodiscard]] std::optional<RgbaImage> take_capture();
     // Draws one scene instance highlighted (nothing for nullopt); cleared by load_scene.
     void set_highlight(std::optional<std::uint32_t> instance);
     // Debug lines drawn every frame until replaced. At most max_debug_lines() are drawn; the rest

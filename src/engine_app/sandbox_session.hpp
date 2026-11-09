@@ -118,6 +118,15 @@ struct SandboxSession
     std::array<float, 3> effect_center{};
     std::uint64_t shown_effect_seed = 1;
     std::chrono::steady_clock::time_point particle_tick = std::chrono::steady_clock::now();
+    // Presentation time (presentation_now): the wall clock, or with --fixed-frame-time (and for
+    // --capture) a clock advanced by a fixed step each frame.
+    std::optional<std::chrono::steady_clock::duration> fixed_frame_step;
+    std::chrono::steady_clock::time_point virtual_now = std::chrono::steady_clock::now();
+    // --capture: presented frames counted once textures are resident, and whether the capture was
+    // requested and written.
+    std::uint64_t capture_frames{};
+    bool capture_requested{};
+    bool capture_written{};
     // Kept for --reload-every, which reloads the scene and so drops added textures.
     std::vector<eaw::VisualTexture> particle_texture_copy;
     std::chrono::steady_clock::time_point map_animation_start = std::chrono::steady_clock::now();
@@ -200,6 +209,12 @@ struct SandboxSession
     bool frame();
     // Waits for the GPU and prints the run summary.
     int finish();
+    // Presentation time now (see virtual_now), and its once-per-frame advance.
+    [[nodiscard]] std::chrono::steady_clock::time_point presentation_now() const;
+    void advance_presentation_clock();
+    // --capture: requests the frame when due, and writes it once the renderer has it.
+    void request_due_capture();
+    void write_finished_capture();
 
     // Showing built content, hot reload (sandbox_session_content.cpp).
     void start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, std::string name);

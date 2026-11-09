@@ -98,6 +98,13 @@ void TacticalCamera::reset() noexcept
     distance_ = std::clamp(extent_ * 0.75F, minimum_distance_, maximum_distance_);
 }
 
+void TacticalCamera::set_view(const std::array<float, 2> focus, const float distance) noexcept
+{
+    focus_[0] = std::clamp(finite_or(focus[0], focus_[0]), bounds_.minimum[0], bounds_.maximum[0]);
+    focus_[1] = std::clamp(finite_or(focus[1], focus_[1]), bounds_.minimum[1], bounds_.maximum[1]);
+    distance_ = std::clamp(finite_or(distance, distance_), minimum_distance_, maximum_distance_);
+}
+
 void TacticalCamera::apply(const CameraInput& input) noexcept
 {
     if (input.reset)

@@ -51,6 +51,22 @@ std::optional<VisualPick> D3d12Renderer::take_pick()
     return result;
 }
 
+void D3d12Renderer::request_capture()
+{
+    impl_->capture_requested = true;
+}
+
+std::optional<RgbaImage> D3d12Renderer::take_capture()
+{
+    if (impl_->completed_captures.empty())
+    {
+        return std::nullopt;
+    }
+    auto result = std::move(impl_->completed_captures.front());
+    impl_->completed_captures.pop_front();
+    return result;
+}
+
 void D3d12Renderer::set_highlight(const std::optional<std::uint32_t> instance)
 {
     impl_->set_highlight(instance);

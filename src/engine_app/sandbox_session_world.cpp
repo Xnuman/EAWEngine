@@ -16,7 +16,7 @@ std::chrono::steady_clock::time_point SandboxSession::world_now(const std::chron
 
 void SandboxSession::toggle_world_pause()
 {
-    const auto now = std::chrono::steady_clock::now();
+    const auto now = presentation_now();
     if (!world_paused)
     {
         world_paused = true;

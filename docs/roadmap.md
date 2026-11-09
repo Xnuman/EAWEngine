@@ -286,7 +286,13 @@ Gaps toward the deliverable, in planned order:
    2. A visual capture-and-compare workflow: the same scene, camera, and
       units captured in the original and in the engine for side-by-side
       comparison, and image regression on the engine side, before the next
-      round of visual tuning.
+      round of visual tuning. Part 1 is done: deterministic sandbox captures
+      (`--capture`, a fixed presentation clock that starts once textures are
+      resident, `--camera`) and `EAWEngine compare-images` (docs/tools.md).
+      Part 2, aligning the engine view with a screenshot of the original
+      (shown as a translucent layer while the camera is adjusted, then side by
+      side), needs a JPEG/PNG decoder for the original's screenshots and waits
+      for the owner's decision on that dependency.
    3. The review of the technical foundation, adding what the large layers
       need. It starts with the Lua host as a foundation question, not as
       scripted behavior: a Lua 5.0-compatible VM with deterministic settings

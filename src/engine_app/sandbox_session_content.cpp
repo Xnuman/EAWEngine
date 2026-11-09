@@ -28,7 +28,7 @@ void SandboxSession::start_simulation(const eaw::VisualScene& scene, const eaw::
         extent = std::max(extent, scene.bounds_maximum[axis] - scene.bounds_minimum[axis]);
     }
     axis_length = std::max(extent * 0.1F, 1.0F);
-    simulation_tick = std::chrono::steady_clock::now();
+    simulation_tick = presentation_now();
 }
 
 std::vector<std::uint32_t> SandboxSession::register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs,
@@ -172,7 +172,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         {
             std::cout << "Effect: " << options.effects[index] << (shown_effects[index] ? " (" + std::to_string(shown_effects[index]->emitters.size()) + " emitters)" : " not loaded") << '\n';
         }
-        map_animation_start = std::chrono::steady_clock::now();
+        map_animation_start = presentation_now();
         world_paused = false;
         {
             std::size_t animated_meshes = 0;
@@ -228,6 +228,10 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         if (!content.reload || !tactical_camera)
         {
             tactical_camera.emplace(bounds);
+            if (options.camera_view)
+            {
+                tactical_camera->set_view({(*options.camera_view)[0], (*options.camera_view)[1]}, (*options.camera_view)[2]);
+            }
             orbit_camera.reset();
             renderer.set_camera(tactical_camera->camera());
             std::cout << "Tactical camera: WASD/arrows or right-drag pan (Shift is faster), left-drag rotates, wheel zooms, Space resets, C toggles the free camera, P pauses the world.\n";
@@ -334,7 +338,7 @@ void SandboxSession::poll_content()
         }
         textures_streamed = false;
         streaming_since = renderer.stats().frame_number;
-        animation_tick = std::chrono::steady_clock::now();
+        animation_tick = presentation_now();
         next_reload_check = animation_tick + std::chrono::seconds(1);
     }
 }

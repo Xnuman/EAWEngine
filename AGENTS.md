@@ -187,7 +187,7 @@ Runtime checks (executables build into `build/vs2022-x64/<Config>/`):
 .\build\vs2022-x64\Release\EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --spawn Rebel_Infantry_Squad:2@1 --spawn T2B_Tank:3@2 --auto-move --ticks 1500 --check-determinism
 ```
 
-The battle prints a state hash; compare it before and after a change that should not affect the simulation. Use `--game-root` when discovery is unavailable. Never hard-code a contributor's Steam path in source, tests, CMake, or committed documentation; a machine without the game must still configure, compile, and run the synthetic tests. For asset changes, run the matching `EAWAssetInspector` audit ([docs/tools.md](docs/tools.md)). Public `eaw-schema` is an optional local checkout, never a configure-time or runtime network dependency.
+The battle prints a state hash; compare it before and after a change that should not affect the simulation. For changes that should not alter the look, capture a scene before and after (`sandbox ... --capture <file.png>`) and run `EAWEngine compare-images` ([docs/tools.md](docs/tools.md)); keep such references outside the repository. Use `--game-root` when discovery is unavailable. Never hard-code a contributor's Steam path in source, tests, CMake, or committed documentation; a machine without the game must still configure, compile, and run the synthetic tests. For asset changes, run the matching `EAWAssetInspector` audit ([docs/tools.md](docs/tools.md)). Public `eaw-schema` is an optional local checkout, never a configure-time or runtime network dependency.
 
 ## Definition of done
 

@@ -444,6 +444,8 @@ void D3d12Renderer::Impl::resize(const std::uint32_t new_width, const std::uint3
     bloom_targets = {};
     for (auto& frame : frames)
     {
+        // The flush finished every frame; a pending capture is read before its fence is forgotten.
+        collect_capture(frame);
         frame.back_buffer.Reset();
         frame.fence_value = 0;
     }
@@ -499,6 +501,7 @@ void D3d12Renderer::Impl::retire_completed_after_idle()
         {
             collect_pick(frame);
         }
+        collect_capture(frame);
     }
 }
 

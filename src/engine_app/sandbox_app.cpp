@@ -1,6 +1,8 @@
 #include "sandbox_app.hpp"
 #include "sandbox_session.hpp"
 
+#include "eaw/png_file.hpp"
+
 #include <array>
 #include <chrono>
 #include <functional>
@@ -17,6 +19,12 @@ SandboxSession::SandboxSession(const eaw::SandboxOptions& session_options, eaw::
     : options(session_options), vfs(session_vfs), window(session_window), renderer(session_renderer)
 {
     watchdog.set_threshold(options.use_warp || options.gpu_validation ? std::chrono::seconds(60) : std::chrono::seconds(5));
+    if (options.fixed_frame_time || options.capture)
+    {
+        fixed_frame_step = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(options.fixed_frame_time.value_or(1.0F / 30.0F)));
+        // Every presentation timestamp starts from the same instant.
+        particle_tick = simulation_tick = animation_tick = scene_start = camera_tick = map_animation_start = virtual_now;
+    }
     renderer.set_overlay_ui(
         [this]
         {
@@ -54,7 +62,9 @@ SandboxSession::~SandboxSession()
 
 void SandboxSession::present()
 {
+    request_due_capture();
     const bool rendered = renderer.render();
+    write_finished_capture();
     if (rendered && reload_scene && renderer.stats().frame_number % *options.reload_every == 0)
     {
         // Load reset the bone palette; restore the bind pose until animation samples again.
@@ -98,9 +108,58 @@ void SandboxSession::present()
     }
 }
 
+std::chrono::steady_clock::time_point SandboxSession::presentation_now() const
+{
+    return fixed_frame_step ? virtual_now : std::chrono::steady_clock::now();
+}
+
+void SandboxSession::advance_presentation_clock()
+{
+    // A capture's clock waits for its textures, so streaming never changes what it shows.
+    if (fixed_frame_step && (!options.capture || (content_shown_at && textures_streamed)))
+    {
+        virtual_now += *fixed_frame_step;
+    }
+}
+
+void SandboxSession::request_due_capture()
+{
+    if (!options.capture || capture_requested || !content_shown_at || !textures_streamed)
+    {
+        return;
+    }
+    if (++capture_frames >= options.capture_frame)
+    {
+        renderer.request_capture();
+        capture_requested = true;
+    }
+}
+
+void SandboxSession::write_finished_capture()
+{
+    while (auto image = renderer.take_capture())
+    {
+        if (!options.capture || capture_written)
+        {
+            continue;
+        }
+        capture_written = true;
+        if (const auto written = eaw::write_png(*options.capture, *image, true); !written)
+        {
+            eaw::log_warning("capture", written.error());
+        }
+        else
+        {
+            std::cout << "Captured " << image->width << "x" << image->height << " to " << options.capture->string() << '\n';
+        }
+        window.request_close();
+    }
+}
+
 bool SandboxSession::frame()
 {
     window.poll_events();
+    advance_presentation_clock();
     if (window.input().keys[static_cast<std::size_t>(eaw::Key::escape)].pressed && !renderer.overlay_wants_keyboard())
     {
         window.request_close();
@@ -158,7 +217,7 @@ bool SandboxSession::frame()
     }
     if (window.minimized())
     {
-        animation_tick = std::chrono::steady_clock::now();
+        animation_tick = presentation_now();
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
         return true;
     }
@@ -168,7 +227,7 @@ bool SandboxSession::frame()
     poll_content();
     poll_hot_reload();
     poll_packages();
-    const auto now = std::chrono::steady_clock::now();
+    const auto now = presentation_now();
     advance_animation(now);
     watchdog.enter("simulation and presentation", tick);
     step_simulation(now);
@@ -176,7 +235,8 @@ bool SandboxSession::frame()
     step_particles(now);
     watchdog.enter("automation and panel", tick);
     run_automation();
-    update_panel(input, now);
+    // The statistics panel measures real frame rates, so it keeps the wall clock.
+    update_panel(input, std::chrono::steady_clock::now());
     watchdog.enter("render", tick);
     present();
     watchdog.enter("events", tick);
@@ -186,6 +246,11 @@ bool SandboxSession::frame()
 int SandboxSession::finish()
 {
     renderer.wait_idle();
+    write_finished_capture();
+    if (options.capture && !capture_written)
+    {
+        eaw::log_warning("capture", eaw::Error{"the window closed before the capture was taken: " + options.capture->string()});
+    }
     while (const auto pick = renderer.take_pick())
     {
         std::cout << "Selected: "

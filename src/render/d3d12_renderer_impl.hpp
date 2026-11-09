@@ -36,6 +36,18 @@ struct D3d12Renderer::Impl
             std::array<std::uint32_t, 2> pixel{};
         };
         std::vector<PickCopy> picks;
+        // A frame copy requested by request_capture, read once this context's fence completes. The
+        // buffer is created on request at the frame's size (captures are rare).
+        ComPtr<ID3D12Resource> capture_readback;
+        struct CaptureCopy
+        {
+            std::uint32_t width{};
+            std::uint32_t height{};
+            std::uint32_t row_pitch{};
+            // Bytes the copy wrote: rows are pitch-aligned except the last.
+            std::uint64_t bytes{};
+        };
+        std::optional<CaptureCopy> capture;
         // Debug line vertices written once this context is reusable.
         ComPtr<ID3D12Resource> debug_vertex_buffer;
         std::byte* debug_vertices_mapped{};
@@ -196,6 +208,8 @@ struct D3d12Renderer::Impl
     std::deque<PickRequest> pending_picks;
     std::uint32_t next_pick_request{1};
     std::deque<VisualPick> completed_picks;
+    bool capture_requested{};
+    std::deque<RgbaImage> completed_captures;
     std::uint32_t highlighted_pick_id{};
     std::vector<VisualDebugLine> debug_lines;
     ComPtr<ID3D12PipelineState> debug_pipeline;
@@ -459,6 +473,9 @@ struct D3d12Renderer::Impl
 
     // Reads the picks this frame context copied earlier; its fence has completed when this runs.
     void collect_pick(FrameContext& frame);
+    void collect_capture(FrameContext& frame);
+    // Records the copy of the back buffer (in the render-target state) for a requested capture.
+    void record_capture(FrameContext& frame);
 
     std::uint32_t request_pick(const std::uint32_t x, const std::uint32_t y);
 

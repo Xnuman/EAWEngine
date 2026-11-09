@@ -92,7 +92,7 @@ void SandboxSession::update_camera(const eaw::InputState& input, const bool scen
     {
         return input.keys[static_cast<std::size_t>(key)].down;
     };
-    const auto camera_now = std::chrono::steady_clock::now();
+    const auto camera_now = presentation_now();
     const auto camera_seconds = std::min(std::chrono::duration<float>(camera_now - camera_tick).count(), 0.25F);
     camera_tick = camera_now;
     eaw::CameraInput camera_input;

@@ -81,6 +81,39 @@ and mods as the recording; logs do not record them yet. Headless runs skip
 textures and animation clips, and the state hash covers gameplay state only,
 so a log recorded in the sandbox replays headless with the same hash.
 
+## Captures and image regression
+
+The sandbox can render a scene reproducibly and save it as PNG, and `EAWEngine
+compare-images` measures how two captures differ.
+
+```powershell
+# The same command renders the same pixels on the same machine and driver.
+EAWEngine.exe sandbox --game foc --map DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED `
+  --spawn Rebel_X-Wing_Squadron:2@1 --spawn TIE_Fighter_Squadron:2@2 --auto-move `
+  --width 960 --height 540 --capture captures\kuat.png --capture-frame 90
+
+# 0 within the limit, 5 over it; --diff marks changed pixels in red.
+EAWEngine.exe compare-images reference\kuat.png captures\kuat.png --diff captures\kuat_diff.png
+```
+
+- `--capture <file.png>` writes the scene as the scene pass and bloom leave
+  it, without debug lines or the overlay, then closes the window.
+- Captures run on a fixed presentation clock (`--fixed-frame-time`, default
+  1/30 s): simulation ticks, unit animation, particles, and the camera advance
+  by that step per frame, and the clock holds still until every texture is
+  resident, so texture streaming never changes the result.
+  `--capture-frame <n>` takes the nth presented frame after that (default 1).
+- `--camera <x> <y> <distance>` frames a map view explicitly (heading and
+  pitch stay the RTS camera's).
+- `compare-images` counts a pixel as changed when a colour channel differs by
+  more than `--threshold` (default 8) and fails when more than
+  `--max-changed` (default 0.001) of the pixels changed. It reads only the
+  engine's own uncompressed captures.
+- Captures of the stock game are derived from protected data: keep reference
+  images locally (outside the repository), never commit them.
+- WARP renders identically run to run; hardware GPUs are deterministic for a
+  given driver, so references are per machine.
+
 ## EAWTools graphical workbench
 
 `EAWTools.exe` is the primary interactive interface. It is a native C++20
