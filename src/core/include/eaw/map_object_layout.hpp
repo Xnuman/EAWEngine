@@ -14,11 +14,11 @@ namespace eaw {
 class AssetReader;
 
 // Object-to-world transform for a placed TED object in the row-vector convention used by
-// alo_transform_point. Rotation components are degrees applied about X, then Y, then Z; stock
+// transform_point. Rotation components are degrees applied about X, then Y, then Z; stock
 // maps store almost all rotation in the Z (heading) component. Uniform scale comes from the
 // object's scale field. The rotation order and handedness are inference pending black-box
 // comparison; see docs/compatibility-research.md.
-[[nodiscard]] AloMatrix4 placed_object_transform(const TedPlacedObject& object) noexcept;
+[[nodiscard]] Matrix4 placed_object_transform(const TedPlacedObject& object) noexcept;
 
 // Splits a list of XML type names (Squadron_Units, Company_Units) on commas and whitespace. Stock
 // FoC data writes one Company_Units list without commas; type names never contain whitespace.
@@ -32,7 +32,7 @@ struct MapObjectPlacement
     // Winning virtual path of the model, or empty when the type has no model for the map's
     // context or the referenced file is missing from every layer.
     std::string model_path;
-    AloMatrix4 transform{};
+    Matrix4 transform{};
     // Set for members expanded from a space squadron or a land company: the container type and
     // the member's index. Several placements then share one object_index.
     const XmlDefinition* container{};

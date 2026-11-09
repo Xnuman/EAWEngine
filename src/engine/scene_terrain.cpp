@@ -127,7 +127,7 @@ void append_terrain(SceneBuilder& builder, const TedMap& map)
         const auto up = elevation(x, std::min(y + 1, height - 1));
         const auto span_x = static_cast<float>(std::min(x + 1, width - 1) - (x == 0 ? 0 : x - 1)) * terrain_sample_spacing;
         const auto span_y = static_cast<float>(std::min(y + 1, height - 1) - (y == 0 ? 0 : y - 1)) * terrain_sample_spacing;
-        const AloVector3 normal{-(right - left) / span_x, -(up - down) / span_y, 1.0F};
+        const Vector3 normal{-(right - left) / span_x, -(up - down) / span_y, 1.0F};
         const auto length = std::sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
         return std::array<float, 3>{normal.x / length, normal.y / length, normal.z / length};
     };

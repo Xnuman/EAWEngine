@@ -1,6 +1,7 @@
 #pragma once
 
-#include "eaw/alo_math.hpp"
+#include "math/matrix.hpp"
+#include "math/vector.hpp"
 #include "eaw/status.hpp"
 
 #include <array>
@@ -15,20 +16,20 @@ namespace eaw {
 
 struct AloVertex
 {
-    AloVector3 position;
-    AloVector3 normal;
-    std::array<AloVector2, 4> texture_coordinates{};
-    AloVector3 tangent;
-    AloVector3 binormal;
-    AloVector4 color;
+    Vector3 position;
+    Vector3 normal;
+    std::array<Vector2, 4> texture_coordinates{};
+    Vector3 tangent;
+    Vector3 binormal;
+    Vector4 color;
     std::array<std::uint32_t, 4> bone_indices{};
     std::array<float, 4> bone_weights{};
 };
 
 struct AloBounds
 {
-    AloVector3 minimum;
-    AloVector3 maximum;
+    Vector3 minimum;
+    Vector3 maximum;
 };
 
 struct AloBone
@@ -89,7 +90,7 @@ struct AloLight
 {
     std::string name;
     std::uint32_t type{};
-    AloVector3 color;
+    Vector3 color;
     float intensity{};
     std::optional<std::uint32_t> attached_bone;
 };
@@ -126,8 +127,8 @@ public:
     [[nodiscard]] std::size_t submesh_count() const noexcept;
     [[nodiscard]] std::uint64_t vertex_count() const noexcept;
     [[nodiscard]] std::uint64_t triangle_count() const noexcept;
-    [[nodiscard]] std::vector<AloMatrix4> local_bind_pose() const;
-    [[nodiscard]] std::vector<AloMatrix4> bind_pose() const;
+    [[nodiscard]] std::vector<Matrix4> local_bind_pose() const;
+    [[nodiscard]] std::vector<Matrix4> bind_pose() const;
 };
 
 } // namespace eaw

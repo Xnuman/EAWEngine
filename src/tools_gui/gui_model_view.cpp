@@ -158,7 +158,7 @@ void render_model_viewport(GuiApp::State& state)
 
     const auto& minimum = state.model_minimum;
     const auto& maximum = state.model_maximum;
-    const AloVector3 center{(minimum.x + maximum.x) * 0.5F, (minimum.y + maximum.y) * 0.5F, (minimum.z + maximum.z) * 0.5F};
+    const Vector3 center{(minimum.x + maximum.x) * 0.5F, (minimum.y + maximum.y) * 0.5F, (minimum.z + maximum.z) * 0.5F};
     const auto extent = std::max({maximum.x - minimum.x, maximum.y - minimum.y, maximum.z - minimum.z, 0.001F});
     const auto scale = std::min(canvas_size.x, canvas_size.y) * 0.78F / extent * state.preview_zoom;
     const auto screen_center = ImVec2{(canvas_min.x + canvas_max.x) * 0.5F, (canvas_min.y + canvas_max.y) * 0.5F};
@@ -166,7 +166,7 @@ void render_model_viewport(GuiApp::State& state)
     const auto yaw_sin = std::sin(state.preview_yaw);
     const auto pitch_cos = std::cos(state.preview_pitch);
     const auto pitch_sin = std::sin(state.preview_pitch);
-    const auto project = [&](const AloVector3& point)
+    const auto project = [&](const Vector3& point)
     {
         const auto x = point.x - center.x;
         const auto y = point.y - center.y;
@@ -189,9 +189,9 @@ void render_model_viewport(GuiApp::State& state)
             {
                 continue;
             }
-            const AloVector3 point{pose[index].transform.values[12], pose[index].transform.values[13], pose[index].transform.values[14]};
-            const AloVector3 parent_point{pose[static_cast<std::size_t>(parent)].transform.values[12], pose[static_cast<std::size_t>(parent)].transform.values[13],
-                                          pose[static_cast<std::size_t>(parent)].transform.values[14]};
+            const Vector3 point{pose[index].transform.values[12], pose[index].transform.values[13], pose[index].transform.values[14]};
+            const Vector3 parent_point{pose[static_cast<std::size_t>(parent)].transform.values[12], pose[static_cast<std::size_t>(parent)].transform.values[13],
+                                       pose[static_cast<std::size_t>(parent)].transform.values[14]};
             draw->AddLine(project(parent_point), project(point), IM_COL32(255, 202, 74, 230), 1.5F);
         }
     }

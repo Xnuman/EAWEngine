@@ -1,5 +1,6 @@
 #include "eaw/chunk_file.hpp"
 #include "eaw/ala_animation.hpp"
+#include "math/transform.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -60,13 +61,12 @@ std::int32_t track_index(const std::span<const std::byte> bytes, const MiniChunk
     return chunk->end - chunk->payload >= 4 ? static_cast<std::int32_t>(read_u32(bytes, chunk->payload)) : static_cast<std::int32_t>(read_u16(bytes, chunk->payload));
 }
 
-AloVector3 mini_vector3(const std::span<const std::byte> bytes, const MiniChunk* chunk, const AloVector3 fallback = {})
+Vector3 mini_vector3(const std::span<const std::byte> bytes, const MiniChunk* chunk, const Vector3 fallback = {})
 {
-    return chunk != nullptr && chunk->end - chunk->payload >= 12 ? AloVector3{read_float(bytes, chunk->payload), read_float(bytes, chunk->payload + 4), read_float(bytes, chunk->payload + 8)}
-                                                                 : fallback;
+    return chunk != nullptr && chunk->end - chunk->payload >= 12 ? Vector3{read_float(bytes, chunk->payload), read_float(bytes, chunk->payload + 4), read_float(bytes, chunk->payload + 8)} : fallback;
 }
 
-AloQuaternion packed_quaternion(const std::span<const std::byte> bytes, const std::size_t offset)
+Quaternion packed_quaternion(const std::span<const std::byte> bytes, const std::size_t offset)
 {
     constexpr auto divisor = static_cast<float>(std::numeric_limits<std::int16_t>::max());
     return {read_i16(bytes, offset) / divisor, read_i16(bytes, offset + 2) / divisor, read_i16(bytes, offset + 4) / divisor, read_i16(bytes, offset + 6) / divisor};
@@ -75,11 +75,11 @@ AloQuaternion packed_quaternion(const std::span<const std::byte> bytes, const st
 struct TrackDecodeInfo
 {
     AlaBoneTrack track;
-    AloVector3 translation_offset;
-    AloVector3 translation_scale;
-    AloVector3 scale_offset{1.0F, 1.0F, 1.0F};
-    AloVector3 scale_scale;
-    AloQuaternion default_rotation;
+    Vector3 translation_offset;
+    Vector3 translation_scale;
+    Vector3 scale_offset{1.0F, 1.0F, 1.0F};
+    Vector3 scale_scale;
+    Quaternion default_rotation;
     std::int32_t translation_index{-1};
     std::int32_t scale_index{-1};
     std::int32_t rotation_index{-1};
@@ -164,7 +164,7 @@ Result<TrackDecodeInfo> parse_track(const std::span<const std::byte> bytes, cons
     return information_result;
 }
 
-AloVector3 unpack_vector(const std::span<const std::byte> bytes, const std::size_t offset, const AloVector3& base, const AloVector3& scale)
+Vector3 unpack_vector(const std::span<const std::byte> bytes, const std::size_t offset, const Vector3& base, const Vector3& scale)
 {
     return {base.x + static_cast<float>(read_u16(bytes, offset)) * scale.x, base.y + static_cast<float>(read_u16(bytes, offset + 2)) * scale.y,
             base.z + static_cast<float>(read_u16(bytes, offset + 4)) * scale.z};
@@ -273,36 +273,6 @@ void decode_track_frames(const std::span<const std::byte> bytes, TrackDecodeInfo
         }
         track.frames.push_back(frame);
     }
-}
-
-AloVector3 interpolate(const AloVector3& left, const AloVector3& right, const float amount)
-{
-    return {left.x + (right.x - left.x) * amount, left.y + (right.y - left.y) * amount, left.z + (right.z - left.z) * amount};
-}
-
-AloQuaternion slerp(AloQuaternion left, AloQuaternion right, const float amount)
-{
-    auto dot = left.x * right.x + left.y * right.y + left.z * right.z + left.w * right.w;
-    if (dot < 0.0F)
-    {
-        dot = -dot;
-        right = {-right.x, -right.y, -right.z, -right.w};
-    }
-    if (dot > 0.9995F)
-    {
-        AloQuaternion result{left.x + (right.x - left.x) * amount, left.y + (right.y - left.y) * amount, left.z + (right.z - left.z) * amount, left.w + (right.w - left.w) * amount};
-        const auto length = std::sqrt(result.x * result.x + result.y * result.y + result.z * result.z + result.w * result.w);
-        if (length > 0.0F)
-        {
-            result = {result.x / length, result.y / length, result.z / length, result.w / length};
-        }
-        return result;
-    }
-    const auto theta = std::acos(std::clamp(dot, -1.0F, 1.0F));
-    const auto sine = std::sin(theta);
-    const auto left_weight = std::sin((1.0F - amount) * theta) / sine;
-    const auto right_weight = std::sin(amount * theta) / sine;
-    return {left.x * left_weight + right.x * right_weight, left.y * left_weight + right.y * right_weight, left.z * left_weight + right.z * right_weight, left.w * left_weight + right.w * right_weight};
 }
 
 } // namespace
@@ -426,8 +396,8 @@ std::vector<AlaPoseBone> AlaAnimation::sample_pose(const AloModel& model, float 
             const auto& left = track.frames[first];
             const auto& right = track.frames[second];
             const auto interpolation = track.stepped ? 0.0F : amount;
-            local_pose[track.bone_index] = alo_compose_transform(interpolate(left.scale, right.scale, interpolation), slerp(left.rotation, right.rotation, interpolation),
-                                                                 interpolate(left.translation, right.translation, interpolation));
+            local_pose[track.bone_index] =
+                compose_transform(lerp(left.scale, right.scale, interpolation), slerp(left.rotation, right.rotation, interpolation), lerp(left.translation, right.translation, interpolation));
             visibility[track.bone_index] = left.visible;
         }
     }
@@ -440,7 +410,7 @@ std::vector<AlaPoseBone> AlaAnimation::sample_pose(const AloModel& model, float 
         if (model.bones[index].parent >= 0 && static_cast<std::size_t>(model.bones[index].parent) < result.size())
         {
             const auto parent = static_cast<std::size_t>(model.bones[index].parent);
-            transform = alo_multiply(transform, result[parent].transform);
+            transform = transform * result[parent].transform;
             visibility[index] = visibility[index] && result[parent].visible;
         }
         result.push_back({transform, visibility[index]});
@@ -484,7 +454,7 @@ std::vector<AlaLocalBone> ala_bind_local_pose(const AloModel& model)
     pose.reserve(local.size());
     for (std::size_t index = 0; index < local.size(); ++index)
     {
-        const auto parts = alo_decompose_transform(local[index]);
+        const auto parts = decompose_transform(local[index]);
         pose.push_back({parts.translation, parts.scale, parts.rotation, model.bones[index].visible});
     }
     return pose;
@@ -515,8 +485,8 @@ std::vector<AlaLocalBone> AlaAnimation::sample_local_pose(const AloModel& model,
         const auto& left = track.frames[first];
         const auto& right = track.frames[second];
         const auto interpolation = track.stepped ? 0.0F : amount;
-        pose[track.bone_index] = {interpolate(left.translation, right.translation, interpolation), interpolate(left.scale, right.scale, interpolation),
-                                  slerp(left.rotation, right.rotation, interpolation), left.visible};
+        pose[track.bone_index] = {lerp(left.translation, right.translation, interpolation), lerp(left.scale, right.scale, interpolation), slerp(left.rotation, right.rotation, interpolation),
+                                  left.visible};
     }
     return pose;
 }
@@ -538,12 +508,12 @@ void ala_blend_pose(std::vector<AlaLocalBone>& pose, const std::span<const AlaLo
         {
             rotation = {-rotation.x, -rotation.y, -rotation.z, -rotation.w};
         }
-        AloQuaternion blended{bone.rotation.x + (rotation.x - bone.rotation.x) * weight, bone.rotation.y + (rotation.y - bone.rotation.y) * weight,
-                              bone.rotation.z + (rotation.z - bone.rotation.z) * weight, bone.rotation.w + (rotation.w - bone.rotation.w) * weight};
+        Quaternion blended{bone.rotation.x + (rotation.x - bone.rotation.x) * weight, bone.rotation.y + (rotation.y - bone.rotation.y) * weight,
+                           bone.rotation.z + (rotation.z - bone.rotation.z) * weight, bone.rotation.w + (rotation.w - bone.rotation.w) * weight};
         const auto length = std::sqrt(blended.x * blended.x + blended.y * blended.y + blended.z * blended.z + blended.w * blended.w);
-        bone.rotation = length > 1.0e-6F ? AloQuaternion{blended.x / length, blended.y / length, blended.z / length, blended.w / length} : other.rotation;
-        bone.translation = interpolate(bone.translation, other.translation, weight);
-        bone.scale = interpolate(bone.scale, other.scale, weight);
+        bone.rotation = length > 1.0e-6F ? Quaternion{blended.x / length, blended.y / length, blended.z / length, blended.w / length} : other.rotation;
+        bone.translation = lerp(bone.translation, other.translation, weight);
+        bone.scale = lerp(bone.scale, other.scale, weight);
         bone.visible = weight > 0.5F ? other.visible : bone.visible;
     }
 }
@@ -555,12 +525,12 @@ std::vector<AlaPoseBone> ala_compose_pose(const AloModel& model, const std::span
     result.reserve(model.bones.size());
     for (std::size_t index = 0; index < model.bones.size(); ++index)
     {
-        auto transform = index < pose.size() ? alo_compose_transform(pose[index].scale, pose[index].rotation, pose[index].translation) : bind[index];
+        auto transform = index < pose.size() ? compose_transform(pose[index].scale, pose[index].rotation, pose[index].translation) : bind[index];
         auto visible = index < pose.size() ? pose[index].visible : model.bones[index].visible;
         if (model.bones[index].parent >= 0 && static_cast<std::size_t>(model.bones[index].parent) < result.size())
         {
             const auto parent = static_cast<std::size_t>(model.bones[index].parent);
-            transform = alo_multiply(transform, result[parent].transform);
+            transform = transform * result[parent].transform;
             visible = visible && result[parent].visible;
         }
         result.push_back({transform, visible});

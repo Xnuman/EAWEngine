@@ -161,7 +161,7 @@ std::vector<PreviewTriangle> map_preview_triangles(const TedMap& map, const int 
     {
         const auto index = static_cast<std::size_t>(y) * width + x;
         const auto normalized = (static_cast<float>(map.elevation_map[index]) - map.minimum_elevation) / elevation_range;
-        return AloVector3{static_cast<float>(x) - center_x, static_cast<float>(y) - center_y, (normalized - 0.5F) * vertical_extent};
+        return Vector3{static_cast<float>(x) - center_x, static_cast<float>(y) - center_y, (normalized - 0.5F) * vertical_extent};
     };
     const auto color = [&](const std::uint32_t x, const std::uint32_t y)
     {
@@ -198,14 +198,14 @@ std::vector<PreviewTriangle> map_preview_triangles(const TedMap& map, const int 
 // Uploads per-model instance lists for the current map. `anchor` maps an object position into
 // preview space and `unit_scale` converts model/world units to preview units (1 for space maps,
 // terrain samples per world unit for land maps).
-void update_map_instances(GuiApp::State& state, const std::function<AloVector3(const TedPlacedObject&)>& anchor, const float unit_scale)
+void update_map_instances(GuiApp::State& state, const std::function<Vector3(const TedPlacedObject&)>& anchor, const float unit_scale)
 {
     const auto& map = *state.preview_map;
     state.map_object_drawn.assign(map.placed_objects.size(), 0);
     std::unordered_map<std::string, std::vector<PreviewInstance>> instances;
     if (state.map_object_layout)
     {
-        auto scale = alo_identity_matrix();
+        auto scale = Matrix4{};
         scale.values[0] = scale.values[5] = scale.values[10] = unit_scale;
         for (const auto& placement : state.map_object_layout->placements)
         {
@@ -215,7 +215,7 @@ void update_map_instances(GuiApp::State& state, const std::function<AloVector3(c
                 continue;
             }
             const auto& object = map.placed_objects[placement.object_index];
-            auto transform = alo_multiply(placement.transform, scale);
+            auto transform = placement.transform * scale;
             const auto origin = anchor(object);
             transform.values[12] = origin.x;
             transform.values[13] = origin.y;
@@ -286,7 +286,7 @@ void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
             state,
             [altitude](const TedPlacedObject& object)
             {
-                return AloVector3{object.position.x, object.position.y, altitude ? object.position.z : 0.0F};
+                return Vector3{object.position.x, object.position.y, altitude ? object.position.z : 0.0F};
             },
             1.0F);
     }
@@ -322,11 +322,11 @@ void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
         return;
     }
 
-    AloVector3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
-    AloVector3 maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+    Vector3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+    Vector3 maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
     const auto preview_point = [&](const TedPlacedObject& object)
     {
-        return AloVector3{object.position.x, object.position.y, state.map_preview_show_altitude ? object.position.z : 0.0F};
+        return Vector3{object.position.x, object.position.y, state.map_preview_show_altitude ? object.position.z : 0.0F};
     };
     for (const auto index : positioned)
     {
@@ -343,7 +343,7 @@ void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
     }
     minimum.z = std::min(minimum.z, 0.0F);
     maximum.z = std::max(maximum.z, 0.0F);
-    const AloVector3 center{(minimum.x + maximum.x) * 0.5F, (minimum.y + maximum.y) * 0.5F, (minimum.z + maximum.z) * 0.5F};
+    const Vector3 center{(minimum.x + maximum.x) * 0.5F, (minimum.y + maximum.y) * 0.5F, (minimum.z + maximum.z) * 0.5F};
     const auto extent = std::max({maximum.x - minimum.x, maximum.y - minimum.y, maximum.z - minimum.z, 0.001F});
     const auto scale = std::min(canvas_size.x, canvas_size.y) * 0.78F / extent * state.map_preview_zoom;
     const auto screen_center = ImVec2{(canvas_min.x + canvas_max.x) * 0.5F, (canvas_min.y + canvas_max.y) * 0.5F};
@@ -351,7 +351,7 @@ void render_space_map_viewport(GuiApp::State& state, const bool reserve_footer)
     const auto yaw_sin = std::sin(state.map_preview_yaw);
     const auto pitch_cos = std::cos(state.map_preview_pitch);
     const auto pitch_sin = std::sin(state.map_preview_pitch);
-    const auto project = [&](const AloVector3& point, float* depth = nullptr)
+    const auto project = [&](const Vector3& point, float* depth = nullptr)
     {
         const auto x = point.x - center.x;
         const auto y = point.y - center.y;
@@ -574,9 +574,9 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
     const auto grid_center_y = static_cast<float>(map.terrain_height - 1U) * 0.5F;
     const auto land_point = [&](const TedPlacedObject& object)
     {
-        return AloVector3{object.position.x / editor_width * static_cast<float>(map.terrain_width - 1U) - grid_center_x,
-                          object.position.y / editor_height * static_cast<float>(map.terrain_height - 1U) - grid_center_y,
-                          ((object.position.z * 20.0F - map.minimum_elevation) / elevation_range - 0.5F) * vertical_extent};
+        return Vector3{object.position.x / editor_width * static_cast<float>(map.terrain_width - 1U) - grid_center_x,
+                       object.position.y / editor_height * static_cast<float>(map.terrain_height - 1U) - grid_center_y,
+                       ((object.position.z * 20.0F - map.minimum_elevation) / elevation_range - 0.5F) * vertical_extent};
     };
     const auto land_unit_scale = static_cast<float>(map.terrain_width - 1U) / std::max(editor_width, 1.0F);
     const auto has_object_space = map.world_width > 0.0F && map.world_height > 0.0F;
@@ -617,8 +617,8 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
         return;
     }
 
-    AloVector3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
-    AloVector3 maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+    Vector3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+    Vector3 maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
     for (const auto& triangle : state.map_preview_triangles)
     {
         for (const auto& point : triangle.points)
@@ -627,7 +627,7 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
             maximum = {std::max(maximum.x, point.x), std::max(maximum.y, point.y), std::max(maximum.z, point.z)};
         }
     }
-    const AloVector3 center{(minimum.x + maximum.x) * 0.5F, (minimum.y + maximum.y) * 0.5F, (minimum.z + maximum.z) * 0.5F};
+    const Vector3 center{(minimum.x + maximum.x) * 0.5F, (minimum.y + maximum.y) * 0.5F, (minimum.z + maximum.z) * 0.5F};
     const auto extent = std::max({maximum.x - minimum.x, maximum.y - minimum.y, maximum.z - minimum.z, 0.001F});
     const auto scale = std::min(canvas_size.x, canvas_size.y) * 0.78F / extent * state.map_preview_zoom;
     const auto screen_center = ImVec2{(canvas_min.x + canvas_max.x) * 0.5F, (canvas_min.y + canvas_max.y) * 0.5F};
@@ -635,7 +635,7 @@ void render_map_viewport(GuiApp::State& state, const bool reserve_footer)
     const auto yaw_sin = std::sin(state.map_preview_yaw);
     const auto pitch_cos = std::cos(state.map_preview_pitch);
     const auto pitch_sin = std::sin(state.map_preview_pitch);
-    const auto project = [&](const AloVector3& point, float* depth = nullptr)
+    const auto project = [&](const Vector3& point, float* depth = nullptr)
     {
         const auto x = point.x - center.x;
         const auto y = point.y - center.y;

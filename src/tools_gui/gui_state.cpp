@@ -222,14 +222,15 @@ void GuiApp::State::inspect_asset(const int index)
     preview_inverse_bind.reserve(bind_pose.size());
     for (const auto& transform : bind_pose)
     {
-        const auto inverse = alo_inverse(transform);
-        if (!inverse)
+        const auto inverted = inverse(transform);
+        if (!inverted)
         {
-            fail(inverse.error());
-            asset_preview = inverse.error().message;
+            const auto error = make_error("ALO bone transform is singular");
+            fail(error);
+            asset_preview = error.message;
             return;
         }
-        preview_inverse_bind.push_back(*inverse);
+        preview_inverse_bind.push_back(*inverted);
     }
 
     const auto directory = lower(selected_path.parent_path().generic_string());

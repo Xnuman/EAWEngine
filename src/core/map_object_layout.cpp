@@ -1,6 +1,7 @@
 #include "eaw/map_object_layout.hpp"
 
 #include "eaw/virtual_file_system.hpp"
+#include "math/transform.hpp"
 
 #include <algorithm>
 #include <array>
@@ -19,20 +20,13 @@ namespace {
 constexpr std::size_t maximum_squadron_members = 64;
 constexpr std::size_t maximum_company_members = 64;
 
-AloQuaternion axis_rotation(const float degrees, const int axis) noexcept
+Quaternion axis_rotation(const float degrees, const int axis) noexcept
 {
     const auto half = degrees * std::numbers::pi_v<float> / 360.0F;
     const auto s = std::sin(half);
-    AloQuaternion result{0.0F, 0.0F, 0.0F, std::cos(half)};
+    Quaternion result{0.0F, 0.0F, 0.0F, std::cos(half)};
     (axis == 0 ? result.x : axis == 1 ? result.y : result.z) = s;
     return result;
-}
-
-// Hamilton product: the result applies `right` first, then `left`.
-AloQuaternion multiply(const AloQuaternion& left, const AloQuaternion& right) noexcept
-{
-    return {left.w * right.x + left.x * right.w + left.y * right.z - left.z * right.y, left.w * right.y - left.x * right.z + left.y * right.w + left.z * right.x,
-            left.w * right.z + left.x * right.y - left.y * right.x + left.z * right.w, left.w * right.w - left.x * right.x - left.y * right.y - left.z * right.z};
 }
 
 std::string_view trim(const std::string_view value) noexcept
@@ -51,7 +45,7 @@ std::string_view trim(const std::string_view value) noexcept
 }
 
 // Parses "x,y,z" (commas and/or whitespace). Returns nullopt for malformed or non-finite values.
-std::optional<AloVector3> parse_vector3(const std::string_view text)
+std::optional<Vector3> parse_vector3(const std::string_view text)
 {
     std::array<float, 3> values{};
     std::size_t count = 0;
@@ -79,7 +73,7 @@ std::optional<AloVector3> parse_vector3(const std::string_view text)
     {
         return std::nullopt;
     }
-    return AloVector3{values[0], values[1], values[2]};
+    return Vector3{values[0], values[1], values[2]};
 }
 
 std::string location(const XmlDefinition& definition)
@@ -202,7 +196,7 @@ template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& s
             ++layout.untyped;
             continue;
         }
-        AloVector3 offset{};
+        Vector3 offset{};
         if (member < offsets.fields.size())
         {
             if (const auto parsed = parse_vector3(offsets.fields[member]->text))
@@ -218,11 +212,11 @@ template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& s
         {
             layout.diagnostics.push_back(location(*squadron.type) + ": no Squadron_Offsets entry for member " + std::to_string(member) + "; placed at the squadron origin");
         }
-        auto local = alo_identity_matrix();
+        auto local = Matrix4{};
         local.values[12] = offset.x;
         local.values[13] = offset.y;
         local.values[14] = offset.z;
-        placement.transform = alo_multiply(local, squadron.transform);
+        placement.transform = local * squadron.transform;
         if (!assign_model(placement))
         {
             ++layout.without_model;
@@ -268,17 +262,16 @@ std::vector<std::string_view> split_type_names(const std::string_view text)
     return result;
 }
 
-AloMatrix4 placed_object_transform(const TedPlacedObject& object) noexcept
+Matrix4 placed_object_transform(const TedPlacedObject& object) noexcept
 {
-    const auto rotation =
-        multiply(axis_rotation(finite_or(object.rotation.z, 0.0F), 2), multiply(axis_rotation(finite_or(object.rotation.y, 0.0F), 1), axis_rotation(finite_or(object.rotation.x, 0.0F), 0)));
+    const auto rotation = axis_rotation(finite_or(object.rotation.z, 0.0F), 2) * (axis_rotation(finite_or(object.rotation.y, 0.0F), 1) * axis_rotation(finite_or(object.rotation.x, 0.0F), 0));
     // A zero or non-finite scale would collapse or poison the transform; stock maps use 1.0.
     auto scale = finite_or(object.scale, 1.0F);
     if (scale == 0.0F)
     {
         scale = 1.0F;
     }
-    return alo_compose_transform({scale, scale, scale}, rotation, {object.position.x, object.position.y, object.position.z});
+    return compose_transform({scale, scale, scale}, rotation, {object.position.x, object.position.y, object.position.z});
 }
 
 MapObjectLayout build_map_object_layout(const TedMap& map, const GameObjectCatalog& catalog, const AssetReader& vfs)

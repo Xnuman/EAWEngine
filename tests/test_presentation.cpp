@@ -108,7 +108,9 @@ void test_unit_animation()
     rig.model = model;
     for (const auto& transform : model->bind_pose())
     {
-        rig.inverse_bind_pose.push_back(expect_ok(eaw::alo_inverse(transform), "bind pose inverse"));
+        const auto inverted = eaw::inverse(transform);
+        require(inverted.has_value(), "the test bind pose must be invertible");
+        rig.inverse_bind_pose.push_back(*inverted);
     }
     rig.palette_size = 2;
     rig.clips = {{eaw::AnimationRole::idle, 0, "IDLE_00", animation}, {eaw::AnimationRole::move, 0, "MOVE_00", animation}, {eaw::AnimationRole::attack, 0, "ATTACK_00", animation}};
@@ -116,7 +118,7 @@ void test_unit_animation()
     still.rest_offset = 2;
     still.palette_size = 1;
     const std::array<eaw::VisualRig, 2> rigs{rig, still};
-    const std::vector<std::array<float, 16>> rest(3, eaw::alo_identity_matrix().values);
+    const std::vector<std::array<float, 16>> rest(3, eaw::Matrix4{}.values);
     eaw::UnitAnimator animator(rigs, rest);
 
     // 100 standing units, one walking, one clipless unit, and a background.

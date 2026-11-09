@@ -3,7 +3,6 @@
 set(EAW_CORE_HEADERS
     include/eaw/ala_animation.hpp
     include/eaw/alo_interpretation.hpp
-    include/eaw/alo_math.hpp
     include/eaw/alo_model.hpp
     include/eaw/asset_environment.hpp
     include/eaw/asset_path.hpp
@@ -38,7 +37,6 @@ set(EAW_CORE_HEADERS
 set(EAW_CORE_SOURCES
     ala_animation.cpp
     alo_interpretation.cpp
-    alo_math.cpp
     alo_model.cpp
     asset_environment.cpp
     asset_path.cpp
@@ -75,6 +73,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_CORE_HEADERS} ${EAW_CO
 
 add_library(eaw_core STATIC ${EAW_CORE_HEADERS} ${EAW_CORE_SOURCES})
 target_include_directories(eaw_core PUBLIC include)
+target_link_libraries(eaw_core PUBLIC eaw_math)
 if(WIN32)
     target_link_libraries(eaw_core PRIVATE advapi32)
 endif()

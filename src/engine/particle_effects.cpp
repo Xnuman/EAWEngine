@@ -43,7 +43,7 @@ Vec3 normalized(const Vec3& a)
     return l > 1e-6F ? a * (1.0F / l) : Vec3{};
 }
 
-Vec3 to_vec(const AloVector3& v)
+Vec3 to_vec(const Vector3& v)
 {
     return {v.x, v.y, v.z};
 }

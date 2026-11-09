@@ -261,7 +261,7 @@ struct BonePlacement
     float direction{};
 };
 
-std::optional<BonePlacement> find_bone(const AloModel* model, const std::vector<AloMatrix4>& pose, const std::string_view name, const float scale)
+std::optional<BonePlacement> find_bone(const AloModel* model, const std::vector<Matrix4>& pose, const std::string_view name, const float scale)
 {
     if (model == nullptr || name.empty())
     {
@@ -320,7 +320,7 @@ const XmlDefinition* find_hardpoint(const GameObjectCatalog& catalog, const std:
 CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings, const AloModel* model,
                              const float model_scale)
 {
-    const auto pose = model != nullptr ? model->bind_pose() : std::vector<AloMatrix4>{};
+    const auto pose = model != nullptr ? model->bind_pose() : std::vector<Matrix4>{};
     const FieldReader type(catalog, definition, warnings);
     CombatProfile profile;
     profile.health = type.amount("Tactical_Health");

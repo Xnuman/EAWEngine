@@ -59,7 +59,7 @@ std::shared_ptr<const ParticleEmitMesh> proxy_emit_mesh(const AloModel& model, c
         return nullptr;
     }
     const auto bind_pose = model.bind_pose();
-    const auto to_proxy = alo_inverse(bind_pose[proxy_bone]);
+    const auto to_proxy = inverse(bind_pose[proxy_bone]);
     if (!to_proxy || static_cast<std::size_t>(parent) >= bind_pose.size())
     {
         return nullptr;
@@ -71,16 +71,16 @@ std::shared_ptr<const ParticleEmitMesh> proxy_emit_mesh(const AloModel& model, c
             continue;
         }
         // Rigid mesh vertices are in their bone's space: to the model, then to the proxy bone.
-        const auto transform = alo_multiply(bind_pose[static_cast<std::size_t>(parent)], *to_proxy);
-        const auto origin = alo_transform_point({}, transform);
+        const auto transform = bind_pose[static_cast<std::size_t>(parent)] * *to_proxy;
+        const auto origin = transform_point({}, transform);
         auto emit = std::make_shared<ParticleEmitMesh>();
         for (const auto& submesh : mesh.submeshes)
         {
             const auto first = static_cast<std::uint32_t>(emit->positions.size());
             for (const auto& vertex : submesh.vertices)
             {
-                const auto position = alo_transform_point(vertex.position, transform);
-                const auto tip = alo_transform_point(vertex.normal, transform);
+                const auto position = transform_point(vertex.position, transform);
+                const auto tip = transform_point(vertex.normal, transform);
                 emit->positions.push_back({position.x, position.y, position.z});
                 emit->normals.push_back({tip.x - origin.x, tip.y - origin.y, tip.z - origin.z});
             }

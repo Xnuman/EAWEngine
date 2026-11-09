@@ -35,7 +35,7 @@ Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes
     return chunk::read_minis(bytes, parent, "ALO");
 }
 
-AloVector3 read_vector3(const std::span<const std::byte> bytes, const std::size_t offset)
+Vector3 read_vector3(const std::span<const std::byte> bytes, const std::size_t offset)
 {
     return {read_float(bytes, offset), read_float(bytes, offset + 4), read_float(bytes, offset + 8)};
 }
@@ -549,13 +549,13 @@ std::uint64_t AloModel::triangle_count() const noexcept
     return count;
 }
 
-std::vector<AloMatrix4> AloModel::local_bind_pose() const
+std::vector<Matrix4> AloModel::local_bind_pose() const
 {
-    std::vector<AloMatrix4> pose;
+    std::vector<Matrix4> pose;
     pose.reserve(bones.size());
     for (const auto& bone : bones)
     {
-        auto local = alo_identity_matrix();
+        auto local = Matrix4{};
         for (std::size_t row = 0; row < 3; ++row)
         {
             for (std::size_t column = 0; column < 4; ++column)
@@ -568,16 +568,16 @@ std::vector<AloMatrix4> AloModel::local_bind_pose() const
     return pose;
 }
 
-std::vector<AloMatrix4> AloModel::bind_pose() const
+std::vector<Matrix4> AloModel::bind_pose() const
 {
     auto local_pose = local_bind_pose();
-    std::vector<AloMatrix4> pose;
+    std::vector<Matrix4> pose;
     pose.reserve(bones.size());
     for (std::size_t index = 0; index < bones.size(); ++index)
     {
         if (bones[index].parent >= 0 && static_cast<std::size_t>(bones[index].parent) < pose.size())
         {
-            pose.push_back(alo_multiply(local_pose[index], pose[static_cast<std::size_t>(bones[index].parent)]));
+            pose.push_back(local_pose[index] * pose[static_cast<std::size_t>(bones[index].parent)]);
         }
         else
         {

@@ -23,11 +23,12 @@ namespace eaw::scene_build {
 
 namespace {
 
-AloVector3 transform_direction(const AloVector3& direction, const AloMatrix4& matrix)
+// A unit normal, tangent, or binormal carried through a transform (left as is when it collapses).
+Vector3 transform_normal(const Vector3& direction, const Matrix4& matrix)
 {
-    const auto origin = alo_transform_point({}, matrix);
-    const auto endpoint = alo_transform_point(direction, matrix);
-    AloVector3 result{endpoint.x - origin.x, endpoint.y - origin.y, endpoint.z - origin.z};
+    const auto origin = transform_point({}, matrix);
+    const auto endpoint = transform_point(direction, matrix);
+    Vector3 result{endpoint.x - origin.x, endpoint.y - origin.y, endpoint.z - origin.z};
     const auto length = std::sqrt(result.x * result.x + result.y * result.y + result.z * result.z);
     if (length > 1.0e-6F)
     {
@@ -101,7 +102,7 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model,
 
     // Appends `source`'s geometry. Attached models (host != null) are placed at the host bone's bind
     // pose and bound rigidly to that bone, in the host's palette.
-    const auto append_geometry = [&](const AloModel& source, const std::vector<AloMatrix4>& source_bind, const AloMatrix4* host, const std::optional<std::uint32_t> host_bone) -> Status
+    const auto append_geometry = [&](const AloModel& source, const std::vector<Matrix4>& source_bind, const Matrix4* host, const std::optional<std::uint32_t> host_bone) -> Status
     {
         const auto default_visible = alo_default_mesh_visibility(source, host != nullptr || !animated_visibility);
         for (std::size_t mesh_index = 0; mesh_index < source.meshes.size(); ++mesh_index)
@@ -145,23 +146,23 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model,
                     return make_error("visual scene has too many vertices for a D3D12 base-vertex draw");
                 }
                 const auto base_vertex = static_cast<std::int32_t>(scene.vertices.size());
-                const AloMatrix4* attachment = nullptr;
+                const Matrix4* attachment = nullptr;
                 if (submesh.skin_bones.empty() && mesh.attached_bone && *mesh.attached_bone < source_bind.size())
                 {
                     attachment = &source_bind[*mesh.attached_bone];
                 }
                 for (const auto& vertex : submesh.vertices)
                 {
-                    auto position = attachment != nullptr ? alo_transform_point(vertex.position, *attachment) : vertex.position;
-                    auto normal = attachment != nullptr ? transform_direction(vertex.normal, *attachment) : vertex.normal;
-                    auto tangent = attachment != nullptr ? transform_direction(vertex.tangent, *attachment) : vertex.tangent;
-                    auto binormal = attachment != nullptr ? transform_direction(vertex.binormal, *attachment) : vertex.binormal;
+                    auto position = attachment != nullptr ? transform_point(vertex.position, *attachment) : vertex.position;
+                    auto normal = attachment != nullptr ? transform_normal(vertex.normal, *attachment) : vertex.normal;
+                    auto tangent = attachment != nullptr ? transform_normal(vertex.tangent, *attachment) : vertex.tangent;
+                    auto binormal = attachment != nullptr ? transform_normal(vertex.binormal, *attachment) : vertex.binormal;
                     if (host != nullptr)
                     {
-                        position = alo_transform_point(position, *host);
-                        normal = transform_direction(normal, *host);
-                        tangent = transform_direction(tangent, *host);
-                        binormal = transform_direction(binormal, *host);
+                        position = transform_point(position, *host);
+                        normal = transform_normal(normal, *host);
+                        tangent = transform_normal(tangent, *host);
+                        binormal = transform_normal(binormal, *host);
                     }
                     std::array<std::uint32_t, 4> bone_indices{};
                     std::array<float, 4> bone_weights{};
@@ -431,11 +432,11 @@ void update_scene_bounds(VisualScene& scene)
         const auto& mesh = scene.meshes[instance.mesh];
         for (unsigned corner = 0; corner < 8; ++corner)
         {
-            const AloVector3 local{(corner & 1U) != 0 ? mesh.bounds_maximum[0] : mesh.bounds_minimum[0], (corner & 2U) != 0 ? mesh.bounds_maximum[1] : mesh.bounds_minimum[1],
-                                   (corner & 4U) != 0 ? mesh.bounds_maximum[2] : mesh.bounds_minimum[2]};
-            AloMatrix4 transform;
+            const Vector3 local{(corner & 1U) != 0 ? mesh.bounds_maximum[0] : mesh.bounds_minimum[0], (corner & 2U) != 0 ? mesh.bounds_maximum[1] : mesh.bounds_minimum[1],
+                                (corner & 4U) != 0 ? mesh.bounds_maximum[2] : mesh.bounds_minimum[2]};
+            Matrix4 transform;
             transform.values = instance.transform;
-            const auto world = alo_transform_point(local, transform);
+            const auto world = transform_point(local, transform);
             const std::array<float, 3> point{world.x, world.y, world.z};
             // Malformed vertex data must not leave the camera framing non-finite.
             if (!std::isfinite(point[0]) || !std::isfinite(point[1]) || !std::isfinite(point[2]))
@@ -481,12 +482,12 @@ Result<VisualModelAsset> build_visual_model(const AssetReader& vfs, const std::s
     asset.model = model->value();
     for (const auto& transform : asset.model.bind_pose())
     {
-        auto inverse = alo_inverse(transform);
-        if (!inverse)
+        const auto inverted = inverse(transform);
+        if (!inverted)
         {
-            return with_context(resolved->virtual_path, inverse.error());
+            return with_context(resolved->virtual_path, make_error("ALO bone transform is singular"));
         }
-        asset.inverse_bind_pose.push_back(*inverse);
+        asset.inverse_bind_pose.push_back(*inverted);
     }
     scene.name = resolved->virtual_path;
     scene.warnings = asset.model.warnings;
@@ -541,14 +542,14 @@ bool intact_hidden(const std::vector<bool>& hidden, const std::size_t bone)
 }
 
 // Skin matrices of `pose` (and the visibility half) appended to `out`; `hidden` bones collapse too.
-void append_pose_palette(const AloModel& model, const std::span<const AloMatrix4> inverse_bind_pose, const std::span<const AlaPoseBone> pose, const bool visibility_palette,
+void append_pose_palette(const AloModel& model, const std::span<const Matrix4> inverse_bind_pose, const std::span<const AlaPoseBone> pose, const bool visibility_palette,
                          std::vector<std::array<float, 16>>& out, const std::vector<bool>& hidden = {})
 {
     const auto bone_count = std::min({pose.size(), inverse_bind_pose.size(), model.bones.size()});
     const auto first = out.size();
     for (std::size_t index = 0; index < bone_count; ++index)
     {
-        out.push_back(alo_multiply(inverse_bind_pose[index], pose[index].transform).values);
+        out.push_back((inverse_bind_pose[index] * pose[index].transform).values);
     }
     if (visibility_palette)
     {
@@ -565,7 +566,7 @@ void append_pose_palette(const AloModel& model, const std::span<const AloMatrix4
 // A rig's rest palette: identity skin matrices, then the visibility half from the bind pose.
 void append_rest_palette(const AloModel& model, std::vector<std::array<float, 16>>& out, const std::vector<bool>& hidden = {})
 {
-    const auto identity = alo_identity_matrix().values;
+    const auto identity = Matrix4{}.values;
     std::array<float, 16> collapsed{};
     collapsed[15] = 1.0F;
     out.insert(out.end(), model.bones.size(), identity);
@@ -602,7 +603,7 @@ std::vector<std::array<float, 16>> sample_skin_palette(const VisualModelAsset& a
     append_pose_palette(asset.model, asset.inverse_bind_pose, pose, asset.visibility_palette, result);
     if (result.empty())
     {
-        result.push_back(alo_identity_matrix().values);
+        result.push_back(Matrix4{}.values);
     }
     return result;
 }
@@ -633,7 +634,7 @@ void append_rig_local_palette(const VisualRig& rig, const std::span<const AlaLoc
         {
             append_rest_palette(*rig.model, out, rig.intact_hidden);
         }
-        out.resize(first + rig.palette_size, alo_identity_matrix().values);
+        out.resize(first + rig.palette_size, Matrix4{}.values);
     }
 }
 
@@ -718,21 +719,21 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
             rig.effects = proxy_effects(builder, *rig.model, mesh.name);
             for (const auto& transform : rig.model->bind_pose())
             {
-                auto inverse = alo_inverse(transform);
-                if (!inverse)
+                const auto inverted = inverse(transform);
+                if (!inverted)
                 {
-                    scene.warnings.push_back(mesh.name + ": bind pose cannot be inverted, so the model is not animated: " + inverse.error().message);
+                    scene.warnings.push_back(mesh.name + ": bind pose cannot be inverted, so the model is not animated: ALO bone transform is singular");
                     rig.inverse_bind_pose.clear();
                     break;
                 }
-                rig.inverse_bind_pose.push_back(*inverse);
+                rig.inverse_bind_pose.push_back(*inverted);
             }
         }
         // Every mesh owns at least its own palette range.
         const auto used = static_cast<std::uint32_t>(rest_palette.size()) - rig.rest_offset;
         if (used < std::max(mesh.bone_count, 1U))
         {
-            rest_palette.resize(rig.rest_offset + std::max(mesh.bone_count, 1U), alo_identity_matrix().values);
+            rest_palette.resize(rig.rest_offset + std::max(mesh.bone_count, 1U), Matrix4{}.values);
         }
         rig.palette_size = static_cast<std::uint32_t>(rest_palette.size()) - rig.rest_offset;
         if (!rig.model || rig.inverse_bind_pose.empty() || !builder.animation_clips)

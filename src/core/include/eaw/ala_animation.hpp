@@ -1,6 +1,9 @@
 #pragma once
 
 #include "eaw/alo_model.hpp"
+#include "math/matrix.hpp"
+#include "math/quaternion.hpp"
+#include "math/vector.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -12,15 +15,15 @@ namespace eaw {
 
 struct AlaBoneFrame
 {
-    AloVector3 translation;
-    AloVector3 scale{1.0F, 1.0F, 1.0F};
-    AloQuaternion rotation;
+    Vector3 translation;
+    Vector3 scale{1.0F, 1.0F, 1.0F};
+    Quaternion rotation;
     bool visible{true};
 };
 
 struct AlaPoseBone
 {
-    AloMatrix4 transform;
+    Matrix4 transform;
     bool visible{true};
 };
 
@@ -28,9 +31,9 @@ struct AlaPoseBone
 // visibility (before the parent's is applied).
 struct AlaLocalBone
 {
-    AloVector3 translation;
-    AloVector3 scale{1.0F, 1.0F, 1.0F};
-    AloQuaternion rotation;
+    Vector3 translation;
+    Vector3 scale{1.0F, 1.0F, 1.0F};
+    Quaternion rotation;
     bool visible{true};
 };
 

@@ -55,13 +55,13 @@ PreviewBlend preview_blend(const LegacyMaterial& material) noexcept
     return PreviewBlend::opaque;
 }
 
-AloVector3 animated_vertex(const AloVertex& vertex, const AloSubMesh& submesh, const std::vector<AlaPoseBone>& pose, const std::vector<AloMatrix4>& inverse_bind)
+Vector3 animated_vertex(const AloVertex& vertex, const AloSubMesh& submesh, const std::vector<AlaPoseBone>& pose, const std::vector<Matrix4>& inverse_bind)
 {
     if (submesh.skin_bones.empty())
     {
         return vertex.position;
     }
-    AloVector3 result{};
+    Vector3 result{};
     float total_weight = 0.0F;
     for (std::size_t influence = 0; influence < vertex.bone_indices.size(); ++influence)
     {
@@ -76,8 +76,8 @@ AloVector3 animated_vertex(const AloVertex& vertex, const AloSubMesh& submesh, c
         {
             continue;
         }
-        const auto skin = alo_multiply(inverse_bind[bone_index], pose[bone_index].transform);
-        const auto point = alo_transform_point(vertex.position, skin);
+        const auto skin = inverse_bind[bone_index] * pose[bone_index].transform;
+        const auto point = transform_point(vertex.position, skin);
         result.x += point.x * weight;
         result.y += point.y * weight;
         result.z += point.z * weight;
@@ -640,7 +640,7 @@ void label_value(const char* label, const std::string_view value)
     ImGui::TextUnformatted(value.data(), value.data() + value.size());
 }
 
-PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<AlaPoseBone>* pose, const std::vector<AloMatrix4>& inverse_bind, const bool show_collision,
+PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<AlaPoseBone>* pose, const std::vector<Matrix4>& inverse_bind, const bool show_collision,
                                        const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture)
 {
     static constexpr std::array<ImU32, 6> palette{IM_COL32(54, 177, 186, 255), IM_COL32(71, 137, 201, 255), IM_COL32(121, 101, 198, 255),
@@ -683,18 +683,18 @@ PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<
             const auto rigid = submesh.skin_bones.empty() && mesh.attached_bone.has_value();
             for (const auto& vertex : submesh.vertices)
             {
-                AloVector3 point = vertex.position;
+                Vector3 point = vertex.position;
                 if (pose != nullptr)
                 {
                     point = animated_vertex(vertex, submesh, *pose, inverse_bind);
                     if (rigid && *mesh.attached_bone < pose->size())
                     {
-                        point = alo_transform_point(point, (*pose)[*mesh.attached_bone].transform);
+                        point = transform_point(point, (*pose)[*mesh.attached_bone].transform);
                     }
                 }
                 else if (rigid && *mesh.attached_bone < bind_pose.size())
                 {
-                    point = alo_transform_point(point, bind_pose[*mesh.attached_bone]);
+                    point = transform_point(point, bind_pose[*mesh.attached_bone]);
                 }
                 geometry.vertices.push_back({{point.x, point.y, point.z}, {vertex.texture_coordinates[0].x, vertex.texture_coordinates[0].y}, color});
                 if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z))
@@ -730,7 +730,7 @@ PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<
     return geometry;
 }
 
-bool draw_gpu_preview(GuiApp::State& state, PreviewTarget& target, const ImVec2 canvas_min, const ImVec2 canvas_max, const AloVector3& center, const float yaw, const float pitch, const float scale,
+bool draw_gpu_preview(GuiApp::State& state, PreviewTarget& target, const ImVec2 canvas_min, const ImVec2 canvas_max, const Vector3& center, const float yaw, const float pitch, const float scale,
                       const float depth_radius, const std::span<const PreviewMesh* const> meshes)
 {
     auto* draw = ImGui::GetWindowDrawList();

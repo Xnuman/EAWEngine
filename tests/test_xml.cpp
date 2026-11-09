@@ -147,12 +147,12 @@ void test_game_object_catalog()
     placed.rotation = {0.0F, 0.0F, 90.0F};
     placed.position = {10.0F, 20.0F, 30.0F};
     placed.has_transform = true;
-    const auto moved = eaw::alo_transform_point({1.0F, 0.0F, 0.0F}, eaw::placed_object_transform(placed));
+    const auto moved = eaw::transform_point({1.0F, 0.0F, 0.0F}, eaw::placed_object_transform(placed));
     require(std::fabs(moved.x - 10.0F) < 1.0e-4F && std::fabs(moved.y - 22.0F) < 1.0e-4F && std::fabs(moved.z - 30.0F) < 1.0e-4F, "placed-object heading/scale/translation is wrong");
     auto degenerate = placed;
     degenerate.scale = 0.0F;
     degenerate.rotation = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F};
-    const auto safe = eaw::alo_transform_point({1.0F, 0.0F, 0.0F}, eaw::placed_object_transform(degenerate));
+    const auto safe = eaw::transform_point({1.0F, 0.0F, 0.0F}, eaw::placed_object_transform(degenerate));
     require(std::isfinite(safe.x) && std::fabs(safe.x - 11.0F) < 1.0e-4F, "degenerate placed-object transform was not sanitized");
 
     eaw::TedMap map;
@@ -201,11 +201,11 @@ void test_game_object_catalog()
                 squadron_layout.placements[2].type != nullptr && squadron_layout.placements[2].type->name == "Unit_A_Variant",
             "squadron expansion counts are wrong");
     const auto& lead = squadron_layout.placements[0];
-    const auto lead_origin = eaw::alo_transform_point({}, lead.transform);
+    const auto lead_origin = eaw::transform_point({}, lead.transform);
     require(lead.container == squadron_type.front() && lead.member == 0 && lead.type == unit.definition && std::fabs(lead_origin.x - 10.0F) < 1.0e-4F && std::fabs(lead_origin.y - 30.0F) < 1.0e-4F &&
                 std::fabs(lead_origin.z - 30.0F) < 1.0e-4F,
             "squadron member offset was not rotated into the squadron frame");
-    const auto wing_origin = eaw::alo_transform_point({}, squadron_layout.placements[1].transform);
+    const auto wing_origin = eaw::transform_point({}, squadron_layout.placements[1].transform);
     require(squadron_layout.placements[1].member == 1 && std::fabs(wing_origin.x - 10.0F) < 1.0e-4F && std::fabs(wing_origin.y - 20.0F) < 1.0e-4F,
             "malformed squadron offset did not fall back to the squadron origin");
     // A land company expands into its members (listed with commas or whitespace) at the company's

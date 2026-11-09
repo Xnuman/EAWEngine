@@ -1,6 +1,7 @@
 #pragma once
 
 #include "eaw/status.hpp"
+#include "math/vector.hpp"
 
 #include <array>
 #include <cstddef>
@@ -110,21 +111,14 @@ struct TedObjectType
     std::uint32_t count{};
 };
 
-struct TedVector3
-{
-    float x{};
-    float y{};
-    float z{};
-};
-
 struct TedPlacedObject
 {
     std::uint32_t instance_id{};
     std::uint32_t crc{};
     std::uint32_t player{};
     float scale{1.0F};
-    TedVector3 position;
-    TedVector3 rotation;
+    Vector3 position;
+    Vector3 rotation;
     bool has_transform{};
 };
 

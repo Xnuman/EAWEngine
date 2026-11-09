@@ -511,7 +511,7 @@ Result<bool> find_object_identity(const std::span<const std::byte> bytes, const 
                 }
                 else if ((mini.type == 4 || mini.type == 5) && size >= 12)
                 {
-                    TedVector3 value{read_float(bytes, mini.payload), read_float(bytes, mini.payload + 4), read_float(bytes, mini.payload + 8)};
+                    Vector3 value{read_float(bytes, mini.payload), read_float(bytes, mini.payload + 4), read_float(bytes, mini.payload + 8)};
                     if (mini.type == 4)
                     {
                         object.position = value;

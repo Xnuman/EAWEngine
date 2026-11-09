@@ -87,7 +87,7 @@ struct PreviewTexture
 // Terrain triangle for land-map previews, in preview space.
 struct PreviewTriangle
 {
-    AloVector3 points[3];
+    Vector3 points[3];
     ImU32 color{};
 };
 
@@ -106,8 +106,8 @@ struct PreviewGeometry
     std::vector<PreviewVertex> vertices;
     std::vector<std::uint32_t> indices;
     std::vector<PreviewPart> parts;
-    AloVector3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
-    AloVector3 maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+    Vector3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+    Vector3 maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
     // Distance of the farthest vertex from the model origin.
     float radius{};
 };
@@ -126,12 +126,12 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, std::span<const st
 
 void label_value(const char* label, std::string_view value);
 
-PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<AlaPoseBone>* pose, const std::vector<AloMatrix4>& inverse_bind, bool show_collision,
+PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<AlaPoseBone>* pose, const std::vector<Matrix4>& inverse_bind, bool show_collision,
                                        const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture);
 
 // Renders `meshes` into `target` and shows it over the canvas. Returns false (after drawing a
 // message) when the GPU preview pipeline is unavailable.
-bool draw_gpu_preview(GuiApp::State& state, PreviewTarget& target, const ImVec2 canvas_min, const ImVec2 canvas_max, const AloVector3& center, float yaw, float pitch, float scale,
+bool draw_gpu_preview(GuiApp::State& state, PreviewTarget& target, const ImVec2 canvas_min, const ImVec2 canvas_max, const Vector3& center, float yaw, float pitch, float scale,
                       const float depth_radius, const std::span<const PreviewMesh* const> meshes);
 
 void render_map_viewport(GuiApp::State& state, bool reserve_footer);
@@ -165,7 +165,7 @@ struct GuiApp::State
     std::vector<std::string> mount_warnings;
     std::optional<AloModel> preview_model;
     std::optional<TedMap> preview_map;
-    std::vector<AloMatrix4> preview_inverse_bind;
+    std::vector<Matrix4> preview_inverse_bind;
     std::vector<ResolvedAsset> preview_animation_assets;
     std::optional<AlaAnimation> preview_animation;
     int preview_animation_index{-1};
@@ -183,8 +183,8 @@ struct GuiApp::State
     PreviewTarget model_target;
     bool model_mesh_cached{};
     bool model_mesh_collision{};
-    AloVector3 model_minimum{};
-    AloVector3 model_maximum{};
+    Vector3 model_minimum{};
+    Vector3 model_maximum{};
     std::unordered_map<std::string, PreviewTexture> preview_textures;
     std::vector<std::string> preview_texture_warnings;
     float map_preview_yaw{-0.65F};

@@ -41,15 +41,15 @@ enum class ParticleFileKind : std::uint8_t
 struct ParticleGroup
 {
     std::uint32_t type{};
-    AloVector3 minimum;
-    AloVector3 maximum;
+    Vector3 minimum;
+    Vector3 maximum;
     float side_length{};
     float sphere_radius{};
     bool sphere_hollow{};
     float cylinder_radius{};
     bool cylinder_hollow{};
     float cylinder_height{};
-    AloVector3 value;
+    Vector3 value;
 };
 
 enum class ParticleInterpolation : std::uint8_t
@@ -108,7 +108,7 @@ struct ParticleEmitter
     bool use_bursts{};                      // [0x07]
     bool link_to_system{};                  // [0x08] particles follow the emitter's movement
     float inward_speed{};                   // [0x09] as stored
-    AloVector3 acceleration;                // [0x0A]
+    Vector3 acceleration;                   // [0x0A]
     float inward_acceleration{};            // [0x0B] as stored
     float gravity{};                        // [0x0C] along -Z
     float lifetime{1.0F};                   // [0x0F] seconds

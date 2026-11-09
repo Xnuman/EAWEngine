@@ -80,7 +80,7 @@ struct VisualEffectAttachment
 struct VisualRig
 {
     std::shared_ptr<const AloModel> model;
-    std::vector<AloMatrix4> inverse_bind_pose;
+    std::vector<Matrix4> inverse_bind_pose;
     std::uint32_t rest_offset{};
     // Palette entries the mesh uses (its rest palette's size).
     std::uint32_t palette_size{};
@@ -97,7 +97,7 @@ struct VisualModelAsset
 {
     VisualScene scene;
     AloModel model;
-    std::vector<AloMatrix4> inverse_bind_pose;
+    std::vector<Matrix4> inverse_bind_pose;
     // The scene's palette has a second, visibility-collapsed half for rigid attachments (see
     // sample_skin_palette).
     bool visibility_palette{};

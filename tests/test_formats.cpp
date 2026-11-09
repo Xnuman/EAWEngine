@@ -1,5 +1,7 @@
 #include "test_support.hpp"
 
+#include "math/transform.hpp"
+
 #include "eaw/alo_interpretation.hpp"
 #include "eaw/chunk_file.hpp"
 #include "eaw/png_file.hpp"
@@ -244,7 +246,7 @@ void test_ala_animation()
 // sample_pose, and blending moves between poses by weight.
 void test_ala_blending()
 {
-    const auto near = [](const eaw::AloMatrix4& a, const eaw::AloMatrix4& b, const float tolerance)
+    const auto near = [](const eaw::Matrix4& a, const eaw::Matrix4& b, const float tolerance)
     {
         for (std::size_t index = 0; index < 16; ++index)
         {
@@ -257,7 +259,7 @@ void test_ala_blending()
     };
     // Rotations about several axes (including near 180 degrees, which takes the non-trace
     // branches), with scale and translation, and a mirrored matrix.
-    const std::array<eaw::AloQuaternion, 5> rotations{{
+    const std::array<eaw::Quaternion, 5> rotations{{
         {0.0F, 0.0F, 0.0F, 1.0F},
         {0.2F, -0.5F, 0.3F, 0.787401F},
         {0.99F, 0.1F, 0.0F, 0.0995F},
@@ -268,11 +270,11 @@ void test_ala_blending()
     {
         const auto length = std::sqrt(rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z + rotation.w * rotation.w);
         rotation = {rotation.x / length, rotation.y / length, rotation.z / length, rotation.w / length};
-        for (const auto scale : {eaw::AloVector3{1.0F, 1.0F, 1.0F}, eaw::AloVector3{2.0F, 0.5F, 3.0F}, eaw::AloVector3{-1.5F, 1.0F, 2.0F}})
+        for (const auto scale : {eaw::Vector3{1.0F, 1.0F, 1.0F}, eaw::Vector3{2.0F, 0.5F, 3.0F}, eaw::Vector3{-1.5F, 1.0F, 2.0F}})
         {
-            const auto matrix = eaw::alo_compose_transform(scale, rotation, {4.0F, -5.0F, 6.0F});
-            const auto parts = eaw::alo_decompose_transform(matrix);
-            require(near(eaw::alo_compose_transform(parts.scale, parts.rotation, parts.translation), matrix, 1.0e-4F), "a transform must recompose from its parts");
+            const auto matrix = eaw::compose_transform(scale, rotation, {4.0F, -5.0F, 6.0F});
+            const auto parts = eaw::decompose_transform(matrix);
+            require(near(eaw::compose_transform(parts.scale, parts.rotation, parts.translation), matrix, 1.0e-4F), "a transform must recompose from its parts");
         }
     }
 
@@ -303,7 +305,7 @@ void test_ala_blending()
             "a half weight must turn halfway along the shorter arc and stay normalized");
     require(pose[0].translation.y == 2.0F && pose[0].scale.x == 2.0F && pose[0].visible, "a half weight must land halfway and keep the heavier side's visibility");
     eaw::ala_blend_pose(pose, turned, 1.0F);
-    require(near(eaw::alo_compose_transform(pose[0].scale, pose[0].rotation, pose[0].translation), eaw::alo_compose_transform(turned[0].scale, turned[0].rotation, turned[0].translation), 1.0e-5F) &&
+    require(near(eaw::compose_transform(pose[0].scale, pose[0].rotation, pose[0].translation), eaw::compose_transform(turned[0].scale, turned[0].rotation, turned[0].translation), 1.0e-5F) &&
                 !pose[0].visible,
             "a full weight must take the target pose");
     // A shorter target blends over the common bones and leaves the rest.

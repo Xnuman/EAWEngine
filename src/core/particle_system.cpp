@@ -137,7 +137,7 @@ std::size_t property_size(const PropertyKind kind)
     }
 }
 
-AloVector3 read_vector3(const std::span<const std::byte> bytes, const std::size_t offset)
+Vector3 read_vector3(const std::span<const std::byte> bytes, const std::size_t offset)
 {
     return {read_float(bytes, offset), read_float(bytes, offset + 4), read_float(bytes, offset + 8)};
 }
