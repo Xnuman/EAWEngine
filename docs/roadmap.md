@@ -256,7 +256,7 @@ Gaps toward the deliverable, in planned order:
    builds a type's package (model, materials, textures, rigs, clips, and
    spawnable data) on a worker, and the sandbox can spawn any unit type of the
    map's context at any time; recorded sessions still replay headless.
-6. **Remaining M3 work, in the order the owner set:**
+6. **Remaining M3 work, in the order the owner set (revised 2026-11-09):**
    1. Missing render features: particles (engine glows, muzzle flashes,
       explosions, smoke), trails attached to moving objects, projectile
       visuals, runtime decals, and the rest of the legacy-mode render backlog.
@@ -280,17 +280,33 @@ Gaps toward the deliverable, in planned order:
       and shots and deaths play the XML `Particle` objects their projectile
       and type name (shield absorption, hull and armor-reduced detonation,
       flight end, death explosion) at their `Scale_Factor`; model
-      projectiles (missiles, torpedoes), ground detonations, hardpoint
-      destruction, and debris follow.
-   2. Combat presentation and fidelity: hardpoint visuals and damage, turret
-      rotation, damage-specific death clones and wreck explosions, real
-      projectiles for weapons.
-   3. Sound.
-   4. A review of the technical foundation, adding what the large layers
-      need.
-   5. Then the player layer (which owner the user commands, factions and
-      hostility from data, team colors by owner, fog of war) and a minimal
-      Lua host surface; the dependency-aware job system once measured budgets
+      projectiles (missiles, torpedoes) finish this step; ground detonations,
+      hardpoint destruction, and debris move to combat presentation.
+   2. A visual capture-and-compare workflow: the same scene, camera, and
+      units captured in the original and in the engine for side-by-side
+      comparison, and image regression on the engine side, before the next
+      round of visual tuning.
+   3. The review of the technical foundation, adding what the large layers
+      need. It starts with the Lua host as a foundation question, not as
+      scripted behavior: a Lua 5.0-compatible VM with deterministic settings
+      (no file or OS access, a seeded random stream), script threads as
+      coroutines woken on simulation ticks, object handles as
+      generation-checked entity ids, orders only through validated commands,
+      and every host function a recording stub (name, arguments, calling
+      script, a neutral return value). Loading all 370 stock scripts headless
+      and calling their entry points measures the host API they actually use
+      (the inspector's 3,074 candidate calls are an upper bound) and ranks it.
+      Real functions then replace stubs one at a time as engine systems come
+      to exist; whether running script state must be saveable is settled here
+      because it shapes saves. No scripted behavior (story, AI plans,
+      abilities) is implemented in this step.
+   4. Combat presentation and fidelity: hardpoint visuals and damage, turret
+      rotation, damage-specific death clones and wreck explosions, ground
+      detonations, debris, real projectiles for weapons.
+   5. Sound.
+   6. Then the player layer (which owner the user commands, factions and
+      hostility from data, team colors by owner, fog of war), replacing host
+      stubs as it goes; the dependency-aware job system once measured budgets
       need it.
 
 Known provisional choices to verify against the original:
