@@ -1144,7 +1144,7 @@ void test_particle_world()
     std::vector<eaw::VisualParticle> sprites;
     world.build_sprites({0.0F, 0.0F, 0.0F}, sprites);
     require(sprites.size() == 12 && sprites.front().texture == 7U && sprites.front().position[0] == 100.0F && sprites.front().position[2] > 0.0F, "particle sprites failed");
-    require(sprites.front().half_size > 4.0F && sprites.front().half_size < 7.0F, "particle size track failed");
+    require(sprites.front().half_size > 2.0F && sprites.front().half_size < 3.5F, "particle size track failed");
     {
         // A Scale_Factor sizes the particles and the effect's own space around its origin.
         eaw::ParticleWorld scaled;
@@ -1339,7 +1339,7 @@ void test_particle_world()
         dimmed.set_intensity(dim_id, 0.0F);
         std::vector<eaw::VisualParticle> idle;
         dimmed.build_sprites({}, idle);
-        require(full.size() == 1 && idle.size() == 1 && std::abs(idle[0].half_size - full[0].half_size * 0.55F) < 1e-4F && std::abs(idle[0].color[3] - full[0].color[3] * 0.45F) < 1e-4F,
+        require(full.size() == 1 && idle.size() == 1 && std::abs(idle[0].half_size - full[0].half_size * 0.5F) < 1e-4F && std::abs(idle[0].color[3] - full[0].color[3] * 0.15F) < 1e-4F,
                 "particle intensity did not scale size and opacity");
     }
 

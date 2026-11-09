@@ -766,15 +766,15 @@ void ParticleWorld::build_sprites(const std::array<float, 3>& eye, std::vector<V
             const auto texture = e < instance.effect->textures.size() ? instance.effect->textures[e] : invalid_visual_texture;
             const auto blend = emitter.blend;
             const auto shape = emitter.shape;
-            const auto size_scale = (0.55F + 0.45F * instance.intensity) * instance.scale;
-            const auto alpha_scale = 0.45F + 0.55F * instance.intensity;
+            const auto size_scale = (0.5F + 0.5F * instance.intensity) * instance.scale;
+            const auto alpha_scale = 0.15F + 0.85F * instance.intensity;
             for (const auto& particle : state.particles)
             {
                 const auto t = std::clamp(particle.age / particle.lifetime, 0.0F, 1.0F);
                 VisualParticle sprite;
                 sprite.position = particle.position;
-                // The scale track is the radius (the reference halves it; see docs/compatibility-research.md).
-                sprite.half_size = sample_particle_track(emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::scale)], t) * particle.size_factor * size_scale;
+                // The scale track is the full width, as both references draw it (docs/compatibility-research.md).
+                sprite.half_size = 0.5F * sample_particle_track(emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::scale)], t) * particle.size_factor * size_scale;
                 for (std::size_t channel = 0; channel < 4; ++channel)
                 {
                     sprite.color[channel] = std::clamp(sample_particle_track(emitter.tracks[channel], t) + particle.color_add[channel], 0.0F, 1.0F);

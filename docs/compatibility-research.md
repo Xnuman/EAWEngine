@@ -616,8 +616,7 @@ particle-audit`.
   the "inward" properties negated so that positive UI values move particles
   toward the emitter, and its rotation and texture rules are simpler than
   alo-viewer's derived ones. Two points where it disagrees with the owner's
-  observations of the game are kept as observed: it draws the scale track as
-  the full width (the engine reads it as the radius, below), and it carries
+  observations of the game are kept as observed: it carries
   linked particles with the emitter's translation only (the engine carries
   rotation too, which removed visible snapping of engine glows on turning
   ships).
@@ -675,13 +674,11 @@ particle-audit`.
     direction (positive pushes outward, likewise);
   - lifetime x random(1 - variance, 1) and size x random(1 - variance, 1):
     variances shorten and shrink, never lengthen or grow (alo-viewer
-    lengthened lifetimes); the scale track is the sprite's radius (half
-    extent). Both references halve it (the value is the full width there);
-    the owner's screenshots of the original fit the
-    radius reading: the X-wing's scale-1 engine glows fill nozzles about 2
-    units across, and the Star Destroyer's scale-70 glows show a core about
-    70 units across, twice what the halved size gives with the soft particle
-    texture;
+    lengthened lifetimes); the scale track is the sprite's full width, as
+    both references draw it. A radius reading was tried after the X-wing's
+    1-unit engine dots looked too small, but with bloom in place it made
+    capital-ship engine glows far too large and bright next to the owner's
+    screenshots of the original, so the width reading stands;
   - colour tracks plus a random addition up to the random colours (grayscale
     uses the red value for all channels);
   - rotation speed in revolutions per second, randomly reversed when the
@@ -751,8 +748,9 @@ particle-audit`.
   grow and brighten as it accelerates. No XML field governs this (the only
   engine field is `Engine_Particles`), so engine effects (proxies named
   `pe_*`, the stock naming, or under an `Engine_Particles` bone) scale with
-  the unit's speed over its top speed, smoothed over 0.5 s: size from 55% and
-  opacity from 45% at rest. Both mappings are engine choices.
+  the unit's speed over its top speed, smoothed over 0.5 s: size from 50% and
+  opacity from 15% at rest (45% at first, which left stationary ships
+  glowing visibly). Both mappings are engine choices.
 - **Which effects the data names.** Gameplay effects are fully data-driven
   through `Particle` objects (165, `Data/XML/Particles.xml`). Each names its
   effect file (`Space_Model_Name`, `Land_Model_Name`, sometimes

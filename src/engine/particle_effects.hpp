@@ -89,7 +89,7 @@ public:
     // Hides or shows a playing effect: hidden effects emit nothing, and their particles live out.
     void set_emitting(ParticleInstanceId id, bool emitting);
     // Scales a playing effect's drawn particles: 1 is as authored, 0 its idle look (engine effects
-    // follow their unit's speed). Size goes from 55% and opacity from 45% at 0 to full at 1 (engine
+    // follow their unit's speed). Size goes from 50% and opacity from 15% at 0 to full at 1 (engine
     // choices fitted by eye to the original's engine glows); values are clamped to 0..1.
     void set_intensity(ParticleInstanceId id, float intensity);
     // Stops emitting; the particles live out when the system leaves particles, else vanish now.
