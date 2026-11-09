@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.25)
 
 project(EAWEngine VERSION 0.1.0 LANGUAGES CXX)
 
+# Targets sit in solution folders, and each target lists its headers beside its sources so Visual
+# Studio shows them; source_group(TREE) mirrors the directory layout in the project.
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
 option(EAW_BUILD_TESTS "Build EAWEngine tests" ON)
 option(EAW_BUILD_GUI "Build the Dear ImGui tool workbench" ON)
 
@@ -15,33 +19,66 @@ if(MSVC)
     add_compile_definitions(_HAS_EXCEPTIONS=0)
 endif()
 
-add_library(eaw_core STATIC
+set(EAW_CORE_HEADERS
+    src/core/include/eaw/ala_animation.hpp
+    src/core/include/eaw/alo_model.hpp
+    src/core/include/eaw/asset_environment.hpp
+    src/core/include/eaw/asset_path.hpp
+    src/core/include/eaw/dat_file.hpp
+    src/core/include/eaw/dds_texture.hpp
+    src/core/include/eaw/fatal_error.hpp
+    src/core/include/eaw/game_installation.hpp
+    src/core/include/eaw/game_object_catalog.hpp
+    src/core/include/eaw/legacy_material.hpp
+    src/core/include/eaw/localization_scan.hpp
+    src/core/include/eaw/localization_workspace.hpp
+    src/core/include/eaw/log.hpp
+    src/core/include/eaw/lua_script.hpp
+    src/core/include/eaw/map_object_layout.hpp
+    src/core/include/eaw/meg_archive.hpp
+    src/core/include/eaw/mtd_directory.hpp
+    src/core/include/eaw/particle_system.hpp
+    src/core/include/eaw/spawn_catalog.hpp
+    src/core/include/eaw/status.hpp
+    src/core/include/eaw/ted_map.hpp
+    src/core/include/eaw/text_encoding.hpp
+    src/core/include/eaw/virtual_file_system.hpp
+    src/core/include/eaw/xml_asset_database.hpp
+    src/core/include/eaw/xml_document.hpp
+    src/core/include/eaw/xml_schema.hpp
+)
+
+set(EAW_CORE_SOURCES
     src/core/ala_animation.cpp
     src/core/alo_model.cpp
-    src/core/asset_path.cpp
     src/core/asset_environment.cpp
+    src/core/asset_path.cpp
     src/core/dat_file.cpp
-    src/core/fatal_error.cpp
-    src/core/log.cpp
     src/core/dds_texture.cpp
+    src/core/fatal_error.cpp
     src/core/game_installation.cpp
     src/core/game_object_catalog.cpp
     src/core/legacy_material.cpp
     src/core/localization_scan.cpp
     src/core/localization_workspace.cpp
-    src/core/map_object_layout.cpp
+    src/core/log.cpp
     src/core/lua_script.cpp
+    src/core/map_object_layout.cpp
     src/core/meg_archive.cpp
-    src/core/particle_system.cpp
     src/core/mtd_directory.cpp
+    src/core/particle_system.cpp
     src/core/spawn_catalog.cpp
-    src/core/text_encoding.cpp
     src/core/ted_map.cpp
+    src/core/text_encoding.cpp
     src/core/virtual_file_system.cpp
     src/core/xml_asset_database.cpp
     src/core/xml_document.cpp
     src/core/xml_schema.cpp
 )
+
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/core FILES ${EAW_CORE_HEADERS} ${EAW_CORE_SOURCES})
+add_library(eaw_core STATIC ${EAW_CORE_HEADERS} ${EAW_CORE_SOURCES})
+set_target_properties(eaw_core PROPERTIES FOLDER "libraries")
 
 target_include_directories(eaw_core PUBLIC src/core/include)
 target_compile_features(eaw_core PUBLIC cxx_std_20)
@@ -96,6 +133,7 @@ if(WIN32)
                 VERBATIM)
         endif()
         target_sources(${target} PRIVATE "${output}")
+        source_group("generated" FILES "${output}")
         target_include_directories(${target} PRIVATE "${EAW_GENERATED_SHADER_DIR}")
     endfunction()
 endif()
@@ -112,6 +150,13 @@ if(WIN32)
     FetchContent_MakeAvailable(imgui)
 
     add_library(eaw_imgui STATIC
+        ${imgui_SOURCE_DIR}/imconfig.h
+        ${imgui_SOURCE_DIR}/imgui.h
+        ${imgui_SOURCE_DIR}/imgui_internal.h
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.h
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_dx12.h
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.h
+        ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.h
         ${imgui_SOURCE_DIR}/imgui.cpp
         ${imgui_SOURCE_DIR}/imgui_demo.cpp
         ${imgui_SOURCE_DIR}/imgui_draw.cpp
@@ -128,6 +173,7 @@ if(WIN32)
         ${imgui_SOURCE_DIR}/misc/cpp
     )
     target_compile_features(eaw_imgui PUBLIC cxx_std_20)
+    set_target_properties(eaw_imgui PROPERTIES FOLDER "third_party")
     target_compile_definitions(eaw_imgui PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     if(MSVC)
         target_compile_options(eaw_imgui PRIVATE /W3 /utf-8)
@@ -136,10 +182,15 @@ endif()
 
 if(EAW_BUILD_GUI AND WIN32)
     # Shared Win32 + Direct3D 11 + Dear ImGui shell and file dialogs for the desktop tools.
-    add_library(eaw_imgui_app STATIC
+    set(EAW_IMGUI_APP_SOURCES
         src/imgui_app/file_dialogs.cpp
         src/imgui_app/imgui_app.cpp
+        src/imgui_app/include/eaw/file_dialogs.hpp
+        src/imgui_app/include/eaw/imgui_app.hpp
     )
+    source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/imgui_app FILES ${EAW_IMGUI_APP_SOURCES})
+    add_library(eaw_imgui_app STATIC ${EAW_IMGUI_APP_SOURCES})
+    set_target_properties(eaw_imgui_app PROPERTIES FOLDER "libraries")
     target_include_directories(eaw_imgui_app PUBLIC src/imgui_app/include)
     target_compile_features(eaw_imgui_app PUBLIC cxx_std_20)
     target_compile_definitions(eaw_imgui_app PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -148,17 +199,24 @@ if(EAW_BUILD_GUI AND WIN32)
         target_compile_options(eaw_imgui_app PRIVATE /W4 /permissive- /utf-8)
     endif()
 
-    add_executable(EAWTools WIN32
+    set(EAW_TOOLS_SOURCES
         src/tools_gui/gui_app.cpp
+        src/tools_gui/gui_app.hpp
         src/tools_gui/gui_asset_workspace.cpp
+        src/tools_gui/gui_internal.hpp
         src/tools_gui/gui_localization.cpp
         src/tools_gui/gui_map_view.cpp
         src/tools_gui/gui_model_view.cpp
         src/tools_gui/gui_state.cpp
         src/tools_gui/gui_support.cpp
-        src/tools_gui/preview_renderer.cpp
         src/tools_gui/main.cpp
+        src/tools_gui/preview_renderer.cpp
+        src/tools_gui/preview_renderer.hpp
+        src/tools_gui/shaders/preview.hlsl
     )
+    source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/tools_gui FILES ${EAW_TOOLS_SOURCES})
+    add_executable(EAWTools WIN32 ${EAW_TOOLS_SOURCES})
+    set_target_properties(EAWTools PROPERTIES FOLDER "tools")
     target_link_libraries(EAWTools PRIVATE
         eaw_core
         eaw_imgui
@@ -171,7 +229,6 @@ if(EAW_BUILD_GUI AND WIN32)
         shell32
         uuid
     )
-    target_sources(EAWTools PRIVATE src/tools_gui/shaders/preview.hlsl)
     set_source_files_properties(src/tools_gui/shaders/preview.hlsl PROPERTIES VS_TOOL_OVERRIDE "None")
     eaw_compile_shader(EAWTools fxc src/tools_gui/shaders/preview.hlsl vertex_main vs_5_0 g_eaw_preview_vs)
     eaw_compile_shader(EAWTools fxc src/tools_gui/shaders/preview.hlsl pixel_main ps_5_0 g_eaw_preview_ps)
@@ -185,31 +242,52 @@ endif()
 if(WIN32)
     target_link_libraries(eaw_core PRIVATE advapi32)
 
-    add_library(eaw_platform STATIC
+    set(EAW_PLATFORM_SOURCES
+        src/platform/include/eaw/crash_handler.hpp
+        src/platform/include/eaw/log_sinks.hpp
+        src/platform/include/eaw/platform_window.hpp
         src/platform/win32_crash_handler.cpp
         src/platform/win32_log_sinks.cpp
         src/platform/win32_window.cpp
     )
+    source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/platform FILES ${EAW_PLATFORM_SOURCES})
+    add_library(eaw_platform STATIC ${EAW_PLATFORM_SOURCES})
+    set_target_properties(eaw_platform PROPERTIES FOLDER "libraries")
     target_include_directories(eaw_platform PUBLIC src/platform/include)
     target_compile_features(eaw_platform PUBLIC cxx_std_20)
     target_compile_definitions(eaw_platform PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(eaw_platform PUBLIC eaw_core PRIVATE user32)
 
-    add_library(eaw_render_d3d12 STATIC
+    set(EAW_RENDER_D3D12_SOURCES
         src/render/d3d12_renderer.cpp
         src/render/d3d12_renderer_device.cpp
         src/render/d3d12_renderer_frame.cpp
+        src/render/d3d12_renderer_impl.hpp
         src/render/d3d12_renderer_overlay.cpp
         src/render/d3d12_renderer_pipelines.cpp
         src/render/d3d12_renderer_resources.cpp
         src/render/d3d12_support.cpp
+        src/render/d3d12_support.hpp
+        src/render/include/eaw/d3d12_renderer.hpp
+        src/render/include/eaw/gpu_resource_lifetime.hpp
+        src/render/include/eaw/visual_scene.hpp
     )
+    set(EAW_RENDER_D3D12_SHADERS
+        src/render/shaders/debug.hlsl
+        src/render/shaders/legacy_common.hlsli
+        src/render/shaders/particle.hlsl
+        src/render/shaders/post.hlsl
+        src/render/shaders/sandbox.hlsl
+        src/render/shaders/terrain.hlsl
+    )
+    source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/render FILES ${EAW_RENDER_D3D12_SOURCES} ${EAW_RENDER_D3D12_SHADERS})
+    add_library(eaw_render_d3d12 STATIC ${EAW_RENDER_D3D12_SOURCES} ${EAW_RENDER_D3D12_SHADERS})
+    set_target_properties(eaw_render_d3d12 PROPERTIES FOLDER "libraries")
     target_include_directories(eaw_render_d3d12 PUBLIC src/render/include)
     target_compile_features(eaw_render_d3d12 PUBLIC cxx_std_20)
     target_compile_definitions(eaw_render_d3d12 PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(eaw_render_d3d12 PUBLIC eaw_core PRIVATE d3d12 dxgi eaw_imgui)
-    target_sources(eaw_render_d3d12 PRIVATE src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/particle.hlsl src/render/shaders/post.hlsl src/render/shaders/legacy_common.hlsli)
-    set_source_files_properties(src/render/shaders/sandbox.hlsl src/render/shaders/terrain.hlsl src/render/shaders/debug.hlsl src/render/shaders/particle.hlsl src/render/shaders/post.hlsl src/render/shaders/legacy_common.hlsli PROPERTIES VS_TOOL_OVERRIDE "None")
+    set_source_files_properties(${EAW_RENDER_D3D12_SHADERS} PROPERTIES VS_TOOL_OVERRIDE "None")
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/terrain.hlsl terrain_vs vs_6_0 g_eaw_terrain_vs)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/terrain.hlsl terrain_ps ps_6_0 g_eaw_terrain_ps)
     eaw_compile_shader(eaw_render_d3d12 dxc src/render/shaders/sandbox.hlsl vs_main vs_6_0 g_eaw_sandbox_vs)
@@ -231,18 +309,29 @@ if(WIN32)
 endif()
 
 # Deterministic tactical simulation core: no graphics, platform, or file access.
-add_library(eaw_simulation STATIC
+set(EAW_SIMULATION_SOURCES
     src/simulation/combat.cpp
     src/simulation/formation.cpp
     src/simulation/ground_map.cpp
+    src/simulation/include/eaw/combat.hpp
+    src/simulation/include/eaw/formation.hpp
+    src/simulation/include/eaw/ground_map.hpp
+    src/simulation/include/eaw/pathfinding.hpp
+    src/simulation/include/eaw/simulation.hpp
+    src/simulation/include/eaw/simulation_types.hpp
+    src/simulation/include/eaw/spatial_grid.hpp
     src/simulation/pathfinding.cpp
     src/simulation/simulation.cpp
     src/simulation/simulation_behavior.cpp
     src/simulation/simulation_combat.cpp
+    src/simulation/simulation_internal.hpp
     src/simulation/simulation_locomotion.cpp
     src/simulation/simulation_navigation.cpp
     src/simulation/spatial_grid.cpp
 )
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/simulation FILES ${EAW_SIMULATION_SOURCES})
+add_library(eaw_simulation STATIC ${EAW_SIMULATION_SOURCES})
+set_target_properties(eaw_simulation PROPERTIES FOLDER "libraries")
 target_include_directories(eaw_simulation PUBLIC src/simulation/include)
 target_compile_features(eaw_simulation PUBLIC cxx_std_20)
 # Only for Status/Result and fatal errors; the simulation still reads no files.
@@ -253,44 +342,83 @@ endif()
 
 # Platform-independent engine orchestration: visual scene construction and camera control. It
 # consumes the render contract headers (engine-native data) but no graphics API.
-add_library(eaw_engine STATIC
+set(EAW_ENGINE_SOURCES
     src/engine/asset_cache.cpp
+    src/engine/asset_cache.hpp
     src/engine/attached_effects.cpp
+    src/engine/attached_effects.hpp
     src/engine/battle.cpp
+    src/engine/battle.hpp
     src/engine/battle_log.cpp
+    src/engine/battle_log.hpp
     src/engine/battle_runner.cpp
+    src/engine/battle_runner.hpp
     src/engine/camera_controller.cpp
+    src/engine/camera_controller.hpp
     src/engine/camera_math.cpp
-    src/engine/debug_draw.cpp
-    src/engine/particle_effects.cpp
-    src/engine/particle_rules.cpp
-    src/engine/projectile_visuals.cpp
-    src/engine/rts_control.cpp
+    src/engine/camera_math.hpp
     src/engine/combat_content.cpp
-    src/engine/sandbox_content.cpp
-    src/engine/sandbox_debug_lines.cpp
-    src/engine/sandbox_options.cpp
-    src/engine/scene_presentation.cpp
-    src/engine/terrain_height.cpp
-    src/engine/unit_animation.cpp
-    src/engine/text_format.cpp
+    src/engine/combat_content.hpp
+    src/engine/debug_draw.cpp
+    src/engine/debug_draw.hpp
     src/engine/object_type_properties.cpp
+    src/engine/particle_effects.cpp
+    src/engine/particle_effects.hpp
+    src/engine/particle_rules.cpp
+    src/engine/particle_rules.hpp
+    src/engine/projectile_visuals.cpp
+    src/engine/projectile_visuals.hpp
+    src/engine/rts_control.cpp
+    src/engine/rts_control.hpp
+    src/engine/sandbox_content.cpp
+    src/engine/sandbox_content.hpp
+    src/engine/sandbox_debug_lines.cpp
+    src/engine/sandbox_debug_lines.hpp
+    src/engine/sandbox_options.cpp
+    src/engine/sandbox_options.hpp
+    src/engine/scene_builder_internal.hpp
     src/engine/scene_materials.cpp
     src/engine/scene_models.cpp
     src/engine/scene_particles.cpp
+    src/engine/scene_presentation.cpp
+    src/engine/scene_presentation.hpp
     src/engine/scene_terrain.cpp
+    src/engine/terrain_height.cpp
+    src/engine/terrain_height.hpp
+    src/engine/text_format.cpp
+    src/engine/text_format.hpp
+    src/engine/unit_animation.cpp
+    src/engine/unit_animation.hpp
     src/engine/visual_map_builder.cpp
+    src/engine/visual_scene_builder.hpp
+    src/render/include/eaw/visual_scene.hpp
 )
+# The render contract header (engine-native visual data) is shown under the engine too.
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src FILES ${EAW_ENGINE_SOURCES})
+add_library(eaw_engine STATIC ${EAW_ENGINE_SOURCES})
+set_target_properties(eaw_engine PROPERTIES FOLDER "libraries")
 target_include_directories(eaw_engine PUBLIC src/engine src/render/include)
 target_compile_features(eaw_engine PUBLIC cxx_std_20)
 target_compile_definitions(eaw_engine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_link_libraries(eaw_engine PUBLIC eaw_core eaw_simulation)
 
-add_executable(EAWEngine src/engine/main.cpp)
-target_link_libraries(EAWEngine PRIVATE eaw_core eaw_engine)
+set(EAW_ENGINE_EXECUTABLE_SOURCES src/engine/main.cpp)
 if(WIN32)
     # The sandbox session drives the window and the D3D12 renderer, so it lives in the executable.
-    target_sources(EAWEngine PRIVATE src/engine/sandbox_app.cpp src/engine/sandbox_overlay.cpp src/engine/sandbox_panels.cpp)
+    list(APPEND EAW_ENGINE_EXECUTABLE_SOURCES
+        src/engine/sandbox_app.cpp
+        src/engine/sandbox_app.hpp
+        src/engine/sandbox_overlay.cpp
+        src/engine/sandbox_overlay.hpp
+        src/engine/sandbox_panels.cpp
+        src/engine/sandbox_panels.hpp
+    )
+endif()
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/engine FILES ${EAW_ENGINE_EXECUTABLE_SOURCES})
+add_executable(EAWEngine ${EAW_ENGINE_EXECUTABLE_SOURCES})
+set_target_properties(EAWEngine PROPERTIES FOLDER "programs")
+target_link_libraries(EAWEngine PRIVATE eaw_core eaw_engine)
+if(WIN32)
     target_link_libraries(EAWEngine PRIVATE eaw_platform eaw_render_d3d12 eaw_imgui)
 endif()
 target_compile_features(EAWEngine PRIVATE cxx_std_20)
@@ -298,10 +426,17 @@ target_compile_definitions(EAWEngine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 
 # Launch configuration and process start: sandbox scenarios, presets, and spawnable types
 # (portable), child processes (Windows).
-add_library(eaw_launch STATIC src/launcher/sandbox_scenario.cpp)
+set(EAW_LAUNCH_SOURCES
+    src/launcher/include/eaw/child_process.hpp
+    src/launcher/include/eaw/sandbox_scenario.hpp
+    src/launcher/sandbox_scenario.cpp
+)
 if(WIN32)
-    target_sources(eaw_launch PRIVATE src/launcher/child_process.cpp)
+    list(APPEND EAW_LAUNCH_SOURCES src/launcher/child_process.cpp)
 endif()
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/launcher FILES ${EAW_LAUNCH_SOURCES})
+add_library(eaw_launch STATIC ${EAW_LAUNCH_SOURCES})
+set_target_properties(eaw_launch PROPERTIES FOLDER "libraries")
 target_include_directories(eaw_launch PUBLIC src/launcher/include)
 target_compile_features(eaw_launch PUBLIC cxx_std_20)
 target_compile_definitions(eaw_launch PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -309,6 +444,8 @@ target_link_libraries(eaw_launch PUBLIC eaw_core)
 
 if(WIN32)
     add_executable(EAWLauncher src/launcher/main.cpp)
+    source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/launcher FILES src/launcher/main.cpp)
+    set_target_properties(EAWLauncher PROPERTIES FOLDER "programs")
     target_link_libraries(EAWLauncher PRIVATE eaw_core eaw_launch)
     target_compile_features(EAWLauncher PRIVATE cxx_std_20)
     target_compile_definitions(EAWLauncher PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -319,10 +456,14 @@ endif()
 
 if(EAW_BUILD_GUI AND WIN32)
     # Development launcher: edit, save, and start sandbox scenarios.
-    add_executable(EAWDevLauncher WIN32
+    set(EAW_DEV_LAUNCHER_SOURCES
         src/dev_launcher/dev_launcher_app.cpp
+        src/dev_launcher/dev_launcher_app.hpp
         src/dev_launcher/main.cpp
     )
+    source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/dev_launcher FILES ${EAW_DEV_LAUNCHER_SOURCES})
+    add_executable(EAWDevLauncher WIN32 ${EAW_DEV_LAUNCHER_SOURCES})
+    set_target_properties(EAWDevLauncher PROPERTIES FOLDER "programs")
     target_link_libraries(EAWDevLauncher PRIVATE eaw_core eaw_launch eaw_imgui_app eaw_imgui shell32)
     target_compile_features(EAWDevLauncher PRIVATE cxx_std_20)
     target_compile_definitions(EAWDevLauncher PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -331,21 +472,27 @@ if(EAW_BUILD_GUI AND WIN32)
     endif()
 endif()
 
-add_executable(EAWAssetInspector
+set(EAW_ASSET_INSPECTOR_SOURCES
     src/asset_inspector/audit_lua.cpp
     src/asset_inspector/audit_maps.cpp
     src/asset_inspector/audit_particles.cpp
     src/asset_inspector/audit_textures.cpp
     src/asset_inspector/audit_xml.cpp
     src/asset_inspector/inspect_asset.cpp
+    src/asset_inspector/inspector.hpp
     src/asset_inspector/inspector_common.cpp
     src/asset_inspector/inspector_options.cpp
     src/asset_inspector/main.cpp
 )
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/asset_inspector FILES ${EAW_ASSET_INSPECTOR_SOURCES})
+add_executable(EAWAssetInspector ${EAW_ASSET_INSPECTOR_SOURCES})
+set_target_properties(EAWAssetInspector PROPERTIES FOLDER "tools")
 target_link_libraries(EAWAssetInspector PRIVATE eaw_core)
 target_compile_features(EAWAssetInspector PRIVATE cxx_std_20)
 
 add_executable(EAWDatEditor src/dat_editor/main.cpp)
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src/dat_editor FILES src/dat_editor/main.cpp)
+set_target_properties(EAWDatEditor PROPERTIES FOLDER "tools")
 target_link_libraries(EAWDatEditor PRIVATE eaw_core)
 target_compile_features(EAWDatEditor PRIVATE cxx_std_20)
 target_compile_definitions(EAWDatEditor PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -363,11 +510,13 @@ if(EAW_BUILD_TESTS)
     # Each module is tests/test_<module>.cpp, registers its tests under that name, and gets its own
     # ctest entry; add new modules here.
     set(EAW_TEST_MODULES engine formats foundation launcher render simulation vfs xml)
-    set(EAW_TEST_SOURCES tests/test_main.cpp tests/test_support.cpp)
+    set(EAW_TEST_SOURCES tests/test_main.cpp tests/test_support.cpp tests/test_support.hpp)
     foreach(test_module IN LISTS EAW_TEST_MODULES)
         list(APPEND EAW_TEST_SOURCES tests/test_${test_module}.cpp)
     endforeach()
+    source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/tests FILES ${EAW_TEST_SOURCES})
     add_executable(EAWEngineTests ${EAW_TEST_SOURCES})
+    set_target_properties(EAWEngineTests PROPERTIES FOLDER "tests")
     target_link_libraries(EAWEngineTests PRIVATE eaw_core eaw_engine eaw_launch)
     target_compile_features(EAWEngineTests PRIVATE cxx_std_20)
     if(MSVC)

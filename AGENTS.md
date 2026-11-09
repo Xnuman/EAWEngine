@@ -240,6 +240,7 @@ These are correctness rules, not optional optimizations.
 ## Code and design style
 
 - C++20; Windows builds use `/W4 /permissive- /utf-8` with exceptions disabled (`/EHs-c-`, `_HAS_EXCEPTIONS=0`, set once for every target in `CMakeLists.txt`). New warnings are defects.
+- `CMakeLists.txt` lists every source, header, and shader of a target explicitly (no globbing) in its `set(EAW_<TARGET>_SOURCES ...)` list, sorted by path, with `source_group(TREE ...)` and a solution `FOLDER`, so Visual Studio shows the whole tree; add new files there.
 - `.clang-format` is authoritative: four spaces, project brace rules, and the configured 200-column limit. Format every changed C/C++ file before validation.
 - Follow the established style in neighboring files: descriptive names, small cohesive types, early validation, explicit ownership, and comments that explain invariants or evidence rather than restating code.
 - Prefer standard-library and Win32/D3D12 primitives already used by the project. Add a dependency only when it removes substantial risk or work, and pin it reproducibly.
