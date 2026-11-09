@@ -918,3 +918,34 @@ particle-audit`.
   inference from the field name and from intact ships in the original showing
   no scorch marks). Some proxies name files that do not exist (`Lensflare0`); they are
   reported once per build.
+
+## Lua host protocol
+
+What the engine must provide to the stock scripts, from the framework library under
+`Data/Scripts/Library` (read as evidence; nothing quoted) and from running every stock script on
+recording stubs (`EAWEngine lua-survey`).
+
+- **Language.** Lua 5.0 (the inspector's bytecode decoder reads 5.0 chunks; the scripts use
+  `table.getn`, `arg` tables for varargs, and no `%` operator). Stock FoC ships all 370 scripts as
+  source; one archive also carries a compiled `PGBase.lua` that loses in VFS precedence to the source
+  in `64Patch.meg`.
+- **Lifecycle.** The engine calls `Base_Definitions` when a script is created: the framework's
+  version resets thread values and events, clears its globals (including `Object` and
+  `PlayerObject`), sets `ServiceRate`, and calls the script's own `Definitions`. So the engine binds a
+  game-object script's `Object` after creation (an inference). `main` then runs as a thread; when it
+  returns, the script ends.
+- **Threads.** Script threads are coroutines the engine resumes. The framework's `Sleep` and
+  `BlockOnCommand` wait in Lua, calling `PumpEvents`, which yields `true` back to the engine and, when
+  resumed, drains `GetEvent` (with `GetEvent.Params`) and calls each event. Yielding `false` ends a
+  thread. `_ScriptExit` sets a flag that ends the whole script at the next yield (`ScriptExit` wraps
+  it). `GetThreadID` is negative outside threads. `ThreadValue(key)` and `ThreadValue.Set(key,
+  value)` are per-thread storage. The framework sets `ServiceRate = 0.2` ("five times a second"); the
+  host services each thread that often.
+- **Engine names are tables too.** `WeightedTypeList.Create()`, `FogOfWar.Reveal_All`,
+  `GameRandom.Get_Float()`: some engine globals are tables of functions, and objects returned by engine
+  functions carry methods (`Object.Get_Owner().Get_Faction_Name()`).
+- **What scripts call (first survey, creation and main loops, no events, 10 game seconds):** 46
+  functions and 18 methods; most used by script count: `_ScriptMessage`, `Find_Player`,
+  `GetCurrentTime`, `Get_Game_Mode`, `_ScriptExit`, `Find_Object_Type`, `_MessagePopup`,
+  `WeightedTypeList.Create`, and the game object's `Is_Valid`, `Get_Owner`, `Event_Object_In_Range`,
+  `Service_Wrapper`. The ranked list with argument types comes from `lua-survey --report`.

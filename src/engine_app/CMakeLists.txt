@@ -3,6 +3,8 @@
 set(EAW_ENGINE_APP_SOURCES
     image_compare_command.cpp
     image_compare_command.hpp
+    lua_survey_command.cpp
+    lua_survey_command.hpp
     main.cpp
 )
 if(WIN32)
@@ -28,7 +30,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_ENGINE_APP_SOURCES})
 
 add_executable(EAWEngine ${EAW_ENGINE_APP_SOURCES})
 eaw_target_defaults(EAWEngine "programs")
-target_link_libraries(EAWEngine PRIVATE eaw_core eaw_engine)
+target_link_libraries(EAWEngine PRIVATE eaw_core eaw_engine eaw_script)
 if(WIN32)
     target_link_libraries(EAWEngine PRIVATE eaw_platform eaw_render_d3d12 eaw_imgui)
 endif()

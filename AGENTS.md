@@ -14,7 +14,7 @@ EAWEngine is an independently developed, open compatibility engine and toolset f
 
 ## Where things stand
 
-M0 (repository discipline), M1 (data bootstrap: VFS, MEG, DAT, DDS/MTD, ALO, ALA, TED, XML, Lua inspection), and M2 (the Direct3D 12 visual sandbox in legacy mode) are complete. M3, the tactical simulation slice, is active: a deterministic simulation with movement, pathfinding, formations, combat, headless battles with replayable order logs, unit animation, and the first presentation features (particles, bloom, projectile bolts, impact and death effects). The owner's order for the rest of M3 (revised 2026-11-09) is: a visual capture-and-compare workflow (projectile visuals, missiles and torpedoes included, are done), the technical foundation review starting with the Lua host and recording stubs (a foundation question, not scripted behavior), combat presentation, sound, then the player layer.
+M0 (repository discipline), M1 (data bootstrap: VFS, MEG, DAT, DDS/MTD, ALO, ALA, TED, XML, Lua inspection), and M2 (the Direct3D 12 visual sandbox in legacy mode) are complete. M3, the tactical simulation slice, is active: a deterministic simulation with movement, pathfinding, formations, combat, headless battles with replayable order logs, unit animation, and the first presentation features (particles, bloom, projectile bolts, impact and death effects). The owner's order for the rest of M3 (revised 2026-11-09) is: the technical foundation review (projectile visuals and the capture-and-compare workflow are done; its first item, the Lua host with recording stubs and `EAWEngine lua-survey`, has its first slice), combat presentation, sound, then the player layer.
 
 - [docs/status.md](docs/status.md): what each milestone implemented, how, and its known limitations, including the legacy-mode render backlog.
 - [docs/roadmap.md](docs/roadmap.md): the authoritative plan and milestone definitions (M4 skirmish, M5 galactic and campaign, M6 broad compatibility and SDK, engine extensions).
@@ -40,6 +40,7 @@ Every library and executable has its own directory and `CMakeLists.txt`.
 | --- | --- | --- |
 | `src/core` | `eaw_core` | VFS, formats, compatibility data, reusable asset logic, `Status`/`Result`, logging. No graphics or Win32 presentation code. |
 | `src/simulation` | `eaw_simulation` | The deterministic tactical simulation: entity ids, structure-of-arrays components, fixed-step ticks, commands, snapshots. No graphics, platform, or file access. Decisions (chasing, attack runs, engaging) belong in the behavior layer; locomotion and combat never decide where a unit goes. |
+| `src/script` | `eaw_script` | The Lua host: one sandboxed Lua 5.0 state per script, script threads on simulation ticks, the engine primitives implemented so far, and recording stubs for the rest. Never runs compiled chunks. No graphics or platform code. |
 | `src/render` | `eaw_render_contract`, `eaw_render_d3d12` | The render contract (`visual_scene.hpp`, engine-native visual data) and the D3D12 backend. Consumes engine-native data; never parses MEG/ALO/ALA/TED or knows VFS precedence. |
 | `src/platform` | `eaw_platform` | Window, input, crash handling, log sinks (Win32). |
 | `src/engine` | `eaw_engine` | Orchestration above the simulation and the bridge from decoded assets to visual and runtime data: battles and order logs, scene builders, presentation, cameras, animation, particles and their interpretation rules. No graphics API. |
@@ -52,6 +53,7 @@ Every library and executable has its own directory and `CMakeLists.txt`.
 | `src/asset_inspector`, `src/dat_editor` | `EAWAssetInspector`, `EAWDatEditor` | Command-line tools on `eaw_core`. |
 | `tests` | `EAWEngineTests` | Decoder, VFS, compatibility, and runtime-contract tests, one module per `test_<module>.cpp` (listed in `EAW_TEST_MODULES`, one ctest entry each); `EAWEngineTests <module or test>...` runs a subset. |
 | `third_party/imgui` | `eaw_imgui` | Pinned Dear ImGui. |
+| `third_party/lua` | `eaw_lua` | Lua 5.0.3 (MIT), pinned by archive hash, built as C with only base, string, table, and math. |
 | `docs` | | Architecture, status, roadmap, evidence, tools. |
 | `build` | | Generated output; never edit generated project files. |
 

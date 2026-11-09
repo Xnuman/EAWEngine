@@ -407,6 +407,11 @@ dependency rules; this is the file-level detail.
 - `src/asset_inspector`: one source file per command group (`inspect_asset`, `audit_textures`,
   `audit_lua`, `audit_maps`, `audit_particles`, `audit_xml`) plus `inspector_options` and
   `inspector_common`, declared in `inspector.hpp`.
+- `src/script` (`eaw_script`): `script_host.cpp` (the sandboxed state, `require` through the VFS,
+  protected calls under an instruction budget, the thread scheduler, and the engine primitives
+  implemented so far), `script_stubs.cpp` (recording stubs: callable, indexable stub objects), and
+  `host_api_recorder.cpp` (what scripts called), sharing `script_host_internal.hpp`. The survey
+  command that runs every stock script on it is `src/engine_app/lua_survey_command.cpp`.
 - `src/dat_editor` (`EAWDatEditor`): a front end over `eaw_core`'s DAT, workspace, scan, and
   translation-validation functions (`localization_workspace`, `localization_scan`,
   `localization_validation`, which EAWTools uses too); `dat_editor_options` parses the command

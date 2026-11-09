@@ -81,6 +81,24 @@ and mods as the recording; logs do not record them yet. Headless runs skip
 textures and animation clips, and the state hash covers gameplay state only,
 so a log recorded in the sandbox replays headless with the same hash.
 
+## Lua survey
+
+`EAWEngine lua-survey` runs every script under `Data/Scripts` in its own sandboxed host on recording
+stubs and reports which engine functions and methods they call. It executes the installation's or
+mod's scripts, in the engine, never in the inspector or tests.
+
+```powershell
+EAWEngine.exe lua-survey --game foc --ticks 300 --report survey
+```
+
+Each script is loaded, `Base_Definitions` (else `Definitions`) is called, and `main` runs as a thread
+for `--ticks` simulation ticks (game-object scripts get `Object` bound to a stub first). The summary
+lists the most used functions and the most common errors; `--report <folder>` writes `api.tsv`
+(name, function or method, host-implemented or stub, scripts, calls, argument types) and
+`scripts.tsv` (per script: loaded, errors, exited, threads left, first error). Compiled scripts are
+refused (Lua 5.0 does not verify bytecode), and each call or resume stops after its instruction
+budget, so a runaway script cannot hang the survey.
+
 ## Captures and image regression
 
 The sandbox can render a scene reproducibly and save it as PNG, and `EAWEngine

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(EAWEngine VERSION 0.1.0 LANGUAGES CXX)
+project(EAWEngine VERSION 0.1.0 LANGUAGES C CXX)
 
 # The root holds global rules and constants only; every library and executable has its own
 # CMakeLists.txt in its directory (added below in dependency order). Each target lists its sources,
@@ -22,7 +22,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 # exceptions (_HAS_EXCEPTIONS=0). CMake's default MSVC flags enable, so it is removed here.
 if(MSVC)
     string(REGEX REPLACE "/EH[a-z]*" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    add_compile_options(/EHs-c-)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/EHs-c->)
     add_compile_definitions(_HAS_EXCEPTIONS=0)
 endif()
 
@@ -103,10 +103,12 @@ endif()
 if(WIN32)
     add_subdirectory(third_party/imgui)
 endif()
+add_subdirectory(third_party/lua)
 
 # Libraries, innermost first.
 add_subdirectory(src/core)
 add_subdirectory(src/simulation)
+add_subdirectory(src/script)
 add_subdirectory(src/render)
 if(WIN32)
     add_subdirectory(src/platform)

@@ -20,6 +20,8 @@ enum class RunMode
     sandbox,
     // A battle on a map without a window (battle_runner.hpp).
     battle,
+    // Every script under Data/Scripts run headless on recording stubs (lua_survey_command.hpp).
+    lua_survey,
     doctor,
 };
 
@@ -110,6 +112,8 @@ struct SandboxOptions
     std::optional<std::uint64_t> ticks;
     std::optional<std::filesystem::path> record;
     std::optional<std::filesystem::path> replay;
+    // lua-survey: a folder for its api.tsv and scripts.tsv reports.
+    std::optional<std::filesystem::path> report;
     bool check_determinism{};
     bool vsync{true};
     bool use_warp{};

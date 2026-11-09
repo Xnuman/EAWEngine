@@ -48,7 +48,8 @@ milestones.
 
 Requirements: Windows, CMake 3.25+, and Visual Studio 2022 with the x64 C++
 toolchain and a Windows 10/11 SDK. The first configure fetches a commit-pinned
-copy of Dear ImGui's official docking branch. Shaders are compiled at build time
+copy of Dear ImGui's official docking branch and the Lua 5.0.3 release (MIT,
+lua.org), pinned by its archive hash. Shaders are compiled at build time
 with the SDK's `dxc.exe` and `fxc.exe` (override with `EAW_DXC_EXECUTABLE` /
 `EAW_FXC_EXECUTABLE`); nothing is compiled at runtime.
 

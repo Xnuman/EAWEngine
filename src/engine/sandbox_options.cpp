@@ -60,11 +60,13 @@ Result<std::string> require_value(const int argc, const char* const* argv, int& 
 void print_sandbox_usage()
 {
     std::cout << "EAWEngine visual sandbox\n\n"
-              << "Usage: EAWEngine [sandbox|battle|doctor|bootstrap|compare-images] [options]\n"
+              << "Usage: EAWEngine [sandbox|battle|doctor|bootstrap|compare-images|lua-survey] [options]\n"
               << "  sandbox            Open the Direct3D 12 visual sandbox (default)\n"
               << "  battle             Run a battle on --map without a window and print its state hash and statistics\n"
               << "  doctor             Validate discovery, mounts, and an asset probe\n"
               << "  compare-images     Compare two captures (EAWEngine compare-images --help)\n"
+              << "  lua-survey         Run every script under Data/Scripts headless on recording stubs and report the\n"
+              << "                     host API they use (--ticks, default 300; --report <folder> for TSV files)\n"
               << "  bootstrap          Alias for doctor for older launch scripts\n"
               << "  --game-root <path> Empire at War installation root\n"
               << "  --game <eaw|foc>   Select the base game or expansion\n"
@@ -127,6 +129,14 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         else if (argument == "battle")
         {
             options.mode = RunMode::battle;
+        }
+        else if (argument == "lua-survey")
+        {
+            options.mode = RunMode::lua_survey;
+        }
+        else if (argument == "--report")
+        {
+            EAW_TRY_ASSIGN(options.report, require_value(argc, argv, index, argument));
         }
         else if (argument == "--ticks")
         {

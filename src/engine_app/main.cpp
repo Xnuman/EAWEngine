@@ -1,3 +1,4 @@
+#include "lua_survey_command.hpp"
 #include "image_compare_command.hpp"
 #include "eaw/asset_environment.hpp"
 #include "eaw/game_installation.hpp"
@@ -142,6 +143,10 @@ int main(const int argc, char** argv)
         if (options.mode == eaw::RunMode::battle)
         {
             return eaw::run_battle(options, vfs);
+        }
+        if (options.mode == eaw::RunMode::lua_survey)
+        {
+            return eaw::run_lua_survey(options, vfs);
         }
 
 #ifdef _WIN32
