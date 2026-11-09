@@ -126,7 +126,7 @@ void SandboxSession::update_camera(const eaw::InputState& input, const bool scen
     }
 }
 
-void SandboxSession::handle_pointer(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode, const std::array<float, 2>& mouse)
+void SandboxSession::handle_pointer(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode, const Vector2& mouse)
 {
     // A left click that does not drag selects what is under the cursor; dragging orbits or
     // rotates as before.
@@ -192,7 +192,7 @@ void SandboxSession::handle_pointer(const eaw::InputState& input, const bool sce
     }
 }
 
-void SandboxSession::handle_command_keys(const eaw::InputState& input, const bool scene_mouse, const std::array<float, 2>& mouse)
+void SandboxSession::handle_command_keys(const eaw::InputState& input, const bool scene_mouse, const Vector2& mouse)
 {
     if (input.keys[static_cast<std::size_t>(eaw::Key::o)].pressed && !spawn_names.empty())
     {

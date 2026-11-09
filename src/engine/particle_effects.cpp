@@ -1,13 +1,14 @@
 #include "particle_effects.hpp"
 
+#include "math/matrix.hpp"
+#include "math/vector.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 
 namespace eaw {
 namespace {
-
-using Vec3 = std::array<float, 3>;
 
 constexpr float two_pi = 2.0F * std::numbers::pi_v<float>;
 // Pre-simulation (skip time) runs in steps of this length, for at most this long.
@@ -16,52 +17,6 @@ constexpr float maximum_skip = 10.0F;
 constexpr float maximum_update = 0.25F;
 // A trail emitter emits at most this many particles per parent per update (runaway rates).
 constexpr std::size_t maximum_trail_burst = 64;
-
-Vec3 operator+(const Vec3& a, const Vec3& b)
-{
-    return {a[0] + b[0], a[1] + b[1], a[2] + b[2]};
-}
-
-Vec3 operator-(const Vec3& a, const Vec3& b)
-{
-    return {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
-}
-
-Vec3 operator*(const Vec3& a, const float s)
-{
-    return {a[0] * s, a[1] * s, a[2] * s};
-}
-
-float length(const Vec3& a)
-{
-    return std::sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
-}
-
-Vec3 normalized(const Vec3& a)
-{
-    const auto l = length(a);
-    return l > 1e-6F ? a * (1.0F / l) : Vec3{};
-}
-
-Vec3 to_vec(const Vector3& v)
-{
-    return {v.x, v.y, v.z};
-}
-
-Vec3 transform_point(const std::array<float, 16>& m, const Vec3& p)
-{
-    return {p[0] * m[0] + p[1] * m[4] + p[2] * m[8] + m[12], p[0] * m[1] + p[1] * m[5] + p[2] * m[9] + m[13], p[0] * m[2] + p[1] * m[6] + p[2] * m[10] + m[14]};
-}
-
-Vec3 transform_direction(const std::array<float, 16>& m, const Vec3& d)
-{
-    return {d[0] * m[0] + d[1] * m[4] + d[2] * m[8], d[0] * m[1] + d[1] * m[5] + d[2] * m[9], d[0] * m[2] + d[1] * m[6] + d[2] * m[10]};
-}
-
-Vec3 origin(const std::array<float, 16>& m)
-{
-    return {m[12], m[13], m[14]};
-}
 
 // Inverse of an affine row-vector transform (identity when singular).
 std::array<float, 16> inverse_affine(const std::array<float, 16>& m)
@@ -154,7 +109,7 @@ private:
 };
 
 // A spawn shape sample in emitter space (docs: shape group types 0..4).
-Vec3 sample_group(const ParticleGroup& group, Random& random)
+Vector3 sample_group(const ParticleGroup& group, Random& random)
 {
     switch (group.type)
     {
@@ -172,7 +127,7 @@ Vec3 sample_group(const ParticleGroup& group, Random& random)
         const auto angle = random.range(0.0F, two_pi);
         const auto planar = std::sqrt(std::max(0.0F, 1.0F - z * z));
         const auto radius = group.sphere_hollow ? group.sphere_radius : random.range(0.0F, group.sphere_radius);
-        return Vec3{planar * std::cos(angle), planar * std::sin(angle), z} * radius;
+        return Vector3{planar * std::cos(angle), planar * std::sin(angle), z} * radius;
     }
     case 4:
     {
@@ -181,7 +136,7 @@ Vec3 sample_group(const ParticleGroup& group, Random& random)
         return {radius * std::cos(angle), radius * std::sin(angle), random.range(0.0F, group.cylinder_height)};
     }
     default:
-        return to_vec(group.value);
+        return group.value;
     }
 }
 
@@ -223,8 +178,8 @@ float sample_particle_track(const ParticleTrack& track, const float t) noexcept
 
 struct ParticleWorld::Particle
 {
-    Vec3 position{};
-    Vec3 velocity{};
+    Vector3 position{};
+    Vector3 velocity{};
     float age{};
     float lifetime{1.0F};
     float size_factor{1.0F};
@@ -239,7 +194,7 @@ struct ParticleWorld::Particle
     // (sub-frame emission); negative for the whole update.
     float step{-1.0F};
     // Unit direction of the spawn offset from the emitter (inward speed and acceleration act along it).
-    Vec3 outward{};
+    Vector3 outward{};
 };
 
 struct ParticleWorld::EmitterState
@@ -261,7 +216,7 @@ struct ParticleWorld::Instance
     std::shared_ptr<const ParticleEffect> effect;
     std::shared_ptr<const ParticleEmitMesh> mesh;
     std::array<float, 16> transform{visual_identity_transform};
-    Vec3 previous_origin{};
+    Vector3 previous_origin{};
     // The transform at the previous update: linked particles move rigidly with the emitter.
     std::array<float, 16> previous_transform{visual_identity_transform};
     std::vector<EmitterState> emitters;
@@ -330,7 +285,7 @@ ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> eff
     {
         instance.transform[element] *= instance.scale;
     }
-    instance.previous_origin = origin(instance.transform);
+    instance.previous_origin = translation(Matrix4{instance.transform});
     instance.previous_transform = instance.transform;
     instance.random = Random(seed);
     const auto& emitters = instance.effect->emitters;
@@ -451,7 +406,7 @@ void ParticleWorld::release(const std::uint32_t index)
     free_.push_back(index);
 }
 
-bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, const Particle* parent, const std::array<float, 3>& offset, const float step)
+bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, const Particle* parent, const Vector3& offset, const float step)
 {
     if (live_particles_ >= capacity_)
     {
@@ -461,7 +416,7 @@ bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, co
     const auto& emitter = instance.effect->emitters[emitter_index];
     auto& random = instance.random;
     Particle particle;
-    const auto& transform = instance.transform;
+    const Matrix4 transform{instance.transform};
     auto local_position = sample_group(emitter.position_shape, random);
     auto local_velocity = sample_group(emitter.velocity_shape, random);
     if (emitter.mesh_emission != ParticleMeshEmission::none && instance.mesh)
@@ -470,8 +425,8 @@ bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, co
         // random triangle (2), pushed out along the normal; the velocity's +Z turns to the normal.
         const auto& mesh = *instance.mesh;
         const auto vertices = mesh.positions.size();
-        Vec3 point{};
-        Vec3 normal{0.0F, 0.0F, 1.0F};
+        Vector3 point{};
+        Vector3 normal{0.0F, 0.0F, 1.0F};
         if (emitter.mesh_emission == ParticleMeshEmission::random_surface && mesh.indices.size() >= 3)
         {
             const auto triangle = std::min<std::size_t>(static_cast<std::size_t>(random.unit() * static_cast<float>(mesh.indices.size() / 3U)), mesh.indices.size() / 3U - 1U) * 3U;
@@ -499,29 +454,25 @@ bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, co
             point = mesh.positions[vertex];
             normal = mesh.normals[vertex];
         }
-        normal = normalized(normal);
-        if (length(normal) == 0.0F)
-        {
-            normal = {0.0F, 0.0F, 1.0F};
-        }
+        normal = normalize_or(normal, {0.0F, 0.0F, 1.0F});
         local_position = point + normal * emitter.mesh_offset;
         // A basis whose Z is the normal.
-        const Vec3 helper = std::abs(normal[2]) < 0.9F ? Vec3{0.0F, 0.0F, 1.0F} : Vec3{1.0F, 0.0F, 0.0F};
-        const auto side = normalized(Vec3{helper[1] * normal[2] - helper[2] * normal[1], helper[2] * normal[0] - helper[0] * normal[2], helper[0] * normal[1] - helper[1] * normal[0]});
-        const Vec3 up{normal[1] * side[2] - normal[2] * side[1], normal[2] * side[0] - normal[0] * side[2], normal[0] * side[1] - normal[1] * side[0]};
-        local_velocity = side * local_velocity[0] + up * local_velocity[1] + normal * local_velocity[2];
+        const Vector3 helper = std::abs(normal.z) < 0.9F ? Vector3{0.0F, 0.0F, 1.0F} : Vector3{1.0F, 0.0F, 0.0F};
+        const auto side = normalize(cross(helper, normal));
+        const auto up = cross(normal, side);
+        local_velocity = side * local_velocity.x + up * local_velocity.y + normal * local_velocity.z;
     }
-    particle.position = transform_point(transform, local_position) + offset;
+    particle.position = transform_point(local_position, transform) + offset;
     particle.step = step;
-    particle.velocity = transform_direction(transform, local_velocity);
+    particle.velocity = transform_direction(local_velocity, transform);
     // "Inward" speed and acceleration act along the spawn offset from the emitter, fixed at spawn. The
     // stored values move particles outward when positive (the GlyphX particle editor shows them
     // negated, as inward amounts).
-    particle.outward = normalized(transform_direction(transform, local_position));
+    particle.outward = normalize(transform_direction(local_position, transform));
     particle.velocity = particle.velocity + particle.outward * emitter.outward_speed;
     if (parent != nullptr)
     {
-        particle.position = particle.position - origin(transform) + parent->position;
+        particle.position = particle.position - translation(transform) + parent->position;
         if (emitter.parent_velocity != 0.0F)
         {
             particle.velocity = particle.velocity + parent->velocity * emitter.parent_velocity;
@@ -572,11 +523,11 @@ void ParticleWorld::kill(Instance& instance, const std::size_t emitter_index, co
 void ParticleWorld::step_instance(Instance& instance, const float update_seconds)
 {
     const auto& emitters = instance.effect->emitters;
-    const auto current_origin = origin(instance.transform);
+    const auto current_origin = translation(Matrix4{instance.transform});
     const auto moved = current_origin - instance.previous_origin;
     instance.previous_origin = current_origin;
     // Rigid motion of the emitter since the last update (translation and rotation).
-    const auto carried = multiply(inverse_affine(instance.previous_transform), instance.transform);
+    const Matrix4 carried{multiply(inverse_affine(instance.previous_transform), instance.transform)};
     instance.previous_transform = instance.transform;
     const bool may_emit = instance.emitting && !instance.stopped;
     for (std::size_t e = 0; e < emitters.size(); ++e)
@@ -602,7 +553,7 @@ void ParticleWorld::step_instance(Instance& instance, const float update_seconds
             {
                 const auto fraction = seconds > 0.0F ? std::clamp((state.next_emission - update_start) / seconds, 0.0F, 1.0F) : 1.0F;
                 // Linked particles spawn where the emitter is now (they move with it from then on).
-                const auto behind = emitter.link != ParticleLinkMode::none ? Vec3{} : moved * -(1.0F - fraction);
+                const auto behind = emitter.link != ParticleLinkMode::none ? Vector3{} : moved * -(1.0F - fraction);
                 const auto remaining = seconds * (1.0F - fraction);
                 // Every-vertex mesh emitters emit once per vertex per spawn.
                 const auto per_vertex =
@@ -629,8 +580,8 @@ void ParticleWorld::step_instance(Instance& instance, const float update_seconds
         }
 
         // Motion.
-        Vec3 acceleration{0.0F, 0.0F, -emitter.gravity};
-        acceleration = acceleration + (emitter.acceleration_in_emitter_frame ? transform_direction(instance.transform, emitter.acceleration) : emitter.acceleration);
+        Vector3 acceleration{0.0F, 0.0F, -emitter.gravity};
+        acceleration = acceleration + (emitter.acceleration_in_emitter_frame ? transform_direction(emitter.acceleration, Matrix4{instance.transform}) : emitter.acceleration);
         const auto& rotation_track = emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::rotation_speed)];
         for (std::size_t p = 0; p < state.particles.size();)
         {
@@ -647,8 +598,8 @@ void ParticleWorld::step_instance(Instance& instance, const float update_seconds
             // Particles emitted in this update already sit at the current transform.
             if (!fresh && emitter.link == ParticleLinkMode::rigid)
             {
-                particle.position = transform_point(carried, particle.position);
-                particle.velocity = transform_direction(carried, particle.velocity);
+                particle.position = transform_point(particle.position, carried);
+                particle.velocity = transform_direction(particle.velocity, carried);
             }
             else if (!fresh && emitter.link == ParticleLinkMode::translation)
             {
@@ -739,7 +690,7 @@ void ParticleWorld::update(const float seconds)
     }
 }
 
-void ParticleWorld::build_sprites(const std::array<float, 3>& eye, std::vector<VisualParticle>& sprites) const
+void ParticleWorld::build_sprites(const Vector3& eye, std::vector<VisualParticle>& sprites) const
 {
     const auto first = sprites.size();
     std::vector<float> depth;
@@ -750,8 +701,8 @@ void ParticleWorld::build_sprites(const std::array<float, 3>& eye, std::vector<V
             continue;
         }
         const auto& emitters = instance.effect->emitters;
-        const auto effect_offset = origin(instance.transform) - eye;
-        const auto effect_depth = effect_offset[0] * effect_offset[0] + effect_offset[1] * effect_offset[1] + effect_offset[2] * effect_offset[2];
+        const auto effect_offset = translation(Matrix4{instance.transform}) - eye;
+        const auto effect_depth = dot(effect_offset, effect_offset);
         for (std::size_t e = 0; e < emitters.size(); ++e)
         {
             const auto& state = instance.emitters[e];
@@ -804,7 +755,7 @@ void ParticleWorld::build_sprites(const std::array<float, 3>& eye, std::vector<V
                 // Back to front per particle, or per effect keeping its emitters in list order and
                 // its particles in emission order (the original's draw order).
                 const auto offset = particle.position - eye;
-                depth.push_back(draw_order_ == ParticleDrawOrder::back_to_front ? offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2] : effect_depth);
+                depth.push_back(draw_order_ == ParticleDrawOrder::back_to_front ? dot(offset, offset) : effect_depth);
             }
         }
     }

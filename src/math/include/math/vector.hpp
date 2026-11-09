@@ -4,6 +4,7 @@
 // every machine and build (the simulation's state hash depends on it).
 
 #include <cmath>
+#include <cstddef>
 
 namespace eaw {
 
@@ -12,6 +13,15 @@ struct Vector2
     float x{};
     float y{};
 
+    // Component by axis index (0 = x); an index past the last component reads the last one.
+    [[nodiscard]] constexpr float operator[](const std::size_t axis) const noexcept
+    {
+        return axis == 0 ? x : y;
+    }
+    [[nodiscard]] constexpr float& operator[](const std::size_t axis) noexcept
+    {
+        return axis == 0 ? x : y;
+    }
     friend constexpr bool operator==(const Vector2&, const Vector2&) = default;
 };
 
@@ -21,6 +31,15 @@ struct Vector3
     float y{};
     float z{};
 
+    // Component by axis index (0 = x); an index past the last component reads the last one.
+    [[nodiscard]] constexpr float operator[](const std::size_t axis) const noexcept
+    {
+        return axis == 0 ? x : axis == 1 ? y : z;
+    }
+    [[nodiscard]] constexpr float& operator[](const std::size_t axis) noexcept
+    {
+        return axis == 0 ? x : axis == 1 ? y : z;
+    }
     friend constexpr bool operator==(const Vector3&, const Vector3&) = default;
 };
 
@@ -31,6 +50,15 @@ struct Vector4
     float z{};
     float w{};
 
+    // Component by axis index (0 = x); an index past the last component reads the last one.
+    [[nodiscard]] constexpr float operator[](const std::size_t axis) const noexcept
+    {
+        return axis == 0 ? x : axis == 1 ? y : axis == 2 ? z : w;
+    }
+    [[nodiscard]] constexpr float& operator[](const std::size_t axis) noexcept
+    {
+        return axis == 0 ? x : axis == 1 ? y : axis == 2 ? z : w;
+    }
     friend constexpr bool operator==(const Vector4&, const Vector4&) = default;
 };
 
@@ -89,6 +117,11 @@ constexpr Vector2& operator*=(Vector2& a, const float s) noexcept
 [[nodiscard]] inline float length(const Vector2& a) noexcept
 {
     return std::sqrt(dot(a, a));
+}
+
+[[nodiscard]] inline bool is_finite(const Vector2& a) noexcept
+{
+    return std::isfinite(a.x) && std::isfinite(a.y);
 }
 
 // Vector3
@@ -156,6 +189,11 @@ constexpr Vector3& operator*=(Vector3& a, const float s) noexcept
 [[nodiscard]] inline float distance(const Vector3& a, const Vector3& b) noexcept
 {
     return length(a - b);
+}
+
+[[nodiscard]] inline bool is_finite(const Vector3& a) noexcept
+{
+    return std::isfinite(a.x) && std::isfinite(a.y) && std::isfinite(a.z);
 }
 
 // `a` scaled to unit length, or `fallback` when its length is zero or not finite.

@@ -108,7 +108,7 @@ struct ParticleEmitterDesc
     // Motion: constant acceleration (in the emitter's frame when `acceleration_in_emitter_frame`),
     // plus `gravity` downward (-Z), plus speed and acceleration away from the emitter along the
     // spawn offset (negative: toward it).
-    std::array<float, 3> acceleration{};
+    Vector3 acceleration{};
     bool acceleration_in_emitter_frame{};
     float gravity{};
     float outward_speed{};

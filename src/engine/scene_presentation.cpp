@@ -197,13 +197,13 @@ const std::string& ScenePresentation::mesh_name(const std::uint32_t mesh) const
     return mesh_names_[mesh];
 }
 
-const std::array<float, 3>& ScenePresentation::mesh_minimum(const std::uint32_t mesh) const
+const Vector3& ScenePresentation::mesh_minimum(const std::uint32_t mesh) const
 {
     EAW_ASSERT_MSG(mesh < mesh_minimum_.size(), "scene presentation mesh " + std::to_string(mesh) + " is out of range");
     return mesh_minimum_[mesh];
 }
 
-const std::array<float, 3>& ScenePresentation::mesh_maximum(const std::uint32_t mesh) const
+const Vector3& ScenePresentation::mesh_maximum(const std::uint32_t mesh) const
 {
     EAW_ASSERT_MSG(mesh < mesh_maximum_.size(), "scene presentation mesh " + std::to_string(mesh) + " is out of range");
     return mesh_maximum_[mesh];

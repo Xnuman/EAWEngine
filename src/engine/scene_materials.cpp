@@ -399,7 +399,7 @@ bool light_rig_valid(const VisualLightRig& rig) noexcept
     const auto valid_light = [&](const VisualDirectionalLight& light)
     {
         const auto& direction = light.direction;
-        return finite(direction) && finite(light.color) && direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2] > 1.0e-12F;
+        return is_finite(direction) && finite(light.color) && dot(direction, direction) > 1.0e-12F;
     };
     return valid_light(rig.key) && valid_light(rig.fills[0]) && valid_light(rig.fills[1]) && finite(rig.key_specular) && finite(rig.ambient);
 }

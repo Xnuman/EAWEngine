@@ -12,12 +12,14 @@
 #include "eaw/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
+#include "math/vector.hpp"
 
 #include <functional>
 #include <unordered_set>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,6 +29,10 @@
 #include <vector>
 
 namespace eaw::scene_build {
+
+// Bounds that any point extends: every axis starts inverted.
+constexpr Vector3 empty_bounds_minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+constexpr Vector3 empty_bounds_maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
 
 // Particle effects a build loaded, with their own deduplicated texture list (effect texture
 // indices point into it; the caller registers it with the renderer, which renumbers them).

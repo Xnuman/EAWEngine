@@ -131,7 +131,7 @@ void D3d12Renderer::Impl::set_debug_lines(const std::span<const VisualDebugLine>
     EAW_ASSERT_MSG(std::ranges::all_of(lines,
                                        [&](const VisualDebugLine& line)
                                        {
-                                           return finite(line.from) && finite(line.to) && finite(line.color);
+                                           return is_finite(line.from) && is_finite(line.to) && finite(line.color);
                                        }),
                    "debug lines contain non-finite values");
     debug_lines.assign(lines.begin(), lines.end());
@@ -151,7 +151,7 @@ void D3d12Renderer::Impl::set_particles(const std::span<const VisualParticle> ne
     EAW_ASSERT_MSG(std::ranges::all_of(next,
                                        [&](const VisualParticle& particle)
                                        {
-                                           return finite(particle.position) && finite(particle.color) && finite(particle.uv_rect) && finite(particle.axis) && std::isfinite(particle.half_size) &&
+                                           return is_finite(particle.position) && finite(particle.color) && finite(particle.uv_rect) && is_finite(particle.axis) && std::isfinite(particle.half_size) &&
                                                   std::isfinite(particle.rotation) && std::isfinite(particle.tail);
                                        }),
                    "particles contain non-finite values");
@@ -314,7 +314,7 @@ void D3d12Renderer::Impl::set_lighting(const VisualLightRig& next)
     const auto valid_light = [&](const VisualDirectionalLight& light)
     {
         const auto& direction = light.direction;
-        return finite(direction) && finite(light.color) && direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2] > 1.0e-12F;
+        return is_finite(direction) && finite(light.color) && dot(direction, direction) > 1.0e-12F;
     };
     EAW_ASSERT_MSG(valid_light(next.key) && valid_light(next.fills[0]) && valid_light(next.fills[1]) && finite(next.key_specular) && finite(next.ambient),
                    "visual light rig contains non-finite values or a zero light direction");
@@ -329,23 +329,14 @@ void D3d12Renderer::Impl::set_scene_time(const float seconds)
 
 void D3d12Renderer::Impl::set_camera(const VisualCamera& next)
 {
-    const auto finite = [](const std::array<float, 3>& value)
-    {
-        return std::ranges::all_of(value,
-                                   [](const float component)
-                                   {
-                                       return std::isfinite(component);
-                                   });
-    };
-    EAW_ASSERT_MSG(finite(next.eye) && finite(next.target) && finite(next.up) && std::isfinite(next.vertical_fov_degrees) && std::isfinite(next.near_plane) && std::isfinite(next.far_plane),
+    EAW_ASSERT_MSG(is_finite(next.eye) && is_finite(next.target) && is_finite(next.up) && std::isfinite(next.vertical_fov_degrees) && std::isfinite(next.near_plane) && std::isfinite(next.far_plane),
                    "visual camera contains non-finite values");
     EAW_ASSERT_MSG(next.near_plane > 0.0F && next.far_plane > next.near_plane * 1.0001F && next.vertical_fov_degrees > 1.0F && next.vertical_fov_degrees < 179.0F,
                    "visual camera has an invalid projection (near " + std::to_string(next.near_plane) + ", far " + std::to_string(next.far_plane) + ", fov " +
                        std::to_string(next.vertical_fov_degrees) + ")");
-    const std::array<float, 3> forward{next.target[0] - next.eye[0], next.target[1] - next.eye[1], next.target[2] - next.eye[2]};
-    const std::array<float, 3> side{next.up[1] * forward[2] - next.up[2] * forward[1], next.up[2] * forward[0] - next.up[0] * forward[2], next.up[0] * forward[1] - next.up[1] * forward[0]};
-    EAW_ASSERT_MSG(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2] > 1.0e-12F && side[0] * side[0] + side[1] * side[1] + side[2] * side[2] > 1.0e-12F,
-                   "visual camera eye, target, and up do not define a view");
+    const auto forward = next.target - next.eye;
+    const auto side = cross(next.up, forward);
+    EAW_ASSERT_MSG(dot(forward, forward) > 1.0e-12F && dot(side, side) > 1.0e-12F, "visual camera eye, target, and up do not define a view");
     camera = next;
 }
 
@@ -444,10 +435,10 @@ bool D3d12Renderer::Impl::render()
     FrameConstants constants{};
     constants.view_projection = camera_matrix();
     constants.camera_position_time = {camera.eye[0], camera.eye[1], camera.eye[2], scene_time};
-    const auto unit = [](const std::array<float, 3>& value)
+    const auto unit = [](const Vector3& value)
     {
-        const auto length = std::sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2]);
-        return std::array<float, 4>{value[0] / length, value[1] / length, value[2] / length, 0.0F};
+        const auto l = length(value);
+        return std::array<float, 4>{value.x / l, value.y / l, value.z / l, 0.0F};
     };
     const auto rgb = [](const std::array<float, 3>& value)
     {
@@ -465,13 +456,9 @@ bool D3d12Renderer::Impl::render()
     constants.selection = {highlighted_pick_id, 0, 0, 0};
     {
         // The view basis of XMMatrixLookAtLH: right = up x forward, up' = forward x right.
-        const std::array<float, 3> forward{camera.target[0] - camera.eye[0], camera.target[1] - camera.eye[1], camera.target[2] - camera.eye[2]};
-        const auto cross = [](const std::array<float, 3>& a, const std::array<float, 3>& b)
-        {
-            return std::array<float, 3>{a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
-        };
+        const auto forward = camera.target - camera.eye;
         const auto right = unit(cross(camera.up, forward));
-        const auto view_up = unit(cross(forward, {right[0], right[1], right[2]}));
+        const auto view_up = unit(cross(forward, Vector3{right[0], right[1], right[2]}));
         constants.camera_right = right;
         constants.camera_up = view_up;
     }

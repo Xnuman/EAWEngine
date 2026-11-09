@@ -32,7 +32,7 @@ struct SandboxDebugView
     // The map's ground (invalid on space maps and models).
     const GroundMap* ground{};
     // Center of the passability overlay (the tactical camera's focus); none without one.
-    std::optional<std::array<float, 3>> focus;
+    std::optional<Vector3> focus;
     bool show_bounds{};
     bool show_passability{};
     float axis_length{1.0F};

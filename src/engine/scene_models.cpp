@@ -79,8 +79,8 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model,
     visual_mesh.name = name;
     visual_mesh.first_draw = static_cast<std::uint32_t>(scene.draws.size());
     visual_mesh.bone_count = animated_visibility ? bone_count * 2U : bone_count;
-    visual_mesh.bounds_minimum.fill(std::numeric_limits<float>::max());
-    visual_mesh.bounds_maximum.fill(std::numeric_limits<float>::lowest());
+    visual_mesh.bounds_minimum = empty_bounds_minimum;
+    visual_mesh.bounds_maximum = empty_bounds_maximum;
     const auto first_vertex = scene.vertices.size();
     const auto first_scene_index = scene.indices.size();
     const auto first_material = scene.materials.size();
@@ -415,8 +415,8 @@ GroundFootprint mesh_ground_footprint(const VisualScene& scene, const std::uint3
 
 void update_scene_bounds(VisualScene& scene)
 {
-    scene.bounds_minimum.fill(std::numeric_limits<float>::max());
-    scene.bounds_maximum.fill(std::numeric_limits<float>::lowest());
+    scene.bounds_minimum = empty_bounds_minimum;
+    scene.bounds_maximum = empty_bounds_maximum;
     if (!scene.terrain.vertices.empty())
     {
         scene.bounds_minimum = scene.terrain.bounds_minimum;
@@ -434,16 +434,13 @@ void update_scene_bounds(VisualScene& scene)
         {
             const Vector3 local{(corner & 1U) != 0 ? mesh.bounds_maximum[0] : mesh.bounds_minimum[0], (corner & 2U) != 0 ? mesh.bounds_maximum[1] : mesh.bounds_minimum[1],
                                 (corner & 4U) != 0 ? mesh.bounds_maximum[2] : mesh.bounds_minimum[2]};
-            Matrix4 transform;
-            transform.values = instance.transform;
-            const auto world = transform_point(local, transform);
-            const std::array<float, 3> point{world.x, world.y, world.z};
+            const auto point = transform_point(local, Matrix4{instance.transform});
             // Malformed vertex data must not leave the camera framing non-finite.
-            if (!std::isfinite(point[0]) || !std::isfinite(point[1]) || !std::isfinite(point[2]))
+            if (!is_finite(point))
             {
                 continue;
             }
-            for (std::size_t axis = 0; axis < point.size(); ++axis)
+            for (std::size_t axis = 0; axis < 3; ++axis)
             {
                 scene.bounds_minimum[axis] = std::min(scene.bounds_minimum[axis], point[axis]);
                 scene.bounds_maximum[axis] = std::max(scene.bounds_maximum[axis], point[axis]);

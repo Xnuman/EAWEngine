@@ -347,7 +347,7 @@ void test_ted_map()
     require(map.water.type == eaw::TedWaterType::water && map.water.raw_type == 1 && map.water.level == 1.5F && map.water.color == std::array<float, 3>{0.4F, 0.6F, 0.8F} &&
                 map.water_maps[0] == "WATER_BUMP.TGA" && map.water_maps[1] == "WATER.TGA" && map.terrain_info_fields.size() == 8,
             "TED water settings were not decoded");
-    require(map.tracks.size() == 1 && map.tracks[0].texture == "RIVER.TGA" && map.tracks[0].points.size() == 2 && map.tracks[0].points[1] == std::array<float, 3>{35.0F, 15.0F, 0.0F} &&
+    require(map.tracks.size() == 1 && map.tracks[0].texture == "RIVER.TGA" && map.tracks[0].points.size() == 2 && map.tracks[0].points[1] == eaw::Vector3{35.0F, 15.0F, 0.0F} &&
                 map.tracks[0].widths == std::vector<float>{10.0F, 6.0F} && map.tracks[0].scroll == std::array<float, 2>{0.1F, 0.2F} &&
                 map.tracks[0].opacity == std::array<float, 3>{0.0F, 1.0F, 0.0F} && map.tracks[0].header_fields.size() == 2 && map.track_textures.size() == 1,
             "TED track decoding failed");

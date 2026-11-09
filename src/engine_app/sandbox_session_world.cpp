@@ -119,7 +119,7 @@ void SandboxSession::step_particles(const std::chrono::steady_clock::time_point 
     }
     effects.update(seconds);
     frame_particles.clear();
-    const auto eye = tactical_camera ? tactical_camera->camera().eye : orbit_camera ? orbit_camera->camera().eye : std::array<float, 3>{};
+    const auto eye = tactical_camera ? tactical_camera->camera().eye : orbit_camera ? orbit_camera->camera().eye : Vector3{};
     const auto projectiles = world != nullptr ? std::span<const eaw::ProjectileSnapshot>(world->snapshot().projectiles) : std::span<const eaw::ProjectileSnapshot>{};
     effects.build_sprites(eye, projectiles, static_cast<float>(simulation_clock.interpolation()), static_cast<float>(simulation_clock.tick_seconds()), frame_particles);
     renderer.set_particles(frame_particles);

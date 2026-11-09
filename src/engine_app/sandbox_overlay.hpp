@@ -36,7 +36,7 @@ struct SandboxOverlayView
     std::uint64_t frames{};
     double seconds{};
     std::string scene_status;
-    std::array<float, 3> eye{};
+    Vector3 eye{};
     // Model mode only.
     std::optional<std::string> animation_status;
     bool animation_playing{};

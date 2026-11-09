@@ -435,13 +435,12 @@ std::vector<std::byte> make_test_ted()
     append_float(value, 0.2F);
     append_mini(track_header, 0x05, value);
     std::vector<std::byte> track_points;
-    for (const auto& point : {std::array<float, 3>{5.0F, 5.0F, 0.0F}, std::array<float, 3>{35.0F, 15.0F, 0.0F}})
+    for (const auto& point : {eaw::Vector3{5.0F, 5.0F, 0.0F}, eaw::Vector3{35.0F, 15.0F, 0.0F}})
     {
         value.clear();
-        for (const auto component : point)
-        {
-            append_float(value, component);
-        }
+        append_float(value, point.x);
+        append_float(value, point.y);
+        append_float(value, point.z);
         append_mini(track_points, 0x07, value);
     }
     std::vector<std::byte> track_widths;

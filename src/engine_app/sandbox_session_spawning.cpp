@@ -207,7 +207,7 @@ void SandboxSession::run_automation()
                 selection.insert(eaw::entity_key(entity.id));
             }
         }
-        const auto& bounds = tactical_camera ? tactical_camera->focus() : std::array<float, 3>{0.0F, 0.0F, 0.0F};
+        const auto& bounds = tactical_camera ? tactical_camera->focus() : Vector3{};
         std::cout << "Auto-move: " << selection.size() << " mobile units\n";
         order_move({bounds[0], bounds[1], bounds[2]});
     }

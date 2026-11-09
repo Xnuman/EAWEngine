@@ -360,16 +360,7 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
         for (std::size_t index = 0; index < terrain.vertices.size(); ++index)
         {
             const auto& vertex = terrain.vertices[index];
-            const bool finite = std::ranges::all_of(vertex.position,
-                                                    [](const float value)
-                                                    {
-                                                        return std::isfinite(value);
-                                                    }) &&
-                                std::ranges::all_of(vertex.normal,
-                                                    [](const float value)
-                                                    {
-                                                        return std::isfinite(value);
-                                                    }) &&
+            const bool finite = is_finite(vertex.position) && is_finite(vertex.normal) &&
                                 std::ranges::all_of(vertex.barycentric,
                                                     [](const float value)
                                                     {

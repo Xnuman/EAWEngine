@@ -48,6 +48,10 @@ void test_math_vectors()
     require(eaw::cross(x, y) == eaw::Vector3{0.0F, 0.0F, 1.0F} && eaw::dot(x, y) == 0.0F, "cross and dot must follow the right-hand rule");
     require(close_to(eaw::length(eaw::Vector3{3.0F, 4.0F, 0.0F}), 5.0F) && close_to(eaw::normalize(eaw::Vector3{0.0F, 0.0F, 2.0F}), {0.0F, 0.0F, 1.0F}), "length and normalize");
     require(eaw::normalize(eaw::Vector3{}) == eaw::Vector3{} && eaw::normalize_or(eaw::Vector3{}, y) == y, "a zero vector must normalize to the fallback");
+    require(eaw::is_finite(x) && !eaw::is_finite(eaw::Vector3{0.0F, std::nanf(""), 0.0F}), "is_finite must reject a non-finite component");
+    eaw::Vector3 indexed{1.0F, 2.0F, 3.0F};
+    indexed[2] = 4.0F;
+    require(indexed[0] == 1.0F && indexed[1] == 2.0F && indexed.z == 4.0F && eaw::Vector4{1.0F, 2.0F, 3.0F, 5.0F}[3] == 5.0F, "index access must reach each component");
     require(eaw::lerp(x, y, 0.5F) == eaw::Vector3{0.5F, 0.5F, 0.0F} && (x * 2.0F - y) / 2.0F == eaw::Vector3{1.0F, -0.5F, 0.0F}, "vector arithmetic");
     require(close_to(eaw::degrees_to_radians(180.0F), eaw::pi) && close_to(eaw::radians_to_degrees(eaw::half_pi), 90.0F), "angle conversions");
 }

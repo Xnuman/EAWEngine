@@ -8,7 +8,7 @@
 
 namespace eaw {
 
-std::optional<std::array<float, 3>> intersect_terrain(const VisualCamera& camera, const float width, const float height, const float x, const float y, const GroundMap& field)
+std::optional<Vector3> intersect_terrain(const VisualCamera& camera, const float width, const float height, const float x, const float y, const GroundMap& field)
 {
     if (!field.valid())
     {
@@ -17,16 +17,13 @@ std::optional<std::array<float, 3>> intersect_terrain(const VisualCamera& camera
     // Ray through the pixel: from the eye toward the point at depth 1 (unproject at depth 0 gives the
     // near-plane point on the same ray).
     const auto near_point = unproject_screen(camera, width, height, x, y, 0.0F);
-    std::array<float, 3> direction{near_point[0] - camera.eye[0], near_point[1] - camera.eye[1], near_point[2] - camera.eye[2]};
-    const auto length = std::sqrt(direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2]);
-    if (!(length > 0.0F))
+    auto direction = near_point - camera.eye;
+    const auto ray_length = length(direction);
+    if (!(ray_length > 0.0F))
     {
         return std::nullopt;
     }
-    for (auto& component : direction)
-    {
-        component /= length;
-    }
+    direction = direction / ray_length;
 
     // Clip the ray to the map's bounding box so the march covers only the map.
     auto minimum_height = *std::ranges::min_element(field.heights);
@@ -36,8 +33,8 @@ std::optional<std::array<float, 3>> intersect_terrain(const VisualCamera& camera
         minimum_height = std::min(minimum_height, *field.liquid_level);
         maximum_height = std::max(maximum_height, *field.liquid_level);
     }
-    const std::array<float, 3> box_minimum{0.0F, 0.0F, minimum_height};
-    const std::array<float, 3> box_maximum{static_cast<float>(field.width - 1) * field.spacing, static_cast<float>(field.height - 1) * field.spacing, maximum_height};
+    const Vector3 box_minimum{0.0F, 0.0F, minimum_height};
+    const Vector3 box_maximum{static_cast<float>(field.width - 1) * field.spacing, static_cast<float>(field.height - 1) * field.spacing, maximum_height};
     float enter = 0.0F;
     float leave = std::numeric_limits<float>::max();
     for (std::size_t axis = 0; axis < 3; ++axis)
@@ -66,7 +63,7 @@ std::optional<std::array<float, 3>> intersect_terrain(const VisualCamera& camera
 
     const auto point_at = [&](const float t)
     {
-        return std::array<float, 3>{camera.eye[0] + direction[0] * t, camera.eye[1] + direction[1] * t, camera.eye[2] + direction[2] * t};
+        return camera.eye + direction * t;
     };
     const auto above = [&](const float t)
     {

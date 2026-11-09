@@ -200,7 +200,7 @@ bool SandboxSession::frame()
     const auto& input = scene_input;
     const bool scene_mouse = !renderer.overlay_wants_mouse();
     const bool rts_mode = tactical_camera && !free_camera;
-    const std::array<float, 2> mouse{static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y)};
+    const Vector2 mouse{static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y)};
     const auto tick = world != nullptr ? world->stats().tick : 0U;
     watchdog.enter("camera", tick);
     update_camera(input, scene_mouse, rts_mode);

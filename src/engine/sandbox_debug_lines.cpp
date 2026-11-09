@@ -103,7 +103,7 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
                 const auto x = entity.position.x + std::cos(angle) * entity.radius;
                 const auto y = entity.position.y + std::sin(angle) * entity.radius;
                 const auto z = entity.follows_ground && ground.valid() ? ground.surface_height(x, y) + 1.0F : entity.position.z;
-                return std::array<float, 3>{x, y, z};
+                return Vector3{x, y, z};
             };
             for (int segment = 0; segment < segments; ++segment)
             {
@@ -133,7 +133,7 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
                         const auto x = from.x + (to.x - from.x) * t;
                         const auto y = from.y + (to.y - from.y) * t;
                         const auto z = entity.follows_ground ? ground.surface_height(x, y) + 2.0F : from.z + (to.z - from.z) * t;
-                        return std::array<float, 3>{x, y, z};
+                        return Vector3{x, y, z};
                     };
                     lines.push_back({at(piece), at(piece + 1), {0.35F, 1.0F, 0.9F, 0.9F}});
                 }

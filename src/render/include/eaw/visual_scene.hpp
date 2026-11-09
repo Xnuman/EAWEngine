@@ -1,5 +1,7 @@
 #pragma once
 
+#include "math/vector.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -63,21 +65,21 @@ struct VisualTexture
 // A world-space debug line segment (bounds, axes, paths), drawn depth-tested over the scene.
 struct VisualDebugLine
 {
-    std::array<float, 3> from{};
-    std::array<float, 3> to{};
+    Vector3 from{};
+    Vector3 to{};
     std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
 };
 
 struct VisualVertex
 {
-    std::array<float, 3> position{};
-    std::array<float, 3> normal{0.0F, 0.0F, 1.0F};
-    std::array<float, 2> texture_coordinates{};
+    Vector3 position{};
+    Vector3 normal{0.0F, 0.0F, 1.0F};
+    Vector2 texture_coordinates{};
     std::array<std::uint32_t, 4> bone_indices{};
     std::array<float, 4> bone_weights{};
     // Tangent frame for normal mapping, in the same space as the normal.
-    std::array<float, 3> tangent{1.0F, 0.0F, 0.0F};
-    std::array<float, 3> binormal{0.0F, 1.0F, 0.0F};
+    Vector3 tangent{1.0F, 0.0F, 0.0F};
+    Vector3 binormal{0.0F, 1.0F, 0.0F};
     // Linear RGBA multiplier (authored vertex colors, or opacity fades along track ribbons).
     std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
 };
@@ -136,8 +138,8 @@ struct VisualMaterial
 // blend the corner layers smoothly.
 struct VisualTerrainVertex
 {
-    std::array<float, 3> position{};
-    std::array<float, 3> normal{0.0F, 0.0F, 1.0F};
+    Vector3 position{};
+    Vector3 normal{0.0F, 0.0F, 1.0F};
     std::array<std::uint32_t, 3> layers{};
     std::array<float, 3> barycentric{};
 };
@@ -148,8 +150,8 @@ struct VisualTerrain
     std::vector<VisualTerrainVertex> vertices;
     std::uint32_t first_material{};
     std::uint32_t layer_count{};
-    std::array<float, 3> bounds_minimum{};
-    std::array<float, 3> bounds_maximum{};
+    Vector3 bounds_minimum{};
+    Vector3 bounds_maximum{};
 };
 
 struct VisualDraw
@@ -167,8 +169,8 @@ struct VisualMesh
     std::uint32_t first_draw{};
     std::uint32_t draw_count{};
     std::uint32_t bone_count{};
-    std::array<float, 3> bounds_minimum{};
-    std::array<float, 3> bounds_maximum{};
+    Vector3 bounds_minimum{};
+    Vector3 bounds_maximum{};
 };
 
 inline constexpr std::array<float, 16> visual_identity_transform{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
@@ -194,7 +196,7 @@ struct VisualInstance
 // A directional light; `direction` points from the surface toward the light (any length).
 struct VisualDirectionalLight
 {
-    std::array<float, 3> direction{0.0F, 0.0F, 1.0F};
+    Vector3 direction{0.0F, 0.0F, 1.0F};
     std::array<float, 3> color{};
 };
 
@@ -244,14 +246,14 @@ enum class VisualParticleBlend : std::uint8_t
 // writing depth.
 struct VisualParticle
 {
-    std::array<float, 3> position{};
+    Vector3 position{};
     float half_size{1.0F};
     // Linear RGBA multiplier of the texture.
     std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
     // Texture rectangle: u, v of the top-left corner, then width and height (atlas cells).
     std::array<float, 4> uv_rect{0.0F, 0.0F, 1.0F, 1.0F};
     // Kites: the world-space direction of travel (any length; zero draws a billboard).
-    std::array<float, 3> axis{};
+    Vector3 axis{};
     // Radians, counter-clockwise in the quad's plane.
     float rotation{};
     // Kites: extra length behind the particle along -axis, in world units.
@@ -268,9 +270,9 @@ struct VisualParticle
 // A perspective view in world space (Z up). The renderer derives the aspect ratio from its target.
 struct VisualCamera
 {
-    std::array<float, 3> eye{0.0F, -10.0F, 5.0F};
-    std::array<float, 3> target{};
-    std::array<float, 3> up{0.0F, 0.0F, 1.0F};
+    Vector3 eye{0.0F, -10.0F, 5.0F};
+    Vector3 target{};
+    Vector3 up{0.0F, 0.0F, 1.0F};
     float vertical_fov_degrees{55.0F};
     float near_plane{0.1F};
     float far_plane{1000.0F};
@@ -290,8 +292,8 @@ struct VisualScene
     VisualTerrain terrain;
     // Size of the scene bone palette (every instance's bone_offset + mesh bone_count fits in it).
     std::uint32_t bone_count{};
-    std::array<float, 3> bounds_minimum{};
-    std::array<float, 3> bounds_maximum{};
+    Vector3 bounds_minimum{};
+    Vector3 bounds_maximum{};
     std::vector<std::string> warnings;
 };
 

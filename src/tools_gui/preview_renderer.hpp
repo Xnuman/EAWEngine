@@ -1,5 +1,7 @@
 #pragma once
 
+#include "math/vector.hpp"
+
 #include <array>
 #include <cstdint>
 #include <span>
@@ -24,8 +26,8 @@ enum class PreviewBlend : std::uint8_t
 
 struct PreviewVertex
 {
-    std::array<float, 3> position{};
-    std::array<float, 2> texture_coordinates{};
+    Vector3 position{};
+    Vector2 texture_coordinates{};
     std::uint32_t color{0xffffffffU};
 };
 
@@ -144,6 +146,6 @@ private:
 // Orthographic orbit projection shared by the GPU preview and its ImGui overlays: yaw about +Z,
 // pitch toward the viewer, `scale` pixels per preview unit, and `depth_radius` bounding the depth
 // range. Returns the clip-space transform for a `width` x `height` target centered on `center`.
-[[nodiscard]] std::array<float, 16> orbit_view_projection(const std::array<float, 3>& center, float yaw, float pitch, float scale, float width, float height, float depth_radius) noexcept;
+[[nodiscard]] std::array<float, 16> orbit_view_projection(const Vector3& center, float yaw, float pitch, float scale, float width, float height, float depth_radius) noexcept;
 
 } // namespace eaw::tools

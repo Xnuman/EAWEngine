@@ -736,7 +736,7 @@ bool draw_gpu_preview(GuiApp::State& state, PreviewTarget& target, const ImVec2 
     auto* draw = ImGui::GetWindowDrawList();
     const auto width = static_cast<std::uint32_t>(std::max(1.0F, std::round(canvas_max.x - canvas_min.x)));
     const auto height = static_cast<std::uint32_t>(std::max(1.0F, std::round(canvas_max.y - canvas_min.y)));
-    const auto view_projection = orbit_view_projection({center.x, center.y, center.z}, yaw, pitch, scale, static_cast<float>(width), static_cast<float>(height), depth_radius);
+    const auto view_projection = orbit_view_projection(center, yaw, pitch, scale, static_cast<float>(width), static_cast<float>(height), depth_radius);
     if (!state.renderer.render(target, width, height, view_projection, meshes, {7.0F / 255.0F, 13.0F / 255.0F, 20.0F / 255.0F, 1.0F}))
     {
         draw->AddText({canvas_min.x + 14.0F, canvas_min.y + 32.0F}, IM_COL32(230, 120, 110, 255), "GPU preview unavailable on this device");

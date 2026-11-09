@@ -66,8 +66,8 @@ public:
     [[nodiscard]] std::optional<Corpse> corpse_instance(const DeathSnapshot& death);
 
     [[nodiscard]] const std::string& mesh_name(std::uint32_t mesh) const;
-    [[nodiscard]] const std::array<float, 3>& mesh_minimum(std::uint32_t mesh) const;
-    [[nodiscard]] const std::array<float, 3>& mesh_maximum(std::uint32_t mesh) const;
+    [[nodiscard]] const Vector3& mesh_minimum(std::uint32_t mesh) const;
+    [[nodiscard]] const Vector3& mesh_maximum(std::uint32_t mesh) const;
 
 private:
     struct Template
@@ -81,8 +81,8 @@ private:
     // By spawnable type index (visual - spawnable_visual_base).
     std::vector<Template> spawn_templates_;
     std::vector<std::string> mesh_names_;
-    std::vector<std::array<float, 3>> mesh_minimum_;
-    std::vector<std::array<float, 3>> mesh_maximum_;
+    std::vector<Vector3> mesh_minimum_;
+    std::vector<Vector3> mesh_maximum_;
 };
 
 } // namespace eaw

@@ -117,7 +117,7 @@ void append_terrain(SceneBuilder& builder, const TedMap& map)
     };
     const auto vertex_position = [&](const std::uint32_t x, const std::uint32_t y)
     {
-        return std::array<float, 3>{static_cast<float>(x) * terrain_sample_spacing, static_cast<float>(y) * terrain_sample_spacing, elevation(x, y)};
+        return Vector3{static_cast<float>(x) * terrain_sample_spacing, static_cast<float>(y) * terrain_sample_spacing, elevation(x, y)};
     };
     const auto vertex_normal = [&](const std::uint32_t x, const std::uint32_t y)
     {
@@ -128,13 +128,12 @@ void append_terrain(SceneBuilder& builder, const TedMap& map)
         const auto span_x = static_cast<float>(std::min(x + 1, width - 1) - (x == 0 ? 0 : x - 1)) * terrain_sample_spacing;
         const auto span_y = static_cast<float>(std::min(y + 1, height - 1) - (y == 0 ? 0 : y - 1)) * terrain_sample_spacing;
         const Vector3 normal{-(right - left) / span_x, -(up - down) / span_y, 1.0F};
-        const auto length = std::sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
-        return std::array<float, 3>{normal.x / length, normal.y / length, normal.z / length};
+        return normal / length(normal);
     };
 
     terrain.vertices.reserve(static_cast<std::size_t>(width - 1) * (height - 1) * 6U);
-    terrain.bounds_minimum.fill(std::numeric_limits<float>::max());
-    terrain.bounds_maximum.fill(std::numeric_limits<float>::lowest());
+    terrain.bounds_minimum = empty_bounds_minimum;
+    terrain.bounds_maximum = empty_bounds_maximum;
     const auto emit_triangle = [&](const std::array<std::array<std::uint32_t, 2>, 3>& corners)
     {
         const std::array<std::uint32_t, 3> layers{layer_at(corners[0][0], corners[0][1]), layer_at(corners[1][0], corners[1][1]), layer_at(corners[2][0], corners[2][1])};
@@ -244,7 +243,7 @@ std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMap& m
     mesh.bounds_minimum = {minimum_x, minimum_y, level};
     mesh.bounds_maximum = {maximum_x, maximum_y, level};
     const auto base_vertex = static_cast<std::int32_t>(scene.vertices.size());
-    for (const auto& [x, y] : std::array<std::array<float, 2>, 4>{{{minimum_x, minimum_y}, {maximum_x, minimum_y}, {maximum_x, maximum_y}, {minimum_x, maximum_y}}})
+    for (const auto& [x, y] : std::array<Vector2, 4>{{{minimum_x, minimum_y}, {maximum_x, minimum_y}, {maximum_x, maximum_y}, {minimum_x, maximum_y}}})
     {
         VisualVertex vertex;
         vertex.position = {x, y, level};
@@ -280,8 +279,8 @@ std::size_t append_tracks(SceneBuilder& builder, const TedMap& map)
     VisualMesh mesh;
     mesh.name = "terrain tracks";
     mesh.first_draw = static_cast<std::uint32_t>(scene.draws.size());
-    mesh.bounds_minimum.fill(std::numeric_limits<float>::max());
-    mesh.bounds_maximum.fill(std::numeric_limits<float>::lowest());
+    mesh.bounds_minimum = empty_bounds_minimum;
+    mesh.bounds_maximum = empty_bounds_maximum;
     std::size_t built = 0;
     for (const auto& track : map.tracks)
     {
@@ -316,7 +315,7 @@ std::size_t append_tracks(SceneBuilder& builder, const TedMap& map)
             const auto dx = next[0] - previous[0];
             const auto dy = next[1] - previous[1];
             const auto length = std::hypot(dx, dy);
-            return length > 1.0e-6F ? std::array<float, 2>{dx / length, dy / length} : std::array<float, 2>{1.0F, 0.0F};
+            return length > 1.0e-6F ? Vector2{dx / length, dy / length} : Vector2{1.0F, 0.0F};
         };
         const auto opacity_at = [&](const double fraction)
         {
@@ -328,9 +327,9 @@ std::size_t append_tracks(SceneBuilder& builder, const TedMap& map)
         const auto first_index = static_cast<std::uint32_t>(scene.indices.size());
         std::uint32_t emitted = 0;
         double travelled = 0.0;
-        const auto emit = [&](const std::array<float, 2>& center, const std::array<float, 2>& direction, const float width)
+        const auto emit = [&](const Vector2& center, const Vector2& direction, const float width)
         {
-            const std::array<float, 2> side{-direction[1], direction[0]};
+            const Vector2 side{-direction[1], direction[0]};
             const auto half = std::fabs(width) * 0.5F;
             const auto alpha = opacity_at(travelled / total_length);
             const auto v = static_cast<float>(travelled / average_width);
@@ -371,9 +370,9 @@ std::size_t append_tracks(SceneBuilder& builder, const TedMap& map)
             {
                 const auto t = static_cast<float>(step) / static_cast<float>(steps);
                 travelled = segment_start + static_cast<double>(t) * length;
-                std::array<float, 2> direction{std::lerp(from_direction[0], to_direction[0], t), std::lerp(from_direction[1], to_direction[1], t)};
+                Vector2 direction{std::lerp(from_direction[0], to_direction[0], t), std::lerp(from_direction[1], to_direction[1], t)};
                 const auto direction_length = std::hypot(direction[0], direction[1]);
-                direction = direction_length > 1.0e-6F ? std::array<float, 2>{direction[0] / direction_length, direction[1] / direction_length} : from_direction;
+                direction = direction_length > 1.0e-6F ? Vector2{direction[0] / direction_length, direction[1] / direction_length} : from_direction;
                 emit({std::lerp(from[0], to[0], t), std::lerp(from[1], to[1], t)}, direction, std::lerp(track.widths[index], track.widths[index + 1], t));
             }
             segment_start += length;

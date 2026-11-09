@@ -363,8 +363,7 @@ bool PreviewRenderer::render(PreviewTarget& target, const std::uint32_t width, c
     return true;
 }
 
-std::array<float, 16> orbit_view_projection(const std::array<float, 3>& center, const float yaw, const float pitch, const float scale, const float width, const float height,
-                                            const float depth_radius) noexcept
+std::array<float, 16> orbit_view_projection(const Vector3& center, const float yaw, const float pitch, const float scale, const float width, const float height, const float depth_radius) noexcept
 {
     const auto yc = std::cos(yaw);
     const auto ys = std::sin(yaw);
@@ -375,14 +374,10 @@ std::array<float, 16> orbit_view_projection(const std::array<float, 3>& center, 
     const auto sz = 1.0F / (2.0F * std::max(depth_radius, 1.0e-3F));
     // Matches the overlay projection: horizontal = yc*x + ys*y; forward = -ys*x + yc*y;
     // vertical = -ps*forward + pc*z; depth = pc*forward + ps*z (larger depth is nearer).
-    const std::array<float, 3> x{yc * sx, ys * sx, 0.0F};
-    const std::array<float, 3> y{ps * ys * sy, -ps * yc * sy, pc * sy};
-    const std::array<float, 3> z{pc * ys * sz, -pc * yc * sz, -ps * sz};
-    const auto dot = [&](const std::array<float, 3>& row)
-    {
-        return row[0] * center[0] + row[1] * center[1] + row[2] * center[2];
-    };
-    return {x[0], y[0], z[0], 0.0F, x[1], y[1], z[1], 0.0F, x[2], y[2], z[2], 0.0F, -dot(x), -dot(y), 0.5F - dot(z), 1.0F};
+    const Vector3 x{yc * sx, ys * sx, 0.0F};
+    const Vector3 y{ps * ys * sy, -ps * yc * sy, pc * sy};
+    const Vector3 z{pc * ys * sz, -pc * yc * sz, -ps * sz};
+    return {x.x, y.x, z.x, 0.0F, x.y, y.y, z.y, 0.0F, x.z, y.z, z.z, 0.0F, -dot(x, center), -dot(y, center), 0.5F - dot(z, center), 1.0F};
 }
 
 } // namespace eaw::tools

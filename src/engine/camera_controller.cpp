@@ -17,7 +17,7 @@ float finite_or(const float value, const float fallback) noexcept
     return std::isfinite(value) ? value : fallback;
 }
 
-std::array<float, 3> center_of(const CameraBounds& bounds) noexcept
+Vector3 center_of(const CameraBounds& bounds) noexcept
 {
     return {(bounds.minimum[0] + bounds.maximum[0]) * 0.5F, (bounds.minimum[1] + bounds.maximum[1]) * 0.5F, (bounds.minimum[2] + bounds.maximum[2]) * 0.5F};
 }
@@ -36,7 +36,7 @@ CameraBounds sanitize(CameraBounds bounds) noexcept
     return bounds;
 }
 
-VisualCamera look_from(const std::array<float, 3>& target, const float yaw, const float pitch, const float distance, const float near_plane, const float far_plane, const float vertical_fov) noexcept
+VisualCamera look_from(const Vector3& target, const float yaw, const float pitch, const float distance, const float near_plane, const float far_plane, const float vertical_fov) noexcept
 {
     const auto horizontal = std::cos(pitch) * distance;
     VisualCamera camera;
@@ -98,7 +98,7 @@ void TacticalCamera::reset() noexcept
     distance_ = std::clamp(extent_ * 0.75F, minimum_distance_, maximum_distance_);
 }
 
-void TacticalCamera::set_view(const std::array<float, 2> focus, const float distance) noexcept
+void TacticalCamera::set_view(const Vector2 focus, const float distance) noexcept
 {
     focus_[0] = std::clamp(finite_or(focus[0], focus_[0]), bounds_.minimum[0], bounds_.maximum[0]);
     focus_[1] = std::clamp(finite_or(focus[1], focus_[1]), bounds_.minimum[1], bounds_.maximum[1]);
@@ -117,8 +117,8 @@ void TacticalCamera::apply(const CameraInput& input) noexcept
 
     // Screen-relative panning on the ground plane. Forward points from the eye toward the focus;
     // right matches the renderer's left-handed view (right = up x forward).
-    const std::array<float, 2> forward{-std::cos(yaw_), -std::sin(yaw_)};
-    const std::array<float, 2> right{-forward[1], forward[0]};
+    const Vector2 forward{-std::cos(yaw_), -std::sin(yaw_)};
+    const Vector2 right{-forward.y, forward.x};
     const auto pan_right = finite_or(input.pan_right, 0.0F) * distance_;
     const auto pan_forward = finite_or(input.pan_forward, 0.0F) * distance_;
     focus_[0] = std::clamp(focus_[0] + right[0] * pan_right + forward[0] * pan_forward, bounds_.minimum[0], bounds_.maximum[0]);

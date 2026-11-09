@@ -277,13 +277,13 @@ void test_model_forward_axis()
     const auto posed = eaw::pose_transform(identity, eaw::identity_model_heading, {10.0F, 20.0F, 0.0F}, 0.0F);
     {
         // Pitch lifts the model's forward axis (-Y) toward +Z; a positive bank lowers its left side (+X).
-        const auto apply = [](const std::array<float, 16>& m, const std::array<float, 3>& v)
+        const auto apply = [](const std::array<float, 16>& m, const eaw::Vector3& v)
         {
-            return std::array<float, 3>{v[0] * m[0] + v[1] * m[4] + v[2] * m[8], v[0] * m[1] + v[1] * m[5] + v[2] * m[9], v[0] * m[2] + v[1] * m[6] + v[2] * m[10]};
+            return eaw::transform_direction(v, eaw::Matrix4{m});
         };
-        const auto near = [](const std::array<float, 3>& a, const std::array<float, 3>& b)
+        const auto near = [](const eaw::Vector3& a, const eaw::Vector3& b)
         {
-            return std::fabs(a[0] - b[0]) < 1.0e-5F && std::fabs(a[1] - b[1]) < 1.0e-5F && std::fabs(a[2] - b[2]) < 1.0e-5F;
+            return eaw::length(a - b) < 1.0e-5F;
         };
         const auto climbing = eaw::pose_transform(identity, eaw::identity_model_heading, {}, 0.0F, std::numbers::pi_v<float> / 2.0F, 0.0F);
         require(near(apply(climbing, {0.0F, -1.0F, 0.0F}), {0.0F, 0.0F, 1.0F}), "pitch must lift the model's nose toward +Z");
@@ -341,7 +341,7 @@ void test_camera_controllers()
     const auto right_focus = tactical.focus();
     view = tactical.camera();
     // Screen right for a left-handed look-at is cross(up, forward).
-    const std::array<float, 2> forward{view.target[0] - view.eye[0], view.target[1] - view.eye[1]};
+    const eaw::Vector2 forward{view.target.x - view.eye.x, view.target.y - view.eye.y};
     require(near_equal(right_focus[0] * forward[0] + right_focus[1] * forward[1], 0.0F, 1.0F) && near_equal(std::fabs(right_focus[0]), 150.0F) && right_focus[0] * -forward[1] > 0.0F,
             "tactical right pan is not perpendicular to the heading");
 
@@ -373,11 +373,11 @@ void test_rts_control()
     const auto center = eaw::project_to_screen(camera, width, height, {0.0F, 0.0F, 0.0F});
     require(center && std::fabs((*center)[0] - 399.5F) < 0.01F && std::fabs((*center)[1] - 299.5F) < 0.01F, "the look-at target must project to the screen center");
     require(!eaw::project_to_screen(camera, width, height, {-200.0F, 0.0F, 80.0F}), "a point behind the camera must not project");
-    const std::array<float, 3> point{30.0F, 20.0F, 5.0F};
+    const eaw::Vector3 point{30.0F, 20.0F, 5.0F};
     const auto screen = eaw::project_to_screen(camera, width, height, point);
     require(screen.has_value(), "a visible point must project");
     // Depth of the point as the renderer stores it: z_ndc = f/(f-n) - n f/((f-n) z_view).
-    const std::array<float, 3> forward{100.0F / std::sqrt(100.0F * 100.0F + 80.0F * 80.0F), 0.0F, -80.0F / std::sqrt(100.0F * 100.0F + 80.0F * 80.0F)};
+    const eaw::Vector3 forward{100.0F / std::sqrt(100.0F * 100.0F + 80.0F * 80.0F), 0.0F, -80.0F / std::sqrt(100.0F * 100.0F + 80.0F * 80.0F)};
     const auto view_depth = (point[0] - camera.eye[0]) * forward[0] + (point[2] - camera.eye[2]) * forward[2];
     const auto depth = camera.far_plane / (camera.far_plane - camera.near_plane) - camera.near_plane * camera.far_plane / ((camera.far_plane - camera.near_plane) * view_depth);
     const auto back = eaw::unproject_screen(camera, width, height, (*screen)[0], (*screen)[1], depth);
@@ -430,7 +430,7 @@ void test_terrain_height_field()
     camera.far_plane = 2000.0F;
     const float width = 640.0F;
     const float height = 480.0F;
-    for (const auto& pixel : {std::array<float, 2>{320.0F, 240.0F}, std::array<float, 2>{420.0F, 300.0F}, std::array<float, 2>{250.0F, 180.0F}})
+    for (const auto& pixel : {eaw::Vector2{320.0F, 240.0F}, eaw::Vector2{420.0F, 300.0F}, eaw::Vector2{250.0F, 180.0F}})
     {
         const auto hit = eaw::intersect_terrain(camera, width, height, pixel[0], pixel[1], field);
         require(hit.has_value(), "a ray into the map must hit its surface");
@@ -471,7 +471,7 @@ void test_debug_draw()
     require(axis_edges == std::array<int, 3>{4, 4, 4}, "a debug box has four edges per axis");
     lines.clear();
     eaw::append_debug_axes(lines, {1.0F, 2.0F, 3.0F}, 5.0F);
-    require(lines.size() == 3 && lines[0].to == std::array<float, 3>{6.0F, 2.0F, 3.0F} && lines[2].to == std::array<float, 3>{1.0F, 2.0F, 8.0F}, "debug axes have the wrong extent");
+    require(lines.size() == 3 && lines[0].to == eaw::Vector3{6.0F, 2.0F, 3.0F} && lines[2].to == eaw::Vector3{1.0F, 2.0F, 8.0F}, "debug axes have the wrong extent");
 }
 
 const ModuleRegistrar registrar("presentation", {

@@ -9,8 +9,8 @@ namespace eaw {
 // World-space bounds a camera frames and stays within.
 struct CameraBounds
 {
-    std::array<float, 3> minimum{};
-    std::array<float, 3> maximum{};
+    Vector3 minimum{};
+    Vector3 maximum{};
 };
 
 // One frame of camera intent, already converted from device input. Angles are radians, zoom is
@@ -36,7 +36,7 @@ public:
     [[nodiscard]] VisualCamera camera() const noexcept;
 
 private:
-    std::array<float, 3> center_{};
+    Vector3 center_{};
     float radius_{1.0F};
     float yaw_{};
     float pitch_{};
@@ -56,9 +56,9 @@ public:
     [[nodiscard]] VisualCamera camera() const noexcept;
     // Places the view: `focus` (x, y; clamped to the bounds, height kept) seen from `distance`
     // (clamped to the camera's range), heading and pitch unchanged.
-    void set_view(std::array<float, 2> focus, float distance) noexcept;
+    void set_view(Vector2 focus, float distance) noexcept;
 
-    [[nodiscard]] std::array<float, 3> focus() const noexcept
+    [[nodiscard]] Vector3 focus() const noexcept
     {
         return focus_;
     }
@@ -85,7 +85,7 @@ private:
     float extent_{1.0F};
     float minimum_distance_{1.0F};
     float maximum_distance_{1.0F};
-    std::array<float, 3> focus_{};
+    Vector3 focus_{};
     float yaw_{};
     float pitch_{};
     float distance_{1.0F};

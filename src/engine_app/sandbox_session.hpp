@@ -115,7 +115,7 @@ struct SandboxSession
     std::vector<eaw::VisualParticle> frame_particles;
     std::vector<std::shared_ptr<const eaw::ParticleEffect>> shown_effects;
     std::vector<eaw::ParticleInstanceId> shown_effect_ids;
-    std::array<float, 3> effect_center{};
+    Vector3 effect_center{};
     std::uint64_t shown_effect_seed = 1;
     std::chrono::steady_clock::time_point particle_tick = std::chrono::steady_clock::now();
     // Presentation time (presentation_now): the wall clock, or with --fixed-frame-time (and for
@@ -187,7 +187,7 @@ struct SandboxSession
     // Maps use the legacy RTS camera (no rotation; left-drag box-selects, right-click moves);
     // C switches to the free debug camera (drag rotates, right-drag pans).
     bool free_camera = false;
-    std::optional<std::array<float, 2>> drag_start;
+    std::optional<Vector2> drag_start;
     bool box_active = false;
     std::uint64_t orders_issued = 0;
     // Simulation step cost (move orders are planned inside the step that applies them).
@@ -240,9 +240,9 @@ struct SandboxSession
     // Camera: keyboard panning on maps, mouse orbit/rotation/pan where the camera is free, the wheel.
     void update_camera(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode);
     // Left button selection (click picks, RTS drag box-selects) and right-click orders.
-    void handle_pointer(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode, const std::array<float, 2>& mouse);
+    void handle_pointer(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode, const Vector2& mouse);
     // Spawn keys (O owner, Tab type, N spawn at the cursor) and C (RTS or free camera).
-    void handle_command_keys(const eaw::InputState& input, const bool scene_mouse, const std::array<float, 2>& mouse);
+    void handle_command_keys(const eaw::InputState& input, const bool scene_mouse, const Vector2& mouse);
     // Completed GPU picks: selections, or attack targets for right-clicks.
     void process_picks();
     // P pauses the animation (models) or the world (maps), B and G toggle bounds and passability,

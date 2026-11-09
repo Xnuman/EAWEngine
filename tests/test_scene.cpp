@@ -220,7 +220,7 @@ void test_visual_terrain()
     // First triangle: (0,0), (1,0), (1,1) with layers {0, 0, 0} -> sample (1,1) is index 4, layer 0.
     const auto& first = terrain.vertices[0];
     const auto& third = terrain.vertices[2];
-    require(first.position == std::array<float, 3>{0.0F, 0.0F, -0.5F} && third.position == std::array<float, 3>{20.0F, 20.0F, 1.5F} && first.layers == std::array<std::uint32_t, 3>{0U, 0U, 0U} &&
+    require(first.position == eaw::Vector3{0.0F, 0.0F, -0.5F} && third.position == eaw::Vector3{20.0F, 20.0F, 1.5F} && first.layers == std::array<std::uint32_t, 3>{0U, 0U, 0U} &&
                 first.barycentric == std::array<float, 3>{1.0F, 0.0F, 0.0F} && third.barycentric == std::array<float, 3>{0.0F, 0.0F, 1.0F},
             "terrain vertex positions, layers, or barycentrics are wrong");
     // Second cell's first triangle uses samples (1,0), (2,0), (2,1): layers {0, 1, 1}.
@@ -231,7 +231,7 @@ void test_visual_terrain()
     // Water at level 1.5 crosses the terrain (-0.5..2.0) and becomes a blended quad instance.
     const auto& water_material = asset.scene.materials[asset.scene.draws[asset.scene.meshes[0].first_draw].material];
     require(asset.water == eaw::TedWaterType::water && asset.scene.meshes.size() == 2 && asset.scene.instances.size() == 2 && asset.scene.vertices.size() == 10 &&
-                asset.scene.vertices[2].position == std::array<float, 3>{40.0F, 20.0F, 1.5F} && water_material.blend == eaw::VisualBlendMode::alpha_blend &&
+                asset.scene.vertices[2].position == eaw::Vector3{40.0F, 20.0F, 1.5F} && water_material.blend == eaw::VisualBlendMode::alpha_blend &&
                 water_material.diffuse == std::array<float, 4>{0.4F, 0.6F, 0.8F, 0.75F},
             "water surface was not built over the terrain");
     // The track (5,5)->(35,15), widths 10->6, opacity 0/1/0 becomes a 3-sample draped ribbon.

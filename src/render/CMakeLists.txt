@@ -7,6 +7,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_RENDER_CONTRACT_HEADER
 
 add_library(eaw_render_contract INTERFACE ${EAW_RENDER_CONTRACT_HEADERS})
 target_include_directories(eaw_render_contract INTERFACE include)
+target_link_libraries(eaw_render_contract INTERFACE eaw_math)
 
 if(NOT WIN32)
     return()

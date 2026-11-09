@@ -424,12 +424,8 @@ Status parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk,
                 {
                     if (mini.type == 0x07 && mini.end - mini.payload == 12)
                     {
-                        const std::array<float, 3> point{read_float(bytes, mini.payload), read_float(bytes, mini.payload + 4), read_float(bytes, mini.payload + 8)};
-                        if (std::ranges::all_of(point,
-                                                [](const float value)
-                                                {
-                                                    return std::isfinite(value);
-                                                }))
+                        const Vector3 point{read_float(bytes, mini.payload), read_float(bytes, mini.payload + 4), read_float(bytes, mini.payload + 8)};
+                        if (is_finite(point))
                         {
                             decoded.points.push_back(point);
                         }

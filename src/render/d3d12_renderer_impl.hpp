@@ -68,7 +68,7 @@ struct D3d12Renderer::Impl
     // Vertex layout of debug.hlsl.
     struct DebugVertex
     {
-        std::array<float, 3> position;
+        Vector3 position;
         std::array<float, 4> color;
     };
 
@@ -233,11 +233,11 @@ struct D3d12Renderer::Impl
     // Structured-buffer layout of ParticleData in particle.hlsl (80 bytes).
     struct GpuParticle
     {
-        std::array<float, 3> position{};
+        Vector3 position{};
         float half_size{};
         std::array<float, 4> color{};
         std::array<float, 4> uv_rect{};
-        std::array<float, 3> axis{};
+        Vector3 axis{};
         float rotation{};
         float tail{};
         // Logical texture id, or invalid_visual_texture for white.

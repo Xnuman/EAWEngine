@@ -15,6 +15,6 @@ namespace eaw {
 
 // Where the ray through a client pixel first meets the surface (terrain or liquid), or nothing when it
 // misses the map. Runs on the CPU in the same frame, so orders need no GPU readback.
-[[nodiscard]] std::optional<std::array<float, 3>> intersect_terrain(const VisualCamera& camera, float width, float height, float x, float y, const GroundMap& field);
+[[nodiscard]] std::optional<Vector3> intersect_terrain(const VisualCamera& camera, float width, float height, float x, float y, const GroundMap& field);
 
 } // namespace eaw

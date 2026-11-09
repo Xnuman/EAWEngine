@@ -82,7 +82,7 @@ struct TedWater
 struct TedTrack
 {
     std::string texture;
-    std::vector<std::array<float, 3>> points;
+    std::vector<Vector3> points;
     std::vector<float> widths;
     // Header minis 0x04 and 0x05: texture scroll per second along U and V (inferred from wave
     // tracks); zero when absent.

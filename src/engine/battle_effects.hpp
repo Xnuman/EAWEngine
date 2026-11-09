@@ -59,7 +59,7 @@ public:
     void update(float seconds);
     // Appends the particles, sorted as the fidelity profile says from `eye`, then a bolt for each
     // shot in `projectiles` placed `interpolation` of a tick after the previous tick.
-    void build_sprites(const std::array<float, 3>& eye, std::span<const ProjectileSnapshot> projectiles, float interpolation, float tick_seconds, std::vector<VisualParticle>& sprites) const;
+    void build_sprites(const Vector3& eye, std::span<const ProjectileSnapshot> projectiles, float interpolation, float tick_seconds, std::vector<VisualParticle>& sprites) const;
 
     // Plays a Particle object once at `position`, upright (the effect's own axes: an engine choice
     // until the original's orientation of impacts and explosions is known). Unknown keys are ignored.

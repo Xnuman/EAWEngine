@@ -28,8 +28,8 @@ namespace eaw {
 // on the proxy bone's parent bone. Triangles index the vertices.
 struct ParticleEmitMesh
 {
-    std::vector<std::array<float, 3>> positions;
-    std::vector<std::array<float, 3>> normals;
+    std::vector<Vector3> positions;
+    std::vector<Vector3> normals;
     std::vector<std::uint32_t> indices;
 };
 
@@ -111,7 +111,7 @@ public:
     void update(float seconds);
 
     // Appends every live particle as a sprite, sorted back to front from `eye`.
-    void build_sprites(const std::array<float, 3>& eye, std::vector<VisualParticle>& sprites) const;
+    void build_sprites(const Vector3& eye, std::vector<VisualParticle>& sprites) const;
 
     [[nodiscard]] ParticleWorldStats stats() const noexcept;
 
@@ -134,7 +134,7 @@ private:
     void step_instance(Instance& instance, float seconds);
     // `offset` moves the spawn point (where a moving emitter was at the emission time); `step` is how
     // much of the current update the particle still lives through (negative: all of it).
-    bool emit(Instance& instance, std::size_t emitter, const Particle* parent, const std::array<float, 3>& offset = {}, float step = -1.0F);
+    bool emit(Instance& instance, std::size_t emitter, const Particle* parent, const Vector3& offset = {}, float step = -1.0F);
     void kill(Instance& instance, std::size_t emitter, std::size_t particle);
 
 public:

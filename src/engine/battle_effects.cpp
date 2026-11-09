@@ -126,7 +126,7 @@ void BattleEffects::update(const float seconds)
     particles_.update(seconds);
 }
 
-void BattleEffects::build_sprites(const std::array<float, 3>& eye, const std::span<const ProjectileSnapshot> projectiles, const float interpolation, const float tick_seconds,
+void BattleEffects::build_sprites(const Vector3& eye, const std::span<const ProjectileSnapshot> projectiles, const float interpolation, const float tick_seconds,
                                   std::vector<VisualParticle>& sprites) const
 {
     particles_.build_sprites(eye, sprites);
