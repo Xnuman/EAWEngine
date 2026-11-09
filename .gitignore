@@ -16,3 +16,6 @@
 
 # Dear ImGui window layouts saved by the tools and the sandbox overlay.
 *imgui.ini
+
+# Build output of the scripts (CMAKE_RUNTIME_OUTPUT_DIRECTORY).
+/executables/

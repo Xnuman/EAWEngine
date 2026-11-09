@@ -16,6 +16,8 @@ EAWEngine is an independently developed, open compatibility engine and toolset f
 
 M0 (repository discipline), M1 (data bootstrap: VFS, MEG, DAT, DDS/MTD, ALO, ALA, TED, XML, Lua inspection), and M2 (the Direct3D 12 visual sandbox in legacy mode) are complete. M3, the tactical simulation slice, is active: a deterministic simulation with movement, pathfinding, formations, combat, headless battles with replayable order logs, unit animation, and the first presentation features (particles, bloom, projectile bolts, impact and death effects). The owner's order for the rest of M3 (revised 2026-11-09) is: the technical foundation review (projectile visuals and the capture-and-compare workflow are done; its first item, the Lua host with recording stubs and `EAWEngine lua-survey`, has its first slice), combat presentation, sound, then the player layer.
 
+Since 2026-11-09 feature work is paused for a reorganization of the code and build pipeline ([Reorganization](#reorganization-in-progress)). Until it ends, the build commands and the file layout in the docs may be out of date; update them when the reorganization settles.
+
 - [docs/status.md](docs/status.md): what each milestone implemented, how, and its known limitations, including the legacy-mode render backlog.
 - [docs/roadmap.md](docs/roadmap.md): the authoritative plan and milestone definitions (M4 skirmish, M5 galactic and campaign, M6 broad compatibility and SDK, engine extensions).
 - [docs/architecture.md](docs/architecture.md): layers, contracts, simulation tick layers, the content-contract classification, and the source files by subject.
@@ -27,7 +29,8 @@ Update `docs/status.md` and `docs/roadmap.md` in the same change as the code the
 
 ## Working with the owner
 
-- Be candid. When a request, design, or ordering looks wrong or risky, say so and why before or while doing it; do not agree by default. Report your own mistakes plainly.
+- Be candid. When a request, design, or ordering looks wrong or risky, say so and why before or while doing it; do not agree by default. Discussion and disagreement are preferred to silent obedience. Report your own mistakes plainly.
+- Decide what you are sure of; ask when you are not. Ask before a new library or dependency, a new convention, an interface change that crosses layers, departing from an established pattern, or anything touching security or the script sandbox, and whenever you are not confident an approach is the right and safe one. Propose the better approach when you see one.
 - Name guesses as guesses. Constants without evidence (scales, timings, visual tuning) are engine choices: mark them in code comments and docs, and do not present them as the original's behavior.
 - Do not over-fit to a single observation. One screenshot is evidence for one case; check a change against the other cases it affects before switching a rule, and say what remains unverified.
 - Visual results are the owner's to accept. A clean WARP/GPU-validation run proves correctness of API use, not the look; hand visual changes over for checking unless asked to judge them yourself.
@@ -39,6 +42,7 @@ Every library and executable has its own directory and `CMakeLists.txt`.
 
 | Directory | Target | Responsibility |
 | --- | --- | --- |
+| `src/math` | `eaw_math` | Vectors, quaternions, matrices, transforms: plain scalar float code, row-vector convention, no dependencies. The only math types in the project. |
 | `src/core` | `eaw_core` | VFS, formats, compatibility data, reusable asset logic, `Status`/`Result`, logging. No graphics or Win32 presentation code. |
 | `src/simulation` | `eaw_simulation` | The deterministic tactical simulation: entity ids, structure-of-arrays components, fixed-step ticks, commands, snapshots. No graphics, platform, or file access. Decisions (chasing, attack runs, engaging) belong in the behavior layer; locomotion and combat never decide where a unit goes. |
 | `src/script` | `eaw_script` | The Lua host: one sandboxed Lua 5.0 state per script, script threads on simulation ticks, the engine primitives implemented so far, and recording stubs for the rest. Never runs compiled chunks. No graphics or platform code. |
@@ -139,7 +143,14 @@ These are correctness rules, not optional optimizations.
 ## Code and design style
 
 - C++20; MSVC builds use `/W4 /permissive- /utf-8`. New warnings are defects.
-- Build files: the root `CMakeLists.txt` holds only global rules and constants (options, exception flags, the output directory, `eaw_compile_shader`, and `eaw_target_defaults(<target> <folder>)` for C++20, warnings, and the solution folder) and adds the subdirectories. Each target's `CMakeLists.txt` lists its sources, headers, and shaders explicitly (no globbing), sorted by path, with `source_group(TREE ...)`. Add new files there; a new target gets a new directory.
+- Before writing code, search for what already exists (a helper, type, or pattern) and use it the way the surrounding code does; follow the repository's established approaches, not only its formatting. Duplicating a helper locally is a defect: move it to the library that owns its subject instead.
+- Big engine, small systems: a library is dedicated to one system (math, VFS, format decoders, a game asset layer, the simulation, the script host). A new system gets its own directory and target; a library may group files into categories (subfolders) for readers. Granularity is reviewed as the reorganization goes.
+- Build files: the root `CMakeLists.txt` holds only global rules and constants (options, exception flags, warnings, the output directory, `eaw_compile_shader`) and adds the subdirectories; the C++ standard comes from the build scripts' configure step. Each target's `CMakeLists.txt` follows `src/math/CMakeLists.txt`: headers under `include/<library>/`, sources under `src/`, both listed explicitly (no globbing) and sorted, a `source_group`, and headers in a file set that is PUBLIC for a library and PRIVATE for an executable. Solution categories that combine targets use the `FOLDER` target property. Add new files there; a new target gets a new directory.
+- Includes are short and name their library: `#include "math/vector.hpp"`, `"core/status.hpp"`. The namespace stays `eaw`. Include only what the file uses; remove includes a change leaves unused.
+- Interfaces in headers, implementations in `.cpp` files, with common sense: one-line functions, `constexpr` helpers, small operators, and templates may live in headers.
+- Name non-obvious numbers: tolerances, limits, tuning values, and format magic get a named constant with a comment on its origin (evidence, or an engine choice). Bare numbers are fine where the meaning is plain (`0.5F` for a half, loop bounds of a 4x4 matrix).
+- Decoders are named after their format, `<format>_file` (`dat_file`, `png_file`, `particle_file`); they turn bytes into structures and never read through the VFS.
+- Debug builds of every executable and library carry the `_d` suffix.
 - Shaders are newly written HLSL compiled at build time into embedded bytecode (DXC for D3D12, FXC for the D3D11 tools); no runtime shader compilation.
 - `.clang-format` is authoritative (four spaces, project brace rules, 200 columns). Format every changed C/C++ file.
 - Follow neighboring files: descriptive names, small cohesive types, early validation, explicit ownership, comments that explain invariants or evidence rather than restating code.
@@ -157,21 +168,32 @@ These are correctness rules, not optional optimizations.
 4. Implement the smallest coherent slice, with diagnostics and negative cases.
 5. Add or update focused tests; for format work, malformed input and a corpus audit where possible.
 6. Run `clang-format` on changed C/C++ files only.
-7. Build Debug and Release, run `ctest`, and the relevant smoke, corpus, or determinism check.
+7. Build Debug and Release, run the test modules that cover the change (`EAWEngineTests <module or test>...`; tests are built with `EAW_BUILD_TESTS=ON`), and the relevant smoke, corpus, or determinism check. The whole suite is not needed after every change.
 8. Run `git diff --check`, read the complete diff, and update `docs/status.md`, `docs/roadmap.md`, and other affected docs in the same change.
 9. Commit cohesive changes only when asked. Never stage the user's unrelated changes, personal game paths, build output, decoded assets, generated caches, `imgui.ini`, or `Reference Materials/`.
 
 Never use destructive Git commands (`reset --hard`, forced checkout, `clean`) on a shared worktree.
 
+## Reorganization in progress
+
+Agreed with the owner on 2026-11-09; each step is a separate change, checked by the covering test modules, an unchanged battle hash, and unchanged captures where presentation code moves.
+
+1. `eaw_math` (done) replaces the per-module math types (`AloVector*`, `AloQuaternion`, `AloMatrix4`, `TedVector3`, `SimVector3`, local `std::array<float, N>` helpers), decoders first, then the simulation (keeping each operation's order so the hash holds), then engine and render contract.
+2. `eaw_core` becomes the foundation only, in categories: `error_handling` (`status`, `fatal_error`), `log`, `string_utils` (UTF-8/UTF-16 conversion from `text_encoding`, and the one ASCII case-folding and trimming implementation replacing the copies across modules).
+3. Format decoders move into one library, a category per format family, renamed `<format>_file` (`particle_system` becomes the particle file decoder).
+4. The VFS becomes its own library on top of the decoders.
+5. A game asset layer, a library below the engine shared with the tools, gathers the interpretation now spread over core (`alo_interpretation`, `legacy_material`, catalogs, `xml_asset_database`) and engine (`scene_*`, `object_type_properties`, `combat_content`).
+6. PowerShell build scripts become the build entry point (configuration Debug or Release, clean, tests switch, C++ standard at configure), with the `_d` debug suffix; the launchers find the engine by its built file name.
+
 ## Build and validation
 
-From the repository root:
+From the repository root (until the PowerShell scripts land; executables build into `executables/<Config>/`):
 
 ```powershell
-cmake --preset vs2022-x64
-cmake --build build/vs2022-x64 --config Debug --parallel
-cmake --build build/vs2022-x64 --config Release --parallel
-ctest --preset debug --output-on-failure
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_CXX_STANDARD=20 -DEAW_BUILD_TESTS=ON
+cmake --build build --config Debug --parallel
+cmake --build build --config Release --parallel
+.\executables\Debug\EAWEngineTests.exe <module>
 git diff --check
 ```
 
@@ -181,13 +203,13 @@ Format changed C/C++ files with the Visual Studio LLVM formatter (adjust the ins
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang-format.exe' -i <changed-files>
 ```
 
-Runtime checks (executables build into `build/vs2022-x64/<Config>/`):
+Runtime checks:
 
 ```powershell
-.\build\vs2022-x64\Debug\EAWEngine.exe doctor --game foc
-.\build\vs2022-x64\Debug\EAWEngine.exe sandbox --game foc --warp --gpu-validation --vsync off --frame-limit 8
-.\build\vs2022-x64\Debug\EAWEngine.exe sandbox --game foc --model DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO --warp --gpu-validation --vsync off --frame-limit 40 --reload-every 3
-.\build\vs2022-x64\Release\EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --spawn Rebel_Infantry_Squad:2@1 --spawn T2B_Tank:3@2 --auto-move --ticks 1500 --check-determinism
+.\executables\Debug\EAWEngine.exe doctor --game foc
+.\executables\Debug\EAWEngine.exe sandbox --game foc --warp --gpu-validation --vsync off --frame-limit 8
+.\executables\Debug\EAWEngine.exe sandbox --game foc --model DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO --warp --gpu-validation --vsync off --frame-limit 40 --reload-every 3
+.\executables\Release\EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --spawn Rebel_Infantry_Squad:2@1 --spawn T2B_Tank:3@2 --auto-move --ticks 1500 --check-determinism
 ```
 
 The battle prints a state hash; compare it before and after a change that should not affect the simulation. For changes that should not alter the look, capture a scene before and after (`sandbox ... --capture <file.png>`) and run `EAWEngine compare-images` ([docs/tools.md](docs/tools.md)); keep such references outside the repository. Use `--game-root` when discovery is unavailable. Never hard-code a contributor's Steam path in source, tests, CMake, or committed documentation; a machine without the game must still configure, compile, and run the synthetic tests. For asset changes, run the matching `EAWAssetInspector` audit ([docs/tools.md](docs/tools.md)). Public `eaw-schema` is an optional local checkout, never a configure-time or runtime network dependency.
@@ -197,7 +219,7 @@ The battle prints a state hash; compare it before and after a change that should
 A change is complete when all applicable items hold:
 
 - ownership and dependency direction remain correct;
-- Debug and Release compile without new warnings, and `ctest` passes;
+- Debug and Release compile without new warnings, and the test modules covering the change pass;
 - relevant corpus, runtime, determinism, and WARP GPU-validation checks pass;
 - no per-frame CPU/GPU stall, hidden asset limit, or unbounded input allocation was introduced;
 - error paths and malformed inputs have actionable diagnostics;
