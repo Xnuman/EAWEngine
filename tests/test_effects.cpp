@@ -1,6 +1,7 @@
 // Particle effects and the effects of battles: tracks, the particle world, effect objects, bolts.
 #include "test_support.hpp"
 
+#include "attached_effects.hpp"
 #include "battle.hpp"
 #include "battle_effects.hpp"
 #include "battle_log.hpp"
@@ -50,6 +51,46 @@ void test_particle_tracks()
     require(eaw::sample_particle_track(track, 0.4F) == 0.0F && eaw::sample_particle_track(track, 0.5F) == 10.0F, "step particle track sampling failed");
     track.interpolation = eaw::ParticleInterpolation::smooth;
     require(eaw::sample_particle_track(track, 0.125F) > 0.0F && eaw::sample_particle_track(track, 0.125F) < 2.5F, "smooth particle track sampling failed");
+}
+
+// An attached effect takes its unit's scale: particles twice as large and twice as far out on a unit
+// drawn at Scale_Factor 2.
+void test_attached_effect_scale()
+{
+    auto burst = make_test_emitter();
+    burst.use_bursts = true;
+    burst.particles_per_burst = 1;
+    burst.burst_count = 1;
+    burst.lifetime = 5.0F;
+    burst.groups[0].type = 0;
+    burst.groups[0].value = {0.0F, 0.0F, 10.0F};
+    eaw::VisualRig rig;
+    rig.model = std::make_shared<eaw::AloModel>(expect_ok(eaw::AloModel::parse(make_test_alo()), "test model"));
+    rig.palette_size = 1;
+    rig.effects.push_back({make_test_effect({burst}), 0U, "pe_test", -1, nullptr, false});
+    const std::vector<eaw::VisualRig> rigs{rig};
+    const std::vector<std::array<float, 16>> palette{eaw::visual_identity_transform};
+    const auto sprite_at = [&](const float scale)
+    {
+        eaw::ParticleWorld world;
+        eaw::AttachedEffects effects;
+        effects.set_rigs(rigs);
+        eaw::VisualInstance unit{0};
+        unit.transform[0] = unit.transform[5] = unit.transform[10] = scale;
+        unit.transform[12] = 100.0F;
+        const std::vector<eaw::VisualInstance> instances{unit};
+        const std::vector<eaw::EntityId> ids{eaw::EntityId{1, 1}};
+        effects.update(world, instances, ids, palette);
+        world.update(0.01F);
+        std::vector<eaw::VisualParticle> sprites;
+        world.build_sprites({0.0F, 0.0F, 0.0F}, sprites);
+        return sprites.size() == 1 ? sprites.front() : eaw::VisualParticle{};
+    };
+    const auto normal = sprite_at(1.0F);
+    const auto doubled = sprite_at(2.0F);
+    require(normal.half_size > 0.0F && std::fabs(doubled.half_size - 2.0F * normal.half_size) < 1e-3F && std::fabs(doubled.position[2] - 2.0F * normal.position[2]) < 1e-2F &&
+                doubled.position[0] == 100.0F,
+            "an attached effect must scale with its unit");
 }
 
 // Model projectiles: drawn nose along the flight at their scale, between ticks; their particle
@@ -574,6 +615,7 @@ const ModuleRegistrar registrar("effects", {
                                                {"test_projectile_sprites", &test_projectile_sprites},
                                                {"test_battle_effects", &test_battle_effects},
                                                {"test_projectile_models", &test_projectile_models},
+                                               {"test_attached_effect_scale", &test_attached_effect_scale},
                                            });
 
 } // namespace

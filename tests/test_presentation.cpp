@@ -48,6 +48,7 @@ void test_scene_presentation()
     spawnable.type_name = "Spawned_Unit";
     spawnable.mesh = 0;
     spawnable.team_color = {0.25F, 0.5F, 1.0F, 1.0F};
+    spawnable.scale = 0.5F;
     eaw::BattleMap map;
     map.entities = entities;
     map.spawnable = std::span(&spawnable, 1);
@@ -71,6 +72,8 @@ void test_scene_presentation()
     presentation.build(world.snapshot().entities, {}, instances, ids);
     require(instances.size() == 3 && instances[2].mesh == 0 && instances[2].team_color[2] == 1.0F && std::fabs(instances[2].transform[12] + 20.0F) < 1.0e-4F,
             "an entity spawned by order must be drawn from its type's template");
+    const auto& m = instances[2].transform;
+    require(std::fabs(std::sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]) - 0.5F) < 1.0e-5F && std::fabs(m[10] - 0.5F) < 1.0e-5F, "a spawned type must be drawn at its Scale_Factor");
 }
 
 // Unit animation: clip names map to roles, snapshots choose roles, entities share sampled poses,

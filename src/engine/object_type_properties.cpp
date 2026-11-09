@@ -138,6 +138,34 @@ std::optional<std::uint32_t> type_obstacle_passability(const GameObjectCatalog& 
     return std::nullopt;
 }
 
+float type_scale_factor(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings)
+{
+    const auto* node = catalog.field(definition, "Scale_Factor").field;
+    if (node == nullptr)
+    {
+        return 1.0F;
+    }
+    const auto scale = type_float_field(catalog, definition, "Scale_Factor");
+    if (!std::isfinite(scale) || scale <= 0.0F)
+    {
+        warnings.push_back(definition.name + ": Scale_Factor '" + node->text + "' is not a positive number; drawn at 1");
+        return 1.0F;
+    }
+    return scale;
+}
+
+std::array<float, 16> scaled_model_transform(std::array<float, 16> transform, const float scale) noexcept
+{
+    for (std::size_t row = 0; row < 3; ++row)
+    {
+        for (std::size_t column = 0; column < 3; ++column)
+        {
+            transform[row * 4 + column] *= scale;
+        }
+    }
+    return transform;
+}
+
 float type_soft_footprint_radius(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto radius = type_float_field(catalog, definition, "Custom_Soft_Footprint_Radius");

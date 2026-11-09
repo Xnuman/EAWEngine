@@ -92,8 +92,13 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
     for (const auto& type : spawnable)
     {
         EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which the scene does not have");
-        // The template's transform is the model's own frame; pose_transform turns and places it.
+        // The template's transform is the model's own frame at its Scale_Factor; pose_transform turns
+        // and places it, keeping the scale.
         VisualInstance instance{type.mesh};
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            instance.transform[axis * 5] = type.scale;
+        }
         instance.team_color = type.team_color;
         spawn_templates_.push_back({instance, identity_model_heading, type.death});
     }
@@ -150,6 +155,10 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableType> types
     {
         EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which presentation does not know");
         VisualInstance instance{type.mesh};
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            instance.transform[axis * 5] = type.scale;
+        }
         instance.team_color = type.team_color;
         spawn_templates_.push_back({instance, identity_model_heading, type.death});
     }

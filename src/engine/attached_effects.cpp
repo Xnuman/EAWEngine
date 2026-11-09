@@ -120,7 +120,15 @@ void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualI
                     shown = m[0] != 0.0F || m[5] != 0.0F || m[10] != 0.0F;
                 }
             }
-            const auto world_transform = multiply(bone, instance.transform);
+            // The instance's uniform scale (a type's Scale_Factor) sizes the effect, particles
+            // included: it is taken out of the transform and given to the particle world.
+            auto world_transform = multiply(bone, instance.transform);
+            const auto scale = std::sqrt(instance.transform[0] * instance.transform[0] + instance.transform[1] * instance.transform[1] + instance.transform[2] * instance.transform[2]);
+            const auto effect_scale = std::isfinite(scale) && scale > 0.0F ? scale : 1.0F;
+            for (std::size_t element = 0; element < 12; ++element)
+            {
+                world_transform[element] /= effect_scale;
+            }
             const auto key = key_of(entity, a);
             auto found = playing_.find(key);
             if (found == playing_.end())
@@ -131,7 +139,7 @@ void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualI
                     continue;
                 }
                 const auto seed = key * 0x9e3779b97f4a7c15ULL + 1U;
-                const auto id = world.play(attachment.effect, world_transform, seed, attachment.emit_mesh);
+                const auto id = world.play(attachment.effect, world_transform, seed, attachment.emit_mesh, effect_scale);
                 if (!id.valid())
                 {
                     continue;

@@ -47,8 +47,10 @@ struct CombatContent
 // (a fire bone's X axis is its firing direction in the stock models). Bone positions come from
 // `model`'s bind pose (models face -Y; see model_forward_heading); without a model or bone they
 // are at the origin and the weapon covers all around.
+// `model_scale` is the type's Scale_Factor: hardpoint and fire-bone positions come from the model's
+// bones and scale with it.
 [[nodiscard]] CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings,
-                                           const AloModel* model = nullptr);
+                                           const AloModel* model = nullptr, float model_scale = 1.0F);
 
 // TED owner slot that holds the world's props and markers (179k of the stock placements, nearly
 // all of them props, markers, and decorations; see docs/compatibility-research.md).

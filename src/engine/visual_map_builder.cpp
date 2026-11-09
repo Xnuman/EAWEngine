@@ -160,12 +160,12 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     spawnable.combat = build.profile_of(*definition, decoded && decoded->ok() ? &decoded->value() : nullptr);
     note_damage_bones(build.builder, *path, spawnable.combat);
     spawnable.hover_offset = type_float_field(build.catalog, *definition, "Hover_Offset");
+    spawnable.scale = type_scale_factor(build.catalog, *definition, build.builder.scene.warnings);
     spawnable.death = type_death_style(build.catalog, *definition);
     if (spawnable.max_speed > 0.0F)
     {
-        static constexpr std::array<float, 16> identity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
         const auto soft_radius = type_soft_footprint_radius(build.catalog, *definition);
-        spawnable.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(build.builder.scene, spawnable.mesh, identity);
+        spawnable.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(build.builder.scene, spawnable.mesh, scaled_model_transform(visual_identity_transform, spawnable.scale));
         spawnable.turn_rate = type_turn_rate(build.catalog, *definition);
         spawnable.min_speed = build.land ? 0.0F : type_min_flight_speed(build.catalog, *definition, spawnable.max_speed);
         spawnable.aims_with_body = type_aims_with_body(build.catalog, *definition);
@@ -216,7 +216,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         auto found = combat_profiles.find(&definition);
         if (found == combat_profiles.end())
         {
-            found = combat_profiles.emplace(&definition, combat_profile(catalog, definition, *combat_entry, asset.scene.warnings, model)).first;
+            std::vector<std::string> scale_warnings;
+            found = combat_profiles.emplace(&definition, combat_profile(catalog, definition, *combat_entry, asset.scene.warnings, model, type_scale_factor(catalog, definition, scale_warnings))).first;
         }
         return found->second;
     };
@@ -299,10 +300,12 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             ++asset.unrenderable_placements;
             continue;
         }
-        // Instances start in their mesh's rest pose (build_map_rigs sets the bone offsets).
-        VisualInstance instance{*entry->second, placement.transform.values};
+        // Instances start in their mesh's rest pose (build_map_rigs sets the bone offsets). The type's
+        // Scale_Factor sizes the model; separation and obstacle footprints are measured through it.
+        const auto model_scale = placement.type != nullptr ? type_scale_factor(catalog, *placement.type, scene.warnings) : 1.0F;
+        VisualInstance instance{*entry->second, scaled_model_transform(placement.transform.values, model_scale)};
         {
-            const auto& matrix = placement.transform.values;
+            const auto& matrix = instance.transform;
             EntitySpawn spawn;
             spawn.type_name = placement.type != nullptr ? placement.type->name : std::string{};
             spawn.owner = map.placed_objects[placement.object_index].player;
@@ -515,7 +518,11 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
         auto found = profiles.find(&definition);
         if (found == profiles.end())
         {
-            found = profiles.emplace(&definition, combat_profile(catalog_entry->catalog, definition, *combat_entry, package.meshes.warnings, model)).first;
+            std::vector<std::string> scale_warnings;
+            found = profiles
+                        .emplace(&definition, combat_profile(catalog_entry->catalog, definition, *combat_entry, package.meshes.warnings, model,
+                                                             type_scale_factor(catalog_entry->catalog, definition, scale_warnings)))
+                        .first;
         }
         return found->second;
     };

@@ -300,6 +300,12 @@ std::optional<std::uint32_t> type_obstacle_passability(const GameObjectCatalog& 
 
 // XML Custom_Soft_Footprint_Radius (infantry 3.5), or 0 when it is missing.
 float type_soft_footprint_radius(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// A type's XML Scale_Factor (inherited through Variant_Of_Existing_Type), the size its model is drawn
+// at; 1 when absent, and 1 with a warning when not a positive number.
+float type_scale_factor(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings);
+// `transform` (row-vector) with its model axes scaled by `scale`, so the model is drawn `scale` times
+// its file size about its own origin.
+std::array<float, 16> scaled_model_transform(std::array<float, 16> transform, float scale) noexcept;
 
 // XML Max_Rate_Of_Turn in radians per second (provisional_turn_rate_scale); 0 turns instantly.
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition);

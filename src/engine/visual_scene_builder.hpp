@@ -151,6 +151,9 @@ struct SpawnableType
     bool follows_ground{};
     // XML Hover_Offset: height above the surface for flyers (air whales 250, snowspeeders 50).
     float hover_offset{};
+    // XML Scale_Factor: the size its model is drawn at (and its model-derived footprint and
+    // hardpoint positions).
+    float scale{1.0F};
     // Passability types its MovementClass may enter (MovementClassTypeDefs.xml).
     std::uint32_t passable_types{};
     // Health, shields, armor, and weapon from XML (combat_content.hpp).

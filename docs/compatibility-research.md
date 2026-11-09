@@ -836,8 +836,22 @@ particle-audit`.
   name `W_LASER_INVISIBLE.ALO`, whose single additive quad uses the visible
   `W_Laser_Small.tga` and is not flagged hidden; why the original shows nothing
   for them (if it does not) is unknown, so the engine draws it as authored.
-  Unit types also carry `Scale_Factor` (465 stock types other than 1), which
-  the engine does not apply yet.
+- **Unit `Scale_Factor`.** 465 stock unit types set a `Scale_Factor` other
+  than 1 (0.17 to 4.0: X-wings and TIE fighters 0.7, the Corellian corvette
+  0.5, the AT-ST 1.6, Star Destroyers 1.0), inherited through
+  `Variant_Of_Existing_Type`. The engine draws a type's model at that scale
+  (placed objects: the TED placement transform times the scale; spawned types:
+  their presentation template), and measures what it derives from the model
+  through the same scale: separation radii and obstacle footprints from model
+  bounds, and hardpoint and fire-bone positions from model bones (so weapons
+  fire from the scaled hull). Attached effects (engine glows, fires) take the
+  unit's scale too, particle sizes included. An XML
+  `Custom_Soft_Footprint_Radius` stays as written. That the original scales
+  collision and hardpoints with the model is an inference (it draws the model
+  scaled, and its bones move with it). Engine glows tuned earlier against the
+  owner's screenshots were measured on unscaled X-wings and need rechecking at
+  0.7. State hashes changed with this; order logs recorded before do not
+  verify.
 - **Impact and death effects.** Gameplay effects are not hard-coded per
   weapon class: the game names them through XML `Particle` objects
   (`Particles.xml`, 165 stock objects), each giving a `Space_Model_Name` and

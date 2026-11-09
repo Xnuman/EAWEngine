@@ -261,7 +261,7 @@ struct BonePlacement
     float direction{};
 };
 
-std::optional<BonePlacement> find_bone(const AloModel* model, const std::vector<AloMatrix4>& pose, const std::string_view name)
+std::optional<BonePlacement> find_bone(const AloModel* model, const std::vector<AloMatrix4>& pose, const std::string_view name, const float scale)
 {
     if (model == nullptr || name.empty())
     {
@@ -277,7 +277,7 @@ std::optional<BonePlacement> find_bone(const AloModel* model, const std::vector<
         const auto& m = pose[index].values;
         BonePlacement placement;
         placement.index = static_cast<std::uint32_t>(index);
-        placement.point = {-m[13], m[12], m[14]};
+        placement.point = {-m[13] * scale, m[12] * scale, m[14] * scale};
         placement.direction = std::atan2(m[0], -m[1]);
         return placement;
     }
@@ -317,7 +317,8 @@ const XmlDefinition* find_hardpoint(const GameObjectCatalog& catalog, const std:
 
 } // namespace
 
-CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings, const AloModel* model)
+CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings, const AloModel* model,
+                             const float model_scale)
 {
     const auto pose = model != nullptr ? model->bind_pose() : std::vector<AloMatrix4>{};
     const FieldReader type(catalog, definition, warnings);
@@ -384,22 +385,22 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 const auto* node = point.node(field);
                 return node != nullptr ? std::string(trim(node->text)) : std::string{};
             };
-            const auto attachment = find_bone(model, pose, bone_name("Attachment_Bone"));
-            const auto fire_bone = find_bone(model, pose, bone_name("Fire_Bone_A"));
+            const auto attachment = find_bone(model, pose, bone_name("Attachment_Bone"), model_scale);
+            const auto fire_bone = find_bone(model, pose, bone_name("Fire_Bone_A"), model_scale);
             HardpointProfile part;
             part.kind = kind;
             part.health = point.flag("Is_Destroyable", true) ? point.amount("Health") : 0.0F;
             part.targetable = point.flag("Is_Targetable", true);
             part.offset = attachment ? attachment->point : fire_bone ? fire_bone->point : LocalPoint{};
-            if (const auto damage = find_bone(model, pose, bone_name("Damage_Particles")))
+            if (const auto damage = find_bone(model, pose, bone_name("Damage_Particles"), model_scale))
             {
                 part.damage_bone = static_cast<std::int32_t>(damage->index);
             }
-            if (const auto decal = find_bone(model, pose, bone_name("Damage_Decal")))
+            if (const auto decal = find_bone(model, pose, bone_name("Damage_Decal"), model_scale))
             {
                 part.decal_bone = static_cast<std::int32_t>(decal->index);
             }
-            if (const auto engine = find_bone(model, pose, bone_name("Engine_Particles")))
+            if (const auto engine = find_bone(model, pose, bone_name("Engine_Particles"), model_scale))
             {
                 part.engine_bone = static_cast<std::int32_t>(engine->index);
             }

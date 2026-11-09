@@ -44,7 +44,7 @@ void test_combat_content()
                 "<HardPoint Name=\"HP_Gun\"><Type> HARD_POINT_WEAPON_LASER </Type><Fire_Projectile_Type>Proj_Tank</Fire_Projectile_Type>"
                 "<Fire_Min_Recharge_Seconds>3</Fire_Min_Recharge_Seconds><Fire_Max_Recharge_Seconds>4</Fire_Max_Recharge_Seconds><Fire_Pulse_Count>7</Fire_Pulse_Count>"
                 "<Fire_Pulse_Delay_Seconds>0.2</Fire_Pulse_Delay_Seconds><Fire_Range_Distance>2000</Fire_Range_Distance><Damage_Type>Damage_Unknown</Damage_Type></HardPoint>"
-                "<HardPoint Name=\"HP_Shield\"><Type>HARD_POINT_SHIELD_GENERATOR</Type><Health>375</Health></HardPoint>"
+                "<HardPoint Name=\"HP_Shield\"><Type>HARD_POINT_SHIELD_GENERATOR</Type><Health>375</Health><Attachment_Bone>HP_Bone</Attachment_Bone></HardPoint>"
                 "<SpaceUnit Name=\"Cruiser\"><Tactical_Health>500</Tactical_Health><Targeting_Max_Attack_Distance>1500</Targeting_Max_Attack_Distance>"
                 "<HardPoints>HP_Gun, HP_Shield,\n HP_Gun HP_Missing</HardPoints></SpaceUnit>"
                 "<GroundVehicle Name=\"Broken_Gun\"><Tactical_Health>10</Tactical_Health><Projectile_Types>Proj_Missing</Projectile_Types>"
@@ -89,6 +89,22 @@ void test_combat_content()
     require(cruiser.hardpoints.size() == 3 && cruiser.hardpoints[0].kind == Kind::weapon && cruiser.hardpoints[1].kind == Kind::shield_generator && cruiser.hardpoints[1].health == 375.0F &&
                 cruiser.hardpoints[0].health == 0.0F && cruiser.weapons[0].hardpoint == 0 && cruiser.weapons[1].hardpoint == 2 && cruiser.weapons[0].cone_half_angle >= 3.14F,
             "every hardpoint must become a part (health, kind), weapons must name their hardpoint, and without bones cover all around");
+    {
+        // Hardpoint positions come from model bones and scale with the type's Scale_Factor. Models face
+        // -Y, so a bone at (4, -6, 2) sits 6 forward, 4 left, and 2 up.
+        eaw::AloModel model;
+        eaw::AloBone bone;
+        bone.name = "HP_Bone";
+        bone.transform = {1.0F, 0.0F, 0.0F, 4.0F, 0.0F, 1.0F, 0.0F, -6.0F, 0.0F, 0.0F, 1.0F, 2.0F};
+        model.bones.push_back(bone);
+        std::vector<std::string> scale_warnings;
+        const auto unscaled = eaw::combat_profile(catalog, *definition("Cruiser"), content, scale_warnings, &model);
+        const auto scaled = eaw::combat_profile(catalog, *definition("Cruiser"), content, scale_warnings, &model, 2.0F);
+        const auto& part = unscaled.hardpoints[1].offset;
+        const auto& doubled = scaled.hardpoints[1].offset;
+        require(part.forward == 6.0F && part.left == 4.0F && part.up == 2.0F && doubled.forward == 12.0F && doubled.left == 8.0F && doubled.up == 4.0F,
+                "hardpoint positions must come from bones and scale with the model");
+    }
     const auto& turbolaser = cruiser.weapons.front();
     require(turbolaser.recharge_seconds == 3.5F && turbolaser.pulse_count == 7 && turbolaser.pulse_delay_seconds == 0.2F && turbolaser.damage == 7.5F && turbolaser.damage_type == 0 &&
                 turbolaser.projectile_speed == 10.0F * eaw::provisional_max_speed_scale,

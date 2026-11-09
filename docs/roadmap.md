@@ -317,10 +317,11 @@ Known provisional choices to verify against the original:
 - ranges measured in the ground plane;
 - the owner-slot hostility rule;
 - world handedness;
-- unit `Scale_Factor`: 465 stock unit types set one other than 1 and the
-  engine ignores it (models drawn at file size, footprints from unscaled
-  bounds); applying it changes simulation footprints and state hashes, so it
-  waits for an owner decision;
+- whether unit `Scale_Factor` (applied since 2026-11-09 to models, attached
+  effects, model-derived footprints, and hardpoint positions) also scales
+  collision and selection in the original the same way, and whether an XML
+  `Custom_Soft_Footprint_Radius` is meant before or after it (the engine
+  leaves it unscaled);
 - why `W_LASER_INVISIBLE.ALO` (the land model of 19 melee and environment
   projectiles: dark trooper blades, force pikes, Felucia spikes) is invisible
   in the original: its mesh is an unhidden additive quad textured with the
