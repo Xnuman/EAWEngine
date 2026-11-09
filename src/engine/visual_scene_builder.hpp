@@ -7,6 +7,7 @@
 #include "eaw/ted_map.hpp"
 #include "eaw/visual_scene.hpp"
 #include "particle_effects.hpp"
+#include "projectile_visuals.hpp"
 
 #include <array>
 #include <cstddef>
@@ -215,6 +216,9 @@ struct VisualMapAsset
     std::vector<VisualTexture> particle_textures;
     // The effects MapBuildOptions::effects named, in order (null where one could not be loaded).
     std::vector<std::shared_ptr<const ParticleEffect>> effects;
+    // How shots look, as in SpawnablePackage.
+    ProjectileVisualTable projectile_visuals;
+    std::uint32_t projectile_atlas{invalid_visual_texture};
 };
 
 // Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file
@@ -234,6 +238,9 @@ struct MapBuildOptions
     // Particle effects to load by name (model references, as proxies name them) into
     // VisualMapAsset::effects, for viewing (sandbox --effect).
     std::vector<std::string> effects;
+    // How particle effects are interpreted (docs/architecture.md, "Content contract versus legacy
+    // implementation").
+    ParticleFidelity particle_fidelity{ParticleFidelity::legacy};
 };
 [[nodiscard]] Result<VisualMapAsset> build_visual_map(const AssetReader& reader, std::string_view map_path, AssetCache* cache = nullptr, std::span<const std::string> spawn_types = {},
                                                       const MapBuildOptions& options = {});
@@ -250,6 +257,10 @@ struct SpawnablePackage
     // Textures of the rigs' particle effects (register with D3d12Renderer::add_textures and renumber
     // the effects with renumber_effect_textures).
     std::vector<VisualTexture> particle_textures;
+    // How the types' shots look, and the bolt atlas's index in particle_textures (or
+    // invalid_visual_texture).
+    ProjectileVisualTable projectile_visuals;
+    std::uint32_t projectile_atlas{invalid_visual_texture};
 };
 // Builds a type for a land or space map through the same cached XML catalog, movement classes, and
 // combat data as build_visual_map (an error when the type has no model for that context).

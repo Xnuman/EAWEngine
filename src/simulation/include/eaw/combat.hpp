@@ -76,6 +76,9 @@ struct WeaponProfile
     // The hardpoint the weapon is mounted on (its index in CombatProfile::hardpoints), or -1. The
     // weapon is silent once that hardpoint is destroyed.
     std::int32_t hardpoint{-1};
+    // Presentation only (not simulation state): which projectile type its shots look like (the
+    // CRC-32 of the type name, as game_object_name_crc), or 0.
+    std::uint32_t projectile_visual{};
 };
 
 struct CombatProfile

@@ -263,6 +263,8 @@ add_library(eaw_engine STATIC
     src/engine/camera_math.cpp
     src/engine/debug_draw.cpp
     src/engine/particle_effects.cpp
+    src/engine/particle_rules.cpp
+    src/engine/projectile_visuals.cpp
     src/engine/rts_control.cpp
     src/engine/combat_content.cpp
     src/engine/sandbox_content.cpp

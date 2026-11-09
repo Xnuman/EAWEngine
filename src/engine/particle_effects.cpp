@@ -185,30 +185,6 @@ Vec3 sample_group(const ParticleGroup& group, Random& random)
     }
 }
 
-VisualParticleBlend blend_of(const std::uint32_t mode)
-{
-    // The legacy particle shader table (docs/compatibility-research.md); stock data uses 1, 2, and 11.
-    switch (mode)
-    {
-    case 1:
-    case 4:
-        return VisualParticleBlend::additive;
-    case 3:
-    case 6:
-    case 8:
-    case 9:
-        return VisualParticleBlend::modulate;
-    default:
-        return VisualParticleBlend::alpha;
-    }
-}
-
-bool renderable(const ParticleEmitter& emitter)
-{
-    // No heat-distortion or weather pass exists yet.
-    return !emitter.heat && !emitter.weather && emitter.blend_mode != 10;
-}
-
 } // namespace
 
 float sample_particle_track(const ParticleTrack& track, const float t) noexcept
@@ -262,6 +238,8 @@ struct ParticleWorld::Particle
     // Seconds of the current update this particle lives through when it was emitted during it
     // (sub-frame emission); negative for the whole update.
     float step{-1.0F};
+    // Unit direction of the spawn offset from the emitter (inward speed and acceleration act along it).
+    Vec3 outward{};
 };
 
 struct ParticleWorld::EmitterState
@@ -317,7 +295,7 @@ const ParticleWorld::Instance* ParticleWorld::find(const ParticleInstanceId id) 
 
 ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> effect, const std::array<float, 16>& transform, const std::uint64_t seed, std::shared_ptr<const ParticleEmitMesh> mesh)
 {
-    if (!effect || effect->system.emitters.empty())
+    if (!effect || effect->emitters.empty())
     {
         return {};
     }
@@ -346,13 +324,13 @@ ParticleInstanceId ParticleWorld::play(std::shared_ptr<const ParticleEffect> eff
     instance.previous_origin = origin(transform);
     instance.previous_transform = transform;
     instance.random = Random(seed);
-    const auto& emitters = instance.effect->system.emitters;
+    const auto& emitters = instance.effect->emitters;
     instance.emitters.resize(emitters.size());
     for (std::size_t e = 0; e < emitters.size(); ++e)
     {
         auto& state = instance.emitters[e];
         state.next_emission = std::max(0.0F, emitters[e].initial_delay);
-        state.drawn = renderable(emitters[e]);
+        state.drawn = emitters[e].drawn;
         if (!state.drawn)
         {
             // Never emits, so it does not keep a one-shot effect alive.
@@ -412,7 +390,7 @@ void ParticleWorld::stop(const ParticleInstanceId id)
         return;
     }
     instance->stopped = true;
-    if (!instance->effect->system.leave_particles)
+    if (!instance->effect->leave_particles)
     {
         release(id.index);
     }
@@ -467,13 +445,13 @@ bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, co
         ++totals_.dropped_particles;
         return false;
     }
-    const auto& emitter = instance.effect->system.emitters[emitter_index];
+    const auto& emitter = instance.effect->emitters[emitter_index];
     auto& random = instance.random;
     Particle particle;
     const auto& transform = instance.transform;
-    auto local_position = sample_group(emitter.groups[2], random);
-    auto local_velocity = sample_group(emitter.groups[0], random);
-    if (emitter.emit_from_mesh != 0 && instance.mesh)
+    auto local_position = sample_group(emitter.position_shape, random);
+    auto local_velocity = sample_group(emitter.velocity_shape, random);
+    if (emitter.mesh_emission != ParticleMeshEmission::none && instance.mesh)
     {
         // On the emitter mesh: every vertex in turn (3), a random vertex (1), or a random point on a
         // random triangle (2), pushed out along the normal; the velocity's +Z turns to the normal.
@@ -481,7 +459,7 @@ bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, co
         const auto vertices = mesh.positions.size();
         Vec3 point{};
         Vec3 normal{0.0F, 0.0F, 1.0F};
-        if (emitter.emit_from_mesh == 2 && mesh.indices.size() >= 3)
+        if (emitter.mesh_emission == ParticleMeshEmission::random_surface && mesh.indices.size() >= 3)
         {
             const auto triangle = std::min<std::size_t>(static_cast<std::size_t>(random.unit() * static_cast<float>(mesh.indices.size() / 3U)), mesh.indices.size() / 3U - 1U) * 3U;
             auto w1 = random.unit();
@@ -502,7 +480,9 @@ bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, co
         else
         {
             auto& cursor = instance.emitters[emitter_index].mesh_cursor;
-            const auto vertex = emitter.emit_from_mesh == 3 ? cursor++ % vertices : std::min<std::size_t>(static_cast<std::size_t>(random.unit() * static_cast<float>(vertices)), vertices - 1U);
+            const auto vertex = emitter.mesh_emission == ParticleMeshEmission::every_vertex
+                                    ? cursor++ % vertices
+                                    : std::min<std::size_t>(static_cast<std::size_t>(random.unit() * static_cast<float>(vertices)), vertices - 1U);
             point = mesh.positions[vertex];
             normal = mesh.normals[vertex];
         }
@@ -511,7 +491,7 @@ bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, co
         {
             normal = {0.0F, 0.0F, 1.0F};
         }
-        local_position = point + normal * emitter.emit_from_mesh_offset;
+        local_position = point + normal * emitter.mesh_offset;
         // A basis whose Z is the normal.
         const Vec3 helper = std::abs(normal[2]) < 0.9F ? Vec3{0.0F, 0.0F, 1.0F} : Vec3{1.0F, 0.0F, 0.0F};
         const auto side = normalized(Vec3{helper[1] * normal[2] - helper[2] * normal[1], helper[2] * normal[0] - helper[0] * normal[2], helper[0] * normal[1] - helper[1] * normal[0]});
@@ -521,45 +501,35 @@ bool ParticleWorld::emit(Instance& instance, const std::size_t emitter_index, co
     particle.position = transform_point(transform, local_position) + offset;
     particle.step = step;
     particle.velocity = transform_direction(transform, local_velocity);
-    if (emitter.inward_speed != 0.0F)
-    {
-        // As in the reference, the stored value moves particles away from the emitter when positive.
-        const auto outward = normalized(transform_direction(transform, local_position));
-        if (length(outward) > 0.0F)
-        {
-            particle.velocity = outward * emitter.inward_speed;
-        }
-    }
+    // "Inward" speed and acceleration act along the spawn offset from the emitter, fixed at spawn. The
+    // stored values move particles outward when positive (the GlyphX particle editor shows them
+    // negated, as inward amounts).
+    particle.outward = normalized(transform_direction(transform, local_position));
+    particle.velocity = particle.velocity + particle.outward * emitter.outward_speed;
     if (parent != nullptr)
     {
         particle.position = particle.position - origin(transform) + parent->position;
-        if (emitter.parent_link_strength != 0.0F)
+        if (emitter.parent_velocity != 0.0F)
         {
-            particle.velocity = particle.velocity + parent->velocity * emitter.parent_link_strength;
+            particle.velocity = particle.velocity + parent->velocity * emitter.parent_velocity;
         }
     }
-    particle.lifetime = std::max(0.01F, emitter.lifetime * (1.0F + random.range(0.0F, std::max(0.0F, emitter.random_lifetime))));
-    const auto variance = std::max(0.0F, emitter.random_scale) * 0.5F;
-    particle.size_factor = (1.0F + random.range(-variance, variance)) / (1.0F + variance);
-    if (emitter.random_rotation)
+    particle.lifetime = std::max(0.01F, emitter.lifetime * random.range(emitter.lifetime_min_fraction, 1.0F));
+    particle.size_factor = random.range(emitter.size_min_fraction, 1.0F);
+    if (emitter.fixed_rotation)
     {
-        // A fixed random angle: the reference derives its mean from the rotation track's first value
-        // (fractional revolutions) and its spread relative to that mean.
-        const auto first = emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::rotation_speed)].keys.front().value;
-        const auto mean = first > 0.0F ? first - std::floor(first) : 0.0F;
-        const auto spread = first > 0.0F ? emitter.random_rotation_variance / first : 0.0F;
-        particle.rotation = mean * (1.0F + random.range(-spread, spread));
+        particle.rotation = emitter.rotation_mean * (1.0F + random.range(-emitter.rotation_spread, emitter.rotation_spread));
     }
     if (emitter.random_rotation_direction && random.unit() < 0.5F)
     {
         particle.rotation_direction = -1.0F;
         particle.rotation = -particle.rotation;
     }
-    const auto& add = emitter.random_colors;
+    const auto& add = emitter.color_variance;
     particle.color_add[0] = random.range(0.0F, std::max(0.0F, add[0]));
     for (std::size_t channel = 1; channel < 4; ++channel)
     {
-        particle.color_add[channel] = emitter.random_color_grayscale ? particle.color_add[0] : random.range(0.0F, std::max(0.0F, add[channel]));
+        particle.color_add[channel] = emitter.color_variance_grayscale ? particle.color_add[0] : random.range(0.0F, std::max(0.0F, add[channel]));
     }
     instance.emitters[emitter_index].particles.push_back(particle);
     ++live_particles_;
@@ -573,22 +543,22 @@ void ParticleWorld::kill(Instance& instance, const std::size_t emitter_index, co
     particles[particle_index] = particles.back();
     particles.pop_back();
     --live_particles_;
-    const auto& emitter = instance.effect->system.emitters[emitter_index];
+    const auto& emitter = instance.effect->emitters[emitter_index];
     if (emitter.death_child >= 0 && instance.emitters.size() > static_cast<std::size_t>(emitter.death_child))
     {
         // Engine choice: a death child emits one burst (or one particle when it is continuous).
         const auto child = static_cast<std::size_t>(emitter.death_child);
-        const auto& child_emitter = instance.effect->system.emitters[child];
-        const auto count = child_emitter.use_bursts ? std::min<std::size_t>(child_emitter.particles_per_burst, maximum_trail_burst) : std::size_t{1};
+        const auto& child_emitter = instance.effect->emitters[child];
+        const auto count = std::min<std::size_t>(child_emitter.per_spawn, maximum_trail_burst);
         for (std::size_t n = 0; n < count && emit(instance, child, &parent); ++n)
         {
         }
     }
 }
 
-void ParticleWorld::step_instance(Instance& instance, const float seconds)
+void ParticleWorld::step_instance(Instance& instance, const float update_seconds)
 {
-    const auto& emitters = instance.effect->system.emitters;
+    const auto& emitters = instance.effect->emitters;
     const auto current_origin = origin(instance.transform);
     const auto moved = current_origin - instance.previous_origin;
     instance.previous_origin = current_origin;
@@ -600,11 +570,18 @@ void ParticleWorld::step_instance(Instance& instance, const float seconds)
     {
         const auto& emitter = emitters[e];
         auto& state = instance.emitters[e];
+        // Freeze time stops the emitter's clock (no emission, particles hold still) once reached,
+        // when it is not inside the skipped time (the particle editor's rule).
+        auto seconds = update_seconds;
+        if (emitter.freeze_time > 0.0F)
+        {
+            seconds = std::clamp(emitter.freeze_time - state.clock, 0.0F, update_seconds);
+        }
         // Emission on the emitter's own clock.
         state.clock += seconds;
         if (!state.child && !state.finished && may_emit && state.drawn)
         {
-            const auto interval = emitter.use_bursts ? std::max(emitter.burst_delay, 1.0F / 120.0F) : 1.0F / static_cast<float>(std::max<std::uint32_t>(emitter.particles_per_second, 1U));
+            const auto interval = emitter.interval;
             // Each emission happens at its own time within the update, where the emitter was then
             // (its translation interpolated), so a moving emitter leaves an even trail.
             const auto update_start = state.clock - seconds;
@@ -612,11 +589,12 @@ void ParticleWorld::step_instance(Instance& instance, const float seconds)
             {
                 const auto fraction = seconds > 0.0F ? std::clamp((state.next_emission - update_start) / seconds, 0.0F, 1.0F) : 1.0F;
                 // Linked particles spawn where the emitter is now (they move with it from then on).
-                const auto behind = emitter.link_to_system ? Vec3{} : moved * -(1.0F - fraction);
+                const auto behind = emitter.link != ParticleLinkMode::none ? Vec3{} : moved * -(1.0F - fraction);
                 const auto remaining = seconds * (1.0F - fraction);
                 // Every-vertex mesh emitters emit once per vertex per spawn.
-                const auto per_vertex = emitter.emit_from_mesh == 3 && instance.mesh ? static_cast<std::uint32_t>(std::min<std::size_t>(instance.mesh->positions.size(), 4096U)) : 1U;
-                const auto count = (emitter.use_bursts ? emitter.particles_per_burst : 1U) * per_vertex;
+                const auto per_vertex =
+                    emitter.mesh_emission == ParticleMeshEmission::every_vertex && instance.mesh ? static_cast<std::uint32_t>(std::min<std::size_t>(instance.mesh->positions.size(), 4096U)) : 1U;
+                const auto count = emitter.per_spawn * per_vertex;
                 for (std::uint32_t n = 0; n < count; ++n)
                 {
                     if (!emit(instance, e, nullptr, behind, remaining))
@@ -625,7 +603,7 @@ void ParticleWorld::step_instance(Instance& instance, const float seconds)
                     }
                 }
                 state.next_emission += interval;
-                if (emitter.use_bursts && emitter.burst_count > 0 && ++state.bursts >= emitter.burst_count)
+                if (emitter.spawn_limit > 0 && ++state.bursts >= emitter.spawn_limit)
                 {
                     state.finished = true;
                 }
@@ -639,7 +617,7 @@ void ParticleWorld::step_instance(Instance& instance, const float seconds)
 
         // Motion.
         Vec3 acceleration{0.0F, 0.0F, -emitter.gravity};
-        acceleration = acceleration + (emitter.object_space_acceleration ? transform_direction(instance.transform, to_vec(emitter.acceleration)) : to_vec(emitter.acceleration));
+        acceleration = acceleration + (emitter.acceleration_in_emitter_frame ? transform_direction(instance.transform, emitter.acceleration) : emitter.acceleration);
         const auto& rotation_track = emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::rotation_speed)];
         for (std::size_t p = 0; p < state.particles.size();)
         {
@@ -654,36 +632,36 @@ void ParticleWorld::step_instance(Instance& instance, const float seconds)
                 continue;
             }
             // Particles emitted in this update already sit at the current transform.
-            if (emitter.link_to_system && !fresh)
+            if (!fresh && emitter.link == ParticleLinkMode::rigid)
             {
                 particle.position = transform_point(carried, particle.position);
                 particle.velocity = transform_direction(carried, particle.velocity);
             }
+            else if (!fresh && emitter.link == ParticleLinkMode::translation)
+            {
+                particle.position = particle.position + moved;
+            }
             if (!particle.resting)
             {
-                auto pull = acceleration;
-                if (emitter.inward_acceleration != 0.0F)
-                {
-                    pull = pull + normalized(current_origin - particle.position) * emitter.inward_acceleration;
-                }
+                const auto pull = acceleration + particle.outward * emitter.outward_acceleration;
                 particle.velocity = particle.velocity + pull * dt;
                 particle.position = particle.position + particle.velocity * dt;
             }
-            if (!emitter.random_rotation)
+            if (!emitter.fixed_rotation)
             {
                 particle.rotation += dt * particle.rotation_direction * sample_particle_track(rotation_track, particle.age / particle.lifetime);
             }
-            if (emitter.ground_behavior != 0 && ground_)
+            if (emitter.ground != ParticleGround::none && ground_)
             {
                 if (const auto ground = ground_(particle.position[0], particle.position[1]); ground && particle.position[2] < *ground)
                 {
-                    if (emitter.ground_behavior == 1)
+                    if (emitter.ground == ParticleGround::disappear)
                     {
                         kill(instance, e, p);
                         continue;
                     }
                     particle.position[2] = *ground;
-                    if (emitter.ground_behavior == 2 && std::abs(particle.velocity[2]) * emitter.bounciness > 1.0F)
+                    if (emitter.ground == ParticleGround::bounce && std::abs(particle.velocity[2]) * emitter.bounciness > 1.0F)
                     {
                         particle.velocity[2] = -particle.velocity[2] * emitter.bounciness;
                     }
@@ -699,14 +677,13 @@ void ParticleWorld::step_instance(Instance& instance, const float seconds)
             {
                 const auto child = static_cast<std::size_t>(emitter.life_child);
                 const auto& child_emitter = emitters[child];
-                const auto interval =
-                    child_emitter.use_bursts ? std::max(child_emitter.burst_delay, 1.0F / 120.0F) : 1.0F / static_cast<float>(std::max<std::uint32_t>(child_emitter.particles_per_second, 1U));
+                const auto interval = child_emitter.interval;
                 particle.trail_clock -= dt;
                 std::size_t emitted = 0;
                 while (particle.trail_clock <= 0.0F && emitted < maximum_trail_burst)
                 {
                     const auto parent = particle;
-                    const auto count = child_emitter.use_bursts ? child_emitter.particles_per_burst : 1U;
+                    const auto count = child_emitter.per_spawn;
                     for (std::uint32_t n = 0; n < count && emitted < maximum_trail_burst; ++n, ++emitted)
                     {
                         if (!emit(instance, child, &parent))
@@ -759,7 +736,9 @@ void ParticleWorld::build_sprites(const std::array<float, 3>& eye, std::vector<V
         {
             continue;
         }
-        const auto& emitters = instance.effect->system.emitters;
+        const auto& emitters = instance.effect->emitters;
+        const auto effect_offset = origin(instance.transform) - eye;
+        const auto effect_depth = effect_offset[0] * effect_offset[0] + effect_offset[1] * effect_offset[1] + effect_offset[2] * effect_offset[2];
         for (std::size_t e = 0; e < emitters.size(); ++e)
         {
             const auto& state = instance.emitters[e];
@@ -768,11 +747,12 @@ void ParticleWorld::build_sprites(const std::array<float, 3>& eye, std::vector<V
                 continue;
             }
             const auto& emitter = emitters[e];
-            const auto grid = std::max(1U, static_cast<std::uint32_t>(std::ceil(std::sqrt(static_cast<float>(std::max(emitter.texture_cells, 1U))))));
+            // Atlas cells indexed by the texture track rounded down, wrapping past the last.
+            const auto grid = emitter.atlas_side;
             const auto cell = 1.0F / static_cast<float>(grid);
             const auto texture = e < instance.effect->textures.size() ? instance.effect->textures[e] : invalid_visual_texture;
-            const auto blend = blend_of(emitter.blend_mode);
-            const auto shape = emitter.has_tail ? VisualParticleShape::kite : (emitter.world_oriented ? VisualParticleShape::ground : VisualParticleShape::billboard);
+            const auto blend = emitter.blend;
+            const auto shape = emitter.shape;
             const auto size_scale = 0.55F + 0.45F * instance.intensity;
             const auto alpha_scale = 0.45F + 0.55F * instance.intensity;
             for (const auto& particle : state.particles)
@@ -787,25 +767,36 @@ void ParticleWorld::build_sprites(const std::array<float, 3>& eye, std::vector<V
                     sprite.color[channel] = std::clamp(sample_particle_track(emitter.tracks[channel], t) + particle.color_add[channel], 0.0F, 1.0F);
                 }
                 sprite.color[3] *= alpha_scale;
-                const auto index = static_cast<std::uint32_t>(std::max(0.0F, std::floor(sample_particle_track(emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::texture_index)], t) + 0.5F)));
+                if (blend == VisualParticleBlend::additive)
+                {
+                    // This additive ignores alpha: dim the colour instead.
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                    {
+                        sprite.color[channel] *= alpha_scale;
+                    }
+                }
+                const auto index = static_cast<std::uint32_t>(std::max(0.0F, std::floor(sample_particle_track(emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::texture_index)], t))));
                 sprite.uv_rect = {static_cast<float>(index % grid) * cell, static_cast<float>((index / grid) % grid) * cell, cell, cell};
                 sprite.rotation = particle.rotation * two_pi;
                 sprite.texture = texture;
                 sprite.shape = shape;
                 sprite.blend = blend;
-                sprite.depth_test = !emitter.no_depth_test;
+                sprite.depth_test = emitter.depth_test;
                 if (shape == VisualParticleShape::kite)
                 {
                     sprite.axis = particle.velocity;
-                    sprite.tail = emitter.tail_size;
+                    sprite.tail = emitter.kite_tail * (emitter.kite_tail_by_speed ? length(particle.velocity) / 1000.0F : 1.0F);
                 }
                 sprites.push_back(sprite);
+                // Back to front per particle, or per effect keeping its emitters in list order and
+                // its particles in emission order (the original's draw order).
                 const auto offset = particle.position - eye;
-                depth.push_back(offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2]);
+                depth.push_back(draw_order_ == ParticleDrawOrder::back_to_front ? offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2] : effect_depth);
             }
         }
     }
-    // Back to front; the stable sort keeps equal depths in emission order, so frames do not flicker.
+    // Back to front; the stable sort keeps equal depths in list and emission order, so frames do not
+    // flicker.
     std::vector<std::uint32_t> order(depth.size());
     for (std::uint32_t index = 0; index < order.size(); ++index)
     {

@@ -230,6 +230,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     auto& scene = asset.scene;
     scene.name = resolved->virtual_path;
     SceneBuilder builder{vfs, scene, {}, cache, options.textures, options.animation_clips};
+    builder.particle_fidelity = options.particle_fidelity;
     scene.warnings.insert(scene.warnings.end(), combat_entry->warnings.begin(), combat_entry->warnings.end());
     if (asset.land)
     {
@@ -442,6 +443,16 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         {
             asset.effects.push_back(particle_effect(builder, name));
         }
+        std::vector<std::uint32_t> keys;
+        for (const auto& entity : asset.entities)
+        {
+            collect_projectile_keys(entity.spawn.combat, keys);
+        }
+        for (const auto& type : asset.spawnable)
+        {
+            collect_projectile_keys(type.combat, keys);
+        }
+        load_projectile_visuals(builder, catalog, keys, asset.projectile_visuals, asset.projectile_atlas);
     }
     asset.particle_textures = std::move(builder.particles.textures);
     constexpr std::size_t maximum_reported_diagnostics = 50;
@@ -479,6 +490,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
     SpawnablePackage package;
     package.meshes.name = std::string(type_name);
     SceneBuilder builder{vfs, package.meshes, {}, cache, options.textures, options.animation_clips};
+    builder.particle_fidelity = options.particle_fidelity;
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
     std::unordered_map<const XmlDefinition*, CombatProfile> profiles;
     const auto profile_of = [&](const XmlDefinition& definition, const AloModel* model) -> const CombatProfile&
@@ -502,6 +514,15 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
         return make_error("spawn type '" + std::string(type_name) + "' did not resolve to a single new type");
     }
     build_map_rigs(builder, package.rigs, package.rest_palette);
+    if (options.textures)
+    {
+        std::vector<std::uint32_t> keys;
+        for (const auto& type : package.types)
+        {
+            collect_projectile_keys(type.combat, keys);
+        }
+        load_projectile_visuals(builder, catalog_entry->catalog, keys, package.projectile_visuals, package.projectile_atlas);
+    }
     package.particle_textures = std::move(builder.particles.textures);
     return package;
 }

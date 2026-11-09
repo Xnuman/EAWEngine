@@ -177,6 +177,10 @@ struct ProjectileSnapshot
     // Unit direction of flight.
     SimVector3 direction;
     std::uint32_t owner{};
+    // Presentation only (not hashed): the weapon's projectile visual key, and the speed in world
+    // units per second (to place the shot between ticks).
+    std::uint32_t visual{};
+    float speed{};
 };
 
 // An entity combat destroyed in the last tick, where and how it last stood (for death animations
@@ -339,6 +343,8 @@ private:
         float speed{};
         float flown{};
         float max_flight{};
+        // Presentation key (WeaponProfile::projectile_visual); not hashed.
+        std::uint32_t visual{};
     };
 
     // What the behavior layer asks a locomotor for this tick. Ground and straight-line movers follow

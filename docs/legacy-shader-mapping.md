@@ -1,7 +1,7 @@
 # Legacy shader mapping
 
 This document records how the owner-provided Alamo Direct3D 9 reference corpus in
-`Shaders/` maps onto engine-native material data.
+`Reference Materials/Shaders/` maps onto engine-native material data.
 
 The profiles describe how a model was meant to render in Alamo. They drive the
 first render target, legacy mode, which approximates the original appearance
@@ -11,7 +11,7 @@ reference-profile table in `src/core/legacy_material.cpp`; keep the two in sync.
 
 The corpus is evidence only. Nothing here is compiled, embedded, or shipped, and
 the entries below describe observed behavior in engine terms rather than
-reproducing legacy code. See [Shaders/README.md](../Shaders/README.md) and
+reproducing legacy code. See [Reference Materials/Shaders/README.md](../Reference%20Materials/Shaders/README.md) and
 [Compatibility research](compatibility-research.md) for the boundary.
 
 ## Corpus inventory (observed 2026-11-07)

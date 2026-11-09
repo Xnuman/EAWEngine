@@ -48,8 +48,10 @@ struct SceneBuilder
     // Headless builds skip decoding what only drawing needs (MapBuildOptions).
     bool textures{true};
     bool animation_clips{true};
-    // Particle effects of model proxies (filled when textures are built; headless builds skip them).
+    // Particle effects of model proxies (filled when textures are built; headless builds skip them),
+    // normalized under this fidelity profile.
     ParticleLibrary particles;
+    ParticleFidelity particle_fidelity{ParticleFidelity::legacy};
     // Folded model path -> bones that the hardpoints of types using the model name in
     // Damage_Particles (their proxies are damage effects, not shown on intact ships) and in
     // Damage_Decal (their meshes are scorch marks, hidden on intact ships).
@@ -132,6 +134,14 @@ std::shared_ptr<const CachedTexture> cached_texture(const AssetReader& vfs, Asse
 // added to builder.particles; null with a warning when it is missing or malformed, and null without
 // one for a mesh ALO (proxies may name meshes).
 std::shared_ptr<const ParticleEffect> particle_effect(SceneBuilder& builder, const std::string& reference);
+
+// A texture added to builder.particles by its ALO-style reference (once), or invalid_visual_texture
+// with a warning naming `context`.
+std::uint32_t particle_library_texture(SceneBuilder& builder, const std::string& reference, const std::string& context);
+
+// Reads the projectile visuals `keys` name into `table` and, when any exists, loads the bolt atlas
+// into builder.particles (its index in `atlas`).
+void load_projectile_visuals(SceneBuilder& builder, const GameObjectCatalog& catalog, std::span<const std::uint32_t> keys, ProjectileVisualTable& table, std::uint32_t& atlas);
 
 // Notes the Damage_Particles and Damage_Decal bones of a type's hardpoints for the model at
 // `model_path`.

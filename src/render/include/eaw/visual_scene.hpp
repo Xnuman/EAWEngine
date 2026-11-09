@@ -215,17 +215,28 @@ enum class VisualParticleShape : std::uint8_t
     billboard,
     // A quad lying in the world XY plane (ground decals, shock rings), rotated about Z.
     ground,
-    // A quad stretched along `axis` (the particle's velocity) and turned toward the camera around
-    // it, extended by `tail` behind the particle (sparks, streaks).
+    // A diamond facing the camera with its trailing corner (texture top-left) pointing against `axis`
+    // (the particle's velocity) on screen and pushed out by max(1, tail x the velocity's on-screen
+    // fraction / sqrt 2) (sparks, streaks).
     kite,
+    // A bolt centered on `position`: `tail` long along `axis`, 2 x `half_size` wide, turned toward
+    // the camera around its axis. The texture cell holds a diagonal bolt (bottom-left to top-right)
+    // that is mapped along the axis.
+    beam,
+    // Like beam, but drawn as a teardrop (round head at the front tapering to a fading tail) in
+    // `color`, without a texture.
+    teardrop,
 };
 
 enum class VisualParticleBlend : std::uint8_t
 {
+    // Colour x texture added to the scene; alpha is ignored (the original's additive).
     additive,
     alpha,
     // Destination times source color (darkening).
     modulate,
+    // Colour x texture x alpha added to the scene (enhanced additive).
+    additive_alpha,
 };
 
 // One particle sprite in world space, expanded to a quad on the GPU. Particles are drawn after the
@@ -250,6 +261,8 @@ struct VisualParticle
     VisualParticleShape shape{VisualParticleShape::billboard};
     VisualParticleBlend blend{VisualParticleBlend::additive};
     bool depth_test{true};
+    // Use the texture's brightness, tinted by `color`, instead of its colours.
+    bool monochrome{};
 };
 
 // A perspective view in world space (Z up). The renderer derives the aspect ratio from its target.

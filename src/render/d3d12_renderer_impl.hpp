@@ -229,13 +229,14 @@ struct D3d12Renderer::Impl
         // Logical texture id, or invalid_visual_texture for white.
         std::uint32_t texture{};
         std::uint32_t shape{};
-        std::uint32_t padding{};
+        // Bit 0: monochrome.
+        std::uint32_t flags{};
     };
     static_assert(sizeof(GpuParticle) == 80);
     std::vector<VisualParticle> particles;
     std::vector<GpuParticle> gpu_particles;
     // Pipelines by blend (VisualParticleBlend) and depth test (0 tested, 1 not).
-    std::array<std::array<ComPtr<ID3D12PipelineState>, 2>, 3> particle_pipelines;
+    std::array<std::array<ComPtr<ID3D12PipelineState>, 2>, 4> particle_pipelines;
     std::uint64_t last_particles{};
 
     // Debug overlay: a display-only Dear ImGui panel drawn last into the back buffer. Its font

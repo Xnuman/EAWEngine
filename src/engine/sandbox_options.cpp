@@ -69,6 +69,7 @@ void print_sandbox_usage()
               << "  --upload-budget <MiB>  Texture bytes streamed per frame (default 64; 0 uploads all at once)\n"
               << "  --bloom <strength>     Bloom strength (default 0.8; 0 disables it)\n"
               << "  --no-bloom             Disable bloom\n"
+              << "  --particles <legacy|enhanced> How particle effects are interpreted (default legacy, as the original)\n"
               << "  --hot-reload       Rebuild the scene when its loose files or MEG archives change\n"
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
@@ -319,6 +320,22 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
             if (options.frame_latency < 1 || options.frame_latency > 2)
             {
                 return make_error("--frame-latency must be 1 or 2");
+            }
+        }
+        else if (argument == "--particles")
+        {
+            EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
+            if (value == "legacy")
+            {
+                options.particle_fidelity = ParticleFidelity::legacy;
+            }
+            else if (value == "enhanced")
+            {
+                options.particle_fidelity = ParticleFidelity::enhanced;
+            }
+            else
+            {
+                return make_error("--particles must be legacy or enhanced, got '" + std::string(value) + "'");
             }
         }
         else if (argument == "--no-bloom")

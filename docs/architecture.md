@@ -311,3 +311,44 @@ gets a corpus test, a decoder test, and—where possible—a golden result captu
 from public data or black-box observation. Extensions use new optional tags or
 namespaced files so an original mod remains readable without edits.
 
+### Content contract versus legacy implementation
+
+EAWEngine is a modern engine that runs content made for the original, not a
+reimplementation of the original's internals. Every original behavior the
+engine meets falls into one of three kinds, and is handled accordingly:
+
+1. **Content contract: follow it.** What a data field means, as the original
+   interprets it. Content was authored and tuned against that meaning, so
+   changing it breaks every existing asset. Examples: particle lifetime and
+   size variances only shorten and shrink, the sign of "inward" speed, atlas
+   slots, a hardpoint's `Damage_Particles` and `Damage_Decal` bones,
+   `Max_Speed` per 30 Hz frame. Establishing these is what the evidence work
+   is for.
+2. **Implementation artifacts: modernize freely.** How the old engine
+   happened to compute a result: fixed-function and low-dynamic-range
+   blending, CPU-built quads, emission clumped per frame, unsorted
+   transparency, a single global frame step. The engine does the modern thing
+   by default (sub-frame emission, sorted particles, GPU expansion, bloom,
+   frame-rate-independent motion) and needs no switch.
+3. **Look-defining quirks: one named rule, chosen per fidelity profile.**
+   Original behaviors that are arguably wrong but that content was tuned
+   against: additive particles ignoring alpha, draw order. (Linked
+   particles following position but not rotation looked like one, but the
+   evidence only described editor previews that never rotate, and the result
+   was visibly wrong, so it was dropped: a quirk needs evidence from the game,
+   not from a tool's limitation.) These are never
+   scattered through runtime code. They live in one explicit interpretation
+   layer with their evidence: decoders keep the file's facts, normalization
+   turns them into an engine-native description under a **legacy** or
+   **enhanced** profile, and runtimes and renderers only see the result.
+
+**Legacy** reproduces the original for content that does not know this
+engine; it is the default while legacy mode is the goal. **Enhanced** may
+deviate where the result improves and authored content still works. Content
+made for this engine will say so explicitly (the planned asset metadata, see
+the roadmap's engine extensions), and explicit declarations override legacy
+inference. Particle effects are normalized this way first
+(`src/engine/particle_rules.*`); projectiles, impacts, and materials follow
+the same pattern (the legacy material profiles already feed the future
+physically based pipeline).
+

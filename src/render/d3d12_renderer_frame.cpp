@@ -94,8 +94,8 @@ void D3d12Renderer::Impl::write_particles(FrameContext& frame)
     for (const auto& particle : particles)
     {
         const auto logical = particle.texture < scene_textures.size() ? static_cast<std::uint32_t>(fallback_texture_count + particle.texture) : invalid_visual_texture;
-        gpu_particles.push_back(
-            {particle.position, particle.half_size, particle.color, particle.uv_rect, particle.axis, particle.rotation, particle.tail, logical, static_cast<std::uint32_t>(particle.shape), 0U});
+        gpu_particles.push_back({particle.position, particle.half_size, particle.color, particle.uv_rect, particle.axis, particle.rotation, particle.tail, logical,
+                                 static_cast<std::uint32_t>(particle.shape), particle.monochrome ? 1U : 0U});
     }
     if (gpu_particles.empty())
     {

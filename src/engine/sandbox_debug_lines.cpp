@@ -36,6 +36,10 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
         // Shots in flight as short streaks, green for the debug-spawn owner's side.
         for (const auto& projectile : snapshot.projectiles)
         {
+            if (view.projectile_visuals != nullptr && view.projectile_visuals->contains(projectile.visual))
+            {
+                continue;
+            }
             const auto& p = projectile.position;
             const auto& d = projectile.direction;
             constexpr float streak = 14.0F;

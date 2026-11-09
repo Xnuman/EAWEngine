@@ -82,7 +82,7 @@ it.
 - Initial engine-native ALO geometry, base-color DDS mip uploads, legacy blend
   translation, depth buffering, orbit camera, and GPU ALA skinning are
   implemented in the D3D12 sandbox.
-- The owner-provided legacy Direct3D 9 reference corpus in `Shaders/` is
+- The owner-provided legacy Direct3D 9 reference corpus in `Reference Materials/Shaders/` is
   inventoried in [Legacy shader mapping](legacy-shader-mapping.md). All 39
   readable effects have reference profiles (render phase, depth/cull/alpha-test
   state, lighting model, gloss/colorize/opacity channel roles, UV and vertex
@@ -275,7 +275,9 @@ Gaps toward the deliverable, in planned order:
       any speed and frame rate. Step 3 is done: bloom (a quarter-resolution
       bright pass, blurred and added back) as the engine's stand-in for the
       original's glow, and engine effects that grow and brighten with their
-      unit's speed.
+      unit's speed. Step 4 has begun: laser bolts (custom-render
+      projectiles) draw from their XML width, length, atlas cell, and colour;
+      model projectiles (missiles, torpedoes) and impact effects follow.
    2. Combat presentation and fidelity: hardpoint visuals and damage, turret
       rotation, damage-specific death clones and wreck explosions, real
       projectiles for weapons.

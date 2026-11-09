@@ -1,5 +1,7 @@
 #pragma once
 
+#include "projectile_visuals.hpp"
+
 // The sandbox's debug lines for one frame: bounds and axes, shots in flight, health and shield bars,
 // selected units' routes, and the passability overlay.
 
@@ -34,8 +36,10 @@ struct SandboxDebugView
     bool show_bounds{};
     bool show_passability{};
     float axis_length{1.0F};
-    // Shots of this owner are drawn green, the rest red.
+    // Shots of this owner are drawn green, the rest red; shots whose projectile has a visual here
+    // are drawn as bolts instead (no streak).
     std::uint32_t friendly_owner{};
+    const ProjectileVisualTable* projectile_visuals{};
 };
 
 [[nodiscard]] std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& view);

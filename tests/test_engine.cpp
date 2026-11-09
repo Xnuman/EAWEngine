@@ -3,6 +3,7 @@
 #include "battle.hpp"
 #include "battle_log.hpp"
 #include "particle_effects.hpp"
+#include "projectile_visuals.hpp"
 #include "sandbox_options.hpp"
 #include "unit_animation.hpp"
 
@@ -1041,13 +1042,15 @@ eaw::ParticleEmitter make_test_emitter()
     return emitter;
 }
 
-std::shared_ptr<const eaw::ParticleEffect> make_test_effect(std::vector<eaw::ParticleEmitter> emitters, const bool leave_particles = true)
+std::shared_ptr<const eaw::ParticleEffect> make_test_effect(std::vector<eaw::ParticleEmitter> emitters, const bool leave_particles = true,
+                                                            const eaw::ParticleFidelity fidelity = eaw::ParticleFidelity::legacy)
 {
-    auto effect = std::make_shared<eaw::ParticleEffect>();
-    effect->name = "test";
-    effect->system.emitters = std::move(emitters);
-    effect->system.leave_particles = leave_particles;
-    effect->textures.assign(effect->system.emitters.size(), 7U);
+    eaw::ParticleSystem system;
+    system.name = "test";
+    system.emitters = std::move(emitters);
+    system.leave_particles = leave_particles;
+    auto effect = std::make_shared<eaw::ParticleEffect>(eaw::normalize_particle_system(system, fidelity));
+    effect->textures.assign(effect->emitters.size(), 7U);
     return effect;
 }
 
@@ -1064,6 +1067,28 @@ void test_intact_hidden_bones()
     std::vector<std::array<float, 16>> palette;
     eaw::append_rig_local_palette(rig, {}, palette);
     require(palette.size() == 4 && palette[2][0] == 1.0F && palette[3][0] == 0.0F && palette[3][5] == 0.0F && palette[1][0] == 1.0F, "intact-hidden bone was not collapsed");
+}
+
+void test_projectile_sprites()
+{
+    // A bolt sits between ticks like entities, its head leading, and only typed shots are drawn.
+    eaw::ProjectileVisualTable table;
+    eaw::ProjectileVisual bolt;
+    bolt.width = 1.0F;
+    bolt.length = 6.0F;
+    bolt.column = 3;
+    bolt.tinted = true;
+    bolt.color = {0.4F, 0.7F, 0.9F, 1.0F};
+    table.emplace(5U, bolt);
+    std::vector<eaw::ProjectileSnapshot> shots{{{100.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 5U, 300.0F}, {{0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, 1U, 6U, 300.0F}};
+    std::vector<eaw::VisualParticle> sprites;
+    eaw::append_projectile_sprites(shots, table, 9U, 0.5F, 1.0F / 30.0F, sprites);
+    require(sprites.size() == 1, "untyped shots were drawn as bolts");
+    const auto& sprite = sprites.front();
+    // Half a tick behind (300 / 30 / 2 = 5) plus half the bolt's length (3).
+    require(std::abs(sprite.position[0] - 92.0F) < 1e-4F && sprite.tail == 6.0F && sprite.half_size == 0.5F, "bolt placement failed");
+    require(sprite.shape == eaw::VisualParticleShape::teardrop && sprite.texture == 9U && sprite.uv_rect[0] == 0.75F && sprite.uv_rect[2] == 0.25F && sprite.color[2] == 0.9F,
+            "bolt appearance failed");
 }
 
 void test_particle_tracks()
@@ -1214,6 +1239,63 @@ void test_particle_world()
         require(xs[index] - xs[index - 1] < 1.5F, "particle trail has a gap at x = " + std::to_string(xs[index - 1]));
     }
 
+    // Semantics from the GlyphX particle editor: lifetime variance only shortens, a positive stored
+    // inward acceleration pushes outward along the spawn offset, and freeze time stops the emitter.
+    {
+        auto short_lived = make_test_emitter();
+        short_lived.use_bursts = true;
+        short_lived.burst_count = 1;
+        short_lived.particles_per_burst = 50;
+        short_lived.lifetime = 1.0F;
+        short_lived.random_lifetime = 0.5F;
+        eaw::ParticleWorld lifetimes;
+        lifetimes.play(make_test_effect({short_lived}), eaw::visual_identity_transform, 11);
+        lifetimes.update(0.01F);
+        require(lifetimes.stats().particles == 50, "lifetime test burst failed");
+        for (int frame = 0; frame < 11; ++frame)
+        {
+            lifetimes.update(0.1F);
+        }
+        require(lifetimes.stats().particles == 0, "lifetime variance lengthened particles");
+
+        auto pushed = make_test_emitter();
+        pushed.use_bursts = true;
+        pushed.burst_count = 1;
+        pushed.lifetime = 10.0F;
+        pushed.groups[2].type = 0;
+        pushed.groups[2].value = {10.0F, 0.0F, 0.0F};
+        pushed.inward_acceleration = 100.0F;
+        eaw::ParticleWorld outward;
+        outward.play(make_test_effect({pushed}), eaw::visual_identity_transform, 12);
+        outward.update(0.01F);
+        for (int frame = 0; frame < 10; ++frame)
+        {
+            outward.update(0.05F);
+        }
+        std::vector<eaw::VisualParticle> pushed_sprites;
+        outward.build_sprites({}, pushed_sprites);
+        require(pushed_sprites.size() == 1 && pushed_sprites[0].position[0] > 20.0F && std::abs(pushed_sprites[0].position[1]) < 1e-4F, "inward acceleration did not push outward");
+
+        auto frozen = make_test_emitter();
+        frozen.particles_per_second = 10;
+        frozen.lifetime = 10.0F;
+        frozen.freeze_time = 0.5F;
+        frozen.groups[0].type = 0;
+        frozen.groups[0].value = {0.0F, 0.0F, 10.0F};
+        eaw::ParticleWorld freezing;
+        freezing.play(make_test_effect({frozen}), eaw::visual_identity_transform, 13);
+        for (int frame = 0; frame < 10; ++frame)
+        {
+            freezing.update(0.1F);
+        }
+        std::vector<eaw::VisualParticle> before;
+        freezing.build_sprites({}, before);
+        freezing.update(0.2F);
+        std::vector<eaw::VisualParticle> after;
+        freezing.build_sprites({}, after);
+        require(before.size() == 6 && after.size() == before.size() && after.front().position == before.front().position, "freeze time did not stop the emitter");
+    }
+
     // Intensity scales drawn size and opacity (engine glows at rest versus at full speed).
     {
         auto steady = make_test_emitter();
@@ -1232,7 +1314,8 @@ void test_particle_world()
                 "particle intensity did not scale size and opacity");
     }
 
-    // Particles linked to the system turn with their emitter (an engine glow on a turning ship).
+    // Particles linked to the system turn with their emitter under every profile (an engine glow on
+    // a turning ship).
     auto glow = make_test_emitter();
     glow.use_bursts = true;
     glow.burst_count = 1;
@@ -1240,20 +1323,38 @@ void test_particle_world()
     glow.lifetime = 10.0F;
     glow.groups[2].type = 0;
     glow.groups[2].value = {10.0F, 0.0F, 0.0F};
-    eaw::ParticleWorld turning;
-    const auto glow_id = turning.play(make_test_effect({glow}), eaw::visual_identity_transform, 3);
-    turning.update(0.01F);
-    // A quarter turn about +Z: X goes to Y.
-    std::array<float, 16> turned = eaw::visual_identity_transform;
-    turned[0] = 0.0F;
-    turned[1] = 1.0F;
-    turned[4] = -1.0F;
-    turned[5] = 0.0F;
-    turning.set_transform(glow_id, turned);
-    turning.update(0.01F);
-    std::vector<eaw::VisualParticle> turned_sprites;
-    turning.build_sprites({0.0F, 0.0F, 100.0F}, turned_sprites);
-    require(turned_sprites.size() == 1 && std::abs(turned_sprites[0].position[0]) < 1e-4F && std::abs(turned_sprites[0].position[1] - 10.0F) < 1e-4F, "linked particle did not turn with its emitter");
+    const auto turn = [&](const eaw::ParticleFidelity fidelity)
+    {
+        eaw::ParticleWorld turning;
+        const auto glow_id = turning.play(make_test_effect({glow}, true, fidelity), eaw::visual_identity_transform, 3);
+        turning.update(0.01F);
+        // A quarter turn about +Z: X goes to Y.
+        std::array<float, 16> turned = eaw::visual_identity_transform;
+        turned[0] = 0.0F;
+        turned[1] = 1.0F;
+        turned[4] = -1.0F;
+        turned[5] = 0.0F;
+        turning.set_transform(glow_id, turned);
+        turning.update(0.01F);
+        std::vector<eaw::VisualParticle> turned_sprites;
+        turning.build_sprites({0.0F, 0.0F, 100.0F}, turned_sprites);
+        require(turned_sprites.size() == 1, "linked particle test lost its particle");
+        return turned_sprites.front().position;
+    };
+    const auto rigid = turn(eaw::ParticleFidelity::enhanced);
+    require(std::abs(rigid[0]) < 1e-4F && std::abs(rigid[1] - 10.0F) < 1e-4F, "enhanced linked particle did not turn with its emitter");
+    const auto legacy_turned = turn(eaw::ParticleFidelity::legacy);
+    require(std::abs(legacy_turned[0]) < 1e-4F && std::abs(legacy_turned[1] - 10.0F) < 1e-4F, "legacy linked particle did not turn with its emitter");
+
+    // Additive blending: the original ignores alpha, the enhanced profile honours it.
+    {
+        const auto legacy = eaw::normalize_particle_emitter(make_test_emitter(), eaw::ParticleFidelity::legacy);
+        const auto enhanced = eaw::normalize_particle_emitter(make_test_emitter(), eaw::ParticleFidelity::enhanced);
+        require(legacy.blend == eaw::VisualParticleBlend::additive && enhanced.blend == eaw::VisualParticleBlend::additive_alpha, "additive interpretation failed");
+        require(eaw::particle_interpretation(eaw::ParticleFidelity::legacy).draw_order == eaw::ParticleDrawOrder::emitter_list &&
+                    eaw::particle_interpretation(eaw::ParticleFidelity::enhanced).draw_order == eaw::ParticleDrawOrder::back_to_front,
+                "draw order interpretation failed");
+    }
 
     // Emitters that emit from a mesh spawn on it: every vertex in turn, pushed out along the normal.
     auto nozzles = make_test_emitter();
@@ -1293,6 +1394,7 @@ void test_particle_world()
 
 const ModuleRegistrar registrar("engine", {
                                               {"test_intact_hidden_bones", &test_intact_hidden_bones},
+                                              {"test_projectile_sprites", &test_projectile_sprites},
                                               {"test_particle_tracks", &test_particle_tracks},
                                               {"test_particle_world", &test_particle_world},
                                               {"test_asset_cache_dependencies", &test_asset_cache_dependencies},

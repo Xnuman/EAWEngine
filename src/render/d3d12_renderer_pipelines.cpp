@@ -322,7 +322,9 @@ void D3d12Renderer::Impl::create_pipeline()
         switch (static_cast<VisualParticleBlend>(blend_index))
         {
         case VisualParticleBlend::additive:
-            target.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+            // Colour x texture added as is: additive particles ignore alpha (the GlyphX particle
+            // editor's blend setup, and its fork's guide).
+            target.SrcBlend = D3D12_BLEND_ONE;
             target.DestBlend = D3D12_BLEND_ONE;
             target.SrcBlendAlpha = D3D12_BLEND_ZERO;
             target.DestBlendAlpha = D3D12_BLEND_ONE;
@@ -341,6 +343,13 @@ void D3d12Renderer::Impl::create_pipeline()
             target.DestBlendAlpha = D3D12_BLEND_ONE;
             description.PS = {g_eaw_particle_modulate_ps, sizeof(g_eaw_particle_modulate_ps)};
             name = L"particles modulate";
+            break;
+        case VisualParticleBlend::additive_alpha:
+            target.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+            target.DestBlend = D3D12_BLEND_ONE;
+            target.SrcBlendAlpha = D3D12_BLEND_ZERO;
+            target.DestBlendAlpha = D3D12_BLEND_ONE;
+            name = L"particles additive with alpha";
             break;
         }
         description.DepthStencilState.DepthEnable = TRUE;

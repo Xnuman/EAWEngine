@@ -8,6 +8,7 @@
 
 #include "eaw/particle_system.hpp"
 #include "eaw/visual_scene.hpp"
+#include "particle_rules.hpp"
 
 #include <array>
 #include <cstddef>
@@ -22,17 +23,8 @@
 
 namespace eaw {
 
-// A particle system ready to play: the decoded system and, per emitter, the renderer texture of its
-// colour texture (invalid_visual_texture draws white).
-struct ParticleEffect
-{
-    std::string name;
-    ParticleSystem system;
-    std::vector<std::uint32_t> textures;
-};
-
-// The mesh an emitter with emit_from_mesh spawns on, in the effect's own space: for a proxy, the
-// mesh on the proxy bone's parent bone. Triangles index the vertices.
+// The mesh an emitter with mesh emission spawns on, in the effect's own space: for a proxy, the mesh
+// on the proxy bone's parent bone. Triangles index the vertices.
 struct ParticleEmitMesh
 {
     std::vector<std::array<float, 3>> positions;
@@ -94,6 +86,13 @@ public:
 
     void set_ground(ParticleGroundHeight ground);
 
+    // How sprites are ordered (the fidelity profile's choice; legacy: per effect, emitters in list
+    // order).
+    void set_draw_order(ParticleDrawOrder order) noexcept
+    {
+        draw_order_ = order;
+    }
+
     // Advances every effect by `seconds` (clamped to a quarter second per call).
     void update(float seconds);
 
@@ -113,6 +112,7 @@ private:
     std::size_t live_particles_{};
     ParticleWorldStats totals_;
     ParticleGroundHeight ground_;
+    ParticleDrawOrder draw_order_{ParticleDrawOrder::emitter_list};
 
     Instance* find(ParticleInstanceId id) noexcept;
     const Instance* find(ParticleInstanceId id) const noexcept;

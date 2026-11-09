@@ -5,11 +5,11 @@ Wars: Empire at War* and *Forces of Corruption*. It is designed to use the
 assets from a game installation owned by the player without modifying that
 installation or redistributing its runtime data.
 
-The owner-provided `Shaders/` directory is an isolated development reference
+The owner-provided `Reference Materials/Shaders/` directory is an isolated development reference
 containing legacy Direct3D 9 shader files. It is git-ignored, never
 distributed, and never a runtime/build dependency or release input. It only
 documents how models were meant to render in Alamo; the engine uses its own
-physically based materials and newly written shaders. See [its reference policy](Shaders/README.md). Do not describe the
+physically based materials and newly written shaders. See [its reference policy](Reference%20Materials/Shaders/README.md). Do not describe the
 renderer as strictly clean-room while that corpus is available to contributors.
 
 This repository is at milestone **M2: visual sandbox**. It currently:
@@ -174,7 +174,10 @@ Models' particle proxies (engine glows, lights, fires) play on maps;
 `--effect <name>` (repeatable) plays a particle effect such as
 `P_EXPLOSION_BIG00` at the map center, restarting it when it ends. Bright
 parts of the image bloom (`--bloom <strength>`, default 0.8; `--no-bloom`
-turns it off), and engine glows grow and brighten with a unit's speed. On
+turns it off), and engine glows grow and brighten with a unit's speed.
+`--particles legacy|enhanced` chooses how particle effects are interpreted:
+legacy (the default) reproduces the original's quirks for content made for
+it, enhanced improves them. On
 maps, P pauses and resumes the world (simulation, animation, particles) while
 the cameras keep working, so C's free camera can inspect a frozen scene.
 Mouse movement and keys use Windows raw input (unaccelerated mouse movement for

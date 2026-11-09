@@ -43,6 +43,7 @@ SandboxContent build_sandbox_content(const VirtualFileSystem& vfs, const Sandbox
         }
         MapBuildOptions build_options;
         build_options.effects = options.effects;
+        build_options.particle_fidelity = options.particle_fidelity;
         if (auto map = build_visual_map(reader, *options.map, cache, spawn_types, build_options))
         {
             content.map = std::move(map).value();

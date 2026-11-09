@@ -268,6 +268,7 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
     projectile.damages_health = weapon.damages_health;
     projectile.speed = weapon.projectile_speed;
     projectile.max_flight = weapon.max_flight_distance;
+    projectile.visual = weapon.projectile_visual;
     projectiles_.push_back(projectile);
 }
 

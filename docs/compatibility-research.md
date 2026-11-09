@@ -2,14 +2,14 @@
 
 The bootstrap uses public documentation, black-box behavior, compatibility
 corpora built from the user's installed data, and an explicitly isolated
-owner-provided Direct3D 9 shader reference under `Shaders/`. It does not use
+owner-provided Direct3D 9 shader reference under `Reference Materials/Shaders/`. It does not use
 leaked source code or decompiled code copied from the original executable, and
 the engine never modifies or redistributes the installed runtime data.
 
 The shader corpus is evidence for parameter, transform, and render-state
 semantics only. It is git-ignored, never distributed, not compiled or shipped, and the new D3D12 shaders are
 independently written against engine-native material contracts. Source checkouts
-without `Shaders/` must still configure, build, test, and run. No other original
+without `Reference Materials/Shaders/` must still configure, build, test, and run. No other original
 game source, binary, or asset may be added without explicit owner authorization
 and provenance review. Because contributors can consult this corpus, project
 documentation must not characterize the renderer as strictly clean-room.
@@ -607,21 +607,77 @@ particle-audit`.
   2,000 particles, and the shortest burst delay is 0.0003 s, so the engine
   caps live particles explicitly (65,536 by default, drops counted) and
   bounds emission per update.
-- **Playback** (`src/engine/particle_effects.cpp`), following the reference
-  where it is clear:
+- **Second reference: the GlyphX particle editor** (github.com/GlyphXTools/
+  particle-editor, MIT, Copyright (c) 2017 GlyphX Tools, the authors of
+  alo-viewer). It is the authoring tool that writes the files the game
+  loads, with its own preview simulation, and where it differs from
+  alo-viewer the engine follows it: its file writer stores the lifetime
+  shape group as exactly lifetime x (1 - variance)..lifetime, its UI shows
+  the "inward" properties negated so that positive UI values move particles
+  toward the emitter, and its rotation and texture rules are simpler than
+  alo-viewer's derived ones. Two points where it disagrees with the owner's
+  observations of the game are kept as observed: it draws the scale track as
+  the full width (the engine reads it as the radius, below), and it carries
+  linked particles with the emitter's translation only (the engine carries
+  rotation too, which removed visible snapping of engine glows on turning
+  ships).
+- **Third reference: DrKnickers' fork of the particle editor**
+  (github.com/DrKnickers/particle-editor, MIT, 2026, with a guide at
+  drknickers.github.io/particle-editor). Its simulation keeps the original
+  editor's rules; its guide describes the editor's behaviour (its changelog
+  says the guide was checked against the editor's source, not the game),
+  and a few changelog entries claim to match the game without saying how:
+  emitters draw in their list order, the game steps particle motion frame by
+  frame, atlas indices past the last cell wrap, tailed particles ignore the
+  rotation track, and additive particles ignore alpha. The original editor
+  agrees on the last point (its fixed-function setup blends additive
+  particles with source and destination factors of one). The guide says
+  linked particles ("Link Particles to Instance") follow the instance's
+  position only, as the original editor does, but both editors play a
+  system as a free-standing object that has a position and never an
+  orientation, so that rule describes their previews, not the game; in the
+  engine it visibly detaches engine glows from turning fighters (owner's
+  observation, Y-wing squadrons, 2026-11-09). Linked particles therefore
+  follow their emitter's position and rotation under every profile. The
+  other two points are look-defining quirks: the engine's legacy profile
+  reproduces them (additive adds colour x texture without alpha, the
+  speed-driven engine intensity dimming the colour instead; effects draw
+  back to front with their emitters in list order), and the enhanced
+  profile improves them (additive scaled by alpha, every particle sorted
+  back to front). `src/engine/particle_rules.*` holds the interpretation;
+  `sandbox --particles legacy|enhanced` chooses. The fork also documents the game's projectile flight
+  (`src/simulation/ProjectileShot.h`, `ProjectileFlight.h`,
+  `RocketSpline.h`): `Max_Speed` is world units per 30 Hz logic frame
+  (agreeing with the engine's provisional x30), a shot dies after
+  `Projectile_Max_Flight_Distance`, projectile acceleration is zero; by
+  `Projectile_Category`, missiles turn toward their target by at most
+  `Max_Rate_Of_Turn` degrees per frame on yaw and pitch separately, bombs
+  keep their launch facing and fall faster each frame
+  (`Projectile_Bomb_Fall_Accel_Rate`), grenades lob in closed form (speed
+  `Max_Speed` or 0.8x when they may lob slower, gravity
+  `Projectile_Grenade_Gravity` x `Lob_Mod`), and rockets follow a spline with
+  points every `Projectile_Rocket_Curve_Distance` x 1.1, pushed aside up to
+  `Projectile_Rocket_Curve_Offset`. Models are drawn turned 90 degrees about
+  Z after their facing, so a model's -Y axis points along the flight, as the
+  engine already assumes for units. These are the fork's statements, to be
+  checked before the simulation relies on them.
+- **Playback** (`src/engine/particle_effects.cpp`), following the particle
+  editor where it is clear:
   - emission starts after the initial delay: bursts of the per-burst count
     every burst delay, limited by the burst count (0 or -1 unlimited), or one
     particle every 1/rate seconds; skip time pre-simulates;
   - particles spawn on the position group and take the speed group as
-    velocity, both in the emitter's frame; a nonzero "inward speed" replaces
-    the velocity along the spawn offset (positive moves outward, as in the
-    reference; the name suggests the opposite and is unverified);
+    velocity, both in the emitter's frame; the stored "inward speed" is added
+    along the spawn offset's direction (positive moves outward; the editor
+    shows the value negated, as an inward speed);
   - acceleration (optionally in the emitter's frame) plus -gravity along Z,
-    and "inward acceleration" toward the emitter;
-  - lifetime x (1 + random 0..variance); size factor (1 + random
-    -v..v) / (1 + v) with v = half the scale variance; the scale track is the
-    sprite's radius (half extent). The reference halves it (the value is the
-    full width there); the owner's screenshots of the original fit the
+    plus the stored "inward acceleration" along the same fixed spawn
+    direction (positive pushes outward, likewise);
+  - lifetime x random(1 - variance, 1) and size x random(1 - variance, 1):
+    variances shorten and shrink, never lengthen or grow (alo-viewer
+    lengthened lifetimes); the scale track is the sprite's radius (half
+    extent). Both references halve it (the value is the full width there);
+    the owner's screenshots of the original fit the
     radius reading: the X-wing's scale-1 engine glows fill nozzles about 2
     units across, and the Star Destroyer's scale-70 glows show a core about
     70 units across, twice what the halved size gives with the soft particle
@@ -629,19 +685,27 @@ particle-audit`.
   - colour tracks plus a random addition up to the random colours (grayscale
     uses the red value for all channels);
   - rotation speed in revolutions per second, randomly reversed when the
-    flag is set; "random rotation" gives a fixed angle derived from the
-    rotation track's first value as in the reference;
-  - texture cells form a square atlas of ceil(sqrt(cells)) per side, indexed
-    by the rounded texture track;
-  - "link to system" moves particles rigidly with the emitter (translation
-    and rotation, so engine glows stay on a turning ship); linked particles
-    spawn at the emitter's current transform;
+    flag is set; "random rotation" gives a fixed angle: the rotation track's
+    first value (revolutions) x (1 + random -v..v), v the rotation variance
+    clamped to 0..1;
+  - texture cells form a square atlas of floor(sqrt(cells)) per side, indexed
+    by the texture track rounded down;
+  - freeze time, when set and not inside the skipped time, stops the
+    emitter's clock once reached: no more emission, and its particles hold
+    still;
+  - "link to system" moves particles rigidly with the emitter, position and
+    rotation (so engine glows stay on a turning ship); linked particles spawn
+    at the emitter's current transform;
   - ground behavior 1 kills particles below the ground, 2 bounces them, 3
     stops them;
-  - blend modes 1 and 4 draw additively, 3, 6, 8, and 9 modulate, the rest
-    alpha-blend (stock data uses only 1, 2, and 11);
-  - kites stretch along the velocity by the tail size and turn toward the
-    camera; world-oriented particles lie in the XY plane.
+  - blend modes 1 and 4 draw additively (legacy: colour x texture added,
+    alpha ignored; enhanced: scaled by alpha), 3, 6, 8, and 9 modulate, the
+    rest alpha-blend (stock data uses only 1, 2, and 11);
+  - kites are diamonds facing the camera: the quad turned 45 degrees so its
+    top-left texture corner trails the velocity on screen, that corner pushed
+    out by max(1, tail size x the velocity's on-screen fraction / sqrt 2),
+    the tail size scaled by speed / 1000 for particles linked to a parent;
+    world-oriented particles lie in the XY plane.
 - **Trails.** No stock XML field names a trail, and the classic particle
   format has no ribbon renderer (the reference's chain renderers belong to the
   plugin format). Engine and missile trails are particles that moving
@@ -652,11 +716,16 @@ particle-audit`.
   where the emitter was then (an engine choice; the reference turns its
   high-resolution emission off for this format, which leaves clumps behind
   fast emitters).
-- **Engine choices:** sphere spawns use uniform directions (the reference
-  samples angles uniformly); a death child emits one burst (or one particle)
-  per dying parent; a trail child emits at its own rate from each living
-  parent, at most 64 per parent per update; emitters that are only children
-  never emit on their own; smooth interpolation is smoothstep between keys.
+- **Child emitters** (the particle editor): a trail child is an emitter
+  instance attached to each living parent particle, stopped (its particles
+  living out) when the parent dies; a death child is created at the dying
+  particle and stopped at once, so it emits its first burst (or one particle
+  when continuous) and nothing more. The engine does the same, with at most
+  64 trail particles per parent per update.
+- **Engine choices:** sphere spawns use uniform directions (the references
+  sample angles uniformly); emitters that are only children never emit on
+  their own; smooth interpolation is smoothstep between keys (the editor's
+  cubic Hermite with zero tangents, the same curve).
 - **Emission from meshes** (192 emitters): a proxy's mesh is the mesh
   rigidly attached to the proxy bone's parent, as in the reference. Mode 3
   emits once per vertex per spawn, 1 at a random vertex, 2 at a random point
@@ -684,6 +753,77 @@ particle-audit`.
   `pe_*`, the stock naming, or under an `Engine_Particles` bone) scale with
   the unit's speed over its top speed, smoothed over 0.5 s: size from 55% and
   opacity from 45% at rest. Both mappings are engine choices.
+- **Which effects the data names.** Gameplay effects are fully data-driven
+  through `Particle` objects (165, `Data/XML/Particles.xml`). Each names its
+  effect file (`Space_Model_Name`, `Land_Model_Name`, sometimes
+  `Galactic_Model_Name`) and playback settings: `Scale_Factor` (1.0 for 143,
+  2.0 and 20.0 for a few), `Particle_Lifetime_Frames` (mostly 30),
+  `Explosion_Jitter_Factor`, `Explosion_Scorch_Mark`,
+  `Particle_Attach_To_Collision`, `No_Particle_Below_Detail_Level`,
+  `Behavior` (`PARTICLE`, `PARTICLE, EXPLOSION`), and placement flags
+  (`In_Background`, `In_Midground`). Fields that name Particle objects, by
+  stock use count and owner:
+  - deaths: `Death_Explosions` (610: props, structures, units),
+    `Death_Explosions_End` (20), `Spin_Away_On_Death_Explosion` (22),
+    hardpoints' `Death_Explosion_Particles` (267), and the break-off debris'
+    `Debris_Attached_Particle` (149, burning debris);
+  - projectile impacts: `Projectile_Object_Detonation_Particle` (91),
+    `Projectile_Object_Armor_Reduced_Detonation_Particle` (56, "duds"),
+    `Projectile_Absorbed_By_Shields_Particle` (88),
+    `Projectile_Ground_Detonation_Particle` (70),
+    `Projectile_Lifetime_Detonation_Particle` (54, a shot that runs out);
+  - hits on units: `Asteroid_Damage_Hit_Particles` (60), `Damage_Hit_Particles`
+    and `Shield_Hit_Particles` (cinematic units), `Base_Shield_Penetration_Particle`
+    (34);
+  - abilities and heroes: `Owner_Particle_Effect`, `Target_Particle_Effect`,
+    `Particle_Effect`, the `Projectile_*_Spawn_Effect` fields, and others.
+  Hardpoints place their damage on model bones: `Damage_Particles` (268,
+  `HP_*_EmitDamage`), `Damage_Decal` (245, `HP_*_Blast`), and engine
+  hardpoints' `Engine_Particles` (21, `HP_E_MainEngines`). Model proxies
+  (engine glows, station lights, fires) have no XML entry: which proxy is an
+  engine glow is not stated anywhere (the engine's `pe_*` rule is naming
+  inference), and nothing in the data scales engine effects with speed (an
+  engine choice from the owner's screenshots). Nothing in the data sizes
+  custom-render bolts beyond `Projectile_Width` and `Projectile_Length`.
+- **Projectile visuals.** 39 stock projectile types set
+  `Projectile_Custom_Render`: 1 (26 types) draws a bolt from an atlas cell,
+  2 (12) the same cell tinted by `Projectile_Laser_Color` (ion cannons,
+  turbolasers, proton torpedoes, sonic and carbonite guns), 0 (1, an ion
+  laser) draws its model. `Projectile_Width` and `Projectile_Length` size the
+  bolt (small laser 1 x 6), and `Projectile_Texture_Slot` is "column,row".
+  No XML names the atlas, but ModVerify's list of assets the game executable
+  loads by name (`HardcodedEngineAssets.cs`, MIT) includes `W_Laser_Pill.tga`,
+  and the public schema types `Projectile_Texture_Slot` as a two-number
+  vector and `Projectile_Laser_Color` as RGBA. With `Variant_Of_Existing_Type`
+  resolved, 63 FoC projectiles are custom-rendered, and 40 of them also name a
+  model (the pg-starwarsgame-lsp preview, MIT). `W_LASER_PILL.dds` (256 x 256) is a 4 x 4 grid of
+  64-pixel cells holding diagonal glowing pills, bottom-left to top-right:
+  (0,0) red, (1,0) orange, (2,0) yellow, (3,0) green, (0,1) blue, (1,1)
+  purple; red lasers use slot 0,0 and green ones 3,0, which fits render 1.
+  Render 2 is a teardrop: a modder who rewrote the stock projectiles
+  describes small lasers as symmetrical bolts "while turbolasers appear
+  teardrop-shaped", and turns any laser into a teardrop by setting render 2,
+  slot 2,0, and a `Projectile_Laser_Color` (eaw-fast-consistent-projectiles
+  on GitHub, MIT). No texture holds a teardrop at cell 2,0 (`W_LASER_SMALL`,
+  the bolt models' texture, has red and green teardrop flares elsewhere and
+  in fixed colours), so the engine draws it procedurally: a round head at
+  the front, a tapering, fading tail, and a white-hot core, in the laser
+  colour. Its length is `Projectile_Length` widths: in the owner's screenshot
+  of the original, a Star Destroyer's green turbolaser shots (5 x 10) are
+  thin streaks of about 25-30 px at about 1.3 px per unit, flying away from
+  the camera, which an absolute length of 10 cannot reach and 50 units
+  foreshortened does; the modder's script also scales turbolaser width and
+  length together. Render 1 keeps absolute sizes (X-wing lasers, 1 x 6, look
+  right). The scale, proportions of head and tail, and whether render 1 also
+  measures length in widths for other types remain to be checked; sizes come
+  from the XML, so mods that rescale them keep their proportions. Bolts are
+  drawn between ticks like entities, head first. A modding tutorial
+  (rebel5555, ModDB, 2009) gives a render-1 ion bolt 1.7 wide and 55 long
+  with `Projectile_Texture_Slot` written as a single "2" and `Scale_Factor`
+  0.5: render-1 lengths can be long streaks in mods, a single number is a
+  cell index (read as column 2, row 0), and whether `Scale_Factor` scales
+  custom-render bolts is open (stock projectiles all use 1.0, so the engine
+  ignores it for now).
 - **Not drawn yet:** heat distortion (170 emitters) and weather (5), which
   need passes of their own; wind is ignored; freeze time is kept but unused.
 - **Proxies.** Model proxies name their effect without directory or

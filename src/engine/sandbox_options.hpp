@@ -4,6 +4,7 @@
 
 #include "eaw/game_installation.hpp"
 #include "eaw/status.hpp"
+#include "particle_rules.hpp"
 
 #include <array>
 #include <cstdint>
@@ -54,6 +55,8 @@ struct SandboxOptions
     std::uint64_t upload_budget_mib{64};
     // Bloom strength (0 turns bloom off; --no-bloom is the same).
     float bloom_strength{0.8F};
+    // How particle effects are interpreted: legacy (as the original) or enhanced.
+    ParticleFidelity particle_fidelity{ParticleFidelity::legacy};
     // Watch the scene's source files and archives and rebuild when they change.
     bool hot_reload{};
     // Pick this client pixel once the scene is shown (automation for the selection path).

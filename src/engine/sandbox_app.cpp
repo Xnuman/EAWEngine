@@ -214,6 +214,9 @@ struct SandboxSession
     std::array<float, 3> effect_center{};
     std::uint64_t effect_seed = 1;
     std::chrono::steady_clock::time_point particle_tick = std::chrono::steady_clock::now();
+    // How shots look (by projectile visual key) and the bolt atlas's renderer texture.
+    eaw::ProjectileVisualTable projectile_visuals;
+    std::uint32_t projectile_atlas = eaw::invalid_visual_texture;
     // Kept for --reload-every, which reloads the scene and so drops added textures.
     std::vector<eaw::VisualTexture> particle_texture_copy;
     std::chrono::steady_clock::time_point map_animation_start = std::chrono::steady_clock::now();
@@ -284,6 +287,7 @@ struct SandboxSession
         : options(session_options), vfs(session_vfs), window(session_window), renderer(session_renderer)
     {
         watchdog.set_threshold(options.use_warp || options.gpu_validation ? std::chrono::seconds(60) : std::chrono::seconds(5));
+        particles.set_draw_order(eaw::particle_interpretation(options.particle_fidelity).draw_order);
         renderer.set_overlay_ui(
             [this]
             {
@@ -332,8 +336,8 @@ struct SandboxSession
     }
 
     // Registers particle textures with the renderer and points the effects at them (white when
-    // registration fails).
-    void register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs, std::span<std::shared_ptr<const eaw::ParticleEffect>> effects)
+    // registration fails); returns where each texture landed (empty on failure).
+    std::vector<std::uint32_t> register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs, std::span<std::shared_ptr<const eaw::ParticleEffect>> effects)
     {
         std::vector<std::uint32_t> placed;
         if (!textures.empty())
@@ -348,6 +352,17 @@ struct SandboxSession
             }
         }
         eaw::renumber_effect_textures(rigs, effects, placed);
+        return placed;
+    }
+
+    // Takes over a build's projectile visuals; `atlas` indexes its particle textures (`placed`).
+    void add_projectile_visuals(const eaw::ProjectileVisualTable& visuals, const std::uint32_t atlas, std::span<const std::uint32_t> placed)
+    {
+        projectile_visuals.insert(visuals.begin(), visuals.end());
+        if (projectile_atlas == eaw::invalid_visual_texture && atlas < placed.size())
+        {
+            projectile_atlas = placed[atlas];
+        }
     }
 
     bool load_content_scene(eaw::VisualScene scene, const bool reload)
@@ -442,7 +457,12 @@ struct SandboxSession
             {
                 particle_texture_copy = visual_map.particle_textures;
             }
-            register_particle_textures(std::move(visual_map.particle_textures), visual_map.rigs, visual_map.effects);
+            {
+                const auto placed = register_particle_textures(std::move(visual_map.particle_textures), visual_map.rigs, visual_map.effects);
+                projectile_visuals.clear();
+                projectile_atlas = eaw::invalid_visual_texture;
+                add_projectile_visuals(visual_map.projectile_visuals, visual_map.projectile_atlas, placed);
+            }
             start_simulation(layout, eaw::battle_map(visual_map), *options.map);
             animator.emplace(visual_map.rigs, visual_map.rest_palette);
             attached_effects.clear(particles);
@@ -466,8 +486,7 @@ struct SandboxSession
             }
             for (std::size_t index = 0; index < shown_effects.size(); ++index)
             {
-                std::cout << "Effect: " << options.effects[index] << (shown_effects[index] ? " (" + std::to_string(shown_effects[index]->system.emitters.size()) + " emitters)" : " not loaded")
-                          << '\n';
+                std::cout << "Effect: " << options.effects[index] << (shown_effects[index] ? " (" + std::to_string(shown_effects[index]->emitters.size()) + " emitters)" : " not loaded") << '\n';
             }
             map_animation_start = std::chrono::steady_clock::now();
             world_paused = false;
@@ -741,9 +760,11 @@ struct SandboxSession
         }
         building_type = pending_spawns.front().type;
         pending_package = std::async(std::launch::async,
-                                     [&files = vfs, type = building_type, land = map_land, cache = &asset_cache]
+                                     [&files = vfs, type = building_type, land = map_land, cache = &asset_cache, fidelity = options.particle_fidelity]
                                      {
-                                         return eaw::build_spawnable_package(files, type, land, cache);
+                                         eaw::MapBuildOptions build_options;
+                                         build_options.particle_fidelity = fidelity;
+                                         return eaw::build_spawnable_package(files, type, land, cache, build_options);
                                      });
     }
 
@@ -801,7 +822,10 @@ struct SandboxSession
         }
         presentation->add_meshes(meshes);
         presentation->add_spawnable(package.types);
-        register_particle_textures(std::move(package.particle_textures), package.rigs, {});
+        {
+            const auto placed = register_particle_textures(std::move(package.particle_textures), package.rigs, {});
+            add_projectile_visuals(package.projectile_visuals, package.projectile_atlas, placed);
+        }
         animator->add_rigs(package.rigs, package.rest_palette);
         attached_effects.add_rigs(package.rigs);
         (void)battle->add_spawnable(package.types);
@@ -872,6 +896,7 @@ struct SandboxSession
         view.show_passability = show_passability;
         view.axis_length = axis_length;
         view.friendly_owner = spawn_owner;
+        view.projectile_visuals = projectile_atlas != eaw::invalid_visual_texture ? &projectile_visuals : nullptr;
         renderer.set_debug_lines(eaw::build_sandbox_debug_lines(view));
     }
 
@@ -1375,6 +1400,12 @@ struct SandboxSession
         frame_particles.clear();
         const auto eye = tactical_camera ? tactical_camera->camera().eye : orbit_camera ? orbit_camera->camera().eye : std::array<float, 3>{};
         particles.build_sprites(eye, frame_particles);
+        // Shots in flight as bolts (additive, so their order among the particles does not matter).
+        if (world != nullptr && projectile_atlas != eaw::invalid_visual_texture)
+        {
+            eaw::append_projectile_sprites(world->snapshot().projectiles, projectile_visuals, projectile_atlas, static_cast<float>(simulation_clock.interpolation()),
+                                           static_cast<float>(simulation_clock.tick_seconds()), frame_particles);
+        }
         renderer.set_particles(frame_particles);
     }
 

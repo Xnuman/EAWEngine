@@ -240,8 +240,9 @@ namespace {
 
 // The shot of a projectile type: damage, damage type, speed (scaled like unit speeds), flight limit,
 // and what it damages.
-void read_projectile(const FieldReader& projectile, const CombatContent& content, WeaponProfile& weapon)
+void read_projectile(const FieldReader& projectile, const std::string_view name, const CombatContent& content, WeaponProfile& weapon)
 {
+    weapon.projectile_visual = game_object_name_crc(name);
     weapon.damage = projectile.amount("Projectile_Damage");
     weapon.damage_type = projectile.type_id("Damage_Type", content);
     weapon.projectile_speed = projectile.amount("Max_Speed") * provisional_max_speed_scale;
@@ -342,7 +343,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 weapon.recharge_seconds = type.amount("Projectile_Fire_Recharge_Seconds");
                 weapon.pulse_count = std::max(1U, static_cast<std::uint32_t>(std::min(type.amount("Projectile_Fire_Pulse_Count", 1.0F), 1000.0F)));
                 weapon.pulse_delay_seconds = type.amount("Projectile_Fire_Pulse_Delay_Seconds");
-                read_projectile(FieldReader(catalog, *projectile_type, warnings), content, weapon);
+                read_projectile(FieldReader(catalog, *projectile_type, warnings), projectile_type->name, content, weapon);
                 weapon.mount.up = profile.aim_height;
                 profile.weapons.push_back(weapon);
             }
@@ -413,7 +414,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             weapon.recharge_seconds = (minimum + point.amount("Fire_Max_Recharge_Seconds", minimum)) * 0.5F;
             weapon.pulse_count = std::max(1U, static_cast<std::uint32_t>(std::min(point.amount("Fire_Pulse_Count", 1.0F), 1000.0F)));
             weapon.pulse_delay_seconds = point.amount("Fire_Pulse_Delay_Seconds");
-            read_projectile(FieldReader(catalog, *projectile_type, warnings), content, weapon);
+            read_projectile(FieldReader(catalog, *projectile_type, warnings), projectile_type->name, content, weapon);
             if (point.node("Damage_Type") != nullptr)
             {
                 weapon.damage_type = point.type_id("Damage_Type", content);

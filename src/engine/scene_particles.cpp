@@ -133,36 +133,16 @@ std::shared_ptr<const ParticleEffect> particle_effect(SceneBuilder& builder, con
         }
         return nullptr;
     }
-    auto effect = std::make_shared<ParticleEffect>();
+    // The file's facts become the engine-native description under the build's fidelity profile.
+    auto effect = std::make_shared<ParticleEffect>(normalize_particle_system(*loaded->system, builder.particle_fidelity));
     effect->name = std::filesystem::path(*path).stem().string();
-    effect->system = *loaded->system;
-    for (const auto& warning : effect->system.warnings)
+    for (const auto& warning : loaded->system->warnings)
     {
         builder.scene.warnings.push_back(*path + ": " + warning);
     }
-    for (const auto& emitter : effect->system.emitters)
+    for (const auto& emitter : effect->emitters)
     {
-        auto index = invalid_visual_texture;
-        const auto texture_key = fold_ascii(emitter.texture);
-        if (const auto known = builder.particles.texture_indices.find(texture_key); known != builder.particles.texture_indices.end())
-        {
-            index = known->second;
-        }
-        else
-        {
-            const auto texture = cached_texture(builder.vfs, builder.cache, emitter.texture);
-            if (texture->texture)
-            {
-                index = static_cast<std::uint32_t>(builder.particles.textures.size());
-                builder.particles.textures.push_back(*texture->texture);
-            }
-            else
-            {
-                builder.scene.warnings.push_back(*path + ": particle texture " + emitter.texture + ": " + texture->error);
-            }
-            builder.particles.texture_indices.emplace(texture_key, index);
-        }
-        effect->textures.push_back(index);
+        effect->textures.push_back(particle_library_texture(builder, emitter.texture, *path));
     }
     slot = std::move(effect);
     return slot;
@@ -184,6 +164,37 @@ void note_damage_bones(SceneBuilder& builder, const std::string& model_path, con
         {
             builder.engine_bones[fold_ascii(model_path)].insert(static_cast<std::uint32_t>(hardpoint.engine_bone));
         }
+    }
+}
+
+std::uint32_t particle_library_texture(SceneBuilder& builder, const std::string& reference, const std::string& context)
+{
+    const auto key = fold_ascii(reference);
+    if (const auto known = builder.particles.texture_indices.find(key); known != builder.particles.texture_indices.end())
+    {
+        return known->second;
+    }
+    auto index = invalid_visual_texture;
+    const auto texture = cached_texture(builder.vfs, builder.cache, reference);
+    if (texture->texture)
+    {
+        index = static_cast<std::uint32_t>(builder.particles.textures.size());
+        builder.particles.textures.push_back(*texture->texture);
+    }
+    else
+    {
+        builder.scene.warnings.push_back(context + ": particle texture " + reference + ": " + texture->error);
+    }
+    builder.particles.texture_indices.emplace(key, index);
+    return index;
+}
+
+void load_projectile_visuals(SceneBuilder& builder, const GameObjectCatalog& catalog, const std::span<const std::uint32_t> keys, ProjectileVisualTable& table, std::uint32_t& atlas)
+{
+    read_projectile_visuals(catalog, keys, table, builder.scene.warnings);
+    if (!table.empty())
+    {
+        atlas = particle_library_texture(builder, std::string(projectile_atlas_texture), "projectile bolts");
     }
 }
 
@@ -257,10 +268,10 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const A
         }
         if (auto effect = particle_effect(builder, name))
         {
-            const bool from_mesh = std::ranges::any_of(effect->system.emitters,
-                                                       [](const ParticleEmitter& emitter)
+            const bool from_mesh = std::ranges::any_of(effect->emitters,
+                                                       [](const ParticleEmitterDesc& emitter)
                                                        {
-                                                           return emitter.emit_from_mesh != 0;
+                                                           return emitter.mesh_emission != ParticleMeshEmission::none;
                                                        });
             auto emit_mesh = from_mesh ? proxy_emit_mesh(model, proxy.bone) : nullptr;
             // Engine effects: the stock "pe_" naming, or a proxy under a hardpoint's Engine_Particles bone.
