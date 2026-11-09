@@ -436,13 +436,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         (void)add_spawnable_type(spawnable_build, type_name, 0);
     }
 
-    build_map_rigs(builder, asset.rigs, asset.rest_palette);
+    // How shots look; model projectiles add meshes, so this comes before the rigs (headless builds
+    // skip it, so the simulation's meshes never depend on it).
     if (options.textures)
     {
-        for (const auto& name : options.effects)
-        {
-            asset.effects.push_back(particle_effect(builder, name));
-        }
         std::vector<std::uint32_t> keys;
         for (const auto& entity : asset.entities)
         {
@@ -453,7 +450,16 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             collect_projectile_keys(type.combat, keys);
         }
         load_projectile_visuals(builder, catalog, keys, asset.projectile_visuals, asset.projectile_atlas);
-        keys.clear();
+        load_projectile_models(builder, catalog, asset.land, meshes, asset.projectile_visuals);
+    }
+    build_map_rigs(builder, asset.rigs, asset.rest_palette);
+    if (options.textures)
+    {
+        for (const auto& name : options.effects)
+        {
+            asset.effects.push_back(particle_effect(builder, name));
+        }
+        std::vector<std::uint32_t> keys;
         collect_impact_effect_keys(asset.projectile_visuals, keys);
         for (const auto& entity : asset.entities)
         {
@@ -524,7 +530,6 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
     {
         return make_error("spawn type '" + std::string(type_name) + "' did not resolve to a single new type");
     }
-    build_map_rigs(builder, package.rigs, package.rest_palette);
     if (options.textures)
     {
         std::vector<std::uint32_t> keys;
@@ -533,7 +538,12 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
             collect_projectile_keys(type.combat, keys);
         }
         load_projectile_visuals(builder, catalog_entry->catalog, keys, package.projectile_visuals, package.projectile_atlas);
-        keys.clear();
+        load_projectile_models(builder, catalog_entry->catalog, land, meshes, package.projectile_visuals);
+    }
+    build_map_rigs(builder, package.rigs, package.rest_palette);
+    if (options.textures)
+    {
+        std::vector<std::uint32_t> keys;
         collect_impact_effect_keys(package.projectile_visuals, keys);
         for (const auto& type : package.types)
         {

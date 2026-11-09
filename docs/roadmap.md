@@ -280,7 +280,8 @@ Gaps toward the deliverable, in planned order:
       and shots and deaths play the XML `Particle` objects their projectile
       and type name (shield absorption, hull and armor-reduced detonation,
       flight end, death explosion) at their `Scale_Factor`; model
-      projectiles (missiles, torpedoes) finish this step; ground detonations,
+      projectiles (missiles, torpedoes) finished this step (done: their models
+      fly nose first at their Scale_Factor with their trails); ground detonations,
       hardpoint destruction, and debris move to combat presentation.
    2. A visual capture-and-compare workflow: the same scene, camera, and
       units captured in the original and in the engine for side-by-side
@@ -315,7 +316,15 @@ Known provisional choices to verify against the original:
 - shield refresh units, and how shields and armor combine;
 - ranges measured in the ground plane;
 - the owner-slot hostility rule;
-- world handedness.
+- world handedness;
+- unit `Scale_Factor`: 465 stock unit types set one other than 1 and the
+  engine ignores it (models drawn at file size, footprints from unscaled
+  bounds); applying it changes simulation footprints and state hashes, so it
+  waits for an owner decision;
+- why `W_LASER_INVISIBLE.ALO` (the land model of 19 melee and environment
+  projectiles: dark trooper blades, force pikes, Felucia spikes) is invisible
+  in the original: its mesh is an unhidden additive quad textured with the
+  visible `W_Laser_Small.tga`, and the engine draws it as authored.
 
 ## M4 — space and land modes
 

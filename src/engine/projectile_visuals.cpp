@@ -1,5 +1,7 @@
 #include "projectile_visuals.hpp"
 
+#include "scene_presentation.hpp"
+
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -194,6 +196,36 @@ void append_projectile_sprites(const std::span<const ProjectileSnapshot> current
         sprite.shape = visual.tinted ? VisualParticleShape::teardrop : VisualParticleShape::beam;
         sprite.blend = VisualParticleBlend::additive;
         sprites.push_back(sprite);
+    }
+}
+
+std::array<float, 16> projectile_model_transform(const ProjectileSnapshot& projectile, const ProjectileVisual& visual, const float interpolation, const float tick_seconds)
+{
+    const auto& d = projectile.direction;
+    const auto back = projectile.speed * tick_seconds * (1.0F - std::clamp(interpolation, 0.0F, 1.0F));
+    const SimVector3 position{projectile.position.x - d.x * back, projectile.position.y - d.y * back, projectile.position.z - d.z * back};
+    const auto heading = std::atan2(d.y, d.x);
+    const auto pitch = std::asin(std::clamp(d.z, -1.0F, 1.0F));
+    auto scale = visual_identity_transform;
+    scale[0] = scale[5] = scale[10] = visual.scale;
+    return pose_transform(scale, identity_model_heading, position, heading, pitch);
+}
+
+void append_projectile_instances(const std::span<const ProjectileSnapshot> current, const ProjectileVisualTable& table, const float interpolation, const float tick_seconds,
+                                 std::vector<VisualInstance>& instances, std::vector<std::uint32_t>& serials)
+{
+    for (const auto& projectile : current)
+    {
+        const auto found = table.find(projectile.visual);
+        if (found == table.end() || found->second.bolt || !found->second.mesh)
+        {
+            continue;
+        }
+        VisualInstance instance;
+        instance.mesh = *found->second.mesh;
+        instance.transform = projectile_model_transform(projectile, found->second, interpolation, tick_seconds);
+        instances.push_back(instance);
+        serials.push_back(projectile.serial);
     }
 }
 

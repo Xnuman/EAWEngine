@@ -277,7 +277,7 @@ struct SpawnablePackage
 // renderer placed particle texture i (D3d12Renderer::add_textures). Effects shared between rigs stay
 // shared.
 void renumber_effect_textures(std::span<VisualRig> rigs, std::span<std::shared_ptr<const ParticleEffect>> effects, std::span<const std::uint32_t> renderer_textures,
-                              ParticleEffectObjectTable* objects = nullptr);
+                              ParticleEffectObjectTable* objects = nullptr, ProjectileVisualTable* projectiles = nullptr);
 [[nodiscard]] std::optional<std::string> default_model_animation(const AssetReader& reader, std::string_view model_path);
 // Every <MODEL>_*.ALA beside the model, sorted by virtual path.
 [[nodiscard]] std::vector<std::string> model_animations(const AssetReader& reader, std::string_view model_path);

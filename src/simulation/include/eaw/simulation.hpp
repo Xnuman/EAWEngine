@@ -181,6 +181,9 @@ struct ProjectileSnapshot
     // units per second (to place the shot between ticks).
     std::uint32_t visual{};
     float speed{};
+    // Presentation only (not hashed): the shot's number in launch order, the same in every snapshot
+    // while it flies (effects that follow a shot, such as a missile's trail, are keyed by it).
+    std::uint32_t serial{};
 };
 
 // An entity combat destroyed in the last tick, where and how it last stood (for death animations
@@ -372,8 +375,9 @@ private:
         float speed{};
         float flown{};
         float max_flight{};
-        // Presentation key (WeaponProfile::projectile_visual); not hashed.
+        // Presentation key (WeaponProfile::projectile_visual) and launch number; not hashed.
         std::uint32_t visual{};
+        std::uint32_t serial{};
     };
 
     // What the behavior layer asks a locomotor for this tick. Ground and straight-line movers follow
@@ -547,6 +551,8 @@ private:
     // Deaths of the current tick (SimSnapshot::deaths).
     std::vector<DeathSnapshot> deaths_;
     std::vector<ImpactSnapshot> impacts_;
+    // Launch number of the next shot (ProjectileSnapshot::serial; presentation only, not hashed).
+    std::uint32_t next_projectile_serial_{1};
     SpatialGrid grid_;
     std::vector<std::uint32_t> query_;
     DamageTable damage_table_;

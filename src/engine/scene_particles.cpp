@@ -204,15 +204,6 @@ std::uint32_t particle_library_texture(SceneBuilder& builder, const std::string&
     return index;
 }
 
-void load_projectile_visuals(SceneBuilder& builder, const GameObjectCatalog& catalog, const std::span<const std::uint32_t> keys, ProjectileVisualTable& table, std::uint32_t& atlas)
-{
-    read_projectile_visuals(catalog, keys, table, builder.scene.warnings);
-    if (!table.empty())
-    {
-        atlas = particle_library_texture(builder, std::string(projectile_atlas_texture), "projectile bolts");
-    }
-}
-
 void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog, const std::span<const std::uint32_t> keys, const bool land, ParticleEffectObjectTable& table)
 {
     if (!builder.textures)
@@ -406,7 +397,7 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const A
 } // namespace scene_build
 
 void renumber_effect_textures(const std::span<VisualRig> rigs, const std::span<std::shared_ptr<const ParticleEffect>> effects, const std::span<const std::uint32_t> renderer_textures,
-                              ParticleEffectObjectTable* const objects)
+                              ParticleEffectObjectTable* const objects, ProjectileVisualTable* const projectiles)
 {
     std::unordered_map<const ParticleEffect*, std::shared_ptr<const ParticleEffect>> renumbered;
     const auto renumber = [&](std::shared_ptr<const ParticleEffect>& effect)
@@ -443,6 +434,13 @@ void renumber_effect_textures(const std::span<VisualRig> rigs, const std::span<s
         for (auto& [key, object] : *objects)
         {
             renumber(object.effect);
+        }
+    }
+    if (projectiles != nullptr)
+    {
+        for (auto& [key, visual] : *projectiles)
+        {
+            renumber(visual.effect);
         }
     }
 }

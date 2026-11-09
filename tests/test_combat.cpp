@@ -93,7 +93,13 @@ void test_combat()
         flight_world.step();
         require(flight_world.snapshot().projectiles.size() == 1 && flight_world.snapshot().projectiles[0].direction.x == 1.0F && flight_world.snapshot().entities[1].health == 25.0F,
                 "a projectile must be in flight before it hits");
-        for (int tick = 0; tick < 6; ++tick)
+        // A shot keeps its serial while it flies (presentation follows it by that number).
+        const auto serial = flight_world.snapshot().projectiles[0].serial;
+        const auto hash = flight_world.state_hash();
+        flight_world.step();
+        require(serial != 0 && !flight_world.snapshot().projectiles.empty() && flight_world.snapshot().projectiles[0].serial == serial, "a shot must keep its serial in flight");
+        require(hash != flight_world.state_hash(), "a flying shot must change the state");
+        for (int tick = 0; tick < 5; ++tick)
         {
             flight_world.step();
         }

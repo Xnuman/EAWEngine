@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <unordered_map>
 #include <vector>
 
 namespace eaw {
@@ -48,6 +49,12 @@ public:
     // Keeps attached effects on this frame's drawn units (see AttachedEffects::update).
     void attach(std::span<const VisualInstance> instances, std::span<const EntityId> entities, std::span<const std::array<float, 16>> palette, std::span<const EntitySnapshot> snapshot,
                 double seconds);
+    // Keeps the effects of shots in flight: the proxies (trails) of model projectiles drawn this frame
+    // (`instances` with their shots' `serials`; `palette` as for attach) and the particle systems of
+    // shots whose model is one, placed where `projectiles` are drawn. Effects of shots that ended stop
+    // emitting, and their particles live out.
+    void follow_projectiles(std::span<const VisualInstance> instances, std::span<const std::uint32_t> serials, std::span<const std::array<float, 16>> palette,
+                            std::span<const ProjectileSnapshot> projectiles, float interpolation, float tick_seconds);
     // Advances every effect by `seconds` of presentation time (0 while the world is paused).
     void update(float seconds);
     // Appends the particles, sorted as the fidelity profile says from `eye`, then a bolt for each
@@ -66,6 +73,10 @@ public:
     [[nodiscard]] const ParticleWorld& particles() const noexcept
     {
         return particles_;
+    }
+    [[nodiscard]] const ProjectileVisualTable& projectile_visuals() const noexcept
+    {
+        return projectile_visuals_;
     }
     // Projectile visuals when bolts can be drawn (an atlas is loaded), else null.
     [[nodiscard]] const ProjectileVisualTable* bolts() const noexcept
@@ -86,6 +97,17 @@ public:
 private:
     ParticleWorld particles_;
     AttachedEffects attached_;
+    // Model projectiles' proxies, keyed by shot serial (apart from units, so keys never collide).
+    AttachedEffects projectile_attached_;
+    std::vector<EntityId> projectile_keys_;
+    // Particle systems of shots whose model is one, by shot serial, and the frame each was last seen.
+    struct ProjectileEffect
+    {
+        ParticleInstanceId instance;
+        std::uint64_t frame{};
+    };
+    std::unordered_map<std::uint32_t, ProjectileEffect> projectile_effects_;
+    std::uint64_t projectile_frame_{};
     ProjectileVisualTable projectile_visuals_;
     std::uint32_t atlas_{invalid_visual_texture};
     ParticleEffectObjectTable effect_objects_;

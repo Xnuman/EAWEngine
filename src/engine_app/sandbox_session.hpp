@@ -129,6 +129,8 @@ struct SandboxSession
     eaw::SimSnapshot previous_snapshot;
     std::vector<eaw::VisualInstance> frame_instances;
     std::vector<eaw::EntityId> frame_entities;
+    // Shots drawn as models this frame (after the entities in frame_instances) and their serials.
+    std::vector<std::uint32_t> frame_projectile_serials;
     std::unordered_set<std::uint64_t> selection;
     std::chrono::steady_clock::time_point simulation_tick = std::chrono::steady_clock::now();
     float axis_length = 1.0F;
@@ -204,7 +206,7 @@ struct SandboxSession
     // Registers particle textures with the renderer and points the effects at them (white when
     // registration fails); returns where each texture landed (empty on failure).
     std::vector<std::uint32_t> register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs, std::span<std::shared_ptr<const eaw::ParticleEffect>> named_effects,
-                                                          eaw::ParticleEffectObjectTable* objects = nullptr);
+                                                          eaw::ParticleEffectObjectTable* objects = nullptr, eaw::ProjectileVisualTable* projectiles = nullptr);
     // The renderer texture of a build's bolt atlas (`atlas` indexes its particle textures, `placed`
     // says where they landed), or invalid_visual_texture.
     static std::uint32_t placed_atlas(std::uint32_t atlas, std::span<const std::uint32_t> placed);

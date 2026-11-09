@@ -52,6 +52,52 @@ void test_particle_tracks()
     require(eaw::sample_particle_track(track, 0.125F) > 0.0F && eaw::sample_particle_track(track, 0.125F) < 2.5F, "smooth particle track sampling failed");
 }
 
+// Model projectiles: drawn nose along the flight at their scale, between ticks; their particle
+// systems start with the shot and stop when it ends.
+void test_projectile_models()
+{
+    eaw::ProjectileVisualTable table;
+    eaw::ProjectileVisual missile;
+    missile.mesh = 4U;
+    missile.scale = 2.0F;
+    table.emplace(5U, missile);
+    eaw::ProjectileVisual bolt;
+    bolt.bolt = true;
+    table.emplace(6U, bolt);
+    auto burst = make_test_emitter();
+    burst.particles_per_second = 30;
+    burst.lifetime = 5.0F;
+    eaw::ProjectileVisual spark;
+    spark.effect = make_test_effect({burst}, false);
+    table.emplace(7U, spark);
+
+    // Flying along +X at 300 units/s, drawn half a tick (5 units at 30 Hz) behind its tick position.
+    const eaw::ProjectileSnapshot shot{{100.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 5U, 300.0F, 11U};
+    const auto transform = eaw::projectile_model_transform(shot, missile, 0.5F, 1.0F / 30.0F);
+    // Row 1 is where the model's +Y axis goes: its -Y nose points along the flight, at scale 2.
+    require(std::abs(transform[4] + 2.0F) < 1e-4F && std::abs(transform[5]) < 1e-4F && std::abs(transform[6]) < 1e-4F && std::abs(transform[12] - 95.0F) < 1e-3F,
+            "a model projectile must face along its flight at its scale");
+    const eaw::ProjectileSnapshot climbing{{0.0F, 0.0F, 0.0F}, {0.0F, 0.6F, 0.8F}, 1U, 5U, 0.0F, 12U};
+    const auto up = eaw::projectile_model_transform(climbing, missile, 1.0F, 1.0F / 30.0F);
+    require(std::abs(up[5] + 1.2F) < 1e-3F && std::abs(up[6] + 1.6F) < 1e-3F, "a climbing projectile must pitch its nose up");
+
+    std::vector<eaw::ProjectileSnapshot> shots{shot, {{0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 6U, 300.0F, 12U}, {{0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 7U, 300.0F, 13U}};
+    std::vector<eaw::VisualInstance> instances;
+    std::vector<std::uint32_t> serials;
+    eaw::append_projectile_instances(shots, table, 0.5F, 1.0F / 30.0F, instances, serials);
+    require(instances.size() == 1 && instances[0].mesh == 4U && serials == std::vector<std::uint32_t>{11U}, "only mesh projectiles must become instances");
+
+    eaw::BattleEffects effects;
+    effects.reset({{}, &table, eaw::invalid_visual_texture, nullptr});
+    effects.follow_projectiles({}, {}, {}, shots, 0.5F, 1.0F / 30.0F);
+    require(effects.particles().stats().instances == 1, "a particle-model shot must start its effect");
+    effects.update(0.1F);
+    effects.follow_projectiles({}, {}, {}, shots, 0.5F, 1.0F / 30.0F);
+    require(effects.particles().stats().instances == 1 && effects.particles().stats().particles > 0, "a particle-model shot must keep one effect while it flies");
+    effects.follow_projectiles({}, {}, {}, {}, 0.5F, 1.0F / 30.0F);
+    require(effects.particles().stats().instances == 0, "an ended shot's effect must stop");
+}
+
 void test_particle_world()
 {
     // Three bursts of four, 0.5 s apart, two-second particles: the effect ends on its own.
@@ -527,6 +573,7 @@ const ModuleRegistrar registrar("effects", {
                                                {"test_effect_objects", &test_effect_objects},
                                                {"test_projectile_sprites", &test_projectile_sprites},
                                                {"test_battle_effects", &test_battle_effects},
+                                               {"test_projectile_models", &test_projectile_models},
                                            });
 
 } // namespace

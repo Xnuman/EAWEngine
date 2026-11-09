@@ -76,6 +76,13 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
         const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
         watchdog.enter("presentation", world->stats().tick);
         presentation->build(entities, selection, frame_instances, frame_entities);
+        // Model projectiles follow the entities, without an entity (never picked) and at rest pose.
+        const auto first_projectile = frame_instances.size();
+        const auto interpolation = static_cast<float>(simulation_clock.interpolation());
+        const auto tick_seconds = static_cast<float>(simulation_clock.tick_seconds());
+        frame_projectile_serials.clear();
+        eaw::append_projectile_instances(world->snapshot().projectiles, effects.projectile_visuals(), interpolation, tick_seconds, frame_instances, frame_projectile_serials);
+        frame_entities.resize(frame_instances.size());
         if (animator)
         {
             watchdog.enter("unit animation", world->stats().tick);
@@ -83,6 +90,7 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
             animator->animate(entities, frame_entities, frame_instances, world_seconds, eaw::D3d12Renderer::max_bone_transforms(), frame_palette);
             renderer.set_bone_transforms(frame_palette);
             effects.attach(frame_instances, frame_entities, frame_palette, entities, world_seconds);
+            effects.follow_projectiles(std::span(frame_instances).subspan(first_projectile), frame_projectile_serials, frame_palette, world->snapshot().projectiles, interpolation, tick_seconds);
         }
         for (const auto request : unbound_picks)
         {

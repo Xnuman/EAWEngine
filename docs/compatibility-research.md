@@ -822,6 +822,22 @@ particle-audit`.
   cell index (read as column 2, row 0), and whether `Scale_Factor` scales
   custom-render bolts is open (stock projectiles all use 1.0, so the engine
   ignores it for now).
+- **Model projectiles.** Of the 115 projectile types stock weapons fire, 53
+  are bolts (custom render 1 or 2) and 62 draw a model. Many name only one
+  context's model and are fired in both (seven concussion missiles name a
+  `Land_Model_Name` and fly in space), so the engine falls back to the other
+  context's model, as for effect objects. Some name a particle system as their
+  model (`p_turbolaser_burst_med00`, `p_proton_Vengance`, `p_magnepulse_shot`);
+  those play along the flight. Missile models carry their trail as a proxy
+  (`W_concussion_missile.alo`: one mesh, one proxy). `Scale_Factor` ranges
+  from 0.3 to 5.0 on model projectiles and is applied to them; the model's -Y
+  axis points along the flight (the fork's documentation of projectile flight
+  says the same). Open: 19 land projectiles for melee and environment hits
+  name `W_LASER_INVISIBLE.ALO`, whose single additive quad uses the visible
+  `W_Laser_Small.tga` and is not flagged hidden; why the original shows nothing
+  for them (if it does not) is unknown, so the engine draws it as authored.
+  Unit types also carry `Scale_Factor` (465 stock types other than 1), which
+  the engine does not apply yet.
 - **Impact and death effects.** Gameplay effects are not hard-coded per
   weapon class: the game names them through XML `Particle` objects
   (`Particles.xml`, 165 stock objects), each giving a `Space_Model_Name` and

@@ -13,17 +13,21 @@ BattleEffects::BattleEffects(const ParticleDrawOrder draw_order)
 void BattleEffects::reset(const BattleEffectContent& content)
 {
     attached_.clear(particles_);
+    projectile_attached_.clear(particles_);
+    projectile_effects_.clear();
     particles_.clear();
     projectile_visuals_.clear();
     atlas_ = invalid_visual_texture;
     effect_objects_.clear();
     attached_.set_rigs(content.rigs);
+    projectile_attached_.set_rigs(content.rigs);
     take(content);
 }
 
 void BattleEffects::add(const BattleEffectContent& content)
 {
     attached_.add_rigs(content.rigs);
+    projectile_attached_.add_rigs(content.rigs);
     take(content);
 }
 
@@ -67,6 +71,54 @@ void BattleEffects::attach(const std::span<const VisualInstance> instances, cons
                            const std::span<const EntitySnapshot> snapshot, const double seconds)
 {
     attached_.update(particles_, instances, entities, palette, snapshot, seconds);
+}
+
+void BattleEffects::follow_projectiles(const std::span<const VisualInstance> instances, const std::span<const std::uint32_t> serials, const std::span<const std::array<float, 16>> palette,
+                                       const std::span<const ProjectileSnapshot> projectiles, const float interpolation, const float tick_seconds)
+{
+    // Shot serials stand in for entity ids (generation 1 marks them valid).
+    projectile_keys_.clear();
+    for (const auto serial : serials)
+    {
+        projectile_keys_.push_back(EntityId{serial, 1U});
+    }
+    projectile_attached_.update(particles_, instances, projectile_keys_, palette);
+
+    ++projectile_frame_;
+    for (const auto& projectile : projectiles)
+    {
+        const auto found = projectile_visuals_.find(projectile.visual);
+        if (found == projectile_visuals_.end() || found->second.bolt || !found->second.effect)
+        {
+            continue;
+        }
+        // The effect's scale goes to the particle world, which sizes its particles too.
+        auto unscaled = found->second;
+        unscaled.scale = 1.0F;
+        const auto transform = projectile_model_transform(projectile, unscaled, interpolation, tick_seconds);
+        auto [entry, inserted] = projectile_effects_.try_emplace(projectile.serial);
+        if (inserted)
+        {
+            entry->second.instance = particles_.play(found->second.effect, transform, seed_++, {}, found->second.scale);
+        }
+        else
+        {
+            particles_.set_transform(entry->second.instance, transform);
+        }
+        entry->second.frame = projectile_frame_;
+    }
+    for (auto entry = projectile_effects_.begin(); entry != projectile_effects_.end();)
+    {
+        if (entry->second.frame != projectile_frame_)
+        {
+            particles_.stop(entry->second.instance);
+            entry = projectile_effects_.erase(entry);
+        }
+        else
+        {
+            ++entry;
+        }
+    }
 }
 
 void BattleEffects::update(const float seconds)

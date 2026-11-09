@@ -544,7 +544,7 @@ void SimulationWorld::publish()
     snapshot_.projectiles.reserve(projectiles_.size());
     for (const auto& projectile : projectiles_)
     {
-        snapshot_.projectiles.push_back({projectile.position, projectile.direction, projectile.owner, projectile.visual, projectile.speed});
+        snapshot_.projectiles.push_back({projectile.position, projectile.direction, projectile.owner, projectile.visual, projectile.speed, projectile.serial});
     }
 }
 

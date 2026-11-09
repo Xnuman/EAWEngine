@@ -38,7 +38,7 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
         {
             if (view.projectile_visuals != nullptr)
             {
-                if (const auto found = view.projectile_visuals->find(projectile.visual); found != view.projectile_visuals->end() && found->second.bolt)
+                if (const auto found = view.projectile_visuals->find(projectile.visual); found != view.projectile_visuals->end() && found->second.drawn())
                 {
                     continue;
                 }

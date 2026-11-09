@@ -41,6 +41,7 @@ set(EAW_ENGINE_SOURCES
     scene_materials.cpp
     scene_models.cpp
     scene_particles.cpp
+    scene_projectiles.cpp
     scene_presentation.cpp
     scene_presentation.hpp
     scene_terrain.cpp

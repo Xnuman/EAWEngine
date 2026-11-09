@@ -32,7 +32,8 @@ void SandboxSession::start_simulation(const eaw::VisualScene& scene, const eaw::
 }
 
 std::vector<std::uint32_t> SandboxSession::register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs,
-                                                                      std::span<std::shared_ptr<const eaw::ParticleEffect>> named_effects, eaw::ParticleEffectObjectTable* objects)
+                                                                      std::span<std::shared_ptr<const eaw::ParticleEffect>> named_effects, eaw::ParticleEffectObjectTable* objects,
+                                                                      eaw::ProjectileVisualTable* projectiles)
 {
     std::vector<std::uint32_t> placed;
     if (!textures.empty())
@@ -46,7 +47,7 @@ std::vector<std::uint32_t> SandboxSession::register_particle_textures(std::vecto
             eaw::log_warning("particles", added.error());
         }
     }
-    eaw::renumber_effect_textures(rigs, named_effects, placed, objects);
+    eaw::renumber_effect_textures(rigs, named_effects, placed, objects, projectiles);
     return placed;
 }
 
@@ -147,7 +148,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         {
             particle_texture_copy = visual_map.particle_textures;
         }
-        const auto placed = register_particle_textures(std::move(visual_map.particle_textures), visual_map.rigs, visual_map.effects, &visual_map.effect_objects);
+        const auto placed = register_particle_textures(std::move(visual_map.particle_textures), visual_map.rigs, visual_map.effects, &visual_map.effect_objects, &visual_map.projectile_visuals);
         start_simulation(layout, eaw::battle_map(visual_map), *options.map);
         animator.emplace(visual_map.rigs, visual_map.rest_palette);
         effects.reset({visual_map.rigs, &visual_map.projectile_visuals, placed_atlas(visual_map.projectile_atlas, placed), &visual_map.effect_objects});
@@ -184,6 +185,17 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
             std::cout << "Animation: " << animated_meshes << " of " << visual_map.rigs.size() << " meshes have clips (" << clips << " clips), rest palette " << visual_map.rest_palette.size()
                       << " entries\n";
             std::cout << "Impact and death effects: " << effects.playable_effect_objects() << " of " << effects.effect_objects() << " particle objects playable\n";
+            std::size_t bolts = 0;
+            std::size_t models = 0;
+            std::size_t particle_models = 0;
+            for (const auto& [key, visual] : effects.projectile_visuals())
+            {
+                bolts += visual.bolt ? 1U : 0U;
+                models += !visual.bolt && visual.mesh ? 1U : 0U;
+                particle_models += !visual.bolt && visual.effect ? 1U : 0U;
+            }
+            std::cout << "Projectile looks: " << bolts << " bolts, " << models << " models, " << particle_models << " particle systems, "
+                      << effects.projectile_visuals().size() - bolts - models - particle_models << " not drawn\n";
         }
         spawnable = visual_map.spawnable;
         terrain_heights = visual_map.ground;

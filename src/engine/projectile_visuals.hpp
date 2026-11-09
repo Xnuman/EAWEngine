@@ -6,8 +6,12 @@
 // Data/Art/Textures/W_LASER_PILL.dds. Render 2: a teardrop in Projectile_Laser_Color,
 // Projectile_Width wide and Projectile_Length widths long. The atlas name, the teardrop, and its
 // length rule are inferences from the stock data, a modder's description, and screenshots of the
-// original (docs/compatibility-research.md, "Projectile visuals"). Other projectiles are not drawn
-// yet.
+// original (docs/compatibility-research.md, "Projectile visuals"). Other projectiles draw their
+// model (Space_Model_Name, else Land_Model_Name, and the reverse on land maps) at the projectile's
+// Scale_Factor, nose along the flight: a mesh, whose proxies (missile trails) play as attached
+// effects, or a particle system that moves with the shot.
+
+#include "particle_rules.hpp"
 
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/simulation.hpp"
@@ -15,6 +19,8 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -42,6 +48,18 @@ struct ProjectileVisual
     // Render 2: a teardrop in `color` (`length` already in world units); render 1: the atlas cell.
     bool tinted{};
     std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
+    // Model projectiles (no bolt): the scene mesh drawn along the flight, or the particle system
+    // that follows the shot (some projectiles name a particle file as their model), and the XML
+    // Scale_Factor both are drawn at.
+    std::optional<std::uint32_t> mesh;
+    std::shared_ptr<const ParticleEffect> effect;
+    float scale{1.0F};
+
+    // Whether the shot has a look of its own (otherwise only its impacts show).
+    [[nodiscard]] bool drawn() const noexcept
+    {
+        return bolt || mesh || effect;
+    }
 };
 
 // Projectile visuals by WeaponProfile::projectile_visual (the CRC-32 of the type name).
@@ -59,6 +77,15 @@ void collect_impact_effect_keys(const ProjectileVisualTable& table, std::vector<
 
 // The Particle object played for an impact of `kind` (0 none).
 [[nodiscard]] std::uint32_t impact_effect(const ProjectileVisual& visual, ImpactKind kind) noexcept;
+
+// The world transform of a model projectile `visual` for `projectile`, placed between ticks like a
+// bolt (`interpolation` of a tick after the previous one), its model's -Y axis along the flight.
+[[nodiscard]] std::array<float, 16> projectile_model_transform(const ProjectileSnapshot& projectile, const ProjectileVisual& visual, float interpolation, float tick_seconds);
+
+// Appends an instance (in its mesh's rest pose, bone offsets set by the caller's animation) for every
+// projectile in `current` whose visual is a mesh, and its serial to `serials`.
+void append_projectile_instances(std::span<const ProjectileSnapshot> current, const ProjectileVisualTable& table, float interpolation, float tick_seconds, std::vector<VisualInstance>& instances,
+                                 std::vector<std::uint32_t>& serials);
 
 // Appends a bolt sprite for every projectile in `current` that has a visual, placed `interpolation`
 // (0..1) of a tick after the previous tick (shots are drawn where they were between ticks, like
