@@ -5,7 +5,7 @@
 #include "text_format.hpp"
 #include "visual_scene_builder.hpp"
 
-#include "eaw/log.hpp"
+#include "core/log.hpp"
 
 #include <algorithm>
 #include <array>

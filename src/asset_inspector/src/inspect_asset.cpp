@@ -22,7 +22,12 @@ eaw::Status inspect_dat(const std::span<const std::byte> bytes, const std::size_
         {
             break;
         }
-        EAW_TRY_ASSIGN(auto value, eaw::utf16_to_utf8(entry.value));
+        auto converted = eaw::utf16_to_utf8(entry.value);
+        if (!converted)
+        {
+            return eaw::make_error("DAT entry " + entry.key + " is not valid UTF-16");
+        }
+        auto value = std::move(*converted);
         std::ranges::replace(value, '\n', ' ');
         std::ranges::replace(value, '\r', ' ');
         if (value.size() > 100)

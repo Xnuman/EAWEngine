@@ -4,10 +4,10 @@
 #include "eaw/dds_texture.hpp"
 #include "eaw/map_object_layout.hpp"
 #include "eaw/xml_document.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <filesystem>
@@ -181,7 +181,7 @@ const std::vector<float>* material_values(const LegacyMaterial& material, const 
 {
     for (const auto& parameter : material.parameters)
     {
-        if (!parameter.values.empty() && fold_ascii(parameter.name) == fold_ascii(std::string(name)))
+        if (!parameter.values.empty() && ascii_lower(parameter.name) == ascii_lower(std::string(name)))
         {
             return &parameter.values;
         }
@@ -211,16 +211,6 @@ const LegacyTextureBinding* texture_binding(const LegacyMaterial& material, cons
 
 } // namespace
 
-std::string fold_ascii(std::string value)
-{
-    std::ranges::transform(value, value.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return value;
-}
-
 const LegacyTextureBinding* base_color_texture(const LegacyMaterial& material)
 {
     const auto found = std::ranges::find(material.textures, LegacyTextureSemantic::base_color, &LegacyTextureBinding::semantic);
@@ -235,7 +225,7 @@ const LegacyTextureBinding* base_color_texture(const LegacyMaterial& material)
 // index, or invalid_visual_texture with a warning when it is missing or unsupported.
 std::shared_ptr<const CachedTexture> cached_texture(const AssetReader& vfs, AssetCache* cache, const std::string& reference)
 {
-    return cached<CachedTexture>(cache, "texture", fold_ascii(reference), vfs,
+    return cached<CachedTexture>(cache, "texture", ascii_lower(reference), vfs,
                                  [&](const AssetReader& reader)
                                  {
                                      CachedTexture result;
@@ -269,7 +259,7 @@ std::uint32_t scene_texture(SceneBuilder& builder, const std::string& reference)
     {
         return invalid_visual_texture;
     }
-    const auto key = fold_ascii(reference);
+    const auto key = ascii_lower(reference);
     if (const auto existing = builder.texture_indices.find(key); existing != builder.texture_indices.end())
     {
         return existing->second;

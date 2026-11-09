@@ -25,7 +25,7 @@
 #include "visual_scene_builder.hpp"
 
 #include "eaw/d3d12_renderer.hpp"
-#include "eaw/log.hpp"
+#include "core/log.hpp"
 #include "eaw/platform_window.hpp"
 
 #include <array>
@@ -41,9 +41,6 @@
 #include <vector>
 
 namespace eaw {
-
-// XML type names compare case-insensitively.
-[[nodiscard]] std::string fold_name(std::string text);
 
 // Members keep the declaration order the work depends on: the asset cache and archive watch
 // outlive the futures that use them.

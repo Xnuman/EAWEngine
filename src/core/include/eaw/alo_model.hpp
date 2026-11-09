@@ -2,7 +2,7 @@
 
 #include "math/matrix.hpp"
 #include "math/vector.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <array>
 #include <cstddef>

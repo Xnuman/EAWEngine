@@ -5,7 +5,7 @@
 // leading and trailing whitespace.
 
 #include "eaw/dat_file.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <set>
 #include <string>

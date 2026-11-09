@@ -1,6 +1,6 @@
 #include "eaw/xml_document.hpp"
 
-#include "eaw/text_encoding.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -10,15 +10,6 @@
 
 namespace eaw {
 namespace {
-
-bool equal_ascii(const std::string_view left, const std::string_view right) noexcept
-{
-    return left.size() == right.size() && std::ranges::equal(left, right,
-                                                             [](const char a, const char b)
-                                                             {
-                                                                 return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
-                                                             });
-}
 
 Status append_utf8(std::string& output, const std::uint32_t code_point)
 {
@@ -138,7 +129,12 @@ Result<std::string> text_from_bytes(const std::span<const std::byte> bytes)
                 const auto value = little_endian ? static_cast<std::uint16_t>(low | (high << 8U)) : static_cast<std::uint16_t>((low << 8U) | high);
                 text.push_back(static_cast<char16_t>(value));
             }
-            return utf16_to_utf8(text);
+            auto converted = utf16_to_utf8(text);
+            if (!converted)
+            {
+                return make_error("UTF-16 XML is not valid UTF-16");
+            }
+            return std::move(*converted);
         }
     }
     return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
@@ -305,7 +301,7 @@ private:
     void skip_processing_instruction()
     {
         const auto target_begin = position_ + 2;
-        const bool xml_declaration = target_begin + 3 <= source_.size() && equal_ascii(source_.substr(target_begin, 3), "xml") &&
+        const bool xml_declaration = target_begin + 3 <= source_.size() && ascii_equal_ignoring_case(source_.substr(target_begin, 3), "xml") &&
                                      (target_begin + 3 == source_.size() || std::isspace(static_cast<unsigned char>(source_[target_begin + 3])) || source_[target_begin + 3] == '?');
         char quote = '\0';
         while (!at_end())
@@ -521,7 +517,7 @@ const XmlAttribute* XmlNode::attribute(const std::string_view requested) const n
     const auto found = std::ranges::find_if(attributes,
                                             [&](const auto& candidate)
                                             {
-                                                return equal_ascii(candidate.name, requested);
+                                                return ascii_equal_ignoring_case(candidate.name, requested);
                                             });
     return found == attributes.end() ? nullptr : &*found;
 }
@@ -531,7 +527,7 @@ const XmlNode* XmlNode::child(const std::string_view requested) const noexcept
     const auto found = std::ranges::find_if(children,
                                             [&](const auto& candidate)
                                             {
-                                                return equal_ascii(candidate.name, requested);
+                                                return ascii_equal_ignoring_case(candidate.name, requested);
                                             });
     return found == children.end() ? nullptr : &*found;
 }

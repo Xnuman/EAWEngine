@@ -5,9 +5,9 @@
 #include "eaw/map_object_layout.hpp"
 
 #include "eaw/xml_document.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <limits>
@@ -20,33 +20,9 @@ namespace {
 
 constexpr std::string_view game_constants_path = "Data/XML/GameConstants.xml";
 
-std::string_view trim(std::string_view text) noexcept
-{
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0)
-    {
-        text.remove_prefix(1);
-    }
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0)
-    {
-        text.remove_suffix(1);
-    }
-    return text;
-}
-
-std::string fold(const std::string_view text)
-{
-    std::string folded(text);
-    std::ranges::transform(folded, folded.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return folded;
-}
-
 std::optional<float> parse_float(std::string_view text) noexcept
 {
-    text = trim(text);
+    text = ascii_trim(text);
     if (!text.empty() && text.front() == '+')
     {
         text.remove_prefix(1);
@@ -67,7 +43,7 @@ std::vector<std::string_view> split_list(const std::string_view text)
     while (start <= text.size())
     {
         const auto separator = text.find(',', start);
-        const auto item = trim(text.substr(start, separator == std::string_view::npos ? std::string_view::npos : separator - start));
+        const auto item = ascii_trim(text.substr(start, separator == std::string_view::npos ? std::string_view::npos : separator - start));
         if (!item.empty())
         {
             items.push_back(item);
@@ -83,7 +59,7 @@ std::vector<std::string_view> split_list(const std::string_view text)
 
 std::uint16_t intern(CombatContent& content, const std::string_view name)
 {
-    const auto key = fold(name);
+    const auto key = ascii_lower(name);
     if (const auto found = content.type_ids.find(key); found != content.type_ids.end())
     {
         return found->second;
@@ -151,7 +127,7 @@ public:
         {
             return fallback;
         }
-        const auto value = fold(trim(found->text));
+        const auto value = ascii_lower(ascii_trim(found->text));
         if (value == "yes" || value == "true" || value == "1")
         {
             return true;
@@ -171,8 +147,8 @@ public:
         {
             return 0;
         }
-        const auto name = trim(found->text);
-        const auto id = content.type_ids.find(fold(name));
+        const auto name = ascii_trim(found->text);
+        const auto id = content.type_ids.find(ascii_lower(name));
         // A type the damage table never names multiplies by 1 everywhere, exactly like "none".
         return id == content.type_ids.end() ? std::uint16_t{0} : id->second;
     }
@@ -188,7 +164,7 @@ const XmlDefinition* find_projectile(const GameObjectCatalog& catalog, const std
     const auto candidates = catalog.find(name);
     for (const auto* candidate : candidates)
     {
-        if (fold(candidate->type) == "projectile")
+        if (ascii_lower(candidate->type) == "projectile")
         {
             return candidate;
         }
@@ -217,7 +193,7 @@ CombatContent load_combat_content(const AssetReader& reader)
     {
         for (const auto& entry : root.children)
         {
-            if (fold(entry.name) != "damage_to_armor_mod")
+            if (ascii_lower(entry.name) != "damage_to_armor_mod")
             {
                 continue;
             }
@@ -267,10 +243,10 @@ std::optional<BonePlacement> find_bone(const AloModel* model, const std::vector<
     {
         return std::nullopt;
     }
-    const auto wanted = fold(trim(name));
+    const auto wanted = ascii_lower(ascii_trim(name));
     for (std::size_t index = 0; index < model->bones.size() && index < pose.size(); ++index)
     {
-        if (fold(model->bones[index].name) != wanted)
+        if (ascii_lower(model->bones[index].name) != wanted)
         {
             continue;
         }
@@ -286,7 +262,7 @@ std::optional<BonePlacement> find_bone(const AloModel* model, const std::vector<
 
 HardpointProfile::Kind hardpoint_kind(const std::string_view type)
 {
-    const auto folded = fold(trim(type));
+    const auto folded = ascii_lower(ascii_trim(type));
     if (folded.find("weapon") != std::string::npos)
     {
         return HardpointProfile::Kind::weapon;
@@ -307,7 +283,7 @@ const XmlDefinition* find_hardpoint(const GameObjectCatalog& catalog, const std:
     const auto candidates = catalog.find(name);
     for (const auto* candidate : candidates)
     {
-        if (fold(candidate->type) == "hardpoint")
+        if (ascii_lower(candidate->type) == "hardpoint")
         {
             return candidate;
         }
@@ -383,7 +359,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             const auto bone_name = [&](const std::string_view field)
             {
                 const auto* node = point.node(field);
-                return node != nullptr ? std::string(trim(node->text)) : std::string{};
+                return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
             };
             const auto attachment = find_bone(model, pose, bone_name("Attachment_Bone"), model_scale);
             const auto fire_bone = find_bone(model, pose, bone_name("Fire_Bone_A"), model_scale);
@@ -411,7 +387,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 continue;
             }
             const auto* projectile_name = point.node("Fire_Projectile_Type");
-            const auto* projectile_type = projectile_name != nullptr ? find_projectile(catalog, trim(projectile_name->text)) : nullptr;
+            const auto* projectile_type = projectile_name != nullptr ? find_projectile(catalog, ascii_trim(projectile_name->text)) : nullptr;
             if (projectile_type == nullptr)
             {
                 warnings.push_back(hardpoint->name + ": weapon hardpoint without a defined Fire_Projectile_Type");

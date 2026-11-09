@@ -1,6 +1,7 @@
 // The 3D model preview with its animation pose.
 
 #include "gui_internal.hpp"
+#include "core/string_utils.hpp"
 
 namespace eaw::tools {
 namespace {
@@ -111,7 +112,7 @@ void render_model_viewport(GuiApp::State& state)
         const auto geometry = build_preview_geometry(*state.preview_model, &pose, state.preview_inverse_bind, state.preview_show_collision,
                                                      [&state](const std::string& reference) -> ID3D11ShaderResourceView*
                                                      {
-                                                         const auto found = state.preview_textures.find(lower(reference));
+                                                         const auto found = state.preview_textures.find(ascii_lower(reference));
                                                          return found == state.preview_textures.end() ? nullptr : found->second.view.Get();
                                                      });
         const PreviewInstance identity;

@@ -1,7 +1,6 @@
 #include "dat_editor.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <charconv>
 #include <iostream>
 
@@ -96,16 +95,6 @@ int report_error(const Error& error)
 {
     std::cerr << "DAT editor error: " << error.message << '\n';
     return 1;
-}
-
-std::string lower(std::string value)
-{
-    std::ranges::transform(value, value.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return value;
 }
 
 } // namespace eaw::dat_editor

@@ -4,6 +4,7 @@
 #include "eaw/dds_texture.hpp"
 #include "eaw/map_object_layout.hpp"
 #include "eaw/xml_document.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -18,19 +19,6 @@
 
 namespace eaw::scene_build {
 
-std::string_view trim_ascii(std::string_view text)
-{
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0)
-    {
-        text.remove_prefix(1);
-    }
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0)
-    {
-        text.remove_suffix(1);
-    }
-    return text;
-}
-
 // Whether a type walks on the ground of land maps. XML Space_Layer is "Land" for ground vehicles,
 // infantry, and heroes, and "None" for walkers such as Ewoks; air units (snowspeeders, air whales)
 // use "Frigate", "Capital", or "Corvette", and birds or space-only types have none. This reading is
@@ -42,7 +30,7 @@ bool type_follows_ground(const GameObjectCatalog& catalog, const XmlDefinition& 
     {
         return false;
     }
-    const auto value = fold_ascii(std::string(trim_ascii(layer->text)));
+    const auto value = ascii_lower(std::string(ascii_trim(layer->text)));
     return value == "land" || value == "none";
 }
 
@@ -71,7 +59,7 @@ MovementClasses load_movement_classes(const AssetReader& reader)
                 result.warnings.push_back(std::string(movement_class_path) + " class " + movement_class.name + ": " + mask.error().message);
                 continue;
             }
-            result.classes[fold_ascii(movement_class.name)] = *mask;
+            result.classes[ascii_lower(movement_class.name)] = *mask;
         }
     }
     return result;
@@ -83,7 +71,7 @@ std::uint32_t type_passable_types(const GameObjectCatalog& catalog, const XmlDef
 {
     if (const auto node = catalog.field(definition, "MovementClass").field)
     {
-        if (const auto found = classes.find(fold_ascii(std::string(trim_ascii(node->text)))); found != classes.end())
+        if (const auto found = classes.find(ascii_lower(std::string(ascii_trim(node->text)))); found != classes.end())
         {
             return found->second;
         }
@@ -98,7 +86,7 @@ float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& de
     {
         return 0.0F;
     }
-    const auto text = trim_ascii(node->text);
+    const auto text = ascii_trim(node->text);
     float value = 0.0F;
     const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
     return result.ec == std::errc{} && std::isfinite(value) ? value : 0.0F;
@@ -126,12 +114,12 @@ std::optional<std::uint32_t> type_obstacle_passability(const GameObjectCatalog& 
             return *mask;
         }
     }
-    const auto kind = fold_ascii(definition.type);
+    const auto kind = ascii_lower(definition.type);
     if (kind == "groundstructure" || kind == "specialstructure" || kind == "secondarystructure")
     {
         return passability::obstacle;
     }
-    if (const auto* collision = catalog.field(definition, "UnitCollisionClass").field; collision != nullptr && fold_ascii(collision->text).find("obstacle") != std::string::npos)
+    if (const auto* collision = catalog.field(definition, "UnitCollisionClass").field; collision != nullptr && ascii_lower(collision->text).find("obstacle") != std::string::npos)
     {
         return passability::obstacle;
     }
@@ -181,7 +169,7 @@ float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& defi
 float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, const float max_speed)
 {
     const auto behavior = catalog.field(definition, "SpaceBehavior").field;
-    if (behavior == nullptr || max_speed <= 0.0F || fold_ascii(behavior->text).find("fighter_locomotor") == std::string::npos)
+    if (behavior == nullptr || max_speed <= 0.0F || ascii_lower(behavior->text).find("fighter_locomotor") == std::string::npos)
     {
         return 0.0F;
     }
@@ -195,7 +183,7 @@ std::string type_animation_source(const GameObjectCatalog& catalog, const XmlDef
     {
         if (const auto* value = catalog.field(definition, field).field)
         {
-            const auto name = trim_ascii(value->text);
+            const auto name = ascii_trim(value->text);
             if (!name.empty())
             {
                 return std::string(name);
@@ -209,7 +197,7 @@ void note_animation_source(SceneBuilder& builder, const std::string& model_path,
 {
     if (auto source = type_animation_source(catalog, definition); !source.empty())
     {
-        builder.animation_sources.try_emplace(fold_ascii(model_path), std::move(source));
+        builder.animation_sources.try_emplace(ascii_lower(model_path), std::move(source));
     }
 }
 
@@ -222,9 +210,9 @@ std::pair<std::string_view, std::string_view> death_clone_entry(const std::strin
     const auto comma = text.find(',');
     if (comma == std::string_view::npos)
     {
-        return {{}, trim_ascii(text)};
+        return {{}, ascii_trim(text)};
     }
-    return {trim_ascii(text.substr(0, comma)), trim_ascii(text.substr(comma + 1U))};
+    return {ascii_trim(text.substr(0, comma)), ascii_trim(text.substr(comma + 1U))};
 }
 
 } // namespace
@@ -240,11 +228,11 @@ DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinitio
         {
             continue;
         }
-        if (chosen.empty() || fold_ascii(std::string(damage)) == "damage_normal")
+        if (chosen.empty() || ascii_lower(std::string(damage)) == "damage_normal")
         {
             chosen = clone;
         }
-        if (fold_ascii(std::string(damage)) == "damage_normal")
+        if (ascii_lower(std::string(damage)) == "damage_normal")
         {
             break;
         }
@@ -283,7 +271,7 @@ std::unordered_set<std::string> death_clone_names(const XmlAssetDatabase& databa
         {
             if (const auto clone = death_clone_entry(entry->text).second; !clone.empty())
             {
-                names.insert(fold_ascii(std::string(clone)));
+                names.insert(ascii_lower(std::string(clone)));
             }
         }
     }
@@ -292,7 +280,7 @@ std::unordered_set<std::string> death_clone_names(const XmlAssetDatabase& databa
 
 bool type_is_death_clone(const GameObjectCatalog& catalog, const XmlDefinition& definition, const std::unordered_set<std::string>& clone_names)
 {
-    return clone_names.contains(fold_ascii(definition.name)) || catalog.field(definition, "Specific_Death_Anim_Index").field != nullptr ||
+    return clone_names.contains(ascii_lower(definition.name)) || catalog.field(definition, "Specific_Death_Anim_Index").field != nullptr ||
            catalog.field(definition, "Death_Persistence_Duration").field != nullptr;
 }
 
@@ -307,7 +295,7 @@ bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& 
         }
         for (const auto name : split_type_names(list->text))
         {
-            if (fold_ascii(std::string(name)) == "turret")
+            if (ascii_lower(std::string(name)) == "turret")
             {
                 return false;
             }

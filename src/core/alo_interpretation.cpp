@@ -1,6 +1,7 @@
 // The ALO naming convention for variants and the default mesh visibility (eaw/alo_interpretation.hpp).
 
 #include "eaw/alo_interpretation.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -26,12 +27,7 @@ AloNameVariant alo_name_variant(const std::string_view name) noexcept
         return {};
     }
     const auto marker = name.substr(name.size() - digits - 4, 4);
-    const auto upper = [](const char character)
-    {
-        return static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
-    };
-    std::string folded(marker);
-    std::ranges::transform(folded, folded.begin(), upper);
+    const auto folded = ascii_upper(marker);
     AloVariantKind kind = AloVariantKind::none;
     if (folded == "_ALT")
     {

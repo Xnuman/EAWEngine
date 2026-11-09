@@ -123,12 +123,6 @@ struct MovementClasses
 
 // scene_materials.cpp: textures, materials, lighting, and team colors.
 
-// ASCII lowercase copy (case-insensitive keys).
-std::string fold_ascii(std::string value);
-
-// `text` without leading and trailing ASCII whitespace (object_type_properties.cpp).
-std::string_view trim_ascii(std::string_view text);
-
 const LegacyTextureBinding* base_color_texture(const LegacyMaterial& material);
 
 // Loads (once per scene) the DDS for an ALO texture reference and returns its scene texture

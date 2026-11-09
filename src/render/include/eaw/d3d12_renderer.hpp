@@ -1,7 +1,7 @@
 #pragma once
 
 #include "eaw/rgba_image.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 #include "eaw/visual_scene.hpp"
 
 #include <array>

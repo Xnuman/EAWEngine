@@ -2,6 +2,7 @@
 // budget, script threads on simulation ticks, and the functions the host implements itself.
 
 #include "script_host_internal.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -17,17 +18,6 @@ namespace {
 const char host_registry_key = 0;
 // Instructions between budget checks.
 constexpr int hook_interval = 1000;
-
-std::string fold(std::string_view text)
-{
-    std::string folded(text);
-    std::ranges::transform(folded, folded.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(character >= 'A' && character <= 'Z' ? character - 'A' + 'a' : character);
-                           });
-    return folded;
-}
 
 void budget_hook(lua_State* state, lua_Debug*)
 {
@@ -413,17 +403,17 @@ Status ScriptHost::Impl::setup()
     for (const auto& asset : reader.list("DATA/SCRIPTS"))
     {
         const std::filesystem::path path(asset.virtual_path);
-        if (fold(path.extension().string()) != ".lua")
+        if (ascii_lower(path.extension().string()) != ".lua")
         {
             continue;
         }
-        auto relative = fold(asset.virtual_path);
-        if (relative.starts_with(fold(prefix)))
+        auto relative = ascii_lower(asset.virtual_path);
+        if (relative.starts_with(ascii_lower(prefix)))
         {
             relative.erase(0, prefix.size());
         }
         relative.erase(relative.size() - 4);
-        module_paths.try_emplace(fold(path.stem().string()), asset.virtual_path);
+        module_paths.try_emplace(ascii_lower(path.stem().string()), asset.virtual_path);
         module_paths.try_emplace(relative, asset.virtual_path);
         std::ranges::replace(relative, '/', '.');
         module_paths.try_emplace(relative, asset.virtual_path);
@@ -508,7 +498,7 @@ Status ScriptHost::Impl::protected_call(const int arguments, const std::string_v
 
 std::optional<std::string> ScriptHost::Impl::resolve_module(const std::string_view name) const
 {
-    auto key = fold(name);
+    auto key = ascii_lower(name);
     std::ranges::replace(key, '\\', '/');
     if (key.starts_with("data/scripts/"))
     {
@@ -532,7 +522,7 @@ Status ScriptHost::Impl::load_module(const std::string_view name)
     {
         return make_error("script '" + std::string(name) + "' was not found under Data/Scripts");
     }
-    if (!loaded_modules.insert(fold(*path)).second)
+    if (!loaded_modules.insert(ascii_lower(*path)).second)
     {
         return {};
     }
@@ -730,7 +720,7 @@ std::set<std::string> script_defined_globals(const AssetReader& reader)
     std::set<std::string> names;
     for (const auto& asset : reader.list("DATA/SCRIPTS"))
     {
-        if (fold(std::filesystem::path(asset.virtual_path).extension().string()) != ".lua")
+        if (ascii_lower(std::filesystem::path(asset.virtual_path).extension().string()) != ".lua")
         {
             continue;
         }

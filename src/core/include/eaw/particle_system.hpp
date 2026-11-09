@@ -11,7 +11,7 @@
 // see docs/compatibility-research.md, "Particle systems".
 
 #include "eaw/alo_model.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <array>
 #include <cstddef>

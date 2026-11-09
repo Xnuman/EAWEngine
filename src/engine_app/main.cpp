@@ -2,7 +2,7 @@
 #include "image_compare_command.hpp"
 #include "eaw/asset_environment.hpp"
 #include "eaw/game_installation.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 #include "eaw/virtual_file_system.hpp"
 
 #include "battle_runner.hpp"
@@ -10,8 +10,8 @@
 
 #ifdef _WIN32
 #include "eaw/crash_handler.hpp"
-#include "eaw/fatal_error.hpp"
-#include "eaw/log.hpp"
+#include "core/fatal_error.hpp"
+#include "core/log.hpp"
 #include "eaw/log_sinks.hpp"
 #include "sandbox_app.hpp"
 #endif

@@ -1,6 +1,6 @@
 #include "eaw/spatial_grid.hpp"
 
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <algorithm>
 #include <cmath>

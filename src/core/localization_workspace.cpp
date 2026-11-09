@@ -1,10 +1,9 @@
 #include "eaw/localization_workspace.hpp"
 
-#include "eaw/text_encoding.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <fstream>
 #include <sstream>
 #include <tuple>
@@ -16,16 +15,6 @@
 
 namespace eaw {
 namespace {
-
-std::string lower(std::string value)
-{
-    std::ranges::transform(value, value.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return value;
-}
 
 Result<std::vector<std::vector<std::string>>> parse_tsv(const std::string& text)
 {
@@ -159,7 +148,7 @@ Result<std::vector<LocalizationRow>> read_localization_workspace(const std::file
     std::unordered_map<std::string, std::size_t> columns;
     for (std::size_t index = 0; index < records.front().size(); ++index)
     {
-        columns.emplace(lower(records.front()[index]), index);
+        columns.emplace(ascii_lower(records.front()[index]), index);
     }
     if (!columns.contains("key") || !columns.contains("text"))
     {
@@ -255,9 +244,9 @@ Result<std::vector<LocalizationRow>> diff_localization(const DatFile& base, cons
             auto text = utf16_to_utf8(entry.value);
             if (!text)
             {
-                return with_context("DAT entry " + entry.key, std::move(text).error());
+                return make_error("DAT entry " + entry.key + " is not valid UTF-16");
             }
-            rows.push_back({entry.key, std::move(text).value(), {}, old == nullptr ? "new" : "modified", {}, {}});
+            rows.push_back({entry.key, std::move(*text), {}, old == nullptr ? "new" : "modified", {}, {}});
         }
     }
     for (const auto& entry : base.entries())
@@ -275,7 +264,7 @@ Status apply_localization_workspace(DatFile& target, const std::vector<Localizat
 {
     for (const auto& row : rows)
     {
-        const auto status = lower(row.status);
+        const auto status = ascii_lower(row.status);
         const bool unresolved_todo = status == "todo" && row.text.empty();
         if (unresolved_todo && !allow_todo)
         {
@@ -294,9 +283,9 @@ Status apply_localization_workspace(DatFile& target, const std::vector<Localizat
             auto text = utf8_to_utf16(row.text);
             if (!text)
             {
-                return with_context("localization entry " + row.key, std::move(text).error());
+                return make_error("localization entry " + row.key + " is not valid UTF-8");
             }
-            EAW_TRY(target.upsert(row.key, std::move(text).value()));
+            EAW_TRY(target.upsert(row.key, std::move(*text)));
         }
     }
     return Status::success();
@@ -311,9 +300,9 @@ Result<std::vector<LocalizationRow>> workspace_rows_from_dat(const DatFile& dat)
         auto text = utf16_to_utf8(entry.value);
         if (!text)
         {
-            return with_context("DAT entry " + entry.key, std::move(text).error());
+            return make_error("DAT entry " + entry.key + " is not valid UTF-16");
         }
-        rows.push_back({entry.key, std::move(text).value(), {}, "existing", {}, {}});
+        rows.push_back({entry.key, std::move(*text), {}, "existing", {}, {}});
     }
     std::ranges::sort(rows, {}, &LocalizationRow::key);
     return rows;
@@ -336,7 +325,7 @@ std::string normalize_unit_id(const std::string_view id)
     {
         const auto byte = static_cast<unsigned char>(character);
         const bool keep = (byte >= '0' && byte <= '9') || (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z');
-        const char normalized = keep ? static_cast<char>(std::toupper(byte)) : '_';
+        const char normalized = keep ? ascii_upper(character) : '_';
         if (normalized == '_' && (result.empty() || result.back() == '_'))
         {
             continue;

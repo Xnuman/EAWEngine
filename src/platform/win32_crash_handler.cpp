@@ -1,6 +1,6 @@
 #include "eaw/crash_handler.hpp"
 
-#include "eaw/fatal_error.hpp"
+#include "core/fatal_error.hpp"
 
 #include <algorithm>
 #include <array>

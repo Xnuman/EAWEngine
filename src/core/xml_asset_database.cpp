@@ -1,51 +1,25 @@
 #include "eaw/xml_asset_database.hpp"
 
 #include "eaw/asset_path.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <filesystem>
 #include <map>
 
 namespace eaw {
 namespace {
 
-std::string fold_ascii(const std::string_view value)
-{
-    std::string result(value);
-    std::ranges::transform(result, result.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return result;
-}
-
-std::string trim(const std::string_view value)
-{
-    std::size_t first = 0;
-    while (first < value.size() && std::isspace(static_cast<unsigned char>(value[first])))
-    {
-        ++first;
-    }
-    auto last = value.size();
-    while (last > first && std::isspace(static_cast<unsigned char>(value[last - 1])))
-    {
-        --last;
-    }
-    return std::string(value.substr(first, last - first));
-}
-
 bool xml_extension(const std::string_view path)
 {
-    return fold_ascii(std::filesystem::path(path).extension().string()) == ".xml";
+    return ascii_lower(std::filesystem::path(path).extension().string()) == ".xml";
 }
 
 Result<std::string> include_path(const std::string_view value)
 {
     auto candidate = std::string(value);
     std::ranges::replace(candidate, '\\', '/');
-    if (!fold_ascii(candidate).starts_with("data/"))
+    if (!ascii_lower(candidate).starts_with("data/"))
     {
         candidate = "Data/XML/" + candidate;
     }
@@ -55,12 +29,12 @@ Result<std::string> include_path(const std::string_view value)
 void collect_node(const AssetReader& vfs, const XmlNode& node, const std::string& source_path, std::vector<XmlDefinition>& definitions, std::vector<XmlIncludeReference>& includes,
                   const std::size_t depth)
 {
-    if (const auto* name = node.attribute("Name"); name != nullptr && !trim(name->value).empty())
+    if (const auto* name = node.attribute("Name"); name != nullptr && !ascii_trim(name->value).empty())
     {
-        definitions.push_back(XmlDefinition{node.name, trim(name->value), source_path, node.line, depth, node.attributes, node.children});
+        definitions.push_back(XmlDefinition{node.name, std::string(ascii_trim(name->value)), source_path, node.line, depth, node.attributes, node.children});
     }
 
-    const auto value = trim(node.text);
+    const auto value = ascii_trim(node.text);
     if (node.children.empty() && xml_extension(value))
     {
         // A value ending in .xml can still be a non-path token. It is not an
@@ -68,7 +42,7 @@ void collect_node(const AssetReader& vfs, const XmlNode& node, const std::string
         if (auto path = include_path(value))
         {
             const bool resolved = vfs.resolve(*path).has_value();
-            includes.push_back(XmlIncludeReference{source_path, node.line, value, std::move(path).value(), resolved});
+            includes.push_back(XmlIncludeReference{source_path, node.line, std::string(value), std::move(path).value(), resolved});
         }
     }
     for (const auto& child : node.children)
@@ -111,7 +85,7 @@ XmlAssetDatabase XmlAssetDatabase::build(const AssetReader& vfs, const std::stri
     std::map<std::pair<std::string, std::string>, std::vector<const XmlDefinition*>> definitions_by_key;
     for (const auto& definition : database.definitions_)
     {
-        definitions_by_key[{fold_ascii(definition.type), fold_ascii(definition.name)}].push_back(&definition);
+        definitions_by_key[{ascii_lower(definition.type), ascii_lower(definition.name)}].push_back(&definition);
     }
     for (const auto& [key, matches] : definitions_by_key)
     {
@@ -163,12 +137,12 @@ std::span<const XmlDuplicateDefinition> XmlAssetDatabase::duplicates() const noe
 
 std::vector<const XmlDefinition*> XmlAssetDatabase::find(const std::string_view type, const std::string_view name) const
 {
-    const auto folded_type = fold_ascii(type);
-    const auto folded_name = fold_ascii(name);
+    const auto folded_type = ascii_lower(type);
+    const auto folded_name = ascii_lower(name);
     std::vector<const XmlDefinition*> result;
     for (const auto& definition : definitions_)
     {
-        if (fold_ascii(definition.type) == folded_type && fold_ascii(definition.name) == folded_name)
+        if (ascii_lower(definition.type) == folded_type && ascii_lower(definition.name) == folded_name)
         {
             result.push_back(&definition);
         }

@@ -3,7 +3,7 @@
 // An 8-bit RGBA image (top row first, four bytes per pixel), the engine's screen captures, and the
 // comparison image regression uses. PNG reading and writing is eaw/png_file.hpp.
 
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <cstddef>
 #include <cstdint>

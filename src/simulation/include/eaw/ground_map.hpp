@@ -4,7 +4,7 @@
 // the drawn liquid level, and the TED passability raster. Graphics-free; the simulation moves ground
 // units over it and presentation uses it for clicks and placement.
 
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <cstdint>
 #include <string_view>

@@ -1,6 +1,7 @@
 // GuiApp::State: asset loading and selection, previews, and DAT and workspace files.
 
 #include "gui_internal.hpp"
+#include "core/string_utils.hpp"
 
 namespace eaw::tools {
 
@@ -192,7 +193,7 @@ void GuiApp::State::inspect_asset(const int index)
     terrain_mesh_cached = false;
 
     const auto selected_path = std::filesystem::path(asset.virtual_path);
-    const auto extension = lower(selected_path.extension().string());
+    const auto extension = ascii_lower(selected_path.extension().string());
     if (extension != ".ted")
     {
         map_preview_large_window = false;
@@ -233,16 +234,16 @@ void GuiApp::State::inspect_asset(const int index)
         preview_inverse_bind.push_back(*inverted);
     }
 
-    const auto directory = lower(selected_path.parent_path().generic_string());
-    const auto stem = lower(selected_path.stem().string());
+    const auto directory = ascii_lower(selected_path.parent_path().generic_string());
+    const auto stem = ascii_lower(selected_path.stem().string());
     for (const auto& candidate : assets)
     {
         const auto candidate_path = std::filesystem::path(candidate.virtual_path);
-        if (lower(candidate_path.extension().string()) != ".ala" || lower(candidate_path.parent_path().generic_string()) != directory)
+        if (ascii_lower(candidate_path.extension().string()) != ".ala" || ascii_lower(candidate_path.parent_path().generic_string()) != directory)
         {
             continue;
         }
-        const auto candidate_stem = lower(candidate_path.stem().string());
+        const auto candidate_stem = ascii_lower(candidate_path.stem().string());
         if (candidate_stem == stem || candidate_stem.starts_with(stem + "_"))
         {
             preview_animation_assets.push_back(candidate);
@@ -266,7 +267,7 @@ void GuiApp::State::inspect_asset(const int index)
 
 ID3D11ShaderResourceView* GuiApp::State::load_texture(std::unordered_map<std::string, PreviewTexture>& cache, std::vector<std::string>& warnings, const std::string& reference)
 {
-    const auto key = lower(reference);
+    const auto key = ascii_lower(reference);
     if (const auto found = cache.find(key); found != cache.end())
     {
         return found->second.view.Get();
@@ -358,11 +359,11 @@ void GuiApp::State::validate_workspace()
         {
             validation_messages.emplace_back("Error: a row has an empty key");
         }
-        else if (!keys.insert(lower(row.key)).second)
+        else if (!keys.insert(ascii_lower(row.key)).second)
         {
-            validation_messages.push_back(std::string(lower(row.key) == "text_end_of_data" ? "Warning: " : "Error: ") + "duplicate key " + row.key);
+            validation_messages.push_back(std::string(ascii_lower(row.key) == "text_end_of_data" ? "Warning: " : "Error: ") + "duplicate key " + row.key);
         }
-        if (lower(row.status) == "todo")
+        if (ascii_lower(row.status) == "todo")
         {
             if (row.text.empty())
             {
@@ -410,7 +411,7 @@ void GuiApp::State::build_dat(const std::filesystem::path& output)
     const auto baseline = std::filesystem::weakly_canonical(*base_dat_path, path_error);
     path_error.clear();
     const auto destination = std::filesystem::weakly_canonical(output, path_error);
-    if (lower(path_to_utf8(baseline)) == lower(path_to_utf8(destination)))
+    if (ascii_lower(path_to_utf8(baseline)) == ascii_lower(path_to_utf8(destination)))
     {
         fail(make_error("Choose a different output path; EAWTools will not overwrite the baseline DAT"));
         return;
@@ -469,12 +470,12 @@ void GuiApp::State::scan_mod(const std::filesystem::path& mod_root)
     std::unordered_set<std::string> existing;
     for (const auto& row : rows)
     {
-        existing.insert(lower(row.key));
+        existing.insert(ascii_lower(row.key));
     }
     std::size_t added = 0;
     for (const auto& row : result.missing)
     {
-        if (existing.insert(lower(row.key)).second)
+        if (existing.insert(ascii_lower(row.key)).second)
         {
             rows.push_back(row);
             ++added;
@@ -499,7 +500,7 @@ Status GuiApp::State::add_localization_row(LocalizationRow row)
     if (std::ranges::any_of(rows,
                             [&](const auto& existing)
                             {
-                                return lower(existing.key) == lower(row.key);
+                                return ascii_lower(existing.key) == ascii_lower(row.key);
                             }))
     {
         return make_error("The workspace already contains " + row.key);

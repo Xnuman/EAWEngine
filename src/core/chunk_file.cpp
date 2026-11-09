@@ -1,6 +1,6 @@
 #include "eaw/chunk_file.hpp"
 
-#include "eaw/fatal_error.hpp"
+#include "core/fatal_error.hpp"
 
 #include <algorithm>
 #include <bit>

@@ -2,6 +2,7 @@
 
 #include "eaw/asset_path.hpp"
 #include "eaw/virtual_file_system.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -16,48 +17,13 @@ namespace {
 // A stock variant chain is a handful of links; this only stops runaway or cyclic mod data.
 constexpr std::size_t maximum_variant_depth = 64;
 
-std::string fold_ascii(const std::string_view value)
-{
-    std::string result(value);
-    std::ranges::transform(result, result.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return result;
-}
-
-bool equals_ascii(const std::string_view left, const std::string_view right) noexcept
-{
-    return std::ranges::equal(left, right,
-                              [](const unsigned char a, const unsigned char b)
-                              {
-                                  return std::tolower(a) == std::tolower(b);
-                              });
-}
-
-std::string_view trim(const std::string_view value) noexcept
-{
-    std::size_t first = 0;
-    while (first < value.size() && std::isspace(static_cast<unsigned char>(value[first])))
-    {
-        ++first;
-    }
-    auto last = value.size();
-    while (last > first && std::isspace(static_cast<unsigned char>(value[last - 1])))
-    {
-        --last;
-    }
-    return value.substr(first, last - first);
-}
-
 const XmlNode* direct_field(const XmlDefinition& definition, const std::string_view field_name) noexcept
 {
     // The last occurrence wins, matching ordinary XML override expectations for repeated tags.
     const XmlNode* found = nullptr;
     for (const auto& field : definition.fields)
     {
-        if (equals_ascii(field.name, field_name))
+        if (ascii_equal_ignoring_case(field.name, field_name))
         {
             found = &field;
         }
@@ -92,9 +58,9 @@ std::span<const std::string_view> model_fields(const GameModelContext context) n
 std::uint32_t game_object_name_crc(const std::string_view name) noexcept
 {
     std::uint32_t crc = 0xffffffffU;
-    for (const unsigned char character : name)
+    for (const char character : name)
     {
-        crc ^= static_cast<unsigned char>(std::toupper(character));
+        crc ^= static_cast<unsigned char>(ascii_upper(character));
         for (unsigned bit = 0; bit < 8; ++bit)
         {
             const auto mask = static_cast<std::uint32_t>(-static_cast<std::int32_t>(crc & 1U));
@@ -110,7 +76,7 @@ GameObjectCatalog GameObjectCatalog::build(const XmlAssetDatabase& database)
     for (const auto& definition : database.definitions())
     {
         catalog.definitions_.push_back(&definition);
-        catalog.by_name_[fold_ascii(definition.name)].push_back(&definition);
+        catalog.by_name_[ascii_lower(definition.name)].push_back(&definition);
         catalog.by_crc_[game_object_name_crc(definition.name)].push_back(&definition);
     }
     return catalog;
@@ -123,7 +89,7 @@ std::size_t GameObjectCatalog::size() const noexcept
 
 std::span<const XmlDefinition* const> GameObjectCatalog::find(const std::string_view name) const
 {
-    const auto found = by_name_.find(fold_ascii(trim(name)));
+    const auto found = by_name_.find(ascii_lower(ascii_trim(name)));
     return found == by_name_.end() ? std::span<const XmlDefinition* const>{} : std::span<const XmlDefinition* const>{found->second};
 }
 
@@ -154,7 +120,7 @@ GameObjectFieldLookup GameObjectCatalog::field(const XmlDefinition& definition, 
         visited.push_back(current);
 
         const auto* variant = direct_field(*current, "Variant_Of_Existing_Type");
-        const auto parent_name = variant == nullptr ? std::string_view{} : trim(variant->text);
+        const auto parent_name = variant == nullptr ? std::string_view{} : ascii_trim(variant->text);
         if (parent_name.empty())
         {
             break;
@@ -205,7 +171,7 @@ GameObjectFieldList GameObjectCatalog::fields(const XmlDefinition& definition, c
     result.declared_by = lookup.declared_by;
     for (const auto& node : lookup.declared_by->fields)
     {
-        if (equals_ascii(node.name, field_name))
+        if (ascii_equal_ignoring_case(node.name, field_name))
         {
             result.fields.push_back(&node);
         }
@@ -221,7 +187,7 @@ std::optional<std::array<float, 4>> GameObjectCatalog::affiliation_color(const X
         return std::nullopt;
     }
     const auto text = std::string_view(affiliation.field->text);
-    const auto faction_name = trim(text.substr(0, text.find(',')));
+    const auto faction_name = ascii_trim(text.substr(0, text.find(',')));
     if (faction_name.empty())
     {
         return std::nullopt;
@@ -292,7 +258,7 @@ std::optional<GameObjectModelReference> GameObjectCatalog::model(const XmlDefini
         {
             continue;
         }
-        const auto value = trim(lookup.field->text);
+        const auto value = ascii_trim(lookup.field->text);
         if (!value.empty())
         {
             return GameObjectModelReference{std::string(field_name), std::string(value), lookup.declared_by};
@@ -303,7 +269,7 @@ std::optional<GameObjectModelReference> GameObjectCatalog::model(const XmlDefini
 
 std::optional<std::string> resolve_model_path(const AssetReader& vfs, const std::string_view model_reference)
 {
-    const auto reference = trim(model_reference);
+    const auto reference = ascii_trim(model_reference);
     if (reference.empty())
     {
         return std::nullopt;

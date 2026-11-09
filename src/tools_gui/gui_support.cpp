@@ -3,6 +3,7 @@
 #include "gui_internal.hpp"
 
 #include "eaw/alo_interpretation.hpp"
+#include "core/string_utils.hpp"
 
 namespace eaw::tools {
 namespace {
@@ -97,16 +98,6 @@ Vector3 animated_vertex(const AloVertex& vertex, const AloSubMesh& submesh, cons
 }
 
 } // namespace
-
-std::string lower(std::string value)
-{
-    std::ranges::transform(value, value.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return value;
-}
 
 std::string human_size(const std::uint64_t bytes)
 {
@@ -288,7 +279,7 @@ Result<AloModel> read_model(const AssetReader& vfs, const std::string& path)
 
 Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<const std::byte> bytes)
 {
-    const auto extension = lower(std::filesystem::path(asset.virtual_path).extension().string());
+    const auto extension = ascii_lower(std::filesystem::path(asset.virtual_path).extension().string());
     std::ostringstream output;
     output << "Virtual path: " << asset.virtual_path << '\n'
            << "Source: " << asset.mount_name << '\n'
@@ -309,8 +300,12 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<co
                 output << "...\n";
                 break;
             }
-            EAW_TRY_ASSIGN(auto value, utf16_to_utf8(entry.value));
-            output << entry.key << " = " << clean_one_line(std::move(value), 110) << '\n';
+            auto value = utf16_to_utf8(entry.value);
+            if (!value)
+            {
+                return make_error("DAT entry " + entry.key + " is not valid UTF-16");
+            }
+            output << entry.key << " = " << clean_one_line(std::move(*value), 110) << '\n';
         }
         return output.str();
     }

@@ -6,7 +6,7 @@
 //
 // Fence values are those of one queue timeline; callers must not mix timelines in one instance.
 
-#include "eaw/fatal_error.hpp"
+#include "core/fatal_error.hpp"
 
 #include <algorithm>
 #include <cstddef>

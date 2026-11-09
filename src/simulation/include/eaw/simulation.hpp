@@ -9,7 +9,7 @@
 // which depends only on the spawn/destroy history. Floating-point behavior across compilers or CPUs
 // is not yet guaranteed; cross-machine lockstep will need a stricter numeric policy.
 
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include "eaw/combat.hpp"
 #include "eaw/formation.hpp"

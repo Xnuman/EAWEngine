@@ -4,7 +4,7 @@
 // UTF-8 and quoted with the rules CommandLineToArgvW and the MSVC runtime use, so any text survives
 // the round trip.
 
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <filesystem>
 #include <optional>

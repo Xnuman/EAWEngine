@@ -4,10 +4,11 @@
 #include "eaw/child_process.hpp"
 #include "eaw/file_dialogs.hpp"
 #include "eaw/game_installation.hpp"
-#include "eaw/log.hpp"
+#include "core/log.hpp"
 #include "eaw/sandbox_scenario.hpp"
 #include "eaw/spawn_catalog.hpp"
 #include "eaw/virtual_file_system.hpp"
+#include "core/string_utils.hpp"
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -15,7 +16,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <chrono>
 #include <ctime>
 #include <filesystem>
@@ -51,19 +51,9 @@ std::filesystem::path executable_directory()
     }
 }
 
-std::string lower(std::string text)
-{
-    std::ranges::transform(text, text.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return text;
-}
-
 bool matches(const std::string& item, const std::string& filter)
 {
-    return filter.empty() || lower(item).find(lower(filter)) != std::string::npos;
+    return filter.empty() || ascii_lower(item).find(ascii_lower(filter)) != std::string::npos;
 }
 
 std::string clock_text()
@@ -99,7 +89,7 @@ bool asset_list(const char* id, const std::vector<std::string>& items, std::stri
             {
                 continue;
             }
-            const bool is_selected = lower(item) == lower(selected);
+            const bool is_selected = ascii_lower(item) == ascii_lower(selected);
             if (ImGui::Selectable(item.c_str(), is_selected))
             {
                 selected = item;
@@ -269,7 +259,7 @@ struct DevLauncherApp::State
             for (const auto& asset : vfs.list(prefix))
             {
                 const auto& path = asset.virtual_path;
-                if (path.size() >= extension.size() && lower(path.substr(path.size() - extension.size())) == extension)
+                if (path.size() >= extension.size() && ascii_lower(path.substr(path.size() - extension.size())) == extension)
                 {
                     paths.push_back(path);
                 }
@@ -493,7 +483,7 @@ void DevLauncherApp::render(HWND window)
                 ImGui::TextDisabled("(reading spawnable types...)");
             }
             // Land or space by the stock naming convention; only a hint for the type list.
-            const bool space_map = lower(scenario.map).find("_space") != std::string::npos;
+            const bool space_map = ascii_lower(scenario.map).find("_space") != std::string::npos;
             for (std::size_t index = 0; index < scenario.spawns.size(); ++index)
             {
                 auto& spawn = scenario.spawns[index];

@@ -1,4 +1,5 @@
 #include "sandbox_session.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -17,7 +18,7 @@ void SandboxSession::draw_panels()
         return std::ranges::any_of(spawnable,
                                    [&](const eaw::SpawnableType& type)
                                    {
-                                       return fold_name(type.type_name) == fold_name(name);
+                                       return ascii_lower(type.type_name) == ascii_lower(name);
                                    });
     };
     view.choice = &spawn_choice;

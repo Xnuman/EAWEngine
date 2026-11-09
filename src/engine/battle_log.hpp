@@ -16,7 +16,7 @@
 // values. Empty lines and lines starting with '#' are ignored.
 
 #include "battle.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <filesystem>
 #include <string>

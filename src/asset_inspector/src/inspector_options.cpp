@@ -1,6 +1,7 @@
 // Command line of EAWAssetInspector.
 
 #include "asset_inspector/inspector.hpp"
+#include "core/string_utils.hpp"
 
 namespace eaw::inspector {
 namespace {
@@ -107,11 +108,7 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
             {
                 options.extension.insert(options.extension.begin(), '.');
             }
-            std::ranges::transform(options.extension, options.extension.begin(),
-                                   [](const unsigned char character)
-                                   {
-                                       return static_cast<char>(std::tolower(character));
-                                   });
+            options.extension = ascii_lower(options.extension);
         }
         else if (argument == "--limit")
         {

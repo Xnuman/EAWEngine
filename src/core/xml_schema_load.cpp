@@ -6,10 +6,10 @@
 #include "xml_schema_internal.hpp"
 
 #include "eaw/asset_path.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <charconv>
-#include <cctype>
 #include <cerrno>
 #include <cstdlib>
 #include <fstream>
@@ -22,9 +22,6 @@
 
 namespace eaw {
 namespace {
-
-using xml_schema_detail::fold_ascii;
-using xml_schema_detail::trim;
 
 struct YamlLine
 {
@@ -67,7 +64,7 @@ std::string strip_yaml_comment(const std::string_view value)
 
 std::string yaml_scalar(const std::string_view value)
 {
-    auto result = trim(value);
+    auto result = std::string(ascii_trim(value));
     if (result.size() >= 2 && ((result.front() == '"' && result.back() == '"') || (result.front() == '\'' && result.back() == '\'')))
     {
         result = result.substr(1, result.size() - 2);
@@ -115,7 +112,7 @@ Result<std::vector<YamlLine>> read_yaml(const std::filesystem::path& path)
         {
             ++indentation;
         }
-        auto content = trim(strip_yaml_comment(std::string_view(raw).substr(indentation)));
+        auto content = std::string(ascii_trim(strip_yaml_comment(std::string_view(raw).substr(indentation))));
         if (!content.empty())
         {
             lines.push_back({indentation, std::move(content)});
@@ -180,7 +177,7 @@ Result<std::vector<XmlTagSchema>> read_tags(const std::filesystem::path& path)
         }
         else if (starts_key(line.text, "multipleAllowed"))
         {
-            tag.multiple_allowed = fold_ascii(key_value(line.text, "multipleAllowed")) == "true";
+            tag.multiple_allowed = ascii_lower(key_value(line.text, "multipleAllowed")) == "true";
         }
     }
     return tags;
@@ -210,7 +207,7 @@ Result<XmlEnumSchema> read_enum(const std::filesystem::path& path)
             }
             else if (starts_key(line.text, "isBitfield"))
             {
-                result.bitfield = fold_ascii(key_value(line.text, "isBitfield")) == "true";
+                result.bitfield = ascii_lower(key_value(line.text, "isBitfield")) == "true";
             }
         }
         else if (reading_values && line.indentation == 2 && line.text.starts_with("- name:"))
@@ -223,7 +220,7 @@ Result<XmlEnumSchema> read_enum(const std::filesystem::path& path)
 
 std::vector<std::string> yaml_inline_list(const std::string_view value)
 {
-    auto text = trim(value);
+    auto text = std::string(ascii_trim(value));
     if (text.size() < 2 || text.front() != '[' || text.back() != ']')
     {
         return {};
@@ -293,7 +290,7 @@ Result<std::vector<XmlObjectKindSchema>> read_kinds(const std::filesystem::path&
 
 XmlMetafileKind parse_metafile_kind(const std::string_view value)
 {
-    const auto folded = fold_ascii(value);
+    const auto folded = ascii_lower(value);
     if (folded == "fileregistry")
     {
         return XmlMetafileKind::file_registry;
@@ -377,7 +374,7 @@ Result<std::vector<std::filesystem::path>> yaml_files(const std::filesystem::pat
         {
             return make_error("could not enumerate XML schema directory: " + directory.string());
         }
-        if (item->is_regular_file(error) && !error && fold_ascii(item->path().extension().string()) == ".yaml")
+        if (item->is_regular_file(error) && !error && ascii_lower(item->path().extension().string()) == ".yaml")
         {
             files.push_back(item->path());
         }
@@ -403,7 +400,7 @@ Result<SchemaLayer> load_layer(const std::filesystem::path& root)
         auto type = std::ranges::find_if(layer.types,
                                          [&](const auto& candidate)
                                          {
-                                             return fold_ascii(candidate.name) == fold_ascii(type_name);
+                                             return ascii_lower(candidate.name) == ascii_lower(type_name);
                                          });
         if (type == layer.types.end())
         {
@@ -448,7 +445,7 @@ template <typename Item> void merge_named(std::vector<Item>& target, std::vector
         const auto found = std::ranges::find_if(target,
                                                 [&](const auto& candidate)
                                                 {
-                                                    return fold_ascii(candidate.name) == fold_ascii(item.name);
+                                                    return ascii_lower(candidate.name) == ascii_lower(item.name);
                                                 });
         if (found == target.end())
         {
@@ -465,11 +462,11 @@ template <typename Item> void merge_named(std::vector<Item>& target, std::vector
 
 const XmlTagSchema* XmlTypeSchema::find_tag(const std::string_view requested) const noexcept
 {
-    const auto folded = fold_ascii(requested);
+    const auto folded = ascii_lower(requested);
     const auto found = std::ranges::find_if(tags,
                                             [&](const auto& tag)
                                             {
-                                                return fold_ascii(tag.name) == folded;
+                                                return ascii_lower(tag.name) == folded;
                                             });
     return found == tags.end() ? nullptr : &*found;
 }
@@ -529,33 +526,33 @@ std::span<const XmlMetafileSchema> XmlSchema::metafiles() const noexcept
 
 const XmlTypeSchema* XmlSchema::find_type(const std::string_view name) const noexcept
 {
-    const auto folded = fold_ascii(name);
+    const auto folded = ascii_lower(name);
     const auto found = std::ranges::find_if(types_,
                                             [&](const auto& type)
                                             {
-                                                return fold_ascii(type.name) == folded;
+                                                return ascii_lower(type.name) == folded;
                                             });
     return found == types_.end() ? nullptr : &*found;
 }
 
 const XmlEnumSchema* XmlSchema::find_enum(const std::string_view name) const noexcept
 {
-    const auto folded = fold_ascii(name);
+    const auto folded = ascii_lower(name);
     const auto found = std::ranges::find_if(enums_,
                                             [&](const auto& enumeration)
                                             {
-                                                return fold_ascii(enumeration.name) == folded;
+                                                return ascii_lower(enumeration.name) == folded;
                                             });
     return found == enums_.end() ? nullptr : &*found;
 }
 
 const XmlObjectKindSchema* XmlSchema::find_kind(const std::string_view name) const noexcept
 {
-    const auto folded = fold_ascii(name);
+    const auto folded = ascii_lower(name);
     const auto found = std::ranges::find_if(kinds_,
                                             [&](const auto& kind)
                                             {
-                                                return fold_ascii(kind.name) == folded;
+                                                return ascii_lower(kind.name) == folded;
                                             });
     return found == kinds_.end() ? nullptr : &*found;
 }

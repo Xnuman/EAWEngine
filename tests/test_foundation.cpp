@@ -65,9 +65,23 @@ void test_status_and_log()
     require(line.starts_with("[") && line.ends_with("] [warning] [map] bad placement"), "log lines must carry time, level, category, and message");
 }
 
+void test_string_utils()
+{
+    require(eaw::ascii_lower("Data/ART\\Models_01.ALO") == "data/art\\models_01.alo" && eaw::ascii_upper("Gas_Cloud-1") == "GAS_CLOUD-1", "ASCII case folding must change only letters");
+    require(eaw::ascii_lower("\xC4\xD6") == "\xC4\xD6" && eaw::ascii_upper('q') == 'Q' && eaw::ascii_lower('7') == '7', "bytes outside A-Z and a-z must stay as they are");
+    require(eaw::ascii_trim(" \t\r\n\v\fvalue \t") == "value" && eaw::ascii_trim(" \t ").empty() && eaw::ascii_trim("a b") == "a b", "trimming must remove only outer ASCII whitespace");
+    require(eaw::ascii_equal_ignoring_case("TIE_Fighter", "tie_FIGHTER") && !eaw::ascii_equal_ignoring_case("TIE", "TIES") && !eaw::ascii_equal_ignoring_case("a", "b"),
+            "case-insensitive equality must compare every character and the length");
+    const auto utf16 = eaw::utf8_to_utf16("A\xC3\xA9\xF0\x9F\x9A\x80");
+    require(utf16 && utf16->size() == 4 && eaw::utf16_to_utf8(*utf16) == "A\xC3\xA9\xF0\x9F\x9A\x80", "UTF-8 and UTF-16 must round-trip, surrogate pairs included");
+    require(!eaw::utf8_to_utf16("\xC0\x80") && !eaw::utf8_to_utf16("\xED\xA0\x80") && !eaw::utf8_to_utf16("\xE2\x82") && !eaw::utf16_to_utf8(std::u16string(1, u'\xDC00')),
+            "overlong forms, encoded surrogates, truncated sequences, and lone low surrogates must give no result");
+}
+
 const ModuleRegistrar registrar("foundation", {
                                                   {"test_fatal_error_report", &test_fatal_error_report},
                                                   {"test_status_and_log", &test_status_and_log},
+                                                  {"test_string_utils", &test_string_utils},
                                               });
 
 } // namespace

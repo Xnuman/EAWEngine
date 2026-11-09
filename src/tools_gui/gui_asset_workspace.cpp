@@ -1,6 +1,7 @@
 // The asset browser workspace.
 
 #include "gui_internal.hpp"
+#include "core/string_utils.hpp"
 
 namespace eaw::tools {
 
@@ -78,7 +79,7 @@ void render_asset_workspace(GuiApp::State& state, HWND owner)
     ImGui::SetNextItemWidth(155.0F);
     ImGui::InputTextWithHint("##extension", "Extension, e.g. .xml", &state.asset_extension);
     ImGui::SameLine();
-    auto normalized_extension = lower(state.asset_extension);
+    auto normalized_extension = ascii_lower(state.asset_extension);
     if (!normalized_extension.empty() && normalized_extension.front() != '.')
     {
         normalized_extension.insert(normalized_extension.begin(), '.');
@@ -116,8 +117,8 @@ void render_asset_workspace(GuiApp::State& state, HWND owner)
 
     std::vector<int> visible;
     visible.reserve(state.assets.size());
-    const auto query = lower(state.asset_query);
-    auto extension = lower(state.asset_extension);
+    const auto query = ascii_lower(state.asset_query);
+    auto extension = ascii_lower(state.asset_extension);
     if (!extension.empty() && extension.front() != '.')
     {
         extension.insert(extension.begin(), '.');
@@ -126,11 +127,11 @@ void render_asset_workspace(GuiApp::State& state, HWND owner)
     for (std::size_t index = 0; index < state.assets.size(); ++index)
     {
         const auto& asset = state.assets[index];
-        if (!query.empty() && lower(asset.virtual_path).find(query) == std::string::npos)
+        if (!query.empty() && ascii_lower(asset.virtual_path).find(query) == std::string::npos)
         {
             continue;
         }
-        if (!extension.empty() && lower(std::filesystem::path(asset.virtual_path).extension().string()) != extension)
+        if (!extension.empty() && ascii_lower(std::filesystem::path(asset.virtual_path).extension().string()) != extension)
         {
             continue;
         }

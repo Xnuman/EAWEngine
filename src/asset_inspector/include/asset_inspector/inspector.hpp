@@ -14,8 +14,8 @@
 #include "eaw/map_object_layout.hpp"
 #include "eaw/mtd_directory.hpp"
 #include "eaw/particle_system.hpp"
-#include "eaw/status.hpp"
-#include "eaw/text_encoding.hpp"
+#include "core/status.hpp"
+#include "core/string_utils.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
@@ -23,7 +23,6 @@
 #include "eaw/xml_schema.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
@@ -60,8 +59,6 @@ void usage();
 eaw::Result<Options> parse_options(int argc, char** argv);
 
 std::string extension_of(std::string_view path);
-
-std::string lower_ascii(std::string value);
 
 std::uint32_t little_u32(std::span<const std::byte> bytes, std::size_t offset);
 

@@ -8,7 +8,7 @@
 #endif
 #include <windows.h>
 
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <filesystem>
 #include <optional>

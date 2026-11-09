@@ -1,4 +1,5 @@
 #include "eaw/sandbox_scenario.hpp"
+#include "core/string_utils.hpp"
 
 #include <array>
 #include <cctype>
@@ -8,19 +9,6 @@
 
 namespace eaw {
 namespace {
-
-std::string_view trim(std::string_view text) noexcept
-{
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0)
-    {
-        text.remove_prefix(1);
-    }
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0)
-    {
-        text.remove_suffix(1);
-    }
-    return text;
-}
 
 std::optional<std::uint32_t> parse_unsigned(const std::string_view text) noexcept
 {
@@ -90,7 +78,7 @@ std::string format_spawn(const ScenarioSpawn& spawn)
 
 Result<ScenarioSpawn> parse_spawn(std::string_view text)
 {
-    text = trim(text);
+    text = ascii_trim(text);
     ScenarioSpawn spawn;
     if (const auto at = text.rfind('@'); at != std::string_view::npos)
     {
@@ -112,7 +100,7 @@ Result<ScenarioSpawn> parse_spawn(std::string_view text)
         spawn.count = *count;
         text = text.substr(0, colon);
     }
-    spawn.type = std::string(trim(text));
+    spawn.type = std::string(ascii_trim(text));
     if (spawn.type.empty())
     {
         return make_error("spawn has no object type");
@@ -316,7 +304,7 @@ Result<ScenarioFile> parse_scenarios(const std::string_view text)
         auto raw = text.substr(start, end == std::string_view::npos ? std::string_view::npos : end - start);
         start = end == std::string_view::npos ? text.size() : end + 1;
         ++number;
-        const auto line = trim(raw);
+        const auto line = ascii_trim(raw);
         const auto where = "line " + std::to_string(number);
         if (line.empty() || line.front() == '#')
         {
@@ -336,8 +324,8 @@ Result<ScenarioFile> parse_scenarios(const std::string_view text)
         {
             return make_error(where + ": key before the first [scenario]");
         }
-        const auto key = trim(line.substr(0, equals));
-        const auto value = trim(line.substr(equals + 1U));
+        const auto key = ascii_trim(line.substr(0, equals));
+        const auto value = ascii_trim(line.substr(equals + 1U));
         auto& scenario = *current;
         if (key == "name")
         {

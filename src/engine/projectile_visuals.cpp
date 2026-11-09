@@ -1,6 +1,7 @@
 #include "projectile_visuals.hpp"
 
 #include "scene_presentation.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -10,19 +11,6 @@
 namespace eaw {
 namespace {
 
-std::string_view trim(std::string_view text)
-{
-    while (!text.empty() && (text.front() == ' ' || text.front() == '\t' || text.front() == '\r' || text.front() == '\n'))
-    {
-        text.remove_prefix(1);
-    }
-    while (!text.empty() && (text.back() == ' ' || text.back() == '\t' || text.back() == '\r' || text.back() == '\n'))
-    {
-        text.remove_suffix(1);
-    }
-    return text;
-}
-
 // Comma-separated numbers ("3,0", "104,181,230,255"); empty when any part does not parse.
 template <class T> std::vector<T> numbers(const std::string_view text)
 {
@@ -31,7 +19,7 @@ template <class T> std::vector<T> numbers(const std::string_view text)
     while (start <= text.size())
     {
         const auto comma = text.find(',', start);
-        const auto part = trim(text.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start));
+        const auto part = ascii_trim(text.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start));
         T value{};
         const auto [end, error] = std::from_chars(part.data(), part.data() + part.size(), value);
         if (error != std::errc{} || end != part.data() + part.size())
@@ -73,7 +61,7 @@ void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<c
         const auto text = [&](const std::string_view field) -> std::string_view
         {
             const auto* node = catalog.field(*projectile, field).field;
-            return node != nullptr ? trim(node->text) : std::string_view{};
+            return node != nullptr ? ascii_trim(node->text) : std::string_view{};
         };
         const auto render = numbers<int>(text("Projectile_Custom_Render"));
         ProjectileVisual visual;

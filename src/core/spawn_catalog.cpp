@@ -2,25 +2,15 @@
 
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/xml_asset_database.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <string_view>
 #include <unordered_set>
 
 namespace eaw {
 namespace {
-
-std::string fold(std::string text)
-{
-    std::ranges::transform(text, text.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return text;
-}
 
 // Element types of units and structures in the stock XML (the owner breakdown of the map-objects
 // audit); everything else with a model is props, markers, effects, and backdrops.
@@ -50,17 +40,17 @@ std::vector<SpawnTypeInfo> list_spawn_types(const XmlAssetDatabase& database, co
         }
         const bool land = catalog.model(definition, GameModelContext::land).has_value();
         const bool space = catalog.model(definition, GameModelContext::space).has_value();
-        if ((!land && !space) || !seen.insert(fold(definition.name)).second)
+        if ((!land && !space) || !seen.insert(ascii_lower(definition.name)).second)
         {
             continue;
         }
-        const auto kind = fold(definition.type);
+        const auto kind = ascii_lower(definition.type);
         types.push_back({definition.name, definition.type, land, space, std::ranges::find(unit_kinds, kind) != unit_kinds.end()});
     }
     std::ranges::sort(types,
                       [](const SpawnTypeInfo& left, const SpawnTypeInfo& right)
                       {
-                          return fold(left.name) < fold(right.name);
+                          return ascii_lower(left.name) < ascii_lower(right.name);
                       });
     return types;
 }

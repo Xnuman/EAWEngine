@@ -6,7 +6,7 @@
 // header against its parent before returning ranges, so the decoders above them only index inside
 // ranges that exist.
 
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <cstddef>
 #include <cstdint>

@@ -1,4 +1,5 @@
 #include "eaw/localization_scan.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -17,16 +18,6 @@ struct ReferenceContext
     std::string group;
     std::set<std::string> locations;
 };
-
-std::string lower(std::string value)
-{
-    std::ranges::transform(value, value.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return value;
-}
 
 Result<std::string> read_text_file(const std::filesystem::path& path)
 {
@@ -99,7 +90,7 @@ Result<LocalizationScanResult> scan_mod_localization(const std::filesystem::path
     {
         const auto& item = *iterator;
         std::error_code type_error;
-        if (!item.is_regular_file(type_error) || lower(item.path().extension().string()) != ".xml")
+        if (!item.is_regular_file(type_error) || ascii_lower(item.path().extension().string()) != ".xml")
         {
             continue;
         }

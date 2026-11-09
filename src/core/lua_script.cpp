@@ -1,4 +1,5 @@
 #include "eaw/lua_script.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -30,16 +31,6 @@ bool identifier_start(const unsigned char character) noexcept
 bool identifier_continue(const unsigned char character) noexcept
 {
     return std::isalnum(character) != 0 || character == '_';
-}
-
-std::string fold_ascii(std::string value)
-{
-    std::ranges::transform(value, value.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return value;
 }
 
 std::size_t long_bracket_end(const std::string_view source, const std::size_t begin)
@@ -205,7 +196,7 @@ void inspect_source(const std::span<const std::byte> bytes, LuaScriptInfo& resul
         {
             continue;
         }
-        if (fold_ascii(tokens[index].text) == "function")
+        if (ascii_lower(tokens[index].text) == "function")
         {
             const auto [name, end] = qualified_name(tokens, index + 1U);
             if (!name.empty())
@@ -223,7 +214,7 @@ void inspect_source(const std::span<const std::byte> bytes, LuaScriptInfo& resul
         }
         static const std::set<std::string> keywords{"and",   "break", "do",  "else", "elseif", "end",    "false", "for",  "function", "if",   "in",
                                                     "local", "nil",   "not", "or",   "repeat", "return", "then",  "true", "until",    "while"};
-        if (keywords.contains(fold_ascii(name)))
+        if (keywords.contains(ascii_lower(name)))
         {
             index = end - 1U;
             continue;
@@ -236,7 +227,7 @@ void inspect_source(const std::span<const std::byte> bytes, LuaScriptInfo& resul
             continue;
         }
         calls.insert(name);
-        const auto folded_name = fold_ascii(name);
+        const auto folded_name = ascii_lower(name);
         if (folded_name == "require" || folded_name == "script.load" || folded_name == "script.reload" || folded_name == "include")
         {
             auto argument = end + (parenthesized ? 1U : 0U);

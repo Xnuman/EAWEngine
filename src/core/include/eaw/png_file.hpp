@@ -6,7 +6,7 @@
 // captures, not for arbitrary PNG files.
 
 #include "eaw/rgba_image.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <cstddef>
 #include <filesystem>

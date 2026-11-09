@@ -12,7 +12,7 @@
 // every asset read from it is invalidated even if its bytes did not change; that is conservative
 // but never serves stale data.
 
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 #include "eaw/virtual_file_system.hpp"
 
 #include <cstddef>

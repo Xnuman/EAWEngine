@@ -1,6 +1,6 @@
 #include "eaw/localization_validation.hpp"
 
-#include "eaw/text_encoding.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 
@@ -96,7 +96,12 @@ bool edge_whitespace_matches(const std::u16string& reference, const std::u16stri
 
 Result<std::multiset<std::string>> localization_formatting_tokens(const std::u16string_view text)
 {
-    EAW_TRY_ASSIGN(const auto utf8, utf16_to_utf8(std::u16string(text)));
+    const auto converted = utf16_to_utf8(text);
+    if (!converted)
+    {
+        return make_error("localization text is not valid UTF-16");
+    }
+    const auto& utf8 = *converted;
     std::multiset<std::string> result;
     std::size_t position = 0;
     while (position < utf8.size())

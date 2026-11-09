@@ -4,7 +4,7 @@
 // are grouped by what they work on: dat_commands.cpp (one DAT file) and workspace_commands.cpp
 // (TSV workspaces and mods); dat_editor_options.cpp parses the command line.
 
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -46,8 +46,5 @@ int report_error(const Error& error);
 [[nodiscard]] Result<int> build_command(const Arguments& arguments);
 [[nodiscard]] Result<int> scan_mod_command(const Arguments& arguments);
 [[nodiscard]] Result<int> add_unit_command(const Arguments& arguments);
-
-// ASCII lower case, for case-insensitive filters.
-[[nodiscard]] std::string lower(std::string value);
 
 } // namespace eaw::dat_editor

@@ -1,7 +1,7 @@
 #include "eaw/chunk_file.hpp"
 #include "eaw/ted_map.hpp"
 
-#include "eaw/text_encoding.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -51,7 +51,12 @@ Result<std::string> read_wide_string(const std::span<const std::byte> bytes, con
         }
         value.push_back(character);
     }
-    return utf16_to_utf8(value);
+    auto text = utf16_to_utf8(value);
+    if (!text)
+    {
+        return make_error("TED wide string is not valid UTF-16");
+    }
+    return std::move(*text);
 }
 
 Status parse_properties(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)

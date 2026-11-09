@@ -1,13 +1,14 @@
 // The DAT localization workspace.
 
 #include "gui_internal.hpp"
+#include "core/string_utils.hpp"
 
 namespace eaw::tools {
 namespace {
 
 bool status_matches(const std::string& filter, const LocalizationRow& row)
 {
-    return filter == "all" || lower(row.status) == filter;
+    return filter == "all" || ascii_lower(row.status) == filter;
 }
 
 int compare_case_insensitive(const std::string_view left, const std::string_view right)
@@ -15,10 +16,8 @@ int compare_case_insensitive(const std::string_view left, const std::string_view
     const auto count = std::min(left.size(), right.size());
     for (std::size_t index = 0; index < count; ++index)
     {
-        const auto left_byte = static_cast<unsigned char>(left[index]);
-        const auto right_byte = static_cast<unsigned char>(right[index]);
-        const auto left_folded = static_cast<unsigned char>(std::tolower(left_byte));
-        const auto right_folded = static_cast<unsigned char>(std::tolower(right_byte));
+        const auto left_folded = static_cast<unsigned char>(ascii_lower(left[index]));
+        const auto right_folded = static_cast<unsigned char>(ascii_lower(right[index]));
         if (left_folded != right_folded)
         {
             return left_folded < right_folded ? -1 : 1;
@@ -115,8 +114,8 @@ void render_add_unit_popup(GuiApp::State& state)
             const auto additions = unit_localization_rows(id, state.unit_name, state.unit_description);
             const auto conflicts = [&](const auto& row)
             {
-                const auto key = lower(row.key);
-                return key == lower(additions[0].key) || key == lower(additions[1].key);
+                const auto key = ascii_lower(row.key);
+                return key == ascii_lower(additions[0].key) || key == ascii_lower(additions[1].key);
             };
             if (id.empty())
             {
@@ -297,7 +296,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
 
     std::vector<int> visible;
     visible.reserve(state.rows.size());
-    const auto query = lower(state.row_query);
+    const auto query = ascii_lower(state.row_query);
     for (std::size_t index = 0; index < state.rows.size(); ++index)
     {
         const auto& row = state.rows[index];
@@ -307,7 +306,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
         }
         if (!query.empty())
         {
-            const auto searchable = lower(row.key + "\n" + row.text + "\n" + row.group + "\n" + row.context);
+            const auto searchable = ascii_lower(row.key + "\n" + row.text + "\n" + row.group + "\n" + row.context);
             if (searchable.find(query) == std::string::npos)
             {
                 continue;
@@ -356,7 +355,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
                     ImGui::TableSetColumnIndex(2);
                     ImGui::TextUnformatted(row.group.c_str());
                     ImGui::TableSetColumnIndex(3);
-                    const auto color = lower(row.status) == "todo" ? warning : (lower(row.status) == "deleted" ? danger : accent);
+                    const auto color = ascii_lower(row.status) == "todo" ? warning : (ascii_lower(row.status) == "deleted" ? danger : accent);
                     ImGui::TextColored(color, "%s", row.status.c_str());
                     ImGui::PopID();
                 }
@@ -371,7 +370,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
             auto& row = state.rows[static_cast<std::size_t>(state.selected_row)];
             ImGui::TextColored(accent, "%s", row.key.c_str());
             ImGui::TextColored(muted, "Key");
-            const bool existing = lower(row.status) == "existing";
+            const bool existing = ascii_lower(row.status) == "existing";
             if (existing)
             {
                 ImGui::BeginDisabled();
@@ -387,7 +386,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
             ImGui::TextColored(muted, "Localized text");
             if (ImGui::InputTextMultiline("##edit-text", &row.text, {-1.0F, 150.0F}))
             {
-                const auto current_status = lower(row.status);
+                const auto current_status = ascii_lower(row.status);
                 if (current_status == "existing")
                 {
                     row.status = "modified";
@@ -428,7 +427,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
             }
             if (ImGui::Button("Delete entry"))
             {
-                if (lower(row.status) == "new" || lower(row.status) == "todo")
+                if (ascii_lower(row.status) == "new" || ascii_lower(row.status) == "todo")
                 {
                     state.rows.erase(state.rows.begin() + state.selected_row);
                     state.selected_row = state.rows.empty() ? -1 : std::min(state.selected_row, static_cast<int>(state.rows.size() - 1));

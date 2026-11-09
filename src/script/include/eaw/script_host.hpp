@@ -11,7 +11,7 @@
 // the engine.
 
 #include "eaw/host_api_recorder.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <cstddef>
 #include <cstdint>

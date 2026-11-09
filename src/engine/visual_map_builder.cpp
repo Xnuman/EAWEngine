@@ -5,11 +5,11 @@
 #include "eaw/dds_texture.hpp"
 #include "eaw/map_object_layout.hpp"
 #include "eaw/xml_document.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <functional>
 #include <atomic>
-#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <filesystem>
@@ -71,7 +71,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
 {
     for (std::size_t index = 0; index < build.spawnable.size(); ++index)
     {
-        if (fold_ascii(build.spawnable[index].type_name) == fold_ascii(type_name))
+        if (ascii_lower(build.spawnable[index].type_name) == ascii_lower(type_name))
         {
             return index;
         }

@@ -1,6 +1,7 @@
 // `lua-audit`: Lua sources and bytecode across the layered VFS.
 
 #include "asset_inspector/inspector.hpp"
+#include "core/string_utils.hpp"
 
 namespace eaw::inspector {
 
@@ -39,12 +40,12 @@ void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
         {
             relative.erase(0, scripts_prefix.size());
         }
-        auto module = lower_ascii(std::filesystem::path(relative).replace_extension().generic_string());
+        auto module = ascii_lower(std::filesystem::path(relative).replace_extension().generic_string());
         module_keys.insert(module);
         auto dotted = module;
         std::ranges::replace(dotted, '/', '.');
         module_keys.insert(std::move(dotted));
-        module_keys.insert(lower_ascii(std::filesystem::path(relative).stem().string()));
+        module_keys.insert(ascii_lower(std::filesystem::path(relative).stem().string()));
     }
 
     const auto assets = vfs.list(prefix);
@@ -82,7 +83,7 @@ void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
         for (const auto& definition : info.defined_functions)
         {
             ++definitions[definition];
-            const auto folded = lower_ascii(definition);
+            const auto folded = ascii_lower(definition);
             definition_keys.insert(folded);
             const auto leaf = folded.find_last_of(".:");
             definition_keys.insert(leaf == std::string::npos ? folded : folded.substr(leaf + 1U));
@@ -96,7 +97,7 @@ void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
 
     const auto dependency_resolved = [&](std::string dependency)
     {
-        dependency = lower_ascii(std::move(dependency));
+        dependency = ascii_lower(std::move(dependency));
         std::ranges::replace(dependency, '\\', '/');
         if (dependency.starts_with("data/scripts/"))
         {
@@ -116,7 +117,7 @@ void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
         {
             return true;
         }
-        return module_keys.contains(lower_ascii(std::filesystem::path(dependency).stem().string()));
+        return module_keys.contains(ascii_lower(std::filesystem::path(dependency).stem().string()));
     };
 
     std::map<std::string, std::set<std::string>> unresolved_dependencies;
@@ -131,7 +132,7 @@ void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
     const auto standard_library = [](const std::string_view call)
     {
         const auto separator = call.find_first_of(".:");
-        const auto root = lower_ascii(std::string(call.substr(0, separator)));
+        const auto root = ascii_lower(std::string(call.substr(0, separator)));
         static const std::set<std::string> standard{"assert",     "collectgarbage", "coroutine",    "dofile", "error", "gcinfo",   "getfenv",  "getmetatable", "ipairs", "loadfile",
                                                     "loadstring", "math",           "next",         "pairs",  "pcall", "print",    "rawequal", "rawget",       "rawset", "require",
                                                     "select",     "setfenv",        "setmetatable", "string", "table", "tonumber", "tostring", "type",         "unpack", "xpcall"};
@@ -140,7 +141,7 @@ void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
     std::map<std::string, std::size_t> host_api_calls;
     for (const auto& [call, count] : calls)
     {
-        const auto folded = lower_ascii(call);
+        const auto folded = ascii_lower(call);
         const auto leaf = folded.find_last_of(".:");
         const auto leaf_name = leaf == std::string::npos ? folded : folded.substr(leaf + 1U);
         if (!standard_library(call) && !definition_keys.contains(folded) && !definition_keys.contains(leaf_name))

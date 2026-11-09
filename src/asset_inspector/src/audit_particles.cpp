@@ -1,4 +1,5 @@
 #include "asset_inspector/inspector.hpp"
+#include "core/string_utils.hpp"
 
 #include <bit>
 
@@ -191,7 +192,7 @@ void audit_particles(const eaw::VirtualFileSystem& vfs, const std::string_view p
             {
                 ++links["normal texture"];
             }
-            textures.insert(lower_ascii(emitter.texture));
+            textures.insert(ascii_lower(emitter.texture));
             const auto lifetime = static_cast<double>(emitter.lifetime) * (1.0 + static_cast<double>(std::max(emitter.random_lifetime, 0.0F)) / 100.0);
             const auto alive = emitter.use_bursts ? static_cast<double>(emitter.particles_per_burst) * std::max(1.0, lifetime / std::max(static_cast<double>(emitter.burst_delay), 0.001))
                                                   : static_cast<double>(emitter.particles_per_second) * lifetime;

@@ -1,10 +1,10 @@
 #include "eaw/chunk_file.hpp"
 #include "eaw/ala_animation.hpp"
+#include "core/string_utils.hpp"
 #include "math/transform.hpp"
 
 #include <algorithm>
 #include <bit>
-#include <cctype>
 #include <unordered_map>
 #include <cmath>
 #include <limits>
@@ -420,25 +420,16 @@ std::vector<AlaPoseBone> AlaAnimation::sample_pose(const AloModel& model, float 
 
 AlaAnimation ala_retarget_by_bone_name(const AlaAnimation& animation, const AloModel& model)
 {
-    const auto fold = [](std::string text)
-    {
-        std::ranges::transform(text, text.begin(),
-                               [](const unsigned char character)
-                               {
-                                   return static_cast<char>(std::tolower(character));
-                               });
-        return text;
-    };
     std::unordered_map<std::string, std::uint32_t> bones;
     for (std::size_t index = 0; index < model.bones.size(); ++index)
     {
-        bones.try_emplace(fold(model.bones[index].name), static_cast<std::uint32_t>(index));
+        bones.try_emplace(ascii_lower(model.bones[index].name), static_cast<std::uint32_t>(index));
     }
     auto result = animation;
     result.tracks.clear();
     for (const auto& track : animation.tracks)
     {
-        if (const auto found = bones.find(fold(track.name)); found != bones.end())
+        if (const auto found = bones.find(ascii_lower(track.name)); found != bones.end())
         {
             result.tracks.push_back(track);
             result.tracks.back().bone_index = found->second;

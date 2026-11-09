@@ -6,6 +6,7 @@
 #include "xml_schema_internal.hpp"
 
 #include "eaw/asset_path.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -23,9 +24,6 @@
 namespace eaw {
 namespace {
 
-using xml_schema_detail::fold_ascii;
-using xml_schema_detail::trim;
-
 std::string canonical_name(const std::string_view value)
 {
     std::string result;
@@ -34,7 +32,7 @@ std::string canonical_name(const std::string_view value)
     {
         if (std::isalnum(static_cast<unsigned char>(character)))
         {
-            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(character))));
+            result.push_back(ascii_lower(character));
         }
     }
     return result;
@@ -42,7 +40,7 @@ std::string canonical_name(const std::string_view value)
 
 bool parse_integer(std::string_view value, const bool unsigned_value)
 {
-    auto text = trim(value);
+    auto text = std::string(ascii_trim(value));
     if (text.empty())
     {
         return false;
@@ -68,7 +66,7 @@ bool parse_integer(std::string_view value, const bool unsigned_value)
 
 bool parse_hex_integer(std::string_view value)
 {
-    auto text = trim(value);
+    auto text = std::string(ascii_trim(value));
     if (text.starts_with("0x") || text.starts_with("0X"))
     {
         text.erase(0, 2);
@@ -84,7 +82,7 @@ bool parse_hex_integer(std::string_view value)
 
 bool parse_float(std::string_view value, float* output = nullptr)
 {
-    auto text = trim(value);
+    auto text = std::string(ascii_trim(value));
     if (!text.empty() && (text.back() == 'f' || text.back() == 'F'))
     {
         text.pop_back();
@@ -120,7 +118,7 @@ std::vector<std::string> split_values(const std::string_view value, const bool p
         }
         if (index > begin)
         {
-            auto token = trim(value.substr(begin, index - begin));
+            auto token = std::string(ascii_trim(value.substr(begin, index - begin)));
             if (!token.empty())
             {
                 result.push_back(std::move(token));
@@ -143,25 +141,25 @@ bool validate_float_components(const std::string_view value, const std::size_t r
 
 bool contains_case_insensitive(const std::span<const std::string> values, const std::string_view value)
 {
-    const auto folded = fold_ascii(value);
+    const auto folded = ascii_lower(value);
     return std::ranges::any_of(values,
                                [&](const auto& candidate)
                                {
-                                   return fold_ascii(candidate) == folded;
+                                   return ascii_lower(candidate) == folded;
                                });
 }
 
 std::optional<std::string> validate_value(const XmlTagSchema& tag, const XmlNode& field, const XmlSchema& schema)
 {
-    const auto value = trim(field.text);
+    const auto value = std::string(ascii_trim(field.text));
     if (value.empty() || !field.children.empty())
     {
         return std::nullopt;
     }
-    const auto type = fold_ascii(tag.value_type);
+    const auto type = ascii_lower(tag.value_type);
     if (type == "boolean")
     {
-        const auto folded = fold_ascii(value);
+        const auto folded = ascii_lower(value);
         if (folded != "yes" && folded != "no" && folded != "true" && folded != "false" && folded != "1" && folded != "0")
         {
             return "expected a boolean (Yes/No)";
@@ -268,9 +266,9 @@ std::optional<std::string> validate_value(const XmlTagSchema& tag, const XmlNode
         }
     }
 
-    const auto semantic_type = fold_ascii(tag.semantic_type);
+    const auto semantic_type = ascii_lower(tag.semantic_type);
     const bool enum_value = type == "dynamicenumvalue" || type == "enumvaluelist" || type == "shipclasstype" || type == "projectilecategory" || type == "projectilecategorylist" ||
-                            fold_ascii(tag.reference_kind) == "enum" || semantic_type == "flaglist";
+                            ascii_lower(tag.reference_kind) == "enum" || semantic_type == "flaglist";
     const auto* enumeration = enum_value ? (!tag.enum_name.empty() ? schema.find_enum(tag.enum_name) : schema.find_enum(tag.value_type)) : nullptr;
     if (enumeration != nullptr && !enumeration->values.empty())
     {
@@ -289,7 +287,7 @@ std::optional<std::string> validate_value(const XmlTagSchema& tag, const XmlNode
 
 bool reference_sentinel(const std::string_view value)
 {
-    const auto folded = fold_ascii(value);
+    const auto folded = ascii_lower(value);
     return folded.empty() || folded == "none" || folded == "null" || folded == "nil" || folded == "default" || folded == "auto" || folded == "human";
 }
 
@@ -315,7 +313,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
         auto& index = tag_indices[&type];
         for (const auto& tag : type.tags)
         {
-            index[fold_ascii(tag.name)] = &tag;
+            index[ascii_lower(tag.name)] = &tag;
         }
     }
     const auto find_tag = [&](const XmlTypeSchema* type, const std::string_view name)
@@ -325,7 +323,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
         {
             return static_cast<const XmlTagSchema*>(nullptr);
         }
-        const auto tag = index->second.find(fold_ascii(name));
+        const auto tag = index->second.find(ascii_lower(name));
         return tag == index->second.end() ? nullptr : tag->second;
     };
 
@@ -377,7 +375,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
         bool tied = false;
         for (const auto& candidate : types_)
         {
-            if (fold_ascii(candidate.name) == "gameobjecttype" || candidate.tags.empty())
+            if (ascii_lower(candidate.name) == "gameobjecttype" || candidate.tags.empty())
             {
                 continue;
             }
@@ -450,7 +448,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
     std::map<std::string, std::vector<const XmlDefinition*>> definitions_by_name;
     for (const auto& definition : database.definitions())
     {
-        definitions_by_name[fold_ascii(definition.name)].push_back(&definition);
+        definitions_by_name[ascii_lower(definition.name)].push_back(&definition);
     }
 
     std::map<std::string, std::set<std::string>> member_kinds_by_name;
@@ -470,7 +468,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
                 }
                 for (const auto& member : split_values(field.text))
                 {
-                    member_kinds_by_name[fold_ascii(member)].insert(fold_ascii(kind.name));
+                    member_kinds_by_name[ascii_lower(member)].insert(ascii_lower(kind.name));
                 }
             }
         }
@@ -478,7 +476,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
 
     const auto truthy = [](const std::string_view value)
     {
-        const auto folded = fold_ascii(trim(value));
+        const auto folded = ascii_lower(std::string(ascii_trim(value)));
         return folded == "yes" || folded == "true" || folded == "1";
     };
     using EffectiveFieldKey = std::pair<const XmlDefinition*, std::string>;
@@ -500,7 +498,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
         std::vector<std::string> values;
         for (const auto& field : definition.fields)
         {
-            if (fold_ascii(field.name) == folded_name)
+            if (ascii_lower(field.name) == folded_name)
             {
                 values.push_back(field.text);
             }
@@ -509,7 +507,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
         {
             for (const auto& field : definition.fields)
             {
-                if (fold_ascii(field.name) != "variant_of_existing_type")
+                if (ascii_lower(field.name) != "variant_of_existing_type")
                 {
                     continue;
                 }
@@ -519,7 +517,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
                     {
                         continue;
                     }
-                    const auto parents = definitions_by_name.find(fold_ascii(parent_name));
+                    const auto parents = definitions_by_name.find(ascii_lower(parent_name));
                     if (parents == definitions_by_name.end())
                     {
                         continue;
@@ -545,7 +543,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
         {
             for (auto behavior : split_values(value, true))
             {
-                behaviors.insert(fold_ascii(behavior));
+                behaviors.insert(ascii_lower(behavior));
             }
         }
         for (const auto& kind : kinds_)
@@ -553,19 +551,19 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
             const bool behavior_match = kind.behaviors.empty() || std::ranges::any_of(kind.behaviors,
                                                                                       [&](const auto& behavior)
                                                                                       {
-                                                                                          return behaviors.contains(fold_ascii(behavior));
+                                                                                          return behaviors.contains(ascii_lower(behavior));
                                                                                       });
             const bool flag_match = kind.flags.empty() || std::ranges::any_of(kind.flags,
                                                                               [&](const auto& flag)
                                                                               {
-                                                                                  const auto values = effective_field_values(definition, fold_ascii(flag));
+                                                                                  const auto values = effective_field_values(definition, ascii_lower(flag));
                                                                                   return std::ranges::any_of(values, truthy);
                                                                               });
-            const auto membership = member_kinds_by_name.find(fold_ascii(definition.name));
-            const bool member_match = kind.member_of.empty() || (membership != member_kinds_by_name.end() && membership->second.contains(fold_ascii(kind.name)));
+            const auto membership = member_kinds_by_name.find(ascii_lower(definition.name));
+            const bool member_match = kind.member_of.empty() || (membership != member_kinds_by_name.end() && membership->second.contains(ascii_lower(kind.name)));
             if (behavior_match && flag_match && member_match)
             {
-                definition_kinds[&definition].insert(fold_ascii(kind.name));
+                definition_kinds[&definition].insert(ascii_lower(kind.name));
             }
         }
     }
@@ -587,7 +585,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
         std::map<std::string, std::vector<const XmlNode*>> fields_by_name;
         for (const auto& field : definition.fields)
         {
-            fields_by_name[fold_ascii(field.name)].push_back(&field);
+            fields_by_name[ascii_lower(field.name)].push_back(&field);
             const auto* tag = find_tag(type, field.name);
             if (tag == nullptr)
             {
@@ -599,7 +597,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
             if (const auto error = validate_value(*tag, field, *this))
             {
                 ++result.invalid_values;
-                auto shown_value = trim(field.text);
+                auto shown_value = std::string(ascii_trim(field.text));
                 if (shown_value.size() > 100)
                 {
                     shown_value.resize(97);
@@ -608,16 +606,16 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
                 add_diagnostic(XmlSchemaDiagnosticSeverity::error, XmlSchemaDiagnosticKind::invalid_value, definition, field, *error + " (got '" + shown_value + "')");
             }
 
-            if (fold_ascii(tag->reference_kind) == "xmlobject")
+            if (ascii_lower(tag->reference_kind) == "xmlobject")
             {
-                const auto value_type = fold_ascii(tag->value_type);
-                const auto semantic_type = fold_ascii(tag->semantic_type);
+                const auto value_type = ascii_lower(tag->value_type);
+                const auto semantic_type = ascii_lower(tag->semantic_type);
                 if (semantic_type == "referencegroup")
                 {
                     continue;
                 }
                 const bool list = value_type.ends_with("list") || semantic_type == "planetvaluepair";
-                auto references = list ? split_values(field.text) : std::vector<std::string>{trim(field.text)};
+                auto references = list ? split_values(field.text) : std::vector<std::string>{std::string(ascii_trim(field.text))};
                 if (semantic_type == "factionaiplayerpairlist")
                 {
                     std::vector<std::string> selected;
@@ -642,7 +640,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
                     {
                         continue;
                     }
-                    const auto targets = definitions_by_name.find(fold_ascii(reference));
+                    const auto targets = definitions_by_name.find(ascii_lower(reference));
                     if (targets == definitions_by_name.end())
                     {
                         ++result.unresolved_references;
@@ -664,7 +662,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
                                                                         return target_type != type_assignments.end() && target_type->second.type == expected_type;
                                                                     }
                                                                     const auto target_kinds = definition_kinds.find(target);
-                                                                    return target_kinds != definition_kinds.end() && target_kinds->second.contains(fold_ascii(expected_kind->name));
+                                                                    return target_kinds != definition_kinds.end() && target_kinds->second.contains(ascii_lower(expected_kind->name));
                                                                 });
                     if (!type_match)
                     {

@@ -2,6 +2,7 @@
 
 #include "eaw/virtual_file_system.hpp"
 #include "math/transform.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -29,21 +30,6 @@ Quaternion axis_rotation(const float degrees, const int axis) noexcept
     return result;
 }
 
-std::string_view trim(const std::string_view value) noexcept
-{
-    std::size_t first = 0;
-    while (first < value.size() && std::isspace(static_cast<unsigned char>(value[first])))
-    {
-        ++first;
-    }
-    auto last = value.size();
-    while (last > first && std::isspace(static_cast<unsigned char>(value[last - 1])))
-    {
-        --last;
-    }
-    return value.substr(first, last - first);
-}
-
 // Parses "x,y,z" (commas and/or whitespace). Returns nullopt for malformed or non-finite values.
 std::optional<Vector3> parse_vector3(const std::string_view text)
 {
@@ -69,7 +55,7 @@ std::optional<Vector3> parse_vector3(const std::string_view text)
         values[count++] = value;
         position = static_cast<std::size_t>(end - text.data());
     }
-    if (count != values.size() || !trim(text.substr(position)).empty())
+    if (count != values.size() || !ascii_trim(text.substr(position)).empty())
     {
         return std::nullopt;
     }
@@ -205,7 +191,7 @@ template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& s
             }
             else
             {
-                layout.diagnostics.push_back(location(*squadron.type) + ": malformed Squadron_Offsets '" + std::string(trim(offsets.fields[member]->text)) + "'");
+                layout.diagnostics.push_back(location(*squadron.type) + ": malformed Squadron_Offsets '" + std::string(ascii_trim(offsets.fields[member]->text)) + "'");
             }
         }
         else

@@ -7,22 +7,8 @@ namespace eaw::inspector {
 std::string extension_of(const std::string_view path)
 {
     auto extension = std::filesystem::path(path).extension().string();
-    std::ranges::transform(extension, extension.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
+    extension = ascii_lower(extension);
     return extension.empty() ? "<none>" : extension;
-}
-
-std::string lower_ascii(std::string value)
-{
-    std::ranges::transform(value, value.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return value;
 }
 
 std::uint32_t little_u32(const std::span<const std::byte> bytes, const std::size_t offset)

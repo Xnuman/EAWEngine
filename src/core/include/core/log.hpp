@@ -5,7 +5,7 @@
 // program (the platform layer adds the debugger output window and a log file); with no sinks,
 // warnings and errors go to stderr. Thread-safe.
 
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <cstddef>
 #include <functional>

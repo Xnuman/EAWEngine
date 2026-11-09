@@ -1,7 +1,7 @@
 #include "eaw/imgui_app.hpp"
 
 #include "eaw/crash_handler.hpp"
-#include "eaw/log.hpp"
+#include "core/log.hpp"
 #include "eaw/log_sinks.hpp"
 
 #include <d3d11.h>

@@ -8,7 +8,7 @@
 #include "eaw/combat.hpp"
 #include "eaw/ground_map.hpp"
 #include "eaw/simulation.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 #include "visual_scene_builder.hpp"
 
 #include <cstddef>

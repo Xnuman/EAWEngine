@@ -1,6 +1,6 @@
-#include "eaw/fatal_error.hpp"
+#include "core/fatal_error.hpp"
 
-#include "eaw/log.hpp"
+#include "core/log.hpp"
 
 #include <atomic>
 #include <cstdio>

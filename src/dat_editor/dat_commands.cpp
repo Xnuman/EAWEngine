@@ -4,7 +4,7 @@
 
 #include "eaw/dat_file.hpp"
 #include "eaw/localization_validation.hpp"
-#include "eaw/text_encoding.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -62,7 +62,7 @@ Result<int> list_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 1, "list requires one DAT path"));
     EAW_TRY_ASSIGN(const auto dat, DatFile::load(arguments.positional[0]));
-    const auto query = arguments.filter ? lower(*arguments.filter) : std::string{};
+    const auto query = arguments.filter ? ascii_lower(*arguments.filter) : std::string{};
     std::size_t matched = 0;
     std::size_t shown = 0;
     for (const auto& entry : dat.entries())
@@ -70,10 +70,10 @@ Result<int> list_command(const Arguments& arguments)
         auto converted = utf16_to_utf8(entry.value);
         if (!converted)
         {
-            return with_context("DAT entry " + entry.key, std::move(converted).error());
+            return make_error("DAT entry " + entry.key + " is not valid UTF-16");
         }
         const auto& value = *converted;
-        if (!query.empty() && lower(entry.key).find(query) == std::string::npos && lower(value).find(query) == std::string::npos)
+        if (!query.empty() && ascii_lower(entry.key).find(query) == std::string::npos && ascii_lower(value).find(query) == std::string::npos)
         {
             continue;
         }
@@ -100,7 +100,7 @@ Result<int> get_command(const Arguments& arguments)
     auto value = utf16_to_utf8(entry->value);
     if (!value)
     {
-        return with_context("DAT entry " + entry->key, std::move(value).error());
+        return make_error("DAT entry " + entry->key + " is not valid UTF-16");
     }
     std::cout << *value << '\n';
     return 0;
@@ -110,8 +110,12 @@ Result<int> set_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 4, "set requires input DAT, output DAT, key, and text"));
     EAW_TRY_ASSIGN(auto dat, DatFile::load(arguments.positional[0]));
-    EAW_TRY_ASSIGN(auto text, utf8_to_utf16(arguments.positional[3]));
-    EAW_TRY(dat.upsert(arguments.positional[2], std::move(text)));
+    auto text = utf8_to_utf16(arguments.positional[3]);
+    if (!text)
+    {
+        return make_error("the text for " + arguments.positional[2] + " is not valid UTF-8");
+    }
+    EAW_TRY(dat.upsert(arguments.positional[2], std::move(*text)));
     EAW_TRY(dat.save(arguments.positional[1], arguments.force));
     std::cout << "Wrote " << arguments.positional[1] << " with " << dat.entries().size() << " entries\n";
     return 0;

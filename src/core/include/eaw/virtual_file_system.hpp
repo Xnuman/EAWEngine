@@ -1,7 +1,7 @@
 #pragma once
 
 #include "eaw/meg_archive.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <cstddef>
 #include <filesystem>

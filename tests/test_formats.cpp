@@ -7,8 +7,6 @@
 #include "eaw/png_file.hpp"
 #include "eaw/localization_validation.hpp"
 
-#include <cctype>
-
 namespace {
 
 using namespace eaw_test;
@@ -322,12 +320,7 @@ void test_ala_retarget()
     require(!model.bones.empty() && !animation.tracks.empty(), "the fixtures must have a bone and a track");
     // The authored skeleton put the bone elsewhere and had one the model lacks.
     animation.tracks[0].bone_index = 7;
-    std::string upper = model.bones[0].name;
-    for (auto& character : upper)
-    {
-        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
-    }
-    animation.tracks[0].name = upper;
+    animation.tracks[0].name = eaw::ascii_lower(model.bones[0].name);
     auto extra = animation.tracks[0];
     extra.name = "NOT_A_BONE";
     animation.tracks.push_back(extra);
@@ -379,10 +372,12 @@ void test_dat_and_workspace()
     require(dat.validate().empty(), "valid DAT reported issues");
     require(eaw::dat_key_crc("TEXT_SPEECH_EMPIRE_ACT01_MISSION_THREE_62") == 0x0001db80U, "Petroglyph DAT CRC32 failed");
 
-    expect_ok(dat.upsert("TEXT_UNIT_NEW", expect_ok(eaw::utf8_to_utf16("Žluťoučký 🚀"), "UTF-8 to UTF-16")), "DAT upsert");
-    require(expect_ok(eaw::utf16_to_utf8(dat.find("TEXT_UNIT_NEW")->value), "UTF-16 to UTF-8") == "Žluťoučký 🚀", "UTF-8/UTF-16 conversion failed");
+    const auto converted = eaw::utf8_to_utf16("Žluťoučký 🚀");
+    require(converted.has_value(), "UTF-8 to UTF-16");
+    expect_ok(dat.upsert("TEXT_UNIT_NEW", *converted), "DAT upsert");
+    require(eaw::utf16_to_utf8(dat.find("TEXT_UNIT_NEW")->value) == "Žluťoučký 🚀", "UTF-8/UTF-16 conversion failed");
     require(!dat.upsert("", u"value").ok(), "an empty DAT key was accepted");
-    require(!eaw::utf8_to_utf16("\xc3").ok() && !eaw::utf16_to_utf8(std::u16string(1, char16_t{0xd800})).ok(), "invalid UTF-8/UTF-16 was accepted");
+    require(!eaw::utf8_to_utf16("\xc3") && !eaw::utf16_to_utf8(std::u16string(1, char16_t{0xd800})), "invalid UTF-8/UTF-16 was accepted");
 
     const auto workspace = std::filesystem::temp_directory_path() / "eawengine-localization-test.tsv";
     std::error_code ignored;
@@ -394,7 +389,7 @@ void test_dat_and_workspace()
 
     auto resolved_todo = expect_ok(eaw::DatFile::parse(original), "DAT parse");
     expect_ok(eaw::apply_localization_workspace(resolved_todo, {{"TEXT_UNIT_TEST", "Completed TODO value", "unit:test", "todo", {}, {}}}), "applying a completed TODO row");
-    require(expect_ok(eaw::utf16_to_utf8(resolved_todo.find("TEXT_UNIT_TEST")->value), "UTF-16 to UTF-8") == "Completed TODO value", "completed TODO localization value was skipped");
+    require(eaw::utf16_to_utf8(resolved_todo.find("TEXT_UNIT_TEST")->value) == "Completed TODO value", "completed TODO localization value was skipped");
 
     auto unresolved_todo = expect_ok(eaw::DatFile::parse(original), "DAT parse");
     const auto unresolved = eaw::apply_localization_workspace(unresolved_todo, {{"TEXT_UNIT_EMPTY", {}, "unit:empty", "todo", {}, {}}});

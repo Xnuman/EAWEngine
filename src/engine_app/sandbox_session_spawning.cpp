@@ -1,8 +1,8 @@
 #include "sandbox_session.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <future>
@@ -13,16 +13,6 @@
 #include <vector>
 
 namespace eaw {
-
-std::string fold_name(std::string text)
-{
-    std::ranges::transform(text, text.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return text;
-}
 
 void SandboxSession::spawn_units(const std::size_t type_index, const eaw::Vector3& point, const std::uint32_t count)
 {
@@ -41,7 +31,7 @@ void SandboxSession::spawn_named(const std::string& type, const eaw::Vector3& po
     const auto loaded = std::ranges::find_if(spawnable,
                                              [&](const eaw::SpawnableType& candidate)
                                              {
-                                                 return fold_name(candidate.type_name) == fold_name(type);
+                                                 return ascii_lower(candidate.type_name) == ascii_lower(type);
                                              });
     if (loaded != spawnable.end())
     {
@@ -92,7 +82,7 @@ void SandboxSession::poll_packages()
     const auto type = building_type;
     const auto waiting = [&](const PendingSpawn& spawn)
     {
-        return fold_name(spawn.type) == fold_name(type);
+        return ascii_lower(spawn.type) == ascii_lower(type);
     };
     if (!built || !battle || !presentation || !animator)
     {

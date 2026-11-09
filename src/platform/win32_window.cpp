@@ -1,6 +1,6 @@
 #include "eaw/platform_window.hpp"
 
-#include "eaw/log.hpp"
+#include "core/log.hpp"
 
 #include <algorithm>
 #include <array>

@@ -6,7 +6,7 @@
 // decide whether the failure is a warning (logged, work continues) or fatal (eaw::fatal_error).
 // Programming errors are not statuses; they are EAW_ASSERTs.
 
-#include "eaw/fatal_error.hpp"
+#include "core/fatal_error.hpp"
 
 #include <optional>
 #include <string>

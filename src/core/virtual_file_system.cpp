@@ -1,9 +1,9 @@
 #include "eaw/virtual_file_system.hpp"
 
 #include "eaw/asset_path.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <fstream>
 #include <system_error>
 #include <unordered_set>
@@ -96,11 +96,7 @@ std::vector<std::string> DirectoryMount::paths() const
             continue;
         }
         auto extension = std::filesystem::path(*normalized).extension().string();
-        std::ranges::transform(extension, extension.begin(),
-                               [](const unsigned char character)
-                               {
-                                   return static_cast<char>(std::tolower(character));
-                               });
+        extension = ascii_lower(extension);
         if (extension == ".meg" || *normalized == "DATA/MEGAFILES.XML")
         {
             continue;

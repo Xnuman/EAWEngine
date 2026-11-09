@@ -1,20 +1,10 @@
 #include "eaw/legacy_material.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
-#include <cctype>
 
 namespace eaw {
 namespace {
-
-std::string fold_ascii(std::string value)
-{
-    std::ranges::transform(value, value.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
-    return value;
-}
 
 bool contains(const std::string_view value, const std::string_view token) noexcept
 {
@@ -25,7 +15,7 @@ bool contains(const std::string_view value, const std::string_view token) noexce
 // both find the same reference profile.
 std::string shader_key(const std::string& shader)
 {
-    auto key = fold_ascii(shader);
+    auto key = ascii_lower(shader);
     if (const auto separator = key.find_last_of("/\\"); separator != std::string::npos)
     {
         key.erase(0, separator + 1);
@@ -427,7 +417,7 @@ LegacyMaterial LegacyMaterial::translate(const AloSubMesh& submesh)
         {
             continue;
         }
-        const auto name = fold_ascii(parameter.name);
+        const auto name = ascii_lower(parameter.name);
         result.textures.push_back({parameter.name, parameter.value, texture_semantic(name)});
     }
     if (result.textures.size() == 1 && result.textures.front().semantic == LegacyTextureSemantic::unknown)

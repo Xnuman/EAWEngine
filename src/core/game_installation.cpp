@@ -1,4 +1,5 @@
 #include "eaw/game_installation.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -251,11 +252,7 @@ std::string_view to_string(const GameVariant variant) noexcept
 std::optional<GameVariant> parse_game_variant(std::string_view text)
 {
     std::string lowered(text);
-    std::ranges::transform(lowered, lowered.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(std::tolower(character));
-                           });
+    lowered = ascii_lower(lowered);
     if (lowered == "eaw" || lowered == "empire-at-war")
     {
         return GameVariant::empire_at_war;
@@ -340,22 +337,14 @@ std::vector<std::filesystem::path> discover_meg_archives(const std::filesystem::
             continue;
         }
         auto extension = item.path().extension().string();
-        std::ranges::transform(extension, extension.begin(),
-                               [](const unsigned char character)
-                               {
-                                   return static_cast<char>(std::tolower(character));
-                               });
+        extension = ascii_lower(extension);
         if (extension != ".meg")
         {
             continue;
         }
 
         auto filename = item.path().filename().string();
-        std::ranges::transform(filename, filename.begin(),
-                               [](const unsigned char character)
-                               {
-                                   return static_cast<char>(std::tolower(character));
-                               });
+        filename = ascii_lower(filename);
         const bool is_patch = filename.starts_with("patch") || filename.starts_with("64patch");
         (is_patch ? patches : unlisted).push_back(item.path());
     }
@@ -368,11 +357,7 @@ std::vector<std::filesystem::path> discover_meg_archives(const std::filesystem::
     const auto patch_key = [](const std::filesystem::path& path)
     {
         auto stem = path.stem().string();
-        std::ranges::transform(stem, stem.begin(),
-                               [](const unsigned char character)
-                               {
-                                   return static_cast<char>(std::tolower(character));
-                               });
+        stem = ascii_lower(stem);
         const auto is_64_bit = stem.starts_with("64patch");
         const std::string_view prefix = is_64_bit ? "64patch" : "patch";
         const auto suffix = std::string_view(stem).substr(prefix.size());

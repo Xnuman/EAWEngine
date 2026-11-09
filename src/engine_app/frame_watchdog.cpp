@@ -2,7 +2,7 @@
 
 #include "text_format.hpp"
 
-#include "eaw/log.hpp"
+#include "core/log.hpp"
 
 #include <string>
 

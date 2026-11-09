@@ -3,7 +3,7 @@
 // Standard log destinations for EAWEngine programs: stderr (warnings and errors), the debugger's
 // output window (all records; the Visual Studio Output pane), and one log file per run.
 
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <cstddef>
 #include <filesystem>

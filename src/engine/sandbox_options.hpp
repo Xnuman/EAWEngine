@@ -3,7 +3,7 @@
 // Command line of EAWEngine: the run mode (sandbox, battle, or doctor) and their options.
 
 #include "eaw/game_installation.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 #include "particle_rules.hpp"
 
 #include <array>

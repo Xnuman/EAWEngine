@@ -1,38 +1,14 @@
 #include "eaw/ground_map.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <string>
 #include <utility>
 #include <cmath>
 
 namespace eaw {
-namespace {
-
-bool equal_ignoring_case(const std::string_view left, const std::string_view right) noexcept
-{
-    return left.size() == right.size() && std::ranges::equal(left, right,
-                                                             [](const char a, const char b)
-                                                             {
-                                                                 return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
-                                                             });
-}
-
-std::string_view trim(std::string_view text) noexcept
-{
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0)
-    {
-        text.remove_prefix(1);
-    }
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0)
-    {
-        text.remove_suffix(1);
-    }
-    return text;
-}
-
-} // namespace
+namespace {} // namespace
 
 std::optional<std::uint32_t> passability_type(const std::string_view name) noexcept
 {
@@ -49,7 +25,7 @@ std::optional<std::uint32_t> passability_type(const std::string_view name) noexc
     }};
     for (const auto& [type_name, bit] : types)
     {
-        if (equal_ignoring_case(type_name, name))
+        if (ascii_equal_ignoring_case(type_name, name))
         {
             return bit;
         }
@@ -64,7 +40,7 @@ Result<std::uint32_t> parse_passability_list(const std::string_view text)
     while (start <= text.size())
     {
         const auto separator = text.find('|', start);
-        const auto item = trim(text.substr(start, separator == std::string_view::npos ? std::string_view::npos : separator - start));
+        const auto item = ascii_trim(text.substr(start, separator == std::string_view::npos ? std::string_view::npos : separator - start));
         if (!item.empty())
         {
             const auto bit = passability_type(item);

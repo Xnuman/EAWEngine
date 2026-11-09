@@ -1,6 +1,6 @@
 #include "eaw/log_sinks.hpp"
 
-#include "eaw/log.hpp"
+#include "core/log.hpp"
 
 #include <algorithm>
 #include <array>

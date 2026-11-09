@@ -4,6 +4,7 @@
 #include "scene_builder_internal.hpp"
 
 #include "eaw/alo_interpretation.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -104,7 +105,7 @@ std::shared_ptr<const ParticleEmitMesh> proxy_emit_mesh(const AloModel& model, c
 
 std::shared_ptr<const ParticleEffect> particle_effect(SceneBuilder& builder, const std::string& reference)
 {
-    const auto key = fold_ascii(reference);
+    const auto key = ascii_lower(reference);
     if (const auto existing = builder.particles.effects.find(key); existing != builder.particles.effects.end())
     {
         return existing->second;
@@ -116,7 +117,7 @@ std::shared_ptr<const ParticleEffect> particle_effect(SceneBuilder& builder, con
         builder.scene.warnings.push_back("particle effect " + reference + ": file not found");
         return nullptr;
     }
-    const auto loaded = cached<CachedParticleSystem>(builder.cache, "particles", fold_ascii(*path), builder.vfs,
+    const auto loaded = cached<CachedParticleSystem>(builder.cache, "particles", ascii_lower(*path), builder.vfs,
                                                      [&](const AssetReader& reader)
                                                      {
                                                          CachedParticleSystem result;
@@ -169,22 +170,22 @@ void note_damage_bones(SceneBuilder& builder, const std::string& model_path, con
     {
         if (hardpoint.damage_bone >= 0)
         {
-            builder.damage_bones[fold_ascii(model_path)].insert(static_cast<std::uint32_t>(hardpoint.damage_bone));
+            builder.damage_bones[ascii_lower(model_path)].insert(static_cast<std::uint32_t>(hardpoint.damage_bone));
         }
         if (hardpoint.decal_bone >= 0)
         {
-            builder.decal_bones[fold_ascii(model_path)].insert(static_cast<std::uint32_t>(hardpoint.decal_bone));
+            builder.decal_bones[ascii_lower(model_path)].insert(static_cast<std::uint32_t>(hardpoint.decal_bone));
         }
         if (hardpoint.engine_bone >= 0)
         {
-            builder.engine_bones[fold_ascii(model_path)].insert(static_cast<std::uint32_t>(hardpoint.engine_bone));
+            builder.engine_bones[ascii_lower(model_path)].insert(static_cast<std::uint32_t>(hardpoint.engine_bone));
         }
     }
 }
 
 std::uint32_t particle_library_texture(SceneBuilder& builder, const std::string& reference, const std::string& context)
 {
-    const auto key = fold_ascii(reference);
+    const auto key = ascii_lower(reference);
     if (const auto known = builder.particles.texture_indices.find(key); known != builder.particles.texture_indices.end())
     {
         return known->second;
@@ -317,8 +318,8 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const A
     {
         return attachments;
     }
-    const auto damage = builder.damage_bones.find(fold_ascii(model_path));
-    const auto engines = builder.engine_bones.find(fold_ascii(model_path));
+    const auto damage = builder.damage_bones.find(ascii_lower(model_path));
+    const auto engines = builder.engine_bones.find(ascii_lower(model_path));
     // Whether `bone` or an ancestor is in `bones`.
     const auto under = [&](std::uint32_t bone, const std::unordered_set<std::uint32_t>& bones)
     {
@@ -387,7 +388,7 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const A
                                                        });
             auto emit_mesh = from_mesh ? proxy_emit_mesh(model, proxy.bone) : nullptr;
             // Engine effects: the stock "pe_" naming, or a proxy under a hardpoint's Engine_Particles bone.
-            const bool engine = fold_ascii(name).starts_with("pe_") || (engines != builder.engine_bones.end() && under(proxy.bone, engines->second));
+            const bool engine = ascii_lower(name).starts_with("pe_") || (engines != builder.engine_bones.end() && under(proxy.bone, engines->second));
             attachments.push_back({std::move(effect), proxy.bone, proxy.name, damage_bone_of(proxy.bone), std::move(emit_mesh), engine});
         }
     }

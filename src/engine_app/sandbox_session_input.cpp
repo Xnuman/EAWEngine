@@ -1,4 +1,5 @@
 #include "sandbox_session.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -211,7 +212,7 @@ void SandboxSession::handle_command_keys(const eaw::InputState& input, const boo
         const bool loaded = std::ranges::any_of(spawnable,
                                                 [&](const eaw::SpawnableType& type)
                                                 {
-                                                    return fold_name(type.type_name) == fold_name(spawn_names[spawn_choice]);
+                                                    return ascii_lower(type.type_name) == ascii_lower(spawn_names[spawn_choice]);
                                                 });
         std::cout << "Spawn type: " << spawn_names[spawn_choice] << (loaded ? "" : " (loads on first spawn)") << " [" << spawn_choice + 1U << "/" << size << "]\n";
     }

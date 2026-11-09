@@ -5,10 +5,10 @@
 #include "eaw/dds_texture.hpp"
 #include "eaw/map_object_layout.hpp"
 #include "eaw/xml_document.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <filesystem>
@@ -295,14 +295,14 @@ std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const 
     const auto text_of = [&](const XmlDefinition& definition, const std::string_view name)
     {
         const auto* node = catalog.field(definition, name).field;
-        return node != nullptr ? std::string(trim_ascii(node->text)) : std::string{};
+        return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
     };
     for (const auto name : split_type_names(list->text))
     {
         const XmlDefinition* hardpoint = nullptr;
         for (const auto* candidate : catalog.find(name))
         {
-            if (fold_ascii(candidate->type) == "hardpoint" || hardpoint == nullptr)
+            if (ascii_lower(candidate->type) == "hardpoint" || hardpoint == nullptr)
             {
                 hardpoint = candidate;
             }
@@ -316,11 +316,11 @@ std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const 
         {
             continue;
         }
-        const auto bone_name = fold_ascii(text_of(*hardpoint, "Attachment_Bone"));
+        const auto bone_name = ascii_lower(text_of(*hardpoint, "Attachment_Bone"));
         std::optional<std::uint32_t> bone;
         for (std::size_t index = 0; index < host->bones.size(); ++index)
         {
-            if (fold_ascii(host->bones[index].name) == bone_name)
+            if (ascii_lower(host->bones[index].name) == bone_name)
             {
                 bone = static_cast<std::uint32_t>(index);
                 break;
@@ -345,10 +345,10 @@ std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const 
 
 std::string attached_mesh_key(const std::string& model_path, const std::span<const ModelAttachment> attachments)
 {
-    auto key = fold_ascii(model_path);
+    auto key = ascii_lower(model_path);
     for (const auto& attachment : attachments)
     {
-        key += "|" + fold_ascii(attachment.path) + "@" + std::to_string(attachment.bone);
+        key += "|" + ascii_lower(attachment.path) + "@" + std::to_string(attachment.bone);
     }
     return key;
 }
@@ -507,12 +507,12 @@ Result<VisualModelAsset> build_visual_model(const AssetReader& vfs, const std::s
 std::vector<std::string> model_animations(const AssetReader& reader, const std::string_view model_path)
 {
     const auto path = std::filesystem::path(model_path);
-    const auto prefix = fold_ascii(path.stem().string() + "_");
+    const auto prefix = ascii_lower(path.stem().string() + "_");
     std::vector<std::string> result;
     for (const auto& asset : reader.list(path.parent_path().generic_string()))
     {
         const auto file = std::filesystem::path(asset.virtual_path);
-        if (fold_ascii(file.extension().string()) == fold_ascii(".ala") && fold_ascii(file.filename().string()).starts_with(prefix))
+        if (ascii_lower(file.extension().string()) == ascii_lower(".ala") && ascii_lower(file.filename().string()).starts_with(prefix))
         {
             result.push_back(asset.virtual_path);
         }
@@ -634,8 +634,8 @@ void append_rig_local_palette(const VisualRig& rig, const std::span<const AlaLoc
 
 std::optional<ClipName> parse_clip_name(const std::string_view file_stem, const std::string_view model_stem)
 {
-    const auto file = fold_ascii(std::string(file_stem));
-    const auto prefix = fold_ascii(std::string(model_stem)) + "_";
+    const auto file = ascii_lower(std::string(file_stem));
+    const auto prefix = ascii_lower(std::string(model_stem)) + "_";
     if (!file.starts_with(prefix))
     {
         return std::nullopt;
@@ -690,7 +690,7 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
             rig.model = std::shared_ptr<const AloModel>(model, &model->value());
             // Scorch marks of hardpoints (their Damage_Decal bones and everything below) wait for
             // the hardpoint's destruction.
-            if (const auto decals = builder.decal_bones.find(fold_ascii(mesh.name)); decals != builder.decal_bones.end())
+            if (const auto decals = builder.decal_bones.find(ascii_lower(mesh.name)); decals != builder.decal_bones.end())
             {
                 const auto& bones = rig.model->bones;
                 rig.intact_hidden.assign(bones.size(), false);
@@ -737,20 +737,20 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
         // Clips come from the type's animation source when it names one, else from the model.
         auto path = std::filesystem::path(mesh.name);
         bool retarget = false;
-        if (const auto source = builder.animation_sources.find(fold_ascii(mesh.name)); source != builder.animation_sources.end())
+        if (const auto source = builder.animation_sources.find(ascii_lower(mesh.name)); source != builder.animation_sources.end())
         {
             const auto resolved = resolve_model_path(builder.vfs, source->second);
             const auto source_path = resolved ? std::filesystem::path(*resolved) : path.parent_path() / std::filesystem::path(source->second).filename();
-            retarget = fold_ascii(source_path.stem().string()) != fold_ascii(path.stem().string());
+            retarget = ascii_lower(source_path.stem().string()) != ascii_lower(path.stem().string());
             path = source_path;
         }
         const auto directory = path.parent_path().generic_string();
-        auto [listing, inserted] = listings.try_emplace(fold_ascii(directory));
+        auto [listing, inserted] = listings.try_emplace(ascii_lower(directory));
         if (inserted)
         {
             for (const auto& asset : builder.vfs.list(directory))
             {
-                if (fold_ascii(std::filesystem::path(asset.virtual_path).extension().string()) == ".ala")
+                if (ascii_lower(std::filesystem::path(asset.virtual_path).extension().string()) == ".ala")
                 {
                     listing->second.push_back(asset.virtual_path);
                 }

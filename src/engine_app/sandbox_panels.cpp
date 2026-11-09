@@ -1,9 +1,9 @@
 #include "sandbox_panels.hpp"
+#include "core/string_utils.hpp"
 
 #include <imgui.h>
 
 #include <algorithm>
-#include <cctype>
 #include <string_view>
 #include <vector>
 
@@ -18,7 +18,7 @@ bool contains_folded(const std::string_view text, const std::string_view needle)
     }
     const auto lower = [](const char character)
     {
-        return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+        return eaw::ascii_lower(character);
     };
     return std::ranges::search(text, needle, {}, lower, lower).begin() != text.end();
 }

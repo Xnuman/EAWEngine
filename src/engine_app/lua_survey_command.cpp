@@ -1,6 +1,7 @@
 #include "lua_survey_command.hpp"
 
 #include "eaw/script_host.hpp"
+#include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -25,16 +26,6 @@ struct ScriptResult
     std::size_t threads_at_end{};
     std::vector<ScriptError> errors;
 };
-
-std::string upper(std::string text)
-{
-    std::ranges::transform(text, text.begin(),
-                           [](const unsigned char character)
-                           {
-                               return static_cast<char>(character >= 'a' && character <= 'z' ? character - 'a' + 'A' : character);
-                           });
-    return text;
-}
 
 // An error message without its "file:line:" prefix and trace, so equal causes count together.
 std::string error_kind(const std::string& message)
@@ -88,7 +79,7 @@ int run_lua_survey(const SandboxOptions& options, const VirtualFileSystem& vfs)
     host_options.script_globals = std::make_shared<const std::set<std::string>>(script_defined_globals(vfs));
     for (const auto& asset : vfs.list("DATA/SCRIPTS"))
     {
-        if (!upper(asset.virtual_path).ends_with(".LUA"))
+        if (!ascii_upper(asset.virtual_path).ends_with(".LUA"))
         {
             continue;
         }
@@ -115,7 +106,7 @@ int run_lua_survey(const SandboxOptions& options, const VirtualFileSystem& vfs)
         }
         // The framework clears Object while a script is created, so the engine binds a game-object
         // script's object afterwards (an inference from PGBaseDefinitions.lua); here it is a stub.
-        if (result.loaded && upper(result.path).find("/GAMEOBJECT/") != std::string::npos)
+        if (result.loaded && ascii_upper(result.path).find("/GAMEOBJECT/") != std::string::npos)
         {
             script.bind_stub("Object");
         }

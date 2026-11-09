@@ -4,7 +4,7 @@
 #include "rts_control.hpp"
 
 #include "eaw/formation.hpp"
-#include "eaw/log.hpp"
+#include "core/log.hpp"
 
 #include <algorithm>
 #include <cctype>

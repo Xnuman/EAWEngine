@@ -20,7 +20,7 @@
 #include "eaw/map_object_layout.hpp"
 #include "eaw/lua_script.hpp"
 #include "eaw/mtd_directory.hpp"
-#include "eaw/text_encoding.hpp"
+#include "core/string_utils.hpp"
 #include "eaw/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
@@ -31,7 +31,6 @@
 #include <wrl/client.h>
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
@@ -111,8 +110,6 @@ struct PreviewGeometry
     // Distance of the farthest vertex from the model origin.
     float radius{};
 };
-
-std::string lower(std::string value);
 
 std::string human_size(std::uint64_t bytes);
 

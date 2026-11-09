@@ -1,6 +1,6 @@
 #include "eaw/asset_path.hpp"
+#include "core/string_utils.hpp"
 
-#include <cctype>
 #include <vector>
 
 namespace eaw {
@@ -42,7 +42,7 @@ Result<std::string> normalize_asset_path(const std::string_view path)
             }
             for (char& character : part)
             {
-                character = static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
+                character = ascii_upper(character);
             }
             parts.push_back(std::move(part));
         }

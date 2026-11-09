@@ -5,12 +5,11 @@
 // to src/render.
 
 #include "eaw/d3d12_renderer.hpp"
-#include "eaw/fatal_error.hpp"
+#include "core/fatal_error.hpp"
 #include "eaw/gpu_resource_lifetime.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 #include "imgui.h"
 #include "imgui_impl_dx12.h"
-#include <algorithm>
 #include <array>
 #include <bit>
 #include <chrono>

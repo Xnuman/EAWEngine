@@ -15,7 +15,7 @@
 // still load.
 
 #include "eaw/game_installation.hpp"
-#include "eaw/status.hpp"
+#include "core/status.hpp"
 
 #include <cstdint>
 #include <optional>
