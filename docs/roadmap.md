@@ -289,10 +289,17 @@ Gaps toward the deliverable, in planned order:
       round of visual tuning. Part 1 is done: deterministic sandbox captures
       (`--capture`, a fixed presentation clock that starts once textures are
       resident, `--camera`) and `EAWEngine compare-images` (docs/tools.md).
-      Part 2, aligning the engine view with a screenshot of the original
-      (shown as a translucent layer while the camera is adjusted, then side by
-      side), needs a JPEG/PNG decoder for the original's screenshots and waits
-      for the owner's decision on that dependency.
+      Comparing with the original does not try to recreate scenes (unit
+      placement, combat timing, particle randomness, and the camera cannot be
+      reproduced in the original). It compares features: the owner screenshots
+      one subject at a time in the original (an engine glow, a hull, a bolt, an
+      explosion) at a similar zoom, the engine captures the same subject
+      (`--camera`, `--capture`), and the two are compared by measured ratios
+      (glow width to hull length, bolt length to ship, colour at a glow's core,
+      contrast on a hull) recorded with the feature in
+      docs/compatibility-research.md. Screenshots stay local. A test map built
+      in the original's map editor, if available, could give matching static
+      placement; that is open.
    3. The review of the technical foundation, adding what the large layers
       need. It starts with the Lua host as a foundation question, not as
       scripted behavior: a Lua 5.0-compatible VM with deterministic settings

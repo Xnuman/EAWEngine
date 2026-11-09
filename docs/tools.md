@@ -113,6 +113,10 @@ EAWEngine.exe compare-images reference\kuat.png captures\kuat.png --diff capture
   images locally (outside the repository), never commit them.
 - WARP renders identically run to run; hardware GPUs are deterministic for a
   given driver, so references are per machine.
+- Against the original, compare features rather than scenes: a screenshot of
+  one subject in the original at a similar zoom, a capture of the same subject
+  framed with `--camera`, and measured ratios (glow width to hull length, bolt
+  length to ship, core colour), recorded in docs/compatibility-research.md.
 
 ## EAWTools graphical workbench
 
