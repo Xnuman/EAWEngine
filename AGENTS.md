@@ -21,6 +21,7 @@ M0 (repository discipline), M1 (data bootstrap: VFS, MEG, DAT, DDS/MTD, ALO, ALA
 - [docs/architecture.md](docs/architecture.md): layers, contracts, simulation tick layers, the content-contract classification, and the source files by subject.
 - [docs/compatibility-research.md](docs/compatibility-research.md): evidence and findings about the original's formats and behavior.
 - [docs/tools.md](docs/tools.md): the command-line tools, audits, and sandbox options.
+- [docs/lua-runtime-research.md](docs/lua-runtime-research.md) and [docs/pathfinding-research.md](docs/pathfinding-research.md): research behind the script runtime and navigation.
 
 Update `docs/status.md` and `docs/roadmap.md` in the same change as the code they describe.
 

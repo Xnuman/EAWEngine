@@ -949,3 +949,5 @@ recording stubs (`EAWEngine lua-survey`).
   `GetCurrentTime`, `Get_Game_Mode`, `_ScriptExit`, `Find_Object_Type`, `_MessagePopup`,
   `WeightedTypeList.Create`, and the game object's `Is_Valid`, `Get_Owner`, `Event_Object_In_Range`,
   `Service_Wrapper`. The ranked list with argument types comes from `lua-survey --report`.
+- **Choice of runtime.** Which Lua VMs exist, what they cost, and why the host stays on Lua 5.0.3
+  for the original's scripts: [lua-runtime-research.md](lua-runtime-research.md).
