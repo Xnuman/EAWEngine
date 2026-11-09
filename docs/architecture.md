@@ -399,3 +399,8 @@ dependency rules; this is the file-level detail.
 - `src/tools_gui`: each panel has its own file (`gui_asset_workspace`, `gui_map_view`,
   `gui_model_view`, `gui_localization`); `GuiApp::State` is declared in `gui_internal.hpp` with
   its methods in `gui_state.cpp`, and shared helpers live in `gui_support.cpp`.
+- `tests`: one module per subject, each `test_<module>.cpp` with its own ctest entry: `formats`,
+  `vfs`, `xml`, `foundation` (core); `simulation` (core and snapshots), `navigation`, `combat`,
+  and `flight` (the simulation); `scene` (scene building), `presentation`, `battle`, `effects`,
+  and `sandbox` (the engine); `launcher` and `render`. Shared fixtures (synthetic MEG, ALO, ALA,
+  DDS, TED, DAT, and particle files) live in `test_support.*`.

@@ -1,0 +1,581 @@
+// Ground movement and navigation: terrain following, paths, separation, formations, groups, footprints, budgets.
+#include "test_support.hpp"
+
+#include "eaw/formation.hpp"
+
+#include <tuple>
+
+#include <memory>
+#include <numbers>
+
+namespace {
+
+using namespace eaw_test;
+
+void test_ground_movement()
+{
+    // A 6x3 field (20 units per cell) rising 5 units per column, with a blocked column at x = 4.
+    eaw::GroundMap ground;
+    ground.width = 6;
+    ground.height = 3;
+    ground.spacing = 20.0F;
+    for (std::uint32_t y = 0; y < ground.height; ++y)
+    {
+        for (std::uint32_t x = 0; x < ground.width; ++x)
+        {
+            ground.heights.push_back(5.0F * static_cast<float>(x));
+            ground.passability.push_back(x == 4 ? eaw::passability::steep : eaw::passability::clear);
+        }
+    }
+    require(ground.passability_at(81.0F, 20.0F) == eaw::passability::steep && ground.passability_at(39.0F, 20.0F) == eaw::passability::clear && !ground.passability_at(-30.0F, 0.0F),
+            "passability must be looked up at the nearest cell");
+
+    eaw::SimulationWorld world(0.1);
+    world.set_ground(ground);
+    const auto walker = world.spawn({.type_name = "Walker", .position = {0.0F, 20.0F, 999.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
+    const auto flyer = world.spawn({.type_name = "Flyer", .position = {0.0F, 20.0F, 50.0F}, .max_speed = 100.0F});
+    require(walker && flyer, "test spawns must succeed");
+    world.step();
+    require(world.snapshot().entities[0].position.z == 0.0F && world.snapshot().entities[1].position.z == 50.0F, "a ground unit spawns on the surface; others keep their height");
+
+    // Ordered across the slope beyond the blocked column: the walker climbs with the terrain and,
+    // since the column cuts the field, ends at the closest reachable cell (x = 60); the flyer keeps
+    // a straight line.
+    world.submit({eaw::SimCommandKind::move, {*walker, *flyer}, {100.0F, 20.0F, 50.0F}});
+    world.step();
+    const auto& moved = world.snapshot().entities;
+    require(std::fabs(moved[0].position.x - 10.0F) < 1.0e-4F && std::fabs(moved[0].position.z - 2.5F) < 1.0e-4F, "a ground unit must take its height from the surface");
+    for (int tick = 0; tick < 20; ++tick)
+    {
+        world.step();
+    }
+    const auto& stopped = world.snapshot().entities;
+    require(!stopped[0].moving && stopped[0].position.x == 60.0F && world.stats().partial_paths == 1 && world.stats().blocked_moves == 0,
+            "a ground unit ordered into an unreachable region must stop at the closest reachable cell");
+    require(stopped[1].position.x == 100.0F && stopped[1].position.z == 50.0F, "a unit that does not follow the ground ignores passability");
+
+    // A unit standing on a blocked cell may leave it.
+    const auto stranded = world.spawn({.type_name = "Stranded", .position = {80.0F, 0.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
+    require(stranded.ok(), "test spawn must succeed");
+    world.submit({eaw::SimCommandKind::move, {*stranded}, {100.0F, 0.0F, 0.0F}});
+    for (int tick = 0; tick < 5; ++tick)
+    {
+        world.step();
+    }
+    require(world.snapshot().entities[2].position.x == 100.0F && std::fabs(world.snapshot().entities[2].position.z - 25.0F) < 1.0e-4F, "leaving a blocked cell must be allowed");
+
+    // A climbing class may enter steep cells.
+    const auto climber =
+        world.spawn({.type_name = "Climber", .position = {60.0F, 40.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear | eaw::passability::steep});
+    require(climber.ok(), "test spawn must succeed");
+    world.submit({eaw::SimCommandKind::move, {*climber}, {100.0F, 40.0F, 0.0F}});
+    for (int tick = 0; tick < 5; ++tick)
+    {
+        world.step();
+    }
+    require(world.snapshot().entities[3].position.x == 100.0F, "a class allowed on steep ground must cross it");
+
+    // Movement class lists parse into masks; unknown names are reported.
+    require(eaw::parse_passability_list(" Clear | Shield | InfantryOnly ").value_or(0) == (eaw::passability::clear | eaw::passability::shield | eaw::passability::infantry_only) &&
+                eaw::parse_passability_list("water").value_or(0) == eaw::passability::water,
+            "passability lists must parse case-insensitively");
+    const auto unknown = eaw::parse_passability_list("Clear | Lava");
+    require(!unknown && unknown.error().message.find("Lava") != std::string::npos, "an unknown passability type must be named");
+
+    // The liquid surface carries ground units over lower terrain.
+    eaw::GroundMap flooded = ground;
+    flooded.liquid_level = 12.0F;
+    require(flooded.surface_height(0.0F, 0.0F) == 12.0F && flooded.surface_height(100.0F, 0.0F) == 25.0F, "the surface is the higher of terrain and liquid");
+}
+
+void test_pathfinding()
+{
+    // A 12x12 clear field (10 units per cell) split by a steep wall at column 6 with a gap at row 9.
+    eaw::GroundMap ground;
+    ground.width = 12;
+    ground.height = 12;
+    ground.spacing = 10.0F;
+    ground.heights.assign(144, 0.0F);
+    for (std::uint32_t y = 0; y < ground.height; ++y)
+    {
+        for (std::uint32_t x = 0; x < ground.width; ++x)
+        {
+            ground.passability.push_back(x == 6 && y != 9 ? eaw::passability::steep : eaw::passability::clear);
+        }
+    }
+    const auto clear = eaw::passability::clear;
+    require(!eaw::ground_line_passable(ground, {10.0F, 10.0F}, {110.0F, 10.0F}, clear) && eaw::ground_line_passable(ground, {10.0F, 90.0F}, {110.0F, 90.0F}, clear),
+            "a straight line must be checked against every cell it crosses");
+
+    eaw::GridPathfinder pathfinder;
+    const auto path = pathfinder.find(ground, {10.0F, 10.0F}, {110.0F, 12.0F}, clear);
+    require(path.status == eaw::PathStatus::reached && !path.waypoints.empty() && path.waypoints.back() == eaw::PathPoint{110.0F, 12.0F}, "a reachable goal must end the path exactly");
+    bool through_gap = false;
+    eaw::PathPoint previous{10.0F, 10.0F};
+    for (const auto& waypoint : path.waypoints)
+    {
+        require(eaw::ground_line_passable(ground, previous, waypoint, clear), "every path segment must stay on enterable cells");
+        through_gap = through_gap || waypoint.y >= 80.0F;
+        previous = waypoint;
+    }
+    require(through_gap && path.waypoints.size() <= 4, "the path must go through the gap with its redundant cell waypoints removed");
+    const auto again = pathfinder.find(ground, {10.0F, 10.0F}, {110.0F, 12.0F}, clear);
+    require(again.waypoints == path.waypoints && again.expanded == path.expanded, "pathfinding must be deterministic");
+
+    // A goal on the wall moves to the nearest enterable cell (of two equally near, the start's side).
+    const auto onto_wall = pathfinder.find(ground, {10.0F, 10.0F}, {60.0F, 10.0F}, clear);
+    require(onto_wall.status == eaw::PathStatus::partial && onto_wall.waypoints.back() == eaw::PathPoint{50.0F, 10.0F}, "a goal the class may not enter must move to the nearest cell");
+    // A class allowed on steep ground goes straight through.
+    const auto climbing = pathfinder.find(ground, {10.0F, 10.0F}, {110.0F, 10.0F}, clear | eaw::passability::steep);
+    require(climbing.status == eaw::PathStatus::reached && climbing.waypoints.size() == 1, "a class allowed on the wall must cross it directly");
+
+    // Closing the gap leaves the goal unreachable: the path ends at the closest reachable cell.
+    auto closed = ground;
+    closed.passability[9 * 12 + 6] = eaw::passability::steep;
+    eaw::GridPathfinder fresh;
+    const auto blocked = fresh.find(closed, {10.0F, 10.0F}, {110.0F, 10.0F}, clear);
+    require(blocked.status == eaw::PathStatus::partial && blocked.waypoints.back() == eaw::PathPoint{50.0F, 10.0F} && blocked.expanded <= 10,
+            "an unreachable goal must end at the closest reachable cell without searching the whole region");
+
+    // A start on the wall first leaves for the nearest enterable cell on the goal's side: with the
+    // gap closed, only that side reaches the goal.
+    const auto stranded = fresh.find(closed, {60.0F, 10.0F}, {110.0F, 10.0F}, clear);
+    require(stranded.status == eaw::PathStatus::reached && stranded.waypoints.back() == eaw::PathPoint{110.0F, 10.0F}, "a unit on a cell its class may not enter must leave it toward the goal");
+    const auto boxed = fresh.find(closed, {60.0F, 10.0F}, {10.0F, 10.0F}, clear);
+    require(boxed.status == eaw::PathStatus::reached && boxed.waypoints.back() == eaw::PathPoint{10.0F, 10.0F}, "leaving a blocked cell must work in either direction");
+
+    eaw::GridPathfinder limited(3);
+    const auto budgeted = limited.find(ground, {10.0F, 10.0F}, {110.0F, 12.0F}, clear);
+    require(budgeted.status == eaw::PathStatus::partial && budgeted.expanded == 3, "the search must stop at its expansion budget");
+
+    // A diagonal through a cell corner needs both side cells.
+    eaw::GroundMap corner;
+    corner.width = 3;
+    corner.height = 3;
+    corner.spacing = 10.0F;
+    corner.heights.assign(9, 0.0F);
+    corner.passability.assign(9, clear);
+    corner.passability[1] = eaw::passability::steep;
+    require(!eaw::ground_line_passable(corner, {0.0F, 0.0F}, {20.0F, 20.0F}, clear) && eaw::ground_line_passable(corner, {0.0F, 10.0F}, {20.0F, 20.0F}, clear),
+            "a line through a corner must check both side cells");
+    const auto around = pathfinder.find(corner, {0.0F, 0.0F}, {20.0F, 0.0F}, clear);
+    require(around.status == eaw::PathStatus::reached && around.waypoints.size() == 3 && around.waypoints[0] == eaw::PathPoint{0.0F, 10.0F}, "a path must not cut a blocked corner");
+
+    auto no_data = ground;
+    no_data.passability.clear();
+    require(pathfinder.find(no_data, {0.0F, 0.0F}, {50.0F, 50.0F}, clear).status == eaw::PathStatus::unavailable, "ground without passability must not constrain paths");
+
+    // The simulation plans ground orders and follows the waypoints to the ordered point.
+    eaw::SimulationWorld world(0.1);
+    world.set_ground(ground);
+    const auto walker = world.spawn({.type_name = "Walker", .position = {10.0F, 10.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = clear});
+    require(walker.ok(), "test spawn must succeed");
+    world.submit({eaw::SimCommandKind::move, {*walker}, {110.0F, 12.0F, 0.0F}});
+    world.step();
+    const auto route = world.route(*walker);
+    require(!route.empty() && route.back().x == 110.0F && route.back().y == 12.0F && world.stats().path_searches == 1 && world.stats().path_expansions > 0,
+            "a ground order must be planned and expose its route");
+    for (int tick = 0; tick < 40; ++tick)
+    {
+        world.step();
+    }
+    const auto& arrived = world.snapshot().entities[0];
+    require(!arrived.moving && arrived.position.x == 110.0F && arrived.position.y == 12.0F && world.stats().blocked_moves == 0 && world.route(*walker).empty(),
+            "a ground unit must follow its path around the wall");
+}
+
+void test_turning_and_separation()
+{
+    // A flat 20x20 clear field, 10 units per cell, with one steep cell at (15, 10).
+    eaw::GroundMap ground;
+    ground.width = 20;
+    ground.height = 20;
+    ground.spacing = 10.0F;
+    ground.heights.assign(400, 0.0F);
+    ground.passability.assign(400, eaw::passability::clear);
+    ground.passability[10 * 20 + 15] = eaw::passability::steep;
+
+    // Turning: a unit facing +X ordered to -X turns at its rate before it moves.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto pi = std::numbers::pi_v<float>;
+        const auto turner =
+            world.spawn({.type_name = "Turner", .position = {100.0F, 50.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .turn_rate = pi / 2.0F});
+        require(turner.ok(), "test spawn must succeed");
+        world.submit({eaw::SimCommandKind::move, {*turner}, {20.0F, 50.0F, 0.0F}});
+        world.step();
+        const auto& first = world.snapshot().entities[0];
+        require(std::fabs(first.heading - pi / 20.0F) < 1.0e-4F && first.position.x == 100.0F, "a unit facing away must turn at its rate without moving");
+        for (int tick = 0; tick < 19; ++tick)
+        {
+            world.step();
+        }
+        const auto& turned = world.snapshot().entities[0];
+        require(std::fabs(std::fabs(turned.heading) - pi) < 1.0e-4F && turned.position.x < 100.0F, "a unit must move once it faces its way");
+        for (int tick = 0; tick < 40; ++tick)
+        {
+            world.step();
+        }
+        require(world.snapshot().entities[0].position.x == 20.0F, "a turning unit must still arrive");
+    }
+
+    // Separation: overlapping idle units part, an immobile one stays put, and nobody is pushed onto
+    // ground its class may not enter.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto a = world.spawn({.type_name = "A", .position = {50.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto b = world.spawn({.type_name = "B", .position = {52.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto wall = world.spawn({.type_name = "Bunker", .position = {80.0F, 80.0F, 0.0F}, .follows_ground = true, .radius = 10.0F});
+        const auto c = world.spawn({.type_name = "C", .position = {82.0F, 80.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto d = world.spawn({.type_name = "D", .position = {141.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto e = world.spawn({.type_name = "E", .position = {139.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        require(a && b && wall && c && d && e, "test spawns must succeed");
+        for (int tick = 0; tick < 20; ++tick)
+        {
+            world.step();
+        }
+        const auto& entities = world.snapshot().entities;
+        const auto gap = [&](const std::size_t first, const std::size_t second)
+        {
+            return std::hypot(entities[second].position.x - entities[first].position.x, entities[second].position.y - entities[first].position.y);
+        };
+        require(gap(0, 1) >= 9.99F && std::fabs(entities[0].position.x + entities[1].position.x - 102.0F) < 1.0e-3F, "overlapping equal units must part symmetrically");
+        require(entities[2].position.x == 80.0F && entities[2].position.y == 80.0F && gap(2, 3) >= 14.99F, "an immobile entity must not be pushed but must push");
+        require(world.snapshot().entities[4].position.x < 145.0F, "a push must not move a unit onto a cell it may not enter");
+        require(world.stats().separated_pairs == 0, "separated units must stop pushing once apart");
+    }
+    // A unit walking into an idle unit of another owner does not push it aside.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto walker =
+            world.spawn({.type_name = "Walker", .owner = 1, .position = {40.0F, 150.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto enemy =
+            world.spawn({.type_name = "Enemy", .owner = 2, .position = {60.0F, 150.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        require(walker && enemy, "test spawns must succeed");
+        world.submit({eaw::SimCommandKind::move, {*walker}, {80.0F, 150.0F, 0.0F}});
+        for (int tick = 0; tick < 30; ++tick)
+        {
+            world.step();
+        }
+        const auto& entities = world.snapshot().entities;
+        require(entities[1].position.x == 60.0F && entities[1].position.y == 150.0F && entities[0].position.x < 51.0F, "an idle foreign unit must stand its ground");
+    }
+    {
+        const auto replay = [&]
+        {
+            eaw::SimulationWorld world(0.1);
+            world.set_ground(ground);
+            for (int index = 0; index < 12; ++index)
+            {
+                (void)world.spawn({.type_name = "Crowd",
+                                   .position = {60.0F + static_cast<float>(index % 3), 60.0F + static_cast<float>(index / 3), 0.0F},
+                                   .max_speed = 30.0F,
+                                   .follows_ground = true,
+                                   .passable_types = eaw::passability::clear,
+                                   .radius = 4.0F,
+                                   .turn_rate = 3.0F});
+            }
+            for (int tick = 0; tick < 30; ++tick)
+            {
+                world.step();
+            }
+            return world.state_hash();
+        };
+        require(replay() == replay(), "separation must be deterministic");
+    }
+    eaw::SimulationWorld world(0.1);
+    require(!world.spawn({.type_name = "Bad", .radius = -1.0F}) && !world.spawn({.type_name = "Bad", .turn_rate = std::nanf("")}), "invalid radii and turn rates must be rejected");
+}
+
+void test_formations()
+{
+    // Six equal members (pitch 2 x 5 x 1.5 = 15): rows of four and two facing +X.
+    std::vector<eaw::FormationMember> members;
+    for (std::uint32_t index = 0; index < 6; ++index)
+    {
+        members.push_back({{index + 1, 1}, {static_cast<float>(index) * 3.0F, 0.0F, 0.0F}, 5.0F, 0.5F, 2});
+    }
+    members[5].order = 1;
+    const eaw::SimVector3 target{100.0F, 200.0F, 7.0F};
+    const auto slots = eaw::formation_slots(members, target, 0.0F);
+    require(slots.size() == 6, "every member must get a slot");
+    float min_x = 1.0e9F;
+    float max_x = -1.0e9F;
+    float min_y = 1.0e9F;
+    float max_y = -1.0e9F;
+    for (std::size_t first = 0; first < slots.size(); ++first)
+    {
+        require(slots[first].id == members[first].id && slots[first].position.z == 7.0F, "slots must follow member order and take the target height");
+        min_x = std::min(min_x, slots[first].position.x);
+        max_x = std::max(max_x, slots[first].position.x);
+        min_y = std::min(min_y, slots[first].position.y);
+        max_y = std::max(max_y, slots[first].position.y);
+        for (auto second = first + 1; second < slots.size(); ++second)
+        {
+            require(std::hypot(slots[first].position.x - slots[second].position.x, slots[first].position.y - slots[second].position.y) >= 14.99F, "slots must keep the members' pitch");
+        }
+    }
+    require(std::fabs((min_x + max_x) * 0.5F - target.x) < 1.0e-3F && std::fabs((min_y + max_y) * 0.5F - target.y) < 1.0e-3F && std::fabs(max_x - min_x - 15.0F) < 1.0e-3F,
+            "the block must be centered on the target, two rows deep");
+    require(slots[5].position.x > target.x, "the lowest order must stand in the front row");
+    // Members take slots by where they stand across the facing: +X facing puts -Y on the right.
+    const std::vector<eaw::FormationMember> pair{{{1, 1}, {0.0F, 50.0F, 0.0F}, 5.0F, 0.5F, 2}, {{2, 1}, {0.0F, -50.0F, 0.0F}, 5.0F, 0.5F, 2}};
+    const auto paired = eaw::formation_slots(pair, {100.0F, 0.0F, 0.0F}, 0.0F);
+    require(paired[0].position.y > paired[1].position.y, "members must keep their side so their paths do not cross");
+    require(std::fabs(eaw::formation_facing(pair, {0.0F, 100.0F, 0.0F}) - std::numbers::pi_v<float> / 2.0F) < 1.0e-5F, "the facing must point from the centroid to the target");
+
+    // The world moves the group at its slowest member's speed into distinct slots.
+    eaw::GroundMap ground;
+    ground.width = 40;
+    ground.height = 40;
+    ground.spacing = 10.0F;
+    ground.heights.assign(1600, 0.0F);
+    ground.passability.assign(1600, eaw::passability::clear);
+    eaw::SimulationWorld world(0.1);
+    world.set_ground(ground);
+    const auto fast = world.spawn({.type_name = "Fast", .position = {50.0F, 100.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+    const auto slow = world.spawn({.type_name = "Slow", .position = {50.0F, 120.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+    const auto fixed = world.spawn({.type_name = "Turret", .position = {50.0F, 140.0F, 0.0F}, .follows_ground = true});
+    require(fast && slow && fixed, "test spawns must succeed");
+    world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = {*fast, *slow, *fixed}, .target = {300.0F, 110.0F, 0.0F}});
+    world.step();
+    const auto& moving = world.snapshot().entities;
+    require(std::fabs(moving[0].position.x - 52.0F) < 0.5F && std::fabs(moving[1].position.x - 52.0F) < 0.5F && !moving[2].moving, "a group must move at its slowest member's speed");
+    for (int tick = 0; tick < 200; ++tick)
+    {
+        world.step();
+    }
+    const auto& arrived = world.snapshot().entities;
+    require(!arrived[0].moving && !arrived[1].moving && std::hypot(arrived[0].position.x - arrived[1].position.x, arrived[0].position.y - arrived[1].position.y) >= 14.0F &&
+                std::fabs((arrived[0].position.x + arrived[1].position.x) * 0.5F - 300.0F) < 1.0F,
+            "a group must arrive in distinct slots around the target");
+}
+
+void test_narrow_passage()
+{
+    // A wall at column 15 with a one-cell gap at row 14; six tank-sized units ordered through it. With
+    // equal pushes they jammed at the gap (reported on Bespin); route priority makes them queue.
+    eaw::GroundMap ground;
+    ground.width = 30;
+    ground.height = 30;
+    ground.spacing = 10.0F;
+    ground.heights.assign(900, 0.0F);
+    ground.passability.assign(900, eaw::passability::clear);
+    for (std::uint32_t y = 0; y < 30; ++y)
+    {
+        if (y != 14)
+        {
+            ground.passability[y * 30 + 15] = eaw::passability::steep;
+        }
+    }
+    eaw::SimulationWorld world(1.0 / 30.0);
+    world.set_ground(ground);
+    std::vector<eaw::EntityId> group;
+    for (int index = 0; index < 6; ++index)
+    {
+        const auto id = world.spawn({.type_name = "Trooper",
+                                     .position = {40.0F + static_cast<float>(index % 3) * 20.0F, 100.0F + static_cast<float>(index / 3) * 20.0F, 0.0F},
+                                     .max_speed = 30.0F,
+                                     .follows_ground = true,
+                                     .passable_types = eaw::passability::clear,
+                                     .radius = 8.0F,
+                                     .turn_rate = 8.0F});
+        require(id.ok(), "test spawn must succeed");
+        group.push_back(*id);
+    }
+    world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = group, .target = {240.0F, 150.0F, 0.0F}});
+    for (int tick = 0; tick < 900; ++tick)
+    {
+        world.step();
+    }
+    for (const auto& entity : world.snapshot().entities)
+    {
+        require(!entity.moving && entity.position.x > 200.0F, "a group must queue through a passage one unit wide instead of jamming at its mouth");
+    }
+    require(world.stats().separated_pairs == 0, "units at rest must stop pushing each other");
+}
+
+void test_group_cohesion()
+{
+    eaw::GroundMap ground;
+    ground.width = 60;
+    ground.height = 30;
+    ground.spacing = 10.0F;
+    ground.heights.assign(1800, 0.0F);
+    ground.passability.assign(1800, eaw::passability::clear);
+    const auto spawn = [&](eaw::SimulationWorld& world, const float x, const float y)
+    {
+        const auto id = world.spawn({.type_name = "Trooper", .position = {x, y, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 4.0F});
+        require(id.ok(), "test spawn must succeed");
+        return *id;
+    };
+
+    // A straggler 150 units behind: the members ahead wait for it, and the group arrives together.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const std::vector<eaw::EntityId> group{spawn(world, 200.0F, 140.0F), spawn(world, 200.0F, 160.0F), spawn(world, 50.0F, 150.0F)};
+        world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = group, .target = {450.0F, 150.0F, 0.0F}});
+        world.step();
+        require(world.stats().waiting_members == 2, "members ahead of the group must wait");
+        std::array<int, 3> arrived{-1, -1, -1};
+        for (int tick = 1; tick < 400; ++tick)
+        {
+            world.step();
+            for (std::size_t member = 0; member < 3; ++member)
+            {
+                if (arrived[member] < 0 && !world.snapshot().entities[member].moving)
+                {
+                    arrived[member] = tick;
+                }
+            }
+        }
+        require(arrived[0] > 0 && arrived[2] > 0 && std::abs(arrived[0] - arrived[2]) < 40 && std::abs(arrived[1] - arrived[2]) < 40, "a re-formed group must arrive together");
+    }
+
+    // A member that cannot make progress (it faces away and turns almost imperceptibly slowly) is
+    // released, so the rest of the group goes on.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto stuck = world.spawn({.type_name = "Stuck",
+                                        .position = {100.0F, 150.0F, 0.0F},
+                                        .heading = std::numbers::pi_v<float>,
+                                        .max_speed = 30.0F,
+                                        .follows_ground = true,
+                                        .passable_types = eaw::passability::clear,
+                                        .radius = 4.0F,
+                                        .turn_rate = 1.0e-4F});
+        const auto free = spawn(world, 100.0F, 100.0F);
+        require(stuck.ok(), "test spawn must succeed");
+        world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = {*stuck, free}, .target = {300.0F, 130.0F, 0.0F}});
+        for (int tick = 0; tick < 300; ++tick)
+        {
+            world.step();
+        }
+        require(world.stats().released_members >= 1 && !world.snapshot().entities[1].moving, "a stuck member must be released so the group does not wait forever");
+    }
+}
+
+void test_ground_footprints()
+{
+    // A clear 30x30 field; a wall footprint 10 cells long across the middle blocks the straight way.
+    eaw::GroundMap ground;
+    ground.width = 30;
+    ground.height = 30;
+    ground.spacing = 10.0F;
+    ground.heights.assign(900, 0.0F);
+    ground.passability.assign(900, eaw::passability::clear);
+    eaw::SimulationWorld world(0.1);
+    const auto wall = world.spawn({.type_name = "Empire_Wall", .footprint = eaw::GroundFootprint{{150.0F, 150.0F, 0.0F}, 5.0F, 60.0F, 0.0F, eaw::passability::empire_wall}});
+    require(wall.ok(), "test spawn must succeed");
+    // Footprints spawned before the ground is set are stamped when it arrives.
+    world.set_ground(ground);
+    require(world.ground().passability_at(150.0F, 150.0F) == eaw::passability::empire_wall && world.ground().passability_at(150.0F, 210.0F) == eaw::passability::empire_wall &&
+                world.ground().passability_at(150.0F, 220.0F) == eaw::passability::clear && world.ground().passability_at(140.0F, 150.0F) == eaw::passability::clear,
+            "a footprint must stamp exactly the cells inside its rectangle");
+    const auto walker = world.spawn({.type_name = "Walker", .position = {100.0F, 150.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
+    const auto large_walker = world.spawn(
+        {.type_name = "LargeWalker", .position = {100.0F, 160.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear | eaw::passability::empire_wall});
+    require(walker && large_walker, "test spawns must succeed");
+    world.submit({eaw::SimCommandKind::move, {*walker}, {200.0F, 150.0F, 0.0F}});
+    world.submit({eaw::SimCommandKind::move, {*large_walker}, {200.0F, 160.0F, 0.0F}});
+    world.step();
+    const auto detour = world.route(*walker);
+    require(detour.size() > 1 && world.route(*large_walker).size() == 1, "a class may not cross a wall it is not allowed on; one allowed on it walks straight over");
+    for (int tick = 0; tick < 200; ++tick)
+    {
+        world.step();
+    }
+    require(world.snapshot().entities[1].position.x == 200.0F && world.stats().blocked_moves == 0, "the walker must arrive around the wall");
+
+    // Destroying the wall restores the ground's own passability.
+    world.submit({eaw::SimCommandKind::destroy, {*wall}, {}});
+    world.step();
+    require(world.ground().passability_at(150.0F, 150.0F) == eaw::passability::clear, "a destroyed footprint must restore the ground");
+    require(!world.spawn({.type_name = "Bad", .footprint = eaw::GroundFootprint{{0.0F, 0.0F, 0.0F}, -1.0F, 1.0F, 0.0F, eaw::passability::obstacle}}), "an invalid footprint must be rejected");
+}
+
+void test_path_budget_and_shared_routes()
+{
+    // A 200x200 field with a wall across x = 100 open only at rows 180-185, so every route detours.
+    eaw::GroundMap ground;
+    ground.width = 200;
+    ground.height = 200;
+    ground.spacing = 10.0F;
+    ground.heights.assign(40000, 0.0F);
+    ground.passability.assign(40000, eaw::passability::clear);
+    for (std::uint32_t y = 0; y < 180; ++y)
+    {
+        ground.passability[y * 200 + 100] = eaw::passability::steep;
+    }
+    const auto run = [&](const bool as_group)
+    {
+        eaw::SimulationWorld world(1.0 / 30.0);
+        world.set_ground(ground);
+        std::vector<eaw::EntityId> units;
+        for (int index = 0; index < 24; ++index)
+        {
+            const auto id = world.spawn({.type_name = "Trooper",
+                                         .position = {300.0F + static_cast<float>(index % 6) * 12.0F, 300.0F + static_cast<float>(index / 6) * 12.0F, 0.0F},
+                                         .max_speed = 60.0F,
+                                         .follows_ground = true,
+                                         .passable_types = eaw::passability::clear,
+                                         .radius = 4.0F});
+            require(id.ok(), "test spawn must succeed");
+            units.push_back(*id);
+        }
+        if (as_group)
+        {
+            world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = units, .target = {1700.0F, 300.0F, 0.0F}});
+        }
+        else
+        {
+            for (std::size_t index = 0; index < units.size(); ++index)
+            {
+                world.submit({eaw::SimCommandKind::move, {units[index]}, {1700.0F, 300.0F + static_cast<float>(index) * 10.0F, 0.0F}});
+            }
+        }
+        world.step();
+        const auto queued_after_first = world.stats().queued_paths;
+        const auto searches_after_first = world.stats().path_searches;
+        for (int tick = 0; tick < 4800; ++tick)
+        {
+            world.step();
+        }
+        std::size_t arrived = 0;
+        for (const auto& entity : world.snapshot().entities)
+        {
+            arrived += !entity.moving && entity.position.x > 1500.0F ? 1U : 0U;
+        }
+        return std::tuple{queued_after_first, searches_after_first, world.stats(), arrived, world.state_hash()};
+    };
+    // Individual orders: the budget spreads the 24 long searches over several ticks.
+    const auto [queued, first_searches, individual, individual_arrived, individual_hash] = run(false);
+    require(queued > 0 && first_searches >= 1 && first_searches < 24 && individual.queued_paths == 0 && individual_arrived == 24,
+            "the search budget must spread a large order over ticks and still plan every unit");
+    require(std::get<4>(run(false)) == individual_hash, "budgeted planning must be deterministic");
+    // One group order: one shared search instead of 24.
+    const auto [group_queued, group_first, grouped, grouped_arrived, group_hash] = run(true);
+    require(grouped.shared_routes == 1 && grouped.path_searches < 6 && group_queued == 0 && grouped_arrived == 24,
+            "a formation must plan one shared route and short legs, and every member must arrive");
+    require(grouped.path_expansions * 4 < individual.path_expansions, "a shared route must cost far less than searches per unit");
+    (void)group_first;
+    (void)group_hash;
+}
+
+const ModuleRegistrar registrar("navigation", {
+                                                  {"test_ground_movement", &test_ground_movement},
+                                                  {"test_pathfinding", &test_pathfinding},
+                                                  {"test_turning_and_separation", &test_turning_and_separation},
+                                                  {"test_formations", &test_formations},
+                                                  {"test_narrow_passage", &test_narrow_passage},
+                                                  {"test_group_cohesion", &test_group_cohesion},
+                                                  {"test_ground_footprints", &test_ground_footprints},
+                                                  {"test_path_budget_and_shared_routes", &test_path_budget_and_shared_routes},
+                                              });
+
+} // namespace

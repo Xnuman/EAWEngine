@@ -1,6 +1,22 @@
 # EAWEngineTests: each module is test_<module>.cpp, registers its tests under that name, and gets
 # its own ctest entry; add new modules to EAW_TEST_MODULES.
-set(EAW_TEST_MODULES engine formats foundation launcher render simulation vfs xml)
+set(EAW_TEST_MODULES
+    battle
+    combat
+    effects
+    flight
+    formats
+    foundation
+    launcher
+    navigation
+    presentation
+    render
+    sandbox
+    scene
+    simulation
+    vfs
+    xml
+)
 
 set(EAW_TEST_SOURCES
     test_main.cpp
