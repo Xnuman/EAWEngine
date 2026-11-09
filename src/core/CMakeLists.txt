@@ -56,7 +56,9 @@ set(EAW_CORE_SOURCES
     virtual_file_system.cpp
     xml_asset_database.cpp
     xml_document.cpp
-    xml_schema.cpp
+    xml_schema_internal.hpp
+    xml_schema_load.cpp
+    xml_schema_validate.cpp
 )
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_CORE_HEADERS} ${EAW_CORE_SOURCES})

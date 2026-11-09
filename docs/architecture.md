@@ -357,6 +357,12 @@ physically based pipeline).
 How the larger modules are split into files. `AGENTS.md` keeps the directory-level map and the
 dependency rules; this is the file-level detail.
 
+- `src/core`: one file per format or subject. `XmlSchema` (`eaw/xml_schema.hpp`) is split into
+  `xml_schema_load.cpp` (the optional eaw-schema YAML, its base and FoC layers, accessors) and
+  `xml_schema_validate.cpp` (validating a resolved XML database against it), sharing
+  `xml_schema_internal.hpp`. Localization is `localization_workspace` (TSV workspaces, DAT rows,
+  unit keys), `localization_scan` (TEXT_* references in mod XML), and `localization_validation`
+  (a translation against its reference).
 - `src/render` (D3D12 backend): the public interface is `include/eaw/d3d12_renderer.hpp`; the
   implementation class lives in `d3d12_renderer_impl.hpp` with its member functions defined by
   subject in `d3d12_renderer_device.cpp` (startup, swap chain, buffers, waits, retirement),
