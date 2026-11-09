@@ -1,6 +1,6 @@
 // Helpers shared by the inspector commands.
 
-#include "inspector.hpp"
+#include "asset_inspector/inspector.hpp"
 
 namespace eaw::inspector {
 

@@ -1,4 +1,4 @@
-#include "inspector.hpp"
+#include "asset_inspector/inspector.hpp"
 
 namespace eaw::inspector {
 namespace {

@@ -22,7 +22,6 @@ set_source_files_properties(${EAW_TOOLS_SHADERS} PROPERTIES VS_TOOL_OVERRIDE "No
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_TOOLS_SOURCES} ${EAW_TOOLS_SHADERS})
 
 add_executable(EAWTools WIN32 ${EAW_TOOLS_SOURCES} ${EAW_TOOLS_SHADERS})
-eaw_target_defaults(EAWTools "tools")
 target_link_libraries(EAWTools PRIVATE
     eaw_core
     eaw_imgui

@@ -31,7 +31,6 @@ endforeach()
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_TEST_SOURCES})
 
 add_executable(EAWEngineTests ${EAW_TEST_SOURCES})
-eaw_target_defaults(EAWEngineTests "tests")
 target_link_libraries(EAWEngineTests PRIVATE eaw_core eaw_engine eaw_launch eaw_script)
 
 # EAWEngineTests runs every module when given none.

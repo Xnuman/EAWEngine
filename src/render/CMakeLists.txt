@@ -6,7 +6,6 @@ set(EAW_RENDER_CONTRACT_HEADERS
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_RENDER_CONTRACT_HEADERS})
 
 add_library(eaw_render_contract INTERFACE ${EAW_RENDER_CONTRACT_HEADERS})
-eaw_target_defaults(eaw_render_contract "libraries")
 target_include_directories(eaw_render_contract INTERFACE include)
 
 if(NOT WIN32)
@@ -43,7 +42,6 @@ set_source_files_properties(${EAW_RENDER_D3D12_SHADERS} PROPERTIES VS_TOOL_OVERR
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_RENDER_D3D12_HEADERS} ${EAW_RENDER_D3D12_SOURCES} ${EAW_RENDER_D3D12_SHADERS})
 
 add_library(eaw_render_d3d12 STATIC ${EAW_RENDER_D3D12_HEADERS} ${EAW_RENDER_D3D12_SOURCES} ${EAW_RENDER_D3D12_SHADERS})
-eaw_target_defaults(eaw_render_d3d12 "libraries")
 target_include_directories(eaw_render_d3d12 PUBLIC include)
 target_link_libraries(eaw_render_d3d12 PUBLIC eaw_core eaw_render_contract PRIVATE d3d12 dxgi eaw_imgui)
 

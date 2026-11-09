@@ -1,6 +1,6 @@
 // `texture-audit`: texture references of models and materials across the layered VFS.
 
-#include "inspector.hpp"
+#include "asset_inspector/inspector.hpp"
 
 #include "eaw/alo_interpretation.hpp"
 

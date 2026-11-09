@@ -58,6 +58,5 @@ set(EAW_ENGINE_SOURCES
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_ENGINE_SOURCES})
 
 add_library(eaw_engine STATIC ${EAW_ENGINE_SOURCES})
-eaw_target_defaults(eaw_engine "libraries")
 target_include_directories(eaw_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(eaw_engine PUBLIC eaw_core eaw_simulation eaw_render_contract)

@@ -15,6 +15,5 @@ endif()
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_LAUNCH_HEADERS} ${EAW_LAUNCH_SOURCES})
 
 add_library(eaw_launch STATIC ${EAW_LAUNCH_HEADERS} ${EAW_LAUNCH_SOURCES})
-eaw_target_defaults(eaw_launch "libraries")
 target_include_directories(eaw_launch PUBLIC include)
 target_link_libraries(eaw_launch PUBLIC eaw_core)

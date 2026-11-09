@@ -14,6 +14,5 @@ set(EAW_PLATFORM_SOURCES
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_PLATFORM_HEADERS} ${EAW_PLATFORM_SOURCES})
 
 add_library(eaw_platform STATIC ${EAW_PLATFORM_HEADERS} ${EAW_PLATFORM_SOURCES})
-eaw_target_defaults(eaw_platform "libraries")
 target_include_directories(eaw_platform PUBLIC include)
 target_link_libraries(eaw_platform PUBLIC eaw_core PRIVATE user32)

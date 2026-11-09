@@ -1,6 +1,6 @@
 // `map-objects` and `map-audit`: placed objects and map decoding across the stock maps.
 
-#include "inspector.hpp"
+#include "asset_inspector/inspector.hpp"
 
 namespace eaw::inspector {
 

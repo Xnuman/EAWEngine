@@ -29,7 +29,6 @@ endif()
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_ENGINE_APP_SOURCES})
 
 add_executable(EAWEngine ${EAW_ENGINE_APP_SOURCES})
-eaw_target_defaults(EAWEngine "programs")
 target_link_libraries(EAWEngine PRIVATE eaw_core eaw_engine eaw_script)
 if(WIN32)
     target_link_libraries(EAWEngine PRIVATE eaw_platform eaw_render_d3d12 eaw_imgui)

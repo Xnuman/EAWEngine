@@ -1,6 +1,6 @@
 // `xml-audit`: XML definitions, references, and optional schema validation.
 
-#include "inspector.hpp"
+#include "asset_inspector/inspector.hpp"
 
 namespace eaw::inspector {
 

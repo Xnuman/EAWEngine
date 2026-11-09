@@ -1,49 +1,46 @@
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required( VERSION 3.30 )
 
-project(EAWEngine VERSION 0.1.0 LANGUAGES C CXX)
+if( NOT CMAKE_GENERATOR_PLATFORM STREQUAL x64 )
+  message( FATAL_ERROR "Unsupported platform [${CMAKE_GENERATOR_PLATFORM}]" )
+endif()
 
-# The root holds global rules and constants only; every library and executable has its own
-# CMakeLists.txt in its directory (added below in dependency order). Each target lists its sources,
-# headers, and shaders explicitly, mirrors its directory with source_group(TREE), and calls
-# eaw_target_defaults() for the project's compiler rules and its solution folder.
+project( EAWEngine
+    VERSION 0.1.0
+    LANGUAGES C CXX
+)
 
-option(EAW_BUILD_TESTS "Build EAWEngine tests" ON)
-option(EAW_BUILD_GUI "Build the Dear ImGui tool workbench" ON)
+add_definitions( -DUNICODE -D_UNICODE )
 
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+set( CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD ON )
 
-# Executables land in build/<preset>/<Config>/ whichever directory defines them, so the tools find
-# each other and documented command lines stay valid.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+option( EAW_BUILD_TESTS "Build EAWEngine tests" OFF )
+option( EAW_BUILD_GUI "Build the Dear ImGui tool workbench" ON )
+
+set( EAW_ENGINE_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" )
+
+set_property( GLOBAL PROPERTY USE_FOLDERS ON )
+
+get_filename_component( EAW_ENGINE_BINARY_DIR "${EAW_ENGINE_ROOT_DIR}/executables/" ABSOLUTE )
+
+set( CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION "${EAW_ENGINE_BINARY_DIR}" )
+set( CMAKE_RUNTIME_OUTPUT_DIRECTORY "${EAW_ENGINE_BINARY_DIR}" )
 
 # EAWEngine does not use C++ exceptions: recoverable failures return eaw::Status/eaw::Result and
 # broken invariants end the process through eaw::fatal_error. Every target, Dear ImGui included,
 # compiles with exception handling disabled (/EHs-c-) and a standard library configured without
 # exceptions (_HAS_EXCEPTIONS=0). CMake's default MSVC flags enable, so it is removed here.
-if(MSVC)
-    string(REGEX REPLACE "/EH[a-z]*" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/EHs-c->)
-    add_compile_definitions(_HAS_EXCEPTIONS=0)
-endif()
+if( MSVC )
+    string( REGEX REPLACE "/EH[a-z]*" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" )
+    add_compile_options( $<$<COMPILE_LANGUAGE:CXX>:/EHs-c-> )
+    add_compile_definitions( _HAS_EXCEPTIONS=0 )
+endif( )
 
-# eaw_target_defaults(<target> <folder>) applies the project's rules to one of its own targets:
-# C++20, the warning level (new warnings are defects), lean Windows headers, and the target's
-# solution folder. Third-party code does not use it.
-function(eaw_target_defaults target folder)
-    get_target_property(type ${target} TYPE)
-    if(type STREQUAL "INTERFACE_LIBRARY")
-        target_compile_features(${target} INTERFACE cxx_std_20)
-    else()
-        target_compile_features(${target} PUBLIC cxx_std_20)
-        target_compile_definitions(${target} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-        if(MSVC)
-            target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8)
-        else()
-            target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
-        endif()
-    endif()
-    set_target_properties(${target} PROPERTIES FOLDER "${folder}")
-endfunction()
+add_compile_definitions(
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+)
+
+add_compile_options(/W4 /permissive- /utf-8)
 
 if(WIN32)
     # Shaders are compiled offline into generated headers that embed the bytecode, so runtime

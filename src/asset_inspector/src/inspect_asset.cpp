@@ -1,6 +1,6 @@
 // `inspect`: one asset decoded and summarized by format.
 
-#include "inspector.hpp"
+#include "asset_inspector/inspector.hpp"
 
 #include <iomanip>
 

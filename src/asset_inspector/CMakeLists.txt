@@ -1,19 +1,42 @@
 # EAWAssetInspector: command-line inspection and corpus audits on eaw_core.
-set(EAW_ASSET_INSPECTOR_SOURCES
-    audit_lua.cpp
-    audit_maps.cpp
-    audit_particles.cpp
-    audit_textures.cpp
-    audit_xml.cpp
-    inspect_asset.cpp
-    inspector.hpp
-    inspector_common.cpp
-    inspector_options.cpp
-    main.cpp
+
+add_executable(EAWAssetInspector)
+
+set(HEADERS_DIR "include/asset_inspector")
+set(SOURCES_DIR "src")
+
+set(EAW_ASSET_INSPECTOR_HEADERS
+    ${HEADERS_DIR}/inspector.hpp
 )
 
-source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_ASSET_INSPECTOR_SOURCES})
+set(EAW_ASSET_INSPECTOR_SOURCES
+    ${SOURCES_DIR}/audit_lua.cpp
+    ${SOURCES_DIR}/audit_maps.cpp
+    ${SOURCES_DIR}/audit_particles.cpp
+    ${SOURCES_DIR}/audit_textures.cpp
+    ${SOURCES_DIR}/audit_xml.cpp
+    ${SOURCES_DIR}/inspect_asset.cpp
+    ${SOURCES_DIR}/inspector_common.cpp
+    ${SOURCES_DIR}/inspector_options.cpp
+    ${SOURCES_DIR}/main.cpp
+)
 
-add_executable(EAWAssetInspector ${EAW_ASSET_INSPECTOR_SOURCES})
-eaw_target_defaults(EAWAssetInspector "tools")
-target_link_libraries(EAWAssetInspector PRIVATE eaw_core)
+source_group(TREE ${CMAKE_CURRENT_LIST_DIR}
+  FILES
+     ${EAW_ASSET_INSPECTOR_SOURCES}
+     ${EAW_ASSET_INSPECTOR_HEADERS})
+
+target_sources(EAWAssetInspector 
+  PUBLIC
+    FILE_SET "eaw_asset_inspector_headers"
+      TYPE HEADERS
+      BASE_DIRS "include/"
+      FILES ${EAW_ASSET_INSPECTOR_HEADERS}
+  PRIVATE
+    ${EAW_ASSET_INSPECTOR_SOURCES}
+)
+
+target_link_libraries(EAWAssetInspector
+    PRIVATE
+        eaw_core
+)

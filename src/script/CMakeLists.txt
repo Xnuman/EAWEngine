@@ -15,6 +15,5 @@ set(EAW_SCRIPT_SOURCES
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_SCRIPT_HEADERS} ${EAW_SCRIPT_SOURCES})
 
 add_library(eaw_script STATIC ${EAW_SCRIPT_HEADERS} ${EAW_SCRIPT_SOURCES})
-eaw_target_defaults(eaw_script "libraries")
 target_include_directories(eaw_script PUBLIC include)
 target_link_libraries(eaw_script PUBLIC eaw_core PRIVATE eaw_lua)

@@ -74,7 +74,6 @@ set(EAW_CORE_SOURCES
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_CORE_HEADERS} ${EAW_CORE_SOURCES})
 
 add_library(eaw_core STATIC ${EAW_CORE_HEADERS} ${EAW_CORE_SOURCES})
-eaw_target_defaults(eaw_core "libraries")
 target_include_directories(eaw_core PUBLIC include)
 if(WIN32)
     target_link_libraries(eaw_core PRIVATE advapi32)
