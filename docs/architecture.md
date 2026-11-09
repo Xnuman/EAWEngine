@@ -352,3 +352,42 @@ inference. Particle effects are normalized this way first
 the same pattern (the legacy material profiles already feed the future
 physically based pipeline).
 
+## Source files by subject
+
+How the larger modules are split into files. `AGENTS.md` keeps the directory-level map and the
+dependency rules; this is the file-level detail.
+
+- `src/render` (D3D12 backend): the public interface is `include/eaw/d3d12_renderer.hpp`; the
+  implementation class lives in `d3d12_renderer_impl.hpp` with its member functions defined by
+  subject in `d3d12_renderer_device.cpp` (startup, swap chain, buffers, waits, retirement),
+  `_pipelines.cpp` (pipeline states and cache), `_resources.cpp` (uploads, scene loading, texture
+  streaming), `_frame.cpp` (per-frame state and `render()`), and `_overlay.cpp`;
+  `d3d12_support.*` holds the HRESULT, queue, handle, and description helpers.
+- `src/simulation`: `SimulationWorld` is split by tick layer (see
+  [Simulation tick layers](#simulation-tick-layers)): `simulation.cpp` (world core),
+  `simulation_behavior.cpp` (commands, stances, and what each unit wants),
+  `simulation_navigation.cpp` (routes and group cohesion), `simulation_locomotion.cpp` (physical
+  movement and separation), and `simulation_combat.cpp` (targeting, weapons, damage), sharing
+  `simulation_internal.hpp`.
+- `src/engine`: `battle.*` holds battles above the simulation (setup from a built map, replayable
+  orders, the order log), shared by the sandbox and headless runs; `battle_runner.*` runs them
+  headless and `battle_log.*` reads and writes order logs. The sandbox's testable parts are
+  `sandbox_options` (command line), `sandbox_content` (background scene builds and hot-reload
+  checks), and `sandbox_debug_lines` (what is drawn, a pure function of an explicit view struct).
+  The scene builders behind `visual_scene_builder.hpp` are `scene_materials` (textures,
+  materials, lighting), `scene_models` (models, palettes, animations), `scene_particles`
+  (particle effects, projectile visuals, effect objects), `scene_terrain` (terrain, liquids,
+  tracks), `object_type_properties` (movement and speed fields of XML types), and
+  `visual_map_builder` (the map and spawnable-package builds), sharing
+  `scene_builder_internal.hpp`. Particles are `particle_rules` (interpretation under a fidelity
+  profile), `particle_effects` (`ParticleWorld`), and `attached_effects` (effects on model bones).
+- `src/engine_app` (`EAWEngine`): `main.cpp` handles startup, discovery, the doctor probe, and
+  dispatch to `battle` or `sandbox`; `sandbox_app` is the window and renderer session (one method
+  per frame step), `sandbox_overlay` builds the statistics text (a pure function of a view
+  struct), and `sandbox_panels` the Dear ImGui panels.
+- `src/asset_inspector`: one source file per command group (`inspect_asset`, `audit_textures`,
+  `audit_lua`, `audit_maps`, `audit_particles`, `audit_xml`) plus `inspector_options` and
+  `inspector_common`, declared in `inspector.hpp`.
+- `src/tools_gui`: each panel has its own file (`gui_asset_workspace`, `gui_map_view`,
+  `gui_model_view`, `gui_localization`); `GuiApp::State` is declared in `gui_internal.hpp` with
+  its methods in `gui_state.cpp`, and shared helpers live in `gui_support.cpp`.

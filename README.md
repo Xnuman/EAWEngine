@@ -254,7 +254,7 @@ See [Asset and localization tools](docs/tools.md) for the complete workflow.
 - A rendering hardware interface, initially implemented with Direct3D 12 and
   later with Vulkan, rather than graphics API calls in gameplay systems.
 
-See [Architecture](docs/architecture.md), [Roadmap](docs/roadmap.md),
+See [Architecture](docs/architecture.md), [Implementation status](docs/status.md), [Roadmap](docs/roadmap.md),
 [Compatibility research](docs/compatibility-research.md), and
 [Asset and localization tools](docs/tools.md).
 

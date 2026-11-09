@@ -69,7 +69,7 @@ campaign compatibility is a long-term engine project, not a renderer swap.
 
 Complete: a stock space unit and land and space maps load and can be inspected
 through the D3D12 renderer. Remaining render work is the legacy-mode render
-backlog listed in AGENTS.md; it is scheduled when gameplay or evidence needs
+backlog listed in [status.md](status.md#legacy-mode-render-backlog); it is scheduled when gameplay or evidence needs
 it.
 
 
