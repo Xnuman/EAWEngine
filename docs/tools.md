@@ -319,7 +319,10 @@ EAWDatEditor.exe build MasterTextFile_ENGLISH.dat localization.tsv `
 ```
 
 This creates `TEXT_UNIT_MY_NEW_FRIGATE` for `<Text_ID>` and
-`TEXT_TOOLTIP_MY_NEW_FRIGATE` for `<Encyclopedia_Text>`. Additional ability,
+`TEXT_TOOLTIP_MY_NEW_FRIGATE` for `<Encyclopedia_Text>`. The unit id is
+upper-cased, other characters become single underscores, and none is kept at
+either end (`" my new frigate "` gives `MY_NEW_FRIGATE`), the same rule as the
+EAWTools "Add unit" dialog. Additional ability,
 campaign, and UI keys can be ordinary TSV rows in the same group.
 
 ### Find missing mod localization

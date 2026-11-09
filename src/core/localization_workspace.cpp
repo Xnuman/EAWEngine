@@ -7,6 +7,7 @@
 #include <cctype>
 #include <fstream>
 #include <sstream>
+#include <tuple>
 #include <unordered_map>
 
 #ifdef _WIN32
@@ -299,6 +300,60 @@ Status apply_localization_workspace(DatFile& target, const std::vector<Localizat
         }
     }
     return Status::success();
+}
+
+Result<std::vector<LocalizationRow>> workspace_rows_from_dat(const DatFile& dat)
+{
+    std::vector<LocalizationRow> rows;
+    rows.reserve(dat.entries().size());
+    for (const auto& entry : dat.entries())
+    {
+        auto text = utf16_to_utf8(entry.value);
+        if (!text)
+        {
+            return with_context("DAT entry " + entry.key, std::move(text).error());
+        }
+        rows.push_back({entry.key, std::move(text).value(), {}, "existing", {}, {}});
+    }
+    std::ranges::sort(rows, {}, &LocalizationRow::key);
+    return rows;
+}
+
+void sort_localization_rows(std::vector<LocalizationRow>& rows)
+{
+    std::ranges::sort(rows,
+                      [](const LocalizationRow& left, const LocalizationRow& right)
+                      {
+                          return std::tie(left.group, left.key) < std::tie(right.group, right.key);
+                      });
+}
+
+std::string normalize_unit_id(const std::string_view id)
+{
+    std::string result;
+    result.reserve(id.size());
+    for (const char character : id)
+    {
+        const auto byte = static_cast<unsigned char>(character);
+        const bool keep = (byte >= '0' && byte <= '9') || (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z');
+        const char normalized = keep ? static_cast<char>(std::toupper(byte)) : '_';
+        if (normalized == '_' && (result.empty() || result.back() == '_'))
+        {
+            continue;
+        }
+        result.push_back(normalized);
+    }
+    if (!result.empty() && result.back() == '_')
+    {
+        result.pop_back();
+    }
+    return result;
+}
+
+std::array<LocalizationRow, 2> unit_localization_rows(const std::string& id, std::string name, std::string description)
+{
+    return {LocalizationRow{"TEXT_UNIT_" + id, std::move(name), "unit:" + id, "ready", "Use in <Text_ID>", "Generated unit display-name key"},
+            LocalizationRow{"TEXT_TOOLTIP_" + id, std::move(description), "unit:" + id, "ready", "Use in <Encyclopedia_Text>", "Generated unit description key"}};
 }
 
 } // namespace eaw

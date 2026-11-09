@@ -1,5 +1,7 @@
 #include "test_support.hpp"
 
+#include "eaw/localization_validation.hpp"
+
 #include <cctype>
 
 namespace {
@@ -421,6 +423,54 @@ void test_localization_scan()
     std::filesystem::remove_all(root, ignored);
 }
 
+// Translation checks against a reference DAT, and the workspace helpers the DAT editor and EAWTools
+// share (rows from a DAT, unit ids, new-unit rows, workspace order).
+void test_localization_validation()
+{
+    const auto tokens = [](const std::u16string_view text)
+    {
+        return expect_ok(eaw::localization_formatting_tokens(text), "formatting tokens");
+    };
+    require(tokens(u"%d of %1$s, 100%% and %-5.2f %*d") == std::multiset<std::string>{"%d", "%1$s", "%%", "%-5.2f", "%*d"}, "printf tokens failed");
+    require(tokens(u"Line\\nnext [PLAYER] <b> {0} [] <\n> 5%.") == std::multiset<std::string>{"\\n", "[PLAYER]", "<b>", "{0}"}, "escape and placeholder tokens failed");
+
+    auto reference = expect_ok(eaw::DatFile::parse(make_test_dat()), "DAT parse");
+    auto translation = reference;
+    require(reference.upsert("TEXT_COUNT", u"%d units").ok() && translation.upsert("TEXT_COUNT", u"unités: %d").ok(), "upsert failed");
+    require(reference.upsert("TEXT_NAME", u"Hello [NAME]").ok() && translation.upsert("TEXT_NAME", u"Bonjour [NOM]").ok(), "upsert failed");
+    require(reference.upsert("TEXT_SPACE", u" Padded").ok() && translation.upsert("TEXT_SPACE", u"Padded").ok(), "upsert failed");
+    require(reference.upsert("TEXT_ONLY_REFERENCE", u"x").ok() && translation.upsert("TEXT_ONLY_TRANSLATION", u"y").ok(), "upsert failed");
+    const auto issues = expect_ok(eaw::compare_translation(translation, reference), "compare translation");
+    const auto has = [&](const std::string_view key, const eaw::DatIssueSeverity severity, const std::string_view message)
+    {
+        return std::ranges::any_of(issues,
+                                   [&](const eaw::TranslationIssue& issue)
+                                   {
+                                       return issue.key == key && issue.severity == severity && issue.message.find(message) != std::string::npos;
+                                   });
+    };
+    require(issues.size() == 4 && has("TEXT_NAME", eaw::DatIssueSeverity::error, "formatting tokens") && has("TEXT_SPACE", eaw::DatIssueSeverity::warning, "whitespace") &&
+                has("TEXT_ONLY_REFERENCE", eaw::DatIssueSeverity::error, "missing") && has("TEXT_ONLY_TRANSLATION", eaw::DatIssueSeverity::warning, "not present"),
+            "translation comparison failed");
+
+    const auto rows = expect_ok(eaw::workspace_rows_from_dat(reference), "workspace rows");
+    require(rows.size() == reference.entries().size() && std::ranges::is_sorted(rows, {}, &eaw::LocalizationRow::key) &&
+                std::ranges::all_of(rows,
+                                    [](const eaw::LocalizationRow& row)
+                                    {
+                                        return row.status == "existing";
+                                    }),
+            "workspace rows from a DAT failed");
+
+    require(eaw::normalize_unit_id(" republic  venator-2 ") == "REPUBLIC_VENATOR_2" && eaw::normalize_unit_id("__x__") == "X" && eaw::normalize_unit_id("--").empty(), "unit id normalization failed");
+    const auto unit = eaw::unit_localization_rows("VENATOR", "Venator", "A star destroyer.");
+    require(unit[0].key == "TEXT_UNIT_VENATOR" && unit[0].text == "Venator" && unit[1].key == "TEXT_TOOLTIP_VENATOR" && unit[1].group == "unit:VENATOR" && unit[1].status == "ready",
+            "new-unit rows failed");
+    std::vector<eaw::LocalizationRow> ordered{{"B", {}, "g2", {}, {}, {}}, {"C", {}, "g1", {}, {}, {}}, {"A", {}, "g2", {}, {}, {}}};
+    eaw::sort_localization_rows(ordered);
+    require(ordered[0].key == "C" && ordered[1].key == "A" && ordered[2].key == "B", "workspace order failed");
+}
+
 void test_particle_system()
 {
     const auto bytes = make_test_particle_system(1);
@@ -467,6 +517,7 @@ void test_particle_system()
 }
 
 const ModuleRegistrar registrar("formats", {
+                                               {"test_localization_validation", &test_localization_validation},
                                                {"test_particle_system", &test_particle_system},
                                                {"test_alo_model", &test_alo_model},
                                                {"test_alo_default_mesh_visibility", &test_alo_default_mesh_visibility},

@@ -126,8 +126,6 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, std::span<const st
 
 void label_value(const char* label, std::string_view value);
 
-std::string normalize_unit_id(std::string id);
-
 PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<AlaPoseBone>* pose, const std::vector<AloMatrix4>& inverse_bind, bool show_collision,
                                        const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture);
 

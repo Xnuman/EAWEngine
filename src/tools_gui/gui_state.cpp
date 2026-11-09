@@ -304,22 +304,15 @@ void GuiApp::State::open_dat(const std::filesystem::path& path)
         fail(dat.error());
         return;
     }
-    std::vector<LocalizationRow> loaded;
-    loaded.reserve(dat->entries().size());
-    for (const auto& entry : dat->entries())
+    auto loaded = workspace_rows_from_dat(*dat);
+    if (!loaded)
     {
-        auto text = utf16_to_utf8(entry.value);
-        if (!text)
-        {
-            fail(with_context("DAT entry " + entry.key, std::move(text).error()));
-            return;
-        }
-        loaded.push_back({entry.key, std::move(text).value(), {}, "existing", {}, {}});
+        fail(loaded.error());
+        return;
     }
-    std::ranges::sort(loaded, {}, &LocalizationRow::key);
     base_dat_path = path;
     workspace_path.reset();
-    rows = std::move(loaded);
+    rows = std::move(loaded).value();
     selected_row = rows.empty() ? -1 : 0;
     dirty = false;
     validation_messages.clear();

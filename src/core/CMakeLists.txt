@@ -12,6 +12,7 @@ set(EAW_CORE_HEADERS
     include/eaw/game_object_catalog.hpp
     include/eaw/legacy_material.hpp
     include/eaw/localization_scan.hpp
+    include/eaw/localization_validation.hpp
     include/eaw/localization_workspace.hpp
     include/eaw/log.hpp
     include/eaw/lua_script.hpp
@@ -41,6 +42,7 @@ set(EAW_CORE_SOURCES
     game_object_catalog.cpp
     legacy_material.cpp
     localization_scan.cpp
+    localization_validation.cpp
     localization_workspace.cpp
     log.cpp
     lua_script.cpp

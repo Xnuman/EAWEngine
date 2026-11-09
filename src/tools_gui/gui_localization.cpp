@@ -112,12 +112,11 @@ void render_add_unit_popup(GuiApp::State& state)
         if (ImGui::Button("Create keys", {130.0F, 0.0F}))
         {
             const auto id = normalize_unit_id(state.unit_id);
-            const auto name_key = "TEXT_UNIT_" + id;
-            const auto tooltip_key = "TEXT_TOOLTIP_" + id;
+            const auto additions = unit_localization_rows(id, state.unit_name, state.unit_description);
             const auto conflicts = [&](const auto& row)
             {
                 const auto key = lower(row.key);
-                return key == lower(name_key) || key == lower(tooltip_key);
+                return key == lower(additions[0].key) || key == lower(additions[1].key);
             };
             if (id.empty())
             {
@@ -129,8 +128,7 @@ void render_add_unit_popup(GuiApp::State& state)
             }
             else
             {
-                state.rows.push_back({name_key, state.unit_name, "unit:" + id, "ready", "Use in <Text_ID>", "Generated unit display-name key"});
-                state.rows.push_back({tooltip_key, state.unit_description, "unit:" + id, "ready", "Use in <Encyclopedia_Text>", "Generated unit description key"});
+                state.rows.insert(state.rows.end(), additions.begin(), additions.end());
                 state.selected_row = static_cast<int>(state.rows.size() - 2);
                 state.dirty = true;
                 state.unit_id.clear();

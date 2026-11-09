@@ -396,6 +396,12 @@ dependency rules; this is the file-level detail.
 - `src/asset_inspector`: one source file per command group (`inspect_asset`, `audit_textures`,
   `audit_lua`, `audit_maps`, `audit_particles`, `audit_xml`) plus `inspector_options` and
   `inspector_common`, declared in `inspector.hpp`.
+- `src/dat_editor` (`EAWDatEditor`): a front end over `eaw_core`'s DAT, workspace, scan, and
+  translation-validation functions (`localization_workspace`, `localization_scan`,
+  `localization_validation`, which EAWTools uses too); `dat_editor_options` parses the command
+  line, `dat_commands` holds the commands on one DAT (info, list, get, set, remove, validate),
+  `workspace_commands` those on workspaces and mods (export, diff, build, scan-mod, add-unit),
+  and `main.cpp` dispatches.
 - `src/tools_gui`: each panel has its own file (`gui_asset_workspace`, `gui_map_view`,
   `gui_model_view`, `gui_localization`); `GuiApp::State` is declared in `gui_internal.hpp` with
   its methods in `gui_state.cpp`, and shared helpers live in `gui_support.cpp`.

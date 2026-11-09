@@ -638,30 +638,6 @@ void label_value(const char* label, const std::string_view value)
     ImGui::TextUnformatted(value.data(), value.data() + value.size());
 }
 
-std::string normalize_unit_id(std::string id)
-{
-    for (char& character : id)
-    {
-        const auto byte = static_cast<unsigned char>(character);
-        character = std::isalnum(byte) ? static_cast<char>(std::toupper(byte)) : '_';
-    }
-    auto duplicate = id.find("__");
-    while (duplicate != std::string::npos)
-    {
-        id.replace(duplicate, 2, "_");
-        duplicate = id.find("__");
-    }
-    while (!id.empty() && id.front() == '_')
-    {
-        id.erase(id.begin());
-    }
-    while (!id.empty() && id.back() == '_')
-    {
-        id.pop_back();
-    }
-    return id;
-}
-
 PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<AlaPoseBone>* pose, const std::vector<AloMatrix4>& inverse_bind, const bool show_collision,
                                        const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture)
 {
