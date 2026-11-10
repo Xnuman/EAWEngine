@@ -1,7 +1,9 @@
 # Legacy shader mapping
 
-This document records how the owner-provided Alamo Direct3D 9 reference corpus in
-`Reference Materials/Shaders/` maps onto engine-native material data.
+This document records how the original Alamo Direct3D 9 shader sources map onto
+engine-native material data. Petroglyph published them with the official Empire
+at War mod tools ([petroglyphgames.com/eawmodtool](https://www.petroglyphgames.com/eawmodtool/)); contributors keep a
+local copy under `Reference Materials/Shaders/`, which is git-ignored.
 
 The profiles describe how a model was meant to render in Alamo. They drive the
 first render target, legacy mode, which approximates the original appearance
@@ -9,10 +11,10 @@ with newly written shaders. A later physically based path will use engine-native
 materials and convert these profiles into them. It is the evidence behind the
 reference-profile table in `src/assets/src/legacy_material.cpp`; keep the two in sync.
 
-The corpus is evidence only. Nothing here is compiled, embedded, or shipped, and
+The corpus is a reference. Nothing here is compiled, embedded, or shipped, and
 the entries below describe observed behavior in engine terms rather than
-reproducing legacy code. See [Reference Materials/Shaders/README.md](../Reference%20Materials/Shaders/README.md) and
-[Compatibility research](compatibility-research.md) for the boundary.
+reproducing legacy code. See [Compatibility research](compatibility-research.md)
+for the boundary.
 
 ## Corpus inventory (observed 2026-11-07)
 

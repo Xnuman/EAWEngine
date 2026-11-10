@@ -100,8 +100,9 @@ ReferenceProfile rigid_skinned(ReferenceProfile profile, const std::string_view 
     return profile;
 }
 
-// Every entry below records behavior observed in the legacy reference corpus (Shaders/), expressed
-// with engine-native terms. The evidence, uncertainty, and remaining differences for each entry
+// Every entry below records behavior observed in the legacy shader sources from Petroglyph's
+// official mod tools (kept locally in Reference Materials/Shaders/), expressed in engine-native
+// terms. The evidence, uncertainty, and remaining differences for each entry
 // are documented in docs/legacy-shader-mapping.md; keep the two in sync.
 std::vector<ReferenceProfile> make_reference_profiles()
 {

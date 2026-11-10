@@ -8,10 +8,11 @@
 *.VC.VC.opendb
 
 
-# Owner-provided legacy shader reference: local evidence only, never distributed.
+# Earlier location of the legacy shader reference (now under Reference Materials/).
 /Shaders/
 
-# Owner-provided reference copies (legacy shaders, saved web pages): local evidence only, never distributed.
+# Local reference copies: the Alamo shader sources from Petroglyph's official mod tools and saved
+# web pages. Used as references, never committed.
 /Reference Materials/
 
 # Dear ImGui window layouts saved by the tools and the sandbox overlay.

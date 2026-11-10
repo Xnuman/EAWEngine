@@ -63,8 +63,9 @@ enum class LegacyTextureSemantic
     unknown,
 };
 
-// Where the translation came from. Reference profiles are backed by the owner-provided legacy
-// shader corpus; heuristics are inference from the shader name only.
+// Where the translation came from. Reference profiles are backed by the legacy shader sources
+// Petroglyph published with the official mod tools; heuristics are inference from the shader name
+// only.
 enum class LegacyTranslationSource
 {
     reference_profile,

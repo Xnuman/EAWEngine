@@ -1,4 +1,100 @@
-# Asset and localization tools
+# Tools
+
+The engine's command-line modes, the launchers, and the asset and localization tools. Debug builds
+carry the `_d` suffix (`EAWEngine_d.exe`); the examples use the Release names. Every program only
+reads the game installation and mods.
+
+## EAWEngine sandbox
+
+`EAWEngine sandbox` (the default mode) opens the Direct3D 12 sandbox on a model, a map, or the
+validation triangle. `EAWEngine --help` lists every option.
+
+```powershell
+EAWEngine.exe doctor --game foc                       # discovery, mounts, and an asset probe
+EAWEngine.exe sandbox --game foc --map DATA/ART/MAPS/_LAND_PLANET_BESPIN_01.TED `
+  --spawn T2B_Tank:6@1 --spawn AT_ST_Walker:6@2       # two opposing groups
+EAWEngine.exe sandbox --game foc --map DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED `
+  --spawn Star_Destroyer:1@2 --spawn Calamari_Cruiser:1@1   # a capital ship duel
+EAWEngine.exe sandbox --game foc --model DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO
+```
+
+### Scene and game data
+
+| Option | Effect |
+| --- | --- |
+| `--game eaw\|foc`, `--game-root <path>` | Game variant and installation (discovered through Steam by default). |
+| `--mod <path>` | Add a mod (repeatable; the first has the highest priority). |
+| `--map <ted>` | Show a map: placed objects as simulation entities, terrain, liquids, tracks, sky and backdrop. Squadrons and companies appear as their members. |
+| `--model <alo>`, `--animation <ala>` | Show one model; without `--animation` its `_IDLE_00.ALA` plays when present. |
+| `--validation-triangle` | Skip asset loading. |
+| `--spawn <TYPE>[:N][@OWNER]` | Make an XML type spawnable (repeatable); N spawn at the view center for owner slot OWNER (default 1). |
+| `--spawn-later <TYPE>[:N][@OWNER]` | Load a type at runtime once the map is shown and spawn it. |
+| `--effect <NAME>` | Play a particle effect (for example `P_EXPLOSION_BIG00`) at the map center, repeating. |
+| `--particles legacy\|enhanced` | How particle effects are interpreted: legacy (default) reproduces the original's look-defining quirks, enhanced improves them. |
+| `--bloom <strength>`, `--no-bloom` | Bloom strength (default 0.8). |
+| `--hot-reload` | Rebuild the scene when one of its loose files or MEG archives changes, re-decoding only what changed; the camera is kept. |
+
+Map owner slot 3 is neutral and every other slot hostile, for now.
+
+### Presentation and devices
+
+| Option | Effect |
+| --- | --- |
+| `--width`, `--height` | Initial client size. |
+| `--vsync on\|off`, `--frame-latency 1\|2` | Present mode and queued frames (default vsync, two frames). |
+| `--warp`, `--gpu-validation` | Software adapter and Direct3D 12 GPU-based validation. |
+| `--upload-budget <MiB>` | Texture bytes streamed per frame (default 64; 0 uploads all at once). |
+| `--pipeline-cache <dir>` | Keep compiled pipeline states between runs; stale caches are discarded. |
+| `--no-raw-input` | Read mouse and keys from window messages instead of raw input. |
+| `--overlay`, `--panel menu\|statistics\|spawn` | Open the statistics panel or a dev panel at start. |
+| `--show-bounds`, `--show-passability` | Start with bounds or passability drawn. |
+
+### Automation and diagnostics
+
+| Option | Effect |
+| --- | --- |
+| `--frame-limit <n>` | Exit after n frames once the scene is shown. |
+| `--auto-move` | Order every mobile unit to the view center. |
+| `--pick <x> <y>` | Select what is at a client pixel once the scene is shown. |
+| `--reload-every <n>` | Replace the scene with a fresh copy every n frames (resource-retirement test); remaining texture, slot, and retirement counts print on exit. |
+| `--record <file>` | Write the order log on exit, for headless replay. |
+| `--capture`, `--capture-frame`, `--fixed-frame-time`, `--camera` | Reproducible captures; see [Captures and image regression](#captures-and-image-regression). |
+| `--log-dir <path>` | Folder for the per-run log (default `logs/` next to the executable; the 20 newest are kept). |
+| `--no-error-dialog` | Report fatal errors on stderr and in the log only (also the case when stderr is redirected). |
+| `--crash-test assert\|exception\|access-violation` | Fail on purpose to check crash reporting. |
+
+Warnings, such as malformed mod data, go to stderr, the Visual Studio Output window, and the log.
+Unexpected failures end the program with one report there and in an error window, whose Retry
+breaks into an attached debugger.
+
+### Controls
+
+On maps the sandbox starts in the RTS camera; C switches to the free debug camera and back.
+
+| Input | RTS camera (maps) | Free camera and model view |
+| --- | --- | --- |
+| WASD or arrows (Shift: faster) | Pan | Pan (maps) |
+| Mouse wheel | Zoom within map limits | Zoom |
+| Left drag | Box-select mobile units | Rotate and tilt (orbit a model) |
+| Left click | Select the object under the cursor | Select the object under the cursor |
+| Right click / right drag | Move the selection, or attack the hostile under the cursor | Pan (maps) |
+| Space | Reset the camera | Reset the camera |
+
+| Key | Action |
+| --- | --- |
+| F1 | Dev menu: statistics panel, spawn panel, bounds and passability toggles. |
+| N | Spawn the current type at the cursor (a type not loaded yet loads in the background). |
+| Tab, Shift+Tab (Ctrl: by ten) | Cycle spawnable types: every unit type with a model for the map. |
+| O | Cycle the owner of spawned units. |
+| P | Pause or resume the world (simulation, animation, particles); cameras keep working. |
+| B | Bounds of every object and the world axes. |
+| G | Passability around the camera focus: red steep, blue water, orange impassable, green infantry only, magenta obstacle. |
+| Left, Right | Model view: step through the bind pose and every `<MODEL>_*.ALA` beside the model. |
+| Escape | Quit. |
+
+Selected units show their remaining route, and damaged or selected units show health (green) and
+shield (blue) bars. Panels can be dragged, resized, and minimized; the mouse does not reach the scene
+while it is over a panel.
 
 ## EAWDevLauncher sandbox scenarios
 

@@ -82,8 +82,8 @@ it.
 - Initial engine-native ALO geometry, base-color DDS mip uploads, legacy blend
   translation, depth buffering, orbit camera, and GPU ALA skinning are
   implemented in the D3D12 sandbox.
-- The owner-provided legacy Direct3D 9 reference corpus in `Reference Materials/Shaders/` is
-  inventoried in [Legacy shader mapping](legacy-shader-mapping.md). All 39
+- The legacy Direct3D 9 shader sources from Petroglyph's official mod tools (kept locally in
+  `Reference Materials/Shaders/`) are inventoried in [Legacy shader mapping](legacy-shader-mapping.md). All 39
   readable effects have reference profiles (render phase, depth/cull/alpha-test
   state, lighting model, gloss/colorize/opacity channel roles, UV and vertex
   animation, vertex requirements) that cover 84% of stock material instances;
@@ -209,7 +209,7 @@ Gaps toward the deliverable, in planned order:
    (`FIGHTER_LOCOMOTOR`) never stop below their `Min_Speed`, circle when idle,
    and make attack runs that pass the target and turn back. The simulation
    then separated its tick into layers (commands, behavior, navigation,
-   locomotion, combat; [architecture](architecture.md#simulation-tick-layers)),
+   locomotion, combat; [architecture](architecture.md#tick-layers)),
    so decisions such as chasing, attack runs, and engaging on one's own live in
    the behavior layer, with an engine-native `Stance` (aggressive, hold
    position, hold fire) that AI and Lua can later drive through commands.

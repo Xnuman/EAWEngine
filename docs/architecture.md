@@ -1,474 +1,400 @@
 # Architecture
 
+How EAWEngine is built: its layers and libraries, how data travels from a game installation to the
+screen, and the rules each part keeps. [status.md](status.md) records what is implemented and its
+limitations, [roadmap.md](roadmap.md) the plan, and [AGENTS.md](../AGENTS.md) the working rules for
+contributors.
+
 ## Product boundary
 
-`EAWLauncher` selects a game variant, installation, mod stack, and engine
-settings. It launches `EAWEngine`; it never launches or injects into the legacy
-game executable. `EAWEngine` reads the user's existing data in place and owns
-the new runtime.
-
-The original files are inputs only:
+`EAWLauncher` chooses a game variant (Empire at War or Forces of Corruption), an installation, a mod
+stack, and engine options, then starts `EAWEngine`. Neither program starts, injects into, or patches
+the original executable. The engine reads the player's installation and mods in place; they are
+read-only inputs, and anything the engine or the tools generate goes to a build directory or a
+directory the user chose.
 
 ```text
-owned game + mods
+owned game + mods (read-only)
         |
         v
-layered VFS -> format readers -> loaders -> engine resources
-                                      |
-                    +-----------------+------------------+
-                    v                                    v
-          deterministic simulation              presentation world
-                    |                                    |
-                    +---------- snapshots --------------+
-                                                         |
-                                                  render/audio/UI
+layered VFS --bytes--> format readers --…Data--> loaders --> engine resources
+                                                                  |
+                                     +----------------------------+------------+
+                                     v                                         v
+                          deterministic simulation  --snapshots-->  presentation
+                          (fixed ticks, commands)                   (animation, effects,
+                                     ^                               cameras, input)
+                                     |                                         |
+                          orders from players, tools,                         v
+                          and later AI and scripts                 render contract --> D3D12
 ```
 
-## Module boundaries
+## Layers and libraries
 
-1. **Platform**: windowing, input, files, clocks, crash reporting, CPU topology.
-2. **VFS**: loose directories, MEG archives, mod priority, asynchronous reads.
-3. **Formats**: XML, Lua 5.0 bytecode/source, ALO, ALA, TED, MTD, DAT, DDS,
-   shaders, audio, and movies. Readers turn bytes into lossless file-level
-   `…Data`; loaders in the game asset layer turn that into engine-native
-   resources that know nothing of the source format (see
-   [Resource pipeline](#resource-pipeline)).
-4. **Asset runtime**: handles, dependency graph, background streaming, budgets,
-   hot reload, and GPU upload queues.
-5. **Simulation**: deterministic fixed ticks and data-oriented components.
-   Parallel jobs operate on disjoint partitions; commands merge at explicit
-   barriers. Render frame rate never changes gameplay results.
-6. **Modes**: galactic, land tactical, space tactical, campaign/story, skirmish.
-7. **Scripting**: compatible Lua surface plus namespaced new APIs. Scripts may
-   schedule work but cannot mutate simulation storage outside command buffers.
-8. **Presentation**: renderer, animation, effects, UI, audio, and cinematics.
-9. **Tools**: launcher, asset inspector, map/model viewers, converter, profiler,
-   compatibility test runner, and mod SDK.
+Every library and executable has its own directory under `src/` with its own `CMakeLists.txt`.
+Dependencies point inward: a lower layer never includes or links a higher one.
+
+| Layer | Library | Responsibility | Depends on |
+| --- | --- | --- | --- |
+| Foundation | `eaw_math` | Vectors, quaternions, matrices, transforms (scalar float, row vectors). | — |
+| | `eaw_core` | `Status`/`Result` and fatal errors, the log, string utilities, whole-file I/O, CRC-32. | math |
+| Data | `eaw_vfs` | Layered virtual file system, MEG archives, path normalization, installation discovery. | core |
+| | `eaw_formats` | Lossless readers and writers of the original's file formats; no I/O. | core, math |
+| | `eaw_assets` | The game asset layer: XML object database and catalogs, loaders, engine-native resources, the resource manager. | core, formats, vfs, math, render contract |
+| | `eaw_localization` | DAT string tables on disk, TSV workspaces, mod text scans, translation checks. | core, formats |
+| Runtime | `eaw_simulation` | Deterministic tactical simulation: entities, components, ticks, commands, snapshots. | core, math |
+| | `eaw_script` | Sandboxed Lua 5.0 host with recording stubs for the unimplemented host API. | vfs, Lua |
+| | `eaw_engine` | Battles and order logs, scene builders, presentation, cameras, animation, particles. No graphics API. | assets, simulation, render contract |
+| Presentation | `eaw_render_contract` | Engine-native visual data (`visual_scene.hpp`), header only. | math |
+| | `eaw_render_d3d12` | The Direct3D 12 backend. | core, render contract, formats (RGBA images for captures) |
+| | `eaw_platform` | Win32 window, raw input, crash handlers, log sinks. | core |
+| Programs | `eaw_launch` | Launch configuration, sandbox scenarios, child processes. | vfs |
+| | `eaw_imgui_app` | Shared Win32 + Direct3D 11 + Dear ImGui shell of the desktop tools. | core, platform, imgui |
+
+The executables sit on top: `EAWEngine` (`src/engine_app`), `EAWLauncher`, `EAWDevLauncher`, the
+`EAWTools` workbench, the `EAWAssetInspector` and `EAWDatEditor` command-line tools, and the
+`EAWEngineTests` suite. The tools use the same readers, VFS, and asset layer as the engine; a
+capability one of them needs goes into a library, never into scraping another program's output.
+Third-party code is pinned in `third_party/`: Dear ImGui (docking branch, by commit) and Lua 5.0.3
+(MIT, by archive hash, built with only the base, string, table, and math libraries).
+
+Libraries keep public headers under `include/<library>/` and are included by short paths
+(`"core/status.hpp"`, `"assets/model.hpp"`). The libraries the reorganization has not reached yet
+(simulation, script, render, platform, launch, imgui_app) still use `include/eaw/`. Debug builds of
+every library and executable carry the `_d` suffix.
 
 ## Resource pipeline
 
-A resource reaches the engine in three stages, each in its own layer:
+A resource reaches the engine in three stages, each owned by one layer:
 
-1. **Bytes**: the VFS resolves a virtual path through its layers and returns the winning entry's
-   bytes (a MEG entry, or a loose file read through `core/file_io`).
-2. **File-level data**: a format reader (`eaw_formats`) turns the bytes into a plain `…Data`
-   structure, losslessly and without I/O: `read_alo<AloModelData>`, `read_ala`, `read_ted`, and so
-   on. A format that holds several kinds of data is read through a template
-   (`read_alo<AloGenericData>` tells a model from a particle system).
-3. **Engine resource**: a loader in the game asset layer applies the interpretation rules (legacy
-   materials, `pe_*` proxies, `_ALT`/`_LOD` names) and builds the engine-native resource (`Model`,
-   `Animation`, `ParticleEffect`), which the engine and renderer use. The `ResourceManager` above
-   the loaders (`get<T>(path)`) loads each resource on first request and caches it with the files it
-   depended on, so hot reload invalidates exactly what changed; resource IDs will come with the
-   first consumer that needs references surviving a reload.
+1. **Bytes.** The VFS resolves a virtual path through its layers and returns the winning entry's
+   bytes: a MEG entry, or a loose file read through `core/file_io`.
+2. **File-level data.** A reader in `eaw_formats` turns the bytes into a plain `…Data` structure,
+   losslessly and without I/O: `read_alo<AloModelData>`, `read_ala`, `read_ted`, `read_dds`,
+   `read_dat`, and so on. A format that holds several kinds of data is read through a template
+   (`read_alo<AloGenericData>` tells a model from a particle system). Unknown chunks, flags, and
+   parameters survive; offsets, counts, and sizes are validated before anything is allocated.
+3. **Engine resource.** A loader in `eaw_assets` applies the interpretation rules (legacy materials,
+   `pe_*` proxies, `_ALT<n>`/`_LOD<n>` names, particle fidelity) and builds the engine-native
+   resource: `Model`, `Skeleton`, `Animation`, `ParticleEffect`. Resources know nothing of their
+   source format; another format means another reader and loader producing the same resource.
 
-The file-level data lives only as long as a loader or a tool needs it; tools (inspector, EAWTools)
-show it directly. Another source format means another reader and loader producing the same
-resource. Stage 3 is being built (reorganization step 5): `Model`, `Skeleton`, and `Animation` are loaded this
-way and are all the engine keeps of models and clips; the scene builders in `src/engine` place a
-`Model` in a scene (rigid-mesh placement, hardpoint hosts, palette layout, texture registration).
-Particle effects load the same way (`load_particle_effect` under a fidelity profile), and every
-cached load goes through the `ResourceManager`.
+`ResourceManager::get<T>(path, ...)` sits above the loaders. Each resource type says once how it
+loads by specializing `ResourceLoader<T>` (its cache kind, key, and load function); extra arguments
+reach both, so a particle effect is cached per fidelity profile. The asset layer specializes it for
+models, animations, particle effects, and TED map data; the engine for textures, the XML catalog,
+movement classes, and combat content. Generation-checked resource IDs are deferred until a consumer
+needs references that survive a reload (hot-swapping one resource in a running scene, scripts,
+saves, GPU residency).
 
-## Simulation tick layers
+The `AssetCache` under the manager is keyed by kind and key and tracks where every resource came
+from. Loads read through the `AssetReader` interface, which the VFS implements; a
+`RecordingAssetReader` records a fingerprint of every resolve (winning mount, container, entry
+offset and size, and the container's write time), every lookup that found nothing, and a hash of
+every listing. A cached resource keeps the dependencies gathered while it loaded, and reusing it adds
+them to the caller's recorder, so a scene knows every file behind it. A resource is stale when any
+fingerprint changes: an edited loose file, a new file in a higher-priority layer, or a rebuilt
+archive. A MEG mount indexes its entries once, so a rebuilt archive is remounted (`replace_mount`)
+between builds, never while a worker reads. Each build starts a cache epoch and evicts what it did
+not use, so long hot-reload sessions do not accumulate replaced resources.
 
-Each tick runs fixed layers in order. A layer reads what earlier layers
-decided and never does a later layer's job; this keeps AI, scripts, and new
-mechanics replaceable without touching movement or combat rules.
+File-level data lives only as long as a loader or a tool needs it. The tools (the inspector,
+EAWTools) show it directly; the engine keeps only engine resources.
 
-1. **Commands** (`simulation_behavior.cpp`, `apply`): orders from players,
-   tools, and later AI and Lua (move, formation move, attack, stop, set
-   stance), applied in submission order.
-2. **Behavior** (`simulation_behavior.cpp`, `run_behavior`): what each unit
-   wants from its order, its `Stance`, and its target: a chase move request
-   for an ordered attack, or, for flyers, a steering intent (attack runs,
-   flying to a destination, circling). Stances decide whether a unit picks
+### VFS precedence
+
+The layer order is a public contract, covered by tests: manifest archives from low to high priority,
+unlisted archives in lexical order, `Patch.meg`, numbered patch archives, `64Patch.meg`, loose files
+over archives, Forces of Corruption data over inherited Empire at War data, and mods over game data
+with the first supplied mod highest. Paths are case-insensitive and separator-normalized. Listings
+show each virtual path once, with its winning layer; lower layers stay available for fallback.
+
+## Simulation
+
+Gameplay runs on a fixed tick (30 Hz, an engine choice until the original's logic rate is measured);
+presentation runs at its own frame rate. The world stores units in structure-of-arrays components
+under stable entity ids and publishes immutable snapshots. Presentation-only data (visual keys,
+effects, derived speeds) never enters the state hash and never feeds back into the simulation.
+The state hash, recorded order logs, and `--check-determinism` guard determinism; random streams,
+iteration order, floating-point order, and merge order are compatibility state.
+
+### Tick layers
+
+Each tick runs fixed layers in order. A layer reads what earlier layers decided and never does a
+later layer's job, so AI, scripts, and new mechanics stay replaceable without touching movement or
+combat rules.
+
+1. **Commands** (`simulation_behavior.cpp`, `apply`): orders from players, tools, and later AI and
+   Lua (move, formation move, attack, stop, set stance), applied in submission order.
+2. **Behavior** (`simulation_behavior.cpp`, `run_behavior`): what each unit wants from its order, its
+   `Stance`, and its target: a chase move request for an ordered attack or, for flyers, a steering
+   intent (attack runs, flying to a destination, circling). Stances decide whether a unit picks
    targets and moves for them; orders always apply.
-3. **Navigation** (`simulation_navigation.cpp`): route requests under the
-   per-tick search budget, shared formation routes, and group cohesion.
-4. **Locomotion** (`simulation_locomotion.cpp`): physical movement only
-   (speed limits, turn rates, ground following and passability, flight at a
-   minimum speed), then separation.
-5. **Combat** (`simulation_combat.cpp`): shields, target selection (subject to
-   the stance), weapons, projectiles, damage, and removal of the dead. Combat
-   never moves a unit.
+3. **Navigation** (`simulation_navigation.cpp`): route requests under a per-tick search budget,
+   shared formation routes, and group cohesion.
+4. **Locomotion** (`simulation_locomotion.cpp`): physical movement only (speed limits, turn rates,
+   ground following and passability, flight above a minimum speed), then separation.
+5. **Combat** (`simulation_combat.cpp`): shields, target selection under the stance, weapons,
+   projectiles, damage, and removal of the dead. Combat never moves a unit.
 
-`simulation.cpp` holds the world core: storage, spawning, the tick, the state
-hash, footprints, and snapshots. Behavior reads last tick's targets, so a
-target picked in combat steers a unit from the next tick on. Every unit decides
-from the state at the start of the tick, so decisions do not depend on storage
-order (fighters used to decide inside the movement loop, after units stored
-before them had already moved).
+Every unit decides from the state at the start of the tick, so decisions do not depend on storage
+order; behavior reads last tick's targets, so a target picked in combat steers a unit from the next
+tick on.
 
-Above the simulation, a `Battle` (`src/engine/battle.*`) sets a world up from
-a built map and takes orders in replayable terms: XML type names, owner slots,
-points, and entity ids. Each order is validated, translated into simulation
-commands for the next tick (a spawn order becomes a `spawn` command carrying
-the entities laid out on a grid or in formation), and recorded with its tick.
-Entity ids are allocated deterministically, so the same map, game data, and
-order log reproduce the same battle, interactive or headless. Nothing the
-simulation reads may depend on how the scene is built for drawing: the ground
-(heights, passability, liquid level) and spawns come from map and XML data,
-and the state hash leaves out presentation keys, so a headless build without
-textures or animations hashes like the sandbox. Presentation
-draws order-spawned entities by their type's visual key, without knowing their
-ids in advance.
+### Battles
 
-## Rendering direction
+A `Battle` (`src/engine/battle.*`) sets a world up from a built map and takes orders in replayable
+terms: XML type names, owner slots, points, and entity ids. Each order is validated, translated into
+simulation commands for the next tick (a spawn order becomes a `spawn` command carrying the entities
+laid out on a grid or in formation), and recorded with its tick. Entity ids are allocated
+deterministically, so the same map, game data, and order log reproduce the same battle, in the
+sandbox or headless (`EAWEngine battle`). Nothing the simulation reads depends on how a scene is
+built for drawing: the ground (heights, passability, liquid level) and spawns come from map and XML
+data, so a headless build without textures or animations hashes like the sandbox.
 
-The first render target is legacy mode: newly written shaders driven by the
-decoded legacy ALO materials and their reference profiles, approximating
-original Alamo rendering so the game can run on the new engine and its behavior
-can be stabilized. A modern physically based shading pipeline with
-engine-native materials follows, using the same profiles as conversion input.
-Legacy shaders are mapping evidence only and are never used at runtime.
+Orders come from the RTS input layer. Box selection projects snapshot positions through the camera
+(`camera_math`, matching the renderer's projection); a right-click finds its world point on the CPU
+in the same frame by marching a ray across a `TerrainHeightField` sampled like the rendered terrain
+and refining by bisection, so orders never wait for a GPU readback. Group orders become one command
+per unit, spread in id order so the command stream stays deterministic.
 
-Particle effects are presentation, like unit animation. The core decodes
-particle ALOs into immutable systems; the engine's `ParticleWorld` plays them
-on the frame clock from a seeded random stream per effect and emits sorted
-`VisualParticle` sprites; the renderer expands those to quads on the GPU. The
-simulation never reads particle state, so effects can change, be skipped, or
-run at any frame rate without affecting state hashes. Effects attach to
-entities through model proxies (`AttachedEffects`), keyed by entity id, and
-follow the animated bone palette.
+## Scripting
 
-Post-processing runs after the scene and particles and before debug drawing
-and the overlay: the scene renders into an offscreen colour target, bloom
-works at reduced resolution, and a composite writes the back buffer. Debug
-lines and panels therefore never bloom.
+`eaw_script` hosts the game's Lua 5.0 scripts. Each script gets its own sandboxed state: no file, OS,
+or debug access, `print` to the log, `math.random` from its own seeded stream, `require` resolved
+through the VFS, and compiled chunks refused (Lua 5.0 does not verify bytecode). Script threads are
+coroutines woken on simulation ticks, and every call and resume runs under an instruction budget so
+a script that never yields cannot hang the engine. The host functions implemented so far are real;
+every other engine function a script calls is a recording stub that logs the call and returns a
+neutral object, so `EAWEngine lua-survey` can measure which host API the stock scripts use before the
+engine implements it. Scripts will act on the world only by enqueuing validated commands, never by
+writing simulation storage.
 
-The renderer uses an RHI with explicit resources, command lists, queues,
-barriers, descriptor tables, and pipeline objects. The first production backend
-should be Direct3D 12 because the target game and primary audience are on
-Windows. Vulkan follows through the same RHI.
+## Presentation
 
-The renderer should support bindless resources, GPU-driven culling, indirect
-drawing, mesh LODs, texture streaming, modern compressed texture formats,
-shadow atlases, clustered lighting, HDR, temporal anti-aliasing, and a scalable
-effects system. High-resolution assets are a budget/streaming problem, not a
-hard-coded dimension or polygon-count limit.
+Presentation turns snapshots into a frame and never decides gameplay. `ScenePresentation`
+interpolates the last two snapshots and re-poses each entity's instance (its placed tilt and scale
+kept, the heading change applied about +Z, the position from the snapshot); the renderer receives the
+whole instance list every frame. Selection is a set of entity ids.
 
-The Direct3D 12 backend starts with independent direct and copy queue timelines.
-Each queue owns a monotonic fence. Swap-chain frame contexts own their command
-allocators and may only recycle them after that frame's direct-queue fence has
-completed. Uploads run on the copy queue; consumers enqueue a GPU-side wait on
-the direct queue instead of stalling the CPU. CPU waits are limited to frame
-latency pacing, reuse of a still-in-flight frame context, swap-chain resize, and
-shutdown. GPU-backed objects that support submitted work remain retained until
-their producing queue's fence completes.
+- **Animation.** `UnitAnimator` chooses each unit's clips from its snapshot state and samples poses
+  on the CPU (`assets/pose`): up to three weighted clips (two neighbouring locomotion clips by speed,
+  and an attack fading in or out) blend in bone space, with weights rounded to eighths so units in
+  the same state share a pose. Units killed in combat leave corpses that presentation keeps for
+  their death clip and a short linger.
+- **Particles.** `ParticleEffect`s, loaded under a fidelity profile, play in the engine's
+  `ParticleWorld` on the frame clock from a seeded random stream per effect and emit sorted
+  `VisualParticle` sprites, which the renderer expands to quads on the GPU. Effects attach to units
+  through model proxies (`AttachedEffects`) and follow the animated bone palette; `BattleEffects`
+  derives a battle's effects (attached effects, impacts, deaths, projectile bolts) from its
+  snapshots.
+- **Cameras.** Controllers in `eaw_engine` turn input into a `VisualCamera`: an orbit camera for
+  single models, an RTS camera over maps within their bounds, and a free debug camera.
 
-Replacing resources follows the same rule without a CPU wait. The renderer
-records the direct queue's next fence value when a scene is replaced (that
-signal follows every frame and pending barrier that can still name the old
-resources), then holds the old buffers, textures, and bone palettes in a
-fence-keyed retirement queue. Textures live in a generation-checked handle pool,
-so a stale handle stops resolving rather than aliasing a reused slot. Their
-shader-table slots come from an allocator that returns a released slot to use
-only after its fence completes and then overwrites it with a null view. These
-primitives (`gpu_resource_lifetime.hpp`) contain no Direct3D types and are
-unit-tested on their own.
+## Renderer
 
-Textures stream. `load_scene` uploads geometry and materials immediately but
-only validates textures against their copy footprints; each frame then uploads
-queued textures up to a byte budget (at least one, so oversized textures still
-progress). Materials name logical texture ids rather than descriptor slots, and
-every frame context owns a persistently mapped residency table mapping each
-logical id to its slot, or to a fallback (flat normal for normal maps, white
-otherwise) until the texture arrives. A texture is resident from the frame that
-submits its copy, because the direct queue waits on the copy fence and applies
-the transition before that frame's draws. Descriptors in the shader-visible
-heap are therefore never rewritten while a frame may read them. Scene
-construction itself runs on a worker thread in the sandbox; VFS reads are safe
-there because each const read opens its own stream.
+The renderer consumes engine-native data from the render contract (`visual_scene.hpp`): meshes,
+materials, textures, instances, particles, lights, cameras, debug lines. It never parses game files
+or knows VFS precedence. The first target is **legacy mode**: newly written HLSL driven by the
+decoded legacy ALO materials, approximating the original's look so content behaves as authored. A
+physically based path with engine-native materials follows, using the same material profiles as
+conversion input. The original's Direct3D 9 shader sources, published by Petroglyph with the
+official mod tools, are the reference for that mapping
+([legacy-shader-mapping.md](legacy-shader-mapping.md)); they stay out of the repository and are
+never compiled, embedded, or shipped.
 
-Decoded assets live in the engine's `AssetCache`, keyed by kind and virtual
-path. Builders read through the core `AssetReader` interface, which the VFS
-implements; a `RecordingAssetReader` wraps it and records a fingerprint of every
-resolve (winning mount, container, entry offset and size, and the container's
-write time), every lookup that found nothing, and a hash of every listing. A
-cached asset keeps the dependencies gathered while it loaded, and reusing it
-adds them to the caller's recorder, so a scene knows every file behind it. An
-asset is stale when any fingerprint changes: an edited loose file, a new file
-in a higher-priority layer, or a rebuilt archive. A MEG mount indexes entry
-offsets once, so a rebuilt archive must be remounted (`replace_mount`) before
-anything reads from it; the sandbox does that on the main thread between
-builds, never while a worker is reading. A rebuilt archive invalidates every
-asset read from it, which is conservative but never serves stale bytes. Each build starts a cache epoch and, once it succeeds, evicts entries it did not use, so replaced assets do not accumulate during long hot-reload sessions.
+### Direct3D 12 backend
 
-The renderer reuses uploaded textures by identity. Each decode stamps the
-`VisualTexture` with a new serial, so a texture served from the cache keeps its
-identity and a re-decoded one does not. When `load_scene` replaces a scene, a
-new texture whose identity matches a resident texture of the outgoing scene
-takes over that texture and its descriptor slot; only unmatched textures stream,
-and the remaining old textures retire on the direct-queue timeline. Geometry,
-instance, and material buffers are still built per scene.
+- **Queues and fences.** A direct and a copy queue, each with one monotonically increasing fence.
+  Frame contexts own their command allocators and recycle them only after that frame's fence
+  completes. Uploads run on the copy queue; the direct queue waits on the GPU, never the CPU. CPU
+  waits are limited to waitable-swap-chain pacing, reuse of an in-flight frame context, resize, and
+  shutdown. The swap chain is flip-model and waitable, with tearing support queried.
+- **Lifetimes.** Anything submitted work references stays alive until the fence of the last queue
+  that used it completes. Replacing a scene records the direct queue's next fence value and retires
+  the old buffers, textures, and palettes against it, without a CPU wait. Textures live in a
+  generation-checked handle pool, so a stale handle stops resolving instead of aliasing a reused
+  slot, and a released descriptor slot returns to use only after its fence completes. These
+  primitives (`gpu_resource_lifetime.hpp`) contain no Direct3D types and are unit-tested alone.
+- **Streaming.** Geometry and materials upload with the scene; textures stream within a per-frame
+  byte budget. Materials name logical texture ids, and each frame context owns a persistently mapped
+  residency table that maps an id to its descriptor slot, or to a fallback until the texture
+  arrives, so shader-visible descriptors are never rewritten while a frame may read them. A replaced
+  scene takes over the resident textures whose identity it shares, and only the rest stream. Scene
+  construction runs on a worker thread; each VFS read opens its own stream.
+- **Binding and materials.** Legacy-mode surfaces are `VisualMaterial` records in one structured
+  buffer; textures are indexed through one shader-visible table (resource binding tier 2), so a draw
+  binds only two root constants: its first instance and its material. Lighting is a `VisualLightRig`
+  in a per-frame constant buffer.
+- **Draws.** Instances are sorted by mesh, so every mesh draws once with `DrawIndexedInstanced` over
+  a contiguous range. Skinned meshes keep model-wide bone indices; every in-flight frame owns a
+  persistently mapped bone palette, written only once that frame's fence has completed. Meshes can be
+  added to a loaded scene (`add_meshes`), so spawning a type the map was not built with needs no
+  reload. Terrain is drawn as triangles that blend three layer materials per pixel; sky domes and
+  star backdrops draw first, centered on the camera at the far plane.
+- **Passes.** The scene and particles render into an offscreen colour target; bloom works at
+  reduced resolution and a composite writes the back buffer; debug lines and the Dear ImGui overlay
+  draw last, so they never bloom.
+- **Picking and timing.** A second render target holds a pick id per pixel. Each pick copies one
+  texel into the frame context's readback buffer and is read when that context is next reused, after
+  its fence, so selection never waits and rapid clicks are never dropped. GPU frame time comes from
+  timestamp queries read the same way.
+- **Shaders and pipelines.** Shaders are engine-written HLSL compiled at build time (DXC, shader
+  model 6.0, for Direct3D 12; FXC, shader model 5.0, for the tools' Direct3D 11 previews) and
+  embedded as bytecode; nothing compiles at runtime. The root signature is declared in HLSL, so there
+  is one definition of the binding layout. An opt-in `ID3D12PipelineLibrary` cache, keyed by the
+  bytecode hash and a layout version, persists pipeline states between runs and is discarded when
+  the driver or shaders change.
 
-The debug overlay is drawn by the renderer as the last pass into the back
-buffer: the engine supplies text lines and mouse input, and the renderer lays
-them out with a Dear ImGui context (the panel moves, resizes, and minimizes;
-the renderer reports when it wants the mouse so the scene ignores it) whose font texture takes a slot from the
-texture-slot allocator. GPU frame time comes from begin/end timestamp queries
-resolved into each frame context's readback buffer and read when that context is
-reused, so measuring never waits. The ImGui DX12 backend waits on the CPU for
-its own font-texture uploads; those happen only when the font atlas changes.
+WARP with GPU-based validation is the automated correctness gate; captures (`--capture`) and
+`EAWEngine compare-images` guard the look ([tools.md](tools.md#captures-and-image-regression)).
 
-The sandbox runs every shown object as a simulation entity. Map objects spawn
-from their placements and XML types; a model is one immobile entity. A
-fixed-step clock (30 Hz, an engine choice until the original logic rate is
-measured) steps the world, presentation interpolates the last two snapshots,
-and `ScenePresentation` re-poses each entity's original instance: the original
-tilt and scale are kept, the heading change rotates it about +Z, and the
-position comes from the snapshot. The renderer receives the whole instance list
-every frame (`set_instances`), grouped by mesh into a growable, frame-buffered
-instance buffer; the loaded scene's meshes act as the mesh library. Selection
-is a set of entity ids, and selected instances carry a highlight flag.
+## Errors and diagnostics
 
-Commands come from the RTS input layer: box selection projects snapshot
-positions through the camera (`camera_math`, matching the renderer's look-at
-and perspective), and a right-click finds its world target on the CPU in the
-same frame: a ray through the cursor is clipped to the map, marched across a
-`TerrainHeightField` sampled like the rendered terrain (and its liquid
-surface), and refined by bisection. Orders therefore never wait for a GPU
-readback; the remaining delay is the next simulation tick and the one-tick
-interpolation of presentation. GPU picks identify clicked objects. Orders become
-simulation move commands, one per unit, spread on a grid in id order so the
-command stream stays deterministic.
-
-Errors are values, not exceptions; every target compiles with exceptions
-disabled. Recoverable failures return `eaw::Status` / `eaw::Result<T>` with a
-contextual message, and callers that continue log a warning and fall back (a
-map or model that cannot be built leaves the validation triangle or the current
-view; the renderer is created through `D3d12Renderer::create` so a missing GPU
-is reported cleanly). Programming errors (`EAW_ASSERT_MSG`) and unrecoverable
-runtime failures (`eaw::fatal_error`, for example a D3D12 call failing after
-startup, with the device-removed diagnostics) are not handled: they report and
-end the process. The platform's crash handlers route `std::terminate`, C++
-exceptions raised by code outside the engine (decoded from the MSVC exception
-record before unwinding), access violations and other structured exceptions,
-pure virtual calls, and invalid CRT parameters into the same report. The report
-goes to stderr and, for interactive runs, to an error window.
-
-Selection uses a second render target holding a pick id per pixel: the scene
-instance index plus one, zero for nothing, and a reserved value for terrain.
-Opaque, alpha-tested, and terrain pipelines write it; blended and background
-pipelines mask it. Each pick request gets an id and copies one texel into a
-placement-aligned slot of the frame context's readback buffer (up to eight per
-frame; later requests wait for the next frame). Values are read when that
-context is next reused, after its fence has completed, and returned in request
-order, so selection never adds a CPU wait and rapid clicks are never dropped.
-
-Animated visual scenes preserve model-wide bone indices in immutable vertex
-buffers. ALA poses are sampled on the CPU into skin matrices, while every
-in-flight frame owns a persistently mapped bone-palette buffer. The CPU updates
-that palette only after the frame's direct-queue fence has completed, avoiding
-both per-frame resource creation and writes into memory still consumed by the
-GPU.
-
-Shaders are engine-written HLSL source files compiled at build time: DXC
-(shader model 6.0) for Direct3D 12 and FXC (shader model 5.0) for the Direct3D 11
-tool previews, embedded as bytecode in generated headers. The D3D12 root
-signature is declared in the HLSL, validated by DXC, and created from the
-compiled vertex shader, so there is one definition of the binding layout. An
-opt-in `ID3D12PipelineLibrary` cache, keyed by a hash of the embedded bytecode
-and a layout version, persists pipeline states between runs; driver or shader
-changes discard it and the file is replaced atomically.
-
-Legacy-mode surfaces are described by engine-native `VisualMaterial` data that
-the scene builder translates from legacy material profiles and exact ALO
-parameter values. The renderer uploads materials once into a structured buffer
-and indexes textures through one shader-visible table (resource binding tier 2),
-so a draw binds only two root constants: its first instance and its material.
-Lighting arrives as a `VisualLightRig` in a per-frame constant buffer, next to
-the camera and scene time. A later physically based path can consume the same
-scene data with different materials and shaders.
-
-The engine owns the camera: controllers in `eaw_engine` turn input into a
-`VisualCamera` (eye, target, up, field of view, near/far planes) that the
-renderer consumes. An orbit controller frames single models and a tactical
-controller pans, rotates, and zooms over a map within its bounds. Background
-instances (sky domes and star backdrops) are drawn first, centered on the camera
-by transforming them as directions, pinned to the far plane, and without depth
-testing, so they never occlude or parallax against the world.
-
-Terrain is a separate part of the visual scene: independent triangles whose
-vertices repeat their triangle's three corner layers with barycentric weights,
-so one terrain pipeline blends three layer materials per pixel and lights the
-result with the same shared legacy lighting code as meshes.
-
-A visual scene groups draws into meshes (one per model) and places them with
-instances. Meshes can be added to a loaded scene at runtime (`add_meshes`):
-each addition is a geometry block with its own vertex and index buffers, its
-materials join the material buffer, and its textures stream like the scene's,
-so spawning a type the map was not built with needs no scene reload. Each instance carries a world transform, a tint, and a bone-palette
-offset in an immutable structured buffer. Instances are sorted by mesh at load
-so every draw of a mesh is issued once with `DrawIndexedInstanced` over a
-contiguous instance range; the range start is a root constant because
-`SV_InstanceID` restarts at zero for every draw. The bone palette is set per
-frame: map scenes start from every mesh's rest pose, and the engine's
-`UnitAnimator` appends the poses its units show this frame (chosen from
-simulation snapshots, shared between units at the same clip and pose slot) and
-points each instance at one. Poses blend in bone space: up to three weighted
-clips (two neighbouring locomotion clips picked by the unit's speed, and an
-attack fading in or out), with weights rounded to eighths so units in the same
-state still share a pose. Units killed in combat (listed in the snapshot of
-their tick) leave corpses that presentation keeps for their DIE clip and a
-short linger; they are drawn but are no longer entities. Animation is
-presentation: it never feeds back into the simulation.
-
-## Multithreading direction
-
-"Use all cores" is not an architecture by itself. The engine uses a dependency
-aware job system and divides work into deterministic phases:
-
-1. collect input and script commands;
-2. update spatial queries and perception;
-3. update AI planning at controlled cadences;
-4. solve movement/path requests in parallel;
-5. resolve weapons, projectiles, damage, and abilities;
-6. publish an immutable presentation snapshot.
-
-Large unit counts require structure-of-arrays storage, stable entity IDs,
-batched queries, hierarchical spatial indices, flow fields or shared paths for
-groups, AI level-of-detail, and performance budgets. Adding threads to the
-legacy object model would not be sufficient.
+Errors are values; every target compiles with C++ exceptions disabled. Recoverable failures
+(malformed or missing data, a map or model that cannot be built, invalid input, a device that cannot
+be created at startup) return `eaw::Status` or `eaw::Result<T>` with a contextual message naming
+the virtual path, layer, section, and offset where known; callers that continue log a warning and
+fall back (the sandbox keeps its current view or the validation triangle). Programming errors
+(`EAW_ASSERT_MSG`) and unrecoverable runtime failures (`eaw::fatal_error`, for example a failed
+Direct3D 12 call after startup, with device-removed diagnostics) end the process. The platform's crash
+handlers route these, `std::terminate`, exceptions raised by code outside the engine, access
+violations, pure virtual calls, and invalid CRT parameters into one report on stderr, in the run's log
+file, and, for interactive runs, in an error window.
 
 ## Compatibility policy
 
-Compatibility is measured, not assumed. Every supported format and behavior
-gets a corpus test, a decoder test, and—where possible—a golden result captured
-from public data or black-box observation. Extensions use new optional tags or
-namespaced files so an original mod remains readable without edits.
+Compatibility is measured, not assumed. A supported format or behavior gets a synthetic fixture for
+its exact invariant, malformed and truncated cases, a stock corpus audit where the installation is
+available, and a note of the evidence in [compatibility-research.md](compatibility-research.md).
+Extensions use optional tags or namespaced files, so an original mod stays readable without edits.
 
 ### Content contract versus legacy implementation
 
-EAWEngine is a modern engine that runs content made for the original, not a
-reimplementation of the original's internals. Every original behavior the
-engine meets falls into one of three kinds, and is handled accordingly:
+EAWEngine runs content made for the original; it does not reimplement the original's internals.
+Every original behavior falls into one of three kinds:
 
-1. **Content contract: follow it.** What a data field means, as the original
-   interprets it. Content was authored and tuned against that meaning, so
-   changing it breaks every existing asset. Examples: particle lifetime and
-   size variances only shorten and shrink, the sign of "inward" speed, atlas
-   slots, a hardpoint's `Damage_Particles` and `Damage_Decal` bones,
-   `Max_Speed` per 30 Hz frame. Establishing these is what the evidence work
-   is for.
-2. **Implementation artifacts: modernize freely.** How the old engine
-   happened to compute a result: fixed-function and low-dynamic-range
-   blending, CPU-built quads, emission clumped per frame, unsorted
-   transparency, a single global frame step. The engine does the modern thing
-   by default (sub-frame emission, sorted particles, GPU expansion, bloom,
-   frame-rate-independent motion) and needs no switch.
-3. **Look-defining quirks: one named rule, chosen per fidelity profile.**
-   Original behaviors that are arguably wrong but that content was tuned
-   against: additive particles ignoring alpha, draw order. (Linked
-   particles following position but not rotation looked like one, but the
-   evidence only described editor previews that never rotate, and the result
-   was visibly wrong, so it was dropped: a quirk needs evidence from the game,
-   not from a tool's limitation.) These are never
-   scattered through runtime code. They live in one explicit interpretation
-   layer with their evidence: decoders keep the file's facts, normalization
-   turns them into an engine-native description under a **legacy** or
-   **enhanced** profile, and runtimes and renderers only see the result.
+1. **Content contract: follow it.** What a data field means as content was authored against it;
+   changing it breaks existing assets. Examples: particle lifetime and size variances only shorten
+   and shrink, the sign of "inward" speed, atlas slots, a hardpoint's `Damage_Particles` and
+   `Damage_Decal` bones, `Max_Speed` per 30 Hz frame.
+2. **Implementation artifact: modernize freely.** How the old engine happened to compute a result:
+   fixed-function, low-dynamic-range blending, CPU-built quads, emission clumped per frame, unsorted
+   transparency, a single global frame step. The engine does the modern thing (sub-frame emission,
+   sorted particles, GPU expansion, bloom, frame-rate-independent motion) without a switch.
+3. **Look-defining quirk: one named rule per fidelity profile.** Arguably wrong behavior that content
+   was tuned against, such as additive particles ignoring alpha, or draw order. Each lives as one
+   named rule in an interpretation layer with its evidence (for particles, `particle_rules` in
+   `src/assets`): decoders keep the file's facts, normalization produces an engine-native description
+   under the **legacy** or **enhanced** profile, and runtimes and renderers see only the result. A
+   quirk needs evidence from the game, not from an editor's limitation.
 
-**Legacy** reproduces the original for content that does not know this
-engine; it is the default while legacy mode is the goal. **Enhanced** may
-deviate where the result improves and authored content still works. Content
-made for this engine will say so explicitly (the planned asset metadata, see
-the roadmap's engine extensions), and explicit declarations override legacy
-inference. Particle effects are normalized this way first
-(`particle_rules` in `src/assets`); projectiles, impacts, and materials follow
-the same pattern (the legacy material profiles already feed the future
-physically based pipeline).
+**Legacy** reproduces the original for content that does not know this engine and is the default.
+**Enhanced** may deviate where the result improves and authored content still works. Content made
+for this engine will declare itself through explicit metadata (see the roadmap's engine extensions),
+which overrides legacy inference. Legacy mode identifies model parts by naming and placement (`pe_*`
+proxies, `_ALT<n>`/`_LOD<n>` tags, hardpoint bones); each such rule stays in one place per subject so
+the planned metadata can produce the same engine-native categories.
+
+## Direction
+
+Planned, not built:
+
+- **Jobs and scale.** A dependency-aware job system dividing each tick into deterministic phases
+  (input and script commands; spatial queries and perception; AI planning at controlled cadences;
+  movement and paths in parallel; weapons, damage, and abilities; publishing the presentation
+  snapshot). Parallel work runs on disjoint partitions or immutable inputs and merges at explicit
+  barriers. Large unit counts also need hierarchical spatial indices, shared paths or flow fields for
+  groups, AI level of detail, and measured budgets.
+- **Renderer.** A thin rendering hardware interface so a Vulkan backend can follow Direct3D 12;
+  GPU-driven culling and indirect drawing, mesh LODs, shadow atlases, clustered lighting, HDR,
+  temporal anti-aliasing, and the physically based material path. High-resolution content is a
+  budget and streaming problem, never a hard-coded dimension or polygon limit.
+- **Modes.** Skirmish, galactic conquest, and campaigns ([roadmap.md](roadmap.md) M4 and M5), with
+  audio, UI, and saves.
 
 ## Source files by subject
 
-How the larger modules are split into files. `AGENTS.md` keeps the directory-level map and the
-dependency rules; this is the file-level detail.
+The file-level split of each module.
 
 - `src/math` (`eaw_math`): `vector`, `quaternion`, `matrix`, `transform` (compose and decompose),
   and `scalar` (angle constants and conversions).
-- `src/core` (`eaw_core`): the foundation, by category: `error_handling` (`status`, `fatal_error`),
-  `log`, `string_utils`, `file_io`, and `checksum`.
-- `src/assets` (`eaw_assets`), by category: `game_data` (`game_object_catalog`, `spawn_catalog`,
-  `map_object_layout`, `xml_asset_database`, and `XmlSchema`: `xml_schema_load.cpp` for the
-  optional eaw-schema YAML and its layers, `xml_schema_validate.cpp` for validating a resolved XML
-  database, sharing `xml_schema_internal.hpp`), `model` (`model`, the engine-native `Model`;
-  `legacy_material`; `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` naming rules and default
-  mesh visibility), `particle` (`particle_rules`: `ParticleEffect`, the fidelity profiles, and
-  `load_particle_effect`), `animation` (`skeleton` and `animation`, the engine-native resources; `pose`:
-  sampling, blending, composition, and retargeting by bone name), `loaders`
-  (`alamo_loaders`: `load_model` and `load_skeleton` from `AloModelData`, `load_animation` from
-  `AlaAnimationData`), and `resources` (`asset_cache`: the dependency-tracked cache;
-  `resource_manager`: typed `get<T>`; `resource_loaders`: how models, animations, particle effects,
-  and TED map data load from the VFS; the engine specializes `ResourceLoader` for its own cached
-  types next to them).
-- `src/localization` (`eaw_localization`): `localization_workspace` (TSV workspaces, DAT rows,
-  unit keys, DAT string tables from disk), `localization_scan` (TEXT_* references in mod XML), and
-  `localization_validation` (a translation against its reference).
-- `src/formats` (`eaw_formats`), by category: `alamo` (`alamo_chunks`, the Petroglyph chunk
-  container with bounds-checked ranges shared by the Alamo readers; `alo_generic`; `ala_animation`
-  and `ala_animation_helpers`; `ted_map`), `model` (`alo_model`, `alo_model_helpers`), `particle`
-  (`alo_particle_system`), `texture` (`dds_texture`, `mtd_atlas`), `image` (`png_image`,
-  `rgba_image`), `xml` (`xml_document`, `xml_helpers`), `localization` (`dat_string_table`,
-  `dat_string_table_helpers`), and `script` (`lua_bytecode`).
+- `src/core` (`eaw_core`), by category: `error_handling` (`status`, `fatal_error`), `log`,
+  `string_utils`, `file_io`, and `checksum`.
 - `src/vfs` (`eaw_vfs`), by category: `file_system` (`virtual_file_system`: readers, mounts, and
-  layering), `archive` (`meg_archive`, `asset_path`), and `installation` (`game_installation`,
+  layering), `archive` (`meg_archive`, `asset_path`), and `installation` (`game_installation`, with
+  its own minimal `megafiles.xml` reader so the VFS does not depend on the formats; and
   `asset_environment`).
-- `src/render` (D3D12 backend): the public interface is `include/eaw/d3d12_renderer.hpp`; the
-  implementation class lives in `d3d12_renderer_impl.hpp` with its member functions defined by
-  subject in `d3d12_renderer_device.cpp` (startup, swap chain, buffers, waits, retirement),
-  `_pipelines.cpp` (pipeline states and cache), `_resources.cpp` (uploads, scene loading, texture
-  streaming), `_frame.cpp` (per-frame state and `render()`), and `_overlay.cpp`;
-  `d3d12_support.*` holds the HRESULT, queue, handle, and description helpers.
-- `src/simulation`: `SimulationWorld` is split by tick layer (see
-  [Simulation tick layers](#simulation-tick-layers)): `simulation.cpp` (world core),
-  `simulation_behavior.cpp` (commands, stances, and what each unit wants),
-  `simulation_navigation.cpp` (routes and group cohesion), `simulation_locomotion.cpp` (physical
-  movement and separation), and `simulation_combat.cpp` (targeting, weapons, damage), sharing
-  `simulation_internal.hpp`.
-- `src/engine`: `battle.*` holds battles above the simulation (setup from a built map, replayable
-  orders, the order log), shared by the sandbox and headless runs; `battle_runner.*` runs them
-  headless and `battle_log.*` reads and writes order logs. The sandbox's testable parts are
-  `sandbox_options` (command line), `sandbox_content` (background scene builds and hot-reload
-  checks), and `sandbox_debug_lines` (what is drawn, a pure function of an explicit view struct).
-  The scene builders behind `visual_scene_builder.hpp` are `scene_materials` (textures,
-  materials, lighting), `scene_models` (models, palettes, animations), `scene_particles`
-  (particle effects, projectile visuals, effect objects), `scene_terrain` (terrain, liquids,
-  tracks), `object_type_properties` (movement and speed fields of XML types), and
-  `visual_map_builder` (the map and spawnable-package builds), sharing
-  `scene_builder_internal.hpp`. Particles are `particle_effects` (`ParticleWorld`, running the
-  effects that `eaw_assets`' `particle_rules` loads under a fidelity profile), `attached_effects` (effects on model bones),
-  and `battle_effects` (`BattleEffects`: a battle's effects from its snapshots, meaning attached
-  effects of drawn units, the Particle objects that impacts and deaths name, and bolts; no
-  graphics API, so the game and tests use it as the sandbox does).
-- `src/engine_app` (`EAWEngine`): `main.cpp` handles startup, discovery, the doctor probe, and
-  dispatch to `battle` or `sandbox`. The sandbox session (`SandboxSession`, declared in the private
-  `sandbox_session.hpp`) is defined by subject: `sandbox_app.cpp` (lifetime, the frame loop, the
-  run summary), `sandbox_session_content` (showing finished builds, hot reload),
-  `sandbox_session_input` (cameras, selection, picks, orders), `sandbox_session_spawning`
-  (runtime types, command-line automation), `sandbox_session_world` (simulation ticks,
-  presentation, animation, effects over time), and `sandbox_session_ui` (panels, statistics,
-  debug lines); `frame_watchdog` reports stalled frame steps, `sandbox_overlay` builds the
-  statistics text (a pure function of a view struct), and `sandbox_panels` the Dear ImGui panels.
-- `src/asset_inspector`: one source file per command group (`inspect_asset`, `audit_textures`,
-  `audit_lua`, `audit_maps`, `audit_particles`, `audit_xml`) plus `inspector_options` and
-  `inspector_common`, declared in `inspector.hpp`.
+- `src/formats` (`eaw_formats`), by category: `alamo` (`alamo_chunks`, the bounds-checked chunk
+  container shared by the Alamo readers; `alo_generic`; `ala_animation` and its helpers; `ted_map`),
+  `model` (`alo_model` and its helpers), `particle` (`alo_particle_system`), `texture`
+  (`dds_texture`, `mtd_atlas`), `image` (`png_image`, `rgba_image`), `xml` (`xml_document`,
+  `xml_helpers`), `localization` (`dat_string_table` and its helpers), and `script`
+  (`lua_bytecode`).
+- `src/assets` (`eaw_assets`), by category: `game_data` (`game_object_catalog`, `spawn_catalog`,
+  `map_object_layout`, `xml_asset_database`, and `XmlSchema`, split into `xml_schema_load.cpp` for
+  the optional eaw-schema YAML and `xml_schema_validate.cpp`), `model` (`model`, `legacy_material`,
+  and `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` rules and default mesh visibility),
+  `animation` (`skeleton`, `animation`, and `pose`: sampling, blending, composition, retargeting by
+  bone name), `particle` (`particle_rules`: `ParticleEffect`, the fidelity profiles, and
+  `load_particle_effect`), `loaders` (`alamo_loaders`: `load_model`, `load_skeleton`,
+  `load_animation`), and `resources` (`asset_cache`, `resource_manager`, `resource_loaders`).
+- `src/localization` (`eaw_localization`): `localization_workspace` (TSV workspaces, DAT rows, unit
+  keys, DAT string tables on disk), `localization_scan` (TEXT_* references in mod XML), and
+  `localization_validation` (a translation against its reference).
+- `src/simulation` (`eaw_simulation`): `SimulationWorld` split by tick layer: `simulation.cpp`
+  (storage, spawning, the tick, the state hash, footprints, snapshots), `simulation_behavior.cpp`,
+  `simulation_navigation.cpp`, `simulation_locomotion.cpp`, and `simulation_combat.cpp`, sharing
+  `simulation_internal.hpp`; with `ground_map` (passability), `pathfinding`, `formation`,
+  `spatial_grid`, and `combat` (weapon and damage data).
 - `src/script` (`eaw_script`): `script_host.cpp` (the sandboxed state, `require` through the VFS,
-  protected calls under an instruction budget, the thread scheduler, and the engine primitives
-  implemented so far), `script_stubs.cpp` (recording stubs: callable, indexable stub objects), and
-  `host_api_recorder.cpp` (what scripts called), sharing `script_host_internal.hpp`. The survey
-  command that runs every stock script on it is `src/engine_app/lua_survey_command.cpp`.
-- `src/dat_editor` (`EAWDatEditor`): a front end over the DAT string table (`eaw_formats`) and
-  `eaw_localization`'s workspace, scan, and translation-validation functions (`localization_workspace`, `localization_scan`,
-  `localization_validation`, which EAWTools uses too); `dat_editor_options` parses the command
-  line, `dat_commands` holds the commands on one DAT (info, list, get, set, remove, validate),
-  `workspace_commands` those on workspaces and mods (export, diff, build, scan-mod, add-unit),
-  and `main.cpp` dispatches.
-- `src/tools_gui`: each panel has its own file (`gui_asset_workspace`, `gui_map_view`,
-  `gui_model_view`, `gui_localization`); `GuiApp::State` is declared in `gui_internal.hpp` with
-  its methods in `gui_state.cpp`, and shared helpers live in `gui_support.cpp`.
-- `tests`: one module per subject, each `test_<module>.cpp` with its own ctest entry: `formats`,
-  `vfs`, `xml`, `foundation` (core: errors, log, strings, file I/O, CRC), `math`; `simulation` (core and snapshots), `navigation`, `combat`,
-  and `flight` (the simulation); `scene` (scene building), `presentation`, `battle`, `effects`,
-  and `sandbox` (the engine); `launcher` and `render`. Shared fixtures (synthetic MEG, ALO, ALA,
-  DDS, TED, DAT, and particle files) live in `test_support.*`.
+  budgeted protected calls, the thread scheduler, the implemented primitives), `script_stubs.cpp`
+  (recording stubs), and `host_api_recorder.cpp` (what scripts called), sharing
+  `script_host_internal.hpp`.
+- `src/engine` (`eaw_engine`):
+  - battles: `battle` (setup, replayable orders, the order log), `battle_runner` (headless runs),
+    `battle_log` (reading and writing logs), `combat_content` (XML combat data translated into the simulation's combat profiles);
+  - scene building, behind `visual_scene_builder.hpp` and sharing `scene_builder_internal.hpp`:
+    `scene_materials` (textures, materials, lighting), `scene_models` (models, palettes,
+    animations), `scene_particles` (particle effects and effect objects), `scene_projectiles`,
+    `scene_terrain` (terrain, liquids, tracks), `object_type_properties` (movement and speed fields
+    of XML types), and `visual_map_builder` (maps and runtime-spawnable packages);
+  - presentation: `scene_presentation`, `unit_animation`, `particle_effects` (`ParticleWorld`),
+    `attached_effects`, `battle_effects`, `projectile_visuals`, and `debug_draw`;
+  - input and cameras: `camera_controller`, `camera_math`, `rts_control`, `terrain_height`;
+  - the sandbox's testable parts: `sandbox_options` (command line), `sandbox_content` (background
+    builds and hot-reload checks), and `sandbox_debug_lines` (a pure function of a view struct);
+    `text_format` formats numbers for console and overlay text.
+- `src/render`: `eaw_render_contract` is `visual_scene.hpp`. The D3D12 backend's public interface is
+  `d3d12_renderer.hpp` with `gpu_resource_lifetime.hpp`; the implementation class in
+  `d3d12_renderer_impl.hpp` is defined by subject in `d3d12_renderer_device.cpp` (startup, swap
+  chain, buffers, waits, retirement), `_pipelines.cpp` (pipeline states and cache),
+  `_resources.cpp` (uploads, scenes, texture streaming), `_frame.cpp` (per-frame state and
+  `render()`), and `_overlay.cpp`; `d3d12_support` holds HRESULT, queue, and handle helpers. Shaders
+  are in `shaders/` (`sandbox`, `terrain`, `particle`, `post`, `debug`, sharing
+  `legacy_common.hlsli`).
+- `src/platform` (`eaw_platform`): `win32_window` (window and raw input), `win32_crash_handler`, and
+  `win32_log_sinks`.
+- `src/engine_app` (`EAWEngine`): `main.cpp` (startup, discovery, the doctor probe, dispatch), the
+  `lua_survey_command` and `image_compare_command`, and the sandbox session (`SandboxSession` in the
+  private `sandbox_session.hpp`), defined by subject: `sandbox_app.cpp` (lifetime, the frame loop,
+  the run summary), `sandbox_session_content` (showing finished builds, hot reload),
+  `sandbox_session_input` (cameras, selection, picks, orders), `sandbox_session_spawning` (runtime
+  types, automation), `sandbox_session_world` (ticks, presentation, animation, effects), and
+  `sandbox_session_ui` (panels and debug lines); with `frame_watchdog` (stalled frame steps),
+  `sandbox_overlay` (statistics text), and `sandbox_panels` (Dear ImGui panels).
+- `src/launcher` (`eaw_launch`): `sandbox_scenario` (scenarios and presets) and `child_process`.
+- `src/asset_inspector` (`EAWAssetInspector`): one file per command group (`inspect_asset`,
+  `audit_textures`, `audit_lua`, `audit_maps`, `audit_particles`, `audit_xml`) with
+  `inspector_options` and `inspector_common`, declared in `inspector.hpp`.
+- `src/dat_editor` (`EAWDatEditor`): `dat_editor_options` (command line), `dat_commands` (one DAT:
+  info, list, get, set, remove, validate), and `workspace_commands` (workspaces and mods: export,
+  diff, build, scan-mod, add-unit), over `eaw_formats` and `eaw_localization`.
+- `src/tools_gui` (`EAWTools`): one file per panel (`gui_asset_workspace`, `gui_map_view`,
+  `gui_model_view`, `gui_localization`); `GuiApp::State` in `gui_internal.hpp` with its methods in
+  `gui_state.cpp`, shared helpers in `gui_support.cpp`, and the Direct3D 11 `preview_renderer`.
+- `tests` (`EAWEngineTests`): one module per subject in `test_<module>.cpp`, each its own ctest
+  entry: `formats`, `vfs`, `xml`, `foundation`, `math`; `simulation`, `navigation`, `combat`,
+  `flight`; `scene`, `presentation`, `battle`, `effects`, `sandbox`; `script`, `launcher`, and
+  `render`. Shared synthetic fixtures (MEG, ALO, ALA, DDS, TED, DAT, particle files) live in
+  `test_support.*`.

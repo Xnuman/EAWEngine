@@ -1,18 +1,21 @@
 # Compatibility research
 
 The bootstrap uses public documentation, black-box behavior, compatibility
-corpora built from the user's installed data, and an explicitly isolated
-owner-provided Direct3D 9 shader reference under `Reference Materials/Shaders/`. It does not use
-leaked source code or decompiled code copied from the original executable, and
-the engine never modifies or redistributes the installed runtime data.
+corpora built from the user's installed data, and the original Alamo Direct3D 9
+shader sources that Petroglyph published with the official Empire at War mod
+tools ([petroglyphgames.com/eawmodtool](https://www.petroglyphgames.com/eawmodtool/)), kept locally under
+`Reference Materials/Shaders/`. It does not use leaked source code or decompiled
+code copied from the original executable, and the engine never modifies or
+redistributes the installed runtime data.
 
-The shader corpus is evidence for parameter, transform, and render-state
-semantics only. It is git-ignored, never distributed, not compiled or shipped, and the new D3D12 shaders are
-independently written against engine-native material contracts. Source checkouts
-without `Reference Materials/Shaders/` must still configure, build, test, and run. No other original
-game source, binary, or asset may be added without explicit owner authorization
-and provenance review. Because contributors can consult this corpus, project
-documentation must not characterize the renderer as strictly clean-room.
+The shader sources are evidence for parameter, transform, and render-state
+semantics. They stay out of the repository (git-ignored) and are never compiled
+or shipped; the new D3D12 shaders are written for this engine against
+engine-native material contracts. Source checkouts without
+`Reference Materials/Shaders/` must still configure, build, test, and run. No
+other original game source, binary, or asset may be added without explicit owner
+authorization and provenance review. Because contributors read these sources,
+project documentation does not describe the renderer as clean-room.
 
 Primary starting points:
 
