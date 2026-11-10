@@ -45,7 +45,9 @@ struct ScriptFixture
     std::unique_ptr<eaw::ScriptHost> host(const std::uint64_t seed = 1, const std::uint64_t budget = 200000)
     {
         vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
-        return expect_ok(eaw::ScriptHost::create(vfs, recorder, {seed, 1.0 / 30.0, budget}), "creating a script host");
+        eaw::ScriptHostOptions options{seed, 1.0 / 30.0, budget};
+        options.recorder = &recorder;
+        return expect_ok(eaw::ScriptHost::create(vfs, options), "creating a script host");
     }
 };
 
@@ -176,7 +178,8 @@ void test_script_shared_names_and_bound_stubs()
     fixture.vfs.mount(std::make_unique<eaw::DirectoryMount>("test", fixture.root));
     eaw::ScriptHostOptions options;
     options.script_globals = std::make_shared<const std::set<std::string>>(eaw::script_defined_globals(fixture.vfs));
-    auto host = expect_ok(eaw::ScriptHost::create(fixture.vfs, fixture.recorder, options), "creating a script host");
+    options.recorder = &fixture.recorder;
+    auto host = expect_ok(eaw::ScriptHost::create(fixture.vfs, options), "creating a script host");
     expect_ok(host->load("Unit"), "loading the unit");
     require(options.script_globals->contains("Story_Init") && printed(*host, "no story"), "a name another script defines must read nil when its file is not loaded");
     host->set_global("Object", eaw::ScriptValue::object("Object"));

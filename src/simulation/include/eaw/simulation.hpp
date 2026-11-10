@@ -126,6 +126,11 @@ struct SimCommand
     Stance stance{Stance::aggressive};
     // Entities of spawn commands.
     std::vector<EntitySpawn> spawns;
+    // The order this command carries out, numbered by whoever issued it (Battle; 0 for none). Each
+    // entity a move, stop, attack, or formation move applies to remembers it as its
+    // EntitySnapshot::command_serial, so the issuer can tell whether its order is still the one the
+    // entity follows. Bookkeeping, not part of the state hash.
+    std::uint64_t serial{};
 };
 
 // Snapshot of one entity after a tick.
@@ -169,6 +174,9 @@ struct EntitySnapshot
     // Tick in which the entity last launched a shot (0: never); for animation and effects, not part
     // of the state hash.
     std::uint64_t last_shot_tick{};
+    // SimCommand::serial of the last move, stop, attack, or formation move applied to the entity (0:
+    // none yet); not part of the state hash.
+    std::uint64_t command_serial{};
 };
 
 struct ProjectileSnapshot
@@ -495,6 +503,7 @@ private:
     // Speed of the last tick (EntitySnapshot::speed), and positions before the tick's movement.
     std::vector<float> speeds_;
     std::vector<std::uint64_t> last_shot_ticks_;
+    std::vector<std::uint64_t> command_serials_;
     std::vector<Vector3> tick_start_positions_;
     // Flyers inside a half-loop, and the roll they unwind after one.
     std::vector<std::uint8_t> looping_;

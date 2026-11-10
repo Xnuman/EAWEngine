@@ -71,8 +71,12 @@ legacy and enhanced fidelity profiles ([architecture.md](architecture.md#content
 not as a replacement. LuaJIT's speed comes with a sandbox gap that rules it out for untrusted mod
 scripts.
 
-Open: measure the host's per-resume cost in the survey, and check Luau's `longjmp` build and its
-interrupt callback against current sources before any prototype.
+Measured (2026-11-10, Release, `lua-survey` with AI plans, story events, and callbacks): script
+ticks cost 2.3 microseconds per script and tick on average, recorder included, and the slowest
+single tick of a normal script 0.75 ms. One runaway resume ran into the 5,000,000-instruction budget
+in about 73 ms, so the budget bounds a hung script to a few frames rather than to a fraction of one;
+whether to lower it is open. Open: check Luau's `longjmp` build and its interrupt callback against
+current sources before any prototype.
 
 ## Sources
 

@@ -966,6 +966,16 @@ recording stubs (`EAWEngine lua-survey`).
   function); PGStoryMode.lua registers them with the state machine of PGStateMachine.lua, whose
   `main` runs the states. `Story_Event_Trigger(name)` switches to an event's state, and no stock
   script calls it, so the engine fires story events through it (from the campaign's story XML).
+- **Engine objects.** Objects are userdata: the framework services `Object` only when
+  `type(Object) == "userdata"`, and `Flush_G` asks userdata whether they are pool-safe. Scripts call
+  their methods with a dot, without self (`unit.Move_To(healer, 10)`), so a method is a function bound
+  to its object. Objects serve as table keys (`DeathTable[obj]`, `ProxTable[obj]`), so the same object
+  must always be the same value. Orders return a block that `BlockOnCommand` polls with `IsFinished()`
+  (the most used method, 140 scripts) and reads with `Result()`. `Get_Hull()` is a share of the hull
+  (scripts compare it with 0.5 or 0.9), `Get_Type().Get_Name()` (121 uses) names the type, and
+  `Find_All_Objects_Of_Type` takes a type name or an object type, and optionally a player. What
+  `Result()` returns, and what a method on a dead object does, are not documented: the engine answers
+  `Result()` with whether the order ended as ordered, and dead objects with nil (engine choices).
 - **Random numbers.** `GameRandom(lower, upper)` returns an integer in the inclusive range (scripts
   index lists with it and call `GameRandom(1, 1)`), `GameRandom.Get_Float()` a number in [0, 1), and
   `GameRandom.Free_Random(lower, upper)` the same as `GameRandom`; that it is the unsynchronized

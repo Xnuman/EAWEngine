@@ -13,6 +13,7 @@
 
 #include "core/status.hpp"
 #include "script/host_api_recorder.hpp"
+#include "script/script_object.hpp"
 #include "script/script_value.hpp"
 
 #include <cstddef>
@@ -27,6 +28,10 @@ namespace eaw {
 
 class AssetReader;
 
+// Warnings a host keeps (a script that keeps ordering a dead unit would otherwise grow them without
+// bound); later ones are only counted. An engine choice.
+inline constexpr std::size_t max_script_warnings = 256;
+
 struct ScriptHostOptions
 {
     std::uint64_t random_seed{1};
@@ -36,6 +41,11 @@ struct ScriptHostOptions
     // Names any script defines (script_defined_globals): reading one that is not set gives nil, never
     // a stub, even when the file defining it is not loaded (`if PG_Story_Mode_Init then`).
     std::shared_ptr<const std::set<std::string>> script_globals;
+    // Where host API calls are recorded (surveys); nothing is recorded without one, which keeps
+    // calls cheap in play.
+    HostApiRecorder* recorder{};
+    // The engine objects and functions scripts get (null: every engine name is a stub).
+    ScriptObjectProvider* objects{};
 };
 
 // A function a script handed to an engine function, to be called back later (the handler
@@ -56,8 +66,9 @@ struct ScriptError
 class ScriptHost
 {
 public:
-    // `reader` resolves scripts and require (it and `recorder` must outlive the host).
-    [[nodiscard]] static Result<std::unique_ptr<ScriptHost>> create(const AssetReader& reader, HostApiRecorder& recorder, const ScriptHostOptions& options = {});
+    // `reader` resolves scripts and require; it and the options' recorder and provider must outlive
+    // the host.
+    [[nodiscard]] static Result<std::unique_ptr<ScriptHost>> create(const AssetReader& reader, const ScriptHostOptions& options = {});
     ~ScriptHost();
     ScriptHost(const ScriptHost&) = delete;
     ScriptHost& operator=(const ScriptHost&) = delete;
@@ -68,6 +79,9 @@ public:
     [[nodiscard]] bool has_function(std::string_view name) const;
     // Calls a global function without arguments (Definitions); errors are recorded.
     Status call(std::string_view name);
+    // The engine's call when a script is created: Base_Definitions (the framework's, which calls the
+    // script's Definitions), else Definitions, else nothing.
+    Status run_definitions();
     // Starts a script thread on a global function (as Create_Thread does), first resumed next tick.
     Status start_thread(std::string_view function);
     // Sets a global (a game-object script's Object, an AI plan's task forces); engine objects
@@ -97,6 +111,10 @@ public:
     [[nodiscard]] const std::vector<ScriptError>& errors() const noexcept;
     // Lines the script printed (print, DebugMessage, _OuputDebug), for diagnostics.
     [[nodiscard]] const std::vector<std::string>& output() const noexcept;
+    // Diagnostics of provider calls that did not stop the script (ScriptCall::warn), the first
+    // max_script_warnings of them; warning_count() counts all.
+    [[nodiscard]] const std::vector<std::string>& warnings() const noexcept;
+    [[nodiscard]] std::uint64_t warning_count() const noexcept;
 
     class Impl;
 

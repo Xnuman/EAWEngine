@@ -4,6 +4,7 @@
 #include "battle.hpp"
 #include "battle_effects.hpp"
 #include "battle_log.hpp"
+#include "battle_scripts.hpp"
 #include "particle_effects.hpp"
 #include "projectile_visuals.hpp"
 #include "scene_builder_internal.hpp"
@@ -326,8 +327,100 @@ void test_runtime_spawnable_registration()
     require(animator.rig_count() == 2 && palette.size() == 5 && drawn[0].bone_offset == 3, "added rigs must take their rest poses after the existing ones");
 }
 
+// Scripts in battles: a script finds objects, reads them, and orders a unit through a block it waits
+// on; objects are one Lua value each, an immobile unit's move is refused at once, and names the
+// bridge does not implement stay stubs. Script orders are not logged, and replaying the player
+// orders with the same script running again reproduces the battle's state hash.
+void test_battle_scripts()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-battle-scripts-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::filesystem::create_directories(root / "Data" / "Scripts" / "GameObject");
+    {
+        std::ofstream file(root / "Data" / "Scripts" / "GameObject" / "Mover.lua", std::ios::binary);
+        file << "function PumpEvents() coroutine.yield(true) end\n"
+                "function Base_Definitions() ServiceRate = 0.1 end\n"
+                "function main()\n"
+                "  local walker = Find_First_Object(\"walker\")\n"
+                "  local beacon = Find_First_Object(\"Beacon\")\n"
+                "  print(\"type \" .. walker.Get_Type().Get_Name() .. \" owner \" .. walker.Get_Owner().Get_ID() .. \" hull \" .. walker.Get_Hull())\n"
+                "  local same = Find_All_Objects_Of_Type(Find_Object_Type(\"WALKER\"))[1] == walker\n"
+                "  print(\"same \" .. tostring(same) .. \" mine \" .. table.getn(Find_All_Objects_Of_Type(\"Walker\", walker.Get_Owner())) .. \" theirs \" .. "
+                "table.getn(Find_All_Objects_Of_Type(\"Walker\", beacon.Get_Owner())))\n"
+                "  print(\"unknown \" .. tostring(Find_Object_Type(\"No_Such_Type\")) .. \" \" .. type(walker))\n"
+                "  local block = walker.Move_To(beacon)\n"
+                "  print(\"at once \" .. tostring(block.IsFinished()))\n"
+                "  while not block.IsFinished() do PumpEvents() end\n"
+                "  print(\"arrived \" .. tostring(block.Result()))\n"
+                "  local refused = beacon.Move_To(walker)\n"
+                "  print(\"immobile \" .. tostring(refused.IsFinished()) .. \" \" .. tostring(refused.Result()))\n"
+                "  print(\"stub \" .. tostring(walker.Play_SFX_Event(\"Unit_Select\") ~= nil))\n"
+                "end\n";
+    }
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+
+    eaw::SpawnableType walker;
+    walker.type_name = "Walker";
+    walker.max_speed = 60.0F;
+    walker.radius = 1.0F;
+    walker.combat.health = 100.0F;
+    eaw::SpawnableType beacon;
+    beacon.type_name = "Beacon";
+    beacon.radius = 1.0F;
+    const std::array<eaw::SpawnableType, 2> types{walker, beacon};
+    eaw::BattleMap map;
+    map.spawnable = types;
+    map.hostility.set(1, 2, true);
+    constexpr std::uint64_t ticks = 300;
+
+    // One run: the players' orders (here: the spawns) at tick 0, the script from tick 1, and the
+    // driver's order step, scripts, players. Returns the final hash and the script's output.
+    const auto run = [&](const eaw::BattleLog* replay)
+    {
+        eaw::Battle battle(map, "TEST.TED");
+        if (replay == nullptr)
+        {
+            expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {0.0F, 0.0F, 0.0F}, .type = "Walker", .owner = 1}), "spawning the walker");
+            expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {300.0F, 40.0F, 0.0F}, .type = "Beacon", .owner = 2}), "spawning the beacon");
+        }
+        else
+        {
+            for (const auto& entry : replay->entries)
+            {
+                expect_ok(battle.submit(entry.command), "replaying an order");
+            }
+        }
+        battle.step();
+        eaw::BattleScripts scripts(vfs);
+        expect_ok(scripts.add(battle, "Mover"), "starting the script");
+        for (std::uint64_t tick = 1; tick < ticks; ++tick)
+        {
+            battle.step();
+            scripts.run(battle);
+        }
+        require(scripts.host(0).errors().empty(), "the script must run without errors: " + (scripts.host(0).errors().empty() ? std::string{} : scripts.host(0).errors().front().message));
+        return std::tuple{battle.world().state_hash(), scripts.host(0).output(), battle.log()};
+    };
+    const auto [hash, output, log] = run(nullptr);
+    const auto printed = [&](const std::string_view line)
+    {
+        return std::ranges::find(output, line) != output.end();
+    };
+    require(printed("type Walker owner 1 hull 1") && printed("same true mine 1 theirs 0") && printed("unknown nil userdata"),
+            "scripts must read types, owners, and hull, filter by owner, see one value per object, and get nil for unknown types");
+    require(printed("at once false") && printed("arrived true"), "a move must return a block that finishes when the unit arrives");
+    require(printed("immobile true false") && printed("stub true"), "an immobile unit's move must be refused at once, and unimplemented methods must stay stubs");
+    require(log.entries.size() == 2, "script orders must not be recorded in the battle log");
+    const auto [replayed_hash, replayed_output, replayed_log] = run(&log);
+    require(replayed_hash == hash && replayed_output == output, "replaying the player orders with the script running again must reproduce the battle");
+    std::filesystem::remove_all(root, ignored);
+}
+
 const ModuleRegistrar registrar("battle", {
                                               {"test_combat_content", &test_combat_content},
+                                              {"test_battle_scripts", &test_battle_scripts},
                                               {"test_battle_orders", &test_battle_orders},
                                               {"test_battle_log", &test_battle_log},
                                               {"test_runtime_spawnable_registration", &test_runtime_spawnable_registration},

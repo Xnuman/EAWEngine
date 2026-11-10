@@ -52,7 +52,7 @@ Every library and executable has its own directory and `CMakeLists.txt`.
 | `src/script` | `eaw_script` | The Lua host: one sandboxed Lua 5.0 state per script, script threads on simulation ticks, engine events and callbacks, the engine primitives implemented so far, and recording stubs for the rest. Never runs compiled chunks. No graphics or platform code. |
 | `src/render` | `eaw_render_contract`, `eaw_render_d3d12` | The render contract (`visual_scene.hpp`, engine-native visual data) and the D3D12 backend. Consumes engine-native data; never parses MEG/ALO/ALA/TED or knows VFS precedence. |
 | `src/platform` | `eaw_platform` | Window, input, crash handling, log sinks (Win32). |
-| `src/engine` | `eaw_engine` | Orchestration above the simulation and the bridge from decoded assets to visual and runtime data: battles and order logs, scene builders, presentation, cameras, animation, particles and their interpretation rules. No graphics API. |
+| `src/engine` | `eaw_engine` | Orchestration above the simulation and the bridge from decoded assets to visual and runtime data: battles and order logs, scripts in battles, scene builders, presentation, cameras, animation, particles and their interpretation rules. No graphics API. |
 | `src/engine_app` | `EAWEngine` | Startup, discovery, the doctor probe, headless battles, and the sandbox session (window and renderer). |
 | `src/launcher` | `eaw_launch` | Launch configuration and process start (sandbox scenarios and presets, `ChildProcess`). |
 | `src/launcher_app` | `EAWLauncher` | The launcher executable. |

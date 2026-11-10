@@ -10,6 +10,7 @@ set(SOURCES_DIR "src")
 set(EAW_SCRIPT_HEADERS
     ${HEADERS_DIR}/host_api_recorder.hpp
     ${HEADERS_DIR}/script_host.hpp
+    ${HEADERS_DIR}/script_object.hpp
     ${HEADERS_DIR}/script_value.hpp
 )
 
@@ -18,6 +19,7 @@ set(EAW_SCRIPT_SOURCES
     ${SOURCES_DIR}/script_events.cpp
     ${SOURCES_DIR}/script_host.cpp
     ${SOURCES_DIR}/script_host_internal.hpp
+    ${SOURCES_DIR}/script_objects.cpp
     ${SOURCES_DIR}/script_stubs.cpp
     ${SOURCES_DIR}/script_values.cpp
 )

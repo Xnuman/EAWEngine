@@ -44,6 +44,10 @@ void SimulationWorld::apply(const SimCommand& command)
             ++stale_references_;
             continue;
         }
+        if (command.kind == SimCommandKind::move || command.kind == SimCommandKind::stop || command.kind == SimCommandKind::attack)
+        {
+            command_serials_[*dense] = command.serial;
+        }
         switch (command.kind)
         {
         case SimCommandKind::formation_move:

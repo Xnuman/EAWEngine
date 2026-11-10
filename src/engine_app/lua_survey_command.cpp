@@ -31,6 +31,9 @@ struct ScriptResult
     std::size_t task_force_events{};
     std::size_t callback_events{};
     std::vector<ScriptError> errors;
+    // Wall-clock time of the script's ticks: in all, and the slowest one.
+    double tick_seconds{};
+    double worst_tick_seconds{};
 };
 
 // Task force events of AI plans: the plan's <TaskForce>_<Event>, else the framework's
@@ -131,6 +134,7 @@ int run_lua_survey(const SandboxOptions& options, const VirtualFileSystem& vfs)
     // Names any script defines are script names, not engine functions, wherever they are defined.
     ScriptHostOptions host_options;
     host_options.script_globals = std::make_shared<const std::set<std::string>>(script_defined_globals(vfs));
+    host_options.recorder = &recorder;
     for (const auto& asset : vfs.list("DATA/SCRIPTS"))
     {
         if (!ascii_upper(asset.virtual_path).ends_with(".LUA"))
@@ -139,7 +143,7 @@ int run_lua_survey(const SandboxOptions& options, const VirtualFileSystem& vfs)
         }
         ScriptResult result;
         result.path = asset.virtual_path;
-        auto host = ScriptHost::create(vfs, recorder, host_options);
+        auto host = ScriptHost::create(vfs, host_options);
         if (!host)
         {
             result.errors.push_back({"host", host.error().message});
@@ -148,15 +152,9 @@ int run_lua_survey(const SandboxOptions& options, const VirtualFileSystem& vfs)
         }
         auto& script = **host;
         result.loaded = script.load(asset.virtual_path).ok();
-        // The engine calls Base_Definitions when a script is created (the framework's version calls
-        // the script's Definitions); scripts without the framework get Definitions directly.
-        if (result.loaded && script.has_function("Base_Definitions"))
+        if (result.loaded)
         {
-            (void)script.call("Base_Definitions");
-        }
-        else if (result.loaded && script.has_function("Definitions"))
-        {
-            (void)script.call("Definitions");
+            (void)script.run_definitions();
         }
         // The framework clears Object, PlayerObject, and Target while a script is created, so the
         // engine binds them afterwards (an inference from PGBaseDefinitions.lua); here they are
@@ -237,7 +235,11 @@ int run_lua_survey(const SandboxOptions& options, const VirtualFileSystem& vfs)
                     result.callback_events += script.queue_callback(callback, arguments).ok() ? 1U : 0U;
                 }
             }
+            const auto tick_started = std::chrono::steady_clock::now();
             script.tick();
+            const auto tick_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - tick_started).count();
+            result.tick_seconds += tick_seconds;
+            result.worst_tick_seconds = std::max(result.worst_tick_seconds, tick_seconds);
         }
         result.exited = script.exited();
         result.threads_at_end = script.live_threads();
@@ -301,6 +303,27 @@ int run_lua_survey(const SandboxOptions& options, const VirtualFileSystem& vfs)
         const auto& [name, record] = ranked[index];
         std::cout << "  " << std::setw(4) << record->scripts.size() << " scripts " << std::setw(8) << record->calls << " calls  " << name << (record->implemented ? "  [host]" : "") << '\n';
     }
+    // Cost of running scripts: their ticks in all, and the slowest single ticks.
+    double script_seconds = 0.0;
+    std::vector<const ScriptResult*> slowest;
+    for (const auto& result : results)
+    {
+        script_seconds += result.tick_seconds;
+        slowest.push_back(&result);
+    }
+    std::ranges::sort(slowest,
+                      [](const ScriptResult* left, const ScriptResult* right)
+                      {
+                          return left->worst_tick_seconds > right->worst_tick_seconds;
+                      });
+    const auto script_ticks = static_cast<double>(std::max<std::size_t>(results.size(), 1U) * ticks);
+    std::cout << "\nScript ticks: " << std::setprecision(1) << script_seconds * 1000.0 << " ms in all, " << std::setprecision(2) << script_seconds * 1.0e6 / script_ticks
+              << " us per script and tick; slowest single ticks:\n";
+    for (std::size_t index = 0; index < slowest.size() && index < 5; ++index)
+    {
+        std::cout << "  " << std::setw(8) << slowest[index]->worst_tick_seconds * 1000.0 << " ms  " << slowest[index]->path << '\n';
+    }
+    std::cout << std::setprecision(1);
     std::vector<std::pair<std::size_t, std::string>> kinds;
     for (const auto& [kind, count] : error_kinds)
     {
@@ -337,11 +360,11 @@ int run_lua_survey(const SandboxOptions& options, const VirtualFileSystem& vfs)
                 << tsv(listed) << '\n';
         }
         std::ofstream scripts(*options.report / "scripts.tsv", std::ios::binary | std::ios::trunc);
-        scripts << "script\tloaded\terrors\texited\tthreads_at_end\tevents\tfirst_error\n";
+        scripts << "script\tloaded\terrors\texited\tthreads_at_end\tevents\ttick_ms\tworst_tick_ms\tfirst_error\n";
         for (const auto& result : results)
         {
             scripts << result.path << '\t' << (result.loaded ? "yes" : "no") << '\t' << result.errors.size() << '\t' << (result.exited ? "yes" : "no") << '\t' << result.threads_at_end << '\t'
-                    << result.story_events + result.task_force_events + result.callback_events << '\t'
+                    << result.story_events + result.task_force_events + result.callback_events << '\t' << result.tick_seconds * 1000.0 << '\t' << result.worst_tick_seconds * 1000.0 << '\t'
                     << (result.errors.empty() ? std::string{} : tsv(result.errors.front().context + ": " + result.errors.front().message.substr(0, 300))) << '\n';
         }
         if (!api || !scripts)

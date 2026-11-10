@@ -44,7 +44,7 @@ Dependencies point inward: a lower layer never includes or links a higher one.
 | | `eaw_localization` | DAT string tables on disk, TSV workspaces, mod text scans, translation checks. | core, formats |
 | Runtime | `eaw_simulation` | Deterministic tactical simulation: entities, components, ticks, commands, snapshots. | core, math |
 | | `eaw_script` | Sandboxed Lua 5.0 host: threads, engine events and callbacks, recording stubs for the unimplemented host API. | vfs, Lua |
-| | `eaw_engine` | Battles and order logs, scene builders, presentation, cameras, animation, particles. No graphics API. | assets, simulation, render contract |
+| | `eaw_engine` | Battles and order logs, scripts in battles, scene builders, presentation, cameras, animation, particles. No graphics API. | assets, script, simulation, render contract |
 | Presentation | `eaw_render_contract` | Engine-native visual data (`visual_scene.hpp`), header only. | math |
 | | `eaw_render_d3d12` | The Direct3D 12 backend. | core, render contract, formats (RGBA images for captures) |
 | | `eaw_platform` | Win32 window, raw input, crash handlers, log sinks. | core |
@@ -170,7 +170,30 @@ neutral object, so `EAWEngine lua-survey` can measure which host API the stock s
 engine implements it. The engine talks to a script through `ScriptValue`s: it sets globals (the
 objects a script expects), reads definitions back (an AI plan's `TaskForce`, a story script's
 `StoryModeEvents`), and queues events, which the framework's `PumpEvents` drains through `GetEvent`
-in a script thread; script functions handed to engine functions become callbacks it can queue. Scripts will act on the world only by enqueuing validated commands, never by
+in a script thread; script functions handed to engine functions become callbacks it can queue.
+
+Real engine objects reach scripts through a `ScriptObjectProvider` that the engine implements and
+the host only calls. Each object is a userdata (as in the original), one Lua value per object for
+interned kinds so `==` and table keys work; a kind's method names resolve to numeric ids once, and a
+call reads its arguments from the Lua stack and pushes its results without converting or
+allocating. Names the provider lacks stay recording stubs. In battles the provider is
+`BattleScripts` (`src/engine/battle_scripts.*`), one context per script, under three rules that keep
+the script phase deterministic and ready for threads:
+
+1. every script reads the same immutable view, the snapshot of the tick that just ran with indices
+   by entity slot and by type built once before any script runs;
+2. everything a script does to the battle goes into its own buffer; the buffers are merged after all
+   scripts ran, in the order the scripts were added, as validated `BattleCommand`s for the next
+   tick;
+3. script orders are not logged: a replay runs the same scripts again, which is the lockstep model
+   (only player input is exchanged).
+
+An order returns a block; it compares the order's serial (Battle numbers every order, and the
+simulation keeps the serial of the order each entity follows, outside the state hash) with the
+entity's, so it can tell an order not applied yet, running, finished, and replaced. A game object is
+generation-checked: a dead or reused entity makes `Is_Valid` false, queries on it give nil, and
+orders to it are dropped with a warning (an engine choice). Scripts run on one thread today; the
+rules above let the job system run them in parallel once measurements call for it. Scripts will act on the world only by enqueuing validated commands, never by
 writing simulation storage.
 
 ## Presentation
@@ -352,12 +375,15 @@ The file-level split of each module.
   `spatial_grid`, and `combat` (weapon and damage data).
 - `src/script` (`eaw_script`): `script_host` (the sandboxed state, `require` through the VFS,
   budgeted protected calls, the thread scheduler, the implemented primitives), `script_events` (the
-  event queue behind `GetEvent`, callbacks), `script_values` (`ScriptValue` to and from Lua, with
-  read limits), `script_stubs` (recording stubs), and `host_api_recorder` (what scripts called),
-  sharing the private `script_host_internal.hpp`.
+  event queue behind `GetEvent`, callbacks), `script_objects` (engine objects as userdata, the
+  provider calls, `ScriptCall`), `script_values` (`ScriptValue` to and from Lua, with read limits),
+  `script_stubs` (recording stubs), and `host_api_recorder` (what scripts called), sharing the
+  private `script_host_internal.hpp`.
 - `src/engine` (`eaw_engine`):
   - battles: `battle` (setup, replayable orders, the order log), `battle_runner` (headless runs),
-    `battle_log` (reading and writing logs), `combat_content` (XML combat data translated into the simulation's combat profiles);
+    `battle_log` (reading and writing logs), `battle_scripts` (scripts in battles: the view, the
+    provider, blocks, and the script phase), `combat_content` (XML combat data translated into the
+    simulation's combat profiles);
   - scene building, behind `visual_scene_builder.hpp` and sharing `scene_builder_internal.hpp`:
     `scene_materials` (textures, materials, lighting), `scene_models` (models, palettes,
     animations), `scene_particles` (particle effects and effect objects), `scene_projectiles`,

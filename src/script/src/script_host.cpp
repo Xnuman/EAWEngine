@@ -138,7 +138,7 @@ int lua_random(lua_State* state)
 int lua_randomseed(lua_State* state)
 {
     // The host's stream is seeded by the engine; scripts cannot reseed it.
-    host_of(state).recorder.record("math.randomseed", host_of(state).script_name, argument_signature(state, 1), true);
+    host_of(state).record(state, "math.randomseed", 1, true);
     return 0;
 }
 
@@ -158,7 +158,7 @@ int lua_create_thread(lua_State* state)
     // Called as Create_Thread(...): argument 1 is the Create_Thread table itself.
     lua_remove(state, 1);
     auto& host = host_of(state);
-    host.recorder.record("Create_Thread", host.script_name, argument_signature(state, 1), true);
+    host.record(state, "Create_Thread", 1, true);
     std::string name = "(function)";
     if (lua_type(state, 1) == LUA_TSTRING)
     {
@@ -185,7 +185,7 @@ int lua_create_thread(lua_State* state)
 int lua_kill_thread(lua_State* state)
 {
     auto& host = host_of(state);
-    host.recorder.record("Create_Thread.Kill", host.script_name, argument_signature(state, 1), true);
+    host.record(state, "Create_Thread.Kill", 1, true);
     if (lua_isnumber(state, 1) != 0)
     {
         host.kill_thread(static_cast<std::int64_t>(lua_tonumber(state, 1)));
@@ -196,7 +196,7 @@ int lua_kill_thread(lua_State* state)
 int lua_is_thread_active(lua_State* state)
 {
     auto& host = host_of(state);
-    host.recorder.record("Create_Thread.Is_Thread_Active", host.script_name, argument_signature(state, 1), true);
+    host.record(state, "Create_Thread.Is_Thread_Active", 1, true);
     const auto id = lua_isnumber(state, 1) != 0 ? static_cast<std::int64_t>(lua_tonumber(state, 1)) : -1;
     const bool active = std::ranges::any_of(host.threads,
                                             [&](const ScriptHost::Impl::Thread& thread)
@@ -214,7 +214,7 @@ int lua_is_thread_active(lua_State* state)
 int random_range(lua_State* state, const int first, const char* name)
 {
     auto& host = host_of(state);
-    host.recorder.record(name, host.script_name, argument_signature(state, first), true);
+    host.record(state, name, first, true);
     const auto lower = luaL_checkint(state, first);
     const auto upper = luaL_checkint(state, first + 1);
     luaL_argcheck(state, lower <= upper, first + 1, "interval is empty");
@@ -236,7 +236,7 @@ int lua_game_random_free(lua_State* state)
 int lua_game_random_float(lua_State* state)
 {
     auto& host = host_of(state);
-    host.recorder.record("GameRandom.Get_Float", host.script_name, argument_signature(state, 1), true);
+    host.record(state, "GameRandom.Get_Float", 1, true);
     lua_pushnumber(state, static_cast<lua_Number>(host.next_random()));
     return 1;
 }
@@ -244,7 +244,7 @@ int lua_game_random_float(lua_State* state)
 int lua_get_current_time(lua_State* state)
 {
     auto& host = host_of(state);
-    host.recorder.record("GetCurrentTime", host.script_name, argument_signature(state, 1), true);
+    host.record(state, "GetCurrentTime", 1, true);
     lua_pushnumber(state, static_cast<lua_Number>(static_cast<double>(host.tick_count) * host.options.tick_seconds));
     return 1;
 }
@@ -259,7 +259,7 @@ int lua_get_thread_id(lua_State* state)
 int lua_request_exit(lua_State* state)
 {
     auto& host = host_of(state);
-    host.recorder.record("_ScriptExit", host.script_name, argument_signature(state, 1), true);
+    host.record(state, "_ScriptExit", 1, true);
     host.exit_requested = true;
     return 0;
 }
@@ -367,8 +367,7 @@ ScriptHost::Impl& host_of(lua_State* state)
     return *host;
 }
 
-ScriptHost::Impl::Impl(const AssetReader& asset_reader, HostApiRecorder& host_recorder, const ScriptHostOptions& host_options)
-    : reader(asset_reader), recorder(host_recorder), options(host_options), random_state(host_options.random_seed)
+ScriptHost::Impl::Impl(const AssetReader& asset_reader, const ScriptHostOptions& host_options) : reader(asset_reader), options(host_options), random_state(host_options.random_seed)
 {}
 
 ScriptHost::Impl::~Impl()
@@ -441,6 +440,7 @@ Status ScriptHost::Impl::setup()
     EAW_TRY(protected_call(0, "host setup"));
 
     install_stubs(*this);
+    install_objects(*this);
 
     // Every script under Data/Scripts, by module name, for require.
     constexpr std::string_view prefix = "DATA/SCRIPTS/";
@@ -548,6 +548,23 @@ double ScriptHost::Impl::next_random()
 void ScriptHost::Impl::record_error(const std::string_view context, const std::string_view message)
 {
     errors.push_back({std::string(context), std::string(message)});
+}
+
+void ScriptHost::Impl::record(lua_State* caller, const std::string_view name, const int first_argument, const bool implemented) const
+{
+    if (options.recorder != nullptr)
+    {
+        options.recorder->record(name, script_name, argument_signature(caller, first_argument), implemented);
+    }
+}
+
+void ScriptHost::Impl::warn(const std::string_view message)
+{
+    if (warnings.size() < max_script_warnings)
+    {
+        warnings.emplace_back(message);
+    }
+    ++warning_count;
 }
 
 Status ScriptHost::Impl::protected_call(const int arguments, const std::string_view context)
@@ -747,9 +764,9 @@ ScriptHost::ScriptHost(std::unique_ptr<Impl> impl) : impl_(std::move(impl))
 
 ScriptHost::~ScriptHost() = default;
 
-Result<std::unique_ptr<ScriptHost>> ScriptHost::create(const AssetReader& reader, HostApiRecorder& recorder, const ScriptHostOptions& options)
+Result<std::unique_ptr<ScriptHost>> ScriptHost::create(const AssetReader& reader, const ScriptHostOptions& options)
 {
-    auto impl = std::make_unique<Impl>(reader, recorder, options);
+    auto impl = std::make_unique<Impl>(reader, options);
     EAW_TRY(impl->setup());
     return std::unique_ptr<ScriptHost>(new ScriptHost(std::move(impl)));
 }
@@ -787,6 +804,18 @@ Status ScriptHost::call(const std::string_view name)
         return make_error("'" + std::string(name) + "' is not a script function");
     }
     return impl_->protected_call(0, name);
+}
+
+Status ScriptHost::run_definitions()
+{
+    for (const auto* name : {"Base_Definitions", "Definitions"})
+    {
+        if (has_function(name))
+        {
+            return call(name);
+        }
+    }
+    return {};
 }
 
 void ScriptHost::set_global(const std::string_view name, const ScriptValue& value)
@@ -923,6 +952,16 @@ const std::vector<ScriptError>& ScriptHost::errors() const noexcept
 const std::vector<std::string>& ScriptHost::output() const noexcept
 {
     return impl_->output;
+}
+
+const std::vector<std::string>& ScriptHost::warnings() const noexcept
+{
+    return impl_->warnings;
+}
+
+std::uint64_t ScriptHost::warning_count() const noexcept
+{
+    return impl_->warning_count;
 }
 
 } // namespace eaw

@@ -28,13 +28,12 @@ namespace eaw {
 class ScriptHost::Impl
 {
 public:
-    Impl(const AssetReader& reader, HostApiRecorder& recorder, const ScriptHostOptions& options);
+    Impl(const AssetReader& reader, const ScriptHostOptions& options);
     ~Impl();
     Impl(const Impl&) = delete;
     Impl& operator=(const Impl&) = delete;
 
     const AssetReader& reader;
-    HostApiRecorder& recorder;
     ScriptHostOptions options;
     lua_State* state{};
     // The script being surveyed (the name the recorder files calls under).
@@ -73,6 +72,8 @@ public:
     int call_depth{};
     std::vector<ScriptError> errors;
     std::vector<std::string> output;
+    std::vector<std::string> warnings;
+    std::uint64_t warning_count{};
 
     // Engine events waiting for GetEvent: registry references to the function and to its argument
     // table (LUA_NOREF without arguments).
@@ -116,6 +117,10 @@ public:
     void clear_events();
     // The index of the Lua function at `index` among the callbacks, registering it when new.
     std::size_t register_callback(lua_State* caller, int index, const std::string& registered_by);
+    // Records a host API call (with the argument types from `first_argument` on) when a recorder is
+    // set; without one nothing is built.
+    void record(lua_State* caller, std::string_view name, int first_argument, bool implemented) const;
+    void warn(std::string_view message);
 };
 
 // The host of a Lua state (stored in its registry at setup).
@@ -127,6 +132,15 @@ void set_callable_table(lua_State* state, const char* name, lua_CFunction call, 
 
 // GetEvent and its Params and Reset (script_events.cpp).
 void install_events(lua_State* state);
+
+// Engine objects (script_objects.cpp): the provider's kinds and functions, set up once.
+void install_objects(ScriptHost::Impl& host);
+// Pushes a real object (interned kinds: the existing userdata of that object, if any).
+void push_object(lua_State* state, const ScriptObject& object);
+// The real object at `index`, if it is one.
+std::optional<ScriptObject> object_at(lua_State* state, int index);
+// The name of a real object's kind.
+std::string_view object_kind_name(lua_State* state, const ScriptObject& object);
 
 // Values between the engine and Lua (script_values.cpp). Pushes `value`; engine objects become
 // stubs, functions nil (the engine cannot pass one in).

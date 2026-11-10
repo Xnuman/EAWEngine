@@ -111,12 +111,17 @@ const BattleLog& Battle::log() const noexcept
     return log_;
 }
 
-Status Battle::submit(const BattleCommand& command)
+Result<std::uint64_t> Battle::submit(const BattleCommand& command, const BattleOrigin origin)
 {
     EAW_TRY_ASSIGN(auto translated, translate(command));
+    const auto serial = next_serial_++;
+    translated.serial = serial;
     world_.submit(std::move(translated));
-    log_.entries.push_back({world_.stats().tick, command});
-    return Status::success();
+    if (origin == BattleOrigin::player)
+    {
+        log_.entries.push_back({world_.stats().tick, command});
+    }
+    return serial;
 }
 
 void Battle::step()

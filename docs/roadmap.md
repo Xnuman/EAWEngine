@@ -82,8 +82,8 @@ Proposed on 2026-11-10 with this roadmap; it continues the owner's order of 2026
 review, combat presentation, sound, player layer) with sound and the player layer moved to M4, where
 the skirmish needs them, and the open M2 render work placed by what depends on it:
 
-1. Scripting stage 1: object handles and orders as validated commands (events, AI and story entry
-   points are done).
+1. Scripting stage 1: game-object scripts on their entities, `Spawn_Unit`, `Find_Hint`, and proximity
+   events (events, entry points, object handles, and validated orders are done).
 2. Rendering stage 1, the part combat presentation needs: damage-state (`_ALT<n>`) and LOD
    switching, runtime decals, depth-sorted transparency.
 3. Simulation stage 1's remainder: combat presentation and fidelity.
@@ -144,9 +144,12 @@ the skirmish needs them, and the open M2 render work placed by what depends on i
 1. Foundation. Done: the sandboxed Lua 5.0 host, script threads on ticks, recording stubs, the
    engine event queue and script callbacks, values between the engine and scripts, `Create_Thread`
    control and `GameRandom`, and `lua-survey` driving AI plans, story events, task force events, and
-   callbacks over the stock scripts. Open: generation-checked object handles; orders only through
-   validated commands; decide whether running script state must be saveable (it shapes
-   Persistence).
+   callbacks over the stock scripts; engine objects as userdata through a provider, and scripts in
+   battles (`BattleScripts`: one immutable view per tick, per-script order buffers merged in a fixed
+   order as validated commands, blocks, script orders outside the log). Open: attaching game-object
+   scripts to entities from their XML type, `Spawn_Unit`, `Find_Hint`, proximity events through the
+   queue; decide whether running script state must be saveable (it shapes Persistence) and whether
+   the instruction budget should be lower (a runaway resume costs about 73 ms).
 2. The tactical host API, ranked by the survey, replacing stubs as Simulation stage 2 provides the
    systems.
 3. The galactic and story API.

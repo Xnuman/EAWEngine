@@ -203,7 +203,9 @@ Story events fire in key order, not in their campaign's order, so states that re
 earlier state set fail; those errors are the survey's, not the host's. The summary lists the
 events queued, the most used functions, and the most common errors; `--report <folder>` writes
 `api.tsv` (name, function or method, host-implemented or stub, scripts, calls, argument types) and
-`scripts.tsv` (per script: loaded, errors, exited, threads left, events queued, first error). Compiled scripts are
+`scripts.tsv` (per script: loaded, errors, exited, threads left, events queued, the time of its
+ticks in all and of its slowest tick, first error). The summary also gives the scripts' average cost
+per tick and the slowest single ticks. Compiled scripts are
 refused (Lua 5.0 does not verify bytecode), and each call or resume stops after its instruction
 budget, so a runaway script cannot hang the survey.
 

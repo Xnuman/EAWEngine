@@ -12,6 +12,8 @@ set(EAW_ENGINE_SOURCES
     battle_log.hpp
     battle_runner.cpp
     battle_runner.hpp
+    battle_scripts.cpp
+    battle_scripts.hpp
     camera_controller.cpp
     camera_controller.hpp
     camera_math.cpp
@@ -55,4 +57,4 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_ENGINE_SOURCES})
 
 add_library(eaw_engine STATIC ${EAW_ENGINE_SOURCES})
 target_include_directories(eaw_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(eaw_engine PUBLIC eaw_assets eaw_simulation eaw_render_contract)
+target_link_libraries(eaw_engine PUBLIC eaw_assets eaw_script eaw_simulation eaw_render_contract)

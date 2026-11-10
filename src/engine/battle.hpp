@@ -72,6 +72,16 @@ struct BattleCommand
     Stance stance{Stance::aggressive};
 };
 
+// Who gave an order. Player orders are recorded in the battle log; script orders are not, because a
+// replay runs the same scripts again and they give the same orders (the lockstep model: only player
+// input is exchanged, everything else is computed). Player orders will be checked against the
+// owner the player commands once the player layer exists; scripts may order any entity.
+enum class BattleOrigin : std::uint8_t
+{
+    player,
+    script,
+};
+
 // An order and the tick it was given at: it applies in the step after that many ticks ran.
 struct BattleLogEntry
 {
@@ -108,11 +118,12 @@ public:
     // first. Their visual keys follow the existing types (spawnable_visual).
     std::size_t add_spawnable(std::span<const SpawnableType> types);
 
-    // Validates an order, queues its simulation commands for the next tick, and records it. Unknown
-    // types, counts above 1000, owners beyond the hostility table, non-finite points, type names
-    // with whitespace (they could not be recorded), and orders without entities are errors that
-    // queue and record nothing.
-    Status submit(const BattleCommand& command);
+    // Validates an order, queues its simulation commands for the next tick, records it when a player
+    // gave it, and returns its serial: entities it applies to report it as their
+    // EntitySnapshot::command_serial until a later order replaces it. Unknown types, counts above
+    // 1000, owners beyond the hostility table, non-finite points, type names with whitespace (they
+    // could not be recorded), and orders without entities are errors that queue and record nothing.
+    Result<std::uint64_t> submit(const BattleCommand& command, BattleOrigin origin = BattleOrigin::player);
     void step();
     [[nodiscard]] const BattleLog& log() const noexcept;
 
@@ -124,6 +135,7 @@ private:
     std::vector<SpawnableType> spawnable_;
     std::vector<std::optional<EntityId>> map_ids_;
     BattleLog log_;
+    std::uint64_t next_serial_{1};
 };
 
 } // namespace eaw

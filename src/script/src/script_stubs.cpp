@@ -34,7 +34,7 @@ int stub_call(lua_State* state)
     auto& host = host_of(state);
     const std::string name = lua_tostring(state, lua_upvalueindex(1));
     // Argument 1 is the stub itself.
-    host.recorder.record(name, host.script_name, argument_signature(state, 2), false);
+    host.record(state, name, 2, false);
     for (int index = 2; index <= lua_gettop(state); ++index)
     {
         if (lua_isfunction(state, index) && !lua_iscfunction(state, index))
@@ -179,6 +179,11 @@ std::string argument_signature(lua_State* state, const int first)
         if (const auto origin = stub_origin(state, index))
         {
             signature += "object(" + *origin + ")";
+            continue;
+        }
+        if (const auto object = object_at(state, index))
+        {
+            signature += "object(" + std::string(object_kind_name(state, *object)) + ")";
             continue;
         }
         signature += lua_typename(state, lua_type(state, index));

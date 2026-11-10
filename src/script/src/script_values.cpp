@@ -48,6 +48,12 @@ Result<ScriptValue> read_at(lua_State* state, const int index, const int depth, 
     case LUA_TFUNCTION:
         value.kind = ScriptValue::Kind::function;
         return value;
+    case LUA_TUSERDATA:
+        if (const auto object = object_at(state, index))
+        {
+            value = ScriptValue::real_object(*object, object_kind_name(state, *object));
+        }
+        return value;
     case LUA_TTABLE:
         break;
     default:
@@ -141,6 +147,15 @@ ScriptValue ScriptValue::object(const std::string_view name)
     return result;
 }
 
+ScriptValue ScriptValue::real_object(const ScriptObject& object, const std::string_view kind_name)
+{
+    ScriptValue result;
+    result.kind = Kind::object;
+    result.text = kind_name;
+    result.handle = object;
+    return result;
+}
+
 const ScriptValue* ScriptValue::field(const std::string_view key) const
 {
     const auto found = std::ranges::find_if(fields,
@@ -175,6 +190,11 @@ void push_value(lua_State* state, const ScriptValue& value)
         lua_pushlstring(state, value.text.data(), value.text.size());
         return;
     case ScriptValue::Kind::object:
+        if (value.handle)
+        {
+            push_object(state, *value.handle);
+            return;
+        }
         push_global_stub(state, value.text);
         return;
     case ScriptValue::Kind::table:

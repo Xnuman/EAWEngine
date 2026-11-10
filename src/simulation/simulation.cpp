@@ -128,6 +128,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     yaw_rates_.push_back(0.0F);
     speeds_.push_back(0.0F);
     last_shot_ticks_.push_back(0);
+    command_serials_.push_back(0);
     looping_.push_back(0);
     rolls_.push_back(0.0F);
     intents_.emplace_back();
@@ -357,6 +358,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         yaw_rates_[dense] = yaw_rates_[last];
         speeds_[dense] = speeds_[last];
         last_shot_ticks_[dense] = last_shot_ticks_[last];
+        command_serials_[dense] = command_serials_[last];
         looping_[dense] = looping_[last];
         rolls_[dense] = rolls_[last];
         intents_[dense] = intents_[last];
@@ -396,6 +398,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     yaw_rates_.pop_back();
     speeds_.pop_back();
     last_shot_ticks_.pop_back();
+    command_serials_.pop_back();
     looping_.pop_back();
     rolls_.pop_back();
     intents_.pop_back();
@@ -536,7 +539,8 @@ void SimulationWorld::publish()
                                       yaw_rates_[index],
                                       speeds_[index],
                                       rolls_[index],
-                                      last_shot_ticks_[index]});
+                                      last_shot_ticks_[index],
+                                      command_serials_[index]});
     }
     snapshot_.deaths = deaths_;
     snapshot_.impacts = impacts_;
