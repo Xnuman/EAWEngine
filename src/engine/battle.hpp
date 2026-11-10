@@ -61,6 +61,8 @@ enum class BattleOrder : std::uint8_t
     stop,
     // `entities` take `stance`.
     set_stance,
+    // `entities` leave the battle at once, without dying (no death effects or corpses).
+    remove,
 };
 
 struct BattleCommand

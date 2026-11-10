@@ -291,6 +291,7 @@ ScriptTypeInfo type_script_info(const GameObjectCatalog& catalog, const XmlDefin
     {
         info.lua_script = std::string(ascii_trim(node->text));
     }
+    info.combat_rating = type_float_field(catalog, definition, "AI_Combat_Power");
     // CategoryMask: names separated by '|' (stock), commas, or whitespace.
     if (const auto* node = catalog.field(definition, "CategoryMask").field)
     {

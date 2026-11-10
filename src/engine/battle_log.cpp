@@ -142,6 +142,9 @@ std::string format_battle_log(const BattleLog& log)
             out += " stance ";
             out += stance_name(command.stance);
             break;
+        case BattleOrder::remove:
+            out += " remove";
+            break;
         }
         for (const auto id : command.entities)
         {
@@ -318,6 +321,10 @@ Result<BattleLog> parse_battle_log(const std::string_view text)
         else if (order == "stop")
         {
             command.order = BattleOrder::stop;
+        }
+        else if (order == "remove")
+        {
+            command.order = BattleOrder::remove;
         }
         else if (order == "stance")
         {

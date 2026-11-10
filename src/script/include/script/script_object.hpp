@@ -58,6 +58,8 @@ public:
 
     [[nodiscard]] int argument_count() const noexcept;
     [[nodiscard]] bool is_nil(int argument) const;
+    // Lua truthiness: false for nil (or a missing argument) and false, true for everything else.
+    [[nodiscard]] bool truthy(int argument) const;
     [[nodiscard]] std::optional<double> number(int argument) const;
     [[nodiscard]] std::optional<std::string_view> string(int argument) const;
     // A real object of any kind (stubs and other values are nothing).

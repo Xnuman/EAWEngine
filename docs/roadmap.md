@@ -82,8 +82,9 @@ Proposed on 2026-11-10 with this roadmap; it continues the owner's order of 2026
 review, combat presentation, sound, player layer) with sound and the player layer moved to M4, where
 the skirmish needs them, and the open M2 render work placed by what depends on it:
 
-1. Scripting stage 1: the rest of the tactical API by survey rank that needs no players (the type
-   and object queries); `Spawn_Unit`, `Find_Player`, and `Find_Nearest` follow the player layer.
+1. Scripting stage 1: the script calls that need new simulation features (guarding, attack-move,
+   invulnerability, direct damage, teleporting, suspending locomotion; they change the state hash);
+   `Spawn_Unit`, `Find_Player`, and `Find_Nearest` follow the player layer.
 2. Rendering stage 1, the part combat presentation needs: damage-state (`_ALT<n>`) and LOD
    switching, runtime decals, depth-sorted transparency.
 3. Simulation stage 1's remainder: combat presentation and fidelity.

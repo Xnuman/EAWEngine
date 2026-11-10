@@ -257,6 +257,9 @@ Result<SimCommand> Battle::translate(const BattleCommand& command) const
         translated.kind = SimCommandKind::set_stance;
         translated.stance = command.stance;
         break;
+    case BattleOrder::remove:
+        translated.kind = SimCommandKind::destroy;
+        break;
     case BattleOrder::spawn:
         break;
     }

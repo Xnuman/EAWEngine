@@ -249,6 +249,11 @@ bool ScriptCall::is_nil(const int argument) const
     return argument > arguments_ || lua_isnil(state_, argument);
 }
 
+bool ScriptCall::truthy(const int argument) const
+{
+    return argument <= arguments_ && lua_toboolean(state_, argument) != 0;
+}
+
 std::optional<double> ScriptCall::number(const int argument) const
 {
     if (argument > arguments_ || lua_type(state_, argument) != LUA_TNUMBER)

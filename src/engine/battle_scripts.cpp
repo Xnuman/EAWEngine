@@ -37,11 +37,34 @@ enum class GameObjectMethod : std::size_t
     service_wrapper,
     get_distance,
     is_category,
+    get_shield,
+    despawn,
+    prevent_opportunity_fire,
 };
-constexpr std::array<std::string_view, 14> game_object_methods{
-    "Is_Valid",        "Get_ID",       "Get_Type",   "Get_Owner", "Get_Position", "Get_Hull", "Move_To", "Attack_Target", "Stop", "Event_Object_In_Range", "Cancel_Event_Object_In_Range",
-    "Service_Wrapper", "Get_Distance", "Is_Category"};
-constexpr std::array<std::string_view, 1> object_type_methods{"Get_Name"};
+constexpr std::array<std::string_view, 17> game_object_methods{"Is_Valid",
+                                                               "Get_ID",
+                                                               "Get_Type",
+                                                               "Get_Owner",
+                                                               "Get_Position",
+                                                               "Get_Hull",
+                                                               "Move_To",
+                                                               "Attack_Target",
+                                                               "Stop",
+                                                               "Event_Object_In_Range",
+                                                               "Cancel_Event_Object_In_Range",
+                                                               "Service_Wrapper",
+                                                               "Get_Distance",
+                                                               "Is_Category",
+                                                               "Get_Shield",
+                                                               "Despawn",
+                                                               "Prevent_Opportunity_Fire"};
+enum class ObjectTypeMethod : std::size_t
+{
+    get_name,
+    is_hero,
+    get_combat_rating,
+};
+constexpr std::array<std::string_view, 3> object_type_methods{"Get_Name", "Is_Hero", "Get_Combat_Rating"};
 constexpr std::array<std::string_view, 1> player_methods{"Get_ID"};
 enum class BlockMethod : std::size_t
 {
@@ -402,9 +425,31 @@ Status BattleScriptContext::call_method(const ScriptObject& object, const std::s
     case game_object_kind:
         return call_game_object(object, static_cast<GameObjectMethod>(method), call);
     case object_type_kind:
-        // Get_Name: the type name as the data spells it.
-        call.return_string(view_.type_name(object.index));
+    {
+        const auto* info = view_.type_info(object.index);
+        switch (static_cast<ObjectTypeMethod>(method))
+        {
+        case ObjectTypeMethod::get_name:
+            // The type name as the data spells it.
+            call.return_string(view_.type_name(object.index));
+            break;
+        case ObjectTypeMethod::is_hero:
+        {
+            // No XML field says it; a hero category does (LandHero, SpaceHero, NonCombatHero), an
+            // inference.
+            const auto hero = [](const std::string& category)
+            {
+                return category.ends_with("hero");
+            };
+            call.return_boolean(info != nullptr && std::ranges::any_of(info->categories, hero));
+            break;
+        }
+        case ObjectTypeMethod::get_combat_rating:
+            call.return_number(info != nullptr ? info->combat_rating : 0.0);
+            break;
+        }
         return {};
+    }
     case player_kind:
         // Get_ID: the owner slot (players are owner slots until the player layer exists).
         call.return_number(object.index);
@@ -555,6 +600,22 @@ Status BattleScriptContext::call_game_object(const ScriptObject& object, const G
             point = other->position;
         }
         call.return_number(std::sqrt(static_cast<double>(ground_distance_squared(entity->position, point))));
+        break;
+    }
+    case GameObjectMethod::get_shield:
+        // The shield's share left, like Get_Hull (scripts compare it with 0.33); none reads 0.
+        call.return_number(entity->max_shield > 0.0F ? static_cast<double>(entity->shield / entity->max_shield) : 0.0);
+        break;
+    case GameObjectMethod::despawn:
+        // The object leaves without dying (no death effects); in the next tick, like every order.
+        (void)order({.order = BattleOrder::remove, .entities = {id}}, id, {}, false, false);
+        break;
+    case GameObjectMethod::prevent_opportunity_fire:
+    {
+        // Prevent_Opportunity_Fire(true): fire only at ordered targets, the engine's hold_fire
+        // stance; false returns to aggressive (a mapping onto engine stances, not the original's).
+        const bool prevent = call.truthy(1);
+        (void)order({.order = BattleOrder::set_stance, .entities = {id}, .stance = prevent ? Stance::hold_fire : Stance::aggressive}, id, {}, false, false);
         break;
     }
     case GameObjectMethod::is_category:

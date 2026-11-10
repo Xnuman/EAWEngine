@@ -246,6 +246,7 @@ void test_battle_log()
     const auto first = recorded.world().snapshot().entities.front().id;
     expect_ok(recorded.submit({.order = eaw::BattleOrder::set_stance, .entities = {first}, .stance = eaw::Stance::hold_fire}), "stance");
     expect_ok(recorded.submit({.order = eaw::BattleOrder::move, .entities = {first}, .point = {-500.3F, 77.7F, 0.0F}}), "move");
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::remove, .entities = {recorded.world().snapshot().entities.back().id}}), "remove");
     for (int tick = 0; tick < 250; ++tick)
     {
         recorded.step();
@@ -266,6 +267,7 @@ void test_battle_log()
         replayed.step();
     }
     require(replayed.world().state_hash() == *reread->end_hash, "replaying a recorded log must reproduce the battle's state hash");
+    require(eaw::format_battle_log(log_out).find(" remove ") != std::string::npos, "a remove order must be written to the log");
 }
 
 // Types added at runtime: the battle offsets company members, presentation draws spawned entities
@@ -450,6 +452,7 @@ void test_battle_object_scripts()
                        "function Near(self, other)\n"
                        "  print(\"near \" .. other.Get_Type().Get_Name())\n"
                        "  self.Cancel_Event_Object_In_Range(Near)\n"
+                       "  other.Despawn()\n"
                        "end\n"
                        "function main()\n"
                        "  print(\"hint \" .. tostring(Find_Hint(\"beacon\", \"GATE\") == Object) .. \" \" .. table.getn(Find_All_Objects_With_Hint(\"gate\")) .. \" \" .. "
@@ -462,6 +465,9 @@ void test_battle_object_scripts()
                                "  print(\"walker \" .. Object.Get_Type().Get_Name() .. \" \" .. Get_Game_Mode() .. \" \" .. tostring(Object.Is_Category(\"INFANTRY\")) .. \" \" .. "
                                "tostring(Object.Is_Category(\"Vehicle | Infantry\")) .. \" \" .. tostring(Object.Is_Category(\"Vehicle\")) .. \" \" .. "
                                "Object.Get_Distance(Find_Hint(\"Beacon\", \"gate\")))\n"
+                               "  print(\"shield \" .. Object.Get_Shield() .. \" hero \" .. tostring(Object.Get_Type().Is_Hero()) .. \" rating \" .. "
+                               "Object.Get_Type().Get_Combat_Rating())\n"
+                               "  Object.Prevent_Opportunity_Fire(true)\n"
                                "  print(tostring(Script))\n"
                                "  _ScriptMessage(\"debug line\")\n"
                                "  while true do PumpEvents() end\n"
@@ -474,7 +480,9 @@ void test_battle_object_scripts()
     walker.max_speed = 60.0F;
     walker.radius = 1.0F;
     walker.script.lua_script = "Walker_Script";
-    walker.script.categories = {"infantry"};
+    walker.script.categories = {"infantry", "landhero"};
+    walker.script.combat_rating = 42.0F;
+    walker.combat.shield = 10.0F;
     eaw::SpawnableType broken;
     broken.type_name = "Broken";
     broken.script.lua_script = "No_Such_Script";
@@ -501,6 +509,19 @@ void test_battle_object_scripts()
     scripts.run(battle);
     require(scripts.size() == 2, "a spawned entity must get its type's script, and a missing script must start nothing");
     const auto walker_id = battle.world().snapshot().entities[1].id;
+    for (int tick = 0; tick < 10; ++tick)
+    {
+        battle.step();
+        scripts.run(battle);
+    }
+    // Read the walker's script before the beacon's proximity handler despawns the walker.
+    const auto walker_output = scripts.host(1).output();
+    require(std::ranges::count(walker_output, "walker Walker Space true true false 300") == 1,
+            "a spawned entity's script must see its own object, the game mode, its categories, and distances in the ground plane");
+    require(std::ranges::count(walker_output, "shield 1 hero true rating 42") == 1, "scripts must read shields, the hero flag, and the combat rating");
+    require(std::ranges::count(walker_output, "WALKER_SCRIPT.LUA") == 1 && std::ranges::count(walker_output, "debug line") == 1,
+            "Script must name the script, and debug messages must reach the output");
+    require(battle.world().snapshot().entities[1].id == walker_id && scripts.host(1).errors().empty(), "the walker's script must run without errors");
     expect_ok(battle.submit({.order = eaw::BattleOrder::move, .entities = {walker_id}, .point = {300.0F, 0.0F, 0.0F}}), "moving the walker to the beacon");
     for (int tick = 0; tick < 300; ++tick)
     {
@@ -514,12 +535,8 @@ void test_battle_object_scripts()
     };
     require(count("hint true 1 nil") == 1, "Find_Hint must find the hinted object by type and hint ignoring case, and nothing for another type");
     require(count("near Walker") == 1, "the proximity handler must run once the walker is in range, and not after it cancelled itself");
-    const auto& walker_output = scripts.host(1).output();
-    require(std::ranges::count(walker_output, "walker Walker Space true true false 300") == 1,
-            "a spawned entity's script must see its own object, the game mode, its categories, and distances in the ground plane");
-    require(std::ranges::count(walker_output, "WALKER_SCRIPT.LUA") == 1 && std::ranges::count(walker_output, "debug line") == 1,
-            "Script must name the script, and debug messages must reach the output");
-    require(scripts.host(0).errors().empty() && scripts.host(1).errors().empty(), "the scripts must run without errors");
+    require(scripts.host(0).errors().empty(), "the beacon's script must run without errors");
+    require(!battle.world().alive(walker_id) && scripts.size() == 1, "a despawned object must leave the battle, and its script end with it");
     std::filesystem::remove_all(root, ignored);
 }
 

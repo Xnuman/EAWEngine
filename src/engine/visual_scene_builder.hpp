@@ -117,11 +117,13 @@ struct DeathStyle
 };
 
 // What scripts read of an object type beyond its name: its game-object script (XML Lua_Script;
-// empty: none) and its categories (XML CategoryMask, folded: "infantry", "landhero").
+// empty: none), its categories (XML CategoryMask, folded: "infantry", "landhero"), and its combat
+// rating (XML AI_Combat_Power, which Get_Combat_Rating presumably reads; 0 when absent).
 struct ScriptTypeInfo
 {
     std::string lua_script;
     std::vector<std::string> categories;
+    float combat_rating{};
 };
 
 struct MapEntitySpawn
