@@ -4,7 +4,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <span>
 #include <string>
 #include <string_view>
@@ -37,8 +36,7 @@ struct DatIssue
 class DatFile final
 {
 public:
-    // Errors name the file or the malformed part of the table.
-    [[nodiscard]] static Result<DatFile> load(const std::filesystem::path& path);
+    // Errors name the malformed part of the table.
     [[nodiscard]] static Result<DatFile> parse(std::span<const std::byte> bytes);
 
     [[nodiscard]] std::span<const DatEntry> entries() const noexcept;
@@ -51,7 +49,6 @@ public:
     [[nodiscard]] bool erase(std::string_view key);
     [[nodiscard]] std::vector<DatIssue> validate() const;
     [[nodiscard]] Result<std::vector<std::byte>> serialize() const;
-    [[nodiscard]] Status save(const std::filesystem::path& path, bool overwrite = false) const;
 
 private:
     std::vector<DatEntry> entries_;

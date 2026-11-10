@@ -4,14 +4,9 @@
 
 #include <algorithm>
 #include <array>
-#include <fstream>
 #include <sstream>
 #include <tuple>
 #include <unordered_map>
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 namespace eaw {
 namespace {
@@ -117,23 +112,11 @@ std::string quote_tsv(const std::string_view value)
     return result;
 }
 
-Result<std::string> read_text(const std::filesystem::path& path)
-{
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream)
-    {
-        return make_error("could not open localization workspace: " + path.string());
-    }
-    std::ostringstream contents;
-    contents << stream.rdbuf();
-    return contents.str();
-}
-
 } // namespace
 
 Result<std::vector<LocalizationRow>> read_localization_workspace(const std::filesystem::path& path)
 {
-    EAW_TRY_ASSIGN(const auto text, read_text(path));
+    EAW_TRY_ASSIGN(const auto text, read_text_file(path));
     auto parsed = parse_tsv(text);
     if (!parsed)
     {
@@ -177,59 +160,17 @@ Result<std::vector<LocalizationRow>> read_localization_workspace(const std::file
 
 Status write_localization_workspace(const std::filesystem::path& path, const std::vector<LocalizationRow>& rows, const bool overwrite)
 {
-    std::error_code filesystem_error;
-    if (std::filesystem::exists(path, filesystem_error) && !overwrite)
+    std::string text = "\xef\xbb\xbf"
+                       "Key\tText\tGroup\tStatus\tContext\tNotes\r\n";
+    for (const auto& row : rows)
     {
-        return make_error("workspace already exists; pass --force to replace it: " + path.string());
+        text += quote_tsv(row.key) + '\t' + quote_tsv(row.text) + '\t' + quote_tsv(row.group) + '\t' + quote_tsv(row.status) + '\t' + quote_tsv(row.context) + '\t' + quote_tsv(row.notes) + "\r\n";
     }
-    if (const auto parent = path.parent_path(); !parent.empty())
+    auto written = write_text_file(path, text, overwrite ? WriteMode::replace : WriteMode::create_only);
+    if (!written)
     {
-        std::filesystem::create_directories(parent, filesystem_error);
-        if (filesystem_error)
-        {
-            return make_error("could not create localization workspace directory (" + filesystem_error.message() + "): " + parent.string());
-        }
+        return with_context("localization workspace", std::move(written).error());
     }
-
-    auto temporary = path;
-    temporary += ".tmp";
-    {
-        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-        if (!stream)
-        {
-            return make_error("could not create localization workspace: " + temporary.string());
-        }
-        stream << "\xef\xbb\xbf"
-               << "Key\tText\tGroup\tStatus\tContext\tNotes\r\n";
-        for (const auto& row : rows)
-        {
-            stream << quote_tsv(row.key) << '\t' << quote_tsv(row.text) << '\t' << quote_tsv(row.group) << '\t' << quote_tsv(row.status) << '\t' << quote_tsv(row.context) << '\t'
-                   << quote_tsv(row.notes) << "\r\n";
-        }
-        stream.flush();
-        if (!stream)
-        {
-            return make_error("could not write localization workspace: " + temporary.string());
-        }
-    }
-#ifdef _WIN32
-    const DWORD flags = MOVEFILE_WRITE_THROUGH | (overwrite ? MOVEFILE_REPLACE_EXISTING : 0U);
-    if (!MoveFileExW(temporary.c_str(), path.c_str(), flags))
-    {
-        const auto error = GetLastError();
-        std::error_code ignored;
-        std::filesystem::remove(temporary, ignored);
-        return make_error("could not commit localization workspace (Windows error " + std::to_string(error) + "): " + path.string());
-    }
-#else
-    std::filesystem::rename(temporary, path, filesystem_error);
-    if (filesystem_error)
-    {
-        std::error_code ignored;
-        std::filesystem::remove(temporary, ignored);
-        return make_error("could not commit localization workspace (" + filesystem_error.message() + "): " + path.string());
-    }
-#endif
     return Status::success();
 }
 
@@ -343,6 +284,23 @@ std::array<LocalizationRow, 2> unit_localization_rows(const std::string& id, std
 {
     return {LocalizationRow{"TEXT_UNIT_" + id, std::move(name), "unit:" + id, "ready", "Use in <Text_ID>", "Generated unit display-name key"},
             LocalizationRow{"TEXT_TOOLTIP_" + id, std::move(description), "unit:" + id, "ready", "Use in <Encyclopedia_Text>", "Generated unit description key"}};
+}
+
+Result<DatFile> load_dat_file(const std::filesystem::path& path)
+{
+    EAW_TRY_ASSIGN(const auto bytes, read_file(path));
+    auto dat = DatFile::parse(bytes);
+    if (!dat)
+    {
+        return with_context(path.string(), std::move(dat).error());
+    }
+    return dat;
+}
+
+Status save_dat_file(const std::filesystem::path& path, const DatFile& dat, const WriteMode mode)
+{
+    EAW_TRY_ASSIGN(const auto bytes, dat.serialize());
+    return write_file(path, bytes, mode);
 }
 
 } // namespace eaw

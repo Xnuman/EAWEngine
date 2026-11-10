@@ -2,6 +2,7 @@
 
 #include "eaw/asset_path.hpp"
 #include "core/string_utils.hpp"
+#include "core/file_io.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -51,16 +52,10 @@ std::optional<ResolvedAsset> DirectoryMount::resolve(const std::string_view virt
 
 Result<std::vector<std::byte>> DirectoryMount::read(const ResolvedAsset& asset) const
 {
-    std::ifstream stream(asset.container, std::ios::binary);
-    if (!stream)
+    auto bytes = read_file(asset.container);
+    if (!bytes)
     {
-        return make_error("could not open loose asset: " + asset.container.string());
-    }
-    std::vector<std::byte> bytes(static_cast<std::size_t>(asset.size));
-    stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    if (!stream)
-    {
-        return make_error("could not read loose asset: " + asset.container.string());
+        return with_context("loose asset", std::move(bytes).error());
     }
     return bytes;
 }

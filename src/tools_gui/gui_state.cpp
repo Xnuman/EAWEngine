@@ -300,7 +300,7 @@ ID3D11ShaderResourceView* GuiApp::State::load_texture(std::unordered_map<std::st
 
 void GuiApp::State::open_dat(const std::filesystem::path& path)
 {
-    const auto dat = DatFile::load(path);
+    const auto dat = load_dat_file(path);
     if (!dat)
     {
         fail(dat.error());
@@ -377,7 +377,7 @@ void GuiApp::State::validate_workspace()
     }
     if (base_dat_path)
     {
-        auto candidate = DatFile::load(*base_dat_path);
+        auto candidate = load_dat_file(*base_dat_path);
         const auto applied = candidate ? apply_localization_workspace(*candidate, rows, skip_todo) : Status(candidate.error());
         if (!applied)
         {
@@ -416,7 +416,7 @@ void GuiApp::State::build_dat(const std::filesystem::path& output)
         fail(make_error("Choose a different output path; EAWTools will not overwrite the baseline DAT"));
         return;
     }
-    auto loaded = DatFile::load(*base_dat_path);
+    auto loaded = load_dat_file(*base_dat_path);
     if (!loaded)
     {
         fail(loaded.error());
@@ -439,7 +439,7 @@ void GuiApp::State::build_dat(const std::filesystem::path& output)
         fail(make_error("The built DAT has " + std::to_string(errors) + " validation errors"));
         return;
     }
-    if (const auto status = dat.save(output, true); !status)
+    if (const auto status = save_dat_file(output, dat, WriteMode::replace); !status)
     {
         fail(status.error());
         return;
@@ -454,7 +454,7 @@ void GuiApp::State::scan_mod(const std::filesystem::path& mod_root)
         fail(make_error("Open a baseline DAT before scanning a mod"));
         return;
     }
-    const auto baseline = DatFile::load(*base_dat_path);
+    const auto baseline = load_dat_file(*base_dat_path);
     if (!baseline)
     {
         fail(baseline.error());

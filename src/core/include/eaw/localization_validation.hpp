@@ -4,7 +4,7 @@
 // tokens (printf conversions, "\\n"/"\\r" escapes, and [..], <..>, {..} placeholders), and the same
 // leading and trailing whitespace.
 
-#include "eaw/dat_file.hpp"
+#include "formats/dat_string_table.hpp"
 #include "core/status.hpp"
 
 #include <set>

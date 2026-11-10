@@ -1,7 +1,8 @@
 #include "image_compare_command.hpp"
 
-#include "eaw/png_file.hpp"
-#include "eaw/rgba_image.hpp"
+#include "formats/png_image.hpp"
+#include "formats/rgba_image.hpp"
+#include "core/file_io.hpp"
 
 #include <charconv>
 #include <filesystem>
@@ -107,8 +108,18 @@ int run_image_compare(const int argc, const char* const* argv)
         print_usage();
         return 2;
     }
-    const auto expected = read_png(files[0]);
-    const auto actual = read_png(files[1]);
+    const auto read_image = [](const std::filesystem::path& path) -> Result<RgbaImage>
+    {
+        EAW_TRY_ASSIGN(const auto bytes, read_file(path));
+        auto image = decode_png(bytes);
+        if (!image)
+        {
+            return with_context(path.string(), std::move(image).error());
+        }
+        return image;
+    };
+    const auto expected = read_image(files[0]);
+    const auto actual = read_image(files[1]);
     if (!expected || !actual)
     {
         std::cerr << "error: " << (!expected ? expected.error().message : actual.error().message) << '\n';
@@ -127,7 +138,8 @@ int run_image_compare(const int argc, const char* const* argv)
               << "Changed pixels (difference above " << threshold << "): " << difference->changed_pixels << " (" << std::setprecision(4) << changed * 100.0 << "%)\n";
     if (diff)
     {
-        if (const auto written = write_png(*diff, difference->visualization, true); !written)
+        const auto encoded = encode_png(difference->visualization);
+        if (const auto written = encoded ? write_file(*diff, *encoded, WriteMode::replace) : Status(encoded.error()); !written)
         {
             std::cerr << "error: " << written.error().message << '\n';
             return 1;

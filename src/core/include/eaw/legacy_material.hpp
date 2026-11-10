@@ -1,6 +1,6 @@
 #pragma once
 
-#include "eaw/alo_model.hpp"
+#include "formats/alo_model.hpp"
 
 #include <optional>
 #include <span>

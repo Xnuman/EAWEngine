@@ -12,15 +12,7 @@ namespace {
 
 bool contains_folded(const std::string_view text, const std::string_view needle)
 {
-    if (needle.empty())
-    {
-        return true;
-    }
-    const auto lower = [](const char character)
-    {
-        return eaw::ascii_lower(character);
-    };
-    return std::ranges::search(text, needle, {}, lower, lower).begin() != text.end();
+    return eaw::ascii_find_ignoring_case(text, needle) != std::string_view::npos;
 }
 
 } // namespace

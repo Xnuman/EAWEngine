@@ -1,3 +1,4 @@
+#include "eaw/alamo_pose.hpp"
 #include "unit_animation.hpp"
 
 #include "scene_presentation.hpp"
@@ -165,7 +166,7 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
         {
             const auto& clip = rig.clips[static_cast<std::size_t>(layer.clip)];
             const auto seconds = static_cast<float>(static_cast<double>(layer.slot) / static_cast<double>(slot_count(key.mesh, layer.clip)) * clip.animation->duration_seconds());
-            layer_pose = clip.animation->sample_local_pose(*rig.model, seconds);
+            layer_pose = ala_sample_local_pose(*clip.animation, *rig.model, seconds);
         }
         const auto weight = static_cast<float>(layer.eighths);
         if (pose.empty())

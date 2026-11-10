@@ -1,12 +1,9 @@
-#include "eaw/png_file.hpp"
+#include "formats/png_image.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cstring>
-#include <fstream>
-#include <iterator>
 #include <string>
-#include <system_error>
 
 namespace eaw {
 namespace {
@@ -250,48 +247,6 @@ Result<RgbaImage> decode_png(const std::span<const std::byte> bytes)
         std::memcpy(image.pixels.data() + row * row_bytes, source + 1, row_bytes);
     }
     return image;
-}
-
-Status write_png(const std::filesystem::path& path, const RgbaImage& image, const bool overwrite)
-{
-    std::error_code filesystem_error;
-    if (std::filesystem::exists(path, filesystem_error) && !overwrite)
-    {
-        return make_error("output already exists: " + path.string());
-    }
-    if (const auto parent = path.parent_path(); !parent.empty())
-    {
-        std::filesystem::create_directories(parent, filesystem_error);
-        if (filesystem_error)
-        {
-            return make_error("could not create the image directory (" + filesystem_error.message() + "): " + parent.string());
-        }
-    }
-    EAW_TRY_ASSIGN(const auto bytes, encode_png(image));
-    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-    stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    stream.flush();
-    if (!stream)
-    {
-        return make_error("could not write image: " + path.string());
-    }
-    return {};
-}
-
-Result<RgbaImage> read_png(const std::filesystem::path& path)
-{
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream)
-    {
-        return make_error("could not open image: " + path.string());
-    }
-    std::vector<char> text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-    auto decoded = decode_png(std::as_bytes(std::span(text)));
-    if (!decoded)
-    {
-        return with_context(path.string(), std::move(decoded).error());
-    }
-    return decoded;
 }
 
 } // namespace eaw

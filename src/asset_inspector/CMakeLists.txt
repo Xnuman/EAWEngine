@@ -1,4 +1,4 @@
-# EAWAssetInspector: command-line inspection and corpus audits on eaw_core.
+# EAWAssetInspector: command-line inspection and corpus audits on the core and format libraries.
 
 add_executable(EAWAssetInspector)
 
@@ -38,5 +38,5 @@ target_sources(EAWAssetInspector
 
 target_link_libraries(EAWAssetInspector
     PRIVATE
-        eaw_core
+        eaw_core_transitional
 )

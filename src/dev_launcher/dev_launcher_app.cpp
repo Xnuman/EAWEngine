@@ -9,6 +9,7 @@
 #include "eaw/spawn_catalog.hpp"
 #include "eaw/virtual_file_system.hpp"
 #include "core/string_utils.hpp"
+#include "core/file_io.hpp"
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -148,16 +149,21 @@ struct DevLauncherApp::State
 
     void load_presets()
     {
-        std::ifstream file(presets_path, std::ios::binary);
-        if (!file)
+        std::error_code missing;
+        if (!std::filesystem::exists(presets_path, missing))
         {
             scenarios = {SandboxScenario{}};
             report("No saved scenarios yet; presets are stored in " + presets_path.string());
             return;
         }
-        std::ostringstream text;
-        text << file.rdbuf();
-        auto parsed = parse_scenarios(text.str());
+        const auto text = read_text_file(presets_path);
+        if (!text)
+        {
+            scenarios = {SandboxScenario{}};
+            report(text.error().message, true);
+            return;
+        }
+        auto parsed = parse_scenarios(*text);
         if (!parsed)
         {
             scenarios = {SandboxScenario{}};
@@ -178,22 +184,10 @@ struct DevLauncherApp::State
 
     void save_presets()
     {
-        // Write a sibling file first, then replace, so a failed write keeps the old presets.
-        const auto temporary = std::filesystem::path(presets_path).concat(".new");
+        // A failed write keeps the old presets (file_io writes a sibling file and renames it).
+        if (const auto written = write_text_file(presets_path, serialize_scenarios(scenarios), WriteMode::replace); !written)
         {
-            std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
-            file << serialize_scenarios(scenarios);
-            if (!file)
-            {
-                report("could not write " + temporary.string(), true);
-                return;
-            }
-        }
-        std::error_code error;
-        std::filesystem::rename(temporary, presets_path, error);
-        if (error)
-        {
-            report("could not replace " + presets_path.string() + ": " + error.message(), true);
+            report(written.error().message, true);
             return;
         }
         dirty = false;

@@ -1,10 +1,11 @@
+#include "eaw/alamo_pose.hpp"
 #include "test_support.hpp"
 
 #include "math/transform.hpp"
 
 #include "eaw/alo_interpretation.hpp"
-#include "eaw/chunk_file.hpp"
-#include "eaw/png_file.hpp"
+#include "formats/alamo_chunks.hpp"
+#include "formats/png_image.hpp"
 #include "eaw/localization_validation.hpp"
 
 namespace {
@@ -236,7 +237,7 @@ void test_ala_animation()
     require(animation.tracks.size() == 1 && animation.tracks[0].name == "ROOT" && animation.tracks[0].translation && animation.tracks[0].rotation && !animation.tracks[0].scale &&
                 animation.tracks[0].visibility && animation.tracks[0].frames.size() == 31,
             "ALA bone track decoding failed");
-    const auto pose = animation.sample_pose(expect_ok(eaw::AloModel::parse(make_test_alo()), "ALO parse"), 0.5F);
+    const auto pose = eaw::ala_sample_pose(animation, expect_ok(eaw::AloModel::parse(make_test_alo()), "ALO parse"), 0.5F);
     require(pose.size() == 1 && pose[0].visible, "ALA sampled pose decoding failed");
 }
 
@@ -280,8 +281,8 @@ void test_ala_blending()
     const auto animation = expect_ok(eaw::AlaAnimation::parse(make_test_ala()), "ALA parse");
     for (const auto seconds : {0.0F, 0.25F, 0.5F, 1.75F, -0.3F})
     {
-        const auto direct = animation.sample_pose(model, seconds);
-        const auto composed = eaw::ala_compose_pose(model, animation.sample_local_pose(model, seconds));
+        const auto direct = eaw::ala_sample_pose(animation, model, seconds);
+        const auto composed = eaw::ala_compose_pose(model, eaw::ala_sample_local_pose(animation, model, seconds));
         require(direct.size() == composed.size() && near(direct[0].transform, composed[0].transform, 1.0e-4F) && direct[0].visible == composed[0].visible,
                 "a composed local pose must match sample_pose");
     }

@@ -1,4 +1,4 @@
-#include "eaw/lua_script.hpp"
+#include "formats/lua_bytecode.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>

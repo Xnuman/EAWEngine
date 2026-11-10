@@ -1,4 +1,4 @@
-#include "eaw/rgba_image.hpp"
+#include "formats/rgba_image.hpp"
 
 #include <algorithm>
 #include <cstdlib>

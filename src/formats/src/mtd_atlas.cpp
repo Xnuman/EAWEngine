@@ -1,6 +1,6 @@
-#include "eaw/mtd_directory.hpp"
+#include "formats/mtd_atlas.hpp"
 
-#include "eaw/dat_file.hpp"
+#include "formats/dat_string_table.hpp"
 
 #include <algorithm>
 #include <limits>

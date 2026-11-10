@@ -1,5 +1,5 @@
-#include "eaw/chunk_file.hpp"
-#include "eaw/particle_system.hpp"
+#include "formats/alamo_chunks.hpp"
+#include "formats/alo_particle_system.hpp"
 
 #include <algorithm>
 #include <bit>

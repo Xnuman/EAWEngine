@@ -1,10 +1,11 @@
 #pragma once
 
-#include "eaw/ala_animation.hpp"
+#include "eaw/alamo_pose.hpp"
+#include "formats/ala_animation.hpp"
 #include "eaw/simulation.hpp"
 #include "terrain_height.hpp"
-#include "eaw/alo_model.hpp"
-#include "eaw/ted_map.hpp"
+#include "formats/alo_model.hpp"
+#include "formats/ted_map.hpp"
 #include "eaw/visual_scene.hpp"
 #include "particle_effects.hpp"
 #include "projectile_visuals.hpp"

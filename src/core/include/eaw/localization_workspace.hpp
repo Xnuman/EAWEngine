@@ -1,6 +1,7 @@
 #pragma once
 
-#include "eaw/dat_file.hpp"
+#include "core/file_io.hpp"
+#include "formats/dat_string_table.hpp"
 
 #include <array>
 #include <filesystem>
@@ -21,6 +22,10 @@ struct LocalizationRow
 };
 
 // Errors name the file, the malformed TSV structure, or the entry that could not be converted.
+// A DAT string table from disk, and back (file_io plus the format's reader and writer).
+[[nodiscard]] Result<DatFile> load_dat_file(const std::filesystem::path& path);
+[[nodiscard]] Status save_dat_file(const std::filesystem::path& path, const DatFile& dat, WriteMode mode);
+
 [[nodiscard]] Result<std::vector<LocalizationRow>> read_localization_workspace(const std::filesystem::path& path);
 [[nodiscard]] Status write_localization_workspace(const std::filesystem::path& path, const std::vector<LocalizationRow>& rows, bool overwrite = false);
 [[nodiscard]] Result<std::vector<LocalizationRow>> diff_localization(const DatFile& base, const DatFile& edited);

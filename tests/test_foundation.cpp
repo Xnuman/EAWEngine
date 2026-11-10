@@ -72,6 +72,12 @@ void test_string_utils()
     require(eaw::ascii_trim(" \t\r\n\v\fvalue \t") == "value" && eaw::ascii_trim(" \t ").empty() && eaw::ascii_trim("a b") == "a b", "trimming must remove only outer ASCII whitespace");
     require(eaw::ascii_equal_ignoring_case("TIE_Fighter", "tie_FIGHTER") && !eaw::ascii_equal_ignoring_case("TIE", "TIES") && !eaw::ascii_equal_ignoring_case("a", "b"),
             "case-insensitive equality must compare every character and the length");
+    require(eaw::ascii_find_ignoring_case("Data/Path=x; PATH=y", "path", 6) == 13 && eaw::ascii_find_ignoring_case("abc", "") == 0 &&
+                eaw::ascii_find_ignoring_case("ab", "abc") == std::string_view::npos && eaw::ascii_is_space('\v') && !eaw::ascii_is_space('_'),
+            "case-insensitive search and the whitespace test");
+    std::string encoded;
+    require(eaw::append_utf8(encoded, U'\x20AC') && encoded == "\xE2\x82\xAC" && !eaw::append_utf8(encoded, U'\xD800') && !eaw::append_utf8(encoded, 0x110000U) && encoded.size() == 3,
+            "append_utf8 must encode valid code points and refuse surrogates and values past U+10FFFF");
     const auto utf16 = eaw::utf8_to_utf16("A\xC3\xA9\xF0\x9F\x9A\x80");
     require(utf16 && utf16->size() == 4 && eaw::utf16_to_utf8(*utf16) == "A\xC3\xA9\xF0\x9F\x9A\x80", "UTF-8 and UTF-16 must round-trip, surrogate pairs included");
     require(!eaw::utf8_to_utf16("\xC0\x80") && !eaw::utf8_to_utf16("\xED\xA0\x80") && !eaw::utf8_to_utf16("\xE2\x82") && !eaw::utf16_to_utf8(std::u16string(1, u'\xDC00')),

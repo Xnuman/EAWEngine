@@ -1,5 +1,5 @@
-#include "eaw/chunk_file.hpp"
-#include "eaw/ted_map.hpp"
+#include "formats/alamo_chunks.hpp"
+#include "formats/ted_map.hpp"
 
 #include "core/string_utils.hpp"
 

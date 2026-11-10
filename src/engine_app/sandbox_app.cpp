@@ -1,7 +1,8 @@
 #include "sandbox_app.hpp"
 #include "sandbox_session.hpp"
 
-#include "eaw/png_file.hpp"
+#include "formats/png_image.hpp"
+#include "core/file_io.hpp"
 
 #include <array>
 #include <chrono>
@@ -144,7 +145,8 @@ void SandboxSession::write_finished_capture()
             continue;
         }
         capture_written = true;
-        if (const auto written = eaw::write_png(*options.capture, *image, true); !written)
+        const auto encoded = eaw::encode_png(*image);
+        if (const auto written = encoded ? eaw::write_file(*options.capture, *encoded, eaw::WriteMode::replace) : eaw::Status(encoded.error()); !written)
         {
             eaw::log_warning("capture", written.error());
         }

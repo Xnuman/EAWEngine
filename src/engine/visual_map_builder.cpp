@@ -2,9 +2,9 @@
 
 #include "combat_content.hpp"
 #include "eaw/spawn_catalog.hpp"
-#include "eaw/dds_texture.hpp"
+#include "formats/dds_texture.hpp"
 #include "eaw/map_object_layout.hpp"
-#include "eaw/xml_document.hpp"
+#include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>

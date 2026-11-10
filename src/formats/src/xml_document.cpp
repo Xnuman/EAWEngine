@@ -1,4 +1,4 @@
-#include "eaw/xml_document.hpp"
+#include "formats/xml_document.hpp"
 
 #include "core/string_utils.hpp"
 
@@ -10,37 +10,6 @@
 
 namespace eaw {
 namespace {
-
-Status append_utf8(std::string& output, const std::uint32_t code_point)
-{
-    if (code_point > 0x10ffffU || (code_point >= 0xd800U && code_point <= 0xdfffU))
-    {
-        return make_error("XML character reference is out of range");
-    }
-    if (code_point <= 0x7fU)
-    {
-        output.push_back(static_cast<char>(code_point));
-    }
-    else if (code_point <= 0x7ffU)
-    {
-        output.push_back(static_cast<char>(0xc0U | (code_point >> 6U)));
-        output.push_back(static_cast<char>(0x80U | (code_point & 0x3fU)));
-    }
-    else if (code_point <= 0xffffU)
-    {
-        output.push_back(static_cast<char>(0xe0U | (code_point >> 12U)));
-        output.push_back(static_cast<char>(0x80U | ((code_point >> 6U) & 0x3fU)));
-        output.push_back(static_cast<char>(0x80U | (code_point & 0x3fU)));
-    }
-    else
-    {
-        output.push_back(static_cast<char>(0xf0U | (code_point >> 18U)));
-        output.push_back(static_cast<char>(0x80U | ((code_point >> 12U) & 0x3fU)));
-        output.push_back(static_cast<char>(0x80U | ((code_point >> 6U) & 0x3fU)));
-        output.push_back(static_cast<char>(0x80U | (code_point & 0x3fU)));
-    }
-    return Status::success();
-}
 
 Result<std::string> decode_entities(const std::string_view input)
 {
@@ -90,7 +59,10 @@ Result<std::string> decode_entities(const std::string_view input)
             {
                 return make_error("invalid XML character reference");
             }
-            EAW_TRY(append_utf8(output, code_point));
+            if (!append_utf8(output, static_cast<char32_t>(code_point)))
+            {
+                return make_error("XML character reference is out of range");
+            }
         }
         else
         {

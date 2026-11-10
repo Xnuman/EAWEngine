@@ -6,10 +6,10 @@
 #include "asset_cache.hpp"
 #include "visual_scene_builder.hpp"
 
-#include "eaw/alo_model.hpp"
+#include "formats/alo_model.hpp"
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/legacy_material.hpp"
-#include "eaw/ted_map.hpp"
+#include "formats/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
 #include "math/matrix.hpp"

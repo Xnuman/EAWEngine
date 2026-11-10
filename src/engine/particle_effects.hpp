@@ -6,7 +6,7 @@
 // the same effect. How emitter fields become motion follows the MIT-licensed alo-viewer where it is
 // clear and is otherwise an engine choice (docs/compatibility-research.md, "Particle systems").
 
-#include "eaw/particle_system.hpp"
+#include "formats/alo_particle_system.hpp"
 #include "eaw/visual_scene.hpp"
 #include "particle_rules.hpp"
 

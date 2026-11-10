@@ -1,4 +1,5 @@
 #include "battle_log.hpp"
+#include "core/file_io.hpp"
 
 #include <array>
 #include <charconv>
@@ -374,45 +375,24 @@ Result<BattleLog> parse_battle_log(const std::string_view text)
 
 Status save_battle_log(const std::filesystem::path& path, const BattleLog& log)
 {
-    const auto text = format_battle_log(log);
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file)
+    auto written = write_text_file(path, format_battle_log(log), WriteMode::replace);
+    if (!written)
     {
-        return make_error("cannot create battle log " + path.string());
-    }
-    file.write(text.data(), static_cast<std::streamsize>(text.size()));
-    file.close();
-    if (!file)
-    {
-        return make_error("cannot write battle log " + path.string());
+        return with_context("battle log", std::move(written).error());
     }
     return Status::success();
 }
 
 Result<BattleLog> load_battle_log(const std::filesystem::path& path)
 {
-    constexpr std::uintmax_t limit = 64ULL * 1024ULL * 1024ULL;
-    std::error_code error;
-    const auto size = std::filesystem::file_size(path, error);
-    if (error)
-    {
-        return make_error("cannot read battle log " + path.string() + ": " + error.message());
-    }
-    if (size > limit)
-    {
-        return make_error("battle log " + path.string() + " is larger than 64 MiB");
-    }
-    std::ifstream file(path, std::ios::binary);
+    // Order logs are small text; a larger file is not one (an engine choice).
+    constexpr std::uint64_t maximum_log_bytes = 64ULL * 1024ULL * 1024ULL;
+    auto file = read_text_file(path, maximum_log_bytes);
     if (!file)
     {
-        return make_error("cannot open battle log " + path.string());
+        return with_context("battle log", std::move(file).error());
     }
-    std::string text(static_cast<std::size_t>(size), '\0');
-    file.read(text.data(), static_cast<std::streamsize>(text.size()));
-    if (static_cast<std::uintmax_t>(file.gcount()) != size)
-    {
-        return make_error("cannot read battle log " + path.string());
-    }
+    const auto& text = *file;
     auto parsed = parse_battle_log(text);
     if (!parsed)
     {

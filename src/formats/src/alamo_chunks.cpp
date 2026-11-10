@@ -1,4 +1,4 @@
-#include "eaw/chunk_file.hpp"
+#include "formats/alamo_chunks.hpp"
 
 #include "core/fatal_error.hpp"
 

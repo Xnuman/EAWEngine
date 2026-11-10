@@ -10,7 +10,7 @@
 // reported as unsupported. Field meanings follow the MIT-licensed alo-viewer (GlyphX Tools, 2017);
 // see docs/compatibility-research.md, "Particle systems".
 
-#include "eaw/alo_model.hpp"
+#include "formats/alo_model.hpp"
 #include "core/status.hpp"
 
 #include <array>

@@ -7,7 +7,7 @@
 #include "sandbox_options.hpp"
 #include "visual_scene_builder.hpp"
 
-#include "eaw/ala_animation.hpp"
+#include "formats/ala_animation.hpp"
 #include "eaw/virtual_file_system.hpp"
 
 #include <optional>

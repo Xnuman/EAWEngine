@@ -1,10 +1,11 @@
+#include "eaw/alamo_pose.hpp"
 #include "scene_builder_internal.hpp"
 
 #include "combat_content.hpp"
 #include "eaw/alo_interpretation.hpp"
-#include "eaw/dds_texture.hpp"
+#include "formats/dds_texture.hpp"
 #include "eaw/map_object_layout.hpp"
-#include "eaw/xml_document.hpp"
+#include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>
@@ -581,7 +582,7 @@ std::vector<Matrix4> sample_skin_palette(const VisualModelAsset& asset, const Al
     std::vector<AlaPoseBone> pose;
     if (animation != nullptr)
     {
-        pose = animation->sample_pose(asset.model, seconds);
+        pose = ala_sample_pose(*animation, asset.model, seconds);
     }
     else
     {
@@ -606,7 +607,7 @@ void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, con
 {
     if (rig.model && rig.inverse_bind_pose.size() == rig.model->bones.size() && !rig.model->bones.empty())
     {
-        append_rig_local_palette(rig, animation.sample_local_pose(*rig.model, seconds), out);
+        append_rig_local_palette(rig, ala_sample_local_pose(animation, *rig.model, seconds), out);
         return;
     }
     append_rig_local_palette(rig, {}, out);

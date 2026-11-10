@@ -1,15 +1,10 @@
-#include "eaw/dat_file.hpp"
+#include "formats/dat_string_table.hpp"
 
 #include <algorithm>
 #include <array>
-#include <fstream>
 #include <limits>
 #include <optional>
 #include <unordered_map>
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 namespace eaw {
 namespace {
@@ -43,28 +38,6 @@ void append_u32(std::vector<std::byte>& bytes, const std::uint32_t value)
     }
 }
 
-Result<std::vector<std::byte>> read_binary_file(const std::filesystem::path& path)
-{
-    std::ifstream stream(path, std::ios::binary | std::ios::ate);
-    if (!stream)
-    {
-        return make_error("could not open DAT file: " + path.string());
-    }
-    const auto end = stream.tellg();
-    if (end < 0)
-    {
-        return make_error("could not determine DAT file size: " + path.string());
-    }
-    std::vector<std::byte> bytes(static_cast<std::size_t>(end));
-    stream.seekg(0, std::ios::beg);
-    stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    if (!stream)
-    {
-        return make_error("could not read DAT file: " + path.string());
-    }
-    return bytes;
-}
-
 } // namespace
 
 std::uint32_t dat_key_crc(const std::string_view key) noexcept
@@ -80,12 +53,6 @@ std::uint32_t dat_key_crc(const std::string_view key) noexcept
         }
     }
     return crc ^ 0xffffffffU;
-}
-
-Result<DatFile> DatFile::load(const std::filesystem::path& path)
-{
-    EAW_TRY_ASSIGN(const auto bytes, read_binary_file(path));
-    return parse(bytes);
 }
 
 Result<DatFile> DatFile::parse(const std::span<const std::byte> bytes)
@@ -326,59 +293,6 @@ Result<std::vector<std::byte>> DatFile::serialize() const
         }
     }
     return bytes;
-}
-
-Status DatFile::save(const std::filesystem::path& path, const bool overwrite) const
-{
-    std::error_code filesystem_error;
-    if (std::filesystem::exists(path, filesystem_error) && !overwrite)
-    {
-        return make_error("output already exists; pass --force to replace it: " + path.string());
-    }
-    if (const auto parent = path.parent_path(); !parent.empty())
-    {
-        std::filesystem::create_directories(parent, filesystem_error);
-        if (filesystem_error)
-        {
-            return make_error("could not create DAT output directory (" + filesystem_error.message() + "): " + parent.string());
-        }
-    }
-
-    EAW_TRY_ASSIGN(const auto bytes, serialize());
-    auto temporary = path;
-    temporary += ".tmp";
-    {
-        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-        if (!stream)
-        {
-            return make_error("could not create DAT output: " + temporary.string());
-        }
-        stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        stream.flush();
-        if (!stream)
-        {
-            return make_error("could not write DAT output: " + temporary.string());
-        }
-    }
-#ifdef _WIN32
-    const DWORD flags = MOVEFILE_WRITE_THROUGH | (overwrite ? MOVEFILE_REPLACE_EXISTING : 0U);
-    if (!MoveFileExW(temporary.c_str(), path.c_str(), flags))
-    {
-        const auto error = GetLastError();
-        std::error_code ignored;
-        std::filesystem::remove(temporary, ignored);
-        return make_error("could not commit DAT output (Windows error " + std::to_string(error) + "): " + path.string());
-    }
-#else
-    std::filesystem::rename(temporary, path, filesystem_error);
-    if (filesystem_error)
-    {
-        std::error_code ignored;
-        std::filesystem::remove(temporary, ignored);
-        return make_error("could not commit DAT output (" + filesystem_error.message() + "): " + path.string());
-    }
-#endif
-    return Status::success();
 }
 
 } // namespace eaw

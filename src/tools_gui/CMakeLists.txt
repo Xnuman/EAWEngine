@@ -23,7 +23,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_TOOLS_SOURCES} ${EAW_T
 
 add_executable(EAWTools WIN32 ${EAW_TOOLS_SOURCES} ${EAW_TOOLS_SHADERS})
 target_link_libraries(EAWTools PRIVATE
-    eaw_core
+    eaw_core_transitional
     eaw_imgui
     eaw_imgui_app
     eaw_platform

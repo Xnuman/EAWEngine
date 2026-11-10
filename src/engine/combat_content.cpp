@@ -4,7 +4,7 @@
 
 #include "eaw/map_object_layout.hpp"
 
-#include "eaw/xml_document.hpp"
+#include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>

@@ -1,4 +1,4 @@
-#include "eaw/dds_texture.hpp"
+#include "formats/dds_texture.hpp"
 
 #include <algorithm>
 #include <limits>

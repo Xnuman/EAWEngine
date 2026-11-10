@@ -12,7 +12,7 @@
 //   - draw order: per effect, emitters in list order (legacy) or every particle back to front
 //     (enhanced), chosen per particle world.
 
-#include "eaw/particle_system.hpp"
+#include "formats/alo_particle_system.hpp"
 #include "eaw/visual_scene.hpp"
 
 #include <array>

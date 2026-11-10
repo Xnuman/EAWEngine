@@ -2,9 +2,10 @@
 
 #include "dat_editor.hpp"
 
-#include "eaw/dat_file.hpp"
+#include "formats/dat_string_table.hpp"
 #include "eaw/localization_validation.hpp"
 #include "core/string_utils.hpp"
+#include "eaw/localization_workspace.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -49,7 +50,7 @@ Status require_count(const Arguments& arguments, const std::size_t count, const 
 Result<int> info_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 1, "info requires one DAT path"));
-    EAW_TRY_ASSIGN(const auto dat, DatFile::load(arguments.positional[0]));
+    EAW_TRY_ASSIGN(const auto dat, load_dat_file(arguments.positional[0]));
     const auto issues = dat.validate();
     std::cout << "File: " << arguments.positional[0] << '\n'
               << "Entries: " << dat.entries().size() << '\n'
@@ -61,7 +62,7 @@ Result<int> info_command(const Arguments& arguments)
 Result<int> list_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 1, "list requires one DAT path"));
-    EAW_TRY_ASSIGN(const auto dat, DatFile::load(arguments.positional[0]));
+    EAW_TRY_ASSIGN(const auto dat, load_dat_file(arguments.positional[0]));
     const auto query = arguments.filter ? ascii_lower(*arguments.filter) : std::string{};
     std::size_t matched = 0;
     std::size_t shown = 0;
@@ -90,7 +91,7 @@ Result<int> list_command(const Arguments& arguments)
 Result<int> get_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 2, "get requires a DAT path and key"));
-    EAW_TRY_ASSIGN(const auto dat, DatFile::load(arguments.positional[0]));
+    EAW_TRY_ASSIGN(const auto dat, load_dat_file(arguments.positional[0]));
     const auto* entry = dat.find(arguments.positional[1]);
     if (entry == nullptr)
     {
@@ -109,14 +110,14 @@ Result<int> get_command(const Arguments& arguments)
 Result<int> set_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 4, "set requires input DAT, output DAT, key, and text"));
-    EAW_TRY_ASSIGN(auto dat, DatFile::load(arguments.positional[0]));
+    EAW_TRY_ASSIGN(auto dat, load_dat_file(arguments.positional[0]));
     auto text = utf8_to_utf16(arguments.positional[3]);
     if (!text)
     {
         return make_error("the text for " + arguments.positional[2] + " is not valid UTF-8");
     }
     EAW_TRY(dat.upsert(arguments.positional[2], std::move(*text)));
-    EAW_TRY(dat.save(arguments.positional[1], arguments.force));
+    EAW_TRY(save_dat_file(arguments.positional[1], dat, arguments.force ? WriteMode::replace : WriteMode::create_only));
     std::cout << "Wrote " << arguments.positional[1] << " with " << dat.entries().size() << " entries\n";
     return 0;
 }
@@ -124,12 +125,12 @@ Result<int> set_command(const Arguments& arguments)
 Result<int> remove_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 3, "remove requires input DAT, output DAT, and key"));
-    EAW_TRY_ASSIGN(auto dat, DatFile::load(arguments.positional[0]));
+    EAW_TRY_ASSIGN(auto dat, load_dat_file(arguments.positional[0]));
     if (!dat.erase(arguments.positional[2]))
     {
         return make_error("key not found: " + arguments.positional[2]);
     }
-    EAW_TRY(dat.save(arguments.positional[1], arguments.force));
+    EAW_TRY(save_dat_file(arguments.positional[1], dat, arguments.force ? WriteMode::replace : WriteMode::create_only));
     std::cout << "Wrote " << arguments.positional[1] << " with " << dat.entries().size() << " entries\n";
     return 0;
 }
@@ -137,7 +138,7 @@ Result<int> remove_command(const Arguments& arguments)
 Result<int> validate_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 1, "validate requires one DAT path"));
-    EAW_TRY_ASSIGN(const auto dat, DatFile::load(arguments.positional[0]));
+    EAW_TRY_ASSIGN(const auto dat, load_dat_file(arguments.positional[0]));
     std::size_t errors = 0;
     std::size_t warnings = 0;
     for (const auto& issue : dat.validate())
@@ -148,7 +149,7 @@ Result<int> validate_command(const Arguments& arguments)
     }
     if (arguments.reference)
     {
-        EAW_TRY_ASSIGN(const auto reference, DatFile::load(std::filesystem::path(*arguments.reference)));
+        EAW_TRY_ASSIGN(const auto reference, load_dat_file(std::filesystem::path(*arguments.reference)));
         EAW_TRY_ASSIGN(const auto issues, compare_translation(dat, reference));
         for (const auto& issue : issues)
         {

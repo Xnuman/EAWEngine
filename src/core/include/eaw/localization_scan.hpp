@@ -1,6 +1,6 @@
 #pragma once
 
-#include "eaw/dat_file.hpp"
+#include "formats/dat_string_table.hpp"
 #include "eaw/localization_workspace.hpp"
 
 #include <cstddef>

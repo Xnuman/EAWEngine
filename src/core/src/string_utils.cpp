@@ -23,11 +23,6 @@ constexpr unsigned char continuation_mask = 0x3fU;
 constexpr unsigned char continuation_tag_mask = 0xc0U;
 constexpr unsigned char continuation_tag = 0x80U;
 
-bool is_ascii_space(const char character) noexcept
-{
-    return character == ' ' || character == '\t' || character == '\n' || character == '\v' || character == '\f' || character == '\r';
-}
-
 bool append_utf16(std::u16string& output, const char32_t code_point)
 {
     if (code_point <= last_basic_plane)
@@ -49,7 +44,8 @@ bool append_utf16(std::u16string& output, const char32_t code_point)
     return true;
 }
 
-void append_utf8(std::string& output, const char32_t code_point)
+// The UTF-8 form of a code point already known to be valid.
+void encode_utf8(std::string& output, const char32_t code_point)
 {
     if (code_point <= last_ascii)
     {
@@ -113,17 +109,43 @@ bool ascii_equal_ignoring_case(const std::string_view left, const std::string_vi
     return true;
 }
 
+std::size_t ascii_find_ignoring_case(const std::string_view text, const std::string_view needle, const std::size_t from) noexcept
+{
+    if (from > text.size() || needle.size() > text.size() - from)
+    {
+        return std::string_view::npos;
+    }
+    for (auto position = from; position + needle.size() <= text.size(); ++position)
+    {
+        if (ascii_equal_ignoring_case(text.substr(position, needle.size()), needle))
+        {
+            return position;
+        }
+    }
+    return std::string_view::npos;
+}
+
 std::string_view ascii_trim(std::string_view text) noexcept
 {
-    while (!text.empty() && is_ascii_space(text.front()))
+    while (!text.empty() && ascii_is_space(text.front()))
     {
         text.remove_prefix(1);
     }
-    while (!text.empty() && is_ascii_space(text.back()))
+    while (!text.empty() && ascii_is_space(text.back()))
     {
         text.remove_suffix(1);
     }
     return text;
+}
+
+bool append_utf8(std::string& output, const char32_t code_point)
+{
+    if (code_point > last_code_point || (code_point >= first_high_surrogate && code_point <= last_low_surrogate))
+    {
+        return false;
+    }
+    encode_utf8(output, code_point);
+    return true;
 }
 
 std::optional<std::u16string> utf8_to_utf16(const std::string_view text)
@@ -211,7 +233,7 @@ std::optional<std::string> utf16_to_utf8(const std::u16string_view text)
         {
             return std::nullopt;
         }
-        append_utf8(output, code_point);
+        encode_utf8(output, code_point);
     }
     return output;
 }

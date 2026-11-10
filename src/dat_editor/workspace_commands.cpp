@@ -2,7 +2,7 @@
 
 #include "dat_editor.hpp"
 
-#include "eaw/dat_file.hpp"
+#include "formats/dat_string_table.hpp"
 #include "eaw/localization_scan.hpp"
 #include "eaw/localization_workspace.hpp"
 
@@ -39,7 +39,7 @@ Result<std::vector<LocalizationRow>> existing_workspace(const std::filesystem::p
 Result<int> export_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 2, "export requires a DAT path and workspace path"));
-    EAW_TRY_ASSIGN(const auto dat, DatFile::load(arguments.positional[0]));
+    EAW_TRY_ASSIGN(const auto dat, load_dat_file(arguments.positional[0]));
     EAW_TRY_ASSIGN(const auto rows, workspace_rows_from_dat(dat));
     EAW_TRY(write_localization_workspace(arguments.positional[1], rows, arguments.force));
     std::cout << "Exported " << rows.size() << " entries to " << arguments.positional[1] << '\n';
@@ -49,8 +49,8 @@ Result<int> export_command(const Arguments& arguments)
 Result<int> diff_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 3, "diff requires base DAT, edited DAT, and workspace path"));
-    EAW_TRY_ASSIGN(const auto base, DatFile::load(arguments.positional[0]));
-    EAW_TRY_ASSIGN(const auto edited, DatFile::load(arguments.positional[1]));
+    EAW_TRY_ASSIGN(const auto base, load_dat_file(arguments.positional[0]));
+    EAW_TRY_ASSIGN(const auto edited, load_dat_file(arguments.positional[1]));
     EAW_TRY_ASSIGN(const auto rows, diff_localization(base, edited));
     EAW_TRY(write_localization_workspace(arguments.positional[2], rows, arguments.force));
     std::cout << "Wrote " << rows.size() << " changed entries to " << arguments.positional[2] << '\n';
@@ -60,7 +60,7 @@ Result<int> diff_command(const Arguments& arguments)
 Result<int> build_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 3, "build requires base DAT, workspace, and output DAT"));
-    EAW_TRY_ASSIGN(auto dat, DatFile::load(arguments.positional[0]));
+    EAW_TRY_ASSIGN(auto dat, load_dat_file(arguments.positional[0]));
     EAW_TRY_ASSIGN(const auto rows, read_localization_workspace(arguments.positional[1]));
     EAW_TRY(apply_localization_workspace(dat, rows, arguments.allow_todo));
     const auto issues = dat.validate();
@@ -73,7 +73,7 @@ Result<int> build_command(const Arguments& arguments)
     {
         return make_error("built DAT failed validation with " + std::to_string(errors) + " errors");
     }
-    EAW_TRY(dat.save(arguments.positional[2], arguments.force));
+    EAW_TRY(save_dat_file(arguments.positional[2], dat, arguments.force ? WriteMode::replace : WriteMode::create_only));
     std::cout << "Built " << arguments.positional[2] << " with " << dat.entries().size() << " entries\n";
     return 0;
 }
@@ -81,7 +81,7 @@ Result<int> build_command(const Arguments& arguments)
 Result<int> scan_mod_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 3, "scan-mod requires mod root, base DAT, and workspace path"));
-    EAW_TRY_ASSIGN(const auto base, DatFile::load(arguments.positional[1]));
+    EAW_TRY_ASSIGN(const auto base, load_dat_file(arguments.positional[1]));
     EAW_TRY_ASSIGN(const auto scan, scan_mod_localization(arguments.positional[0], base));
     // Missing keys join the workspace unless it already has them.
     EAW_TRY_ASSIGN(auto rows, existing_workspace(arguments.positional[2]));

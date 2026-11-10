@@ -1,6 +1,6 @@
 #pragma once
 
-#include "eaw/rgba_image.hpp"
+#include "formats/rgba_image.hpp"
 #include "core/status.hpp"
 #include "eaw/visual_scene.hpp"
 

@@ -5,7 +5,7 @@
 // established (shield refresh units, how shields and armor combine), the translation is marked as
 // provisional.
 
-#include "eaw/alo_model.hpp"
+#include "formats/alo_model.hpp"
 #include "eaw/combat.hpp"
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/virtual_file_system.hpp"

@@ -7,6 +7,7 @@
 
 #include "eaw/asset_path.hpp"
 #include "core/string_utils.hpp"
+#include "core/file_io.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -88,16 +89,19 @@ std::string key_value(const std::string_view text, const std::string_view key)
 
 Result<std::vector<YamlLine>> read_yaml(const std::filesystem::path& path)
 {
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream)
+    auto file = read_text_file(path);
+    if (!file)
     {
-        return make_error("could not open XML schema file: " + path.string());
+        return with_context("XML schema file", std::move(file).error());
     }
     std::vector<YamlLine> lines;
-    std::string raw;
     bool first_line = true;
-    while (std::getline(stream, raw))
+    std::string_view rest = *file;
+    while (!rest.empty())
     {
+        const auto line_end = rest.find('\n');
+        std::string raw(rest.substr(0, line_end));
+        rest = line_end == std::string_view::npos ? std::string_view{} : rest.substr(line_end + 1);
         if (!raw.empty() && raw.back() == '\r')
         {
             raw.pop_back();

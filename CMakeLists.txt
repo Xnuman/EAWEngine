@@ -105,6 +105,7 @@ add_subdirectory(third_party/lua)
 # Libraries, innermost first.
 add_subdirectory(src/math)
 add_subdirectory(src/core)
+add_subdirectory(src/formats)
 add_subdirectory(src/simulation)
 add_subdirectory(src/script)
 add_subdirectory(src/render)

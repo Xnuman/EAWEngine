@@ -4,7 +4,7 @@
 // detail variants and which meshes form a model's default appearance. These are rules about what
 // the file's facts mean, kept apart from decoding.
 
-#include "eaw/alo_model.hpp"
+#include "formats/alo_model.hpp"
 
 #include <cstdint>
 #include <string_view>

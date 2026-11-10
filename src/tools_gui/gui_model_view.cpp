@@ -1,5 +1,6 @@
 // The 3D model preview with its animation pose.
 
+#include "eaw/alamo_pose.hpp"
 #include "gui_internal.hpp"
 #include "core/string_utils.hpp"
 
@@ -14,7 +15,7 @@ std::vector<AlaPoseBone> preview_pose(const GuiApp::State& state)
     }
     if (state.preview_animation)
     {
-        return state.preview_animation->sample_pose(*state.preview_model, state.preview_time);
+        return ala_sample_pose(*state.preview_animation, *state.preview_model, state.preview_time);
     }
     const auto transforms = state.preview_model->bind_pose();
     std::vector<AlaPoseBone> pose;

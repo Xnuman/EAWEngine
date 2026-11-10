@@ -2,24 +2,24 @@
 
 // Shared declarations of EAWAssetInspector's commands (one source file per command group).
 
-#include "eaw/ala_animation.hpp"
-#include "eaw/alo_model.hpp"
+#include "formats/ala_animation.hpp"
+#include "formats/alo_model.hpp"
 #include "eaw/asset_environment.hpp"
-#include "eaw/dat_file.hpp"
-#include "eaw/dds_texture.hpp"
+#include "formats/dat_string_table.hpp"
+#include "formats/dds_texture.hpp"
 #include "eaw/game_installation.hpp"
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/legacy_material.hpp"
-#include "eaw/lua_script.hpp"
+#include "formats/lua_bytecode.hpp"
 #include "eaw/map_object_layout.hpp"
-#include "eaw/mtd_directory.hpp"
-#include "eaw/particle_system.hpp"
+#include "formats/mtd_atlas.hpp"
+#include "formats/alo_particle_system.hpp"
 #include "core/status.hpp"
 #include "core/string_utils.hpp"
-#include "eaw/ted_map.hpp"
+#include "formats/ted_map.hpp"
 #include "eaw/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
-#include "eaw/xml_document.hpp"
+#include "formats/xml_document.hpp"
 #include "eaw/xml_schema.hpp"
 
 #include <algorithm>

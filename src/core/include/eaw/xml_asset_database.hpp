@@ -1,7 +1,7 @@
 #pragma once
 
 #include "eaw/virtual_file_system.hpp"
-#include "eaw/xml_document.hpp"
+#include "formats/xml_document.hpp"
 
 #include <cstddef>
 #include <span>

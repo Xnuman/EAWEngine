@@ -44,7 +44,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_RENDER_D3D12_HEADERS} 
 
 add_library(eaw_render_d3d12 STATIC ${EAW_RENDER_D3D12_HEADERS} ${EAW_RENDER_D3D12_SOURCES} ${EAW_RENDER_D3D12_SHADERS})
 target_include_directories(eaw_render_d3d12 PUBLIC include)
-target_link_libraries(eaw_render_d3d12 PUBLIC eaw_core eaw_render_contract PRIVATE d3d12 dxgi eaw_imgui)
+target_link_libraries(eaw_render_d3d12 PUBLIC eaw_core eaw_formats eaw_render_contract PRIVATE d3d12 dxgi eaw_imgui)
 
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/terrain.hlsl terrain_vs vs_6_0 g_eaw_terrain_vs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/terrain.hlsl terrain_ps ps_6_0 g_eaw_terrain_ps)

@@ -2,6 +2,11 @@
 
 #include "d3d12_renderer_impl.hpp"
 
+#include "core/file_io.hpp"
+
+#include <array>
+#include <cstring>
+
 // Offline-compiled shader model 6.0 bytecode (see src/render/shaders/sandbox.hlsl). Both entry
 // points embed the root signature, which the renderer creates from the vertex shader blob.
 #include "g_eaw_debug_ps.h"
@@ -50,18 +55,19 @@ void D3d12Renderer::Impl::open_pipeline_cache()
     pipeline_cache_file = options.pipeline_cache_directory / "d3d12_pipelines.bin";
 
     pipeline_cache_status = "created";
-    std::error_code error;
-    const auto size = std::filesystem::file_size(pipeline_cache_file, error);
-    if (!error && size > 24 && size <= maximum_pipeline_cache_bytes)
+    // A missing, oversized, or unreadable cache is simply not used.
+    constexpr std::size_t header_bytes = pipeline_cache_magic.size() + 2 * sizeof(std::uint64_t);
+    const auto cached = read_file(pipeline_cache_file, maximum_pipeline_cache_bytes);
+    if (cached && cached->size() > header_bytes)
     {
-        std::ifstream file(pipeline_cache_file, std::ios::binary);
+        const auto& bytes = *cached;
         std::array<char, 8> magic{};
         std::uint64_t stored_key{};
         std::uint64_t payload_size{};
-        file.read(magic.data(), static_cast<std::streamsize>(magic.size()));
-        file.read(reinterpret_cast<char*>(&stored_key), sizeof(stored_key));
-        file.read(reinterpret_cast<char*>(&payload_size), sizeof(payload_size));
-        if (!file || magic != pipeline_cache_magic || payload_size != size - 24)
+        std::memcpy(magic.data(), bytes.data(), magic.size());
+        std::memcpy(&stored_key, bytes.data() + magic.size(), sizeof(stored_key));
+        std::memcpy(&payload_size, bytes.data() + magic.size() + sizeof(stored_key), sizeof(payload_size));
+        if (magic != pipeline_cache_magic || payload_size != bytes.size() - header_bytes)
         {
             pipeline_cache_status = "discarded (unrecognized or truncated file)";
         }
@@ -71,9 +77,8 @@ void D3d12Renderer::Impl::open_pipeline_cache()
         }
         else
         {
-            pipeline_library_blob.resize(static_cast<std::size_t>(payload_size));
-            file.read(reinterpret_cast<char*>(pipeline_library_blob.data()), static_cast<std::streamsize>(payload_size));
-            const auto result = file ? device1->CreatePipelineLibrary(pipeline_library_blob.data(), pipeline_library_blob.size(), IID_PPV_ARGS(&pipeline_library)) : E_FAIL;
+            pipeline_library_blob.assign(bytes.begin() + static_cast<std::ptrdiff_t>(header_bytes), bytes.end());
+            const auto result = device1->CreatePipelineLibrary(pipeline_library_blob.data(), pipeline_library_blob.size(), IID_PPV_ARGS(&pipeline_library));
             if (SUCCEEDED(result))
             {
                 pipeline_cache_status = "loaded";
@@ -161,31 +166,13 @@ Status D3d12Renderer::Impl::write_pipeline_cache() const
     const auto payload_size = library->GetSerializedSize();
     std::vector<std::byte> payload(payload_size);
     EAW_TRY(hresult_status(library->Serialize(payload.data(), payload.size()), "ID3D12PipelineLibrary::Serialize"));
-    std::error_code error;
-    std::filesystem::create_directories(options.pipeline_cache_directory, error);
-    if (error)
-    {
-        return make_error("could not create " + options.pipeline_cache_directory.string() + ": " + error.message());
-    }
-    auto temporary = pipeline_cache_file;
-    temporary += L".tmp";
-    {
-        std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
-        const std::uint64_t size = payload.size();
-        file.write(pipeline_cache_magic.data(), static_cast<std::streamsize>(pipeline_cache_magic.size()));
-        file.write(reinterpret_cast<const char*>(&pipeline_cache_key), sizeof(pipeline_cache_key));
-        file.write(reinterpret_cast<const char*>(&size), sizeof(size));
-        file.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
-        if (!file)
-        {
-            return make_error("could not write " + temporary.string());
-        }
-    }
-    std::filesystem::rename(temporary, pipeline_cache_file, error);
-    if (error)
-    {
-        return make_error("could not replace " + pipeline_cache_file.string() + ": " + error.message());
-    }
+    const std::uint64_t size = payload.size();
+    std::vector<std::byte> file(pipeline_cache_magic.size() + 2 * sizeof(std::uint64_t) + payload.size());
+    std::memcpy(file.data(), pipeline_cache_magic.data(), pipeline_cache_magic.size());
+    std::memcpy(file.data() + pipeline_cache_magic.size(), &pipeline_cache_key, sizeof(pipeline_cache_key));
+    std::memcpy(file.data() + pipeline_cache_magic.size() + sizeof(pipeline_cache_key), &size, sizeof(size));
+    std::memcpy(file.data() + pipeline_cache_magic.size() + 2 * sizeof(std::uint64_t), payload.data(), payload.size());
+    EAW_TRY(write_file(pipeline_cache_file, file, WriteMode::replace));
     return Status::success();
 }
 

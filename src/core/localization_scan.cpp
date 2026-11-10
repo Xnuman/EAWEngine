@@ -1,5 +1,6 @@
 #include "eaw/localization_scan.hpp"
 #include "core/string_utils.hpp"
+#include "core/file_io.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -18,18 +19,6 @@ struct ReferenceContext
     std::string group;
     std::set<std::string> locations;
 };
-
-Result<std::string> read_text_file(const std::filesystem::path& path)
-{
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream)
-    {
-        return make_error("could not open XML file: " + path.string());
-    }
-    std::ostringstream contents;
-    contents << stream.rdbuf();
-    return contents.str();
-}
 
 void remove_xml_comments(std::string& contents)
 {

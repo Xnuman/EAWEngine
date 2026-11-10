@@ -3,7 +3,7 @@
 
 #include "scene_builder_internal.hpp"
 
-#include "eaw/particle_system.hpp"
+#include "formats/alo_particle_system.hpp"
 
 #include <charconv>
 #include <cmath>
