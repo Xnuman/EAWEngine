@@ -17,13 +17,6 @@ namespace scene_build {
 namespace {
 
 // The decoded system, or why there is none; `mesh` marks a file that is a model, not a system.
-struct CachedParticleSystem
-{
-    std::optional<AloParticleSystemData> system;
-    std::string error;
-    bool mesh{};
-};
-
 std::string_view trim_field(std::string_view text)
 {
     constexpr std::string_view space = " \t\r\n";
@@ -117,43 +110,18 @@ std::shared_ptr<const ParticleEffect> particle_effect(SceneBuilder& builder, con
         builder.scene.warnings.push_back("particle effect " + reference + ": file not found");
         return nullptr;
     }
-    const auto loaded = cached<CachedParticleSystem>(builder.cache, "particles", ascii_lower(*path), builder.vfs,
-                                                     [&](const AssetReader& reader)
-                                                     {
-                                                         CachedParticleSystem result;
-                                                         const auto bytes = reader.read(*path);
-                                                         if (!bytes)
-                                                         {
-                                                             result.error = bytes.error().message;
-                                                             return result;
-                                                         }
-                                                         const auto generic = read_alo<AloGenericData>(*bytes);
-                                                         if (!generic || (generic->type != AloType::particle_system && generic->type != AloType::plugin_particle_system))
-                                                         {
-                                                             result.mesh = true;
-                                                             return result;
-                                                         }
-                                                         auto system = read_alo<AloParticleSystemData>(*bytes);
-                                                         if (!system)
-                                                         {
-                                                             result.error = system.error().message;
-                                                             return result;
-                                                         }
-                                                         result.system = std::move(system).value();
-                                                         return result;
-                                                     });
-    if (!loaded->system)
+    const auto loaded = resources(builder).get<ParticleEffect>(*path, builder.particle_fidelity);
+    if (!loaded->effect)
     {
-        if (!loaded->mesh)
+        if (!loaded->model_file)
         {
             builder.scene.warnings.push_back(*path + ": " + loaded->error);
         }
         return nullptr;
     }
-    // The file's facts become the engine-native description under the build's fidelity profile.
-    auto effect = std::make_shared<ParticleEffect>(load_particle_effect(*loaded->system, builder.particle_fidelity));
-    effect->name = std::filesystem::path(*path).stem().string();
-    for (const auto& warning : loaded->system->warnings)
+    // The cached effect is shared; this scene's copy gets its own texture indices.
+    auto effect = std::make_shared<ParticleEffect>(*loaded->effect);
+    for (const auto& warning : loaded->warnings)
     {
         builder.scene.warnings.push_back(*path + ": " + warning);
     }

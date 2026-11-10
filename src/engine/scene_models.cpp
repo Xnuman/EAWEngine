@@ -40,24 +40,13 @@ Vector3 transform_normal(const Vector3& direction, const Matrix4& matrix)
     return result;
 }
 
-Result<Model> read_model(const AssetReader& reader, const std::string& path)
-{
-    EAW_TRY_ASSIGN(const auto bytes, reader.read(path));
-    EAW_TRY_ASSIGN(const auto data, read_alo<AloModelData>(bytes));
-    return load_model(data);
-}
-
 } // namespace
 
 // The loaded model, or why it could not be loaded (cached either way: a failed load depends on the
 // file, so replacing it invalidates the entry).
 std::shared_ptr<const Result<Model>> cached_model(SceneBuilder& builder, const std::string& path)
 {
-    return cached<Result<Model>>(builder.cache, "model", path, builder.vfs,
-                                 [&](const AssetReader& reader)
-                                 {
-                                     return read_model(reader, path);
-                                 });
+    return resources(builder).get<Model>(path);
 }
 
 // Appends one model as a new mesh (its draws, vertices, indices, and any new textures) and
@@ -727,13 +716,7 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
             {
                 continue;
             }
-            const auto decoded = cached<Result<Animation>>(builder.cache, "animation", clip_path, builder.vfs,
-                                                           [&](const AssetReader& reader) -> Result<Animation>
-                                                           {
-                                                               EAW_TRY_ASSIGN(const auto bytes, reader.read(clip_path));
-                                                               EAW_TRY_ASSIGN(const auto data, read_ala(bytes));
-                                                               return load_animation(data);
-                                                           });
+            const auto decoded = resources(builder).get<Animation>(clip_path);
             if (!decoded->ok())
             {
                 scene.warnings.push_back(clip_path + ": " + decoded->error().message);

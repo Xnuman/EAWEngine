@@ -6,7 +6,7 @@
 
 #include "frame_watchdog.hpp"
 
-#include "asset_cache.hpp"
+#include "assets/asset_cache.hpp"
 #include "battle_effects.hpp"
 #include "battle.hpp"
 #include "battle_log.hpp"

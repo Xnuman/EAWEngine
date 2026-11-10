@@ -1,8 +1,8 @@
 # eaw_assets: the game asset layer. It interprets file-level data for the engine and the tools:
 # the XML object database and schema, game object and spawn catalogs, map object layout, legacy
 # material and ALO naming rules, and the engine-native Skeleton and Animation with their loaders and
-# pose sampling, and particle effects with their fidelity rules. A resource manager follows
-# (AGENTS.md, "Reorganization in progress", step 5).
+# pose sampling, particle effects with their fidelity rules, and the ResourceManager that loads and
+# caches resources by type (AGENTS.md, "Reorganization in progress", step 5).
 
 add_library(eaw_assets STATIC)
 
@@ -35,9 +35,12 @@ set(EAW_ASSETS_MODEL
 set(EAW_ASSETS_ANIMATION
     ${HEADERS_DIR}/animation.hpp
     ${HEADERS_DIR}/pose.hpp
+    ${HEADERS_DIR}/resource_loaders.hpp
+    ${HEADERS_DIR}/resource_manager.hpp
     ${HEADERS_DIR}/skeleton.hpp
     ${SOURCES_DIR}/animation.cpp
     ${SOURCES_DIR}/pose.cpp
+    ${SOURCES_DIR}/resource_loaders.cpp
     ${SOURCES_DIR}/skeleton.cpp
 )
 
@@ -51,10 +54,19 @@ set(EAW_ASSETS_LOADERS
     ${SOURCES_DIR}/alamo_loaders.cpp
 )
 
+set(EAW_ASSETS_RESOURCES
+    ${HEADERS_DIR}/asset_cache.hpp
+    ${HEADERS_DIR}/resource_loaders.hpp
+    ${HEADERS_DIR}/resource_manager.hpp
+    ${SOURCES_DIR}/asset_cache.cpp
+    ${SOURCES_DIR}/resource_loaders.cpp
+)
+
 set(EAW_ASSETS_HEADERS
     ${HEADERS_DIR}/alamo_loaders.hpp
     ${HEADERS_DIR}/alo_interpretation.hpp
     ${HEADERS_DIR}/animation.hpp
+    ${HEADERS_DIR}/asset_cache.hpp
     ${HEADERS_DIR}/game_object_catalog.hpp
     ${HEADERS_DIR}/legacy_material.hpp
     ${HEADERS_DIR}/map_object_layout.hpp
@@ -72,6 +84,7 @@ source_group("model" FILES ${EAW_ASSETS_MODEL})
 source_group("animation" FILES ${EAW_ASSETS_ANIMATION})
 source_group("particle" FILES ${EAW_ASSETS_PARTICLE})
 source_group("loaders" FILES ${EAW_ASSETS_LOADERS})
+source_group("resources" FILES ${EAW_ASSETS_RESOURCES})
 
 target_sources(eaw_assets
   PUBLIC
@@ -83,11 +96,13 @@ target_sources(eaw_assets
     ${SOURCES_DIR}/alamo_loaders.cpp
     ${SOURCES_DIR}/alo_interpretation.cpp
     ${SOURCES_DIR}/animation.cpp
+    ${SOURCES_DIR}/asset_cache.cpp
     ${SOURCES_DIR}/game_object_catalog.cpp
     ${SOURCES_DIR}/legacy_material.cpp
     ${SOURCES_DIR}/map_object_layout.cpp
     ${SOURCES_DIR}/particle_rules.cpp
     ${SOURCES_DIR}/pose.cpp
+    ${SOURCES_DIR}/resource_loaders.cpp
     ${SOURCES_DIR}/skeleton.cpp
     ${SOURCES_DIR}/spawn_catalog.cpp
     ${SOURCES_DIR}/xml_asset_database.cpp

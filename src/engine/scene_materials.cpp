@@ -225,32 +225,7 @@ const LegacyTextureBinding* base_color_texture(const LegacyMaterial& material)
 // index, or invalid_visual_texture with a warning when it is missing or unsupported.
 std::shared_ptr<const CachedTexture> cached_texture(const AssetReader& vfs, AssetCache* cache, const std::string& reference)
 {
-    return cached<CachedTexture>(cache, "texture", ascii_lower(reference), vfs,
-                                 [&](const AssetReader& reader)
-                                 {
-                                     CachedTexture result;
-                                     const auto texture_path = resolve_texture(reader, reference);
-                                     if (!texture_path)
-                                     {
-                                         result.error = "matching DDS not found";
-                                         return result;
-                                     }
-                                     const auto bytes = reader.read(*texture_path);
-                                     if (!bytes)
-                                     {
-                                         result.error = bytes.error().message;
-                                         return result;
-                                     }
-                                     auto texture = make_visual_texture(reference, *bytes);
-                                     if (!texture)
-                                     {
-                                         result.error = texture.error().message;
-                                         return result;
-                                     }
-                                     result.texture = std::move(texture).value();
-                                     result.texture->identity = next_texture_identity();
-                                     return result;
-                                 });
+    return ResourceManager(vfs, cache).get<CachedTexture>(reference);
 }
 
 std::uint32_t scene_texture(SceneBuilder& builder, const std::string& reference)
@@ -411,3 +386,41 @@ std::array<float, 4> player_team_color(const std::uint32_t player) noexcept
 }
 
 } // namespace eaw::scene_build
+
+namespace eaw {
+
+std::string ResourceLoader<scene_build::CachedTexture>::key(const std::string_view reference)
+{
+    return ascii_lower(reference);
+}
+
+scene_build::CachedTexture ResourceLoader<scene_build::CachedTexture>::load(const AssetReader& reader, const std::string_view reference_view)
+{
+    using namespace scene_build;
+    const std::string reference(reference_view);
+
+    CachedTexture result;
+    const auto texture_path = resolve_texture(reader, reference);
+    if (!texture_path)
+    {
+        result.error = "matching DDS not found";
+        return result;
+    }
+    const auto bytes = reader.read(*texture_path);
+    if (!bytes)
+    {
+        result.error = bytes.error().message;
+        return result;
+    }
+    auto texture = make_visual_texture(reference, *bytes);
+    if (!texture)
+    {
+        result.error = texture.error().message;
+        return result;
+    }
+    result.texture = std::move(texture).value();
+    result.texture->identity = next_texture_identity();
+    return result;
+}
+
+} // namespace eaw

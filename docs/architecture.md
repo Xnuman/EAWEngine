@@ -57,16 +57,18 @@ A resource reaches the engine in three stages, each in its own layer:
    (`read_alo<AloGenericData>` tells a model from a particle system).
 3. **Engine resource**: a loader in the game asset layer applies the interpretation rules (legacy
    materials, `pe_*` proxies, `_ALT`/`_LOD` names) and builds the engine-native resource (`Model`,
-   `Animation`, `ParticleEffect`), which the engine and renderer use. A resource manager above the
-   loaders owns IDs and caching.
+   `Animation`, `ParticleEffect`), which the engine and renderer use. The `ResourceManager` above
+   the loaders (`get<T>(path)`) loads each resource on first request and caches it with the files it
+   depended on, so hot reload invalidates exactly what changed; resource IDs will come with the
+   first consumer that needs references surviving a reload.
 
 The file-level data lives only as long as a loader or a tool needs it; tools (inspector, EAWTools)
 show it directly. Another source format means another reader and loader producing the same
 resource. Stage 3 is being built (reorganization step 5): `Model`, `Skeleton`, and `Animation` are loaded this
 way and are all the engine keeps of models and clips; the scene builders in `src/engine` place a
 `Model` in a scene (rigid-mesh placement, hardpoint hosts, palette layout, texture registration).
-Particle effects load the same way (`load_particle_effect` under a fidelity profile); a resource
-manager follows.
+Particle effects load the same way (`load_particle_effect` under a fidelity profile), and every
+cached load goes through the `ResourceManager`.
 
 ## Simulation tick layers
 
@@ -394,9 +396,12 @@ dependency rules; this is the file-level detail.
   `legacy_material`; `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` naming rules and default
   mesh visibility), `particle` (`particle_rules`: `ParticleEffect`, the fidelity profiles, and
   `load_particle_effect`), `animation` (`skeleton` and `animation`, the engine-native resources; `pose`:
-  sampling, blending, composition, and retargeting by bone name), and `loaders`
+  sampling, blending, composition, and retargeting by bone name), `loaders`
   (`alamo_loaders`: `load_model` and `load_skeleton` from `AloModelData`, `load_animation` from
-  `AlaAnimationData`).
+  `AlaAnimationData`), and `resources` (`asset_cache`: the dependency-tracked cache;
+  `resource_manager`: typed `get<T>`; `resource_loaders`: how models, animations, particle effects,
+  and TED map data load from the VFS; the engine specializes `ResourceLoader` for its own cached
+  types next to them).
 - `src/localization` (`eaw_localization`): `localization_workspace` (TSV workspaces, DAT rows,
   unit keys, DAT string tables from disk), `localization_scan` (TEXT_* references in mod XML), and
   `localization_validation` (a translation against its reference).

@@ -2,8 +2,6 @@
 # from decoded assets, presentation, cameras, and effects. It consumes the render contract
 # (engine-native visual data) but no graphics API.
 set(EAW_ENGINE_SOURCES
-    asset_cache.cpp
-    asset_cache.hpp
     attached_effects.cpp
     attached_effects.hpp
     battle.cpp

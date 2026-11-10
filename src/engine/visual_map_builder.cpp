@@ -182,30 +182,19 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         return make_error("map was not found: " + std::string(map_path));
     }
     VisualMapAsset asset;
-    const auto map_entry = cached<Result<TedMapData>>(cache, "ted", resolved->virtual_path, vfs,
-                                                      [&](const AssetReader& reader) -> Result<TedMapData>
-                                                      {
-                                                          EAW_TRY_ASSIGN(const auto bytes, reader.read(resolved->virtual_path));
-                                                          return read_ted(bytes);
-                                                      });
+    const auto map_entry = ResourceManager(vfs, cache).get<TedMapData>(resolved->virtual_path);
     if (!map_entry->ok())
     {
         return with_context(resolved->virtual_path, map_entry->error());
     }
     const auto& map = map_entry->value();
     asset.land = map.type == TedMapType::land;
-    const auto catalog_entry = cached<CachedCatalog>(cache, "xml-catalog", "Data/XML", vfs,
-                                                     [](const AssetReader& reader)
-                                                     {
-                                                         auto database = std::make_unique<XmlAssetDatabase>(XmlAssetDatabase::build(reader));
-                                                         auto catalog = GameObjectCatalog::build(*database);
-                                                         return CachedCatalog{std::move(database), std::move(catalog)};
-                                                     });
+    const auto catalog_entry = ResourceManager(vfs, cache).get<CachedCatalog>(xml_catalog_path);
     const auto& catalog = catalog_entry->catalog;
     const auto layout = build_map_object_layout(map, catalog, vfs);
-    const auto movement_entry = cached<MovementClasses>(cache, "movement-classes", std::string(movement_class_path), vfs, load_movement_classes);
+    const auto movement_entry = ResourceManager(vfs, cache).get<MovementClasses>(movement_class_path);
     const auto& movement_classes = movement_entry->classes;
-    const auto combat_entry = cached<CombatContent>(cache, "combat-content", "Data/XML/GameConstants.xml", vfs, load_combat_content);
+    const auto combat_entry = ResourceManager(vfs, cache).get<CombatContent>(combat_content_path);
     asset.damage_table = combat_entry->damage_table;
     // One profile per type, so a type's warnings are reported once however often it is placed.
     std::unordered_map<const XmlDefinition*, CombatProfile> combat_profiles;
@@ -499,15 +488,9 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
 
 Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const std::string_view type_name, const bool land, AssetCache* cache, const MapBuildOptions& options)
 {
-    const auto catalog_entry = cached<CachedCatalog>(cache, "xml-catalog", "Data/XML", vfs,
-                                                     [](const AssetReader& reader)
-                                                     {
-                                                         auto database = std::make_unique<XmlAssetDatabase>(XmlAssetDatabase::build(reader));
-                                                         auto catalog = GameObjectCatalog::build(*database);
-                                                         return CachedCatalog{std::move(database), std::move(catalog)};
-                                                     });
-    const auto movement_entry = cached<MovementClasses>(cache, "movement-classes", std::string(movement_class_path), vfs, load_movement_classes);
-    const auto combat_entry = cached<CombatContent>(cache, "combat-content", "Data/XML/GameConstants.xml", vfs, load_combat_content);
+    const auto catalog_entry = ResourceManager(vfs, cache).get<CachedCatalog>(xml_catalog_path);
+    const auto movement_entry = ResourceManager(vfs, cache).get<MovementClasses>(movement_class_path);
+    const auto combat_entry = ResourceManager(vfs, cache).get<CombatContent>(combat_content_path);
     SpawnablePackage package;
     package.meshes.name = std::string(type_name);
     SceneBuilder builder{vfs, package.meshes, {}, cache, options.textures, options.animation_clips};
@@ -565,13 +548,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
 
 std::vector<std::string> spawnable_type_names(const AssetReader& vfs, const bool land, AssetCache* cache)
 {
-    const auto catalog_entry = cached<CachedCatalog>(cache, "xml-catalog", "Data/XML", vfs,
-                                                     [](const AssetReader& reader)
-                                                     {
-                                                         auto database = std::make_unique<XmlAssetDatabase>(XmlAssetDatabase::build(reader));
-                                                         auto catalog = GameObjectCatalog::build(*database);
-                                                         return CachedCatalog{std::move(database), std::move(catalog)};
-                                                     });
+    const auto catalog_entry = ResourceManager(vfs, cache).get<CachedCatalog>(xml_catalog_path);
     // Death clones are wrecks other types leave behind, not units to spawn.
     const auto clones = death_clone_names(*catalog_entry->database, catalog_entry->catalog);
     std::vector<std::string> names;
@@ -589,6 +566,43 @@ std::vector<std::string> spawnable_type_names(const AssetReader& vfs, const bool
         names.push_back(type.name);
     }
     return names;
+}
+
+} // namespace eaw
+
+namespace eaw {
+
+std::string ResourceLoader<scene_build::CachedCatalog>::key(const std::string_view path)
+{
+    return std::string(path);
+}
+
+// The catalog borrows the database, so both are built together behind one allocation.
+scene_build::CachedCatalog ResourceLoader<scene_build::CachedCatalog>::load(const AssetReader& reader, std::string_view)
+{
+    auto database = std::make_unique<XmlAssetDatabase>(XmlAssetDatabase::build(reader));
+    auto catalog = GameObjectCatalog::build(*database);
+    return scene_build::CachedCatalog{std::move(database), std::move(catalog)};
+}
+
+std::string ResourceLoader<scene_build::MovementClasses>::key(const std::string_view path)
+{
+    return std::string(path);
+}
+
+scene_build::MovementClasses ResourceLoader<scene_build::MovementClasses>::load(const AssetReader& reader, std::string_view)
+{
+    return scene_build::load_movement_classes(reader);
+}
+
+std::string ResourceLoader<CombatContent>::key(const std::string_view path)
+{
+    return std::string(path);
+}
+
+CombatContent ResourceLoader<CombatContent>::load(const AssetReader& reader, std::string_view)
+{
+    return load_combat_content(reader);
 }
 
 } // namespace eaw

@@ -1,4 +1,4 @@
-#include "asset_cache.hpp"
+#include "assets/asset_cache.hpp"
 
 #include "vfs/asset_path.hpp"
 

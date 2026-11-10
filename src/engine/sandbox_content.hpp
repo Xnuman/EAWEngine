@@ -4,7 +4,7 @@
 // animations, and the files the build read (for hot reload).
 
 #include "assets/animation.hpp"
-#include "asset_cache.hpp"
+#include "assets/asset_cache.hpp"
 #include "sandbox_options.hpp"
 #include "visual_scene_builder.hpp"
 

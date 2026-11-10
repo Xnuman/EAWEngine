@@ -262,8 +262,50 @@ void test_intact_hidden_bones()
             "intact-hidden bone was not collapsed");
 }
 
+// Resources load once per type and key, failures stay cached, and a particle effect is cached per
+// fidelity profile.
+void test_resource_manager()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-resource-manager-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    const auto models = root / "Data" / "Art" / "Models";
+    std::filesystem::create_directories(models);
+    const auto model_bytes = make_test_alo();
+    const auto particle_bytes = make_test_particle_system(-1);
+    expect_ok(eaw::write_file(models / "TEST.ALO", model_bytes, eaw::WriteMode::replace), "writing the test model");
+    expect_ok(eaw::write_file(models / "P_TEST.ALO", particle_bytes, eaw::WriteMode::replace), "writing the test effect");
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    eaw::AssetCache cache;
+    const eaw::ResourceManager resources(vfs, &cache);
+
+    const auto model = resources.get<eaw::Model>("DATA/ART/MODELS/TEST.ALO");
+    require(model->ok() && !model->value().skeleton.bones.empty() && !model->value().meshes.empty(), "a model must load through its loader");
+    require(resources.get<eaw::Model>("DATA/ART/MODELS/TEST.ALO") == model && cache.stats().hits == 1, "a second request must reuse the cached model");
+    const auto missing = resources.get<eaw::Model>("DATA/ART/MODELS/MISSING.ALO");
+    require(!missing->ok() && resources.get<eaw::Model>("DATA/ART/MODELS/MISSING.ALO") == missing, "a failed load must be cached with its error");
+    const auto not_a_model = resources.get<eaw::Model>("DATA/ART/MODELS/P_TEST.ALO");
+    require(!not_a_model->ok(), "a particle file must not load as a model");
+
+    const auto legacy = resources.get<eaw::ParticleEffect>("DATA/ART/MODELS/P_TEST.ALO", eaw::ParticleFidelity::legacy);
+    const auto enhanced = resources.get<eaw::ParticleEffect>("DATA/ART/MODELS/P_TEST.ALO", eaw::ParticleFidelity::enhanced);
+    require(legacy->effect && enhanced->effect && legacy != enhanced && legacy->effect->fidelity == eaw::ParticleFidelity::legacy && enhanced->effect->fidelity == eaw::ParticleFidelity::enhanced &&
+                legacy->effect->name == "P_TEST",
+            "a particle effect must load per fidelity profile, named after its file");
+    const auto mesh_as_effect = resources.get<eaw::ParticleEffect>("DATA/ART/MODELS/TEST.ALO", eaw::ParticleFidelity::legacy);
+    require(!mesh_as_effect->effect && mesh_as_effect->model_file && mesh_as_effect->error.empty(), "a model file asked for as an effect must say so without an error");
+
+    // Without a cache every request loads anew.
+    const eaw::ResourceManager uncached(vfs);
+    require(uncached.get<eaw::Model>("DATA/ART/MODELS/TEST.ALO")->ok() && uncached.get<eaw::Model>("DATA/ART/MODELS/TEST.ALO") != uncached.get<eaw::Model>("DATA/ART/MODELS/TEST.ALO"),
+            "an uncached manager must load on every request");
+    std::filesystem::remove_all(root, ignored);
+}
+
 const ModuleRegistrar registrar("scene", {
                                              {"test_asset_cache_dependencies", &test_asset_cache_dependencies},
+                                             {"test_resource_manager", &test_resource_manager},
                                              {"test_visual_material_translation", &test_visual_material_translation},
                                              {"test_visual_terrain", &test_visual_terrain},
                                              {"test_intact_hidden_bones", &test_intact_hidden_bones},

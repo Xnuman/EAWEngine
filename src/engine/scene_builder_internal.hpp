@@ -3,7 +3,10 @@
 // Shared pieces of the visual scene builders (scene_materials, scene_models, scene_terrain,
 // object_type_properties, visual_map_builder); not part of the engine's public interface.
 
-#include "asset_cache.hpp"
+#include "assets/asset_cache.hpp"
+#include "assets/resource_loaders.hpp"
+#include "assets/resource_manager.hpp"
+#include "combat_content.hpp"
 #include "visual_scene_builder.hpp"
 
 #include "assets/game_object_catalog.hpp"
@@ -75,14 +78,10 @@ struct SceneBuilder
     std::unordered_map<std::string, std::string> animation_sources;
 };
 
-// Loads through the cache when there is one; otherwise decodes directly.
-template <class T, class Loader> std::shared_ptr<const T> cached(AssetCache* cache, const std::string_view kind, const std::string_view key, const AssetReader& reader, Loader&& loader)
+// The builder's resources: its reader and, when there is one, the shared cache.
+[[nodiscard]] inline ResourceManager resources(const SceneBuilder& builder) noexcept
 {
-    if (cache != nullptr)
-    {
-        return cache->load<T>(kind, key, reader, std::forward<Loader>(loader));
-    }
-    return std::make_shared<const T>(loader(reader));
+    return ResourceManager(builder.vfs, builder.cache);
 }
 
 // A decoded DDS for an ALO texture reference, or why it is unavailable (cached either way: the
@@ -120,6 +119,52 @@ struct MovementClasses
     std::unordered_map<std::string, std::uint32_t> classes;
     std::vector<std::string> warnings;
 };
+
+} // namespace eaw::scene_build
+
+namespace eaw {
+
+// How the builders' own cached types load. The path of a texture is the ALO's reference to it;
+// the catalog, movement classes, and combat content each have one fixed source.
+template <> struct ResourceLoader<scene_build::CachedTexture>
+{
+    using Value = scene_build::CachedTexture;
+    static constexpr std::string_view kind = "texture";
+    [[nodiscard]] static std::string key(std::string_view reference);
+    [[nodiscard]] static Value load(const AssetReader& reader, std::string_view reference);
+};
+
+template <> struct ResourceLoader<scene_build::CachedCatalog>
+{
+    using Value = scene_build::CachedCatalog;
+    static constexpr std::string_view kind = "xml-catalog";
+    [[nodiscard]] static std::string key(std::string_view path);
+    [[nodiscard]] static Value load(const AssetReader& reader, std::string_view path);
+};
+
+template <> struct ResourceLoader<scene_build::MovementClasses>
+{
+    using Value = scene_build::MovementClasses;
+    static constexpr std::string_view kind = "movement-classes";
+    [[nodiscard]] static std::string key(std::string_view path);
+    [[nodiscard]] static Value load(const AssetReader& reader, std::string_view path);
+};
+
+template <> struct ResourceLoader<CombatContent>
+{
+    using Value = CombatContent;
+    static constexpr std::string_view kind = "combat-content";
+    [[nodiscard]] static std::string key(std::string_view path);
+    [[nodiscard]] static Value load(const AssetReader& reader, std::string_view path);
+};
+
+} // namespace eaw
+
+namespace eaw::scene_build {
+
+// The XML catalog's source (the whole XML folder) and the combat content's.
+inline constexpr std::string_view xml_catalog_path = "Data/XML";
+inline constexpr std::string_view combat_content_path = "Data/XML/GameConstants.xml";
 
 // scene_materials.cpp: textures, materials, lighting, and team colors.
 
