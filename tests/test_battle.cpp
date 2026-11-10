@@ -418,9 +418,102 @@ void test_battle_scripts()
     std::filesystem::remove_all(root, ignored);
 }
 
+// Game-object scripts: a placed object's type script starts with Object bound to it and finds
+// objects by hint; a spawned entity gets its type's script when it appears; a proximity handler
+// runs when another object comes within range as the object is serviced, until it cancels itself;
+// and a script that cannot be loaded is reported once, not retried for every entity.
+void test_battle_object_scripts()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-battle-object-scripts-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    const auto scripts_folder = root / "Data" / "Scripts" / "GameObject";
+    std::filesystem::create_directories(scripts_folder);
+    const auto write = [&](const char* name, const std::string_view text)
+    {
+        std::ofstream file(scripts_folder / name, std::ios::binary);
+        file.write(text.data(), static_cast<std::streamsize>(text.size()));
+    };
+    // The framework's PumpEvents in miniature: service the object, yield, then run the events.
+    write("Pump.lua", "function PumpEvents()\n"
+                      "  Object.Service_Wrapper()\n"
+                      "  coroutine.yield(true)\n"
+                      "  local event = GetEvent()\n"
+                      "  while event do\n"
+                      "    local params = GetEvent.Params()\n"
+                      "    if params then event(unpack(params)) else event() end\n"
+                      "    event = GetEvent()\n"
+                      "  end\n"
+                      "end\n"
+                      "function Base_Definitions() ServiceRate = 0.1 end\n");
+    write("Guard.lua", "require(\"Pump\")\n"
+                       "function Near(self, other)\n"
+                       "  print(\"near \" .. other.Get_Type().Get_Name())\n"
+                       "  self.Cancel_Event_Object_In_Range(Near)\n"
+                       "end\n"
+                       "function main()\n"
+                       "  print(\"hint \" .. tostring(Find_Hint(\"beacon\", \"GATE\") == Object) .. \" \" .. table.getn(Find_All_Objects_With_Hint(\"gate\")) .. \" \" .. "
+                       "tostring(Find_Hint(\"Walker\", \"gate\")))\n"
+                       "  Object.Event_Object_In_Range(Near, 50)\n"
+                       "  while true do PumpEvents() end\n"
+                       "end\n");
+    write("Walker_Script.lua", "require(\"Pump\")\n"
+                               "function main() print(\"walker \" .. Object.Get_Type().Get_Name()) while true do PumpEvents() end end\n");
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+
+    eaw::SpawnableType walker;
+    walker.type_name = "Walker";
+    walker.max_speed = 60.0F;
+    walker.radius = 1.0F;
+    walker.lua_script = "Walker_Script";
+    eaw::SpawnableType broken;
+    broken.type_name = "Broken";
+    broken.lua_script = "No_Such_Script";
+    const std::array<eaw::SpawnableType, 2> types{walker, broken};
+    eaw::MapEntitySpawn beacon;
+    beacon.spawn.type_name = "Beacon";
+    beacon.spawn.owner = 2;
+    beacon.spawn.position = {300.0F, 0.0F, 0.0F};
+    beacon.lua_script = "Guard";
+    beacon.hint = "Gate";
+    eaw::BattleMap map;
+    map.entities = std::span(&beacon, 1);
+    map.spawnable = types;
+
+    eaw::Battle battle(map, "TEST.TED");
+    require(battle.hinted_entities().size() == 1 && battle.object_script("BEACON") == "Guard" && battle.object_script("walker") == "Walker_Script", "the battle must keep hints and type scripts");
+    eaw::BattleScripts scripts(vfs);
+    scripts.run(battle);
+    require(scripts.size() == 1, "a placed object's type script must start with the battle");
+    expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {0.0F, 0.0F, 0.0F}, .type = "Walker", .owner = 1}), "spawning the walker");
+    expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {0.0F, 300.0F, 0.0F}, .type = "Broken", .count = 2, .owner = 1}), "spawning two broken objects");
+    battle.step();
+    scripts.run(battle);
+    require(scripts.size() == 2, "a spawned entity must get its type's script, and a missing script must start nothing");
+    const auto walker_id = battle.world().snapshot().entities[1].id;
+    expect_ok(battle.submit({.order = eaw::BattleOrder::move, .entities = {walker_id}, .point = {300.0F, 0.0F, 0.0F}}), "moving the walker to the beacon");
+    for (int tick = 0; tick < 300; ++tick)
+    {
+        battle.step();
+        scripts.run(battle);
+    }
+    const auto& guard = scripts.host(0).output();
+    const auto count = [&](const std::string_view line)
+    {
+        return std::ranges::count(guard, line);
+    };
+    require(count("hint true 1 nil") == 1, "Find_Hint must find the hinted object by type and hint ignoring case, and nothing for another type");
+    require(count("near Walker") == 1, "the proximity handler must run once the walker is in range, and not after it cancelled itself");
+    require(std::ranges::count(scripts.host(1).output(), "walker Walker") == 1, "a spawned entity's script must see its own object");
+    require(scripts.host(0).errors().empty() && scripts.host(1).errors().empty(), "the scripts must run without errors");
+    std::filesystem::remove_all(root, ignored);
+}
+
 const ModuleRegistrar registrar("battle", {
                                               {"test_combat_content", &test_combat_content},
                                               {"test_battle_scripts", &test_battle_scripts},
+                                              {"test_battle_object_scripts", &test_battle_object_scripts},
                                               {"test_battle_orders", &test_battle_orders},
                                               {"test_battle_log", &test_battle_log},
                                               {"test_runtime_spawnable_registration", &test_runtime_spawnable_registration},

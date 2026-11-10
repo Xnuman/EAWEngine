@@ -9,6 +9,7 @@
 #include "assets/asset_cache.hpp"
 #include "battle_effects.hpp"
 #include "battle.hpp"
+#include "battle_scripts.hpp"
 #include "battle_log.hpp"
 #include "camera_controller.hpp"
 #include "camera_math.hpp"
@@ -101,6 +102,8 @@ struct SandboxSession
     // Declared first among the frame state so it outlives nothing it reports on.
     FrameWatchdog watchdog;
     std::optional<eaw::Battle> battle;
+    // Game-object scripts of the battle (none with --no-scripts).
+    std::optional<eaw::BattleScripts> battle_scripts;
     eaw::SimulationWorld* world = nullptr;
     std::optional<eaw::ScenePresentation> presentation;
     // Map units' animation (presentation only) and the palette it fills each frame.

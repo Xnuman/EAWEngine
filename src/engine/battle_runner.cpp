@@ -1,5 +1,7 @@
 #include "battle_runner.hpp"
 
+#include "battle_scripts.hpp"
+
 #include "battle.hpp"
 #include "battle_log.hpp"
 #include "text_format.hpp"
@@ -38,6 +40,8 @@ struct BattleRun
     double slowest_ms{};
     std::uint64_t slowest_tick{};
     std::size_t starting_entities{};
+    // The script phases (none with --no-scripts).
+    std::optional<BattleScriptStats> scripts;
     bool failed{};
 };
 
@@ -58,10 +62,16 @@ Vector3 battle_center(const VisualMapAsset& asset)
     return {(minimum[0] + maximum[0]) * 0.5F, (minimum[1] + maximum[1]) * 0.5F, 0.0F};
 }
 
-BattleRun run_once(const VisualMapAsset& asset, const std::string& map_name, const SandboxOptions& options, const BattleLog* replay, const std::uint64_t ticks)
+// `scripts_reader` resolves game-object scripts; null runs none (--no-scripts).
+BattleRun run_once(const VisualMapAsset& asset, const std::string& map_name, const SandboxOptions& options, const BattleLog* replay, const std::uint64_t ticks, const AssetReader* scripts_reader)
 {
     BattleRun run;
     Battle battle(battle_map(asset), map_name);
+    std::optional<BattleScripts> scripts;
+    if (scripts_reader != nullptr)
+    {
+        scripts.emplace(*scripts_reader);
+    }
     auto& world = battle.world();
     run.starting_entities = world.stats().entities;
     const auto center = battle_center(asset);
@@ -128,6 +138,11 @@ BattleRun run_once(const VisualMapAsset& asset, const std::string& map_name, con
         }
         const auto tick_start = std::chrono::steady_clock::now();
         battle.step();
+        // The script phase follows the tick; its orders apply in the next one (battle_scripts.hpp).
+        if (scripts)
+        {
+            scripts->run(battle);
+        }
         const auto milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tick_start).count();
         if (milliseconds > run.slowest_ms)
         {
@@ -139,6 +154,10 @@ BattleRun run_once(const VisualMapAsset& asset, const std::string& map_name, con
     run.hash = world.state_hash();
     run.stats = world.stats();
     run.log = battle.log();
+    if (scripts)
+    {
+        run.scripts = scripts->stats();
+    }
     run.log.end_tick = run.stats.tick;
     run.log.end_hash = run.hash;
     return run;
@@ -156,6 +175,12 @@ void print_run(const BattleRun& run, const std::uint64_t ticks_run)
               << " in flight\n"
               << "Paths: " << stats.path_searches << " planned, " << stats.partial_paths << " partial, " << stats.shared_routes << " shared, " << stats.path_expansions << " nodes expanded, "
               << stats.blocked_moves << " blocked moves\n";
+    if (run.scripts)
+    {
+        const auto& scripts = *run.scripts;
+        std::cout << "Scripts: " << scripts.started << " started, " << scripts.failed << " failed | " << format_fixed(scripts.total_seconds * 1000.0, 2) << " ms in all, slowest phase "
+                  << format_fixed(scripts.worst_phase_seconds * 1000.0, 3) << " ms\n";
+    }
 }
 
 } // namespace
@@ -222,7 +247,8 @@ int run_battle(const SandboxOptions& options, const VirtualFileSystem& vfs)
         }
     }
     const auto ticks = options.ticks ? *options.ticks : replay && replay->end_tick ? *replay->end_tick : default_ticks;
-    const auto first = run_once(asset, map_name, options, replay ? &*replay : nullptr, ticks);
+    const AssetReader* scripts_reader = options.scripts ? &vfs : nullptr;
+    const auto first = run_once(asset, map_name, options, replay ? &*replay : nullptr, ticks, scripts_reader);
     if (first.failed)
     {
         return 4;
@@ -241,7 +267,7 @@ int run_battle(const SandboxOptions& options, const VirtualFileSystem& vfs)
     }
     if (options.check_determinism)
     {
-        const auto second = run_once(asset, map_name, options, replay ? &*replay : nullptr, ticks);
+        const auto second = run_once(asset, map_name, options, replay ? &*replay : nullptr, ticks, scripts_reader);
         const bool same = !second.failed && second.hash == first.hash;
         std::cout << "Determinism: second run " << (same ? "matches" : "differs (" + hex(second.hash) + ")") << '\n';
         exit_code = same ? exit_code : 4;

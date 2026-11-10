@@ -503,6 +503,17 @@ std::vector<std::byte> make_test_ted()
     append_chunk(identity_group, 0x459, identity, true);
     std::vector<std::byte> object_body;
     append_chunk(object_body, 0x454, identity_group, true);
+    // The hint, NUL-terminated as in the stock maps.
+    std::vector<std::byte> hint_text;
+    for (const char character : std::string_view("gate\0", 5))
+    {
+        hint_text.push_back(static_cast<std::byte>(character));
+    }
+    std::vector<std::byte> hint_minis;
+    append_mini(hint_minis, 1, hint_text);
+    std::vector<std::byte> hint_part;
+    append_chunk(hint_part, 0, hint_minis);
+    append_chunk(object_body, 0x482, hint_part, true);
     std::vector<std::byte> object_list;
     append_chunk(object_list, 0x44c, object_body, true);
     std::vector<std::byte> objects;

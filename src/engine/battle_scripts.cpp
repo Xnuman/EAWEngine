@@ -1,5 +1,6 @@
 #include "battle_scripts.hpp"
 
+#include "core/log.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>
@@ -30,8 +31,12 @@ enum class GameObjectMethod : std::size_t
     move_to,
     attack_target,
     stop,
+    event_object_in_range,
+    cancel_event_object_in_range,
+    service_wrapper,
 };
-constexpr std::array<std::string_view, 9> game_object_methods{"Is_Valid", "Get_ID", "Get_Type", "Get_Owner", "Get_Position", "Get_Hull", "Move_To", "Attack_Target", "Stop"};
+constexpr std::array<std::string_view, 12> game_object_methods{
+    "Is_Valid", "Get_ID", "Get_Type", "Get_Owner", "Get_Position", "Get_Hull", "Move_To", "Attack_Target", "Stop", "Event_Object_In_Range", "Cancel_Event_Object_In_Range", "Service_Wrapper"};
 constexpr std::array<std::string_view, 1> object_type_methods{"Get_Name"};
 constexpr std::array<std::string_view, 1> player_methods{"Get_ID"};
 enum class BlockMethod : std::size_t
@@ -54,12 +59,22 @@ enum class Function : std::size_t
     find_object_type,
     find_first_object,
     find_all_objects_of_type,
+    find_hint,
+    find_all_objects_with_hint,
 };
-constexpr std::array<std::string_view, 3> functions{"Find_Object_Type", "Find_First_Object", "Find_All_Objects_Of_Type"};
+constexpr std::array<std::string_view, 5> functions{"Find_Object_Type", "Find_First_Object", "Find_All_Objects_Of_Type", "Find_Hint", "Find_All_Objects_With_Hint"};
 
 // Blocks a script keeps; the oldest is reused after this many orders, and a block of a reused slot
 // reads as finished. An engine choice: a script waits on few orders at a time.
 constexpr std::uint32_t max_blocks = 4096;
+
+// Squared distance in the ground plane: ranges are measured there, as for weapons (provisional).
+float ground_distance_squared(const Vector3& a, const Vector3& b) noexcept
+{
+    const float dx = a.x - b.x;
+    const float dy = a.y - b.y;
+    return dx * dx + dy * dy;
+}
 
 ScriptObject game_object(const EntityId id)
 {
@@ -96,7 +111,16 @@ void BattleScriptView::rebuild(const Battle& battle)
     {
         (void)intern_type(spawnable[spawnable_seen_].type_name);
     }
+    if (!hints_read_)
+    {
+        for (const auto& [id, hint] : battle.hinted_entities())
+        {
+            hints_.emplace_back(ascii_lower(hint), id);
+        }
+        hints_read_ = true;
+    }
     snapshot_ = &battle.world().snapshot();
+    new_entities_.clear();
     std::ranges::fill(slot_positions_, 0U);
     for (auto& entities : type_entities_)
     {
@@ -115,6 +139,7 @@ void BattleScriptView::rebuild(const Battle& battle)
         if (slot_types_[id.index].first != id.generation)
         {
             slot_types_[id.index] = {id.generation, intern_type(battle.world().type_name(id))};
+            new_entities_.push_back(id);
         }
         type_entities_[slot_types_[id.index].second].push_back(static_cast<std::uint32_t>(position));
     }
@@ -158,6 +183,25 @@ std::span<const std::uint32_t> BattleScriptView::entities_of_type(const std::uin
     return type < type_entities_.size() ? std::span<const std::uint32_t>(type_entities_[type]) : std::span<const std::uint32_t>();
 }
 
+std::vector<EntityId> BattleScriptView::hinted(const std::string_view hint) const
+{
+    const auto folded = ascii_lower(hint);
+    std::vector<EntityId> found;
+    for (const auto& [name, id] : hints_)
+    {
+        if (name == folded && entity(id) != nullptr)
+        {
+            found.push_back(id);
+        }
+    }
+    return found;
+}
+
+std::span<const EntityId> BattleScriptView::new_entities() const noexcept
+{
+    return new_entities_;
+}
+
 const SimSnapshot& BattleScriptView::snapshot() const noexcept
 {
     return *snapshot_;
@@ -168,7 +212,7 @@ const SimSnapshot& BattleScriptView::snapshot() const noexcept
 class BattleScriptContext final : public ScriptObjectProvider
 {
 public:
-    explicit BattleScriptContext(const BattleScriptView& view) noexcept : view_(view)
+    BattleScriptContext(const BattleScriptView& view, const std::optional<EntityId> object) noexcept : bound_object(object), view_(view)
     {}
 
     [[nodiscard]] std::span<const ScriptObjectKind> kinds() const noexcept override
@@ -186,8 +230,20 @@ public:
     void submit_orders(Battle& battle);
 
     std::unique_ptr<ScriptHost> host;
+    // The game object the script belongs to (none for scripts not bound to one).
+    std::optional<EntityId> bound_object;
 
 private:
+    // Event_Object_In_Range: queue `callback` with (self, other) for every object within `range`
+    // when the registering object is serviced (Service_Wrapper), of the player's owner slot when one
+    // was given as a real player.
+    struct Proximity
+    {
+        EntityId self;
+        std::size_t callback{};
+        float range{};
+        std::optional<std::uint32_t> owner;
+    };
     struct Block
     {
         std::uint32_t generation{};
@@ -215,7 +271,10 @@ private:
     // Whether a block's order is over, and whether it ended as ordered (arrived, or the victim died).
     [[nodiscard]] std::pair<bool, bool> block_state(const ScriptObject& object) const;
 
+    void service(EntityId self);
+
     const BattleScriptView& view_;
+    std::vector<Proximity> proximities_;
     std::vector<PendingOrder> pending_;
     std::vector<Block> blocks_;
     std::uint32_t next_block_{};
@@ -275,6 +334,38 @@ Status BattleScriptContext::call_function(const std::size_t function, ScriptCall
             {
                 found.push_back(game_object(entity.id));
             }
+        }
+        call.return_objects(found);
+        return {};
+    }
+    case Function::find_hint:
+    {
+        // Find_Hint(type, hint): the first living placed object of the type with the hint, or nil.
+        const auto type = type_argument(call, 1);
+        const auto hint = call.string(2);
+        if (!type || !hint)
+        {
+            call.return_nil();
+            return {};
+        }
+        for (const auto id : view_.hinted(*hint))
+        {
+            if (view_.type_of(id) == type)
+            {
+                call.return_object(game_object(id));
+                return {};
+            }
+        }
+        call.return_nil();
+        return {};
+    }
+    case Function::find_all_objects_with_hint:
+    {
+        const auto hint = call.string(1);
+        std::vector<ScriptObject> found;
+        for (const auto id : hint ? view_.hinted(*hint) : std::vector<EntityId>{})
+        {
+            found.push_back(game_object(id));
         }
         call.return_objects(found);
         return {};
@@ -385,8 +476,70 @@ Status BattleScriptContext::call_game_object(const ScriptObject& object, const G
     case GameObjectMethod::stop:
         (void)order({.order = BattleOrder::stop, .entities = {id}}, id, {}, false, false);
         break;
+    case GameObjectMethod::event_object_in_range:
+    {
+        // Event_Object_In_Range(handler, range[, player]). A filter that is not a real player (a
+        // stub, while Find_Player is one) filters nothing.
+        const auto callback = call.callback(1, "GameObject.Event_Object_In_Range");
+        const auto range = call.number(2);
+        if (!callback || !range)
+        {
+            return make_error("Event_Object_In_Range expects a function and a range");
+        }
+        const auto player = call.object(3);
+        std::optional<std::uint32_t> owner;
+        if (player && player->kind == player_kind)
+        {
+            owner = player->index;
+        }
+        std::erase_if(proximities_,
+                      [&](const Proximity& proximity)
+                      {
+                          return proximity.self == id && proximity.callback == *callback;
+                      });
+        proximities_.push_back({id, *callback, static_cast<float>(*range), owner});
+        break;
+    }
+    case GameObjectMethod::cancel_event_object_in_range:
+    {
+        const auto callback = call.callback(1, "GameObject.Event_Object_In_Range");
+        std::erase_if(proximities_,
+                      [&](const Proximity& proximity)
+                      {
+                          return proximity.self == id && (!callback || proximity.callback == *callback);
+                      });
+        break;
+    }
+    case GameObjectMethod::service_wrapper:
+        service(id);
+        break;
     }
     return {};
+}
+
+void BattleScriptContext::service(const EntityId self)
+{
+    const auto* entity = view_.entity(self);
+    for (const auto& proximity : proximities_)
+    {
+        if (proximity.self != self || entity == nullptr)
+        {
+            continue;
+        }
+        // Every object in range each time the object is serviced (the stock handlers cancel or
+        // guard themselves); a scan of the snapshot, to be replaced by the spatial grid's query
+        // when measured to matter.
+        const float range_squared = proximity.range * proximity.range;
+        for (const auto& other : view_.snapshot().entities)
+        {
+            if (other.id == self || (proximity.owner && other.owner != *proximity.owner) || ground_distance_squared(other.position, entity->position) > range_squared)
+            {
+                continue;
+            }
+            (void)host->queue_callback(proximity.callback, {ScriptValue::real_object(game_object(self), object_kinds[game_object_kind].name),
+                                                            ScriptValue::real_object(game_object(other.id), object_kinds[game_object_kind].name)});
+        }
+    }
 }
 
 ScriptObject BattleScriptContext::order(BattleCommand command, const EntityId entity, const EntityId target, const bool attack, const bool rejected)
@@ -473,7 +626,12 @@ BattleScripts::~BattleScripts() = default;
 Result<std::size_t> BattleScripts::add(const Battle& battle, const std::string_view script, const std::optional<EntityId> object)
 {
     view_.rebuild(battle);
-    auto context = std::make_unique<BattleScriptContext>(view_);
+    return start(script, object);
+}
+
+Result<std::size_t> BattleScripts::start(const std::string_view script, const std::optional<EntityId> object)
+{
+    auto context = std::make_unique<BattleScriptContext>(view_, object);
     auto options = options_;
     options.objects = context.get();
     EAW_TRY_ASSIGN(context->host, ScriptHost::create(reader_, options));
@@ -489,6 +647,7 @@ Result<std::size_t> BattleScripts::add(const Battle& battle, const std::string_v
         EAW_TRY(host.start_thread("main"));
     }
     contexts_.push_back(std::move(context));
+    ++stats_.started;
     return contexts_.size() - 1U;
 }
 
@@ -496,6 +655,28 @@ void BattleScripts::run(Battle& battle)
 {
     const auto started = std::chrono::steady_clock::now();
     view_.rebuild(battle);
+    // The scripts of objects that are gone end with them.
+    std::erase_if(contexts_,
+                  [&](const std::unique_ptr<BattleScriptContext>& context)
+                  {
+                      return context->bound_object && view_.entity(*context->bound_object) == nullptr;
+                  });
+    // Entities that appeared get their type's script; the view keeps the list while scripts start.
+    const std::vector<EntityId> appeared(view_.new_entities().begin(), view_.new_entities().end());
+    for (const auto id : appeared)
+    {
+        const auto script = battle.object_script(battle.world().type_name(id));
+        if (script.empty() || std::ranges::find(failed_scripts_, script) != failed_scripts_.end())
+        {
+            continue;
+        }
+        if (const auto added = start(script, id); !added)
+        {
+            log_warning("script", with_context("script " + std::string(script) + " of " + std::string(battle.world().type_name(id)) + " not started", added.error()));
+            failed_scripts_.emplace_back(script);
+            ++stats_.failed;
+        }
+    }
     for (auto& context : contexts_)
     {
         context->host->tick();

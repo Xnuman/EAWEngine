@@ -82,8 +82,9 @@ Proposed on 2026-11-10 with this roadmap; it continues the owner's order of 2026
 review, combat presentation, sound, player layer) with sound and the player layer moved to M4, where
 the skirmish needs them, and the open M2 render work placed by what depends on it:
 
-1. Scripting stage 1: game-object scripts on their entities, `Spawn_Unit`, `Find_Hint`, and proximity
-   events (events, entry points, object handles, and validated orders are done).
+1. Scripting stage 1: the rest of the tactical API by survey rank that needs no players
+   (`Get_Game_Mode`, the remaining `Get_*` queries, `Is_Category`); `Spawn_Unit` follows the player
+   layer.
 2. Rendering stage 1, the part combat presentation needs: damage-state (`_ALT<n>`) and LOD
    switching, runtime decals, depth-sorted transparency.
 3. Simulation stage 1's remainder: combat presentation and fidelity.
@@ -146,10 +147,14 @@ the skirmish needs them, and the open M2 render work placed by what depends on i
    control and `GameRandom`, and `lua-survey` driving AI plans, story events, task force events, and
    callbacks over the stock scripts; engine objects as userdata through a provider, and scripts in
    battles (`BattleScripts`: one immutable view per tick, per-script order buffers merged in a fixed
-   order as validated commands, blocks, script orders outside the log). Open: attaching game-object
-   scripts to entities from their XML type, `Spawn_Unit`, `Find_Hint`, proximity events through the
-   queue; decide whether running script state must be saveable (it shapes Persistence) and whether
-   the instruction budget should be lower (a runaway resume costs about 73 ms).
+   order as validated commands, blocks, script orders outside the log); game-object scripts started
+   on their entities from XML `Lua_Script`, map hints (`Find_Hint`), and proximity events. Open:
+   the rest of the tactical API by survey rank, starting with calls that need no players;
+   `Spawn_Unit` waits for the player layer (its owner comes from `Find_Player`) and will return
+   provisional objects that the merge maps to the spawned entities (agreed 2026-11-10), so a script
+   can order them at once while they read as not valid for one tick; decide whether running script state must be saveable (it
+   shapes Persistence), whether the instruction budget should be lower (a runaway resume costs about
+   73 ms), and how to cut a script's start (about 20 ms, mostly loading the framework libraries).
 2. The tactical host API, ranked by the survey, replacing stubs as Simulation stage 2 provides the
    systems.
 3. The galactic and story API.

@@ -272,6 +272,15 @@ std::optional<ScriptObject> ScriptCall::object(const int argument) const
     return argument > arguments_ ? std::nullopt : object_at(state_, argument);
 }
 
+std::optional<std::size_t> ScriptCall::callback(const int argument, const std::string_view registered_by)
+{
+    if (argument > arguments_ || !lua_isfunction(state_, argument) || lua_iscfunction(state_, argument))
+    {
+        return std::nullopt;
+    }
+    return host_of(state_).register_callback(state_, argument, std::string(registered_by));
+}
+
 void ScriptCall::return_nil()
 {
     lua_pushnil(state_);

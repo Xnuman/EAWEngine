@@ -215,6 +215,8 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
     std::size_t terrain_layers = 0;
     std::size_t objects = 0;
     std::size_t positioned_objects = 0;
+    std::size_t hinted_objects = 0;
+    std::set<std::string> hints;
     std::size_t active_environment_out_of_range = 0;
     std::map<std::uint32_t, std::size_t> active_environments;
     std::vector<std::pair<std::string, std::string>> failures;
@@ -257,6 +259,14 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
                                                     {
                                                         return object.has_transform;
                                                     });
+        for (const auto& object : map.placed_objects)
+        {
+            if (!object.hint.empty())
+            {
+                ++hinted_objects;
+                hints.insert(ascii_lower(object.hint));
+            }
+        }
     }
     std::cout << "TED semantic audit\n"
               << "Map files: " << files << '\n'
@@ -267,6 +277,7 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
               << "Terrain layers: " << terrain_layers << '\n'
               << "Objects: " << objects << '\n'
               << "Positioned objects: " << positioned_objects << '\n'
+              << "Objects with a hint: " << hinted_objects << " (" << hints.size() << " distinct hints)\n"
               << "Active environment out of range: " << active_environment_out_of_range << '\n'
               << "Active environment indices:";
     for (const auto& [index, count] : active_environments)

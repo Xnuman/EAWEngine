@@ -101,6 +101,7 @@ void print_sandbox_usage()
               << "  --log-dir <path>   Folder for log files (default: logs next to the executable)\n"
               << "  --crash-test <assert|exception|access-violation>  Fail deliberately to check crash reporting\n"
               << "  --auto-move        Order every mobile unit to the map center once shown (automation)\n"
+              << "  --no-scripts       Do not run game-object scripts (XML Lua_Script) in battles\n"
               << "  --spawn <TYPE>[:N][@OWNER] Make an XML object type spawnable on maps (repeatable); N spawn at the view\n"
               << "                     center when shown (OWNER slot, default 1; each request its own group), N key\n"
               << "                     spawns one at the cursor, Tab cycles types, O cycles the owner\n"
@@ -242,6 +243,10 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         else if (argument == "--auto-move")
         {
             options.auto_move = true;
+        }
+        else if (argument == "--no-scripts")
+        {
+            options.scripts = false;
         }
         else if (argument == "--spawn" || argument == "--spawn-later")
         {

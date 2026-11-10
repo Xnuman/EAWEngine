@@ -96,6 +96,9 @@ struct SandboxOptions
     std::filesystem::path log_directory;
     // Once the scene is shown, select every mobile entity and order it to the scene center.
     bool auto_move{};
+    // Game-object scripts (XML Lua_Script) run in battles; --no-scripts turns them off (sandbox and
+    // headless battles alike, so recordings replay the same way).
+    bool scripts{true};
     // XML object types made spawnable on maps; counts spawn when shown, each request as its own
     // group for its owner slot.
     std::vector<SandboxSpawnRequest> spawns;

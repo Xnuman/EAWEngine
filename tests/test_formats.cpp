@@ -373,6 +373,7 @@ void test_ted_map()
                 map.placed_objects[0].scale == 1.5F && map.placed_objects[0].position.x == 100.0F && map.placed_objects[0].position.y == 25.0F && map.placed_objects[0].position.z == -50.0F &&
                 map.placed_objects[0].rotation.y == 90.0F && map.placed_objects[0].has_transform,
             "TED placed-object transform decoding failed");
+    require(map.placed_objects[0].hint == "gate", "a placed object's hint must be read up to its NUL");
 }
 
 void test_dat_and_workspace()

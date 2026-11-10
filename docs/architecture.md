@@ -188,6 +188,13 @@ the script phase deterministic and ready for threads:
 3. script orders are not logged: a replay runs the same scripts again, which is the lockstep model
    (only player input is exchanged).
 
+Game-object scripts start on their own: when an entity appears whose type names a `Lua_Script`,
+`BattleScripts` starts that script with `Object` bound to the entity, and ends it when the entity is
+gone. Placed objects keep their map hints for `Find_Hint`. Proximity handlers registered with
+`Event_Object_In_Range` are evaluated when the object is serviced and queued as events, so they run
+after the script's next yield. Headless battles and the sandbox both run the script phase after
+every tick (`--no-scripts` turns it off).
+
 An order returns a block; it compares the order's serial (Battle numbers every order, and the
 simulation keeps the serial of the order each entity follows, outside the state hash) with the
 entity's, so it can tell an order not applied yet, running, finished, and replaced. A game object is

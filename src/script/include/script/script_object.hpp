@@ -62,6 +62,9 @@ public:
     [[nodiscard]] std::optional<std::string_view> string(int argument) const;
     // A real object of any kind (stubs and other values are nothing).
     [[nodiscard]] std::optional<ScriptObject> object(int argument) const;
+    // A script function, kept as one of the host's callbacks (ScriptHost::callbacks) the engine can
+    // queue later; the same function always gives the same index. Nothing for other values.
+    [[nodiscard]] std::optional<std::size_t> callback(int argument, std::string_view registered_by);
 
     void return_nil();
     void return_boolean(bool value);

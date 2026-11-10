@@ -47,6 +47,10 @@ public:
     [[nodiscard]] std::optional<std::uint32_t> type_of(EntityId id) const noexcept;
     // Snapshot positions of the living entities of a type, in snapshot order.
     [[nodiscard]] std::span<const std::uint32_t> entities_of_type(std::uint32_t type) const noexcept;
+    // Living placed entities whose hint matches, ignoring case, in map order.
+    [[nodiscard]] std::vector<EntityId> hinted(std::string_view hint) const;
+    // Entities that appeared since the last rebuild, in snapshot order.
+    [[nodiscard]] std::span<const EntityId> new_entities() const noexcept;
     [[nodiscard]] const SimSnapshot& snapshot() const noexcept;
 
 private:
@@ -64,6 +68,10 @@ private:
     std::vector<std::vector<std::uint32_t>> type_entities_;
     // Spawnable types already interned (the battle only adds to them).
     std::size_t spawnable_seen_{};
+    // The battle's hinted placed entities with folded hints (fixed for a battle).
+    std::vector<std::pair<std::string, EntityId>> hints_;
+    bool hints_read_{};
+    std::vector<EntityId> new_entities_;
 };
 
 class BattleScriptContext;
@@ -71,6 +79,9 @@ class BattleScriptContext;
 // Wall-clock cost of the script phases run so far (measurement, never read by the simulation).
 struct BattleScriptStats
 {
+    // Scripts started (game-object scripts included) and scripts that could not be.
+    std::uint64_t started{};
+    std::uint64_t failed{};
     std::uint64_t phases{};
     double total_seconds{};
     double worst_phase_seconds{};
@@ -90,8 +101,10 @@ public:
     // bound to `object` for a game object's script, then `main` as a thread. The script reads the
     // battle as it was last viewed (run() rebuilds the view). Returns the script's index.
     Result<std::size_t> add(const Battle& battle, std::string_view script, std::optional<EntityId> object = std::nullopt);
-    // The script phase after a tick: rebuilds the view, advances every script one tick in order,
-    // and submits their orders to the battle in the same order.
+    // The script phase after a tick: rebuilds the view; ends the scripts of objects that are gone
+    // and starts the game-object scripts (Battle::object_script) of entities that appeared, in
+    // snapshot order; advances every script one tick in order; and submits their orders to the
+    // battle in the same order. A script that cannot be started is reported once per name.
     void run(Battle& battle);
 
     [[nodiscard]] std::size_t size() const noexcept;
@@ -99,10 +112,14 @@ public:
     [[nodiscard]] const ScriptHost& host(std::size_t index) const;
 
 private:
+    // add() on the current view.
+    Result<std::size_t> start(std::string_view script, std::optional<EntityId> object);
+
     const AssetReader& reader_;
     ScriptHostOptions options_;
     BattleScriptView view_;
     std::vector<std::unique_ptr<BattleScriptContext>> contexts_;
+    std::vector<std::string> failed_scripts_;
     BattleScriptStats stats_;
 };
 

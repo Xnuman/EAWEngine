@@ -55,6 +55,7 @@ Map owner slot 3 is neutral and every other slot hostile, for now.
 | --- | --- |
 | `--frame-limit <n>` | Exit after n frames once the scene is shown. |
 | `--auto-move` | Order every mobile unit to the view center. |
+| `--no-scripts` | Do not run game-object scripts (XML `Lua_Script`) in battles; also accepted by `battle`, and a recording replays as it was made only with the same setting. |
 | `--pick <x> <y>` | Select what is at a client pixel once the scene is shown. |
 | `--reload-every <n>` | Replace the scene with a fresh copy every n frames (resource-retirement test); remaining texture, slot, and retirement counts print on exit. |
 | `--record <file>` | Write the order log on exit, for headless replay. |

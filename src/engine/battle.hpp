@@ -16,6 +16,9 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace eaw {
@@ -112,6 +115,10 @@ public:
     [[nodiscard]] const SimulationWorld& world() const noexcept;
     // Id of each placed entity in map order (empty where the world rejected it).
     [[nodiscard]] std::span<const std::optional<EntityId>> map_entity_ids() const noexcept;
+    // Placed entities that carry a hint, in map order (Find_Hint).
+    [[nodiscard]] std::span<const std::pair<EntityId, std::string>> hinted_entities() const noexcept;
+    // The game-object script of a type (empty: none), by XML type name ignoring case.
+    [[nodiscard]] std::string_view object_script(std::string_view type_name) const;
     [[nodiscard]] std::span<const SpawnableType> spawnable() const noexcept;
     // Adds spawnable types at runtime (a SpawnablePackage's types, with mesh indices already in
     // the scene's mesh library and member indices relative to `types`); returns the index of the
@@ -134,6 +141,9 @@ private:
     SimulationWorld world_;
     std::vector<SpawnableType> spawnable_;
     std::vector<std::optional<EntityId>> map_ids_;
+    std::vector<std::pair<EntityId, std::string>> hinted_;
+    // Folded type name -> game-object script, from the map's entities and the spawnable types.
+    std::unordered_map<std::string, std::string> object_scripts_;
     BattleLog log_;
     std::uint64_t next_serial_{1};
 };

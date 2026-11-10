@@ -976,6 +976,17 @@ recording stubs (`EAWEngine lua-survey`).
   `Find_All_Objects_Of_Type` takes a type name or an object type, and optionally a player. What
   `Result()` returns, and what a method on a dead object does, are not documented: the engine answers
   `Result()` with whether the order ended as ordered, and dead objects with nil (engine choices).
+- **Object scripts and hints.** A type names its game-object script in XML `Lua_Script` (a module
+  name under `Data/Scripts`, 153 stock definitions, 78 types directly). A placed object's hint, which
+  `Find_Hint(type, hint)` and `Find_All_Objects_With_Hint(hint)` look up, is a NUL-terminated string
+  in mini-chunk 1 of chunk 0 inside the object's 0x482 container in the TED (2,450 stock placed
+  objects, 1,713 distinct hints; 1,575 of the 1,670 hint names the stock scripts use appear there).
+  A second string, in the object's 0x46e container (5,246 objects, 19 distinct non-empty values
+  such as `commanderspawn`), is not identified yet. Proximity is `Event_Object_In_Range(handler,
+  range[, player])` on an object, evaluated when the object is serviced (`Service_Wrapper`, which
+  `PumpEvents` and `Process_Proximities` call), with handlers `(self, other)` that usually cancel
+  themselves; that every object in range triggers the handler on every service is an engine
+  choice.
 - **Random numbers.** `GameRandom(lower, upper)` returns an integer in the inclusive range (scripts
   index lists with it and call `GameRandom(1, 1)`), `GameRandom.Get_Float()` a number in [0, 1), and
   `GameRandom.Free_Random(lower, upper)` the same as `GameRandom`; that it is the unsynchronized

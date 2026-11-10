@@ -284,6 +284,12 @@ bool type_is_death_clone(const GameObjectCatalog& catalog, const XmlDefinition& 
            catalog.field(definition, "Death_Persistence_Duration").field != nullptr;
 }
 
+std::string type_lua_script(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto* node = catalog.field(definition, "Lua_Script").field;
+    return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
+}
+
 bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     for (const auto* field : {"LandBehavior", "Behavior"})

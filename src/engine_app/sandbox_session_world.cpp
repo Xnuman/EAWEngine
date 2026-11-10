@@ -61,6 +61,11 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
             watchdog.enter("simulation tick", world->stats().tick);
             const auto tick_start = std::chrono::steady_clock::now();
             world->step();
+            // The script phase follows the tick, as in headless battles (battle_scripts.hpp).
+            if (battle_scripts)
+            {
+                battle_scripts->run(*battle);
+            }
             last_tick_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tick_start).count();
             slowest_tick_ms = std::max(slowest_tick_ms, last_tick_ms);
             // Every tick's deaths and impacts, so none is lost when a frame runs several ticks.

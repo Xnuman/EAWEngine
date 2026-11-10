@@ -18,8 +18,13 @@ namespace eaw {
 
 void SandboxSession::start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, std::string name)
 {
+    battle_scripts.reset();
     battle.emplace(map, std::move(name), simulation_clock.tick_seconds());
     world = &battle->world();
+    if (options.scripts)
+    {
+        battle_scripts.emplace(vfs);
+    }
     presentation.emplace(scene, map.entities, battle->map_entity_ids(), battle->spawnable());
     previous_snapshot = world->snapshot();
     selection.clear();

@@ -120,6 +120,10 @@ struct TedPlacedObject
     Vector3 position;
     Vector3 rotation;
     bool has_transform{};
+    // The name scripts find the object by (Find_Hint, Find_All_Objects_With_Hint): mini-chunk 1 of
+    // chunk 0 in the object's 0x482 container, up to its first NUL; empty when the object has none.
+    // Of the 1,670 hint names the stock scripts use, 1,575 appear there in the stock maps.
+    std::string hint;
 };
 
 struct TedMapData

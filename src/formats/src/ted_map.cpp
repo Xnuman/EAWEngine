@@ -538,6 +538,37 @@ Result<bool> find_object_identity(const std::span<const std::byte> bytes, const 
     return false;
 }
 
+// The object's hint (TedPlacedObject::hint), if its 0x482 container carries one.
+Status find_object_hint(const std::span<const std::byte> bytes, const Chunk& object_chunk, TedPlacedObject& object)
+{
+    EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, object_chunk.payload, object_chunk.end));
+    for (const auto& child : children)
+    {
+        if (child.type != 0x482 || !child.container)
+        {
+            continue;
+        }
+        EAW_TRY_ASSIGN(const auto parts, read_chunks(bytes, child.payload, child.end));
+        for (const auto& part : parts)
+        {
+            if (part.type != 0 || part.container)
+            {
+                continue;
+            }
+            EAW_TRY_ASSIGN(const auto minis, read_minis(bytes, part));
+            for (const auto& mini : minis)
+            {
+                if (mini.type == 1)
+                {
+                    const std::string_view text(reinterpret_cast<const char*>(bytes.data() + mini.payload), mini.end - mini.payload);
+                    object.hint = std::string(text.substr(0, text.find('\0')));
+                }
+            }
+        }
+    }
+    return Status::success();
+}
+
 Status find_object_chunks(const std::span<const std::byte> bytes, const Chunk& chunk, std::map<std::uint32_t, std::uint32_t>& counts, std::vector<TedPlacedObject>& objects, const unsigned depth = 0)
 {
     if (!chunk.container || depth > 12)
@@ -551,6 +582,7 @@ Status find_object_chunks(const std::span<const std::byte> bytes, const Chunk& c
         {
             TedPlacedObject object;
             EAW_TRY(find_object_identity(bytes, child, object));
+            EAW_TRY(find_object_hint(bytes, child, object));
             ++counts[object.crc];
             objects.push_back(object);
         }
