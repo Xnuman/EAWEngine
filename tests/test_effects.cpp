@@ -65,7 +65,7 @@ void test_attached_effect_scale()
     burst.groups[0].type = 0;
     burst.groups[0].value = {0.0F, 0.0F, 10.0F};
     eaw::VisualRig rig;
-    rig.model = std::make_shared<eaw::AloModelData>(expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "test model"));
+    rig.skeleton = std::make_shared<eaw::Skeleton>(eaw::load_skeleton(expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "test model")));
     rig.palette_size = 1;
     rig.effects.push_back({make_test_effect({burst}), 0U, "pe_test", -1, nullptr, false});
     const std::vector<eaw::VisualRig> rigs{rig};

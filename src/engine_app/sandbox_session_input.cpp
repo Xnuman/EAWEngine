@@ -312,8 +312,8 @@ void SandboxSession::handle_view_keys(const eaw::InputState& input)
             {
                 visual_animation = std::move(animation).value();
                 animation_status = path;
-                std::cout << "Animation " << animation_choice << "/" << animation_paths.size() << ": " << path << " | " << ala_playable_frame_count(*visual_animation) << " frames, "
-                          << ala_duration_seconds(*visual_animation) << " seconds\n";
+                std::cout << "Animation " << animation_choice << "/" << animation_paths.size() << ": " << path << " | " << visual_animation->loop_frame_count << " frames, "
+                          << eaw::animation_duration(*visual_animation) << " seconds\n";
             }
             else
             {

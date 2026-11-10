@@ -308,9 +308,9 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
             }
             visual_animation = std::move(content.animation);
             animation_status = content.animation_path;
-            std::cout << "Animation: " << content.animation_path << " | " << ala_playable_frame_count(*visual_animation) << " frames at " << visual_animation->frames_per_second << " fps | "
-                      << ala_duration_seconds(*visual_animation) << " seconds\n";
-            for (const auto& warning : visual_animation->warnings)
+            std::cout << "Animation: " << content.animation_path << " | " << visual_animation->loop_frame_count << " frames at " << visual_animation->frames_per_second << " fps | "
+                      << eaw::animation_duration(*visual_animation) << " seconds\n";
+            for (const auto& warning : content.animation_warnings)
             {
                 std::cerr << "animation warning: " << warning << '\n';
             }

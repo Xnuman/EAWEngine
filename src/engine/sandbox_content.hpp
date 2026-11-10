@@ -3,11 +3,11 @@
 // What the sandbox shows, built off the render thread: the map or model scene, the model's
 // animations, and the files the build read (for hot reload).
 
+#include "assets/animation.hpp"
 #include "asset_cache.hpp"
 #include "sandbox_options.hpp"
 #include "visual_scene_builder.hpp"
 
-#include "formats/ala_animation.hpp"
 #include "vfs/virtual_file_system.hpp"
 
 #include <optional>
@@ -21,8 +21,10 @@ struct SandboxContent
 {
     std::optional<VisualMapAsset> map;
     std::optional<VisualModelAsset> model;
-    std::optional<AlaAnimationData> animation;
+    std::optional<Animation> animation;
     std::string animation_path;
+    // What decoding the animation file reported.
+    std::vector<std::string> animation_warnings;
     // Every animation beside the model, for runtime selection.
     std::vector<std::string> animations;
     std::string animation_error;
@@ -47,7 +49,8 @@ struct HotReloadCheck
     double seconds{};
 };
 
-[[nodiscard]] Result<AlaAnimationData> read_animation(const AssetReader& reader, std::string_view path);
+// An animation clip from its file; the decoder's warnings go to `warnings` when given.
+[[nodiscard]] Result<Animation> read_animation(const AssetReader& reader, std::string_view path, std::vector<std::string>* warnings = nullptr);
 
 // Builds the map (with the requested spawnable types) or the model and its animation. Reading the
 // VFS from a worker is safe because its const reads open their own streams, and the main thread

@@ -62,8 +62,9 @@ A resource reaches the engine in three stages, each in its own layer:
 
 The file-level data lives only as long as a loader or a tool needs it; tools (inspector, EAWTools)
 show it directly. Another source format means another reader and loader producing the same
-resource. Stage 3 is being built (reorganization step 5); today the scene builders in `src/engine`
-play the loaders' part and the engine still holds some file-level data.
+resource. Stage 3 is being built (reorganization step 5): `Skeleton` and `Animation` are loaded this way and
+are all the engine keeps of a model's bones and clips; meshes and materials are still turned into
+scene data by the scene builders in `src/engine` reading the decoded model, until `Model` exists.
 
 ## Simulation tick layers
 
@@ -388,8 +389,10 @@ dependency rules; this is the file-level detail.
   `map_object_layout`, `xml_asset_database`, and `XmlSchema`: `xml_schema_load.cpp` for the
   optional eaw-schema YAML and its layers, `xml_schema_validate.cpp` for validating a resolved XML
   database, sharing `xml_schema_internal.hpp`), `model` (`legacy_material`, and
-  `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` naming rules and default mesh visibility), and
-  `animation` (`alamo_pose`: pose sampling, blending, and composition).
+  `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` naming rules and default mesh visibility),
+  `animation` (`skeleton`, `animation`: the engine-native resources; `pose`: sampling, blending,
+  composition, and retargeting by bone name), and `loaders` (`alamo_loaders`: `load_skeleton`
+  from `AloModelData`, `load_animation` from `AlaAnimationData`).
 - `src/localization` (`eaw_localization`): `localization_workspace` (TSV workspaces, DAT rows,
   unit keys, DAT string tables from disk), `localization_scan` (TEXT_* references in mod XML), and
   `localization_validation` (a translation against its reference).

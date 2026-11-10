@@ -1,30 +1,30 @@
 // The 3D model preview with its animation pose.
 
-#include "assets/alamo_pose.hpp"
+#include "assets/animation.hpp"
+#include "assets/pose.hpp"
 #include "gui_internal.hpp"
 #include "core/string_utils.hpp"
 #include "formats/alo_model_helpers.hpp"
-#include "formats/ala_animation_helpers.hpp"
 
 namespace eaw::tools {
 namespace {
 
-std::vector<AlaPoseBone> preview_pose(const GuiApp::State& state)
+std::vector<PoseBone> preview_pose(const GuiApp::State& state)
 {
-    if (!state.preview_model)
+    if (!state.preview_skeleton)
     {
         return {};
     }
     if (state.preview_animation)
     {
-        return ala_sample_pose(*state.preview_animation, *state.preview_model, state.preview_time);
+        return sample_pose(*state.preview_animation, *state.preview_skeleton, state.preview_time);
     }
-    const auto transforms = alo_bind_pose(*state.preview_model);
-    std::vector<AlaPoseBone> pose;
+    const auto transforms = skeleton_bind_pose(*state.preview_skeleton);
+    std::vector<PoseBone> pose;
     pose.reserve(transforms.size());
     for (std::size_t index = 0; index < transforms.size(); ++index)
     {
-        pose.push_back({transforms[index], state.preview_model->bones[index].visible});
+        pose.push_back({transforms[index], state.preview_skeleton->bones[index].visible});
     }
     return pose;
 }
@@ -72,7 +72,7 @@ void render_model_viewport(GuiApp::State& state)
             state.preview_playing = !state.preview_playing;
         }
         ImGui::SameLine();
-        const auto duration = static_cast<float>(ala_duration_seconds(*state.preview_animation));
+        const auto duration = animation_duration(*state.preview_animation);
         ImGui::SetNextItemWidth(-1.0F);
         ImGui::SliderFloat("##animation-time", &state.preview_time, 0.0F, std::max(duration, 0.001F), "%.3f s");
         if (state.preview_playing && duration > 0.0F)
@@ -186,9 +186,9 @@ void render_model_viewport(GuiApp::State& state)
     draw_gpu_preview(state, state.model_target, canvas_min, canvas_max, center, state.preview_yaw, state.preview_pitch, scale, extent * 2.0F, meshes);
     if (state.preview_show_skeleton)
     {
-        for (std::size_t index = 0; index < pose.size() && index < state.preview_model->bones.size(); ++index)
+        for (std::size_t index = 0; index < pose.size() && index < state.preview_skeleton->bones.size(); ++index)
         {
-            const auto parent = state.preview_model->bones[index].parent;
+            const auto parent = state.preview_skeleton->bones[index].parent;
             if (parent < 0 || static_cast<std::size_t>(parent) >= pose.size())
             {
                 continue;

@@ -7,8 +7,7 @@
 
 #include "eaw/file_dialogs.hpp"
 #include "preview_renderer.hpp"
-#include "assets/alamo_pose.hpp"
-#include "formats/ala_animation.hpp"
+#include "assets/pose.hpp"
 #include "formats/alo_model.hpp"
 #include "vfs/asset_environment.hpp"
 #include "formats/dat_string_table.hpp"
@@ -124,7 +123,7 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, std::span<const st
 
 void label_value(const char* label, std::string_view value);
 
-PreviewGeometry build_preview_geometry(const AloModelData& model, const std::vector<AlaPoseBone>* pose, const std::vector<Matrix4>& inverse_bind, bool show_collision,
+PreviewGeometry build_preview_geometry(const AloModelData& model, const std::vector<PoseBone>* pose, const std::vector<Matrix4>& inverse_bind, bool show_collision,
                                        const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture);
 
 // Renders `meshes` into `target` and shows it over the canvas. Returns false (after drawing a
@@ -161,11 +160,13 @@ struct GuiApp::State
     int selected_asset{-1};
     std::string asset_preview;
     std::vector<std::string> mount_warnings;
+    // The decoded model (shown as file data) and its skeleton as the engine poses it.
     std::optional<AloModelData> preview_model;
+    std::optional<Skeleton> preview_skeleton;
     std::optional<TedMapData> preview_map;
     std::vector<Matrix4> preview_inverse_bind;
     std::vector<ResolvedAsset> preview_animation_assets;
-    std::optional<AlaAnimationData> preview_animation;
+    std::optional<Animation> preview_animation;
     int preview_animation_index{-1};
     float preview_time{};
     float preview_yaw{-0.65F};

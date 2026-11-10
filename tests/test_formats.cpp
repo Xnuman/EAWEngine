@@ -1,5 +1,7 @@
-#include "assets/alamo_pose.hpp"
+#include "assets/pose.hpp"
 #include "test_support.hpp"
+
+#include "assets/alamo_loaders.hpp"
 
 #include "math/transform.hpp"
 
@@ -241,7 +243,11 @@ void test_ala_animation()
     require(animation.tracks.size() == 1 && animation.tracks[0].name == "ROOT" && animation.tracks[0].translation && animation.tracks[0].rotation && !animation.tracks[0].scale &&
                 animation.tracks[0].visibility && animation.tracks[0].frames.size() == 31,
             "ALA bone track decoding failed");
-    const auto pose = eaw::ala_sample_pose(animation, expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse"), 0.5F);
+    const auto loaded = eaw::load_animation(animation);
+    require(loaded.key_count == 31 && loaded.loop_frame_count == 30 && eaw::animation_duration(loaded) == 1.0F && loaded.tracks.size() == 1 && loaded.tracks[0].bone_name == "ROOT" &&
+                loaded.tracks[0].keys.size() == 31,
+            "an ALA must load into an Animation with one key more than a loop plays");
+    const auto pose = eaw::sample_pose(loaded, eaw::load_skeleton(expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse")), 0.5F);
     require(pose.size() == 1 && pose[0].visible, "ALA sampled pose decoding failed");
 }
 
@@ -281,56 +287,58 @@ void test_ala_blending()
         }
     }
 
-    const auto model = expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse");
-    const auto animation = expect_ok(eaw::read_ala(make_test_ala()), "ALA parse");
+    const auto model_data = expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse");
+    const auto model = eaw::load_skeleton(model_data);
+    const auto animation = eaw::load_animation(expect_ok(eaw::read_ala(make_test_ala()), "ALA parse"));
+    require(model.bones.size() == model_data.bones.size() && eaw::skeleton_bind_pose(model) == alo_bind_pose(model_data), "a loaded skeleton must keep the file's bind pose exactly");
     for (const auto seconds : {0.0F, 0.25F, 0.5F, 1.75F, -0.3F})
     {
-        const auto direct = eaw::ala_sample_pose(animation, model, seconds);
-        const auto composed = eaw::ala_compose_pose(model, eaw::ala_sample_local_pose(animation, model, seconds));
+        const auto direct = eaw::sample_pose(animation, model, seconds);
+        const auto composed = eaw::compose_pose(model, eaw::sample_local_pose(animation, model, seconds));
         require(direct.size() == composed.size() && near(direct[0].transform, composed[0].transform, 1.0e-4F) && direct[0].visible == composed[0].visible,
                 "a composed local pose must match sample_pose");
     }
-    const auto bind = eaw::ala_compose_pose(model, eaw::ala_bind_local_pose(model));
-    require(near(bind[0].transform, alo_bind_pose(model)[0], 1.0e-4F), "the bind local pose must compose to the bind pose");
+    const auto bind = eaw::compose_pose(model, eaw::bind_local_pose(model));
+    require(near(bind[0].transform, eaw::skeleton_bind_pose(model)[0], 1.0e-4F), "the bind local pose must compose to the bind pose");
 
     // Identity versus 90 degrees about Z (with the sign flipped, to take the shorter arc), moved
     // and scaled: halfway is 45 degrees, halfway translation and scale.
     const auto half_turn = std::sqrt(0.5F);
-    std::vector<eaw::AlaLocalBone> pose{{{0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F}, {0.0F, 0.0F, 0.0F, 1.0F}, true}};
-    const std::vector<eaw::AlaLocalBone> turned{{{2.0F, 4.0F, -6.0F}, {3.0F, 3.0F, 3.0F}, {0.0F, 0.0F, -half_turn, -half_turn}, false}};
-    eaw::ala_blend_pose(pose, turned, 0.0F);
-    eaw::ala_blend_pose(pose, turned, std::numeric_limits<float>::quiet_NaN());
+    std::vector<eaw::LocalBone> pose{{{0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F}, {0.0F, 0.0F, 0.0F, 1.0F}, true}};
+    const std::vector<eaw::LocalBone> turned{{{2.0F, 4.0F, -6.0F}, {3.0F, 3.0F, 3.0F}, {0.0F, 0.0F, -half_turn, -half_turn}, false}};
+    eaw::blend_pose(pose, turned, 0.0F);
+    eaw::blend_pose(pose, turned, std::numeric_limits<float>::quiet_NaN());
     require(pose[0].translation.x == 0.0F && pose[0].rotation.w == 1.0F && pose[0].visible, "zero and non-finite weights must keep the pose");
-    eaw::ala_blend_pose(pose, turned, 0.5F);
+    eaw::blend_pose(pose, turned, 0.5F);
     const auto& q = pose[0].rotation;
     const auto angle = 2.0F * std::atan2(q.z, q.w);
     require(std::fabs(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w - 1.0F) < 1.0e-5F && std::fabs(angle - std::numbers::pi_v<float> / 4.0F) < 1.0e-4F,
             "a half weight must turn halfway along the shorter arc and stay normalized");
     require(pose[0].translation.y == 2.0F && pose[0].scale.x == 2.0F && pose[0].visible, "a half weight must land halfway and keep the heavier side's visibility");
-    eaw::ala_blend_pose(pose, turned, 1.0F);
+    eaw::blend_pose(pose, turned, 1.0F);
     require(near(eaw::compose_transform(pose[0].scale, pose[0].rotation, pose[0].translation), eaw::compose_transform(turned[0].scale, turned[0].rotation, turned[0].translation), 1.0e-5F) &&
                 !pose[0].visible,
             "a full weight must take the target pose");
     // A shorter target blends over the common bones and leaves the rest.
-    std::vector<eaw::AlaLocalBone> empty;
-    eaw::ala_blend_pose(pose, empty, 1.0F);
+    std::vector<eaw::LocalBone> empty;
+    eaw::blend_pose(pose, empty, 1.0F);
     require(pose.size() == 1, "blending with an empty pose must keep the bones");
 }
 
 // Clips shared between models point at bones by name.
 void test_ala_retarget()
 {
-    const auto model = expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse");
-    eaw::AlaAnimationData animation = expect_ok(eaw::read_ala(make_test_ala()), "ALA parse");
+    const auto model = eaw::load_skeleton(expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse"));
+    auto animation = eaw::load_animation(expect_ok(eaw::read_ala(make_test_ala()), "ALA parse"));
     require(!model.bones.empty() && !animation.tracks.empty(), "the fixtures must have a bone and a track");
     // The authored skeleton put the bone elsewhere and had one the model lacks.
-    animation.tracks[0].bone_index = 7;
-    animation.tracks[0].name = eaw::ascii_lower(model.bones[0].name);
+    animation.tracks[0].bone = 7;
+    animation.tracks[0].bone_name = eaw::ascii_lower(model.bones[0].name);
     auto extra = animation.tracks[0];
-    extra.name = "NOT_A_BONE";
+    extra.bone_name = "NOT_A_BONE";
     animation.tracks.push_back(extra);
-    const auto retargeted = eaw::ala_retarget_by_bone_name(animation, model);
-    require(retargeted.tracks.size() == 1 && retargeted.tracks[0].bone_index == 0 && retargeted.stored_frame_count == animation.stored_frame_count,
+    const auto retargeted = eaw::retarget_by_bone_name(animation, model);
+    require(retargeted.tracks.size() == 1 && retargeted.tracks[0].bone == 0 && retargeted.key_count == animation.key_count,
             "retargeting must match bones by name regardless of case and drop unknown bones");
 }
 

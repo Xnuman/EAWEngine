@@ -1,15 +1,23 @@
 #include "sandbox_content.hpp"
 
+#include "assets/alamo_loaders.hpp"
+#include "formats/ala_animation.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <utility>
 
 namespace eaw {
 
-Result<AlaAnimationData> read_animation(const AssetReader& reader, const std::string_view path)
+Result<Animation> read_animation(const AssetReader& reader, const std::string_view path, std::vector<std::string>* warnings)
 {
     EAW_TRY_ASSIGN(const auto bytes, reader.read(path));
-    return read_ala(bytes);
+    EAW_TRY_ASSIGN(const auto data, read_ala(bytes));
+    if (warnings != nullptr)
+    {
+        *warnings = data.warnings;
+    }
+    return load_animation(data);
 }
 
 SandboxContent build_sandbox_content(const VirtualFileSystem& vfs, const SandboxOptions& options, AssetCache* cache, const bool reload, std::vector<std::string> extra_spawn_types)
@@ -83,7 +91,7 @@ SandboxContent build_sandbox_content(const VirtualFileSystem& vfs, const Sandbox
             }
             else
             {
-                auto animation = read_animation(reader, resolved_animation->virtual_path);
+                auto animation = read_animation(reader, resolved_animation->virtual_path, &content.animation_warnings);
                 if (animation)
                 {
                     content.animation = std::move(animation).value();

@@ -105,11 +105,11 @@ void test_unit_animation()
             "snapshots must ask for idle, move (even with a target), and attack");
 
     // Mesh 0: a one-bone rig with idle and move clips; mesh 1: no clips.
-    const auto model = std::make_shared<const eaw::AloModelData>(expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse"));
-    const auto animation = std::make_shared<const eaw::AlaAnimationData>(expect_ok(eaw::read_ala(make_test_ala()), "ALA parse"));
+    const auto model = std::make_shared<const eaw::Skeleton>(eaw::load_skeleton(expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse")));
+    const auto animation = std::make_shared<const eaw::Animation>(eaw::load_animation(expect_ok(eaw::read_ala(make_test_ala()), "ALA parse")));
     eaw::VisualRig rig;
-    rig.model = model;
-    for (const auto& transform : alo_bind_pose(*model))
+    rig.skeleton = model;
+    for (const auto& transform : eaw::skeleton_bind_pose(*model))
     {
         const auto inverted = eaw::inverse(transform);
         require(inverted.has_value(), "the test bind pose must be invertible");

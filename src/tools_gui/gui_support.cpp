@@ -1,6 +1,6 @@
 // Helpers shared by the workbench panels: text, DDS previews, and asset previews.
 
-#include "assets/alamo_pose.hpp"
+#include "assets/pose.hpp"
 #include "gui_internal.hpp"
 
 #include "assets/alo_interpretation.hpp"
@@ -60,7 +60,7 @@ PreviewBlend preview_blend(const LegacyMaterial& material) noexcept
     return PreviewBlend::opaque;
 }
 
-Vector3 animated_vertex(const AloVertex& vertex, const AloSubMesh& submesh, const std::vector<AlaPoseBone>& pose, const std::vector<Matrix4>& inverse_bind)
+Vector3 animated_vertex(const AloVertex& vertex, const AloSubMesh& submesh, const std::vector<PoseBone>& pose, const std::vector<Matrix4>& inverse_bind)
 {
     if (submesh.skin_bones.empty())
     {
@@ -638,7 +638,7 @@ void label_value(const char* label, const std::string_view value)
     ImGui::TextUnformatted(value.data(), value.data() + value.size());
 }
 
-PreviewGeometry build_preview_geometry(const AloModelData& model, const std::vector<AlaPoseBone>* pose, const std::vector<Matrix4>& inverse_bind, const bool show_collision,
+PreviewGeometry build_preview_geometry(const AloModelData& model, const std::vector<PoseBone>* pose, const std::vector<Matrix4>& inverse_bind, const bool show_collision,
                                        const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture)
 {
     static constexpr std::array<ImU32, 6> palette{IM_COL32(54, 177, 186, 255), IM_COL32(71, 137, 201, 255), IM_COL32(121, 101, 198, 255),

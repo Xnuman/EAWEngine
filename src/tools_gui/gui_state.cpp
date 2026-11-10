@@ -1,6 +1,8 @@
 // GuiApp::State: asset loading and selection, previews, and DAT and workspace files.
 
 #include "gui_internal.hpp"
+
+#include "assets/alamo_loaders.hpp"
 #include "core/string_utils.hpp"
 #include "formats/alo_model_helpers.hpp"
 #include "formats/dat_string_table_helpers.hpp"
@@ -110,6 +112,7 @@ void GuiApp::State::load_assets()
     selected_asset = -1;
     asset_preview.clear();
     preview_model.reset();
+    preview_skeleton.reset();
     preview_map.reset();
     preview_inverse_bind.clear();
     preview_animation_assets.clear();
@@ -156,7 +159,7 @@ void GuiApp::State::select_preview_animation(const int index)
         fail(animation.error());
         return;
     }
-    preview_animation = std::move(animation).value();
+    preview_animation = load_animation(*animation);
     succeed("Loaded animation " + asset.virtual_path);
 }
 
@@ -180,6 +183,7 @@ void GuiApp::State::inspect_asset(const int index)
     const auto& bytes = *read;
     asset_preview = std::move(preview).value();
     preview_model.reset();
+    preview_skeleton.reset();
     preview_map.reset();
     preview_inverse_bind.clear();
     preview_animation_assets.clear();
@@ -221,7 +225,8 @@ void GuiApp::State::inspect_asset(const int index)
         return;
     }
     preview_model = std::move(model).value();
-    const auto bind_pose = alo_bind_pose(*preview_model);
+    preview_skeleton = load_skeleton(*preview_model);
+    const auto bind_pose = skeleton_bind_pose(*preview_skeleton);
     preview_inverse_bind.reserve(bind_pose.size());
     for (const auto& transform : bind_pose)
     {

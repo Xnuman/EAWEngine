@@ -1,8 +1,8 @@
-#include "assets/alamo_pose.hpp"
+#include "assets/pose.hpp"
 #include "unit_animation.hpp"
 
 #include "scene_presentation.hpp"
-#include "formats/ala_animation_helpers.hpp"
+#include "assets/animation.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -134,14 +134,14 @@ std::uint32_t UnitAnimator::slot_count(const std::uint32_t mesh, const std::int3
 {
     const auto& animation = *rigs_[mesh].clips[static_cast<std::size_t>(clip)].animation;
     const auto fps = std::max(animation.frames_per_second, 1.0F);
-    const auto frames = static_cast<float>(ala_playable_frame_count(animation));
+    const auto frames = static_cast<float>(animation.loop_frame_count);
     return static_cast<std::uint32_t>(std::max(1.0F, std::ceil(frames * std::max(1.0F, std::ceil(minimum_slots_per_second / fps)))));
 }
 
 // The slot of a clip at `seconds` into it (looping).
 std::uint32_t UnitAnimator::slot_of(const std::uint32_t mesh, const std::int32_t clip, const double seconds) const
 {
-    const auto duration = static_cast<double>(ala_duration_seconds(*rigs_[mesh].clips[static_cast<std::size_t>(clip)].animation));
+    const auto duration = static_cast<double>(animation_duration(*rigs_[mesh].clips[static_cast<std::size_t>(clip)].animation));
     const auto slots = slot_count(mesh, clip);
     const auto position = std::fmod(std::max(seconds, 0.0), duration) / duration;
     return std::min(static_cast<std::uint32_t>(position * static_cast<double>(slots)), slots - 1U);
@@ -150,7 +150,7 @@ std::uint32_t UnitAnimator::slot_of(const std::uint32_t mesh, const std::int32_t
 void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
 {
     const auto& rig = rigs_[key.mesh];
-    std::vector<AlaLocalBone> pose;
+    std::vector<LocalBone> pose;
     float total = 0.0F;
     for (const auto& layer : key.layers)
     {
@@ -158,16 +158,16 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
         {
             continue;
         }
-        std::vector<AlaLocalBone> layer_pose;
+        std::vector<LocalBone> layer_pose;
         if (layer.clip == rest_clip)
         {
-            layer_pose = ala_bind_local_pose(*rig.model);
+            layer_pose = bind_local_pose(*rig.skeleton);
         }
         else
         {
             const auto& clip = rig.clips[static_cast<std::size_t>(layer.clip)];
-            const auto seconds = static_cast<float>(static_cast<double>(layer.slot) / static_cast<double>(slot_count(key.mesh, layer.clip)) * ala_duration_seconds(*clip.animation));
-            layer_pose = ala_sample_local_pose(*clip.animation, *rig.model, seconds);
+            const auto seconds = static_cast<float>(static_cast<double>(layer.slot) / static_cast<double>(slot_count(key.mesh, layer.clip)) * animation_duration(*clip.animation));
+            layer_pose = sample_local_pose(*clip.animation, *rig.skeleton, seconds);
         }
         const auto weight = static_cast<float>(layer.eighths);
         if (pose.empty())
@@ -178,7 +178,7 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
         }
         // Each further clip takes its share of the weight so far: the result is the weighted average.
         total += weight;
-        ala_blend_pose(pose, layer_pose, weight / total);
+        blend_pose(pose, layer_pose, weight / total);
     }
     append_rig_local_palette(rig, pose, out);
 }
@@ -213,7 +213,7 @@ std::optional<std::uint32_t> UnitAnimator::place(const PoseKey& key, const std::
 
 void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id, const double seconds, const DeathStyle& style)
 {
-    if (instance.mesh >= rigs_.size() || !rigs_[instance.mesh].model)
+    if (instance.mesh >= rigs_.size() || !rigs_[instance.mesh].skeleton)
     {
         return;
     }
@@ -240,7 +240,7 @@ void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id,
     {
         corpses_.erase(corpses_.begin());
     }
-    const auto duration = static_cast<double>(ala_duration_seconds(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
+    const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
     const auto lifetime = style.persistence_seconds ? std::max(static_cast<double>(*style.persistence_seconds), duration) : duration + corpse_linger_seconds;
     corpses_.push_back({instance, clip, seconds, lifetime});
 }
@@ -272,7 +272,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         }
         const auto& rig = rigs_[instance.mesh];
         instance.bone_offset = rig.rest_offset;
-        if (!entities[index].valid() || rig.clips.empty() || !rig.model)
+        if (!entities[index].valid() || rig.clips.empty() || !rig.skeleton)
         {
             continue;
         }
@@ -336,7 +336,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 }
                 const auto reference = role == AnimationRole::walk_move ? entity.max_speed * walk_speed_fraction : entity.max_speed;
                 const auto playback = std::clamp(state.display_speed / reference, minimum_playback_rate, maximum_playback_rate);
-                rate += static_cast<double>(weight * playback) / static_cast<double>(ala_duration_seconds(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
+                rate += static_cast<double>(weight * playback) / static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
             };
             stride_rate(blend.lower, lower, 1.0F - blend.blend);
             stride_rate(blend.upper, upper, blend.blend);
@@ -363,7 +363,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         double fire_time = 0.0;
         if (state.attack >= 0 && state.attack_idle >= 0)
         {
-            const auto duration = static_cast<double>(ala_duration_seconds(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.attack)].animation));
+            const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.attack)].animation));
             fire = state.since_shot < duration ? 1.0F : static_cast<float>(std::clamp(1.0 - (state.since_shot - duration) / shot_fade_seconds, 0.0, 1.0));
             fire_time = std::min(state.since_shot, duration * 0.9999);
         }
@@ -379,7 +379,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             {
                 return {rest_clip, 0, amount};
             }
-            const auto duration = static_cast<double>(ala_duration_seconds(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
+            const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
             const auto time = role == AnimationRole::idle ? seconds - state.idle_start : state.stride_phase * duration;
             return {clip, slot_of(instance.mesh, clip, time), amount};
         };
@@ -426,7 +426,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                   });
     for (const auto& corpse : corpses_)
     {
-        const auto duration = static_cast<double>(ala_duration_seconds(*rigs_[corpse.instance.mesh].clips[static_cast<std::size_t>(corpse.clip)].animation));
+        const auto duration = static_cast<double>(animation_duration(*rigs_[corpse.instance.mesh].clips[static_cast<std::size_t>(corpse.clip)].animation));
         const auto time = std::clamp(seconds - corpse.died, 0.0, duration * 0.9999);
         PoseKey key{corpse.instance.mesh, {}};
         key.layers[0] = {corpse.clip, slot_of(corpse.instance.mesh, corpse.clip, time), 8U};

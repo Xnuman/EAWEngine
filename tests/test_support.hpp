@@ -24,6 +24,7 @@
 #include "core/log.hpp"
 #include "core/checksum.hpp"
 #include "core/status.hpp"
+#include "assets/alamo_loaders.hpp"
 #include "assets/game_object_catalog.hpp"
 #include "eaw/simulation.hpp"
 #include "eaw/gpu_resource_lifetime.hpp"

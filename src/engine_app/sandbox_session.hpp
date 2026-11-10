@@ -52,7 +52,7 @@ struct SandboxSession
     eaw::D3d12Renderer& renderer;
 
     std::optional<eaw::VisualModelAsset> visual_model;
-    std::optional<eaw::AlaAnimationData> visual_animation;
+    std::optional<eaw::Animation> visual_animation;
     // Model inspection orbits the model; a map uses the tactical camera. The validation
     // triangle, shown while content builds, gets an orbit over its small extent.
     std::optional<eaw::OrbitCamera> orbit_camera{std::in_place, eaw::CameraBounds{{-0.8F, -0.7F, -0.1F}, {0.8F, 0.8F, 0.1F}}};
