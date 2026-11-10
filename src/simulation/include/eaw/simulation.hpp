@@ -112,7 +112,34 @@ enum class SimCommandKind : std::uint8_t
     // Creates `spawns` in order (reinforcements, debug spawns, scripted arrivals); spawns the world
     // rejects are counted in Stats::rejected_spawns.
     spawn,
+    // Move like formation_move to `target` (or to `target_entity` while it lives, re-read as it
+    // moves), engaging hostiles met on the way (StandingOrder::attack_move).
+    attack_move,
+    // Stay near `target` (or `target_entity`, followed as it moves) and engage hostiles that come
+    // near it (StandingOrder::guard).
+    guard,
 };
+
+// What an entity keeps doing besides its current movement and target: nothing, an attack-move, or a
+// guard. Every move, stop, attack, and formation move clears it.
+enum class StandingOrder : std::uint8_t
+{
+    none,
+    attack_move,
+    guard,
+};
+
+// Standing order tuning (engine choices relative to the weapon's range, to be checked in play):
+// hostiles are engaged within acquire_range_factor x range of an attack-mover, or within the guard
+// radius of a guarded anchor; a chase breaks off beyond leash_range_factor x range from where it
+// began (attack-move) or from the anchor (guard); the guard radius is the weapon's range, at least
+// minimum_guard_radius world units; a guard returns once farther than half the radius from its
+// anchor, and a moving destination or anchor is followed once it is farther than follow_tolerance
+// from where the unit is heading.
+inline constexpr float acquire_range_factor = 1.25F;
+inline constexpr float leash_range_factor = 2.0F;
+inline constexpr float minimum_guard_radius = 150.0F;
+inline constexpr float follow_tolerance = 50.0F;
 
 struct SimCommand
 {
@@ -174,9 +201,11 @@ struct EntitySnapshot
     // Tick in which the entity last launched a shot (0: never); for animation and effects, not part
     // of the state hash.
     std::uint64_t last_shot_tick{};
-    // SimCommand::serial of the last move, stop, attack, or formation move applied to the entity (0:
-    // none yet); not part of the state hash.
+    // SimCommand::serial of the last move, stop, attack, formation move, attack-move, or guard
+    // applied to the entity (0: none yet); not part of the state hash.
     std::uint64_t command_serial{};
+    // The standing order the entity follows; none once an attack-move arrived or a guarded object died.
+    StandingOrder order{StandingOrder::none};
 };
 
 struct ProjectileSnapshot
@@ -407,6 +436,11 @@ private:
     [[nodiscard]] std::optional<std::size_t> attack_victim(std::size_t index) const noexcept;
     // Ground and straight-line movers: chase an ordered target until in range, then hold.
     void pursue_ordered_target(std::size_t index);
+    // Attack-move and guard: when to engage (a scan for hostiles), when to break off, and where to
+    // go; the chase itself is the ordered-attack pursuit.
+    void run_standing_order(std::size_t index);
+    // Ends an engagement the standing order started (the target and its order are dropped).
+    void disengage(std::size_t index);
     // Flyers: steer at the target (attack runs, or dogfights against flyers), the destination, or
     // the point they circle; reverse through a half-loop when that point is far behind.
     void plan_flight(std::size_t index, float dt);
@@ -425,6 +459,8 @@ private:
     [[nodiscard]] bool plan_shared_route(PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
     void plan_shared_member(const PathRequest& request, std::size_t index, const Vector3& goal);
     void apply_formation_move(const SimCommand& command);
+    // Attack-move and guard commands: their standing orders, and the first move.
+    void apply_standing_order(const SimCommand& command);
     // Remaining route length of every moving entity (zero for the rest).
     void measure_remaining_routes();
     // Marks group members that are ahead of their group to wait this tick, and releases members
@@ -504,6 +540,19 @@ private:
     std::vector<float> speeds_;
     std::vector<std::uint64_t> last_shot_ticks_;
     std::vector<std::uint64_t> command_serials_;
+    // Standing orders (gameplay state, hashed): the kind, the destination or anchor point and object
+    // (invalid: the point), whether the current target came from the order and where that chase
+    // began, and the ticks to the next scan for hostiles (staggered by entity index).
+    struct StandingOrderState
+    {
+        StandingOrder kind{StandingOrder::none};
+        Vector3 point;
+        EntityId entity;
+        bool engaging{};
+        Vector3 engage_origin;
+        std::uint32_t scan_timer{};
+    };
+    std::vector<StandingOrderState> standing_orders_;
     std::vector<Vector3> tick_start_positions_;
     // Flyers inside a half-loop, and the roll they unwind after one.
     std::vector<std::uint8_t> looping_;

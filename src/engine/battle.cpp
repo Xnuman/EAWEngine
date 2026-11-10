@@ -260,6 +260,12 @@ Result<SimCommand> Battle::translate(const BattleCommand& command) const
     case BattleOrder::remove:
         translated.kind = SimCommandKind::destroy;
         break;
+    case BattleOrder::attack_move:
+    case BattleOrder::guard:
+        translated.kind = command.order == BattleOrder::attack_move ? SimCommandKind::attack_move : SimCommandKind::guard;
+        translated.target = command.point;
+        translated.target_entity = command.target;
+        break;
     case BattleOrder::spawn:
         break;
     }

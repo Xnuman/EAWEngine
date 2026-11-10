@@ -63,6 +63,11 @@ enum class BattleOrder : std::uint8_t
     set_stance,
     // `entities` leave the battle at once, without dying (no death effects or corpses).
     remove,
+    // `entities` move to `point` as a formation, or to `target` while it lives, engaging hostiles
+    // on the way (SimCommandKind::attack_move).
+    attack_move,
+    // `entities` guard `point`, or `target` while it lives (SimCommandKind::guard).
+    guard,
 };
 
 struct BattleCommand

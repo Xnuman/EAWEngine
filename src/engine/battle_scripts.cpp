@@ -40,8 +40,10 @@ enum class GameObjectMethod : std::size_t
     get_shield,
     despawn,
     prevent_opportunity_fire,
+    attack_move,
+    guard_target,
 };
-constexpr std::array<std::string_view, 17> game_object_methods{"Is_Valid",
+constexpr std::array<std::string_view, 19> game_object_methods{"Is_Valid",
                                                                "Get_ID",
                                                                "Get_Type",
                                                                "Get_Owner",
@@ -57,7 +59,9 @@ constexpr std::array<std::string_view, 17> game_object_methods{"Is_Valid",
                                                                "Is_Category",
                                                                "Get_Shield",
                                                                "Despawn",
-                                                               "Prevent_Opportunity_Fire"};
+                                                               "Prevent_Opportunity_Fire",
+                                                               "Attack_Move",
+                                                               "Guard_Target"};
 enum class ObjectTypeMethod : std::size_t
 {
     get_name,
@@ -290,7 +294,7 @@ private:
         EntityId entity;
         // Attack orders: the victim.
         EntityId target;
-        bool attack{};
+        BattleOrder kind{BattleOrder::move};
         // The order's serial once submitted (0 before).
         std::uint64_t serial{};
         // The battle refused the order, or it could never run (an immobile entity told to move).
@@ -305,7 +309,15 @@ private:
     Status call_game_object(const ScriptObject& object, GameObjectMethod method, ScriptCall& call);
     Status call_block(const ScriptObject& object, BlockMethod method, ScriptCall& call) const;
     // Buffers an order and returns its block.
-    ScriptObject order(BattleCommand command, EntityId entity, EntityId target, bool attack, bool rejected);
+    ScriptObject order(BattleCommand command, EntityId entity, bool rejected);
+    // Where an order goes: a position, or a living game object (followed by id). Nothing, with a
+    // warning, for a dead object or a value the bridge cannot use (a stub such as a task force).
+    struct Destination
+    {
+        Vector3 point;
+        EntityId object;
+    };
+    [[nodiscard]] std::optional<Destination> destination(ScriptCall& call, int argument, std::string_view method) const;
     // The type a function argument names: a type name or an ObjectType.
     [[nodiscard]] std::optional<std::uint32_t> type_argument(const ScriptCall& call, int argument) const;
     // Whether a block's order is over, and whether it ended as ordered (arrived, or the victim died).
@@ -503,24 +515,13 @@ Status BattleScriptContext::call_game_object(const ScriptObject& object, const G
     {
         // Move_To(target[, distance]): a position or an object's position. The distance is not
         // applied yet.
-        const auto target = call.object(1);
-        if (!target || (target->kind != position_kind && target->kind != game_object_kind))
+        const auto to = destination(call, 1, "Move_To");
+        if (!to)
         {
-            return make_error("Move_To expects a position or a game object");
+            call.return_nil();
+            break;
         }
-        Vector3 point = target->point;
-        if (target->kind == game_object_kind)
-        {
-            const auto* destination = view_.entity(entity_of(*target));
-            if (destination == nullptr)
-            {
-                call.warn("Move_To a game object that no longer exists");
-                call.return_nil();
-                break;
-            }
-            point = destination->position;
-        }
-        call.return_object(order({.order = BattleOrder::move, .entities = {id}, .point = point}, id, {}, false, entity->max_speed <= 0.0F));
+        call.return_object(order({.order = BattleOrder::move, .entities = {id}, .point = to->point}, id, entity->max_speed <= 0.0F));
         break;
     }
     case GameObjectMethod::attack_target:
@@ -536,11 +537,11 @@ Status BattleScriptContext::call_game_object(const ScriptObject& object, const G
             call.return_nil();
             break;
         }
-        call.return_object(order({.order = BattleOrder::attack, .entities = {id}, .target = entity_of(*target)}, id, entity_of(*target), true, false));
+        call.return_object(order({.order = BattleOrder::attack, .entities = {id}, .target = entity_of(*target)}, id, false));
         break;
     }
     case GameObjectMethod::stop:
-        (void)order({.order = BattleOrder::stop, .entities = {id}}, id, {}, false, false);
+        (void)order({.order = BattleOrder::stop, .entities = {id}}, id, false);
         break;
     case GameObjectMethod::event_object_in_range:
     {
@@ -608,14 +609,30 @@ Status BattleScriptContext::call_game_object(const ScriptObject& object, const G
         break;
     case GameObjectMethod::despawn:
         // The object leaves without dying (no death effects); in the next tick, like every order.
-        (void)order({.order = BattleOrder::remove, .entities = {id}}, id, {}, false, false);
+        (void)order({.order = BattleOrder::remove, .entities = {id}}, id, false);
         break;
     case GameObjectMethod::prevent_opportunity_fire:
     {
         // Prevent_Opportunity_Fire(true): fire only at ordered targets, the engine's hold_fire
         // stance; false returns to aggressive (a mapping onto engine stances, not the original's).
         const bool prevent = call.truthy(1);
-        (void)order({.order = BattleOrder::set_stance, .entities = {id}, .stance = prevent ? Stance::hold_fire : Stance::aggressive}, id, {}, false, false);
+        (void)order({.order = BattleOrder::set_stance, .entities = {id}, .stance = prevent ? Stance::hold_fire : Stance::aggressive}, id, false);
+        break;
+    }
+    case GameObjectMethod::attack_move:
+    case GameObjectMethod::guard_target:
+    {
+        // Attack_Move(destination[, threat]) and Guard_Target(anchor): a position, or an object that
+        // is followed while it lives. The AI's threat argument is not used.
+        const bool attack_move = method == GameObjectMethod::attack_move;
+        const auto to = destination(call, 1, attack_move ? "Attack_Move" : "Guard_Target");
+        if (!to)
+        {
+            call.return_nil();
+            break;
+        }
+        const BattleCommand command{.order = attack_move ? BattleOrder::attack_move : BattleOrder::guard, .entities = {id}, .point = to->point, .target = to->object};
+        call.return_object(order(command, id, attack_move && entity->max_speed <= 0.0F));
         break;
     }
     case GameObjectMethod::is_category:
@@ -673,7 +690,29 @@ void BattleScriptContext::service(const EntityId self)
     }
 }
 
-ScriptObject BattleScriptContext::order(BattleCommand command, const EntityId entity, const EntityId target, const bool attack, const bool rejected)
+std::optional<BattleScriptContext::Destination> BattleScriptContext::destination(ScriptCall& call, const int argument, const std::string_view method) const
+{
+    const auto target = call.object(argument);
+    if (target && target->kind == position_kind)
+    {
+        return Destination{target->point, {}};
+    }
+    if (target && target->kind == game_object_kind)
+    {
+        if (const auto* entity = view_.entity(entity_of(*target)))
+        {
+            return Destination{entity->position, entity->id};
+        }
+        call.warn(std::string(method) + " to a game object that no longer exists");
+        return std::nullopt;
+    }
+    // While parts of the engine are stubs (task forces, planets), scripts hand them over; the order
+    // is dropped rather than stopping the script.
+    call.warn(std::string(method) + " needs a position or a game object");
+    return std::nullopt;
+}
+
+ScriptObject BattleScriptContext::order(BattleCommand command, const EntityId entity, const bool rejected)
 {
     if (blocks_.size() < max_blocks)
     {
@@ -682,7 +721,7 @@ ScriptObject BattleScriptContext::order(BattleCommand command, const EntityId en
     const auto index = next_block_;
     next_block_ = (next_block_ + 1U) % max_blocks;
     auto& block = blocks_[index];
-    block = {block.generation + 1U, entity, target, attack, 0, rejected};
+    block = {block.generation + 1U, entity, command.target, command.order, 0, rejected};
     if (!rejected)
     {
         pending_.push_back({std::move(command), index});
@@ -716,12 +755,25 @@ std::pair<bool, bool> BattleScriptContext::block_state(const ScriptObject& objec
     {
         return {false, false};
     }
-    if (block.attack)
+    switch (block.kind)
+    {
+    case BattleOrder::attack:
     {
         const bool victim_alive = view_.entity(block.target) != nullptr;
         return {!victim_alive || entity->target != block.target, !victim_alive};
     }
-    return {!entity->moving, !entity->moving};
+    case BattleOrder::attack_move:
+    {
+        // Over once the standing order ended: arrived, or its object is gone.
+        const bool over = entity->order == StandingOrder::none && !entity->moving;
+        return {over, over};
+    }
+    case BattleOrder::guard:
+        // A guard ends only when its object dies (or a later order replaces it).
+        return {entity->order != StandingOrder::guard, false};
+    default:
+        return {!entity->moving, !entity->moving};
+    }
 }
 
 Status BattleScriptContext::call_block(const ScriptObject& object, const BlockMethod method, ScriptCall& call) const

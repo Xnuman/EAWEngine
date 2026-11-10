@@ -129,6 +129,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     speeds_.push_back(0.0F);
     last_shot_ticks_.push_back(0);
     command_serials_.push_back(0);
+    standing_orders_.push_back({.scan_timer = slot % retarget_interval});
     looping_.push_back(0);
     rolls_.push_back(0.0F);
     intents_.emplace_back();
@@ -293,6 +294,13 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, group_best_remaining_[index]);
         hash = hash_value(hash, group_stall_ticks_[index]);
         hash = hash_value(hash, path_pending_[index]);
+        const auto& order = standing_orders_[index];
+        hash = hash_value(hash, order.kind);
+        hash = hash_value(hash, order.point);
+        hash = hash_value(hash, order.entity);
+        hash = hash_value(hash, order.engaging);
+        hash = hash_value(hash, order.engage_origin);
+        hash = hash_value(hash, order.scan_timer);
     }
     for (const auto& request : path_queue_)
     {
@@ -359,6 +367,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         speeds_[dense] = speeds_[last];
         last_shot_ticks_[dense] = last_shot_ticks_[last];
         command_serials_[dense] = command_serials_[last];
+        standing_orders_[dense] = standing_orders_[last];
         looping_[dense] = looping_[last];
         rolls_[dense] = rolls_[last];
         intents_[dense] = intents_[last];
@@ -399,6 +408,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     speeds_.pop_back();
     last_shot_ticks_.pop_back();
     command_serials_.pop_back();
+    standing_orders_.pop_back();
     looping_.pop_back();
     rolls_.pop_back();
     intents_.pop_back();
@@ -540,7 +550,8 @@ void SimulationWorld::publish()
                                       speeds_[index],
                                       rolls_[index],
                                       last_shot_ticks_[index],
-                                      command_serials_[index]});
+                                      command_serials_[index],
+                                      standing_orders_[index].kind});
     }
     snapshot_.deaths = deaths_;
     snapshot_.impacts = impacts_;

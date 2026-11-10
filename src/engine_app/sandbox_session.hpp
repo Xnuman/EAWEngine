@@ -93,6 +93,9 @@ struct SandboxSession
     std::unordered_map<std::uint32_t, std::vector<eaw::EntityId>> pick_entities;
     std::vector<std::uint32_t> unbound_picks;
     std::unordered_set<std::uint32_t> attack_picks;
+    // Picks of Shift + right-clicks: an object under the cursor turns the guard of the point into a
+    // guard of the object.
+    std::unordered_set<std::uint32_t> guard_picks;
     bool initial_spawns_sent = false;
     // Tick at which the initial spawn orders were given (they apply in the next step).
     std::uint64_t initial_spawn_tick = 0;
@@ -237,6 +240,9 @@ struct SandboxSession
     std::optional<eaw::Vector3> ground_target(const float x, const float y) const;
     void order_move(const eaw::Vector3& target);
     void order_attack(const eaw::EntityId victim);
+    // Attack-move (Ctrl + right-click) or guard (Shift + right-click) for the selected mobile units:
+    // to a point, or to `target` while it lives.
+    void order_standing(eaw::BattleOrder order, const eaw::Vector3& point, eaw::EntityId target = {});
     // Camera: keyboard panning on maps, mouse orbit/rotation/pan where the camera is free, the wheel.
     void update_camera(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode);
     // Left button selection (click picks, RTS drag box-selects) and right-click orders.

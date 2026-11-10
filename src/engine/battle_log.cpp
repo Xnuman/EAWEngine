@@ -145,6 +145,13 @@ std::string format_battle_log(const BattleLog& log)
         case BattleOrder::remove:
             out += " remove";
             break;
+        case BattleOrder::attack_move:
+        case BattleOrder::guard:
+            // The followed object (0.0 for none), then the point.
+            out += command.order == BattleOrder::attack_move ? " attack_move " : " guard ";
+            append_id(out, command.target);
+            point();
+            break;
         }
         for (const auto id : command.entities)
         {
@@ -325,6 +332,17 @@ Result<BattleLog> parse_battle_log(const std::string_view text)
         else if (order == "remove")
         {
             command.order = BattleOrder::remove;
+        }
+        else if (order == "attack_move" || order == "guard")
+        {
+            command.order = order == "attack_move" ? BattleOrder::attack_move : BattleOrder::guard;
+            const auto target = words.size() > 2 ? parse_id(words[2]) : std::nullopt;
+            next = 3;
+            if (!target || !read_point())
+            {
+                return failure(std::string(order) + " needs an object id (0.0 for none) and a point");
+            }
+            command.target = *target;
         }
         else if (order == "stance")
         {

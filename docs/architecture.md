@@ -129,7 +129,9 @@ combat rules.
 2. **Behavior** (`simulation_behavior.cpp`, `run_behavior`): what each unit wants from its order, its
    `Stance`, and its target: a chase move request for an ordered attack or, for flyers, a steering
    intent (attack runs, flying to a destination, circling). Stances decide whether a unit picks
-   targets and moves for them; orders always apply.
+   targets and moves for them; orders always apply. Standing orders (attack-move, guard) decide here
+   when to engage (a scan for hostiles on the target-search interval), when to break off (the
+   leash), and where to go next; the engagement itself is an ordered attack.
 3. **Navigation** (`simulation_navigation.cpp`): route requests under a per-tick search budget,
    shared formation routes, and group cohesion.
 4. **Locomotion** (`simulation_locomotion.cpp`): physical movement only (speed limits, turn rates,

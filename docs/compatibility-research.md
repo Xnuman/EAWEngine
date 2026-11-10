@@ -995,6 +995,14 @@ recording stubs (`EAWEngine lua-survey`).
   `Get_Game_Mode()` with "Land", "Space", and "Galactic". A type's categories are its XML
   `CategoryMask`, names separated by `|` (840 stock definitions: Structure, Upgrade, Infantry,
   Capital, LandHero, ...), which `Is_Category("Infantry")` tests.
+- **Attack-move and guard.** `Attack_Move(destination[, threat])` (268 stock calls in 79 scripts)
+  takes an object (an enemy, a hero, a marker, a task force) or a position, and 70 calls wait on its
+  block with `BlockOnCommand`; the second argument comes from the AI (`Get_Self_Threat_Max()`).
+  `Guard_Target(anchor)` (174 calls in 71 scripts) takes a position, often the unit's own
+  (`unit.Get_Position()`, holding an area), or an object (a structure, a base, a hero, a task force),
+  and nothing waits on it. The engine's semantics (engage hostiles within 1.25 x weapon range on the
+  way, break off beyond 2 x weapon range, guard radius the weapon range but at least 150 units, a
+  guard of an object follows it and ends when it dies) are engine choices to check in play.
 - **Random numbers.** `GameRandom(lower, upper)` returns an integer in the inclusive range (scripts
   index lists with it and call `GameRandom(1, 1)`), `GameRandom.Get_Float()` a number in [0, 1), and
   `GameRandom.Free_Random(lower, upper)` the same as `GameRandom`; that it is the unsynchronized

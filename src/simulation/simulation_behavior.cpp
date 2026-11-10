@@ -20,9 +20,19 @@ void SimulationWorld::apply(const SimCommand& command)
         ++stale_references_;
         return;
     }
+    if ((command.kind == SimCommandKind::attack_move || command.kind == SimCommandKind::guard) && !finite(command.target))
+    {
+        ++stale_references_;
+        return;
+    }
     if (command.kind == SimCommandKind::formation_move)
     {
         apply_formation_move(command);
+        return;
+    }
+    if (command.kind == SimCommandKind::attack_move || command.kind == SimCommandKind::guard)
+    {
+        apply_standing_order(command);
         return;
     }
     if (command.kind == SimCommandKind::spawn)
@@ -47,11 +57,15 @@ void SimulationWorld::apply(const SimCommand& command)
         if (command.kind == SimCommandKind::move || command.kind == SimCommandKind::stop || command.kind == SimCommandKind::attack)
         {
             command_serials_[*dense] = command.serial;
+            standing_orders_[*dense].kind = StandingOrder::none;
+            standing_orders_[*dense].engaging = false;
         }
         switch (command.kind)
         {
         case SimCommandKind::formation_move:
         case SimCommandKind::spawn:
+        case SimCommandKind::attack_move:
+        case SimCommandKind::guard:
             break;
         case SimCommandKind::move:
             combat_[*dense].target = {};
@@ -115,9 +129,22 @@ void SimulationWorld::apply(const SimCommand& command)
 void SimulationWorld::run_behavior()
 {
     const auto dt = static_cast<float>(tick_seconds_);
+    // Standing orders scan with the spatial grid; built here only in ticks where one scans (the
+    // grid of the last tick's combat names entities by dense indices that spawns and removals since
+    // then have shifted).
+    const bool scans = std::ranges::any_of(standing_orders_,
+                                           [](const StandingOrderState& order)
+                                           {
+                                               return order.kind != StandingOrder::none && !order.engaging && order.scan_timer == 0;
+                                           });
+    if (scans)
+    {
+        grid_.build(positions_, grid_cell_size);
+    }
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
         intents_[index] = {};
+        run_standing_order(index);
         if (min_speeds_[index] > 0.0F)
         {
             plan_flight(index, dt);
@@ -137,6 +164,191 @@ void SimulationWorld::run_behavior()
                 }
             }
         }
+    }
+}
+
+void SimulationWorld::apply_standing_order(const SimCommand& command)
+{
+    const bool attack_move = command.kind == SimCommandKind::attack_move;
+    // An attack-move to a point moves the group as one formation; each member then keeps its own
+    // slot as destination. To an object, or a guard, each entity heads for the object or point.
+    if (attack_move && !command.target_entity.valid())
+    {
+        SimCommand move = command;
+        move.kind = SimCommandKind::formation_move;
+        apply_formation_move(move);
+    }
+    for (const auto id : command.entities)
+    {
+        const auto dense = dense_index(id);
+        if (!dense)
+        {
+            ++stale_references_;
+            continue;
+        }
+        auto& order = standing_orders_[*dense];
+        auto& combat = combat_[*dense];
+        command_serials_[*dense] = command.serial;
+        combat.target = {};
+        combat.ordered = false;
+        order.kind = attack_move ? StandingOrder::attack_move : StandingOrder::guard;
+        order.entity = command.target_entity;
+        order.point = command.target;
+        order.engaging = false;
+        if (attack_move && !command.target_entity.valid())
+        {
+            // The member's formation slot, where the formation move sent it (immobile members keep
+            // the ordered point).
+            if (move_targets_[*dense])
+            {
+                order.point = *move_targets_[*dense];
+            }
+            continue;
+        }
+        speed_limits_[*dense] = 0.0F;
+        group_ids_[*dense] = 0;
+        if (const auto anchor = command.target_entity.valid() ? dense_index(command.target_entity) : std::optional<std::size_t>(); anchor)
+        {
+            order.point = positions_[*anchor];
+        }
+        if (max_speeds_[*dense] > 0.0F)
+        {
+            plan_move(*dense, order.point);
+        }
+    }
+}
+
+void SimulationWorld::disengage(const std::size_t index)
+{
+    combat_[index].target = {};
+    combat_[index].ordered = false;
+    standing_orders_[index].engaging = false;
+}
+
+// Attack-move and guard (engine semantics; the original's are unmeasured). Both scan for hostiles
+// every retarget_interval ticks (staggered by entity index) and engage the nearest one as an
+// ordered attack, which the pursuit chases; they break off when the victim is gone or the chase
+// leaves its leash, then head for the destination (attack-move) or back to the anchor (guard). An
+// attack-move ends once it arrives with no engagement; a guard ends when its object dies.
+void SimulationWorld::run_standing_order(const std::size_t index)
+{
+    auto& order = standing_orders_[index];
+    if (order.kind == StandingOrder::none)
+    {
+        return;
+    }
+    if (order.entity.valid())
+    {
+        if (const auto followed = dense_index(order.entity))
+        {
+            order.point = positions_[*followed];
+        }
+        else
+        {
+            // The destination or anchor is gone: the order ends, a fight it started included.
+            if (order.engaging)
+            {
+                disengage(index);
+            }
+            order.kind = StandingOrder::none;
+            return;
+        }
+    }
+    auto& combat = combat_[index];
+    const float range = combat.profile.range();
+    const bool guard = order.kind == StandingOrder::guard;
+    const float guard_radius = std::max(range, minimum_guard_radius);
+    const bool mobile = max_speeds_[index] > 0.0F;
+    if (order.engaging)
+    {
+        const auto victim = combat.ordered ? attack_victim(index) : std::nullopt;
+        const auto& leash_center = guard ? order.point : order.engage_origin;
+        const float leash = std::max(range * leash_range_factor, guard ? guard_radius : 0.0F);
+        if (victim && distance_xy(positions_[*victim], leash_center) <= leash)
+        {
+            return;
+        }
+        disengage(index);
+        // Resume: back on the way, or back to the anchor when out of the guard's reach.
+        if (mobile && (!guard || distance_xy(positions_[index], order.point) > guard_radius * 0.5F))
+        {
+            plan_move(index, order.point);
+        }
+        return;
+    }
+    if (!combat.profile.weapons.empty())
+    {
+        if (order.scan_timer > 0)
+        {
+            --order.scan_timer;
+        }
+        else
+        {
+            order.scan_timer = retarget_interval;
+            const auto& center = guard ? order.point : positions_[index];
+            const float reach = guard ? guard_radius : range * acquire_range_factor;
+            // The nearest damageable hostile to the center; equal distances go to the lower id.
+            query_.clear();
+            grid_.query(center, reach, query_);
+            std::optional<std::size_t> best;
+            float best_distance = 0.0F;
+            for (const auto candidate : query_)
+            {
+                if (candidate == index || !damageable(candidate) || !hostility_.hostile(owners_[index], owners_[candidate]))
+                {
+                    continue;
+                }
+                const auto distance = distance_xy(center, positions_[candidate]);
+                if (distance > reach)
+                {
+                    continue;
+                }
+                const auto lower_id = [&](const std::size_t a, const std::size_t b)
+                {
+                    return ids_[a].index != ids_[b].index ? ids_[a].index < ids_[b].index : ids_[a].generation < ids_[b].generation;
+                };
+                if (!best || distance < best_distance || (distance == best_distance && lower_id(candidate, *best)))
+                {
+                    best = candidate;
+                    best_distance = distance;
+                }
+            }
+            if (best)
+            {
+                combat.target = ids_[*best];
+                combat.ordered = true;
+                combat.chase_timer = 0;
+                speed_limits_[index] = 0.0F;
+                group_ids_[index] = 0;
+                order.engaging = true;
+                order.engage_origin = positions_[index];
+                return;
+            }
+        }
+    }
+    if (!mobile)
+    {
+        return;
+    }
+    if (guard)
+    {
+        // Back toward the anchor once out of its reach; a moving anchor is followed.
+        if (distance_xy(positions_[index], order.point) > guard_radius * 0.5F && (!move_targets_[index] || distance_xy(*move_targets_[index], order.point) > follow_tolerance) && order.scan_timer == 0)
+        {
+            plan_move(index, order.point);
+        }
+        return;
+    }
+    if (order.entity.valid() && (!move_targets_[index] || distance_xy(*move_targets_[index], order.point) > follow_tolerance) && order.scan_timer == 0)
+    {
+        plan_move(index, order.point);
+        return;
+    }
+    // Arrived with nothing to fight (at the point, or within reach of the object): the attack-move
+    // is done.
+    if (!move_targets_[index] && path_pending_[index] == 0 && (!order.entity.valid() || distance_xy(positions_[index], order.point) <= std::max(follow_tolerance, range)))
+    {
+        order.kind = StandingOrder::none;
     }
 }
 

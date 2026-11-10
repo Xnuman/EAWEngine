@@ -246,6 +246,8 @@ void test_battle_log()
     const auto first = recorded.world().snapshot().entities.front().id;
     expect_ok(recorded.submit({.order = eaw::BattleOrder::set_stance, .entities = {first}, .stance = eaw::Stance::hold_fire}), "stance");
     expect_ok(recorded.submit({.order = eaw::BattleOrder::move, .entities = {first}, .point = {-500.3F, 77.7F, 0.0F}}), "move");
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::attack_move, .entities = {recorded.world().snapshot().entities[1].id}, .point = {120.5F, -40.25F, 0.0F}}), "attack-move");
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::guard, .entities = {recorded.world().snapshot().entities[2].id}, .target = first}), "guard");
     expect_ok(recorded.submit({.order = eaw::BattleOrder::remove, .entities = {recorded.world().snapshot().entities.back().id}}), "remove");
     for (int tick = 0; tick < 250; ++tick)
     {
@@ -267,7 +269,9 @@ void test_battle_log()
         replayed.step();
     }
     require(replayed.world().state_hash() == *reread->end_hash, "replaying a recorded log must reproduce the battle's state hash");
-    require(eaw::format_battle_log(log_out).find(" remove ") != std::string::npos, "a remove order must be written to the log");
+    const auto log_text = eaw::format_battle_log(log_out);
+    require(log_text.find(" remove ") != std::string::npos && log_text.find(" attack_move 0.0 ") != std::string::npos && log_text.find(" guard ") != std::string::npos,
+            "remove, attack-move, and guard orders must be written to the log");
 }
 
 // Types added at runtime: the battle offsets company members, presentation draws spawned entities
@@ -355,6 +359,13 @@ void test_battle_scripts()
                 "  print(\"at once \" .. tostring(block.IsFinished()))\n"
                 "  while not block.IsFinished() do PumpEvents() end\n"
                 "  print(\"arrived \" .. tostring(block.Result()))\n"
+                "  local sweep = walker.Attack_Move(walker.Get_Position())\n"
+                "  while not sweep.IsFinished() do PumpEvents() end\n"
+                "  print(\"swept \" .. tostring(sweep.Result()))\n"
+                "  local guard = walker.Guard_Target(beacon)\n"
+                "  PumpEvents() PumpEvents()\n"
+                "  print(\"guarding \" .. tostring(guard.IsFinished()))\n"
+                "  print(\"stub order \" .. tostring(walker.Attack_Move(MainForce)))\n"
                 "  local refused = beacon.Move_To(walker)\n"
                 "  print(\"immobile \" .. tostring(refused.IsFinished()) .. \" \" .. tostring(refused.Result()))\n"
                 "  print(\"stub \" .. tostring(walker.Play_SFX_Event(\"Unit_Select\") ~= nil))\n"
@@ -413,6 +424,8 @@ void test_battle_scripts()
     require(printed("type Walker owner 1 hull 1") && printed("same true mine 1 theirs 0") && printed("unknown nil userdata"),
             "scripts must read types, owners, and hull, filter by owner, see one value per object, and get nil for unknown types");
     require(printed("at once false") && printed("arrived true"), "a move must return a block that finishes when the unit arrives");
+    require(printed("swept true") && printed("guarding false") && printed("stub order nil"),
+            "an attack-move block must finish on arrival, a guard block stay open, and a stub destination drop the order");
     require(printed("immobile true false") && printed("stub true"), "an immobile unit's move must be refused at once, and unimplemented methods must stay stubs");
     require(log.entries.size() == 2, "script orders must not be recorded in the battle log");
     const auto [replayed_hash, replayed_output, replayed_log] = run(&log);

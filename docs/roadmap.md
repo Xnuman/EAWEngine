@@ -82,8 +82,9 @@ Proposed on 2026-11-10 with this roadmap; it continues the owner's order of 2026
 review, combat presentation, sound, player layer) with sound and the player layer moved to M4, where
 the skirmish needs them, and the open M2 render work placed by what depends on it:
 
-1. Scripting stage 1: the script calls that need new simulation features (guarding, attack-move,
-   invulnerability, direct damage, teleporting, suspending locomotion; they change the state hash);
+1. Scripting stage 1: the script calls that need new simulation features (invulnerability, direct
+   damage, teleporting, suspending locomotion; they change the state hash; attack-move and guard are
+   done);
    `Spawn_Unit`, `Find_Player`, and `Find_Nearest` follow the player layer.
 2. Rendering stage 1, the part combat presentation needs: damage-state (`_ALT<n>`) and LOD
    switching, runtime decals, depth-sorted transparency.
@@ -253,6 +254,9 @@ compared by measured ratios from screenshots, never by recreated scenes):
   hardpoint positions) also scales collision and selection, and whether `Custom_Soft_Footprint_Radius`
   is meant before or after it (the engine leaves it unscaled);
 - the RTS camera's angles, zoom range, and pan speeds;
+- attack-move and guard: the acquisition range (1.25 x weapon range), the leash (2 x weapon
+  range), the guard radius (weapon range, at least 150 units), and how far a followed object may
+  move before the unit follows (50 units);
 - fighter flight angles, heights, and periods;
 - why `W_LASER_INVISIBLE.ALO` (the land model of 19 melee and environment projectiles) is invisible
   in the original although its mesh is an unhidden additive quad with a visible texture;

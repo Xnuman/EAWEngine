@@ -79,6 +79,8 @@ On maps the sandbox starts in the RTS camera; C switches to the free debug camer
 | Left drag | Box-select mobile units | Rotate and tilt (orbit a model) |
 | Left click | Select the object under the cursor | Select the object under the cursor |
 | Right click / right drag | Move the selection, or attack the hostile under the cursor | Pan (maps) |
+| Ctrl + right click | Attack-move the selection to the point (engage hostiles on the way) | |
+| Shift + right click | Guard the point, or the object under the cursor (followed as it moves) | |
 | Space | Reset the camera | Reset the camera |
 
 | Key | Action |

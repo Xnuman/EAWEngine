@@ -56,6 +56,32 @@ void SandboxSession::order_move(const eaw::Vector3& target)
     std::cout << "Move " << count << " units to " << eaw::format_fixed(target.x, 0) << ", " << eaw::format_fixed(target.y, 0) << ", " << eaw::format_fixed(target.z, 0) << '\n';
 }
 
+void SandboxSession::order_standing(const eaw::BattleOrder order, const eaw::Vector3& point, const eaw::EntityId target)
+{
+    std::vector<eaw::EntityId> units;
+    for (const auto& entity : world->snapshot().entities)
+    {
+        if (selection.contains(eaw::entity_key(entity.id)) && entity.max_speed > 0.0F && entity.id != target)
+        {
+            units.push_back(entity.id);
+        }
+    }
+    if (units.empty())
+    {
+        return;
+    }
+    std::ranges::sort(units, {}, eaw::entity_key);
+    const auto count = units.size();
+    if (const auto submitted = battle->submit({.order = order, .entities = std::move(units), .point = point, .target = target}); !submitted)
+    {
+        eaw::log_warning("simulation", submitted.error());
+        return;
+    }
+    ++orders_issued;
+    std::cout << (order == eaw::BattleOrder::attack_move ? "Attack-move " : "Guard ") << count << " units "
+              << (target.valid() ? "with " + std::string(world->type_name(target)) : "at " + eaw::format_fixed(point.x, 0) + ", " + eaw::format_fixed(point.y, 0)) << '\n';
+}
+
 void SandboxSession::order_attack(const eaw::EntityId victim)
 {
     const auto& entities = world->snapshot().entities;
@@ -179,17 +205,28 @@ void SandboxSession::handle_pointer(const eaw::InputState& input, const bool sce
     // attack order follows the move a frame or two later.
     // RTS mode: the right button has no drag action, so an order is issued on the press with no
     // movement threshold (a threshold dropped quick clicks made while the mouse was moving).
+    // Ctrl + right-click attack-moves to the ground point; Shift + right-click guards it (or, once
+    // the pick names an object there, that object).
     if (right_button.pressed && rts_mode && scene_mouse && !selection.empty() && world)
     {
+        const bool attack_move = input.keys[static_cast<std::size_t>(eaw::Key::control)].down;
+        const bool guard = !attack_move && input.keys[static_cast<std::size_t>(eaw::Key::shift)].down;
         if (const auto target = ground_target(mouse[0], mouse[1]))
         {
-            order_move(*target);
+            if (attack_move || guard)
+            {
+                order_standing(attack_move ? eaw::BattleOrder::attack_move : eaw::BattleOrder::guard, *target);
+            }
+            else
+            {
+                order_move(*target);
+            }
         }
-        if (input.mouse_x >= 0 && input.mouse_y >= 0)
+        if (!attack_move && input.mouse_x >= 0 && input.mouse_y >= 0)
         {
             const auto request = renderer.request_pick(static_cast<std::uint32_t>(input.mouse_x), static_cast<std::uint32_t>(input.mouse_y));
             unbound_picks.push_back(request);
-            attack_picks.insert(request);
+            (guard ? guard_picks : attack_picks).insert(request);
         }
     }
 }
@@ -227,7 +264,7 @@ void SandboxSession::handle_command_keys(const eaw::InputState& input, const boo
     if (input.keys[static_cast<std::size_t>(eaw::Key::c)].pressed && tactical_camera)
     {
         free_camera = !free_camera;
-        std::cout << (free_camera ? "Free debug camera (drag rotates, right-drag pans)\n" : "RTS camera (drag selects, right-click moves)\n");
+        std::cout << (free_camera ? "Free debug camera (drag rotates, right-drag pans)\n" : "RTS camera (drag selects, right-click moves, Ctrl attack-moves, Shift guards)\n");
     }
 }
 
@@ -240,6 +277,7 @@ void SandboxSession::process_picks()
         const auto& entities_then = recorded != pick_entities.end() ? recorded->second : frame_entities;
         const auto entity = pick->instance && *pick->instance < entities_then.size() ? entities_then[*pick->instance] : eaw::EntityId{};
         const bool attack = attack_picks.erase(pick->request) != 0;
+        const bool guard = guard_picks.erase(pick->request) != 0;
         std::erase(unbound_picks, pick->request);
         if (recorded != pick_entities.end())
         {
@@ -250,6 +288,18 @@ void SandboxSession::process_picks()
             if (entity.valid() && world && world->alive(entity))
             {
                 order_attack(entity);
+            }
+            continue;
+        }
+        if (guard)
+        {
+            if (entity.valid() && world && world->alive(entity))
+            {
+                const auto& entities = world->snapshot().entities;
+                if (const auto found = std::ranges::find(entities, entity, &eaw::EntitySnapshot::id); found != entities.end())
+                {
+                    order_standing(eaw::BattleOrder::guard, found->position, entity);
+                }
             }
             continue;
         }

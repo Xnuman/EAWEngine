@@ -273,6 +273,8 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         }
         movers.push_back(*dense);
         command_serials_[*dense] = command.serial;
+        standing_orders_[*dense].kind = StandingOrder::none;
+        standing_orders_[*dense].engaging = false;
         members.push_back({id, positions_[*dense], radii_[*dense], formation_spacings_[*dense], formation_orders_[*dense]});
     }
     if (movers.empty())

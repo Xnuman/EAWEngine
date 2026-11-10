@@ -5,6 +5,7 @@
 
 #include <tuple>
 
+#include <cmath>
 #include <memory>
 #include <numbers>
 
@@ -346,11 +347,108 @@ void test_stances()
     }
 }
 
+// Standing orders: an attack-move engages a hostile met on the way, resumes after it dies, breaks
+// off a chase beyond its leash, and ends on arrival; a guard engages what comes near its anchor,
+// ignores what stays away, follows a moving anchor, and ends when the anchor dies; a move clears a
+// standing order.
+void test_standing_orders()
+{
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    eaw::CombatProfile armed;
+    armed.health = 1.0e6F;
+    armed.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 0.2F, .damage = 5.0F}};
+    eaw::CombatProfile weak;
+    weak.health = 10.0F;
+    eaw::CombatProfile tough;
+    tough.health = 1.0e6F;
+    const auto run = [](eaw::SimulationWorld& world, const int ticks)
+    {
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            world.step();
+        }
+    };
+    const auto entity = [](const eaw::SimulationWorld& world, const eaw::EntityId id) -> const eaw::EntitySnapshot&
+    {
+        return *std::ranges::find(world.snapshot().entities, id, &eaw::EntitySnapshot::id);
+    };
+
+    // Attack-move: the weak hostile beside the path dies on the way; the destination is reached.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        const auto mover = *world.spawn({.type_name = "Mover", .owner = 1, .max_speed = 50.0F, .combat = armed, .stance = eaw::Stance::hold_fire});
+        const auto victim = *world.spawn({.type_name = "Victim", .owner = 2, .position = {500.0F, 60.0F, 0.0F}, .combat = weak});
+        world.submit({.kind = eaw::SimCommandKind::attack_move, .entities = {mover}, .target = {1000.0F, 0.0F, 0.0F}});
+        run(world, 1);
+        require(entity(world, mover).order == eaw::StandingOrder::attack_move, "an attack-move must become the entity's standing order");
+        run(world, 400);
+        require(!world.alive(victim) && world.stats().shots_fired > 0, "an attack-move must engage a hostile met on the way, even under hold_fire");
+        const auto& arrived = entity(world, mover);
+        require(arrived.order == eaw::StandingOrder::none && !arrived.moving && std::abs(arrived.position.x - 1000.0F) < 1.0F, "an attack-move must resume and end on arrival");
+    }
+
+    // Attack-move: a fast hostile that flees is chased only to the leash, then the move resumes.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        const auto mover = *world.spawn({.type_name = "Mover", .owner = 1, .max_speed = 50.0F, .combat = armed});
+        const auto runner = *world.spawn({.type_name = "Runner", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .max_speed = 300.0F, .combat = tough});
+        world.submit({.kind = eaw::SimCommandKind::attack_move, .entities = {mover}, .target = {600.0F, 0.0F, 0.0F}});
+        run(world, 30);
+        require(entity(world, mover).target == runner, "the attack-mover must engage the hostile in reach");
+        world.submit({.kind = eaw::SimCommandKind::move, .entities = {runner}, .target = {200.0F, 5000.0F, 0.0F}});
+        run(world, 300);
+        const auto& resumed = entity(world, mover);
+        require(world.alive(runner) && !resumed.target.valid() && std::abs(resumed.position.x - 600.0F) < 1.0F && std::abs(resumed.position.y) < 1.0F,
+                "a chase beyond the leash must break off, and the attack-move continue to its destination");
+    }
+
+    // Guard a point: a hostile that comes within the radius is engaged, one that stays away is not.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        const auto guard = *world.spawn({.type_name = "Guard", .owner = 1, .max_speed = 50.0F, .combat = armed, .stance = eaw::Stance::hold_fire});
+        const auto distant = *world.spawn({.type_name = "Distant", .owner = 2, .position = {400.0F, 0.0F, 0.0F}, .combat = tough});
+        world.submit({.kind = eaw::SimCommandKind::guard, .entities = {guard}, .target = {0.0F, 0.0F, 0.0F}});
+        run(world, 50);
+        require(entity(world, guard).order == eaw::StandingOrder::guard && !entity(world, guard).target.valid() && world.stats().shots_fired == 0, "a guard must ignore hostiles outside its radius");
+        const auto intruder = *world.spawn({.type_name = "Intruder", .owner = 2, .position = {120.0F, 0.0F, 0.0F}, .combat = weak});
+        run(world, 100);
+        require(!world.alive(intruder) && world.alive(distant), "a guard must engage a hostile that comes within its radius");
+        const auto& settled = entity(world, guard);
+        require(settled.order == eaw::StandingOrder::guard && std::hypot(settled.position.x, settled.position.y) < eaw::minimum_guard_radius, "a guard must stay near its anchor");
+    }
+
+    // Guard an object: it is followed as it moves; when it dies the guard ends; a move clears a guard.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        const auto guard = *world.spawn({.type_name = "Guard", .owner = 1, .max_speed = 60.0F, .combat = armed});
+        const auto ward = *world.spawn({.type_name = "Ward", .owner = 1, .position = {50.0F, 0.0F, 0.0F}, .max_speed = 30.0F, .combat = weak});
+        world.submit({.kind = eaw::SimCommandKind::guard, .entities = {guard}, .target_entity = ward});
+        world.submit({.kind = eaw::SimCommandKind::move, .entities = {ward}, .target = {800.0F, 0.0F, 0.0F}});
+        run(world, 400);
+        const auto& follower = entity(world, guard);
+        require(follower.order == eaw::StandingOrder::guard && std::abs(follower.position.x - 800.0F) < eaw::minimum_guard_radius, "a guard must follow the object it guards");
+        world.submit({.kind = eaw::SimCommandKind::destroy, .entities = {ward}});
+        run(world, 2);
+        require(entity(world, guard).order == eaw::StandingOrder::none, "a guard must end when its object is gone");
+        world.submit({.kind = eaw::SimCommandKind::guard, .entities = {guard}, .target = {0.0F, 0.0F, 0.0F}});
+        run(world, 1);
+        world.submit({.kind = eaw::SimCommandKind::move, .entities = {guard}, .target = {900.0F, 0.0F, 0.0F}});
+        run(world, 1);
+        require(entity(world, guard).order == eaw::StandingOrder::none, "a move must clear a standing order");
+    }
+}
+
 const ModuleRegistrar registrar("combat", {
                                               {"test_combat", &test_combat},
                                               {"test_hardpoints_and_fire_cones", &test_hardpoints_and_fire_cones},
                                               {"test_body_aiming", &test_body_aiming},
                                               {"test_stances", &test_stances},
+                                              {"test_standing_orders", &test_standing_orders},
                                           });
 
 } // namespace
