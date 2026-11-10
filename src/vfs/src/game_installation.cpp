@@ -228,6 +228,20 @@ std::optional<GameProfile> make_game_profile(const std::filesystem::path& root, 
     return GameProfile{root, runtime, runtime / "Data", variant};
 }
 
+Status check_installation_root(const std::filesystem::path& root)
+{
+    if (looks_like_installation(root))
+    {
+        return {};
+    }
+    std::error_code error;
+    if (std::filesystem::is_directory(root / "Data", error))
+    {
+        return make_error(root.string() + " is not an Empire at War installation; it has a Data folder, so it looks like a mod: add it as a mod instead");
+    }
+    return make_error(root.string() + " is not an Empire at War installation (it needs GameData\\Data and corruption\\Data)");
+}
+
 std::vector<std::filesystem::path> InstallationLocator::discover(const std::optional<std::filesystem::path>& explicit_root) const
 {
     std::vector<std::filesystem::path> results;

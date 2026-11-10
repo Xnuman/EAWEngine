@@ -133,9 +133,11 @@ combat rules.
    when to engage (a scan for hostiles on the target-search interval), when to break off (the
    leash), and where to go next; the engagement itself is an ordered attack.
 3. **Navigation** (`simulation_navigation.cpp`): route requests under a per-tick search budget,
-   shared formation routes, and group cohesion.
+   shared formation routes, group cohesion, and the local avoidance of space ships (a detour point
+   for the tick around a ship in the way).
 4. **Locomotion** (`simulation_locomotion.cpp`): physical movement only (speed limits, turn rates,
-   ground following and passability, flight above a minimum speed), then separation.
+   ground following and passability, flight above a minimum speed, following a detour point), then
+   separation of ground units and of flyers among their owner's.
 5. **Combat** (`simulation_combat.cpp`): shields, target selection under the stance, weapons,
    projectiles, damage, and removal of the dead. Combat never moves a unit.
 

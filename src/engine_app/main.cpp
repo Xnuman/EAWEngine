@@ -85,6 +85,14 @@ int main(const int argc, char** argv)
                 *null_pointer = 1;
             }
         }
+        if (options.game_root)
+        {
+            if (const auto root = eaw::check_installation_root(*options.game_root); !root)
+            {
+                std::cerr << "error: --game-root: " << root.error().message << '\n';
+                return 2;
+            }
+        }
         const eaw::InstallationLocator locator;
         const auto installations = locator.discover(options.game_root);
         if (installations.empty())

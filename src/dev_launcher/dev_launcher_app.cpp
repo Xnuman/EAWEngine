@@ -122,6 +122,12 @@ struct DevLauncherApp::State
     std::vector<std::string> maps;
     std::vector<std::string> models;
     std::string listed_for;
+    // The installation key last seen and when it changed: the lists refresh by themselves once a
+    // change has rested for list_refresh_delay (typing a path refreshes once, not per key).
+    std::string seen_key;
+    std::chrono::steady_clock::time_point key_changed;
+    // The key last refreshed for automatically: a failing refresh (no game found) is tried once.
+    std::string refreshed_key;
     std::string map_filter;
     std::string model_filter;
     std::string new_mod;
@@ -218,6 +224,11 @@ struct DevLauncherApp::State
                 report(path.error().message, true);
                 return;
             }
+            if (const auto valid = check_installation_root(*path); !valid)
+            {
+                report(valid.error().message, true);
+                return;
+            }
             root = *path;
         }
         const auto installations = InstallationLocator{}.discover(root);
@@ -238,6 +249,10 @@ struct DevLauncherApp::State
             if (auto path = tools::utf8_to_path(mod))
             {
                 mods.push_back(*path);
+            }
+            else
+            {
+                log_warning("dev-launcher", "skipped mod " + mod + ": " + path.error().message);
             }
         }
         auto shared_vfs = std::make_shared<VirtualFileSystem>();
@@ -315,6 +330,18 @@ DevLauncherApp::~DevLauncherApp()
 void DevLauncherApp::render(HWND window)
 {
     auto& state = *state_;
+    // A changed game, installation, or mod list refreshes the asset and spawn lists on its own.
+    constexpr auto list_refresh_delay = std::chrono::seconds(1);
+    if (const auto key = state.installation_key(); key != state.seen_key)
+    {
+        state.seen_key = key;
+        state.key_changed = std::chrono::steady_clock::now();
+    }
+    else if (key != state.listed_for && key != state.refreshed_key && std::chrono::steady_clock::now() - state.key_changed >= list_refresh_delay)
+    {
+        state.refreshed_key = key;
+        state.refresh_assets();
+    }
     if (state.spawn_types_pending.valid() && state.spawn_types_pending.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
     {
         state.spawn_types = state.spawn_types_pending.get();
@@ -409,8 +436,8 @@ void DevLauncherApp::render(HWND window)
             scenario.game = game == 0 ? GameVariant::empire_at_war : GameVariant::forces_of_corruption;
             edited(true);
         }
-        ImGui::SetNextItemWidth(-160.0F);
-        edited(ImGui::InputTextWithHint("##game-root", "Game root (empty: discover)", &scenario.game_root));
+        ImGui::SetNextItemWidth(-250.0F);
+        edited(ImGui::InputTextWithHint("Game root##game-root", "empty: found through Steam", &scenario.game_root));
         ImGui::SameLine();
         if (ImGui::Button("Browse...##root"))
         {

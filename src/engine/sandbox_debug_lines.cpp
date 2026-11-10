@@ -111,6 +111,24 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
             }
         }
     }
+    if (view.world != nullptr && !ground.valid())
+    {
+        // Space: the remaining route of every selected moving unit in 3D, through its avoidance
+        // detour when it steers around a unit in its way.
+        for (const auto& entity : view.world->snapshot().entities)
+        {
+            if (!entity.moving || !view.selection->contains(entity_key(entity.id)))
+            {
+                continue;
+            }
+            auto from = entity.position;
+            for (const auto& to : view.world->route(entity.id))
+            {
+                lines.push_back({from, to, {0.35F, 1.0F, 0.9F, 0.9F}});
+                from = to;
+            }
+        }
+    }
     if (view.world != nullptr && ground.valid())
     {
         // The remaining route of every selected moving unit, draped just above the surface.

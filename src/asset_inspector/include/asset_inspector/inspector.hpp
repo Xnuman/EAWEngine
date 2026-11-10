@@ -5,6 +5,7 @@
 #include "assets/game_object_catalog.hpp"
 #include "assets/legacy_material.hpp"
 #include "assets/map_object_layout.hpp"
+#include "assets/spawn_catalog.hpp"
 #include "assets/xml_asset_database.hpp"
 #include "assets/xml_schema.hpp"
 #include "core/status.hpp"

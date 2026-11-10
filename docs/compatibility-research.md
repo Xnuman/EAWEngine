@@ -1003,6 +1003,11 @@ recording stubs (`EAWEngine lua-survey`).
   and nothing waits on it. The engine's semantics (engage hostiles within 1.25 x weapon range on the
   way, break off beyond 2 x weapon range, guard radius the weapon range but at least 150 units, a
   guard of an object follows it and ends when it dies) are engine choices to check in play.
+- **Space ships avoid contact.** Ships do not push each other in the original, friendly or
+  hostile; they steer to avoid contact, and units that are small enough, or at another height,
+  fly above or below other units (owner's observation, 2026-11-10; it replaces the engine's earlier
+  assumption that ships separate by pushing). The engine's avoidance rules and numbers
+  (`avoid_*` in `simulation.hpp`) are engine choices; flyers still separate from squadron mates.
 - **Random numbers.** `GameRandom(lower, upper)` returns an integer in the inclusive range (scripts
   index lists with it and call `GameRandom(1, 1)`), `GameRandom.Get_Float()` a number in [0, 1), and
   `GameRandom.Free_Random(lower, upper)` the same as `GameRandom`; that it is the unsynchronized

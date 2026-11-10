@@ -1,6 +1,12 @@
 // Ground movement and navigation: terrain following, paths, separation, formations, groups, footprints, budgets.
 #include "test_support.hpp"
 
+#include <algorithm>
+
+#include <cmath>
+
+#include <limits>
+
 #include "eaw/formation.hpp"
 
 #include <tuple>
@@ -567,6 +573,85 @@ void test_path_budget_and_shared_routes()
     (void)group_hash;
 }
 
+// Space ships avoid contact instead of pushing: a ship steers around a ship in its way and arrives;
+// a ship at another height and a much smaller one are flown past directly; two ships meeting
+// head-on pass without touching; overlapping idle ships stay where they are; and a move onto another
+// ship stops at its clearance.
+void test_space_avoidance()
+{
+    const auto make = [](const float speed, const eaw::Vector3& at, const float radius)
+    {
+        return eaw::EntitySpawn{.type_name = "Ship", .owner = 1, .position = at, .max_speed = speed, .radius = radius};
+    };
+    const auto closest = [](eaw::SimulationWorld& world, const eaw::EntityId a, const eaw::EntityId b, const int ticks)
+    {
+        float nearest = std::numeric_limits<float>::max();
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            world.step();
+            const auto& entities = world.snapshot().entities;
+            const auto& first = *std::ranges::find(entities, a, &eaw::EntitySnapshot::id);
+            const auto& second = *std::ranges::find(entities, b, &eaw::EntitySnapshot::id);
+            nearest = std::min(nearest, std::hypot(first.position.x - second.position.x, first.position.y - second.position.y));
+        }
+        return nearest;
+    };
+    const auto position = [](const eaw::SimulationWorld& world, const eaw::EntityId id)
+    {
+        return std::ranges::find(world.snapshot().entities, id, &eaw::EntitySnapshot::id)->position;
+    };
+    {
+        eaw::SimulationWorld world(0.1);
+        const auto mover = *world.spawn(make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
+        const auto rock = *world.spawn(make(0.0F, {500.0F, 0.0F, 0.0F}, 20.0F));
+        world.submit({eaw::SimCommandKind::move, {mover}, {1000.0F, 0.0F, 0.0F}});
+        const auto nearest = closest(world, mover, rock, 200);
+        require(nearest >= 40.0F && std::abs(position(world, mover).x - 1000.0F) < 1.0F && position(world, rock).x == 500.0F,
+                "a ship must steer around a ship in its way without touching or pushing it, and arrive");
+    }
+    for (const auto& [obstacle, what] : {std::pair{make(0.0F, {500.0F, 0.0F, 200.0F}, 20.0F), "a ship at another height"}, std::pair{make(0.0F, {500.0F, 0.0F, 0.0F}, 2.0F), "a much smaller ship"}})
+    {
+        eaw::SimulationWorld world(0.1);
+        const auto mover = *world.spawn(make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
+        (void)world.spawn(obstacle);
+        world.submit({eaw::SimCommandKind::move, {mover}, {1000.0F, 0.0F, 0.0F}});
+        float widest = 0.0F;
+        for (int tick = 0; tick < 200; ++tick)
+        {
+            world.step();
+            widest = std::max(widest, std::abs(position(world, mover).y));
+        }
+        require(widest == 0.0F, std::string(what) + " must be flown past directly");
+    }
+    {
+        eaw::SimulationWorld world(0.1);
+        const auto east = *world.spawn(make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
+        const auto west = *world.spawn(make(100.0F, {1000.0F, 0.0F, 0.0F}, 20.0F));
+        world.submit({eaw::SimCommandKind::move, {east}, {1000.0F, 0.0F, 0.0F}});
+        world.submit({eaw::SimCommandKind::move, {west}, {0.0F, 0.0F, 0.0F}});
+        require(closest(world, east, west, 300) >= 40.0F && std::abs(position(world, east).x - 1000.0F) < 1.0F && std::abs(position(world, west).x) < 1.0F,
+                "two ships meeting head-on must pass without touching and arrive");
+    }
+    {
+        eaw::SimulationWorld world(0.1);
+        const auto first = *world.spawn(make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
+        const auto second = *world.spawn(make(100.0F, {10.0F, 0.0F, 0.0F}, 20.0F));
+        for (int tick = 0; tick < 20; ++tick)
+        {
+            world.step();
+        }
+        require(position(world, first).x == 0.0F && position(world, second).x == 10.0F, "idle space ships must not push each other apart");
+        world.submit({eaw::SimCommandKind::move, {first}, {500.0F, 0.0F, 0.0F}});
+        (void)world.spawn(make(0.0F, {500.0F, 0.0F, 0.0F}, 20.0F));
+        for (int tick = 0; tick < 100; ++tick)
+        {
+            world.step();
+        }
+        const auto& stopped = *std::ranges::find(world.snapshot().entities, first, &eaw::EntitySnapshot::id);
+        require(!stopped.moving && stopped.position.x < 500.0F - 40.0F && stopped.position.x > 500.0F - 60.0F, "a move onto another ship must stop at its clearance");
+    }
+}
+
 const ModuleRegistrar registrar("navigation", {
                                                   {"test_ground_movement", &test_ground_movement},
                                                   {"test_pathfinding", &test_pathfinding},
@@ -576,6 +661,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_group_cohesion", &test_group_cohesion},
                                                   {"test_ground_footprints", &test_ground_footprints},
                                                   {"test_path_budget_and_shared_routes", &test_path_budget_and_shared_routes},
+                                                  {"test_space_avoidance", &test_space_avoidance},
                                               });
 
 } // namespace

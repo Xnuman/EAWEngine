@@ -22,6 +22,14 @@ int main(const int argc, char** argv)
         forwarded.push_back(argument);
     }
 
+    if (explicit_root)
+    {
+        if (const auto root = eaw::check_installation_root(*explicit_root); !root)
+        {
+            std::cerr << "EAWLauncher: --game-root: " << root.error().message << '\n';
+            return 2;
+        }
+    }
     const eaw::InstallationLocator locator;
     const auto installations = locator.discover(explicit_root);
     if (installations.empty())

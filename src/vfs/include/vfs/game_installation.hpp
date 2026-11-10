@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/status.hpp"
+
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -25,6 +27,13 @@ struct GameProfile
 [[nodiscard]] std::string_view to_string(GameVariant variant) noexcept;
 [[nodiscard]] std::optional<GameVariant> parse_game_variant(std::string_view text);
 [[nodiscard]] std::optional<GameProfile> make_game_profile(const std::filesystem::path& root, GameVariant variant);
+
+// Whether a folder given as the game's root is an installation (GameData\Data and
+// corruption\Data). The error says why not, and names a mod folder given by mistake (a folder with
+// Data that is not the game) as one. Callers check an explicit root with it first: discover() only
+// adds a root that is an installation and otherwise finds others, which would silently replace a
+// wrong explicit root.
+[[nodiscard]] Status check_installation_root(const std::filesystem::path& root);
 
 class InstallationLocator final
 {

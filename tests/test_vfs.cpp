@@ -16,6 +16,28 @@ void test_meg_archive_and_vfs_basics()
         require(!eaw::asset_output_path(hostile).ok(), std::string("a hostile entry name must be refused: ") + hostile);
     }
     require(eaw::asset_output_path("Data/CONSOLE.LUA").ok() && eaw::asset_output_path("Data/COM10.LUA").ok(), "names that only start like devices must be allowed");
+
+    // Relative mod paths are looked up as the game's MODPATH: under the runtime root, else as given.
+    {
+        const auto root = std::filesystem::temp_directory_path() / "eawengine-mod-path-test";
+        std::error_code ignored;
+        std::filesystem::remove_all(root, ignored);
+        std::filesystem::create_directories(root / "corruption" / "Mods" / "Example" / "Data");
+        eaw::GameProfile profile;
+        profile.root = root;
+        profile.runtime_root = root / "corruption";
+        require(eaw::resolve_mod_path(profile, std::filesystem::path("Mods") / "Example") == root / "corruption" / "Mods" / "Example", "a relative mod path must resolve under the runtime root");
+        require(eaw::resolve_mod_path(profile, "Elsewhere") == std::filesystem::path("Elsewhere"), "a relative mod path not under the runtime root must stay as given");
+        require(eaw::resolve_mod_path(profile, root / "x") == root / "x", "an absolute mod path must stay as it is");
+        // An explicit game root must be an installation; a mod folder given as one says so.
+        std::filesystem::create_directories(root / "GameData" / "Data");
+        std::filesystem::create_directories(root / "corruption" / "Data");
+        require(eaw::check_installation_root(root).ok(), "an installation must pass the root check");
+        const auto mod_as_root = eaw::check_installation_root(root / "corruption" / "Mods" / "Example");
+        require(!mod_as_root && mod_as_root.error().message.find("mod") != std::string::npos, "a mod folder given as the game root must be named as a mod");
+        require(!eaw::check_installation_root(root / "corruption" / "Mods"), "a folder without the game's data must fail the root check");
+        std::filesystem::remove_all(root, ignored);
+    }
     const auto archive_path = write_test_meg();
     const auto archive = expect_ok(eaw::MegArchive::open(archive_path), "opening the test MEG archive");
     const auto* entry = archive.find("data/xml/test.xml");

@@ -21,6 +21,17 @@ void mount_archives(VirtualFileSystem& vfs, const std::filesystem::path& runtime
 
 } // namespace
 
+std::filesystem::path resolve_mod_path(const GameProfile& profile, const std::filesystem::path& mod)
+{
+    if (mod.is_absolute())
+    {
+        return mod;
+    }
+    std::error_code error;
+    const auto under_game = profile.runtime_root / mod;
+    return std::filesystem::is_directory(under_game / "Data", error) ? under_game : mod;
+}
+
 AssetMountReport mount_game_assets(VirtualFileSystem& vfs, const GameProfile& profile, const std::span<const std::filesystem::path> mods)
 {
     AssetMountReport report;
@@ -41,16 +52,18 @@ AssetMountReport mount_game_assets(VirtualFileSystem& vfs, const GameProfile& pr
         vfs.mount(std::make_unique<DirectoryMount>("eaw:loose", profile.runtime_root));
     }
 
-    for (auto mod = mods.rbegin(); mod != mods.rend(); ++mod)
+    for (auto given = mods.rbegin(); given != mods.rend(); ++given)
     {
+        const auto mod = resolve_mod_path(profile, *given);
         std::error_code error;
-        if (!std::filesystem::is_directory(*mod / "Data", error))
+        if (!std::filesystem::is_directory(mod / "Data", error))
         {
-            report.warnings.push_back("skipped mod without a Data directory: " + mod->string());
+            report.warnings.push_back("skipped mod without a Data directory: " + given->string() +
+                                      (given->is_absolute() ? "" : " (looked under " + profile.runtime_root.string() + " and the working directory)"));
             continue;
         }
-        mount_archives(vfs, *mod, "mod:" + mod->filename().string(), report);
-        vfs.mount(std::make_unique<DirectoryMount>("mod:loose:" + mod->filename().string(), *mod));
+        mount_archives(vfs, mod, "mod:" + mod.filename().string(), report);
+        vfs.mount(std::make_unique<DirectoryMount>("mod:loose:" + mod.filename().string(), mod));
     }
     return report;
 }

@@ -6,6 +6,10 @@ namespace {
 // Runs the selected command and returns its exit code; failures are returned for main to report.
 eaw::Result<int> run(const Options& options)
 {
+    if (options.game_root)
+    {
+        EAW_TRY(eaw::check_installation_root(*options.game_root));
+    }
     const eaw::InstallationLocator locator;
     const auto installations = locator.discover(options.game_root);
     if (installations.empty())
@@ -60,6 +64,21 @@ eaw::Result<int> run(const Options& options)
     if (options.command == "lua-audit")
     {
         audit_lua(vfs, options.prefix, options.limit);
+        return 0;
+    }
+    if (options.command == "spawn-types")
+    {
+        // The spawnable types the development launcher and the sandbox offer, from the same listing.
+        const auto types = eaw::list_spawn_types(vfs);
+        const auto units = std::ranges::count_if(types, &eaw::SpawnTypeInfo::unit);
+        for (std::size_t index = 0; index < std::min(options.limit, types.size()); ++index)
+        {
+            const auto& type = types[index];
+            std::cout << type.name << '\t' << type.kind << '\t' << (type.land_model ? "land" : "") << (type.land_model && type.space_model ? "+" : "") << (type.space_model ? "space" : "")
+                      << (type.unit ? "\tunit" : "") << '\n';
+        }
+        std::cout.flush();
+        std::cerr << types.size() << " spawnable types (" << units << " units and structures)\n";
         return 0;
     }
     if (options.command == "map-objects")

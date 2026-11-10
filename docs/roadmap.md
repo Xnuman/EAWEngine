@@ -258,6 +258,9 @@ compared by measured ratios from screenshots, never by recreated scenes):
   range), the guard radius (weapon range, at least 150 units), and how far a followed object may
   move before the unit follows (50 units);
 - fighter flight angles, heights, and periods;
+- space avoidance: the look-ahead (3 s of travel, at least 4 radii), the margin (a quarter radius),
+  which units are small enough to fly past (below a fifth of the radius), and that a unit at
+  another height is passed when the heights differ by more than both radii;
 - why `W_LASER_INVISIBLE.ALO` (the land model of 19 melee and environment projectiles) is invisible
   in the original although its mesh is an unhidden additive quad with a visible texture;
 - a test map built in the original's map editor, if one can be made, for matching static placement.

@@ -439,7 +439,11 @@ std::vector<Vector3> SimulationWorld::route(const EntityId id) const
     {
         return points;
     }
-    points.assign(paths_[*dense].rbegin(), paths_[*dense].rend());
+    if (*dense < detours_.size() && detours_[*dense])
+    {
+        points.push_back(*detours_[*dense]);
+    }
+    points.insert(points.end(), paths_[*dense].rbegin(), paths_[*dense].rend());
     points.push_back(*move_targets_[*dense]);
     return points;
 }

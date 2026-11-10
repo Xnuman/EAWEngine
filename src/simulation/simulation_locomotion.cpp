@@ -26,6 +26,7 @@ void SimulationWorld::run_movement()
     process_path_queue();
     measure_remaining_routes();
     update_group_cohesion();
+    plan_space_avoidance();
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
         if (min_speeds_[index] > 0.0F)
@@ -58,6 +59,20 @@ void SimulationWorld::run_movement()
         if (follows_ground_[index] != 0 && ground_.valid())
         {
             move_over_ground(index, dt);
+            continue;
+        }
+        if (index < detours_.size() && detours_[index])
+        {
+            // Around a unit in the way: steer at the detour point; arrival still counts at the target.
+            const auto& detour = *detours_[index];
+            const Vector3 aside{detour.x - position.x, detour.y - position.y, detour.z - position.z};
+            const auto length = std::sqrt(aside.x * aside.x + aside.y * aside.y + aside.z * aside.z);
+            const auto factor = aside.x != 0.0F || aside.y != 0.0F ? steer(index, std::atan2(aside.y, aside.x), dt) : 1.0F;
+            const auto step = std::min(travel_speed(index) * dt * factor, length);
+            if (length > 0.0F)
+            {
+                position = {position.x + aside.x * step / length, position.y + aside.y * step / length, position.z + aside.z * step / length};
+            }
             continue;
         }
         const Vector3 delta{target->x - position.x, target->y - position.y, target->z - position.z};
@@ -181,8 +196,8 @@ float SimulationWorld::steer(const std::size_t index, const float desired, const
 void SimulationWorld::run_separation()
 {
     separated_pairs_ = 0;
-    // On land, ground units separate on the surface; without ground (space maps), every unit with a
-    // footprint separates in the plane.
+    // On land, ground units separate on the surface. Space ships do not push each other (they avoid
+    // contact instead: plan_space_avoidance); only flyers separate there.
     const bool land = ground_.valid();
     // Flyers separate only from flyers of their owner (observed in the original: squadron mates push
     // each other apart), sideways so they keep their plane; overlap counts in 3D, so flyers passing
@@ -193,7 +208,7 @@ void SimulationWorld::run_separation()
     };
     const auto takes_part = [&](const std::size_t index)
     {
-        return flyer(index) || (radii_[index] > 0.0F && min_speeds_[index] <= 0.0F && (!land || follows_ground_[index] != 0));
+        return flyer(index) || (radii_[index] > 0.0F && min_speeds_[index] <= 0.0F && land && follows_ground_[index] != 0);
     };
     grid_.build(positions_, grid_cell_size);
     separation_push_.assign(ids_.size(), Vector3{});

@@ -23,7 +23,7 @@ EAWEngine.exe sandbox --game foc --model DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO
 | Option | Effect |
 | --- | --- |
 | `--game eaw\|foc`, `--game-root <path>` | Game variant and installation (discovered through Steam by default). |
-| `--mod <path>` | Add a mod (repeatable; the first has the highest priority). |
+| `--mod <path>` | Add a mod (repeatable; the first has the highest priority). A relative path is looked up as the game's MODPATH, under the runtime folder (`Mods\Name`), then from the working directory. |
 | `--map <ted>` | Show a map: placed objects as simulation entities, terrain, liquids, tracks, sky and backdrop. Squadrons and companies appear as their members. |
 | `--model <alo>`, `--animation <ala>` | Show one model; without `--animation` its `_IDLE_00.ALA` plays when present. |
 | `--validation-triangle` | Skip asset loading. |
@@ -95,8 +95,9 @@ On maps the sandbox starts in the RTS camera; C switches to the free debug camer
 | Left, Right | Model view: step through the bind pose and every `<MODEL>_*.ALA` beside the model. |
 | Escape | Quit. |
 
-Selected units show their remaining route, and damaged or selected units show health (green) and
-shield (blue) bars. Panels can be dragged, resized, and minimized; the mouse does not reach the scene
+Selected units show their remaining route (on space maps in 3D, through the detour a ship takes
+around a unit in its way), and damaged or selected units show health (green) and shield (blue)
+bars. Panels can be dragged, resized, and minimized; the mouse does not reach the scene
 while it is over a panel.
 
 ## EAWDevLauncher sandbox scenarios
@@ -113,7 +114,11 @@ instead of a hand-typed command line. A scenario names:
   passability, auto move, statistics panel (hidden by default), raw input,
   frame limit, window size, upload budget, and free-form extra arguments.
 
-Each spawn row has a **Pick...** list of spawnable XML types, built from the
+The **Game root** field names the installation (empty: found through Steam); a folder that is not
+one is refused with an error, and a mod folder put there by mistake is named as a mod (mods go in
+the list below it, through **Add mod folder...**). The asset and spawn lists refresh by themselves a second after the game, installation, or mod list
+changes (the **Refresh asset lists** button still forces one). Each spawn row has a **Pick...** list
+of spawnable XML types, built from the
 winning XML of the selected game, the inherited base game, and the mod stack:
 every named definition with a land or space model (2,710 in stock FoC, 1,046
 of them units and structures). It filters by the text typed in the row, by
@@ -355,6 +360,9 @@ EAWAssetInspector.exe xml-audit Data/XML --game foc
 # Add type/tag, scalar, enum, repetition, and object-reference validation
 EAWAssetInspector.exe xml-audit Data/XML --game foc `
   --schema-root "D:\path\to\eaw-schema"
+
+# The spawnable types the development launcher and the sandbox offer (with mods: --mod)
+EAWAssetInspector.exe spawn-types --game foc --mod "D:\path\to\mod" --limit 100
 
 # Copy the winning file of every virtual path under a prefix out of the archives
 EAWAssetInspector.exe extract Data/Scripts --extension .lua --output D:\eaw-extract

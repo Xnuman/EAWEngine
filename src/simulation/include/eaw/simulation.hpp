@@ -141,6 +141,18 @@ inline constexpr float leash_range_factor = 2.0F;
 inline constexpr float minimum_guard_radius = 150.0F;
 inline constexpr float follow_tolerance = 50.0F;
 
+// Space avoidance (engine choices to check in play): in the original, ships neither push each
+// other nor overlap; they steer around units in their way, and pass above or below units at
+// another height or much smaller than themselves (owner's observation). A moving ship looks ahead
+// avoid_lookahead_seconds of travel (at least avoid_min_lookahead_radii of its radius), avoids
+// units whose footprint, widened by avoid_margin_fraction of its radius, crosses its course, and
+// ignores units whose height differs by more than both radii or whose radius is below
+// avoid_small_fraction of its own.
+inline constexpr float avoid_lookahead_seconds = 3.0F;
+inline constexpr float avoid_min_lookahead_radii = 4.0F;
+inline constexpr float avoid_margin_fraction = 0.25F;
+inline constexpr float avoid_small_fraction = 0.2F;
+
 struct SimCommand
 {
     SimCommandKind kind{SimCommandKind::move};
@@ -362,7 +374,8 @@ public:
     // XML type name an entity was spawned with (empty when it is not alive).
     [[nodiscard]] std::string_view type_name(EntityId id) const noexcept;
     // The points an entity is still moving through, in order, ending at its destination (empty
-    // when it is not moving or unknown). For debugging and presentation; not part of snapshots.
+    // when it is not moving or unknown); a ship's avoidance detour comes first. For debugging and
+    // presentation; not part of snapshots.
     [[nodiscard]] std::vector<Vector3> route(EntityId id) const;
     [[nodiscard]] const SimSnapshot& snapshot() const noexcept;
     [[nodiscard]] Stats stats() const noexcept;
@@ -477,6 +490,8 @@ private:
     // may use: 1 when facing the way, falling to 0 at 90 degrees or more off.
     [[nodiscard]] float steer(std::size_t index, float desired, float dt);
     void run_separation();
+    // Navigation (simulation_navigation.cpp): local avoidance of space ships (detours_).
+    void plan_space_avoidance();
     // Stamps (or removes) an entity's footprint into the ground's passability.
     void stamp_footprint(std::size_t index, bool add);
     void run_combat();
@@ -566,6 +581,9 @@ private:
     // Group speed of a formation move until the entity arrives; zero when none.
     std::vector<float> speed_limits_;
     std::vector<Vector3> separation_push_;
+    // Space ships: the point steered at this tick to pass a unit in the way (navigation's local
+    // avoidance); recomputed every tick from the state, so not hashed.
+    std::vector<std::optional<Vector3>> detours_;
     // A queued route request: one entity, or the ground members of a formation move that share a
     // movement class (planned on one shared path to `group_target`).
     struct PathRequest
