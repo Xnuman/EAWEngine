@@ -1,6 +1,6 @@
 #include "eaw/map_object_layout.hpp"
 
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/virtual_file_system.hpp"
 #include "math/transform.hpp"
 #include "core/string_utils.hpp"
 

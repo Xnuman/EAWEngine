@@ -54,20 +54,22 @@ with the SDK's `dxc.exe` and `fxc.exe` (override with `EAW_DXC_EXECUTABLE` /
 `EAW_FXC_EXECUTABLE`); nothing is compiled at runtime.
 
 ```powershell
-cmake --preset vs2022-x64
-cmake --build --preset debug
-ctest --preset debug
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_CXX_STANDARD=20 -DEAW_BUILD_TESTS=ON
+cmake --build build --config Debug --parallel
+.\executables\Debug\EAWEngineTests.exe
 ```
+
+(PowerShell build scripts are planned to replace these commands; see AGENTS.md.)
 
 Launch the graphical tools:
 
 ```powershell
-.\build\vs2022-x64\Debug\EAWTools.exe
-.\build\vs2022-x64\Debug\EAWDevLauncher.exe
+.\executables\Debug\EAWTools.exe
+.\executables\Debug\EAWDevLauncher.exe
 ```
 
 The development launcher stores its presets in `EAWDevLauncher.scenarios` next
-to the executable (the build folder) and shows the exact `EAWEngine` command
+to the executable (`executables/<Config>/`) and shows the exact `EAWEngine` command
 line it runs, which can be copied for scripts.
 
 The GUI auto-detects the Steam installation, browses the winning asset from

@@ -1,6 +1,6 @@
 #include "eaw/xml_asset_database.hpp"
 
-#include "eaw/asset_path.hpp"
+#include "vfs/asset_path.hpp"
 #include "core/string_utils.hpp"
 #include "formats/xml_helpers.hpp"
 

@@ -1,13 +1,13 @@
 #include "dev_launcher_app.hpp"
 
-#include "eaw/asset_environment.hpp"
+#include "vfs/asset_environment.hpp"
 #include "eaw/child_process.hpp"
 #include "eaw/file_dialogs.hpp"
-#include "eaw/game_installation.hpp"
+#include "vfs/game_installation.hpp"
 #include "core/log.hpp"
 #include "eaw/sandbox_scenario.hpp"
 #include "eaw/spawn_catalog.hpp"
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/virtual_file_system.hpp"
 #include "core/string_utils.hpp"
 #include "core/file_io.hpp"
 

@@ -1,7 +1,7 @@
 #pragma once
 
 // An 8-bit RGBA image (top row first, four bytes per pixel), the engine's screen captures, and the
-// comparison image regression uses. PNG reading and writing is eaw/png_file.hpp.
+// comparison image regression uses. PNG reading and writing is formats/png_image.hpp.
 
 #include "core/status.hpp"
 

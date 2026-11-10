@@ -4,7 +4,7 @@
 // model, taken from the winning XML of the mounted layers (base game, expansion, and mods).
 
 #include "eaw/game_object_catalog.hpp"
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
 
 #include <string>

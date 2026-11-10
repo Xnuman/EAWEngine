@@ -175,7 +175,7 @@ The **DAT Localization** page can:
 - validate duplicate, TODO, CRC, and DAT structure issues;
 - build a complete output DAT without changing the baseline file.
 
-The GUI calls the same `eaw_core` APIs as the command-line programs; it does not
+The GUI calls the same core, format, and VFS libraries as the command-line programs; it does not
 spawn or scrape CLI subprocesses. Native Windows file/folder dialogs preserve
 Unicode paths.
 

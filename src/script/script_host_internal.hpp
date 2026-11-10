@@ -4,7 +4,7 @@
 // script_stubs.cpp: recording stubs and stub objects). Private to eaw_script.
 
 #include "eaw/script_host.hpp"
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/virtual_file_system.hpp"
 
 extern "C" {
 #include <lauxlib.h>

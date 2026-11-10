@@ -10,7 +10,7 @@
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/legacy_material.hpp"
 #include "formats/ted_map.hpp"
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
 #include "math/matrix.hpp"
 #include "math/vector.hpp"

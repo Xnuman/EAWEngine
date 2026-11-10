@@ -8,7 +8,7 @@
 #include "visual_scene_builder.hpp"
 
 #include "formats/ala_animation.hpp"
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/virtual_file_system.hpp"
 
 #include <optional>
 #include <string>

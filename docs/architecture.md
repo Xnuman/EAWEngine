@@ -13,7 +13,7 @@ The original files are inputs only:
 owned game + mods
         |
         v
-layered VFS -> format decoders -> immutable asset database
+layered VFS -> format readers -> loaders -> engine resources
                                       |
                     +-----------------+------------------+
                     v                                    v
@@ -29,7 +29,10 @@ layered VFS -> format decoders -> immutable asset database
 1. **Platform**: windowing, input, files, clocks, crash reporting, CPU topology.
 2. **VFS**: loose directories, MEG archives, mod priority, asynchronous reads.
 3. **Formats**: XML, Lua 5.0 bytecode/source, ALO, ALA, TED, MTD, DAT, DDS,
-   shaders, audio, and movies. Decoders produce versioned engine-native data.
+   shaders, audio, and movies. Readers turn bytes into lossless file-level
+   `…Data`; loaders in the game asset layer turn that into engine-native
+   resources that know nothing of the source format (see
+   [Resource pipeline](#resource-pipeline)).
 4. **Asset runtime**: handles, dependency graph, background streaming, budgets,
    hot reload, and GPU upload queues.
 5. **Simulation**: deterministic fixed ticks and data-oriented components.
@@ -41,6 +44,26 @@ layered VFS -> format decoders -> immutable asset database
 8. **Presentation**: renderer, animation, effects, UI, audio, and cinematics.
 9. **Tools**: launcher, asset inspector, map/model viewers, converter, profiler,
    compatibility test runner, and mod SDK.
+
+## Resource pipeline
+
+A resource reaches the engine in three stages, each in its own layer:
+
+1. **Bytes**: the VFS resolves a virtual path through its layers and returns the winning entry's
+   bytes (a MEG entry, or a loose file read through `core/file_io`).
+2. **File-level data**: a format reader (`eaw_formats`) turns the bytes into a plain `…Data`
+   structure, losslessly and without I/O: `read_alo<AloModelData>`, `read_ala`, `read_ted`, and so
+   on. A format that holds several kinds of data is read through a template
+   (`read_alo<AloGenericData>` tells a model from a particle system).
+3. **Engine resource**: a loader in the game asset layer applies the interpretation rules (legacy
+   materials, `pe_*` proxies, `_ALT`/`_LOD` names) and builds the engine-native resource (`Model`,
+   `Animation`, `ParticleEffect`), which the engine and renderer use. A resource manager above the
+   loaders owns IDs and caching.
+
+The file-level data lives only as long as a loader or a tool needs it; tools (inspector, EAWTools)
+show it directly. Another source format means another reader and loader producing the same
+resource. Stage 3 is being built (reorganization step 5); today the scene builders in `src/engine`
+play the loaders' part and the engine still holds some file-level data.
 
 ## Simulation tick layers
 
@@ -357,17 +380,27 @@ physically based pipeline).
 How the larger modules are split into files. `AGENTS.md` keeps the directory-level map and the
 dependency rules; this is the file-level detail.
 
-- `src/core`: one file per format or subject. The Petroglyph chunk container (chunks and
-  mini-chunks with bounds-checked ranges and little-endian values) is `chunk_file`, shared by the
-  ALO, particle, ALA, and TED decoders, which keep only their format's own readers. ALO is split
-  into `alo_model` (decoding and the model's own queries: counts, bind pose), `alo_math` (vectors,
-  quaternions, matrices, transform composition), and `alo_interpretation` (the `_ALT<n>`/`_LOD<n>`
-  naming convention and default mesh visibility, rules about what the decoded facts mean). `XmlSchema` (`eaw/xml_schema.hpp`) is split into
-  `xml_schema_load.cpp` (the optional eaw-schema YAML, its base and FoC layers, accessors) and
-  `xml_schema_validate.cpp` (validating a resolved XML database against it), sharing
-  `xml_schema_internal.hpp`. Localization is `localization_workspace` (TSV workspaces, DAT rows,
-  unit keys), `localization_scan` (TEXT_* references in mod XML), and `localization_validation`
-  (a translation against its reference).
+- `src/math` (`eaw_math`): `vector`, `quaternion`, `matrix`, `transform` (compose and decompose),
+  and `scalar` (angle constants and conversions).
+- `src/core` (`eaw_core`): the foundation, by category: `error_handling` (`status`, `fatal_error`),
+  `log`, `string_utils`, `file_io`, and `checksum`. The same directory builds
+  `eaw_core_transitional` (`include/eaw/`): game data (`game_object_catalog`, `spawn_catalog`,
+  `map_object_layout`, `xml_asset_database`, `legacy_material`, `alo_interpretation` with the
+  `_ALT<n>`/`_LOD<n>` naming rules and default mesh visibility), `XmlSchema` (`xml_schema_load.cpp`
+  for the optional eaw-schema YAML and its layers, `xml_schema_validate.cpp` for validating a
+  resolved XML database, sharing `xml_schema_internal.hpp`), localization (`localization_workspace`:
+  TSV workspaces, DAT rows, unit keys, DAT string tables from disk; `localization_scan`: TEXT_*
+  references in mod XML; `localization_validation`: a translation against its reference), and
+  `alamo_pose` (pose sampling, blending, and composition), until step 5 moves them.
+- `src/formats` (`eaw_formats`), by category: `alamo` (`alamo_chunks`, the Petroglyph chunk
+  container with bounds-checked ranges shared by the Alamo readers; `alo_generic`; `ala_animation`
+  and `ala_animation_helpers`; `ted_map`), `model` (`alo_model`, `alo_model_helpers`), `particle`
+  (`alo_particle_system`), `texture` (`dds_texture`, `mtd_atlas`), `image` (`png_image`,
+  `rgba_image`), `xml` (`xml_document`, `xml_helpers`), `localization` (`dat_string_table`,
+  `dat_string_table_helpers`), and `script` (`lua_bytecode`).
+- `src/vfs` (`eaw_vfs`), by category: `file_system` (`virtual_file_system`: readers, mounts, and
+  layering), `archive` (`meg_archive`, `asset_path`), and `installation` (`game_installation`,
+  `asset_environment`).
 - `src/render` (D3D12 backend): the public interface is `include/eaw/d3d12_renderer.hpp`; the
   implementation class lives in `d3d12_renderer_impl.hpp` with its member functions defined by
   subject in `d3d12_renderer_device.cpp` (startup, swap chain, buffers, waits, retirement),
@@ -412,8 +445,8 @@ dependency rules; this is the file-level detail.
   implemented so far), `script_stubs.cpp` (recording stubs: callable, indexable stub objects), and
   `host_api_recorder.cpp` (what scripts called), sharing `script_host_internal.hpp`. The survey
   command that runs every stock script on it is `src/engine_app/lua_survey_command.cpp`.
-- `src/dat_editor` (`EAWDatEditor`): a front end over `eaw_core`'s DAT, workspace, scan, and
-  translation-validation functions (`localization_workspace`, `localization_scan`,
+- `src/dat_editor` (`EAWDatEditor`): a front end over the DAT string table (`eaw_formats`) and the
+  workspace, scan, and translation-validation functions (`localization_workspace`, `localization_scan`,
   `localization_validation`, which EAWTools uses too); `dat_editor_options` parses the command
   line, `dat_commands` holds the commands on one DAT (info, list, get, set, remove, validate),
   `workspace_commands` those on workspaces and mods (export, diff, build, scan-mod, add-unit),
@@ -422,7 +455,7 @@ dependency rules; this is the file-level detail.
   `gui_model_view`, `gui_localization`); `GuiApp::State` is declared in `gui_internal.hpp` with
   its methods in `gui_state.cpp`, and shared helpers live in `gui_support.cpp`.
 - `tests`: one module per subject, each `test_<module>.cpp` with its own ctest entry: `formats`,
-  `vfs`, `xml`, `foundation` (core); `simulation` (core and snapshots), `navigation`, `combat`,
+  `vfs`, `xml`, `foundation` (core: errors, log, strings, file I/O, CRC), `math`; `simulation` (core and snapshots), `navigation`, `combat`,
   and `flight` (the simulation); `scene` (scene building), `presentation`, `battle`, `effects`,
   and `sandbox` (the engine); `launcher` and `render`. Shared fixtures (synthetic MEG, ALO, ALA,
   DDS, TED, DAT, and particle files) live in `test_support.*`.

@@ -1,9 +1,9 @@
 #include "lua_survey_command.hpp"
 #include "image_compare_command.hpp"
-#include "eaw/asset_environment.hpp"
-#include "eaw/game_installation.hpp"
+#include "vfs/asset_environment.hpp"
+#include "vfs/game_installation.hpp"
 #include "core/status.hpp"
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/virtual_file_system.hpp"
 
 #include "battle_runner.hpp"
 #include "sandbox_options.hpp"

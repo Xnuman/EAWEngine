@@ -1,4 +1,4 @@
-#include "eaw/asset_environment.hpp"
+#include "vfs/asset_environment.hpp"
 
 #include <memory>
 

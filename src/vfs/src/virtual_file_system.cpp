@@ -1,6 +1,6 @@
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/virtual_file_system.hpp"
 
-#include "eaw/asset_path.hpp"
+#include "vfs/asset_path.hpp"
 #include "core/string_utils.hpp"
 #include "core/file_io.hpp"
 

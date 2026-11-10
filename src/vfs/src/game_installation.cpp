@@ -1,4 +1,4 @@
-#include "eaw/game_installation.hpp"
+#include "vfs/game_installation.hpp"
 #include "core/file_io.hpp"
 #include "core/string_utils.hpp"
 
@@ -78,6 +78,9 @@ std::vector<std::string> vdf_path_values(const std::string_view contents)
 
 // The trimmed text of every `<File>...</File>` element (tags matched case-insensitively; the text
 // contains no '<'), as written in megafiles.xml.
+// This is a second, minimal XML parser beside eaw_formats' read_xml, kept so the VFS does not depend
+// on the format library; it does not handle comments, CDATA, entities, or UTF-16 manifests. Revisit
+// (read_xml, or a VFS-owned manifest reader) if a mod's megafiles.xml needs any of them.
 std::vector<std::string> manifest_file_entries(const std::string_view contents)
 {
     constexpr std::string_view open_tag = "<file>";

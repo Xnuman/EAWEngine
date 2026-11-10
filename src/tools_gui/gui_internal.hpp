@@ -10,10 +10,10 @@
 #include "eaw/alamo_pose.hpp"
 #include "formats/ala_animation.hpp"
 #include "formats/alo_model.hpp"
-#include "eaw/asset_environment.hpp"
+#include "vfs/asset_environment.hpp"
 #include "formats/dat_string_table.hpp"
 #include "formats/dds_texture.hpp"
-#include "eaw/game_installation.hpp"
+#include "vfs/game_installation.hpp"
 #include "eaw/game_object_catalog.hpp"
 #include "eaw/legacy_material.hpp"
 #include "eaw/localization_scan.hpp"
@@ -23,7 +23,7 @@
 #include "formats/mtd_atlas.hpp"
 #include "core/string_utils.hpp"
 #include "formats/ted_map.hpp"
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/virtual_file_system.hpp"
 #include "eaw/xml_asset_database.hpp"
 
 #include <imgui.h>

@@ -14,7 +14,7 @@
 namespace eaw {
 namespace {
 
-// The shared chunk container (eaw/chunk_file.hpp), with this format named in diagnostics.
+// The shared chunk container (formats/alamo_chunks.hpp), with this format named in diagnostics.
 using Chunk = ChunkRange;
 using MiniChunk = MiniChunkRange;
 using chunk::find_chunk;

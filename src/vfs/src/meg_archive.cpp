@@ -1,6 +1,6 @@
-#include "eaw/meg_archive.hpp"
+#include "vfs/meg_archive.hpp"
 
-#include "eaw/asset_path.hpp"
+#include "vfs/asset_path.hpp"
 
 #include <array>
 #include <fstream>

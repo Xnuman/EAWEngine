@@ -301,7 +301,10 @@ Gaps toward the deliverable, in planned order:
       in the original's map editor, if available, could give matching static
       placement; that is open.
    3. The review of the technical foundation, adding what the large layers
-      need. It starts with the Lua host as a foundation question, not as
+      need. Since 2026-11-09 it includes a reorganization of the code into
+      small libraries (math, core, formats, VFS, then a game asset layer with
+      loaders and a resource manager) and build scripts; its plan and progress
+      are in AGENTS.md and docs/status.md. It starts with the Lua host as a foundation question, not as
       scripted behavior: a Lua 5.0-compatible VM with deterministic settings
       (no file or OS access, a seeded random stream), script threads as
       coroutines woken on simulation ticks, object handles as

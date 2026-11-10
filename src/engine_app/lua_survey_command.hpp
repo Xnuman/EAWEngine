@@ -7,7 +7,7 @@
 
 #include "sandbox_options.hpp"
 
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/virtual_file_system.hpp"
 
 namespace eaw {
 

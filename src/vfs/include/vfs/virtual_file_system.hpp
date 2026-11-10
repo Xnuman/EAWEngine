@@ -1,6 +1,6 @@
 #pragma once
 
-#include "eaw/meg_archive.hpp"
+#include "vfs/meg_archive.hpp"
 #include "core/status.hpp"
 
 #include <cstddef>

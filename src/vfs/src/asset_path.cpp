@@ -1,4 +1,4 @@
-#include "eaw/asset_path.hpp"
+#include "vfs/asset_path.hpp"
 #include "core/string_utils.hpp"
 
 #include <vector>

@@ -572,7 +572,7 @@ Fighter flight.
 Particle systems. Particle effects are ALO files whose root chunk is 0x0900
 (578 of the 1,957 resolved stock ALO files; none use the 0x1500 plugin format
 of later Alamo games). The field meanings follow the MIT-licensed alo-viewer
-(Copyright (c) 2017 GlyphX Tools); `src/core/particle_system.cpp` is our own
+(Copyright (c) 2017 GlyphX Tools); `src/formats/src/alo_particle_system.cpp` is our own
 decoder, checked against the stock corpus with `EAWAssetInspector
 particle-audit`.
 

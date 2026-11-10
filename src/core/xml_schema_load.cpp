@@ -5,7 +5,7 @@
 
 #include "xml_schema_internal.hpp"
 
-#include "eaw/asset_path.hpp"
+#include "vfs/asset_path.hpp"
 #include "core/string_utils.hpp"
 #include "core/file_io.hpp"
 

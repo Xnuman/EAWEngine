@@ -1,6 +1,6 @@
 #include "asset_cache.hpp"
 
-#include "eaw/asset_path.hpp"
+#include "vfs/asset_path.hpp"
 
 #include <system_error>
 

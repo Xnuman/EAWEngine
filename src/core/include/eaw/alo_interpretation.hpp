@@ -1,6 +1,6 @@
 #pragma once
 
-// Interpretation of decoded ALO models (eaw/alo_model.hpp): the naming convention for state and
+// Interpretation of decoded ALO models (formats/alo_model.hpp): the naming convention for state and
 // detail variants and which meshes form a model's default appearance. These are rules about what
 // the file's facts mean, kept apart from decoding.
 

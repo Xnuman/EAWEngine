@@ -16,4 +16,4 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_LAUNCH_HEADERS} ${EAW_
 
 add_library(eaw_launch STATIC ${EAW_LAUNCH_HEADERS} ${EAW_LAUNCH_SOURCES})
 target_include_directories(eaw_launch PUBLIC include)
-target_link_libraries(eaw_launch PUBLIC eaw_core_transitional)
+target_link_libraries(eaw_launch PUBLIC eaw_vfs)

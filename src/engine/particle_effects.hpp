@@ -1,6 +1,6 @@
 #pragma once
 
-// Presentation-only particle effects: instances of decoded particle systems (eaw/particle_system.hpp)
+// Presentation-only particle effects: instances of decoded particle systems (formats/alo_particle_system.hpp)
 // placed in the world, simulated on the frame clock, and turned into sprites for the renderer. Nothing
 // here feeds the simulation. Each instance draws from its own seeded random stream, so a seed replays
 // the same effect. How emitter fields become motion follows the MIT-licensed alo-viewer where it is

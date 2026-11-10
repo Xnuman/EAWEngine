@@ -1,7 +1,7 @@
 #pragma once
 
-#include "eaw/game_installation.hpp"
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/game_installation.hpp"
+#include "vfs/virtual_file_system.hpp"
 
 #include <filesystem>
 #include <span>

@@ -516,7 +516,7 @@ void test_png_and_image_compare()
     require(!eaw::compare_images(image, smaller), "images of different sizes must not compare");
 }
 
-void test_chunk_file()
+void test_alamo_chunks()
 {
     std::vector<std::byte> inner;
     append_mini(inner, 0x05, {std::byte{1}, std::byte{2}});
@@ -652,7 +652,7 @@ void test_particle_system()
 
 const ModuleRegistrar registrar("formats", {
                                                {"test_png_and_image_compare", &test_png_and_image_compare},
-                                               {"test_chunk_file", &test_chunk_file},
+                                               {"test_alamo_chunks", &test_alamo_chunks},
                                                {"test_localization_validation", &test_localization_validation},
                                                {"test_particle_system", &test_particle_system},
                                                {"test_alo_model", &test_alo_model},

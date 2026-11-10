@@ -1,5 +1,5 @@
 #include "eaw/child_process.hpp"
-#include "eaw/game_installation.hpp"
+#include "vfs/game_installation.hpp"
 #include "core/status.hpp"
 
 #include <filesystem>

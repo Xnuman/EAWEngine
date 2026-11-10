@@ -13,7 +13,7 @@
 // but never serves stale data.
 
 #include "core/status.hpp"
-#include "eaw/virtual_file_system.hpp"
+#include "vfs/virtual_file_system.hpp"
 
 #include <cstddef>
 #include <cstdint>
