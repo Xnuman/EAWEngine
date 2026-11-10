@@ -20,7 +20,8 @@ authoritative milestone description. Update both in the same change when scope o
 - TED decoding covers land terrain/elevation/passability/objects and space objects/tactical bounds. All 269 resolved stock maps decode in the current corpus.
 - XML parsing handles Petroglyph fragments and builds a typed definition/reference index. Optional public `eaw-schema` data provides stronger validation.
 - Lua inspection handles source dependencies and structural inspection of standard Lua 5.0 and Petroglyph persistent bytecode without executing it.
-- `EAWAssetInspector`, `EAWDatEditor`, and the Dear ImGui/Direct3D 11 `EAWTools` workbench consume the same format readers (`eaw_formats`) and VFS (`eaw_vfs`).
+- `EAWAssetInspector`, `EAWDatEditor`, and the Dear ImGui/Direct3D 11 `EAWTools` workbench consume the same format readers (`eaw_formats`) and VFS (`eaw_vfs`). `EAWAssetInspector extract` copies resolved files out of the VFS into a chosen folder (`asset_output_path` refuses archive names that could escape it).
+- Repeated checks are scripts: `scripts/check-battle.ps1` (the reference battle's state hash) and `scripts/check-captures.ps1` (the reference WARP scenes against an earlier set).
 - Corpus at the end of M1: all 638 resolved stock XML files parse, indexing 21,283 named definitions across 185 element types (20,881 typed with eaw-schema); all 2,213 DDS files and the 1,107-entry command-bar MTD decode; 370 Lua source scripts (85,312 lines) resolve every detected dependency.
 
 ## Code organization

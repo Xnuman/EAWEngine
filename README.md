@@ -85,7 +85,7 @@ options.
 | `EAWLauncher` | Chooses the game, installation, and mods, then starts the engine. |
 | `EAWDevLauncher` | Edits, saves, and starts sandbox scenarios (map, spawns, model, options) and shows their command lines. |
 | `EAWTools` | Graphical workbench: browse every layer's assets, preview models, animations, and maps, edit localization. |
-| `EAWAssetInspector` | Command-line inventory, inspection, and corpus audits (models, textures, maps, particles, XML, Lua). |
+| `EAWAssetInspector` | Command-line inventory, inspection, extraction, and corpus audits (models, textures, maps, particles, XML, Lua). |
 | `EAWDatEditor` | Lossless DAT string-table editing, TSV workspaces, mod text scans, and new-unit text bundles. |
 
 Options, controls, and workflows are in [docs/tools.md](docs/tools.md).

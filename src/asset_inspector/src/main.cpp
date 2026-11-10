@@ -72,6 +72,13 @@ eaw::Result<int> run(const Options& options)
         audit_maps(vfs, options.prefix, options.limit);
         return 0;
     }
+    if (options.command == "extract")
+    {
+        std::vector<std::filesystem::path> read_only_roots{profile->root};
+        read_only_roots.insert(read_only_roots.end(), options.mods.begin(), options.mods.end());
+        const auto status = extract_assets(vfs, options, read_only_roots);
+        return status ? 0 : report_error(status.error());
+    }
     if (options.command == "xml-audit")
     {
         const auto status = audit_xml(vfs, options.prefix, options.limit, options.schema_root, options.variant == eaw::GameVariant::forces_of_corruption);

@@ -64,6 +64,7 @@ Every library and executable has its own directory and `CMakeLists.txt`.
 | `third_party/imgui` | `eaw_imgui` | Pinned Dear ImGui. |
 | `third_party/lua` | `eaw_lua` | Lua 5.0.3 (MIT), pinned by archive hash, built as C with only base, string, table, and math. |
 | `docs` | | Architecture, status, roadmap, evidence, tools. |
+| `scripts` | | PowerShell scripts for repeated checks (`check-battle.ps1`, `check-captures.ps1`); `build.ps1` stays at the root. |
 | `build` | | Generated output; never edit generated project files. |
 
 Dependencies point inward: platform, renderer, and adapters depend on stable engine-native contracts; core data code never reaches outward into a renderer or GUI. If a tool needs a capability, add it to a reusable library instead of scraping another executable's output or spawning a subprocess. When ownership of a change crosses layers, fix the contract instead of adding a shortcut. The file-level split of the larger modules is in [docs/architecture.md](docs/architecture.md#source-files-by-subject).
@@ -180,6 +181,8 @@ These are correctness rules, not optional optimizations.
 
 Never use destructive Git commands (`reset --hard`, forced checkout, `clean`) on a shared worktree.
 
+A task done repeatedly gets a script or a command instead of being retyped: a check, a comparison, an extraction, a survey. A sequence of program runs belongs in a PowerShell script under `scripts/` (parameters for configuration and paths, `$LASTEXITCODE` checked, a clear pass or fail line, no contributor paths); anything that needs the engine's libraries (reading the VFS, decoding a format) becomes a command of `EAWAssetInspector` or `EAWEngine` instead of a one-off helper. Use and maintain the existing ones before writing a new one, and document each in [docs/tools.md](docs/tools.md).
+
 ## Code health
 
 Tidying is part of every change, not a phase.
@@ -217,7 +220,7 @@ Runtime checks:
 .\executables\Release\EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --spawn Rebel_Infantry_Squad:2@1 --spawn T2B_Tank:3@2 --auto-move --ticks 1500 --check-determinism
 ```
 
-The battle prints a state hash; compare it before and after a change that should not affect the simulation. For changes that should not alter the look, capture a scene before and after (`sandbox ... --capture <file.png>`) and run `EAWEngine compare-images` ([docs/tools.md](docs/tools.md)); keep such references outside the repository. Use `--game-root` when discovery is unavailable. Never hard-code a contributor's Steam path in source, tests, CMake, or committed documentation; a machine without the game must still configure, compile, and run the synthetic tests. For asset changes, run the matching `EAWAssetInspector` audit ([docs/tools.md](docs/tools.md)). Public `eaw-schema` is an optional local checkout, never a configure-time or runtime network dependency.
+The battle prints a state hash; `.\scripts\check-battle.ps1` runs it and compares the hash with the expected one. For changes that should not alter the look, `.\scripts\check-captures.ps1` renders the reference scenes before and after (`-Output`, then `-Reference`) and compares them with `EAWEngine compare-images` ([docs/tools.md](docs/tools.md#check-scripts)); keep such references outside the repository. Archived files are read with `EAWAssetInspector extract`. Use `--game-root` when discovery is unavailable. Never hard-code a contributor's Steam path in source, tests, CMake, or committed documentation; a machine without the game must still configure, compile, and run the synthetic tests. For asset changes, run the matching `EAWAssetInspector` audit ([docs/tools.md](docs/tools.md)). Public `eaw-schema` is an optional local checkout, never a configure-time or runtime network dependency.
 
 ## Definition of done
 

@@ -8,6 +8,14 @@ void test_meg_archive_and_vfs_basics()
 {
     require(expect_ok(eaw::normalize_asset_path("data\\xml/./GameObjectFiles.xml"), "asset normalization") == "DATA/XML/GAMEOBJECTFILES.XML", "asset normalization failed");
     require(!eaw::normalize_asset_path("Data/../secret").ok(), "parent traversal was not rejected");
+    // Copying out of the VFS: archive names are untrusted, so nothing may land outside the folder,
+    // in an NTFS stream, or on a device.
+    require(expect_ok(eaw::asset_output_path("Data\\Scripts/PGBase.lua"), "an output path") == std::filesystem::path("DATA") / "SCRIPTS" / "PGBASE.LUA", "an output path must follow the virtual path");
+    for (const auto* hostile : {"../../Windows/evil.lua", "/root.lua", "C:/evil.lua", "Data/name:stream.lua", "Data/nul.lua", "Data/Com3.txt", "Data/LPT1"})
+    {
+        require(!eaw::asset_output_path(hostile).ok(), std::string("a hostile entry name must be refused: ") + hostile);
+    }
+    require(eaw::asset_output_path("Data/CONSOLE.LUA").ok() && eaw::asset_output_path("Data/COM10.LUA").ok(), "names that only start like devices must be allowed");
     const auto archive_path = write_test_meg();
     const auto archive = expect_ok(eaw::MegArchive::open(archive_path), "opening the test MEG archive");
     const auto* entry = archive.find("data/xml/test.xml");

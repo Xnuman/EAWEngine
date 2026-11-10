@@ -2,25 +2,25 @@
 
 // Shared declarations of EAWAssetInspector's commands (one source file per command group).
 
-#include "formats/ala_animation.hpp"
-#include "formats/alo_model.hpp"
-#include "vfs/asset_environment.hpp"
-#include "formats/dat_string_table.hpp"
-#include "formats/dds_texture.hpp"
-#include "vfs/game_installation.hpp"
 #include "assets/game_object_catalog.hpp"
 #include "assets/legacy_material.hpp"
-#include "formats/lua_bytecode.hpp"
 #include "assets/map_object_layout.hpp"
-#include "formats/mtd_atlas.hpp"
-#include "formats/alo_particle_system.hpp"
+#include "assets/xml_asset_database.hpp"
+#include "assets/xml_schema.hpp"
 #include "core/status.hpp"
 #include "core/string_utils.hpp"
+#include "formats/ala_animation.hpp"
+#include "formats/alo_model.hpp"
+#include "formats/alo_particle_system.hpp"
+#include "formats/dat_string_table.hpp"
+#include "formats/dds_texture.hpp"
+#include "formats/lua_bytecode.hpp"
+#include "formats/mtd_atlas.hpp"
 #include "formats/ted_map.hpp"
-#include "vfs/virtual_file_system.hpp"
-#include "assets/xml_asset_database.hpp"
 #include "formats/xml_document.hpp"
-#include "assets/xml_schema.hpp"
+#include "vfs/asset_environment.hpp"
+#include "vfs/game_installation.hpp"
+#include "vfs/virtual_file_system.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -52,6 +52,9 @@ struct Options
     std::string prefix{"Data"};
     std::string extension;
     std::size_t limit{200};
+    // extract: the folder files are written to, and whether existing files there are replaced.
+    std::optional<std::filesystem::path> output;
+    bool overwrite{};
 };
 
 void usage();
@@ -127,6 +130,11 @@ void record_example(std::map<std::string, AuditExample>& entries, const std::str
 void audit_map_objects(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit);
 
 void audit_maps(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit);
+
+// Writes every resolved file under options.prefix (filtered by options.extension) to
+// options.output at its virtual path. Refuses an output folder inside any of `read_only_roots`
+// (the installation and the mods) and skips entry names that could escape the folder.
+eaw::Status extract_assets(const eaw::VirtualFileSystem& vfs, const Options& options, const std::vector<std::filesystem::path>& read_only_roots);
 
 eaw::Status audit_xml(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit, const std::optional<std::filesystem::path>& schema_root, bool include_foc);
 

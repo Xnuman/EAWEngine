@@ -33,7 +33,8 @@ void usage()
               << "  EAWAssetInspector lua-audit [prefix] [options]\n"
               << "  EAWAssetInspector particle-audit [prefix] [options]\n"
               << "  EAWAssetInspector xml-audit [prefix] [options]\n"
-              << "  EAWAssetInspector localization-refs <xml-path> [options]\n\n"
+              << "  EAWAssetInspector localization-refs <xml-path> [options]\n"
+              << "  EAWAssetInspector extract [prefix] --output <folder> [options]\n\n"
               << "Options:\n"
               << "  --game-root <path>      Installation root (auto-detected by default)\n"
               << "  --game <eaw|foc>        Game profile (default: foc)\n"
@@ -41,7 +42,9 @@ void usage()
               << "  --mod <path>            Mod root; repeatable, first has priority\n"
               << "  --prefix <path>         Summary/list prefix (default: Data)\n"
               << "  --extension <.xml>      Filter list by extension\n"
-              << "  --limit <count>         Maximum list/sample rows\n";
+              << "  --limit <count>         Maximum list/sample rows (not used by extract)\n"
+              << "  --output <folder>       extract: folder to write the files to (outside the game and mods)\n"
+              << "  --overwrite             extract: replace files that already exist there\n";
 }
 
 eaw::Result<Options> parse_options(const int argc, char** argv)
@@ -57,7 +60,7 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
         options.operand = argv[index++];
     }
     else if ((options.command == "list" || options.command == "map-audit" || options.command == "map-objects" || options.command == "texture-audit" || options.command == "lua-audit" ||
-              options.command == "particle-audit" || options.command == "xml-audit") &&
+              options.command == "particle-audit" || options.command == "xml-audit" || options.command == "extract") &&
              index < argc && argv[index][0] != '-')
     {
         options.prefix = argv[index++];
@@ -70,6 +73,11 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
         {
             usage();
             std::exit(0);
+        }
+        if (argument == "--overwrite")
+        {
+            options.overwrite = true;
+            continue;
         }
         if (index + 1 >= argc)
         {
@@ -109,6 +117,10 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
                 options.extension.insert(options.extension.begin(), '.');
             }
             options.extension = ascii_lower(options.extension);
+        }
+        else if (argument == "--output")
+        {
+            options.output = value;
         }
         else if (argument == "--limit")
         {

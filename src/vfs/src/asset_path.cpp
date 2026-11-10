@@ -1,9 +1,26 @@
 #include "vfs/asset_path.hpp"
 #include "core/string_utils.hpp"
 
+#include <algorithm>
+#include <array>
 #include <vector>
 
 namespace eaw {
+namespace {
+
+// Windows device names, which address a device instead of a file even with an extension.
+bool is_device_name(std::string_view component)
+{
+    component = component.substr(0, component.find('.'));
+    static constexpr std::array<std::string_view, 4> plain{"CON", "PRN", "AUX", "NUL"};
+    if (std::ranges::find(plain, component) != plain.end())
+    {
+        return true;
+    }
+    return component.size() == 4 && (component.starts_with("COM") || component.starts_with("LPT")) && component[3] >= '1' && component[3] <= '9';
+}
+
+} // namespace
 
 Result<std::string> normalize_asset_path(const std::string_view path)
 {
@@ -69,6 +86,29 @@ Result<std::string> normalize_asset_path(const std::string_view path)
         result += part;
     }
     return result;
+}
+
+Result<std::filesystem::path> asset_output_path(const std::string_view path)
+{
+    EAW_TRY_ASSIGN(const auto normalized, normalize_asset_path(path));
+    if (normalized.find(':') != std::string::npos)
+    {
+        return make_error("asset path holds a colon: " + std::string(path));
+    }
+    std::filesystem::path relative;
+    std::size_t start = 0;
+    while (start <= normalized.size())
+    {
+        const auto end = std::min(normalized.find('/', start), normalized.size());
+        const auto component = std::string_view(normalized).substr(start, end - start);
+        if (is_device_name(component))
+        {
+            return make_error("asset path names a Windows device: " + std::string(path));
+        }
+        relative /= std::string(component);
+        start = end + 1;
+    }
+    return relative;
 }
 
 } // namespace eaw

@@ -207,6 +207,25 @@ events queued, the most used functions, and the most common errors; `--report <f
 refused (Lua 5.0 does not verify bytecode), and each call or resume stops after its instruction
 budget, so a runaway script cannot hang the survey.
 
+## Check scripts
+
+Repeated checks are scripts under `scripts/` (PowerShell, run from anywhere; they find the
+repository from their own location and use the built executables):
+
+```powershell
+# The reference battle twice: both runs must agree on the expected state hash
+.\scripts\check-battle.ps1                        # -Configuration Debug, -Expected <hash>, -GameRoot <path>
+
+# The reference scenes on WARP, compared with an earlier set (keep both folders outside the repository)
+.\scripts\check-captures.ps1 -Output D:\eaw-captures\before
+.\scripts\check-captures.ps1 -Output D:\eaw-captures\after -Reference D:\eaw-captures\before
+```
+
+`check-battle.ps1` holds the expected hash as its default; a change that alters the simulation on
+purpose updates it and says why. `check-captures.ps1` renders a Kuat fighter battle (frames 90 and
+300), a Utapau land battle (200), a capital ship duel at Kuat (120), the dark trooper model (20),
+and the validation scene (5), and writes a diff image next to each capture that changed.
+
 ## Captures and image regression
 
 The sandbox can render a scene reproducibly and save it as PNG, and `EAWEngine
@@ -291,8 +310,8 @@ Unicode paths.
 
 The inspector reads the same layered virtual filesystem as the engine. Results
 therefore show the asset that would win after the base archives, patch archives,
-loose files, and supplied mods are combined. It never extracts or changes the
-game installation. The Forces of Corruption profile mounts the original
+loose files, and supplied mods are combined. It never changes the game
+installation; `extract` copies files out of it into a folder you name. The Forces of Corruption profile mounts the original
 `GameData` archives below the expansion's `corruption` archives because many FoC
 models intentionally reuse base-game textures and other resources.
 
@@ -331,7 +350,18 @@ EAWAssetInspector.exe xml-audit Data/XML --game foc
 # Add type/tag, scalar, enum, repetition, and object-reference validation
 EAWAssetInspector.exe xml-audit Data/XML --game foc `
   --schema-root "D:\path\to\eaw-schema"
+
+# Copy the winning file of every virtual path under a prefix out of the archives
+EAWAssetInspector.exe extract Data/Scripts --extension .lua --output D:\eaw-extract
 ```
+
+`extract` writes each resolved file to `<output>/<virtual path>` (upper case, as the archives name
+them) for reading with ordinary tools. It refuses an output folder inside the installation or a
+mod, keeps files that already exist unless `--overwrite` is given, and skips (with a warning and a
+failing exit code) entries whose archive name could not be written where it claims to go: absolute
+or parent-traversing names, a colon (a drive or an NTFS stream), or a Windows device name. The
+extracted files are the game's protected data: keep them outside the repository, and never quote
+them in committed files. `--limit` does not apply.
 
 Current semantic inspectors cover DAT string tables, DDS textures, MTD atlas
 directories, ALO model structure, ALA animation structure, TED maps, Petroglyph
