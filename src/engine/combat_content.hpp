@@ -5,7 +5,7 @@
 // established (shield refresh units, how shields and armor combine), the translation is marked as
 // provisional.
 
-#include "formats/alo_model.hpp"
+#include "assets/skeleton.hpp"
 #include "eaw/combat.hpp"
 #include "assets/game_object_catalog.hpp"
 #include "vfs/virtual_file_system.hpp"
@@ -50,7 +50,7 @@ struct CombatContent
 // `model_scale` is the type's Scale_Factor: hardpoint and fire-bone positions come from the model's
 // bones and scale with it.
 [[nodiscard]] CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings,
-                                           const AloModelData* model = nullptr, float model_scale = 1.0F);
+                                           const Skeleton* skeleton = nullptr, float model_scale = 1.0F);
 
 // TED owner slot that holds the world's props and markers (179k of the stock placements, nearly
 // all of them props, markers, and decorations; see docs/compatibility-research.md).

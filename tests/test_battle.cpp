@@ -98,8 +98,9 @@ void test_combat_content()
         bone.transform = {1.0F, 0.0F, 0.0F, 4.0F, 0.0F, 1.0F, 0.0F, -6.0F, 0.0F, 0.0F, 1.0F, 2.0F};
         model.bones.push_back(bone);
         std::vector<std::string> scale_warnings;
-        const auto unscaled = eaw::combat_profile(catalog, *definition("Cruiser"), content, scale_warnings, &model);
-        const auto scaled = eaw::combat_profile(catalog, *definition("Cruiser"), content, scale_warnings, &model, 2.0F);
+        const auto skeleton = eaw::load_skeleton(model);
+        const auto unscaled = eaw::combat_profile(catalog, *definition("Cruiser"), content, scale_warnings, &skeleton);
+        const auto scaled = eaw::combat_profile(catalog, *definition("Cruiser"), content, scale_warnings, &skeleton, 2.0F);
         const auto& part = unscaled.hardpoints[1].offset;
         const auto& doubled = scaled.hardpoints[1].offset;
         require(part.forward == 6.0F && part.left == 4.0F && part.up == 2.0F && doubled.forward == 12.0F && doubled.left == 8.0F && doubled.up == 4.0F,

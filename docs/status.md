@@ -39,10 +39,10 @@ byte-identical stock-data audits at each step:
   with per-format helper files; no I/O.
 - `eaw_vfs`: the layered VFS, MEG archives, path normalization, and installation discovery.
 - `eaw_assets`: the game asset layer (XML database and schema, catalogs, map object layout,
-  legacy materials, ALO naming rules) and the first engine-native resources: `Skeleton` and
-  `Animation`, loaded from ALO and ALA data, with pose sampling on them; the engine keeps only
-  these of a model's bones and clips. `Model`, the particle-effect loader, and a resource manager
-  are step 5's remaining parts.
+  legacy materials, ALO naming rules) and the engine-native resources `Model`, `Skeleton`, and
+  `Animation`, loaded from ALO and ALA data, with pose sampling; the engine keeps only these of
+  models and clips. The particle-effect loader and a resource manager are step 5's remaining
+  parts.
 - `eaw_localization`: the DAT editor's and EAWTools' localization tools.
 
 Still open: the rest of step 5, and step 6 (PowerShell build scripts with a `_d` debug suffix).

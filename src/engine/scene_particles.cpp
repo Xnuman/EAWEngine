@@ -5,7 +5,6 @@
 
 #include "assets/alo_interpretation.hpp"
 #include "core/string_utils.hpp"
-#include "formats/alo_model_helpers.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -53,14 +52,14 @@ std::optional<std::string> resolve_effect_path(const AssetReader& vfs, const std
 
 // The mesh rigidly attached to the proxy bone's parent (the reference's rule for a proxy's mesh), in
 // the proxy bone's space; null when there is none.
-std::shared_ptr<const ParticleEmitMesh> proxy_emit_mesh(const AloModelData& model, const std::uint32_t proxy_bone)
+std::shared_ptr<const ParticleEmitMesh> proxy_emit_mesh(const Model& model, const std::uint32_t proxy_bone)
 {
-    const auto parent = model.bones[proxy_bone].parent;
+    const auto parent = model.skeleton.bones[proxy_bone].parent;
     if (parent < 0)
     {
         return nullptr;
     }
-    const auto bind_pose = alo_bind_pose(model);
+    const auto bind_pose = skeleton_bind_pose(model.skeleton);
     const auto to_proxy = inverse(bind_pose[proxy_bone]);
     if (!to_proxy || static_cast<std::size_t>(parent) >= bind_pose.size())
     {
@@ -313,7 +312,7 @@ void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog
     }
 }
 
-std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModelData& model, const std::string& model_path)
+std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const Model& model, const std::string& model_path)
 {
     std::vector<VisualEffectAttachment> attachments;
     if (!builder.textures)
@@ -325,13 +324,13 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const A
     // Whether `bone` or an ancestor is in `bones`.
     const auto under = [&](std::uint32_t bone, const std::unordered_set<std::uint32_t>& bones)
     {
-        for (std::size_t depth = 0; depth <= model.bones.size() && bone < model.bones.size(); ++depth)
+        for (std::size_t depth = 0; depth <= model.skeleton.bones.size() && bone < model.skeleton.bones.size(); ++depth)
         {
             if (bones.contains(bone))
             {
                 return true;
             }
-            const auto parent = model.bones[bone].parent;
+            const auto parent = model.skeleton.bones[bone].parent;
             if (parent < 0)
             {
                 break;
@@ -347,13 +346,13 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const A
         {
             return -1;
         }
-        for (std::size_t depth = 0; depth <= model.bones.size() && bone < model.bones.size(); ++depth)
+        for (std::size_t depth = 0; depth <= model.skeleton.bones.size() && bone < model.skeleton.bones.size(); ++depth)
         {
             if (damage->second.contains(bone))
             {
                 return static_cast<std::int32_t>(bone);
             }
-            const auto parent = model.bones[bone].parent;
+            const auto parent = model.skeleton.bones[bone].parent;
             if (parent < 0)
             {
                 break;
@@ -366,7 +365,7 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const A
     {
         // Hidden proxies (damage effects, alternate states) are shown by gameplay, which does not
         // drive them yet.
-        if (proxy.hidden || proxy.bone >= model.bones.size())
+        if (proxy.hidden || proxy.bone >= model.skeleton.bones.size())
         {
             continue;
         }

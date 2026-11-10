@@ -62,9 +62,10 @@ A resource reaches the engine in three stages, each in its own layer:
 
 The file-level data lives only as long as a loader or a tool needs it; tools (inspector, EAWTools)
 show it directly. Another source format means another reader and loader producing the same
-resource. Stage 3 is being built (reorganization step 5): `Skeleton` and `Animation` are loaded this way and
-are all the engine keeps of a model's bones and clips; meshes and materials are still turned into
-scene data by the scene builders in `src/engine` reading the decoded model, until `Model` exists.
+resource. Stage 3 is being built (reorganization step 5): `Model`, `Skeleton`, and `Animation` are loaded this
+way and are all the engine keeps of models and clips; the scene builders in `src/engine` place a
+`Model` in a scene (rigid-mesh placement, hardpoint hosts, palette layout, texture registration).
+Particle effects and a resource manager follow.
 
 ## Simulation tick layers
 
@@ -388,11 +389,12 @@ dependency rules; this is the file-level detail.
 - `src/assets` (`eaw_assets`), by category: `game_data` (`game_object_catalog`, `spawn_catalog`,
   `map_object_layout`, `xml_asset_database`, and `XmlSchema`: `xml_schema_load.cpp` for the
   optional eaw-schema YAML and its layers, `xml_schema_validate.cpp` for validating a resolved XML
-  database, sharing `xml_schema_internal.hpp`), `model` (`legacy_material`, and
-  `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` naming rules and default mesh visibility),
-  `animation` (`skeleton`, `animation`: the engine-native resources; `pose`: sampling, blending,
-  composition, and retargeting by bone name), and `loaders` (`alamo_loaders`: `load_skeleton`
-  from `AloModelData`, `load_animation` from `AlaAnimationData`).
+  database, sharing `xml_schema_internal.hpp`), `model` (`model`, the engine-native `Model`;
+  `legacy_material`; `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` naming rules and default
+  mesh visibility), `animation` (`skeleton` and `animation`, the engine-native resources; `pose`:
+  sampling, blending, composition, and retargeting by bone name), and `loaders`
+  (`alamo_loaders`: `load_model` and `load_skeleton` from `AloModelData`, `load_animation` from
+  `AlaAnimationData`).
 - `src/localization` (`eaw_localization`): `localization_workspace` (TSV workspaces, DAT rows,
   unit keys, DAT string tables from disk), `localization_scan` (TEXT_* references in mod XML), and
   `localization_validation` (a translation against its reference).

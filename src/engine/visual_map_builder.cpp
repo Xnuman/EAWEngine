@@ -209,13 +209,16 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     asset.damage_table = combat_entry->damage_table;
     // One profile per type, so a type's warnings are reported once however often it is placed.
     std::unordered_map<const XmlDefinition*, CombatProfile> combat_profiles;
-    const auto profile_of = [&](const XmlDefinition& definition, const AloModelData* model) -> const CombatProfile&
+    const auto profile_of = [&](const XmlDefinition& definition, const Model* model) -> const CombatProfile&
     {
         auto found = combat_profiles.find(&definition);
         if (found == combat_profiles.end())
         {
             std::vector<std::string> scale_warnings;
-            found = combat_profiles.emplace(&definition, combat_profile(catalog, definition, *combat_entry, asset.scene.warnings, model, type_scale_factor(catalog, definition, scale_warnings))).first;
+            found = combat_profiles
+                        .emplace(&definition, combat_profile(catalog, definition, *combat_entry, asset.scene.warnings, model != nullptr ? &model->skeleton : nullptr,
+                                                             type_scale_factor(catalog, definition, scale_warnings)))
+                        .first;
         }
         return found->second;
     };
@@ -511,14 +514,14 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
     builder.particle_fidelity = options.particle_fidelity;
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
     std::unordered_map<const XmlDefinition*, CombatProfile> profiles;
-    const auto profile_of = [&](const XmlDefinition& definition, const AloModelData* model) -> const CombatProfile&
+    const auto profile_of = [&](const XmlDefinition& definition, const Model* model) -> const CombatProfile&
     {
         auto found = profiles.find(&definition);
         if (found == profiles.end())
         {
             std::vector<std::string> scale_warnings;
             found = profiles
-                        .emplace(&definition, combat_profile(catalog_entry->catalog, definition, *combat_entry, package.meshes.warnings, model,
+                        .emplace(&definition, combat_profile(catalog_entry->catalog, definition, *combat_entry, package.meshes.warnings, model != nullptr ? &model->skeleton : nullptr,
                                                              type_scale_factor(catalog_entry->catalog, definition, scale_warnings)))
                         .first;
         }

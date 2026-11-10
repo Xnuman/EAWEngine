@@ -6,12 +6,12 @@
 #include "asset_cache.hpp"
 #include "visual_scene_builder.hpp"
 
-#include "formats/alo_model.hpp"
 #include "assets/game_object_catalog.hpp"
 #include "assets/legacy_material.hpp"
 #include "formats/ted_map.hpp"
 #include "vfs/virtual_file_system.hpp"
 #include "assets/xml_asset_database.hpp"
+#include "assets/model.hpp"
 #include "math/matrix.hpp"
 #include "math/vector.hpp"
 
@@ -161,7 +161,7 @@ void note_damage_bones(SceneBuilder& builder, const std::string& model_path, con
 
 // The particle effects attached to a model's proxies (those not hidden by default). Proxies under a
 // noted damage bone are marked as hardpoint damage effects.
-std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModelData& model, const std::string& model_path);
+std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const Model& model, const std::string& model_path);
 
 // Translates a legacy material profile plus its authored parameters into the engine-native
 // legacy-mode surface description (see docs/legacy-shader-mapping.md for the source behavior).
@@ -183,7 +183,7 @@ std::array<float, 4> player_team_color(std::uint32_t player) noexcept;
 
 // The decoded model, or why it could not be decoded (cached either way: a failed decode depends on
 // the file, so replacing it invalidates the entry).
-std::shared_ptr<const Result<AloModelData>> cached_model(SceneBuilder& builder, const std::string& path);
+std::shared_ptr<const Result<Model>> cached_model(SceneBuilder& builder, const std::string& path);
 
 // Appends one ALO model as a new mesh (its draws, vertices, indices, and any new textures) and
 // returns the mesh index. Vertices stay in bind-pose model space with model-wide bone indices.
@@ -198,13 +198,13 @@ std::shared_ptr<const Result<AloModelData>> cached_model(SceneBuilder& builder, 
 struct ModelAttachment
 {
     std::string path;
-    std::shared_ptr<const AloModelData> model;
+    std::shared_ptr<const Model> model;
     std::uint32_t bone{};
 };
 
 // `attachments` are appended into the same mesh, placed at their bone's bind pose and bound to that
 // bone (so they follow its pose and visibility).
-Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModelData& model, std::string_view name, bool animated_visibility = false, std::span<const ModelAttachment> attachments = {});
+Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, std::string_view name, bool animated_visibility = false, std::span<const ModelAttachment> attachments = {});
 
 // Decodes and appends a model referenced by a map (placed object, backdrop, or spawn type), with its
 // attachments. Particle ALOs and malformed models are reported once as scene warnings and yield
@@ -213,7 +213,7 @@ std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std
 
 // The models a type's hardpoints attach to `host` (XML HardPoints entries with Model_To_Attach and
 // an Attachment_Bone the host has), in list order; problems become scene warnings.
-std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& type, const AloModelData* host);
+std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& type, const Model* host);
 
 // Key of a mesh built from `model_path` with `attachments` (types sharing a model but not their
 // hardpoints get meshes of their own).
@@ -229,7 +229,7 @@ struct SpawnableBuild
     GameModelContext context{};
     bool land{};
     std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes;
-    std::function<const CombatProfile&(const XmlDefinition&, const AloModelData*)> profile_of;
+    std::function<const CombatProfile&(const XmlDefinition&, const Model*)> profile_of;
     std::vector<SpawnableType>& spawnable;
 };
 

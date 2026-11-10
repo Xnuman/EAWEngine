@@ -6,7 +6,6 @@
 
 #include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"
-#include "formats/alo_model_helpers.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -238,16 +237,16 @@ struct BonePlacement
     float direction{};
 };
 
-std::optional<BonePlacement> find_bone(const AloModelData* model, const std::vector<Matrix4>& pose, const std::string_view name, const float scale)
+std::optional<BonePlacement> find_bone(const Skeleton* skeleton, const std::vector<Matrix4>& pose, const std::string_view name, const float scale)
 {
-    if (model == nullptr || name.empty())
+    if (skeleton == nullptr || name.empty())
     {
         return std::nullopt;
     }
     const auto wanted = ascii_lower(ascii_trim(name));
-    for (std::size_t index = 0; index < model->bones.size() && index < pose.size(); ++index)
+    for (std::size_t index = 0; index < skeleton->bones.size() && index < pose.size(); ++index)
     {
-        if (ascii_lower(model->bones[index].name) != wanted)
+        if (ascii_lower(skeleton->bones[index].name) != wanted)
         {
             continue;
         }
@@ -294,10 +293,10 @@ const XmlDefinition* find_hardpoint(const GameObjectCatalog& catalog, const std:
 
 } // namespace
 
-CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings, const AloModelData* model,
+CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings, const Skeleton* skeleton,
                              const float model_scale)
 {
-    const auto pose = model != nullptr ? alo_bind_pose(*model) : std::vector<Matrix4>{};
+    const auto pose = skeleton != nullptr ? skeleton_bind_pose(*skeleton) : std::vector<Matrix4>{};
     const FieldReader type(catalog, definition, warnings);
     CombatProfile profile;
     profile.health = type.amount("Tactical_Health");
@@ -362,22 +361,22 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 const auto* node = point.node(field);
                 return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
             };
-            const auto attachment = find_bone(model, pose, bone_name("Attachment_Bone"), model_scale);
-            const auto fire_bone = find_bone(model, pose, bone_name("Fire_Bone_A"), model_scale);
+            const auto attachment = find_bone(skeleton, pose, bone_name("Attachment_Bone"), model_scale);
+            const auto fire_bone = find_bone(skeleton, pose, bone_name("Fire_Bone_A"), model_scale);
             HardpointProfile part;
             part.kind = kind;
             part.health = point.flag("Is_Destroyable", true) ? point.amount("Health") : 0.0F;
             part.targetable = point.flag("Is_Targetable", true);
             part.offset = attachment ? attachment->point : fire_bone ? fire_bone->point : LocalPoint{};
-            if (const auto damage = find_bone(model, pose, bone_name("Damage_Particles"), model_scale))
+            if (const auto damage = find_bone(skeleton, pose, bone_name("Damage_Particles"), model_scale))
             {
                 part.damage_bone = static_cast<std::int32_t>(damage->index);
             }
-            if (const auto decal = find_bone(model, pose, bone_name("Damage_Decal"), model_scale))
+            if (const auto decal = find_bone(skeleton, pose, bone_name("Damage_Decal"), model_scale))
             {
                 part.decal_bone = static_cast<std::int32_t>(decal->index);
             }
-            if (const auto engine = find_bone(model, pose, bone_name("Engine_Particles"), model_scale))
+            if (const auto engine = find_bone(skeleton, pose, bone_name("Engine_Particles"), model_scale))
             {
                 part.engine_bone = static_cast<std::int32_t>(engine->index);
             }

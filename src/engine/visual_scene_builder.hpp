@@ -3,7 +3,6 @@
 #include "assets/pose.hpp"
 #include "eaw/simulation.hpp"
 #include "terrain_height.hpp"
-#include "formats/alo_model.hpp"
 #include "formats/ted_map.hpp"
 #include "eaw/visual_scene.hpp"
 #include "particle_effects.hpp"

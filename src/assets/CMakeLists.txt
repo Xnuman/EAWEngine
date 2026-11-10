@@ -27,6 +27,7 @@ set(EAW_ASSETS_GAME_DATA
 set(EAW_ASSETS_MODEL
     ${HEADERS_DIR}/alo_interpretation.hpp
     ${HEADERS_DIR}/legacy_material.hpp
+    ${HEADERS_DIR}/model.hpp
     ${SOURCES_DIR}/alo_interpretation.cpp
     ${SOURCES_DIR}/legacy_material.cpp
 )
@@ -52,6 +53,7 @@ set(EAW_ASSETS_HEADERS
     ${HEADERS_DIR}/game_object_catalog.hpp
     ${HEADERS_DIR}/legacy_material.hpp
     ${HEADERS_DIR}/map_object_layout.hpp
+    ${HEADERS_DIR}/model.hpp
     ${HEADERS_DIR}/pose.hpp
     ${HEADERS_DIR}/skeleton.hpp
     ${HEADERS_DIR}/spawn_catalog.hpp
@@ -86,4 +88,4 @@ target_sources(eaw_assets
     ${SOURCES_DIR}/xml_schema_validate.cpp
 )
 
-target_link_libraries(eaw_assets PUBLIC eaw_core eaw_formats eaw_math eaw_vfs)
+target_link_libraries(eaw_assets PUBLIC eaw_core eaw_formats eaw_math eaw_render_contract eaw_vfs)
