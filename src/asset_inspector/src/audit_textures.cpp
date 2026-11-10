@@ -2,7 +2,7 @@
 
 #include "asset_inspector/inspector.hpp"
 
-#include "eaw/alo_interpretation.hpp"
+#include "assets/alo_interpretation.hpp"
 
 namespace eaw::inspector {
 namespace {

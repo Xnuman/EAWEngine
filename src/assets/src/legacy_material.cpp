@@ -1,4 +1,4 @@
-#include "eaw/legacy_material.hpp"
+#include "assets/legacy_material.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>

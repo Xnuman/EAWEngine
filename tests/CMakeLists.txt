@@ -32,7 +32,7 @@ endforeach()
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_TEST_SOURCES})
 
 add_executable(EAWEngineTests ${EAW_TEST_SOURCES})
-target_link_libraries(EAWEngineTests PRIVATE eaw_core_transitional eaw_engine eaw_launch eaw_math eaw_script)
+target_link_libraries(EAWEngineTests PRIVATE eaw_assets eaw_localization eaw_engine eaw_launch eaw_math eaw_script)
 
 # EAWEngineTests runs every module when given none.
 foreach(test_module IN LISTS EAW_TEST_MODULES)

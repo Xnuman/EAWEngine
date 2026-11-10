@@ -7,11 +7,11 @@
 #include "visual_scene_builder.hpp"
 
 #include "formats/alo_model.hpp"
-#include "eaw/game_object_catalog.hpp"
-#include "eaw/legacy_material.hpp"
+#include "assets/game_object_catalog.hpp"
+#include "assets/legacy_material.hpp"
 #include "formats/ted_map.hpp"
 #include "vfs/virtual_file_system.hpp"
-#include "eaw/xml_asset_database.hpp"
+#include "assets/xml_asset_database.hpp"
 #include "math/matrix.hpp"
 #include "math/vector.hpp"
 

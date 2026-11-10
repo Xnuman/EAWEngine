@@ -3,8 +3,8 @@
 #include "dat_editor.hpp"
 
 #include "formats/dat_string_table.hpp"
-#include "eaw/localization_scan.hpp"
-#include "eaw/localization_workspace.hpp"
+#include "localization/localization_scan.hpp"
+#include "localization/localization_workspace.hpp"
 #include "formats/dat_string_table_helpers.hpp"
 
 #include <algorithm>

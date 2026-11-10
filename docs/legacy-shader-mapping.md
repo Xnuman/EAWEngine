@@ -7,7 +7,7 @@ The profiles describe how a model was meant to render in Alamo. They drive the
 first render target, legacy mode, which approximates the original appearance
 with newly written shaders. A later physically based path will use engine-native
 materials and convert these profiles into them. It is the evidence behind the
-reference-profile table in `src/core/legacy_material.cpp`; keep the two in sync.
+reference-profile table in `src/assets/src/legacy_material.cpp`; keep the two in sync.
 
 The corpus is evidence only. Nothing here is compiled, embedded, or shipped, and
 the entries below describe observed behavior in engine terms rather than

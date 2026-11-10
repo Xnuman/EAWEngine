@@ -2,7 +2,7 @@
 
 #include "visual_scene_builder.hpp"
 
-#include "eaw/map_object_layout.hpp"
+#include "assets/map_object_layout.hpp"
 
 #include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"

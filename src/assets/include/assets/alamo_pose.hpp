@@ -1,8 +1,8 @@
 #pragma once
 
-// Sampling, blending, and composing skeleton poses from Alamo animation clips. This is animation
-// runtime, not file data: it stays here, transitionally, until the game asset layer gives models a
-// format-independent skeleton (AGENTS.md, "Reorganization in progress", step 5).
+// Sampling, blending, and composing skeleton poses from Alamo animation clips. It still reads the
+// file-level ALO and ALA data; step 5b of the reorganization moves it onto format-independent
+// Skeleton and Animation resources (AGENTS.md, "Reorganization in progress").
 
 #include "formats/ala_animation.hpp"
 #include "formats/alo_model.hpp"

@@ -7,7 +7,7 @@
 
 #include "formats/alo_model.hpp"
 #include "eaw/combat.hpp"
-#include "eaw/game_object_catalog.hpp"
+#include "assets/game_object_catalog.hpp"
 #include "vfs/virtual_file_system.hpp"
 
 #include <cstdint>

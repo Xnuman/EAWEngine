@@ -1,7 +1,7 @@
-#include "eaw/spawn_catalog.hpp"
+#include "assets/spawn_catalog.hpp"
 
-#include "eaw/game_object_catalog.hpp"
-#include "eaw/xml_asset_database.hpp"
+#include "assets/game_object_catalog.hpp"
+#include "assets/xml_asset_database.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>

@@ -6,7 +6,7 @@
 #include "vfs/game_installation.hpp"
 #include "core/log.hpp"
 #include "eaw/sandbox_scenario.hpp"
-#include "eaw/spawn_catalog.hpp"
+#include "assets/spawn_catalog.hpp"
 #include "vfs/virtual_file_system.hpp"
 #include "core/string_utils.hpp"
 #include "core/file_io.hpp"

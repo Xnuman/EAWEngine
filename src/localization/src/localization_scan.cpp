@@ -1,4 +1,4 @@
-#include "eaw/localization_scan.hpp"
+#include "localization/localization_scan.hpp"
 #include "core/string_utils.hpp"
 #include "core/file_io.hpp"
 #include "formats/dat_string_table_helpers.hpp"

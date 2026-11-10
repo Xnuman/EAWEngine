@@ -1,9 +1,9 @@
 // Helpers shared by the workbench panels: text, DDS previews, and asset previews.
 
-#include "eaw/alamo_pose.hpp"
+#include "assets/alamo_pose.hpp"
 #include "gui_internal.hpp"
 
-#include "eaw/alo_interpretation.hpp"
+#include "assets/alo_interpretation.hpp"
 #include "core/string_utils.hpp"
 #include "formats/alo_model_helpers.hpp"
 #include "formats/ala_animation_helpers.hpp"

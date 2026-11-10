@@ -383,15 +383,16 @@ dependency rules; this is the file-level detail.
 - `src/math` (`eaw_math`): `vector`, `quaternion`, `matrix`, `transform` (compose and decompose),
   and `scalar` (angle constants and conversions).
 - `src/core` (`eaw_core`): the foundation, by category: `error_handling` (`status`, `fatal_error`),
-  `log`, `string_utils`, `file_io`, and `checksum`. The same directory builds
-  `eaw_core_transitional` (`include/eaw/`): game data (`game_object_catalog`, `spawn_catalog`,
-  `map_object_layout`, `xml_asset_database`, `legacy_material`, `alo_interpretation` with the
-  `_ALT<n>`/`_LOD<n>` naming rules and default mesh visibility), `XmlSchema` (`xml_schema_load.cpp`
-  for the optional eaw-schema YAML and its layers, `xml_schema_validate.cpp` for validating a
-  resolved XML database, sharing `xml_schema_internal.hpp`), localization (`localization_workspace`:
-  TSV workspaces, DAT rows, unit keys, DAT string tables from disk; `localization_scan`: TEXT_*
-  references in mod XML; `localization_validation`: a translation against its reference), and
-  `alamo_pose` (pose sampling, blending, and composition), until step 5 moves them.
+  `log`, `string_utils`, `file_io`, and `checksum`.
+- `src/assets` (`eaw_assets`), by category: `game_data` (`game_object_catalog`, `spawn_catalog`,
+  `map_object_layout`, `xml_asset_database`, and `XmlSchema`: `xml_schema_load.cpp` for the
+  optional eaw-schema YAML and its layers, `xml_schema_validate.cpp` for validating a resolved XML
+  database, sharing `xml_schema_internal.hpp`), `model` (`legacy_material`, and
+  `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` naming rules and default mesh visibility), and
+  `animation` (`alamo_pose`: pose sampling, blending, and composition).
+- `src/localization` (`eaw_localization`): `localization_workspace` (TSV workspaces, DAT rows,
+  unit keys, DAT string tables from disk), `localization_scan` (TEXT_* references in mod XML), and
+  `localization_validation` (a translation against its reference).
 - `src/formats` (`eaw_formats`), by category: `alamo` (`alamo_chunks`, the Petroglyph chunk
   container with bounds-checked ranges shared by the Alamo readers; `alo_generic`; `ala_animation`
   and `ala_animation_helpers`; `ted_map`), `model` (`alo_model`, `alo_model_helpers`), `particle`
@@ -445,8 +446,8 @@ dependency rules; this is the file-level detail.
   implemented so far), `script_stubs.cpp` (recording stubs: callable, indexable stub objects), and
   `host_api_recorder.cpp` (what scripts called), sharing `script_host_internal.hpp`. The survey
   command that runs every stock script on it is `src/engine_app/lua_survey_command.cpp`.
-- `src/dat_editor` (`EAWDatEditor`): a front end over the DAT string table (`eaw_formats`) and the
-  workspace, scan, and translation-validation functions (`localization_workspace`, `localization_scan`,
+- `src/dat_editor` (`EAWDatEditor`): a front end over the DAT string table (`eaw_formats`) and
+  `eaw_localization`'s workspace, scan, and translation-validation functions (`localization_workspace`, `localization_scan`,
   `localization_validation`, which EAWTools uses too); `dat_editor_options` parses the command
   line, `dat_commands` holds the commands on one DAT (info, list, get, set, remove, validate),
   `workspace_commands` those on workspaces and mods (export, diff, build, scan-mod, add-unit),

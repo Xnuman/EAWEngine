@@ -1,6 +1,6 @@
 // The ALO naming convention for variants and the default mesh visibility (eaw/alo_interpretation.hpp).
 
-#include "eaw/alo_interpretation.hpp"
+#include "assets/alo_interpretation.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>

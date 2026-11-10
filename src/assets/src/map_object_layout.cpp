@@ -1,4 +1,4 @@
-#include "eaw/map_object_layout.hpp"
+#include "assets/map_object_layout.hpp"
 
 #include "vfs/virtual_file_system.hpp"
 #include "math/transform.hpp"

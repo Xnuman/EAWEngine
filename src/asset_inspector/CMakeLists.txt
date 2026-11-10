@@ -38,5 +38,5 @@ target_sources(EAWAssetInspector
 
 target_link_libraries(EAWAssetInspector
     PRIVATE
-        eaw_core_transitional
+        eaw_assets
 )

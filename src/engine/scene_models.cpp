@@ -1,10 +1,10 @@
-#include "eaw/alamo_pose.hpp"
+#include "assets/alamo_pose.hpp"
 #include "scene_builder_internal.hpp"
 
 #include "combat_content.hpp"
-#include "eaw/alo_interpretation.hpp"
+#include "assets/alo_interpretation.hpp"
 #include "formats/dds_texture.hpp"
-#include "eaw/map_object_layout.hpp"
+#include "assets/map_object_layout.hpp"
 #include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"
 #include "formats/alo_model_helpers.hpp"

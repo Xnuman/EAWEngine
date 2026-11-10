@@ -24,8 +24,8 @@ authoritative milestone description. Update both in the same change when scope o
 
 ## Code organization (reorganization of 2026-11)
 
-Feature work paused on 2026-11-09 for a reorganization of the code; steps 1 to 4 of the plan in
-AGENTS.md are done, with an unchanged simulation hash, bit-identical WARP captures, and
+Feature work paused on 2026-11-09 for a reorganization of the code; steps 1 to 4 and part of step 5 of the
+plan in AGENTS.md are done, with an unchanged simulation hash, bit-identical WARP captures, and
 byte-identical stock-data audits at each step:
 
 - `eaw_math`: the only vector, quaternion, matrix, and transform types (row-vector convention);
@@ -38,10 +38,13 @@ byte-identical stock-data audits at each step:
   (`read_alo<AloModelData>`, `read_alo<AloGenericData>`, `read_ted`, `read_dat`/`write_dat`, ...),
   with per-format helper files; no I/O.
 - `eaw_vfs`: the layered VFS, MEG archives, path normalization, and installation discovery.
-- `eaw_core_transitional`: game data, localization tools, and pose sampling, until the game asset
-  layer (step 5: loaders from `…Data` to engine-native resources, then a resource manager).
+- `eaw_assets`: the game asset layer (XML database and schema, catalogs, map object layout,
+  legacy materials, ALO naming rules, pose sampling); its loaders from `…Data` to engine-native
+  `Skeleton`, `Animation`, `Model`, and `ParticleEffect`, and a resource manager, are step 5's
+  remaining parts.
+- `eaw_localization`: the DAT editor's and EAWTools' localization tools.
 
-Still open: step 5, and step 6 (PowerShell build scripts with a `_d` debug suffix).
+Still open: the rest of step 5, and step 6 (PowerShell build scripts with a `_d` debug suffix).
 
 ## M2: visual sandbox — complete (legacy-mode render backlog carried forward)
 

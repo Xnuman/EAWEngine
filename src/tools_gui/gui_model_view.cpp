@@ -1,6 +1,6 @@
 // The 3D model preview with its animation pose.
 
-#include "eaw/alamo_pose.hpp"
+#include "assets/alamo_pose.hpp"
 #include "gui_internal.hpp"
 #include "core/string_utils.hpp"
 #include "formats/alo_model_helpers.hpp"

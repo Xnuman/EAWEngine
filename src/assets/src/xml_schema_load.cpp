@@ -1,7 +1,7 @@
 // The optional public eaw-schema data: a small reader for its YAML subset, the base and FoC layers
 // merged by name, and the schema's accessors.
 
-#include "eaw/xml_schema.hpp"
+#include "assets/xml_schema.hpp"
 
 #include "xml_schema_internal.hpp"
 

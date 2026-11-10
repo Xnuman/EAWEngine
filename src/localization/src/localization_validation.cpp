@@ -1,4 +1,4 @@
-#include "eaw/localization_validation.hpp"
+#include "localization/localization_validation.hpp"
 
 #include "core/string_utils.hpp"
 #include "formats/dat_string_table_helpers.hpp"

@@ -1,7 +1,7 @@
 // Validation of a resolved XML object database against the schema: field types, values,
 // repetition, and object references.
 
-#include "eaw/xml_schema.hpp"
+#include "assets/xml_schema.hpp"
 
 #include "xml_schema_internal.hpp"
 

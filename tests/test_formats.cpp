@@ -1,12 +1,12 @@
-#include "eaw/alamo_pose.hpp"
+#include "assets/alamo_pose.hpp"
 #include "test_support.hpp"
 
 #include "math/transform.hpp"
 
-#include "eaw/alo_interpretation.hpp"
+#include "assets/alo_interpretation.hpp"
 #include "formats/alamo_chunks.hpp"
 #include "formats/png_image.hpp"
-#include "eaw/localization_validation.hpp"
+#include "localization/localization_validation.hpp"
 #include "formats/alo_model_helpers.hpp"
 #include "formats/ala_animation_helpers.hpp"
 #include "formats/dat_string_table_helpers.hpp"

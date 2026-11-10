@@ -1,6 +1,6 @@
 #pragma once
 
-#include "eaw/xml_asset_database.hpp"
+#include "assets/xml_asset_database.hpp"
 
 #include <cstddef>
 #include <filesystem>

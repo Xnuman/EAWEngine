@@ -2,7 +2,7 @@
 
 #include "eaw/child_process.hpp"
 #include "eaw/sandbox_scenario.hpp"
-#include "eaw/spawn_catalog.hpp"
+#include "assets/spawn_catalog.hpp"
 
 namespace {
 

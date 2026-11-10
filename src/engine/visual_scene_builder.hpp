@@ -1,6 +1,6 @@
 #pragma once
 
-#include "eaw/alamo_pose.hpp"
+#include "assets/alamo_pose.hpp"
 #include "formats/ala_animation.hpp"
 #include "eaw/simulation.hpp"
 #include "terrain_height.hpp"

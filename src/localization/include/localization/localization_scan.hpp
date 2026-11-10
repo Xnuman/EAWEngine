@@ -1,7 +1,7 @@
 #pragma once
 
 #include "formats/dat_string_table.hpp"
-#include "eaw/localization_workspace.hpp"
+#include "localization/localization_workspace.hpp"
 
 #include <cstddef>
 #include <filesystem>

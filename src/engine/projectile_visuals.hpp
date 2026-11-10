@@ -13,7 +13,7 @@
 
 #include "particle_rules.hpp"
 
-#include "eaw/game_object_catalog.hpp"
+#include "assets/game_object_catalog.hpp"
 #include "eaw/simulation.hpp"
 #include "eaw/visual_scene.hpp"
 

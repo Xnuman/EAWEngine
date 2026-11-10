@@ -1,4 +1,4 @@
-#include "eaw/alamo_pose.hpp"
+#include "assets/alamo_pose.hpp"
 
 #include "core/string_utils.hpp"
 #include "math/transform.hpp"

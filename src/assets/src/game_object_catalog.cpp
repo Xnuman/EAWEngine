@@ -1,4 +1,4 @@
-#include "eaw/game_object_catalog.hpp"
+#include "assets/game_object_catalog.hpp"
 
 #include "vfs/asset_path.hpp"
 #include "vfs/virtual_file_system.hpp"

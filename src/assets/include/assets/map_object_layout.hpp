@@ -1,7 +1,7 @@
 #pragma once
 
 #include "formats/alo_model.hpp"
-#include "eaw/game_object_catalog.hpp"
+#include "assets/game_object_catalog.hpp"
 #include "formats/ted_map.hpp"
 
 #include <cstddef>

@@ -1,4 +1,4 @@
-#include "eaw/alamo_pose.hpp"
+#include "assets/alamo_pose.hpp"
 #include "unit_animation.hpp"
 
 #include "scene_presentation.hpp"
