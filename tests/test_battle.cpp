@@ -248,6 +248,13 @@ void test_battle_log()
     expect_ok(recorded.submit({.order = eaw::BattleOrder::move, .entities = {first}, .point = {-500.3F, 77.7F, 0.0F}}), "move");
     expect_ok(recorded.submit({.order = eaw::BattleOrder::attack_move, .entities = {recorded.world().snapshot().entities[1].id}, .point = {120.5F, -40.25F, 0.0F}}), "attack-move");
     expect_ok(recorded.submit({.order = eaw::BattleOrder::guard, .entities = {recorded.world().snapshot().entities[2].id}, .target = first}), "guard");
+    const auto second = recorded.world().snapshot().entities[1].id;
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::set_invulnerable, .entities = {second}, .flag = true}), "invulnerable");
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::set_cannot_be_killed, .entities = {second}, .flag = true}), "cannot be killed");
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::suspend_locomotor, .entities = {second}, .flag = false}), "suspend");
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::damage, .entities = {recorded.world().snapshot().entities[3].id}, .amount = 12.5F}), "damage");
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::teleport, .entities = {recorded.world().snapshot().entities[4].id}, .point = {10.5F, -20.25F, 0.0F}, .heading = 0.75F}), "teleport");
+    expect_ok(recorded.submit({.order = eaw::BattleOrder::teleport, .entities = {second}, .point = {-30.0F, 5.0F, 0.0F}}), "teleport without heading");
     expect_ok(recorded.submit({.order = eaw::BattleOrder::remove, .entities = {recorded.world().snapshot().entities.back().id}}), "remove");
     for (int tick = 0; tick < 250; ++tick)
     {
@@ -270,6 +277,10 @@ void test_battle_log()
     }
     require(replayed.world().state_hash() == *reread->end_hash, "replaying a recorded log must reproduce the battle's state hash");
     const auto log_text = eaw::format_battle_log(log_out);
+    require(log_text.find(" invulnerable 1 ") != std::string::npos && log_text.find(" unkillable 1 ") != std::string::npos && log_text.find(" suspend 0 ") != std::string::npos &&
+                log_text.find(" damage 12.5 ") != std::string::npos && log_text.find(" teleport 10.5 -20.25 0 0.75 ") != std::string::npos &&
+                log_text.find(" teleport -30 5 0 - ") != std::string::npos,
+            "the condition, damage, and teleport orders must be written to the log");
     require(log_text.find(" remove ") != std::string::npos && log_text.find(" attack_move 0.0 ") != std::string::npos && log_text.find(" guard ") != std::string::npos,
             "remove, attack-move, and guard orders must be written to the log");
 }
@@ -369,6 +380,15 @@ void test_battle_scripts()
                 "  local refused = beacon.Move_To(walker)\n"
                 "  print(\"immobile \" .. tostring(refused.IsFinished()) .. \" \" .. tostring(refused.Result()))\n"
                 "  print(\"stub \" .. tostring(walker.Play_SFX_Event(\"Unit_Select\") ~= nil))\n"
+                "  walker.Make_Invulnerable(true)\n"
+                "  walker.Teleport_And_Face(beacon)\n"
+                "  walker.Take_Damage(500)\n"
+                "  PumpEvents() PumpEvents()\n"
+                "  print(\"teleported \" .. walker.Get_Distance(beacon) .. \" hull \" .. walker.Get_Hull())\n"
+                "  walker.Make_Invulnerable(false)\n"
+                "  walker.Take_Damage(10000)\n"
+                "  PumpEvents() PumpEvents()\n"
+                "  print(\"after damage \" .. tostring(walker.Is_Valid()))\n"
                 "end\n";
     }
     eaw::VirtualFileSystem vfs;
@@ -426,6 +446,7 @@ void test_battle_scripts()
     require(printed("at once false") && printed("arrived true"), "a move must return a block that finishes when the unit arrives");
     require(printed("swept true") && printed("guarding false") && printed("stub order nil"),
             "an attack-move block must finish on arrival, a guard block stay open, and a stub destination drop the order");
+    require(printed("teleported 0 hull 1") && printed("after damage false"), "scripts must teleport units, make them invulnerable, and kill them with Take_Damage");
     require(printed("immobile true false") && printed("stub true"), "an immobile unit's move must be refused at once, and unimplemented methods must stay stubs");
     require(log.entries.size() == 2, "script orders must not be recorded in the battle log");
     const auto [replayed_hash, replayed_output, replayed_log] = run(&log);

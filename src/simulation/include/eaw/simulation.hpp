@@ -118,6 +118,17 @@ enum class SimCommandKind : std::uint8_t
     // Stay near `target` (or `target_entity`, followed as it moves) and engage hostiles that come
     // near it (StandingOrder::guard).
     guard,
+    // `flag`: the entities take no damage at all (or take it again).
+    set_invulnerable,
+    // `flag`: damage cannot take the entities' health below unkillable_health_floor (or can again).
+    set_cannot_be_killed,
+    // `flag`: the entities do not move or turn; their orders wait until it is cleared.
+    suspend_locomotor,
+    // The entities' hulls take `amount` directly, past shields and armor (an entity it brings to
+    // zero dies as in combat).
+    damage,
+    // The entities move to `target` at once, facing `heading` when given; their movement ends.
+    teleport,
 };
 
 // What an entity keeps doing besides its current movement and target: nothing, an attack-move, or a
@@ -140,6 +151,11 @@ inline constexpr float acquire_range_factor = 1.25F;
 inline constexpr float leash_range_factor = 2.0F;
 inline constexpr float minimum_guard_radius = 150.0F;
 inline constexpr float follow_tolerance = 50.0F;
+
+// The lowest health of an entity that cannot be killed (Set_Cannot_Be_Killed): one hit point, or a
+// hundredth of its health when that is less (an engine choice).
+inline constexpr float unkillable_health_floor = 1.0F;
+inline constexpr float unkillable_health_fraction = 0.01F;
 
 // Space avoidance (engine choices to check in play): in the original, ships neither push each
 // other nor overlap; they steer around units in their way, and pass above or below units at
@@ -165,6 +181,12 @@ struct SimCommand
     Stance stance{Stance::aggressive};
     // Entities of spawn commands.
     std::vector<EntitySpawn> spawns;
+    // set_invulnerable, set_cannot_be_killed, suspend_locomotor: on or off.
+    bool flag{};
+    // damage: the hull damage.
+    float amount{};
+    // teleport: the heading to face (radians), or the entity's own.
+    std::optional<float> heading;
     // The order this command carries out, numbered by whoever issued it (Battle; 0 for none). Each
     // entity a move, stop, attack, or formation move applies to remembers it as its
     // EntitySnapshot::command_serial, so the issuer can tell whether its order is still the one the
@@ -408,6 +430,9 @@ private:
         // Ticks until the next automatic target search, and until an ordered chase replans.
         std::uint32_t retarget_timer{};
         std::uint32_t chase_timer{};
+        // Scripted conditions: no damage at all, and health that damage cannot take below the floor.
+        bool invulnerable{};
+        bool cannot_be_killed{};
     };
     struct Projectile
     {
@@ -454,6 +479,10 @@ private:
     void run_standing_order(std::size_t index);
     // Ends an engagement the standing order started (the target and its order are dropped).
     void disengage(std::size_t index);
+    // Hull damage after shields and armor, under the scripted conditions (invulnerable: none; cannot
+    // be killed: not below the floor); returns what the hull took.
+    float wound(std::size_t index, float damage);
+    void teleport(std::size_t index, const Vector3& point, std::optional<float> heading);
     // Flyers: steer at the target (attack runs, or dogfights against flyers), the destination, or
     // the point they circle; reverse through a half-loop when that point is far behind.
     void plan_flight(std::size_t index, float dt);
@@ -568,6 +597,8 @@ private:
         std::uint32_t scan_timer{};
     };
     std::vector<StandingOrderState> standing_orders_;
+    // Suspend_Locomotor: the entity neither moves nor turns (hashed).
+    std::vector<std::uint8_t> locomotor_suspended_;
     std::vector<Vector3> tick_start_positions_;
     // Flyers inside a half-loop, and the roll they unwind after one.
     std::vector<std::uint8_t> looping_;

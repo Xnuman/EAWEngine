@@ -67,6 +67,31 @@ void SimulationWorld::apply(const SimCommand& command)
         case SimCommandKind::attack_move:
         case SimCommandKind::guard:
             break;
+        case SimCommandKind::set_invulnerable:
+            combat_[*dense].invulnerable = command.flag;
+            break;
+        case SimCommandKind::set_cannot_be_killed:
+            combat_[*dense].cannot_be_killed = command.flag;
+            break;
+        case SimCommandKind::suspend_locomotor:
+            locomotor_suspended_[*dense] = command.flag ? 1U : 0U;
+            break;
+        case SimCommandKind::damage:
+            // Damage only entities that can die (structures without health stay); removal is the
+            // combat layer's, as for shots.
+            if (combat_[*dense].profile.health > 0.0F && std::isfinite(command.amount))
+            {
+                (void)wound(*dense, command.amount);
+            }
+            break;
+        case SimCommandKind::teleport:
+            if (!finite(command.target) || (command.heading && !std::isfinite(*command.heading)))
+            {
+                ++stale_references_;
+                break;
+            }
+            teleport(*dense, command.target, command.heading);
+            break;
         case SimCommandKind::move:
             combat_[*dense].target = {};
             combat_[*dense].ordered = false;
@@ -216,6 +241,39 @@ void SimulationWorld::apply_standing_order(const SimCommand& command)
             plan_move(*dense, order.point);
         }
     }
+}
+
+void SimulationWorld::teleport(const std::size_t index, const Vector3& point, const std::optional<float> heading)
+{
+    // A placed obstacle's footprint moves with it.
+    stamp_footprint(index, false);
+    auto position = point;
+    if (follows_ground_[index] != 0 && ground_.valid())
+    {
+        position.z = ground_.surface_height(position.x, position.y);
+    }
+    if (auto& footprint = footprints_[index])
+    {
+        // The footprint keeps its place relative to the entity: its offset turns with the heading.
+        const float turn = heading ? *heading - headings_[index] : 0.0F;
+        const float offset_x = footprint->center.x - positions_[index].x;
+        const float offset_y = footprint->center.y - positions_[index].y;
+        footprint->center.x = position.x + offset_x * std::cos(turn) - offset_y * std::sin(turn);
+        footprint->center.y = position.y + offset_x * std::sin(turn) + offset_y * std::cos(turn);
+        footprint->heading += turn;
+    }
+    positions_[index] = position;
+    if (heading)
+    {
+        headings_[index] = *heading;
+    }
+    move_targets_[index].reset();
+    paths_[index].clear();
+    path_pending_[index] = 0;
+    speed_limits_[index] = 0.0F;
+    group_ids_[index] = 0;
+    loiter_points_[index].reset();
+    stamp_footprint(index, true);
 }
 
 void SimulationWorld::disengage(const std::size_t index)

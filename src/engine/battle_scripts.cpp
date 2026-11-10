@@ -42,8 +42,14 @@ enum class GameObjectMethod : std::size_t
     prevent_opportunity_fire,
     attack_move,
     guard_target,
+    make_invulnerable,
+    set_cannot_be_killed,
+    suspend_locomotor,
+    take_damage,
+    teleport_and_face,
+    teleport,
 };
-constexpr std::array<std::string_view, 19> game_object_methods{"Is_Valid",
+constexpr std::array<std::string_view, 25> game_object_methods{"Is_Valid",
                                                                "Get_ID",
                                                                "Get_Type",
                                                                "Get_Owner",
@@ -61,7 +67,13 @@ constexpr std::array<std::string_view, 19> game_object_methods{"Is_Valid",
                                                                "Despawn",
                                                                "Prevent_Opportunity_Fire",
                                                                "Attack_Move",
-                                                               "Guard_Target"};
+                                                               "Guard_Target",
+                                                               "Make_Invulnerable",
+                                                               "Set_Cannot_Be_Killed",
+                                                               "Suspend_Locomotor",
+                                                               "Take_Damage",
+                                                               "Teleport_And_Face",
+                                                               "Teleport"};
 enum class ObjectTypeMethod : std::size_t
 {
     get_name,
@@ -633,6 +645,48 @@ Status BattleScriptContext::call_game_object(const ScriptObject& object, const G
         }
         const BattleCommand command{.order = attack_move ? BattleOrder::attack_move : BattleOrder::guard, .entities = {id}, .point = to->point, .target = to->object};
         call.return_object(order(command, id, attack_move && entity->max_speed <= 0.0F));
+        break;
+    }
+    case GameObjectMethod::make_invulnerable:
+    case GameObjectMethod::set_cannot_be_killed:
+    case GameObjectMethod::suspend_locomotor:
+    {
+        // (true|false); applied in the next tick like every order.
+        const auto condition = method == GameObjectMethod::make_invulnerable      ? BattleOrder::set_invulnerable
+                               : method == GameObjectMethod::set_cannot_be_killed ? BattleOrder::set_cannot_be_killed
+                                                                                  : BattleOrder::suspend_locomotor;
+        (void)order({.order = condition, .entities = {id}, .flag = call.truthy(1)}, id, false);
+        break;
+    }
+    case GameObjectMethod::take_damage:
+    {
+        // Take_Damage(amount): hull damage past shields and armor (stock scripts use it to kill:
+        // 10000, 99999); an inference from those uses.
+        const auto amount = call.number(1);
+        if (!amount || !std::isfinite(*amount) || *amount < 0.0)
+        {
+            return make_error("Take_Damage expects a non-negative amount");
+        }
+        (void)order({.order = BattleOrder::damage, .entities = {id}, .amount = static_cast<float>(*amount)}, id, false);
+        break;
+    }
+    case GameObjectMethod::teleport_and_face:
+    case GameObjectMethod::teleport:
+    {
+        // Teleport_And_Face(object or position) takes an object's heading too (markers carry one);
+        // Teleport only the place.
+        const bool face = method == GameObjectMethod::teleport_and_face;
+        const auto to = destination(call, 1, face ? "Teleport_And_Face" : "Teleport");
+        if (!to)
+        {
+            break;
+        }
+        std::optional<float> heading;
+        if (face && to->object.valid())
+        {
+            heading = view_.entity(to->object)->heading;
+        }
+        (void)order({.order = BattleOrder::teleport, .entities = {id}, .point = to->point, .heading = heading}, id, false);
         break;
     }
     case GameObjectMethod::is_category:

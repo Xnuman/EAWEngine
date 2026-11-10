@@ -130,6 +130,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     last_shot_ticks_.push_back(0);
     command_serials_.push_back(0);
     standing_orders_.push_back({.scan_timer = slot % retarget_interval});
+    locomotor_suspended_.push_back(0);
     looping_.push_back(0);
     rolls_.push_back(0.0F);
     intents_.emplace_back();
@@ -301,6 +302,9 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, order.engaging);
         hash = hash_value(hash, order.engage_origin);
         hash = hash_value(hash, order.scan_timer);
+        hash = hash_value(hash, combat.invulnerable);
+        hash = hash_value(hash, combat.cannot_be_killed);
+        hash = hash_value(hash, locomotor_suspended_[index]);
     }
     for (const auto& request : path_queue_)
     {
@@ -368,6 +372,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         last_shot_ticks_[dense] = last_shot_ticks_[last];
         command_serials_[dense] = command_serials_[last];
         standing_orders_[dense] = standing_orders_[last];
+        locomotor_suspended_[dense] = locomotor_suspended_[last];
         looping_[dense] = looping_[last];
         rolls_[dense] = rolls_[last];
         intents_[dense] = intents_[last];
@@ -409,6 +414,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     last_shot_ticks_.pop_back();
     command_serials_.pop_back();
     standing_orders_.pop_back();
+    locomotor_suspended_.pop_back();
     looping_.pop_back();
     rolls_.pop_back();
     intents_.pop_back();

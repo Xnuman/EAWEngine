@@ -68,6 +68,14 @@ enum class BattleOrder : std::uint8_t
     attack_move,
     // `entities` guard `point`, or `target` while it lives (SimCommandKind::guard).
     guard,
+    // `flag` on or off for `entities`: no damage at all; damage cannot kill; no movement or turning.
+    set_invulnerable,
+    set_cannot_be_killed,
+    suspend_locomotor,
+    // `entities` take `amount` hull damage, past shields and armor.
+    damage,
+    // `entities` move to `point` at once, facing `heading` when given.
+    teleport,
 };
 
 struct BattleCommand
@@ -80,6 +88,12 @@ struct BattleCommand
     std::uint32_t count{1};
     std::uint32_t owner{};
     Stance stance{Stance::aggressive};
+    // set_invulnerable, set_cannot_be_killed, suspend_locomotor.
+    bool flag{};
+    // damage.
+    float amount{};
+    // teleport: the heading to face (radians), or the entity's own.
+    std::optional<float> heading;
 };
 
 // Who gave an order. Player orders are recorded in the battle log; script orders are not, because a

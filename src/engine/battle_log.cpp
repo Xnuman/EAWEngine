@@ -152,6 +152,33 @@ std::string format_battle_log(const BattleLog& log)
             append_id(out, command.target);
             point();
             break;
+        case BattleOrder::set_invulnerable:
+            out += command.flag ? " invulnerable 1" : " invulnerable 0";
+            break;
+        case BattleOrder::set_cannot_be_killed:
+            out += command.flag ? " unkillable 1" : " unkillable 0";
+            break;
+        case BattleOrder::suspend_locomotor:
+            out += command.flag ? " suspend 1" : " suspend 0";
+            break;
+        case BattleOrder::damage:
+            out += " damage ";
+            append_float(out, command.amount);
+            break;
+        case BattleOrder::teleport:
+            // The point, then the heading or "-" for the entity's own.
+            out += " teleport";
+            point();
+            out += ' ';
+            if (command.heading)
+            {
+                append_float(out, *command.heading);
+            }
+            else
+            {
+                out += '-';
+            }
+            break;
         }
         for (const auto id : command.entities)
         {
@@ -332,6 +359,45 @@ Result<BattleLog> parse_battle_log(const std::string_view text)
         else if (order == "remove")
         {
             command.order = BattleOrder::remove;
+        }
+        else if (order == "invulnerable" || order == "unkillable" || order == "suspend")
+        {
+            command.order = order == "invulnerable" ? BattleOrder::set_invulnerable : order == "unkillable" ? BattleOrder::set_cannot_be_killed : BattleOrder::suspend_locomotor;
+            if (words.size() < 3 || (words[2] != "0" && words[2] != "1"))
+            {
+                return failure(std::string(order) + " needs 0 or 1");
+            }
+            command.flag = words[2] == "1";
+            next = 3;
+        }
+        else if (order == "damage")
+        {
+            command.order = BattleOrder::damage;
+            const auto amount = words.size() > 2 ? parse_float(words[2]) : std::nullopt;
+            if (!amount)
+            {
+                return failure("damage needs an amount");
+            }
+            command.amount = *amount;
+            next = 3;
+        }
+        else if (order == "teleport")
+        {
+            command.order = BattleOrder::teleport;
+            if (!read_point() || words.size() <= next)
+            {
+                return failure("teleport needs a point and a heading (- for none)");
+            }
+            if (words[next] != "-")
+            {
+                const auto heading = parse_float(words[next]);
+                if (!heading)
+                {
+                    return failure("teleport has an invalid heading");
+                }
+                command.heading = *heading;
+            }
+            ++next;
         }
         else if (order == "attack_move" || order == "guard")
         {

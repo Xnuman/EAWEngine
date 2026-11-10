@@ -443,12 +443,70 @@ void test_standing_orders()
     }
 }
 
+// Scripted conditions: an invulnerable unit takes no damage, one that cannot be killed stops at the
+// health floor, direct damage kills as combat does, a teleport moves and turns a unit at once and
+// ends its movement, and a suspended locomotor holds a unit until it is released.
+void test_scripted_conditions()
+{
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    eaw::CombatProfile gun;
+    gun.health = 1.0e6F;
+    gun.weapons = {eaw::WeaponProfile{.range = 200.0F, .recharge_seconds = 0.1F, .damage = 30.0F}};
+    eaw::CombatProfile body;
+    body.health = 100.0F;
+    const auto run = [](eaw::SimulationWorld& world, const int ticks)
+    {
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            world.step();
+        }
+    };
+    const auto entity = [](const eaw::SimulationWorld& world, const eaw::EntityId id) -> const eaw::EntitySnapshot&
+    {
+        return *std::ranges::find(world.snapshot().entities, id, &eaw::EntitySnapshot::id);
+    };
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        (void)world.spawn({.type_name = "Gun", .owner = 1, .combat = gun});
+        const auto victim = *world.spawn({.type_name = "Victim", .owner = 2, .position = {100.0F, 0.0F, 0.0F}, .combat = body});
+        world.submit({.kind = eaw::SimCommandKind::set_invulnerable, .entities = {victim}, .flag = true});
+        run(world, 30);
+        require(world.stats().shots_fired > 0 && entity(world, victim).health == 100.0F, "an invulnerable unit must take no damage");
+        world.submit({.kind = eaw::SimCommandKind::set_cannot_be_killed, .entities = {victim}, .flag = true});
+        world.submit({.kind = eaw::SimCommandKind::set_invulnerable, .entities = {victim}, .flag = false});
+        run(world, 30);
+        require(world.alive(victim) && entity(world, victim).health == eaw::unkillable_health_floor, "a unit that cannot be killed must stop at the health floor");
+        world.submit({.kind = eaw::SimCommandKind::set_cannot_be_killed, .entities = {victim}, .flag = false});
+        world.submit({.kind = eaw::SimCommandKind::damage, .entities = {victim}, .amount = 10000.0F});
+        run(world, 1);
+        require(!world.alive(victim) && world.snapshot().deaths.size() == 1, "direct damage must kill as combat does");
+    }
+    {
+        eaw::SimulationWorld world(0.1);
+        const auto unit = *world.spawn({.type_name = "Unit", .owner = 1, .max_speed = 50.0F, .combat = body});
+        world.submit({eaw::SimCommandKind::move, {unit}, {500.0F, 0.0F, 0.0F}});
+        world.submit({.kind = eaw::SimCommandKind::suspend_locomotor, .entities = {unit}, .flag = true});
+        run(world, 20);
+        require(entity(world, unit).position.x == 0.0F && entity(world, unit).moving, "a suspended locomotor must hold the unit and keep its order");
+        world.submit({.kind = eaw::SimCommandKind::suspend_locomotor, .entities = {unit}, .flag = false});
+        run(world, 20);
+        require(entity(world, unit).position.x > 0.0F, "a released locomotor must resume the order");
+        world.submit({.kind = eaw::SimCommandKind::teleport, .entities = {unit}, .target = {-300.0F, 40.0F, 0.0F}, .heading = 1.0F});
+        run(world, 1);
+        const auto& moved = entity(world, unit);
+        require(moved.position.x == -300.0F && moved.position.y == 40.0F && moved.heading == 1.0F && !moved.moving, "a teleport must move and turn the unit at once and end its movement");
+    }
+}
+
 const ModuleRegistrar registrar("combat", {
                                               {"test_combat", &test_combat},
                                               {"test_hardpoints_and_fire_cones", &test_hardpoints_and_fire_cones},
                                               {"test_body_aiming", &test_body_aiming},
                                               {"test_stances", &test_stances},
                                               {"test_standing_orders", &test_standing_orders},
+                                              {"test_scripted_conditions", &test_scripted_conditions},
                                           });
 
 } // namespace

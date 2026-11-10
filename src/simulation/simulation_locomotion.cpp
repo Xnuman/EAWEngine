@@ -29,6 +29,11 @@ void SimulationWorld::run_movement()
     plan_space_avoidance();
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
+        // A suspended locomotor holds the entity where it is; its orders wait.
+        if (locomotor_suspended_[index] != 0)
+        {
+            continue;
+        }
         if (min_speeds_[index] > 0.0F)
         {
             fly(index, dt);

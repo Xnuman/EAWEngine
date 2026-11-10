@@ -369,8 +369,7 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
         {
             kind = ImpactKind::hull_reduced;
         }
-        const auto dealt = damage * modifier;
-        combat.health -= dealt;
+        const auto dealt = wound(victim, damage * modifier);
         // A shot at a hardpoint damages it too (provisional: the hull and the hit part share the
         // damage; the original's split is not established).
         if (hardpoint >= 0)
@@ -384,6 +383,23 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
         }
     }
     return kind;
+}
+
+float SimulationWorld::wound(const std::size_t index, const float damage)
+{
+    auto& combat = combat_[index];
+    if (combat.invulnerable || damage <= 0.0F)
+    {
+        return 0.0F;
+    }
+    auto health = combat.health - damage;
+    if (combat.cannot_be_killed)
+    {
+        health = std::max(health, std::min(unkillable_health_floor, combat.profile.health * unkillable_health_fraction));
+    }
+    const auto dealt = combat.health - health;
+    combat.health = health;
+    return std::max(dealt, 0.0F);
 }
 
 void SimulationWorld::run_projectiles()

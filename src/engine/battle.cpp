@@ -266,6 +266,31 @@ Result<SimCommand> Battle::translate(const BattleCommand& command) const
         translated.target = command.point;
         translated.target_entity = command.target;
         break;
+    case BattleOrder::set_invulnerable:
+    case BattleOrder::set_cannot_be_killed:
+    case BattleOrder::suspend_locomotor:
+        translated.kind = command.order == BattleOrder::set_invulnerable       ? SimCommandKind::set_invulnerable
+                          : command.order == BattleOrder::set_cannot_be_killed ? SimCommandKind::set_cannot_be_killed
+                                                                               : SimCommandKind::suspend_locomotor;
+        translated.flag = command.flag;
+        break;
+    case BattleOrder::damage:
+        if (!std::isfinite(command.amount) || command.amount < 0.0F)
+        {
+            return make_error("battle order damage needs a finite, non-negative amount");
+        }
+        translated.kind = SimCommandKind::damage;
+        translated.amount = command.amount;
+        break;
+    case BattleOrder::teleport:
+        if (command.heading && !std::isfinite(*command.heading))
+        {
+            return make_error("battle order teleport has a non-finite heading");
+        }
+        translated.kind = SimCommandKind::teleport;
+        translated.target = command.point;
+        translated.heading = command.heading;
+        break;
     case BattleOrder::spawn:
         break;
     }

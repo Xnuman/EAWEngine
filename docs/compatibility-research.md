@@ -1008,6 +1008,13 @@ recording stubs (`EAWEngine lua-survey`).
   fly above or below other units (owner's observation, 2026-11-10; it replaces the engine's earlier
   assumption that ships separate by pushing). The engine's avoidance rules and numbers
   (`avoid_*` in `simulation.hpp`) are engine choices; flyers still separate from squadron mates.
+- **Scripted conditions.** `Make_Invulnerable(true|false)` (165 stock calls),
+  `Set_Cannot_Be_Killed(true|false)` (75), `Suspend_Locomotor(true|false)` (266),
+  `Take_Damage(amount)` (almost always a kill: 10000, 9999, 99999), `Teleport_And_Face(marker or
+  position)` and `Teleport(target)`. The engine's reading: invulnerable takes no damage at all;
+  cannot be killed stops at one hit point (or a hundredth of the health); `Take_Damage` hits the
+  hull past shields and armor; a suspended locomotor holds a unit with its orders; teleporting takes
+  an object's heading. All are inferences from the names and uses.
 - **Random numbers.** `GameRandom(lower, upper)` returns an integer in the inclusive range (scripts
   index lists with it and call `GameRandom(1, 1)`), `GameRandom.Get_Float()` a number in [0, 1), and
   `GameRandom.Free_Random(lower, upper)` the same as `GameRandom`; that it is the unsynchronized
