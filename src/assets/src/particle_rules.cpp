@@ -1,4 +1,4 @@
-#include "particle_rules.hpp"
+#include "assets/particle_rules.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -138,7 +138,7 @@ ParticleEmitterDesc normalize_particle_emitter(const AloParticleEmitter& emitter
     return desc;
 }
 
-ParticleEffect normalize_particle_system(const AloParticleSystemData& system, const ParticleFidelity fidelity)
+ParticleEffect load_particle_effect(const AloParticleSystemData& system, const ParticleFidelity fidelity)
 {
     ParticleEffect effect;
     effect.name = system.name;

@@ -4,7 +4,7 @@
 
 #include "vfs/game_installation.hpp"
 #include "core/status.hpp"
-#include "particle_rules.hpp"
+#include "assets/particle_rules.hpp"
 
 #include <array>
 #include <cstdint>

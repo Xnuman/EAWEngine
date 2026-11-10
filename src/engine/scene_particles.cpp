@@ -151,7 +151,7 @@ std::shared_ptr<const ParticleEffect> particle_effect(SceneBuilder& builder, con
         return nullptr;
     }
     // The file's facts become the engine-native description under the build's fidelity profile.
-    auto effect = std::make_shared<ParticleEffect>(normalize_particle_system(*loaded->system, builder.particle_fidelity));
+    auto effect = std::make_shared<ParticleEffect>(load_particle_effect(*loaded->system, builder.particle_fidelity));
     effect->name = std::filesystem::path(*path).stem().string();
     for (const auto& warning : loaded->system->warnings)
     {

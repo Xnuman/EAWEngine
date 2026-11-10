@@ -36,7 +36,7 @@ std::shared_ptr<const eaw::ParticleEffect> make_test_effect(std::vector<eaw::Alo
     system.name = "test";
     system.emitters = std::move(emitters);
     system.leave_particles = leave_particles;
-    auto effect = std::make_shared<eaw::ParticleEffect>(eaw::normalize_particle_system(system, fidelity));
+    auto effect = std::make_shared<eaw::ParticleEffect>(eaw::load_particle_effect(system, fidelity));
     effect->textures.assign(effect->emitters.size(), 7U);
     return effect;
 }

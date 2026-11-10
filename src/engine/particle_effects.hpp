@@ -8,7 +8,7 @@
 
 #include "formats/alo_particle_system.hpp"
 #include "eaw/visual_scene.hpp"
-#include "particle_rules.hpp"
+#include "assets/particle_rules.hpp"
 
 #include <array>
 #include <cstddef>

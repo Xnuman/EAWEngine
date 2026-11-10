@@ -1,8 +1,8 @@
 # eaw_assets: the game asset layer. It interprets file-level data for the engine and the tools:
 # the XML object database and schema, game object and spawn catalogs, map object layout, legacy
 # material and ALO naming rules, and the engine-native Skeleton and Animation with their loaders and
-# pose sampling. Model and the particle-effect loader follow (AGENTS.md, "Reorganization in
-# progress", step 5).
+# pose sampling, and particle effects with their fidelity rules. A resource manager follows
+# (AGENTS.md, "Reorganization in progress", step 5).
 
 add_library(eaw_assets STATIC)
 
@@ -41,6 +41,11 @@ set(EAW_ASSETS_ANIMATION
     ${SOURCES_DIR}/skeleton.cpp
 )
 
+set(EAW_ASSETS_PARTICLE
+    ${HEADERS_DIR}/particle_rules.hpp
+    ${SOURCES_DIR}/particle_rules.cpp
+)
+
 set(EAW_ASSETS_LOADERS
     ${HEADERS_DIR}/alamo_loaders.hpp
     ${SOURCES_DIR}/alamo_loaders.cpp
@@ -54,6 +59,7 @@ set(EAW_ASSETS_HEADERS
     ${HEADERS_DIR}/legacy_material.hpp
     ${HEADERS_DIR}/map_object_layout.hpp
     ${HEADERS_DIR}/model.hpp
+    ${HEADERS_DIR}/particle_rules.hpp
     ${HEADERS_DIR}/pose.hpp
     ${HEADERS_DIR}/skeleton.hpp
     ${HEADERS_DIR}/spawn_catalog.hpp
@@ -64,6 +70,7 @@ set(EAW_ASSETS_HEADERS
 source_group("game_data" FILES ${EAW_ASSETS_GAME_DATA})
 source_group("model" FILES ${EAW_ASSETS_MODEL})
 source_group("animation" FILES ${EAW_ASSETS_ANIMATION})
+source_group("particle" FILES ${EAW_ASSETS_PARTICLE})
 source_group("loaders" FILES ${EAW_ASSETS_LOADERS})
 
 target_sources(eaw_assets
@@ -79,6 +86,7 @@ target_sources(eaw_assets
     ${SOURCES_DIR}/game_object_catalog.cpp
     ${SOURCES_DIR}/legacy_material.cpp
     ${SOURCES_DIR}/map_object_layout.cpp
+    ${SOURCES_DIR}/particle_rules.cpp
     ${SOURCES_DIR}/pose.cpp
     ${SOURCES_DIR}/skeleton.cpp
     ${SOURCES_DIR}/spawn_catalog.cpp

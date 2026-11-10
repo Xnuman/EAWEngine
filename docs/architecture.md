@@ -65,7 +65,8 @@ show it directly. Another source format means another reader and loader producin
 resource. Stage 3 is being built (reorganization step 5): `Model`, `Skeleton`, and `Animation` are loaded this
 way and are all the engine keeps of models and clips; the scene builders in `src/engine` place a
 `Model` in a scene (rigid-mesh placement, hardpoint hosts, palette layout, texture registration).
-Particle effects and a resource manager follow.
+Particle effects load the same way (`load_particle_effect` under a fidelity profile); a resource
+manager follows.
 
 ## Simulation tick layers
 
@@ -373,7 +374,7 @@ deviate where the result improves and authored content still works. Content
 made for this engine will say so explicitly (the planned asset metadata, see
 the roadmap's engine extensions), and explicit declarations override legacy
 inference. Particle effects are normalized this way first
-(`src/engine/particle_rules.*`); projectiles, impacts, and materials follow
+(`particle_rules` in `src/assets`); projectiles, impacts, and materials follow
 the same pattern (the legacy material profiles already feed the future
 physically based pipeline).
 
@@ -391,7 +392,8 @@ dependency rules; this is the file-level detail.
   optional eaw-schema YAML and its layers, `xml_schema_validate.cpp` for validating a resolved XML
   database, sharing `xml_schema_internal.hpp`), `model` (`model`, the engine-native `Model`;
   `legacy_material`; `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` naming rules and default
-  mesh visibility), `animation` (`skeleton` and `animation`, the engine-native resources; `pose`:
+  mesh visibility), `particle` (`particle_rules`: `ParticleEffect`, the fidelity profiles, and
+  `load_particle_effect`), `animation` (`skeleton` and `animation`, the engine-native resources; `pose`:
   sampling, blending, composition, and retargeting by bone name), and `loaders`
   (`alamo_loaders`: `load_model` and `load_skeleton` from `AloModelData`, `load_animation` from
   `AlaAnimationData`).
@@ -429,8 +431,8 @@ dependency rules; this is the file-level detail.
   (particle effects, projectile visuals, effect objects), `scene_terrain` (terrain, liquids,
   tracks), `object_type_properties` (movement and speed fields of XML types), and
   `visual_map_builder` (the map and spawnable-package builds), sharing
-  `scene_builder_internal.hpp`. Particles are `particle_rules` (interpretation under a fidelity
-  profile), `particle_effects` (`ParticleWorld`), `attached_effects` (effects on model bones),
+  `scene_builder_internal.hpp`. Particles are `particle_effects` (`ParticleWorld`, running the
+  effects that `eaw_assets`' `particle_rules` loads under a fidelity profile), `attached_effects` (effects on model bones),
   and `battle_effects` (`BattleEffects`: a battle's effects from its snapshots, meaning attached
   effects of drawn units, the Particle objects that impacts and deaths name, and bolts; no
   graphics API, so the game and tests use it as the sandbox does).

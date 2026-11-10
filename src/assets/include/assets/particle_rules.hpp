@@ -161,7 +161,8 @@ struct ParticleEffect
 
 // Translates a decoded system under a profile. Texture indices are left for the caller.
 [[nodiscard]] ParticleEmitterDesc normalize_particle_emitter(const AloParticleEmitter& emitter, ParticleFidelity fidelity);
-[[nodiscard]] ParticleEffect normalize_particle_system(const AloParticleSystemData& system, ParticleFidelity fidelity);
+// The loader of particle effects: an ALO particle system interpreted under a fidelity profile.
+[[nodiscard]] ParticleEffect load_particle_effect(const AloParticleSystemData& system, ParticleFidelity fidelity);
 
 [[nodiscard]] const char* to_string(ParticleFidelity fidelity) noexcept;
 

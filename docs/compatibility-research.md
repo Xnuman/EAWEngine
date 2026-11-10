@@ -643,7 +643,7 @@ particle-audit`.
   speed-driven engine intensity dimming the colour instead; effects draw
   back to front with their emitters in list order), and the enhanced
   profile improves them (additive scaled by alpha, every particle sorted
-  back to front). `src/engine/particle_rules.*` holds the interpretation;
+  back to front). `particle_rules` in `src/assets` holds the interpretation;
   `sandbox --particles legacy|enhanced` chooses. The fork also documents the game's projectile flight
   (`src/simulation/ProjectileShot.h`, `ProjectileFlight.h`,
   `RocketSpline.h`): `Max_Speed` is world units per 30 Hz logic frame

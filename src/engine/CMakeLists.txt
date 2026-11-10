@@ -25,8 +25,6 @@ set(EAW_ENGINE_SOURCES
     object_type_properties.cpp
     particle_effects.cpp
     particle_effects.hpp
-    particle_rules.cpp
-    particle_rules.hpp
     projectile_visuals.cpp
     projectile_visuals.hpp
     rts_control.cpp
