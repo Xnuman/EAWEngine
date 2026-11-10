@@ -75,6 +75,9 @@ void test_string_utils()
     require(eaw::ascii_find_ignoring_case("Data/Path=x; PATH=y", "path", 6) == 13 && eaw::ascii_find_ignoring_case("abc", "") == 0 &&
                 eaw::ascii_find_ignoring_case("ab", "abc") == std::string_view::npos && eaw::ascii_is_space('\v') && !eaw::ascii_is_space('_'),
             "case-insensitive search and the whitespace test");
+    // CRC-32 check value ("123456789" gives 0xCBF43926), whole and in pieces.
+    const auto pieces = eaw::crc32_update(eaw::crc32_update(eaw::crc32_initial, std::as_bytes(std::span("1234", 4))), std::as_bytes(std::span("56789", 5)));
+    require(eaw::crc32("123456789") == 0xCBF43926U && eaw::crc32_finish(pieces) == 0xCBF43926U && eaw::crc32("") == 0U, "CRC-32 must match the standard check value");
     std::string encoded;
     require(eaw::append_utf8(encoded, U'\x20AC') && encoded == "\xE2\x82\xAC" && !eaw::append_utf8(encoded, U'\xD800') && !eaw::append_utf8(encoded, 0x110000U) && encoded.size() == 3,
             "append_utf8 must encode valid code points and refuse surrogates and values past U+10FFFF");
@@ -84,10 +87,30 @@ void test_string_utils()
             "overlong forms, encoded surrogates, truncated sequences, and lone low surrogates must give no result");
 }
 
+void test_file_io()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-file-io-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    const auto target = root / "nested" / "out.txt";
+    // A sibling file with the staging name must survive: the writer stages under another name.
+    std::filesystem::create_directories(target.parent_path());
+    expect_ok(eaw::write_text_file(std::filesystem::path(target).concat(".tmp"), "keep", eaw::WriteMode::create_only), "writing the unrelated sibling");
+    expect_ok(eaw::write_text_file(target, "first", eaw::WriteMode::create_only), "creating the target");
+    require(!eaw::write_text_file(target, "second", eaw::WriteMode::create_only), "create_only must refuse an existing file");
+    expect_ok(eaw::write_text_file(target, "second", eaw::WriteMode::replace), "replacing the target");
+    require(expect_ok(eaw::read_text_file(target), "reading the target") == "second" && expect_ok(eaw::read_text_file(std::filesystem::path(target).concat(".tmp")), "reading the sibling") == "keep" &&
+                !std::filesystem::exists(std::filesystem::path(target).concat(".tmp1")),
+            "a write must replace its target, leave an existing .tmp sibling alone, and leave no staging file behind");
+    require(!eaw::read_file(target, 3) && !eaw::read_file(root / "missing.bin"), "reads must refuse oversized and missing files");
+    std::filesystem::remove_all(root, ignored);
+}
+
 const ModuleRegistrar registrar("foundation", {
                                                   {"test_fatal_error_report", &test_fatal_error_report},
                                                   {"test_status_and_log", &test_status_and_log},
                                                   {"test_string_utils", &test_string_utils},
+                                                  {"test_file_io", &test_file_io},
                                               });
 
 } // namespace

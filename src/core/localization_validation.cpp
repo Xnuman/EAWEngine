@@ -1,6 +1,7 @@
 #include "eaw/localization_validation.hpp"
 
 #include "core/string_utils.hpp"
+#include "formats/dat_string_table_helpers.hpp"
 
 #include <algorithm>
 
@@ -138,12 +139,12 @@ Result<std::multiset<std::string>> localization_formatting_tokens(const std::u16
     return result;
 }
 
-Result<std::vector<TranslationIssue>> compare_translation(const DatFile& translation, const DatFile& reference)
+Result<std::vector<TranslationIssue>> compare_translation(const DatStringTableData& translation, const DatStringTableData& reference)
 {
     std::vector<TranslationIssue> issues;
-    for (const auto& original : reference.entries())
+    for (const auto& original : reference.entries)
     {
-        const auto* translated = translation.find(original.key);
+        const auto* translated = dat_find(translation, original.key);
         if (translated == nullptr)
         {
             issues.push_back({DatIssueSeverity::error, original.key, "key is missing from translation"});
@@ -160,9 +161,9 @@ Result<std::vector<TranslationIssue>> compare_translation(const DatFile& transla
             issues.push_back({DatIssueSeverity::warning, original.key, "leading/trailing whitespace differs from reference"});
         }
     }
-    for (const auto& translated : translation.entries())
+    for (const auto& translated : translation.entries)
     {
-        if (reference.find(translated.key) == nullptr)
+        if (dat_find(reference, translated.key) == nullptr)
         {
             issues.push_back({DatIssueSeverity::warning, translated.key, "key is not present in reference"});
         }

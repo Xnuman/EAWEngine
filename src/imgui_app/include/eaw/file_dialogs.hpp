@@ -18,7 +18,7 @@ namespace eaw::tools {
 
 [[nodiscard]] Result<std::optional<std::filesystem::path>> open_dat_file(HWND owner, std::wstring_view title);
 [[nodiscard]] Result<std::optional<std::filesystem::path>> open_workspace_file(HWND owner, std::wstring_view title);
-[[nodiscard]] Result<std::optional<std::filesystem::path>> save_dat_file(HWND owner, std::wstring_view title, std::wstring_view suggested_name = L"MasterTextFile_ENGLISH.dat");
+[[nodiscard]] Result<std::optional<std::filesystem::path>> save_dat_string_table(HWND owner, std::wstring_view title, std::wstring_view suggested_name = L"MasterTextFile_ENGLISH.dat");
 [[nodiscard]] Result<std::optional<std::filesystem::path>> save_workspace_file(HWND owner, std::wstring_view title, std::wstring_view suggested_name = L"localization.tsv");
 [[nodiscard]] Result<std::optional<std::filesystem::path>> pick_folder(HWND owner, std::wstring_view title);
 

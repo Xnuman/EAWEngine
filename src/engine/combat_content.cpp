@@ -6,6 +6,7 @@
 
 #include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"
+#include "formats/alo_model_helpers.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -183,7 +184,7 @@ CombatContent load_combat_content(const AssetReader& reader)
         content.warnings.push_back("damage modifiers unavailable: " + bytes.error().message);
         return content;
     }
-    const auto document = XmlDocument::parse(std::span<const std::byte>(*bytes));
+    const auto document = read_xml(std::span<const std::byte>(*bytes));
     if (!document)
     {
         content.warnings.push_back(std::string(game_constants_path) + ": " + document.error().message);
@@ -237,7 +238,7 @@ struct BonePlacement
     float direction{};
 };
 
-std::optional<BonePlacement> find_bone(const AloModel* model, const std::vector<Matrix4>& pose, const std::string_view name, const float scale)
+std::optional<BonePlacement> find_bone(const AloModelData* model, const std::vector<Matrix4>& pose, const std::string_view name, const float scale)
 {
     if (model == nullptr || name.empty())
     {
@@ -293,10 +294,10 @@ const XmlDefinition* find_hardpoint(const GameObjectCatalog& catalog, const std:
 
 } // namespace
 
-CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings, const AloModel* model,
+CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings, const AloModelData* model,
                              const float model_scale)
 {
-    const auto pose = model != nullptr ? model->bind_pose() : std::vector<Matrix4>{};
+    const auto pose = model != nullptr ? alo_bind_pose(*model) : std::vector<Matrix4>{};
     const FieldReader type(catalog, definition, warnings);
     CombatProfile profile;
     profile.health = type.amount("Tactical_Health");

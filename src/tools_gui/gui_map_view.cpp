@@ -127,7 +127,7 @@ void render_map_object_status(const GuiApp::State& state)
     }
 }
 
-std::vector<PreviewTriangle> map_preview_triangles(const TedMap& map, const int triangle_budget, const float vertical_scale, const bool show_passability)
+std::vector<PreviewTriangle> map_preview_triangles(const TedMapData& map, const int triangle_budget, const float vertical_scale, const bool show_passability)
 {
     std::vector<PreviewTriangle> triangles;
     const auto width = map.terrain_width;

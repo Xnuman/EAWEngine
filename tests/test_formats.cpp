@@ -7,6 +7,9 @@
 #include "formats/alamo_chunks.hpp"
 #include "formats/png_image.hpp"
 #include "eaw/localization_validation.hpp"
+#include "formats/alo_model_helpers.hpp"
+#include "formats/ala_animation_helpers.hpp"
+#include "formats/dat_string_table_helpers.hpp"
 
 namespace {
 
@@ -14,17 +17,17 @@ using namespace eaw_test;
 
 void test_alo_model()
 {
-    const auto model = expect_ok(eaw::AloModel::parse(make_test_alo()), "ALO parse");
+    const auto model = expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse");
     require(model.bones.size() == 1 && model.bones[0].name == "ROOT" && model.bones[0].parent == -1, "ALO skeleton decoding failed");
     require(model.meshes.size() == 1 && model.meshes[0].name == "TEST_MESH" && model.meshes[0].attached_bone == 0U, "ALO mesh decoding failed");
-    require(model.submesh_count() == 1 && model.vertex_count() == 3 && model.triangle_count() == 1 && model.meshes[0].submeshes[0].vertex_stride == 144 &&
+    require(alo_submesh_count(model) == 1 && alo_vertex_count(model) == 3 && alo_triangle_count(model) == 1 && model.meshes[0].submeshes[0].vertex_stride == 144 &&
                 model.meshes[0].submeshes[0].vertices.size() == 3 && model.meshes[0].submeshes[0].indices.size() == 3 && model.meshes[0].submeshes[0].shader == "MeshGloss.fx",
             "ALO submesh decoding failed");
     const auto& parameters = model.meshes[0].submeshes[0].parameters;
     require(parameters.size() == 2 && parameters[0].name == "Diffuse" && parameters[0].values == std::vector<float>{0.25F, 0.5F, 0.75F, 0.123456789F} && parameters[1].name == "Specular" &&
                 parameters[1].values.empty() && parameters[1].value.empty(),
             "ALO numeric shader parameters were not decoded exactly or a short chunk was over-read");
-    const auto bind_pose = model.bind_pose();
+    const auto bind_pose = alo_bind_pose(model);
     require(bind_pose.size() == 1 && bind_pose[0].values[0] == 1.0F && bind_pose[0].values[5] == 1.0F && bind_pose[0].values[10] == 1.0F, "ALO bind-pose decoding failed");
 }
 
@@ -36,7 +39,7 @@ void test_alo_default_mesh_visibility()
                 eaw::alo_name_variant("BASE_ALT1X").kind == eaw::AloVariantKind::none,
             "names without a trailing numbered variant were misread");
 
-    eaw::AloModel model;
+    eaw::AloModelData model;
     model.bones = {{.name = "ROOT", .visible = true}, {.name = "FIRE_ALT1", .visible = true}, {.name = "DEBRIS", .visible = false}};
     const auto mesh = [](std::string name, std::optional<std::uint32_t> bone = std::nullopt, const bool hidden = false)
     {
@@ -64,11 +67,11 @@ void test_texture_formats_and_materials()
             bytes[offset + shift / 8] = static_cast<std::byte>((value >> shift) & 0xffU);
         }
     };
-    const auto texture = expect_ok(eaw::DdsTexture::parse(dds), "DDS parse");
+    const auto texture = expect_ok(eaw::read_dds(dds), "DDS parse");
     require(texture.width == 4 && texture.height == 4 && texture.mip_levels == 1 && texture.format == eaw::DdsFormat::bc1_unorm && texture.data_offset == 128 && texture.data_size == 8 &&
                 texture.subresources.size() == 1 && texture.subresources[0].row_pitch == 8,
             "DDS semantic decoding failed");
-    const auto truncated_dds = eaw::DdsTexture::parse(std::span<const std::byte>(dds).first(dds.size() - 1U));
+    const auto truncated_dds = eaw::read_dds(std::span<const std::byte>(dds).first(dds.size() - 1U));
     require(!truncated_dds.ok() && truncated_dds.error().message.find("truncated DDS image data") != std::string::npos, "truncated DDS data was accepted");
 
     std::vector<std::byte> mtd;
@@ -89,11 +92,11 @@ void test_texture_formats_and_materials()
     };
     append_mtd_entry("ICON_A.TGA", 0, 0, 32, 16, true);
     append_mtd_entry("ICON_B.TGA", 32, 8, 8, 24, false);
-    const auto directory = expect_ok(eaw::MtdDirectory::parse(mtd), "MTD parse");
+    const auto directory = expect_ok(eaw::read_mtd(mtd), "MTD parse");
     require(directory.entries.size() == 2 && directory.entries[0].name == "ICON_A.TGA" && directory.entries[0].has_alpha && directory.entries[0].name_crc == eaw::dat_key_crc("ICON_A.TGA") &&
                 directory.atlas_width == 40 && directory.atlas_height == 32 && directory.alpha_entries == 1,
             "MTD semantic decoding failed");
-    const auto truncated_mtd = eaw::MtdDirectory::parse(std::span<const std::byte>(mtd).first(mtd.size() - 1U));
+    const auto truncated_mtd = eaw::read_mtd(std::span<const std::byte>(mtd).first(mtd.size() - 1U));
     require(!truncated_mtd.ok() && truncated_mtd.error().message.find("invalid MTD entry table size") != std::string::npos, "truncated MTD data was accepted");
 
     eaw::AloSubMesh submesh;
@@ -188,7 +191,7 @@ void test_lua_inspection()
                                "  Find_First_Object('Executor')\n"
                                "  Controller:Advance()\n"
                                "end\n";
-    const auto source_info = expect_ok(eaw::LuaScriptInfo::inspect(std::as_bytes(std::span(source))), "Lua source inspection");
+    const auto source_info = expect_ok(eaw::read_lua(std::as_bytes(std::span(source))), "Lua source inspection");
     require(source_info.kind == eaw::LuaScriptKind::source && source_info.lines == 7 && source_info.dependencies.size() == 2 && source_info.dependencies[0] == "PGStateMachine" &&
                 source_info.dependencies[1] == "Story/Helper" && source_info.defined_functions.size() == 1 && source_info.defined_functions[0] == "On_Enter_State" &&
                 std::ranges::find(source_info.called_functions, "Find_First_Object") != source_info.called_functions.end() &&
@@ -223,7 +226,7 @@ void test_lua_inspection()
     append_u32(bytecode, 1);
     append_u32(bytecode, 0);
 
-    const auto bytecode_info = expect_ok(eaw::LuaScriptInfo::inspect(bytecode), "Lua bytecode inspection");
+    const auto bytecode_info = expect_ok(eaw::read_lua(bytecode), "Lua bytecode inspection");
     require(bytecode_info.kind == eaw::LuaScriptKind::petroglyph_bytecode && bytecode_info.bytecode_header.version == 0x51 && bytecode_info.prototypes == 1 && bytecode_info.instructions == 1 &&
                 bytecode_info.number_constants == 1 && bytecode_info.string_constants == 1 && bytecode_info.persistent_function_ids == std::vector<std::uint64_t>{42},
             "Petroglyph Lua bytecode inspection failed");
@@ -231,13 +234,14 @@ void test_lua_inspection()
 
 void test_ala_animation()
 {
-    const auto animation = expect_ok(eaw::AlaAnimation::parse(make_test_ala()), "ALA parse");
-    require(animation.version == 2 && animation.stored_frame_count == 31 && animation.playable_frame_count() == 30 && animation.frames_per_second == 30.0F && animation.duration_seconds() == 1.0F,
+    const auto animation = expect_ok(eaw::read_ala(make_test_ala()), "ALA parse");
+    require(animation.version == 2 && animation.stored_frame_count == 31 && ala_playable_frame_count(animation) == 30 && animation.frames_per_second == 30.0F &&
+                ala_duration_seconds(animation) == 1.0F,
             "ALA animation header decoding failed");
     require(animation.tracks.size() == 1 && animation.tracks[0].name == "ROOT" && animation.tracks[0].translation && animation.tracks[0].rotation && !animation.tracks[0].scale &&
                 animation.tracks[0].visibility && animation.tracks[0].frames.size() == 31,
             "ALA bone track decoding failed");
-    const auto pose = eaw::ala_sample_pose(animation, expect_ok(eaw::AloModel::parse(make_test_alo()), "ALO parse"), 0.5F);
+    const auto pose = eaw::ala_sample_pose(animation, expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse"), 0.5F);
     require(pose.size() == 1 && pose[0].visible, "ALA sampled pose decoding failed");
 }
 
@@ -277,8 +281,8 @@ void test_ala_blending()
         }
     }
 
-    const auto model = expect_ok(eaw::AloModel::parse(make_test_alo()), "ALO parse");
-    const auto animation = expect_ok(eaw::AlaAnimation::parse(make_test_ala()), "ALA parse");
+    const auto model = expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse");
+    const auto animation = expect_ok(eaw::read_ala(make_test_ala()), "ALA parse");
     for (const auto seconds : {0.0F, 0.25F, 0.5F, 1.75F, -0.3F})
     {
         const auto direct = eaw::ala_sample_pose(animation, model, seconds);
@@ -287,7 +291,7 @@ void test_ala_blending()
                 "a composed local pose must match sample_pose");
     }
     const auto bind = eaw::ala_compose_pose(model, eaw::ala_bind_local_pose(model));
-    require(near(bind[0].transform, model.bind_pose()[0], 1.0e-4F), "the bind local pose must compose to the bind pose");
+    require(near(bind[0].transform, alo_bind_pose(model)[0], 1.0e-4F), "the bind local pose must compose to the bind pose");
 
     // Identity versus 90 degrees about Z (with the sign flipped, to take the shorter arc), moved
     // and scaled: halfway is 45 degrees, halfway translation and scale.
@@ -316,8 +320,8 @@ void test_ala_blending()
 // Clips shared between models point at bones by name.
 void test_ala_retarget()
 {
-    const auto model = expect_ok(eaw::AloModel::parse(make_test_alo()), "ALO parse");
-    eaw::AlaAnimation animation = expect_ok(eaw::AlaAnimation::parse(make_test_ala()), "ALA parse");
+    const auto model = expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "ALO parse");
+    eaw::AlaAnimationData animation = expect_ok(eaw::read_ala(make_test_ala()), "ALA parse");
     require(!model.bones.empty() && !animation.tracks.empty(), "the fixtures must have a bone and a track");
     // The authored skeleton put the bone elsewhere and had one the model lacks.
     animation.tracks[0].bone_index = 7;
@@ -332,7 +336,7 @@ void test_ala_retarget()
 
 void test_ted_map()
 {
-    const auto map = expect_ok(eaw::TedMap::parse(make_test_ted()), "TED parse");
+    const auto map = expect_ok(eaw::read_ted(make_test_ted()), "TED parse");
     require(map.type == eaw::TedMapType::land && map.players == 2 && map.name == "TEXT_TEST_MAP" && map.planet == "TEST_PLANET", "TED property decoding failed");
     require(map.terrain_width == 3 && map.terrain_height == 2 && map.elevation_sample_count == 6 && map.minimum_elevation == -10 && map.maximum_elevation == 40 && map.passability_sample_count == 6,
             "TED terrain decoding failed");
@@ -366,18 +370,33 @@ void test_ted_map()
 void test_dat_and_workspace()
 {
     const auto original = make_test_dat();
-    auto dat = expect_ok(eaw::DatFile::parse(original), "DAT parse");
-    require(dat.entries().size() == 2, "DAT entry count failed");
-    require(dat.find("TEXT_UNIT_TEST") != nullptr, "DAT key lookup failed");
-    require(expect_ok(dat.serialize(), "DAT serialize") == original, "DAT byte-identical round trip failed");
-    require(dat.validate().empty(), "valid DAT reported issues");
+    auto dat = expect_ok(eaw::read_dat(original), "DAT parse");
+    require(dat.entries.size() == 2, "DAT entry count failed");
+    require(dat_find(dat, "TEXT_UNIT_TEST") != nullptr, "DAT key lookup failed");
+    require(expect_ok(write_dat(dat), "DAT serialize") == original, "DAT byte-identical round trip failed");
+    require(dat_validate(dat).empty(), "valid DAT reported issues");
+    {
+        // A sorted table whose entries are then reordered by hand, without clearing the flag.
+        auto reordered = dat;
+        std::ranges::sort(reordered.entries, {}, &eaw::DatEntry::crc);
+        reordered.crc_sorted = true;
+        require(dat_validate(reordered).empty(), "a CRC-sorted table must validate");
+        std::ranges::reverse(reordered.entries);
+        const auto issues = dat_validate(reordered);
+        require(reordered.crc_sorted && std::ranges::any_of(issues,
+                                                            [](const eaw::DatIssue& issue)
+                                                            {
+                                                                return issue.severity == eaw::DatIssueSeverity::error && issue.message.find("CRC order") != std::string::npos;
+                                                            }),
+                "a table marked CRC-sorted but reordered by hand must fail validation");
+    }
     require(eaw::dat_key_crc("TEXT_SPEECH_EMPIRE_ACT01_MISSION_THREE_62") == 0x0001db80U, "Petroglyph DAT CRC32 failed");
 
     const auto converted = eaw::utf8_to_utf16("Žluťoučký 🚀");
     require(converted.has_value(), "UTF-8 to UTF-16");
-    expect_ok(dat.upsert("TEXT_UNIT_NEW", *converted), "DAT upsert");
-    require(eaw::utf16_to_utf8(dat.find("TEXT_UNIT_NEW")->value) == "Žluťoučký 🚀", "UTF-8/UTF-16 conversion failed");
-    require(!dat.upsert("", u"value").ok(), "an empty DAT key was accepted");
+    expect_ok(dat_upsert(dat, "TEXT_UNIT_NEW", *converted), "DAT upsert");
+    require(eaw::utf16_to_utf8(dat_find(dat, "TEXT_UNIT_NEW")->value) == "Žluťoučký 🚀", "UTF-8/UTF-16 conversion failed");
+    require(!dat_upsert(dat, "", u"value").ok(), "an empty DAT key was accepted");
     require(!eaw::utf8_to_utf16("\xc3") && !eaw::utf16_to_utf8(std::u16string(1, char16_t{0xd800})), "invalid UTF-8/UTF-16 was accepted");
 
     const auto workspace = std::filesystem::temp_directory_path() / "eawengine-localization-test.tsv";
@@ -388,15 +407,15 @@ void test_dat_and_workspace()
     const auto loaded = expect_ok(eaw::read_localization_workspace(workspace), "reading the workspace");
     require(loaded.size() == 1 && loaded[0].text == rows[0].text && loaded[0].notes == rows[0].notes, "localization TSV round trip failed");
 
-    auto resolved_todo = expect_ok(eaw::DatFile::parse(original), "DAT parse");
+    auto resolved_todo = expect_ok(eaw::read_dat(original), "DAT parse");
     expect_ok(eaw::apply_localization_workspace(resolved_todo, {{"TEXT_UNIT_TEST", "Completed TODO value", "unit:test", "todo", {}, {}}}), "applying a completed TODO row");
-    require(eaw::utf16_to_utf8(resolved_todo.find("TEXT_UNIT_TEST")->value) == "Completed TODO value", "completed TODO localization value was skipped");
+    require(eaw::utf16_to_utf8(dat_find(resolved_todo, "TEXT_UNIT_TEST")->value) == "Completed TODO value", "completed TODO localization value was skipped");
 
-    auto unresolved_todo = expect_ok(eaw::DatFile::parse(original), "DAT parse");
+    auto unresolved_todo = expect_ok(eaw::read_dat(original), "DAT parse");
     const auto unresolved = eaw::apply_localization_workspace(unresolved_todo, {{"TEXT_UNIT_EMPTY", {}, "unit:empty", "todo", {}, {}}});
     require(!unresolved.ok() && unresolved.error().message.find("unresolved TODO localization entry: TEXT_UNIT_EMPTY") != std::string::npos, "empty TODO localization row was not rejected");
     expect_ok(eaw::apply_localization_workspace(unresolved_todo, {{"TEXT_UNIT_EMPTY", {}, "unit:empty", "todo", {}, {}}}, true), "skipping an empty TODO row");
-    require(unresolved_todo.find("TEXT_UNIT_EMPTY") == nullptr, "empty TODO localization row was not skipped");
+    require(dat_find(unresolved_todo, "TEXT_UNIT_EMPTY") == nullptr, "empty TODO localization row was not skipped");
     std::filesystem::remove(workspace, ignored);
 }
 
@@ -416,7 +435,7 @@ void test_localization_scan()
                "</Units>\n";
     }
 
-    const auto baseline = expect_ok(eaw::DatFile::parse(make_test_dat()), "DAT parse");
+    const auto baseline = expect_ok(eaw::read_dat(make_test_dat()), "DAT parse");
     const auto result = expect_ok(eaw::scan_mod_localization(root, baseline), "localization scan");
     require(result.reference_count == 2, "localization scan reference count failed");
     require(result.missing.size() == 1 && result.missing.front().key == "TEXT_UNIT_MISSING" && result.missing.front().context.find("Units.xml:3") != std::string::npos,
@@ -440,13 +459,13 @@ void test_png_and_image_compare()
     {
         image.pixels[index] = static_cast<std::uint8_t>((index * 7U + index / 997U) & 0xFFU);
     }
-    const auto bytes = expect_ok(eaw::encode_png(image), "PNG encode");
-    const auto decoded = expect_ok(eaw::decode_png(bytes), "PNG decode");
+    const auto bytes = expect_ok(eaw::write_png(image), "PNG encode");
+    const auto decoded = expect_ok(eaw::read_png(bytes), "PNG decode");
     require(decoded.width == 200 && decoded.height == 120 && decoded.pixels == image.pixels, "PNG must round-trip exactly");
 
     const auto rejected = [&](std::vector<std::byte> modified, const std::string_view reason)
     {
-        const auto result = eaw::decode_png(modified);
+        const auto result = eaw::read_png(modified);
         return !result && result.error().message.find(reason) != std::string::npos;
     };
     auto bad_signature = bytes;
@@ -547,12 +566,12 @@ void test_localization_validation()
     require(tokens(u"%d of %1$s, 100%% and %-5.2f %*d") == std::multiset<std::string>{"%d", "%1$s", "%%", "%-5.2f", "%*d"}, "printf tokens failed");
     require(tokens(u"Line\\nnext [PLAYER] <b> {0} [] <\n> 5%.") == std::multiset<std::string>{"\\n", "[PLAYER]", "<b>", "{0}"}, "escape and placeholder tokens failed");
 
-    auto reference = expect_ok(eaw::DatFile::parse(make_test_dat()), "DAT parse");
+    auto reference = expect_ok(eaw::read_dat(make_test_dat()), "DAT parse");
     auto translation = reference;
-    require(reference.upsert("TEXT_COUNT", u"%d units").ok() && translation.upsert("TEXT_COUNT", u"unités: %d").ok(), "upsert failed");
-    require(reference.upsert("TEXT_NAME", u"Hello [NAME]").ok() && translation.upsert("TEXT_NAME", u"Bonjour [NOM]").ok(), "upsert failed");
-    require(reference.upsert("TEXT_SPACE", u" Padded").ok() && translation.upsert("TEXT_SPACE", u"Padded").ok(), "upsert failed");
-    require(reference.upsert("TEXT_ONLY_REFERENCE", u"x").ok() && translation.upsert("TEXT_ONLY_TRANSLATION", u"y").ok(), "upsert failed");
+    require(dat_upsert(reference, "TEXT_COUNT", u"%d units").ok() && dat_upsert(translation, "TEXT_COUNT", u"unités: %d").ok(), "upsert failed");
+    require(dat_upsert(reference, "TEXT_NAME", u"Hello [NAME]").ok() && dat_upsert(translation, "TEXT_NAME", u"Bonjour [NOM]").ok(), "upsert failed");
+    require(dat_upsert(reference, "TEXT_SPACE", u" Padded").ok() && dat_upsert(translation, "TEXT_SPACE", u"Padded").ok(), "upsert failed");
+    require(dat_upsert(reference, "TEXT_ONLY_REFERENCE", u"x").ok() && dat_upsert(translation, "TEXT_ONLY_TRANSLATION", u"y").ok(), "upsert failed");
     const auto issues = expect_ok(eaw::compare_translation(translation, reference), "compare translation");
     const auto has = [&](const std::string_view key, const eaw::DatIssueSeverity severity, const std::string_view message)
     {
@@ -567,7 +586,7 @@ void test_localization_validation()
             "translation comparison failed");
 
     const auto rows = expect_ok(eaw::workspace_rows_from_dat(reference), "workspace rows");
-    require(rows.size() == reference.entries().size() && std::ranges::is_sorted(rows, {}, &eaw::LocalizationRow::key) &&
+    require(rows.size() == reference.entries.size() && std::ranges::is_sorted(rows, {}, &eaw::LocalizationRow::key) &&
                 std::ranges::all_of(rows,
                                     [](const eaw::LocalizationRow& row)
                                     {
@@ -587,8 +606,8 @@ void test_localization_validation()
 void test_particle_system()
 {
     const auto bytes = make_test_particle_system(1);
-    require(eaw::particle_file_kind(bytes) == eaw::ParticleFileKind::classic, "particle file kind failed");
-    const auto system = expect_ok(eaw::ParticleSystem::parse(bytes), "particle parse");
+    require(eaw::read_alo<eaw::AloGenericData>(bytes)->type == eaw::AloType::particle_system, "a particle ALO must read as a particle system");
+    const auto system = expect_ok(eaw::read_alo<eaw::AloParticleSystemData>(bytes), "particle parse");
     require(system.name == "p_test" && !system.leave_particles && system.header_flags.size() == 4 && system.emitters.size() == 2, "particle system header failed");
     require(system.warnings.empty(), "particle system produced unexpected warnings");
     const auto& emitter = system.emitters.front();
@@ -601,32 +620,34 @@ void test_particle_system()
     require(emitter.groups[0].type == 1 && emitter.groups[2].type == 3 && emitter.groups[0].minimum.x == 0.0F && emitter.groups[0].maximum.x == 3.0F && emitter.groups[0].side_length == 6.0F &&
                 emitter.groups[0].sphere_radius == 7.0F && emitter.groups[0].sphere_hollow && emitter.groups[0].cylinder_height == 11.0F && emitter.groups[0].value.z == 14.0F,
             "particle shape groups failed");
-    const auto& alpha = emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::alpha)];
+    const auto& alpha = emitter.tracks[static_cast<std::size_t>(eaw::AloParticleTrackIndex::alpha)];
     require(alpha.present && alpha.keys.size() == 3 && alpha.keys[0].value == 1.0F && alpha.keys[1].time == 0.5F && alpha.keys[1].value == 0.2F && alpha.keys[2].time == 1.0F &&
                 alpha.keys[2].value == 0.0F,
             "particle colour track failed");
-    const auto& scale = emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::scale)];
+    const auto& scale = emitter.tracks[static_cast<std::size_t>(eaw::AloParticleTrackIndex::scale)];
     require(scale.keys.size() == 2 && scale.keys[0].value == 1.0F && scale.keys[1].value == 3.0F, "particle scale track failed");
-    require(emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::texture_index)].interpolation == eaw::ParticleInterpolation::step, "particle step track failed");
+    require(emitter.tracks[static_cast<std::size_t>(eaw::AloParticleTrackIndex::texture_index)].interpolation == eaw::AloParticleInterpolation::step, "particle step track failed");
     require(emitter.death_child == 1 && emitter.life_child == -1, "particle links failed");
 
     // Unknown properties are kept raw and reported; bad links are dropped with a warning.
-    const auto unusual = expect_ok(eaw::ParticleSystem::parse(make_test_particle_system(0, true)), "particle parse with oddities");
+    const auto unusual = expect_ok(eaw::read_alo<eaw::AloParticleSystemData>(make_test_particle_system(0, true)), "particle parse with oddities");
     require(unusual.emitters.front().properties.back().id == 0x7E && unusual.emitters.front().properties.back().payload.size() == 2, "unknown particle property was not kept");
     require(unusual.emitters.front().death_child == -1 && unusual.warnings.size() == 2, "particle oddities were not reported");
 
     // Malformed input fails with a diagnostic instead of reading out of bounds.
-    const auto short_group = eaw::ParticleSystem::parse(make_test_particle_system(1, false, true));
+    const auto short_group = eaw::read_alo<eaw::AloParticleSystemData>(make_test_particle_system(1, false, true));
     require(!short_group && short_group.error().message.find("shape group") != std::string::npos, "short particle shape group was accepted");
     for (std::size_t size = 0; size < bytes.size(); size += 7)
     {
         const std::span truncated(bytes.data(), size);
-        require(!eaw::ParticleSystem::parse(truncated), "truncated particle system was accepted at " + std::to_string(size) + " bytes");
+        require(!eaw::read_alo<eaw::AloParticleSystemData>(truncated), "truncated particle system was accepted at " + std::to_string(size) + " bytes");
     }
     std::vector<std::byte> plugin;
     append_chunk(plugin, 0x1500, {}, true);
-    require(eaw::particle_file_kind(plugin) == eaw::ParticleFileKind::plugin && !eaw::ParticleSystem::parse(plugin), "plugin particle format was not recognized");
-    require(eaw::particle_file_kind(make_test_alo()) == eaw::ParticleFileKind::other, "mesh ALO was taken for a particle system");
+    require(eaw::read_alo<eaw::AloGenericData>(plugin)->type == eaw::AloType::plugin_particle_system && !eaw::read_alo<eaw::AloParticleSystemData>(plugin),
+            "plugin particle format was not recognized");
+    require(eaw::read_alo<eaw::AloGenericData>(make_test_alo())->type == eaw::AloType::model, "a mesh ALO must read as a model");
+    require(!eaw::read_alo<eaw::AloGenericData>(std::vector<std::byte>(4)), "a file shorter than a chunk header must be an error");
 }
 
 const ModuleRegistrar registrar("formats", {

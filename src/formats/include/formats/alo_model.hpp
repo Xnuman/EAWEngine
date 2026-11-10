@@ -1,5 +1,6 @@
 #pragma once
 
+#include "formats/alo_generic.hpp"
 #include "math/matrix.hpp"
 #include "math/vector.hpp"
 #include "core/status.hpp"
@@ -111,24 +112,17 @@ struct AloDazzle
     bool hidden{};
 };
 
-class AloModel final
+struct AloModelData
 {
-public:
-    // The error names the malformed chunk.
-    [[nodiscard]] static Result<AloModel> parse(std::span<const std::byte> bytes);
-
     std::vector<AloBone> bones;
     std::vector<AloMesh> meshes;
     std::vector<AloLight> lights;
     std::vector<AloProxy> proxies;
     std::vector<AloDazzle> dazzles;
     std::vector<std::string> warnings;
-
-    [[nodiscard]] std::size_t submesh_count() const noexcept;
-    [[nodiscard]] std::uint64_t vertex_count() const noexcept;
-    [[nodiscard]] std::uint64_t triangle_count() const noexcept;
-    [[nodiscard]] std::vector<Matrix4> local_bind_pose() const;
-    [[nodiscard]] std::vector<Matrix4> bind_pose() const;
 };
+
+// The error names the malformed chunk.
+template <> [[nodiscard]] Result<AloModelData> read_alo<AloModelData>(std::span<const std::byte> bytes);
 
 } // namespace eaw

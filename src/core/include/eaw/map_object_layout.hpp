@@ -61,6 +61,6 @@ struct MapObjectLayout
 // Resolves every positioned placed object of a map to its XML type, model, and world transform.
 // Objects without a decoded transform are skipped. The catalog (and its database) must outlive
 // the returned layout because placements point at catalog definitions.
-[[nodiscard]] MapObjectLayout build_map_object_layout(const TedMap& map, const GameObjectCatalog& catalog, const AssetReader& vfs);
+[[nodiscard]] MapObjectLayout build_map_object_layout(const TedMapData& map, const GameObjectCatalog& catalog, const AssetReader& vfs);
 
 } // namespace eaw

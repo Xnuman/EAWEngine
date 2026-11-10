@@ -52,7 +52,7 @@ struct VisualClip
     AnimationRole role{};
     std::uint32_t variant{};
     std::string path;
-    std::shared_ptr<const AlaAnimation> animation;
+    std::shared_ptr<const AlaAnimationData> animation;
 };
 
 // A map mesh's skeleton for animation: the model, the inverse of its bind pose (empty when the bind
@@ -80,7 +80,7 @@ struct VisualEffectAttachment
 
 struct VisualRig
 {
-    std::shared_ptr<const AloModel> model;
+    std::shared_ptr<const AloModelData> model;
     std::vector<Matrix4> inverse_bind_pose;
     std::uint32_t rest_offset{};
     // Palette entries the mesh uses (its rest palette's size).
@@ -97,7 +97,7 @@ struct VisualRig
 struct VisualModelAsset
 {
     VisualScene scene;
-    AloModel model;
+    AloModelData model;
     std::vector<Matrix4> inverse_bind_pose;
     // The scene's palette has a second, visibility-collapsed half for rigid attachments (see
     // sample_skin_palette).
@@ -287,10 +287,10 @@ void renumber_effect_textures(std::span<VisualRig> rigs, std::span<std::shared_p
 [[nodiscard]] std::vector<std::string> model_animations(const AssetReader& reader, std::string_view model_path);
 // Skin matrices for the model's bones (bind pose without an animation). With a visibility palette,
 // a second half repeats them, collapsed to a point for bones the pose hides.
-[[nodiscard]] std::vector<Matrix4> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimation* animation, float seconds);
+[[nodiscard]] std::vector<Matrix4> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimationData* animation, float seconds);
 // Appends a rig's palette at `seconds` of `animation` (rig.palette_size entries) to `out`. Without
 // an inverse bind pose it appends the rest pose.
-void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, float seconds, std::vector<Matrix4>& out);
+void append_rig_palette(const VisualRig& rig, const AlaAnimationData& animation, float seconds, std::vector<Matrix4>& out);
 // Appends a rig's palette for a local pose (a blend of clips; see ala_blend_pose).
 void append_rig_local_palette(const VisualRig& rig, std::span<const AlaLocalBone> pose, std::vector<Matrix4>& out);
 

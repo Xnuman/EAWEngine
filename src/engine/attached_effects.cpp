@@ -1,4 +1,5 @@
 #include "attached_effects.hpp"
+#include "formats/alo_model_helpers.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -27,7 +28,7 @@ void AttachedEffects::add_rigs(const std::span<const VisualRig> rigs)
         MeshEffects mesh;
         if (rig.model)
         {
-            const auto bind_pose = rig.model->bind_pose();
+            const auto bind_pose = alo_bind_pose(*rig.model);
             mesh.bone_count = static_cast<std::uint32_t>(rig.model->bones.size());
             mesh.visibility_half = mesh.bone_count != 0 && rig.palette_size >= mesh.bone_count * 2U;
             for (const auto& attachment : rig.effects)

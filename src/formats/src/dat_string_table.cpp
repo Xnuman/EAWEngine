@@ -1,5 +1,7 @@
 #include "formats/dat_string_table.hpp"
 
+#include "core/checksum.hpp"
+
 #include <algorithm>
 #include <array>
 #include <limits>
@@ -42,20 +44,10 @@ void append_u32(std::vector<std::byte>& bytes, const std::uint32_t value)
 
 std::uint32_t dat_key_crc(const std::string_view key) noexcept
 {
-    std::uint32_t crc = 0xffffffffU;
-    for (const unsigned char character : key)
-    {
-        crc ^= character;
-        for (unsigned bit = 0; bit < 8; ++bit)
-        {
-            const auto mask = static_cast<std::uint32_t>(-static_cast<std::int32_t>(crc & 1U));
-            crc = (crc >> 1U) ^ (0xedb88320U & mask);
-        }
-    }
-    return crc ^ 0xffffffffU;
+    return crc32(key);
 }
 
-Result<DatFile> DatFile::parse(const std::span<const std::byte> bytes)
+Result<DatStringTableData> read_dat(const std::span<const std::byte> bytes)
 {
     std::size_t cursor = 0;
     const auto stored_count = read_u32(bytes, cursor);
@@ -95,12 +87,12 @@ Result<DatFile> DatFile::parse(const std::span<const std::byte> bytes)
         return make_error(expected_size > bytes.size() ? "truncated DAT string data" : "unexpected trailing data in DAT file");
     }
 
-    DatFile result;
-    result.entries_.resize(count);
+    DatStringTableData result;
+    result.entries.resize(count);
     for (std::size_t entry = 0; entry < count; ++entry)
     {
-        result.entries_[entry].crc = index[entry].crc;
-        auto& value = result.entries_[entry].value;
+        result.entries[entry].crc = index[entry].crc;
+        auto& value = result.entries[entry].value;
         value.reserve(index[entry].value_characters);
         for (std::uint32_t character = 0; character < index[entry].value_characters; ++character)
         {
@@ -116,7 +108,7 @@ Result<DatFile> DatFile::parse(const std::span<const std::byte> bytes)
     for (std::size_t entry = 0; entry < count; ++entry)
     {
         const auto length = index[entry].key_characters;
-        auto& key = result.entries_[entry].key;
+        auto& key = result.entries[entry].key;
         key.reserve(length);
         for (std::uint32_t character = 0; character < length; ++character)
         {
@@ -124,138 +116,18 @@ Result<DatFile> DatFile::parse(const std::span<const std::byte> bytes)
         }
     }
 
-    result.crc_sorted_ = std::ranges::is_sorted(result.entries_, {}, &DatEntry::crc);
+    result.crc_sorted = std::ranges::is_sorted(result.entries, {}, &DatEntry::crc);
     return result;
 }
 
-std::span<const DatEntry> DatFile::entries() const noexcept
+Result<std::vector<std::byte>> write_dat(const DatStringTableData& table)
 {
-    return entries_;
-}
-
-bool DatFile::crc_sorted() const noexcept
-{
-    return crc_sorted_;
-}
-
-const DatEntry* DatFile::find(const std::string_view key) const noexcept
-{
-    const auto crc = dat_key_crc(key);
-    if (crc_sorted_)
-    {
-        auto candidate = std::ranges::lower_bound(entries_, crc, {}, &DatEntry::crc);
-        for (; candidate != entries_.end() && candidate->crc == crc; ++candidate)
-        {
-            if (candidate->key == key)
-            {
-                return &*candidate;
-            }
-        }
-        return nullptr;
-    }
-    const auto found = std::ranges::find(entries_, key, &DatEntry::key);
-    return found == entries_.end() ? nullptr : &*found;
-}
-
-DatEntry* DatFile::find(const std::string_view key) noexcept
-{
-    return const_cast<DatEntry*>(std::as_const(*this).find(key));
-}
-
-Status DatFile::upsert(std::string key, std::u16string value)
-{
-    if (key.empty())
-    {
-        return make_error("DAT key cannot be empty");
-    }
-    if (auto* existing = find(key))
-    {
-        existing->value = std::move(value);
-        return Status::success();
-    }
-
-    DatEntry entry{dat_key_crc(key), std::move(key), std::move(value)};
-    if (crc_sorted_)
-    {
-        const auto position = std::ranges::upper_bound(entries_, entry.crc, {}, &DatEntry::crc);
-        entries_.insert(position, std::move(entry));
-    }
-    else
-    {
-        entries_.push_back(std::move(entry));
-    }
-    return Status::success();
-}
-
-bool DatFile::erase(const std::string_view key)
-{
-    const auto found = std::ranges::find(entries_, key, &DatEntry::key);
-    if (found == entries_.end())
-    {
-        return false;
-    }
-    entries_.erase(found);
-    return true;
-}
-
-std::vector<DatIssue> DatFile::validate() const
-{
-    std::vector<DatIssue> issues;
-    std::unordered_map<std::string_view, std::size_t> keys;
-    keys.reserve(entries_.size());
-    for (std::size_t index = 0; index < entries_.size(); ++index)
-    {
-        const auto& entry = entries_[index];
-        if (entry.key.empty())
-        {
-            issues.push_back({DatIssueSeverity::error, index, "key is empty"});
-        }
-        if (std::ranges::any_of(entry.key,
-                                [](const unsigned char character)
-                                {
-                                    return character < 0x20U || character > 0x7eU;
-                                }))
-        {
-            issues.push_back({DatIssueSeverity::error, index, "key contains a non-printable or non-ASCII byte"});
-        }
-        if (entry.crc != dat_key_crc(entry.key))
-        {
-            issues.push_back({DatIssueSeverity::error, index, "stored CRC does not match the key"});
-        }
-        if (const auto [existing, inserted] = keys.emplace(entry.key, index); !inserted)
-        {
-            issues.push_back({DatIssueSeverity::warning, index, "duplicate key; first occurrence is entry " + std::to_string(existing->second)});
-        }
-        for (std::size_t character = 0; character < entry.value.size(); ++character)
-        {
-            const auto code_unit = static_cast<std::uint32_t>(entry.value[character]);
-            if (code_unit >= 0xd800U && code_unit <= 0xdbffU)
-            {
-                if (character + 1 >= entry.value.size() || entry.value[character + 1] < 0xdc00U || entry.value[character + 1] > 0xdfffU)
-                {
-                    issues.push_back({DatIssueSeverity::error, index, "value contains an unpaired high surrogate"});
-                    break;
-                }
-                ++character;
-            }
-            else if (code_unit >= 0xdc00U && code_unit <= 0xdfffU)
-            {
-                issues.push_back({DatIssueSeverity::error, index, "value contains an unpaired low surrogate"});
-                break;
-            }
-        }
-    }
-    return issues;
-}
-
-Result<std::vector<std::byte>> DatFile::serialize() const
-{
-    if (entries_.size() > std::numeric_limits<std::uint32_t>::max())
+    if (table.entries.size() > std::numeric_limits<std::uint32_t>::max())
     {
         return make_error("too many DAT entries");
     }
-    std::uint64_t byte_count = 4U + entries_.size() * 12U;
-    for (const auto& entry : entries_)
+    std::uint64_t byte_count = 4U + table.entries.size() * 12U;
+    for (const auto& entry : table.entries)
     {
         byte_count += entry.value.size() * 2U + entry.key.size();
         if (entry.value.size() > std::numeric_limits<std::uint32_t>::max() || entry.key.size() > std::numeric_limits<std::uint32_t>::max())
@@ -270,14 +142,14 @@ Result<std::vector<std::byte>> DatFile::serialize() const
 
     std::vector<std::byte> bytes;
     bytes.reserve(static_cast<std::size_t>(byte_count));
-    append_u32(bytes, static_cast<std::uint32_t>(entries_.size()));
-    for (const auto& entry : entries_)
+    append_u32(bytes, static_cast<std::uint32_t>(table.entries.size()));
+    for (const auto& entry : table.entries)
     {
         append_u32(bytes, dat_key_crc(entry.key));
         append_u32(bytes, static_cast<std::uint32_t>(entry.value.size()));
         append_u32(bytes, static_cast<std::uint32_t>(entry.key.size()));
     }
-    for (const auto& entry : entries_)
+    for (const auto& entry : table.entries)
     {
         for (const char16_t character : entry.value)
         {
@@ -285,7 +157,7 @@ Result<std::vector<std::byte>> DatFile::serialize() const
             bytes.push_back(static_cast<std::byte>((character >> 8U) & 0xffU));
         }
     }
-    for (const auto& entry : entries_)
+    for (const auto& entry : table.entries)
     {
         for (const unsigned char character : entry.key)
         {

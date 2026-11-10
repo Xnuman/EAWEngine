@@ -6,6 +6,7 @@
 #include "eaw/localization_validation.hpp"
 #include "core/string_utils.hpp"
 #include "eaw/localization_workspace.hpp"
+#include "formats/dat_string_table_helpers.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -50,11 +51,11 @@ Status require_count(const Arguments& arguments, const std::size_t count, const 
 Result<int> info_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 1, "info requires one DAT path"));
-    EAW_TRY_ASSIGN(const auto dat, load_dat_file(arguments.positional[0]));
-    const auto issues = dat.validate();
+    EAW_TRY_ASSIGN(const auto dat, load_dat_string_table(arguments.positional[0]));
+    const auto issues = dat_validate(dat);
     std::cout << "File: " << arguments.positional[0] << '\n'
-              << "Entries: " << dat.entries().size() << '\n'
-              << "CRC sorted: " << (dat.crc_sorted() ? "yes" : "no") << '\n'
+              << "Entries: " << dat.entries.size() << '\n'
+              << "CRC sorted: " << (dat.crc_sorted ? "yes" : "no") << '\n'
               << "Validation issues: " << issues.size() << '\n';
     return error_count(issues) == 0 ? 0 : 2;
 }
@@ -62,11 +63,11 @@ Result<int> info_command(const Arguments& arguments)
 Result<int> list_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 1, "list requires one DAT path"));
-    EAW_TRY_ASSIGN(const auto dat, load_dat_file(arguments.positional[0]));
+    EAW_TRY_ASSIGN(const auto dat, load_dat_string_table(arguments.positional[0]));
     const auto query = arguments.filter ? ascii_lower(*arguments.filter) : std::string{};
     std::size_t matched = 0;
     std::size_t shown = 0;
-    for (const auto& entry : dat.entries())
+    for (const auto& entry : dat.entries)
     {
         auto converted = utf16_to_utf8(entry.value);
         if (!converted)
@@ -91,8 +92,8 @@ Result<int> list_command(const Arguments& arguments)
 Result<int> get_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 2, "get requires a DAT path and key"));
-    EAW_TRY_ASSIGN(const auto dat, load_dat_file(arguments.positional[0]));
-    const auto* entry = dat.find(arguments.positional[1]);
+    EAW_TRY_ASSIGN(const auto dat, load_dat_string_table(arguments.positional[0]));
+    const auto* entry = dat_find(dat, arguments.positional[1]);
     if (entry == nullptr)
     {
         std::cerr << "key not found: " << arguments.positional[1] << '\n';
@@ -110,38 +111,38 @@ Result<int> get_command(const Arguments& arguments)
 Result<int> set_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 4, "set requires input DAT, output DAT, key, and text"));
-    EAW_TRY_ASSIGN(auto dat, load_dat_file(arguments.positional[0]));
+    EAW_TRY_ASSIGN(auto dat, load_dat_string_table(arguments.positional[0]));
     auto text = utf8_to_utf16(arguments.positional[3]);
     if (!text)
     {
         return make_error("the text for " + arguments.positional[2] + " is not valid UTF-8");
     }
-    EAW_TRY(dat.upsert(arguments.positional[2], std::move(*text)));
-    EAW_TRY(save_dat_file(arguments.positional[1], dat, arguments.force ? WriteMode::replace : WriteMode::create_only));
-    std::cout << "Wrote " << arguments.positional[1] << " with " << dat.entries().size() << " entries\n";
+    EAW_TRY(dat_upsert(dat, arguments.positional[2], std::move(*text)));
+    EAW_TRY(save_dat_string_table(arguments.positional[1], dat, arguments.force ? WriteMode::replace : WriteMode::create_only));
+    std::cout << "Wrote " << arguments.positional[1] << " with " << dat.entries.size() << " entries\n";
     return 0;
 }
 
 Result<int> remove_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 3, "remove requires input DAT, output DAT, and key"));
-    EAW_TRY_ASSIGN(auto dat, load_dat_file(arguments.positional[0]));
-    if (!dat.erase(arguments.positional[2]))
+    EAW_TRY_ASSIGN(auto dat, load_dat_string_table(arguments.positional[0]));
+    if (!dat_erase(dat, arguments.positional[2]))
     {
         return make_error("key not found: " + arguments.positional[2]);
     }
-    EAW_TRY(save_dat_file(arguments.positional[1], dat, arguments.force ? WriteMode::replace : WriteMode::create_only));
-    std::cout << "Wrote " << arguments.positional[1] << " with " << dat.entries().size() << " entries\n";
+    EAW_TRY(save_dat_string_table(arguments.positional[1], dat, arguments.force ? WriteMode::replace : WriteMode::create_only));
+    std::cout << "Wrote " << arguments.positional[1] << " with " << dat.entries.size() << " entries\n";
     return 0;
 }
 
 Result<int> validate_command(const Arguments& arguments)
 {
     EAW_TRY(require_count(arguments, 1, "validate requires one DAT path"));
-    EAW_TRY_ASSIGN(const auto dat, load_dat_file(arguments.positional[0]));
+    EAW_TRY_ASSIGN(const auto dat, load_dat_string_table(arguments.positional[0]));
     std::size_t errors = 0;
     std::size_t warnings = 0;
-    for (const auto& issue : dat.validate())
+    for (const auto& issue : dat_validate(dat))
     {
         const bool error = issue.severity == DatIssueSeverity::error;
         (error ? errors : warnings)++;
@@ -149,7 +150,7 @@ Result<int> validate_command(const Arguments& arguments)
     }
     if (arguments.reference)
     {
-        EAW_TRY_ASSIGN(const auto reference, load_dat_file(std::filesystem::path(*arguments.reference)));
+        EAW_TRY_ASSIGN(const auto reference, load_dat_string_table(std::filesystem::path(*arguments.reference)));
         EAW_TRY_ASSIGN(const auto issues, compare_translation(dat, reference));
         for (const auto& issue : issues)
         {

@@ -6,10 +6,10 @@
 
 namespace eaw {
 
-Result<AlaAnimation> read_animation(const AssetReader& reader, const std::string_view path)
+Result<AlaAnimationData> read_animation(const AssetReader& reader, const std::string_view path)
 {
     EAW_TRY_ASSIGN(const auto bytes, reader.read(path));
-    return AlaAnimation::parse(bytes);
+    return read_ala(bytes);
 }
 
 SandboxContent build_sandbox_content(const VirtualFileSystem& vfs, const SandboxOptions& options, AssetCache* cache, const bool reload, std::vector<std::string> extra_spawn_types)

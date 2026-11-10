@@ -2,6 +2,7 @@
 
 #include "eaw/asset_path.hpp"
 #include "core/string_utils.hpp"
+#include "formats/xml_helpers.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -29,7 +30,7 @@ Result<std::string> include_path(const std::string_view value)
 void collect_node(const AssetReader& vfs, const XmlNode& node, const std::string& source_path, std::vector<XmlDefinition>& definitions, std::vector<XmlIncludeReference>& includes,
                   const std::size_t depth)
 {
-    if (const auto* name = node.attribute("Name"); name != nullptr && !ascii_trim(name->value).empty())
+    if (const auto* name = xml_attribute(node, "Name"); name != nullptr && !ascii_trim(name->value).empty())
     {
         definitions.push_back(XmlDefinition{node.name, std::string(ascii_trim(name->value)), source_path, node.line, depth, node.attributes, node.children});
     }
@@ -69,7 +70,7 @@ XmlAssetDatabase XmlAssetDatabase::build(const AssetReader& vfs, const std::stri
             database.failures_.push_back({asset.virtual_path, bytes.error().message});
             continue;
         }
-        const auto document = XmlDocument::parse(std::span<const std::byte>(*bytes));
+        const auto document = read_xml(std::span<const std::byte>(*bytes));
         if (!document)
         {
             database.failures_.push_back({asset.virtual_path, document.error().message});

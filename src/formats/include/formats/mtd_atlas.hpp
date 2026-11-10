@@ -10,7 +10,7 @@
 
 namespace eaw {
 
-struct MtdEntry
+struct MtdAtlasEntry
 {
     std::string name;
     std::uint32_t name_crc{};
@@ -21,14 +21,14 @@ struct MtdEntry
     bool has_alpha{};
 };
 
-struct MtdDirectory
+struct MtdAtlasData
 {
-    std::vector<MtdEntry> entries;
+    std::vector<MtdAtlasEntry> entries;
     std::uint32_t atlas_width{};
     std::uint32_t atlas_height{};
     std::size_t alpha_entries{};
-
-    [[nodiscard]] static Result<MtdDirectory> parse(std::span<const std::byte> bytes);
 };
+
+[[nodiscard]] Result<MtdAtlasData> read_mtd(std::span<const std::byte> bytes);
 
 } // namespace eaw

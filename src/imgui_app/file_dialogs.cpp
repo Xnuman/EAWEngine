@@ -91,7 +91,7 @@ Result<std::optional<std::filesystem::path>> open_workspace_file(HWND owner, con
     return show_dialog<IFileOpenDialog>(owner, CLSID_FileOpenDialog, title, FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST, filters.data(), static_cast<UINT>(filters.size()), L"tsv", {});
 }
 
-Result<std::optional<std::filesystem::path>> save_dat_file(HWND owner, const std::wstring_view title, const std::wstring_view suggested_name)
+Result<std::optional<std::filesystem::path>> save_dat_string_table(HWND owner, const std::wstring_view title, const std::wstring_view suggested_name)
 {
     static constexpr std::array filters{COMDLG_FILTERSPEC{L"Petroglyph string files (*.dat)", L"*.dat"}, COMDLG_FILTERSPEC{L"All files (*.*)", L"*.*"}};
 

@@ -1,6 +1,7 @@
 #include "eaw/localization_workspace.hpp"
 
 #include "core/string_utils.hpp"
+#include "formats/dat_string_table_helpers.hpp"
 
 #include <algorithm>
 #include <array>
@@ -174,12 +175,12 @@ Status write_localization_workspace(const std::filesystem::path& path, const std
     return Status::success();
 }
 
-Result<std::vector<LocalizationRow>> diff_localization(const DatFile& base, const DatFile& edited)
+Result<std::vector<LocalizationRow>> diff_localization(const DatStringTableData& base, const DatStringTableData& edited)
 {
     std::vector<LocalizationRow> rows;
-    for (const auto& entry : edited.entries())
+    for (const auto& entry : edited.entries)
     {
-        const auto* old = base.find(entry.key);
+        const auto* old = dat_find(base, entry.key);
         if (old == nullptr || old->value != entry.value)
         {
             auto text = utf16_to_utf8(entry.value);
@@ -190,9 +191,9 @@ Result<std::vector<LocalizationRow>> diff_localization(const DatFile& base, cons
             rows.push_back({entry.key, std::move(*text), {}, old == nullptr ? "new" : "modified", {}, {}});
         }
     }
-    for (const auto& entry : base.entries())
+    for (const auto& entry : base.entries)
     {
-        if (edited.find(entry.key) == nullptr)
+        if (dat_find(edited, entry.key) == nullptr)
         {
             rows.push_back({entry.key, {}, {}, "deleted", {}, {}});
         }
@@ -201,7 +202,7 @@ Result<std::vector<LocalizationRow>> diff_localization(const DatFile& base, cons
     return rows;
 }
 
-Status apply_localization_workspace(DatFile& target, const std::vector<LocalizationRow>& rows, const bool allow_todo)
+Status apply_localization_workspace(DatStringTableData& target, const std::vector<LocalizationRow>& rows, const bool allow_todo)
 {
     for (const auto& row : rows)
     {
@@ -217,7 +218,7 @@ Status apply_localization_workspace(DatFile& target, const std::vector<Localizat
         }
         if (status == "deleted" || status == "delete")
         {
-            static_cast<void>(target.erase(row.key));
+            static_cast<void>(dat_erase(target, row.key));
         }
         else
         {
@@ -226,17 +227,17 @@ Status apply_localization_workspace(DatFile& target, const std::vector<Localizat
             {
                 return make_error("localization entry " + row.key + " is not valid UTF-8");
             }
-            EAW_TRY(target.upsert(row.key, std::move(*text)));
+            EAW_TRY(dat_upsert(target, row.key, std::move(*text)));
         }
     }
     return Status::success();
 }
 
-Result<std::vector<LocalizationRow>> workspace_rows_from_dat(const DatFile& dat)
+Result<std::vector<LocalizationRow>> workspace_rows_from_dat(const DatStringTableData& dat)
 {
     std::vector<LocalizationRow> rows;
-    rows.reserve(dat.entries().size());
-    for (const auto& entry : dat.entries())
+    rows.reserve(dat.entries.size());
+    for (const auto& entry : dat.entries)
     {
         auto text = utf16_to_utf8(entry.value);
         if (!text)
@@ -286,10 +287,10 @@ std::array<LocalizationRow, 2> unit_localization_rows(const std::string& id, std
             LocalizationRow{"TEXT_TOOLTIP_" + id, std::move(description), "unit:" + id, "ready", "Use in <Encyclopedia_Text>", "Generated unit description key"}};
 }
 
-Result<DatFile> load_dat_file(const std::filesystem::path& path)
+Result<DatStringTableData> load_dat_string_table(const std::filesystem::path& path)
 {
     EAW_TRY_ASSIGN(const auto bytes, read_file(path));
-    auto dat = DatFile::parse(bytes);
+    auto dat = read_dat(bytes);
     if (!dat)
     {
         return with_context(path.string(), std::move(dat).error());
@@ -297,9 +298,9 @@ Result<DatFile> load_dat_file(const std::filesystem::path& path)
     return dat;
 }
 
-Status save_dat_file(const std::filesystem::path& path, const DatFile& dat, const WriteMode mode)
+Status save_dat_string_table(const std::filesystem::path& path, const DatStringTableData& dat, const WriteMode mode)
 {
-    EAW_TRY_ASSIGN(const auto bytes, dat.serialize());
+    EAW_TRY_ASSIGN(const auto bytes, write_dat(dat));
     return write_file(path, bytes, mode);
 }
 

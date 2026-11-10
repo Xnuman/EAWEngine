@@ -145,7 +145,7 @@ void SandboxSession::write_finished_capture()
             continue;
         }
         capture_written = true;
-        const auto encoded = eaw::encode_png(*image);
+        const auto encoded = eaw::write_png(*image);
         if (const auto written = encoded ? eaw::write_file(*options.capture, *encoded, eaw::WriteMode::replace) : eaw::Status(encoded.error()); !written)
         {
             eaw::log_warning("capture", written.error());

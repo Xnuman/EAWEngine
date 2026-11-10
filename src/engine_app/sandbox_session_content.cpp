@@ -1,4 +1,5 @@
 #include "sandbox_session.hpp"
+#include "formats/ala_animation_helpers.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -307,8 +308,8 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
             }
             visual_animation = std::move(content.animation);
             animation_status = content.animation_path;
-            std::cout << "Animation: " << content.animation_path << " | " << visual_animation->playable_frame_count() << " frames at " << visual_animation->frames_per_second << " fps | "
-                      << visual_animation->duration_seconds() << " seconds\n";
+            std::cout << "Animation: " << content.animation_path << " | " << ala_playable_frame_count(*visual_animation) << " frames at " << visual_animation->frames_per_second << " fps | "
+                      << ala_duration_seconds(*visual_animation) << " seconds\n";
             for (const auto& warning : visual_animation->warnings)
             {
                 std::cerr << "animation warning: " << warning << '\n';

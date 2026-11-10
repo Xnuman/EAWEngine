@@ -111,7 +111,7 @@ int run_image_compare(const int argc, const char* const* argv)
     const auto read_image = [](const std::filesystem::path& path) -> Result<RgbaImage>
     {
         EAW_TRY_ASSIGN(const auto bytes, read_file(path));
-        auto image = decode_png(bytes);
+        auto image = read_png(bytes);
         if (!image)
         {
             return with_context(path.string(), std::move(image).error());
@@ -138,7 +138,7 @@ int run_image_compare(const int argc, const char* const* argv)
               << "Changed pixels (difference above " << threshold << "): " << difference->changed_pixels << " (" << std::setprecision(4) << changed * 100.0 << "%)\n";
     if (diff)
     {
-        const auto encoded = encode_png(difference->visualization);
+        const auto encoded = write_png(difference->visualization);
         if (const auto written = encoded ? write_file(*diff, *encoded, WriteMode::replace) : Status(encoded.error()); !written)
         {
             std::cerr << "error: " << written.error().message << '\n';

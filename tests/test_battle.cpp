@@ -92,7 +92,7 @@ void test_combat_content()
     {
         // Hardpoint positions come from model bones and scale with the type's Scale_Factor. Models face
         // -Y, so a bone at (4, -6, 2) sits 6 forward, 4 left, and 2 up.
-        eaw::AloModel model;
+        eaw::AloModelData model;
         eaw::AloBone bone;
         bone.name = "HP_Bone";
         bone.transform = {1.0F, 0.0F, 0.0F, 4.0F, 0.0F, 1.0F, 0.0F, -6.0F, 0.0F, 0.0F, 1.0F, 2.0F};

@@ -1,6 +1,7 @@
 #include "eaw/localization_scan.hpp"
 #include "core/string_utils.hpp"
 #include "core/file_io.hpp"
+#include "formats/dat_string_table_helpers.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -60,7 +61,7 @@ std::string join_locations(const std::set<std::string>& locations)
 
 } // namespace
 
-Result<LocalizationScanResult> scan_mod_localization(const std::filesystem::path& mod_root, const DatFile& baseline)
+Result<LocalizationScanResult> scan_mod_localization(const std::filesystem::path& mod_root, const DatStringTableData& baseline)
 {
     std::error_code filesystem_error;
     auto xml_root = mod_root / "Data" / "XML";
@@ -125,7 +126,7 @@ Result<LocalizationScanResult> scan_mod_localization(const std::filesystem::path
     result.reference_count = references.size();
     for (const auto& [key, context] : references)
     {
-        if (baseline.find(key) != nullptr)
+        if (dat_find(baseline, key) != nullptr)
         {
             continue;
         }

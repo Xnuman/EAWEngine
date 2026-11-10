@@ -10,7 +10,7 @@ void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
     struct ScriptRecord
     {
         std::string path;
-        eaw::LuaScriptInfo info;
+        eaw::LuaChunkData info;
     };
 
     std::vector<ScriptRecord> scripts;
@@ -63,7 +63,7 @@ void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
         const auto separator = relative.find('/');
         ++groups[separator == std::string::npos ? "<root>" : relative.substr(0, separator)];
 
-        auto decoded = decode_asset<eaw::LuaScriptInfo>(vfs, asset.virtual_path);
+        auto decoded = decode_asset<eaw::LuaChunkData>(vfs, asset.virtual_path);
         if (!decoded)
         {
             failures.emplace_back(asset.virtual_path, decoded.error().message);

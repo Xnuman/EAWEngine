@@ -1,5 +1,6 @@
 #include "sandbox_session.hpp"
 #include "core/string_utils.hpp"
+#include "formats/ala_animation_helpers.hpp"
 
 #include <algorithm>
 #include <array>
@@ -311,8 +312,8 @@ void SandboxSession::handle_view_keys(const eaw::InputState& input)
             {
                 visual_animation = std::move(animation).value();
                 animation_status = path;
-                std::cout << "Animation " << animation_choice << "/" << animation_paths.size() << ": " << path << " | " << visual_animation->playable_frame_count() << " frames, "
-                          << visual_animation->duration_seconds() << " seconds\n";
+                std::cout << "Animation " << animation_choice << "/" << animation_paths.size() << ": " << path << " | " << ala_playable_frame_count(*visual_animation) << " frames, "
+                          << ala_duration_seconds(*visual_animation) << " seconds\n";
             }
             else
             {

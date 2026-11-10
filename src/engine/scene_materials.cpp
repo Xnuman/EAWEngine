@@ -74,7 +74,7 @@ std::optional<VisualTextureFormat> visual_format(const DdsFormat format)
 
 Result<VisualTexture> make_visual_texture(const std::string_view name, const std::span<const std::byte> bytes)
 {
-    EAW_TRY_ASSIGN(const auto dds, DdsTexture::parse(bytes));
+    EAW_TRY_ASSIGN(const auto dds, read_dds(bytes));
     if (dds.volume || dds.cube_map || dds.array_size != 1 || dds.faces != 1)
     {
         return make_error("only ordinary 2D DDS textures are supported by the visual sandbox");

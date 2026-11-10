@@ -1,4 +1,5 @@
 #include "test_support.hpp"
+#include "formats/xml_helpers.hpp"
 
 namespace {
 
@@ -6,28 +7,28 @@ using namespace eaw_test;
 
 void test_xml_document()
 {
-    const auto document = expect_ok(eaw::XmlDocument::parse("\xef\xbb\xbf<?xml version=\"1.0\"?>\n"
-                                                            "<!-- a Petroglyph file may contain several roots -->\n"
-                                                            "<SpaceUnit Name='Unit_A' Enabled=\"Yes\">\n"
-                                                            "  <Text_ID>TEXT_A &amp; B</Text_ID>\n"
-                                                            "  <Payload><![CDATA[x < y]]></Payload>\n"
-                                                            "</SpaceUnit>\n"
-                                                            "<SpaceUnit Name=\"Unit_B\"><Value>&#x41;&#66;</Value></SpaceUnit>"),
+    const auto document = expect_ok(eaw::read_xml("\xef\xbb\xbf<?xml version=\"1.0\"?>\n"
+                                                  "<!-- a Petroglyph file may contain several roots -->\n"
+                                                  "<SpaceUnit Name='Unit_A' Enabled=\"Yes\">\n"
+                                                  "  <Text_ID>TEXT_A &amp; B</Text_ID>\n"
+                                                  "  <Payload><![CDATA[x < y]]></Payload>\n"
+                                                  "</SpaceUnit>\n"
+                                                  "<SpaceUnit Name=\"Unit_B\"><Value>&#x41;&#66;</Value></SpaceUnit>"),
                                     "XML parse");
     require(document.roots.size() == 2, "XML fragment root parsing failed");
     const auto& first = document.roots.front();
-    require(first.name == "SpaceUnit" && first.attribute("name") != nullptr && first.attribute("NAME")->value == "Unit_A", "XML case-insensitive attribute lookup failed");
-    require(first.child("text_id") != nullptr && first.child("Text_ID")->text == "TEXT_A & B", "XML entity decoding failed");
-    require(first.child("Payload") != nullptr && first.child("Payload")->text == "x < y", "XML CDATA parsing failed");
-    require(document.roots[1].child("Value")->text == "AB", "XML numeric character decoding failed");
-    require(expect_ok(eaw::XmlDocument::parse("<?xml version=\"1.0\"><A />"), "XML declaration parse").roots.size() == 1, "Petroglyph XML declaration compatibility failed");
+    require(first.name == "SpaceUnit" && xml_attribute(first, "name") != nullptr && xml_attribute(first, "NAME")->value == "Unit_A", "XML case-insensitive attribute lookup failed");
+    require(xml_child(first, "text_id") != nullptr && xml_child(first, "Text_ID")->text == "TEXT_A & B", "XML entity decoding failed");
+    require(xml_child(first, "Payload") != nullptr && xml_child(first, "Payload")->text == "x < y", "XML CDATA parsing failed");
+    require(xml_child(document.roots[1], "Value")->text == "AB", "XML numeric character decoding failed");
+    require(expect_ok(eaw::read_xml("<?xml version=\"1.0\"><A />"), "XML declaration parse").roots.size() == 1, "Petroglyph XML declaration compatibility failed");
 
-    const auto mismatch = eaw::XmlDocument::parse("<A><B /></C>");
+    const auto mismatch = eaw::read_xml("<A><B /></C>");
     require(!mismatch.ok() && mismatch.error().message.find("closing element </C> does not match <A>") != std::string::npos, "mismatched XML closing element was accepted");
     // Failures end parsing (no hang) and report the first problem with its line.
-    const auto unterminated = eaw::XmlDocument::parse("<A>\n<B attribute=\"x\"");
+    const auto unterminated = eaw::read_xml("<A>\n<B attribute=\"x\"");
     require(!unterminated.ok() && unterminated.error().message.starts_with("XML line 2:"), "unterminated XML was accepted");
-    require(!eaw::XmlDocument::parse("<A>&#xd800;</A>").ok(), "an invalid XML character reference was accepted");
+    require(!eaw::read_xml("<A>&#xd800;</A>").ok(), "an invalid XML character reference was accepted");
 }
 
 void test_xml_asset_database()
@@ -155,7 +156,7 @@ void test_game_object_catalog()
     const auto safe = eaw::transform_point({1.0F, 0.0F, 0.0F}, eaw::placed_object_transform(degenerate));
     require(std::isfinite(safe.x) && std::fabs(safe.x - 11.0F) < 1.0e-4F, "degenerate placed-object transform was not sanitized");
 
-    eaw::TedMap map;
+    eaw::TedMapData map;
     map.type = eaw::TedMapType::space;
     map.placed_objects.push_back(placed);
     auto unknown = placed;
@@ -187,7 +188,7 @@ void test_game_object_catalog()
     // A placed space squadron expands into its members at their rotated Squadron_Offsets (a repeated
     // Squadron_Units continues the list: Unit_A, then Unit_A, Unit_A_Variant, Missing_Member); a land
     // team container is counted instead of guessed.
-    eaw::TedMap squadron_map;
+    eaw::TedMapData squadron_map;
     squadron_map.type = eaw::TedMapType::space;
     auto squadron_object = placed;
     squadron_object.scale = 1.0F;
@@ -211,7 +212,7 @@ void test_game_object_catalog()
     // A land company expands into its members (listed with commas or whitespace) at the company's
     // transform, flagged for arrangement, even though it names a model of its own; a container
     // without a member list is still counted.
-    eaw::TedMap land_map;
+    eaw::TedMapData land_map;
     land_map.type = eaw::TedMapType::land;
     auto company_object = placed;
     company_object.crc = eaw::game_object_name_crc("Test_Company");

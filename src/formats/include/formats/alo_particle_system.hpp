@@ -10,7 +10,8 @@
 // reported as unsupported. Field meanings follow the MIT-licensed alo-viewer (GlyphX Tools, 2017);
 // see docs/compatibility-research.md, "Particle systems".
 
-#include "formats/alo_model.hpp"
+#include "formats/alo_generic.hpp"
+#include "math/vector.hpp"
 #include "core/status.hpp"
 
 #include <array>
@@ -22,23 +23,10 @@
 
 namespace eaw {
 
-enum class ParticleFileKind : std::uint8_t
-{
-    // Not a particle system (a mesh ALO starts with its skeleton, 0x0200).
-    other,
-    // 0x0900: the EaW/FoC format this decoder reads.
-    classic,
-    // 0x1500: the plugin format of later Alamo games; not supported.
-    plugin,
-};
-
-// Which format a file's first chunk announces.
-[[nodiscard]] ParticleFileKind particle_file_kind(std::span<const std::byte> bytes) noexcept;
-
 // A spawn shape (64 bytes in the file). `type`: 0 exact (value), 1 box (minimum..maximum), 2 cube
 // (+-side_length/2), 3 sphere (radius up to sphere_radius), 4 cylinder (cylinder_radius, height
 // 0..cylinder_height); "hollow" spawns on the surface only.
-struct ParticleGroup
+struct AloParticleGroup
 {
     std::uint32_t type{};
     Vector3 minimum;
@@ -52,14 +40,14 @@ struct ParticleGroup
     Vector3 value;
 };
 
-enum class ParticleInterpolation : std::uint8_t
+enum class AloParticleInterpolation : std::uint8_t
 {
     linear,
     smooth,
     step,
 };
 
-struct ParticleKey
+struct AloParticleKey
 {
     // Normalized particle age, 0..1.
     float time{};
@@ -68,16 +56,16 @@ struct ParticleKey
 
 // A keyframe track: the first key at time 0, intermediate keys, and the last key at time 1. Colour
 // tracks hold 0..1 (stored as 0..255).
-struct ParticleTrack
+struct AloParticleTrack
 {
-    ParticleInterpolation interpolation{ParticleInterpolation::linear};
+    AloParticleInterpolation interpolation{AloParticleInterpolation::linear};
     std::uint32_t raw_interpolation{};
-    std::vector<ParticleKey> keys;
+    std::vector<AloParticleKey> keys;
     // The track was in the file (absent tracks keep their defaults).
     bool present{};
 };
 
-enum class ParticleTrackIndex : std::uint8_t
+enum class AloParticleTrackIndex : std::uint8_t
 {
     red,
     green,
@@ -89,13 +77,13 @@ enum class ParticleTrackIndex : std::uint8_t
 };
 
 // A property mini-chunk as stored.
-struct ParticleRawProperty
+struct AloParticleProperty
 {
     std::uint8_t id{};
     std::vector<std::byte> payload;
 };
 
-struct ParticleEmitter
+struct AloParticleEmitter
 {
     std::string name;
     std::string texture{"p_particle_master.tga"};
@@ -146,29 +134,29 @@ struct ParticleEmitter
     bool random_rotation{};                 // [0x48]
 
     // Shape groups: speed (initial velocity), lifetime (unused by the known runtime), position.
-    std::array<ParticleGroup, 3> groups{};
-    std::array<ParticleTrack, 7> tracks{};
+    std::array<AloParticleGroup, 3> groups{};
+    std::array<AloParticleTrack, 7> tracks{};
     // Child emitters (indices into the system's list; -1 for none) spawned at a particle's death
     // and during its life (one trail emitter instance per living particle).
     std::int32_t death_child{-1};
     std::int32_t life_child{-1};
     // Every property mini-chunk in file order.
-    std::vector<ParticleRawProperty> properties;
+    std::vector<AloParticleProperty> properties;
 };
 
-struct ParticleSystem
+struct AloParticleSystemData
 {
     std::string name;
     // Chunk 0x0001 of the system (4 bytes; meaning unknown), as stored.
     std::vector<std::byte> header_flags;
     // Particles live out when the system is detached (default when the chunk is absent).
     bool leave_particles{true};
-    std::vector<ParticleEmitter> emitters;
+    std::vector<AloParticleEmitter> emitters;
     // Unknown chunks and properties, out-of-range links, and similar oddities.
     std::vector<std::string> warnings;
-
-    // Errors name the malformed chunk; a file of another kind is an error naming its kind.
-    [[nodiscard]] static Result<ParticleSystem> parse(std::span<const std::byte> bytes);
 };
+
+// Errors name the malformed chunk; a file of another kind is an error naming its kind.
+template <> [[nodiscard]] Result<AloParticleSystemData> read_alo<AloParticleSystemData>(std::span<const std::byte> bytes);
 
 } // namespace eaw

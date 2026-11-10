@@ -143,6 +143,6 @@ public:
 };
 
 // Samples a keyframe track at normalized age `t` (0..1).
-[[nodiscard]] float sample_particle_track(const ParticleTrack& track, float t) noexcept;
+[[nodiscard]] float sample_particle_track(const AloParticleTrack& track, float t) noexcept;
 
 } // namespace eaw

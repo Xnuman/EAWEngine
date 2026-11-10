@@ -5,6 +5,7 @@
 
 #include "eaw/alo_interpretation.hpp"
 #include "core/string_utils.hpp"
+#include "formats/alo_model_helpers.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -19,7 +20,7 @@ namespace {
 // The decoded system, or why there is none; `mesh` marks a file that is a model, not a system.
 struct CachedParticleSystem
 {
-    std::optional<ParticleSystem> system;
+    std::optional<AloParticleSystemData> system;
     std::string error;
     bool mesh{};
 };
@@ -52,14 +53,14 @@ std::optional<std::string> resolve_effect_path(const AssetReader& vfs, const std
 
 // The mesh rigidly attached to the proxy bone's parent (the reference's rule for a proxy's mesh), in
 // the proxy bone's space; null when there is none.
-std::shared_ptr<const ParticleEmitMesh> proxy_emit_mesh(const AloModel& model, const std::uint32_t proxy_bone)
+std::shared_ptr<const ParticleEmitMesh> proxy_emit_mesh(const AloModelData& model, const std::uint32_t proxy_bone)
 {
     const auto parent = model.bones[proxy_bone].parent;
     if (parent < 0)
     {
         return nullptr;
     }
-    const auto bind_pose = model.bind_pose();
+    const auto bind_pose = alo_bind_pose(model);
     const auto to_proxy = inverse(bind_pose[proxy_bone]);
     if (!to_proxy || static_cast<std::size_t>(parent) >= bind_pose.size())
     {
@@ -127,12 +128,13 @@ std::shared_ptr<const ParticleEffect> particle_effect(SceneBuilder& builder, con
                                                              result.error = bytes.error().message;
                                                              return result;
                                                          }
-                                                         if (particle_file_kind(*bytes) == ParticleFileKind::other)
+                                                         const auto generic = read_alo<AloGenericData>(*bytes);
+                                                         if (!generic || (generic->type != AloType::particle_system && generic->type != AloType::plugin_particle_system))
                                                          {
                                                              result.mesh = true;
                                                              return result;
                                                          }
-                                                         auto system = ParticleSystem::parse(*bytes);
+                                                         auto system = read_alo<AloParticleSystemData>(*bytes);
                                                          if (!system)
                                                          {
                                                              result.error = system.error().message;
@@ -311,7 +313,7 @@ void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog
     }
 }
 
-std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModel& model, const std::string& model_path)
+std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModelData& model, const std::string& model_path)
 {
     std::vector<VisualEffectAttachment> attachments;
     if (!builder.textures)

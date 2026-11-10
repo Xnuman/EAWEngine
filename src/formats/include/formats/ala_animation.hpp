@@ -33,12 +33,8 @@ struct AlaBoneTrack
     std::vector<AlaBoneFrame> frames;
 };
 
-class AlaAnimation final
+struct AlaAnimationData
 {
-public:
-    // The error names the malformed chunk.
-    [[nodiscard]] static Result<AlaAnimation> parse(std::span<const std::byte> bytes);
-
     std::uint32_t version{1};
     std::uint32_t stored_frame_count{};
     float frames_per_second{};
@@ -50,9 +46,9 @@ public:
     std::size_t scale_data_bytes{};
     std::vector<AlaBoneTrack> tracks;
     std::vector<std::string> warnings;
-
-    [[nodiscard]] std::uint32_t playable_frame_count() const noexcept;
-    [[nodiscard]] float duration_seconds() const noexcept;
 };
+
+// The error names the malformed chunk.
+[[nodiscard]] Result<AlaAnimationData> read_ala(std::span<const std::byte> bytes);
 
 } // namespace eaw

@@ -3,6 +3,8 @@
 #include "eaw/alamo_pose.hpp"
 #include "gui_internal.hpp"
 #include "core/string_utils.hpp"
+#include "formats/alo_model_helpers.hpp"
+#include "formats/ala_animation_helpers.hpp"
 
 namespace eaw::tools {
 namespace {
@@ -17,7 +19,7 @@ std::vector<AlaPoseBone> preview_pose(const GuiApp::State& state)
     {
         return ala_sample_pose(*state.preview_animation, *state.preview_model, state.preview_time);
     }
-    const auto transforms = state.preview_model->bind_pose();
+    const auto transforms = alo_bind_pose(*state.preview_model);
     std::vector<AlaPoseBone> pose;
     pose.reserve(transforms.size());
     for (std::size_t index = 0; index < transforms.size(); ++index)
@@ -70,7 +72,7 @@ void render_model_viewport(GuiApp::State& state)
             state.preview_playing = !state.preview_playing;
         }
         ImGui::SameLine();
-        const auto duration = static_cast<float>(state.preview_animation->duration_seconds());
+        const auto duration = static_cast<float>(ala_duration_seconds(*state.preview_animation));
         ImGui::SetNextItemWidth(-1.0F);
         ImGui::SliderFloat("##animation-time", &state.preview_time, 0.0F, std::max(duration, 0.001F), "%.3f s");
         if (state.preview_playing && duration > 0.0F)
@@ -130,7 +132,7 @@ void render_model_viewport(GuiApp::State& state)
         state.model_mesh_cached = true;
         state.model_mesh_collision = state.preview_show_collision;
     }
-    ImGui::TextColored(muted, "%zu DDS loaded  |  %llu triangles", state.preview_textures.size(), static_cast<unsigned long long>(state.preview_model->triangle_count()));
+    ImGui::TextColored(muted, "%zu DDS loaded  |  %llu triangles", state.preview_textures.size(), static_cast<unsigned long long>(alo_triangle_count(*state.preview_model)));
 
     auto canvas_size = ImGui::GetContentRegionAvail();
     canvas_size.x = std::max(canvas_size.x, 120.0F);

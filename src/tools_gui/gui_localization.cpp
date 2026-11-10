@@ -239,7 +239,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
     ImGui::SameLine();
     if (ImGui::Button("Build DAT..."))
     {
-        if (const auto path = save_dat_file(owner, L"Build localization DAT"); !path)
+        if (const auto path = save_dat_string_table(owner, L"Build localization DAT"); !path)
         {
             state.fail(path.error());
         }

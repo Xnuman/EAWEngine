@@ -59,7 +59,7 @@ Result<std::string> read_wide_string(const std::span<const std::byte> bytes, con
     return std::move(*text);
 }
 
-Status parse_properties(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
+Status parse_properties(const std::span<const std::byte> bytes, const Chunk& chunk, TedMapData& map)
 {
     EAW_TRY_ASSIGN(const auto minis, read_minis(bytes, chunk));
     for (const auto& mini : minis)
@@ -108,7 +108,7 @@ Status parse_properties(const std::span<const std::byte> bytes, const Chunk& chu
     return Status::success();
 }
 
-Status parse_environments(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
+Status parse_environments(const std::span<const std::byte> bytes, const Chunk& chunk, TedMapData& map)
 {
     EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end));
     for (const auto& child : children)
@@ -232,7 +232,7 @@ Status parse_environments(const std::span<const std::byte> bytes, const Chunk& c
     return Status::success();
 }
 
-Status parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
+Status parse_terrain(const std::span<const std::byte> bytes, const Chunk& chunk, TedMapData& map)
 {
     EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end));
     if (const auto* information = find_chunk(children, 0))
@@ -562,7 +562,7 @@ Status find_object_chunks(const std::span<const std::byte> bytes, const Chunk& c
     return Status::success();
 }
 
-Status parse_zones(const std::span<const std::byte> bytes, const Chunk& chunk, TedMap& map)
+Status parse_zones(const std::span<const std::byte> bytes, const Chunk& chunk, TedMapData& map)
 {
     if (!chunk.container)
     {
@@ -596,9 +596,9 @@ const char* to_string(const TedMapType type) noexcept
     return "unknown";
 }
 
-Result<TedMap> TedMap::parse(const std::span<const std::byte> bytes)
+Result<TedMapData> read_ted(const std::span<const std::byte> bytes)
 {
-    TedMap map;
+    TedMapData map;
     EAW_TRY_ASSIGN(const auto chunks, read_chunks(bytes, 0, bytes.size()));
     const auto* properties = find_chunk(chunks, 0);
     const auto* root = find_chunk(chunks, 1);

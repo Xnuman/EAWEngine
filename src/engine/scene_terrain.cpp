@@ -23,7 +23,7 @@ namespace {
 // Height of the rendered terrain surface at world X/Y, using the same two-triangle split per cell
 // as append_terrain so draped geometry follows the drawn surface exactly. Outside the grid the
 // nearest edge is used.
-float terrain_surface_height(const TedMap& map, const float world_x, const float world_y)
+float terrain_surface_height(const TedMapData& map, const float world_x, const float world_y)
 {
     const auto width = map.terrain_width;
     const auto height = map.terrain_height;
@@ -49,7 +49,7 @@ float terrain_surface_height(const TedMap& map, const float world_x, const float
 
 // Builds the land heightfield as independent triangles whose vertices carry the triangle's corner
 // layers. Each TED layer becomes a material; its texture tiles world X/Y once per tile_size.
-void append_terrain(SceneBuilder& builder, const TedMap& map)
+void append_terrain(SceneBuilder& builder, const TedMapData& map)
 {
     auto& scene = builder.scene;
     const auto width = map.terrain_width;
@@ -171,7 +171,7 @@ void append_terrain(SceneBuilder& builder, const TedMap& map)
 // a plain color fallback; lava and ice store their color texture first. Tiling (one repeat per
 // 200 world units) and scroll speeds are engine choices; the related TED fields are preserved but
 // not interpreted yet.
-std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMap& map)
+std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMapData& map)
 {
     auto& scene = builder.scene;
     const auto& terrain = scene.terrain;
@@ -268,7 +268,7 @@ std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMap& m
 // control-point polyline (sampled at least every terrain cell), each point's width spans the
 // ribbon, and opacity follows the start/middle/end keys. Texture V repeats once per average
 // width along the track; the header's scroll values animate it.
-std::size_t append_tracks(SceneBuilder& builder, const TedMap& map)
+std::size_t append_tracks(SceneBuilder& builder, const TedMapData& map)
 {
     auto& scene = builder.scene;
     if (map.tracks.empty() || scene.terrain.vertices.empty())

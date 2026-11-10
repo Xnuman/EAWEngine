@@ -161,7 +161,7 @@ void note_damage_bones(SceneBuilder& builder, const std::string& model_path, con
 
 // The particle effects attached to a model's proxies (those not hidden by default). Proxies under a
 // noted damage bone are marked as hardpoint damage effects.
-std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModel& model, const std::string& model_path);
+std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const AloModelData& model, const std::string& model_path);
 
 // Translates a legacy material profile plus its authored parameters into the engine-native
 // legacy-mode surface description (see docs/legacy-shader-mapping.md for the source behavior).
@@ -183,7 +183,7 @@ std::array<float, 4> player_team_color(std::uint32_t player) noexcept;
 
 // The decoded model, or why it could not be decoded (cached either way: a failed decode depends on
 // the file, so replacing it invalidates the entry).
-std::shared_ptr<const Result<AloModel>> cached_model(SceneBuilder& builder, const std::string& path);
+std::shared_ptr<const Result<AloModelData>> cached_model(SceneBuilder& builder, const std::string& path);
 
 // Appends one ALO model as a new mesh (its draws, vertices, indices, and any new textures) and
 // returns the mesh index. Vertices stay in bind-pose model space with model-wide bone indices.
@@ -198,13 +198,13 @@ std::shared_ptr<const Result<AloModel>> cached_model(SceneBuilder& builder, cons
 struct ModelAttachment
 {
     std::string path;
-    std::shared_ptr<const AloModel> model;
+    std::shared_ptr<const AloModelData> model;
     std::uint32_t bone{};
 };
 
 // `attachments` are appended into the same mesh, placed at their bone's bind pose and bound to that
 // bone (so they follow its pose and visibility).
-Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model, std::string_view name, bool animated_visibility = false, std::span<const ModelAttachment> attachments = {});
+Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModelData& model, std::string_view name, bool animated_visibility = false, std::span<const ModelAttachment> attachments = {});
 
 // Decodes and appends a model referenced by a map (placed object, backdrop, or spawn type), with its
 // attachments. Particle ALOs and malformed models are reported once as scene warnings and yield
@@ -213,7 +213,7 @@ std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std
 
 // The models a type's hardpoints attach to `host` (XML HardPoints entries with Model_To_Attach and
 // an Attachment_Bone the host has), in list order; problems become scene warnings.
-std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& type, const AloModel* host);
+std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& type, const AloModelData* host);
 
 // Key of a mesh built from `model_path` with `attachments` (types sharing a model but not their
 // hardpoints get meshes of their own).
@@ -229,7 +229,7 @@ struct SpawnableBuild
     GameModelContext context{};
     bool land{};
     std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes;
-    std::function<const CombatProfile&(const XmlDefinition&, const AloModel*)> profile_of;
+    std::function<const CombatProfile&(const XmlDefinition&, const AloModelData*)> profile_of;
     std::vector<SpawnableType>& spawnable;
 };
 
@@ -259,20 +259,20 @@ GroundFootprint mesh_ground_footprint(const VisualScene& scene, std::uint32_t me
 
 // Builds the land heightfield as independent triangles whose vertices carry the triangle's corner
 // layers. Each TED layer becomes a material; its texture tiles world X/Y once per tile_size.
-void append_terrain(SceneBuilder& builder, const TedMap& map);
+void append_terrain(SceneBuilder& builder, const TedMapData& map);
 
 // Water, lava, and ice surfaces: a flat quad over the terrain at the map's water level. Texture
 // roles follow the corpus: for water the first texture (0x1d) is a bump map and the second (0x1e)
 // a plain color fallback; lava and ice store their color texture first. Tiling (one repeat per
 // 200 world units) and scroll speeds are engine choices; the related TED fields are preserved but
 // not interpreted yet.
-std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMap& map);
+std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMapData& map);
 
 // Tracks become unlit, alpha-blended ribbons draped over the terrain: the centerline is the
 // control-point polyline (sampled at least every terrain cell), each point's width spans the
 // ribbon, and opacity follows the start/middle/end keys. Texture V repeats once per average
 // width along the track; the header's scroll values animate it.
-std::size_t append_tracks(SceneBuilder& builder, const TedMap& map);
+std::size_t append_tracks(SceneBuilder& builder, const TedMapData& map);
 
 // object_type_properties.cpp: simulation-relevant fields of XML object types.
 

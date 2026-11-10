@@ -122,7 +122,7 @@ struct TedPlacedObject
     bool has_transform{};
 };
 
-struct TedMap
+struct TedMapData
 {
     TedMapType type{TedMapType::unknown};
     std::uint32_t players{};
@@ -168,11 +168,11 @@ struct TedMap
     std::uint32_t preview_width{};
     std::uint32_t preview_height{};
     std::vector<std::string> warnings;
-
-    // The error names the malformed chunk.
-    [[nodiscard]] static Result<TedMap> parse(std::span<const std::byte> bytes);
 };
 
 [[nodiscard]] const char* to_string(TedMapType type) noexcept;
+
+// The error names the malformed chunk.
+[[nodiscard]] Result<TedMapData> read_ted(std::span<const std::byte> bytes);
 
 } // namespace eaw

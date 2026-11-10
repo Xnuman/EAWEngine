@@ -68,7 +68,7 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
             continue;
         }
         ++model_files;
-        const auto decoded = decode_asset<eaw::AloModel>(vfs, asset.virtual_path);
+        const auto decoded = decode_asset<eaw::AloModelData>(vfs, asset.virtual_path);
         if (!decoded)
         {
             ++particle_or_invalid;
@@ -184,7 +184,7 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
         if (extension == ".dds")
         {
             ++dds_files;
-            const auto decoded = decode_asset<eaw::DdsTexture>(vfs, asset.virtual_path);
+            const auto decoded = decode_asset<eaw::DdsTextureData>(vfs, asset.virtual_path);
             if (!decoded)
             {
                 dds_failures.emplace_back(asset.virtual_path, decoded.error().message);
@@ -204,7 +204,7 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
         else if (extension == ".mtd")
         {
             ++mtd_files;
-            const auto decoded = decode_asset<eaw::MtdDirectory>(vfs, asset.virtual_path);
+            const auto decoded = decode_asset<eaw::MtdAtlasData>(vfs, asset.virtual_path);
             if (!decoded)
             {
                 mtd_failures.emplace_back(asset.virtual_path, decoded.error().message);

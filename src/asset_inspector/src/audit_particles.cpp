@@ -97,17 +97,18 @@ void audit_particles(const eaw::VirtualFileSystem& vfs, const std::string_view p
             record_example(failures, "unreadable: " + bytes.error().message, asset.virtual_path);
             continue;
         }
-        const auto kind = eaw::particle_file_kind(*bytes);
-        if (kind == eaw::ParticleFileKind::other)
+        const auto generic = eaw::read_alo<eaw::AloGenericData>(*bytes);
+        const auto type = generic ? generic->type : eaw::AloType::unknown;
+        if (type != eaw::AloType::particle_system && type != eaw::AloType::plugin_particle_system)
         {
             continue;
         }
-        if (kind == eaw::ParticleFileKind::plugin)
+        if (type == eaw::AloType::plugin_particle_system)
         {
             ++plugin_files;
             continue;
         }
-        const auto system = eaw::ParticleSystem::parse(*bytes);
+        const auto system = eaw::read_alo<eaw::AloParticleSystemData>(*bytes);
         if (!system)
         {
             record_example(failures, system.error().message, asset.virtual_path);

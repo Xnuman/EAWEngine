@@ -50,7 +50,7 @@ struct CombatContent
 // `model_scale` is the type's Scale_Factor: hardpoint and fire-bone positions come from the model's
 // bones and scale with it.
 [[nodiscard]] CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings,
-                                           const AloModel* model = nullptr, float model_scale = 1.0F);
+                                           const AloModelData* model = nullptr, float model_scale = 1.0F);
 
 // TED owner slot that holds the world's props and markers (179k of the stock placements, nearly
 // all of them props, markers, and decorations; see docs/compatibility-research.md).

@@ -49,7 +49,7 @@ AloNameVariant alo_name_variant(const std::string_view name) noexcept
     return {kind, index};
 }
 
-std::vector<bool> alo_default_mesh_visibility(const AloModel& model, const bool apply_bind_pose_bones)
+std::vector<bool> alo_default_mesh_visibility(const AloModelData& model, const bool apply_bind_pose_bones)
 {
     const auto variant_of = [&](const AloMesh& mesh)
     {

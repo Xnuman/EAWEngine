@@ -118,13 +118,13 @@ Result<PreviewTexture> create_dds_texture(ID3D11Device* device, std::span<const 
 
 std::string clean_one_line(std::string value, std::size_t maximum = 90);
 
-Result<AloModel> read_model(const AssetReader& vfs, const std::string& path);
+Result<AloModelData> read_model(const AssetReader& vfs, const std::string& path);
 
 Result<std::string> bytes_preview(const ResolvedAsset& asset, std::span<const std::byte> bytes);
 
 void label_value(const char* label, std::string_view value);
 
-PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<AlaPoseBone>* pose, const std::vector<Matrix4>& inverse_bind, bool show_collision,
+PreviewGeometry build_preview_geometry(const AloModelData& model, const std::vector<AlaPoseBone>* pose, const std::vector<Matrix4>& inverse_bind, bool show_collision,
                                        const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture);
 
 // Renders `meshes` into `target` and shows it over the canvas. Returns false (after drawing a
@@ -161,11 +161,11 @@ struct GuiApp::State
     int selected_asset{-1};
     std::string asset_preview;
     std::vector<std::string> mount_warnings;
-    std::optional<AloModel> preview_model;
-    std::optional<TedMap> preview_map;
+    std::optional<AloModelData> preview_model;
+    std::optional<TedMapData> preview_map;
     std::vector<Matrix4> preview_inverse_bind;
     std::vector<ResolvedAsset> preview_animation_assets;
-    std::optional<AlaAnimation> preview_animation;
+    std::optional<AlaAnimationData> preview_animation;
     int preview_animation_index{-1};
     float preview_time{};
     float preview_yaw{-0.65F};

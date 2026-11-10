@@ -39,13 +39,13 @@ void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view
         {
             continue;
         }
-        auto decoded = decode_asset<eaw::TedMap>(vfs, asset.virtual_path);
+        auto decoded = decode_asset<eaw::TedMapData>(vfs, asset.virtual_path);
         if (!decoded)
         {
             failures.emplace_back(asset.virtual_path, decoded.error().message);
             continue;
         }
-        const eaw::TedMap map = std::move(decoded).value();
+        const eaw::TedMapData map = std::move(decoded).value();
         ++maps;
         const auto context = map.type == eaw::TedMapType::land ? eaw::GameModelContext::land : eaw::GameModelContext::space;
         const auto layout = eaw::build_map_object_layout(map, catalog, vfs);
@@ -225,7 +225,7 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
             continue;
         }
         ++files;
-        const auto decoded = decode_asset<eaw::TedMap>(vfs, asset.virtual_path);
+        const auto decoded = decode_asset<eaw::TedMapData>(vfs, asset.virtual_path);
         if (!decoded)
         {
             failures.emplace_back(asset.virtual_path, decoded.error().message);

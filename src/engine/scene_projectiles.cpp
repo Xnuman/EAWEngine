@@ -96,7 +96,7 @@ void load_projectile_models(SceneBuilder& builder, const GameObjectCatalog& cata
             builder.scene.warnings.push_back(projectile->name + ": " + bytes.error().message);
             continue;
         }
-        if (particle_file_kind(*bytes) != ParticleFileKind::other)
+        if (const auto generic = read_alo<AloGenericData>(*bytes); generic && (generic->type == AloType::particle_system || generic->type == AloType::plugin_particle_system))
         {
             visual.effect = particle_effect(builder, *path);
             continue;

@@ -14,8 +14,8 @@
 
 namespace eaw {
 
-[[nodiscard]] Result<std::vector<std::byte>> encode_png(const RgbaImage& image);
+[[nodiscard]] Result<std::vector<std::byte>> write_png(const RgbaImage& image);
 // Errors name the malformed or unsupported part (signature, chunk CRC, header, compression, filter).
-[[nodiscard]] Result<RgbaImage> decode_png(std::span<const std::byte> bytes);
+[[nodiscard]] Result<RgbaImage> read_png(std::span<const std::byte> bytes);
 
 } // namespace eaw

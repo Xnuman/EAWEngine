@@ -175,8 +175,8 @@ bool range_contains(const Chunk* chunk, const std::size_t offset, const std::siz
     return chunk != nullptr && offset >= chunk->payload && offset <= chunk->end && size <= chunk->end - offset;
 }
 
-void decode_track_frames(const std::span<const std::byte> bytes, TrackDecodeInfo& information, const AlaAnimation& animation, const Chunk* translations, const Chunk* rotations, const Chunk* scales,
-                         std::vector<std::string>& warnings)
+void decode_track_frames(const std::span<const std::byte> bytes, TrackDecodeInfo& information, const AlaAnimationData& animation, const Chunk* translations, const Chunk* rotations,
+                         const Chunk* scales, std::vector<std::string>& warnings)
 {
     auto& track = information.track;
     track.frames.reserve(animation.stored_frame_count);
@@ -277,9 +277,9 @@ void decode_track_frames(const std::span<const std::byte> bytes, TrackDecodeInfo
 
 } // namespace
 
-Result<AlaAnimation> AlaAnimation::parse(const std::span<const std::byte> bytes)
+Result<AlaAnimationData> read_ala(const std::span<const std::byte> bytes)
 {
-    AlaAnimation animation;
+    AlaAnimationData animation;
     EAW_TRY_ASSIGN(const auto root_chunks, read_chunks(bytes, 0, bytes.size()));
     if (root_chunks.size() != 1 || root_chunks.front().type != 0x1000)
     {
@@ -354,16 +354,6 @@ Result<AlaAnimation> AlaAnimation::parse(const std::span<const std::byte> bytes)
         animation.tracks.push_back(std::move(track.track));
     }
     return animation;
-}
-
-std::uint32_t AlaAnimation::playable_frame_count() const noexcept
-{
-    return stored_frame_count == 0 ? 0 : stored_frame_count - 1;
-}
-
-float AlaAnimation::duration_seconds() const noexcept
-{
-    return frames_per_second > 0.0F ? static_cast<float>(playable_frame_count()) / frames_per_second : 0.0F;
 }
 
 } // namespace eaw

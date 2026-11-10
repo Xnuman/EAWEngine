@@ -249,7 +249,7 @@ void test_visual_terrain()
 void test_intact_hidden_bones()
 {
     // A hardpoint scorch bone (and so its meshes) collapses in the visibility half while intact.
-    auto model = std::make_shared<eaw::AloModel>();
+    auto model = std::make_shared<eaw::AloModelData>();
     model->bones.push_back({"Root", -1, true, 0, {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0}});
     model->bones.push_back({"HP_Blast", 0, true, 0, {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0}});
     eaw::VisualRig rig;

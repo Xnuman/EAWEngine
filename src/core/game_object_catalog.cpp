@@ -2,6 +2,7 @@
 
 #include "eaw/asset_path.hpp"
 #include "eaw/virtual_file_system.hpp"
+#include "core/checksum.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>
@@ -57,17 +58,14 @@ std::span<const std::string_view> model_fields(const GameModelContext context) n
 
 std::uint32_t game_object_name_crc(const std::string_view name) noexcept
 {
-    std::uint32_t crc = 0xffffffffU;
+    // CRC-32 of the name in upper case, as the game hashes object type names.
+    auto crc = crc32_initial;
     for (const char character : name)
     {
-        crc ^= static_cast<unsigned char>(ascii_upper(character));
-        for (unsigned bit = 0; bit < 8; ++bit)
-        {
-            const auto mask = static_cast<std::uint32_t>(-static_cast<std::int32_t>(crc & 1U));
-            crc = (crc >> 1U) ^ (0xedb88320U & mask);
-        }
+        const auto upper = static_cast<std::byte>(ascii_upper(character));
+        crc = crc32_update(crc, std::span(&upper, 1));
     }
-    return crc ^ 0xffffffffU;
+    return crc32_finish(crc);
 }
 
 GameObjectCatalog GameObjectCatalog::build(const XmlAssetDatabase& database)

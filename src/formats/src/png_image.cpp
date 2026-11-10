@@ -1,5 +1,7 @@
 #include "formats/png_image.hpp"
 
+#include "core/checksum.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -13,32 +15,6 @@ constexpr std::array<std::uint8_t, 8> signature{0x89, 'P', 'N', 'G', '\r', '\n',
 constexpr std::uint32_t maximum_dimension = 16384;
 // Stored deflate blocks hold at most this many bytes.
 constexpr std::size_t maximum_stored_block = 65535;
-
-std::array<std::uint32_t, 256> make_crc_table() noexcept
-{
-    std::array<std::uint32_t, 256> table{};
-    for (std::uint32_t index = 0; index < 256; ++index)
-    {
-        auto value = index;
-        for (int bit = 0; bit < 8; ++bit)
-        {
-            value = (value & 1U) != 0 ? 0xEDB88320U ^ (value >> 1U) : value >> 1U;
-        }
-        table[index] = value;
-    }
-    return table;
-}
-
-std::uint32_t crc32(const std::span<const std::byte> bytes) noexcept
-{
-    static const auto table = make_crc_table();
-    std::uint32_t crc = 0xFFFFFFFFU;
-    for (const auto byte : bytes)
-    {
-        crc = table[(crc ^ std::to_integer<std::uint32_t>(byte)) & 0xFFU] ^ (crc >> 8U);
-    }
-    return crc ^ 0xFFFFFFFFU;
-}
 
 std::uint32_t adler32(const std::span<const std::byte> bytes) noexcept
 {
@@ -84,7 +60,7 @@ void append_chunk(std::vector<std::byte>& out, const char (&type)[5], const std:
 
 } // namespace
 
-Result<std::vector<std::byte>> encode_png(const RgbaImage& image)
+Result<std::vector<std::byte>> write_png(const RgbaImage& image)
 {
     if (!image.valid() || image.width > maximum_dimension || image.height > maximum_dimension)
     {
@@ -135,7 +111,7 @@ Result<std::vector<std::byte>> encode_png(const RgbaImage& image)
     return png;
 }
 
-Result<RgbaImage> decode_png(const std::span<const std::byte> bytes)
+Result<RgbaImage> read_png(const std::span<const std::byte> bytes)
 {
     if (bytes.size() < signature.size() || !std::equal(signature.begin(), signature.end(), bytes.begin(),
                                                        [](const std::uint8_t expected, const std::byte actual)

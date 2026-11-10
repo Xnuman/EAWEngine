@@ -121,9 +121,9 @@ public:
     explicit Parser(const std::string_view source) : source_(source)
     {}
 
-    Result<XmlDocument> parse()
+    Result<XmlData> parse()
     {
-        XmlDocument document;
+        XmlData document;
         while (true)
         {
             skip_space();
@@ -484,27 +484,7 @@ private:
 
 } // namespace
 
-const XmlAttribute* XmlNode::attribute(const std::string_view requested) const noexcept
-{
-    const auto found = std::ranges::find_if(attributes,
-                                            [&](const auto& candidate)
-                                            {
-                                                return ascii_equal_ignoring_case(candidate.name, requested);
-                                            });
-    return found == attributes.end() ? nullptr : &*found;
-}
-
-const XmlNode* XmlNode::child(const std::string_view requested) const noexcept
-{
-    const auto found = std::ranges::find_if(children,
-                                            [&](const auto& candidate)
-                                            {
-                                                return ascii_equal_ignoring_case(candidate.name, requested);
-                                            });
-    return found == children.end() ? nullptr : &*found;
-}
-
-Result<XmlDocument> XmlDocument::parse(const std::string_view text)
+Result<XmlData> read_xml(const std::string_view text)
 {
     auto source = text;
     if (source.starts_with("\xef\xbb\xbf"))
@@ -514,10 +494,10 @@ Result<XmlDocument> XmlDocument::parse(const std::string_view text)
     return Parser(source).parse();
 }
 
-Result<XmlDocument> XmlDocument::parse(const std::span<const std::byte> bytes)
+Result<XmlData> read_xml(const std::span<const std::byte> bytes)
 {
     EAW_TRY_ASSIGN(const auto text, text_from_bytes(bytes));
-    return parse(std::string_view(text));
+    return read_xml(std::string_view(text));
 }
 
 } // namespace eaw

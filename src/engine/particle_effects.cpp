@@ -60,7 +60,7 @@ private:
 };
 
 // A spawn shape sample in emitter space (docs: shape group types 0..4).
-Vector3 sample_group(const ParticleGroup& group, Random& random)
+Vector3 sample_group(const AloParticleGroup& group, Random& random)
 {
     switch (group.type)
     {
@@ -93,7 +93,7 @@ Vector3 sample_group(const ParticleGroup& group, Random& random)
 
 } // namespace
 
-float sample_particle_track(const ParticleTrack& track, const float t) noexcept
+float sample_particle_track(const AloParticleTrack& track, const float t) noexcept
 {
     const auto& keys = track.keys;
     if (keys.empty())
@@ -112,13 +112,13 @@ float sample_particle_track(const ParticleTrack& track, const float t) noexcept
             continue;
         }
         const auto& previous = keys[index - 1];
-        if (track.interpolation == ParticleInterpolation::step)
+        if (track.interpolation == AloParticleInterpolation::step)
         {
             return t < next.time ? previous.value : next.value;
         }
         const auto span = next.time - previous.time;
         auto f = span > 1e-6F ? (t - previous.time) / span : 1.0F;
-        if (track.interpolation == ParticleInterpolation::smooth)
+        if (track.interpolation == AloParticleInterpolation::smooth)
         {
             f = f * f * (3.0F - 2.0F * f);
         }
@@ -534,7 +534,7 @@ void ParticleWorld::step_instance(Instance& instance, const float update_seconds
         // Motion.
         Vector3 acceleration{0.0F, 0.0F, -emitter.gravity};
         acceleration = acceleration + (emitter.acceleration_in_emitter_frame ? transform_direction(emitter.acceleration, instance.transform) : emitter.acceleration);
-        const auto& rotation_track = emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::rotation_speed)];
+        const auto& rotation_track = emitter.tracks[static_cast<std::size_t>(AloParticleTrackIndex::rotation_speed)];
         for (std::size_t p = 0; p < state.particles.size();)
         {
             auto& particle = state.particles[p];
@@ -677,7 +677,7 @@ void ParticleWorld::build_sprites(const Vector3& eye, std::vector<VisualParticle
                 VisualParticle sprite;
                 sprite.position = particle.position;
                 // The scale track is the full width, as both references draw it (docs/compatibility-research.md).
-                sprite.half_size = 0.5F * sample_particle_track(emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::scale)], t) * particle.size_factor * size_scale;
+                sprite.half_size = 0.5F * sample_particle_track(emitter.tracks[static_cast<std::size_t>(AloParticleTrackIndex::scale)], t) * particle.size_factor * size_scale;
                 for (std::size_t channel = 0; channel < 4; ++channel)
                 {
                     sprite.color[channel] = std::clamp(sample_particle_track(emitter.tracks[channel], t) + particle.color_add[channel], 0.0F, 1.0F);
@@ -691,7 +691,7 @@ void ParticleWorld::build_sprites(const Vector3& eye, std::vector<VisualParticle
                         sprite.color[channel] *= alpha_scale;
                     }
                 }
-                const auto index = static_cast<std::uint32_t>(std::max(0.0F, std::floor(sample_particle_track(emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::texture_index)], t))));
+                const auto index = static_cast<std::uint32_t>(std::max(0.0F, std::floor(sample_particle_track(emitter.tracks[static_cast<std::size_t>(AloParticleTrackIndex::texture_index)], t))));
                 sprite.uv_rect = {static_cast<float>(index % grid) * cell, static_cast<float>((index / grid) % grid) * cell, cell, cell};
                 sprite.rotation = particle.rotation * two_pi;
                 sprite.texture = texture;

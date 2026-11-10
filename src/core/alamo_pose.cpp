@@ -2,6 +2,8 @@
 
 #include "core/string_utils.hpp"
 #include "math/transform.hpp"
+#include "formats/alo_model_helpers.hpp"
+#include "formats/ala_animation_helpers.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,9 +12,9 @@
 
 namespace eaw {
 
-std::vector<AlaPoseBone> ala_sample_pose(const AlaAnimation& animation, const AloModel& model, float seconds)
+std::vector<AlaPoseBone> ala_sample_pose(const AlaAnimationData& animation, const AloModelData& model, float seconds)
 {
-    auto local_pose = model.local_bind_pose();
+    auto local_pose = alo_local_bind_pose(model);
     std::vector<bool> visibility;
     visibility.reserve(model.bones.size());
     for (const auto& bone : model.bones)
@@ -20,7 +22,7 @@ std::vector<AlaPoseBone> ala_sample_pose(const AlaAnimation& animation, const Al
         visibility.push_back(bone.visible);
     }
 
-    const auto playable = animation.playable_frame_count();
+    const auto playable = ala_playable_frame_count(animation);
     if (playable != 0 && animation.frames_per_second > 0.0F)
     {
         auto position = std::fmod(seconds * animation.frames_per_second, static_cast<float>(playable));
@@ -62,7 +64,7 @@ std::vector<AlaPoseBone> ala_sample_pose(const AlaAnimation& animation, const Al
     return result;
 }
 
-AlaAnimation ala_retarget_by_bone_name(const AlaAnimation& animation, const AloModel& model)
+AlaAnimationData ala_retarget_by_bone_name(const AlaAnimationData& animation, const AloModelData& model)
 {
     std::unordered_map<std::string, std::uint32_t> bones;
     for (std::size_t index = 0; index < model.bones.size(); ++index)
@@ -82,9 +84,9 @@ AlaAnimation ala_retarget_by_bone_name(const AlaAnimation& animation, const AloM
     return result;
 }
 
-std::vector<AlaLocalBone> ala_bind_local_pose(const AloModel& model)
+std::vector<AlaLocalBone> ala_bind_local_pose(const AloModelData& model)
 {
-    const auto local = model.local_bind_pose();
+    const auto local = alo_local_bind_pose(model);
     std::vector<AlaLocalBone> pose;
     pose.reserve(local.size());
     for (std::size_t index = 0; index < local.size(); ++index)
@@ -95,10 +97,10 @@ std::vector<AlaLocalBone> ala_bind_local_pose(const AloModel& model)
     return pose;
 }
 
-std::vector<AlaLocalBone> ala_sample_local_pose(const AlaAnimation& animation, const AloModel& model, const float seconds)
+std::vector<AlaLocalBone> ala_sample_local_pose(const AlaAnimationData& animation, const AloModelData& model, const float seconds)
 {
     auto pose = ala_bind_local_pose(model);
-    const auto playable = animation.playable_frame_count();
+    const auto playable = ala_playable_frame_count(animation);
     if (playable == 0 || animation.frames_per_second <= 0.0F)
     {
         return pose;
@@ -153,9 +155,9 @@ void ala_blend_pose(std::vector<AlaLocalBone>& pose, const std::span<const AlaLo
     }
 }
 
-std::vector<AlaPoseBone> ala_compose_pose(const AloModel& model, const std::span<const AlaLocalBone> pose)
+std::vector<AlaPoseBone> ala_compose_pose(const AloModelData& model, const std::span<const AlaLocalBone> pose)
 {
-    const auto bind = model.local_bind_pose();
+    const auto bind = alo_local_bind_pose(model);
     std::vector<AlaPoseBone> result;
     result.reserve(model.bones.size());
     for (std::size_t index = 0; index < model.bones.size(); ++index)

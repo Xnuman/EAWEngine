@@ -10,6 +10,11 @@ add_library(eaw_core STATIC)
 set(HEADERS_DIR "include/core")
 set(SOURCES_DIR "src")
 
+set(EAW_CORE_CHECKSUM
+    ${HEADERS_DIR}/checksum.hpp
+    ${SOURCES_DIR}/checksum.cpp
+)
+
 set(EAW_CORE_ERROR_HANDLING
     ${HEADERS_DIR}/fatal_error.hpp
     ${HEADERS_DIR}/status.hpp
@@ -71,6 +76,7 @@ set(EAW_CORE_TRANSITIONAL_SOURCES
     xml_schema_validate.cpp
 )
 
+source_group("checksum" FILES ${EAW_CORE_CHECKSUM})
 source_group("error_handling" FILES ${EAW_CORE_ERROR_HANDLING})
 source_group("file_io" FILES ${EAW_CORE_FILE_IO})
 source_group("log" FILES ${EAW_CORE_LOG})
@@ -82,12 +88,14 @@ target_sources(eaw_core
       TYPE HEADERS
       BASE_DIRS "include/"
       FILES
+        ${HEADERS_DIR}/checksum.hpp
         ${HEADERS_DIR}/fatal_error.hpp
         ${HEADERS_DIR}/file_io.hpp
         ${HEADERS_DIR}/log.hpp
         ${HEADERS_DIR}/status.hpp
         ${HEADERS_DIR}/string_utils.hpp
   PRIVATE
+    ${SOURCES_DIR}/checksum.cpp
     ${SOURCES_DIR}/fatal_error.cpp
     ${SOURCES_DIR}/file_io.cpp
     ${SOURCES_DIR}/log.cpp

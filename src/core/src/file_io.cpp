@@ -1,5 +1,7 @@
 #include "core/file_io.hpp"
 
+#include <cerrno>
+#include <cstdio>
 #include <fstream>
 #include <system_error>
 
@@ -24,6 +26,24 @@ Result<std::size_t> checked_size(const std::filesystem::path& path, const std::u
         return make_error(path.string() + " is larger than " + std::to_string(maximum_bytes) + " bytes");
     }
     return static_cast<std::size_t>(size);
+}
+
+// Staging names tried after `<path>.tmp` (`.tmp1`, `.tmp2`, ...) before giving up.
+constexpr int maximum_staging_names = 64;
+
+// Creates a new file that did not exist before (never truncating another), or null when the name is
+// taken; `taken` tells that case from other failures.
+std::FILE* create_new_file(const std::filesystem::path& path, bool& taken)
+{
+    std::FILE* file = nullptr;
+#ifdef _WIN32
+    const auto error = _wfopen_s(&file, path.c_str(), L"wbx");
+#else
+    file = std::fopen(path.c_str(), "wbx");
+    const auto error = file == nullptr ? errno : 0;
+#endif
+    taken = file == nullptr && error == EEXIST;
+    return error == 0 ? file : nullptr;
 }
 
 template <class Buffer> Result<Buffer> read_whole(const std::filesystem::path& path, const std::uint64_t maximum_bytes)
@@ -71,23 +91,31 @@ Status write_file(const std::filesystem::path& path, const std::span<const std::
         }
     }
 
-    auto temporary = path;
-    temporary += ".tmp";
+    // A sibling staging file this call creates itself, so an existing file of that name, or another
+    // writer's staging file, is never overwritten.
+    std::filesystem::path temporary;
+    std::FILE* file = nullptr;
+    for (int attempt = 0; attempt < maximum_staging_names && file == nullptr; ++attempt)
     {
-        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-        if (!stream)
+        temporary = path;
+        temporary += attempt == 0 ? std::string(".tmp") : ".tmp" + std::to_string(attempt);
+        bool taken = false;
+        file = create_new_file(temporary, taken);
+        if (file == nullptr && !taken)
         {
             return make_error("could not create " + temporary.string());
         }
-        stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        stream.flush();
-        if (!stream)
-        {
-            std::error_code ignored;
-            stream.close();
-            std::filesystem::remove(temporary, ignored);
-            return make_error("could not write " + temporary.string());
-        }
+    }
+    if (file == nullptr)
+    {
+        return make_error("could not create a staging file next to " + path.string() + " (every .tmp name is taken)");
+    }
+    const bool written = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
+    if (std::fclose(file) != 0 || !written)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        return make_error("could not write " + temporary.string());
     }
 #ifdef _WIN32
     const DWORD flags = MOVEFILE_WRITE_THROUGH | (mode == WriteMode::replace ? MOVEFILE_REPLACE_EXISTING : 0U);

@@ -21,7 +21,7 @@ struct SandboxContent
 {
     std::optional<VisualMapAsset> map;
     std::optional<VisualModelAsset> model;
-    std::optional<AlaAnimation> animation;
+    std::optional<AlaAnimationData> animation;
     std::string animation_path;
     // Every animation beside the model, for runtime selection.
     std::vector<std::string> animations;
@@ -47,7 +47,7 @@ struct HotReloadCheck
     double seconds{};
 };
 
-[[nodiscard]] Result<AlaAnimation> read_animation(const AssetReader& reader, std::string_view path);
+[[nodiscard]] Result<AlaAnimationData> read_animation(const AssetReader& reader, std::string_view path);
 
 // Builds the map (with the requested spawnable types) or the model and its animation. Reading the
 // VFS from a worker is safe because its const reads open their own streams, and the main thread

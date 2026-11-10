@@ -22,7 +22,7 @@ std::uint32_t read_u32(const std::span<const std::byte> bytes, std::size_t& curs
 
 } // namespace
 
-Result<MtdDirectory> MtdDirectory::parse(const std::span<const std::byte> bytes)
+Result<MtdAtlasData> read_mtd(const std::span<const std::byte> bytes)
 {
     if (bytes.size() < 4)
     {
@@ -36,7 +36,7 @@ Result<MtdDirectory> MtdDirectory::parse(const std::span<const std::byte> bytes)
         return make_error("invalid MTD entry table size");
     }
 
-    MtdDirectory result;
+    MtdAtlasData result;
     result.entries.reserve(count);
     for (std::uint32_t index = 0; index < count; ++index)
     {
@@ -63,7 +63,7 @@ Result<MtdDirectory> MtdDirectory::parse(const std::span<const std::byte> bytes)
         }
         cursor = name_begin + 64U;
 
-        MtdEntry entry;
+        MtdAtlasEntry entry;
         entry.name = std::move(name);
         entry.name_crc = dat_key_crc(entry.name);
         entry.x = read_u32(bytes, cursor);

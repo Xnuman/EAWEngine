@@ -30,6 +30,6 @@ struct TranslationIssue
 // Issues of `translation` against `reference`, in reference order then translation order: a missing
 // key or different formatting tokens are errors; different edge whitespace and keys the reference
 // lacks are warnings.
-[[nodiscard]] Result<std::vector<TranslationIssue>> compare_translation(const DatFile& translation, const DatFile& reference);
+[[nodiscard]] Result<std::vector<TranslationIssue>> compare_translation(const DatStringTableData& translation, const DatStringTableData& reference);
 
 } // namespace eaw

@@ -1,7 +1,7 @@
 #pragma once
 
 // The interpretation layer for particle systems (docs/architecture.md, "Content contract versus
-// legacy implementation"): a decoded ParticleSystem (the file's facts) becomes an engine-native
+// legacy implementation"): a decoded AloParticleSystemData (the file's facts) becomes an engine-native
 // description that the particle runtime and renderer consume without knowing the file format.
 //
 // Content contract (what the fields mean, as content was authored against it) is applied the same
@@ -96,8 +96,8 @@ struct ParticleEmitterDesc
     float mesh_offset{};
 
     // Spawn shapes in the emitter's frame (position and initial velocity).
-    ParticleGroup position_shape;
-    ParticleGroup velocity_shape;
+    AloParticleGroup position_shape;
+    AloParticleGroup velocity_shape;
 
     // Lifetime in seconds: between lifetime x min_fraction and lifetime. Size likewise scales by
     // min_size_fraction..1.
@@ -121,7 +121,7 @@ struct ParticleEmitterDesc
 
     // Appearance over the particle's normalized age: red, green, blue, alpha, scale (the radius in
     // world units), texture cell, rotation speed (revolutions per second).
-    std::array<ParticleTrack, 7> tracks{};
+    std::array<AloParticleTrack, 7> tracks{};
     // Added colour: random up to these per channel (grayscale: one random value for all).
     std::array<float, 4> color_variance{};
     bool color_variance_grayscale{};
@@ -160,8 +160,8 @@ struct ParticleEffect
 };
 
 // Translates a decoded system under a profile. Texture indices are left for the caller.
-[[nodiscard]] ParticleEmitterDesc normalize_particle_emitter(const ParticleEmitter& emitter, ParticleFidelity fidelity);
-[[nodiscard]] ParticleEffect normalize_particle_system(const ParticleSystem& system, ParticleFidelity fidelity);
+[[nodiscard]] ParticleEmitterDesc normalize_particle_emitter(const AloParticleEmitter& emitter, ParticleFidelity fidelity);
+[[nodiscard]] ParticleEffect normalize_particle_system(const AloParticleSystemData& system, ParticleFidelity fidelity);
 
 [[nodiscard]] const char* to_string(ParticleFidelity fidelity) noexcept;
 

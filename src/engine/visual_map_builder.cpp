@@ -182,12 +182,12 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         return make_error("map was not found: " + std::string(map_path));
     }
     VisualMapAsset asset;
-    const auto map_entry = cached<Result<TedMap>>(cache, "ted", resolved->virtual_path, vfs,
-                                                  [&](const AssetReader& reader) -> Result<TedMap>
-                                                  {
-                                                      EAW_TRY_ASSIGN(const auto bytes, reader.read(resolved->virtual_path));
-                                                      return TedMap::parse(bytes);
-                                                  });
+    const auto map_entry = cached<Result<TedMapData>>(cache, "ted", resolved->virtual_path, vfs,
+                                                      [&](const AssetReader& reader) -> Result<TedMapData>
+                                                      {
+                                                          EAW_TRY_ASSIGN(const auto bytes, reader.read(resolved->virtual_path));
+                                                          return read_ted(bytes);
+                                                      });
     if (!map_entry->ok())
     {
         return with_context(resolved->virtual_path, map_entry->error());
@@ -209,7 +209,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     asset.damage_table = combat_entry->damage_table;
     // One profile per type, so a type's warnings are reported once however often it is placed.
     std::unordered_map<const XmlDefinition*, CombatProfile> combat_profiles;
-    const auto profile_of = [&](const XmlDefinition& definition, const AloModel* model) -> const CombatProfile&
+    const auto profile_of = [&](const XmlDefinition& definition, const AloModelData* model) -> const CombatProfile&
     {
         auto found = combat_profiles.find(&definition);
         if (found == combat_profiles.end())
@@ -511,7 +511,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
     builder.particle_fidelity = options.particle_fidelity;
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
     std::unordered_map<const XmlDefinition*, CombatProfile> profiles;
-    const auto profile_of = [&](const XmlDefinition& definition, const AloModel* model) -> const CombatProfile&
+    const auto profile_of = [&](const XmlDefinition& definition, const AloModelData* model) -> const CombatProfile&
     {
         auto found = profiles.find(&definition);
         if (found == profiles.end())

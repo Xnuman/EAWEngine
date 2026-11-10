@@ -1,6 +1,10 @@
 // `inspect`: one asset decoded and summarized by format.
 
 #include "asset_inspector/inspector.hpp"
+#include "formats/alo_model_helpers.hpp"
+#include "formats/ala_animation_helpers.hpp"
+#include "formats/xml_helpers.hpp"
+#include "formats/dat_string_table_helpers.hpp"
 
 #include <iomanip>
 
@@ -9,14 +13,14 @@ namespace {
 
 eaw::Status inspect_dat(const std::span<const std::byte> bytes, const std::size_t limit)
 {
-    EAW_TRY_ASSIGN(const auto dat, eaw::DatFile::parse(bytes));
-    const auto issues = dat.validate();
+    EAW_TRY_ASSIGN(const auto dat, eaw::read_dat(bytes));
+    const auto issues = dat_validate(dat);
     std::cout << "Format: Petroglyph string DAT\n"
-              << "Entries: " << dat.entries().size() << '\n'
-              << "CRC sorted: " << (dat.crc_sorted() ? "yes" : "no") << '\n'
+              << "Entries: " << dat.entries.size() << '\n'
+              << "CRC sorted: " << (dat.crc_sorted ? "yes" : "no") << '\n'
               << "Validation issues: " << issues.size() << '\n';
     std::size_t shown = 0;
-    for (const auto& entry : dat.entries())
+    for (const auto& entry : dat.entries)
     {
         if (shown++ >= limit)
         {
@@ -42,7 +46,7 @@ eaw::Status inspect_dat(const std::span<const std::byte> bytes, const std::size_
 
 eaw::Status inspect_dds(const std::span<const std::byte> bytes)
 {
-    EAW_TRY_ASSIGN(const auto texture, eaw::DdsTexture::parse(bytes));
+    EAW_TRY_ASSIGN(const auto texture, eaw::read_dds(bytes));
     std::cout << "Format: DirectDraw Surface\n"
               << "Pixel format: " << eaw::to_string(texture.format) << '\n'
               << "Dimensions: " << texture.width << 'x' << texture.height;
@@ -61,7 +65,7 @@ eaw::Status inspect_dds(const std::span<const std::byte> bytes)
 
 eaw::Status inspect_mtd(const std::span<const std::byte> bytes, const std::size_t limit)
 {
-    EAW_TRY_ASSIGN(const auto directory, eaw::MtdDirectory::parse(bytes));
+    EAW_TRY_ASSIGN(const auto directory, eaw::read_mtd(bytes));
     std::cout << "Format: Petroglyph mega-texture directory\n"
               << "Entries: " << directory.entries.size() << '\n'
               << "Atlas extent: " << directory.atlas_width << 'x' << directory.atlas_height << '\n'
@@ -101,7 +105,7 @@ void inspect_chunks(const std::span<const std::byte> bytes, const std::size_t li
 
 eaw::Status inspect_particles(const std::span<const std::byte> bytes, const std::size_t limit)
 {
-    EAW_TRY_ASSIGN(const auto system, eaw::ParticleSystem::parse(bytes));
+    EAW_TRY_ASSIGN(const auto system, eaw::read_alo<eaw::AloParticleSystemData>(bytes));
     static constexpr std::array<const char*, 7> track_names{"red", "green", "blue", "alpha", "scale", "texture", "rotation"};
     std::cout << "Format: Alamo particle system\n"
               << "Name: " << system.name << '\n'
@@ -144,13 +148,13 @@ eaw::Status inspect_particles(const std::span<const std::byte> bytes, const std:
 
 eaw::Status inspect_alo(const std::span<const std::byte> bytes, const std::size_t limit)
 {
-    EAW_TRY_ASSIGN(const auto model, eaw::AloModel::parse(bytes));
+    EAW_TRY_ASSIGN(const auto model, eaw::read_alo<eaw::AloModelData>(bytes));
     std::cout << "Format: Alamo semantic model\n"
               << "Bones: " << model.bones.size() << '\n'
               << "Meshes: " << model.meshes.size() << '\n'
-              << "Submeshes: " << model.submesh_count() << '\n'
-              << "Vertices: " << model.vertex_count() << '\n'
-              << "Triangles: " << model.triangle_count() << '\n'
+              << "Submeshes: " << alo_submesh_count(model) << '\n'
+              << "Vertices: " << alo_vertex_count(model) << '\n'
+              << "Triangles: " << alo_triangle_count(model) << '\n'
               << "Lights: " << model.lights.size() << '\n'
               << "Proxies: " << model.proxies.size() << '\n'
               << "Dazzles: " << model.dazzles.size() << '\n';
@@ -161,7 +165,7 @@ eaw::Status inspect_alo(const std::span<const std::byte> bytes, const std::size_
 
     // Model-space bind pose: position and X axis (row-vector matrices: row 0 is the bone's X axis).
     std::cout << "Skeleton:\n";
-    const auto pose = model.bind_pose();
+    const auto pose = alo_bind_pose(model);
     for (std::size_t index = 0; index < std::min(limit, model.bones.size()); ++index)
     {
         const auto& bone = model.bones[index];
@@ -201,13 +205,13 @@ eaw::Status inspect_alo(const std::span<const std::byte> bytes, const std::size_
 
 eaw::Status inspect_ala(const std::span<const std::byte> bytes, const std::size_t limit)
 {
-    EAW_TRY_ASSIGN(const auto animation, eaw::AlaAnimation::parse(bytes));
+    EAW_TRY_ASSIGN(const auto animation, eaw::read_ala(bytes));
     std::cout << "Format: Alamo semantic animation\n"
               << "Version: " << animation.version << '\n'
               << "Stored frames: " << animation.stored_frame_count << '\n'
-              << "Playable frames: " << animation.playable_frame_count() << '\n'
+              << "Playable frames: " << ala_playable_frame_count(animation) << '\n'
               << "Frames per second: " << animation.frames_per_second << '\n'
-              << "Duration: " << animation.duration_seconds() << " seconds\n"
+              << "Duration: " << ala_duration_seconds(animation) << " seconds\n"
               << "Bone tracks: " << animation.tracks.size() << '\n'
               << "Rotation data: " << animation.rotation_data_bytes << " bytes\n"
               << "Translation data: " << animation.translation_data_bytes << " bytes\n"
@@ -248,7 +252,7 @@ eaw::Status inspect_ala(const std::span<const std::byte> bytes, const std::size_
 
 eaw::Status inspect_ted(const std::span<const std::byte> bytes, const std::size_t limit)
 {
-    EAW_TRY_ASSIGN(const auto map, eaw::TedMap::parse(bytes));
+    EAW_TRY_ASSIGN(const auto map, eaw::read_ted(bytes));
     std::cout << "Format: Alamo semantic map\n"
               << "Type: " << eaw::to_string(map.type) << '\n'
               << "Name: " << map.name << '\n'
@@ -337,7 +341,7 @@ eaw::Status inspect_ted(const std::span<const std::byte> bytes, const std::size_
 
 void collect_named_xml_nodes(const eaw::XmlNode& node, std::vector<const eaw::XmlNode*>& output)
 {
-    if (node.attribute("Name") != nullptr)
+    if (xml_attribute(node, "Name") != nullptr)
     {
         output.push_back(&node);
     }
@@ -413,7 +417,8 @@ eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& 
     {
         EAW_TRY(inspect_dds(bytes));
     }
-    else if (extension == ".alo" && eaw::particle_file_kind(bytes) != eaw::ParticleFileKind::other)
+    else if (const auto generic = eaw::read_alo<eaw::AloGenericData>(bytes);
+             extension == ".alo" && generic && (generic->type == eaw::AloType::particle_system || generic->type == eaw::AloType::plugin_particle_system))
     {
         if (const auto status = inspect_particles(bytes, limit); !status)
         {
@@ -453,7 +458,7 @@ eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& 
     {
         const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         const auto references = localization_references(text);
-        EAW_TRY_ASSIGN(const auto document, eaw::XmlDocument::parse(std::span<const std::byte>(bytes)));
+        EAW_TRY_ASSIGN(const auto document, eaw::read_xml(std::span<const std::byte>(bytes)));
         std::vector<const eaw::XmlNode*> definitions;
         for (const auto& root : document.roots)
         {
@@ -465,7 +470,7 @@ eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& 
                   << "Localization references: " << references.size() << '\n';
         for (std::size_t index = 0; index < std::min(limit, definitions.size()); ++index)
         {
-            const auto* name = definitions[index]->attribute("Name");
+            const auto* name = xml_attribute(*definitions[index], "Name");
             std::cout << "  " << definitions[index]->name << " Name=\"" << name->value << "\" (line " << definitions[index]->line << ")\n";
         }
     }
@@ -473,7 +478,7 @@ eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& 
     {
         const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         const auto references = localization_references(text);
-        EAW_TRY_ASSIGN(const auto script, eaw::LuaScriptInfo::inspect(bytes));
+        EAW_TRY_ASSIGN(const auto script, eaw::read_lua(bytes));
         std::cout << "Format: " << eaw::to_string(script.kind) << '\n';
         if (script.kind == eaw::LuaScriptKind::source)
         {

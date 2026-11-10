@@ -15,24 +15,24 @@ namespace {
 
 using namespace eaw_test;
 
-eaw::ParticleEmitter make_test_emitter()
+eaw::AloParticleEmitter make_test_emitter()
 {
-    eaw::ParticleEmitter emitter;
+    eaw::AloParticleEmitter emitter;
     for (auto& track : emitter.tracks)
     {
         track.keys = {{0.0F, 1.0F}, {1.0F, 1.0F}};
     }
-    emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::scale)].keys = {{0.0F, 4.0F}, {1.0F, 8.0F}};
-    emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::texture_index)].keys = {{0.0F, 0.0F}, {1.0F, 0.0F}};
-    emitter.tracks[static_cast<std::size_t>(eaw::ParticleTrackIndex::rotation_speed)].keys = {{0.0F, 0.0F}, {1.0F, 0.0F}};
+    emitter.tracks[static_cast<std::size_t>(eaw::AloParticleTrackIndex::scale)].keys = {{0.0F, 4.0F}, {1.0F, 8.0F}};
+    emitter.tracks[static_cast<std::size_t>(eaw::AloParticleTrackIndex::texture_index)].keys = {{0.0F, 0.0F}, {1.0F, 0.0F}};
+    emitter.tracks[static_cast<std::size_t>(eaw::AloParticleTrackIndex::rotation_speed)].keys = {{0.0F, 0.0F}, {1.0F, 0.0F}};
     emitter.lifetime = 1.0F;
     return emitter;
 }
 
-std::shared_ptr<const eaw::ParticleEffect> make_test_effect(std::vector<eaw::ParticleEmitter> emitters, const bool leave_particles = true,
+std::shared_ptr<const eaw::ParticleEffect> make_test_effect(std::vector<eaw::AloParticleEmitter> emitters, const bool leave_particles = true,
                                                             const eaw::ParticleFidelity fidelity = eaw::ParticleFidelity::legacy)
 {
-    eaw::ParticleSystem system;
+    eaw::AloParticleSystemData system;
     system.name = "test";
     system.emitters = std::move(emitters);
     system.leave_particles = leave_particles;
@@ -43,13 +43,13 @@ std::shared_ptr<const eaw::ParticleEffect> make_test_effect(std::vector<eaw::Par
 
 void test_particle_tracks()
 {
-    eaw::ParticleTrack track;
+    eaw::AloParticleTrack track;
     track.keys = {{0.0F, 0.0F}, {0.5F, 10.0F}, {1.0F, 0.0F}};
     require(eaw::sample_particle_track(track, 0.25F) == 5.0F && eaw::sample_particle_track(track, 0.75F) == 5.0F && eaw::sample_particle_track(track, 2.0F) == 0.0F,
             "linear particle track sampling failed");
-    track.interpolation = eaw::ParticleInterpolation::step;
+    track.interpolation = eaw::AloParticleInterpolation::step;
     require(eaw::sample_particle_track(track, 0.4F) == 0.0F && eaw::sample_particle_track(track, 0.5F) == 10.0F, "step particle track sampling failed");
-    track.interpolation = eaw::ParticleInterpolation::smooth;
+    track.interpolation = eaw::AloParticleInterpolation::smooth;
     require(eaw::sample_particle_track(track, 0.125F) > 0.0F && eaw::sample_particle_track(track, 0.125F) < 2.5F, "smooth particle track sampling failed");
 }
 
@@ -65,7 +65,7 @@ void test_attached_effect_scale()
     burst.groups[0].type = 0;
     burst.groups[0].value = {0.0F, 0.0F, 10.0F};
     eaw::VisualRig rig;
-    rig.model = std::make_shared<eaw::AloModel>(expect_ok(eaw::AloModel::parse(make_test_alo()), "test model"));
+    rig.model = std::make_shared<eaw::AloModelData>(expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "test model"));
     rig.palette_size = 1;
     rig.effects.push_back({make_test_effect({burst}), 0U, "pe_test", -1, nullptr, false});
     const std::vector<eaw::VisualRig> rigs{rig};

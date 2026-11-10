@@ -69,13 +69,25 @@ int report_error(const eaw::Error& error);
 template <class Asset> eaw::Result<Asset> decode_asset(const eaw::AssetReader& vfs, const std::string_view path)
 {
     EAW_TRY_ASSIGN(const auto bytes, vfs.read(path));
-    if constexpr (std::is_same_v<Asset, eaw::LuaScriptInfo>)
+    if constexpr (std::is_same_v<Asset, eaw::LuaChunkData>)
     {
-        return eaw::LuaScriptInfo::inspect(bytes);
+        return eaw::read_lua(bytes);
+    }
+    else if constexpr (std::is_same_v<Asset, eaw::DdsTextureData>)
+    {
+        return eaw::read_dds(bytes);
+    }
+    else if constexpr (std::is_same_v<Asset, eaw::MtdAtlasData>)
+    {
+        return eaw::read_mtd(bytes);
+    }
+    else if constexpr (std::is_same_v<Asset, eaw::TedMapData>)
+    {
+        return eaw::read_ted(bytes);
     }
     else
     {
-        return Asset::parse(bytes);
+        return eaw::read_alo<Asset>(bytes);
     }
 }
 

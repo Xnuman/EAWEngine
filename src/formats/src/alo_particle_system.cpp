@@ -24,8 +24,6 @@ Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes
     return chunk::read_minis(bytes, parent, "particle ALO", where);
 }
 
-constexpr std::uint32_t classic_root = 0x0900;
-constexpr std::uint32_t plugin_root = 0x1500;
 constexpr std::size_t group_size = 64;
 // The legacy particle shader table has 14 entries (docs/compatibility-research.md).
 constexpr std::uint32_t known_blend_modes = 14;
@@ -142,7 +140,7 @@ Vector3 read_vector3(const std::span<const std::byte> bytes, const std::size_t o
     return {read_float(bytes, offset), read_float(bytes, offset + 4), read_float(bytes, offset + 8)};
 }
 
-void apply_property(ParticleEmitter& emitter, const std::uint8_t id, const std::span<const std::byte> bytes, const std::size_t offset)
+void apply_property(AloParticleEmitter& emitter, const std::uint8_t id, const std::span<const std::byte> bytes, const std::size_t offset)
 {
     const auto flag = [&]
     {
@@ -289,7 +287,7 @@ void apply_property(ParticleEmitter& emitter, const std::uint8_t id, const std::
     }
 }
 
-Status read_properties(const std::span<const std::byte> bytes, const Chunk& chunk, ParticleEmitter& emitter, const std::string& where, std::vector<std::string>& warnings)
+Status read_properties(const std::span<const std::byte> bytes, const Chunk& chunk, AloParticleEmitter& emitter, const std::string& where, std::vector<std::string>& warnings)
 {
     EAW_TRY_ASSIGN(const auto minis, read_minis(bytes, chunk, where + " properties"));
     for (const auto& mini : minis)
@@ -328,7 +326,7 @@ Status read_properties(const std::span<const std::byte> bytes, const Chunk& chun
     return {};
 }
 
-Status read_groups(const std::span<const std::byte> bytes, const Chunk& chunk, ParticleEmitter& emitter, const std::string& where)
+Status read_groups(const std::span<const std::byte> bytes, const Chunk& chunk, AloParticleEmitter& emitter, const std::string& where)
 {
     EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end, where + " groups"));
     if (children.size() != emitter.groups.size())
@@ -362,7 +360,8 @@ Status read_groups(const std::span<const std::byte> bytes, const Chunk& chunk, P
     return {};
 }
 
-Status read_track(const std::span<const std::byte> bytes, const Chunk& head, const Chunk& body, const bool colour, ParticleTrack& track, const std::string& where, std::vector<std::string>& warnings)
+Status read_track(const std::span<const std::byte> bytes, const Chunk& head, const Chunk& body, const bool colour, AloParticleTrack& track, const std::string& where,
+                  std::vector<std::string>& warnings)
 {
     EAW_TRY_ASSIGN(const auto head_minis, read_minis(bytes, head, where));
     const MiniChunk* first = nullptr;
@@ -399,17 +398,17 @@ Status read_track(const std::span<const std::byte> bytes, const Chunk& head, con
     switch (track.raw_interpolation)
     {
     case 1:
-        track.interpolation = ParticleInterpolation::smooth;
+        track.interpolation = AloParticleInterpolation::smooth;
         break;
     case 2:
-        track.interpolation = ParticleInterpolation::step;
+        track.interpolation = AloParticleInterpolation::step;
         break;
     case 0:
-        track.interpolation = ParticleInterpolation::linear;
+        track.interpolation = AloParticleInterpolation::linear;
         break;
     default:
         warnings.push_back(where + ": interpolation " + std::to_string(track.raw_interpolation) + " is unknown; read as linear");
-        track.interpolation = ParticleInterpolation::linear;
+        track.interpolation = AloParticleInterpolation::linear;
         break;
     }
     track.keys.clear();
@@ -437,7 +436,7 @@ Status read_track(const std::span<const std::byte> bytes, const Chunk& head, con
     return {};
 }
 
-Status read_tracks(const std::span<const std::byte> bytes, const Chunk& chunk, ParticleEmitter& emitter, const std::string& where, std::vector<std::string>& warnings)
+Status read_tracks(const std::span<const std::byte> bytes, const Chunk& chunk, AloParticleEmitter& emitter, const std::string& where, std::vector<std::string>& warnings)
 {
     EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end, where + " tracks"));
     if (children.size() != emitter.tracks.size() * 2)
@@ -457,7 +456,7 @@ Status read_tracks(const std::span<const std::byte> bytes, const Chunk& chunk, P
     return {};
 }
 
-void set_default_tracks(ParticleEmitter& emitter)
+void set_default_tracks(AloParticleEmitter& emitter)
 {
     for (std::size_t index = 0; index < emitter.tracks.size(); ++index)
     {
@@ -466,20 +465,20 @@ void set_default_tracks(ParticleEmitter& emitter)
         {
             value = 1.0F;
         }
-        else if (index == static_cast<std::size_t>(ParticleTrackIndex::scale))
+        else if (index == static_cast<std::size_t>(AloParticleTrackIndex::scale))
         {
             value = 20.0F;
         }
         auto& track = emitter.tracks[index];
-        track.interpolation = index == static_cast<std::size_t>(ParticleTrackIndex::texture_index) ? ParticleInterpolation::step : ParticleInterpolation::linear;
+        track.interpolation = index == static_cast<std::size_t>(AloParticleTrackIndex::texture_index) ? AloParticleInterpolation::step : AloParticleInterpolation::linear;
         track.keys = {{0.0F, value}, {1.0F, value}};
     }
 }
 
-Result<ParticleEmitter> read_emitter(const std::span<const std::byte> bytes, const Chunk& chunk, const std::size_t index, std::vector<std::string>& warnings)
+Result<AloParticleEmitter> read_emitter(const std::span<const std::byte> bytes, const Chunk& chunk, const std::size_t index, std::vector<std::string>& warnings)
 {
     const auto where = "emitter " + std::to_string(index);
-    ParticleEmitter emitter;
+    AloParticleEmitter emitter;
     set_default_tracks(emitter);
     EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end, where));
     bool has_groups = false;
@@ -536,36 +535,19 @@ Result<ParticleEmitter> read_emitter(const std::span<const std::byte> bytes, con
 
 } // namespace
 
-ParticleFileKind particle_file_kind(const std::span<const std::byte> bytes) noexcept
+template <> Result<AloParticleSystemData> read_alo<AloParticleSystemData>(const std::span<const std::byte> bytes)
 {
-    if (bytes.size() < 8)
-    {
-        return ParticleFileKind::other;
-    }
-    switch (read_u32(bytes, 0))
-    {
-    case classic_root:
-        return ParticleFileKind::classic;
-    case plugin_root:
-        return ParticleFileKind::plugin;
-    default:
-        return ParticleFileKind::other;
-    }
-}
-
-Result<ParticleSystem> ParticleSystem::parse(const std::span<const std::byte> bytes)
-{
-    const auto kind = particle_file_kind(bytes);
-    if (kind == ParticleFileKind::plugin)
+    EAW_TRY_ASSIGN(const auto generic, read_alo<AloGenericData>(bytes));
+    if (generic.type == AloType::plugin_particle_system)
     {
         return make_error("particle ALO uses the plugin format (root chunk 0x1500), which is not supported");
     }
-    if (kind != ParticleFileKind::classic)
+    if (generic.type != AloType::particle_system)
     {
         return make_error("ALO is not a particle system (root chunk is not 0x0900)");
     }
     EAW_TRY_ASSIGN(const auto roots, read_chunks(bytes, 0, bytes.size(), "file"));
-    ParticleSystem system;
+    AloParticleSystemData system;
     if (roots.size() > 1)
     {
         system.warnings.push_back(std::to_string(roots.size() - 1) + " chunk(s) after the particle system ignored");

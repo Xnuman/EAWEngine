@@ -43,7 +43,7 @@ MovementClasses load_movement_classes(const AssetReader& reader)
         result.warnings.push_back("movement classes unavailable: " + bytes.error().message);
         return result;
     }
-    const auto document = XmlDocument::parse(std::span<const std::byte>(*bytes));
+    const auto document = read_xml(std::span<const std::byte>(*bytes));
     if (!document)
     {
         result.warnings.push_back(std::string(movement_class_path) + ": " + document.error().message);

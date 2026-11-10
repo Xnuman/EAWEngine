@@ -306,7 +306,7 @@ Result<AloBone> parse_bone(const std::span<const std::byte> bytes, const Chunk& 
     return bone;
 }
 
-Status parse_skeleton(const std::span<const std::byte> bytes, const Chunk& chunk, AloModel& model)
+Status parse_skeleton(const std::span<const std::byte> bytes, const Chunk& chunk, AloModelData& model)
 {
     EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end));
     std::uint32_t declared = 0;
@@ -329,7 +329,7 @@ Status parse_skeleton(const std::span<const std::byte> bytes, const Chunk& chunk
     return Status::success();
 }
 
-Result<AloMesh> parse_mesh(const std::span<const std::byte> bytes, const Chunk& chunk, AloModel& model)
+Result<AloMesh> parse_mesh(const std::span<const std::byte> bytes, const Chunk& chunk, AloModelData& model)
 {
     AloMesh mesh;
     EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end));
@@ -387,7 +387,7 @@ Result<AloLight> parse_light(const std::span<const std::byte> bytes, const Chunk
     return light;
 }
 
-Status parse_connections(const std::span<const std::byte> bytes, const Chunk& chunk, AloModel& model, const std::vector<std::pair<bool, std::size_t>>& objects)
+Status parse_connections(const std::span<const std::byte> bytes, const Chunk& chunk, AloModelData& model, const std::vector<std::pair<bool, std::size_t>>& objects)
 {
     EAW_TRY_ASSIGN(const auto children, read_chunks(bytes, chunk.payload, chunk.end));
     for (const auto& child : children)
@@ -474,9 +474,9 @@ Status parse_connections(const std::span<const std::byte> bytes, const Chunk& ch
 
 } // namespace
 
-Result<AloModel> AloModel::parse(const std::span<const std::byte> bytes)
+template <> Result<AloModelData> read_alo<AloModelData>(const std::span<const std::byte> bytes)
 {
-    AloModel model;
+    AloModelData model;
     EAW_TRY_ASSIGN(const auto chunks, read_chunks(bytes, 0, bytes.size()));
     const auto* skeleton = find_chunk(chunks, 0x200);
     if (skeleton == nullptr)
@@ -511,80 +511,6 @@ Result<AloModel> AloModel::parse(const std::span<const std::byte> bytes)
         EAW_TRY(parse_connections(bytes, *connections, model, objects));
     }
     return model;
-}
-
-std::size_t AloModel::submesh_count() const noexcept
-{
-    std::size_t count = 0;
-    for (const auto& mesh : meshes)
-    {
-        count += mesh.submeshes.size();
-    }
-    return count;
-}
-
-std::uint64_t AloModel::vertex_count() const noexcept
-{
-    std::uint64_t count = 0;
-    for (const auto& mesh : meshes)
-    {
-        for (const auto& submesh : mesh.submeshes)
-        {
-            count += submesh.vertex_count;
-        }
-    }
-    return count;
-}
-
-std::uint64_t AloModel::triangle_count() const noexcept
-{
-    std::uint64_t count = 0;
-    for (const auto& mesh : meshes)
-    {
-        for (const auto& submesh : mesh.submeshes)
-        {
-            count += submesh.triangle_count;
-        }
-    }
-    return count;
-}
-
-std::vector<Matrix4> AloModel::local_bind_pose() const
-{
-    std::vector<Matrix4> pose;
-    pose.reserve(bones.size());
-    for (const auto& bone : bones)
-    {
-        auto local = Matrix4::identity();
-        for (std::size_t row = 0; row < 3; ++row)
-        {
-            for (std::size_t column = 0; column < 4; ++column)
-            {
-                local.values[column * 4 + row] = bone.transform[row * 4 + column];
-            }
-        }
-        pose.push_back(local);
-    }
-    return pose;
-}
-
-std::vector<Matrix4> AloModel::bind_pose() const
-{
-    auto local_pose = local_bind_pose();
-    std::vector<Matrix4> pose;
-    pose.reserve(bones.size());
-    for (std::size_t index = 0; index < bones.size(); ++index)
-    {
-        if (bones[index].parent >= 0 && static_cast<std::size_t>(bones[index].parent) < pose.size())
-        {
-            pose.push_back(local_pose[index] * pose[static_cast<std::size_t>(bones[index].parent)]);
-        }
-        else
-        {
-            pose.push_back(local_pose[index]);
-        }
-    }
-    return pose;
 }
 
 } // namespace eaw

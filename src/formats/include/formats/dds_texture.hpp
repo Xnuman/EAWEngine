@@ -51,7 +51,7 @@ struct DdsSubresource
     std::size_t size{};
 };
 
-struct DdsTexture
+struct DdsTextureData
 {
     std::uint32_t width{};
     std::uint32_t height{};
@@ -67,11 +67,11 @@ struct DdsTexture
     bool volume{};
     bool has_alpha{};
     std::vector<DdsSubresource> subresources;
-
-    [[nodiscard]] static Result<DdsTexture> parse(std::span<const std::byte> bytes);
 };
 
 [[nodiscard]] std::string_view to_string(DdsFormat format) noexcept;
 [[nodiscard]] bool is_block_compressed(DdsFormat format) noexcept;
+
+[[nodiscard]] Result<DdsTextureData> read_dds(std::span<const std::byte> bytes);
 
 } // namespace eaw

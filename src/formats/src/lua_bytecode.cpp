@@ -181,7 +181,7 @@ std::pair<std::string, std::size_t> qualified_name(const std::vector<Token>& tok
     return {std::move(name), cursor};
 }
 
-void inspect_source(const std::span<const std::byte> bytes, LuaScriptInfo& result)
+void inspect_source(const std::span<const std::byte> bytes, LuaChunkData& result)
 {
     const std::string_view source(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     result.lines = bytes.empty() ? 0U : static_cast<std::size_t>(std::ranges::count(source, '\n')) + (source.back() == '\n' ? 0U : 1U);
@@ -251,9 +251,9 @@ public:
     BytecodeReader(const std::span<const std::byte> bytes, const bool petroglyph) : bytes_(bytes), petroglyph_(petroglyph)
     {}
 
-    Result<LuaScriptInfo> read()
+    Result<LuaChunkData> read()
     {
-        LuaScriptInfo result;
+        LuaChunkData result;
         result.kind = petroglyph_ ? LuaScriptKind::petroglyph_bytecode : LuaScriptKind::lua50_bytecode;
         cursor_ = 4;
         result.bytecode_header.version = read_byte();
@@ -392,7 +392,7 @@ private:
         return value;
     }
 
-    void read_function(LuaScriptInfo& result, const std::size_t depth)
+    void read_function(LuaChunkData& result, const std::size_t depth)
     {
         if (depth > 1024)
         {
@@ -480,7 +480,7 @@ private:
 
 } // namespace
 
-Result<LuaScriptInfo> LuaScriptInfo::inspect(const std::span<const std::byte> bytes)
+Result<LuaChunkData> read_lua(const std::span<const std::byte> bytes)
 {
     const bool binary_signature = bytes.size() >= 4 && std::to_integer<unsigned char>(bytes[0]) == 0x1bU && std::to_integer<char>(bytes[1]) == 'L' && std::to_integer<char>(bytes[2]) == 'u';
     if (binary_signature && std::to_integer<char>(bytes[3]) == 'a')
@@ -492,7 +492,7 @@ Result<LuaScriptInfo> LuaScriptInfo::inspect(const std::span<const std::byte> by
         return BytecodeReader(bytes, true).read();
     }
 
-    LuaScriptInfo result;
+    LuaChunkData result;
     if (std::ranges::find(bytes, std::byte{}) != bytes.end())
     {
         result.kind = LuaScriptKind::unknown_binary;

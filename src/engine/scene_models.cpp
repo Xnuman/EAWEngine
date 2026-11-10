@@ -7,6 +7,8 @@
 #include "eaw/map_object_layout.hpp"
 #include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"
+#include "formats/alo_model_helpers.hpp"
+#include "formats/ala_animation_helpers.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -40,23 +42,23 @@ Vector3 transform_normal(const Vector3& direction, const Matrix4& matrix)
     return result;
 }
 
-Result<AloModel> load_model(const AssetReader& reader, const std::string& path)
+Result<AloModelData> load_model(const AssetReader& reader, const std::string& path)
 {
     EAW_TRY_ASSIGN(const auto bytes, reader.read(path));
-    return AloModel::parse(bytes);
+    return read_alo<AloModelData>(bytes);
 }
 
 } // namespace
 
 // The decoded model, or why it could not be decoded (cached either way: a failed decode depends on
 // the file, so replacing it invalidates the entry).
-std::shared_ptr<const Result<AloModel>> cached_model(SceneBuilder& builder, const std::string& path)
+std::shared_ptr<const Result<AloModelData>> cached_model(SceneBuilder& builder, const std::string& path)
 {
-    return cached<Result<AloModel>>(builder.cache, "alo", path, builder.vfs,
-                                    [&](const AssetReader& reader)
-                                    {
-                                        return load_model(reader, path);
-                                    });
+    return cached<Result<AloModelData>>(builder.cache, "alo", path, builder.vfs,
+                                        [&](const AssetReader& reader)
+                                        {
+                                            return load_model(reader, path);
+                                        });
 }
 
 // Appends one ALO model as a new mesh (its draws, vertices, indices, and any new textures) and
@@ -67,10 +69,10 @@ std::shared_ptr<const Result<AloModel>> cached_model(SceneBuilder& builder, cons
 // when an animation shows their bone. Without it (maps share one bind-pose palette), such meshes
 // are omitted.
 // A model that cannot be appended leaves no geometry, indices, or materials behind.
-Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model, const std::string_view name, const bool animated_visibility, const std::span<const ModelAttachment> attachments)
+Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModelData& model, const std::string_view name, const bool animated_visibility, const std::span<const ModelAttachment> attachments)
 {
     auto& scene = builder.scene;
-    const auto bind_pose = model.bind_pose();
+    const auto bind_pose = alo_bind_pose(model);
     if (model.bones.size() > std::numeric_limits<std::uint32_t>::max() / 2U)
     {
         return make_error("ALO skeleton exceeds the visual scene bone index range");
@@ -103,7 +105,7 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model,
 
     // Appends `source`'s geometry. Attached models (host != null) are placed at the host bone's bind
     // pose and bound rigidly to that bone, in the host's palette.
-    const auto append_geometry = [&](const AloModel& source, const std::vector<Matrix4>& source_bind, const Matrix4* host, const std::optional<std::uint32_t> host_bone) -> Status
+    const auto append_geometry = [&](const AloModelData& source, const std::vector<Matrix4>& source_bind, const Matrix4* host, const std::optional<std::uint32_t> host_bone) -> Status
     {
         const auto default_visible = alo_default_mesh_visibility(source, host != nullptr || !animated_visibility);
         for (std::size_t mesh_index = 0; mesh_index < source.meshes.size(); ++mesh_index)
@@ -266,7 +268,7 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model,
         {
             continue;
         }
-        if (auto status = append_geometry(*attached.model, attached.model->bind_pose(), &bind_pose[attached.bone], attached.bone); !status)
+        if (auto status = append_geometry(*attached.model, alo_bind_pose(*attached.model), &bind_pose[attached.bone], attached.bone); !status)
         {
             roll_back();
             return status.error();
@@ -285,7 +287,7 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const AloModel& model,
     return mesh_index;
 }
 
-std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& type, const AloModel* host)
+std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& type, const AloModelData* host)
 {
     std::vector<ModelAttachment> attachments;
     const auto* list = catalog.field(type, "HardPoints").field;
@@ -339,7 +341,7 @@ std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const 
             builder.scene.warnings.push_back(*path + ": " + model->error().message);
             continue;
         }
-        attachments.push_back({*path, std::shared_ptr<const AloModel>(model, &model->value()), *bone});
+        attachments.push_back({*path, std::shared_ptr<const AloModelData>(model, &model->value()), *bone});
     }
     return attachments;
 }
@@ -479,7 +481,7 @@ Result<VisualModelAsset> build_visual_model(const AssetReader& vfs, const std::s
         return with_context(resolved->virtual_path, model->error());
     }
     asset.model = model->value();
-    for (const auto& transform : asset.model.bind_pose())
+    for (const auto& transform : alo_bind_pose(asset.model))
     {
         const auto inverted = inverse(transform);
         if (!inverted)
@@ -541,7 +543,7 @@ bool intact_hidden(const std::vector<bool>& hidden, const std::size_t bone)
 }
 
 // Skin matrices of `pose` (and the visibility half) appended to `out`; `hidden` bones collapse too.
-void append_pose_palette(const AloModel& model, const std::span<const Matrix4> inverse_bind_pose, const std::span<const AlaPoseBone> pose, const bool visibility_palette, std::vector<Matrix4>& out,
+void append_pose_palette(const AloModelData& model, const std::span<const Matrix4> inverse_bind_pose, const std::span<const AlaPoseBone> pose, const bool visibility_palette, std::vector<Matrix4>& out,
                          const std::vector<bool>& hidden = {})
 {
     const auto bone_count = std::min({pose.size(), inverse_bind_pose.size(), model.bones.size()});
@@ -561,7 +563,7 @@ void append_pose_palette(const AloModel& model, const std::span<const Matrix4> i
 }
 
 // A rig's rest palette: identity skin matrices, then the visibility half from the bind pose.
-void append_rest_palette(const AloModel& model, std::vector<Matrix4>& out, const std::vector<bool>& hidden = {})
+void append_rest_palette(const AloModelData& model, std::vector<Matrix4>& out, const std::vector<bool>& hidden = {})
 {
     const auto identity = Matrix4::identity();
     out.insert(out.end(), model.bones.size(), identity);
@@ -577,7 +579,7 @@ void append_rest_palette(const AloModel& model, std::vector<Matrix4>& out, const
 
 } // namespace
 
-std::vector<Matrix4> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimation* animation, const float seconds)
+std::vector<Matrix4> sample_skin_palette(const VisualModelAsset& asset, const AlaAnimationData* animation, const float seconds)
 {
     std::vector<AlaPoseBone> pose;
     if (animation != nullptr)
@@ -586,7 +588,7 @@ std::vector<Matrix4> sample_skin_palette(const VisualModelAsset& asset, const Al
     }
     else
     {
-        const auto bind_pose = asset.model.bind_pose();
+        const auto bind_pose = alo_bind_pose(asset.model);
         pose.reserve(bind_pose.size());
         for (std::size_t index = 0; index < bind_pose.size(); ++index)
         {
@@ -603,7 +605,7 @@ std::vector<Matrix4> sample_skin_palette(const VisualModelAsset& asset, const Al
     return result;
 }
 
-void append_rig_palette(const VisualRig& rig, const AlaAnimation& animation, const float seconds, std::vector<Matrix4>& out)
+void append_rig_palette(const VisualRig& rig, const AlaAnimationData& animation, const float seconds, std::vector<Matrix4>& out)
 {
     if (rig.model && rig.inverse_bind_pose.size() == rig.model->bones.size() && !rig.model->bones.empty())
     {
@@ -688,7 +690,7 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
         const auto model = cached_model(builder, mesh.name);
         if (model->ok())
         {
-            rig.model = std::shared_ptr<const AloModel>(model, &model->value());
+            rig.model = std::shared_ptr<const AloModelData>(model, &model->value());
             // Scorch marks of hardpoints (their Damage_Decal bones and everything below) wait for
             // the hardpoint's destruction.
             if (const auto decals = builder.decal_bones.find(ascii_lower(mesh.name)); decals != builder.decal_bones.end())
@@ -712,7 +714,7 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
             }
             append_rest_palette(*rig.model, rest_palette, rig.intact_hidden);
             rig.effects = proxy_effects(builder, *rig.model, mesh.name);
-            for (const auto& transform : rig.model->bind_pose())
+            for (const auto& transform : alo_bind_pose(*rig.model))
             {
                 const auto inverted = inverse(transform);
                 if (!inverted)
@@ -766,22 +768,23 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
             {
                 continue;
             }
-            const auto decoded = cached<Result<AlaAnimation>>(builder.cache, "ala", clip_path, builder.vfs,
-                                                              [&](const AssetReader& reader) -> Result<AlaAnimation>
-                                                              {
-                                                                  EAW_TRY_ASSIGN(const auto bytes, reader.read(clip_path));
-                                                                  return AlaAnimation::parse(bytes);
-                                                              });
+            const auto decoded = cached<Result<AlaAnimationData>>(builder.cache, "ala", clip_path, builder.vfs,
+                                                                  [&](const AssetReader& reader) -> Result<AlaAnimationData>
+                                                                  {
+                                                                      EAW_TRY_ASSIGN(const auto bytes, reader.read(clip_path));
+                                                                      return read_ala(bytes);
+                                                                  });
             if (!decoded->ok())
             {
                 scene.warnings.push_back(clip_path + ": " + decoded->error().message);
                 continue;
             }
-            if (decoded->value().duration_seconds() <= 0.0F)
+            if (ala_duration_seconds(decoded->value()) <= 0.0F)
             {
                 continue;
             }
-            auto animation = retarget ? std::make_shared<const AlaAnimation>(ala_retarget_by_bone_name(decoded->value(), *rig.model)) : std::shared_ptr<const AlaAnimation>(decoded, &decoded->value());
+            auto animation =
+                retarget ? std::make_shared<const AlaAnimationData>(ala_retarget_by_bone_name(decoded->value(), *rig.model)) : std::shared_ptr<const AlaAnimationData>(decoded, &decoded->value());
             if (animation->tracks.empty())
             {
                 continue;

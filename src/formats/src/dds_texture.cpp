@@ -148,14 +148,14 @@ bool alpha_format(const DdsFormat format) noexcept
 
 } // namespace
 
-Result<DdsTexture> DdsTexture::parse(const std::span<const std::byte> bytes)
+Result<DdsTextureData> read_dds(const std::span<const std::byte> bytes)
 {
     if (bytes.size() < 128 || read_u32(bytes, 0) != fourcc('D', 'D', 'S', ' ') || read_u32(bytes, 4) != 124 || read_u32(bytes, 76) != 32)
     {
         return make_error("invalid DDS header");
     }
 
-    DdsTexture result;
+    DdsTextureData result;
     result.height = read_u32(bytes, 12);
     result.width = read_u32(bytes, 16);
     result.depth = std::max(1U, read_u32(bytes, 24));

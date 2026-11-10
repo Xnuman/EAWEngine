@@ -5,6 +5,9 @@
 
 #include "eaw/alo_interpretation.hpp"
 #include "core/string_utils.hpp"
+#include "formats/alo_model_helpers.hpp"
+#include "formats/ala_animation_helpers.hpp"
+#include "formats/dat_string_table_helpers.hpp"
 
 namespace eaw::tools {
 namespace {
@@ -121,7 +124,7 @@ Result<PreviewTexture> create_dds_texture(ID3D11Device* device, const std::span<
     {
         return make_error("DirectX 11 device is unavailable");
     }
-    EAW_TRY_ASSIGN(const auto texture_info, DdsTexture::parse(bytes));
+    EAW_TRY_ASSIGN(const auto texture_info, read_dds(bytes));
     if (texture_info.subresources.empty())
     {
         return make_error("DDS contains no image data");
@@ -272,10 +275,10 @@ std::string clean_one_line(std::string value, const std::size_t maximum)
     return value;
 }
 
-Result<AloModel> read_model(const AssetReader& vfs, const std::string& path)
+Result<AloModelData> read_model(const AssetReader& vfs, const std::string& path)
 {
     EAW_TRY_ASSIGN(const auto bytes, vfs.read(path));
-    return AloModel::parse(bytes);
+    return read_alo<AloModelData>(bytes);
 }
 
 Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<const std::byte> bytes)
@@ -289,12 +292,11 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<co
 
     if (extension == ".dat")
     {
-        EAW_TRY_ASSIGN(const auto dat, DatFile::parse(bytes));
-        const auto issues = dat.validate();
-        output << "Petroglyph localization DAT\nEntries: " << dat.entries().size() << "\nCRC sorted: " << (dat.crc_sorted() ? "yes" : "no") << "\nValidation issues: " << issues.size()
-               << "\n\nSample:\n";
+        EAW_TRY_ASSIGN(const auto dat, read_dat(bytes));
+        const auto issues = dat_validate(dat);
+        output << "Petroglyph localization DAT\nEntries: " << dat.entries.size() << "\nCRC sorted: " << (dat.crc_sorted ? "yes" : "no") << "\nValidation issues: " << issues.size() << "\n\nSample:\n";
         std::size_t shown = 0;
-        for (const auto& entry : dat.entries())
+        for (const auto& entry : dat.entries)
         {
             if (shown++ == 24)
             {
@@ -313,7 +315,7 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<co
 
     if (extension == ".dds")
     {
-        EAW_TRY_ASSIGN(const auto texture, DdsTexture::parse(bytes));
+        EAW_TRY_ASSIGN(const auto texture, read_dds(bytes));
         output << "DirectDraw Surface\nPixel format: " << to_string(texture.format) << "\nDimensions: " << texture.width << 'x' << texture.height;
         if (texture.volume)
         {
@@ -326,7 +328,7 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<co
 
     if (extension == ".mtd")
     {
-        EAW_TRY_ASSIGN(const auto directory, MtdDirectory::parse(bytes));
+        EAW_TRY_ASSIGN(const auto directory, read_mtd(bytes));
         output << "Petroglyph mega-texture directory\nEntries: " << directory.entries.size() << "\nAtlas extent: " << directory.atlas_width << 'x' << directory.atlas_height
                << "\nEntries with alpha: " << directory.alpha_entries << "\n\nEntries:\n";
         for (std::size_t index = 0; index < std::min<std::size_t>(directory.entries.size(), 120); ++index)
@@ -339,13 +341,13 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<co
 
     if (extension == ".alo")
     {
-        const auto decoded = AloModel::parse(bytes);
+        const auto decoded = read_alo<AloModelData>(bytes);
         if (decoded)
         {
             const auto& model = *decoded;
             output << "Alamo semantic model\n"
-                   << "Bones: " << model.bones.size() << "\nMeshes: " << model.meshes.size() << "\nSubmeshes: " << model.submesh_count() << "\nVertices: " << model.vertex_count()
-                   << "\nTriangles: " << model.triangle_count() << "\nLights: " << model.lights.size() << "\nProxies: " << model.proxies.size() << "\nDazzles: " << model.dazzles.size() << "\n";
+                   << "Bones: " << model.bones.size() << "\nMeshes: " << model.meshes.size() << "\nSubmeshes: " << alo_submesh_count(model) << "\nVertices: " << alo_vertex_count(model)
+                   << "\nTriangles: " << alo_triangle_count(model) << "\nLights: " << model.lights.size() << "\nProxies: " << model.proxies.size() << "\nDazzles: " << model.dazzles.size() << "\n";
             for (const auto& warning_text : model.warnings)
             {
                 output << "Warning: " << warning_text << '\n';
@@ -416,12 +418,12 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<co
 
     if (extension == ".ala")
     {
-        const auto decoded = AlaAnimation::parse(bytes);
+        const auto decoded = read_ala(bytes);
         if (decoded)
         {
             const auto& animation = *decoded;
-            output << "Alamo semantic animation\nVersion: " << animation.version << "\nStored frames: " << animation.stored_frame_count << "\nPlayable frames: " << animation.playable_frame_count()
-                   << "\nFrames per second: " << animation.frames_per_second << "\nDuration: " << animation.duration_seconds() << " seconds\nBone tracks: " << animation.tracks.size()
+            output << "Alamo semantic animation\nVersion: " << animation.version << "\nStored frames: " << animation.stored_frame_count << "\nPlayable frames: " << ala_playable_frame_count(animation)
+                   << "\nFrames per second: " << animation.frames_per_second << "\nDuration: " << ala_duration_seconds(animation) << " seconds\nBone tracks: " << animation.tracks.size()
                    << "\nRotation data: " << human_size(animation.rotation_data_bytes) << "\nTranslation data: " << human_size(animation.translation_data_bytes)
                    << "\nScale data: " << human_size(animation.scale_data_bytes) << '\n';
             for (const auto& warning_text : animation.warnings)
@@ -465,7 +467,7 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<co
 
     if (extension == ".ted")
     {
-        const auto decoded = TedMap::parse(bytes);
+        const auto decoded = read_ted(bytes);
         if (decoded)
         {
             const auto& map = *decoded;
@@ -545,7 +547,7 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<co
 
     if (extension == ".lua")
     {
-        EAW_TRY_ASSIGN(const auto script, LuaScriptInfo::inspect(bytes));
+        EAW_TRY_ASSIGN(const auto script, read_lua(bytes));
         output << to_string(script.kind) << '\n';
         if (script.kind == LuaScriptKind::source)
         {
@@ -636,13 +638,13 @@ void label_value(const char* label, const std::string_view value)
     ImGui::TextUnformatted(value.data(), value.data() + value.size());
 }
 
-PreviewGeometry build_preview_geometry(const AloModel& model, const std::vector<AlaPoseBone>* pose, const std::vector<Matrix4>& inverse_bind, const bool show_collision,
+PreviewGeometry build_preview_geometry(const AloModelData& model, const std::vector<AlaPoseBone>* pose, const std::vector<Matrix4>& inverse_bind, const bool show_collision,
                                        const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture)
 {
     static constexpr std::array<ImU32, 6> palette{IM_COL32(54, 177, 186, 255), IM_COL32(71, 137, 201, 255), IM_COL32(121, 101, 198, 255),
                                                   IM_COL32(55, 183, 133, 255), IM_COL32(199, 145, 62, 255), IM_COL32(185, 91, 129, 255)};
     PreviewGeometry geometry;
-    const auto bind_pose = model.bind_pose();
+    const auto bind_pose = alo_bind_pose(model);
     const auto default_visible = alo_default_mesh_visibility(model, pose == nullptr);
     float radius_squared = 0.0F;
     for (std::size_t mesh_index = 0; mesh_index < model.meshes.size(); ++mesh_index)

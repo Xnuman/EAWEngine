@@ -2,6 +2,8 @@
 
 #include "gui_internal.hpp"
 #include "core/string_utils.hpp"
+#include "formats/alo_model_helpers.hpp"
+#include "formats/dat_string_table_helpers.hpp"
 
 namespace eaw::tools {
 
@@ -148,7 +150,7 @@ void GuiApp::State::select_preview_animation(const int index)
         fail(bytes.error());
         return;
     }
-    auto animation = AlaAnimation::parse(*bytes);
+    auto animation = read_ala(*bytes);
     if (!animation)
     {
         fail(animation.error());
@@ -200,7 +202,7 @@ void GuiApp::State::inspect_asset(const int index)
     }
     if (extension == ".ted")
     {
-        auto map = TedMap::parse(bytes);
+        auto map = read_ted(bytes);
         if (!map)
         {
             return;
@@ -213,13 +215,13 @@ void GuiApp::State::inspect_asset(const int index)
     {
         return;
     }
-    auto model = AloModel::parse(bytes);
+    auto model = read_alo<AloModelData>(bytes);
     if (!model)
     {
         return;
     }
     preview_model = std::move(model).value();
-    const auto bind_pose = preview_model->bind_pose();
+    const auto bind_pose = alo_bind_pose(*preview_model);
     preview_inverse_bind.reserve(bind_pose.size());
     for (const auto& transform : bind_pose)
     {
@@ -300,7 +302,7 @@ ID3D11ShaderResourceView* GuiApp::State::load_texture(std::unordered_map<std::st
 
 void GuiApp::State::open_dat(const std::filesystem::path& path)
 {
-    const auto dat = load_dat_file(path);
+    const auto dat = load_dat_string_table(path);
     if (!dat)
     {
         fail(dat.error());
@@ -377,7 +379,7 @@ void GuiApp::State::validate_workspace()
     }
     if (base_dat_path)
     {
-        auto candidate = load_dat_file(*base_dat_path);
+        auto candidate = load_dat_string_table(*base_dat_path);
         const auto applied = candidate ? apply_localization_workspace(*candidate, rows, skip_todo) : Status(candidate.error());
         if (!applied)
         {
@@ -385,7 +387,7 @@ void GuiApp::State::validate_workspace()
         }
         else
         {
-            for (const auto& issue : candidate->validate())
+            for (const auto& issue : dat_validate(*candidate))
             {
                 validation_messages.push_back(std::string(issue.severity == DatIssueSeverity::error ? "Error: " : "Warning: ") + issue.message);
             }
@@ -416,7 +418,7 @@ void GuiApp::State::build_dat(const std::filesystem::path& output)
         fail(make_error("Choose a different output path; EAWTools will not overwrite the baseline DAT"));
         return;
     }
-    auto loaded = load_dat_file(*base_dat_path);
+    auto loaded = load_dat_string_table(*base_dat_path);
     if (!loaded)
     {
         fail(loaded.error());
@@ -428,7 +430,7 @@ void GuiApp::State::build_dat(const std::filesystem::path& output)
         fail(status.error());
         return;
     }
-    const auto issues = dat.validate();
+    const auto issues = dat_validate(dat);
     const auto errors = std::ranges::count_if(issues,
                                               [](const auto& issue)
                                               {
@@ -439,12 +441,12 @@ void GuiApp::State::build_dat(const std::filesystem::path& output)
         fail(make_error("The built DAT has " + std::to_string(errors) + " validation errors"));
         return;
     }
-    if (const auto status = save_dat_file(output, dat, WriteMode::replace); !status)
+    if (const auto status = save_dat_string_table(output, dat, WriteMode::replace); !status)
     {
         fail(status.error());
         return;
     }
-    succeed("Built " + path_to_utf8(output) + " with " + std::to_string(dat.entries().size()) + " entries");
+    succeed("Built " + path_to_utf8(output) + " with " + std::to_string(dat.entries.size()) + " entries");
 }
 
 void GuiApp::State::scan_mod(const std::filesystem::path& mod_root)
@@ -454,7 +456,7 @@ void GuiApp::State::scan_mod(const std::filesystem::path& mod_root)
         fail(make_error("Open a baseline DAT before scanning a mod"));
         return;
     }
-    const auto baseline = load_dat_file(*base_dat_path);
+    const auto baseline = load_dat_string_table(*base_dat_path);
     if (!baseline)
     {
         fail(baseline.error());

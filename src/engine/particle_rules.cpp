@@ -70,7 +70,7 @@ ParticleInterpretation particle_interpretation(const ParticleFidelity fidelity) 
     return {false, ParticleLinkMode::rigid, ParticleDrawOrder::emitter_list};
 }
 
-ParticleEmitterDesc normalize_particle_emitter(const ParticleEmitter& emitter, const ParticleFidelity fidelity)
+ParticleEmitterDesc normalize_particle_emitter(const AloParticleEmitter& emitter, const ParticleFidelity fidelity)
 {
     const auto rules = particle_interpretation(fidelity);
     ParticleEmitterDesc desc;
@@ -120,7 +120,7 @@ ParticleEmitterDesc normalize_particle_emitter(const ParticleEmitter& emitter, c
     if (desc.fixed_rotation)
     {
         // The rotation track's first value (revolutions), varied by up to the variance (0..1).
-        const auto& keys = emitter.tracks[static_cast<std::size_t>(ParticleTrackIndex::rotation_speed)].keys;
+        const auto& keys = emitter.tracks[static_cast<std::size_t>(AloParticleTrackIndex::rotation_speed)].keys;
         desc.rotation_mean = keys.empty() ? 0.0F : keys.front().value;
         desc.rotation_spread = std::clamp(emitter.random_rotation_variance, 0.0F, 1.0F);
     }
@@ -138,7 +138,7 @@ ParticleEmitterDesc normalize_particle_emitter(const ParticleEmitter& emitter, c
     return desc;
 }
 
-ParticleEffect normalize_particle_system(const ParticleSystem& system, const ParticleFidelity fidelity)
+ParticleEffect normalize_particle_system(const AloParticleSystemData& system, const ParticleFidelity fidelity)
 {
     ParticleEffect effect;
     effect.name = system.name;

@@ -33,7 +33,7 @@ struct LuaBytecodeHeader
     std::uint8_t number_size{};
 };
 
-struct LuaScriptInfo
+struct LuaChunkData
 {
     LuaScriptKind kind{LuaScriptKind::source};
     LuaBytecodeHeader bytecode_header;
@@ -47,10 +47,10 @@ struct LuaScriptInfo
     std::vector<std::string> defined_functions;
     std::vector<std::string> called_functions;
     std::vector<std::string> warnings;
-
-    // Source never fails; malformed bytecode is an error naming the structure that is broken.
-    [[nodiscard]] static Result<LuaScriptInfo> inspect(std::span<const std::byte> bytes);
 };
+
+// Source never fails; malformed bytecode is an error naming the structure that is broken.
+[[nodiscard]] Result<LuaChunkData> read_lua(std::span<const std::byte> bytes);
 
 [[nodiscard]] std::string_view to_string(LuaScriptKind kind) noexcept;
 
