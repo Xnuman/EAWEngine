@@ -82,8 +82,8 @@ Proposed on 2026-11-10 with this roadmap; it continues the owner's order of 2026
 review, combat presentation, sound, player layer) with sound and the player layer moved to M4, where
 the skirmish needs them, and the open M2 render work placed by what depends on it:
 
-1. Scripting stage 1: events, AI and story entry points in `lua-survey`, object handles, orders as
-   validated commands.
+1. Scripting stage 1: object handles and orders as validated commands (events, AI and story entry
+   points are done).
 2. Rendering stage 1, the part combat presentation needs: damage-state (`_ALT<n>`) and LOD
    switching, runtime decals, depth-sorted transparency.
 3. Simulation stage 1's remainder: combat presentation and fidelity.
@@ -141,10 +141,12 @@ the skirmish needs them, and the open M2 render work placed by what depends on i
 
 ### Scripting
 
-1. Foundation. Done: the sandboxed Lua 5.0 host, script threads on ticks, recording stubs, and
-   `lua-survey` over the stock scripts. Open: deliver events and call AI and story entry points to
-   widen the survey; generation-checked object handles; orders only through validated commands;
-   decide whether running script state must be saveable (it shapes Persistence).
+1. Foundation. Done: the sandboxed Lua 5.0 host, script threads on ticks, recording stubs, the
+   engine event queue and script callbacks, values between the engine and scripts, `Create_Thread`
+   control and `GameRandom`, and `lua-survey` driving AI plans, story events, task force events, and
+   callbacks over the stock scripts. Open: generation-checked object handles; orders only through
+   validated commands; decide whether running script state must be saveable (it shapes
+   Persistence).
 2. The tactical host API, ranked by the survey, replacing stubs as Simulation stage 2 provides the
    systems.
 3. The galactic and story API.
@@ -206,7 +208,7 @@ Not a stage plan: leftovers are fixed while features touch the code around them,
 periodic whole-project reviews add to this list or turn it into a plan of steps (AGENTS.md, "Code
 health"). Remove an entry when it is fixed. Known leftovers after the reorganization of 2026-11:
 
-- the libraries still on `include/eaw/` (simulation, script, render, platform, launch, imgui_app)
+- the libraries still on `include/eaw/` (simulation, render, platform, launch, imgui_app)
   and the engine without an include directory, against the short-include rule;
 - the minimal second XML reader in `game_installation` (kept so the VFS does not depend on the
   formats; noted in the code);

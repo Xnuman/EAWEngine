@@ -43,7 +43,7 @@ Dependencies point inward: a lower layer never includes or links a higher one.
 | | `eaw_assets` | The game asset layer: XML object database and catalogs, loaders, engine-native resources, the resource manager. | core, formats, vfs, math, render contract |
 | | `eaw_localization` | DAT string tables on disk, TSV workspaces, mod text scans, translation checks. | core, formats |
 | Runtime | `eaw_simulation` | Deterministic tactical simulation: entities, components, ticks, commands, snapshots. | core, math |
-| | `eaw_script` | Sandboxed Lua 5.0 host with recording stubs for the unimplemented host API. | vfs, Lua |
+| | `eaw_script` | Sandboxed Lua 5.0 host: threads, engine events and callbacks, recording stubs for the unimplemented host API. | vfs, Lua |
 | | `eaw_engine` | Battles and order logs, scene builders, presentation, cameras, animation, particles. No graphics API. | assets, simulation, render contract |
 | Presentation | `eaw_render_contract` | Engine-native visual data (`visual_scene.hpp`), header only. | math |
 | | `eaw_render_d3d12` | The Direct3D 12 backend. | core, render contract, formats (RGBA images for captures) |
@@ -60,7 +60,7 @@ Third-party code is pinned in `third_party/`: Dear ImGui (docking branch, by com
 
 Libraries keep public headers under `include/<library>/` and are included by short paths
 (`"core/status.hpp"`, `"assets/model.hpp"`). The libraries not converted yet
-(simulation, script, render, platform, launch, imgui_app) still use `include/eaw/`. Debug builds of
+(simulation, render, platform, launch, imgui_app) still use `include/eaw/`. Debug builds of
 every library and executable carry the `_d` suffix.
 
 ## Resource pipeline
@@ -167,7 +167,10 @@ coroutines woken on simulation ticks, and every call and resume runs under an in
 a script that never yields cannot hang the engine. The host functions implemented so far are real;
 every other engine function a script calls is a recording stub that logs the call and returns a
 neutral object, so `EAWEngine lua-survey` can measure which host API the stock scripts use before the
-engine implements it. Scripts will act on the world only by enqueuing validated commands, never by
+engine implements it. The engine talks to a script through `ScriptValue`s: it sets globals (the
+objects a script expects), reads definitions back (an AI plan's `TaskForce`, a story script's
+`StoryModeEvents`), and queues events, which the framework's `PumpEvents` drains through `GetEvent`
+in a script thread; script functions handed to engine functions become callbacks it can queue. Scripts will act on the world only by enqueuing validated commands, never by
 writing simulation storage.
 
 ## Presentation
@@ -347,10 +350,11 @@ The file-level split of each module.
   `simulation_navigation.cpp`, `simulation_locomotion.cpp`, and `simulation_combat.cpp`, sharing
   `simulation_internal.hpp`; with `ground_map` (passability), `pathfinding`, `formation`,
   `spatial_grid`, and `combat` (weapon and damage data).
-- `src/script` (`eaw_script`): `script_host.cpp` (the sandboxed state, `require` through the VFS,
-  budgeted protected calls, the thread scheduler, the implemented primitives), `script_stubs.cpp`
-  (recording stubs), and `host_api_recorder.cpp` (what scripts called), sharing
-  `script_host_internal.hpp`.
+- `src/script` (`eaw_script`): `script_host` (the sandboxed state, `require` through the VFS,
+  budgeted protected calls, the thread scheduler, the implemented primitives), `script_events` (the
+  event queue behind `GetEvent`, callbacks), `script_values` (`ScriptValue` to and from Lua, with
+  read limits), `script_stubs` (recording stubs), and `host_api_recorder` (what scripts called),
+  sharing the private `script_host_internal.hpp`.
 - `src/engine` (`eaw_engine`):
   - battles: `battle` (setup, replayable orders, the order log), `battle_runner` (headless runs),
     `battle_log` (reading and writing logs), `combat_content` (XML combat data translated into the simulation's combat profiles);

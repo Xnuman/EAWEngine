@@ -1,6 +1,6 @@
 // Recording stubs: every engine name a script uses that the host does not implement is a stub
-// object. Calling one records the call (name, script, argument types) and returns a stub object for
-// its result; indexing one gives a member stub ("GameRandom.Get_Float", "Find_Player().Get_Name"),
+// object. Calling one records the call (name, script, argument types), keeps the script functions
+// passed to it as callbacks the engine can call later, and returns a stub object for its result; indexing one gives a member stub ("GameRandom.Get_Float", "Find_Player().Get_Name"),
 // so engine tables and the objects engine functions return both keep working while their use is
 // measured. Stub objects are tables with a private metatable per name: pairs over one sees nothing,
 // arithmetic gives 0, concatenation and tostring give "<name>", and comparing one with a number
@@ -35,6 +35,13 @@ int stub_call(lua_State* state)
     const std::string name = lua_tostring(state, lua_upvalueindex(1));
     // Argument 1 is the stub itself.
     host.recorder.record(name, host.script_name, argument_signature(state, 2), false);
+    for (int index = 2; index <= lua_gettop(state); ++index)
+    {
+        if (lua_isfunction(state, index) && !lua_iscfunction(state, index))
+        {
+            (void)host.register_callback(state, index, name);
+        }
+    }
     const auto label = result_label(name);
     push_stub(state, label + "()()", label + "().", label);
     return 1;
@@ -169,21 +176,31 @@ std::string argument_signature(lua_State* state, const int first)
         {
             signature += ", ";
         }
-        if (lua_type(state, index) == LUA_TTABLE && lua_getmetatable(state, index) != 0)
+        if (const auto origin = stub_origin(state, index))
         {
-            lua_pushstring(state, origin_field);
-            lua_rawget(state, -2);
-            if (lua_isstring(state, -1))
-            {
-                signature += "object(" + std::string(lua_tostring(state, -1)) + ")";
-                lua_pop(state, 2);
-                continue;
-            }
-            lua_pop(state, 2);
+            signature += "object(" + *origin + ")";
+            continue;
         }
         signature += lua_typename(state, lua_type(state, index));
     }
     return signature.empty() ? "()" : signature;
+}
+
+std::optional<std::string> stub_origin(lua_State* state, const int index)
+{
+    if (lua_type(state, index) != LUA_TTABLE || lua_getmetatable(state, index) == 0)
+    {
+        return std::nullopt;
+    }
+    lua_pushstring(state, origin_field);
+    lua_rawget(state, -2);
+    std::optional<std::string> origin;
+    if (lua_type(state, -1) == LUA_TSTRING)
+    {
+        origin = lua_tostring(state, -1);
+    }
+    lua_pop(state, 2);
+    return origin;
 }
 
 } // namespace eaw

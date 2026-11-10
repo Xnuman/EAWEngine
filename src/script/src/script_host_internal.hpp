@@ -1,9 +1,10 @@
 #pragma once
 
 // Shared by the script host's files (script_host.cpp: the state, sandbox, loading, threads;
-// script_stubs.cpp: recording stubs and stub objects). Private to eaw_script.
+// script_stubs.cpp: recording stubs and stub objects; script_events.cpp: the event queue and
+// callbacks; script_values.cpp: values between the engine and Lua). Private to eaw_script.
 
-#include "eaw/script_host.hpp"
+#include "script/script_host.hpp"
 #include "vfs/virtual_file_system.hpp"
 
 extern "C" {
@@ -13,10 +14,13 @@ extern "C" {
 }
 
 #include <cstdint>
+#include <deque>
+#include <initializer_list>
 #include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace eaw {
@@ -52,6 +56,8 @@ public:
         // Arguments still to pass on the first resume (stack top of the coroutine).
         int first_arguments{};
         bool started{};
+        // Create_Thread.Kill was called on the thread while it ran: it ends when it next yields.
+        bool kill_requested{};
     };
     std::vector<Thread> threads;
     std::uint64_t tick_count{};
@@ -67,6 +73,20 @@ public:
     int call_depth{};
     std::vector<ScriptError> errors;
     std::vector<std::string> output;
+
+    // Engine events waiting for GetEvent: registry references to the function and to its argument
+    // table (LUA_NOREF without arguments).
+    struct QueuedEvent
+    {
+        int function{};
+        int arguments{};
+    };
+    std::deque<QueuedEvent> events;
+    // The arguments of the event GetEvent returned last (GetEvent.Params).
+    int current_arguments{LUA_NOREF};
+    std::vector<ScriptCallback> callbacks;
+    // Registry references to the callbacks' functions, by index.
+    std::vector<int> callback_functions;
 
     Status setup();
     // Runs the function on the top of the stack with `arguments` below it, under the budget.
@@ -84,10 +104,35 @@ public:
     std::uint64_t service_interval() const;
     // Ends the script after _ScriptExit (its threads and their thread values).
     void finish_exit();
+    // Ends one thread: releases its coroutine and its thread values.
+    void end_thread(Thread& thread);
+    // Create_Thread.Kill: ends the thread with that id now, or at its next yield if it is running.
+    void kill_thread(std::int64_t id);
+    // A uniform integer in [lower, upper] from the host's stream.
+    std::int64_t random_integer(std::int64_t lower, std::int64_t upper);
+    // Queues the function on top of the main state's stack (popped) with `arguments`.
+    void queue_call(const std::vector<ScriptValue>& arguments);
+    // Drops every queued event and the current event's arguments.
+    void clear_events();
+    // The index of the Lua function at `index` among the callbacks, registering it when new.
+    std::size_t register_callback(lua_State* caller, int index, const std::string& registered_by);
 };
 
 // The host of a Lua state (stored in its registry at setup).
 ScriptHost::Impl& host_of(lua_State* state);
+
+// A global table callable through its metatable (ThreadValue, GetEvent), with fields set to C
+// functions (script_host.cpp).
+void set_callable_table(lua_State* state, const char* name, lua_CFunction call, std::initializer_list<std::pair<const char*, lua_CFunction>> methods);
+
+// GetEvent and its Params and Reset (script_events.cpp).
+void install_events(lua_State* state);
+
+// Values between the engine and Lua (script_values.cpp). Pushes `value`; engine objects become
+// stubs, functions nil (the engine cannot pass one in).
+void push_value(lua_State* state, const ScriptValue& value);
+// The value at `index`, with the read limits of ScriptHost::global.
+Result<ScriptValue> read_value(lua_State* state, int index);
 
 // Recording stubs (script_stubs.cpp).
 void install_stubs(ScriptHost::Impl& host);
@@ -95,5 +140,7 @@ void install_stubs(ScriptHost::Impl& host);
 void push_global_stub(lua_State* state, const std::string& name);
 // "string, number, object(Find_Player)": the argument types of the call on the stack (from `first`).
 std::string argument_signature(lua_State* state, int first);
+// The name of the engine object a stub at `index` stands for, or nothing if it is not a stub.
+std::optional<std::string> stub_origin(lua_State* state, int index);
 
 } // namespace eaw

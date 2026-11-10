@@ -187,11 +187,23 @@ mod's scripts, in the engine, never in the inspector or tests.
 EAWEngine.exe lua-survey --game foc --ticks 300 --report survey
 ```
 
-Each script is loaded, `Base_Definitions` (else `Definitions`) is called, and `main` runs as a thread
-for `--ticks` simulation ticks (game-object scripts get `Object` bound to a stub first). The summary
-lists the most used functions and the most common errors; `--report <folder>` writes `api.tsv`
-(name, function or method, host-implemented or stub, scripts, calls, argument types) and
-`scripts.tsv` (per script: loaded, errors, exited, threads left, first error). Compiled scripts are
+Each script is loaded and `Base_Definitions` (else `Definitions`) is called. Then, for `--ticks`
+simulation ticks (default 300):
+
+- the engine objects the framework expects are bound as stubs: `Object` for game-object scripts,
+  `PlayerObject` for AI, free-store, evaluator, and intervention scripts, `Target` and one object
+  per task force for AI plans;
+- `main` runs as a thread, and so does each task force's `<Name>_Thread` in an AI plan;
+- events are queued as the engine would deliver them: each `StoryModeEvents` entry through
+  `Story_Event_Trigger`, one at a time over the first three quarters of the run; each task force
+  event (`<Name>_<Event>`, else `Default_<Event>`) at the half; and each function a script handed to
+  an engine function (a proximity handler) at three quarters, with stub objects as arguments.
+
+Story events fire in key order, not in their campaign's order, so states that rely on globals an
+earlier state set fail; those errors are the survey's, not the host's. The summary lists the
+events queued, the most used functions, and the most common errors; `--report <folder>` writes
+`api.tsv` (name, function or method, host-implemented or stub, scripts, calls, argument types) and
+`scripts.tsv` (per script: loaded, errors, exited, threads left, events queued, first error). Compiled scripts are
 refused (Lua 5.0 does not verify bytecode), and each call or resume stops after its instruction
 budget, so a runaway script cannot hang the survey.
 

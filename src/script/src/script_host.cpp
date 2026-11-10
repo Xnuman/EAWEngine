@@ -155,6 +155,8 @@ int lua_coroutine_create(lua_State* state)
 
 int lua_create_thread(lua_State* state)
 {
+    // Called as Create_Thread(...): argument 1 is the Create_Thread table itself.
+    lua_remove(state, 1);
     auto& host = host_of(state);
     host.recorder.record("Create_Thread", host.script_name, argument_signature(state, 1), true);
     std::string name = "(function)";
@@ -176,6 +178,66 @@ int lua_create_thread(lua_State* state)
     const auto id = static_cast<lua_Number>(host.next_thread_id);
     host.spawn_thread(state, name, arguments);
     lua_pushnumber(state, id);
+    return 1;
+}
+
+// Create_Thread.Kill(id) and Create_Thread.Is_Thread_Active(id), on the ids Create_Thread returns.
+int lua_kill_thread(lua_State* state)
+{
+    auto& host = host_of(state);
+    host.recorder.record("Create_Thread.Kill", host.script_name, argument_signature(state, 1), true);
+    if (lua_isnumber(state, 1) != 0)
+    {
+        host.kill_thread(static_cast<std::int64_t>(lua_tonumber(state, 1)));
+    }
+    return 0;
+}
+
+int lua_is_thread_active(lua_State* state)
+{
+    auto& host = host_of(state);
+    host.recorder.record("Create_Thread.Is_Thread_Active", host.script_name, argument_signature(state, 1), true);
+    const auto id = lua_isnumber(state, 1) != 0 ? static_cast<std::int64_t>(lua_tonumber(state, 1)) : -1;
+    const bool active = std::ranges::any_of(host.threads,
+                                            [&](const ScriptHost::Impl::Thread& thread)
+                                            {
+                                                return thread.id == id && thread.coroutine != nullptr && !thread.kill_requested;
+                                            });
+    lua_pushboolean(state, active ? 1 : 0);
+    return 1;
+}
+
+// GameRandom(lower, upper): an integer in [lower, upper], as the stock scripts use it (indices
+// into lists, GameRandom(1, 1)); GameRandom.Get_Float(): a number in [0, 1); GameRandom.Free_Random
+// (lower, upper) like GameRandom. All draw from the host's seeded stream; that Free_Random is the
+// original's unsynchronized variant is an inference from its name.
+int random_range(lua_State* state, const int first, const char* name)
+{
+    auto& host = host_of(state);
+    host.recorder.record(name, host.script_name, argument_signature(state, first), true);
+    const auto lower = luaL_checkint(state, first);
+    const auto upper = luaL_checkint(state, first + 1);
+    luaL_argcheck(state, lower <= upper, first + 1, "interval is empty");
+    lua_pushnumber(state, static_cast<lua_Number>(host.random_integer(lower, upper)));
+    return 1;
+}
+
+int lua_game_random(lua_State* state)
+{
+    // Called as GameRandom(...): argument 1 is the GameRandom table itself.
+    return random_range(state, 2, "GameRandom");
+}
+
+int lua_game_random_free(lua_State* state)
+{
+    return random_range(state, 1, "GameRandom.Free_Random");
+}
+
+int lua_game_random_float(lua_State* state)
+{
+    auto& host = host_of(state);
+    host.recorder.record("GameRandom.Get_Float", host.script_name, argument_signature(state, 1), true);
+    lua_pushnumber(state, static_cast<lua_Number>(host.next_random()));
     return 1;
 }
 
@@ -250,44 +312,7 @@ int lua_thread_value_reset(lua_State* state)
     return 0;
 }
 
-// The event queue the engine fills; empty until the engine delivers events.
-int lua_get_event(lua_State* state)
-{
-    lua_pushnil(state);
-    return 1;
-}
-
-int lua_no_value(lua_State* state)
-{
-    lua_pushnil(state);
-    return 1;
-}
-
-int lua_nothing(lua_State*)
-{
-    return 0;
-}
-
-// A global table callable through its metatable (ThreadValue, GetEvent) with fields set to methods.
-void set_callable_table(lua_State* state, const char* name, const lua_CFunction call, std::initializer_list<std::pair<const char*, lua_CFunction>> methods)
-{
-    lua_pushstring(state, name);
-    lua_newtable(state);
-    for (const auto& [field, method] : methods)
-    {
-        lua_pushstring(state, field);
-        lua_pushcfunction(state, method);
-        lua_rawset(state, -3);
-    }
-    lua_newtable(state);
-    lua_pushstring(state, "__call");
-    lua_pushcfunction(state, call);
-    lua_rawset(state, -3);
-    lua_setmetatable(state, -2);
-    lua_rawset(state, LUA_GLOBALSINDEX);
-}
-
-void set_global(lua_State* state, const char* name, const lua_CFunction function)
+void set_global_function(lua_State* state, const char* name, const lua_CFunction function)
 {
     lua_pushstring(state, name);
     lua_pushcfunction(state, function);
@@ -313,6 +338,24 @@ void set_library_function(lua_State* state, const char* table, const char* field
 }
 
 } // namespace
+
+void set_callable_table(lua_State* state, const char* name, const lua_CFunction call, std::initializer_list<std::pair<const char*, lua_CFunction>> methods)
+{
+    lua_pushstring(state, name);
+    lua_newtable(state);
+    for (const auto& [field, method] : methods)
+    {
+        lua_pushstring(state, field);
+        lua_pushcfunction(state, method);
+        lua_rawset(state, -3);
+    }
+    lua_newtable(state);
+    lua_pushstring(state, "__call");
+    lua_pushcfunction(state, call);
+    lua_rawset(state, -3);
+    lua_setmetatable(state, -2);
+    lua_rawset(state, LUA_GLOBALSINDEX);
+}
 
 ScriptHost::Impl& host_of(lua_State* state)
 {
@@ -361,24 +404,25 @@ Status ScriptHost::Impl::setup()
     {
         clear_global(state, name);
     }
-    set_global(state, "loadstring", lua_safe_loadstring);
-    set_global(state, "print", lua_print);
-    set_global(state, "require", lua_require);
+    set_global_function(state, "loadstring", lua_safe_loadstring);
+    set_global_function(state, "print", lua_print);
+    set_global_function(state, "require", lua_require);
     set_library_function(state, "math", "random", lua_random);
     set_library_function(state, "math", "randomseed", lua_randomseed);
     set_library_function(state, "coroutine", "create", lua_coroutine_create);
 
     // The thread and event primitives the host implements itself (the scripts' own library builds
     // Sleep, ScriptExit, and PumpEvents on them); every other engine function is a stub.
-    set_global(state, "Create_Thread", lua_create_thread);
-    set_global(state, "GetCurrentTime", lua_get_current_time);
-    set_global(state, "GetThreadID", lua_get_thread_id);
-    set_global(state, "_ScriptExit", lua_request_exit);
+    set_callable_table(state, "Create_Thread", lua_create_thread, {{"Kill", lua_kill_thread}, {"Is_Thread_Active", lua_is_thread_active}});
+    set_callable_table(state, "GameRandom", lua_game_random, {{"Get_Float", lua_game_random_float}, {"Free_Random", lua_game_random_free}});
+    set_global_function(state, "GetCurrentTime", lua_get_current_time);
+    set_global_function(state, "GetThreadID", lua_get_thread_id);
+    set_global_function(state, "_ScriptExit", lua_request_exit);
     lua_pushlightuserdata(state, const_cast<char*>(&thread_values_key));
     lua_newtable(state);
     lua_rawset(state, LUA_REGISTRYINDEX);
     set_callable_table(state, "ThreadValue", lua_thread_value, {{"Set", lua_thread_value_set}, {"Reset", lua_thread_value_reset}});
-    set_callable_table(state, "GetEvent", lua_get_event, {{"Params", lua_no_value}, {"Reset", lua_nothing}});
+    install_events(state);
 
     // coroutine.wrap over the hooked coroutine.create.
     constexpr std::string_view wrap = "local create, resume, unpack, error = coroutine.create, coroutine.resume, unpack, error\n"
@@ -442,14 +486,52 @@ std::uint64_t ScriptHost::Impl::service_interval() const
 void ScriptHost::Impl::finish_exit()
 {
     exited = true;
+    clear_events();
     for (auto& thread : threads)
     {
-        if (thread.coroutine != nullptr)
+        end_thread(thread);
+    }
+}
+
+void ScriptHost::Impl::end_thread(Thread& thread)
+{
+    if (thread.coroutine == nullptr)
+    {
+        return;
+    }
+    luaL_unref(state, LUA_REGISTRYINDEX, thread.reference);
+    thread.coroutine = nullptr;
+    lua_pushlightuserdata(state, const_cast<char*>(&thread_values_key));
+    lua_rawget(state, LUA_REGISTRYINDEX);
+    lua_pushnumber(state, static_cast<lua_Number>(thread.id));
+    lua_pushnil(state);
+    lua_rawset(state, -3);
+    lua_pop(state, 1);
+}
+
+void ScriptHost::Impl::kill_thread(const std::int64_t id)
+{
+    for (auto& thread : threads)
+    {
+        if (thread.id != id)
         {
-            luaL_unref(state, LUA_REGISTRYINDEX, thread.reference);
-            thread.coroutine = nullptr;
+            continue;
+        }
+        if (id == current_thread)
+        {
+            thread.kill_requested = true;
+        }
+        else
+        {
+            end_thread(thread);
         }
     }
+}
+
+std::int64_t ScriptHost::Impl::random_integer(const std::int64_t lower, const std::int64_t upper)
+{
+    const auto span = static_cast<double>(upper - lower + 1);
+    return lower + std::min(static_cast<std::int64_t>(next_random() * span), upper - lower);
 }
 
 double ScriptHost::Impl::next_random()
@@ -707,12 +789,24 @@ Status ScriptHost::call(const std::string_view name)
     return impl_->protected_call(0, name);
 }
 
-void ScriptHost::bind_stub(const std::string_view global)
+void ScriptHost::set_global(const std::string_view name, const ScriptValue& value)
 {
-    push_global_stub(impl_->state, std::string(global));
-    lua_pushlstring(impl_->state, global.data(), global.size());
-    lua_insert(impl_->state, -2);
+    lua_pushlstring(impl_->state, name.data(), name.size());
+    push_value(impl_->state, value);
     lua_rawset(impl_->state, LUA_GLOBALSINDEX);
+}
+
+Result<ScriptValue> ScriptHost::global(const std::string_view name) const
+{
+    lua_pushlstring(impl_->state, name.data(), name.size());
+    lua_rawget(impl_->state, LUA_GLOBALSINDEX);
+    auto value = read_value(impl_->state, -1);
+    lua_pop(impl_->state, 1);
+    if (!value)
+    {
+        return make_error("global '" + std::string(name) + "': " + value.error().message);
+    }
+    return value;
 }
 
 std::set<std::string> script_defined_globals(const AssetReader& reader)
@@ -786,21 +880,13 @@ void ScriptHost::tick()
             // ends the thread ("return false to exit this thread", PGBase.lua).
             lua_Debug frame{};
             const bool yielded_false = lua_gettop(coroutine) > 0 && lua_isboolean(coroutine, -1) && lua_toboolean(coroutine, -1) == 0;
-            finished = lua_getstack(coroutine, 0, &frame) == 0 || yielded_false;
+            finished = lua_getstack(coroutine, 0, &frame) == 0 || yielded_false || resumed.kill_requested;
             lua_settop(coroutine, 0);
             resumed.wake_tick = host.tick_count + host.service_interval();
         }
         if (finished)
         {
-            luaL_unref(host.state, LUA_REGISTRYINDEX, resumed.reference);
-            resumed.coroutine = nullptr;
-            // Its thread values go with it.
-            lua_pushlightuserdata(host.state, const_cast<char*>(&thread_values_key));
-            lua_rawget(host.state, LUA_REGISTRYINDEX);
-            lua_pushnumber(host.state, static_cast<lua_Number>(resumed.id));
-            lua_pushnil(host.state);
-            lua_rawset(host.state, -3);
-            lua_pop(host.state, 1);
+            host.end_thread(resumed);
         }
         if (host.exit_requested)
         {

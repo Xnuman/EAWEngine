@@ -4,14 +4,16 @@
 // sandboxed Lua state: no file, OS, or debug access, `print` to the log, `math.random` from a seeded
 // stream of its own, `require` resolved through the layered VFS, and compiled bytecode refused (Lua
 // 5.0 does not verify bytecode). Script threads are coroutines woken on simulation ticks
-// (Create_Thread, Sleep). Every other engine function a script calls is a recording stub: it
+// (Create_Thread, Sleep), and engine events reach them through the framework's PumpEvents, which
+// drains GetEvent. Every other engine function a script calls is a recording stub: it
 // records the call with the HostApiRecorder and returns a neutral stub object whose methods record
 // too, so the scripts' real use of the host API can be measured before the engine implements it.
 // Every call and resume runs under an instruction budget, so a script that never yields cannot hang
 // the engine.
 
-#include "eaw/host_api_recorder.hpp"
 #include "core/status.hpp"
+#include "script/host_api_recorder.hpp"
+#include "script/script_value.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -34,6 +36,14 @@ struct ScriptHostOptions
     // Names any script defines (script_defined_globals): reading one that is not set gives nil, never
     // a stub, even when the file defining it is not loaded (`if PG_Story_Mode_Init then`).
     std::shared_ptr<const std::set<std::string>> script_globals;
+};
+
+// A function a script handed to an engine function, to be called back later (the handler
+// Event_Object_In_Range takes).
+struct ScriptCallback
+{
+    // The engine function it was passed to ("Object.Event_Object_In_Range").
+    std::string registered_by;
 };
 
 struct ScriptError
@@ -60,9 +70,23 @@ public:
     Status call(std::string_view name);
     // Starts a script thread on a global function (as Create_Thread does), first resumed next tick.
     Status start_thread(std::string_view function);
-    // Sets a global to a recording stub named after it: an engine object the host will provide
-    // (a game-object script's Object), measured until it exists.
-    void bind_stub(std::string_view global);
+    // Sets a global (a game-object script's Object, an AI plan's task forces); engine objects
+    // become recording stubs of their name until the engine provides them.
+    void set_global(std::string_view name, const ScriptValue& value);
+    // A global's value, read back with nesting and size limits (an error past them).
+    [[nodiscard]] Result<ScriptValue> global(std::string_view name) const;
+
+    // Engine events. Each queues a call that the next script thread to pump events (PumpEvents
+    // through GetEvent and GetEvent.Params) makes, in queue order, with `arguments`. Ignored once
+    // the script has exited.
+    // A call of a global script function; fails when the global is not one.
+    Status queue_event(std::string_view function, const std::vector<ScriptValue>& arguments = {});
+    // A call of a function a script handed to the engine (an index into callbacks()).
+    Status queue_callback(std::size_t callback, const std::vector<ScriptValue>& arguments = {});
+    [[nodiscard]] std::size_t queued_events() const noexcept;
+    // Every function scripts passed to engine functions, in first-seen order; passing the same
+    // function again keeps its index.
+    [[nodiscard]] const std::vector<ScriptCallback>& callbacks() const noexcept;
     // Advances one simulation tick: resumes every thread whose sleep has ended, in start order.
     void tick();
 

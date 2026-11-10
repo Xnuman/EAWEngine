@@ -943,14 +943,45 @@ recording stubs (`EAWEngine lua-survey`).
   thread. `_ScriptExit` sets a flag that ends the whole script at the next yield (`ScriptExit` wraps
   it). `GetThreadID` is negative outside threads. `ThreadValue(key)` and `ThreadValue.Set(key,
   value)` are per-thread storage. The framework sets `ServiceRate = 0.2` ("five times a second"); the
-  host services each thread that often.
+  host services each thread that often. `Create_Thread` is also a table: `Create_Thread.Kill(id)` and
+  `Create_Thread.Is_Thread_Active(id)` act on the ids it returns (stock campaign scripts use both).
+- **Events.** What the engine delivers is narrower than it looks. `GetEvent()` returns a queued
+  function and `GetEvent.Params()` its argument table; `GetEvent.Reset()` drops the queue. Timers,
+  death events, and attacked events are pure Lua: `Register_Timer`, `Register_Death_Event`, and
+  `Register_Attacked_Event` fill tables that `Pump_Service` (PGCommands.lua) polls on every
+  `PumpEvents`, through `GetCurrentTime`, `TestValid`, and `FindDeadlyEnemy`. Proximity is the
+  engine's: `Register_Prox` hands its handler to `Event_Object_In_Range` and services the object with
+  `Service_Wrapper`. The host keeps every script function passed to an engine function as a callback
+  the engine can queue later.
+- **AI plans.** A plan's `Definitions` sets `Category`, `TaskForce` (a list of tables whose first
+  string names the task force, followed by composition rules), and often `RequiredCategories`. The
+  AI framework's `Base_Definitions` clears a global of each task force's name, so the engine binds the
+  task force object under that name and runs `<Name>_Thread` (150 such functions in 134 stock plans).
+  Task force events are functions named `<Name>_<Event>` with the task force first among their
+  arguments: `Production_Failed` (41 plans), `No_Units_Remaining` (30),
+  `Original_Target_Owner_Changed` (19), `Unit_Move_Finished` (13), `Unit_Damaged`, and others;
+  PGEvents.lua defines a `Default_<Event>` for most, which the engine presumably calls when a plan
+  defines none (an inference). Plans read `PlayerObject` and `Target` (AITarget).
+- **Story scripts.** A story script lists its states in `StoryModeEvents` (event name to state
+  function); PGStoryMode.lua registers them with the state machine of PGStateMachine.lua, whose
+  `main` runs the states. `Story_Event_Trigger(name)` switches to an event's state, and no stock
+  script calls it, so the engine fires story events through it (from the campaign's story XML).
+- **Random numbers.** `GameRandom(lower, upper)` returns an integer in the inclusive range (scripts
+  index lists with it and call `GameRandom(1, 1)`), `GameRandom.Get_Float()` a number in [0, 1), and
+  `GameRandom.Free_Random(lower, upper)` the same as `GameRandom`; that it is the unsynchronized
+  variant is an inference from its name. The host serves all three from its seeded stream.
 - **Engine names are tables too.** `WeightedTypeList.Create()`, `FogOfWar.Reveal_All`,
   `GameRandom.Get_Float()`: some engine globals are tables of functions, and objects returned by engine
   functions carry methods (`Object.Get_Owner().Get_Faction_Name()`).
-- **What scripts call (first survey, creation and main loops, no events, 10 game seconds):** 46
-  functions and 18 methods; most used by script count: `_ScriptMessage`, `Find_Player`,
-  `GetCurrentTime`, `Get_Game_Mode`, `_ScriptExit`, `Find_Object_Type`, `_MessagePopup`,
-  `WeightedTypeList.Create`, and the game object's `Is_Valid`, `Get_Owner`, `Event_Object_In_Range`,
-  `Service_Wrapper`. The ranked list with argument types comes from `lua-survey --report`.
+- **What scripts call.** The first survey (creation and main loops, no events, 10 game seconds)
+  reached 46 functions and 18 methods. With AI plan threads, story events, task force events, and
+  callbacks (about 2,900 events over 370 scripts) it reaches 167 functions and 129 methods; 317
+  scripts run without errors, and most remaining errors come from story states fired out of their
+  campaign order or from stubs where a script expects a number. Most used by script count:
+  `_ScriptMessage`, `GetCurrentTime`, `_ScriptExit`, `_MessagePopup`, `Find_Player`,
+  `Find_Object_Type`, the task forces' `Produce_Force`, `Find_Hint`, `Get_Game_Mode`,
+  `Find_First_Object`, `Find_All_Objects_Of_Type`, then the cinematic and story functions
+  (`Spawn_Unit`, `Lock_Controls`, `Story_Event`, `Start_Cinematic_Camera`). The ranked list with
+  argument types comes from `lua-survey --report`.
 - **Choice of runtime.** Which Lua VMs exist, what they cost, and why the host stays on Lua 5.0.3
   for the original's scripts: [lua-runtime-research.md](lua-runtime-research.md).

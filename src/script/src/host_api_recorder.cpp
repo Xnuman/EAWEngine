@@ -1,4 +1,4 @@
-#include "eaw/host_api_recorder.hpp"
+#include "script/host_api_recorder.hpp"
 
 namespace eaw {
 
