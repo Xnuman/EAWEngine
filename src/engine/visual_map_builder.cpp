@@ -160,7 +160,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     spawnable.hover_offset = type_float_field(build.catalog, *definition, "Hover_Offset");
     spawnable.scale = type_scale_factor(build.catalog, *definition, build.builder.scene.warnings);
     spawnable.death = type_death_style(build.catalog, *definition);
-    spawnable.lua_script = type_lua_script(build.catalog, *definition);
+    spawnable.script = type_script_info(build.catalog, *definition);
     if (spawnable.max_speed > 0.0F)
     {
         const auto soft_radius = type_soft_footprint_radius(build.catalog, *definition);
@@ -337,7 +337,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                 }
             }
             asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size()), placement.type != nullptr ? type_death_style(catalog, *placement.type) : DeathStyle{},
-                                      placement.type != nullptr ? type_lua_script(catalog, *placement.type) : std::string{}, map.placed_objects[placement.object_index].hint});
+                                      placement.type != nullptr ? type_script_info(catalog, *placement.type) : ScriptTypeInfo{}, map.placed_objects[placement.object_index].hint});
             if (placement.needs_formation)
             {
                 company_members.push_back({placement.object_index, asset.entities.size() - 1U, scene.instances.size(), placement.type});

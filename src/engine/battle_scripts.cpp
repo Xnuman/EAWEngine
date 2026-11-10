@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 
 namespace eaw {
 namespace {
@@ -34,9 +35,12 @@ enum class GameObjectMethod : std::size_t
     event_object_in_range,
     cancel_event_object_in_range,
     service_wrapper,
+    get_distance,
+    is_category,
 };
-constexpr std::array<std::string_view, 12> game_object_methods{
-    "Is_Valid", "Get_ID", "Get_Type", "Get_Owner", "Get_Position", "Get_Hull", "Move_To", "Attack_Target", "Stop", "Event_Object_In_Range", "Cancel_Event_Object_In_Range", "Service_Wrapper"};
+constexpr std::array<std::string_view, 14> game_object_methods{
+    "Is_Valid",        "Get_ID",       "Get_Type",   "Get_Owner", "Get_Position", "Get_Hull", "Move_To", "Attack_Target", "Stop", "Event_Object_In_Range", "Cancel_Event_Object_In_Range",
+    "Service_Wrapper", "Get_Distance", "Is_Category"};
 constexpr std::array<std::string_view, 1> object_type_methods{"Get_Name"};
 constexpr std::array<std::string_view, 1> player_methods{"Get_ID"};
 enum class BlockMethod : std::size_t
@@ -61,8 +65,9 @@ enum class Function : std::size_t
     find_all_objects_of_type,
     find_hint,
     find_all_objects_with_hint,
+    get_game_mode,
 };
-constexpr std::array<std::string_view, 5> functions{"Find_Object_Type", "Find_First_Object", "Find_All_Objects_Of_Type", "Find_Hint", "Find_All_Objects_With_Hint"};
+constexpr std::array<std::string_view, 6> functions{"Find_Object_Type", "Find_First_Object", "Find_All_Objects_Of_Type", "Find_Hint", "Find_All_Objects_With_Hint", "Get_Game_Mode"};
 
 // Blocks a script keeps; the oldest is reused after this many orders, and a block of a reused slot
 // reads as finished. An engine choice: a script waits on few orders at a time.
@@ -90,7 +95,7 @@ EntityId entity_of(const ScriptObject& object)
 
 // --- BattleScriptView ---
 
-std::uint32_t BattleScriptView::intern_type(const std::string_view name)
+std::uint32_t BattleScriptView::intern_type(const Battle& battle, const std::string_view name)
 {
     auto folded = ascii_lower(name);
     if (const auto found = type_index_.find(folded); found != type_index_.end())
@@ -99,6 +104,7 @@ std::uint32_t BattleScriptView::intern_type(const std::string_view name)
     }
     const auto id = static_cast<std::uint32_t>(type_names_.size());
     type_names_.emplace_back(name);
+    type_infos_.push_back(battle.type_info(name));
     type_entities_.emplace_back();
     type_index_.emplace(std::move(folded), id);
     return id;
@@ -109,7 +115,7 @@ void BattleScriptView::rebuild(const Battle& battle)
     const auto spawnable = battle.spawnable();
     for (; spawnable_seen_ < spawnable.size(); ++spawnable_seen_)
     {
-        (void)intern_type(spawnable[spawnable_seen_].type_name);
+        (void)intern_type(battle, spawnable[spawnable_seen_].type_name);
     }
     if (!hints_read_)
     {
@@ -120,6 +126,7 @@ void BattleScriptView::rebuild(const Battle& battle)
         hints_read_ = true;
     }
     snapshot_ = &battle.world().snapshot();
+    land_ = battle.world().ground().valid();
     new_entities_.clear();
     std::ranges::fill(slot_positions_, 0U);
     for (auto& entities : type_entities_)
@@ -138,7 +145,7 @@ void BattleScriptView::rebuild(const Battle& battle)
         slot_positions_[id.index] = static_cast<std::uint32_t>(position + 1U);
         if (slot_types_[id.index].first != id.generation)
         {
-            slot_types_[id.index] = {id.generation, intern_type(battle.world().type_name(id))};
+            slot_types_[id.index] = {id.generation, intern_type(battle, battle.world().type_name(id))};
             new_entities_.push_back(id);
         }
         type_entities_[slot_types_[id.index].second].push_back(static_cast<std::uint32_t>(position));
@@ -181,6 +188,16 @@ std::optional<std::uint32_t> BattleScriptView::type_of(const EntityId id) const 
 std::span<const std::uint32_t> BattleScriptView::entities_of_type(const std::uint32_t type) const noexcept
 {
     return type < type_entities_.size() ? std::span<const std::uint32_t>(type_entities_[type]) : std::span<const std::uint32_t>();
+}
+
+const ScriptTypeInfo* BattleScriptView::type_info(const std::uint32_t type) const noexcept
+{
+    return type < type_infos_.size() ? type_infos_[type] : nullptr;
+}
+
+bool BattleScriptView::land() const noexcept
+{
+    return land_;
 }
 
 std::vector<EntityId> BattleScriptView::hinted(const std::string_view hint) const
@@ -370,6 +387,10 @@ Status BattleScriptContext::call_function(const std::size_t function, ScriptCall
         call.return_objects(found);
         return {};
     }
+    case Function::get_game_mode:
+        // A tactical battle on a land or a space map; "Galactic" comes with galactic play.
+        call.return_string(view_.land() ? "Land" : "Space");
+        return {};
     }
     return make_error("unknown battle script function");
 }
@@ -513,6 +534,55 @@ Status BattleScriptContext::call_game_object(const ScriptObject& object, const G
     case GameObjectMethod::service_wrapper:
         service(id);
         break;
+    case GameObjectMethod::get_distance:
+    {
+        // Get_Distance(object or position), in the ground plane like every range (provisional).
+        const auto target = call.object(1);
+        if (!target || (target->kind != position_kind && target->kind != game_object_kind))
+        {
+            return make_error("Get_Distance expects a position or a game object");
+        }
+        Vector3 point = target->point;
+        if (target->kind == game_object_kind)
+        {
+            const auto* other = view_.entity(entity_of(*target));
+            if (other == nullptr)
+            {
+                call.warn("Get_Distance to a game object that no longer exists");
+                call.return_nil();
+                break;
+            }
+            point = other->position;
+        }
+        call.return_number(std::sqrt(static_cast<double>(ground_distance_squared(entity->position, point))));
+        break;
+    }
+    case GameObjectMethod::is_category:
+    {
+        // Is_Category(name): whether the type's CategoryMask names it, ignoring case; a list
+        // ("Fighter | Bomber") matches any of its names.
+        const auto name = call.string(1);
+        if (!name)
+        {
+            return make_error("Is_Category expects a category name");
+        }
+        const auto* info = view_.type_info(*view_.type_of(id));
+        bool member = false;
+        std::string part;
+        for (const char character : std::string(*name) + "|")
+        {
+            if (character != '|')
+            {
+                part += character;
+                continue;
+            }
+            const auto folded = ascii_lower(ascii_trim(part));
+            member = member || (info != nullptr && std::ranges::find(info->categories, folded) != info->categories.end());
+            part.clear();
+        }
+        call.return_boolean(member);
+        break;
+    }
     }
     return {};
 }
@@ -665,7 +735,8 @@ void BattleScripts::run(Battle& battle)
     const std::vector<EntityId> appeared(view_.new_entities().begin(), view_.new_entities().end());
     for (const auto id : appeared)
     {
-        const auto script = battle.object_script(battle.world().type_name(id));
+        const auto* info = battle.type_info(battle.world().type_name(id));
+        const std::string_view script = info != nullptr ? std::string_view(info->lua_script) : std::string_view();
         if (script.empty() || std::ranges::find(failed_scripts_, script) != failed_scripts_.end())
         {
             continue;

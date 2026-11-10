@@ -384,8 +384,8 @@ std::unordered_set<std::string> death_clone_names(const XmlAssetDatabase& databa
 // TURRET. Stock infantry list WALK_LOCOMOTOR or LAND_TEAM_INFANTRY_LOCOMOTOR, IDLE, TARGETING, and
 // WEAPON without TURRET; vehicles (T2-B, AT-ST) add TURRET. Only meaningful for ground units.
 bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& definition);
-// The game-object script a type names (XML Lua_Script, through its variant chain; empty: none).
-std::string type_lua_script(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// What scripts read of a type (XML Lua_Script and CategoryMask, through its variant chain).
+ScriptTypeInfo type_script_info(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
 // XML Max_Speed in world units per second (the provisional scale in visual_scene_builder.hpp);
 // unparsable values are 0 with a warning.

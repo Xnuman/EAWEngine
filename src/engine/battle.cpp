@@ -73,17 +73,11 @@ Battle::Battle(const BattleMap& map, std::string map_name, const double tick_sec
         {
             hinted_.emplace_back(*id, entity.hint);
         }
-        if (!entity.lua_script.empty())
-        {
-            object_scripts_.try_emplace(ascii_lower(entity.spawn.type_name), entity.lua_script);
-        }
+        type_info_.try_emplace(ascii_lower(entity.spawn.type_name), entity.script);
     }
     for (const auto& type : spawnable_)
     {
-        if (!type.lua_script.empty())
-        {
-            object_scripts_.try_emplace(ascii_lower(type.type_name), type.lua_script);
-        }
+        type_info_.try_emplace(ascii_lower(type.type_name), type.script);
     }
     world_.step();
 }
@@ -93,10 +87,10 @@ std::span<const std::pair<EntityId, std::string>> Battle::hinted_entities() cons
     return hinted_;
 }
 
-std::string_view Battle::object_script(const std::string_view type_name) const
+const ScriptTypeInfo* Battle::type_info(const std::string_view type_name) const
 {
-    const auto found = object_scripts_.find(ascii_lower(type_name));
-    return found != object_scripts_.end() ? std::string_view(found->second) : std::string_view();
+    const auto found = type_info_.find(ascii_lower(type_name));
+    return found != type_info_.end() ? &found->second : nullptr;
 }
 
 SimulationWorld& Battle::world() noexcept
@@ -128,10 +122,7 @@ std::size_t Battle::add_spawnable(const std::span<const SpawnableType> types)
         {
             member += first;
         }
-        if (!type.lua_script.empty())
-        {
-            object_scripts_.try_emplace(ascii_lower(type.type_name), type.lua_script);
-        }
+        type_info_.try_emplace(ascii_lower(type.type_name), type.script);
         spawnable_.push_back(std::move(type));
     }
     return first;

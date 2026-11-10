@@ -31,6 +31,9 @@ class AssetReader;
 // Warnings a host keeps (a script that keeps ordering a dead unit would otherwise grow them without
 // bound); later ones are only counted. An engine choice.
 inline constexpr std::size_t max_script_warnings = 256;
+// Output lines a host keeps (the stock scripts write debug messages on every service); later ones
+// are only counted. An engine choice.
+inline constexpr std::size_t max_script_output = 4096;
 
 struct ScriptHostOptions
 {
@@ -109,8 +112,10 @@ public:
     // ScriptExit was called: the script and its threads have ended.
     [[nodiscard]] bool exited() const noexcept;
     [[nodiscard]] const std::vector<ScriptError>& errors() const noexcept;
-    // Lines the script printed (print, DebugMessage, _OuputDebug), for diagnostics.
+    // Lines the script wrote (print, and the framework's _ScriptMessage, _MessagePopup, and
+    // _OuputDebug), the first max_script_output of them; output_count() counts all.
     [[nodiscard]] const std::vector<std::string>& output() const noexcept;
+    [[nodiscard]] std::uint64_t output_count() const noexcept;
     // Diagnostics of provider calls that did not stop the script (ScriptCall::warn), the first
     // max_script_warnings of them; warning_count() counts all.
     [[nodiscard]] const std::vector<std::string>& warnings() const noexcept;

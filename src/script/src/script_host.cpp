@@ -72,8 +72,36 @@ int lua_print(lua_State* state)
             break;
         }
     }
-    host_of(state).output.push_back(std::move(line));
+    host_of(state).write_output(std::move(line));
     return 0;
+}
+
+// The framework's message sinks (PGDebug.lua formats, these write): _ScriptMessage (ScriptMessage,
+// DebugMessage), _MessagePopup (MessageBox), and _OuputDebug (OutputDebug; the original's spelling).
+// All three go to the script's output; the original shows popups in a window, an engine choice not
+// to here.
+int lua_debug_message(lua_State* state)
+{
+    auto& host = host_of(state);
+    host.record(state, lua_tostring(state, lua_upvalueindex(1)), 1, true);
+    host.write_output(lua_isstring(state, 1) ? lua_tostring(state, 1) : "");
+    return 0;
+}
+
+// The Script object: tostring(Script) names the script (the framework prefixes its messages with
+// it), and Script.Debug_Should_Issue_Event_Alert() asks whether every event should raise a popup:
+// never here.
+int lua_script_text(lua_State* state)
+{
+    const auto& name = host_of(state).script_name;
+    lua_pushstring(state, name.substr(name.find_last_of('/') + 1U).c_str());
+    return 1;
+}
+
+int lua_false(lua_State* state)
+{
+    lua_pushboolean(state, 0);
+    return 1;
 }
 
 int lua_require(lua_State* state)
@@ -422,6 +450,24 @@ Status ScriptHost::Impl::setup()
     lua_rawset(state, LUA_REGISTRYINDEX);
     set_callable_table(state, "ThreadValue", lua_thread_value, {{"Set", lua_thread_value_set}, {"Reset", lua_thread_value_reset}});
     install_events(state);
+    for (const auto* sink : {"_ScriptMessage", "_MessagePopup", "_OuputDebug"})
+    {
+        lua_pushstring(state, sink);
+        lua_pushstring(state, sink);
+        lua_pushcclosure(state, lua_debug_message, 1);
+        lua_rawset(state, LUA_GLOBALSINDEX);
+    }
+    lua_pushstring(state, "Script");
+    lua_newtable(state);
+    lua_pushstring(state, "Debug_Should_Issue_Event_Alert");
+    lua_pushcfunction(state, lua_false);
+    lua_rawset(state, -3);
+    lua_newtable(state);
+    lua_pushstring(state, "__tostring");
+    lua_pushcfunction(state, lua_script_text);
+    lua_rawset(state, -3);
+    lua_setmetatable(state, -2);
+    lua_rawset(state, LUA_GLOBALSINDEX);
 
     // coroutine.wrap over the hooked coroutine.create.
     constexpr std::string_view wrap = "local create, resume, unpack, error = coroutine.create, coroutine.resume, unpack, error\n"
@@ -556,6 +602,15 @@ void ScriptHost::Impl::record(lua_State* caller, const std::string_view name, co
     {
         options.recorder->record(name, script_name, argument_signature(caller, first_argument), implemented);
     }
+}
+
+void ScriptHost::Impl::write_output(std::string line)
+{
+    if (output.size() < max_script_output)
+    {
+        output.push_back(std::move(line));
+    }
+    ++output_count;
 }
 
 void ScriptHost::Impl::warn(const std::string_view message)
@@ -952,6 +1007,11 @@ const std::vector<ScriptError>& ScriptHost::errors() const noexcept
 const std::vector<std::string>& ScriptHost::output() const noexcept
 {
     return impl_->output;
+}
+
+std::uint64_t ScriptHost::output_count() const noexcept
+{
+    return impl_->output_count;
 }
 
 const std::vector<std::string>& ScriptHost::warnings() const noexcept

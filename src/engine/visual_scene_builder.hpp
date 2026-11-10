@@ -116,14 +116,22 @@ struct DeathStyle
     std::optional<float> persistence_seconds;
 };
 
+// What scripts read of an object type beyond its name: its game-object script (XML Lua_Script;
+// empty: none) and its categories (XML CategoryMask, folded: "infantry", "landhero").
+struct ScriptTypeInfo
+{
+    std::string lua_script;
+    std::vector<std::string> categories;
+};
+
 struct MapEntitySpawn
 {
     EntitySpawn spawn;
     std::uint32_t instance{};
     DeathStyle death;
-    // The type's game-object script (XML Lua_Script; empty: none), and the name scripts find the
-    // placed object by (TedPlacedObject::hint; company members share their company's).
-    std::string lua_script;
+    ScriptTypeInfo script;
+    // The name scripts find the placed object by (TedPlacedObject::hint; company members share
+    // their company's).
     std::string hint;
 };
 
@@ -173,8 +181,7 @@ struct SpawnableType
     // XML FormationOrder and FormationSpacing (formation.hpp).
     std::uint32_t formation_order{2};
     float formation_spacing{0.5F};
-    // The type's game-object script (XML Lua_Script; empty: none).
-    std::string lua_script;
+    ScriptTypeInfo script;
     // A company (Company_Units): the spawnable types of its members, in list order, spawned
     // together in formation. Empty for ordinary types; a company's own mesh is unused.
     std::vector<std::size_t> members;

@@ -458,7 +458,14 @@ void test_battle_object_scripts()
                        "  while true do PumpEvents() end\n"
                        "end\n");
     write("Walker_Script.lua", "require(\"Pump\")\n"
-                               "function main() print(\"walker \" .. Object.Get_Type().Get_Name()) while true do PumpEvents() end end\n");
+                               "function main()\n"
+                               "  print(\"walker \" .. Object.Get_Type().Get_Name() .. \" \" .. Get_Game_Mode() .. \" \" .. tostring(Object.Is_Category(\"INFANTRY\")) .. \" \" .. "
+                               "tostring(Object.Is_Category(\"Vehicle | Infantry\")) .. \" \" .. tostring(Object.Is_Category(\"Vehicle\")) .. \" \" .. "
+                               "Object.Get_Distance(Find_Hint(\"Beacon\", \"gate\")))\n"
+                               "  print(tostring(Script))\n"
+                               "  _ScriptMessage(\"debug line\")\n"
+                               "  while true do PumpEvents() end\n"
+                               "end\n");
     eaw::VirtualFileSystem vfs;
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
 
@@ -466,23 +473,25 @@ void test_battle_object_scripts()
     walker.type_name = "Walker";
     walker.max_speed = 60.0F;
     walker.radius = 1.0F;
-    walker.lua_script = "Walker_Script";
+    walker.script.lua_script = "Walker_Script";
+    walker.script.categories = {"infantry"};
     eaw::SpawnableType broken;
     broken.type_name = "Broken";
-    broken.lua_script = "No_Such_Script";
+    broken.script.lua_script = "No_Such_Script";
     const std::array<eaw::SpawnableType, 2> types{walker, broken};
     eaw::MapEntitySpawn beacon;
     beacon.spawn.type_name = "Beacon";
     beacon.spawn.owner = 2;
     beacon.spawn.position = {300.0F, 0.0F, 0.0F};
-    beacon.lua_script = "Guard";
+    beacon.script.lua_script = "Guard";
     beacon.hint = "Gate";
     eaw::BattleMap map;
     map.entities = std::span(&beacon, 1);
     map.spawnable = types;
 
     eaw::Battle battle(map, "TEST.TED");
-    require(battle.hinted_entities().size() == 1 && battle.object_script("BEACON") == "Guard" && battle.object_script("walker") == "Walker_Script", "the battle must keep hints and type scripts");
+    require(battle.hinted_entities().size() == 1 && battle.type_info("BEACON")->lua_script == "Guard" && battle.type_info("walker")->lua_script == "Walker_Script",
+            "the battle must keep hints and type scripts");
     eaw::BattleScripts scripts(vfs);
     scripts.run(battle);
     require(scripts.size() == 1, "a placed object's type script must start with the battle");
@@ -505,7 +514,11 @@ void test_battle_object_scripts()
     };
     require(count("hint true 1 nil") == 1, "Find_Hint must find the hinted object by type and hint ignoring case, and nothing for another type");
     require(count("near Walker") == 1, "the proximity handler must run once the walker is in range, and not after it cancelled itself");
-    require(std::ranges::count(scripts.host(1).output(), "walker Walker") == 1, "a spawned entity's script must see its own object");
+    const auto& walker_output = scripts.host(1).output();
+    require(std::ranges::count(walker_output, "walker Walker Space true true false 300") == 1,
+            "a spawned entity's script must see its own object, the game mode, its categories, and distances in the ground plane");
+    require(std::ranges::count(walker_output, "WALKER_SCRIPT.LUA") == 1 && std::ranges::count(walker_output, "debug line") == 1,
+            "Script must name the script, and debug messages must reach the output");
     require(scripts.host(0).errors().empty() && scripts.host(1).errors().empty(), "the scripts must run without errors");
     std::filesystem::remove_all(root, ignored);
 }

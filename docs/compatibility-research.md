@@ -987,6 +987,14 @@ recording stubs (`EAWEngine lua-survey`).
   `PumpEvents` and `Process_Proximities` call), with handlers `(self, other)` that usually cancel
   themselves; that every object in range triggers the handler on every service is an engine
   choice.
+- **Debug output, the script, modes, categories.** PGDebug.lua formats messages and hands them
+  to three engine sinks: `_ScriptMessage` (ScriptMessage, DebugMessage; the most used engine name,
+  304 scripts), `_MessagePopup` (MessageBox), and `_OuputDebug` (OutputDebug, so spelled). The
+  `Script` global stands for the running script: messages start with `tostring(Script)`, and
+  `Script.Debug_Should_Issue_Event_Alert()` asks whether events should raise popups. Scripts compare
+  `Get_Game_Mode()` with "Land", "Space", and "Galactic". A type's categories are its XML
+  `CategoryMask`, names separated by `|` (840 stock definitions: Structure, Upgrade, Infantry,
+  Capital, LandHero, ...), which `Is_Category("Infantry")` tests.
 - **Random numbers.** `GameRandom(lower, upper)` returns an integer in the inclusive range (scripts
   index lists with it and call `GameRandom(1, 1)`), `GameRandom.Get_Float()` a number in [0, 1), and
   `GameRandom.Free_Random(lower, upper)` the same as `GameRandom`; that it is the unsynchronized

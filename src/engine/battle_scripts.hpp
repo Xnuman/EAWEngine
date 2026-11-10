@@ -45,6 +45,10 @@ public:
     [[nodiscard]] std::optional<std::uint32_t> type_id(std::string_view name) const;
     [[nodiscard]] std::string_view type_name(std::uint32_t type) const;
     [[nodiscard]] std::optional<std::uint32_t> type_of(EntityId id) const noexcept;
+    // What scripts read of a type (Battle::type_info), or nullptr.
+    [[nodiscard]] const ScriptTypeInfo* type_info(std::uint32_t type) const noexcept;
+    // A land battle (it has ground), else a space battle.
+    [[nodiscard]] bool land() const noexcept;
     // Snapshot positions of the living entities of a type, in snapshot order.
     [[nodiscard]] std::span<const std::uint32_t> entities_of_type(std::uint32_t type) const noexcept;
     // Living placed entities whose hint matches, ignoring case, in map order.
@@ -54,7 +58,7 @@ public:
     [[nodiscard]] const SimSnapshot& snapshot() const noexcept;
 
 private:
-    std::uint32_t intern_type(std::string_view name);
+    std::uint32_t intern_type(const Battle& battle, std::string_view name);
 
     const SimSnapshot* snapshot_{};
     // Entity slot -> snapshot position + 1 (0: no entity in that slot).
@@ -63,6 +67,9 @@ private:
     // up once per entity, not once per tick.
     std::vector<std::pair<std::uint32_t, std::uint32_t>> slot_types_;
     std::vector<std::string> type_names_;
+    // Per type id: the battle's ScriptTypeInfo (its storage keeps addresses), or nullptr.
+    std::vector<const ScriptTypeInfo*> type_infos_;
+    bool land_{};
     // Folded type name -> type id.
     std::unordered_map<std::string, std::uint32_t> type_index_;
     std::vector<std::vector<std::uint32_t>> type_entities_;
@@ -102,7 +109,7 @@ public:
     // battle as it was last viewed (run() rebuilds the view). Returns the script's index.
     Result<std::size_t> add(const Battle& battle, std::string_view script, std::optional<EntityId> object = std::nullopt);
     // The script phase after a tick: rebuilds the view; ends the scripts of objects that are gone
-    // and starts the game-object scripts (Battle::object_script) of entities that appeared, in
+    // and starts the game-object scripts (Battle::type_info) of entities that appeared, in
     // snapshot order; advances every script one tick in order; and submits their orders to the
     // battle in the same order. A script that cannot be started is reported once per name.
     void run(Battle& battle);

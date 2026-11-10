@@ -72,6 +72,7 @@ public:
     int call_depth{};
     std::vector<ScriptError> errors;
     std::vector<std::string> output;
+    std::uint64_t output_count{};
     std::vector<std::string> warnings;
     std::uint64_t warning_count{};
 
@@ -121,6 +122,8 @@ public:
     // set; without one nothing is built.
     void record(lua_State* caller, std::string_view name, int first_argument, bool implemented) const;
     void warn(std::string_view message);
+    // Keeps an output line (up to max_script_output) and counts it.
+    void write_output(std::string line);
 };
 
 // The host of a Lua state (stored in its registry at setup).

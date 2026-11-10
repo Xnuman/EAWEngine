@@ -284,10 +284,32 @@ bool type_is_death_clone(const GameObjectCatalog& catalog, const XmlDefinition& 
            catalog.field(definition, "Death_Persistence_Duration").field != nullptr;
 }
 
-std::string type_lua_script(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+ScriptTypeInfo type_script_info(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
-    const auto* node = catalog.field(definition, "Lua_Script").field;
-    return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
+    ScriptTypeInfo info;
+    if (const auto* node = catalog.field(definition, "Lua_Script").field)
+    {
+        info.lua_script = std::string(ascii_trim(node->text));
+    }
+    // CategoryMask: names separated by '|' (stock), commas, or whitespace.
+    if (const auto* node = catalog.field(definition, "CategoryMask").field)
+    {
+        std::string name;
+        for (const char character : node->text + " ")
+        {
+            if (character == '|' || character == ',' || ascii_is_space(character))
+            {
+                if (!name.empty())
+                {
+                    info.categories.push_back(ascii_lower(name));
+                    name.clear();
+                }
+                continue;
+            }
+            name += character;
+        }
+    }
+    return info;
 }
 
 bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& definition)

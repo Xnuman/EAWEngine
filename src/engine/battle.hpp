@@ -117,8 +117,9 @@ public:
     [[nodiscard]] std::span<const std::optional<EntityId>> map_entity_ids() const noexcept;
     // Placed entities that carry a hint, in map order (Find_Hint).
     [[nodiscard]] std::span<const std::pair<EntityId, std::string>> hinted_entities() const noexcept;
-    // The game-object script of a type (empty: none), by XML type name ignoring case.
-    [[nodiscard]] std::string_view object_script(std::string_view type_name) const;
+    // What scripts read of a type (its game-object script, its categories), by XML type name ignoring
+    // case; nullptr for types the battle has no such data for.
+    [[nodiscard]] const ScriptTypeInfo* type_info(std::string_view type_name) const;
     [[nodiscard]] std::span<const SpawnableType> spawnable() const noexcept;
     // Adds spawnable types at runtime (a SpawnablePackage's types, with mesh indices already in
     // the scene's mesh library and member indices relative to `types`); returns the index of the
@@ -142,8 +143,8 @@ private:
     std::vector<SpawnableType> spawnable_;
     std::vector<std::optional<EntityId>> map_ids_;
     std::vector<std::pair<EntityId, std::string>> hinted_;
-    // Folded type name -> game-object script, from the map's entities and the spawnable types.
-    std::unordered_map<std::string, std::string> object_scripts_;
+    // Folded type name -> what scripts read of it, from the map's entities and the spawnable types.
+    std::unordered_map<std::string, ScriptTypeInfo> type_info_;
     BattleLog log_;
     std::uint64_t next_serial_{1};
 };
