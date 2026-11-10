@@ -24,7 +24,7 @@ authoritative milestone description. Update both in the same change when scope o
 
 ## Code organization (reorganization of 2026-11)
 
-Feature work paused on 2026-11-09 for a reorganization of the code; steps 1 to 5 of the plan in AGENTS.md are
+Feature work paused on 2026-11-09 for a reorganization of the code; steps 1 to 6 of the plan in AGENTS.md are
 done, with an unchanged simulation hash, bit-identical WARP captures, and
 byte-identical stock-data audits at each step:
 
@@ -46,7 +46,9 @@ byte-identical stock-data audits at each step:
   intact); resource IDs are deferred until a consumer needs them.
 - `eaw_localization`: the DAT editor's and EAWTools' localization tools.
 
-Still open: step 6 (PowerShell build scripts with a `_d` debug suffix).
+- Build: `build.ps1` (configuration, clean, tests switch, C++20 at configure) replaced the batch
+  files; Debug libraries and executables carry the `_d` suffix, and the launchers start the engine
+  by its built file name.
 
 ## M2: visual sandbox — complete (legacy-mode render backlog carried forward)
 

@@ -189,19 +189,19 @@ Agreed with the owner on 2026-11-09; each step is a separate change, checked by 
 3. Done: `eaw_formats` holds the readers and writers, a category per format family, with plain `…Data` types (`AloModelData`, `AloParticleSystemData`, `AlaAnimationData`, `DdsTextureData`, `MtdAtlasData`, `TedMapData`, `XmlData`, `DatStringTableData`, `LuaChunkData`), `read_<format>` functions (`read_alo<T>` with `AloGenericData`/`AloType` for what an `.alo` holds), per-format helper files for what were methods, `core/file_io` for all whole-file I/O, and `core/checksum` for the one CRC-32; stock-data audits, inspector output, captures, and a stock DAT round trip are unchanged. `MegArchive` stays as it is for now (its index decoding and entry reads are not easily split).
 4. Done: `eaw_vfs` (`src/vfs`) holds the virtual file system, `MegArchive`, virtual-path normalization, installation discovery, and the game mount stack; it depends only on `eaw_core`, and the script host and launchers link it directly. `game_installation` parses `megafiles.xml` with its own minimal reader so the VFS does not depend on `eaw_formats` (noted in the code).
 5. Done: 5a moved the game-data code into `eaw_assets` (`src/assets`: `game_data`, `model`, `animation`) and the localization tools into `eaw_localization`, which ended `eaw_core_transitional`. 5b added the engine-native `Skeleton` and `Animation` with `load_skeleton`/`load_animation` (`assets/alamo_loaders`) and moved pose sampling onto them (`assets/pose`: `sample_pose`, `sample_local_pose`, `blend_pose`, `compose_pose`, `retarget_by_bone_name`); rigs, clips, palettes, unit animation, attached effects, the sandbox, and the EAWTools preview no longer hold ALO or ALA data at runtime. 5c added `Model` (skeleton, meshes with `LegacyMaterial` and render-contract vertices, proxies) and `load_model`; the scene builders, hardpoint attachments, proxy effects, emit meshes, and combat bone lookups use it, and the engine's model cache holds loaded models. 5d moved `ParticleEffect` and its fidelity rules into `eaw_assets` (`particle_rules`, with `load_particle_effect` as the particle loader); `ParticleWorld` stays in the engine. 5e added the `ResourceManager` (`get<T>(path, ...)`, one `ResourceLoader<T>` specialization per resource type: `Model`, `Animation`, `ParticleEffect` per fidelity profile, TED map data, and the engine's textures, XML catalog, movement classes, and combat content) over `AssetCache`, which moved into `eaw_assets`; every cached load goes through it. Resource IDs (generation-checked handles) are deferred until a consumer needs references that survive reloads or cross boundaries (hot-swapping one resource in a running scene, scripts, saves, GPU residency). The game asset layer, a library below the engine shared with the tools, gathers the interpretation now spread over core (`alo_interpretation`, `legacy_material`, catalogs, `xml_asset_database`) and engine (`scene_*`, `object_type_properties`, `combat_content`) into loaders that turn `…Data` into engine-native resources (`Model`, `Animation`, `ParticleEffect`), and the engine stops holding file-level data (today `VisualModelAsset` keeps the `AloModel`, and rigs, attachments, and animation read it). A resource manager (IDs, cache) above the loaders follows.
-6. PowerShell build scripts become the build entry point (configuration Debug or Release, clean, tests switch, C++ standard at configure), with the `_d` debug suffix; the launchers find the engine by its built file name.
+6. Done: `build.ps1` is the build entry point (`-Configuration Debug|Release|All`, `-Clean` keeping `build/_deps`, `-Tests`, C++20 at configure) and replaced the batch files; Debug libraries and executables carry the `_d` suffix (`CMAKE_DEBUG_POSTFIX`, applied to executables by `eaw_debug_postfix_executables` in the root `CMakeLists.txt`), and the launchers start the engine by its built file name (`EAW_ENGINE_FILE_NAME` from `$<TARGET_FILE_NAME:EAWEngine>`).
 
 ## Build and validation
 
-From the repository root (until the PowerShell scripts land; executables build into `executables/<Config>/`):
+From the repository root; executables build into `executables/<Config>/`, Debug ones with the `_d` suffix:
 
 ```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_CXX_STANDARD=20 -DEAW_BUILD_TESTS=ON
-cmake --build build --config Debug --parallel
-cmake --build build --config Release --parallel
-.\executables\Debug\EAWEngineTests.exe <module>
+.\build.ps1 -Configuration All -Tests
+.\executables\Debug\EAWEngineTests_d.exe <module>
 git diff --check
 ```
+
+`build.ps1` takes `-Configuration Debug|Release|All` (default Debug), `-Tests`, `-Clean`, and `-BuildDirectory`; the C++ standard is set only by its configure step, not in `CMakeLists.txt`.
 
 Format changed C/C++ files with the Visual Studio LLVM formatter (adjust the installation path only if necessary):
 
@@ -212,9 +212,9 @@ Format changed C/C++ files with the Visual Studio LLVM formatter (adjust the ins
 Runtime checks:
 
 ```powershell
-.\executables\Debug\EAWEngine.exe doctor --game foc
-.\executables\Debug\EAWEngine.exe sandbox --game foc --warp --gpu-validation --vsync off --frame-limit 8
-.\executables\Debug\EAWEngine.exe sandbox --game foc --model DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO --warp --gpu-validation --vsync off --frame-limit 40 --reload-every 3
+.\executables\Debug\EAWEngine_d.exe doctor --game foc
+.\executables\Debug\EAWEngine_d.exe sandbox --game foc --warp --gpu-validation --vsync off --frame-limit 8
+.\executables\Debug\EAWEngine_d.exe sandbox --game foc --model DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO --warp --gpu-validation --vsync off --frame-limit 40 --reload-every 3
 .\executables\Release\EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --spawn Rebel_Infantry_Squad:2@1 --spawn T2B_Tank:3@2 --auto-move --ticks 1500 --check-determinism
 ```
 

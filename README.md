@@ -54,18 +54,23 @@ with the SDK's `dxc.exe` and `fxc.exe` (override with `EAW_DXC_EXECUTABLE` /
 `EAW_FXC_EXECUTABLE`); nothing is compiled at runtime.
 
 ```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_CXX_STANDARD=20 -DEAW_BUILD_TESTS=ON
-cmake --build build --config Debug --parallel
-.\executables\Debug\EAWEngineTests.exe
+.\build.ps1                                     # Debug
+.\build.ps1 -Configuration Release
+.\build.ps1 -Configuration All -Tests           # both, with EAWEngineTests
+.\build.ps1 -Configuration Release -Clean       # from an empty build tree
+.\executables\Debug\EAWEngineTests_d.exe
 ```
 
-(PowerShell build scripts are planned to replace these commands; see AGENTS.md.)
+`build.ps1` configures `build/` (Visual Studio 2022, x64, C++20) and builds into
+`executables/<Config>/`; Debug files carry the `_d` suffix (`EAWEngine_d.exe`).
+`-Clean` keeps the fetched third-party sources in `build/_deps`. Where scripts
+are blocked, run it as `powershell -ExecutionPolicy Bypass -File build.ps1`.
 
 Launch the graphical tools:
 
 ```powershell
-.\executables\Debug\EAWTools.exe
-.\executables\Debug\EAWDevLauncher.exe
+.\executables\Debug\EAWTools_d.exe
+.\executables\Debug\EAWDevLauncher_d.exe
 ```
 
 The development launcher stores its presets in `EAWDevLauncher.scenarios` next
@@ -79,26 +84,26 @@ game. The command-line tools remain available for automation.
 Verify the installed Forces of Corruption data:
 
 ```powershell
-.\build\vs2022-x64\Debug\EAWEngine.exe doctor --game foc
+.\executables\Debug\EAWEngine_d.exe doctor --game foc
 ```
 
 Open the Direct3D 12 visual sandbox directly or through the separate launcher:
 
 ```powershell
-.\build\vs2022-x64\Debug\EAWEngine.exe sandbox --game foc
+.\executables\Debug\EAWEngine_d.exe sandbox --game foc
 ```
 
 ```powershell
-.\build\vs2022-x64\Debug\EAWLauncher.exe --game foc
+.\executables\Debug\EAWLauncher_d.exe --game foc
 ```
 
 Run a battle without a window (deterministic; prints the state hash, timing,
 and combat and path statistics):
 
 ```powershell
-.\build\vs2022-x64\Release\EAWEngine.exe battle --game foc --map DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED `
+.\executables\Release\EAWEngine.exe battle --game foc --map DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED `
   --spawn Rebel_X-Wing_Squadron:2@1 --spawn TIE_Fighter_Squadron:2@2 --ticks 3000 --record kuat.log
-.\build\vs2022-x64\Release\EAWEngine.exe battle --game foc --replay kuat.log
+.\executables\Release\EAWEngine.exe battle --game foc --replay kuat.log
 ```
 
 `battle` spawns the `--spawn` groups at the map center (each request 180 units
@@ -203,7 +208,7 @@ pause animation.
 Use the launcher with a mod overlay:
 
 ```powershell
-.\build\vs2022-x64\Debug\EAWLauncher.exe --game foc `
+.\executables\Debug\EAWLauncher_d.exe --game foc `
   --mod "D:\path\to\mod"
 ```
 
@@ -213,13 +218,13 @@ matching the established Steam launch-option convention.
 Inspect the resolved FoC asset set or a specific archive-backed model:
 
 ```powershell
-.\build\vs2022-x64\Release\EAWAssetInspector.exe summary --game foc
-.\build\vs2022-x64\Release\EAWAssetInspector.exe list Data/XML `
+.\executables\Release\EAWAssetInspector.exe summary --game foc
+.\executables\Release\EAWAssetInspector.exe list Data/XML `
   --extension .xml --limit 50
-.\build\vs2022-x64\Release\EAWAssetInspector.exe inspect `
+.\executables\Release\EAWAssetInspector.exe inspect `
   Data/Art/Models/Some_Unit.alo --game foc
-.\build\vs2022-x64\Release\EAWAssetInspector.exe xml-audit Data/XML --game foc
-.\build\vs2022-x64\Release\EAWAssetInspector.exe lua-audit Data/Scripts --game foc
+.\executables\Release\EAWAssetInspector.exe xml-audit Data/XML --game foc
+.\executables\Release\EAWAssetInspector.exe lua-audit Data/Scripts --game foc
 ```
 
 Optionally validate that resolved XML against a local checkout of the public
@@ -227,18 +232,18 @@ Optionally validate that resolved XML against a local checkout of the public
 
 ```powershell
 git clone https://github.com/AlamoEngine-Tools/eaw-schema.git .\build\eaw-schema
-.\build\vs2022-x64\Release\EAWAssetInspector.exe xml-audit Data/XML `
+.\executables\Release\EAWAssetInspector.exe xml-audit Data/XML `
   --game foc --schema-root .\build\eaw-schema
 ```
 
 Create a sparse localization workspace for a unit and build a complete DAT:
 
 ```powershell
-.\build\vs2022-x64\Release\EAWDatEditor.exe add-unit `
+.\executables\Release\EAWDatEditor.exe add-unit `
   .\localization.tsv NEBULA_CLASS_FRIGATE `
   "Nebula-class Frigate" "A fast modern frigate."
 
-.\build\vs2022-x64\Release\EAWDatEditor.exe build `
+.\executables\Release\EAWDatEditor.exe build `
   "D:\path\to\MasterTextFile_ENGLISH.dat" `
   .\localization.tsv .\MasterTextFile_ENGLISH.dat
 ```

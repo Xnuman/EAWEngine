@@ -112,7 +112,7 @@ struct DevLauncherApp::State
 {
     std::filesystem::path directory = executable_directory();
     std::filesystem::path presets_path = directory / "EAWDevLauncher.scenarios";
-    std::filesystem::path engine_path = directory / "EAWEngine.exe";
+    std::filesystem::path engine_path = directory / EAW_ENGINE_FILE_NAME;
     std::vector<SandboxScenario> scenarios;
     std::size_t selected{};
     bool dirty{};

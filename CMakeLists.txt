@@ -20,6 +20,10 @@ set( EAW_ENGINE_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" )
 
 set_property( GLOBAL PROPERTY USE_FOLDERS ON )
 
+# Debug builds carry this suffix: libraries through CMAKE_DEBUG_POSTFIX, executables through
+# eaw_debug_postfix_executables at the end of this file.
+set( CMAKE_DEBUG_POSTFIX "_d" )
+
 get_filename_component( EAW_ENGINE_BINARY_DIR "${EAW_ENGINE_ROOT_DIR}/executables/" ABSOLUTE )
 
 set( CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION "${EAW_ENGINE_BINARY_DIR}" )
@@ -136,3 +140,20 @@ add_subdirectory(src/dat_editor)
 if(EAW_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
+
+# Executables do not take CMAKE_DEBUG_POSTFIX, so every executable target defined below `directory`
+# gets it here.
+function(eaw_debug_postfix_executables directory)
+    get_property(targets DIRECTORY "${directory}" PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(target IN LISTS targets)
+        get_target_property(type ${target} TYPE)
+        if(type STREQUAL "EXECUTABLE")
+            set_target_properties(${target} PROPERTIES DEBUG_POSTFIX "${CMAKE_DEBUG_POSTFIX}")
+        endif()
+    endforeach()
+    get_property(subdirectories DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
+    foreach(subdirectory IN LISTS subdirectories)
+        eaw_debug_postfix_executables("${subdirectory}")
+    endforeach()
+endfunction()
+eaw_debug_postfix_executables("${CMAKE_CURRENT_SOURCE_DIR}")

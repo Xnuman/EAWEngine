@@ -43,10 +43,10 @@ int main(const int argc, char** argv)
         std::cerr << "launcher error: could not resolve the launcher path: " << path_error.message() << '\n';
         return 1;
     }
-    const auto engine = launcher.parent_path() / "EAWEngine.exe";
+    const auto engine = launcher.parent_path() / EAW_ENGINE_FILE_NAME;
     if (!std::filesystem::is_regular_file(engine, path_error))
     {
-        std::cerr << "EAWEngine.exe is not next to the launcher: " << engine << '\n';
+        std::cerr << EAW_ENGINE_FILE_NAME << " is not next to the launcher: " << engine << '\n';
         return 2;
     }
 
