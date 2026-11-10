@@ -59,7 +59,7 @@ Third-party code is pinned in `third_party/`: Dear ImGui (docking branch, by com
 (MIT, by archive hash, built with only the base, string, table, and math libraries).
 
 Libraries keep public headers under `include/<library>/` and are included by short paths
-(`"core/status.hpp"`, `"assets/model.hpp"`). The libraries the reorganization has not reached yet
+(`"core/status.hpp"`, `"assets/model.hpp"`). The libraries not converted yet
 (simulation, script, render, platform, launch, imgui_app) still use `include/eaw/`. Debug builds of
 every library and executable carry the `_d` suffix.
 

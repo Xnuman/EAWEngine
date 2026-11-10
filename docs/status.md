@@ -23,11 +23,12 @@ authoritative milestone description. Update both in the same change when scope o
 - `EAWAssetInspector`, `EAWDatEditor`, and the Dear ImGui/Direct3D 11 `EAWTools` workbench consume the same format readers (`eaw_formats`) and VFS (`eaw_vfs`).
 - Corpus at the end of M1: all 638 resolved stock XML files parse, indexing 21,283 named definitions across 185 element types (20,881 typed with eaw-schema); all 2,213 DDS files and the 1,107-entry command-bar MTD decode; 370 Lua source scripts (85,312 lines) resolve every detected dependency.
 
-## Code organization (reorganization of 2026-11)
+## Code organization
 
-Feature work paused on 2026-11-09 for a reorganization of the code; steps 1 to 6 of the plan in AGENTS.md are
-done, with an unchanged simulation hash, bit-identical WARP captures, and
-byte-identical stock-data audits at each step:
+Feature work paused on 2026-11-09 and 2026-11-10 for a reorganization of the code in six steps,
+each with an unchanged simulation hash, bit-identical WARP captures, and byte-identical stock-data
+audits; since then tidying is continuous (AGENTS.md, "Code health"; leftovers in the roadmap's
+Code health list):
 
 - `eaw_math`: the only vector, quaternion, matrix, and transform types (row-vector convention);
   matrices and quaternions have no default value (`identity()`, `zero()`).

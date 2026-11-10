@@ -82,15 +82,14 @@ Proposed on 2026-11-10 with this roadmap; it continues the owner's order of 2026
 review, combat presentation, sound, player layer) with sound and the player layer moved to M4, where
 the skirmish needs them, and the open M2 render work placed by what depends on it:
 
-1. Finish the reorganization's leftovers (Code health track) and declare it closed.
-2. Scripting stage 1: events, AI and story entry points in `lua-survey`, object handles, orders as
+1. Scripting stage 1: events, AI and story entry points in `lua-survey`, object handles, orders as
    validated commands.
-3. Rendering stage 1, the part combat presentation needs: damage-state (`_ALT<n>`) and LOD
+2. Rendering stage 1, the part combat presentation needs: damage-state (`_ALT<n>`) and LOD
    switching, runtime decals, depth-sorted transparency.
-4. Simulation stage 1's remainder: combat presentation and fidelity.
-5. Rendering stage 1's remainder and stage 2: shadows, anti-aliasing, tone mapping, fog, special
-   materials, look tuning. This closes M2 and, with step 4, M3.
-6. M4: the player layer (Simulation stage 2), then the HUD, audio, and AI.
+3. Simulation stage 1's remainder: combat presentation and fidelity.
+4. Rendering stage 1's remainder and stage 2: shadows, anti-aliasing, tone mapping, fog, special
+   materials, look tuning. This closes M2 and, with step 3, M3.
+5. M4: the player layer (Simulation stage 2), then the HUD, audio, and AI.
 
 ## Tracks
 
@@ -201,16 +200,20 @@ Compatibility with the original's multiplayer protocol is an open question, not 
 2. Verification with high-polling-rate mice, input timestamps, controllers (GameInput), key
    rebinding (with UI stage 2).
 
-### Code health
+### Code health (ongoing)
 
-The reorganization of 2026-11 (plan and results in AGENTS.md and status.md) leaves:
+Not a stage plan: leftovers are fixed while features touch the code around them, and the owner's
+periodic whole-project reviews add to this list or turn it into a plan of steps (AGENTS.md, "Code
+health"). Remove an entry when it is fixed. Known leftovers after the reorganization of 2026-11:
 
 - the libraries still on `include/eaw/` (simulation, script, render, platform, launch, imgui_app)
   and the engine without an include directory, against the short-include rule;
 - the minimal second XML reader in `game_installation` (kept so the VFS does not depend on the
   formats; noted in the code);
 - `MegArchive`, whose index decoding and entry reads were left together on purpose;
-- model lights and dazzles, decoded but not part of `Model` yet.
+- model lights and dazzles, decoded but not part of `Model` yet;
+- the `pe_*` and hardpoint-bone role rules, still spread over `scene_particles`, `scene_models`, and
+  `combat_content` instead of one place (see Engine extensions, explicit asset metadata).
 
 ## Performance gates
 
