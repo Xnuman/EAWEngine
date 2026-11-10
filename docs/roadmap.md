@@ -1,457 +1,272 @@
 # Roadmap
 
-Each milestone ends in an executable result and a compatibility corpus. Full
-campaign compatibility is a long-term engine project, not a renderer swap.
+The plan: where the engine is going and in which order. What is implemented, and how, is in
+[status.md](status.md); this file keeps only goals, deliverables, open scope, and order. Update both
+in the same change when scope or status changes.
 
-## M0 — repository and research discipline (done)
+The plan has two parts. **Tracks** are the engine's systems, each with ordered stages. **Milestones**
+are integration points: each names the track stages it needs and one deliverable that can be
+checked by running a program and an automated test. A track advances when a milestone needs its next
+stage, so systems that no single game mode owns (audio, networking, saves) still have a place and a
+time. Full campaign compatibility is a long-term engine project, not a renderer swap.
 
-- Independent-implementation boundary, read-only owned-installation policy, and
-  explicit isolation rules for compatibility evidence.
-- Build, tests, launcher/engine separation, architecture record.
+## Milestones
 
-## M1 — data bootstrap (baseline complete)
+| Milestone | Goal | Status |
+| --- | --- | --- |
+| M0 | Repository and research discipline | Done |
+| M1 | Data bootstrap: every stock format readable through the layered VFS | Done |
+| M2 | Legacy-mode renderer complete for stock content | Active |
+| M3 | Tactical battle slice | Active |
+| M4 | Skirmish | Planned |
+| M5 | Galactic conquest and campaign | Planned |
+| M6 | Broad compatibility, multiplayer, and SDK | Planned |
 
-- Steam installation and EAW/FoC profile discovery.
-- MEG v1 and layered loose-file/mod VFS.
-- FoC profiles inherit the original game's archives at lower priority, matching
-  the expansion's cross-runtime texture and model references.
-- DAT strings, overlay-aware asset inventory, DDS headers, generic ALO/ALA/TED/
-  MTD chunk inventory, Lua/XML localization references, and sparse localization
-  workspaces are implemented.
-- Semantic ALO model inventory now covers skeletons, meshes, bounds, shaders,
-  texture parameters, attachment bones, proxies, lights, and dazzles. Semantic
-  ALA inventory covers timing, compressed track blocks, animated bone channels,
-  visibility, and stepped tracks.
-- Render-ready ALO vertices, indices, skin palettes, bind transforms, decoded
-  ALA frame transforms, and an initial textured/animated model viewport are
-  implemented. The preview resolves texture overrides through the same VFS and
-  supports adjustable geometry detail for large assets.
-- Semantic TED decoding covers map properties, terrain/elevation/passability,
-  texture layers, water, decals, tracks, environments, placed-object CRCs, AI
-  zones, and embedded previews. The combined stock corpus currently decodes all
-  269 resolved TED maps without warnings. Land maps have an initial orbitable,
-  adaptively decimated heightmap viewport with elevation and passability views;
-  space maps visualize decoded placed-object transforms and tactical bounds.
-- The automated layered-VFS corpus covers manifest and unlisted archives,
-  base/numeric/64-bit patches, loose overrides, EAW-to-FoC inheritance,
-  first-mod-wins stacks, lower-layer fallback, path normalization, and unique
-  winner enumeration.
-- The initial schema-aware XML database parses Petroglyph multi-root fragments,
-  preserves ordered fields, attributes, and source lines, indexes typed `Name`
-  definitions, and diagnoses duplicate keys and unresolved XML-file references.
-  The combined stock corpus parses all 638 resolved XML files and indexes
-  21,283 named definitions across 185 element types without parse failures.
-- Optional `eaw-schema` loading now layers EAW/FoC type, tag, enum, hardcoded
-  token, and metafile definitions over the XML index. The audit validates field
-  membership/repetition, common scalar and enum shapes, and typed XML-object
-  references while retaining source-line diagnostics. Canonical elements,
-  metafile registries, and conservative structural matching type 20,881 of the
-  21,283 named stock definitions. Object-kind checks consume behavior, flag,
-  membership, and variant-inheritance rules from the public schema.
-- Semantic DDS decoding validates dimensions, mip/subresource layout, arrays,
-  cube/volume metadata, legacy masks, BC1-BC5, and DX10 formats. Semantic MTD
-  decoding covers atlas entries, rectangles, alpha flags, and name CRCs. The
-  stock corpus decodes all 2,213 DDS files and the 1,107-entry command-bar MTD.
-- Legacy ALO materials now normalize shader family, blend mode, and texture
-  semantics while preserving every original shader parameter. All observed
-  stock mesh shaders and texture parameter names have a classified fallback.
-- Lua inspection covers source dependencies, function definitions/calls, and
-  both standard Lua 5.0 and Petroglyph persistent bytecode prototypes. The
-  stock layered corpus contains 370 source scripts (85,312 lines), with every
-  detected dependency resolved and no inspection failures.
-- M1 is now a stable baseline for M2 consumers. Deeper per-shader render-state,
-  lighting, and Lua host-API behavior are implemented incrementally against the
-  compatibility inventories as renderer and simulation consumers come online.
-- Deliverable: asset inspector that can browse every stock and selected mod
-  asset and report unresolved references.
+### M0: repository and research discipline (done)
 
-## M2 — visual sandbox (complete)
+The independent-implementation boundary, the read-only installation policy, evidence rules, the
+build, tests, and the launcher and engine split.
 
-Complete: a stock space unit and land and space maps load and can be inspected
-through the D3D12 renderer. Remaining render work is the legacy-mode render
-backlog listed in [status.md](status.md#legacy-mode-render-backlog); it is scheduled when gameplay or evidence needs
-it.
+### M1: data bootstrap (done)
 
+Discovery, the layered VFS, lossless readers for MEG, DAT, DDS, MTD, ALO, ALA, TED, XML (with the
+optional eaw-schema), and Lua, each audited against the stock corpus; the asset inspector, DAT
+editor, and EAWTools on the same libraries. Audio and video formats were not part of M1; they are
+stages of the Data track.
 
-- Window/input/platform layer and the initial Direct3D 12 RHI are implemented:
-  a flip-model waitable swap chain, triple-buffered allocator contexts,
-  independent direct/copy queue fences, asynchronous initial uploads, resize
-  handling, optional tearing, WARP and GPU-validation modes, and DRED device
-  removal diagnostics. A textured validation primitive remains available as a
-  renderer-only fallback through the same default-heap upload path.
-- Initial engine-native ALO geometry, base-color DDS mip uploads, legacy blend
-  translation, depth buffering, orbit camera, and GPU ALA skinning are
-  implemented in the D3D12 sandbox.
-- The legacy Direct3D 9 shader sources from Petroglyph's official mod tools (kept locally in
-  `Reference Materials/Shaders/`) are inventoried in [Legacy shader mapping](legacy-shader-mapping.md). All 39
-  readable effects have reference profiles (render phase, depth/cull/alpha-test
-  state, lighting model, gloss/colorize/opacity channel roles, UV and vertex
-  animation, vertex requirements) that cover 84% of stock material instances;
-  the rest keep tagged name heuristics. New shaders are independently written
-  modern HLSL; the reference corpus is never compiled, shipped, or required at
-  build/runtime.
-- Legacy-mode surfaces are implemented in the D3D12 sandbox: engine-native
-  materials (lighting model, gloss source, team-color and self-illumination
-  masks, Diffuse/Specular/Emissive/Color, UV scroll, base/normal/gloss textures)
-  shaded with a fill plus key-light approximation, a bindless-style texture
-  table, a material structured buffer, and per-frame constant buffers. Maps are
-  lit by their active TED environment (key, two fills, specular, ambient) and
-  team colors come from faction XML. Reflections, planets, shields, and effects
-  remain.
-- Legacy mode first: render materials from the legacy reference profiles with
-  newly written shaders so the original game can run on the new engine and its
-  behavior can be stabilized. Add normal/gloss/emissive/team-color and special
-  material behavior in that mode. A physically based material path with a
-  documented conversion from legacy profiles follows once legacy mode is stable,
-  on top of the offline shader pipeline: HLSL sources compiled by DXC (D3D12,
-  shader model 6.0, root signature in HLSL) and FXC (D3D11 tools) into embedded
-  bytecode, plus an opt-in `ID3D12PipelineLibrary` cache. Reflection metadata is
-  deferred until material shaders need generated bindings.
-- Add animation selection/visibility handling, selection IDs, debug drawing,
-  resource handles, descriptor allocation, streaming, and hot reload. Animation
-  selection is done: `sandbox --model` cycles the model's animations with
-  Left/Right, and rigid attachments follow animated bone visibility through a
-  visibility-collapsed second palette half. Selection IDs are done: a GPU pick
-  target and per-frame readback select the instance or terrain under a click
-  without stalling, and the sandbox highlights the selection. Debug drawing is
-  done: world-space line lists (bounds, axes) drawn depth-tested from a
-  frame-buffered buffer; the sandbox outlines the selection and toggles every
-  object's bounds with B. The sandbox cameras are inspection tools, not the
-  game camera; gameplay camera and input belong to M3/M4 (see there).
-- On-screen debug overlay: done. A movable, resizable, minimizable Dear ImGui D3D12 panel (F1)
-  shows FPS, CPU and GPU frame time, draw calls, triangles, instances, video
-  memory, texture streaming, scene, camera, animation, selection, and hot-reload
-  status. Interactive in-engine tools can build on it later. Liquid surfaces may
-  get their own pick id so clicking water reports it. Started:
-  the D3D12 renderer keeps textures in a generation-checked handle pool, takes
-  texture-table slots from an allocator that reuses a slot only after its
-  release fence, and retires replaced scene resources on the direct-queue
-  timeline, so `load_scene` can replace a scene while frames are in flight.
-  Scenes build on a worker thread, and textures stream in under a per-frame
-  upload budget with fallbacks until they arrive. An engine asset cache keeps
-  decoded models, textures, maps, and the XML catalog with recorded file
-  dependencies, and `sandbox --hot-reload` rebuilds the scene when a loose file
-  or MEG archive behind it changes. Decoded textures carry an identity, so a
-  reload keeps unchanged textures on the GPU and uploads only the changed ones
-  (Kamino: 0.5 s rebuild, 1 of 67 textures uploaded). Per-asset geometry handles
-  and several resident scenes remain.
-- Camera, selection IDs, debug drawing; PBS conversion of legacy materials after
-  legacy mode is stable.
-- Placed TED objects resolve to XML object types by uppercased-name CRC-32 and
-  to models through variant inheritance (99.7% of stock placed objects).
-  Space squadrons expand into their members at their `Squadron_Offsets`, and
-  `EAWEngine sandbox --map` renders every placed object of a map as one
-  instanced D3D12 scene with its environment sky dome/backdrop and an
-  engine-owned tactical camera (pan, rotate, zoom within the map bounds). Land maps render their textured terrain heightfield, water, lava, or ice surfaces, and track ribbons. Land teams/companies (runtime formations), decals,
-  transparency sorting, and streaming are not implemented yet.
-- Add production D3D12 tactical-map rendering. Further tool-only map/model
-  preview polish is deferred until it can support the renderer and map editor.
-- Deliverable: load and inspect a stock space unit and a tactical map. Both
-  load in `EAWEngine sandbox` (`--model`, `--map` for space and land), with
-  resource handles, streaming, and hot reload.
+### M2: legacy-mode renderer complete for stock content (active)
 
-## M3 — tactical simulation slice (active)
+The first deliverable (load and inspect a stock unit and a tactical map in the sandbox) is met. M2
+now closes when the renderer shows stock content with every feature it was authored for.
 
-Deliverable: a deterministic headless battle and a rendered space skirmish
-slice. Status as of the first combat slice:
+- Needs: Rendering stages 1 and 2.
+- Deliverable: every stock material family and map environment renders with its features; captures
+  of a reference set of scenes (space, land, planet, shield, damage states) are checked with
+  `compare-images`, and feature ratios are compared with screenshots of the original where they
+  exist (Verification track).
 
-Done:
+### M3: tactical battle slice (active)
 
-- Simulation core (`src/simulation`, no graphics, platform, or file access):
-  generation-checked entity ids, structure-of-arrays components, a fixed-step
-  scheduler, commands applied at tick boundaries, immutable snapshots, and a
-  state hash for determinism checks.
-- Map objects spawned as entities from their XML types; a renderer instance
-  API fed from interpolated snapshots.
-- Legacy RTS camera and input following the original: no rotation (fixed pitch
-  and heading), zoom, and keyboard panning. Left button click and box
-  selection; right button move and attack orders; raw input. Exact angles,
-  zoom range, and pan speeds still need measurement. A free camera may become
-  an engine extension later; the sandbox's free debug cameras stay for
-  inspection.
-- Terrain following and passability by movement class
-  (`MovementClassTypeDefs.xml`; the Obstacle bit and runtime wall and shield
-  bits are unconfirmed). Flyers keep their altitude.
-- Deterministic grid A* per movement class, with region labels and smoothed
-  waypoints. The staged plan toward large battles is in
-  [pathfinding-research.md](pathfinding-research.md); it is deferred until
-  the game runs stably.
-- First combat slice:
-  - health, regenerating shields, and armor types with `GameConstants.xml`
-    damage modifiers;
-  - one projectile weapon per unit;
-  - a spatial grid, automatic targeting, and attack orders that chase;
-  - homing shots and death.
+A map battle in the sandbox that looks and behaves like a battle and stays deterministic.
 
-  Map owner slot 3 is provisionally neutral.
+- Needs: Simulation stage 1, Scripting stage 1, Rendering stage 1 (damage states and decals, for
+  combat presentation).
+- Deliverable: a recorded space battle and a land battle, with combat presentation, that replay
+  headless to the same state hash, with capture references for both.
 
-Gaps toward the deliverable, in planned order:
+### M4: skirmish
 
-1. **Group movement.** Steps 1 (footprints, separation, turn rates), 2
-   (formation slots for group orders, group speed), and 3 (company
-   expansion on maps and as spawns) are done, with queueing at narrow
-   passages, re-forming, static obstacle footprints, a per-tick search
-   budget, and one shared route per formation (ordering every unit on Utapau
-   costs at most about 12 ms in one tick)
-   ([plan and sources](pathfinding-research.md#group-movement-and-formations)).
-   Covers:
-   - separation, so units do not stack;
-   - formations for group orders;
-   - turn rates (`Max_Rate_Of_Turn`, 442 stock uses);
-   - expanding land companies and teams into their units. `Company_Units`
-     occurs in 179 definitions, and 358 company placements in owner slots 0
-     and 1 are skipped today, so maps start without their infantry.
-2. **Space combat.** Step 1 is done: weapon hardpoints fire, entities carry
-   several weapons, ships separate, and squadrons expand fully and spawn.
-   Step 2 is done: fire cones from the hardpoint fire bones, per-weapon
-   targeting, and hardpoints as targetable, destroyable parts (shield
-   generators, engines, weapons). Fighter movement is done: fighters
-   (`FIGHTER_LOCOMOTOR`) never stop below their `Min_Speed`, circle when idle,
-   and make attack runs that pass the target and turn back. The simulation
-   then separated its tick into layers (commands, behavior, navigation,
-   locomotion, combat; [architecture](architecture.md#tick-layers)),
-   so decisions such as chasing, attack runs, and engaging on one's own live in
-   the behavior layer, with an engine-native `Stance` (aggressive, hold
-   position, hold fire) that AI and Lua can later drive through commands.
-   From observing the original (compatibility notes, "Fighter flight"):
-   fighters now fly in 3D (a pitch beside the heading; presentation poses
-   pitch and bank), separate from squadron mates, reverse direction through a
-   vertical half-loop, and dogfight, chasing each other above and below their
-   plane before returning to it; dogfights involve every flyer class
-   (fighters, bombers, and mod units with the fighter locomotor). The angles,
-   heights, and periods are engine choices awaiting measurement.
-   Covers:
-   - weapons on `HardPoints` (94 stock uses);
-   - space movement (turning, speed, and the space layer);
-   - squadron behavior.
-3. **Headless battle.** An `EAWEngine` command runs a map or a scripted
-   skirmish without a window for N ticks and prints the state hash and
-   statistics. Spawning becomes a deterministic command, so a run can be
-   replayed from its command log. This is also the headless benchmark the
-   performance gates require. Step 1 is done: a `Battle` layer owns the world
-   for the sandbox and headless runs, takes orders in replayable terms, and
-   records them with their ticks; spawning is a simulation command. Step 2 is
-   done: `EAWEngine battle` runs a map without a window and prints the state
-   hash and statistics; order logs are text files with exact numbers and the
-   final tick and hash, written with `--record` (also from the sandbox) and
-   checked with `--replay`; `--check-determinism` runs a battle twice.
-   Headless builds skip textures and animation clips, and the simulation's
-   inputs and state hash no longer depend on what is drawn. Not yet: game and
-   mod identity in logs.
-4. **Unit animation on maps.** Per-instance bone palettes, with idle, move,
-   fire, and death animations chosen from simulation state. The first slice
-   is done: map units play IDLE, MOVE/WALKMOVE, and ATTACK/ATTACKIDLE clips
-   chosen from their snapshots, with poses shared between units at the same
-   clip and pose slot, through a per-frame bone palette. Blending followed:
-   poses blend in bone space; locomotion moves along IDLE - WALKMOVE - MOVE
-   by each unit's speed (now in snapshots) with a shared stride phase, and
-   attacks fade in and out over 0.2 s. Deaths followed: units killed in combat
-   leave corpses that play a DIE clip once and linger briefly. Attack clips
-   follow the shots, and infantry (units without a TURRET behavior) turn to
-   face their target, fire only facing it, and hold fire while moving. Not yet:
-   directional deaths, death effects, turns, flinches, crouching, simulation
-   acceleration, and firing synchronized with shots.
-5. **Runtime mesh registration,** so types not requested at build time can be
-   spawned. Done: the renderer adds meshes to a loaded scene, the engine
-   builds a type's package (model, materials, textures, rigs, clips, and
-   spawnable data) on a worker, and the sandbox can spawn any unit type of the
-   map's context at any time; recorded sessions still replay headless.
-6. **Remaining M3 work, in the order the owner set (revised 2026-11-09):**
-   1. Missing render features: particles (engine glows, muzzle flashes,
-      explosions, smoke), trails attached to moving objects, projectile
-      visuals, runtime decals, and the rest of the legacy-mode render backlog.
-      Step 1 is done: particle ALOs decode (all 578 stock systems), a
-      presentation-only particle world plays them, the renderer draws
-      billboard, ground-plane, and kite particles with additive, alpha, and
-      modulate blending, and models' visible proxies (engine glows, station
-      lights, fires) play their effects at their bones, emitting from meshes
-      where the effect asks for it. Ships carry their hardpoint models
-      (turrets, batteries) and hide hardpoint scorch marks and damage smoke
-      while intact. Not yet: heat distortion, weather, wind, soft particles,
-      and the
-      effects gameplay triggers (damage, weapons, deaths). Step 2 is done:
-      trails, which in the stock data are particles of moving emitters, are
-      emitted sub-frame along the emitter's path, so they stay continuous at
-      any speed and frame rate. Step 3 is done: bloom (a quarter-resolution
-      bright pass, blurred and added back) as the engine's stand-in for the
-      original's glow, and engine effects that grow and brighten with their
-      unit's speed. Step 4 has begun: laser bolts (custom-render
-      projectiles) draw from their XML width, length, atlas cell, and colour,
-      and shots and deaths play the XML `Particle` objects their projectile
-      and type name (shield absorption, hull and armor-reduced detonation,
-      flight end, death explosion) at their `Scale_Factor`; model
-      projectiles (missiles, torpedoes) finished this step (done: their models
-      fly nose first at their Scale_Factor with their trails); ground detonations,
-      hardpoint destruction, and debris move to combat presentation.
-   2. A visual capture-and-compare workflow: the same scene, camera, and
-      units captured in the original and in the engine for side-by-side
-      comparison, and image regression on the engine side, before the next
-      round of visual tuning. Part 1 is done: deterministic sandbox captures
-      (`--capture`, a fixed presentation clock that starts once textures are
-      resident, `--camera`) and `EAWEngine compare-images` (docs/tools.md).
-      Comparing with the original does not try to recreate scenes (unit
-      placement, combat timing, particle randomness, and the camera cannot be
-      reproduced in the original). It compares features: the owner screenshots
-      one subject at a time in the original (an engine glow, a hull, a bolt, an
-      explosion) at a similar zoom, the engine captures the same subject
-      (`--camera`, `--capture`), and the two are compared by measured ratios
-      (glow width to hull length, bolt length to ship, colour at a glow's core,
-      contrast on a hull) recorded with the feature in
-      docs/compatibility-research.md. Screenshots stay local. A test map built
-      in the original's map editor, if available, could give matching static
-      placement; that is open.
-   3. The review of the technical foundation, adding what the large layers
-      need. Since 2026-11-09 it includes a reorganization of the code into
-      small libraries (math, core, formats, VFS, then a game asset layer with
-      loaders and a resource manager) and build scripts; its plan and progress
-      are in AGENTS.md and docs/status.md. It starts with the Lua host as a foundation question, not as
-      scripted behavior: a Lua 5.0-compatible VM with deterministic settings
-      (no file or OS access, a seeded random stream), script threads as
-      coroutines woken on simulation ticks, object handles as
-      generation-checked entity ids, orders only through validated commands,
-      and every host function a recording stub (name, arguments, calling
-      script, a neutral return value). Loading all 370 stock scripts headless
-      and calling their entry points measures the host API they actually use
-      (the inspector's 3,074 candidate calls are an upper bound) and ranks it.
-      Real functions then replace stubs one at a time as engine systems come
-      to exist; whether running script state must be saveable is settled here
-      because it shapes saves. No scripted behavior (story, AI plans,
-      abilities) is implemented in this step. First slice done: Lua 5.0.3 (MIT, lua.org, pinned by archive hash) builds as C with only base, string, table, and math; `eaw_script` runs one sandboxed state per script (no io, os, debug, or file loaders; `print` to the log; `math.random` from a seeded stream; `require` through the VFS; compiled chunks refused, since Lua 5.0 does not verify bytecode; every call and resume under an instruction budget, coroutines included). The stock framework (`PGBase.lua`, `PGBaseDefinitions.lua`, `PGStateMachine.lua`) showed the real boundary is lower than assumed: `Sleep`, `ScriptExit`, and `PumpEvents` are Lua, built on engine primitives the host now implements: `Create_Thread`, `GetThreadID`, `_ScriptExit`, `GetCurrentTime`, `ThreadValue` (with `Set`, `Reset`), and `GetEvent` (with `Params`, `Reset`; an empty queue until the engine delivers events). Threads are coroutines serviced every `ServiceRate` seconds; yielding false ends one. Everything else is a recording stub (callable and indexable, so engine tables and returned objects keep working); names any stock script defines are script names, never stubs. `EAWEngine lua-survey` runs all 370 stock scripts headless (load, `Base_Definitions`, `main` for 300 ticks; game-object scripts get `Object` bound to a stub after creation): 362 run without errors and they call 46 engine functions and 18 methods. That covers creation and main loops without events; story callbacks, AI plan steps, and event-driven code do not run yet, which is why it is far below the 3,074-name upper bound. Next: deliver events and call AI and story entry points to widen coverage, then generation-checked object handles and orders through validated commands.
-   4. Combat presentation and fidelity: hardpoint visuals and damage, turret
-      rotation, damage-specific death clones and wreck explosions, ground
-      detonations, debris, real projectiles for weapons.
-   5. Sound.
-   6. Then the player layer (which owner the user commands, factions and
-      hostility from data, team colors by owner, fog of war), replacing host
-      stubs as it goes; the dependency-aware job system once measured budgets
-      need it.
+Complete skirmish matches against the AI.
 
-Known provisional choices to verify against the original:
+- Needs: Simulation stage 2, Scripting stage 2, Data stage 2 (audio data), Audio stages 1 and 2,
+  UI stage 1, AI stage 1, Networking stage 1.
+- Deliverable: a full land and space skirmish against the AI, from the start to victory, that
+  replays to the same hash; the same match runs over the loopback lockstep.
+
+### M5: galactic conquest and campaign
+
+- Needs: Simulation stage 3, Scripting stage 3, Audio stage 3, UI stage 2, AI stage 2,
+  Persistence stage 1, Data stage 3 (cinematics).
+- Deliverable: one stock campaign playable end to end, saved and loaded across versions.
+
+### M6: broad compatibility, multiplayer, and SDK
+
+- Needs: Networking stages 2 and 3, Scripting stage 4, Tools stage 3, broad mod coverage (the
+  Verification track's corpus runs over popular mods).
+- Deliverable: popular mods run without edits; multiplayer skirmish over a network; a documented SDK
+  for the engine extensions.
+
+## Work order
+
+Proposed on 2026-11-10 with this roadmap; it continues the owner's order of 2026-11-09 (foundation
+review, combat presentation, sound, player layer) with sound and the player layer moved to M4, where
+the skirmish needs them, and the open M2 render work placed by what depends on it:
+
+1. Finish the reorganization's leftovers (Code health track) and declare it closed.
+2. Scripting stage 1: events, AI and story entry points in `lua-survey`, object handles, orders as
+   validated commands.
+3. Rendering stage 1, the part combat presentation needs: damage-state (`_ALT<n>`) and LOD
+   switching, runtime decals, depth-sorted transparency.
+4. Simulation stage 1's remainder: combat presentation and fidelity.
+5. Rendering stage 1's remainder and stage 2: shadows, anti-aliasing, tone mapping, fog, special
+   materials, look tuning. This closes M2 and, with step 4, M3.
+6. M4: the player layer (Simulation stage 2), then the HUD, audio, and AI.
+
+## Tracks
+
+### Data
+
+1. Done: VFS, MEG, and the M1 formats; the game asset layer with loaders and the resource manager.
+2. Audio data: survey the stock sound-event XML and the sample, music, and speech formats, then
+   readers and loaders for them (Audio stage 1 consumes them).
+3. Cinematics: survey the movie format and decide between a reader and a pinned decoder (a new
+   dependency, so the owner decides).
+4. Steam Workshop mod discovery and mod-stack diagnostics (which layer wins, what is missing).
+5. Resource IDs (generation-checked handles), once a consumer needs references that survive a
+   reload: hot-swapping one resource in a running scene, scripts, saves, GPU residency.
+
+### Rendering
+
+1. Legacy-mode features content depends on: damage-state (`_ALT<n>`) and LOD switching,
+   skinned-mesh and gameplay-driven visibility; depth-sorted transparency; map decals (no texture
+   link established yet) and runtime scorch marks; shadows (the original uses stencil shadow
+   volumes, an implementation artifact: which objects cast and receive is the content contract,
+   the technique is the engine's choice); fog; shield, planet (atmosphere, clouds, city lights),
+   nebula, heat-distortion, wind-bend, and occluded-unit materials; cube reflections (no stock
+   material uses them); weather and soft particles.
+2. Modern presentation without an original counterpart, chosen freely: anti-aliasing, HDR with
+   tone mapping beside the existing bloom, and look tuning against the owner's screenshots (hotter
+   engine-glow cores, more contrast on hulls).
+3. Scale: per-asset geometry handles and several resident scenes, GPU-driven culling and indirect
+   drawing, mesh LODs, clustered lighting, texture compression and streaming budgets.
+4. A thin rendering hardware interface extracted from the Direct3D 12 backend, then Vulkan.
+5. The physically based material path, with a documented conversion from the legacy profiles, once
+   legacy mode is stable (also an engine extension for new content).
+
+### Simulation
+
+1. Tactical battles. Done: the core, spawning, RTS orders, terrain and passability, A*, group
+   movement and formations, space combat with hardpoints, flight, headless battles and replays.
+   Open: combat presentation and fidelity (hardpoint damage visuals, turret rotation,
+   damage-specific death clones and wreck explosions, ground detonations, debris, death-projectile
+   blasts, beams for instant-hit weapons), and game and mod identity in order logs.
+2. Skirmish systems: the player layer (the local player's owner, factions and hostility from data
+   instead of the provisional slot rule, team colours by owner, fog of war), build pads,
+   reinforcements, abilities from `Unit_Abilities_Data` (the infantry crouch first; researched in
+   the compatibility notes), transports, capture, retreat, victory conditions.
+3. Galactic systems: planets, fleets, economy, construction, heroes, transitions between galactic
+   and tactical play.
+4. Scale: the dependency-aware job system once measured budgets need it, and the staged navigation
+   plan in [pathfinding-research.md](pathfinding-research.md) (hierarchical search, flow fields or
+   shared paths, clearance), with A* kept as the reference.
+
+### Scripting
+
+1. Foundation. Done: the sandboxed Lua 5.0 host, script threads on ticks, recording stubs, and
+   `lua-survey` over the stock scripts. Open: deliver events and call AI and story entry points to
+   widen the survey; generation-checked object handles; orders only through validated commands;
+   decide whether running script state must be saveable (it shapes Persistence).
+2. The tactical host API, ranked by the survey, replacing stubs as Simulation stage 2 provides the
+   systems.
+3. The galactic and story API.
+4. Corpus-wide coverage over stock and popular mods, and the namespaced extension API.
+
+### Audio
+
+1. Sound events and samples played from presentation, never from the simulation, with positional
+   sound for units and effects.
+2. A mixer with categories and options (effects, voices, music), unit responses and weapon sounds
+   tied to battle events.
+3. Music, speech, and their localized variants.
+
+### UI
+
+1. The tactical HUD: selection panels, health and command buttons, the minimap, text through the
+   DAT localization layer.
+2. Menus, options, the galactic interface, and key bindings.
+
+The dev panels stay development tools; game UI is its own layer above the engine.
+
+### AI
+
+1. Tactical AI for skirmish, driven through the Lua host where the stock data does it that way.
+2. Galactic and campaign AI.
+
+### Networking
+
+Deterministic lockstep: players exchange orders, every client simulates, and the state hash detects
+divergence. Battles already record replayable order logs, which is most of the groundwork.
+
+1. Lockstep over a local loopback, driven by order logs: proves determinism under multiplayer
+   conditions without a network.
+2. LAN and internet sessions: transport, lobby, joining, latency handling.
+3. Desync diagnosis (per-tick hashes, state dumps) and replays of network matches.
+
+Compatibility with the original's multiplayer protocol is an open question, not a goal yet.
+
+### Persistence
+
+1. A versioned save format for galactic campaigns and skirmishes, including script state if
+   Scripting stage 1 decides it must be saveable. Whether original saves should load is open.
+
+### Tools
+
+1. Done: EAWAssetInspector, EAWDatEditor, EAWTools, EAWLauncher, EAWDevLauncher.
+2. Profiling overlays and automated budget reports (Performance gates).
+3. The SDK: documented extension points, authoring and import tools, a map editor.
+
+### Platform and input
+
+1. Done: Win32 window, raw input, crash handling, log sinks.
+2. Verification with high-polling-rate mice, input timestamps, controllers (GameInput), key
+   rebinding (with UI stage 2).
+
+### Code health
+
+The reorganization of 2026-11 (plan and results in AGENTS.md and status.md) leaves:
+
+- the libraries still on `include/eaw/` (simulation, script, render, platform, launch, imgui_app)
+  and the engine without an include directory, against the short-include rule;
+- the minimal second XML reader in `game_installation` (kept so the VFS does not depend on the
+  formats; noted in the code);
+- `MegArchive`, whose index decoding and entry reads were left together on purpose;
+- model lights and dazzles, decoded but not part of `Model` yet.
+
+## Performance gates
+
+Each milestone sets measured budgets for its deliverable; the numbers are set when the benchmark
+exists, not guessed in advance.
+
+- The headless battle (`EAWEngine battle`) is the simulation benchmark; it stays ahead of renderer
+  optimization.
+- Presentation at the display's rate with the fixed simulation tick (30 Hz, an engine choice until
+  the original's rate is measured); a configurable tick is an open option.
+- No fixed texture dimension, vertex count, entity count, or 32-bit address-space assumption.
+- Automated budgets, reported by the tools, for frame time, tick time, streaming throughput,
+  memory, draw and dispatch counts, and worst-case path requests.
+
+## Verification against the original
+
+Provisional engine choices to check against the original, by black-box observation and the
+capture-and-compare workflow ([tools.md](tools.md#captures-and-image-regression); features are
+compared by measured ratios from screenshots, never by recreated scenes):
 
 - the ×30 XML speed scale;
 - shield refresh units, and how shields and armor combine;
 - ranges measured in the ground plane;
 - the owner-slot hostility rule;
 - world handedness;
-- whether unit `Scale_Factor` (applied since 2026-11-09 to models, attached
-  effects, model-derived footprints, and hardpoint positions) also scales
-  collision and selection in the original the same way, and whether an XML
-  `Custom_Soft_Footprint_Radius` is meant before or after it (the engine
-  leaves it unscaled);
-- why `W_LASER_INVISIBLE.ALO` (the land model of 19 melee and environment
-  projectiles: dark trooper blades, force pikes, Felucia spikes) is invisible
-  in the original: its mesh is an unhidden additive quad textured with the
-  visible `W_Laser_Small.tga`, and the engine draws it as authored.
+- whether unit `Scale_Factor` (applied to models, attached effects, model-derived footprints, and
+  hardpoint positions) also scales collision and selection, and whether `Custom_Soft_Footprint_Radius`
+  is meant before or after it (the engine leaves it unscaled);
+- the RTS camera's angles, zoom range, and pan speeds;
+- fighter flight angles, heights, and periods;
+- why `W_LASER_INVISIBLE.ALO` (the land model of 19 melee and environment projectiles) is invisible
+  in the original although its mesh is an unhidden additive quad with a visible texture;
+- a test map built in the original's map editor, if one can be made, for matching static placement.
 
-## M4 — space and land modes
+## Engine extensions (opt-in, outside legacy mode)
 
-- Navigation/pathfinding for both modes, build pads, reinforcements, abilities,
-  transports, shields, capture, retreat, tactical AI, UI and audio.
-- Abilities start from the XML `Unit_Abilities_Data` entries and their
-  `Mod_Multiplier` effects; the infantry crouch (SPREAD_OUT: half speed, half
-  damage taken, wider spacing, crouched idle and walking clips) is researched
-  in the compatibility notes and a natural first one.
-- Deliverable: complete skirmish matches with replay determinism.
+Each becomes available once the track stage it builds on exists. Stock data and existing mods never
+need them.
 
-## M5 — galactic and campaign
-
-- Planets, fleets, economy, construction, heroes, transitions to tactical,
-  story events, campaign AI, persistence and save versioning.
-- Deliverable: one stock campaign playable end to end.
-
-## Engine extensions (non-legacy mode, opt-in)
-
-- Player-controlled unit stances. The original gives players no stance
-  control; the simulation's `Stance`
-  already exists for AI and scripts, so a stance control can later be offered
-  as an option outside legacy mode.
-- Explicit asset metadata. Legacy mode infers the role of model parts from
-  naming conventions and bone placement, as the stock data implies: proxies
-  named `pe_*` are engine effects, `_ALT<n>` and `_LOD<n>` tags mark damage
-  states and detail levels, proxies under a hardpoint's `Damage_Particles`
-  bone are damage effects, a `Damage_Decal` bone carries scorch meshes, and an
-  emitter's mesh is the one on its proxy's parent bone. The engine will let
-  authors state these roles explicitly instead: optional, namespaced fields
-  (in XML or a sidecar file beside the asset) that declare a proxy's or mesh's
-  category (engine, damage, state, detail level, and categories the engine
-  adds later, such as lights or weapon muzzles), with explicit declarations
-  overriding the inferred ones and unknown categories reported, not fatal.
-  This covers effects first and then other asset parts that are now
-  identified by name. Stock data and existing mods keep working through the
-  naming rules unchanged; the inferred roles are collected in one place
-  (today they are spread over `scene_particles.cpp`, `scene_models.cpp`, and
-  `alo_model.cpp`) so both paths feed the same engine-native categories.
-
-## M6 — compatibility and SDK
-
-- Broad XML/Lua API coverage, Steam mod discovery, mod stack diagnostics,
-  multiplayer protocol, replays, authoring/import tools, profiling overlays.
-- New namespaced mechanics API and documented extension points.
-- Modern model and animation formats as optional, engine-native assets beside
-  ALO/ALA: FBX and glTF 2.0 import of meshes, skeletons, skinning, and
-  animation clips, with modern animation features (blending, layering,
-  additive clips, retargeting, root motion, blend shapes). Imported materials
-  map to the PBS material model. ALO/ALA stay the compatibility baseline and
-  existing mods keep working unchanged; new formats load through the same VFS
-  layers, asset cache, and hot reload. FBX needs an importer whose license fits
-  the project (an open-source reader such as ufbx, or the proprietary Autodesk
-  FBX SDK); that choice is open.
-
-## Cross-cutting engineering work
-
-- **Raw input (done).** `src/platform` reads mouse movement and the keyboard
-  through `WM_INPUT` (`RegisterRawInputDevices`): unaccelerated device deltas in
-  `InputState::raw_mouse_delta_x/y` (absolute devices such as tablets and remote
-  desktop are converted to deltas) and raw key state. Cursor position, buttons,
-  and wheel stay on window messages, so clicks outside the client area never
-  reach the scene. Queued raw input is drained in batches with `GetRawInputBuffer` once per frame before the message loop, the
-  approach Microsoft's raw input guidance and Godot's fix for 4-8 kHz mice
-  describe (per-message dispatch made high polling rate mice collapse the frame
-  rate there); `GetRawInputBuffer` removes the messages it reads, so nothing is
-  counted twice. Not yet verified with a high polling rate mouse.
-  The sandbox rotates cameras with raw deltas; `--no-raw-input` falls back to
-  window messages. Input timestamps and GameInput (controllers) are later options.
-- **Exception-free error handling (done).** No exceptions: every target
-  compiles with `/EHs-c-` and `_HAS_EXCEPTIONS=0`. Recoverable failures
-  (malformed data, missing assets, failed map or model builds, invalid input, a
-  window or device that cannot be created at startup) return `eaw::Status` /
-  `eaw::Result<T>` with contextual messages and are logged as warnings
-  (stderr, the debugger output window, and a per-run log file) where the
-  caller falls back. Programming errors are `EAW_ASSERT_MSG`; unrecoverable
-  runtime failures (D3D12 calls after startup, device removal) are
-  `eaw::fatal_error` with their diagnostics; both end in the crash handlers'
-  report. Phases: (A) status types, log, sinks, done; (B) core decoders and
-  VFS, done; (C) engine, cache, simulation, done; (D) renderer (startup through
-  `D3d12Renderer::create`, `load_scene` returns `Status`), done; (E) tools,
-  done; (F) compile with exceptions disabled and replace throwing
-  standard-library calls (`std::from_chars`, `std::error_code` filesystem
-  overloads, hand-written parsing instead of `std::regex`), done.
-  Background from the original assessment: the codebase reported errors by
-  throwing (about 270 `throw` sites and 66 `catch` blocks, half of the throws in
-  core decoders). The goal is explicit error values: a project `Result` type
-  carrying a contextual error (virtual path, section, offset), returned by
-  decoders, the VFS, the renderer, and the engine. (Handlers at boundaries to
-  throwing code turned out to be unnecessary: the standard library is used in
-  its non-throwing forms and Dear ImGui does not throw.) Migration is incremental: introduce the type and a policy, write
-  new code with it, then convert module by module (core decoders first, then
-  the renderer's HRESULT paths, the engine, and the tools), each with its tests.
-  The project type stays on C++20; exceptions end disabled, with allocation
-  failure fatal. Warnings may later also be shown while the engine, game, and
-  mods load.
-
-- **Development launcher (done).** `EAWDevLauncher` edits, saves, and starts
-  sandbox scenarios (installation, mods, map or model, debug spawns with
-  owners, engine options) and tracks the runs it started. It shares the window
-  shell with EAWTools (`eaw_imgui_app`) and the scenario model and process
-  start with `EAWLauncher` (`eaw_launch`, unit-tested in the `launcher` test
-  module).
-
-## Performance gates
-
-- Headless deterministic simulation benchmark before renderer optimization.
-- 60 Hz presentation with configurable simulation tick.
-- No fixed texture dimension, vertex count, entity count, or 32-bit address-space
-  assumptions in new formats.
-- Automated budgets for frame time, simulation tick, streaming throughput,
-  memory, draw/dispatch counts, and worst-case path requests.
-
+- **Player-controlled stances.** The original gives players no stance control; the simulation's
+  `Stance` exists for AI and scripts, so a control can be offered outside legacy mode.
+- **Explicit asset metadata.** Legacy mode infers the role of model parts from naming and placement:
+  `pe_*` proxies are engine effects, `_ALT<n>` and `_LOD<n>` tags mark damage states and detail
+  levels, proxies under a hardpoint's `Damage_Particles` bone are damage effects, a `Damage_Decal`
+  bone carries scorch meshes, and an emitter's mesh is the one on its proxy's parent bone. Optional,
+  namespaced fields (in XML or a sidecar beside the asset) will declare these categories (engine,
+  damage, state, detail level, and later lights or weapon muzzles), overriding the inferred ones,
+  with unknown categories reported, not fatal. Effects come first. The tag rules are in
+  `assets/alo_interpretation`; the hardpoint-bone and `pe_*` rules are still in the engine
+  (`scene_particles`, `scene_models`, `combat_content`) and move to one place before this starts, so
+  both paths feed the same engine-native categories.
+- **Physically based materials** (Rendering stage 5).
+- **Modern model and animation formats** beside ALO/ALA: glTF 2.0 and FBX import of meshes,
+  skeletons, skinning, and clips with blending, layering, additive clips, retargeting, root motion,
+  and blend shapes; imported materials use the physically based model; the same VFS layers, cache,
+  and hot reload apply. FBX needs an importer whose license fits (an open-source reader such as
+  ufbx, or the Autodesk FBX SDK); the choice is open.
+- **A namespaced mechanics API** for new gameplay, with documented extension points (Scripting
+  stage 4, Tools stage 3).

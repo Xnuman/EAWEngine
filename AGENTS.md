@@ -14,12 +14,12 @@ EAWEngine is an independently developed, open compatibility engine and toolset f
 
 ## Where things stand
 
-M0 (repository discipline), M1 (data bootstrap: VFS, MEG, DAT, DDS/MTD, ALO, ALA, TED, XML, Lua inspection), and M2 (the Direct3D 12 visual sandbox in legacy mode) are complete. M3, the tactical simulation slice, is active: a deterministic simulation with movement, pathfinding, formations, combat, headless battles with replayable order logs, unit animation, and the first presentation features (particles, bloom, projectile bolts, impact and death effects). The owner's order for the rest of M3 (revised 2026-11-09) is: the technical foundation review (projectile visuals and the capture-and-compare workflow are done; its first item, the Lua host with recording stubs and `EAWEngine lua-survey`, has its first slice), combat presentation, sound, then the player layer.
+M0 (repository discipline) and M1 (data bootstrap: VFS, MEG, DAT, DDS/MTD, ALO, ALA, TED, XML, Lua inspection) are complete. Two milestones are active: M2, the legacy-mode renderer, runs stock maps and models in the Direct3D 12 sandbox but lacks features content was authored for (shadows, anti-aliasing, damage states, decals, special materials); M3, the tactical battle slice, has a deterministic simulation with movement, pathfinding, formations, combat, headless battles with replayable order logs, unit animation, particles, projectiles, and impact and death effects, and a first Lua host slice. The roadmap is organized as system tracks with milestones as integration points; its work order (proposed 2026-11-10) is in [docs/roadmap.md](docs/roadmap.md#work-order).
 
 Since 2026-11-09 feature work is paused for a reorganization of the code and build pipeline ([Reorganization](#reorganization-in-progress)). Until it ends, the build commands and the file layout in the docs may be out of date; update them when the reorganization settles.
 
-- [docs/status.md](docs/status.md): what each milestone implemented, how, and its known limitations, including the legacy-mode render backlog.
-- [docs/roadmap.md](docs/roadmap.md): the authoritative plan and milestone definitions (M4 skirmish, M5 galactic and campaign, M6 broad compatibility and SDK, engine extensions).
+- [docs/status.md](docs/status.md): what each milestone implemented, how, and its known limitations.
+- [docs/roadmap.md](docs/roadmap.md): the authoritative plan: milestones (M2 renderer, M3 battle slice, M4 skirmish, M5 galactic and campaign, M6 compatibility, multiplayer, and SDK), the system tracks they draw on, the work order, verification questions, and engine extensions.
 - [docs/architecture.md](docs/architecture.md): layers, contracts, simulation tick layers, the content-contract classification, and the source files by subject.
 - [docs/compatibility-research.md](docs/compatibility-research.md): evidence and findings about the original's formats and behavior.
 - [docs/tools.md](docs/tools.md): the command-line tools, audits, and sandbox options.
