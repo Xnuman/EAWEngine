@@ -595,8 +595,57 @@ void test_target_priorities()
     require(!world.snapshot().entities[0].target.valid(), "an excluded target must never be chosen automatically");
 }
 
+void test_target_validity()
+{
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    // Which of two hostiles (an air unit 20 away, infantry 60 away) a shooter with `weapon` damages,
+    // `near` being the air unit's profile.
+    const auto damaged = [&](const eaw::WeaponProfile& weapon, const eaw::CombatProfile& near)
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        eaw::CombatProfile gun;
+        gun.health = 50.0F;
+        gun.weapons = {weapon};
+        eaw::CombatProfile far;
+        far.health = 100.0F;
+        far.categories = 0x80U;
+        (void)world.spawn({.type_name = "Shooter", .owner = 1, .combat = gun});
+        (void)world.spawn({.type_name = "Near", .owner = 2, .position = {20.0F, 0.0F, 0.0F}, .combat = near});
+        (void)world.spawn({.type_name = "Far", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = far});
+        world.step();
+        const auto& entities = world.snapshot().entities;
+        return std::pair{entities[1].health < near.health, entities[2].health < far.health};
+    };
+    const eaw::WeaponProfile gun{.range = 100.0F, .recharge_seconds = 1.0F, .damage = 10.0F};
+    eaw::CombatProfile air;
+    air.health = 100.0F;
+    air.categories = 0x200U;
+    require(damaged(gun, air) == std::pair{true, false}, "the nearer hostile must be shot");
+    auto close = gun;
+    close.min_range = 30.0F;
+    require(damaged(close, air) == std::pair{false, true}, "a weapon must not fire inside its minimum range");
+    auto no_air = gun;
+    no_air.excluded_categories = 0x200U;
+    require(damaged(no_air, air) == std::pair{false, true}, "a weapon must not fire at its excluded categories");
+    auto hidden = air;
+    hidden.targetable = false;
+    require(damaged(gun, hidden) == std::pair{false, true}, "an invalid target must never be chosen");
+    eaw::SimulationWorld world(0.1);
+    eaw::CombatProfile pad;
+    pad.health = 10.0F;
+    pad.immune = true;
+    const auto immune = world.spawn({.type_name = "Pad", .combat = pad});
+    require(immune.ok(), "test spawn must succeed");
+    world.submit({.kind = eaw::SimCommandKind::damage, .entities = {*immune}, .amount = 100.0F});
+    world.step();
+    require(world.alive(*immune) && world.snapshot().entities[0].health == 10.0F, "an immune entity must take no damage");
+}
+
 const ModuleRegistrar registrar("combat", {
                                               {"test_combat", &test_combat},
+                                              {"test_target_validity", &test_target_validity},
                                               {"test_hardpoints_and_fire_cones", &test_hardpoints_and_fire_cones},
                                               {"test_body_aiming", &test_body_aiming},
                                               {"test_stances", &test_stances},

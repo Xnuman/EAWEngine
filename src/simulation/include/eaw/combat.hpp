@@ -118,6 +118,11 @@ struct TargetingPriorities
 struct WeaponProfile
 {
     float range{};
+    // Targets closer than this are not fired at (XML Targeting_Min_Attack_Distance: artillery).
+    float min_range{};
+    // Category bits it never fires at (XML Fire_Category_Restrictions and Attack_Category_Restrictions:
+    // torpedoes at fighters, anti-air turrets at infantry).
+    std::uint32_t excluded_categories{};
     float recharge_seconds{};
     std::uint32_t pulse_count{1};
     float pulse_delay_seconds{};
@@ -165,6 +170,10 @@ struct CombatProfile
     std::uint32_t categories{};
     // Stray shots meant for others hit it where they land on it (XML Collidable_By_Projectile_Living).
     bool collidable{true};
+    // Never chosen as a target (XML Is_Valid_Target No: ambient creatures, markers), and never
+    // damaged (XML Immune_To_Damage: build pads, markers).
+    bool targetable{true};
+    bool immune{};
     // Property bits (GameObjectPropertiesType, XML Property_Flags) and a key of its type (the CRC-32
     // of the type name), for others' targeting priorities.
     std::uint32_t properties{};

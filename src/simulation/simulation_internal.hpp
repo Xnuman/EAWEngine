@@ -73,7 +73,7 @@ inline bool valid_profile(const CombatProfile& profile) noexcept
     }
     for (const auto& weapon : profile.weapons)
     {
-        if (!valid_amount(weapon.range) || !valid_amount(weapon.recharge_seconds) || !valid_amount(weapon.pulse_delay_seconds) || !valid_amount(weapon.damage) ||
+        if (!valid_amount(weapon.range) || !valid_amount(weapon.min_range) || !valid_amount(weapon.recharge_seconds) || !valid_amount(weapon.pulse_delay_seconds) || !valid_amount(weapon.damage) ||
             !valid_amount(weapon.projectile_speed) || !valid_amount(weapon.max_flight_distance) || !finite_point(weapon.mount) || !std::isfinite(weapon.cone_direction) ||
             !valid_amount(weapon.cone_half_angle) || weapon.hardpoint < -1 || weapon.hardpoint >= static_cast<std::int32_t>(profile.hardpoints.size()))
         {
@@ -139,7 +139,7 @@ template <typename Accepts> std::optional<std::size_t> SimulationWorld::choose_t
     float best_distance = 0.0F;
     for (const auto candidate : query_)
     {
-        if (candidate == index || !damageable(candidate) || !hostility_.hostile(owners_[index], owners_[candidate]) || !accepts(candidate))
+        if (candidate == index || !damageable(candidate) || !combat_[candidate].profile.targetable || !hostility_.hostile(owners_[index], owners_[candidate]) || !accepts(candidate))
         {
             continue;
         }

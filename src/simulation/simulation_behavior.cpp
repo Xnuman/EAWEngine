@@ -346,9 +346,9 @@ void SimulationWorld::run_standing_order(const std::size_t index)
             const auto& center = guard ? order.point : positions_[index];
             const float reach = guard ? guard_radius : range * acquire_range_factor;
             const auto best = choose_target(index, center, reach,
-                                            [](std::size_t)
+                                            [&](const std::size_t candidate)
                                             {
-                                                return true;
+                                                return engages(index, candidate);
                                             });
             if (best)
             {

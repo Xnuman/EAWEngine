@@ -655,6 +655,8 @@ private:
     [[nodiscard]] std::optional<std::size_t> stray_victim(const Vector3& point, std::uint32_t owner, std::size_t target) const noexcept;
     // The radius strays_off measures against (0: unknown size).
     [[nodiscard]] float target_size(std::size_t index) const noexcept;
+    // Whether one of `index`'s weapons may fire at `candidate`'s categories (or it has none).
+    [[nodiscard]] bool engages(std::size_t index, std::size_t candidate) const noexcept;
     // The target `index` prefers among the damageable hostiles within `reach` of `center` (in the
     // ground plane) that `accepts`: the lowest rank of its targeting priorities, then the nearest,
     // then the lower entity id. Defined in simulation_internal.hpp.

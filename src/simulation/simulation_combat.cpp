@@ -72,7 +72,7 @@ void SimulationWorld::update_target(const std::size_t index)
     if (combat.target.valid())
     {
         const auto victim = dense_index(combat.target);
-        bool keep = victim && damageable(*victim) && hostility_.hostile(owners_[index], owners_[*victim]);
+        bool keep = victim && damageable(*victim) && combat_[*victim].profile.targetable && hostility_.hostile(owners_[index], owners_[*victim]);
         if (keep && !combat.ordered)
         {
             keep = distance_xy(positions_[index], positions_[*victim]) <= range;
@@ -96,9 +96,9 @@ void SimulationWorld::update_target(const std::size_t index)
     }
     combat.retarget_timer = retarget_interval;
     const auto best = choose_target(index, positions_[index], range,
-                                    [](std::size_t)
+                                    [&](const std::size_t candidate)
                                     {
-                                        return true;
+                                        return engages(index, candidate);
                                     });
     if (best)
     {
@@ -145,7 +145,8 @@ void SimulationWorld::run_weapon(const std::size_t index)
             const auto mount = world_point(index, weapon.mount);
             const auto covers = [&](const std::size_t victim)
             {
-                if (distance_xy(positions_[index], positions_[victim]) > weapon.range)
+                const auto distance = distance_xy(positions_[index], positions_[victim]);
+                if (distance > weapon.range || distance < weapon.min_range || (weapon.excluded_categories & combat_[victim].profile.categories) != 0)
                 {
                     return false;
                 }
@@ -287,6 +288,17 @@ bool SimulationWorld::strays_off(const std::size_t victim, const Vector3& stray)
     // Without a size there is nothing to measure against, and the shot hits.
     const auto size = target_size(victim);
     return size > 0.0F && std::hypot(stray.x, stray.y) > size;
+}
+
+bool SimulationWorld::engages(const std::size_t index, const std::size_t candidate) const noexcept
+{
+    const auto& weapons = combat_[index].profile.weapons;
+    const auto categories = combat_[candidate].profile.categories;
+    return weapons.empty() || std::ranges::any_of(weapons,
+                                                  [&](const WeaponProfile& weapon)
+                                                  {
+                                                      return (weapon.excluded_categories & categories) == 0;
+                                                  });
 }
 
 float SimulationWorld::target_size(const std::size_t index) const noexcept
@@ -434,7 +446,7 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
 float SimulationWorld::wound(const std::size_t index, const float damage)
 {
     auto& combat = combat_[index];
-    if (combat.invulnerable || damage <= 0.0F)
+    if (combat.invulnerable || combat.profile.immune || damage <= 0.0F)
     {
         return 0.0F;
     }

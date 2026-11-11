@@ -473,6 +473,8 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     CombatProfile profile;
     profile.health = type.amount("Tactical_Health") * health_multiplier;
     profile.collidable = type.flag("Collidable_By_Projectile_Living", true);
+    profile.targetable = type.flag("Is_Valid_Target", true);
+    profile.immune = type.flag("Immune_To_Damage", false);
     profile.type_key = game_object_name_crc(definition.name);
     profile.targeting = targeting_priorities(catalog, definition, content, warnings);
     if (const auto* flags = type.node("Property_Flags"))
@@ -493,6 +495,23 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             warnings.push_back(definition.name + ": CategoryMask names unknown category '" + name + "'");
         }
     }
+    // Categories a reader's weapons never fire at (unknown names are reported).
+    const auto restricted = [&](const FieldReader& reader, const std::string_view owner, const std::string_view field)
+    {
+        const auto* node = reader.node(field);
+        if (node == nullptr)
+        {
+            return 0U;
+        }
+        std::vector<std::string> unknown;
+        const auto bits = content.categories(node->text, &unknown);
+        for (const auto& name : unknown)
+        {
+            warnings.push_back(std::string(owner) + ": " + std::string(field) + " names unknown category '" + name + "'");
+        }
+        return bits;
+    };
+    const auto unit_excluded = restricted(type, definition.name, "Fire_Category_Restrictions") | restricted(type, definition.name, "Attack_Category_Restrictions");
     // Where the type's own weapons stray, by target category; a fixed radius covers the rest.
     auto unit_inaccuracy = type.inaccuracy("Targeting_Fire_Inaccuracy", content);
     if (unit_inaccuracy.empty())
@@ -551,6 +570,8 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 weapon.fire_sound = type_fire_sound;
                 weapon.mount.up = profile.aim_height;
                 weapon.inaccuracy = unit_inaccuracy;
+                weapon.min_range = std::min(type.amount("Targeting_Min_Attack_Distance"), range);
+                weapon.excluded_categories = unit_excluded;
                 profile.weapons.push_back(weapon);
             }
             else
@@ -624,6 +645,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             weapon.damage_type = point.type_id("Damage_Type", content);
         }
         weapon.hardpoint = part_index;
+        weapon.excluded_categories = restricted(point, hardpoint->name, "Fire_Category_Restrictions") | unit_excluded;
         weapon.inaccuracy = point.inaccuracy("Fire_Inaccuracy_Distance", content);
         if (weapon.inaccuracy.empty())
         {

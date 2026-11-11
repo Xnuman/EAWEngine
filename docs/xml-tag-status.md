@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 105 |
+| `done` | 110 |
 | `partial` | 17 |
-| `gap` | 299 |
+| `gap` | 294 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -224,7 +224,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-28 done, 1 partial, 73 gap, 33 needs.
+33 done, 1 partial, 68 gap, 33 needs.
 
 ### Health, shields, armor, and energy
 
@@ -238,7 +238,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Energy_Capacity` | `needs abilities` | energy pool |
 | `Energy_Refresh_Rate` | `needs abilities` | energy pool |
 | `Autoresolve_Health` | `needs galactic` | auto-resolve |
-| `Immune_To_Damage` | `gap` |  |
+| `Immune_To_Damage` | `done` |  |
 | `GUI_Hide_Health_Bar` | `needs UI` |  |
 | `Out_Of_Combat_Defense_Adjustment` | `gap` |  |
 | `Defend_Mode_Shield_Regen_Multiplier` | `needs abilities` | defend mode |
@@ -298,7 +298,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Fire_Cone_Width` | `done` |  |
 | `Fire_Cone_Height` | `gap` |  |
 | `Fire_Inaccuracy_Distance` | `done` |  |
-| `Fire_Category_Restrictions` | `gap` |  |
+| `Fire_Category_Restrictions` | `done` | on hardpoints and units |
 | `Randomize_Between_Fire_Bones` | `gap` |  |
 | `Full_Salvo_Weapon_Delay_Multiplier` | `needs abilities` | energy pool |
 | `Requires_Manual_Target_Assignment` | `gap` |  |
@@ -323,7 +323,7 @@ Systems that `needs` rows wait for, by tag count:
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Targeting_Max_Attack_Distance` | `done` |  |
-| `Targeting_Min_Attack_Distance` | `gap` |  |
+| `Targeting_Min_Attack_Distance` | `done` | the unit's own weapon, not hardpoints |
 | `Ranged_Target_Z_Adjust` | `done` |  |
 | `Target_Bones` | `gap` |  |
 | `Targeting_Priority_Set` | `done` |  |
@@ -332,10 +332,10 @@ Systems that `needs` rows wait for, by tag count:
 | `Targeting_Stickiness_Time_Threshold` | `gap` |  |
 | `Targeting_Land_Model_Stay_Horiz_Flat` | `gap` |  |
 | `Target_Stealth_Units` | `needs stealth` |  |
-| `Is_Valid_Target` | `gap` |  |
+| `Is_Valid_Target` | `done` | never chosen or kept as a target |
 | `Collidable_By_Projectile_Living` | `done` |  |
 | `Collidable_By_Projectile_Dead` | `gap` |  |
-| `Attack_Category_Restrictions` | `gap` |  |
+| `Attack_Category_Restrictions` | `done` | applies to all the unit's weapons |
 | `Attack_Animation_Is_Overlay` | `gap` |  |
 
 ### Turrets
