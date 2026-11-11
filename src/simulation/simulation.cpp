@@ -68,6 +68,11 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite radius, turn rate, minimum speed, or formation spacing");
     }
+    if (const auto& movement = spawn.movement; !valid_amount(movement.acceleration) || !valid_amount(movement.deceleration) || !valid_amount(movement.turn_speed_fraction) ||
+                                               movement.turn_speed_fraction > 1.0F || !valid_amount(movement.stopped_turn_rate) || !valid_amount(movement.turn_in_place_angle))
+    {
+        return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite movement value, or a turn speed fraction above 1");
+    }
     if (spawn.stance != Stance::aggressive && spawn.stance != Stance::hold_position && spawn.stance != Stance::hold_fire)
     {
         return make_error("entity spawn '" + spawn.type_name + "' has an unknown stance");
@@ -120,6 +125,8 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     radii_.push_back(spawn.radius);
     turn_rates_.push_back(spawn.turn_rate);
     min_speeds_.push_back(std::min(spawn.min_speed, spawn.max_speed));
+    movements_.push_back(spawn.movement);
+    drive_speeds_.push_back(0.0F);
     loiter_points_.emplace_back();
     stances_.push_back(spawn.stance);
     aims_with_body_.push_back(spawn.aims_with_body ? 1U : 0U);
@@ -277,6 +284,13 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, radii_[index]);
         hash = hash_value(hash, turn_rates_[index]);
         hash = hash_value(hash, min_speeds_[index]);
+        const auto& movement = movements_[index];
+        hash = hash_value(hash, movement.acceleration);
+        hash = hash_value(hash, movement.deceleration);
+        hash = hash_value(hash, movement.turn_speed_fraction);
+        hash = hash_value(hash, movement.stopped_turn_rate);
+        hash = hash_value(hash, movement.turn_in_place_angle);
+        hash = hash_value(hash, drive_speeds_[index]);
         hash = hash_value(hash, stances_[index]);
         hash = hash_value(hash, aims_with_body_[index]);
         hash = fnv1a(hash, type_names_[index].data(), type_names_[index].size());
@@ -363,6 +377,8 @@ void SimulationWorld::destroy(const std::size_t dense)
         radii_[dense] = radii_[last];
         turn_rates_[dense] = turn_rates_[last];
         min_speeds_[dense] = min_speeds_[last];
+        movements_[dense] = movements_[last];
+        drive_speeds_[dense] = drive_speeds_[last];
         loiter_points_[dense] = loiter_points_[last];
         stances_[dense] = stances_[last];
         aims_with_body_[dense] = aims_with_body_[last];
@@ -405,6 +421,8 @@ void SimulationWorld::destroy(const std::size_t dense)
     radii_.pop_back();
     turn_rates_.pop_back();
     min_speeds_.pop_back();
+    movements_.pop_back();
+    drive_speeds_.pop_back();
     loiter_points_.pop_back();
     stances_.pop_back();
     aims_with_body_.pop_back();

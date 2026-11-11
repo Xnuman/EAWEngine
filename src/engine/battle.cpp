@@ -171,6 +171,7 @@ EntitySpawn Battle::spawn_of(const std::size_t type_index, Vector3 position, con
     spawn.combat = type.combat;
     spawn.radius = type.radius;
     spawn.turn_rate = type.turn_rate;
+    spawn.movement = type.movement;
     spawn.min_speed = type.min_speed;
     spawn.aims_with_body = follows_ground && type.aims_with_body;
     spawn.formation_order = type.formation_order;

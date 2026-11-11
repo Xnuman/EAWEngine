@@ -84,6 +84,7 @@ void GuiApp::render(const NativeWindowHandle window)
     render_status_bar(*state_);
     ImGui::End();
     render_large_map_preview(*state_);
+    render_large_model_preview(*state_);
 }
 
 } // namespace eaw::tools

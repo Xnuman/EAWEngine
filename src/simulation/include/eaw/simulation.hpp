@@ -55,6 +55,25 @@ enum class Stance : std::uint8_t
     hold_fire,
 };
 
+// How a mover gets up to speed and turns (EntitySpawn::movement). The default profile changes speed
+// at once and turns at its turn rate at any speed.
+struct MovementProfile
+{
+    // World units per second squared to speed up and to slow down; zero changes speed at once. A
+    // mover that slows down brakes ahead of its destination so it stops there.
+    float acceleration{};
+    float deceleration{};
+    // Below this fraction of its travel speed a moving entity turns at stopped_turn_rate instead of
+    // its turn rate, and it keeps at least this fraction of its speed while turning.
+    float turn_speed_fraction{};
+    // Turn rate (radians per second) below turn_speed_fraction. Zero cannot turn there: the entity
+    // first gathers speed straight ahead, and it moves along its heading (space ships).
+    float stopped_turn_rate{};
+    // A mover whose way is more than this off its heading (radians) stops and turns before moving
+    // off; zero turns while moving (ground units stop at corners this sharp).
+    float turn_in_place_angle{};
+};
+
 // Everything needed to create an entity. `type_name` is the XML object type (informational for
 // now); `visual` is an opaque presentation key chosen by the caller (for example a mesh index).
 struct EntitySpawn
@@ -79,6 +98,7 @@ struct EntitySpawn
     float radius{};
     // Turn rate in radians per second; zero turns instantly.
     float turn_rate{};
+    MovementProfile movement;
     // Formation rank (lower stands in front) and spacing (see formation.hpp).
     std::uint32_t formation_order{2};
     float formation_spacing{0.5F};
@@ -540,9 +560,20 @@ private:
     // Never below the minimum speed; turns and pitches toward the intent's point at the turn rate
     // (pitch limited to flight_max_pitch) and moves along the nose.
     void fly(std::size_t index, float dt);
-    // Turns toward `desired` (radians) at the entity's turn rate and returns how much of its speed it
-    // may use: 1 when facing the way, falling to 0 at 90 degrees or more off.
+    // Turns toward `desired` (radians) at the entity's turn rate (its stopped turn rate when moving
+    // slower than its profile's turn speed) and returns how much of its speed it may use: 1 when
+    // facing the way, falling to 0 at 90 degrees or more off.
     [[nodiscard]] float steer(std::size_t index, float desired, float dt);
+    // The speed a mover wants this tick, `distance` from its destination, after steer returned
+    // `facing`: the travel speed shaped by its movement profile (turning in place, keeping speed in
+    // a turn, braking ahead of the destination).
+    [[nodiscard]] float wanted_speed(std::size_t index, float facing, float distance) const noexcept;
+    // Speeds up or slows down toward `wanted` at the profile's rates; returns this tick's speed.
+    float drive(std::size_t index, float wanted, float dt) noexcept;
+    // Movers that cannot turn while slow move along their heading, not straight at their target,
+    // until within settle_distance of it.
+    [[nodiscard]] bool moves_along_heading(std::size_t index) const noexcept;
+    [[nodiscard]] float settle_distance(std::size_t index) const noexcept;
     void run_separation();
     // Navigation (simulation_navigation.cpp): local avoidance of space ships (detours_).
     void plan_space_avoidance();
@@ -639,6 +670,9 @@ private:
     std::vector<float> formation_spacings_;
     // Group speed of a formation move until the entity arrives; zero when none.
     std::vector<float> speed_limits_;
+    std::vector<MovementProfile> movements_;
+    // The locomotor's own speed, which accelerates and brakes (speeds_ is the measured one).
+    std::vector<float> drive_speeds_;
     std::vector<Vector3> separation_push_;
     // Space ships: the point steered at this tick to pass a unit in the way (navigation's local
     // avoidance); recomputed every tick from the state, so not hashed.

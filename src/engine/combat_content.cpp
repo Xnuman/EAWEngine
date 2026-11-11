@@ -2,7 +2,7 @@
 
 #include "visual_scene_builder.hpp"
 
-#include "assets/map_object_layout.hpp"
+#include "assets/type_hardpoints.hpp"
 
 #include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"
@@ -278,19 +278,6 @@ HardpointProfile::Kind hardpoint_kind(const std::string_view type)
     return HardpointProfile::Kind::other;
 }
 
-const XmlDefinition* find_hardpoint(const GameObjectCatalog& catalog, const std::string_view name)
-{
-    const auto candidates = catalog.find(name);
-    for (const auto* candidate : candidates)
-    {
-        if (ascii_lower(candidate->type) == "hardpoint")
-        {
-            return candidate;
-        }
-    }
-    return candidates.empty() ? nullptr : candidates.front();
-}
-
 } // namespace
 
 CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings, const Skeleton* skeleton,
@@ -353,80 +340,76 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     // The recharge is the midpoint of Fire_Min/Max_Recharge_Seconds (the original presumably picks
     // within the range at random; a fixed value keeps the simulation deterministic until a seeded
     // random stream exists). A hardpoint's Damage_Type overrides its projectile's.
-    if (const auto* hardpoints = type.node("HardPoints"))
+    for (const auto& [name, hardpoint] : type_hardpoints(catalog, definition))
     {
-        for (const auto name : split_type_names(hardpoints->text))
+        if (hardpoint == nullptr)
         {
-            const auto* hardpoint = find_hardpoint(catalog, name);
-            if (hardpoint == nullptr)
-            {
-                warnings.push_back(definition.name + ": hardpoint '" + std::string(name) + "' is not defined");
-                continue;
-            }
-            const FieldReader point(catalog, *hardpoint, warnings);
-            const auto* kind_node = point.node("Type");
-            const auto kind = kind_node != nullptr ? hardpoint_kind(kind_node->text) : HardpointProfile::Kind::other;
-            const auto bone_name = [&](const std::string_view field)
-            {
-                const auto* node = point.node(field);
-                return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
-            };
-            const auto attachment = find_bone(skeleton, pose, bone_name("Attachment_Bone"), model_scale);
-            const auto fire_bone = find_bone(skeleton, pose, bone_name("Fire_Bone_A"), model_scale);
-            HardpointProfile part;
-            part.kind = kind;
-            part.health = point.flag("Is_Destroyable", true) ? point.amount("Health") : 0.0F;
-            part.targetable = point.flag("Is_Targetable", true);
-            part.offset = attachment ? attachment->point : fire_bone ? fire_bone->point : LocalPoint{};
-            if (const auto damage = find_bone(skeleton, pose, bone_name("Damage_Particles"), model_scale))
-            {
-                part.damage_bone = static_cast<std::int32_t>(damage->index);
-            }
-            if (const auto decal = find_bone(skeleton, pose, bone_name("Damage_Decal"), model_scale))
-            {
-                part.decal_bone = static_cast<std::int32_t>(decal->index);
-            }
-            if (const auto engine = find_bone(skeleton, pose, bone_name("Engine_Particles"), model_scale))
-            {
-                part.engine_bone = static_cast<std::int32_t>(engine->index);
-            }
-            profile.hardpoints.push_back(part);
-            const auto part_index = static_cast<std::int32_t>(profile.hardpoints.size() - 1U);
-            if (kind != HardpointProfile::Kind::weapon)
-            {
-                continue;
-            }
-            const auto* projectile_name = point.node("Fire_Projectile_Type");
-            const auto* projectile_type = projectile_name != nullptr ? find_projectile(catalog, ascii_trim(projectile_name->text)) : nullptr;
-            if (projectile_type == nullptr)
-            {
-                warnings.push_back(hardpoint->name + ": weapon hardpoint without a defined Fire_Projectile_Type");
-                continue;
-            }
-            WeaponProfile weapon;
-            weapon.range = point.amount("Fire_Range_Distance", range);
-            const auto minimum = point.amount("Fire_Min_Recharge_Seconds");
-            weapon.recharge_seconds = (minimum + point.amount("Fire_Max_Recharge_Seconds", minimum)) * 0.5F;
-            weapon.pulse_count = std::max(1U, static_cast<std::uint32_t>(std::min(point.amount("Fire_Pulse_Count", 1.0F), 1000.0F)));
-            weapon.pulse_delay_seconds = point.amount("Fire_Pulse_Delay_Seconds");
-            read_projectile(FieldReader(catalog, *projectile_type, warnings), projectile_type->name, content, weapon);
-            if (point.node("Damage_Type") != nullptr)
-            {
-                weapon.damage_type = point.type_id("Damage_Type", content);
-            }
-            weapon.hardpoint = part_index;
-            weapon.fire_sound = sound_of(point, "Fire_SFXEvent", type_fire_sound);
-            weapon.mount = fire_bone ? fire_bone->point : part.offset;
-            const auto cone = point.amount("Fire_Cone_Width");
-            if (fire_bone && cone > 0.0F && cone < 360.0F)
-            {
-                weapon.cone_direction = fire_bone->direction;
-                weapon.cone_half_angle = cone * 0.5F * 3.14159265F / 180.0F;
-            }
-            if (weapon.range > 0.0F)
-            {
-                profile.weapons.push_back(weapon);
-            }
+            warnings.push_back(definition.name + ": hardpoint '" + name + "' is not defined");
+            continue;
+        }
+        const FieldReader point(catalog, *hardpoint, warnings);
+        const auto* kind_node = point.node("Type");
+        const auto kind = kind_node != nullptr ? hardpoint_kind(kind_node->text) : HardpointProfile::Kind::other;
+        const auto bone_name = [&](const std::string_view field)
+        {
+            const auto* node = point.node(field);
+            return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
+        };
+        const auto attachment = find_bone(skeleton, pose, bone_name("Attachment_Bone"), model_scale);
+        const auto fire_bone = find_bone(skeleton, pose, bone_name("Fire_Bone_A"), model_scale);
+        HardpointProfile part;
+        part.kind = kind;
+        part.health = point.flag("Is_Destroyable", true) ? point.amount("Health") : 0.0F;
+        part.targetable = point.flag("Is_Targetable", true);
+        part.offset = attachment ? attachment->point : fire_bone ? fire_bone->point : LocalPoint{};
+        if (const auto damage = find_bone(skeleton, pose, bone_name("Damage_Particles"), model_scale))
+        {
+            part.damage_bone = static_cast<std::int32_t>(damage->index);
+        }
+        if (const auto decal = find_bone(skeleton, pose, bone_name("Damage_Decal"), model_scale))
+        {
+            part.decal_bone = static_cast<std::int32_t>(decal->index);
+        }
+        if (const auto engine = find_bone(skeleton, pose, bone_name("Engine_Particles"), model_scale))
+        {
+            part.engine_bone = static_cast<std::int32_t>(engine->index);
+        }
+        profile.hardpoints.push_back(part);
+        const auto part_index = static_cast<std::int32_t>(profile.hardpoints.size() - 1U);
+        if (kind != HardpointProfile::Kind::weapon)
+        {
+            continue;
+        }
+        const auto* projectile_name = point.node("Fire_Projectile_Type");
+        const auto* projectile_type = projectile_name != nullptr ? find_projectile(catalog, ascii_trim(projectile_name->text)) : nullptr;
+        if (projectile_type == nullptr)
+        {
+            warnings.push_back(hardpoint->name + ": weapon hardpoint without a defined Fire_Projectile_Type");
+            continue;
+        }
+        WeaponProfile weapon;
+        weapon.range = point.amount("Fire_Range_Distance", range);
+        const auto minimum = point.amount("Fire_Min_Recharge_Seconds");
+        weapon.recharge_seconds = (minimum + point.amount("Fire_Max_Recharge_Seconds", minimum)) * 0.5F;
+        weapon.pulse_count = std::max(1U, static_cast<std::uint32_t>(std::min(point.amount("Fire_Pulse_Count", 1.0F), 1000.0F)));
+        weapon.pulse_delay_seconds = point.amount("Fire_Pulse_Delay_Seconds");
+        read_projectile(FieldReader(catalog, *projectile_type, warnings), projectile_type->name, content, weapon);
+        if (point.node("Damage_Type") != nullptr)
+        {
+            weapon.damage_type = point.type_id("Damage_Type", content);
+        }
+        weapon.hardpoint = part_index;
+        weapon.fire_sound = sound_of(point, "Fire_SFXEvent", type_fire_sound);
+        weapon.mount = fire_bone ? fire_bone->point : part.offset;
+        const auto cone = point.amount("Fire_Cone_Width");
+        if (fire_bone && cone > 0.0F && cone < 360.0F)
+        {
+            weapon.cone_direction = fire_bone->direction;
+            weapon.cone_half_angle = cone * 0.5F * 3.14159265F / 180.0F;
+        }
+        if (weapon.range > 0.0F)
+        {
+            profile.weapons.push_back(weapon);
         }
     }
     return profile;

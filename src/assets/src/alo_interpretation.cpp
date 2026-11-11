@@ -59,28 +59,37 @@ AloNameVariant alo_mesh_variant(const AloModelData& model, const AloMesh& mesh) 
     return variant;
 }
 
-std::vector<bool> alo_default_mesh_visibility(const AloModelData& model, const bool apply_bind_pose_bones)
+AloModelVariants alo_model_variants(const AloModelData& model)
 {
-    const auto variant_of = [&](const AloMesh& mesh)
-    {
-        return alo_mesh_variant(model, mesh);
-    };
-    std::uint32_t highest_lod = 0;
+    AloModelVariants variants;
     for (const auto& mesh : model.meshes)
     {
-        if (const auto variant = variant_of(mesh); variant.kind == AloVariantKind::level_of_detail)
+        const auto variant = alo_mesh_variant(model, mesh);
+        if (variant.kind == AloVariantKind::alternate)
         {
-            highest_lod = std::max(highest_lod, variant.index);
+            variants.highest_alternate = std::max(variants.highest_alternate, variant.index);
+        }
+        else if (variant.kind == AloVariantKind::level_of_detail && std::ranges::find(variants.detail_levels, variant.index) == variants.detail_levels.end())
+        {
+            variants.detail_levels.push_back(variant.index);
         }
     }
+    std::ranges::sort(variants.detail_levels);
+    return variants;
+}
+
+std::vector<bool> alo_mesh_visibility(const AloModelData& model, const AloMeshSelection& selection)
+{
+    const auto levels = alo_model_variants(model).detail_levels;
+    const auto detail_level = selection.detail_level.value_or(levels.empty() ? 0U : levels.back());
     std::vector<bool> visible;
     visible.reserve(model.meshes.size());
     for (const auto& mesh : model.meshes)
     {
-        const auto variant = variant_of(mesh);
-        const bool hidden_bone = apply_bind_pose_bones && mesh.attached_bone && *mesh.attached_bone < model.bones.size() && !model.bones[*mesh.attached_bone].visible;
-        const bool other_state = variant.kind == AloVariantKind::alternate && variant.index != 0;
-        const bool other_lod = variant.kind == AloVariantKind::level_of_detail && variant.index != highest_lod;
+        const auto variant = alo_mesh_variant(model, mesh);
+        const bool hidden_bone = selection.apply_bind_pose_bones && mesh.attached_bone && *mesh.attached_bone < model.bones.size() && !model.bones[*mesh.attached_bone].visible;
+        const bool other_state = variant.kind == AloVariantKind::alternate && variant.index != selection.alternate;
+        const bool other_lod = variant.kind == AloVariantKind::level_of_detail && variant.index != detail_level;
         visible.push_back(!mesh.hidden && !hidden_bone && !other_state && !other_lod);
     }
     return visible;

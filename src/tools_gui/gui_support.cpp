@@ -639,13 +639,14 @@ void label_value(const char* label, const std::string_view value)
 }
 
 PreviewGeometry build_preview_geometry(const AloModelData& model, const std::vector<PoseBone>* pose, const std::vector<Matrix4>& inverse_bind, const bool show_collision,
-                                       const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture)
+                                       const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture, const std::vector<bool>& mesh_visible, const std::vector<bool>& hidden_bones,
+                                       const Matrix4& transform)
 {
     static constexpr std::array<ImU32, 6> palette{IM_COL32(54, 177, 186, 255), IM_COL32(71, 137, 201, 255), IM_COL32(121, 101, 198, 255),
                                                   IM_COL32(55, 183, 133, 255), IM_COL32(199, 145, 62, 255), IM_COL32(185, 91, 129, 255)};
     PreviewGeometry geometry;
     const auto bind_pose = alo_bind_pose(model);
-    const auto default_visible = alo_default_mesh_visibility(model, pose == nullptr);
+    const auto default_visible = mesh_visible.size() == model.meshes.size() ? mesh_visible : alo_mesh_visibility(model, {.apply_bind_pose_bones = pose == nullptr});
     float radius_squared = 0.0F;
     for (std::size_t mesh_index = 0; mesh_index < model.meshes.size(); ++mesh_index)
     {
@@ -657,6 +658,10 @@ PreviewGeometry build_preview_geometry(const AloModelData& model, const std::vec
             continue;
         }
         if (pose != nullptr && mesh.attached_bone && *mesh.attached_bone < pose->size() && !(*pose)[*mesh.attached_bone].visible)
+        {
+            continue;
+        }
+        if (mesh.attached_bone && *mesh.attached_bone < hidden_bones.size() && hidden_bones[*mesh.attached_bone])
         {
             continue;
         }
@@ -694,6 +699,7 @@ PreviewGeometry build_preview_geometry(const AloModelData& model, const std::vec
                 {
                     point = transform_point(point, bind_pose[*mesh.attached_bone]);
                 }
+                point = transform_point(point, transform);
                 geometry.vertices.push_back({{point.x, point.y, point.z}, {vertex.texture_coordinates[0].x, vertex.texture_coordinates[0].y}, color});
                 if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z))
                 {
@@ -726,6 +732,28 @@ PreviewGeometry build_preview_geometry(const AloModelData& model, const std::vec
     }
     geometry.radius = std::sqrt(radius_squared);
     return geometry;
+}
+
+void append_preview_geometry(PreviewGeometry& into, const PreviewGeometry& from)
+{
+    const auto base = static_cast<std::uint32_t>(into.vertices.size());
+    const auto first = static_cast<std::uint32_t>(into.indices.size());
+    into.vertices.insert(into.vertices.end(), from.vertices.begin(), from.vertices.end());
+    for (const auto index : from.indices)
+    {
+        into.indices.push_back(base + index);
+    }
+    for (auto part : from.parts)
+    {
+        part.first_index += first;
+        into.parts.push_back(part);
+    }
+    if (!from.vertices.empty())
+    {
+        into.minimum = {std::min(into.minimum.x, from.minimum.x), std::min(into.minimum.y, from.minimum.y), std::min(into.minimum.z, from.minimum.z)};
+        into.maximum = {std::max(into.maximum.x, from.maximum.x), std::max(into.maximum.y, from.maximum.y), std::max(into.maximum.z, from.maximum.z)};
+        into.radius = std::max(into.radius, from.radius);
+    }
 }
 
 bool draw_gpu_preview(GuiApp::State& state, PreviewTarget& target, const ImVec2 canvas_min, const ImVec2 canvas_max, const Vector3& center, const float yaw, const float pitch, const float scale,

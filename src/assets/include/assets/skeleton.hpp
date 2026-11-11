@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -30,6 +31,10 @@ struct Skeleton
 
 // Each bone's model-space bind transform.
 [[nodiscard]] std::vector<Matrix4> skeleton_bind_pose(const Skeleton& skeleton);
+// For each bone (parents before children, as `parents` lists them; -1 for a root): whether it or an
+// ancestor is one of `roots`. Hardpoint scorch marks hide a Damage_Decal bone's whole subtree.
+[[nodiscard]] std::vector<bool> bones_in_subtrees(std::span<const std::int32_t> parents, std::span<const std::uint32_t> roots);
+
 // The first bone of that name (ASCII case-insensitive, surrounding whitespace ignored).
 [[nodiscard]] std::optional<std::uint32_t> find_skeleton_bone(const Skeleton& skeleton, std::string_view name);
 

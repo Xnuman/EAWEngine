@@ -40,6 +40,10 @@ void SimulationWorld::run_movement()
             continue;
         }
         auto& target = move_targets_[index];
+        if (!target || group_waiting_[index] != 0 || path_pending_[index] != 0)
+        {
+            drive_speeds_[index] = 0.0F;
+        }
         if (!target)
         {
             speed_limits_[index] = 0.0F;
@@ -79,10 +83,13 @@ void SimulationWorld::run_movement()
             const Vector3 aside{detour.x - position.x, detour.y - position.y, detour.z - position.z};
             const auto length = std::sqrt(aside.x * aside.x + aside.y * aside.y + aside.z * aside.z);
             const auto factor = aside.x != 0.0F || aside.y != 0.0F ? steer(index, std::atan2(aside.y, aside.x), dt) : 1.0F;
-            const auto step = std::min(travel_speed(index) * dt * factor, length);
+            const auto left = std::hypot(target->x - position.x, target->y - position.y);
+            const auto step = std::min(drive(index, wanted_speed(index, factor, left), dt) * dt, length);
             if (length > 0.0F)
             {
-                const auto moved = keep_apart(index, {aside.x * step / length, aside.y * step / length, aside.z * step / length});
+                const auto& heading = headings_[index];
+                const auto moved = moves_along_heading(index) && left > settle_distance(index) ? keep_apart(index, {std::cos(heading) * step, std::sin(heading) * step, aside.z * step / length})
+                                                                                               : keep_apart(index, {aside.x * step / length, aside.y * step / length, aside.z * step / length});
                 position = {position.x + moved.x, position.y + moved.y, position.z + moved.z};
             }
             continue;
@@ -90,9 +97,11 @@ void SimulationWorld::run_movement()
         const Vector3 delta{target->x - position.x, target->y - position.y, target->z - position.z};
         const auto distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto speed_factor = delta.x != 0.0F || delta.y != 0.0F ? steer(index, std::atan2(delta.y, delta.x), dt) : 1.0F;
-        const auto step_length = travel_speed(index) * dt * speed_factor;
+        const auto step_length = drive(index, wanted_speed(index, speed_factor, distance), dt) * dt;
         const auto scale = std::min(1.0F, step_length / std::max(distance, arrival_distance));
-        const Vector3 wanted{delta.x * scale, delta.y * scale, delta.z * scale};
+        const auto& heading = headings_[index];
+        const Vector3 wanted = moves_along_heading(index) && distance > settle_distance(index) ? Vector3{std::cos(heading) * step_length, std::sin(heading) * step_length, delta.z * scale}
+                                                                                               : Vector3{delta.x * scale, delta.y * scale, delta.z * scale};
         const auto moved = keep_apart(index, wanted);
         if (distance <= std::max(step_length, arrival_distance) && moved.x == wanted.x && moved.y == wanted.y)
         {
@@ -112,7 +121,8 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
     const auto allowed = passable_types_[index];
     // Ground units move in the horizontal plane; their height always comes from the surface. A
     // tick's movement carries on past reached waypoints, so corners do not slow a unit down.
-    auto remaining = travel_speed(index) * dt;
+    auto remaining = 0.0F;
+    bool driven = false;
     // An intermediate waypoint is passed once the one after it is in straight reach. A crowd keeps
     // pushing units away from a shared corner waypoint, so requiring each unit to touch it left
     // groups circling there (found by the path budget test).
@@ -134,9 +144,21 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
         const auto delta_x = waypoint.x - position.x;
         const auto delta_y = waypoint.y - position.y;
         const auto distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
+        auto facing = 1.0F;
         if ((delta_x != 0.0F || delta_y != 0.0F) && distance > arrival_distance)
         {
-            remaining *= steer(index, std::atan2(delta_y, delta_x), dt);
+            facing = steer(index, std::atan2(delta_y, delta_x), dt);
+        }
+        if (!driven)
+        {
+            // shortcut: brakes for the destination only, so a heavy unit slides a little past a
+            // sharp corner while it stops to turn; look ahead to the corner if that shows.
+            remaining = drive(index, wanted_speed(index, facing, remaining_route_[index]), dt) * dt;
+            driven = true;
+        }
+        else
+        {
+            remaining *= facing;
         }
         const bool arrives = distance <= std::max(remaining, arrival_distance);
         const auto scale = arrives || distance <= 0.0F ? 1.0F : remaining / distance;
@@ -180,12 +202,18 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
 float SimulationWorld::steer(const std::size_t index, const float desired, const float dt)
 {
     auto& heading = headings_[index];
-    const auto rate = turn_rates_[index];
     auto difference = wrap_angle(desired - heading);
-    if (rate <= 0.0F)
+    if (turn_rates_[index] <= 0.0F)
     {
         heading = wrap_angle(desired);
         return 1.0F;
+    }
+    const auto& movement = movements_[index];
+    const bool slow = move_targets_[index] && movement.turn_speed_fraction > 0.0F && drive_speeds_[index] < movement.turn_speed_fraction * travel_speed(index);
+    const auto rate = slow ? movement.stopped_turn_rate : turn_rates_[index];
+    if (rate <= 0.0F)
+    {
+        return std::max(0.0F, std::cos(difference));
     }
     const auto step = rate * dt;
     if (std::fabs(difference) <= step)
@@ -199,6 +227,57 @@ float SimulationWorld::steer(const std::size_t index, const float desired, const
         difference = wrap_angle(desired - heading);
     }
     return std::max(0.0F, std::cos(difference));
+}
+
+float SimulationWorld::wanted_speed(const std::size_t index, const float facing, const float distance) const noexcept
+{
+    const auto& movement = movements_[index];
+    auto factor = facing;
+    if (movement.turn_in_place_angle > 0.0F && facing < std::cos(movement.turn_in_place_angle))
+    {
+        factor = 0.0F;
+    }
+    else if (movement.turn_speed_fraction > 0.0F)
+    {
+        factor = std::max(factor, movement.turn_speed_fraction);
+    }
+    auto wanted = travel_speed(index) * factor;
+    if (movement.deceleration > 0.0F)
+    {
+        // The speed it can still brake from to stop at the destination.
+        wanted = std::min(wanted, std::sqrt(2.0F * movement.deceleration * std::max(distance, 0.0F)));
+    }
+    return wanted;
+}
+
+float SimulationWorld::drive(const std::size_t index, const float wanted, const float dt) noexcept
+{
+    const auto& movement = movements_[index];
+    auto& speed = drive_speeds_[index];
+    const auto rate = wanted > speed ? movement.acceleration : movement.deceleration;
+    if (rate <= 0.0F)
+    {
+        speed = wanted;
+    }
+    else
+    {
+        speed = wanted > speed ? std::min(wanted, speed + rate * dt) : std::max(wanted, speed - rate * dt);
+    }
+    return speed;
+}
+
+bool SimulationWorld::moves_along_heading(const std::size_t index) const noexcept
+{
+    const auto& movement = movements_[index];
+    return follows_ground_[index] == 0 && turn_rates_[index] > 0.0F && movement.turn_speed_fraction > 0.0F && movement.stopped_turn_rate <= 0.0F;
+}
+
+// Within twice its slowest turn radius it slides straight to the destination at braking speed:
+// circling at that radius, a mover always comes this close, so it cannot orbit its destination.
+float SimulationWorld::settle_distance(const std::size_t index) const noexcept
+{
+    const auto turn_radius = movements_[index].turn_speed_fraction * travel_speed(index) / turn_rates_[index];
+    return std::max(2.0F * turn_radius, arrival_distance);
 }
 
 // Overlapping ground units are pushed apart, half each by default. Displacements are summed for

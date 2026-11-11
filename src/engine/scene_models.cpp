@@ -4,7 +4,8 @@
 
 #include "combat_content.hpp"
 #include "formats/dds_texture.hpp"
-#include "assets/map_object_layout.hpp"
+#include "assets/skeleton.hpp"
+#include "assets/type_hardpoints.hpp"
 #include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"
 
@@ -331,8 +332,7 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
 std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& type, const Model* host)
 {
     std::vector<ModelAttachment> attachments;
-    const auto* list = catalog.field(type, "HardPoints").field;
-    if (host == nullptr || list == nullptr || !builder.textures)
+    if (host == nullptr || !builder.textures)
     {
         return attachments;
     }
@@ -341,16 +341,8 @@ std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const 
         const auto* node = catalog.field(definition, name).field;
         return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
     };
-    for (const auto name : split_type_names(list->text))
+    for (const auto& [name, hardpoint] : type_hardpoints(catalog, type))
     {
-        const XmlDefinition* hardpoint = nullptr;
-        for (const auto* candidate : catalog.find(name))
-        {
-            if (ascii_lower(candidate->type) == "hardpoint" || hardpoint == nullptr)
-            {
-                hardpoint = candidate;
-            }
-        }
         if (hardpoint == nullptr)
         {
             continue;
@@ -365,7 +357,7 @@ std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const 
         const auto path = resolve_model_path(builder.vfs, model_name);
         if (!bone || !path)
         {
-            builder.scene.warnings.push_back(type.name + ": hardpoint " + std::string(name) + " attaches " + model_name + (path ? " to missing bone '" + bone_name + "'" : " (file not found)"));
+            builder.scene.warnings.push_back(type.name + ": hardpoint " + name + " attaches " + model_name + (path ? " to missing bone '" + bone_name + "'" : " (file not found)"));
             continue;
         }
         const auto model = cached_model(builder, *path);
@@ -728,22 +720,13 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
             // the hardpoint's destruction.
             if (const auto decals = builder.decal_bones.find(ascii_lower(mesh.name)); decals != builder.decal_bones.end())
             {
-                const auto& bones = rig.skeleton->bones;
-                rig.intact_hidden.assign(bones.size(), false);
-                for (std::size_t index = 0; index < bones.size(); ++index)
+                std::vector<std::int32_t> parents;
+                for (const auto& bone : rig.skeleton->bones)
                 {
-                    // The bone itself or any ancestor named by a Damage_Decal hides it.
-                    auto bone = static_cast<std::int32_t>(index);
-                    for (std::size_t depth = 0; bone >= 0 && depth <= bones.size(); ++depth)
-                    {
-                        if (decals->second.contains(static_cast<std::uint32_t>(bone)))
-                        {
-                            rig.intact_hidden[index] = true;
-                            break;
-                        }
-                        bone = static_cast<std::size_t>(bone) < bones.size() ? bones[static_cast<std::size_t>(bone)].parent : -1;
-                    }
+                    parents.push_back(bone.parent);
                 }
+                const std::vector<std::uint32_t> roots(decals->second.begin(), decals->second.end());
+                rig.intact_hidden = bones_in_subtrees(parents, roots);
             }
             append_rest_palette(*rig.skeleton, rest_palette, rig.intact_hidden);
             rig.effects = proxy_effects(builder, model->value(), mesh.name);

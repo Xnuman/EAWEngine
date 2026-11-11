@@ -711,6 +711,64 @@ void test_space_avoidance()
     }
 }
 
+// Movement profiles: acceleration and braking, stopping to turn, and ships that need speed to turn.
+void test_movement_profiles()
+{
+    const auto pi = std::numbers::pi_v<float>;
+    const auto run = [](eaw::SimulationWorld& world, const int ticks)
+    {
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            world.step();
+        }
+    };
+    {
+        // 20 units/s, accelerating and braking at 10 units/s^2: 0.1 units in the first tick, and a
+        // stop exactly at the destination.
+        eaw::SimulationWorld world(0.1);
+        const auto mover = world.spawn({.type_name = "Mover", .max_speed = 20.0F, .turn_rate = pi, .movement = {.acceleration = 10.0F, .deceleration = 10.0F}});
+        require(mover.ok(), "test spawn must succeed");
+        world.submit({eaw::SimCommandKind::move, {*mover}, {100.0F, 0.0F, 0.0F}});
+        world.step();
+        require(std::fabs(world.snapshot().entities[0].position.x - 0.1F) < 1.0e-4F, "a mover must gather speed at its acceleration");
+        run(world, 30);
+        require(std::fabs(world.snapshot().entities[0].speed - 20.0F) < 1.0e-3F, "a mover must reach its top speed");
+        run(world, 100);
+        const auto& arrived = world.snapshot().entities[0];
+        require(arrived.position.x == 100.0F && !arrived.moving, "a braking mover must still arrive and stop");
+    }
+    {
+        // Facing +X, ordered to -X: it turns where it stands before moving off.
+        eaw::SimulationWorld world(0.1);
+        const auto turner = world.spawn({.type_name = "Turner", .max_speed = 20.0F, .turn_rate = pi / 2.0F, .movement = {.turn_in_place_angle = pi / 4.0F}});
+        require(turner.ok(), "test spawn must succeed");
+        world.submit({eaw::SimCommandKind::move, {*turner}, {-50.0F, 0.0F, 0.0F}});
+        run(world, 14);
+        require(world.snapshot().entities[0].position.x == 0.0F, "a unit far off its way must not move while it turns");
+        run(world, 3);
+        require(world.snapshot().entities[0].position.x < 0.0F, "a unit must move off once it is nearly facing its way");
+        run(world, 60);
+        require(world.snapshot().entities[0].position.x == -50.0F, "a unit that turned in place must arrive");
+    }
+    {
+        // A ship that cannot turn below half its speed goes forward first, then turns back.
+        eaw::SimulationWorld world(0.1);
+        const auto ship = world.spawn({.type_name = "Ship", .max_speed = 20.0F, .turn_rate = pi / 2.0F, .movement = {.acceleration = 20.0F, .deceleration = 20.0F, .turn_speed_fraction = 0.5F}});
+        require(ship.ok(), "test spawn must succeed");
+        world.submit({eaw::SimCommandKind::move, {*ship}, {-200.0F, 0.0F, 0.0F}});
+        run(world, 4);
+        const auto& starting = world.snapshot().entities[0];
+        require(starting.heading == 0.0F && starting.position.x > 0.0F, "a slow ship must go forward without turning");
+        run(world, 4);
+        require(world.snapshot().entities[0].heading != 0.0F, "a ship must turn once it has speed");
+        run(world, 400);
+        require(world.snapshot().entities[0].position.x == -200.0F, "a ship that turned under way must arrive");
+    }
+    eaw::SimulationWorld world(0.1);
+    require(!world.spawn({.type_name = "Bad", .movement = {.acceleration = -1.0F}}) && !world.spawn({.type_name = "Bad", .movement = {.turn_speed_fraction = 1.5F}}),
+            "negative accelerations and turn speed fractions above 1 must be rejected");
+}
+
 const ModuleRegistrar registrar("navigation", {
                                                   {"test_ground_movement", &test_ground_movement},
                                                   {"test_pathfinding", &test_pathfinding},
@@ -722,6 +780,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_path_budget_and_shared_routes", &test_path_budget_and_shared_routes},
                                                   {"test_space_avoidance", &test_space_avoidance},
                                                   {"test_space_crowds", &test_space_crowds},
+                                                  {"test_movement_profiles", &test_movement_profiles},
                                               });
 
 } // namespace

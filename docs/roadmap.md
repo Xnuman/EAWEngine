@@ -246,8 +246,11 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
   formats; noted in the code);
 - `MegArchive`, whose index decoding and entry reads were left together on purpose;
 - model lights and dazzles, decoded but not part of `Model` yet;
-- the `pe_*` and hardpoint-bone role rules, still spread over `scene_particles`, `scene_models`, and
-  `combat_content` instead of one place (see Engine extensions, explicit asset metadata);
+- the `pe_*` and hardpoint-bone role rules (which bones a hardpoint's `Damage_Particles`,
+  `Damage_Decal`, and `Engine_Particles` name), still read separately in `scene_particles` and
+  `combat_content` instead of one place (see Engine extensions, explicit asset metadata); the
+  hardpoint list itself (`type_hardpoints`) and the scorch-subtree rule (`bones_in_subtrees`) are
+  shared now;
 - local little-endian readers in `dds_texture`, `mtd_atlas`, the asset inspector, and `tools_gui`,
   which should use `core/byte_order` (as `alamo_chunks` now does);
 - the script host's own SplitMix stream beside `core/random` (it is script state, so a move must keep
@@ -285,6 +288,8 @@ compared by measured ratios from screenshots, never by recreated scenes):
   range), the guard radius (weapon range, at least 150 units), and how far a followed object may
   move before the unit follows (50 units);
 - fighter flight angles, heights, and periods;
+- acceleration units (`OverrideAcceleration` as speed per frame per frame), capital ships' turn
+  speed fraction (0.25), and the angle at which ground units stop to turn (45 degrees);
 - space avoidance: the look-ahead (3 s of travel, at least 4 radii), the margin (a quarter radius),
   the course steps (11.25 degrees), the formation spacing of ships (slots 4.5 radii apart), which
   units are small enough to fly past (below a fifth of the radius), and that a unit at another

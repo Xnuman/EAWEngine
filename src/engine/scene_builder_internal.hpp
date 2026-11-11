@@ -363,6 +363,17 @@ Matrix4 scaled_model_transform(Matrix4 transform, float scale) noexcept;
 // XML Max_Rate_Of_Turn in radians per second (provisional_turn_rate_scale); 0 turns instantly.
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
+// How a type gets up to speed and turns: XML OverrideAcceleration and OverrideDeceleration
+// (provisional_acceleration_scale; absent changes speed at once) and Min_Speed_Fraction_For_Turn. On
+// land it turns at Stopped_Rate_Of_Turn (or Max_Rate_Of_Turn) below that fraction and stops to turn
+// when its way is more than ground_turn_in_place_angle off; in space it cannot turn below that
+// fraction (default_space_turn_speed_fraction without one). The default profile for flyers.
+MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, bool land, bool flyer);
+// Engine choices, not the original's (no evidence yet): how far off its way a ground unit stops to
+// turn, and the turn speed fraction of space ships that do not name one (capital ships).
+inline constexpr float ground_turn_in_place_angle = 0.785398163F;
+inline constexpr float default_space_turn_speed_fraction = 0.25F;
+
 // Minimum flight speed of fighters and bombers (SpaceBehavior names FIGHTER_LOCOMOTOR): XML
 // Min_Speed on the Max_Speed scale, or half of `max_speed` without one; 0 for every other type.
 float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, float max_speed);

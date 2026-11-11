@@ -3,6 +3,7 @@
 #include "gui_internal.hpp"
 
 #include "assets/alamo_loaders.hpp"
+#include "assets/type_hardpoints.hpp"
 #include "core/string_utils.hpp"
 #include "formats/alo_model_helpers.hpp"
 #include "formats/dat_string_table_helpers.hpp"
@@ -25,13 +26,7 @@ void GuiApp::State::load_map_objects()
     {
         return;
     }
-    if (!object_index)
-    {
-        auto index = std::make_unique<ObjectIndex>();
-        index->database = XmlAssetDatabase::build(vfs);
-        index->catalog = GameObjectCatalog::build(index->database);
-        object_index = std::move(index);
-    }
+    ensure_object_index();
     map_object_layout = build_map_object_layout(*preview_map, object_index->catalog, vfs);
     map_object_placement.assign(preview_map->placed_objects.size(), -1);
     for (std::size_t index = 0; index < map_object_layout->placements.size(); ++index)
@@ -57,6 +52,112 @@ void GuiApp::State::load_map_objects()
                                                      });
         gpu.radius = std::max(geometry.radius, 1.0F);
         gpu.valid = renderer.ready() && !geometry.indices.empty() && gpu.mesh.upload(renderer.device(), renderer.context(), geometry.vertices, geometry.indices, geometry.parts);
+    }
+}
+
+void GuiApp::State::ensure_object_index()
+{
+    if (!object_index)
+    {
+        auto index = std::make_unique<ObjectIndex>();
+        index->database = XmlAssetDatabase::build(vfs);
+        index->catalog = GameObjectCatalog::build(index->database);
+        object_index = std::move(index);
+    }
+}
+
+void GuiApp::State::find_preview_types()
+{
+    preview_types.clear();
+    preview_type_index = -1;
+    preview_hardpoints.clear();
+    preview_type_warnings.clear();
+    if (!preview_model || selected_asset < 0 || static_cast<std::size_t>(selected_asset) >= assets.size())
+    {
+        return;
+    }
+    ensure_object_index();
+    const auto file = ascii_lower(std::filesystem::path(assets[static_cast<std::size_t>(selected_asset)].virtual_path).stem().string());
+    const auto& catalog = object_index->catalog;
+    for (const auto& definition : object_index->database.definitions())
+    {
+        for (const auto context : {GameModelContext::land, GameModelContext::space})
+        {
+            const auto reference = catalog.model(definition, context);
+            if (reference && ascii_lower(std::filesystem::path(reference->value).stem().string()) == file)
+            {
+                preview_types.push_back(&definition);
+                break;
+            }
+        }
+    }
+    // Types with hardpoints first: they are what the hardpoint list is for.
+    std::ranges::stable_sort(preview_types, std::greater{},
+                             [&](const XmlDefinition* type)
+                             {
+                                 return !type_hardpoints(catalog, *type).empty();
+                             });
+    select_preview_type(preview_types.empty() ? -1 : 0);
+}
+
+void GuiApp::State::select_preview_type(const int index)
+{
+    preview_type_index = index;
+    preview_hardpoints.clear();
+    preview_type_warnings.clear();
+    model_mesh_cached = false;
+    if (index < 0 || static_cast<std::size_t>(index) >= preview_types.size() || !object_index || !preview_skeleton)
+    {
+        return;
+    }
+    const auto& catalog = object_index->catalog;
+    const auto text_of = [&](const XmlDefinition& definition, const std::string_view field)
+    {
+        const auto* node = catalog.field(definition, field).field;
+        return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
+    };
+    for (const auto& [name, definition] : type_hardpoints(catalog, *preview_types[static_cast<std::size_t>(index)]))
+    {
+        PreviewHardpoint hardpoint;
+        hardpoint.name = name;
+        if (definition == nullptr)
+        {
+            preview_type_warnings.push_back("hardpoint " + name + " is not defined");
+            preview_hardpoints.push_back(std::move(hardpoint));
+            continue;
+        }
+        hardpoint.kind = text_of(*definition, "Type");
+        const auto attachment = text_of(*definition, "Attachment_Bone");
+        hardpoint.bone = find_skeleton_bone(*preview_skeleton, attachment.empty() ? text_of(*definition, "Fire_Bone_A") : attachment);
+        hardpoint.decal_bone = find_skeleton_bone(*preview_skeleton, text_of(*definition, "Damage_Decal"));
+        if (const auto model_name = text_of(*definition, "Model_To_Attach"); !model_name.empty())
+        {
+            const auto path = resolve_model_path(vfs, model_name);
+            auto model = path ? read_model(vfs, *path) : Result<AloModelData>(make_error("file not found"));
+            if (!model)
+            {
+                preview_type_warnings.push_back(name + ": " + model_name + ": " + model.error().message);
+            }
+            else
+            {
+                hardpoint.attached_path = *path;
+                hardpoint.attached = std::move(model).value();
+                for (const auto& mesh : hardpoint.attached->meshes)
+                {
+                    for (const auto& submesh : mesh.submeshes)
+                    {
+                        for (const auto& parameter : submesh.parameters)
+                        {
+                            if (parameter.type == AloShaderParameterType::texture && !parameter.value.empty())
+                            {
+                                static_cast<void>(load_texture(preview_textures, preview_texture_warnings, parameter.value));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        preview_hardpoints.push_back(std::move(hardpoint));
     }
 }
 
@@ -119,12 +220,17 @@ void GuiApp::State::load_assets()
     preview_animation.reset();
     preview_animation_index = -1;
     preview_time = 0.0F;
+    preview_types.clear();
+    preview_type_index = -1;
+    preview_hardpoints.clear();
+    preview_type_warnings.clear();
     model_mesh_cached = false;
     preview_textures.clear();
     preview_texture_warnings.clear();
     map_preview_triangles.clear();
     map_preview_cached = false;
     map_preview_large_window = false;
+    model_preview_large_window = false;
     object_index.reset();
     map_models.clear();
     object_textures.clear();
@@ -190,6 +296,10 @@ void GuiApp::State::inspect_asset(const int index)
     preview_animation.reset();
     preview_animation_index = -1;
     preview_time = 0.0F;
+    preview_types.clear();
+    preview_type_index = -1;
+    preview_hardpoints.clear();
+    preview_type_warnings.clear();
     model_mesh_cached = false;
     preview_textures.clear();
     preview_texture_warnings.clear();
@@ -203,6 +313,10 @@ void GuiApp::State::inspect_asset(const int index)
     if (extension != ".ted")
     {
         map_preview_large_window = false;
+    }
+    if (extension != ".alo")
+    {
+        model_preview_large_window = false;
     }
     if (extension == ".ted")
     {
@@ -226,6 +340,9 @@ void GuiApp::State::inspect_asset(const int index)
     }
     preview_model = std::move(model).value();
     preview_skeleton = load_skeleton(*preview_model);
+    preview_variants = alo_model_variants(*preview_model);
+    preview_alternate = 0;
+    preview_detail = -1;
     const auto bind_pose = skeleton_bind_pose(*preview_skeleton);
     preview_inverse_bind.reserve(bind_pose.size());
     for (const auto& transform : bind_pose)
@@ -270,6 +387,7 @@ void GuiApp::State::inspect_asset(const int index)
             }
         }
     }
+    find_preview_types();
 }
 
 ID3D11ShaderResourceView* GuiApp::State::load_texture(std::unordered_map<std::string, PreviewTexture>& cache, std::vector<std::string>& warnings, const std::string& reference)

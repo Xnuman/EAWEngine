@@ -153,6 +153,9 @@ inline constexpr float provisional_max_speed_scale = 30.0F;
 // XML Max_Rate_Of_Turn read as degrees per 30 Hz frame, like Max_Speed: infantry 16 (480 degrees per
 // second), tanks 12-20, capital ships 0.4-1.5 (12-45 degrees per second). Provisional.
 inline constexpr float provisional_turn_rate_scale = 30.0F * 3.14159265358979F / 180.0F;
+// XML OverrideAcceleration/OverrideDeceleration read as Max_Speed units per 30 Hz frame per frame
+// (Calamari cruiser .02: full speed in 2.5 seconds; T2B .2: in 0.4 seconds). A guess.
+inline constexpr float provisional_acceleration_scale = provisional_max_speed_scale * 30.0F;
 
 // An XML object type that can be spawned at runtime: its model is part of the map scene's meshes.
 struct SpawnableType
@@ -178,6 +181,8 @@ struct SpawnableType
     // EntitySpawn.
     float radius{};
     float turn_rate{};
+    // Acceleration and turning (type_movement).
+    MovementProfile movement;
     // Fighters' minimum flight speed (EntitySpawn::min_speed); 0 for other types.
     float min_speed{};
     // Aims with its body (no TURRET behavior); applies when it walks on the ground.

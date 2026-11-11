@@ -14,12 +14,14 @@ set(EAW_ASSETS_GAME_DATA
     ${HEADERS_DIR}/map_object_layout.hpp
     ${HEADERS_DIR}/spawn_catalog.hpp
     ${HEADERS_DIR}/surface_effects.hpp
+    ${HEADERS_DIR}/type_hardpoints.hpp
     ${HEADERS_DIR}/xml_asset_database.hpp
     ${HEADERS_DIR}/xml_schema.hpp
     ${SOURCES_DIR}/game_object_catalog.cpp
     ${SOURCES_DIR}/map_object_layout.cpp
     ${SOURCES_DIR}/spawn_catalog.cpp
     ${SOURCES_DIR}/surface_effects.cpp
+    ${SOURCES_DIR}/type_hardpoints.cpp
     ${SOURCES_DIR}/xml_asset_database.cpp
     ${SOURCES_DIR}/xml_schema_internal.hpp
     ${SOURCES_DIR}/xml_schema_load.cpp
@@ -90,6 +92,7 @@ set(EAW_ASSETS_HEADERS
     ${HEADERS_DIR}/sound_loaders.hpp
     ${HEADERS_DIR}/spawn_catalog.hpp
     ${HEADERS_DIR}/surface_effects.hpp
+    ${HEADERS_DIR}/type_hardpoints.hpp
     ${HEADERS_DIR}/xml_asset_database.hpp
     ${HEADERS_DIR}/xml_schema.hpp
 )
@@ -125,6 +128,7 @@ target_sources(eaw_assets
     ${SOURCES_DIR}/sound_loaders.cpp
     ${SOURCES_DIR}/spawn_catalog.cpp
     ${SOURCES_DIR}/surface_effects.cpp
+    ${SOURCES_DIR}/type_hardpoints.cpp
     ${SOURCES_DIR}/xml_asset_database.cpp
     ${SOURCES_DIR}/xml_schema_internal.hpp
     ${SOURCES_DIR}/xml_schema_load.cpp

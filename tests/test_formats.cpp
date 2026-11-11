@@ -6,6 +6,7 @@
 #include "math/transform.hpp"
 
 #include "assets/alo_interpretation.hpp"
+#include "assets/skeleton.hpp"
 #include "formats/alamo_chunks.hpp"
 #include "formats/png_image.hpp"
 #include "localization/localization_validation.hpp"
@@ -33,7 +34,7 @@ void test_alo_model()
     require(bind_pose.size() == 1 && bind_pose[0].values[0] == 1.0F && bind_pose[0].values[5] == 1.0F && bind_pose[0].values[10] == 1.0F, "ALO bind-pose decoding failed");
 }
 
-void test_alo_default_mesh_visibility()
+void test_alo_mesh_visibility()
 {
     require(eaw::alo_name_variant("NB_dish_ALT2").kind == eaw::AloVariantKind::alternate && eaw::alo_name_variant("NB_dish_ALT2").index == 2, "ALT suffix was not parsed");
     require(eaw::alo_name_variant("hull_lod1").kind == eaw::AloVariantKind::level_of_detail && eaw::alo_name_variant("hull_lod1").index == 1, "LOD suffix is case-insensitive");
@@ -53,10 +54,18 @@ void test_alo_default_mesh_visibility()
     };
     model.meshes = {
         mesh("BASE_ALT0"), mesh("BASE_ALT1"), mesh("TOWER"), mesh("HULL_LOD0"), mesh("HULL_LOD2"), mesh("HULL_LOD1"), mesh("FLAME", 1U), mesh("RUBBLE", 2U), mesh("PLATE", std::nullopt, true)};
-    const auto visible = eaw::alo_default_mesh_visibility(model);
+    const auto visible = eaw::alo_mesh_visibility(model);
     require(visible == std::vector<bool>{true, false, true, false, true, false, false, false, false}, "default mesh visibility must keep ALT0 and the highest LOD only");
-    const auto animated = eaw::alo_default_mesh_visibility(model, false);
+    const auto animated = eaw::alo_mesh_visibility(model, {.apply_bind_pose_bones = false});
     require(animated[7] && !animated[6] && !animated[8], "an animated caller must decide bind-pose bone visibility from its pose");
+    const auto variants = eaw::alo_model_variants(model);
+    require(variants.highest_alternate == 1 && variants.detail_levels == std::vector<std::uint32_t>{0, 1, 2}, "a model must list its states and detail levels");
+    const auto damaged = eaw::alo_mesh_visibility(model, {.alternate = 1, .detail_level = 0});
+    require(damaged == std::vector<bool>{false, true, true, true, false, false, true, false, false}, "a selection must show its state and detail level");
+
+    const std::vector<std::int32_t> parents{-1, 0, 1, 0, 3};
+    const std::vector<std::uint32_t> roots{1, 9};
+    require(eaw::bones_in_subtrees(parents, roots) == std::vector<bool>{false, true, true, false, false}, "a bone subtree must include its descendants only");
 }
 
 void test_texture_formats_and_materials()
@@ -665,7 +674,7 @@ const ModuleRegistrar registrar("formats", {
                                                {"test_localization_validation", &test_localization_validation},
                                                {"test_particle_system", &test_particle_system},
                                                {"test_alo_model", &test_alo_model},
-                                               {"test_alo_default_mesh_visibility", &test_alo_default_mesh_visibility},
+                                               {"test_alo_mesh_visibility", &test_alo_mesh_visibility},
                                                {"test_texture_formats_and_materials", &test_texture_formats_and_materials},
                                                {"test_lua_inspection", &test_lua_inspection},
                                                {"test_ala_animation", &test_ala_animation},

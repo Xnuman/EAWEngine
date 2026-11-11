@@ -172,6 +172,32 @@ float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& defi
     return rate > 0.0F ? rate * provisional_turn_rate_scale : 0.0F;
 }
 
+MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, const bool land, const bool flyer)
+{
+    MovementProfile movement;
+    if (flyer)
+    {
+        return movement;
+    }
+    const auto rate = [&](const std::string_view field, const float scale)
+    {
+        const auto value = type_float_field(catalog, definition, field) * scale;
+        return value > 0.0F && std::isfinite(value) ? value : 0.0F;
+    };
+    movement.acceleration = rate("OverrideAcceleration", provisional_acceleration_scale);
+    movement.deceleration = rate("OverrideDeceleration", provisional_acceleration_scale);
+    const bool names_fraction = catalog.field(definition, "Min_Speed_Fraction_For_Turn").field != nullptr;
+    const auto fraction = names_fraction ? std::clamp(rate("Min_Speed_Fraction_For_Turn", 1.0F), 0.0F, 1.0F) : (land ? 0.0F : default_space_turn_speed_fraction);
+    movement.turn_speed_fraction = fraction;
+    if (land)
+    {
+        const auto stopped = rate("Stopped_Rate_Of_Turn", provisional_turn_rate_scale);
+        movement.stopped_turn_rate = stopped > 0.0F ? stopped : type_turn_rate(catalog, definition);
+        movement.turn_in_place_angle = ground_turn_in_place_angle;
+    }
+    return movement;
+}
+
 float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, const float max_speed)
 {
     const auto behavior = catalog.field(definition, "SpaceBehavior").field;

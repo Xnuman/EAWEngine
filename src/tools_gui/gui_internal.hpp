@@ -7,6 +7,7 @@
 
 #include "eaw/file_dialogs.hpp"
 #include "preview_renderer.hpp"
+#include "assets/alo_interpretation.hpp"
 #include "assets/pose.hpp"
 #include "formats/alo_model.hpp"
 #include "vfs/asset_environment.hpp"
@@ -123,8 +124,13 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, std::span<const st
 
 void label_value(const char* label, std::string_view value);
 
+// `mesh_visible` selects the meshes (empty: the model's default appearance); meshes on bones that
+// `hidden_bones` marks are left out; `transform` places the result (an attached hardpoint model).
 PreviewGeometry build_preview_geometry(const AloModelData& model, const std::vector<PoseBone>* pose, const std::vector<Matrix4>& inverse_bind, bool show_collision,
-                                       const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture);
+                                       const std::function<ID3D11ShaderResourceView*(const std::string&)>& texture, const std::vector<bool>& mesh_visible = {},
+                                       const std::vector<bool>& hidden_bones = {}, const Matrix4& transform = Matrix4::identity());
+// Appends `from` to `into`, offsetting its indices and parts and widening the bounds.
+void append_preview_geometry(PreviewGeometry& into, const PreviewGeometry& from);
 
 // Renders `meshes` into `target` and shows it over the canvas. Returns false (after drawing a
 // message) when the GPU preview pipeline is unavailable.
@@ -136,6 +142,9 @@ void render_map_viewport(GuiApp::State& state, bool reserve_footer);
 void render_large_map_preview(GuiApp::State& state);
 
 void render_model_viewport(GuiApp::State& state);
+
+// The model preview in its own resizable window (opened from the embedded preview).
+void render_large_model_preview(GuiApp::State& state);
 
 void render_asset_workspace(GuiApp::State& state, HWND owner);
 
@@ -175,6 +184,31 @@ struct GuiApp::State
     bool preview_playing{true};
     bool preview_show_skeleton{};
     bool preview_show_collision{};
+    bool preview_show_hardpoint_labels{};
+    bool model_preview_large_window{};
+    // Which appearance the model preview shows: an alternate (damage) state, 0 intact, and an index
+    // into the model's detail levels (-1: the highest, the default appearance).
+    AloModelVariants preview_variants;
+    int preview_alternate{};
+    int preview_detail{-1};
+    // Object types whose land or space model is the previewed file, and the hardpoints of the
+    // chosen one: shown hardpoints draw a marker and their attached model; destroyed ones show
+    // their Damage_Decal scorch meshes (hidden while intact) and drop the attached model.
+    struct PreviewHardpoint
+    {
+        std::string name;
+        std::string kind;
+        std::optional<std::uint32_t> bone;
+        std::optional<std::uint32_t> decal_bone;
+        std::string attached_path;
+        std::optional<AloModelData> attached;
+        bool shown{true};
+        bool destroyed{};
+    };
+    std::vector<const XmlDefinition*> preview_types;
+    int preview_type_index{-1};
+    std::vector<PreviewHardpoint> preview_hardpoints;
+    std::vector<std::string> preview_type_warnings;
     // GPU preview: the model mesh is rebuilt when the model or collision toggle changes, and every
     // frame while an animation plays (skinning runs on the CPU).
     PreviewRenderer renderer;
@@ -224,6 +258,11 @@ struct GuiApp::State
     void reset_map_objects();
 
     void load_map_objects();
+    // Builds the object-type index for the mounted VFS once.
+    void ensure_object_index();
+    // Finds the types that use the previewed model and selects the first.
+    void find_preview_types();
+    void select_preview_type(int index);
 
     std::optional<std::filesystem::path> base_dat_path;
     std::optional<std::filesystem::path> workspace_path;

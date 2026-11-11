@@ -17,6 +17,12 @@ other original game source, binary, or asset may be added without explicit owner
 authorization and provenance review. Because contributors read these sources,
 project documentation does not describe the renderer as clean-room.
 
+The game-object tag survey ([xml-object-tags.md](xml-object-tags.md)) also read the
+map editor's `Source` folder (the EAW and FoC XML with developer comments, the enum
+files, and the stock Lua in decompiled form) from a public, unlicensed redistribution,
+locally and as evidence only, like the installed data: none of it is in the
+repository, and its comments are paraphrased, never quoted.
+
 Primary starting points:
 
 - AlamoEngine-Tools organization: <https://github.com/AlamoEngine-Tools>
@@ -139,9 +145,8 @@ be expanded into their member units. The audit indexes every XML file under
 Space squadrons place no model of their own. Their `Squadron_Units` field lists
 member types, and repeated `Squadron_Offsets` fields give each member's offset
 in the squadron's local frame. Some stock definitions repeat `Squadron_Units`;
-the engine uses the last occurrence, which is the ordinary override rule but is
-not yet confirmed against the original game. Across the FoC corpus, 327 placed
-squadrons expand into 1,026 member ships. Land teams and companies list members
+the repeats continue the list (see "Squadron lists" below), so the 327 placed
+squadrons of the FoC corpus expand into 1,474 member ships. Land teams and companies list members
 (`Company_Units`, containers with `ContainerArrangement`) without offsets, so
 their layout is runtime formation behavior; the 247 placed instances are counted
 and left unexpanded until the simulation owns formations.
@@ -340,6 +345,16 @@ Movement fields used by the group-movement work.
   degrees per second, tanks 12-20, and capital ships 0.4-1.5 become 12-45
   degrees per second. 0.0, the most common value, turns instantly.
   Provisional until compared with the original.
+- **Acceleration and turning.** `OverrideAcceleration` and `OverrideDeceleration`
+  (about 148 stock types: ships .02-.065, tanks .2, infantry and heroes) are read
+  as Max_Speed units per frame per frame (×900 per second squared), a guess:
+  a fraction of top speed per frame fits the values as well. Walkers name none.
+  `Min_Speed_Fraction_For_Turn` (21 types: walkers .1-.4 with
+  `Stopped_Rate_Of_Turn` and `Has_Pre_Turn_Anim`, fighters and freighters
+  .6-.7) is read as the speed fraction below which a unit turns at its stopped
+  rate (ground) or not at all (space); capital ships name none and take an
+  engine default. `Max_Thrust` (70 space types) is not read: its meaning is
+  unknown.
 - **Footprints.** Units turn at that rate and travel more slowly while facing
   away from their way. Their separation footprint is a quarter of the summed
   X and Y extents of the model bounds (an engine choice). The original's

@@ -35,4 +35,26 @@ std::optional<std::uint32_t> find_skeleton_bone(const Skeleton& skeleton, const 
     return std::nullopt;
 }
 
+std::vector<bool> bones_in_subtrees(const std::span<const std::int32_t> parents, const std::span<const std::uint32_t> roots)
+{
+    std::vector<bool> inside(parents.size(), false);
+    for (const auto root : roots)
+    {
+        if (root < inside.size())
+        {
+            inside[root] = true;
+        }
+    }
+    // Parents come first, so one forward pass carries membership down the tree.
+    for (std::size_t index = 0; index < parents.size(); ++index)
+    {
+        const auto parent = parents[index];
+        if (parent >= 0 && static_cast<std::size_t>(parent) < index && inside[static_cast<std::size_t>(parent)])
+        {
+            inside[index] = true;
+        }
+    }
+    return inside;
+}
+
 } // namespace eaw

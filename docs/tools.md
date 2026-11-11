@@ -296,7 +296,17 @@ The **Asset Inspector** page can:
   Lua, and generic binary metadata;
 - preview ALO geometry in an orbitable viewport, resolve packaged DDS diffuse
   textures through the active mod/VFS layers, play matching ALA animations,
-  and optionally display skeleton and collision geometry. Shadow-volume,
+  and optionally display skeleton and collision geometry;
+- choose a model's damage state (its `_ALT<n>` meshes, ALT0 intact) and detail
+  level (its `_LOD<n>` meshes, the highest by default) with the same rule the
+  engine uses (`alo_mesh_visibility`), pick one of the XML object types that use
+  the model (types with hardpoints first), and toggle each of its hardpoints:
+  shown hardpoints draw a marker coloured by kind (weapons red, shields blue,
+  engines orange; labels optional) and their `Model_To_Attach` model at the
+  attachment bone, destroyed ones show their `Damage_Decal` scorch meshes (hidden
+  while intact, as in battle) and drop the attached model; **Preview** opens
+  the model in its own resizable window (as for maps), which stays open while
+  other models are selected. Shadow-volume,
   heat-distortion, and occluded-unit geometry is hidden; opaque materials ignore
   texture alpha (which holds gloss or team-color masks), alpha-tested materials
   are cut out, and additive materials blend additively;

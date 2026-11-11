@@ -1,5 +1,6 @@
 #include "test_support.hpp"
 #include "formats/xml_helpers.hpp"
+#include "assets/type_hardpoints.hpp"
 
 namespace {
 
@@ -103,6 +104,9 @@ void test_game_object_catalog()
                 "<Faction Name=\"Broken_Faction\"><Color>red</Color></Faction>"
                 "<SpaceUnit Name=\"Imperial_Unit\"><Affiliation>Test_Empire, Rebel</Affiliation></SpaceUnit>"
                 "<SpaceUnit Name=\"Broken_Unit\"><Affiliation>Broken_Faction</Affiliation></SpaceUnit>"
+                "<SpaceUnit Name=\"Gunship\"><HardPoints> HP_Gun, Shared_HP Missing_HP </HardPoints></SpaceUnit>"
+                "<SpaceUnit Name=\"Gunship_Copy\"><Variant_Of_Existing_Type>Gunship</Variant_Of_Existing_Type></SpaceUnit>"
+                "<HardPoint Name=\"HP_Gun\" /><SFXEvent Name=\"Shared_HP\" /><HardPoint Name=\"Shared_HP\" />"
                 "</SpaceUnits>";
     }
     std::ofstream(model_root / "EV_UNIT.ALO", std::ios::binary) << "x";
@@ -112,6 +116,13 @@ void test_game_object_catalog()
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
     const auto database = eaw::XmlAssetDatabase::build(vfs);
     const auto catalog = eaw::GameObjectCatalog::build(database);
+
+    // A type's hardpoints come from its (inherited) HardPoints list, preferring HardPoint definitions.
+    const auto hardpoints = eaw::type_hardpoints(catalog, *catalog.find("Gunship_Copy").front());
+    require(hardpoints.size() == 3 && hardpoints[0].name == "HP_Gun" && hardpoints[0].definition != nullptr && hardpoints[1].definition != nullptr && hardpoints[1].definition->type == "HardPoint" &&
+                hardpoints[2].name == "Missing_HP" && hardpoints[2].definition == nullptr,
+            "a type's hardpoint list was not resolved");
+    require(eaw::type_hardpoints(catalog, *catalog.find("Unit_A").front()).empty(), "a type without hardpoints must list none");
 
     const auto unit = catalog.resolve(0xbb137f89U, eaw::GameModelContext::space);
     require(unit.definition != nullptr && unit.definition->name == "Unit_A" && unit.candidates == 1, "object CRC did not resolve to its definition");

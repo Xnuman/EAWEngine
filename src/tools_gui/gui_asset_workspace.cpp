@@ -196,7 +196,24 @@ void render_asset_workspace(GuiApp::State& state, HWND owner)
                 {
                     if (state.preview_model)
                     {
-                        render_model_viewport(state);
+                        if (!state.model_preview_large_window)
+                        {
+                            ImGui::PushID("embedded-model-preview");
+                            render_model_viewport(state);
+                            ImGui::PopID();
+                            if (ImGui::Button("Preview"))
+                            {
+                                state.model_preview_large_window = true;
+                            }
+                        }
+                        else
+                        {
+                            ImGui::TextColored(muted, "Model preview is open in a separate window.");
+                            if (ImGui::SmallButton("Close large preview"))
+                            {
+                                state.model_preview_large_window = false;
+                            }
+                        }
                     }
                     else
                     {
