@@ -163,7 +163,25 @@ struct VisualDraw
     std::uint32_t material{};
 };
 
-// A model in the scene: a contiguous range of draws sharing one bone index space.
+// One detail level of a mesh state: a contiguous range of the scene's draws (parts shared by
+// several levels or states appear in each of their ranges; the geometry is not copied).
+struct VisualMeshLod
+{
+    std::uint32_t first_draw{};
+    std::uint32_t draw_count{};
+};
+
+// A damage state of a mesh (the legacy _ALT<n> number) and its detail levels, most detailed first.
+struct VisualMeshState
+{
+    std::uint32_t alternate{};
+    std::vector<VisualMeshLod> lods;
+};
+
+// A model in the scene: a contiguous range of draws sharing one bone index space, its default
+// appearance (intact, full detail). A mesh with damage states or detail levels lists them in
+// `states` (alternate 0 first); the renderer then draws the instance's state at the level its LOD
+// policy picks (eaw/visual_lod.hpp). Without `states` the default range is the only appearance.
 struct VisualMesh
 {
     std::string name;
@@ -172,6 +190,7 @@ struct VisualMesh
     std::uint32_t bone_count{};
     Vector3 bounds_minimum{};
     Vector3 bounds_maximum{};
+    std::vector<VisualMeshState> states;
 };
 
 // One placed copy of a mesh. `transform` maps mesh space to world space in the row-vector
@@ -190,6 +209,13 @@ struct VisualInstance
     bool background{};
     // Drawn with the selection tint (any number of instances, e.g. a box-selected group).
     bool highlighted{};
+    // The damage state to draw (VisualMeshState::alternate; a state the mesh lacks draws state 0).
+    std::uint32_t state{};
+    // Stable identity across frames (an entity key), so the renderer can follow the instance's
+    // detail level and cross-fade changes; 0 picks the level afresh every frame without fading.
+    std::uint64_t key{};
+    // How much farther than usual the instance keeps its detail (its type's LOD_Bias; 1 as given).
+    float lod_bias{1.0F};
 };
 
 // A directional light; `direction` points from the surface toward the light (any length).

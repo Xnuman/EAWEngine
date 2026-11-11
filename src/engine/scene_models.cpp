@@ -57,6 +57,71 @@ std::shared_ptr<const Result<Model>> cached_model(SceneBuilder& builder, const s
 // when an animation shows their bone. Without it (maps share one bind-pose palette), such meshes
 // are omitted.
 // A model that cannot be appended leaves no geometry, indices, or materials behind.
+namespace {
+
+// A draw's damage state and detail level (none: every state or level).
+struct DrawTag
+{
+    std::optional<std::uint32_t> state;
+    std::optional<std::uint32_t> level;
+};
+
+// Lays a mesh's draws out by damage state and detail level: one run of draws per state (state 0,
+// then the tagged states in order) and level (most detailed first), each holding the untagged draws
+// and those of its state and level, so the default range (state 0 at full detail) is the first run.
+// A mesh without tags keeps its draws as they are.
+void arrange_states_and_levels(VisualScene& scene, VisualMesh& mesh, const std::vector<DrawTag>& tags)
+{
+    std::vector<std::uint32_t> states{0};
+    std::vector<std::uint32_t> levels;
+    for (const auto& tag : tags)
+    {
+        if (tag.state && std::ranges::find(states, *tag.state) == states.end())
+        {
+            states.push_back(*tag.state);
+        }
+        if (tag.level && std::ranges::find(levels, *tag.level) == levels.end())
+        {
+            levels.push_back(*tag.level);
+        }
+    }
+    if (states.size() == 1 && levels.empty())
+    {
+        return;
+    }
+    std::ranges::sort(states);
+    // Legacy _LOD<n>: the higher number is the more detailed level.
+    std::ranges::sort(levels, std::greater<>{});
+    const std::vector<VisualDraw> drawn(scene.draws.begin() + mesh.first_draw, scene.draws.end());
+    scene.draws.resize(mesh.first_draw);
+    const auto level_count = std::max<std::size_t>(levels.size(), 1U);
+    for (const auto state : states)
+    {
+        VisualMeshState visual_state{state, {}};
+        for (std::size_t level_index = 0; level_index < level_count; ++level_index)
+        {
+            VisualMeshLod level{static_cast<std::uint32_t>(scene.draws.size()), 0};
+            for (std::size_t draw = 0; draw < drawn.size(); ++draw)
+            {
+                const auto& tag = tags[draw];
+                const bool in_state = !tag.state || *tag.state == state;
+                const bool in_level = !tag.level || levels.empty() || *tag.level == levels[level_index];
+                if (in_state && in_level)
+                {
+                    scene.draws.push_back(drawn[draw]);
+                }
+            }
+            level.draw_count = static_cast<std::uint32_t>(scene.draws.size()) - level.first_draw;
+            visual_state.lods.push_back(level);
+        }
+        mesh.states.push_back(std::move(visual_state));
+    }
+    mesh.first_draw = mesh.states.front().lods.front().first_draw;
+    mesh.draw_count = mesh.states.front().lods.front().draw_count;
+}
+
+} // namespace
+
 Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, const std::string_view name, const bool animated_visibility, const std::span<const ModelAttachment> attachments)
 {
     auto& scene = builder.scene;
@@ -82,6 +147,9 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
         scene.materials.resize(first_material);
         scene.draws.resize(visual_mesh.first_draw);
     };
+    // Each appended draw's damage state and detail level (none: every state or level), parallel to
+    // the draws from visual_mesh.first_draw on.
+    std::vector<DrawTag> draw_tags;
     static constexpr std::array<std::array<float, 4>, 6> palette{{
         {0.35F, 0.78F, 0.82F, 1.0F},
         {0.42F, 0.63F, 0.88F, 1.0F},
@@ -99,16 +167,31 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
         // attached models, fixed to the bind pose.
         const bool apply_bind_pose_bones = host != nullptr || !animated_visibility;
         const auto& bones = source.skeleton.bones;
+        // An attached model (a hardpoint's) shows its own default appearance: intact, full detail.
+        std::optional<std::uint32_t> attached_detail;
+        if (host != nullptr)
+        {
+            for (const auto& mesh : source.meshes)
+            {
+                if (mesh.detail_level)
+                {
+                    attached_detail = std::max(attached_detail.value_or(0U), *mesh.detail_level);
+                }
+            }
+        }
         for (std::size_t mesh_index = 0; mesh_index < source.meshes.size(); ++mesh_index)
         {
             const auto& mesh = source.meshes[mesh_index];
-            // Default appearance: intact state and full detail. Damage-state and distance switching
-            // are not modeled yet.
             const bool hidden_bone = apply_bind_pose_bones && mesh.attached_bone && *mesh.attached_bone < bones.size() && !bones[*mesh.attached_bone].visible;
-            if (!mesh.default_appearance || hidden_bone)
+            if (mesh.hidden || hidden_bone)
             {
                 continue;
             }
+            if (host != nullptr && ((mesh.damage_state && *mesh.damage_state != 0) || (mesh.detail_level && mesh.detail_level != attached_detail)))
+            {
+                continue;
+            }
+            const DrawTag tag = host != nullptr ? DrawTag{} : DrawTag{mesh.damage_state, mesh.detail_level};
             for (const auto& submesh : mesh.submeshes)
             {
                 if (submesh.vertices.empty() || submesh.indices.empty())
@@ -208,6 +291,7 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
                 const auto material_index = static_cast<std::uint32_t>(scene.materials.size());
                 scene.materials.push_back(std::move(visual_material));
                 scene.draws.push_back({first_index, index_count, base_vertex, material_index});
+                draw_tags.push_back(tag);
             }
         }
         return {};
@@ -238,6 +322,7 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
         roll_back();
         return make_error("ALO model has no visible renderable geometry");
     }
+    arrange_states_and_levels(scene, visual_mesh, draw_tags);
     const auto mesh_index = static_cast<std::uint32_t>(scene.meshes.size());
     scene.meshes.push_back(std::move(visual_mesh));
     return mesh_index;

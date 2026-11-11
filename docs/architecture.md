@@ -272,6 +272,17 @@ official mod tools, are the reference for that mapping
 ([legacy-shader-mapping.md](legacy-shader-mapping.md)); they stay out of the repository and are
 never compiled, embedded, or shipped.
 
+**Damage states and detail levels.** A `VisualMesh` may list `states` (the legacy `_ALT<n>`
+number, 0 first), each with detail levels (most detailed first), as ranges of the scene's draws:
+untagged parts appear in every range, so geometry is shared and only draw records repeat. The
+engine chooses a unit's state (`VisualInstance::state`, gameplay); the renderer chooses its level
+(`eaw/visual_lod.hpp`), by distance, projected screen size, or a hybrid of the two (or off),
+scaled by the instance's `lod_bias` (XML `LOD_Bias`) and the mesh-detail setting, with a hysteresis
+band. Instances with a stable `key` (the entity key) cross-fade between levels: both levels are
+drawn for `fade_seconds` with complementary 4x4 ordered-dither masks (`GpuInstance::fade`, a
+discard in the pixel shader), so each pixel shows exactly one of them. `VisualLodTracker` holds the
+per-key state; the selection and tracking are pure and tested without a device.
+
 ### Direct3D 12 backend
 
 - **Queues and fences.** A direct and a copy queue, each with one monotonically increasing fence.

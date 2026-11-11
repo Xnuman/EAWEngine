@@ -81,6 +81,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
             instance.transform(axis, axis) = type.scale;
         }
         instance.team_color = type.team_color;
+        instance.lod_bias = type.lod_bias;
         spawn_templates_.push_back({instance, identity_model_heading, type.death});
     }
 }
@@ -115,6 +116,7 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
         auto instance = found->instance;
         instance.transform = pose_transform(instance.transform, found->base_heading, entity.position, entity.heading, entity.pitch, flight_bank(entity.yaw_rate) + entity.roll);
         instance.highlighted = selected.contains(entity_key(entity.id));
+        instance.key = entity_key(entity.id);
         instances_out.push_back(instance);
         entities_out.push_back(entity.id);
     }
@@ -141,6 +143,7 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableType> types
             instance.transform(axis, axis) = type.scale;
         }
         instance.team_color = type.team_color;
+        instance.lod_bias = type.lod_bias;
         spawn_templates_.push_back({instance, identity_model_heading, type.death});
     }
 }

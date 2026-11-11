@@ -8,6 +8,7 @@ D3d12Renderer::Impl::Impl(void* native_window, const std::uint32_t initial_width
     : window(static_cast<HWND>(native_window)), options(renderer_options), width(std::max(initial_width, 1U)), height(std::max(initial_height, 1U))
 {
     options.maximum_frame_latency = std::clamp(options.maximum_frame_latency, 1U, frame_count - 1);
+    lod_settings = options.lod;
 }
 
 D3d12Renderer::Impl::~Impl()

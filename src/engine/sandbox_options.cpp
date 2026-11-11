@@ -89,6 +89,8 @@ void print_sandbox_usage()
               << "  --upload-budget <MiB>  Texture bytes streamed per frame (default 64; 0 uploads all at once)\n"
               << "  --bloom <strength>     Bloom strength (default 0.8; 0 disables it)\n"
               << "  --no-bloom             Disable bloom\n"
+              << "  --lod <off|distance|screen|hybrid> How meshes pick their detail level (default hybrid; off: full detail)\n"
+              << "  --mesh-detail <0..1>   Mesh detail setting: 1 keeps detail farthest (default 1)\n"
               << "  --particles <legacy|enhanced> How particle effects are interpreted (default legacy, as the original)\n"
               << "  --hot-reload       Rebuild the scene when its loose files or MEG archives change\n"
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
@@ -403,6 +405,25 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         else if (argument == "--no-bloom")
         {
             options.bloom_strength = 0.0F;
+        }
+        else if (argument == "--lod")
+        {
+            EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
+            const auto policy = visual_lod_policy(value);
+            if (!policy)
+            {
+                return make_error("--lod must be off, distance, screen, or hybrid");
+            }
+            options.lod_policy = *policy;
+        }
+        else if (argument == "--mesh-detail")
+        {
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.mesh_detail, parse_float(text, argument));
+            if (options.mesh_detail < 0.0F || options.mesh_detail > 1.0F)
+            {
+                return make_error("--mesh-detail needs a value from 0 to 1, got '" + text + "'");
+            }
         }
         else if (argument == "--bloom")
         {

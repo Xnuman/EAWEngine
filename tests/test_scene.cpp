@@ -262,6 +262,51 @@ void test_intact_hidden_bones()
             "intact-hidden bone was not collapsed");
 }
 
+// A model's damage states and detail levels become runs of draws: untagged parts in every run,
+// tagged ones only in their state or level, states from 0 up, levels most detailed (highest
+// _LOD number) first, and the default range is state 0 at full detail. A model without tags keeps
+// one plain range.
+void test_mesh_states_and_levels()
+{
+    eaw::Model model;
+    model.skeleton.bones.push_back({"Root", -1, eaw::Matrix4::identity(), true});
+    const auto mesh = [](const char* name, std::optional<std::uint32_t> state, std::optional<std::uint32_t> level, const bool hidden = false)
+    {
+        eaw::ModelSubmesh part;
+        part.vertices.resize(3);
+        part.vertices[1].position = {1.0F, 0.0F, 0.0F};
+        part.vertices[2].position = {0.0F, 1.0F, 0.0F};
+        part.indices = {0, 1, 2};
+        return eaw::ModelMesh{name, 0U, hidden, state, level, {part}};
+    };
+    model.meshes = {mesh("hull", std::nullopt, std::nullopt), mesh("dish_ALT0", 0U, std::nullopt), mesh("dish_ALT1", 1U, std::nullopt),
+                    mesh("body_LOD2", std::nullopt, 2U),      mesh("body_LOD1", std::nullopt, 1U), mesh("ghost", std::nullopt, std::nullopt, true)};
+    eaw::VirtualFileSystem vfs;
+    eaw::VisualScene scene;
+    eaw::scene_build::SceneBuilder builder{vfs, scene};
+    builder.textures = false;
+    const auto index = expect_ok(eaw::scene_build::append_model(builder, model, "tagged"), "appending the tagged model");
+    const auto& visual = scene.meshes[index];
+    require(visual.states.size() == 2 && visual.states[0].alternate == 0 && visual.states[1].alternate == 1 && visual.states[0].lods.size() == 2 && visual.states[1].lods.size() == 2,
+            "two states with two levels each");
+    const auto materials_of = [&](const eaw::VisualMeshLod& level)
+    {
+        return level.draw_count;
+    };
+    require(materials_of(visual.states[0].lods[0]) == 3 && materials_of(visual.states[1].lods[1]) == 3, "each run holds the hull, its state's part, and its level's part (hidden meshes never)");
+    require(visual.first_draw == visual.states[0].lods[0].first_draw && visual.draw_count == 3, "the default range is state 0 at full detail");
+    // The full-detail run of state 0 draws what LOD2 drew: the second-to-last draw of three is LOD2's.
+    const auto& first = scene.draws[visual.states[0].lods[0].first_draw + 2];
+    const auto& coarse = scene.draws[visual.states[0].lods[1].first_draw + 2];
+    require(first.first_index != coarse.first_index, "the levels must draw different parts, most detailed first");
+
+    eaw::Model plain;
+    plain.skeleton = model.skeleton;
+    plain.meshes = {mesh("hull", std::nullopt, std::nullopt)};
+    const auto plain_index = expect_ok(eaw::scene_build::append_model(builder, plain, "plain"), "appending the plain model");
+    require(scene.meshes[plain_index].states.empty() && scene.meshes[plain_index].draw_count == 1, "a model without tags must keep one plain range");
+}
+
 // Resources load once per type and key, failures stay cached, and a particle effect is cached per
 // fidelity profile.
 void test_resource_manager()
@@ -304,6 +349,7 @@ void test_resource_manager()
 }
 
 const ModuleRegistrar registrar("scene", {
+                                             {"test_mesh_states_and_levels", &test_mesh_states_and_levels},
                                              {"test_asset_cache_dependencies", &test_asset_cache_dependencies},
                                              {"test_resource_manager", &test_resource_manager},
                                              {"test_visual_material_translation", &test_visual_material_translation},

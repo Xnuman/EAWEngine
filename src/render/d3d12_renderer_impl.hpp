@@ -9,6 +9,10 @@
 
 #include "eaw/d3d12_renderer.hpp"
 
+#include <optional>
+#include <unordered_map>
+#include <vector>
+
 namespace eaw {
 
 // The renderer's helpers and constants are used throughout the implementation.
@@ -148,7 +152,20 @@ struct D3d12Renderer::Impl
         std::uint32_t flags{};
         // Scene instance index + 1; 0 for instances that are not pickable.
         std::uint32_t pick_id{};
-        std::uint32_t padding{};
+        // Detail-level cross-fade: 0 drawn whole; t in (0, 1) the incoming level drawn on a
+        // dither fraction t of the pixels; -t the outgoing level on the other pixels.
+        float fade{};
+    };
+
+    // A mesh's draws by damage state and detail level ([state][level], most detailed first; one
+    // state of one level for a mesh without either), the states' alternate numbers, and its
+    // bounding sphere in mesh space for detail-level selection.
+    struct MeshLevels
+    {
+        std::vector<std::uint32_t> alternates;
+        std::vector<std::vector<std::vector<GpuDraw>>> draws;
+        Vector3 center;
+        float radius{};
     };
 
     static constexpr std::uint32_t background_instance_flag = 1U;
@@ -346,6 +363,13 @@ struct D3d12Renderer::Impl
     // Mesh library of the loaded scene: each mesh's draws (instance range unset) and bone count.
     std::vector<std::vector<GpuDraw>> scene_mesh_draws;
     std::vector<std::uint32_t> scene_mesh_bone_counts;
+    // Parallel to scene_mesh_draws (whose entries are each mesh's default range).
+    std::vector<MeshLevels> scene_mesh_levels;
+    VisualLodSettings lod_settings;
+    VisualLodTracker lod_tracker;
+    std::uint64_t reduced_detail_instances{};
+    std::uint64_t fading_instances{};
+    std::uint64_t fades_started{};
     std::uint32_t scene_bone_capacity{1};
     // Runtime instance list (set_instances); when present it replaces the scene's instances.
     std::optional<std::vector<VisualInstance>> dynamic_instances;
@@ -504,7 +528,10 @@ struct D3d12Renderer::Impl
 
     // Groups instances by mesh and layer into contiguous ranges and builds the draws, ordered like a
     // loaded scene: backgrounds first, then the world by blend mode. Pick ids are list index + 1.
-    void batch_instances(const std::vector<VisualInstance>& instances, std::vector<GpuInstance>& gpu_instances, std::vector<GpuDraw>& draws) const;
+    void batch_instances(const std::vector<VisualInstance>& instances, std::vector<GpuInstance>& gpu_instances, std::vector<GpuDraw>& draws);
+    // A mesh's draws by state and level (its default range alone when it lists no states), with
+    // `gpu_draw(index)` turning a scene draw into a GPU draw, and its bounding sphere.
+    template <class GpuDrawOf> static MeshLevels mesh_levels(const VisualMesh& mesh, const GpuDrawOf& gpu_draw);
 
     // Writes the dynamic instances into this frame context's buffer, growing it when needed (the
     // outgrown buffer retires on the direct timeline).

@@ -92,6 +92,12 @@ float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& de
     return result.ec == std::errc{} && std::isfinite(value) ? value : 0.0F;
 }
 
+float type_lod_bias(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto bias = type_float_field(catalog, definition, "LOD_Bias");
+    return bias > 0.0F ? bias : 1.0F;
+}
+
 std::uint32_t type_formation_order(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto order = type_float_field(catalog, definition, "FormationOrder");

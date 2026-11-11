@@ -166,6 +166,11 @@ void D3d12Renderer::set_scene_time(const float seconds)
     impl_->set_scene_time(seconds);
 }
 
+void D3d12Renderer::set_lod_settings(const VisualLodSettings& settings)
+{
+    impl_->lod_settings = settings;
+}
+
 const std::string& D3d12Renderer::adapter_name() const
 {
     return impl_->adapter_name;
@@ -192,6 +197,9 @@ D3d12RendererStats D3d12Renderer::stats() const
         .triangles = impl_->last_triangles,
         .instances = impl_->last_instances,
         .particles = impl_->last_particles,
+        .reduced_detail_instances = impl_->reduced_detail_instances,
+        .fading_instances = impl_->fading_instances,
+        .fades_started = impl_->fades_started,
         .gpu_frame_milliseconds = impl_->last_gpu_milliseconds,
         .video_memory_usage = impl_->video_memory_usage,
         .video_memory_budget = impl_->video_memory_budget,

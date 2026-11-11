@@ -29,13 +29,22 @@ Model load_model(const AloModelData& data)
     model.skeleton = load_skeleton(data);
     model.warnings = data.warnings;
     // Bone visibility is left to the scene: a mesh on a bone hidden in the bind pose appears when an
-    // animation shows the bone.
-    const auto appearance = alo_default_mesh_visibility(data, false);
+    // animation shows the bone. Damage states and detail levels are tagged; the scene builder
+    // arranges them.
     model.meshes.reserve(data.meshes.size());
     for (std::size_t mesh_index = 0; mesh_index < data.meshes.size(); ++mesh_index)
     {
         const auto& mesh = data.meshes[mesh_index];
-        ModelMesh loaded{mesh.name, mesh.attached_bone, appearance[mesh_index], {}};
+        ModelMesh loaded{mesh.name, mesh.attached_bone, mesh.hidden, {}, {}, {}};
+        const auto variant = alo_mesh_variant(data, mesh);
+        if (variant.kind == AloVariantKind::alternate)
+        {
+            loaded.damage_state = variant.index;
+        }
+        else if (variant.kind == AloVariantKind::level_of_detail)
+        {
+            loaded.detail_level = variant.index;
+        }
         loaded.submeshes.reserve(mesh.submeshes.size());
         for (const auto& submesh : mesh.submeshes)
         {

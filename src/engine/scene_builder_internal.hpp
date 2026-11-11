@@ -337,6 +337,9 @@ std::uint32_t type_passable_types(const GameObjectCatalog& catalog, const XmlDef
 // A numeric field through the variant chain; 0 when it is missing or not a finite number.
 float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::string_view field);
 
+// XML LOD_Bias: how much farther the type keeps its detail (1 when missing or not positive).
+float type_lod_bias(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+
 // XML FormationOrder (default 2, the most common) and FormationSpacing (default 0.5, likewise).
 std::uint32_t type_formation_order(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefinition& definition);

@@ -159,6 +159,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     note_damage_bones(build.builder, *path, spawnable.combat);
     spawnable.hover_offset = type_float_field(build.catalog, *definition, "Hover_Offset");
     spawnable.scale = type_scale_factor(build.catalog, *definition, build.builder.scene.warnings);
+    spawnable.lod_bias = type_lod_bias(build.catalog, *definition);
     spawnable.death = type_death_style(build.catalog, *definition);
     spawnable.script = type_script_info(build.catalog, *definition);
     if (spawnable.max_speed > 0.0F)
@@ -295,6 +296,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         // Scale_Factor sizes the model; separation and obstacle footprints are measured through it.
         const auto model_scale = placement.type != nullptr ? type_scale_factor(catalog, *placement.type, scene.warnings) : 1.0F;
         VisualInstance instance{*entry->second, scaled_model_transform(placement.transform, model_scale)};
+        instance.lod_bias = placement.type != nullptr ? type_lod_bias(catalog, *placement.type) : 1.0F;
         {
             const auto& matrix = instance.transform;
             EntitySpawn spawn;

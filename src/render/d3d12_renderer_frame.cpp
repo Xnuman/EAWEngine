@@ -212,44 +212,99 @@ void D3d12Renderer::Impl::set_instances(const std::span<const VisualInstance> in
                                            return std::isfinite(value);
                                        });
         };
-        EAW_ASSERT_MSG(is_finite(instance.transform) && finite(instance.tint) && finite(instance.team_color), "visual instance " + std::to_string(index) + " has non-finite values");
+        EAW_ASSERT_MSG(is_finite(instance.transform) && finite(instance.tint) && finite(instance.team_color) && std::isfinite(instance.lod_bias),
+                       "visual instance " + std::to_string(index) + " has non-finite values");
     }
     dynamic_instances.emplace(instances.begin(), instances.end());
 }
 
-void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& instances, std::vector<GpuInstance>& gpu_instances, std::vector<GpuDraw>& draws) const
+void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& instances, std::vector<GpuInstance>& gpu_instances, std::vector<GpuDraw>& draws)
 {
-    std::vector<std::uint32_t> order(instances.size());
-    for (std::uint32_t index = 0; index < order.size(); ++index)
+    // Each instance draws its damage state at the detail level the LOD policy picks; a keyed
+    // instance whose level changed draws both levels while it cross-fades, the old one fading out.
+    struct Entry
     {
-        order[index] = index;
-    }
-    const auto range_key = [&](const std::uint32_t index)
-    {
-        return static_cast<std::size_t>(instances[index].mesh) * 2U + (instances[index].background ? 1U : 0U);
+        std::uint32_t instance{};
+        std::uint32_t state{};
+        std::uint32_t level{};
+        float fade{};
     };
-    std::ranges::stable_sort(order, {}, range_key);
+    std::vector<Entry> entries;
+    entries.reserve(instances.size());
+    lod_tracker.begin_pass();
+    reduced_detail_instances = 0;
+    fading_instances = 0;
+    const float fov = camera.vertical_fov_degrees * 0.017453292F;
+    const float viewport = static_cast<float>(height);
+    for (std::uint32_t index = 0; index < instances.size(); ++index)
+    {
+        const auto& instance = instances[index];
+        const auto& levels = scene_mesh_levels[instance.mesh];
+        const auto found = std::ranges::find(levels.alternates, instance.state);
+        const auto state = found != levels.alternates.end() ? static_cast<std::uint32_t>(found - levels.alternates.begin()) : 0U;
+        const auto level_count = static_cast<std::uint32_t>(levels.draws[state].size());
+        if (instance.background || level_count <= 1)
+        {
+            entries.push_back({index, state, 0, 0.0F});
+            continue;
+        }
+        // The bounding sphere in the world: its center through the transform, its radius by the
+        // largest axis scale.
+        const auto& m = instance.transform.values;
+        const auto center = transform_point(levels.center, instance.transform);
+        const float scale = std::max({std::hypot(m[0], m[1], m[2]), std::hypot(m[4], m[5], m[6]), std::hypot(m[8], m[9], m[10])});
+        const float position = visual_lod_position(lod_settings, instance.lod_bias, length(center - camera.eye), levels.radius * scale, fov, viewport);
+        if (instance.key == 0)
+        {
+            const auto level = visual_lod_level(position, level_count, std::nullopt, lod_settings.hysteresis);
+            reduced_detail_instances += level != 0 ? 1U : 0U;
+            entries.push_back({index, state, level, 0.0F});
+            continue;
+        }
+        const auto choice = lod_tracker.update(instance.key, instance.mesh, state, position, level_count, scene_time, lod_settings);
+        fades_started += choice.changed && choice.from ? 1U : 0U;
+        reduced_detail_instances += choice.level != 0 ? 1U : 0U;
+        if (choice.from)
+        {
+            entries.push_back({index, state, choice.level, choice.fade});
+            entries.push_back({index, state, *choice.from, -choice.fade});
+            ++fading_instances;
+            continue;
+        }
+        entries.push_back({index, state, choice.level, 0.0F});
+    }
+    lod_tracker.end_pass();
+
+    // Batches of one mesh, state, and level (backgrounds apart), in a stable order.
+    const auto range_key = [&](const Entry& entry)
+    {
+        const auto& instance = instances[entry.instance];
+        return std::tuple{instance.mesh, entry.state, entry.level, instance.background};
+    };
+    std::ranges::stable_sort(entries, {}, range_key);
     gpu_instances.clear();
     draws.clear();
     std::size_t range_start = 0;
-    for (std::size_t position = 0; position <= order.size(); ++position)
+    for (std::size_t position = 0; position <= entries.size(); ++position)
     {
-        if (position < order.size())
+        if (position < entries.size())
         {
-            const auto& instance = instances[order[position]];
+            const auto& entry = entries[position];
+            const auto& instance = instances[entry.instance];
             gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset,
-                                     (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U), order[position] + 1U, 0U});
+                                     (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U), entry.instance + 1U, entry.fade});
         }
-        if (position == order.size() || (position > range_start && range_key(order[position]) != range_key(order[range_start])))
+        if (position == entries.size() || (position > range_start && range_key(entries[position]) != range_key(entries[range_start])))
         {
             if (position > range_start)
             {
-                const auto& first = instances[order[range_start]];
-                for (auto draw : scene_mesh_draws[first.mesh])
+                const auto& first = entries[range_start];
+                const auto& instance = instances[first.instance];
+                for (auto draw : scene_mesh_levels[instance.mesh].draws[first.state][first.level])
                 {
                     draw.first_instance = static_cast<std::uint32_t>(range_start);
                     draw.instance_count = static_cast<std::uint32_t>(position - range_start);
-                    draw.background = first.background;
+                    draw.background = instance.background;
                     draws.push_back(draw);
                 }
             }
@@ -263,7 +318,7 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
                              });
     if (gpu_instances.empty())
     {
-        gpu_instances.push_back({Matrix4::identity(), {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0});
+        gpu_instances.push_back({Matrix4::identity(), {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0.0F});
     }
 }
 

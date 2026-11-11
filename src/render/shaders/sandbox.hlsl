@@ -22,7 +22,8 @@ struct InstanceData
     uint bone_offset;
     uint flags;
     uint pick_id;
-    uint padding;
+    // Detail-level cross-fade (d3d12_renderer_impl.hpp GpuInstance::fade).
+    float fade;
 };
 
 StructuredBuffer<BoneTransform> bones : register(t1);
@@ -54,6 +55,7 @@ struct PixelInput
     float4 vertex_color : COLOR2;
     nointerpolation uint pick_id : PICKID;
     nointerpolation uint instance_flags : INSTANCEFLAGS;
+    nointerpolation float fade : FADE;
 };
 
 struct PixelOutput
@@ -128,6 +130,7 @@ PixelInput vs_main(VertexInput input)
     output.vertex_color = input.color;
     output.pick_id = instance.pick_id;
     output.instance_flags = instance.flags;
+    output.fade = instance.fade;
     return output;
 }
 
@@ -200,9 +203,23 @@ float4 shade(PixelInput input)
     return float4(color, alpha);
 }
 
+// The ordered (Bayer) 4x4 dither matrix: every threshold once, neighbours far apart.
+static const uint dither_4x4[16] = {0u, 8u, 2u, 10u, 12u, 4u, 14u, 6u, 3u, 11u, 1u, 9u, 15u, 7u, 13u, 5u};
+
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 PixelOutput ps_main(PixelInput input)
 {
+    // A detail level cross-fading in keeps the pixels whose dither threshold lies below its share;
+    // the level fading out keeps exactly the others, so each pixel shows one of the two.
+    if (input.fade != 0.0f)
+    {
+        const uint2 cell = uint2(input.position.xy) & 3u;
+        const float threshold = (dither_4x4[cell.y * 4u + cell.x] + 0.5f) / 16.0f;
+        if ((input.fade > 0.0f) ? (threshold >= input.fade) : (threshold < -input.fade))
+        {
+            discard;
+        }
+    }
     // Blended pipelines mask the pick target, so only opaque and alpha-tested surfaces are pickable.
     PixelOutput output;
     output.color = shade(input);

@@ -276,6 +276,8 @@ int SandboxSession::finish()
     }
     const auto stats = renderer.stats();
     std::cout << "Rendered frames: " << stats.frame_number << '\n';
+    std::cout << "Detail levels (" << eaw::to_string(options.lod_policy) << ", mesh detail " << eaw::format_fixed(options.mesh_detail, 2) << ", last frame): " << stats.reduced_detail_instances
+              << " instances below full detail, " << stats.fading_instances << " cross-fading; " << stats.fades_started << " cross-fades in the run\n";
     const auto particle_stats = effects.particles().stats();
     std::cout << "Particles at exit: " << particle_stats.particles << " in " << particle_stats.instances << " effects (" << effects.attached_playing() << " attached), " << stats.particles
               << " drawn in the last frame, " << particle_stats.dropped_particles << " dropped, " << particle_stats.skipped_emitters << " emitters without a pass\n";
@@ -348,6 +350,8 @@ int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const Gam
     renderer_options.texture_upload_budget_bytes = options.upload_budget_mib * 1024ULL * 1024ULL;
     renderer_options.bloom = options.bloom_strength > 0.0F;
     renderer_options.bloom_strength = options.bloom_strength;
+    renderer_options.lod.policy = options.lod_policy;
+    renderer_options.lod.mesh_detail = options.mesh_detail;
     auto created_renderer = eaw::D3d12Renderer::create(window.native_handle(), window.client_width(), window.client_height(), renderer_options);
     if (!created_renderer)
     {

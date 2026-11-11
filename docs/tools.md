@@ -35,6 +35,8 @@ EAWEngine.exe sandbox --game foc --model DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO
 | `--audio <xaudio2\|fmod\|none>`, `--no-audio` | Audio backend (default `xaudio2`; `fmod` only in builds configured with `-DEAW_AUDIO_FMOD=ON -DFMOD_ROOT=<local SDK>`). A backend that cannot start falls back to silence with a warning; the run summary counts sounds played, skipped by their rules, and missing. Maps play weapon fire, deaths, engine loops, and unit responses to selections and orders. |
 | `--particles legacy\|enhanced` | How particle effects are interpreted: legacy (default) reproduces the original's look-defining quirks, enhanced improves them. |
 | `--bloom <strength>`, `--no-bloom` | Bloom strength (default 0.8). |
+| `--lod <off\|distance\|screen\|hybrid>` | How meshes with detail levels pick one (default `hybrid`: screen size, full detail near, the least far away; `off`: always full detail). |
+| `--mesh-detail <0..1>` | The mesh-detail setting (as the graphics presets' `MeshDetail`): 1 keeps detail 1.5 times as far as the base thresholds, 0 half as far (default 1). |
 | `--hot-reload` | Rebuild the scene when one of its loose files or MEG archives changes, re-decoding only what changed; the camera is kept. |
 
 Map owner slot 3 is neutral and every other slot hostile, for now.

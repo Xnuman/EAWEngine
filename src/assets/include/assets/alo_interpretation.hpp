@@ -30,6 +30,9 @@ struct AloNameVariant
 
 [[nodiscard]] AloNameVariant alo_name_variant(std::string_view name) noexcept;
 
+// A mesh's variant: from its name, or from its attached bone when the mesh name carries none.
+[[nodiscard]] AloNameVariant alo_mesh_variant(const AloModelData& model, const AloMesh& mesh) noexcept;
+
 // Which meshes form a model's default appearance: not flagged hidden, not attached to a bone
 // hidden in the bind pose, alternate (damage) state ALT0, and the model's highest LOD index. In the
 // stock corpus higher LOD indices carry more triangles (LOD0 is the sparsest level in 137 of 145

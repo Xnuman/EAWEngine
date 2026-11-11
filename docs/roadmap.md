@@ -84,7 +84,9 @@ presentation and the player layer.
 1. Done (2026-11-10): Audio, first stage (Data stage 2 and Audio stage 1): the effect archives, the
    WAV reader, the sound-event catalog, XAudio2 (optional FMOD) devices, and positional battle
    sounds from presentation.
-2. M2's renderer (Rendering stages 1 and 2), in this order: damage states and LODs (with skinned and
+2. M2's renderer (Rendering stages 1 and 2), in this order: damage states and LODs (detail levels
+   done 2026-11-11: renderer-side selection by distance, screen size, or both, with cross-fades;
+   damage states next: chosen from health, with their effects, sounds, and rubble; with skinned and
    gameplay-driven visibility), depth-sorted transparency, HDR with tone mapping and anti-aliasing,
    shadows, fog, decals (map and runtime), special materials (shields, planets, nebula, heat
    distortion, wind bend, occluded units, reflections), weather and soft particles, look tuning.
@@ -122,7 +124,10 @@ presentation and the player layer.
    tone mapping beside the existing bloom, and look tuning against the owner's screenshots (hotter
    engine-glow cores, more contrast on hulls).
 3. Scale: per-asset geometry handles and several resident scenes, GPU-driven culling and indirect
-   drawing, mesh LODs, clustered lighting, texture compression and streaming budgets.
+   drawing, mesh LODs, clustered lighting, texture compression and streaming budgets. To try
+   (owner's request, 2026-11-11): a LOD cross-fade driven by the selection's position within a
+   border band around each level boundary instead of by time, so the blend follows the camera and
+   holds while it stands still; compare it with the current timed fade (`VisualLodTracker`).
 4. A thin rendering hardware interface extracted from the Direct3D 12 backend, then Vulkan.
 5. The physically based material path, with a documented conversion from the legacy profiles, once
    legacy mode is stable (also an engine extension for new content).
@@ -287,6 +292,8 @@ compared by measured ratios from screenshots, never by recreated scenes):
 - where weapons fire from: the TIE Crawler's model has `MuzzleA_00`-`_02` bones with hidden
   `_flash` meshes; whether shots cycle through them and how long a flash shows;
 - the times in `ANIMATIONSFXMAPS.TXT` (read as hundredths of a frame);
+- how the original picks detail levels (`LOD_Bias`, `MeshDetail`): the engine's distances, pixel
+  sizes, hysteresis, and fade time are its own;
 - why `W_LASER_INVISIBLE.ALO` (the land model of 19 melee and environment projectiles) is invisible
   in the original although its mesh is an unhidden additive quad with a visible texture;
 - a test map built in the original's map editor, if one can be made, for matching static placement.

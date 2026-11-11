@@ -49,16 +49,21 @@ AloNameVariant alo_name_variant(const std::string_view name) noexcept
     return {kind, index};
 }
 
+AloNameVariant alo_mesh_variant(const AloModelData& model, const AloMesh& mesh) noexcept
+{
+    auto variant = alo_name_variant(mesh.name);
+    if (variant.kind == AloVariantKind::none && mesh.attached_bone && *mesh.attached_bone < model.bones.size())
+    {
+        variant = alo_name_variant(model.bones[*mesh.attached_bone].name);
+    }
+    return variant;
+}
+
 std::vector<bool> alo_default_mesh_visibility(const AloModelData& model, const bool apply_bind_pose_bones)
 {
     const auto variant_of = [&](const AloMesh& mesh)
     {
-        auto variant = alo_name_variant(mesh.name);
-        if (variant.kind == AloVariantKind::none && mesh.attached_bone && *mesh.attached_bone < model.bones.size())
-        {
-            variant = alo_name_variant(model.bones[*mesh.attached_bone].name);
-        }
-        return variant;
+        return alo_mesh_variant(model, mesh);
     };
     std::uint32_t highest_lod = 0;
     for (const auto& mesh : model.meshes)

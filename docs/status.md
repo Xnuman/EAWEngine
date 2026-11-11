@@ -57,6 +57,8 @@ Code health list):
 
 The first deliverable (a stock unit and tactical maps load and can be inspected in the sandbox) is met; M2 stays open for the features content was authored for (shadows, anti-aliasing, damage states, decals, special materials; the Rendering track in [roadmap.md](roadmap.md#rendering)).
 
+Detail levels (2026-11-11, the first part of render feature 1): models keep every `_ALT<n>` and `_LOD<n>` mesh (`ModelMesh::damage_state`, `detail_level`); the scene builder lays a model's draws out by state and level (`VisualMesh::states`, the default range staying intact at full detail); the renderer picks each instance's level by the `--lod` policy (`distance`, `screen`, `hybrid` by default, or `off`), scaled by the type's `LOD_Bias` and `--mesh-detail`, with hysteresis, and cross-fades level changes of keyed instances (map units: the entity key) over 0.25 s with complementary dither masks. The run summary counts instances below full detail and cross-fades. Damage states are laid out but always drawn intact until the next step drives them from health. All distances, pixel sizes, the hysteresis, and the fade time are engine choices; LOD changes are only seen when the camera or the units move far enough (a fixed automation camera rarely crosses a boundary).
+
 The native Direct3D 12 sandbox currently has:
 
 - a Win32 window/input layer;

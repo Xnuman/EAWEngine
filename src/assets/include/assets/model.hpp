@@ -32,9 +32,12 @@ struct ModelMesh
 {
     std::string name;
     std::optional<std::uint32_t> attached_bone;
-    // Part of the default appearance before bone visibility: not hidden, the intact state (ALT0),
-    // and the highest detail level.
-    bool default_appearance{true};
+    // Hidden in the file (never drawn).
+    bool hidden{};
+    // The damage state the mesh belongs to (legacy _ALT<n>; none: every state) and its detail level
+    // (legacy _LOD<n>, a higher number more detailed; none: every level).
+    std::optional<std::uint32_t> damage_state;
+    std::optional<std::uint32_t> detail_level;
     std::vector<ModelSubmesh> submeshes;
 };
 

@@ -3,6 +3,77 @@
 #include "d3d12_renderer_impl.hpp"
 
 namespace eaw {
+namespace {
+
+// Whether a mesh's default range and every state's levels lie within `draw_count` draws.
+bool mesh_ranges_inside(const VisualMesh& mesh, const std::size_t draw_count)
+{
+    const auto inside = [&](const std::uint32_t first, const std::uint32_t count)
+    {
+        return static_cast<std::uint64_t>(first) + count <= draw_count;
+    };
+    if (!inside(mesh.first_draw, mesh.draw_count))
+    {
+        return false;
+    }
+    return std::ranges::all_of(mesh.states,
+                               [&](const VisualMeshState& state)
+                               {
+                                   return std::ranges::all_of(state.lods,
+                                                              [&](const VisualMeshLod& level)
+                                                              {
+                                                                  return inside(level.first_draw, level.draw_count);
+                                                              });
+                               });
+}
+
+} // namespace
+
+// A mesh's draws by state and level (its default range alone when it lists no states), with
+// `gpu_draw(index)` turning a scene draw into a GPU draw, and its bounding sphere.
+template <class GpuDrawOf> D3d12Renderer::Impl::MeshLevels D3d12Renderer::Impl::mesh_levels(const VisualMesh& mesh, const GpuDrawOf& gpu_draw)
+{
+    MeshLevels levels;
+    const auto run = [&](const std::uint32_t first, const std::uint32_t count)
+    {
+        std::vector<GpuDraw> draws;
+        draws.reserve(count);
+        for (auto index = first; index < first + count; ++index)
+        {
+            draws.push_back(gpu_draw(index));
+        }
+        return draws;
+    };
+    // The default range comes first, so draws[0][0] is what the static path draws.
+    levels.alternates.push_back(0);
+    levels.draws.push_back({run(mesh.first_draw, mesh.draw_count)});
+    for (const auto& state : mesh.states)
+    {
+        std::vector<std::vector<GpuDraw>> state_levels;
+        for (const auto& level : state.lods)
+        {
+            state_levels.push_back(run(level.first_draw, level.draw_count));
+        }
+        if (state_levels.empty())
+        {
+            continue;
+        }
+        if (state.alternate == 0 && levels.draws.size() == 1 && levels.alternates.size() == 1)
+        {
+            // State 0's own levels replace the default range (its first level is that range).
+            levels.draws.front() = std::move(state_levels);
+            continue;
+        }
+        levels.alternates.push_back(state.alternate);
+        levels.draws.push_back(std::move(state_levels));
+    }
+    const Vector3 minimum{mesh.bounds_minimum[0], mesh.bounds_minimum[1], mesh.bounds_minimum[2]};
+    const Vector3 maximum{mesh.bounds_maximum[0], mesh.bounds_maximum[1], mesh.bounds_maximum[2]};
+    const bool valid = minimum.x <= maximum.x && minimum.y <= maximum.y && minimum.z <= maximum.z;
+    levels.center = valid ? (minimum + maximum) * 0.5F : Vector3{};
+    levels.radius = valid ? length(maximum - minimum) * 0.5F : 0.0F;
+    return levels;
+}
 
 void D3d12Renderer::Impl::create_initial_assets()
 {
@@ -245,7 +316,7 @@ Status D3d12Renderer::Impl::load_scene(VisualScene scene)
     for (std::size_t index = 0; index < scene.meshes.size(); ++index)
     {
         const auto& mesh = scene.meshes[index];
-        if (static_cast<std::uint64_t>(mesh.first_draw) + mesh.draw_count > scene.draws.size())
+        if (!mesh_ranges_inside(mesh, scene.draws.size()))
         {
             return make_error("visual mesh " + std::to_string(index) + " (" + mesh.name + ") references draws outside the scene");
         }
@@ -375,20 +446,26 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
     }
 
     std::vector<std::vector<GpuDraw>> new_mesh_draws(scene.meshes.size());
+    std::vector<MeshLevels> new_mesh_levels(scene.meshes.size());
     std::vector<std::uint32_t> new_mesh_bone_counts(scene.meshes.size());
+    for (const auto& draw : scene.draws)
+    {
+        if (draw.material >= scene.materials.size() || static_cast<std::uint64_t>(draw.first_index) + draw.index_count > scene.indices.size())
+        {
+            return make_error("visual scene draw references data outside its buffers");
+        }
+    }
     for (std::size_t mesh_index = 0; mesh_index < scene.meshes.size(); ++mesh_index)
     {
         const auto& mesh = scene.meshes[mesh_index];
         new_mesh_bone_counts[mesh_index] = mesh.bone_count;
-        for (auto draw_index = mesh.first_draw; draw_index < mesh.first_draw + mesh.draw_count; ++draw_index)
+        const auto gpu_draw = [&](const std::uint32_t draw_index)
         {
             const auto& draw = scene.draws[draw_index];
-            if (draw.material >= scene.materials.size() || static_cast<std::uint64_t>(draw.first_index) + draw.index_count > scene.indices.size())
-            {
-                return make_error("visual scene draw references data outside its buffers");
-            }
-            new_mesh_draws[mesh_index].push_back({draw, draw.material, scene.materials[draw.material].blend, 0, 0, false});
-        }
+            return GpuDraw{draw, draw.material, scene.materials[draw.material].blend, 0, 0, false};
+        };
+        new_mesh_levels[mesh_index] = mesh_levels(mesh, gpu_draw);
+        new_mesh_draws[mesh_index] = new_mesh_levels[mesh_index].draws.front().front();
     }
     std::vector<GpuDraw> new_draws;
     new_draws.reserve(scene.draws.size());
@@ -490,7 +567,10 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
     }
     scene_draws = std::move(new_draws);
     scene_mesh_draws = std::move(new_mesh_draws);
+    scene_mesh_levels = std::move(new_mesh_levels);
     scene_mesh_bone_counts = std::move(new_mesh_bone_counts);
+    lod_tracker.clear();
+    fades_started = 0;
     scene_bone_capacity = std::max(scene.bone_count, 1U);
     dynamic_instances.reset();
     highlighted_pick_id = 0;
@@ -529,7 +609,7 @@ Result<std::uint32_t> D3d12Renderer::Impl::add_meshes(VisualScene fragment)
     for (std::size_t index = 0; index < fragment.meshes.size(); ++index)
     {
         const auto& mesh = fragment.meshes[index];
-        if (static_cast<std::uint64_t>(mesh.first_draw) + mesh.draw_count > fragment.draws.size() || mesh.bone_count > maximum_bone_transforms)
+        if (!mesh_ranges_inside(mesh, fragment.draws.size()) || mesh.bone_count > maximum_bone_transforms)
         {
             return make_error("fragment mesh " + std::to_string(index) + " (" + mesh.name + ") references draws outside the fragment or has too many bones");
         }
@@ -573,15 +653,16 @@ Result<std::uint32_t> D3d12Renderer::Impl::add_meshes(VisualScene fragment)
     const auto first_mesh = static_cast<std::uint32_t>(scene_mesh_draws.size());
     for (const auto& mesh : fragment.meshes)
     {
-        std::vector<GpuDraw> draws;
-        for (auto draw_index = mesh.first_draw; draw_index < mesh.first_draw + mesh.draw_count; ++draw_index)
+        const auto gpu_draw = [&](const std::uint32_t draw_index)
         {
             const auto& draw = fragment.draws[draw_index];
-            GpuDraw gpu_draw{draw, first_material + draw.material, fragment.materials[draw.material].blend, 0, 0, false};
-            gpu_draw.block = block_index;
-            draws.push_back(gpu_draw);
-        }
-        scene_mesh_draws.push_back(std::move(draws));
+            GpuDraw result{draw, first_material + draw.material, fragment.materials[draw.material].blend, 0, 0, false};
+            result.block = block_index;
+            return result;
+        };
+        auto levels = mesh_levels(mesh, gpu_draw);
+        scene_mesh_draws.push_back(levels.draws.front().front());
+        scene_mesh_levels.push_back(std::move(levels));
         scene_mesh_bone_counts.push_back(mesh.bone_count);
     }
     // New textures join the streaming queue; normal maps fall back to the flat normal meanwhile.

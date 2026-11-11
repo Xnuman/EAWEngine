@@ -1015,6 +1015,15 @@ particle-audit`.
     `Allow_Localized_SFX(true|false)` (40), `Allow_Ambient_VO` (2), `Master_Volume_Restore` (3),
     `Stop_SFX_Event` (1), and `Play_Bink_Movie` (6, movies with their own sound). Story dialogue
     (`Story_Dialog`, 178 in the campaign XML) plays speech.
+- **Damage states and detail levels.** 222 object types (structures, buildables, vehicles, a few
+  space structures) set `Land_Damage_Thresholds` (health fractions, typically `1, 0.66, 0.33`,
+  127 of them with a final `0`), `Land_Damage_Alternates` (the `_ALT<n>` state for each threshold),
+  and `Land_Damage_SFX` (a sound on entering each state, `null` for none). 158 models carry `_ALT<n>`
+  names (states 0-3, rarely more), on meshes for buildings and mostly on damage-smoke emitters for
+  vehicles (`p_smoke_small_thin_ALT1`); space ships have none. 145 models carry `_LOD0`-`_LOD3`,
+  most of them infantry and vehicles, many skinned; LOD0 is the sparsest in 137 of them. 80 types
+  set `LOD_Bias` (0.5-10), and the graphics presets (`GRAPHICDETAILS.XML`) set `MeshDetail` 0-1
+  beside `ParticleDetail` and the other detail options.
 - **Fleet and group responses.** `SFXEvent_Fleet_Move` is set on 215 types, infantry and vehicles
   included, so it is not a space-only order response. The owner's guess (2026-11-11, unverified): it
   is the response when a fleet is sent to another planet in galactic conquest. The engine does not

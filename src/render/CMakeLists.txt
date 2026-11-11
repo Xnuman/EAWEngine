@@ -1,6 +1,7 @@
 # The render contract (engine-native visual data, header only, portable) and the Direct3D 12
 # backend (Windows).
 set(EAW_RENDER_CONTRACT_HEADERS
+    include/eaw/visual_lod.hpp
     include/eaw/visual_scene.hpp
 )
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_RENDER_CONTRACT_HEADERS})

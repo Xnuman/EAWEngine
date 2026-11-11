@@ -2,6 +2,7 @@
 
 #include "formats/rgba_image.hpp"
 #include "core/status.hpp"
+#include "eaw/visual_lod.hpp"
 #include "eaw/visual_scene.hpp"
 
 #include <array>
@@ -33,6 +34,8 @@ struct D3d12RendererOptions
     bool bloom{true};
     float bloom_threshold{0.6F};
     float bloom_strength{0.8F};
+    // Detail levels of meshes that have them (eaw/visual_lod.hpp); set_lod_settings changes them.
+    VisualLodSettings lod;
 };
 
 struct D3d12RendererStats
@@ -63,6 +66,12 @@ struct D3d12RendererStats
     std::uint64_t instances{};
     // Particles drawn in the last recorded frame.
     std::uint64_t particles{};
+    // Instances drawn below their most detailed level, and instances cross-fading between two
+    // levels, in the last recorded frame.
+    std::uint64_t reduced_detail_instances{};
+    std::uint64_t fading_instances{};
+    // Cross-fades begun since the scene was loaded.
+    std::uint64_t fades_started{};
     // GPU time of the most recent frame the GPU finished (timestamp queries; no CPU wait).
     double gpu_frame_milliseconds{};
     // Local video memory in use by this process and the OS budget for it (bytes, refreshed every
@@ -178,6 +187,8 @@ public:
     void set_lighting(const VisualLightRig& lighting);
     // Seconds of scene time driving texture-coordinate scrolling.
     void set_scene_time(float seconds);
+    // Detail-level selection from the next frame on (invalid values fall back to the defaults).
+    void set_lod_settings(const VisualLodSettings& settings);
     // Asks which surface is visible at client pixel (x, y) in the next rendered frame and returns
     // the request id. Answers arrive through take_pick() in request order once their frame has
     // finished on the GPU (usually one or two frames later); the CPU never waits, and no request
