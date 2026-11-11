@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 110 |
+| `done` | 111 |
 | `partial` | 17 |
-| `gap` | 294 |
+| `gap` | 293 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -224,7 +224,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-33 done, 1 partial, 68 gap, 33 needs.
+34 done, 1 partial, 67 gap, 33 needs.
 
 ### Health, shields, armor, and energy
 
@@ -377,12 +377,12 @@ Systems that `needs` rows wait for, by tag count:
 | `Death_Explosions` | `done` |  |
 | `Death_Explosions_End` | `gap` |  |
 | `Death_Clone` | `partial` | the clone is spawned; damage-type-specific clones are not chosen |
-| `Death_Clone_Is_Obstacle` | `gap` |  |
+| `Death_Clone_Is_Obstacle` | `gap` | needs wrecks as simulation entities |
 | `IsDeathClone` | `gap` |  |
-| `IsDeathCloneObstacle` | `gap` |  |
+| `IsDeathCloneObstacle` | `gap` | as Death_Clone_Is_Obstacle |
 | `Death_Persistence_Duration` | `done` |  |
-| `Death_Fade_Time` | `gap` |  |
-| `Remove_Upon_Death` | `gap` |  |
+| `Death_Fade_Time` | `gap` | needs a per-instance fade in the renderer |
+| `Remove_Upon_Death` | `done` | no corpse |
 | `Death_Leave_Hulk_Behind` | `gap` |  |
 | `Death_Projectiles` | `gap` |  |
 | `Retreat_Self_Destruct_Explosion` | `needs retreat` |  |

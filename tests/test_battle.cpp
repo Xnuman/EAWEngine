@@ -74,6 +74,7 @@ void test_combat_content()
                 "<GroundVehicle Name=\"Crusher\"><UnitCollisionClass> Large Vehicle </UnitCollisionClass><Is_Squashable_By_Supercrusher>Yes</Is_Squashable_By_Supercrusher></GroundVehicle>"
                 "<GroundVehicle Name=\"Stomper\"><UnitCollisionClass>Giant Vehicle</UnitCollisionClass><Is_Supercrusher>Yes</Is_Supercrusher></GroundVehicle>"
                 "<GroundInfantry Name=\"Trooper\"><UnitCollisionClass>Infantry</UnitCollisionClass><Is_Squashable>true</Is_Squashable></GroundInfantry>"
+                "<SpaceUnit Name=\"Debris\"><Remove_Upon_Death> true </Remove_Upon_Death></SpaceUnit>"
                 "<SpaceUnit Name=\"Banker\"><Bank_Turn_Angle>40</Bank_Turn_Angle></SpaceUnit>"
                 "<Indigenous_Unit Name=\"Swirl\"><Close_Enough_Angle_For_Move_Start>360</Close_Enough_Angle_For_Move_Start></Indigenous_Unit>"
                 "<Projectile Name=\"Proj_Paced\"><Projectile_Fire_Recharge_Seconds>6</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>2</Projectile_Fire_Pulse_Count></Projectile>"
@@ -173,6 +174,8 @@ void test_combat_content()
                     trooper.crusher == eaw::Crusher::none && trooper.squashable,
                 "vehicle classes must crush, Is_Supercrusher must supercrush, and the squash flags must be read");
     }
+    require(eaw::scene_build::type_death_style(catalog, *definition("Debris")).removed && !eaw::scene_build::type_death_style(catalog, *definition("Tank")).removed,
+            "Remove_Upon_Death must leave no corpse");
     require(std::fabs(eaw::scene_build::type_bank_limit(catalog, *definition("Banker")) - 0.6981317F) < 1.0e-5F &&
                 eaw::scene_build::type_bank_limit(catalog, *definition("Tank")) == eaw::default_bank_limit,
             "Bank_Turn_Angle must limit the bank, 60 degrees without it");

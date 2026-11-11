@@ -115,6 +115,9 @@ struct DeathStyle
 {
     std::optional<std::uint32_t> die_variant;
     std::optional<float> persistence_seconds;
+    // Leaves no corpse: removed the moment it dies (XML Remove_Upon_Death: fighters, debris,
+    // satellites, most props).
+    bool removed{};
 };
 
 // What scripts read of an object type beyond its name: its game-object script (XML Lua_Script;

@@ -444,6 +444,10 @@ std::pair<std::string_view, std::string_view> death_clone_entry(const std::strin
 DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     DeathStyle style;
+    if (const auto* removed = catalog.field(definition, "Remove_Upon_Death").field)
+    {
+        style.removed = parse_xml_bool(removed->text).value_or(false);
+    }
     std::string_view chosen;
     for (const auto* entry : catalog.fields(definition, "Death_Clone").fields)
     {

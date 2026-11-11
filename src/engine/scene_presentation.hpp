@@ -57,7 +57,8 @@ public:
     void add_spawnable(std::span<const SpawnableType> types);
 
     // The instance a dead entity leaves behind, posed where it died, with its type's corpse style,
-    // and forgets the entity's template; nullopt when the entity was never drawn.
+    // and forgets the entity's template; nullopt when the entity was never drawn or its type leaves
+    // no corpse (DeathStyle::removed).
     struct Corpse
     {
         VisualInstance instance;

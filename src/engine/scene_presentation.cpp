@@ -171,6 +171,10 @@ std::optional<ScenePresentation::Corpse> ScenePresentation::corpse_instance(cons
     {
         templates_.erase(placed);
     }
+    if (style.removed)
+    {
+        return std::nullopt;
+    }
     return Corpse{instance, style};
 }
 
