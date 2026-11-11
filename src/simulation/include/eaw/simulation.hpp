@@ -526,6 +526,8 @@ private:
         std::uint32_t chase_timer{};
         // Ticks on the current automatic target (for CombatProfile::stickiness_seconds).
         std::uint32_t target_ticks{};
+        // Ticks left of a spin away (CombatProfile::spin_chance); 0 when not spinning.
+        std::uint32_t spin_ticks{};
         // Scripted conditions: no damage at all, and health that damage cannot take below the floor.
         bool invulnerable{};
         bool cannot_be_killed{};

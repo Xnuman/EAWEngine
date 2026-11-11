@@ -55,7 +55,8 @@ void SimulationWorld::run_combat()
     }
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
-        if (!combat_[index].profile.weapons.empty())
+        // A spinning (dying) entity no longer fights.
+        if (!combat_[index].profile.weapons.empty() && combat_[index].health > 0.0F)
         {
             update_target(index);
             run_weapon(index);
@@ -571,10 +572,30 @@ void SimulationWorld::remove_dead()
     // Back to front: swap-removal only moves already-visited entities.
     for (auto index = ids_.size(); index-- > 0;)
     {
-        if (combat_[index].profile.health > 0.0F && combat_[index].health <= 0.0F)
+        auto& combat = combat_[index];
+        if (combat.profile.health > 0.0F && combat.health <= 0.0F)
         {
-            deaths_.push_back(
-                {ids_[index], positions_[index], headings_[index], pitches_[index], visuals_[index], owners_[index], combat_[index].profile.death_effect, combat_[index].profile.type_key});
+            // Spinning away: out of control until the spin ends.
+            if (combat.spin_ticks == 0 && combat.profile.spin_chance > 0.0F && combat_random_.unit() < combat.profile.spin_chance)
+            {
+                combat.spin_ticks = std::max(1U, ticks_for(combat.profile.spin_seconds));
+                combat.target = {};
+                combat.ordered = false;
+                move_targets_[index].reset();
+                paths_[index].clear();
+                speed_limits_[index] = 0.0F;
+                group_ids_[index] = 0;
+                standing_orders_[index].kind = StandingOrder::none;
+                continue;
+            }
+            if (combat.spin_ticks > 1U)
+            {
+                --combat.spin_ticks;
+                continue;
+            }
+            const bool spun = combat.spin_ticks != 0;
+            deaths_.push_back({ids_[index], positions_[index], headings_[index], pitches_[index], visuals_[index], owners_[index],
+                               spun && combat.profile.spin_effect != 0 ? combat.profile.spin_effect : combat.profile.death_effect, combat.profile.type_key});
             const auto position = positions_[index];
             const auto owner = owners_[index];
             const auto profile_blast = combat_[index].profile.death_blast;

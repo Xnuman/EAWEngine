@@ -485,6 +485,15 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     profile.attack_move_response_range = type.amount("Attack_Move_Response_Range");
     profile.guard_chase_range = type.amount("Guard_Chase_Range");
     profile.stickiness_seconds = type.amount("Targeting_Stickiness_Time_Threshold");
+    if (type.flag("Spin_Away_On_Death", false))
+    {
+        profile.spin_chance = std::min(type.amount("Spin_Away_On_Death_Chance"), 1.0F);
+        profile.spin_seconds = type.amount("Spin_Away_On_Death_Time");
+        if (const auto* explosion = type.node("Spin_Away_On_Death_Explosion"); explosion != nullptr && !ascii_trim(explosion->text).empty())
+        {
+            profile.spin_effect = game_object_name_crc(ascii_trim(explosion->text));
+        }
+    }
     if (const auto* death_projectiles = type.node("Death_Projectiles"))
     {
         if (const auto names = split_list(death_projectiles->text); !names.empty())

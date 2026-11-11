@@ -287,6 +287,7 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         }
         hash = hash_value(hash, combat.retarget_timer);
         hash = hash_value(hash, combat.target_ticks);
+        hash = hash_value(hash, combat.spin_ticks);
         hash = hash_value(hash, combat.chase_timer);
         hash = hash_value(hash, radii_[index]);
         hash = hash_value(hash, turn_rates_[index]);

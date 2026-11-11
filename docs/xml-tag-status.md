@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 123 |
-| `partial` | 18 |
-| `gap` | 280 |
+| `done` | 126 |
+| `partial` | 19 |
+| `gap` | 276 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -224,7 +224,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-42 done, 2 partial, 58 gap, 33 needs.
+45 done, 3 partial, 54 gap, 33 needs.
 
 ### Health, shields, armor, and energy
 
@@ -386,10 +386,10 @@ Systems that `needs` rows wait for, by tag count:
 | `Death_Leave_Hulk_Behind` | `gap` |  |
 | `Death_Projectiles` | `done` | the projectile's blast where it dies |
 | `Retreat_Self_Destruct_Explosion` | `needs retreat` |  |
-| `Spin_Away_On_Death` | `gap` |  |
-| `Spin_Away_On_Death_Chance` | `gap` |  |
-| `Spin_Away_On_Death_Time` | `gap` |  |
-| `Spin_Away_On_Death_Explosion` | `gap` |  |
+| `Spin_Away_On_Death` | `partial` | delayed death out of control; the spin is not drawn |
+| `Spin_Away_On_Death_Chance` | `done` |  |
+| `Spin_Away_On_Death_Time` | `done` |  |
+| `Spin_Away_On_Death_Explosion` | `done` |  |
 | `Damaged_Smoke_Asset_Name` | `gap` |  |
 | `Destruction_Survivors` | `done` | each listed type once (all stock weights are 1.0) |
 | `Minimum_Destruction_Survivor_Count` | `done` | the count spawned |
@@ -464,7 +464,7 @@ Systems that `needs` rows wait for, by tag count:
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Projectile_Category` | `gap` |  |
-| `Projectile_Max_Flight_Distance` | `partial` | 0 means "detonate at once" in the data, "unlimited" in the engine |
+| `Projectile_Max_Flight_Distance` | `partial` | 0 means "detonate at once" in the data (death and ability blasts, which the engine detonates where they start), "unlimited" for fired shots |
 | `Projectile_Max_Lifetime` | `gap` |  |
 | `Projectile_Acceleration_Per_Frame` | `gap` |  |
 | `Projectile_Max_Scan_Range` | `gap` |  |

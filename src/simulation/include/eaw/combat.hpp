@@ -209,6 +209,13 @@ struct CombatProfile
     std::uint16_t death_blast_damage_type{};
     bool death_blast_damages_shield{true};
     bool death_blast_damages_health{true};
+    // Spinning away (XML Spin_Away_On_Death, _Chance, _Time; fighters, corvettes): when its health
+    // runs out it spins away with this chance instead of dying at once: out of control (no orders,
+    // no target, no fire, no further damage) for `spin_seconds`, then it dies and plays
+    // `spin_effect` (Spin_Away_On_Death_Explosion, presentation) instead of its death effect.
+    float spin_chance{};
+    float spin_seconds{};
+    std::uint32_t spin_effect{};
     // Property bits (GameObjectPropertiesType, XML Property_Flags) and a key of its type (the CRC-32
     // of the type name), for others' targeting priorities.
     std::uint32_t properties{};

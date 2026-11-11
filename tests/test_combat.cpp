@@ -676,6 +676,34 @@ void test_target_validity()
         require(hurt[1].health == 975.0F && hurt[2].health == 990.0F && hurt[3].health == 1000.0F && hurt[4].health == 1000.0F,
                 "a blast must damage hostiles by ring within its range, the victim besides the shot, and spare friends");
     }
+    // Spinning away (chance 1): the fighter stays 0.5 s out of control, then dies with its spin
+    // explosion; without the chance it dies at once.
+    for (const float chance : {0.0F, 1.0F})
+    {
+        eaw::SimulationWorld spin_world(0.1);
+        eaw::CombatProfile fighter;
+        fighter.health = 10.0F;
+        fighter.death_effect = 1U;
+        fighter.spin_chance = chance;
+        fighter.spin_seconds = 0.5F;
+        fighter.spin_effect = 2U;
+        const auto craft = spin_world.spawn({.type_name = "Fighter", .combat = fighter});
+        require(craft.ok(), "test spawn must succeed");
+        spin_world.submit({.kind = eaw::SimCommandKind::damage, .entities = {*craft}, .amount = 100.0F});
+        spin_world.step();
+        int ticks = 1;
+        std::uint32_t effect = spin_world.snapshot().deaths.empty() ? 0U : spin_world.snapshot().deaths.front().death_effect;
+        while (spin_world.alive(*craft) && ticks < 20)
+        {
+            spin_world.step();
+            ++ticks;
+            if (!spin_world.snapshot().deaths.empty())
+            {
+                effect = spin_world.snapshot().deaths.front().death_effect;
+            }
+        }
+        require(chance == 0.0F ? ticks == 1 && effect == 1U : ticks == 6 && effect == 2U, "a spin away must delay the death by its time and end in its explosion");
+    }
     // A death blast (Death_Projectiles): the dying station damages the hostile beside it.
     {
         eaw::SimulationWorld station_world(0.1);
