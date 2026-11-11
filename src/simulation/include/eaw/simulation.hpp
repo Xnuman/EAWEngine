@@ -519,6 +519,8 @@ private:
         // Ticks until the next automatic target search, and until an ordered chase replans.
         std::uint32_t retarget_timer{};
         std::uint32_t chase_timer{};
+        // Ticks on the current automatic target (for CombatProfile::stickiness_seconds).
+        std::uint32_t target_ticks{};
         // Scripted conditions: no damage at all, and health that damage cannot take below the floor.
         bool invulnerable{};
         bool cannot_be_killed{};

@@ -654,6 +654,33 @@ void test_target_validity()
     world.submit({.kind = eaw::SimCommandKind::damage, .entities = {*immune}, .amount = 100.0F});
     world.step();
     require(world.alive(*immune) && world.snapshot().entities[0].health == 10.0F, "an immune entity must take no damage");
+
+    // Stickiness: a shooter keeps the low-priority target it found, then after 1 s looks again and
+    // takes the preferred one that arrived meanwhile.
+    for (const float stickiness : {0.0F, 1.0F})
+    {
+        eaw::SimulationWorld sticky(0.1);
+        sticky.set_hostility(hostility);
+        eaw::CombatProfile picky;
+        picky.health = 50.0F;
+        picky.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 10.0F, .damage = 1.0F}};
+        picky.targeting.ranks = {{.categories = 0x200U, .rank = 1.0F}};
+        picky.stickiness_seconds = stickiness;
+        eaw::CombatProfile sturdy;
+        sturdy.health = 1000.0F;
+        auto preferred = sturdy;
+        preferred.categories = 0x200U;
+        (void)sticky.spawn({.type_name = "Shooter", .owner = 1, .combat = picky});
+        const auto first = sticky.spawn({.type_name = "First", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = sturdy});
+        sticky.step();
+        require(first.ok() && sticky.snapshot().entities[0].target == *first, "the only hostile must be targeted");
+        const auto better = sticky.spawn({.type_name = "Better", .owner = 2, .position = {80.0F, 0.0F, 0.0F}, .combat = preferred});
+        for (int tick = 0; tick < 15; ++tick)
+        {
+            sticky.step();
+        }
+        require(better.ok() && (sticky.snapshot().entities[0].target == *better) == (stickiness > 0.0F), "a sticky target must be weighed again after the stickiness, and kept without one");
+    }
 }
 
 const ModuleRegistrar registrar("combat", {

@@ -82,6 +82,19 @@ void SimulationWorld::update_target(const std::size_t index)
             combat.target = {};
             combat.ordered = false;
         }
+        // A target held past the stickiness is weighed against the others again.
+        else if (!combat.ordered && combat.profile.stickiness_seconds > 0.0F && ++combat.target_ticks >= ticks_for(combat.profile.stickiness_seconds))
+        {
+            combat.target_ticks = 0;
+            if (const auto best = choose_target(index, positions_[index], range,
+                                                [&](const std::size_t candidate)
+                                                {
+                                                    return engages(index, candidate);
+                                                }))
+            {
+                combat.target = ids_[*best];
+            }
+        }
     }
     // Ordered targets are kept (behavior chases them); automatic ones are searched every few ticks
     // unless the stance forbids picking targets.
@@ -103,6 +116,7 @@ void SimulationWorld::update_target(const std::size_t index)
     if (best)
     {
         combat.target = ids_[*best];
+        combat.target_ticks = 0;
     }
 }
 

@@ -57,7 +57,7 @@ inline bool valid_amount(const float value) noexcept
 inline bool valid_profile(const CombatProfile& profile) noexcept
 {
     if (!valid_amount(profile.health) || !valid_amount(profile.shield) || !valid_amount(profile.attack_move_response_range) || !valid_amount(profile.guard_chase_range) ||
-        !valid_amount(profile.shield_regen_per_second) || !std::isfinite(profile.aim_height))
+        !valid_amount(profile.stickiness_seconds) || !valid_amount(profile.shield_regen_per_second) || !std::isfinite(profile.aim_height))
     {
         return false;
     }

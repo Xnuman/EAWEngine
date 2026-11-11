@@ -179,6 +179,10 @@ struct CombatProfile
     // (XML Guard_Chase_Range).
     float attack_move_response_range{};
     float guard_chase_range{};
+    // After this long on a target it chose itself, the entity looks again and switches when its
+    // targeting priorities prefer another (XML Targeting_Stickiness_Time_Threshold, 5 s in most
+    // stock uses); 0 keeps the target while it stays valid.
+    float stickiness_seconds{};
     // Property bits (GameObjectPropertiesType, XML Property_Flags) and a key of its type (the CRC-32
     // of the type name), for others' targeting priorities.
     std::uint32_t properties{};

@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 113 |
+| `done` | 114 |
 | `partial` | 17 |
-| `gap` | 291 |
+| `gap` | 290 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -224,7 +224,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-36 done, 1 partial, 65 gap, 33 needs.
+37 done, 1 partial, 64 gap, 33 needs.
 
 ### Health, shields, armor, and energy
 
@@ -329,7 +329,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Targeting_Priority_Set` | `done` |  |
 | `Targeting_Fire_Inaccuracy` | `done` |  |
 | `Targeting_Fire_Inaccuracy_Fixed_Radius` | `done` |  |
-| `Targeting_Stickiness_Time_Threshold` | `gap` |  |
+| `Targeting_Stickiness_Time_Threshold` | `done` | re-weighs automatic targets |
 | `Targeting_Land_Model_Stay_Horiz_Flat` | `gap` |  |
 | `Target_Stealth_Units` | `needs stealth` |  |
 | `Is_Valid_Target` | `done` | never chosen or kept as a target |
