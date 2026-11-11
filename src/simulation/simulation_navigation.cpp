@@ -588,7 +588,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         // Ships in space keep slots wide enough for a ship to pass between two that have stopped.
         const bool ship_in_space = !ground_.valid() && radii_[*dense] > 0.0F && min_speeds_[*dense] <= 0.0F;
         const auto spacing = ship_in_space ? std::max(formation_spacings_[*dense], space_formation_spacing) : formation_spacings_[*dense];
-        members.push_back({id, positions_[*dense], radii_[*dense], spacing, formation_orders_[*dense]});
+        members.push_back({id, positions_[*dense], radii_[*dense], spacing, formation_orders_[*dense], formation_teams_[*dense]});
     }
     for (const auto index : solos)
     {

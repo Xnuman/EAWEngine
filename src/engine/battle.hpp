@@ -178,6 +178,8 @@ private:
     // Type key (game_object_name_crc) -> what its destruction leaves, from the map's entities and the
     // spawnable types.
     std::unordered_map<std::uint32_t, Survivors> survivors_;
+    // The next company team id (after the map's; FormationTeam::id).
+    mutable std::uint32_t next_team_{1};
 };
 
 } // namespace eaw

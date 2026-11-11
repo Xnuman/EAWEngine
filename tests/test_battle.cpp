@@ -63,6 +63,9 @@ void test_combat_content()
                 "<GroundVehicle Name=\"Picky\"><Targeting_Priority_Set>AntiTank</Targeting_Priority_Set><Property_Flags>Turret</Property_Flags></GroundVehicle>"
                 "<Container Name=\"Slow_Team\"><Max_Speed>.5</Max_Speed><Override_Acceleration>.1</Override_Acceleration></Container>"
                 "<GroundCompany Name=\"Slow_Company\"><Create_Team_Type>Slow_Team</Create_Team_Type></GroundCompany>"
+                "<Container Name=\"Row_Team\"><ContainerArrangement> Rows </ContainerArrangement><FormationSpacing>1</FormationSpacing></Container>"
+                "<GroundCompany Name=\"Row_Company\"><Create_Team_Type>Row_Team</Create_Team_Type><Max_Squad_Size>9</Max_Squad_Size></GroundCompany>"
+                "<GroundInfantry Name=\"Ragged\"><FormationRaggedness>1.6</FormationRaggedness></GroundInfantry>"
                 "<Prop Name=\"Rock\"><Custom_Hard_XExtent>24</Custom_Hard_XExtent><Custom_Hard_YExtent>30</Custom_Hard_YExtent><Custom_Hard_XExtent_Offset>3</Custom_Hard_XExtent_Offset>"
                 "<Custom_Hard_YExtent_Offset>-10</Custom_Hard_YExtent_Offset></Prop>"
                 "<Prop Name=\"Pad\"><Obstacle_Width>40</Obstacle_Width><Obstacle_Height>20</Obstacle_Height><Obstacle_X_Offset>0</Obstacle_X_Offset><Obstacle_Y_Offset>-10</Obstacle_Y_Offset>"
@@ -194,6 +197,17 @@ void test_combat_content()
     require(eaw::scene_build::type_soft_footprint_radius(catalog, *definition("Fighter")) == 7.0F, "a small craft's footprint radius must stand in for a soft radius");
     require(eaw::parse_xml_bool(" Yes ") == true && eaw::parse_xml_bool("FALSE") == false && eaw::parse_xml_bool("1") == true && !eaw::parse_xml_bool("maybe") && !eaw::parse_xml_bool(""),
             "XML booleans must accept Yes/No, true/false, and 1/0 in any case");
+    {
+        const auto rows = eaw::scene_build::type_team_layout(catalog, *definition("Row_Company"));
+        const auto none = eaw::scene_build::type_team_layout(catalog, *definition("Slow_Company"));
+        require(rows.size == 9 && rows.arrangement == eaw::TeamArrangement::rows && rows.spacing == 1.0F && none.size == 0 && none.arrangement == eaw::TeamArrangement::dartboard &&
+                    eaw::scene_build::type_formation_raggedness(catalog, *definition("Ragged")) == 1.6F,
+                "a company's team size, arrangement, and spacing and a member's raggedness must be read");
+        std::vector<eaw::FormationMember> members(20);
+        std::uint32_t next_team = 5;
+        eaw::assign_teams(members, {}, rows, next_team);
+        require(members[0].team.id == 5 && members[8].team.id == 5 && members[9].team.id == 6 && members[19].team.id == 7 && next_team == 8, "teams of nine must take consecutive ids");
+    }
     eaw::EntitySpawn member{.max_speed = 30.0F, .turn_rate = 2.0F};
     eaw::apply_team_movement(team, member);
     require(member.max_speed == *team.max_speed && member.turn_rate == 2.0F && member.movement.acceleration == *team.acceleration, "team movement must replace only what the team sets");

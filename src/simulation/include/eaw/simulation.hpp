@@ -126,6 +126,8 @@ struct EntitySpawn
     // Takes no slot in a formation move: goes to the ordered point on its own, at its own speed
     // (XML FormationGrouping Solo: walkers, the largest vehicles, air units, large creatures).
     bool formation_solo{};
+    // The company team it stands with in formations (formation.hpp).
+    FormationTeam formation_team;
     CrushProfile crush;
     // Ground occupied while the entity exists (structures, walls, obstacle props).
     std::optional<GroundFootprint> footprint;
@@ -746,6 +748,7 @@ private:
     std::vector<std::uint32_t> formation_orders_;
     std::vector<float> formation_spacings_;
     std::vector<std::uint8_t> formation_solos_;
+    std::vector<FormationTeam> formation_teams_;
     std::vector<CrushProfile> crushes_;
     // Group speed of a formation move until the entity arrives; zero when none.
     std::vector<float> speed_limits_;

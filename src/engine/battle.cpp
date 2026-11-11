@@ -91,6 +91,7 @@ Battle::Battle(const BattleMap& map, std::string map_name, const double tick_sec
             hinted_.emplace_back(*id, entity.hint);
         }
         type_info_.try_emplace(ascii_lower(entity.spawn.type_name), entity.script);
+        next_team_ = std::max(next_team_, entity.spawn.formation_team.id + 1U);
         if (!entity.survivors.types.empty())
         {
             survivors_.try_emplace(game_object_name_crc(entity.spawn.type_name), entity.survivors);
@@ -276,16 +277,20 @@ Result<SimCommand> Battle::translate(const BattleCommand& command) const
         for (const auto& center : grid_targets(command.point, command.count, group_spacing))
         {
             std::vector<FormationMember> members;
+            std::vector<float> raggedness;
             for (std::size_t member = 0; member < found->members.size(); ++member)
             {
                 const auto& type = spawnable_[found->members[member]];
                 members.push_back({EntityId{static_cast<std::uint32_t>(member + 1U), 1}, center, type.radius, type.formation_spacing, type.formation_order});
+                raggedness.push_back(type.formation_raggedness);
             }
+            assign_teams(members, raggedness, found->team_layout, next_team_);
             const auto slots = formation_slots(members, center, 0.0F);
             for (std::size_t member = 0; member < found->members.size(); ++member)
             {
                 translated.spawns.push_back(spawn_of(found->members[member], slots[member].position, command.owner));
                 apply_team_movement(found->team, translated.spawns.back());
+                translated.spawns.back().formation_team = members[member].team;
             }
         }
         return translated;

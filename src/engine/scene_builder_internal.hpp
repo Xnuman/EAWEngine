@@ -355,6 +355,11 @@ CrushProfile type_crush(const GameObjectCatalog& catalog, const XmlDefinition& d
 // XML Destruction_Survivors ("type, weight" entries; empty entries and weights of 0 skipped) and
 // Minimum_Destruction_Survivor_Count.
 Survivors type_survivors(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// A company's TeamLayout: XML Max_Squad_Size and its Create_Team_Type container's
+// ContainerArrangement (Rows or Dartboard, the default) and FormationSpacing.
+TeamLayout type_team_layout(const GameObjectCatalog& catalog, const XmlDefinition& company);
+// XML FormationRaggedness, clamped to 0..10.
+float type_formation_raggedness(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // XML Is_Marker.
 bool type_is_marker(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // XML FormationGrouping Solo (the other stock value is Standard, the default).

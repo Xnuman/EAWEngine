@@ -54,12 +54,18 @@ template <class Member> void arrange_companies(VisualScene& scene, VisualMapAsse
         const auto center = translation(origin);
         const auto facing = model_forward_heading(origin);
         std::vector<FormationMember> formation;
+        std::vector<float> raggedness;
         for (auto index = first; index < last; ++index)
         {
             const auto& member = members[index];
             const auto& spawn = asset.entities[member.entity].spawn;
             const auto radius = spawn.radius > 0.0F ? spawn.radius : mesh_footprint_radius(scene, scene.instances[member.instance].mesh, scene.instances[member.instance].transform);
             formation.push_back({EntityId{static_cast<std::uint32_t>(index + 1U), 1}, center, radius, type_formation_spacing(catalog, *member.type), type_formation_order(catalog, *member.type)});
+            raggedness.push_back(type_formation_raggedness(catalog, *member.type));
+        }
+        if (members[first].company != nullptr)
+        {
+            assign_teams(formation, raggedness, type_team_layout(catalog, *members[first].company), asset.next_team);
         }
         const auto slots = formation_slots(formation, center, facing);
         for (auto index = first; index < last; ++index)
@@ -72,6 +78,7 @@ template <class Member> void arrange_companies(VisualScene& scene, VisualMapAsse
             auto& transform = scene.instances[members[index].instance].transform;
             set_translation(transform, position);
             asset.entities[members[index].entity].spawn.position = position;
+            asset.entities[members[index].entity].spawn.formation_team = formation[index - first].team;
         }
         ++asset.expanded_companies;
         first = last;
@@ -133,6 +140,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
             if (build.catalog.field(*candidate, "Company_Units").field != nullptr)
             {
                 company.team = type_team_movement(build.catalog, *candidate, build.speed_multiplier);
+                company.team_layout = type_team_layout(build.catalog, *candidate);
             }
             for (const auto member : names)
             {
@@ -193,6 +201,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
         spawnable.formation_order = type_formation_order(build.catalog, *definition);
         spawnable.formation_spacing = type_formation_spacing(build.catalog, *definition);
         spawnable.formation_solo = type_formation_solo(build.catalog, *definition);
+        spawnable.formation_raggedness = type_formation_raggedness(build.catalog, *definition);
     }
     build.spawnable.push_back(std::move(spawnable));
     return build.spawnable.size() - 1U;
@@ -286,6 +295,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         std::size_t entity{};
         std::size_t instance{};
         const XmlDefinition* type{};
+        const XmlDefinition* company{};
     };
     std::vector<CompanyMember> company_members;
     for (const auto& placement : layout.placements)
@@ -388,7 +398,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                                       placement.type != nullptr ? type_survivors(catalog, *placement.type) : Survivors{}, placement.type != nullptr && type_is_marker(catalog, *placement.type)});
             if (placement.needs_formation)
             {
-                company_members.push_back({placement.object_index, asset.entities.size() - 1U, scene.instances.size(), placement.type});
+                company_members.push_back({placement.object_index, asset.entities.size() - 1U, scene.instances.size(), placement.type, placement.container});
             }
         }
         if (const auto faction = placement.type != nullptr ? catalog.affiliation_color(*placement.type) : std::nullopt)

@@ -379,6 +379,56 @@ void test_formations()
     require(!solo.moving && std::hypot(solo.position.x - 300.0F, solo.position.y - 100.0F) < 6.0F, "a solo member must go to the ordered point itself");
 }
 
+// Company teams: members of a team stand together by its arrangement; teams are units of the
+// formation; raggedness moves members deterministically.
+void test_formation_teams()
+{
+    const auto layout = [](const eaw::TeamArrangement arrangement, const float raggedness)
+    {
+        std::vector<eaw::FormationMember> members;
+        for (std::uint32_t index = 0; index < 8; ++index)
+        {
+            members.push_back({eaw::EntityId{index + 1U, 1}, {0.0F, 0.0F, 0.0F}, 2.0F, 0.5F, 2, {index < 4 ? 1U : 2U, arrangement, 1.0F, raggedness}});
+        }
+        return eaw::formation_slots(members, {100.0F, 0.0F, 0.0F}, 0.0F);
+    };
+    const auto centroid = [](const std::vector<eaw::FormationSlot>& slots, const std::size_t first)
+    {
+        float x = 0.0F;
+        float y = 0.0F;
+        for (std::size_t index = first; index < first + 4U; ++index)
+        {
+            x += slots[index].position.x / 4.0F;
+            y += slots[index].position.y / 4.0F;
+        }
+        return std::pair{x, y};
+    };
+    const auto rows = layout(eaw::TeamArrangement::rows, 0.0F);
+    const auto [ax, ay] = centroid(rows, 0);
+    const auto [bx, by] = centroid(rows, 4);
+    float spread = 0.0F;
+    for (std::size_t index = 0; index < 4; ++index)
+    {
+        spread = std::max(spread, std::hypot(rows[index].position.x - ax, rows[index].position.y - ay));
+    }
+    // A member's pitch is 6 (radius 2, spacing 0.5): a 2x2 team reaches 4.25 from its center.
+    require(spread < 4.5F && std::hypot(ax - bx, ay - by) > 2.0F * spread && std::fabs((ax + bx) * 0.5F - 100.0F) < 1.0e-3F,
+            "a team's members must stand together, apart from the other team, the block centered on the target");
+    const auto dartboard = layout(eaw::TeamArrangement::dartboard, 0.0F);
+    const auto [cx, cy] = centroid(dartboard, 0);
+    require(std::hypot(dartboard[0].position.x - cx, dartboard[0].position.y - cy) < std::hypot(dartboard[1].position.x - cx, dartboard[1].position.y - cy),
+            "a dartboard team's first member must stand at its center, the rest around it");
+    const auto ragged = layout(eaw::TeamArrangement::rows, 0.5F);
+    const auto again = layout(eaw::TeamArrangement::rows, 0.5F);
+    bool moved = false;
+    for (std::size_t index = 0; index < 8; ++index)
+    {
+        moved = moved || ragged[index].position.x != rows[index].position.x || ragged[index].position.y != rows[index].position.y;
+        require(ragged[index].position.x == again[index].position.x && ragged[index].position.y == again[index].position.y, "raggedness must be deterministic");
+    }
+    require(moved, "raggedness must move members off the grid");
+}
+
 void test_narrow_passage()
 {
     // A wall at column 15 with a one-cell gap at row 14; six tank-sized units ordered through it. With
@@ -848,6 +898,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_pathfinding", &test_pathfinding},
                                                   {"test_turning_and_separation", &test_turning_and_separation},
                                                   {"test_formations", &test_formations},
+                                                  {"test_formation_teams", &test_formation_teams},
                                                   {"test_narrow_passage", &test_narrow_passage},
                                                   {"test_group_cohesion", &test_group_cohesion},
                                                   {"test_ground_footprints", &test_ground_footprints},

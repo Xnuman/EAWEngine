@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 127 |
+| `done` | 130 |
 | `partial` | 19 |
-| `gap` | 275 |
+| `gap` | 272 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -62,7 +62,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-28 done, 6 partial, 54 gap, 18 needs, 7 n/a.
+29 done, 6 partial, 53 gap, 18 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -189,7 +189,7 @@ Systems that `needs` rows wait for, by tag count:
 | `FormationOrder` | `done` |  |
 | `FormationSpacing` | `done` |  |
 | `FormationGrouping` | `done` | Solo units take no slot and move on their own (from the name and users) |
-| `FormationRaggedness` | `gap` | scale unknown (0 to 2.5); cosmetic |
+| `FormationRaggedness` | `done` | times the slot pitch (scale an engine choice, to tune) |
 | `Formation_Priority` | `gap` | meaning unknown (precedence when formations combine?) |
 | `FormationPriority` | `gap` |  |
 | `Formation_Prority` | `n/a` | single-use alternate spelling; read together with FormationPriority |
@@ -679,7 +679,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Companies, squadrons, teams, transports, garrisons, spawning, and special systems
 
-3 done, 1 partial, 19 gap, 114 needs.
+5 done, 1 partial, 17 gap, 114 needs.
 
 ### Companies and teams
 
@@ -688,9 +688,9 @@ Systems that `needs` rows wait for, by tag count:
 | `Company_Units` | `done` |  |
 | `Company_Transport_Unit` | `needs transports` |  |
 | `Create_Team_Type` | `partial` | company members only; squadrons ignore it |
-| `Max_Squad_Size` | `gap` |  |
+| `Max_Squad_Size` | `done` | teams in formations; not yet one selectable unit |
 | `Create_Team` | `gap` |  |
-| `ContainerArrangement` | `gap` |  |
+| `ContainerArrangement` | `done` | Rows and Dartboard |
 | `Is_Force_Sensitive` | `needs abilities` |  |
 | `Is_Stealth_Company` | `needs stealth` |  |
 | `Required_Orbiting_Units` | `needs galactic` |  |

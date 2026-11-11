@@ -64,7 +64,8 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a non-finite position, heading, or speed");
     }
-    if (!valid_amount(spawn.radius) || !valid_amount(spawn.turn_rate) || !valid_amount(spawn.formation_spacing) || !valid_amount(spawn.min_speed))
+    if (!valid_amount(spawn.radius) || !valid_amount(spawn.turn_rate) || !valid_amount(spawn.formation_spacing) || !valid_amount(spawn.min_speed) || !valid_amount(spawn.formation_team.spacing) ||
+        !valid_amount(spawn.formation_team.raggedness))
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite radius, turn rate, minimum speed, or formation spacing");
     }
@@ -144,6 +145,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     formation_orders_.push_back(spawn.formation_order);
     formation_spacings_.push_back(spawn.formation_spacing);
     formation_solos_.push_back(spawn.formation_solo ? 1U : 0U);
+    formation_teams_.push_back(spawn.formation_team);
     crushes_.push_back(spawn.crush);
     speed_limits_.push_back(0.0F);
     group_ids_.push_back(0);
@@ -314,6 +316,10 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, formation_orders_[index]);
         hash = hash_value(hash, formation_spacings_[index]);
         hash = hash_value(hash, formation_solos_[index]);
+        hash = hash_value(hash, formation_teams_[index].id);
+        hash = hash_value(hash, static_cast<std::uint8_t>(formation_teams_[index].arrangement));
+        hash = hash_value(hash, formation_teams_[index].spacing);
+        hash = hash_value(hash, formation_teams_[index].raggedness);
         hash = hash_value(hash, static_cast<std::uint8_t>(crushes_[index].crusher));
         hash = hash_value(hash, static_cast<std::uint8_t>((crushes_[index].squashable ? 1U : 0U) | (crushes_[index].squashable_by_supercrusher ? 2U : 0U)));
         hash = hash_value(hash, speed_limits_[index]);
@@ -412,6 +418,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         formation_orders_[dense] = formation_orders_[last];
         formation_spacings_[dense] = formation_spacings_[last];
         formation_solos_[dense] = formation_solos_[last];
+        formation_teams_[dense] = formation_teams_[last];
         crushes_[dense] = crushes_[last];
         speed_limits_[dense] = speed_limits_[last];
         group_ids_[dense] = group_ids_[last];
@@ -458,6 +465,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     formation_orders_.pop_back();
     formation_spacings_.pop_back();
     formation_solos_.pop_back();
+    formation_teams_.pop_back();
     crushes_.pop_back();
     speed_limits_.pop_back();
     group_ids_.pop_back();

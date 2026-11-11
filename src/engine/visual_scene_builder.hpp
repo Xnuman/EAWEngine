@@ -186,6 +186,30 @@ inline constexpr float provisional_acceleration_scale = provisional_max_speed_sc
 // and acceleration are the members' (data; the engine has no team entity, so each member takes
 // them). Unset fields leave the member's own. Space squadrons are not teams in this sense: their
 // fighters fly on their own.
+// How a company splits into teams (XML Max_Squad_Size; teams of 1 or less are no teams) and how
+// a team stands (its Create_Team_Type container's ContainerArrangement and FormationSpacing).
+struct TeamLayout
+{
+    std::uint32_t size{};
+    TeamArrangement arrangement{TeamArrangement::dartboard};
+    float spacing{0.5F};
+};
+
+// Gives `members` (a company's, in member order) their team ids, from `next_team` on, `layout.size`
+// per team, with each member's raggedness; advances `next_team` past them.
+inline void assign_teams(std::span<FormationMember> members, std::span<const float> raggedness, const TeamLayout& layout, std::uint32_t& next_team) noexcept
+{
+    if (layout.size <= 1U)
+    {
+        return;
+    }
+    for (std::size_t index = 0; index < members.size(); ++index)
+    {
+        members[index].team = {next_team + static_cast<std::uint32_t>(index / layout.size), layout.arrangement, layout.spacing, index < raggedness.size() ? raggedness[index] : 0.0F};
+    }
+    next_team += static_cast<std::uint32_t>((members.size() + layout.size - 1U) / layout.size);
+}
+
 struct TeamMovement
 {
     std::optional<float> max_speed;
@@ -245,8 +269,11 @@ struct SpawnableType
     // A company (Company_Units): the spawnable types of its members, in list order, spawned
     // together in formation. Empty for ordinary types; a company's own mesh is unused.
     std::vector<std::size_t> members;
-    // A company's team movement, applied to its members.
+    // A company's team movement, applied to its members, and how it splits into teams.
     TeamMovement team;
+    TeamLayout team_layout;
+    // XML FormationRaggedness (FormationTeam::raggedness) when it stands in a team.
+    float formation_raggedness{};
 };
 
 struct VisualMapAsset
@@ -260,6 +287,8 @@ struct VisualMapAsset
     std::size_t unexpanded_containers{};
     // Land companies arranged in formation, and their members.
     std::size_t expanded_companies{};
+    // The next company team id (FormationTeam::id; battles continue from it).
+    std::uint32_t next_team{1};
     // Immobile obstacles whose footprints the simulation stamps into the ground.
     std::size_t obstacle_footprints{};
     // Immobile space objects ships steer around (their Space_Obstacle_Radius).

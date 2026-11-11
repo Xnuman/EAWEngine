@@ -186,6 +186,32 @@ Survivors type_survivors(const GameObjectCatalog& catalog, const XmlDefinition& 
     return survivors;
 }
 
+TeamLayout type_team_layout(const GameObjectCatalog& catalog, const XmlDefinition& company)
+{
+    TeamLayout layout;
+    const auto size = type_float_field(catalog, company, "Max_Squad_Size");
+    layout.size = size >= 1.0F && size <= 1000.0F ? static_cast<std::uint32_t>(size) : 0U;
+    const auto* name = catalog.field(company, "Create_Team_Type").field;
+    const auto team_name = name != nullptr ? ascii_trim(name->text) : std::string_view{};
+    const auto containers = team_name.empty() ? std::vector<const XmlDefinition*>{} : catalog.find(team_name);
+    if (containers.empty())
+    {
+        return layout;
+    }
+    const auto& container = *containers.front();
+    if (const auto* arrangement = catalog.field(container, "ContainerArrangement").field)
+    {
+        layout.arrangement = ascii_equal_ignoring_case(ascii_trim(arrangement->text), "Rows") ? TeamArrangement::rows : TeamArrangement::dartboard;
+    }
+    layout.spacing = type_formation_spacing(catalog, container);
+    return layout;
+}
+
+float type_formation_raggedness(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    return std::clamp(type_float_field(catalog, definition, "FormationRaggedness"), 0.0F, 10.0F);
+}
+
 bool type_is_marker(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto* node = catalog.field(definition, "Is_Marker").field;
