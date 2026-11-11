@@ -74,10 +74,18 @@ Battle::Battle(const BattleMap& map, std::string map_name, const double tick_sec
             hinted_.emplace_back(*id, entity.hint);
         }
         type_info_.try_emplace(ascii_lower(entity.spawn.type_name), entity.script);
+        if (!entity.survivors.types.empty())
+        {
+            survivors_.try_emplace(game_object_name_crc(entity.spawn.type_name), entity.survivors);
+        }
     }
     for (const auto& type : spawnable_)
     {
         type_info_.try_emplace(ascii_lower(type.type_name), type.script);
+        if (!type.survivors.types.empty())
+        {
+            survivors_.try_emplace(game_object_name_crc(type.type_name), type.survivors);
+        }
     }
     world_.step();
 }
@@ -123,6 +131,10 @@ std::size_t Battle::add_spawnable(const std::span<const SpawnableType> types)
             member += first;
         }
         type_info_.try_emplace(ascii_lower(type.type_name), type.script);
+        if (!type.survivors.types.empty())
+        {
+            survivors_.try_emplace(game_object_name_crc(type.type_name), type.survivors);
+        }
         spawnable_.push_back(std::move(type));
     }
     return first;
@@ -149,6 +161,27 @@ Result<std::uint64_t> Battle::submit(const BattleCommand& command, const BattleO
 void Battle::step()
 {
     world_.step();
+    if (survivors_.empty())
+    {
+        return;
+    }
+    // Copied: submitting does not touch the snapshot, but stay clear of aliasing it.
+    const auto deaths = world_.snapshot().deaths;
+    for (const auto& death : deaths)
+    {
+        const auto found = survivors_.find(death.type_key);
+        if (found == survivors_.end())
+        {
+            continue;
+        }
+        for (const auto& type : found->second.types)
+        {
+            if (const auto spawned = submit({.order = BattleOrder::spawn, .point = death.position, .type = type, .count = found->second.count, .owner = death.owner}, BattleOrigin::script); !spawned)
+            {
+                log_warning("battle", with_context("survivor " + type + " of a destroyed object not spawned", spawned.error()));
+            }
+        }
+    }
 }
 
 EntitySpawn Battle::spawn_of(const std::size_t type_index, Vector3 position, const std::uint32_t owner) const

@@ -74,6 +74,8 @@ void test_combat_content()
                 "<GroundVehicle Name=\"Crusher\"><UnitCollisionClass> Large Vehicle </UnitCollisionClass><Is_Squashable_By_Supercrusher>Yes</Is_Squashable_By_Supercrusher></GroundVehicle>"
                 "<GroundVehicle Name=\"Stomper\"><UnitCollisionClass>Giant Vehicle</UnitCollisionClass><Is_Supercrusher>Yes</Is_Supercrusher></GroundVehicle>"
                 "<GroundInfantry Name=\"Trooper\"><UnitCollisionClass>Infantry</UnitCollisionClass><Is_Squashable>true</Is_Squashable></GroundInfantry>"
+                "<GroundStructure Name=\"Jail\"><Destruction_Survivors>\n Crew_A, 1.0\n  \n Crew_B, 0 \n Crew_C</Destruction_Survivors>"
+                "<Minimum_Destruction_Survivor_Count>4</Minimum_Destruction_Survivor_Count></GroundStructure>"
                 "<SpaceUnit Name=\"Debris\"><Remove_Upon_Death> true </Remove_Upon_Death></SpaceUnit>"
                 "<SpaceUnit Name=\"Banker\"><Bank_Turn_Angle>40</Bank_Turn_Angle></SpaceUnit>"
                 "<Indigenous_Unit Name=\"Swirl\"><Close_Enough_Angle_For_Move_Start>360</Close_Enough_Angle_For_Move_Start></Indigenous_Unit>"
@@ -174,6 +176,11 @@ void test_combat_content()
         require(crusher.crusher == eaw::Crusher::crusher && crusher.squashable_by_supercrusher && !crusher.squashable && stomper.crusher == eaw::Crusher::supercrusher &&
                     trooper.crusher == eaw::Crusher::none && trooper.squashable,
                 "vehicle classes must crush, Is_Supercrusher must supercrush, and the squash flags must be read");
+    }
+    {
+        const auto survivors = eaw::scene_build::type_survivors(catalog, *definition("Jail"));
+        require(survivors.types == std::vector<std::string>{"Crew_A", "Crew_C"} && survivors.count == 4 && eaw::scene_build::type_survivors(catalog, *definition("Tank")).types.empty(),
+                "survivor lines must be read, weight-0 and empty lines skipped, with the minimum count");
     }
     require(eaw::scene_build::type_death_style(catalog, *definition("Debris")).removed && !eaw::scene_build::type_death_style(catalog, *definition("Tank")).removed,
             "Remove_Upon_Death must leave no corpse");
@@ -403,6 +410,29 @@ void test_battle_log()
             "the condition, damage, and teleport orders must be written to the log");
     require(log_text.find(" remove ") != std::string::npos && log_text.find(" attack_move 0.0 ") != std::string::npos && log_text.find(" guard ") != std::string::npos,
             "remove, attack-move, and guard orders must be written to the log");
+}
+
+// A destroyed object with Destruction_Survivors leaves its survivors, owned as it was, where it died.
+void test_destruction_survivors()
+{
+    std::array<eaw::SpawnableType, 2> types;
+    types[0].type_name = "Prison";
+    types[0].combat.health = 10.0F;
+    types[0].combat.type_key = eaw::game_object_name_crc("Prison");
+    types[0].survivors = {{"Prisoner"}, 2};
+    types[1].type_name = "Prisoner";
+    types[1].max_speed = 10.0F;
+    eaw::BattleMap map;
+    map.spawnable = types;
+    eaw::Battle battle(map, "TEST.TED", 0.1);
+    expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {100.0F, 50.0F, 0.0F}, .type = "Prison", .count = 1, .owner = 1}), "spawn of the prison");
+    battle.step();
+    const auto prison = battle.world().snapshot().entities.front().id;
+    expect_ok(battle.submit({.order = eaw::BattleOrder::damage, .entities = {prison}, .amount = 100.0F}), "damage of the prison");
+    battle.step();
+    battle.step();
+    const auto& left = battle.world().snapshot().entities;
+    require(!battle.world().alive(prison) && left.size() == 2 && left[0].owner == 1 && std::fabs(left[0].position.x - 100.0F) < 60.0F, "a destroyed object must leave its survivors");
 }
 
 // Types added at runtime: the battle offsets company members, presentation draws spawned entities
@@ -707,6 +737,7 @@ const ModuleRegistrar registrar("battle", {
                                               {"test_battle_object_scripts", &test_battle_object_scripts},
                                               {"test_battle_orders", &test_battle_orders},
                                               {"test_battle_log", &test_battle_log},
+                                              {"test_destruction_survivors", &test_destruction_survivors},
                                               {"test_runtime_spawnable_registration", &test_runtime_spawnable_registration},
                                           });
 

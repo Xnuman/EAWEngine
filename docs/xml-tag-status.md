@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 116 |
-| `partial` | 17 |
-| `gap` | 288 |
+| `done` | 118 |
+| `partial` | 18 |
+| `gap` | 285 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -224,7 +224,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-39 done, 1 partial, 62 gap, 33 needs.
+41 done, 2 partial, 59 gap, 33 needs.
 
 ### Health, shields, armor, and energy
 
@@ -391,9 +391,9 @@ Systems that `needs` rows wait for, by tag count:
 | `Spin_Away_On_Death_Time` | `gap` |  |
 | `Spin_Away_On_Death_Explosion` | `gap` |  |
 | `Damaged_Smoke_Asset_Name` | `gap` |  |
-| `Destruction_Survivors` | `gap` |  |
-| `Minimum_Destruction_Survivor_Count` | `gap` |  |
-| `Maximum_Destruction_Survivor_Count` | `gap` |  |
+| `Destruction_Survivors` | `done` | each listed type once (all stock weights are 1.0) |
+| `Minimum_Destruction_Survivor_Count` | `done` | the count spawned |
+| `Maximum_Destruction_Survivor_Count` | `partial` | not read: the minimum is spawned (deterministic) |
 | `Death_By_TSW_Replacements` | `needs super weapons` |  |
 
 ### Break-off debris (on the props `Death_Breakoff_Prop` names)

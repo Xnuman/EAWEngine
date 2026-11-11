@@ -147,6 +147,45 @@ CrushProfile type_crush(const GameObjectCatalog& catalog, const XmlDefinition& d
     return crush;
 }
 
+Survivors type_survivors(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    Survivors survivors;
+    const auto* list = catalog.field(definition, "Destruction_Survivors").field;
+    if (list == nullptr)
+    {
+        return survivors;
+    }
+    // Lines of "type, weight".
+    std::string_view text = list->text;
+    while (!text.empty())
+    {
+        const auto end = std::min(text.find('\n'), text.size());
+        const auto line = text.substr(0, end);
+        text.remove_prefix(std::min(end + 1, text.size()));
+        const auto comma = line.find(',');
+        const auto name = ascii_trim(line.substr(0, comma));
+        if (name.empty())
+        {
+            continue;
+        }
+        float weight = 1.0F;
+        if (comma != std::string_view::npos)
+        {
+            const auto value = ascii_trim(line.substr(comma + 1));
+            (void)std::from_chars(value.data(), value.data() + value.size(), weight);
+        }
+        if (weight > 0.0F)
+        {
+            survivors.types.emplace_back(name);
+        }
+    }
+    if (const auto minimum = type_float_field(catalog, definition, "Minimum_Destruction_Survivor_Count"); minimum >= 1.0F)
+    {
+        survivors.count = static_cast<std::uint32_t>(std::min(minimum, 100.0F));
+    }
+    return survivors;
+}
+
 bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto* node = catalog.field(definition, "FormationGrouping").field;

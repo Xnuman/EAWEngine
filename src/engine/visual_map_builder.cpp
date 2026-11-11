@@ -180,6 +180,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     spawnable.death = type_death_style(build.catalog, *definition);
     spawnable.bank_limit = type_bank_limit(build.catalog, *definition);
     spawnable.crush = type_crush(build.catalog, *definition);
+    spawnable.survivors = type_survivors(build.catalog, *definition);
     spawnable.script = type_script_info(build.catalog, *definition);
     if (spawnable.max_speed > 0.0F)
     {
@@ -383,7 +384,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             }
             asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size()), placement.type != nullptr ? type_death_style(catalog, *placement.type) : DeathStyle{},
                                       placement.type != nullptr ? type_script_info(catalog, *placement.type) : ScriptTypeInfo{}, map.placed_objects[placement.object_index].hint,
-                                      placement.type != nullptr ? type_bank_limit(catalog, *placement.type) : default_bank_limit});
+                                      placement.type != nullptr ? type_bank_limit(catalog, *placement.type) : default_bank_limit,
+                                      placement.type != nullptr ? type_survivors(catalog, *placement.type) : Survivors{}});
             if (placement.needs_formation)
             {
                 company_members.push_back({placement.object_index, asset.entities.size() - 1U, scene.instances.size(), placement.type});
@@ -476,6 +478,22 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     for (const auto& type_name : spawn_types)
     {
         (void)add_spawnable_type(spawnable_build, type_name, 0);
+    }
+    // What destroyed objects leave must be spawnable too (survivors of survivors included).
+    for (const auto& entity : asset.entities)
+    {
+        for (const auto& survivor : entity.survivors.types)
+        {
+            (void)add_spawnable_type(spawnable_build, survivor, 0);
+        }
+    }
+    for (std::size_t index = 0; index < asset.spawnable.size(); ++index)
+    {
+        const auto names = asset.spawnable[index].survivors.types;
+        for (const auto& survivor : names)
+        {
+            (void)add_spawnable_type(spawnable_build, survivor, 0);
+        }
     }
 
     // How shots look; model projectiles add meshes, so this comes before the rigs (headless builds

@@ -352,6 +352,9 @@ float type_bank_limit(const GameObjectCatalog& catalog, const XmlDefinition& def
 // supercrusher crushes when its UnitCollisionClass is Vehicle, Large Vehicle, or Giant Vehicle (an
 // engine choice: the data does not say who crushes infantry).
 CrushProfile type_crush(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// XML Destruction_Survivors ("type, weight" entries; empty entries and weights of 0 skipped) and
+// Minimum_Destruction_Survivor_Count.
+Survivors type_survivors(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // XML FormationGrouping Solo (the other stock value is Standard, the default).
 bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 

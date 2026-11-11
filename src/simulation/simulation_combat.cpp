@@ -540,7 +540,8 @@ void SimulationWorld::remove_dead()
     {
         if (combat_[index].profile.health > 0.0F && combat_[index].health <= 0.0F)
         {
-            deaths_.push_back({ids_[index], positions_[index], headings_[index], pitches_[index], visuals_[index], owners_[index], combat_[index].profile.death_effect});
+            deaths_.push_back(
+                {ids_[index], positions_[index], headings_[index], pitches_[index], visuals_[index], owners_[index], combat_[index].profile.death_effect, combat_[index].profile.type_key});
             destroy(index);
             ++kills_;
         }

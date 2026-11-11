@@ -153,6 +153,8 @@ public:
     // 1000, owners beyond the hostility table, non-finite points, type names with whitespace (they
     // could not be recorded), and orders without entities are errors that queue and record nothing.
     Result<std::uint64_t> submit(const BattleCommand& command, BattleOrigin origin = BattleOrigin::player);
+    // Runs one tick; the survivors of objects destroyed in it are ordered spawned for the next
+    // (script orders, so replays reproduce them without recording).
     void step();
     [[nodiscard]] const BattleLog& log() const noexcept;
 
@@ -168,6 +170,9 @@ private:
     std::unordered_map<std::string, ScriptTypeInfo> type_info_;
     BattleLog log_;
     std::uint64_t next_serial_{1};
+    // Type key (game_object_name_crc) -> what its destruction leaves, from the map's entities and the
+    // spawnable types.
+    std::unordered_map<std::uint32_t, Survivors> survivors_;
 };
 
 } // namespace eaw

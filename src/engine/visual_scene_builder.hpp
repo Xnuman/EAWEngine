@@ -120,6 +120,16 @@ struct DeathStyle
     bool removed{};
 };
 
+// Units an object's destruction leaves (XML Destruction_Survivors: crews, prisoners): each listed
+// type, `count` groups of it, owned by the destroyed object's owner. Every stock entry has weight
+// 1.0, so each spawns; a count range (Minimum_/Maximum_Destruction_Survivor_Count, one prison)
+// spawns its minimum. Both are engine choices.
+struct Survivors
+{
+    std::vector<std::string> types;
+    std::uint32_t count{1};
+};
+
 // What scripts read of an object type beyond its name: its game-object script (XML Lua_Script;
 // empty: none), its categories (XML CategoryMask, folded: "infantry", "landhero"), and its combat
 // rating (XML AI_Combat_Power, which Get_Combat_Rating presumably reads; 0 when absent).
@@ -145,6 +155,7 @@ struct MapEntitySpawn
     std::string hint;
     // Presentation: the most a flyer banks in a turn (type_bank_limit, radians).
     float bank_limit{default_bank_limit};
+    Survivors survivors;
 };
 
 // XML Max_Speed values are small (infantry 0.8, AT-AT 0.5, TIE fighter 4.5), consistent with world
@@ -226,6 +237,7 @@ struct SpawnableType
     float formation_spacing{0.5F};
     bool formation_solo{};
     CrushProfile crush;
+    Survivors survivors;
     ScriptTypeInfo script;
     // A company (Company_Units): the spawnable types of its members, in list order, spawned
     // together in formation. Empty for ordinary types; a company's own mesh is unused.

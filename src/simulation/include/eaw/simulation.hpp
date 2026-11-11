@@ -330,6 +330,8 @@ struct DeathSnapshot
     std::uint32_t owner{};
     // Presentation key of the effect its death plays (CombatProfile::death_effect), or 0.
     std::uint32_t death_effect{};
+    // Its type (CombatProfile::type_key), for what its death leaves (survivors).
+    std::uint32_t type_key{};
 };
 
 // What a shot did when it ended.
