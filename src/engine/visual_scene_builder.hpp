@@ -127,6 +127,10 @@ struct ScriptTypeInfo
     float combat_rating{};
 };
 
+// The most a flyer banks in a turn when its type names no Bank_Turn_Angle: 60 degrees (an engine
+// choice).
+inline constexpr float default_bank_limit = 1.04719755F;
+
 struct MapEntitySpawn
 {
     EntitySpawn spawn;
@@ -136,6 +140,8 @@ struct MapEntitySpawn
     // The name scripts find the placed object by (TedPlacedObject::hint; company members share
     // their company's).
     std::string hint;
+    // Presentation: the most a flyer banks in a turn (type_bank_limit, radians).
+    float bank_limit{default_bank_limit};
 };
 
 // XML Max_Speed values are small (infantry 0.8, AT-AT 0.5, TIE fighter 4.5), consistent with world
@@ -210,6 +216,8 @@ struct SpawnableType
     // Aims with its body (no TURRET behavior); applies when it walks on the ground.
     bool aims_with_body{};
     DeathStyle death;
+    // Presentation: the most it banks in a turn when it flies (type_bank_limit, radians).
+    float bank_limit{default_bank_limit};
     // XML FormationOrder and FormationSpacing (formation.hpp).
     std::uint32_t formation_order{2};
     float formation_spacing{0.5F};

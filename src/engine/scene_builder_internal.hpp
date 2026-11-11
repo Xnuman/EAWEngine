@@ -345,6 +345,9 @@ float type_lod_bias(const GameObjectCatalog& catalog, const XmlDefinition& defin
 // XML FormationOrder (default 2, the most common) and FormationSpacing (default 0.5, likewise).
 std::uint32_t type_formation_order(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// XML Bank_Turn_Angle in radians (degrees in the file; fighters 40, capital ships 5), at most 90
+// degrees; default_bank_limit when absent.
+float type_bank_limit(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // XML FormationGrouping Solo (the other stock value is Standard, the default).
 bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 

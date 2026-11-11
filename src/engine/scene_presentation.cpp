@@ -37,10 +37,9 @@ Matrix4 pose_transform(const Matrix4& base, const float base_heading, const Vect
     return result;
 }
 
-float flight_bank(const float yaw_rate) noexcept
+float flight_bank(const float yaw_rate, const float limit) noexcept
 {
-    constexpr auto most = 3.14159265F / 3.0F;
-    return std::isfinite(yaw_rate) ? std::clamp(yaw_rate * 0.6F, -most, most) : 0.0F;
+    return std::isfinite(yaw_rate) ? std::clamp(yaw_rate * 0.6F, -limit, limit) : 0.0F;
 }
 
 ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<const MapEntitySpawn> entities, const std::span<const std::optional<EntityId>> ids,
@@ -67,7 +66,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
                        "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(entity.instance) + ", which is missing or a background");
         if (ids[index])
         {
-            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[entity.instance], entity.spawn.heading, entity.death});
+            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[entity.instance], entity.spawn.heading, entity.death, entity.bank_limit});
         }
     }
     for (const auto& type : spawnable)
@@ -82,7 +81,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         }
         instance.team_color = type.team_color;
         instance.lod_bias = type.lod_bias;
-        spawn_templates_.push_back({instance, identity_model_heading, type.death});
+        spawn_templates_.push_back({instance, identity_model_heading, type.death, type.bank_limit});
     }
 }
 
@@ -114,7 +113,7 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
             continue;
         }
         auto instance = found->instance;
-        instance.transform = pose_transform(instance.transform, found->base_heading, entity.position, entity.heading, entity.pitch, flight_bank(entity.yaw_rate) + entity.roll);
+        instance.transform = pose_transform(instance.transform, found->base_heading, entity.position, entity.heading, entity.pitch, flight_bank(entity.yaw_rate, found->bank_limit) + entity.roll);
         instance.highlighted = selected.contains(entity_key(entity.id));
         instance.key = entity_key(entity.id);
         instances_out.push_back(instance);
@@ -144,7 +143,7 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableType> types
         }
         instance.team_color = type.team_color;
         instance.lod_bias = type.lod_bias;
-        spawn_templates_.push_back({instance, identity_model_heading, type.death});
+        spawn_templates_.push_back({instance, identity_model_heading, type.death, type.bank_limit});
     }
 }
 

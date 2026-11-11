@@ -71,6 +71,7 @@ void test_combat_content()
                 "<SpaceProp Name=\"Junk\"><Behavior>IDLE</Behavior><Space_Obstacle_Radius>600</Space_Obstacle_Radius></SpaceProp>"
                 "<SpaceUnit Name=\"Fighter\"><Custom_Footprint_Radius>7</Custom_Footprint_Radius></SpaceUnit>"
                 "<GroundVehicle Name=\"Walker\"><FormationGrouping> solo </FormationGrouping><Close_Enough_Angle_For_Move_Start> 30 </Close_Enough_Angle_For_Move_Start></GroundVehicle>"
+                "<SpaceUnit Name=\"Banker\"><Bank_Turn_Angle>40</Bank_Turn_Angle></SpaceUnit>"
                 "<Indigenous_Unit Name=\"Swirl\"><Close_Enough_Angle_For_Move_Start>360</Close_Enough_Angle_For_Move_Start></Indigenous_Unit>"
                 "<Projectile Name=\"Proj_Paced\"><Projectile_Fire_Recharge_Seconds>6</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>2</Projectile_Fire_Pulse_Count></Projectile>"
                 "<GroundVehicle Name=\"Paced\"><Projectile_Types>Proj_Paced, Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>50</Targeting_Max_Attack_Distance></GroundVehicle>"
@@ -161,6 +162,9 @@ void test_combat_content()
                 std::fabs(eaw::scene_build::type_movement(catalog, *definition("Swirl"), true, false).turn_in_place_angle - 3.1415927F) < 1.0e-5F &&
                 eaw::scene_build::type_movement(catalog, *definition("Tank"), true, false).turn_in_place_angle == eaw::scene_build::ground_turn_in_place_angle,
             "a type's move-start angle must replace the default, at most half a turn");
+    require(std::fabs(eaw::scene_build::type_bank_limit(catalog, *definition("Banker")) - 0.6981317F) < 1.0e-5F &&
+                eaw::scene_build::type_bank_limit(catalog, *definition("Tank")) == eaw::default_bank_limit,
+            "Bank_Turn_Angle must limit the bank, 60 degrees without it");
     require(eaw::scene_build::type_formation_solo(catalog, *definition("Walker")) && !eaw::scene_build::type_formation_solo(catalog, *definition("Tank")), "FormationGrouping Solo must be read");
     require(eaw::scene_build::type_soft_footprint_radius(catalog, *definition("Fighter")) == 7.0F, "a small craft's footprint radius must stand in for a soft radius");
     require(eaw::parse_xml_bool(" Yes ") == true && eaw::parse_xml_bool("FALSE") == false && eaw::parse_xml_bool("1") == true && !eaw::parse_xml_bool("maybe") && !eaw::parse_xml_bool(""),

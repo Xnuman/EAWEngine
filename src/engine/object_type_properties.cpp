@@ -112,6 +112,16 @@ float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefiniti
     return spacing >= 0.0F && spacing <= 100.0F ? spacing : 0.5F;
 }
 
+float type_bank_limit(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    if (catalog.field(definition, "Bank_Turn_Angle").field == nullptr)
+    {
+        return default_bank_limit;
+    }
+    const auto degrees = std::clamp(type_float_field(catalog, definition, "Bank_Turn_Angle"), 0.0F, 90.0F);
+    return degrees * std::numbers::pi_v<float> / 180.0F;
+}
+
 bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto* node = catalog.field(definition, "FormationGrouping").field;

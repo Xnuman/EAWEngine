@@ -29,9 +29,9 @@ namespace eaw {
 // lowers the left side, as in a left turn), both in radians.
 [[nodiscard]] Matrix4 pose_transform(const Matrix4& base, float base_heading, const Vector3& position, float heading, float pitch = 0.0F, float bank = 0.0F);
 
-// Presentation bank of a flyer turning at `yaw_rate` radians per second (an engine choice: about
-// 0.6 radians of bank per radian per second, at most 60 degrees).
-[[nodiscard]] float flight_bank(float yaw_rate) noexcept;
+// Presentation bank of a flyer turning at `yaw_rate` radians per second: about 0.6 radians of bank
+// per radian per second (an engine choice), at most `limit` (its type's Bank_Turn_Angle).
+[[nodiscard]] float flight_bank(float yaw_rate, float limit = default_bank_limit) noexcept;
 
 [[nodiscard]] inline std::uint64_t entity_key(const EntityId id) noexcept
 {
@@ -75,6 +75,7 @@ private:
         VisualInstance instance;
         float base_heading{};
         DeathStyle death;
+        float bank_limit{default_bank_limit};
     };
     std::vector<VisualInstance> backgrounds_;
     std::unordered_map<std::uint64_t, Template> templates_;

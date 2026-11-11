@@ -320,6 +320,7 @@ void test_model_forward_axis()
                 "a positive bank must lower the model's left side about its nose");
         require(eaw::flight_bank(0.0F) == 0.0F && eaw::flight_bank(100.0F) > 1.0F && eaw::flight_bank(-100.0F) < -1.0F && eaw::flight_bank(std::numeric_limits<float>::quiet_NaN()) == 0.0F,
                 "flight bank must follow the turn and stay bounded");
+        require(std::fabs(eaw::flight_bank(100.0F, 0.1F) - 0.1F) < 1.0e-6F && eaw::flight_bank(100.0F, 0.0F) == 0.0F, "flight bank must stop at the type's limit");
     }
     require(std::fabs(-posed.values[4] - 1.0F) < 1.0e-5F && std::fabs(posed.values[5]) < 1.0e-5F && std::fabs(eaw::model_forward_heading(posed)) < 1.0e-5F && posed.values[12] == 10.0F,
             "a model moving along +X must face +X");

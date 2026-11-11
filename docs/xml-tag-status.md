@@ -24,8 +24,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 | Status | Tags |
 | --- | --- |
 | `done` | 102 |
-| `partial` | 16 |
-| `gap` | 303 |
+| `partial` | 17 |
+| `gap` | 302 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -62,7 +62,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-25 done, 5 partial, 58 gap, 18 needs, 7 n/a.
+25 done, 6 partial, 57 gap, 18 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -97,8 +97,8 @@ Systems that `needs` rows wait for, by tag count:
 | `Min_Speed_Fraction_For_Turn` | `done` |  |
 | `Close_Enough_Angle_For_Move_Start` | `done` | the default (45) disagrees with GameConstants (180); see the roadmap |
 | `Begin_Turn_Towards_Distance` | `gap` |  |
-| `Bank_Turn_Angle` | `gap` |  |
-| `Max_Rate_Of_Roll` | `gap` |  |
+| `Bank_Turn_Angle` | `partial` | limits the flyers' bank; capital ships do not bank yet |
+| `Max_Rate_Of_Roll` | `gap` | needs per-entity bank state in presentation |
 | `Max_Lift` | `gap` |  |
 | `MaxFacingLookAheadFrames` | `gap` |  |
 | `UseSecondaryFacing` | `gap` |  |
