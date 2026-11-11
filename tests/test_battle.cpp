@@ -66,6 +66,10 @@ void test_combat_content()
                 "<Prop Name=\"Pad\"><Obstacle_Width>40</Obstacle_Width><Obstacle_Height>20</Obstacle_Height><Obstacle_X_Offset>0</Obstacle_X_Offset><Obstacle_Y_Offset>-10</Obstacle_Y_Offset>"
                 "<Custom_Hard_XExtent>5</Custom_Hard_XExtent><Custom_Hard_YExtent>5</Custom_Hard_YExtent></Prop>"
                 "<GroundStructure Name=\"On_Pad\"><Obstacle_Proxy_Type>Pad</Obstacle_Proxy_Type></GroundStructure>"
+                "<SpaceProp Name=\"Dock\"><Behavior>SPACE_OBSTACLE, IDLE</Behavior><Space_Obstacle_Radius>130</Space_Obstacle_Radius></SpaceProp>"
+                "<SpaceProp Name=\"Field\"><Behavior>SPACE_OBSTACLE</Behavior><Is_Asteroid_Field> Yes </Is_Asteroid_Field><Space_Obstacle_Radius>700</Space_Obstacle_Radius></SpaceProp>"
+                "<SpaceProp Name=\"Junk\"><Behavior>IDLE</Behavior><Space_Obstacle_Radius>600</Space_Obstacle_Radius></SpaceProp>"
+                "<SpaceUnit Name=\"Fighter\"><Custom_Footprint_Radius>7</Custom_Footprint_Radius></SpaceUnit>"
                 "<Projectile Name=\"Proj_Paced\"><Projectile_Fire_Recharge_Seconds>6</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>2</Projectile_Fire_Pulse_Count></Projectile>"
                 "<GroundVehicle Name=\"Paced\"><Projectile_Types>Proj_Paced, Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>50</Targeting_Max_Attack_Distance></GroundVehicle>"
                 "<HardPoint Name=\"HP_Gun\"><Fire_SFXEvent> Turbo </Fire_SFXEvent><Type> HARD_POINT_WEAPON_LASER </Type><Fire_Projectile_Type>Proj_Tank</Fire_Projectile_Type>"
@@ -148,6 +152,12 @@ void test_combat_content()
                     on_pad->half_width == 20.0F && !eaw::scene_build::type_ground_footprint(catalog, *definition("Tank"), eaw::Matrix4::identity(), eaw::passability::obstacle),
                 "an obstacle rectangle must win over hard extents, a proxy type must lend its own, and a type without either must give none");
     }
+    require(eaw::scene_build::type_space_obstacle_radius(catalog, *definition("Dock")) == 130.0F && eaw::scene_build::type_space_obstacle_radius(catalog, *definition("Field")) == 0.0F &&
+                eaw::scene_build::type_space_obstacle_radius(catalog, *definition("Junk")) == 0.0F,
+            "a SPACE_OBSTACLE must keep ships at its radius, unless it is a field ships enter");
+    require(eaw::scene_build::type_soft_footprint_radius(catalog, *definition("Fighter")) == 7.0F, "a small craft's footprint radius must stand in for a soft radius");
+    require(eaw::parse_xml_bool(" Yes ") == true && eaw::parse_xml_bool("FALSE") == false && eaw::parse_xml_bool("1") == true && !eaw::parse_xml_bool("maybe") && !eaw::parse_xml_bool(""),
+            "XML booleans must accept Yes/No, true/false, and 1/0 in any case");
     eaw::EntitySpawn member{.max_speed = 30.0F, .turn_rate = 2.0F};
     eaw::apply_team_movement(team, member);
     require(member.max_speed == *team.max_speed && member.turn_rate == 2.0F && member.movement.acceleration == *team.acceleration, "team movement must replace only what the team sets");

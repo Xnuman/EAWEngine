@@ -116,7 +116,8 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
                                                            ", " + std::to_string(visual_map.tracks) + " tracks")
                   << '\n'
                   << "Objects: " << scene.instances.size() << " instances of " << scene.meshes.size() << " models | squadron members expanded: " << visual_map.expanded_members
-                  << " | companies: " << visual_map.expanded_companies << " (" << visual_map.company_members << " members) | obstacle footprints: " << visual_map.obstacle_footprints << "\n"
+                  << " | companies: " << visual_map.expanded_companies << " (" << visual_map.company_members << " members) | obstacle footprints: " << visual_map.obstacle_footprints
+                  << " | space obstacles: " << visual_map.space_obstacles << "\n"
                   << "Not drawn: " << visual_map.untyped << " untyped, " << visual_map.without_model << " without model, " << visual_map.missing_model_files << " missing model files, "
                   << visual_map.unexpanded_containers << " containers without members, " << visual_map.unrenderable_placements << " unrenderable models\n"
                   << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size() << " draws | Textures: " << scene.textures.size()

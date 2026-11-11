@@ -194,14 +194,9 @@ public:
         {
             return fallback;
         }
-        const auto value = ascii_lower(ascii_trim(found->text));
-        if (value == "yes" || value == "true" || value == "1")
+        if (const auto value = parse_xml_bool(found->text))
         {
-            return true;
-        }
-        if (value == "no" || value == "false" || value == "0")
-        {
-            return false;
+            return *value;
         }
         warnings_.push_back(definition_.name + ": " + std::string(field) + " '" + found->text + "' is not a yes/no value");
         return fallback;

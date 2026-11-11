@@ -1157,6 +1157,15 @@ recording stubs (`EAWEngine lua-survey`).
   fly above or below other units (owner's observation, 2026-11-10; it replaces the engine's earlier
   assumption that ships separate by pushing). The engine's avoidance rules and numbers
   (`avoid_*` in `simulation.hpp`) are engine choices; flyers still separate from squadron mates.
+- **Space obstacles.** Immobile space objects with the `SPACE_OBSTACLE` behavior carry
+  `Space_Obstacle_Radius` (docks 130, asteroids 30 to 280, wrecks and junk 250 to 800, the Death
+  Star chunks 1,600). Asteroid fields (`Is_Asteroid_Field`), nebulae (`Is_Nebula`), and ion storms
+  carry one too, but ships enter those (the stock data has sounds for moving into nebulae and
+  asteroid fields, and the impassable stand-ins are separate `_NonPassable` types with
+  `Is_Impassable_Asteroid`); the `_NO_Collision` junk variant drops both the behavior and the
+  radius. The engine keeps ships clear of the others by that radius, and of starbases (which give
+  only `Custom_Soft_Footprint_Radius`, 100 to 550) by their soft radius (2026-11-11; whether
+  fields block capital ships in the original is unverified).
 - **Scripted conditions.** `Make_Invulnerable(true|false)` (165 stock calls),
   `Set_Cannot_Be_Killed(true|false)` (75), `Suspend_Locomotor(true|false)` (266),
   `Take_Damage(amount)` (almost always a kill: 10000, 9999, 99999), `Teleport_And_Face(marker or

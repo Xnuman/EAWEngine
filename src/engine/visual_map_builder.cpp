@@ -351,6 +351,17 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                         apply_team_movement(type_team_movement(catalog, *placement.container, combat_entry->max_speed_multiplier.of(asset.land)), spawn);
                     }
                 }
+                else if (!asset.land)
+                {
+                    // Space avoidance steers ships around immobile entities with a radius.
+                    // Starbases give only their soft radius (100 to 550).
+                    spawn.radius = type_space_obstacle_radius(catalog, *placement.type);
+                    if (spawn.radius <= 0.0F)
+                    {
+                        spawn.radius = type_soft_footprint_radius(catalog, *placement.type);
+                    }
+                    asset.space_obstacles += spawn.radius > 0.0F ? 1U : 0U;
+                }
             }
             asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size()), placement.type != nullptr ? type_death_style(catalog, *placement.type) : DeathStyle{},
                                       placement.type != nullptr ? type_script_info(catalog, *placement.type) : ScriptTypeInfo{}, map.placed_objects[placement.object_index].hint});

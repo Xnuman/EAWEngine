@@ -188,6 +188,39 @@ std::optional<GroundFootprint> type_ground_footprint(const GameObjectCatalog& ca
     return footprint;
 }
 
+float type_space_obstacle_radius(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto behaves = [&](const std::string_view behavior)
+    {
+        for (const auto* field : {"Behavior", "SpaceBehavior"})
+        {
+            if (const auto* list = catalog.field(definition, field).field)
+            {
+                for (const auto name : split_type_names(list->text))
+                {
+                    if (ascii_equal_ignoring_case(name, behavior))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    };
+    const auto set = [&](const std::string_view field)
+    {
+        const auto* node = catalog.field(definition, field).field;
+        return node != nullptr && parse_xml_bool(node->text).value_or(false);
+    };
+    // Fields and clouds are entered (their effects wait for space hazards).
+    if (!behaves("SPACE_OBSTACLE") || set("Is_Asteroid_Field") || set("Is_Nebula") || set("Is_Ion_Storm"))
+    {
+        return 0.0F;
+    }
+    const auto radius = type_float_field(catalog, definition, "Space_Obstacle_Radius");
+    return radius > 0.0F ? radius : 0.0F;
+}
+
 float type_scale_factor(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings)
 {
     const auto* node = catalog.field(definition, "Scale_Factor").field;
@@ -218,8 +251,14 @@ Matrix4 scaled_model_transform(Matrix4 transform, const float scale) noexcept
 
 float type_soft_footprint_radius(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
-    const auto radius = type_float_field(catalog, definition, "Custom_Soft_Footprint_Radius");
-    return radius > 0.0F && radius < 10000.0F ? radius : 0.0F;
+    for (const auto* field : {"Custom_Soft_Footprint_Radius", "Custom_Footprint_Radius"})
+    {
+        if (const auto radius = type_float_field(catalog, definition, field); radius > 0.0F && radius < 10000.0F)
+        {
+            return radius;
+        }
+    }
+    return 0.0F;
 }
 
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition)

@@ -1,5 +1,7 @@
 #include "assets/sound_events.hpp"
 
+#include "assets/game_object_catalog.hpp"
+
 #include "core/string_utils.hpp"
 
 #include <algorithm>
@@ -42,20 +44,7 @@ std::optional<float> number_of(const XmlNode* field)
 
 std::optional<bool> flag_of(const XmlNode* field)
 {
-    if (field == nullptr)
-    {
-        return std::nullopt;
-    }
-    const auto text = ascii_lower(ascii_trim(field->text));
-    if (text == "yes" || text == "true" || text == "1")
-    {
-        return true;
-    }
-    if (text == "no" || text == "false" || text == "0")
-    {
-        return false;
-    }
-    return std::nullopt;
+    return field != nullptr ? parse_xml_bool(field->text) : std::nullopt;
 }
 
 // Names separated by whitespace or commas.

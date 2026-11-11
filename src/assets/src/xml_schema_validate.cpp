@@ -2,6 +2,7 @@
 // repetition, and object references.
 
 #include "assets/xml_schema.hpp"
+#include "assets/game_object_catalog.hpp"
 
 #include "xml_schema_internal.hpp"
 
@@ -159,8 +160,7 @@ std::optional<std::string> validate_value(const XmlTagSchema& tag, const XmlNode
     const auto type = ascii_lower(tag.value_type);
     if (type == "boolean")
     {
-        const auto folded = ascii_lower(value);
-        if (folded != "yes" && folded != "no" && folded != "true" && folded != "false" && folded != "1" && folded != "0")
+        if (!parse_xml_bool(value))
         {
             return "expected a boolean (Yes/No)";
         }
@@ -476,8 +476,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
 
     const auto truthy = [](const std::string_view value)
     {
-        const auto folded = ascii_lower(std::string(ascii_trim(value)));
-        return folded == "yes" || folded == "true" || folded == "1";
+        return parse_xml_bool(value).value_or(false);
     };
     using EffectiveFieldKey = std::pair<const XmlDefinition*, std::string>;
     std::map<EffectiveFieldKey, std::vector<std::string>> effective_field_cache;

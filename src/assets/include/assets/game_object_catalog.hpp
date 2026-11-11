@@ -20,6 +20,10 @@ class AssetReader;
 // audit (`EAWAssetInspector map-objects`); see docs/compatibility-research.md.
 [[nodiscard]] std::uint32_t game_object_name_crc(std::string_view name) noexcept;
 
+// An XML boolean field's value: Yes/No, true/false, or 1/0 (any case, surrounding whitespace
+// ignored); nothing for anything else.
+[[nodiscard]] std::optional<bool> parse_xml_bool(std::string_view text);
+
 enum class GameModelContext
 {
     space,

@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 98 |
+| `done` | 100 |
 | `partial` | 16 |
-| `gap` | 309 |
+| `gap` | 307 |
 | `needs` | 679 |
 | `n/a` | 15 |
 | total | 1117 |
@@ -62,7 +62,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-21 done, 5 partial, 64 gap, 18 needs, 5 n/a.
+23 done, 5 partial, 62 gap, 18 needs, 5 n/a.
 
 ### Speed and acceleration
 
@@ -143,8 +143,8 @@ Systems that `needs` rows wait for, by tag count:
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Space_Layer` | `done` |  |
-| `Space_Obstacle_Offset` | `gap` |  |
-| `Space_Obstacle_Radius` | `gap` |  |
+| `Space_Obstacle_Offset` | `gap` | 0 0 0 in nearly all stock uses |
+| `Space_Obstacle_Radius` | `done` | ships steer around it; fields, nebulae, and ion storms excepted |
 | `Debris_Movement_Vector` | `gap` |  |
 
 ### Footprint, extents, and passability
@@ -152,7 +152,7 @@ Systems that `needs` rows wait for, by tag count:
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Custom_Soft_Footprint_Radius` | `done` |  |
-| `Custom_Footprint_Radius` | `gap` |  |
+| `Custom_Footprint_Radius` | `done` | separation radius when no soft radius is given |
 | `Custom_Hard_XExtent` | `partial` | obstacle footprints only; mobile units and death clones do not use it yet |
 | `Custom_Hard_YExtent` | `partial` | as Custom_Hard_XExtent |
 | `Custom_Hard_XExtent_Offset` | `partial` | as Custom_Hard_XExtent |

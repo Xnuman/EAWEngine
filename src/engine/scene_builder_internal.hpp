@@ -359,7 +359,14 @@ std::optional<std::uint32_t> type_obstacle_passability(const GameObjectCatalog& 
 // it sets neither (the mesh bounds stand in).
 std::optional<GroundFootprint> type_ground_footprint(const GameObjectCatalog& catalog, const XmlDefinition& definition, const Matrix4& placement, std::uint32_t passability_type);
 
-// XML Custom_Soft_Footprint_Radius (infantry 3.5), or 0 when it is missing.
+// The radius ships keep clear of an immobile space object: its XML Space_Obstacle_Radius when its
+// behaviors include SPACE_OBSTACLE (docks, asteroids, wrecks, junk); 0 for asteroid fields,
+// nebulae, and ion storms, which ships enter. World units, unscaled (an inference, as for hard
+// extents); Space_Obstacle_Offset (0 0 0 in nearly all stock uses) is not read.
+float type_space_obstacle_radius(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+
+// XML Custom_Soft_Footprint_Radius (infantry 3.5), else Custom_Footprint_Radius (small space craft:
+// 7 or 15; taken as their separation radius, an engine choice), or 0 when both are missing.
 float type_soft_footprint_radius(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // A type's XML Scale_Factor (inherited through Variant_Of_Existing_Type), the size its model is drawn
 // at; 1 when absent, and 1 with a warning when not a positive number.

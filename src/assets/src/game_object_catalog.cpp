@@ -68,6 +68,20 @@ std::uint32_t game_object_name_crc(const std::string_view name) noexcept
     return crc32_finish(crc);
 }
 
+std::optional<bool> parse_xml_bool(const std::string_view text)
+{
+    const auto value = ascii_lower(ascii_trim(text));
+    if (value == "yes" || value == "true" || value == "1")
+    {
+        return true;
+    }
+    if (value == "no" || value == "false" || value == "0")
+    {
+        return false;
+    }
+    return std::nullopt;
+}
+
 GameObjectCatalog GameObjectCatalog::build(const XmlAssetDatabase& database)
 {
     GameObjectCatalog catalog;
