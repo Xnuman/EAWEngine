@@ -132,6 +132,62 @@ std::optional<std::uint32_t> type_obstacle_passability(const GameObjectCatalog& 
     return std::nullopt;
 }
 
+std::optional<GroundFootprint> type_ground_footprint(const GameObjectCatalog& catalog, const XmlDefinition& definition, const Matrix4& placement, const std::uint32_t passability_type)
+{
+    const auto* source = &definition;
+    if (const auto* proxy = catalog.field(definition, "Obstacle_Proxy_Type").field)
+    {
+        if (const auto found = catalog.find(ascii_trim(proxy->text)); !found.empty())
+        {
+            source = found.back();
+        }
+    }
+    const auto value = [&](const std::string_view field)
+    {
+        return type_float_field(catalog, *source, field);
+    };
+    // In the type's frame: x forward, y to the side.
+    float half_x = 0.0F;
+    float half_y = 0.0F;
+    float center_x = 0.0F;
+    float center_y = 0.0F;
+    if (value("Obstacle_Width") > 0.0F && value("Obstacle_Height") > 0.0F)
+    {
+        // A rectangle from its corner offset; without offsets it is centered.
+        half_x = value("Obstacle_Width") * 0.5F;
+        half_y = value("Obstacle_Height") * 0.5F;
+        center_x = (catalog.field(*source, "Obstacle_X_Offset").field != nullptr ? value("Obstacle_X_Offset") : -half_x) + half_x;
+        center_y = (catalog.field(*source, "Obstacle_Y_Offset").field != nullptr ? value("Obstacle_Y_Offset") : -half_y) + half_y;
+    }
+    else if (value("Custom_Hard_XExtent") > 0.0F && value("Custom_Hard_YExtent") > 0.0F)
+    {
+        half_x = value("Custom_Hard_XExtent");
+        half_y = value("Custom_Hard_YExtent");
+        center_x = value("Custom_Hard_XExtent_Offset");
+        center_y = value("Custom_Hard_YExtent_Offset");
+    }
+    else
+    {
+        return std::nullopt;
+    }
+    // The type's x runs along the model's -Y (its forward) and its y along the model's +X, matched
+    // against the mesh bounds of off-center props (W_ROCKCLSTR01, W_RUINS03, W_TEMPROCKCLSTR03).
+    // Sizes are world units, not scaled by Scale_Factor (TIE crawler and MPTL: an inference).
+    const auto model_x = center_y;
+    const auto model_y = -center_x;
+    const auto heading = std::atan2(placement.values[1], placement.values[0]);
+    const auto cos_heading = std::cos(heading);
+    const auto sin_heading = std::sin(heading);
+    GroundFootprint footprint;
+    footprint.passability = passability_type;
+    footprint.center = {placement.values[12] + model_x * cos_heading - model_y * sin_heading, placement.values[13] + model_x * sin_heading + model_y * cos_heading, placement.values[14]};
+    // GroundFootprint's length runs along its heading, the model's +X.
+    footprint.half_length = half_y;
+    footprint.half_width = half_x;
+    footprint.heading = heading;
+    return footprint;
+}
+
 float type_scale_factor(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings)
 {
     const auto* node = catalog.field(definition, "Scale_Factor").field;

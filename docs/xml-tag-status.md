@@ -3,7 +3,8 @@
 The working list for implementing the tags of [xml-object-tags.md](xml-object-tags.md): every tag of
 its catalogue with what the engine does with it. The catalogue holds the evidence (users, values,
 meaning); this file holds only the status, and is updated in the same change as the code. Work goes
-through the `gap` and `partial` rows family by family; `needs` rows wait for their system.
+through the `gap` and `partial` rows family by family; `needs` rows wait for their system. After
+changing rows, `scripts/update-tag-status.ps1` recounts the summary and the family lines.
 
 | Status | Meaning |
 | --- | --- |
@@ -22,11 +23,11 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 93 |
-| `partial` | 12 |
-| `gap` | 320 |
+| `done` | 98 |
+| `partial` | 16 |
+| `gap` | 309 |
 | `needs` | 679 |
-| `n/a` | 13 |
+| `n/a` | 15 |
 | total | 1117 |
 
 Systems that `needs` rows wait for, by tag count:
@@ -45,10 +46,10 @@ Systems that `needs` rows wait for, by tag count:
 | unit spawning | 17 |
 | fog of war | 16 |
 | radar | 14 |
-| cinematics | 11 |
 | AI | 11 |
-| transports | 9 |
+| cinematics | 11 |
 | garrisons | 9 |
+| transports | 9 |
 | space hazards | 8 |
 | tactical overview | 8 |
 | secondary locomotor | 5 |
@@ -61,7 +62,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-16 done, 1 partial, 75 gap, 18 needs, 3 n/a.
+21 done, 5 partial, 64 gap, 18 needs, 5 n/a.
 
 ### Speed and acceleration
 
@@ -152,21 +153,21 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Custom_Soft_Footprint_Radius` | `done` |  |
 | `Custom_Footprint_Radius` | `gap` |  |
-| `Custom_Hard_XExtent` | `gap` |  |
-| `Custom_Hard_YExtent` | `gap` |  |
-| `Custom_Hard_XExtent_Offset` | `gap` |  |
-| `Custom_Hard_YExtent_Offset` | `gap` |  |
+| `Custom_Hard_XExtent` | `partial` | obstacle footprints only; mobile units and death clones do not use it yet |
+| `Custom_Hard_YExtent` | `partial` | as Custom_Hard_XExtent |
+| `Custom_Hard_XExtent_Offset` | `partial` | as Custom_Hard_XExtent |
+| `Custom_Hard_YExtent_Offset` | `partial` | as Custom_Hard_XExtent |
 | `Collision_Box_Modifier` | `gap` |  |
 | `Collision_Mesh` | `gap` |  |
-| `Obstacle_Width` | `gap` |  |
-| `Obstacle_Height` | `gap` |  |
-| `Obstacle_X_Offset` | `gap` |  |
-| `Obstacle_Y_Offset` | `gap` |  |
-| `Obstacle_Proxy_Type` | `gap` |  |
+| `Obstacle_Width` | `done` | obstacle footprint rectangle |
+| `Obstacle_Height` | `done` |  |
+| `Obstacle_X_Offset` | `done` |  |
+| `Obstacle_Y_Offset` | `done` |  |
+| `Obstacle_Proxy_Type` | `done` |  |
 | `OverridePassability` | `done` |  |
 | `SecondaryOccupationPassability` | `gap` |  |
-| `Fine_Tune_Occupied_Passability` | `gap` |  |
-| `OccupationStyle` | `gap` |  |
+| `Fine_Tune_Occupied_Passability` | `n/a` | never enabled in stock |
+| `OccupationStyle` | `n/a` | one value (1x1) in stock |
 | `UnitCollisionClass` | `done` |  |
 | `MaxJiggleDistance` | `gap` |  |
 | `MinimumPushReturnDistance` | `gap` |  |

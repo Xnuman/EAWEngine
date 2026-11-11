@@ -61,6 +61,11 @@ void test_combat_content()
                 "<GroundVehicle Name=\"Picky\"><Targeting_Priority_Set>AntiTank</Targeting_Priority_Set><Property_Flags>Turret</Property_Flags></GroundVehicle>"
                 "<Container Name=\"Slow_Team\"><Max_Speed>.5</Max_Speed><Override_Acceleration>.1</Override_Acceleration></Container>"
                 "<GroundCompany Name=\"Slow_Company\"><Create_Team_Type>Slow_Team</Create_Team_Type></GroundCompany>"
+                "<Prop Name=\"Rock\"><Custom_Hard_XExtent>24</Custom_Hard_XExtent><Custom_Hard_YExtent>30</Custom_Hard_YExtent><Custom_Hard_XExtent_Offset>3</Custom_Hard_XExtent_Offset>"
+                "<Custom_Hard_YExtent_Offset>-10</Custom_Hard_YExtent_Offset></Prop>"
+                "<Prop Name=\"Pad\"><Obstacle_Width>40</Obstacle_Width><Obstacle_Height>20</Obstacle_Height><Obstacle_X_Offset>0</Obstacle_X_Offset><Obstacle_Y_Offset>-10</Obstacle_Y_Offset>"
+                "<Custom_Hard_XExtent>5</Custom_Hard_XExtent><Custom_Hard_YExtent>5</Custom_Hard_YExtent></Prop>"
+                "<GroundStructure Name=\"On_Pad\"><Obstacle_Proxy_Type>Pad</Obstacle_Proxy_Type></GroundStructure>"
                 "<Projectile Name=\"Proj_Paced\"><Projectile_Fire_Recharge_Seconds>6</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>2</Projectile_Fire_Pulse_Count></Projectile>"
                 "<GroundVehicle Name=\"Paced\"><Projectile_Types>Proj_Paced, Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>50</Targeting_Max_Attack_Distance></GroundVehicle>"
                 "<HardPoint Name=\"HP_Gun\"><Fire_SFXEvent> Turbo </Fire_SFXEvent><Type> HARD_POINT_WEAPON_LASER </Type><Fire_Projectile_Type>Proj_Tank</Fire_Projectile_Type>"
@@ -121,6 +126,28 @@ void test_combat_content()
     require(team.max_speed && *team.max_speed == 0.5F * eaw::provisional_max_speed_scale * 2.0F && team.acceleration && *team.acceleration == 0.1F * eaw::provisional_acceleration_scale &&
                 !team.turn_rate && !team.deceleration && !eaw::scene_build::type_team_movement(catalog, *definition("Tank"), 1.0F).max_speed,
             "a company's team must give its members the team's speed and acceleration, and only what it sets");
+    {
+        // Rotated a quarter turn and moved: the type's forward (x) maps to the model's -Y.
+        auto placement = eaw::Matrix4::identity();
+        placement.values[0] = 0.0F;
+        placement.values[1] = 1.0F;
+        placement.values[4] = -1.0F;
+        placement.values[5] = 0.0F;
+        placement.values[12] = 100.0F;
+        placement.values[13] = 200.0F;
+        const auto near = [](const float a, const float b)
+        {
+            return std::fabs(a - b) < 1.0e-3F;
+        };
+        const auto rock = eaw::scene_build::type_ground_footprint(catalog, *definition("Rock"), placement, eaw::passability::obstacle);
+        require(rock && near(rock->center.x, 103.0F) && near(rock->center.y, 190.0F) && rock->half_length == 30.0F && rock->half_width == 24.0F && near(rock->heading, 1.5707964F),
+                "hard extents must be half extents around their offset, the type's x along the model's forward");
+        const auto pad = eaw::scene_build::type_ground_footprint(catalog, *definition("Pad"), eaw::Matrix4::identity(), eaw::passability::obstacle);
+        const auto on_pad = eaw::scene_build::type_ground_footprint(catalog, *definition("On_Pad"), eaw::Matrix4::identity(), eaw::passability::obstacle);
+        require(pad && near(pad->center.x, 0.0F) && near(pad->center.y, -20.0F) && pad->half_length == 10.0F && pad->half_width == 20.0F && on_pad && near(on_pad->center.y, -20.0F) &&
+                    on_pad->half_width == 20.0F && !eaw::scene_build::type_ground_footprint(catalog, *definition("Tank"), eaw::Matrix4::identity(), eaw::passability::obstacle),
+                "an obstacle rectangle must win over hard extents, a proxy type must lend its own, and a type without either must give none");
+    }
     eaw::EntitySpawn member{.max_speed = 30.0F, .turn_rate = 2.0F};
     eaw::apply_team_movement(team, member);
     require(member.max_speed == *team.max_speed && member.turn_rate == 2.0F && member.movement.acceleration == *team.acceleration, "team movement must replace only what the team sets");

@@ -353,6 +353,12 @@ float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefiniti
 // props do not block. A provisional reading of the stock data.
 std::optional<std::uint32_t> type_obstacle_passability(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
+// The ground rectangle a type's XML gives when placed with `placement`: its Obstacle_Width/_Height
+// rectangle (from the Obstacle_X/_Y_Offset corner), else its Custom_Hard_X/_YExtent half extents
+// (around the _Offset center), read from its Obstacle_Proxy_Type when it names one; nothing when
+// it sets neither (the mesh bounds stand in).
+std::optional<GroundFootprint> type_ground_footprint(const GameObjectCatalog& catalog, const XmlDefinition& definition, const Matrix4& placement, std::uint32_t passability_type);
+
 // XML Custom_Soft_Footprint_Radius (infantry 3.5), or 0 when it is missing.
 float type_soft_footprint_radius(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // A type's XML Scale_Factor (inherited through Variant_Of_Existing_Type), the size its model is drawn

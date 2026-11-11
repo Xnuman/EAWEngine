@@ -234,6 +234,9 @@ repository from their own location and use the built executables):
 # The reference scenes on WARP, compared with an earlier set (keep both folders outside the repository)
 .\scripts\check-captures.ps1 -Output D:\eaw-captures\before
 .\scripts\check-captures.ps1 -Output D:\eaw-captures\after -Reference D:\eaw-captures\before
+
+# Recount docs/xml-tag-status.md after changing rows (rewrites its summary and family counts)
+.\scripts\update-tag-status.ps1
 ```
 
 `check-battle.ps1` holds the expected hash as its default; a change that alters the simulation on

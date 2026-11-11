@@ -393,9 +393,22 @@ structure with Obstacle.
 Blocking structures are the `GroundStructure`, `SpecialStructure`, and
 `SecondaryStructure` kinds, plus types whose `UnitCollisionClass` is High,
 Medium, or Low Obstacle. Build pads and other props do not block. This is a
-provisional reading, as are the footprints, which are rectangles from the
-model bounds until the ALO collision meshes are interpreted. Unit separation
-uses `Custom_Soft_Footprint_Radius` where present (3.5 for stock infantry).
+provisional reading. A footprint is the type's XML rectangle when it gives one
+(below), else the model bounds' rectangle. Unit separation uses
+`Custom_Soft_Footprint_Radius` where present (3.5 for stock infantry).
+
+XML footprints (2026-11-11). `Obstacle_Width` and `Obstacle_Height` are a full
+rectangle placed from its corner (`Obstacle_X_Offset`, `Obstacle_Y_Offset`;
+stock offsets are almost always minus half the size). `Custom_Hard_XExtent`
+and `Custom_Hard_YExtent` are half extents around `Custom_Hard_XExtent_Offset`
+and `_YExtent_Offset`: the T2B tank's 20 by 10 matches its 44 by 22 chassis.
+The XML's x runs along the model's -Y (its forward) and its y along the model's
++X: the off-center boxes of the rock and ruin props match their mesh bounds
+that way (W_ROCKCLSTR01: extents 24, 30 at offset 3, -10 against mesh bounds
+x -42..22, y -28..22; W_RUINS03 and W_TEMPROCKCLSTR03 likewise). Sizes are world
+units not scaled by `Scale_Factor` (the TIE crawler at scale 0.75 and the MPTL
+at 1.1 match their unscaled meshes; an inference). `Obstacle_Proxy_Type` lends
+another type's footprint (structures defer to their build pad).
 
 Space weapons and squadrons.
 

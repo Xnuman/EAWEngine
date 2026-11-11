@@ -328,7 +328,11 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                 {
                     if (const auto blocks = type_obstacle_passability(catalog, *placement.type))
                     {
-                        spawn.footprint = mesh_ground_footprint(scene, *entry->second, matrix, *blocks);
+                        spawn.footprint = type_ground_footprint(catalog, *placement.type, matrix, *blocks);
+                        if (!spawn.footprint)
+                        {
+                            spawn.footprint = mesh_ground_footprint(scene, *entry->second, matrix, *blocks);
+                        }
                         ++asset.obstacle_footprints;
                     }
                 }
