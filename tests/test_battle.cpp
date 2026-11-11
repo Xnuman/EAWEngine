@@ -415,6 +415,44 @@ void test_battle_log()
             "remove, attack-move, and guard orders must be written to the log");
 }
 
+// Spawn orders put ground units on the map and on ground they may enter.
+void test_spawn_placement()
+{
+    eaw::GroundMap ground;
+    ground.width = 20;
+    ground.height = 20;
+    ground.spacing = 10.0F;
+    ground.heights.assign(400, 0.0F);
+    ground.passability.assign(400, eaw::passability::clear);
+    // A blocked square, cells 8..12 on both axes.
+    for (std::uint32_t y = 8; y <= 12; ++y)
+    {
+        for (std::uint32_t x = 8; x <= 12; ++x)
+        {
+            ground.passability[y * 20U + x] = eaw::passability::obstacle;
+        }
+    }
+    eaw::SpawnableType trooper;
+    trooper.type_name = "Trooper";
+    trooper.max_speed = 10.0F;
+    trooper.follows_ground = true;
+    trooper.passable_types = eaw::passability::clear;
+    eaw::BattleMap map;
+    map.ground = &ground;
+    map.spawnable = std::span(&trooper, 1);
+    eaw::Battle battle(map, "TEST.TED", 0.1);
+    expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {100.0F, 100.0F, 0.0F}, .type = "Trooper", .count = 1, .owner = 1}), "spawn on blocked ground");
+    expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {-500.0F, 900.0F, 0.0F}, .type = "Trooper", .count = 1, .owner = 1}), "spawn off the map");
+    battle.step();
+    const auto& spawned = battle.world().snapshot().entities;
+    require(spawned.size() == 2, "both spawns must succeed");
+    const auto& blocked = spawned[0].position;
+    const auto& outside = spawned[1].position;
+    require(*ground.passability_at(blocked.x, blocked.y) == eaw::passability::clear && std::hypot(blocked.x - 100.0F, blocked.y - 100.0F) <= 40.0F,
+            "a spawn on blocked ground must move to the nearest open cell");
+    require(outside.x == 0.0F && outside.y == 190.0F, "a spawn off the map must move onto its edge");
+}
+
 // A destroyed object with Destruction_Survivors leaves its survivors, owned as it was, where it died.
 void test_destruction_survivors()
 {
@@ -740,6 +778,7 @@ const ModuleRegistrar registrar("battle", {
                                               {"test_battle_object_scripts", &test_battle_object_scripts},
                                               {"test_battle_orders", &test_battle_orders},
                                               {"test_battle_log", &test_battle_log},
+                                              {"test_spawn_placement", &test_spawn_placement},
                                               {"test_destruction_survivors", &test_destruction_survivors},
                                               {"test_runtime_spawnable_registration", &test_runtime_spawnable_registration},
                                           });

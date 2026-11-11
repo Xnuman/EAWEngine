@@ -4,6 +4,7 @@
 #include "rts_control.hpp"
 
 #include "eaw/formation.hpp"
+#include "eaw/pathfinding.hpp"
 #include "core/log.hpp"
 #include "core/string_utils.hpp"
 
@@ -36,6 +37,22 @@ bool has_whitespace(const std::string& text) noexcept
 }
 
 } // namespace
+
+Vector3 open_ground(const GroundMap& ground, Vector3 point, const std::uint32_t passable_types)
+{
+    if (!ground.valid())
+    {
+        return point;
+    }
+    point.x = std::clamp(point.x, 0.0F, static_cast<float>(ground.width - 1U) * ground.spacing);
+    point.y = std::clamp(point.y, 0.0F, static_cast<float>(ground.height - 1U) * ground.spacing);
+    if (const auto open = nearest_enterable(ground, {point.x, point.y}, passable_types))
+    {
+        point.x = open->x;
+        point.y = open->y;
+    }
+    return point;
+}
 
 BattleMap battle_map(const VisualMapAsset& asset)
 {
@@ -189,6 +206,11 @@ EntitySpawn Battle::spawn_of(const std::size_t type_index, Vector3 position, con
     const auto& type = spawnable_[type_index];
     const auto& ground = world_.ground();
     const bool follows_ground = type.follows_ground && ground.valid();
+    // Never inside a building, a wall, or off the map (its stamped footprints count).
+    if (follows_ground)
+    {
+        position = open_ground(ground, position, type.passable_types);
+    }
     if (ground.valid())
     {
         position.z = ground.surface_height(position.x, position.y) + (type.follows_ground ? 0.0F : type.hover_offset);

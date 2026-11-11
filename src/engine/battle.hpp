@@ -48,6 +48,11 @@ struct BattleMap
 // owner-slot hostility (combat_content.hpp).
 [[nodiscard]] BattleMap battle_map(const VisualMapAsset& asset);
 
+// `point` moved onto the ground grid, then, when its cell's passability is not among
+// `passable_types`, to the nearest cell that is (nearest_enterable); unchanged without passability
+// data. Spawn orders place ground units with it.
+[[nodiscard]] Vector3 open_ground(const GroundMap& ground, Vector3 point, std::uint32_t passable_types);
+
 enum class BattleOrder : std::uint8_t
 {
     // `count` groups of `type` for `owner` around `point`: single types on a grid 40 units apart,

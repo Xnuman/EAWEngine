@@ -54,6 +54,8 @@ Vector3 battle_center(const VisualMapAsset& asset)
     {
         const auto& ground = asset.ground;
         Vector3 center{static_cast<float>(ground.width - 1U) * ground.spacing * 0.5F, static_cast<float>(ground.height - 1U) * ground.spacing * 0.5F, 0.0F};
+        // Open ground, so every side can reach it (Utapau's middle is ground no unit may enter).
+        center = open_ground(ground, center, passability::clear);
         center.z = ground.surface_height(center.x, center.y);
         return center;
     }

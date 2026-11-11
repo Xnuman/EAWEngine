@@ -6,6 +6,7 @@
 #include "eaw/ground_map.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace eaw {
@@ -56,6 +57,11 @@ struct PathResult
 //
 // Scratch storage and region labels are reused between searches, so a pathfinder is cheap to call
 // repeatedly but not thread-safe, and reset() must be called when the ground's passability changes.
+// `point` when its ground cell's passability is among `passable_types`, else the center of the
+// nearest such cell (Euclidean; ties to the lower index); nothing without passability data or
+// when no cell qualifies.
+[[nodiscard]] std::optional<PathPoint> nearest_enterable(const GroundMap& ground, PathPoint point, std::uint32_t passable_types);
+
 class GridPathfinder final
 {
 public:

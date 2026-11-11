@@ -110,6 +110,24 @@ template <class Wanted> std::optional<std::uint32_t> nearest_cell(const GroundMa
 
 } // namespace
 
+std::optional<PathPoint> nearest_enterable(const GroundMap& ground, const PathPoint point, const std::uint32_t passable_types)
+{
+    if (!ground.valid() || ground.passability.size() != ground.heights.size() || passable_types == 0)
+    {
+        return std::nullopt;
+    }
+    if (enterable(ground, cell_of(ground, point), passable_types))
+    {
+        return point;
+    }
+    const auto cell = nearest_cell(ground, point, point,
+                                   [&](const std::uint32_t candidate)
+                                   {
+                                       return enterable(ground, candidate, passable_types);
+                                   });
+    return cell ? std::optional<PathPoint>{cell_center(ground, *cell)} : std::nullopt;
+}
+
 bool ground_line_passable(const GroundMap& ground, const PathPoint from, const PathPoint to, const std::uint32_t passable_types)
 {
     if (!has_passability(ground) || !finite(from) || !finite(to))
