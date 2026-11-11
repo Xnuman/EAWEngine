@@ -397,6 +397,19 @@ void test_standing_orders()
         require(arrived.order == eaw::StandingOrder::none && !arrived.moving && std::abs(arrived.position.x - 1000.0F) < 1.0F, "an attack-move must resume and end on arrival");
     }
 
+    // Attack-move with XML Attack_Move_Response_Range 30: the hostile 60 beside the path is left alone.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        auto short_reach = armed;
+        short_reach.attack_move_response_range = 30.0F;
+        const auto mover = *world.spawn({.type_name = "Mover", .owner = 1, .max_speed = 50.0F, .combat = short_reach, .stance = eaw::Stance::hold_fire});
+        const auto victim = *world.spawn({.type_name = "Victim", .owner = 2, .position = {500.0F, 60.0F, 0.0F}, .combat = weak});
+        world.submit({.kind = eaw::SimCommandKind::attack_move, .entities = {mover}, .target = {1000.0F, 0.0F, 0.0F}});
+        run(world, 400);
+        require(world.alive(victim) && world.stats().shots_fired == 0, "an attack-move must react only within its response range");
+    }
+
     // Attack-move: a fast hostile that flees is chased only to the leash, then the move resumes.
     {
         eaw::SimulationWorld world(0.1);

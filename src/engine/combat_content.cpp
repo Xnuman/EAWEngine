@@ -475,6 +475,8 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     profile.collidable = type.flag("Collidable_By_Projectile_Living", true);
     profile.targetable = type.flag("Is_Valid_Target", true);
     profile.immune = type.flag("Immune_To_Damage", false);
+    profile.attack_move_response_range = type.amount("Attack_Move_Response_Range");
+    profile.guard_chase_range = type.amount("Guard_Chase_Range");
     profile.type_key = game_object_name_crc(definition.name);
     profile.targeting = targeting_priorities(catalog, definition, content, warnings);
     if (const auto* flags = type.node("Property_Flags"))

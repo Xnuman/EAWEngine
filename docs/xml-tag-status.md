@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 111 |
+| `done` | 113 |
 | `partial` | 17 |
-| `gap` | 293 |
+| `gap` | 291 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -224,7 +224,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-34 done, 1 partial, 67 gap, 33 needs.
+36 done, 1 partial, 65 gap, 33 needs.
 
 ### Health, shields, armor, and energy
 
@@ -363,9 +363,9 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Guard_Chase_Range` | `gap` |  |
-| `Idle_Chase_Range` | `gap` |  |
-| `Attack_Move_Response_Range` | `gap` |  |
+| `Guard_Chase_Range` | `done` | the guard leash |
+| `Idle_Chase_Range` | `gap` | idle units do not chase attackers yet |
+| `Attack_Move_Response_Range` | `done` |  |
 | `Harass_Enemy_Exclusion_Range` | `needs AI` |  |
 | `Is_Escort` | `needs AI` |  |
 | `Space_Escort_Unit_Types` | `needs AI` |  |

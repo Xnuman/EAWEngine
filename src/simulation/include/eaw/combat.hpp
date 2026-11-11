@@ -174,6 +174,11 @@ struct CombatProfile
     // damaged (XML Immune_To_Damage: build pads, markers).
     bool targetable{true};
     bool immune{};
+    // Standing orders (world units; 0: the engine's defaults, see simulation.hpp): how far an
+    // attack-mover reacts to hostiles (XML Attack_Move_Response_Range) and how far a guard chases
+    // (XML Guard_Chase_Range).
+    float attack_move_response_range{};
+    float guard_chase_range{};
     // Property bits (GameObjectPropertiesType, XML Property_Flags) and a key of its type (the CRC-32
     // of the type name), for others' targeting priorities.
     std::uint32_t properties{};

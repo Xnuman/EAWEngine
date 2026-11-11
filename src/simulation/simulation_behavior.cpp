@@ -321,7 +321,7 @@ void SimulationWorld::run_standing_order(const std::size_t index)
     {
         const auto victim = combat.ordered ? attack_victim(index) : std::nullopt;
         const auto& leash_center = guard ? order.point : order.engage_origin;
-        const float leash = std::max(range * leash_range_factor, guard ? guard_radius : 0.0F);
+        const float leash = guard && combat.profile.guard_chase_range > 0.0F ? combat.profile.guard_chase_range : std::max(range * leash_range_factor, guard ? guard_radius : 0.0F);
         if (victim && distance_xy(positions_[*victim], leash_center) <= leash)
         {
             return;
@@ -344,7 +344,8 @@ void SimulationWorld::run_standing_order(const std::size_t index)
         {
             order.scan_timer = retarget_interval;
             const auto& center = guard ? order.point : positions_[index];
-            const float reach = guard ? guard_radius : range * acquire_range_factor;
+            const float response = combat.profile.attack_move_response_range;
+            const float reach = guard ? guard_radius : (response > 0.0F ? response : range * acquire_range_factor);
             const auto best = choose_target(index, center, reach,
                                             [&](const std::size_t candidate)
                                             {
