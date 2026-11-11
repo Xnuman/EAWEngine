@@ -25,9 +25,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 | --- | --- |
 | `done` | 140 |
 | `partial` | 19 |
-| `gap` | 261 |
+| `gap` | 260 |
 | `needs` | 679 |
-| `n/a` | 18 |
+| `n/a` | 19 |
 | total | 1117 |
 
 Systems that `needs` rows wait for, by tag count:
@@ -418,7 +418,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Projectiles and damage delivery
 
-30 done, 3 partial, 13 gap, 48 needs, 1 n/a.
+30 done, 3 partial, 12 gap, 48 needs, 2 n/a.
 
 ### Firing cadence (on the shooter)
 
@@ -466,7 +466,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Projectile_Category` | `gap` | shapes follow the gravity and curve tags instead |
 | `Projectile_Max_Flight_Distance` | `partial` | 0 means "detonate at once" in the data (death and ability blasts, which the engine detonates where they start), "unlimited" for fired shots |
 | `Projectile_Max_Lifetime` | `done` |  |
-| `Projectile_Acceleration_Per_Frame` | `gap` |  |
+| `Projectile_Acceleration_Per_Frame` | `n/a` | 0 in both stock uses; comments say it must stay 0 |
 | `Projectile_Max_Scan_Range` | `done` | retargets when the target dies |
 | `Projectile_Target_Point_On_Terrain` | `gap` |  |
 | `Explode_When_Reached_Target_Radius` | `gap` |  |
