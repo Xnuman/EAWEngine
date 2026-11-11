@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 101 |
+| `done` | 102 |
 | `partial` | 16 |
-| `gap` | 304 |
+| `gap` | 303 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -62,7 +62,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-24 done, 5 partial, 59 gap, 18 needs, 7 n/a.
+25 done, 5 partial, 58 gap, 18 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -95,7 +95,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Alternate_Max_Rate_Of_Turn` | `needs secondary locomotor` | jetpack and phase heroes |
 | `Stopped_Rate_Of_Turn` | `done` |  |
 | `Min_Speed_Fraction_For_Turn` | `done` |  |
-| `Close_Enough_Angle_For_Move_Start` | `gap` |  |
+| `Close_Enough_Angle_For_Move_Start` | `done` | the default (45) disagrees with GameConstants (180); see the roadmap |
 | `Begin_Turn_Towards_Distance` | `gap` |  |
 | `Bank_Turn_Angle` | `gap` |  |
 | `Max_Rate_Of_Roll` | `gap` |  |

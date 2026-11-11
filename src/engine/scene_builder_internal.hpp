@@ -384,11 +384,14 @@ float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& defi
 // Override_Acceleration and Override_Deceleration, the team containers' spelling)
 // (provisional_acceleration_scale; absent changes speed at once) and Min_Speed_Fraction_For_Turn. On
 // land it turns at Stopped_Rate_Of_Turn (or Max_Rate_Of_Turn) below that fraction and stops to turn
-// when its way is more than ground_turn_in_place_angle off; in space it cannot turn below that
+// when its way is more than Close_Enough_Angle_For_Move_Start (degrees; the AT-AT 30) or else
+// ground_turn_in_place_angle off; in space it cannot turn below that
 // fraction (default_space_turn_speed_fraction without one). The default profile for flyers.
 MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, bool land, bool flyer);
-// Engine choices, not the original's (no evidence yet): how far off its way a ground unit stops to
-// turn, and the turn speed fraction of space ships that do not name one (capital ships).
+// Engine choices, not the original's: how far off its way a ground unit stops to turn (the
+// owner's observation that land units do not turn while moving off; GameConstants'
+// CloseEnoughAngleForMoveStart says 180, which would never stop them, so the two disagree), and the
+// turn speed fraction of space ships that do not name one (capital ships).
 inline constexpr float ground_turn_in_place_angle = 0.785398163F;
 inline constexpr float default_space_turn_speed_fraction = 0.25F;
 

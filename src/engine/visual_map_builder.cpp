@@ -544,6 +544,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
     };
     SpawnableBuild build{builder, catalog_entry->catalog, movement_entry->classes, land ? GameModelContext::land : GameModelContext::space, land, meshes, profile_of, package.types};
     build.speed_multiplier = combat_entry->max_speed_multiplier.of(land);
+    build.speed_multiplier = combat_entry->max_speed_multiplier.of(land);
     const auto index = add_spawnable_type(build, std::string(type_name), 0);
     if (!index || package.meshes.meshes.empty())
     {

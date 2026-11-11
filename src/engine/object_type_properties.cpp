@@ -13,6 +13,7 @@
 #include <cmath>
 #include <filesystem>
 #include <limits>
+#include <numbers>
 #include <ranges>
 #include <span>
 #include <system_error>
@@ -300,7 +301,10 @@ MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinit
     {
         const auto stopped = rate("Stopped_Rate_Of_Turn", provisional_turn_rate_scale);
         movement.stopped_turn_rate = stopped > 0.0F ? stopped : type_turn_rate(catalog, definition);
-        movement.turn_in_place_angle = ground_turn_in_place_angle;
+        // Degrees; 180 and above never stop to turn (two stock types say 180, one 360).
+        const auto* angle = catalog.field(definition, "Close_Enough_Angle_For_Move_Start").field;
+        const auto degrees = angle != nullptr ? type_float_field(catalog, definition, "Close_Enough_Angle_For_Move_Start") : 0.0F;
+        movement.turn_in_place_angle = degrees > 0.0F ? std::min(degrees, 180.0F) * std::numbers::pi_v<float> / 180.0F : ground_turn_in_place_angle;
     }
     return movement;
 }

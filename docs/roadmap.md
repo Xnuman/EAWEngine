@@ -298,6 +298,9 @@ compared by measured ratios from screenshots, never by recreated scenes):
   how often infantry, tanks, and capital ships hit in the original;
 - whether `Object_Max_Speed_Multiplier_*` also scales projectile speeds;
 - team movement: whether company members take their team container's speed and acceleration;
+- whether ground units stop to turn: GameConstants' `CloseEnoughAngleForMoveStart` is 180 (never
+  stop) while the engine stops them beyond 45 degrees after the owner's observation; types that
+  set `Close_Enough_Angle_For_Move_Start` (the AT-AT 30) apply either way;
 - space avoidance: the look-ahead (3 s of travel, at least 4 radii), the margin (a quarter radius),
   the course steps (11.25 degrees), the formation spacing of ships (slots 4.5 radii apart), which
   units are small enough to fly past (below a fifth of the radius), and that a unit at another
