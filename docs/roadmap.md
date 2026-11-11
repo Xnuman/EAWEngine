@@ -305,9 +305,10 @@ compared by measured ratios from screenshots, never by recreated scenes):
   divide the damage, and whether the direct victim takes the blast besides the shot;
 - crushing: which units run over infantry (the engine: vehicle collision classes and
   supercrushers) and whether friendly infantry are crushed;
-- whether ground units stop to turn: GameConstants' `CloseEnoughAngleForMoveStart` is 180 (never
-  stop) while the engine stops them beyond 45 degrees after the owner's observation; types that
-  set `Close_Enough_Angle_For_Move_Start` (the AT-AT 30) apply either way;
+- whether ground units stop to turn when starting from rest: GameConstants'
+  `CloseEnoughAngleForMoveStart` is 180 (never stop) while the engine stops them beyond 45 degrees
+  after the owner's observation; types that set `Close_Enough_Angle_For_Move_Start` (the AT-AT 30)
+  apply either way (on the move units turn while walking, seen in the owner's recording);
 - space avoidance: the look-ahead (3 s of travel, at least 4 radii), the margin (a quarter radius),
   the course steps (11.25 degrees), the formation spacing of ships (slots 4.5 radii apart), which
   units are small enough to fly past (below a fifth of the radius), and that a unit at another

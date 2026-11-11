@@ -770,6 +770,19 @@ void test_movement_profiles()
         require(world.snapshot().entities[0].position.x == -50.0F, "a unit that turned in place must arrive");
     }
     {
+        // On the move, a new way 60 degrees off is taken while walking, not by stopping to turn.
+        eaw::SimulationWorld world(0.1);
+        const auto walker = world.spawn({.type_name = "Walker", .max_speed = 20.0F, .turn_rate = pi / 2.0F, .movement = {.turn_in_place_angle = pi / 4.0F}});
+        require(walker.ok(), "test spawn must succeed");
+        world.submit({eaw::SimCommandKind::move, {*walker}, {200.0F, 0.0F, 0.0F}});
+        run(world, 5);
+        const auto before = world.snapshot().entities[0].position;
+        world.submit({eaw::SimCommandKind::move, {*walker}, {before.x + 100.0F, before.y + 173.2F, 0.0F}});
+        run(world, 1);
+        const auto& turning = world.snapshot().entities[0];
+        require(turning.moving && std::hypot(turning.position.x - before.x, turning.position.y - before.y) > 1.0F, "a moving unit must turn on the move");
+    }
+    {
         // A ship that cannot turn below half its speed goes forward first, then turns back.
         eaw::SimulationWorld world(0.1);
         const auto ship = world.spawn({.type_name = "Ship", .max_speed = 20.0F, .turn_rate = pi / 2.0F, .movement = {.acceleration = 20.0F, .deceleration = 20.0F, .turn_speed_fraction = 0.5F}});

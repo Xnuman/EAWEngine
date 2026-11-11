@@ -233,7 +233,9 @@ float SimulationWorld::wanted_speed(const std::size_t index, const float facing,
 {
     const auto& movement = movements_[index];
     auto factor = facing;
-    if (movement.turn_in_place_angle > 0.0F && facing < std::cos(movement.turn_in_place_angle))
+    // Turning in place is for starting from rest (Close_Enough_Angle_For_Move_Start); a unit on the
+    // move turns while it walks (the owner's recording: the AT-AT swings 90 degrees mid-walk).
+    if (movement.turn_in_place_angle > 0.0F && drive_speeds_[index] <= 0.0F && facing < std::cos(movement.turn_in_place_angle))
     {
         factor = 0.0F;
     }
