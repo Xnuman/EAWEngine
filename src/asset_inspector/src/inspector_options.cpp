@@ -35,12 +35,14 @@ void usage()
               << "  EAWAssetInspector xml-audit [prefix] [options]\n"
               << "  EAWAssetInspector localization-refs <xml-path> [options]\n"
               << "  EAWAssetInspector extract [prefix] --output <folder> [options]\n"
-              << "  EAWAssetInspector spawn-types [options]\n\n"
+              << "  EAWAssetInspector spawn-types [options]\n"
+              << "  EAWAssetInspector sound-audit [options]\n\n"
               << "Options:\n"
               << "  --game-root <path>      Installation root (auto-detected by default)\n"
               << "  --game <eaw|foc>        Game profile (default: foc)\n"
               << "  --schema-root <path>    Optional eaw-schema checkout for XML validation\n"
               << "  --mod <path>            Mod root; repeatable, first has priority\n"
+              << "  --language <name>       Language of text and speech archives (default: English)\n"
               << "  --prefix <path>         Summary/list prefix (default: Data)\n"
               << "  --extension <.xml>      Filter list by extension\n"
               << "  --limit <count>         Maximum list/sample rows (not used by extract)\n"
@@ -118,6 +120,10 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
                 options.extension.insert(options.extension.begin(), '.');
             }
             options.extension = ascii_lower(options.extension);
+        }
+        else if (argument == "--language")
+        {
+            options.language = value;
         }
         else if (argument == "--output")
         {

@@ -36,13 +36,14 @@ void test_combat_content()
                 "<Projectile Name=\"Proj_Base\"><Max_Speed>10</Max_Speed><Projectile_Max_Flight_Distance>400</Projectile_Max_Flight_Distance>"
                 "<Projectile_Does_Shield_Damage>No</Projectile_Does_Shield_Damage><Damage_Type>Damage_Laser</Damage_Type></Projectile>"
                 "<Projectile Name=\"Proj_Tank\"><Variant_Of_Existing_Type>Proj_Base</Variant_Of_Existing_Type><Projectile_Damage>7.5</Projectile_Damage></Projectile>"
-                "<GroundVehicle Name=\"Tank\"><Tactical_Health>100</Tactical_Health><Shield_Points>50</Shield_Points><Shield_Refresh_Rate>4</Shield_Refresh_Rate>"
+                "<GroundVehicle "
+                "Name=\"Tank\"><SFXEvent_Fire>Tank_Fire</SFXEvent_Fire><Tactical_Health>100</Tactical_Health><Shield_Points>50</Shield_Points><Shield_Refresh_Rate>4</Shield_Refresh_Rate>"
                 "<Armor_Type> Armor_Tank </Armor_Type><Shield_Armor_Type>Shield_Tank</Shield_Armor_Type><Ranged_Target_Z_Adjust>12</Ranged_Target_Z_Adjust>"
                 "<Projectile_Types>Proj_Tank, Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>200</Targeting_Max_Attack_Distance>"
                 "<Projectile_Fire_Recharge_Seconds>1.5</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>3</Projectile_Fire_Pulse_Count>"
                 "<Projectile_Fire_Pulse_Delay_Seconds>0.2</Projectile_Fire_Pulse_Delay_Seconds></GroundVehicle>"
                 "<GroundStructure Name=\"Wall\"><Tactical_Health>-5</Tactical_Health></GroundStructure>"
-                "<HardPoint Name=\"HP_Gun\"><Type> HARD_POINT_WEAPON_LASER </Type><Fire_Projectile_Type>Proj_Tank</Fire_Projectile_Type>"
+                "<HardPoint Name=\"HP_Gun\"><Fire_SFXEvent> Turbo </Fire_SFXEvent><Type> HARD_POINT_WEAPON_LASER </Type><Fire_Projectile_Type>Proj_Tank</Fire_Projectile_Type>"
                 "<Fire_Min_Recharge_Seconds>3</Fire_Min_Recharge_Seconds><Fire_Max_Recharge_Seconds>4</Fire_Max_Recharge_Seconds><Fire_Pulse_Count>7</Fire_Pulse_Count>"
                 "<Fire_Pulse_Delay_Seconds>0.2</Fire_Pulse_Delay_Seconds><Fire_Range_Distance>2000</Fire_Range_Distance><Damage_Type>Damage_Unknown</Damage_Type></HardPoint>"
                 "<HardPoint Name=\"HP_Shield\"><Type>HARD_POINT_SHIELD_GENERATOR</Type><Health>375</Health><Attachment_Bone>HP_Bone</Attachment_Bone></HardPoint>"
@@ -86,6 +87,8 @@ void test_combat_content()
     // the min/max range and a hardpoint's Damage_Type overrides its projectile's.
     const auto cruiser = eaw::combat_profile(catalog, *definition("Cruiser"), content, warnings);
     require(cruiser.weapons.size() == 2 && cruiser.range() == 2000.0F, "every weapon hardpoint must become a weapon");
+    require(cruiser.weapons[0].fire_sound == eaw::game_object_name_crc("TURBO") && tank.weapons.front().fire_sound == eaw::game_object_name_crc("Tank_Fire"),
+            "a weapon hardpoint must play its Fire_SFXEvent, a unit's weapon its SFXEvent_Fire");
     using Kind = eaw::HardpointProfile::Kind;
     require(cruiser.hardpoints.size() == 3 && cruiser.hardpoints[0].kind == Kind::weapon && cruiser.hardpoints[1].kind == Kind::shield_generator && cruiser.hardpoints[1].health == 375.0F &&
                 cruiser.hardpoints[0].health == 0.0F && cruiser.weapons[0].hardpoint == 0 && cruiser.weapons[1].hardpoint == 2 && cruiser.weapons[0].cone_half_angle >= 3.14F,
@@ -379,7 +382,7 @@ void test_battle_scripts()
                 "  print(\"stub order \" .. tostring(walker.Attack_Move(MainForce)))\n"
                 "  local refused = beacon.Move_To(walker)\n"
                 "  print(\"immobile \" .. tostring(refused.IsFinished()) .. \" \" .. tostring(refused.Result()))\n"
-                "  print(\"stub \" .. tostring(walker.Play_SFX_Event(\"Unit_Select\") ~= nil))\n"
+                "  print(\"stub \" .. tostring(walker.Highlight(true) ~= nil))\n"
                 "  walker.Make_Invulnerable(true)\n"
                 "  walker.Teleport_And_Face(beacon)\n"
                 "  walker.Take_Damage(500)\n"
@@ -502,6 +505,7 @@ void test_battle_object_scripts()
                                "  print(\"shield \" .. Object.Get_Shield() .. \" hero \" .. tostring(Object.Get_Type().Is_Hero()) .. \" rating \" .. "
                                "Object.Get_Type().Get_Combat_Rating())\n"
                                "  Object.Prevent_Opportunity_Fire(true)\n"
+                               "  Object.Play_SFX_Event(\"Walker_Hello\")\n"
                                "  print(tostring(Script))\n"
                                "  _ScriptMessage(\"debug line\")\n"
                                "  while true do PumpEvents() end\n"
@@ -543,6 +547,12 @@ void test_battle_object_scripts()
     scripts.run(battle);
     require(scripts.size() == 2, "a spawned entity must get its type's script, and a missing script must start nothing");
     const auto walker_id = battle.world().snapshot().entities[1].id;
+    const auto sounds = scripts.sound_requests();
+    require(sounds.size() == 1 && sounds[0].event == "Walker_Hello" && sounds[0].object == walker_id && sounds[0].position.x == 0.0F,
+            "Play_SFX_Event must ask for the sound at the object, for the driver to play");
+    battle.step();
+    scripts.run(battle);
+    require(scripts.sound_requests().empty(), "sound requests must last one script phase");
     for (int tick = 0; tick < 10; ++tick)
     {
         battle.step();

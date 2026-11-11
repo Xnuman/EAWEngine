@@ -156,6 +156,8 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         }
         const auto placed = register_particle_textures(std::move(visual_map.particle_textures), visual_map.rigs, visual_map.effects, &visual_map.effect_objects, &visual_map.projectile_visuals);
         start_simulation(layout, eaw::battle_map(visual_map), *options.map);
+        audio.reset();
+        audio.emplace(vfs, &asset_cache, *audio_device, options.language, visual_map.land);
         animator.emplace(visual_map.rigs, visual_map.rest_palette);
         effects.reset({visual_map.rigs, &visual_map.projectile_visuals, placed_atlas(visual_map.projectile_atlas, placed), &visual_map.effect_objects});
         shown_effects = visual_map.effects;
@@ -280,6 +282,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         }
         visual_model = std::move(content.model);
         animator.reset();
+        audio.reset();
         effects.reset({});
         shown_effects.clear();
         shown_effect_ids.clear();
@@ -374,7 +377,8 @@ void SandboxSession::poll_hot_reload()
             {
                 const auto& mount = vfs.mounts()[index];
                 const auto archive = mount->source_path();
-                auto replacement = eaw::MegMount::open(std::string(mount->name()), archive);
+                // Only archive mounts are watched for rebuilds (kind meg_archive).
+                auto replacement = static_cast<const eaw::MegMount&>(*mount).reopen();
                 if (!replacement)
                 {
                     // Typically the archive is still being written; the next check retries.

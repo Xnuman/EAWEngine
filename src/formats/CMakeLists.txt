@@ -59,6 +59,16 @@ set(EAW_FORMATS_LOCALIZATION
     ${SOURCES_DIR}/dat_string_table_helpers.cpp
 )
 
+set(EAW_FORMATS_AUDIO
+    ${HEADERS_DIR}/wav_audio.hpp
+    ${SOURCES_DIR}/wav_audio.cpp
+)
+
+set(EAW_FORMATS_ANIMATION
+    ${HEADERS_DIR}/animation_sfx_map.hpp
+    ${SOURCES_DIR}/animation_sfx_map.cpp
+)
+
 set(EAW_FORMATS_SCRIPT
     ${HEADERS_DIR}/lua_bytecode.hpp
     ${SOURCES_DIR}/lua_bytecode.cpp
@@ -66,6 +76,8 @@ set(EAW_FORMATS_SCRIPT
 
 set(EAW_FORMATS_FILES
     ${EAW_FORMATS_ALAMO}
+    ${EAW_FORMATS_ANIMATION}
+    ${EAW_FORMATS_AUDIO}
     ${EAW_FORMATS_MODEL}
     ${EAW_FORMATS_PARTICLE}
     ${EAW_FORMATS_TEXTURE}
@@ -80,6 +92,8 @@ set(EAW_FORMATS_SOURCES ${EAW_FORMATS_FILES})
 list(FILTER EAW_FORMATS_SOURCES INCLUDE REGEX "\\.cpp$")
 
 source_group("alamo" FILES ${EAW_FORMATS_ALAMO})
+source_group("animation" FILES ${EAW_FORMATS_ANIMATION})
+source_group("audio" FILES ${EAW_FORMATS_AUDIO})
 source_group("model" FILES ${EAW_FORMATS_MODEL})
 source_group("particle" FILES ${EAW_FORMATS_PARTICLE})
 source_group("texture" FILES ${EAW_FORMATS_TEXTURE})

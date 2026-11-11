@@ -159,15 +159,28 @@ inline constexpr float unkillable_health_fraction = 0.01F;
 
 // Space avoidance (engine choices to check in play): in the original, ships neither push each
 // other nor overlap; they steer around units in their way, and pass above or below units at
-// another height or much smaller than themselves (owner's observation). A moving ship looks ahead
-// avoid_lookahead_seconds of travel (at least avoid_min_lookahead_radii of its radius), avoids
-// units whose footprint, widened by avoid_margin_fraction of its radius, crosses its course, and
-// ignores units whose height differs by more than both radii or whose radius is below
-// avoid_small_fraction of its own.
+// another height or much smaller than themselves (owner's observation). Each tick a moving ship
+// tries avoid_course_candidates courses, the straight one to its target first and then turning
+// right and left by avoid_course_step, and flies the first that keeps its clearance (both radii
+// plus avoid_margin_fraction of its own) from every neighbour for avoid_lookahead_seconds (at
+// least the time to travel avoid_min_lookahead_radii of its radius), the neighbours moving straight to
+// their targets; when none does, the course whose contact comes latest (or that opens the gap of a
+// ship already too close). A destination inside a still ship's clearance moves to the nearest free
+// of avoid_arrival_candidates points on that clearance (plus avoid_arrival_slack). Ships at
+// another height (more than both radii) or with a radius below avoid_small_fraction of its own are
+// flown past.
 inline constexpr float avoid_lookahead_seconds = 3.0F;
 inline constexpr float avoid_min_lookahead_radii = 4.0F;
 inline constexpr float avoid_margin_fraction = 0.25F;
 inline constexpr float avoid_small_fraction = 0.2F;
+inline constexpr std::uint32_t avoid_course_candidates = 31;
+inline constexpr float avoid_course_step = 0.19634954F; // pi / 16, 11.25 degrees
+inline constexpr std::uint32_t avoid_arrival_candidates = 16;
+inline constexpr float avoid_arrival_slack = 0.05F;
+// Formation spacing of ships in space, at least (an engine choice; FormationSpacing is a ground
+// field in the stock data): slots 4.5 radii apart leave a ship room to pass between two stopped ones
+// with its avoidance clearance (2.25 radii each side), so late arrivals can reach slots ahead.
+inline constexpr float space_formation_spacing = 1.25F;
 
 struct SimCommand
 {
@@ -296,6 +309,16 @@ struct ImpactSnapshot
     ImpactKind kind{ImpactKind::hull};
 };
 
+// A shot launched in the last tick (each pulse of each weapon), for fire sounds and muzzle effects
+// (a derived output, not part of the state hash).
+struct ShotSnapshot
+{
+    EntityId shooter;
+    Vector3 origin;
+    // The weapon's WeaponProfile::fire_sound, or 0.
+    std::uint32_t sound{};
+};
+
 struct SimSnapshot
 {
     std::uint64_t tick{};
@@ -305,6 +328,8 @@ struct SimSnapshot
     std::vector<DeathSnapshot> deaths;
     // Shots that ended in this tick, in the order they ended.
     std::vector<ImpactSnapshot> impacts;
+    // Shots launched in this tick, in launch order.
+    std::vector<ShotSnapshot> shots;
 };
 
 // Converts real elapsed time into whole simulation ticks. At most `max_ticks_per_advance` ticks are
@@ -521,6 +546,9 @@ private:
     void run_separation();
     // Navigation (simulation_navigation.cpp): local avoidance of space ships (detours_).
     void plan_space_avoidance();
+    // A space ship's step without the part that would take it deeper into a ship it touches (both
+    // radii), so ships slide along each other instead of overlapping; other steps unchanged.
+    [[nodiscard]] Vector3 keep_apart(std::size_t index, Vector3 step);
     // Stamps (or removes) an entity's footprint into the ground's passability.
     void stamp_footprint(std::size_t index, bool add);
     void run_combat();
@@ -658,10 +686,15 @@ private:
     // Deaths of the current tick (SimSnapshot::deaths).
     std::vector<DeathSnapshot> deaths_;
     std::vector<ImpactSnapshot> impacts_;
+    std::vector<ShotSnapshot> shots_;
     // Launch number of the next shot (ProjectileSnapshot::serial; presentation only, not hashed).
     std::uint32_t next_projectile_serial_{1};
     SpatialGrid grid_;
     std::vector<std::uint32_t> query_;
+    // Space avoidance's scratch: a ship's neighbours, and the largest ship radius of the tick's
+    // plan (0 when no ship steers; keep_apart then has nothing to do).
+    std::vector<std::uint32_t> neighbours_;
+    float largest_ship_radius_{};
     DamageTable damage_table_;
     Hostility hostility_;
     std::uint64_t shots_fired_{};

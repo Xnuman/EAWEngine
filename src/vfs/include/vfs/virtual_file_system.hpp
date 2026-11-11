@@ -84,9 +84,15 @@ private:
 class MegMount final : public AssetMount
 {
 public:
-    // Opens the archive's index; the error names the archive and what is malformed.
-    [[nodiscard]] static Result<std::unique_ptr<MegMount>> open(std::string name, std::filesystem::path archive);
-    MegMount(std::string name, MegArchive archive);
+    // Opens the archive's index; the error names the archive and what is malformed. Entries appear
+    // under `virtual_folder` (empty: at their own paths); the sound-effect archives store bare file
+    // names that the game finds under DATA/AUDIO/SFX/.
+    [[nodiscard]] static Result<std::unique_ptr<MegMount>> open(std::string name, std::filesystem::path archive, std::string_view virtual_folder = {});
+    MegMount(std::string name, MegArchive archive, std::string virtual_folder = {});
+    // The folder entries appear under (normalized, ending in '/'), or empty.
+    [[nodiscard]] std::string_view virtual_folder() const noexcept;
+    // Opens the archive again with the same name and folder (after it was rebuilt).
+    [[nodiscard]] Result<std::unique_ptr<MegMount>> reopen() const;
     [[nodiscard]] std::string_view name() const noexcept override;
     [[nodiscard]] AssetSourceKind kind() const noexcept override;
     [[nodiscard]] const std::filesystem::path& source_path() const noexcept override;
@@ -96,8 +102,12 @@ public:
     [[nodiscard]] std::vector<std::string> paths() const override;
 
 private:
+    // The archive path of a virtual path under the folder, or nothing.
+    [[nodiscard]] std::optional<std::string> archive_path(std::string_view virtual_path) const;
+
     std::string name_;
     MegArchive archive_;
+    std::string virtual_folder_;
 };
 
 class VirtualFileSystem final : public AssetReader

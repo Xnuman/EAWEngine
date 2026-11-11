@@ -36,10 +36,31 @@ void SandboxSession::draw_panels()
     }
     const auto actions = eaw::draw_spawn_panel(panels, view);
     panel_actions.spawn_at_view_center = panel_actions.spawn_at_view_center || actions.spawn_at_view_center;
+    static constexpr std::array<std::string_view, eaw::audio_category_count> category_names{"Effects", "Voices", "Music", "Interface"};
+    eaw::SoundPanelView sound;
+    sound.master = &master_volume;
+    sound.categories = category_volumes;
+    sound.category_names = category_names;
+    sound.status = std::string(audio_device->name()) + ": " + std::to_string(audio_device->active_voices()) + " voices";
+    if (audio)
+    {
+        const auto& stats = audio->stats();
+        sound.status += ", " + std::to_string(stats.played) + " played (" + std::to_string(stats.from_animations) + " by animations), " + std::to_string(stats.replaced) + " replaced, " +
+                        std::to_string(stats.skipped) + " skipped, " + std::to_string(stats.missing) + " missing";
+    }
+    volumes_changed = eaw::draw_sound_panel(panels, sound) || volumes_changed;
 }
 
 void SandboxSession::apply_panel_actions()
 {
+    if (std::exchange(volumes_changed, false))
+    {
+        audio_device->set_master_volume(master_volume);
+        for (std::size_t index = 0; index < category_volumes.size(); ++index)
+        {
+            audio_device->set_category_volume(static_cast<eaw::AudioCategory>(index), category_volumes[index]);
+        }
+    }
     if (std::exchange(panel_actions.spawn_at_view_center, false) && spawn_choice < spawn_names.size() && world && tactical_camera)
     {
         const auto stats = renderer.stats();

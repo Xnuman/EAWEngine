@@ -13,6 +13,7 @@ set(EAW_ASSET_INSPECTOR_SOURCES
     ${SOURCES_DIR}/audit_lua.cpp
     ${SOURCES_DIR}/audit_maps.cpp
     ${SOURCES_DIR}/audit_particles.cpp
+    ${SOURCES_DIR}/audit_sounds.cpp
     ${SOURCES_DIR}/audit_textures.cpp
     ${SOURCES_DIR}/audit_xml.cpp
     ${SOURCES_DIR}/extract_assets.cpp

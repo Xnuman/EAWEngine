@@ -7,6 +7,8 @@
 #include "frame_watchdog.hpp"
 
 #include "assets/asset_cache.hpp"
+#include "audio/audio_device.hpp"
+#include "battle_audio.hpp"
 #include "battle_effects.hpp"
 #include "battle.hpp"
 #include "battle_scripts.hpp"
@@ -162,6 +164,14 @@ struct SandboxSession
     // Decoded assets shared by every build; a hot reload re-decodes only what changed.
     eaw::AssetCache asset_cache;
     eaw::ArchiveWatch archive_watch{vfs};
+    // The audio device (--audio; the null device when the backend cannot start) and the map's
+    // battle sounds, which read the asset cache and so are declared after it.
+    std::unique_ptr<eaw::AudioDevice> audio_device;
+    std::optional<eaw::BattleAudio> audio;
+    // Volumes the sound panel edits (applied to the device in the next frame).
+    float master_volume = options.volume;
+    std::array<float, eaw::audio_category_count> category_volumes{1.0F, 1.0F, 1.0F, 1.0F};
+    bool volumes_changed = false;
     std::optional<eaw::DependencySet> scene_dependencies;
     std::future<eaw::SandboxContent> pending_content;
     std::future<eaw::HotReloadCheck> pending_check;
@@ -178,7 +188,7 @@ struct SandboxSession
     bool reload_check_reported = false;
     std::int64_t click_travel = 0;
     // Dev panels (F1 opens their menu); statistics starts as --overlay says.
-    eaw::SandboxPanels panels{.menu = options.panels.menu, .statistics = options.overlay || options.panels.statistics, .spawn = options.panels.spawn};
+    eaw::SandboxPanels panels{.menu = options.panels.menu, .statistics = options.overlay || options.panels.statistics, .spawn = options.panels.spawn, .sound = options.panels.sound};
     bool statistics_shown = false;
     // How many units N and the spawn panel spawn, and the panel's last button presses.
     std::uint32_t spawn_count = 1;
@@ -238,6 +248,8 @@ struct SandboxSession
 
     // Cameras, selection, picks, and orders (sandbox_session_input.cpp).
     std::optional<eaw::Vector3> ground_target(const float x, const float y) const;
+    // The unit's type answers an order or a selection (its XML SFXEvent_Select/Move/Attack).
+    void respond(eaw::EntityId unit, eaw::UnitResponse response);
     void order_move(const eaw::Vector3& target);
     void order_attack(const eaw::EntityId victim);
     // Attack-move (Ctrl + right-click) or guard (Shift + right-click) for the selected mobile units:

@@ -3,6 +3,8 @@
 
 #include "simulation_internal.hpp"
 
+#include "math/scalar.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -258,6 +260,7 @@ void SimulationWorld::plan_shared_member(const PathRequest& request, const std::
 void SimulationWorld::plan_space_avoidance()
 {
     detours_.assign(ids_.size(), std::nullopt);
+    largest_ship_radius_ = 0.0F;
     if (ground_.valid())
     {
         return;
@@ -268,7 +271,7 @@ void SimulationWorld::plan_space_avoidance()
     };
     const auto steering = [&](const std::size_t index)
     {
-        return ship(index) && move_targets_[index] && group_waiting_[index] == 0 && path_pending_[index] == 0 && max_speeds_[index] > 0.0F;
+        return ship(index) && move_targets_[index] && group_waiting_[index] == 0 && path_pending_[index] == 0 && max_speeds_[index] > 0.0F && locomotor_suspended_[index] == 0;
     };
     float largest_radius = 0.0F;
     bool any = false;
@@ -284,6 +287,38 @@ void SimulationWorld::plan_space_avoidance()
     {
         return;
     }
+    largest_ship_radius_ = largest_radius;
+    // How fast a ship makes way on a course: a ship that turns slows by the cosine of how far its
+    // heading is off the course, as locomotion moves it (steer).
+    const auto way = [&](const std::size_t index, const float course)
+    {
+        return turn_rates_[index] > 0.0F ? std::max(0.0F, std::cos(wrap_angle(course - headings_[index]))) : 1.0F;
+    };
+    // Where a ship goes in the plane, as the others see it: toward its target at its travel speed,
+    // slowed while it turns; still when it has no target or is held. From state alone, so the plans
+    // of a tick do not depend on the order ships are planned in.
+    const auto velocity = [&](const std::size_t index) -> Vector2
+    {
+        if (!steering(index))
+        {
+            return {};
+        }
+        const auto& toward = *move_targets_[index];
+        const float x = toward.x - positions_[index].x;
+        const float y = toward.y - positions_[index].y;
+        const float length = std::hypot(x, y);
+        if (length <= arrival_distance)
+        {
+            return {};
+        }
+        const float speed = travel_speed(index) * way(index, std::atan2(y, x));
+        return {x / length * speed, y / length * speed};
+    };
+    std::vector<Vector2> velocities(ids_.size());
+    for (std::size_t index = 0; index < ids_.size(); ++index)
+    {
+        velocities[index] = ship(index) ? velocity(index) : Vector2{};
+    }
     grid_.build(positions_, grid_cell_size);
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
@@ -292,80 +327,236 @@ void SimulationWorld::plan_space_avoidance()
             continue;
         }
         const auto& here = positions_[index];
-        const auto& target = *move_targets_[index];
+        const float radius = radii_[index];
+        const float speed = travel_speed(index);
+        const float horizon = std::max(avoid_lookahead_seconds, radius * avoid_min_lookahead_radii / std::max(speed, 1.0e-3F));
+        query_.clear();
+        grid_.query(here, speed * horizon * 2.0F + radius + largest_radius, query_);
+        // The ships this one keeps clear of: at its height, not much smaller.
+        neighbours_.clear();
+        for (const auto other : query_)
+        {
+            if (other != index && ship(other) && radii_[other] >= radius * avoid_small_fraction && std::abs(positions_[other].z - here.z) <= radius + radii_[other])
+            {
+                neighbours_.push_back(other);
+            }
+        }
+        if (neighbours_.empty())
+        {
+            continue;
+        }
+        const auto clearance = [&](const std::size_t other)
+        {
+            return radius + radii_[other] + radius * avoid_margin_fraction;
+        };
+
+        // Where a neighbour will be: a still ship where it is; a moving one at its target when this
+        // ship yields to it (a lower entity id goes first).
+        const auto yields_to = [&](const std::size_t other)
+        {
+            return ids_[other].index != ids_[index].index ? ids_[other].index < ids_[index].index : ids_[other].generation < ids_[index].generation;
+        };
+        const auto resting_place = [&](const std::size_t other) -> std::optional<Vector3>
+        {
+            if (!steering(other))
+            {
+                return positions_[other];
+            }
+            return yields_to(other) ? std::optional<Vector3>(*move_targets_[other]) : std::nullopt;
+        };
+        // A destination inside the clearance of such a place moves to the nearest free point of
+        // that clearance circle, starting on this ship's side, so ships sent to one point stop side
+        // by side.
+        auto& target = *move_targets_[index];
+        for (const auto other : neighbours_)
+        {
+            const auto taken = resting_place(other);
+            if (!taken || std::hypot(target.x - taken->x, target.y - taken->y) >= clearance(other))
+            {
+                continue;
+            }
+            const float away = std::atan2(here.y - taken->y, here.x - taken->x);
+            const float reach = clearance(other) * (1.0F + avoid_arrival_slack);
+            for (std::uint32_t step = 0; step < avoid_arrival_candidates; ++step)
+            {
+                // 0, +1, -1, +2, -2, ... steps around the circle from this ship's side.
+                const auto turn = static_cast<float>((step + 1U) / 2U) * (step % 2U == 1U ? 1.0F : -1.0F);
+                const float angle = away + turn * two_pi / static_cast<float>(avoid_arrival_candidates);
+                const Vector3 point{taken->x + std::cos(angle) * reach, taken->y + std::sin(angle) * reach, target.z};
+                const bool free = std::ranges::none_of(neighbours_,
+                                                       [&](const std::size_t blocker)
+                                                       {
+                                                           const auto place = resting_place(blocker);
+                                                           return place && std::hypot(point.x - place->x, point.y - place->y) < clearance(blocker);
+                                                       });
+                if (free)
+                {
+                    target = point;
+                    break;
+                }
+            }
+            break;
+        }
+
         const float to_x = target.x - here.x;
         const float to_y = target.y - here.y;
-        const float distance = std::sqrt(to_x * to_x + to_y * to_y);
+        const float distance = std::hypot(to_x, to_y);
         if (distance <= arrival_distance)
         {
             continue;
         }
-        const float along_x = to_x / distance;
-        const float along_y = to_y / distance;
-        const float radius = radii_[index];
-        const float lookahead = std::min(distance, std::max(travel_speed(index) * avoid_lookahead_seconds, radius * avoid_min_lookahead_radii));
-        query_.clear();
-        grid_.query(here, lookahead + radius + largest_radius, query_);
-        // The nearest unit ahead whose widened footprint crosses the course; ties to the lower id.
-        std::optional<std::size_t> nearest;
-        float nearest_ahead = 0.0F;
-        float nearest_side = 0.0F;
+        // A course's outlook: when it first touches a neighbour's clearance before the ship arrives
+        // or the horizon ends (that limit when it never does; 0 when it is already inside one), and
+        // how fast it closes on the neighbours already inside (approach speed, summed). The ship
+        // stops at its target, so what lies beyond does not count.
+        struct Outlook
+        {
+            float time{};
+            float closing{};
+        };
+        const auto outlook = [&](const Vector2& course, const float limit, const bool margin)
+        {
+            Outlook result{limit, 0.0F};
+            for (const auto other : neighbours_)
+            {
+                const float px = positions_[other].x - here.x;
+                const float py = positions_[other].y - here.y;
+                const float wx = velocities[other].x - course.x;
+                const float wy = velocities[other].y - course.y;
+                const float reach = margin ? clearance(other) : radius + radii_[other];
+                const float c = px * px + py * py - reach * reach;
+                const float b = px * wx + py * wy;
+                if (c < 0.0F)
+                {
+                    // Inside: fine while the gap opens.
+                    if (b < 0.0F)
+                    {
+                        result.time = 0.0F;
+                        result.closing += -b / std::max(std::hypot(px, py), 1.0e-3F);
+                    }
+                    continue;
+                }
+                const float a = wx * wx + wy * wy;
+                const float discriminant = b * b - a * c;
+                if (a <= 0.0F || b >= 0.0F || discriminant < 0.0F)
+                {
+                    continue;
+                }
+                result.time = std::min(result.time, (-b - std::sqrt(discriminant)) / a);
+            }
+            return result;
+        };
+        // Courses from the straight one outward (ships meeting head-on both keep right): the first
+        // clear of every clearance until arrival or the horizon
+        // wins; else the first clear of contact (both radii: the margin is for comfort, and a ship
+        // may pass a neighbour closer to reach a packed slot); else the course whose contact comes
+        // latest, or among courses already in contact the one closing slowest. Courses are judged
+        // at full speed: slowing while it turns lasts only until the ship faces the course.
+        const float straight = std::atan2(to_y, to_x);
+        const float limit = std::min(horizon, distance / std::max(speed, 1.0e-3F));
+        // At each angle off the straight course, the side the ship is already turned toward comes
+        // first, so a ship going around a blockage keeps going around it instead of swinging back
+        // and forth; a ship facing its course takes the right first.
+        const float first_side = wrap_angle(headings_[index] - straight) > 0.0F ? 1.0F : -1.0F;
+        const auto course_angle = [&](const std::uint32_t step)
+        {
+            const auto turn = static_cast<float>((step + 1U) / 2U) * (step % 2U == 1U ? first_side : -first_side);
+            return straight + turn * avoid_course_step;
+        };
+        std::optional<float> chosen;
+        float best_angle = straight;
+        Outlook best{-1.0F, 0.0F};
+        for (const bool margin : {true, false})
+        {
+            for (std::uint32_t step = 0; step < avoid_course_candidates && !chosen; ++step)
+            {
+                const float angle = course_angle(step);
+                const auto candidate = outlook({std::cos(angle) * speed, std::sin(angle) * speed}, limit, margin);
+                if (candidate.time >= limit)
+                {
+                    chosen = angle;
+                    break;
+                }
+                const bool better = candidate.time > best.time || (candidate.time == 0.0F && best.time == 0.0F && candidate.closing < best.closing);
+                if (!margin && better)
+                {
+                    best = candidate;
+                    best_angle = angle;
+                }
+            }
+            if (chosen)
+            {
+                best_angle = *chosen;
+                break;
+            }
+        }
+        if (best_angle == straight)
+        {
+            continue;
+        }
+        // Steer along the chosen course, a horizon's travel ahead (never beyond the target's
+        // distance), on the way to the target's height.
+        const float ahead = std::min(distance, speed * horizon);
+        const float height = here.z + (target.z - here.z) * std::min(1.0F, ahead / distance);
+        detours_[index] = Vector3{here.x + std::cos(best_angle) * ahead, here.y + std::sin(best_angle) * ahead, height};
+    }
+}
+
+Vector3 SimulationWorld::keep_apart(const std::size_t index, Vector3 step)
+{
+    const float radius = radii_[index];
+    if (largest_ship_radius_ <= 0.0F || radius <= 0.0F || min_speeds_[index] > 0.0F || ground_.valid())
+    {
+        return step;
+    }
+    const auto& here = positions_[index];
+    query_.clear();
+    grid_.query(here, radius + largest_ship_radius_ + std::hypot(step.x, step.y), query_);
+    // Whether a step ends inside a ship it moves toward (deeper than it was).
+    const auto deeper = [&](const std::uint32_t other, const Vector3& candidate, float& to_x, float& to_y, float& apart)
+    {
+        const auto& there = positions_[other];
+        if (other == index || radii_[other] <= 0.0F || min_speeds_[other] > 0.0F || radii_[other] < radius * avoid_small_fraction || std::abs(there.z - here.z) > radius + radii_[other])
+        {
+            return false;
+        }
+        if (std::hypot(here.x + candidate.x - there.x, here.y + candidate.y - there.y) >= radius + radii_[other])
+        {
+            return false;
+        }
+        to_x = there.x - here.x;
+        to_y = there.y - here.y;
+        apart = std::hypot(to_x, to_y);
+        return apart > 0.0F && candidate.x * to_x + candidate.y * to_y > 0.0F;
+    };
+    // Twice, so a ship wedged between two slides clear of both where it can.
+    for (int pass = 0; pass < 2; ++pass)
+    {
         for (const auto other : query_)
         {
-            if (other == index || !ship(other) || radii_[other] < radius * avoid_small_fraction || std::abs(positions_[other].z - here.z) > radius + radii_[other])
+            float to_x = 0.0F;
+            float to_y = 0.0F;
+            float apart = 0.0F;
+            if (deeper(other, step, to_x, to_y, apart))
             {
-                continue;
-            }
-            const float offset_x = positions_[other].x - here.x;
-            const float offset_y = positions_[other].y - here.y;
-            const float ahead = offset_x * along_x + offset_y * along_y;
-            // Positive: the other unit lies left of the course.
-            const float side = along_x * offset_y - along_y * offset_x;
-            const float clearance = radius + radii_[other] + radius * avoid_margin_fraction;
-            if (ahead <= 0.0F || ahead > lookahead + radii_[other] || std::abs(side) >= clearance)
-            {
-                continue;
-            }
-            const auto lower_id = !nearest || ids_[other].index < ids_[*nearest].index || (ids_[other].index == ids_[*nearest].index && ids_[other].generation < ids_[*nearest].generation);
-            if (!nearest || ahead < nearest_ahead || (ahead == nearest_ahead && lower_id))
-            {
-                nearest = other;
-                nearest_ahead = ahead;
-                nearest_side = side;
+                const float along = (step.x * to_x + step.y * to_y) / apart;
+                step.x -= to_x / apart * along;
+                step.y -= to_y / apart * along;
             }
         }
-        if (!nearest)
-        {
-            continue;
-        }
-        const auto& blocker = positions_[*nearest];
-        const float reach = radius + radii_[*nearest] + radius * avoid_margin_fraction;
-        if (std::hypot(target.x - blocker.x, target.y - blocker.y) < reach)
-        {
-            // The destination lies at the unit in the way (a move onto another unit): the destination
-            // becomes the point at its clearance on the ship's side, as close as it gets, so the
-            // locomotor arrives there exactly.
-            const float away_x = here.x - blocker.x;
-            const float away_y = here.y - blocker.y;
-            const float away = std::hypot(away_x, away_y);
-            if (away > 0.0F)
-            {
-                move_targets_[index] = Vector3{blocker.x + away_x / away * reach, blocker.y + away_y / away * reach, target.z};
-            }
-            continue;
-        }
-        // Pass on the side away from it (to the right when it is dead ahead, so two ships meeting
-        // head-on both keep right), at its clearance: beside it while the ship is still a clearance
-        // or more away (aiming past it would cut the corner), moving ahead of it as the ship comes
-        // alongside (a point right beside it would hold the ship there); on the way to the target's
-        // height.
-        const float clearance = radius + radii_[*nearest] + radius * avoid_margin_fraction;
-        const float pass = nearest_side < 0.0F ? -1.0F : 1.0F;
-        const auto& obstacle = positions_[*nearest];
-        const float forward = clearance - std::min(nearest_ahead, clearance);
-        const float height = here.z + (target.z - here.z) * std::min(1.0F, (nearest_ahead + forward) / distance);
-        detours_[index] = Vector3{obstacle.x + along_y * clearance * pass + along_x * forward, obstacle.y - along_x * clearance * pass + along_y * forward, height};
     }
+    // Wedged in where no slide is free: it holds its place this tick.
+    for (const auto other : query_)
+    {
+        float to_x = 0.0F;
+        float to_y = 0.0F;
+        float apart = 0.0F;
+        if (deeper(other, step, to_x, to_y, apart))
+        {
+            return {0.0F, 0.0F, step.z};
+        }
+    }
+    return step;
 }
 
 void SimulationWorld::apply_formation_move(const SimCommand& command)
@@ -388,7 +579,10 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         command_serials_[*dense] = command.serial;
         standing_orders_[*dense].kind = StandingOrder::none;
         standing_orders_[*dense].engaging = false;
-        members.push_back({id, positions_[*dense], radii_[*dense], formation_spacings_[*dense], formation_orders_[*dense]});
+        // Ships in space keep slots wide enough for a ship to pass between two that have stopped.
+        const bool ship_in_space = !ground_.valid() && radii_[*dense] > 0.0F && min_speeds_[*dense] <= 0.0F;
+        const auto spacing = ship_in_space ? std::max(formation_spacings_[*dense], space_formation_spacing) : formation_spacings_[*dense];
+        members.push_back({id, positions_[*dense], radii_[*dense], spacing, formation_orders_[*dense]});
     }
     if (movers.empty())
     {

@@ -12,6 +12,10 @@
 //   next tick;
 // - script orders are not recorded in the battle log: a replay runs the same scripts again.
 //
+// Scripts also ask for presentation (sounds at objects): those requests go into the same per-script
+// buffers and are merged the same way into a list the driver reads after the phase
+// (presentation_requests); they never reach the simulation, the state hash, or the log.
+//
 // A driver's tick is: battle.step(), then BattleScripts::run(battle), then the players' orders.
 
 #include "battle.hpp"
@@ -83,6 +87,15 @@ private:
 
 class BattleScriptContext;
 
+// A sound a script asked for (GameObject.Play_SFX_Event): the sound event, the object, and where it
+// stood in the view the script read.
+struct ScriptSoundRequest
+{
+    std::string event;
+    EntityId object;
+    Vector3 position;
+};
+
 // Wall-clock cost of the script phases run so far (measurement, never read by the simulation).
 struct BattleScriptStats
 {
@@ -116,6 +129,8 @@ public:
 
     [[nodiscard]] std::size_t size() const noexcept;
     [[nodiscard]] const BattleScriptStats& stats() const noexcept;
+    // The sounds the scripts asked for in the last run(), in script order, then call order.
+    [[nodiscard]] std::span<const ScriptSoundRequest> sound_requests() const noexcept;
     [[nodiscard]] const ScriptHost& host(std::size_t index) const;
 
 private:
@@ -127,6 +142,7 @@ private:
     BattleScriptView view_;
     std::vector<std::unique_ptr<BattleScriptContext>> contexts_;
     std::vector<std::string> failed_scripts_;
+    std::vector<ScriptSoundRequest> sound_requests_;
     BattleScriptStats stats_;
 };
 

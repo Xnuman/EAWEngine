@@ -1,4 +1,5 @@
 #include "assets/resource_loaders.hpp"
+#include "assets/sound_loaders.hpp"
 
 #include "assets/alamo_loaders.hpp"
 #include "core/string_utils.hpp"
@@ -21,6 +22,22 @@ Result<Model> ResourceLoader<Model>::load(const AssetReader& reader, const std::
     EAW_TRY_ASSIGN(const auto bytes, reader.read(path));
     EAW_TRY_ASSIGN(const auto data, read_alo<AloModelData>(bytes));
     return load_model(data);
+}
+
+std::string ResourceLoader<Sound>::key(const std::string_view path)
+{
+    return std::string(path);
+}
+
+Result<Sound> ResourceLoader<Sound>::load(const AssetReader& reader, const std::string_view path)
+{
+    EAW_TRY_ASSIGN(const auto bytes, reader.read(path));
+    auto sound = decode_sound(bytes);
+    if (!sound)
+    {
+        return make_error(std::string(path) + ": " + sound.error().message);
+    }
+    return sound;
 }
 
 std::string ResourceLoader<Animation>::key(const std::string_view path)

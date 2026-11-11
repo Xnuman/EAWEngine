@@ -23,7 +23,7 @@ eaw::Result<int> run(const Options& options)
     }
 
     eaw::VirtualFileSystem vfs;
-    const auto report = eaw::mount_game_assets(vfs, *profile, options.mods);
+    const auto report = eaw::mount_game_assets(vfs, *profile, options.mods, options.language);
     for (const auto& warning : report.warnings)
     {
         std::cerr << "warning: " << warning << '\n';
@@ -64,6 +64,11 @@ eaw::Result<int> run(const Options& options)
     if (options.command == "lua-audit")
     {
         audit_lua(vfs, options.prefix, options.limit);
+        return 0;
+    }
+    if (options.command == "sound-audit")
+    {
+        audit_sounds(vfs, options.language, options.limit);
         return 0;
     }
     if (options.command == "spawn-types")

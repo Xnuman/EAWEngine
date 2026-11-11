@@ -6,6 +6,7 @@
 #include "assets/model.hpp"
 #include "assets/particle_rules.hpp"
 #include "assets/resource_manager.hpp"
+#include "audio/sound.hpp"
 #include "core/status.hpp"
 #include "formats/ted_map.hpp"
 
@@ -20,6 +21,15 @@ template <> struct ResourceLoader<Model>
 {
     using Value = Result<Model>;
     static constexpr std::string_view kind = "model";
+    [[nodiscard]] static std::string key(std::string_view path);
+    [[nodiscard]] static Value load(const AssetReader& reader, std::string_view path);
+};
+
+// Sounds of any supported format (assets/sound_loaders).
+template <> struct ResourceLoader<Sound>
+{
+    using Value = Result<Sound>;
+    static constexpr std::string_view kind = "sound";
     [[nodiscard]] static std::string key(std::string_view path);
     [[nodiscard]] static Value load(const AssetReader& reader, std::string_view path);
 };

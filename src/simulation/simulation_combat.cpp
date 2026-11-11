@@ -249,6 +249,7 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
     // The tick being run: the snapshot published at its end carries it as its tick.
     last_shot_ticks_[shooter] = tick_ + 1U;
     const auto origin = world_point(shooter, weapon.mount);
+    shots_.push_back({ids_[shooter], origin, weapon.fire_sound});
     const auto hardpoint = aim_hardpoint(victim, origin);
     if (weapon.projectile_speed <= 0.0F)
     {

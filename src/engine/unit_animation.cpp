@@ -3,6 +3,7 @@
 
 #include "scene_presentation.hpp"
 #include "assets/animation.hpp"
+#include "math/matrix.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -245,12 +246,32 @@ void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id,
     corpses_.push_back({instance, clip, seconds, lifetime});
 }
 
+void UnitAnimator::add_cue(const EntityId entity, const Vector3& position, const VisualClip& clip, const double from, const double to, const double loop_frames)
+{
+    if (to > from)
+    {
+        cues_.push_back({entity, position, clip.path, from, to});
+    }
+    else if (to < from && loop_frames > 0.0)
+    {
+        // The loop wrapped: to its end, then from its start.
+        cues_.push_back({entity, position, clip.path, from, loop_frames});
+        cues_.push_back({entity, position, clip.path, -1.0, to});
+    }
+}
+
+const std::vector<AnimationCue>& UnitAnimator::cues() const noexcept
+{
+    return cues_;
+}
+
 void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, const double seconds, const std::size_t max_palette,
                            std::vector<Matrix4>& palette)
 {
     EAW_ASSERT_MSG(entities.size() == instances.size(), "unit animation needs one entity slot per instance");
     ++frame_;
     stats_ = {};
+    cues_.clear();
     palette.assign(rest_palette_.begin(), rest_palette_.end());
     frame_offsets_.clear();
     snapshot_index_.clear();
@@ -350,7 +371,8 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         state.attack_weight = attack_target > state.attack_weight ? std::min(attack_target, state.attack_weight + fade) : std::max(attack_target, state.attack_weight - fade);
         state.attack_time = state.attack_weight > 0.0F ? state.attack_time + dt : 0.0;
         // Each new shot restarts ATTACK.
-        if (entity.last_shot_tick > state.last_shot)
+        const bool new_shot = entity.last_shot_tick > state.last_shot;
+        if (new_shot)
         {
             state.last_shot = entity.last_shot_tick;
             state.since_shot = 0.0;
@@ -386,6 +408,47 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         const auto fire_eighths = eighths(fire);
         const auto aim_eighths = std::min(eighths(state.attack_weight * (1.0F - fire)), 8U - fire_eighths);
         const auto locomotion = static_cast<float>(8U - fire_eighths - aim_eighths) / 8.0F;
+
+        // Events placed in the clips: the locomotion clip shown most, and ATTACK while it plays.
+        const auto position = translation(instance.transform);
+        {
+            const auto lower_weight = locomotion * (1.0F - blend.blend);
+            const auto upper_weight = upper == lower ? locomotion : locomotion * blend.blend;
+            const bool upper_leads = upper != lower && upper_weight > lower_weight;
+            const auto clip = upper_leads ? upper : lower;
+            const auto role = upper_leads ? blend.upper : blend.lower;
+            const auto weight = upper == lower ? locomotion : std::max(lower_weight, upper_weight);
+            if (clip >= 0 && weight >= animation_cue_minimum_weight)
+            {
+                const auto& visual_clip = rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)];
+                const auto duration = static_cast<double>(animation_duration(*visual_clip.animation));
+                const auto time = role == AnimationRole::idle ? std::fmod(std::max(seconds - state.idle_start, 0.0), std::max(duration, 1.0e-6)) : state.stride_phase * duration;
+                const auto frame = time * static_cast<double>(visual_clip.animation->frames_per_second);
+                if (clip == state.cue_clip)
+                {
+                    add_cue(entity.id, position, visual_clip, state.cue_frame, frame, static_cast<double>(visual_clip.animation->loop_frame_count));
+                }
+                state.cue_clip = clip;
+                state.cue_frame = frame;
+            }
+            else
+            {
+                state.cue_clip = no_clip;
+            }
+        }
+        if (fire_eighths > 0)
+        {
+            const auto& visual_clip = rigs_[instance.mesh].clips[static_cast<std::size_t>(state.attack)];
+            const auto frame = fire_time * static_cast<double>(visual_clip.animation->frames_per_second);
+            // A new shot restarts ATTACK: its events from the first frame on.
+            const auto from = new_shot ? -1.0 : state.fire_cue_frame;
+            add_cue(entity.id, position, visual_clip, from, frame, 0.0);
+            state.fire_cue_frame = frame;
+        }
+        else
+        {
+            state.fire_cue_frame = -1.0;
+        }
         PoseKey pose_key{instance.mesh, {}};
         pose_key.layers[0] = layer(lower, blend.lower, locomotion * (1.0F - blend.blend));
         pose_key.layers[1] = upper == lower ? Layer{} : layer(upper, blend.upper, locomotion * blend.blend);
@@ -424,10 +487,14 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                   {
                       return seconds - corpse.died > corpse.lifetime;
                   });
-    for (const auto& corpse : corpses_)
+    for (auto& corpse : corpses_)
     {
-        const auto duration = static_cast<double>(animation_duration(*rigs_[corpse.instance.mesh].clips[static_cast<std::size_t>(corpse.clip)].animation));
+        const auto& die_clip = rigs_[corpse.instance.mesh].clips[static_cast<std::size_t>(corpse.clip)];
+        const auto duration = static_cast<double>(animation_duration(*die_clip.animation));
         const auto time = std::clamp(seconds - corpse.died, 0.0, duration * 0.9999);
+        const auto cue_frame = time * static_cast<double>(die_clip.animation->frames_per_second);
+        add_cue({}, translation(corpse.instance.transform), die_clip, corpse.cue_frame, cue_frame, 0.0);
+        corpse.cue_frame = cue_frame;
         PoseKey key{corpse.instance.mesh, {}};
         key.layers[0] = {corpse.clip, slot_of(corpse.instance.mesh, corpse.clip, time), 8U};
         auto instance = corpse.instance;

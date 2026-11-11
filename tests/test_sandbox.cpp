@@ -41,6 +41,10 @@ void test_sandbox_options()
             "battle options must be read");
     const auto opened = expect_ok(parse({"--panel", "spawn", "--panel", "menu"}), "parsing --panel");
     require(opened.panels.spawn && opened.panels.menu && !opened.panels.statistics && !parse({"--panel", "bogus"}), "--panel must open the named panels and reject others");
+    const auto sound = expect_ok(parse({"--panel", "sound", "--volume", "0.5", "--audio", "none", "--language", "German"}), "parsing audio options");
+    require(sound.panels.sound && sound.volume == 0.5F && sound.audio == "none" && sound.language == "German" && expect_ok(parse({}), "parsing nothing").volume == eaw::default_sandbox_volume &&
+                expect_ok(parse({"--no-audio"}), "parsing --no-audio").audio == "none" && !parse({"--volume", "2"}) && !parse({"--volume", "x"}),
+            "audio options must be read and checked");
     const auto later = expect_ok(parse({"--map", "X.TED", "--spawn-later", "AT_ST_Walker:2@2"}), "parsing --spawn-later");
     require(later.spawns.empty() && later.later_spawns.size() == 1 && later.later_spawns[0].type == "AT_ST_Walker" && later.later_spawns[0].count == 2 && later.later_spawns[0].owner == 2U,
             "--spawn-later must read like --spawn into its own list");

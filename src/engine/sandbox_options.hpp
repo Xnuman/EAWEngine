@@ -2,6 +2,7 @@
 
 // Command line of EAWEngine: the run mode (sandbox, battle, or doctor) and their options.
 
+#include "vfs/asset_environment.hpp"
 #include "vfs/game_installation.hpp"
 #include "core/status.hpp"
 #include "assets/particle_rules.hpp"
@@ -33,6 +34,10 @@ struct SandboxSpawnRequest
     // Owner slot; the sandbox's current spawn owner when absent.
     std::optional<std::uint32_t> owner;
 };
+
+// The sandbox's default master volume: a fifth of the samples as recorded (an engine choice: the
+// owner found full volume too loud, 2026-11-10).
+inline constexpr float default_sandbox_volume = 0.2F;
 
 struct SandboxOptions
 {
@@ -86,6 +91,7 @@ struct SandboxOptions
         bool menu{};
         bool statistics{};
         bool spawn{};
+        bool sound{};
     };
     OpenPanels panels;
     // Mouse movement and keys through raw input (--no-raw-input uses window messages).
@@ -99,6 +105,12 @@ struct SandboxOptions
     // Game-object scripts (XML Lua_Script) run in battles; --no-scripts turns them off (sandbox and
     // headless battles alike, so recordings replay the same way).
     bool scripts{true};
+    // The audio backend (audio_backends(): xaudio2 by default, fmod when built, none) and the language
+    // of localized text and speech archives (one setting for both for now).
+    std::string audio{"xaudio2"};
+    // Master volume, 0 to 1 (--volume; the sound panel changes it at runtime).
+    float volume{default_sandbox_volume};
+    std::string language{default_language};
     // XML object types made spawnable on maps; counts spawn when shown, each request as its own
     // group for its owner slot.
     std::vector<SandboxSpawnRequest> spawns;

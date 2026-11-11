@@ -30,6 +30,9 @@ EAWEngine.exe sandbox --game foc --model DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO
 | `--spawn <TYPE>[:N][@OWNER]` | Make an XML type spawnable (repeatable); N spawn at the view center for owner slot OWNER (default 1). |
 | `--spawn-later <TYPE>[:N][@OWNER]` | Load a type at runtime once the map is shown and spawn it. |
 | `--effect <NAME>` | Play a particle effect (for example `P_EXPLOSION_BIG00`) at the map center, repeating. |
+| `--language <name>` | Language of the localized sound archive and speech (default `English`; text and speech share it for now). |
+| `--volume <0..1>` | Master volume (default 0.2); the sound panel changes it at runtime. |
+| `--audio <xaudio2\|fmod\|none>`, `--no-audio` | Audio backend (default `xaudio2`; `fmod` only in builds configured with `-DEAW_AUDIO_FMOD=ON -DFMOD_ROOT=<local SDK>`). A backend that cannot start falls back to silence with a warning; the run summary counts sounds played, skipped by their rules, and missing. Maps play weapon fire, deaths, engine loops, and unit responses to selections and orders. |
 | `--particles legacy\|enhanced` | How particle effects are interpreted: legacy (default) reproduces the original's look-defining quirks, enhanced improves them. |
 | `--bloom <strength>`, `--no-bloom` | Bloom strength (default 0.8). |
 | `--hot-reload` | Rebuild the scene when one of its loose files or MEG archives changes, re-decoding only what changed; the camera is kept. |
@@ -46,7 +49,7 @@ Map owner slot 3 is neutral and every other slot hostile, for now.
 | `--upload-budget <MiB>` | Texture bytes streamed per frame (default 64; 0 uploads all at once). |
 | `--pipeline-cache <dir>` | Keep compiled pipeline states between runs; stale caches are discarded. |
 | `--no-raw-input` | Read mouse and keys from window messages instead of raw input. |
-| `--overlay`, `--panel menu\|statistics\|spawn` | Open the statistics panel or a dev panel at start. |
+| `--overlay`, `--panel menu\|statistics\|spawn\|sound` | Open the statistics panel or a dev panel at start. |
 | `--show-bounds`, `--show-passability` | Start with bounds or passability drawn. |
 
 ### Automation and diagnostics
@@ -85,7 +88,7 @@ On maps the sandbox starts in the RTS camera; C switches to the free debug camer
 
 | Key | Action |
 | --- | --- |
-| F1 | Dev menu: statistics panel, spawn panel, bounds and passability toggles. |
+| F1 | Dev menu: | `--overlay`, `--panel menu|statistics|spawn|sound` |, spawn, and sound panels (the sound panel has the master and per-category volumes), bounds and passability toggles. |
 | N | Spawn the current type at the cursor (a type not loaded yet loads in the background). |
 | Tab, Shift+Tab (Ctrl: by ten) | Cycle spawnable types: every unit type with a model for the map. |
 | O | Cycle the owner of spawned units. |
@@ -111,7 +114,7 @@ instead of a hand-typed command line. A scenario names:
   (type, count, and owner slot, as `--spawn TYPE:N@OWNER`), a model with an
   optional animation, or the validation triangle;
 - engine options: WARP, GPU validation, v-sync, hot reload, bounds,
-  passability, auto move, statistics panel (hidden by default), raw input,
+  passability, auto move, | `--overlay`, `--panel menu|statistics|spawn|sound` | panel (hidden by default), raw input,
   frame limit, window size, upload budget, and free-form extra arguments.
 
 The **Game root** field names the installation (empty: found through Steam); a folder that is not
@@ -149,7 +152,7 @@ shell is `eaw_imgui_app` (`src/imgui_app`), shared with EAWTools.
 ## Headless battles
 
 `EAWEngine battle` runs a battle on a map without a window, as fast as it can,
-and prints the state hash, tick timing, and combat and path statistics. It is
+and prints the state hash, tick timing, and combat and path | `--overlay`, `--panel menu|statistics|spawn|sound` |. It is
 the determinism check and the simulation benchmark.
 
 ```powershell
@@ -363,6 +366,11 @@ EAWAssetInspector.exe xml-audit Data/XML --game foc `
 
 # The spawnable types the development launcher and the sandbox offer (with mods: --mod)
 EAWAssetInspector.exe spawn-types --game foc --mod "D:\path\to\mod" --limit 100
+
+# Resolve and decode every sound event's samples (--language picks the localized archive), and
+# check the sounds placed in animations (ANIMATIONSFXMAPS.TXT through SURFACEFX.XML) and every
+# object type's sound fields naming an event that is not defined
+EAWAssetInspector.exe sound-audit --game foc --language English --limit 50
 
 # Copy the winning file of every virtual path under a prefix out of the archives
 EAWAssetInspector.exe extract Data/Scripts --extension .lua --output D:\eaw-extract

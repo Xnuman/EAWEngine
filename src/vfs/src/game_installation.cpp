@@ -189,6 +189,14 @@ std::vector<std::filesystem::path> parse_meg_manifest(const std::filesystem::pat
     return result;
 }
 
+// Data/Audio/SFX, the sound archives' folder (any case).
+bool is_sound_archive_folder(const std::filesystem::path& data_root, const std::filesystem::path& folder)
+{
+    std::error_code error;
+    const auto relative = std::filesystem::relative(folder, data_root, error);
+    return !error && ascii_lower(relative.generic_string()) == "audio/sfx";
+}
+
 } // namespace
 
 std::string_view to_string(const GameVariant variant) noexcept
@@ -300,6 +308,13 @@ std::vector<std::filesystem::path> discover_meg_archives(const std::filesystem::
     {
         const auto& item = *iterator;
         std::error_code type_error;
+        // The sound archives store bare names and mount under their folder with the chosen
+        // language (mount_game_assets), not as data archives.
+        if (item.is_directory(type_error) && is_sound_archive_folder(data_root, item.path()))
+        {
+            iterator.disable_recursion_pending();
+            continue;
+        }
         if (!item.is_regular_file(type_error))
         {
             continue;

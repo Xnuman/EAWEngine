@@ -56,6 +56,8 @@ struct Options
     // extract: the folder files are written to, and whether existing files there are replaced.
     std::optional<std::filesystem::path> output;
     bool overwrite{};
+    // The language of localized archives and speech (sound-audit and every mount).
+    std::string language{eaw::default_language};
 };
 
 void usage();
@@ -136,6 +138,9 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std:
 // options.output at its virtual path. Refuses an output folder inside any of `read_only_roots`
 // (the installation and the mods) and skips entry names that could escape the folder.
 eaw::Status extract_assets(const eaw::VirtualFileSystem& vfs, const Options& options, const std::vector<std::filesystem::path>& read_only_roots);
+
+// Resolves and decodes every sound event's samples and reports what is missing or not decodable.
+void audit_sounds(const eaw::VirtualFileSystem& vfs, std::string_view language, std::size_t limit);
 
 eaw::Status audit_xml(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit, const std::optional<std::filesystem::path>& schema_root, bool include_foc);
 

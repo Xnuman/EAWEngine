@@ -78,27 +78,31 @@ Complete skirmish matches against the AI.
 
 ## Work order
 
-Proposed on 2026-11-10 with this roadmap; it continues the owner's order of 2026-11-09 (foundation
-review, combat presentation, sound, player layer) with sound and the player layer moved to M4, where
-the skirmish needs them, and the open M2 render work placed by what depends on it:
+Set by the owner on 2026-11-10: the base technical systems and M2's renderer come before combat
+presentation and the player layer.
 
-1. Scripting stage 1: the remaining tactical calls by survey rank (abilities, `Get_Parent_Object`,
-   `Highlight` and the cinematic and story calls wait for their systems);
-   `Spawn_Unit`, `Find_Player`, and `Find_Nearest` follow the player layer.
-2. Rendering stage 1, the part combat presentation needs: damage-state (`_ALT<n>`) and LOD
-   switching, runtime decals, depth-sorted transparency.
-3. Simulation stage 1's remainder: combat presentation and fidelity.
-4. Rendering stage 1's remainder and stage 2: shadows, anti-aliasing, tone mapping, fog, special
-   materials, look tuning. This closes M2 and, with step 3, M3.
-5. M4: the player layer (Simulation stage 2), then the HUD, audio, and AI.
+1. Done (2026-11-10): Audio, first stage (Data stage 2 and Audio stage 1): the effect archives, the
+   WAV reader, the sound-event catalog, XAudio2 (optional FMOD) devices, and positional battle
+   sounds from presentation.
+2. M2's renderer (Rendering stages 1 and 2), in this order: damage states and LODs (with skinned and
+   gameplay-driven visibility), depth-sorted transparency, HDR with tone mapping and anti-aliasing,
+   shadows, fog, decals (map and runtime), special materials (shields, planets, nebula, heat
+   distortion, wind bend, occluded units, reflections), weather and soft particles, look tuning.
+   This closes M2.
+3. The job system (Simulation stage 4's base), then input bindings (Platform and input stage 2).
+4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).
+5. Scripting stage 1's remaining calls as their systems arrive; then M4: the player layer
+   (Simulation stage 2; `Spawn_Unit`, `Find_Player`, and `Find_Nearest` follow it), the HUD, the
+   rest of audio, and AI.
 
 ## Tracks
 
 ### Data
 
 1. Done: VFS, MEG, and the M1 formats; the game asset layer with loaders and the resource manager.
-2. Audio data: survey the stock sound-event XML and the sample, music, and speech formats, then
-   readers and loaders for them (Audio stage 1 consumes them).
+2. Audio data: done for effects and responses (the sound archives, WAV, the sound-event catalog,
+   `sound-audit`); MP3 for music and speech comes with Audio stage 3 (a decoder is a new dependency
+   or a reader of our own, the owner decides).
 3. Cinematics: survey the movie format and decide between a reader and a pinned decoder (a new
    dependency, so the owner decides).
 4. Steam Workshop mod discovery and mod-stack diagnostics (which layer wins, what is missing).
@@ -162,11 +166,26 @@ the skirmish needs them, and the open M2 render work placed by what depends on i
 
 ### Audio
 
-1. Sound events and samples played from presentation, never from the simulation, with positional
-   sound for units and effects.
-2. A mixer with categories and options (effects, voices, music), unit responses and weapon sounds
-   tied to battle events.
-3. Music, speech, and their localized variants.
+1. Done: sound events and samples played from presentation, never from the simulation: weapon
+   fire, deaths, engine loops, and unit responses in the sandbox, positioned by AUDIO.XML's mode
+   factors, through XAudio2 (default) or FMOD (built with a local SDK).
+2. A mixer with categories and options (effects, voices, music, volumes in the UI), loop intros and
+   outros (`Pre_Samples`/`Post_Samples`, fades), priorities and voice stealing, response rules
+   (`Kills_Previous_Object_SFX`), ambient and impact sounds, and checking the 3D curve and the
+   listener against the original.
+3. Music, speech, and their localized variants: an MP3 decoder; `MusicEvent`s chosen by faction
+   and environment kind, switching between ambient and battle music by combat and the peace delay;
+   `SpeechEvent`s for advisor and HUD voice; scripts' `Play_Music`, `Stop_All_Music`,
+   `Resume_Mode_Based_Music`, `Stop_All_Speech`.
+
+Not tied to a stage yet: weather and environment ambience (`WEATHERAUDIO.XML`, needs the map's
+weather and environment kind from TED, with Rendering's weather); scripts' `Weather_Audio_Pause` and
+the music and speech calls, as further requests on the script presentation channel
+(`Play_SFX_Event` uses it already);
+hardpoint destruction reports, `Death_SFXEvent_End_Die`, `Land_Damage_SFX`, turret rotation,
+ability and nebula sounds (each a small presentation rule over existing snapshots or a missing
+system; projectile detonation and `SFXEvent_Ambient_Moving` are done); HUD, advisor, and GUI sounds with UI stage 1;
+movies with cinematics.
 
 ### UI
 
@@ -223,7 +242,11 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
 - `MegArchive`, whose index decoding and entry reads were left together on purpose;
 - model lights and dazzles, decoded but not part of `Model` yet;
 - the `pe_*` and hardpoint-bone role rules, still spread over `scene_particles`, `scene_models`, and
-  `combat_content` instead of one place (see Engine extensions, explicit asset metadata).
+  `combat_content` instead of one place (see Engine extensions, explicit asset metadata);
+- local little-endian readers in `dds_texture`, `mtd_atlas`, the asset inspector, and `tools_gui`,
+  which should use `core/byte_order` (as `alamo_chunks` now does);
+- the script host's own SplitMix stream beside `core/random` (it is script state, so a move must keep
+  its sequence).
 
 ## Performance gates
 
@@ -258,8 +281,12 @@ compared by measured ratios from screenshots, never by recreated scenes):
   move before the unit follows (50 units);
 - fighter flight angles, heights, and periods;
 - space avoidance: the look-ahead (3 s of travel, at least 4 radii), the margin (a quarter radius),
-  which units are small enough to fly past (below a fifth of the radius), and that a unit at
-  another height is passed when the heights differ by more than both radii;
+  the course steps (11.25 degrees), the formation spacing of ships (slots 4.5 radii apart), which
+  units are small enough to fly past (below a fifth of the radius), and that a unit at another
+  height is passed when the heights differ by more than both radii;
+- where weapons fire from: the TIE Crawler's model has `MuzzleA_00`-`_02` bones with hidden
+  `_flash` meshes; whether shots cycle through them and how long a flash shows;
+- the times in `ANIMATIONSFXMAPS.TXT` (read as hundredths of a frame);
 - why `W_LASER_INVISIBLE.ALO` (the land model of 19 melee and environment projectiles) is invisible
   in the original although its mesh is an unhidden additive quad with a visible texture;
 - a test map built in the original's map editor, if one can be made, for matching static placement.

@@ -30,12 +30,40 @@ void draw_sandbox_menu(SandboxPanels& panels, bool& show_bounds, bool& show_pass
         ImGui::TextUnformatted("Panels");
         ImGui::Checkbox("Statistics", &panels.statistics);
         ImGui::Checkbox("Spawn", &panels.spawn);
+        ImGui::Checkbox("Sound", &panels.sound);
         ImGui::Separator();
         ImGui::TextUnformatted("View");
         ImGui::Checkbox("Bounds (B)", &show_bounds);
         ImGui::Checkbox("Passability (G)", &show_passability);
     }
     ImGui::End();
+}
+
+bool draw_sound_panel(SandboxPanels& panels, const SoundPanelView& view)
+{
+    if (!panels.sound)
+    {
+        return false;
+    }
+    ImGui::SetNextWindowPos(ImVec2(390.0F, 12.0F), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(0.85F);
+    bool changed = false;
+    if (ImGui::Begin("Sound", &panels.sound, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse))
+    {
+        ImGui::TextUnformatted(view.status.c_str());
+        if (view.master != nullptr)
+        {
+            changed |= ImGui::SliderFloat("Master", view.master, 0.0F, 1.0F, "%.2f");
+        }
+        ImGui::Separator();
+        for (std::size_t index = 0; index < view.categories.size() && index < view.category_names.size(); ++index)
+        {
+            const std::string label(view.category_names[index]);
+            changed |= ImGui::SliderFloat(label.c_str(), &view.categories[index], 0.0F, 1.0F, "%.2f");
+        }
+    }
+    ImGui::End();
+    return changed;
 }
 
 SpawnPanelActions draw_spawn_panel(SandboxPanels& panels, const SpawnPanelView& view)

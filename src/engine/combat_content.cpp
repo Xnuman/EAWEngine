@@ -307,6 +307,15 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     // Below the origin is legitimate (stock Underworld_Hero_Shuttle_Landing uses -5.0).
     profile.aim_height = type.signed_value("Ranged_Target_Z_Adjust");
     const auto range = type.amount("Targeting_Max_Attack_Distance");
+    // Presentation: the sound event of a shot (a weapon hardpoint's Fire_SFXEvent, else the type's
+    // SFXEvent_Fire).
+    const auto sound_of = [](const FieldReader& reader, const std::string_view field, const std::uint32_t fallback)
+    {
+        const auto* node = reader.node(field);
+        const auto name = node != nullptr ? ascii_trim(node->text) : std::string_view{};
+        return name.empty() ? fallback : game_object_name_crc(name);
+    };
+    const auto type_fire_sound = sound_of(type, "SFXEvent_Fire", 0U);
     // Presentation: the Particle object its death plays (the first Death_Explosions entry).
     if (const auto* explosions = type.node("Death_Explosions"))
     {
@@ -329,6 +338,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 weapon.pulse_count = std::max(1U, static_cast<std::uint32_t>(std::min(type.amount("Projectile_Fire_Pulse_Count", 1.0F), 1000.0F)));
                 weapon.pulse_delay_seconds = type.amount("Projectile_Fire_Pulse_Delay_Seconds");
                 read_projectile(FieldReader(catalog, *projectile_type, warnings), projectile_type->name, content, weapon);
+                weapon.fire_sound = type_fire_sound;
                 weapon.mount.up = profile.aim_height;
                 profile.weapons.push_back(weapon);
             }
@@ -405,6 +415,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 weapon.damage_type = point.type_id("Damage_Type", content);
             }
             weapon.hardpoint = part_index;
+            weapon.fire_sound = sound_of(point, "Fire_SFXEvent", type_fire_sound);
             weapon.mount = fire_bone ? fire_bone->point : part.offset;
             const auto cone = point.amount("Fire_Cone_Width");
             if (fire_bone && cone > 0.0F && cone < 360.0F)

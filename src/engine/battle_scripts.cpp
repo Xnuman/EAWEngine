@@ -48,8 +48,9 @@ enum class GameObjectMethod : std::size_t
     take_damage,
     teleport_and_face,
     teleport,
+    play_sfx_event,
 };
-constexpr std::array<std::string_view, 25> game_object_methods{"Is_Valid",
+constexpr std::array<std::string_view, 26> game_object_methods{"Is_Valid",
                                                                "Get_ID",
                                                                "Get_Type",
                                                                "Get_Owner",
@@ -73,7 +74,8 @@ constexpr std::array<std::string_view, 25> game_object_methods{"Is_Valid",
                                                                "Suspend_Locomotor",
                                                                "Take_Damage",
                                                                "Teleport_And_Face",
-                                                               "Teleport"};
+                                                               "Teleport",
+                                                               "Play_SFX_Event"};
 enum class ObjectTypeMethod : std::size_t
 {
     get_name,
@@ -284,6 +286,8 @@ public:
 
     // Submits the buffered orders in the order they were given (script origin: not logged).
     void submit_orders(Battle& battle);
+    // Moves the buffered sound requests, in the order they were made, to the end of `out`.
+    void take_sounds(std::vector<ScriptSoundRequest>& out);
 
     std::unique_ptr<ScriptHost> host;
     // The game object the script belongs to (none for scripts not bound to one).
@@ -340,6 +344,7 @@ private:
     const BattleScriptView& view_;
     std::vector<Proximity> proximities_;
     std::vector<PendingOrder> pending_;
+    std::vector<ScriptSoundRequest> sounds_;
     std::vector<Block> blocks_;
     std::uint32_t next_block_{};
 };
@@ -689,6 +694,18 @@ Status BattleScriptContext::call_game_object(const ScriptObject& object, const G
         (void)order({.order = BattleOrder::teleport, .entities = {id}, .point = to->point, .heading = heading}, id, false);
         break;
     }
+    case GameObjectMethod::play_sfx_event:
+    {
+        // Play_SFX_Event(name): the sound event at the object (presentation only).
+        const auto name = call.string(1);
+        if (!name || name->empty())
+        {
+            call.warn("Play_SFX_Event needs a sound event name");
+            break;
+        }
+        sounds_.push_back({std::string(*name), id, entity->position});
+        break;
+    }
     case GameObjectMethod::is_category:
     {
         // Is_Category(name): whether the type's CategoryMask names it, ignoring case; a list
@@ -839,6 +856,12 @@ Status BattleScriptContext::call_block(const ScriptObject& object, const BlockMe
     return {};
 }
 
+void BattleScriptContext::take_sounds(std::vector<ScriptSoundRequest>& out)
+{
+    out.insert(out.end(), std::make_move_iterator(sounds_.begin()), std::make_move_iterator(sounds_.end()));
+    sounds_.clear();
+}
+
 void BattleScriptContext::submit_orders(Battle& battle)
 {
     for (auto& pending : pending_)
@@ -919,9 +942,11 @@ void BattleScripts::run(Battle& battle)
     {
         context->host->tick();
     }
+    sound_requests_.clear();
     for (auto& context : contexts_)
     {
         context->submit_orders(battle);
+        context->take_sounds(sound_requests_);
     }
     const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     ++stats_.phases;
@@ -932,6 +957,11 @@ void BattleScripts::run(Battle& battle)
 const BattleScriptStats& BattleScripts::stats() const noexcept
 {
     return stats_;
+}
+
+std::span<const ScriptSoundRequest> BattleScripts::sound_requests() const noexcept
+{
+    return sound_requests_;
 }
 
 std::size_t BattleScripts::size() const noexcept

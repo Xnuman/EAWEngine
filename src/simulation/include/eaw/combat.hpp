@@ -79,6 +79,9 @@ struct WeaponProfile
     // Presentation only (not simulation state): which projectile type its shots look like (the
     // CRC-32 of the type name, as game_object_name_crc), or 0.
     std::uint32_t projectile_visual{};
+    // Presentation only: the sound event a shot plays (the CRC-32 of its name, as
+    // game_object_name_crc), or 0.
+    std::uint32_t fire_sound{};
 };
 
 struct CombatProfile

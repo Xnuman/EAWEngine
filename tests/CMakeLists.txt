@@ -1,6 +1,7 @@
 # EAWEngineTests: each module is test_<module>.cpp, registers its tests under that name, and gets
 # its own ctest entry; add new modules to EAW_TEST_MODULES.
 set(EAW_TEST_MODULES
+    audio
     battle
     combat
     effects

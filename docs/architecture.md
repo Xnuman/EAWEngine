@@ -37,17 +37,19 @@ Dependencies point inward: a lower layer never includes or links a higher one.
 | Layer | Library | Responsibility | Depends on |
 | --- | --- | --- | --- |
 | Foundation | `eaw_math` | Vectors, quaternions, matrices, transforms (scalar float, row vectors). | — |
-| | `eaw_core` | `Status`/`Result` and fatal errors, the log, string utilities, whole-file I/O, CRC-32. | math |
+| | `eaw_core` | `Status`/`Result` and fatal errors, the log, string utilities, whole-file I/O, CRC-32, little-endian reads, the PCG32 presentation random stream. | math |
 | Data | `eaw_vfs` | Layered virtual file system, MEG archives, path normalization, installation discovery. | core |
 | | `eaw_formats` | Lossless readers and writers of the original's file formats; no I/O. | core, math |
-| | `eaw_assets` | The game asset layer: XML object database and catalogs, loaders, engine-native resources, the resource manager. | core, formats, vfs, math, render contract |
+| | `eaw_assets` | The game asset layer: XML object database and catalogs, sound events, loaders, engine-native resources, the resource manager. | core, formats, vfs, math, render contract, audio |
 | | `eaw_localization` | DAT string tables on disk, TSV workspaces, mod text scans, translation checks. | core, formats |
 | Runtime | `eaw_simulation` | Deterministic tactical simulation: entities, components, ticks, commands, snapshots. | core, math |
 | | `eaw_script` | Sandboxed Lua 5.0 host: threads, engine events and callbacks, recording stubs for the unimplemented host API. | vfs, Lua |
-| | `eaw_engine` | Battles and order logs, scripts in battles, scene builders, presentation, cameras, animation, particles. No graphics API. | assets, script, simulation, render contract |
+| | `eaw_engine` | Battles and order logs, scripts in battles, scene builders, presentation, cameras, animation, particles, battle sounds. No graphics or audio API. | assets, audio, script, simulation, render contract |
 | Presentation | `eaw_render_contract` | Engine-native visual data (`visual_scene.hpp`), header only. | math |
 | | `eaw_render_d3d12` | The Direct3D 12 backend. | core, render contract, formats (RGBA images for captures) |
 | | `eaw_platform` | Win32 window, raw input, crash handlers, log sinks. | core |
+| | `eaw_audio` | The engine-native `Sound` (16-bit PCM), the `AudioDevice` interface, spatial gains, the null device. | core, math |
+| | `eaw_audio_devices` | The backends: XAudio2 (default), FMOD (only with `EAW_AUDIO_FMOD` and a local SDK). | audio, XAudio2, FMOD |
 | Programs | `eaw_launch` | Launch configuration, sandbox scenarios, child processes. | vfs |
 | | `eaw_imgui_app` | Shared Win32 + Direct3D 11 + Dear ImGui shell of the desktop tools. | core, platform, imgui |
 
@@ -133,10 +135,11 @@ combat rules.
    when to engage (a scan for hostiles on the target-search interval), when to break off (the
    leash), and where to go next; the engagement itself is an ordered attack.
 3. **Navigation** (`simulation_navigation.cpp`): route requests under a per-tick search budget,
-   shared formation routes, group cohesion, and the local avoidance of space ships (a detour point
-   for the tick around a ship in the way).
+   shared formation routes, group cohesion, and the local avoidance of space ships (a course for
+   the tick that keeps clear of the neighbours' predicted motion, as a detour point).
 4. **Locomotion** (`simulation_locomotion.cpp`): physical movement only (speed limits, turn rates,
-   ground following and passability, flight above a minimum speed, following a detour point), then
+   ground following and passability, flight above a minimum speed, following a detour point, space
+   ships never moving deeper into one they touch), then
    separation of ground units and of flyers among their owner's.
 5. **Combat** (`simulation_combat.cpp`): shields, target selection under the stance, weapons,
    projectiles, damage, and removal of the dead. Combat never moves a unit.
@@ -192,6 +195,11 @@ the script phase deterministic and ready for threads:
 3. script orders are not logged: a replay runs the same scripts again, which is the lockstep model
    (only player input is exchanged).
 
+Scripts also ask for presentation: `GameObject.Play_SFX_Event` buffers a sound request per script,
+merged the same way into `BattleScripts::sound_requests()`, which the sandbox plays after each
+script phase. Requests never reach the simulation, the hash, or the log; headless battles ignore
+them. Music, speech, and weather requests are to use the same channel.
+
 Game-object scripts start on their own: when an entity appears whose type names a `Lua_Script`,
 `BattleScripts` starts that script with `Object` bound to the entity, and ends it when the entity is
 gone. Placed objects keep their map hints for `Find_Hint`. Proximity handlers registered with
@@ -227,6 +235,30 @@ whole instance list every frame. Selection is a set of entity ids.
   snapshots.
 - **Cameras.** Controllers in `eaw_engine` turn input into a `VisualCamera`: an orbit camera for
   single models, an RTS camera over maps within their bounds, and a free debug camera.
+
+## Audio
+
+Sound follows the resource pipeline. The stock effects and responses are WAV files in the sound
+archives (`Data/Audio/SFX/sfx3d_non_localized.meg`, `sfx2d_non_localized.meg`, and
+`sfx2d_<language>.meg`), which store bare names and are not in `megafiles.xml`: `mount_game_assets`
+mounts them under `DATA/AUDIO/SFX/` for each layer (after its archives, below its loose files), the
+language archive of `--language` only, and archive discovery skips that folder. `read_wav` (formats)
+keeps the file's chunks; `decode_sound` (assets) recognizes a file's format from its first bytes and
+converts it to the engine-native `Sound`, so a new format (MP3, Ogg) is one reader and one case
+there, and backends only ever receive PCM. `SoundEventCatalog` reads the XML `SFXEvent`s with their
+presets; `resolve_sound_sample` finds a sample under the SFX folder or the language's speech folder.
+
+`AudioDevice` (`eaw_audio`) plays PCM voices in categories (effects, voice, music, interface) with
+volume, pitch, pan, and looping; `create_audio_device` (`eaw_audio_devices`) picks XAudio2, FMOD, or
+the null device, and the sandbox falls back to the null device when a backend cannot start.
+`BattleAudio` (`eaw_engine`) is presentation like `BattleEffects`: from each tick's snapshot it plays
+weapon fire and deaths, each frame it keeps engine (moving or idle) and ambient loops on the nearest units, places voices
+by the listener (the camera's focus raised by AUDIO.XML's pullback), and applies the event rules
+(chance, instance limits, overlap groups, sample order, volume and pitch ranges, predelays, chains).
+Animations carry sounds too: `ANIMATIONSFXMAPS.TXT` places sound events and surface triggers
+(footsteps, resolved through `SURFACEFX.XML`) at frames of animations; `UnitAnimator` reports the
+frames each unit's clips passed in a frame, and `BattleAudio` plays what they reach. Its random
+choices come from its own `Pcg32` stream; nothing feeds back into the simulation.
 
 ## Renderer
 
@@ -357,7 +389,7 @@ The file-level split of each module.
 - `src/math` (`eaw_math`): `vector`, `quaternion`, `matrix`, `transform` (compose and decompose),
   and `scalar` (angle constants and conversions).
 - `src/core` (`eaw_core`), by category: `error_handling` (`status`, `fatal_error`), `log`,
-  `string_utils`, `file_io`, and `checksum`.
+  `string_utils`, `file_io`, `checksum`, `byte_order`, and `random` (`Pcg32`).
 - `src/vfs` (`eaw_vfs`), by category: `file_system` (`virtual_file_system`: readers, mounts, and
   layering), `archive` (`meg_archive`, `asset_path`), and `installation` (`game_installation`, with
   its own minimal `megafiles.xml` reader so the VFS does not depend on the formats; and
@@ -366,16 +398,21 @@ The file-level split of each module.
   container shared by the Alamo readers; `alo_generic`; `ala_animation` and its helpers; `ted_map`),
   `model` (`alo_model` and its helpers), `particle` (`alo_particle_system`), `texture`
   (`dds_texture`, `mtd_atlas`), `image` (`png_image`, `rgba_image`), `xml` (`xml_document`,
-  `xml_helpers`), `localization` (`dat_string_table` and its helpers), and `script`
-  (`lua_bytecode`).
+  `xml_helpers`), `localization` (`dat_string_table` and its helpers), `script`
+  (`lua_bytecode`), `audio` (`wav_audio`), and `animation` (`animation_sfx_map`).
 - `src/assets` (`eaw_assets`), by category: `game_data` (`game_object_catalog`, `spawn_catalog`,
-  `map_object_layout`, `xml_asset_database`, and `XmlSchema`, split into `xml_schema_load.cpp` for
+  `map_object_layout`, `surface_effects`, `xml_asset_database`, and `XmlSchema`, split into `xml_schema_load.cpp` for
   the optional eaw-schema YAML and `xml_schema_validate.cpp`), `model` (`model`, `legacy_material`,
   and `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` rules and default mesh visibility),
   `animation` (`skeleton`, `animation`, and `pose`: sampling, blending, composition, retargeting by
-  bone name), `particle` (`particle_rules`: `ParticleEffect`, the fidelity profiles, and
+  bone name; `animation_events`: sounds and surface triggers at frames of animations), `particle` (`particle_rules`: `ParticleEffect`, the fidelity profiles, and
   `load_particle_effect`), `loaders` (`alamo_loaders`: `load_model`, `load_skeleton`,
-  `load_animation`), and `resources` (`asset_cache`, `resource_manager`, `resource_loaders`).
+  `load_animation`), `audio` (`sound_events`: the catalog and sample resolution; `sound_loaders`:
+  format recognition and conversion to `Sound`), and `resources` (`asset_cache`, `resource_manager`,
+  `resource_loaders`).
+- `src/audio`: `eaw_audio` (`sound`, `audio_device`, `spatial_audio`, `null_audio_device`) and
+  `eaw_audio_devices` (`audio_devices`, the backend choice; `xaudio2_audio_device`;
+  `fmod_audio_device`, built only with `EAW_AUDIO_FMOD`).
 - `src/localization` (`eaw_localization`): `localization_workspace` (TSV workspaces, DAT rows, unit
   keys, DAT string tables on disk), `localization_scan` (TEXT_* references in mod XML), and
   `localization_validation` (a translation against its reference).
@@ -401,7 +438,7 @@ The file-level split of each module.
     `scene_terrain` (terrain, liquids, tracks), `object_type_properties` (movement and speed fields
     of XML types), and `visual_map_builder` (maps and runtime-spawnable packages);
   - presentation: `scene_presentation`, `unit_animation`, `particle_effects` (`ParticleWorld`),
-    `attached_effects`, `battle_effects`, `projectile_visuals`, and `debug_draw`;
+    `attached_effects`, `battle_effects`, `battle_audio`, `projectile_visuals`, and `debug_draw`;
   - input and cameras: `camera_controller`, `camera_math`, `rts_control`, `terrain_height`;
   - the sandbox's testable parts: `sandbox_options` (command line), `sandbox_content` (background
     builds and hot-reload checks), and `sandbox_debug_lines` (a pure function of a view struct);

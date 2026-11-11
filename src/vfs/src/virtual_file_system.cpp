@@ -101,14 +101,45 @@ std::vector<std::string> DirectoryMount::paths() const
     return result;
 }
 
-Result<std::unique_ptr<MegMount>> MegMount::open(std::string name, std::filesystem::path archive)
+Result<std::unique_ptr<MegMount>> MegMount::open(std::string name, std::filesystem::path archive, const std::string_view virtual_folder)
 {
+    std::string folder;
+    if (!virtual_folder.empty())
+    {
+        EAW_TRY_ASSIGN(folder, normalize_asset_path(virtual_folder));
+        folder.push_back('/');
+    }
     EAW_TRY_ASSIGN(auto opened, MegArchive::open(std::move(archive)));
-    return std::make_unique<MegMount>(std::move(name), std::move(opened));
+    return std::make_unique<MegMount>(std::move(name), std::move(opened), std::move(folder));
 }
 
-MegMount::MegMount(std::string name, MegArchive archive) : name_(std::move(name)), archive_(std::move(archive))
+MegMount::MegMount(std::string name, MegArchive archive, std::string virtual_folder) : name_(std::move(name)), archive_(std::move(archive)), virtual_folder_(std::move(virtual_folder))
 {}
+
+std::string_view MegMount::virtual_folder() const noexcept
+{
+    return virtual_folder_;
+}
+
+Result<std::unique_ptr<MegMount>> MegMount::reopen() const
+{
+    EAW_TRY_ASSIGN(auto opened, MegArchive::open(archive_.path()));
+    return std::make_unique<MegMount>(name_, std::move(opened), virtual_folder_);
+}
+
+std::optional<std::string> MegMount::archive_path(const std::string_view virtual_path) const
+{
+    if (virtual_folder_.empty())
+    {
+        return std::string(virtual_path);
+    }
+    auto normalized = normalize_asset_path(virtual_path);
+    if (!normalized || !normalized->starts_with(virtual_folder_))
+    {
+        return std::nullopt;
+    }
+    return normalized->substr(virtual_folder_.size());
+}
 
 std::string_view MegMount::name() const noexcept
 {
@@ -127,17 +158,19 @@ const std::filesystem::path& MegMount::source_path() const noexcept
 
 std::optional<ResolvedAsset> MegMount::resolve(const std::string_view virtual_path) const
 {
-    const auto* entry = archive_.find(virtual_path);
+    const auto path = archive_path(virtual_path);
+    const auto* entry = path ? archive_.find(*path) : nullptr;
     if (entry == nullptr)
     {
         return std::nullopt;
     }
-    return ResolvedAsset{AssetSourceKind::meg_archive, name_, archive_.path(), entry->path, entry->offset, entry->size};
+    return ResolvedAsset{AssetSourceKind::meg_archive, name_, archive_.path(), virtual_folder_ + entry->path, entry->offset, entry->size};
 }
 
 Result<std::vector<std::byte>> MegMount::read(const ResolvedAsset& asset) const
 {
-    const auto* entry = archive_.find(asset.virtual_path);
+    const auto path = archive_path(asset.virtual_path);
+    const auto* entry = path ? archive_.find(*path) : nullptr;
     if (entry == nullptr || entry->offset != asset.offset || entry->size != asset.size)
     {
         return make_error("MEG asset " + asset.virtual_path + " no longer matches its resolved entry in " + archive_.path().string());
@@ -156,7 +189,7 @@ std::vector<std::string> MegMount::paths() const
     result.reserve(archive_.entries().size());
     for (const auto& entry : archive_.entries())
     {
-        result.push_back(entry.path);
+        result.push_back(virtual_folder_ + entry.path);
     }
     return result;
 }

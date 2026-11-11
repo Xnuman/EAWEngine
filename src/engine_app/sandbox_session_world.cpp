@@ -65,6 +65,13 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
             if (battle_scripts)
             {
                 battle_scripts->run(*battle);
+                if (audio)
+                {
+                    for (const auto& request : battle_scripts->sound_requests())
+                    {
+                        (void)audio->play_event(request.event, request.position);
+                    }
+                }
             }
             last_tick_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tick_start).count();
             slowest_tick_ms = std::max(slowest_tick_ms, last_tick_ms);
@@ -77,6 +84,10 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
                 }
             }
             effects.play_tick_events(world->snapshot());
+            if (audio)
+            {
+                audio->play_tick_events(world->snapshot(), *world);
+            }
         }
         const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
         watchdog.enter("presentation", world->stats().tick);
@@ -94,6 +105,10 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
             // The palette goes first: set_instances checks bone ranges against it.
             animator->animate(entities, frame_entities, frame_instances, world_seconds, eaw::D3d12Renderer::max_bone_transforms(), frame_palette);
             renderer.set_bone_transforms(frame_palette);
+            if (audio)
+            {
+                audio->play_animation_cues(animator->cues());
+            }
             effects.attach(frame_instances, frame_entities, frame_palette, entities, world_seconds);
             effects.follow_projectiles(std::span(frame_instances).subspan(first_projectile), frame_projectile_serials, frame_palette, world->snapshot().projectiles, interpolation, tick_seconds);
         }
@@ -121,6 +136,10 @@ void SandboxSession::step_particles(const std::chrono::steady_clock::time_point 
         }
     }
     effects.update(seconds);
+    if (audio && world && tactical_camera)
+    {
+        audio->update(tactical_camera->camera(), world->snapshot(), *world, seconds);
+    }
     frame_particles.clear();
     const auto eye = tactical_camera ? tactical_camera->camera().eye : orbit_camera ? orbit_camera->camera().eye : Vector3{};
     const auto projectiles = world != nullptr ? std::span<const eaw::ProjectileSnapshot>(world->snapshot().projectiles) : std::span<const eaw::ProjectileSnapshot>{};

@@ -109,7 +109,7 @@ int main(const int argc, char** argv)
         }
 
         eaw::VirtualFileSystem vfs;
-        const auto mount_report = eaw::mount_game_assets(vfs, *profile, options.mods);
+        const auto mount_report = eaw::mount_game_assets(vfs, *profile, options.mods, options.language);
         for (const auto& warning : mount_report.warnings)
         {
             std::cerr << "warning: " << warning << '\n';

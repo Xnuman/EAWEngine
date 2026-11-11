@@ -15,6 +15,9 @@ set( CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD ON )
 
 option( EAW_BUILD_TESTS "Build EAWEngine tests" OFF )
 option( EAW_BUILD_GUI "Build the Dear ImGui tool workbench" ON )
+# The optional FMOD audio backend, built against a local FMOD SDK (never committed or fetched).
+option( EAW_AUDIO_FMOD "Build the FMOD audio backend (needs FMOD_ROOT)" OFF )
+set( FMOD_ROOT "" CACHE PATH "Local FMOD Engine SDK (the folder holding api/core)" )
 
 set( EAW_ENGINE_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" )
 
@@ -111,6 +114,7 @@ add_subdirectory(src/math)
 add_subdirectory(src/core)
 add_subdirectory(src/formats)
 add_subdirectory(src/vfs)
+add_subdirectory(src/audio)
 add_subdirectory(src/assets)
 add_subdirectory(src/localization)
 add_subdirectory(src/simulation)

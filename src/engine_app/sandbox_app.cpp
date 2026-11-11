@@ -1,6 +1,8 @@
 #include "sandbox_app.hpp"
 #include "sandbox_session.hpp"
 
+#include "audio/audio_devices.hpp"
+#include "audio/null_audio_device.hpp"
 #include "formats/png_image.hpp"
 #include "core/file_io.hpp"
 
@@ -31,6 +33,17 @@ SandboxSession::SandboxSession(const eaw::SandboxOptions& session_options, eaw::
         {
             draw_panels();
         });
+    if (auto device = eaw::create_audio_device(options.audio))
+    {
+        audio_device = std::move(*device);
+    }
+    else
+    {
+        eaw::log_warning("audio", device.error());
+        audio_device = std::make_unique<eaw::NullAudioDevice>();
+    }
+    audio_device->set_master_volume(master_volume);
+    std::cout << "Audio: " << audio_device->name() << ", volume " << eaw::format_fixed(master_volume, 2) << '\n';
     if (!options.validation_triangle)
     {
         pending_content = std::async(std::launch::async, eaw::build_sandbox_content, std::cref(vfs), std::cref(options), &asset_cache, false, std::vector<std::string>{});
@@ -278,6 +291,12 @@ int SandboxSession::finish()
                   << '\n';
         std::cout << "Combat: " << simulation.shots_fired << " shots, " << simulation.hits << " hits, " << simulation.kills << " kills, " << simulation.hardpoints_destroyed
                   << " hardpoints destroyed, " << simulation.projectiles << " in flight\n";
+    }
+    if (audio)
+    {
+        const auto& sounds = audio->stats();
+        std::cout << "Audio (" << audio_device->name() << "): " << sounds.played << " played (" << sounds.from_animations << " by animations, " << sounds.replaced << " replacing the oldest), "
+                  << sounds.skipped << " skipped, " << sounds.missing << " missing, " << audio->events().size() << " sound events\n";
     }
     if (animator)
     {

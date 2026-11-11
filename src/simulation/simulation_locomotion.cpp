@@ -69,6 +69,12 @@ void SimulationWorld::run_movement()
         if (index < detours_.size() && detours_[index])
         {
             // Around a unit in the way: steer at the detour point; arrival still counts at the target.
+            if (std::hypot(target->x - position.x, target->y - position.y) <= std::max(travel_speed(index) * dt, arrival_distance))
+            {
+                position = *target;
+                target.reset();
+                continue;
+            }
             const auto& detour = *detours_[index];
             const Vector3 aside{detour.x - position.x, detour.y - position.y, detour.z - position.z};
             const auto length = std::sqrt(aside.x * aside.x + aside.y * aside.y + aside.z * aside.z);
@@ -76,7 +82,8 @@ void SimulationWorld::run_movement()
             const auto step = std::min(travel_speed(index) * dt * factor, length);
             if (length > 0.0F)
             {
-                position = {position.x + aside.x * step / length, position.y + aside.y * step / length, position.z + aside.z * step / length};
+                const auto moved = keep_apart(index, {aside.x * step / length, aside.y * step / length, aside.z * step / length});
+                position = {position.x + moved.x, position.y + moved.y, position.z + moved.z};
             }
             continue;
         }
@@ -84,14 +91,16 @@ void SimulationWorld::run_movement()
         const auto distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto speed_factor = delta.x != 0.0F || delta.y != 0.0F ? steer(index, std::atan2(delta.y, delta.x), dt) : 1.0F;
         const auto step_length = travel_speed(index) * dt * speed_factor;
-        if (distance <= std::max(step_length, arrival_distance))
+        const auto scale = std::min(1.0F, step_length / std::max(distance, arrival_distance));
+        const Vector3 wanted{delta.x * scale, delta.y * scale, delta.z * scale};
+        const auto moved = keep_apart(index, wanted);
+        if (distance <= std::max(step_length, arrival_distance) && moved.x == wanted.x && moved.y == wanted.y)
         {
             position = *target;
             target.reset();
             continue;
         }
-        const auto scale = step_length / distance;
-        position = {position.x + delta.x * scale, position.y + delta.y * scale, position.z + delta.z * scale};
+        position = {position.x + moved.x, position.y + moved.y, position.z + moved.z};
     }
 }
 

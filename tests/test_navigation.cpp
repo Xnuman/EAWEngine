@@ -573,6 +573,65 @@ void test_path_budget_and_shared_routes()
     (void)group_hash;
 }
 
+// Space ships in crowds (radius 100, turning at 0.4 rad/s, as capital ships): a ship through idle
+// ships, a faster ship overtaking a slower one, five ships sent to one point (they stop side by
+// side), and five moved as a formation from a tight cluster. No two ever overlap and all arrive.
+void test_space_crowds()
+{
+    struct Ship
+    {
+        eaw::Vector3 at;
+        float speed{};
+    };
+    const auto run = [](const char* what, const std::vector<Ship>& ships, const std::vector<std::size_t>& movers, const eaw::Vector3& target, const bool formation)
+    {
+        eaw::SimulationWorld world(1.0 / 30.0);
+        std::vector<eaw::EntityId> ids;
+        for (const auto& ship : ships)
+        {
+            ids.push_back(*world.spawn({.type_name = "Ship", .owner = 1, .position = ship.at, .max_speed = ship.speed, .radius = 100.0F, .turn_rate = 0.4F}));
+        }
+        std::vector<eaw::EntityId> moving;
+        for (const auto index : movers)
+        {
+            moving.push_back(ids[index]);
+        }
+        if (formation)
+        {
+            world.submit({eaw::SimCommandKind::formation_move, moving, target});
+        }
+        else
+        {
+            for (const auto id : moving)
+            {
+                world.submit({eaw::SimCommandKind::move, {id}, target});
+            }
+        }
+        float closest = std::numeric_limits<float>::max();
+        for (int tick = 0; tick < 3000; ++tick)
+        {
+            world.step();
+            const auto& entities = world.snapshot().entities;
+            for (std::size_t a = 0; a < entities.size(); ++a)
+            {
+                for (std::size_t b = a + 1; b < entities.size(); ++b)
+                {
+                    const auto apart = std::hypot(entities[a].position.x - entities[b].position.x, entities[a].position.y - entities[b].position.y);
+                    closest = std::min(closest, apart / (entities[a].radius + entities[b].radius));
+                }
+            }
+        }
+        // Touching is allowed (ships slide along each other), overlapping is not.
+        require(closest >= 0.999F, std::string(what) + ": ships overlapped (closest " + std::to_string(closest) + " of their radii)");
+        require(std::ranges::none_of(world.snapshot().entities, &eaw::EntitySnapshot::moving), std::string(what) + ": every ship must arrive");
+    };
+    run("through idle ships", {{{0, 0, 0}, 60}, {{1000, -60, 0}, 0}, {{1000, 180, 0}, 0}, {{1250, 60, 0}, 0}}, {0}, {3000, 0, 0}, false);
+    run("overtaking", {{{0, 0, 0}, 40}, {{-250, 0, 0}, 80}}, {0, 1}, {3000, 0, 0}, false);
+    const std::vector<Ship> cluster{{{0, 0, 0}, 60}, {{220, 0, 0}, 50}, {{0, 220, 0}, 70}, {{220, 220, 0}, 60}, {{110, 440, 0}, 55}};
+    run("five sent to one point", cluster, {0, 1, 2, 3, 4}, {-2500, 1500, 0}, false);
+    run("five as a formation", cluster, {0, 1, 2, 3, 4}, {-2500, 1500, 0}, true);
+}
+
 // Space ships avoid contact instead of pushing: a ship steers around a ship in its way and arrives;
 // a ship at another height and a much smaller one are flown past directly; two ships meeting
 // head-on pass without touching; overlapping idle ships stay where they are; and a move onto another
@@ -662,6 +721,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_ground_footprints", &test_ground_footprints},
                                                   {"test_path_budget_and_shared_routes", &test_path_budget_and_shared_routes},
                                                   {"test_space_avoidance", &test_space_avoidance},
+                                                  {"test_space_crowds", &test_space_crowds},
                                               });
 
 } // namespace

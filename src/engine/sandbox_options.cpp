@@ -95,13 +95,17 @@ void print_sandbox_usage()
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
               << "  --show-passability Start with the map's passability classes drawn (G toggles)\n"
               << "  --overlay          Start with the on-screen statistics panel shown (hidden by default; the F1 menu toggles it)\n"
-              << "  --panel <menu|statistics|spawn>  Open a dev panel at start (repeatable; F1 opens the menu)\n"
+              << "  --panel <menu|statistics|spawn|sound>  Open a dev panel at start (repeatable; F1 opens the menu)\n"
               << "  --no-raw-input     Read mouse movement and keys from window messages instead of raw input\n"
               << "  --no-error-dialog  Report fatal errors on stderr only (no error window)\n"
               << "  --log-dir <path>   Folder for log files (default: logs next to the executable)\n"
               << "  --crash-test <assert|exception|access-violation>  Fail deliberately to check crash reporting\n"
               << "  --auto-move        Order every mobile unit to the map center once shown (automation)\n"
               << "  --no-scripts       Do not run game-object scripts (XML Lua_Script) in battles\n"
+              << "  --audio <xaudio2|fmod|none>  Audio backend (default xaudio2; fmod only in builds with EAW_AUDIO_FMOD)\n"
+              << "  --no-audio         Play no sound (the same as --audio none)\n"
+              << "  --volume <0..1>    Master volume (default 0.2; the sound panel changes it)\n"
+              << "  --language <name>  Language of localized text and speech archives (default English)\n"
               << "  --spawn <TYPE>[:N][@OWNER] Make an XML object type spawnable on maps (repeatable); N spawn at the view\n"
               << "                     center when shown (OWNER slot, default 1; each request its own group), N key\n"
               << "                     spawns one at the cursor, Tab cycles types, O cycles the owner\n"
@@ -209,9 +213,13 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
             {
                 options.panels.spawn = true;
             }
+            else if (value == "sound")
+            {
+                options.panels.sound = true;
+            }
             else
             {
-                return make_error("--panel must be menu, statistics, or spawn");
+                return make_error("--panel must be menu, statistics, spawn, or sound");
             }
         }
         else if (argument == "--no-overlay")
@@ -247,6 +255,27 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         else if (argument == "--no-scripts")
         {
             options.scripts = false;
+        }
+        else if (argument == "--audio")
+        {
+            EAW_TRY_ASSIGN(options.audio, require_value(argc, argv, index, argument));
+        }
+        else if (argument == "--no-audio")
+        {
+            options.audio = "none";
+        }
+        else if (argument == "--volume")
+        {
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.volume, parse_float(text, argument));
+            if (options.volume < 0.0F || options.volume > 1.0F)
+            {
+                return make_error("--volume needs a value from 0 to 1, got '" + text + "'");
+            }
+        }
+        else if (argument == "--language")
+        {
+            EAW_TRY_ASSIGN(options.language, require_value(argc, argv, index, argument));
         }
         else if (argument == "--spawn" || argument == "--spawn-later")
         {

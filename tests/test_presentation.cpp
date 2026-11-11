@@ -160,6 +160,31 @@ void test_unit_animation()
     animator.animate(snapshot, entities, instances, 0.5, rest.size(), palette);
     require(animator.stats().over_budget == 101 && palette.size() == rest.size() && instances[5].bone_offset == 0, "units beyond the palette budget must stay in their rest pose");
 
+    // Cues: a still unit's IDLE (30 frames, 1 s) reported frame by frame passes every frame of each
+    // loop once, wrapping at the loop's end; a unit at rest pose, a background, and a clipless mesh
+    // report nothing.
+    {
+        eaw::UnitAnimator cue_animator(rigs, rest);
+        std::vector<eaw::EntitySnapshot> one{snapshot.front()};
+        std::vector<eaw::EntityId> ids{one.front().id};
+        std::vector<eaw::VisualInstance> shown(1);
+        int halfway = 0;
+        double covered = 0.0;
+        for (int step = 0; step <= 90; ++step)
+        {
+            auto frame_instances = shown;
+            auto frame_ids = ids;
+            cue_animator.animate(one, frame_ids, frame_instances, 1.0 + step / 30.0, 1U << 20U, palette);
+            for (const auto& cue : cue_animator.cues())
+            {
+                require(cue.entity == one.front().id && cue.clip == "IDLE_00" && cue.from_frame >= -1.0 && cue.to_frame <= 30.0 && cue.to_frame > cue.from_frame, "cues must lie within the clip");
+                covered += cue.to_frame - std::max(cue.from_frame, 0.0);
+                halfway += cue.from_frame < 15.0 && 15.0 <= cue.to_frame ? 1 : 0;
+            }
+        }
+        require(halfway == 3 && std::abs(covered - 90.0) < 1.5, "three seconds of a one-second loop must pass its middle three times and cover 90 frames");
+    }
+
     // The locomotion scale: idle, then WALKMOVE at 40% of top speed, then MOVE; without WALKMOVE,
     // idle into MOVE by a quarter of top speed.
     const auto at = [](const float speed, const bool walk)

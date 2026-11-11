@@ -922,6 +922,108 @@ particle-audit`.
   no scorch marks). Some proxies name files that do not exist (`Lensflare0`); they are
   reported once per build.
 
+## Audio
+
+- **Where sounds are.** Effects and unit responses are in `Data/Audio/SFX/`:
+  `sfx3d_non_localized.meg`, `sfx2d_non_localized.meg`, and one `sfx2d_<language>.meg` per
+  language (the case varies: `sfx2d_english.meg`, `sfx2d_Russian.MEG`). They are not in
+  `megafiles.xml` and store bare file names, so the engine mounts them under `DATA/AUDIO/SFX/`,
+  only the chosen language's, and archive discovery skips their folder (before this, every
+  language's archive was also mounted as an unlisted data archive, with its names at the VFS root).
+  Music and dialogue speech are MP3 (under `Data/Audio/Music` and `Data/Audio/Speech/<language>`);
+  the XML names speech `.wav`, so samples resolve by trying the name and then `.MP3`, and files are
+  recognized from their first bytes, not their extension.
+- **Formats.** Every effect sample the stock events name is 16-bit PCM WAV: 9,610 distinct samples,
+  9,539 resolved and decoded (3,862 mono 11,025 Hz, 4,754 mono 22,050 Hz, 903 mono 44,100 Hz, 20
+  stereo 44,100 Hz; 214 minutes), 71 missing from the stock data itself (`sound-audit`).
+- **Sound events** (`SFXEvent`, 3,073 stock, 540 positional, 153 looping): `Samples` (one chosen per
+  play, at random or with `Play_Sequentially` in turn), `Min/Max_Volume` and `Min/Max_Pitch` in
+  percent, `Probability` in percent (may list one value per sample; the engine uses the first),
+  `Min/Max_Predelay` in milliseconds, `Play_Count -1` loops, `Is_3D`/`Is_2D`, `Max_Instances` (the engine replaces the oldest one-shot when a new play
+  reaches the limit, an inference: the TIE Crawler fires five 0.2 s pulses without recharge while its
+  1 s sample allows four instances, and refusing the fifth left shots silent; unit loops at the limit
+  wait instead),
+  `Overlap_Test` (a group name such as `Unit_EHD` shared by a type's responses; the engine lets one
+  play of a group sound at a time, an inference), `Chained_SFXEvent`, `Pre_Samples`/`Post_Samples`
+  (loop intros and outros, not played yet), `Volume_Saturation_Distance`, `Priority`,
+  `Is_Unit_Response_VO`, `Kills_Previous_Object_SFX`, and `Use_Preset` naming a preset (`Is_Preset`)
+  whose fields the event overrides. The first definition of a name wins, as for object types.
+- **Units name their sounds** in XML: `SFXEvent_Fire` (a unit's own weapon), a weapon hardpoint's
+  `Fire_SFXEvent` (each hardpoint its own; the engine falls back to the type's `SFXEvent_Fire`),
+  `Death_SFXEvent_Start_Die`, `Death_Explosion_SFXEvent`, `SFXEvent_Engine_Moving_Loop`, and the
+  responses `SFXEvent_Select`, `SFXEvent_Move`, `SFXEvent_Attack`. The pulses of one tick that share
+  a shooter and a sound play once (an engine choice, so a battery of identical guns does not stack).
+- **3D settings.** `AUDIO.XML` sets per mode `Audio_<Land|Space>_3D_Saturation_Distance_Mod`,
+  `_Rolloff_Distance_Mod`, and `_Listener_Z_Pullback_Dist`. The engine's reading: full volume within
+  an event's saturation distance (200 when it names none) times the factor, then falling as
+  s / (s + r (d - s)) with r = 0.05 times the rolloff factor, heard from the camera's focus raised by
+  the pullback. The curve, the base rolloff, the default distance, and the limit of 16 unit loops
+  are engine choices to check against the original.
+
+- **Sounds in animations.** `DATA/XML/ANIMATIONSFXMAPS.TXT` (1,639 lines on stock FoC, 479
+  animations) holds `SOUND <animation> <time> <sound event>` (574 rows: walker hydraulics, death
+  falls, creature sounds) and `SURFACE <animation> <time> <trigger> <bone>` (578 rows: foot plants,
+  impacts of falling bodies, tracks). A trigger names a `SurfaceFX` in `SURFACEFX.XML` (the names are
+  listed in `ENUM/SURFACEFXTRIGGERTYPE.XML`), whose `Surface_Settings` per surface kind (default,
+  dirt, grass, snow, water, concrete, lava, ...) name a sound, a particle, a decal, and a dynamic
+  track; `NONE` stands for nothing. The time is read as hundredths of a frame (an inference: a
+  stormtrooper's left foot lands at 1032-1170 in its 22-frame walk, half way, and in 59 of 60
+  sampled animations every row lies within the animation; the exception, `UV_MDU_DEPLOY_00`, has
+  a row at 132% of its length). Only some models have rows: stormtroopers, heroes, walkers, and
+  creatures, not rebel soldiers.
+- **Instance limits and fast weapons.** The TIE Crawler fires bursts of five shots 0.2 s apart
+  with no recharge, while its fire sound (1 s, preset `Preset_GUNV`) allows four instances; refusing
+  the fifth play left every fifth shot silent and the sound drifting against the shots, so the
+  engine lets a new one-shot replace the oldest instead (an inference).
+- **Every sound source in the stock data** (survey of 2026-11-11, stock FoC XML, maps, and 648
+  scripts):
+  - Sound events: 3,073 `SFXEvent`s in the `SFXEVENTS*.XML` files; speech: 2,271 `SpeechEvent`s in
+    `SPEECHEVENTS.XML` (advisor and HUD voice, MP3 files, `Text_ID` subtitles); music: 62
+    `MusicEvent`s in `MUSICEVENTS.XML` (MP3 files, `Loop`, `Fade_In_Seconds`,
+    `Fade_Out_Previous_Seconds`).
+  - Battle objects name sounds for: weapons (`SFXEvent_Fire`, hardpoint `Fire_SFXEvent`,
+    `SFXEvent_Barrage`), projectiles (`Projectile_SFXEvent_Detonate` 87,
+    `Projectile_SFXEvent_Detonate_Reduced_By_Armor` 62), deaths (`Death_SFXEvent_Start_Die`,
+    `Death_Explosion_SFXEvent`, `Death_SFXEvent_End_Die` 18, `Spin_Away_On_Death_SFXEvent_Start_Die`
+    22), damage (`Land_Damage_SFX` 221, a list by damage level; `SFXEvent_Damaged_By_Asteroid`),
+    hardpoints (`SFXEvent_Hardpoint_Destroyed` 362), engines and props (`SFXEvent_Engine_Moving_Loop`,
+    `_Idle_Loop`, `SFXEvent_Ambient_Loop` 90 on units, props, structures, and markers such as
+    `Audio_Waterfall_Emitter_Marker`), periodic sounds while moving (`SFXEvent_Ambient_Moving` with a
+    min/max delay), turrets (`SFXEvent_Turret_Rotating_Loop` 37), abilities (`SFXEvent_Activate`
+    126, `SFXEvent_Target_Ability`, `SFXEvent_Target_Affected`), entering nebulae and asteroid
+    fields, and unit responses (`SFXEvent_Select`, `_Move`, `_Attack`, `_Attack_Hardpoint` 426,
+    `_Guard`, `_Stop`, `_Fleet_Move`, `_Group_Move`, `_Group_Attack`, `_Assist_Move`,
+    `_Assist_Attack`).
+  - The player's side: HUD and advisor announcements (`SFXEvent_Unit_Lost`,
+    `SFXEvent_Unit_Under_Attack`, health warnings, build started/complete/cancelled, reinforcement
+    points, retreat and surrender, battle won/lost, all in `FACTIONS.XML` and the unit types), the
+    GUI (`Mouse_Over_SFX` 294, `Click_SFX` 118, command bar), and the galactic map.
+  - Ambience: `WEATHERAUDIO.XML` maps a weather (RAIN, SNOW, SANDSTORM, ASH, CLEAR) and its
+    intensity (thresholds 0.01-0.75) to a loop and to intermittent sounds with a delay range, and
+    each environment kind (TEMPERATE, ARCTIC, DESERT, FOREST, SWAMP, VOLCANIC, URBAN) to a
+    clear-weather intermittent sound. `AMBIENTMAPSOUNDS.XML` is a stub (one test entry, six empty
+    environments). Maps hold no sound names; the weather and environment kind of a map are not
+    decoded yet (presumably in the TED environment data).
+  - Music: each faction (`FACTIONS.XML`, `EXPANSION_FACTIONS.XML`) lists ambient and battle music
+    by environment kind (`Music_Event_List_Ambient`, `Music_Event_List_Battle`: Space, Temperate,
+    Arctic, ...), plus load-screen, super-weapon, win, and lose music; `AUDIO.XML` sets how long a
+    battle stays quiet before the music returns to ambient (`Music_Land/Space_Battle_To_Ambient_Peace_Seconds`).
+  - Animations: `ANIMATIONSFXMAPS.TXT` (above).
+  - Scripts: `GameObject.Play_SFX_Event(name)` (83 calls in 24 scripts; all 30 names are defined
+    sound events; the engine plays them at the object), `Play_Music(name)` (4: cinematic and cantina music), `Stop_All_Music` (25),
+    `Resume_Mode_Based_Music` (14), `Stop_All_Speech` (19), `Weather_Audio_Pause(true|false)` (13),
+    `Allow_Localized_SFX(true|false)` (40), `Allow_Ambient_VO` (2), `Master_Volume_Restore` (3),
+    `Stop_SFX_Event` (1), and `Play_Bink_Movie` (6, movies with their own sound). Story dialogue
+    (`Story_Dialog`, 178 in the campaign XML) plays speech.
+- **Fleet and group responses.** `SFXEvent_Fleet_Move` is set on 215 types, infantry and vehicles
+  included, so it is not a space-only order response. The owner's guess (2026-11-11, unverified): it
+  is the response when a fleet is sent to another planet in galactic conquest. The engine does not
+  play it in battles. `SFXEvent_Group_Move` and `SFXEvent_Group_Attack` (25 each, heroes) are not
+  played either.
+- **Muzzles.** Weapon positions are not in the unit XML: the TIE Crawler's model has three
+  `MuzzleA_nn` bones, each with a hidden `MuzzleA_nn_flash` mesh, which the original presumably
+  fires from and flashes; not used by the engine yet.
+
 ## Lua host protocol
 
 What the engine must provide to the stock scripts, from the framework library under

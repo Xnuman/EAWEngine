@@ -38,6 +38,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -57,6 +58,25 @@ struct LocomotionBlend
     float blend{};
 };
 [[nodiscard]] LocomotionBlend locomotion_blend(float speed, float top_speed, bool has_walk) noexcept;
+
+// What a unit's animation played in one frame, for the events placed in animations (footsteps,
+// hydraulics; assets/animation_events): the clip and the frames it passed, after `from_frame` up to
+// and including `to_frame` (a loop that wrapped is reported as two cues). Units report the clip
+// they show most of their locomotion (when it has at least animation_cue_minimum_weight of the
+// pose) and an ATTACK that plays; corpses report their DIE clip with an invalid entity.
+struct AnimationCue
+{
+    EntityId entity;
+    Vector3 position;
+    // VisualClip::path of the clip.
+    std::string_view clip;
+    double from_frame{};
+    double to_frame{};
+};
+
+// The least weight of the pose a locomotion clip needs to report its events (an engine choice: a
+// clip blending out does not step).
+inline constexpr float animation_cue_minimum_weight = 0.25F;
 
 class UnitAnimator final
 {
@@ -94,6 +114,8 @@ public:
     // `style` picks the DIE variant and how long the corpse stays (DeathStyle).
     void add_corpse(const VisualInstance& instance, EntityId id, double seconds, const DeathStyle& style = {});
     [[nodiscard]] const Stats& stats() const noexcept;
+    // What the last animate() played (valid until the next one).
+    [[nodiscard]] const std::vector<AnimationCue>& cues() const noexcept;
     // Rigs of meshes added to the scene at runtime (a SpawnablePackage's rigs and rest palette,
     // rest offsets relative to it); they must follow the meshes the animator already knows.
     void add_rigs(std::span<const VisualRig> rigs, std::span<const Matrix4> rest_palette);
@@ -139,6 +161,10 @@ private:
         double attack_time{};
         double last_seconds{};
         std::uint64_t frame{};
+        // The locomotion clip reported last frame and where it was (frames), and ATTACK's place.
+        std::int32_t cue_clip{-1};
+        double cue_frame{};
+        double fire_cue_frame{-1.0};
     };
 
     struct Corpse
@@ -148,7 +174,11 @@ private:
         double died{};
         // When it is removed (seconds after `died`).
         double lifetime{};
+        // Where its DIE clip was last frame (frames; -1 before the first).
+        double cue_frame{-1.0};
     };
+    // Reports the frames a clip passed from `from` to `to` (a loop of `loop_frames` wraps).
+    void add_cue(EntityId entity, const Vector3& position, const VisualClip& clip, double from, double to, double loop_frames);
     [[nodiscard]] std::int32_t choose_clip(std::uint32_t mesh, AnimationRole role, EntityId id) const;
     // This frame's palette offset of a pose, sampling it when needed; nullopt when the palette is
     // full.
@@ -167,6 +197,7 @@ private:
     std::unordered_map<PoseKey, std::uint32_t, PoseKeyHash> frame_offsets_;
     std::unordered_map<std::uint64_t, std::size_t> snapshot_index_;
     std::vector<Corpse> corpses_;
+    std::vector<AnimationCue> cues_;
     std::uint64_t frame_{};
     Stats stats_;
 };

@@ -1,4 +1,5 @@
 #include "formats/alamo_chunks.hpp"
+#include "core/byte_order.hpp"
 
 #include "core/fatal_error.hpp"
 
@@ -93,13 +94,7 @@ const MiniChunkRange* find_mini(const std::span<const MiniChunkRange> chunks, co
 
 std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t offset)
 {
-    EAW_ASSERT_MSG(offset <= bytes.size() && bytes.size() - offset >= 4, "chunk file ended while reading a 32-bit value");
-    std::uint32_t value = 0;
-    for (unsigned index = 0; index < 4; ++index)
-    {
-        value |= static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(bytes[offset + index])) << (index * 8U);
-    }
-    return value;
+    return little_endian_u32(bytes, offset);
 }
 
 std::int32_t read_i32(const std::span<const std::byte> bytes, const std::size_t offset)
@@ -109,8 +104,7 @@ std::int32_t read_i32(const std::span<const std::byte> bytes, const std::size_t 
 
 std::uint16_t read_u16(const std::span<const std::byte> bytes, const std::size_t offset)
 {
-    EAW_ASSERT_MSG(offset <= bytes.size() && bytes.size() - offset >= 2, "chunk file ended while reading a 16-bit value");
-    return static_cast<std::uint16_t>(std::to_integer<std::uint8_t>(bytes[offset]) | (std::to_integer<std::uint8_t>(bytes[offset + 1]) << 8U));
+    return little_endian_u16(bytes, offset);
 }
 
 std::int16_t read_i16(const std::span<const std::byte> bytes, const std::size_t offset)

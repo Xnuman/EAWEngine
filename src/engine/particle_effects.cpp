@@ -1,5 +1,6 @@
 #include "particle_effects.hpp"
 
+#include "core/random.hpp"
 #include "math/matrix.hpp"
 #include "math/vector.hpp"
 
@@ -18,46 +19,8 @@ constexpr float maximum_update = 0.25F;
 // A trail emitter emits at most this many particles per parent per update (runaway rates).
 constexpr std::size_t maximum_trail_burst = 64;
 
-// PCG32 (O'Neill): small, fast, and fully specified, so a seed replays the same effect everywhere.
-class Random
-{
-public:
-    Random() : Random(0)
-    {}
-
-    explicit Random(const std::uint64_t seed)
-    {
-        state_ = 0;
-        increment_ = (seed << 1U) | 1U;
-        next();
-        state_ += 0x853c49e6748fea9bULL ^ seed;
-        next();
-    }
-
-    std::uint32_t next()
-    {
-        const auto old = state_;
-        state_ = old * 6364136223846793005ULL + increment_;
-        const auto xorshifted = static_cast<std::uint32_t>(((old >> 18U) ^ old) >> 27U);
-        const auto rotation = static_cast<std::uint32_t>(old >> 59U);
-        return (xorshifted >> rotation) | (xorshifted << ((32U - rotation) & 31U));
-    }
-
-    // Uniform in [0, 1).
-    float unit()
-    {
-        return static_cast<float>(next() >> 8U) * (1.0F / 16777216.0F);
-    }
-
-    float range(const float low, const float high)
-    {
-        return low + (high - low) * unit();
-    }
-
-private:
-    std::uint64_t state_{};
-    std::uint64_t increment_{};
-};
+// The presentation random stream (core/random.hpp): a seed replays the same effect everywhere.
+using Random = Pcg32;
 
 // A spawn shape sample in emitter space (docs: shape group types 0..4).
 Vector3 sample_group(const AloParticleGroup& group, Random& random)

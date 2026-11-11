@@ -13,11 +13,13 @@ set(EAW_ASSETS_GAME_DATA
     ${HEADERS_DIR}/game_object_catalog.hpp
     ${HEADERS_DIR}/map_object_layout.hpp
     ${HEADERS_DIR}/spawn_catalog.hpp
+    ${HEADERS_DIR}/surface_effects.hpp
     ${HEADERS_DIR}/xml_asset_database.hpp
     ${HEADERS_DIR}/xml_schema.hpp
     ${SOURCES_DIR}/game_object_catalog.cpp
     ${SOURCES_DIR}/map_object_layout.cpp
     ${SOURCES_DIR}/spawn_catalog.cpp
+    ${SOURCES_DIR}/surface_effects.cpp
     ${SOURCES_DIR}/xml_asset_database.cpp
     ${SOURCES_DIR}/xml_schema_internal.hpp
     ${SOURCES_DIR}/xml_schema_load.cpp
@@ -34,14 +36,23 @@ set(EAW_ASSETS_MODEL
 
 set(EAW_ASSETS_ANIMATION
     ${HEADERS_DIR}/animation.hpp
+    ${HEADERS_DIR}/animation_events.hpp
     ${HEADERS_DIR}/pose.hpp
     ${HEADERS_DIR}/resource_loaders.hpp
     ${HEADERS_DIR}/resource_manager.hpp
     ${HEADERS_DIR}/skeleton.hpp
     ${SOURCES_DIR}/animation.cpp
+    ${SOURCES_DIR}/animation_events.cpp
     ${SOURCES_DIR}/pose.cpp
     ${SOURCES_DIR}/resource_loaders.cpp
     ${SOURCES_DIR}/skeleton.cpp
+)
+
+set(EAW_ASSETS_AUDIO
+    ${HEADERS_DIR}/sound_events.hpp
+    ${HEADERS_DIR}/sound_loaders.hpp
+    ${SOURCES_DIR}/sound_events.cpp
+    ${SOURCES_DIR}/sound_loaders.cpp
 )
 
 set(EAW_ASSETS_PARTICLE
@@ -66,6 +77,7 @@ set(EAW_ASSETS_HEADERS
     ${HEADERS_DIR}/alamo_loaders.hpp
     ${HEADERS_DIR}/alo_interpretation.hpp
     ${HEADERS_DIR}/animation.hpp
+    ${HEADERS_DIR}/animation_events.hpp
     ${HEADERS_DIR}/asset_cache.hpp
     ${HEADERS_DIR}/game_object_catalog.hpp
     ${HEADERS_DIR}/legacy_material.hpp
@@ -74,7 +86,10 @@ set(EAW_ASSETS_HEADERS
     ${HEADERS_DIR}/particle_rules.hpp
     ${HEADERS_DIR}/pose.hpp
     ${HEADERS_DIR}/skeleton.hpp
+    ${HEADERS_DIR}/sound_events.hpp
+    ${HEADERS_DIR}/sound_loaders.hpp
     ${HEADERS_DIR}/spawn_catalog.hpp
+    ${HEADERS_DIR}/surface_effects.hpp
     ${HEADERS_DIR}/xml_asset_database.hpp
     ${HEADERS_DIR}/xml_schema.hpp
 )
@@ -82,6 +97,7 @@ set(EAW_ASSETS_HEADERS
 source_group("game_data" FILES ${EAW_ASSETS_GAME_DATA})
 source_group("model" FILES ${EAW_ASSETS_MODEL})
 source_group("animation" FILES ${EAW_ASSETS_ANIMATION})
+source_group("audio" FILES ${EAW_ASSETS_AUDIO})
 source_group("particle" FILES ${EAW_ASSETS_PARTICLE})
 source_group("loaders" FILES ${EAW_ASSETS_LOADERS})
 source_group("resources" FILES ${EAW_ASSETS_RESOURCES})
@@ -96,6 +112,7 @@ target_sources(eaw_assets
     ${SOURCES_DIR}/alamo_loaders.cpp
     ${SOURCES_DIR}/alo_interpretation.cpp
     ${SOURCES_DIR}/animation.cpp
+    ${SOURCES_DIR}/animation_events.cpp
     ${SOURCES_DIR}/asset_cache.cpp
     ${SOURCES_DIR}/game_object_catalog.cpp
     ${SOURCES_DIR}/legacy_material.cpp
@@ -104,11 +121,14 @@ target_sources(eaw_assets
     ${SOURCES_DIR}/pose.cpp
     ${SOURCES_DIR}/resource_loaders.cpp
     ${SOURCES_DIR}/skeleton.cpp
+    ${SOURCES_DIR}/sound_events.cpp
+    ${SOURCES_DIR}/sound_loaders.cpp
     ${SOURCES_DIR}/spawn_catalog.cpp
+    ${SOURCES_DIR}/surface_effects.cpp
     ${SOURCES_DIR}/xml_asset_database.cpp
     ${SOURCES_DIR}/xml_schema_internal.hpp
     ${SOURCES_DIR}/xml_schema_load.cpp
     ${SOURCES_DIR}/xml_schema_validate.cpp
 )
 
-target_link_libraries(eaw_assets PUBLIC eaw_core eaw_formats eaw_math eaw_render_contract eaw_vfs)
+target_link_libraries(eaw_assets PUBLIC eaw_audio eaw_core eaw_formats eaw_math eaw_render_contract eaw_vfs)
