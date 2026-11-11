@@ -1,11 +1,16 @@
 #pragma once
 
 // The sandbox's interactive development panels, drawn with Dear ImGui inside the renderer's overlay
-// frame (D3d12Renderer::set_overlay_ui): a menu (F1) that shows or hides the other panels and view
-// toggles, a spawn panel that chooses what to spawn, how many, and for which owner, and a sound
-// panel with the volumes. The
-// statistics panel itself is drawn by the renderer from text (sandbox_overlay). Panel state is plain
-// data owned by the sandbox; button presses come back as actions it applies in its next frame.
+// frame (D3d12Renderer::set_overlay_ui): a bar pinned to the top of the window (F1 shows or hides
+// it) with menus that show or hide the panels and the view toggles; the statistics panel
+// (graphics numbers, sandbox_overlay); the spawn panel (what to spawn, filtered by category and
+// faction, how many, for which owner); the sound panel (volumes); and the camera panel (fixed,
+// debug, or free camera). Every panel first opens in its own place below the bar, so none covers
+// another; afterwards it can be moved and resized, and the renderer's settings file keeps where.
+// Panel state is plain data owned by the sandbox; button presses come back as actions it applies
+// in its next frame.
+
+#include "assets/spawn_catalog.hpp"
 
 #include <array>
 #include <cstdint>
@@ -13,24 +18,43 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace eaw {
 
+// How the map camera is driven: the legacy RTS view (fixed heading and pitch), the debug view (the
+// same camera, rotated by dragging), or a free flying camera.
+enum class SandboxCameraMode
+{
+    fixed,
+    debug,
+    free,
+};
+
+[[nodiscard]] std::string_view to_string(SandboxCameraMode mode) noexcept;
+
 struct SandboxPanels
 {
-    bool menu{};
+    // The bar at the top (F1).
+    bool bar{true};
     bool statistics{};
     bool spawn{};
     bool sound{};
-    // Spawn panel: the search text (case-insensitive substring of type names).
+    bool camera{};
+    // Spawn panel: the search text (case-insensitive substring of type names), and the chosen
+    // category and faction filters (0: all).
     std::array<char, 96> filter{};
+    int category{};
+    int faction{};
 };
 
-// What the spawn panel shows and edits: the type list, which of them are loaded, the chosen index
-// into it, the count and owner N and the buttons use, and a status line (loading, waiting).
+// What the spawn panel shows and edits: the type list (with each type's kind and factions in
+// `types` when known, parallel to `names`), which of them are loaded, the chosen index into it, the
+// count and owner N and the buttons use, and a status line (loading, waiting).
 struct SpawnPanelView
 {
     std::span<const std::string> names;
+    std::span<const SpawnTypeInfo> types;
     std::function<bool(const std::string&)> loaded;
     std::size_t* choice{};
     std::uint32_t* count{};
@@ -56,10 +80,26 @@ struct SoundPanelView
     std::string status;
 };
 
-// The menu: panel visibility and the view toggles it is handed (bounds, passability).
-void draw_sandbox_menu(SandboxPanels& panels, bool& show_bounds, bool& show_passability);
+// What the camera panel edits: the mode (fixed and debug need a map), and the free camera's speed
+// in world units per second.
+struct CameraPanelView
+{
+    SandboxCameraMode* mode{};
+    bool map{};
+    float* fly_speed{};
+};
+
+// The category a spawnable XML element type is listed under (Infantry, Vehicles, Heroes,
+// Structures, Space units, Props, Other).
+[[nodiscard]] std::string_view spawn_category(std::string_view kind) noexcept;
+
+// The bar: panel visibility and the view toggles it is handed (bounds, passability).
+void draw_sandbox_bar(SandboxPanels& panels, bool& show_bounds, bool& show_passability);
+void draw_statistics_panel(SandboxPanels& panels, std::span<const std::string> lines);
 [[nodiscard]] SpawnPanelActions draw_spawn_panel(SandboxPanels& panels, const SpawnPanelView& view);
 // True when a volume changed.
 [[nodiscard]] bool draw_sound_panel(SandboxPanels& panels, const SoundPanelView& view);
+// True when the mode changed.
+[[nodiscard]] bool draw_camera_panel(SandboxPanels& panels, const CameraPanelView& view);
 
 } // namespace eaw

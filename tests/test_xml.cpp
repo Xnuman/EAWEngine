@@ -148,13 +148,18 @@ void test_game_object_catalog()
     placed.rotation = {0.0F, 0.0F, 90.0F};
     placed.position = {10.0F, 20.0F, 30.0F};
     placed.has_transform = true;
-    const auto moved = eaw::transform_point({1.0F, 0.0F, 0.0F}, eaw::placed_object_transform(placed));
-    require(std::fabs(moved.x - 10.0F) < 1.0e-4F && std::fabs(moved.y - 22.0F) < 1.0e-4F && std::fabs(moved.z - 30.0F) < 1.0e-4F, "placed-object heading/scale/translation is wrong");
+    // The Z rotation is the object's facing: a model facing -Y placed at 90 degrees faces +Y, and its
+    // +X side ends up at -X.
+    const auto forward = eaw::transform_point({0.0F, -1.0F, 0.0F}, eaw::placed_object_transform(placed));
+    const auto side = eaw::transform_point({1.0F, 0.0F, 0.0F}, eaw::placed_object_transform(placed));
+    require(std::fabs(forward.x - 10.0F) < 1.0e-4F && std::fabs(forward.y - 22.0F) < 1.0e-4F && std::fabs(forward.z - 30.0F) < 1.0e-4F && std::fabs(side.x - 8.0F) < 1.0e-4F &&
+                std::fabs(side.y - 20.0F) < 1.0e-4F,
+            "placed-object facing/scale/translation is wrong");
     auto degenerate = placed;
     degenerate.scale = 0.0F;
     degenerate.rotation = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F};
     const auto safe = eaw::transform_point({1.0F, 0.0F, 0.0F}, eaw::placed_object_transform(degenerate));
-    require(std::isfinite(safe.x) && std::fabs(safe.x - 11.0F) < 1.0e-4F, "degenerate placed-object transform was not sanitized");
+    require(std::isfinite(safe.x) && std::fabs(safe.x - 10.0F) < 1.0e-4F && std::fabs(safe.y - 21.0F) < 1.0e-4F, "degenerate placed-object transform was not sanitized");
 
     eaw::TedMapData map;
     map.type = eaw::TedMapType::space;

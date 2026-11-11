@@ -20,3 +20,7 @@
 
 # Build output of the scripts (CMAKE_RUNTIME_OUTPUT_DIRECTORY).
 /executables/
+
+# The owner's local evidence (screenshots and other files handed over for comparisons).
+/Additional Files/
+/Extracted Maps/

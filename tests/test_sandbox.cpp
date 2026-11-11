@@ -39,6 +39,9 @@ void test_sandbox_options()
     const auto battle = expect_ok(parse({"battle", "--map", "DATA/ART/MAPS/X.TED", "--ticks", "500", "--record", "out.log", "--check-determinism", "--auto-move"}), "parsing battle options");
     require(battle.mode == eaw::RunMode::battle && battle.ticks == 500U && battle.record == std::filesystem::path("out.log") && battle.check_determinism && battle.auto_move,
             "battle options must be read");
+    const auto free = expect_ok(parse({"--panel", "camera", "--free-camera", "1", "2", "3", "4", "5", "6"}), "parsing the camera options");
+    require(free.panels.camera && free.free_camera && (*free.free_camera)[5] == 6.0F && !parse({"--free-camera", "1", "1", "1", "1", "1", "1"}) && !parse({"--free-camera", "1", "2"}),
+            "the free camera start and the camera panel must be read, and an eye on its target refused");
     const auto opened = expect_ok(parse({"--panel", "spawn", "--panel", "menu"}), "parsing --panel");
     require(opened.panels.spawn && opened.panels.menu && !opened.panels.statistics && !parse({"--panel", "bogus"}), "--panel must open the named panels and reject others");
     const auto sound = expect_ok(parse({"--panel", "sound", "--volume", "0.5", "--audio", "none", "--language", "German"}), "parsing audio options");

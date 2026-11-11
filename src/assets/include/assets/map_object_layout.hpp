@@ -14,11 +14,16 @@ namespace eaw {
 class AssetReader;
 
 // Object-to-world transform for a placed TED object in the row-vector convention used by
-// transform_point. Rotation components are degrees applied about X, then Y, then Z; stock
-// maps store almost all rotation in the Z (heading) component. Uniform scale comes from the
-// object's scale field. The rotation order and handedness are inference pending black-box
-// comparison; see docs/compatibility-research.md.
+// transform_point. The Z component is the object's facing (degrees counter-clockwise from +X,
+// as the simulation's headings); models face -Y, so the model first turns a quarter right
+// (placed_model_facing) to face +X. The rotation components then apply about X, then Y, then Z;
+// stock maps store almost all rotation in Z. Uniform scale comes from the object's scale field.
+// The facing offset is measured (pieces laid end to end follow it; see
+// docs/compatibility-research.md); the X/Y order stays inference.
 [[nodiscard]] Matrix4 placed_object_transform(const TedPlacedObject& object) noexcept;
+
+// The model's turn before the placement rotation: from facing -Y to facing +X (degrees).
+inline constexpr float placed_model_facing = 90.0F;
 
 // Splits a list of XML type names (Squadron_Units, Company_Units) on commas and whitespace. Stock
 // FoC data writes one Company_Units list without commas; type names never contain whitespace.

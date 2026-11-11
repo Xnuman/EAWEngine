@@ -1,4 +1,5 @@
 #include "assets/spawn_catalog.hpp"
+#include "assets/map_object_layout.hpp"
 
 #include "assets/game_object_catalog.hpp"
 #include "assets/xml_asset_database.hpp"
@@ -14,9 +15,10 @@ namespace {
 
 // Element types of units and structures in the stock XML (the owner breakdown of the map-objects
 // audit); everything else with a model is props, markers, effects, and backdrops.
-constexpr std::array<std::string_view, 17> unit_kinds{
-    "genericherounit", "groundbuildable", "groundinfantry", "groundstructure",  "groundvehicle", "herounit",      "indigenous_unit", "mobile_defense_unit", "secondarystructure",
-    "spacebuildable",  "spacestructure",  "spaceunit",      "specialstructure", "starbase",      "transportunit", "uniqueunit",      "herocompany",
+// Companies and squadrons spawn their members.
+constexpr std::array<std::string_view, 19> unit_kinds{
+    "genericherounit", "groundbuildable", "groundinfantry",   "groundstructure", "groundvehicle", "herounit",   "indigenous_unit", "mobile_defense_unit", "secondarystructure", "spacebuildable",
+    "spacestructure",  "spaceunit",       "specialstructure", "starbase",        "transportunit", "uniqueunit", "herocompany",     "groundcompany",       "squadron",
 };
 
 } // namespace
@@ -45,7 +47,15 @@ std::vector<SpawnTypeInfo> list_spawn_types(const XmlAssetDatabase& database, co
             continue;
         }
         const auto kind = ascii_lower(definition.type);
-        types.push_back({definition.name, definition.type, land, space, std::ranges::find(unit_kinds, kind) != unit_kinds.end()});
+        SpawnTypeInfo info{definition.name, definition.type, land, space, std::ranges::find(unit_kinds, kind) != unit_kinds.end(), {}};
+        if (const auto* affiliation = catalog.field(definition, "Affiliation").field)
+        {
+            for (const auto name : split_type_names(affiliation->text))
+            {
+                info.affiliations.emplace_back(name);
+            }
+        }
+        types.push_back(std::move(info));
     }
     std::ranges::sort(types,
                       [](const SpawnTypeInfo& left, const SpawnTypeInfo& right)

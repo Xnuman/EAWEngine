@@ -1,4 +1,4 @@
-// The Dear ImGui statistics panel.
+// The Dear ImGui overlay: the caller's panels and the selection rectangle.
 
 #include "d3d12_renderer_impl.hpp"
 
@@ -13,7 +13,8 @@ Status D3d12Renderer::Impl::create_overlay()
     overlay_context = ImGui::CreateContext();
     ImGui::SetCurrentContext(overlay_context);
     auto& io = ImGui::GetIO();
-    io.IniFilename = nullptr;
+    overlay_settings_file = options.overlay_settings_file.empty() ? std::string{} : options.overlay_settings_file.string();
+    io.IniFilename = overlay_settings_file.empty() ? nullptr : overlay_settings_file.c_str();
     io.LogFilename = nullptr;
     ImGui::StyleColorsDark();
     ImGui_ImplDX12_InitInfo info;
@@ -120,16 +121,6 @@ void D3d12Renderer::Impl::render_overlay(const D3D12_CPU_DESCRIPTOR_HANDLE rende
     ImGui_ImplDX12_NewFrame();
     ImGui::NewFrame();
 
-    // Expanded: a movable, resizable panel with a "-" button in its top-right corner. Minimized:
-    // a compact tab at the same place with a "+" button.
-    constexpr ImGuiWindowFlags common = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoCollapse;
-    const auto corner_button = [](const char* label)
-    {
-        const auto width = ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0F;
-        ImGui::SameLine();
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0F, ImGui::GetContentRegionAvail().x - width));
-        return ImGui::SmallButton(label);
-    };
     if (selection_rectangle)
     {
         const auto& [x0, y0, x1, y1] = *selection_rectangle;
@@ -138,54 +129,6 @@ void D3d12Renderer::Impl::render_overlay(const D3D12_CPU_DESCRIPTOR_HANDLE rende
         const ImVec2 maximum(std::max(x0, x1), std::max(y0, y1));
         draw_list->AddRectFilled(minimum, maximum, IM_COL32(120, 200, 255, 40));
         draw_list->AddRect(minimum, maximum, IM_COL32(150, 215, 255, 220));
-    }
-    ImGui::SetNextWindowBgAlpha(0.62F);
-    if (overlay_lines.empty())
-    {
-        // Only the selection rectangle is shown.
-    }
-    else if (!overlay_minimized)
-    {
-        ImGui::SetNextWindowPos(overlay_position, ImGuiCond_Once);
-        // Zero on an axis fits the contents the first time; afterwards the user's size wins.
-        ImGui::SetNextWindowSize(ImVec2(0.0F, 0.0F), ImGuiCond_FirstUseEver);
-        if (ImGui::Begin("##eaw-statistics", nullptr, common | ImGuiWindowFlags_HorizontalScrollbar))
-        {
-            ImGui::TextUnformatted("Statistics");
-            if (corner_button("-"))
-            {
-                overlay_minimized = true;
-            }
-            ImGui::Separator();
-            for (const auto& line : overlay_lines)
-            {
-                if (line.empty())
-                {
-                    ImGui::Separator();
-                }
-                else
-                {
-                    ImGui::TextUnformatted(line.c_str());
-                }
-            }
-            overlay_position = ImGui::GetWindowPos();
-        }
-        ImGui::End();
-    }
-    else
-    {
-        ImGui::SetNextWindowPos(overlay_position, ImGuiCond_Always);
-        if (ImGui::Begin("##eaw-statistics-minimized", nullptr, common | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove))
-        {
-            ImGui::TextUnformatted("Statistics");
-            if (corner_button("+"))
-            {
-                overlay_minimized = false;
-                // Reopen the panel where the tab is.
-                ImGui::SetWindowPos("##eaw-statistics", overlay_position);
-            }
-        }
-        ImGui::End();
     }
     if (overlay_ui)
     {
@@ -197,15 +140,6 @@ void D3d12Renderer::Impl::render_overlay(const D3D12_CPU_DESCRIPTOR_HANDLE rende
     // The overlay pipeline has one color target and no depth.
     command_list->OMSetRenderTargets(1, &render_target, FALSE, nullptr);
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), command_list.Get());
-}
-
-void D3d12Renderer::Impl::set_overlay_text(const std::span<const std::string> lines)
-{
-    overlay_lines.assign(lines.begin(), lines.end());
-    if (overlay_lines.empty() && !overlay_ui)
-    {
-        overlay_wants_mouse = false;
-    }
 }
 
 void D3d12Renderer::Impl::set_overlay_input(const VisualOverlayInput& input)

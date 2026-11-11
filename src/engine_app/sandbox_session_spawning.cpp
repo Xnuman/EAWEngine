@@ -61,13 +61,18 @@ void SandboxSession::start_next_package()
 
 void SandboxSession::poll_packages()
 {
-    if (pending_spawn_names.valid() && pending_spawn_names.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+    if (pending_spawn_types.valid() && pending_spawn_types.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
     {
-        auto names = pending_spawn_names.get();
-        if (!names.empty() && battle)
+        auto types = pending_spawn_types.get();
+        if (!types.empty() && battle)
         {
             const auto current = spawn_choice < spawn_names.size() ? spawn_names[spawn_choice] : std::string{};
-            spawn_names = std::move(names);
+            spawn_names.clear();
+            for (const auto& type : types)
+            {
+                spawn_names.push_back(type.name);
+            }
+            spawn_types = std::move(types);
             const auto found = std::ranges::find(spawn_names, current);
             spawn_choice = found != spawn_names.end() ? static_cast<std::size_t>(found - spawn_names.begin()) : 0U;
             std::cout << "Spawn list: " << spawn_names.size() << " types (Tab/Shift+Tab, Ctrl for 10 at a time)\n";

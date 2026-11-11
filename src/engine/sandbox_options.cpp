@@ -86,6 +86,7 @@ void print_sandbox_usage()
               << "  --capture-frame <n>    Capture the nth presented frame after textures are resident (default 1)\n"
               << "  --fixed-frame-time <s> Advance presentation by s seconds per frame instead of the wall clock\n"
               << "  --camera <x> <y> <d>   Map camera focus and view distance\n"
+              << "  --free-camera <ex> <ey> <ez> <tx> <ty> <tz>  Start in the free camera at this eye, looking at this target\n"
               << "  --upload-budget <MiB>  Texture bytes streamed per frame (default 64; 0 uploads all at once)\n"
               << "  --bloom <strength>     Bloom strength (default 0.8; 0 disables it)\n"
               << "  --no-bloom             Disable bloom\n"
@@ -97,7 +98,7 @@ void print_sandbox_usage()
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
               << "  --show-passability Start with the map's passability classes drawn (G toggles)\n"
               << "  --overlay          Start with the on-screen statistics panel shown (hidden by default; the F1 menu toggles it)\n"
-              << "  --panel <menu|statistics|spawn|sound>  Open a dev panel at start (repeatable; F1 opens the menu)\n"
+              << "  --panel <menu|statistics|spawn|sound|camera>  Open a dev panel at start (repeatable; F1 hides the bar)\n"
               << "  --no-raw-input     Read mouse movement and keys from window messages instead of raw input\n"
               << "  --no-error-dialog  Report fatal errors on stderr only (no error window)\n"
               << "  --log-dir <path>   Folder for log files (default: logs next to the executable)\n"
@@ -219,9 +220,13 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
             {
                 options.panels.sound = true;
             }
+            else if (value == "camera")
+            {
+                options.panels.camera = true;
+            }
             else
             {
-                return make_error("--panel must be menu, statistics, spawn, or sound");
+                return make_error("--panel must be menu, statistics, spawn, sound, or camera");
             }
         }
         else if (argument == "--no-overlay")
@@ -490,6 +495,20 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
                 return make_error("--camera needs a positive view distance");
             }
             options.camera_view = view;
+        }
+        else if (argument == "--free-camera")
+        {
+            std::array<float, 6> view{};
+            for (auto& value : view)
+            {
+                EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+                EAW_TRY_ASSIGN(value, parse_float(text, argument));
+            }
+            if (view[0] == view[3] && view[1] == view[4] && view[2] == view[5])
+            {
+                return make_error("--free-camera needs a target apart from the eye");
+            }
+            options.free_camera = view;
         }
         else if (argument == "--frame-limit")
         {

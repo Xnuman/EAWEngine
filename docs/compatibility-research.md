@@ -1024,6 +1024,16 @@ particle-audit`.
   most of them infantry and vehicles, many skinned; LOD0 is the sparsest in 137 of them. 80 types
   set `LOD_Bias` (0.5-10), and the graphics presets (`GRAPHICDETAILS.XML`) set `MeshDetail` 0-1
   beside `ParticleDetail` and the other detail options.
+- **Handedness and placed-object facing.** The game's world is right-handed with Z up (X east, Y
+  north): seen through a left-handed view, maps came out mirrored left to right against the
+  original's editor (owner's screenshots of `_LAND_PLANET_ANAXES_02`). A placed object's Z rotation
+  is its facing, counter-clockwise from +X, and stock models face -Y (the TIE Crawler's muzzles sit
+  at y -4.7), so a model turns a quarter before the placement rotation. Evidence: pieces laid end to
+  end (train tunnels, walls, half-walls) follow heading + 90 degrees to their nearest neighbour in
+  697 of 992 measured cases across the stock maps (Tunnel_A 158 of 158, half-walls 48 of 51; most
+  of the rest are parallel runs side by side), and Anaxes 02 then matches the editor. Squadron
+  offsets are in the facing frame: stock V formations put the lead at +X (`30,0,0`) and the wings
+  behind at -X.
 - **Fleet and group responses.** `SFXEvent_Fleet_Move` is set on 215 types, infantry and vehicles
   included, so it is not a space-only order response. The owner's guess (2026-11-11, unverified): it
   is the response when a fleet is sent to another planet in galactic conquest. The engine does not

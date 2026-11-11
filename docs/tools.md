@@ -51,7 +51,7 @@ Map owner slot 3 is neutral and every other slot hostile, for now.
 | `--upload-budget <MiB>` | Texture bytes streamed per frame (default 64; 0 uploads all at once). |
 | `--pipeline-cache <dir>` | Keep compiled pipeline states between runs; stale caches are discarded. |
 | `--no-raw-input` | Read mouse and keys from window messages instead of raw input. |
-| `--overlay`, `--panel menu\|statistics\|spawn\|sound` | Open the statistics panel or a dev panel at start. |
+| `--overlay`, `--panel statistics\|spawn\|sound\|camera` | Open the statistics panel or a dev panel at start (`menu` is still accepted; the bar starts shown). |
 | `--show-bounds`, `--show-passability` | Start with bounds or passability drawn. |
 
 ### Automation and diagnostics
@@ -75,7 +75,7 @@ breaks into an attached debugger.
 
 ### Controls
 
-On maps the sandbox starts in the RTS camera; C switches to the free debug camera and back.
+On maps the sandbox starts in the fixed (RTS) camera; C or the Camera panel switch between fixed, debug (the same camera, drag rotates, right-drag pans), and free (a flying camera: right-drag looks, WASD moves along the view, Q/E down and up, Shift faster, the wheel sets the speed). `--free-camera ex ey ez tx ty tz` starts in the free camera at that eye, looking at that target.
 
 | Input | RTS camera (maps) | Free camera and model view |
 | --- | --- | --- |
@@ -90,7 +90,7 @@ On maps the sandbox starts in the RTS camera; C switches to the free debug camer
 
 | Key | Action |
 | --- | --- |
-| F1 | Dev menu: | `--overlay`, `--panel menu|statistics|spawn|sound` |, spawn, and sound panels (the sound panel has the master and per-category volumes), bounds and passability toggles. |
+| F1 | Shows or hides the bar at the top: its Panels menu opens the statistics (graphics numbers), spawn (search, category and faction filters), sound, and camera panels; its View menu toggles bounds and passability. Panels first open side by side under the bar; where they are moved and sized is kept in `sandbox_imgui.ini` next to the executable. |
 | N | Spawn the current type at the cursor (a type not loaded yet loads in the background). |
 | Tab, Shift+Tab (Ctrl: by ten) | Cycle spawnable types: every unit type with a model for the map. |
 | O | Cycle the owner of spawned units. |
@@ -116,7 +116,7 @@ instead of a hand-typed command line. A scenario names:
   (type, count, and owner slot, as `--spawn TYPE:N@OWNER`), a model with an
   optional animation, or the validation triangle;
 - engine options: WARP, GPU validation, v-sync, hot reload, bounds,
-  passability, auto move, | `--overlay`, `--panel menu|statistics|spawn|sound` | panel (hidden by default), raw input,
+  passability, auto move, statistics panel (hidden by default), raw input,
   frame limit, window size, upload budget, and free-form extra arguments.
 
 The **Game root** field names the installation (empty: found through Steam); a folder that is not
@@ -154,7 +154,7 @@ shell is `eaw_imgui_app` (`src/imgui_app`), shared with EAWTools.
 ## Headless battles
 
 `EAWEngine battle` runs a battle on a map without a window, as fast as it can,
-and prints the state hash, tick timing, and combat and path | `--overlay`, `--panel menu|statistics|spawn|sound` |. It is
+and prints the state hash, tick timing, and combat and path statistics. It is
 the determinism check and the simulation benchmark.
 
 ```powershell
@@ -345,6 +345,8 @@ EAWAssetInspector.exe list Data/XML --extension .xml --limit 100 `
 
 # Format-specific metadata and a small content inventory
 EAWAssetInspector.exe inspect Data/Text/MasterTextFile_English.dat
+# A model: skeleton (bone positions and axes), meshes with their bone and each submesh's vertex
+# extent in the mesh's own space, materials
 EAWAssetInspector.exe inspect Data/Art/Models/Some_Unit.alo
 
 # Unique TEXT_* references in one resolved XML file

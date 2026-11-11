@@ -116,9 +116,9 @@ void TacticalCamera::apply(const CameraInput& input) noexcept
     distance_ = std::clamp(distance_ * std::pow(zoom_step, finite_or(input.zoom_steps, 0.0F)), minimum_distance_, maximum_distance_);
 
     // Screen-relative panning on the ground plane. Forward points from the eye toward the focus;
-    // right matches the renderer's left-handed view (right = up x forward).
+    // right is the view's right (forward x up).
     const Vector2 forward{-std::cos(yaw_), -std::sin(yaw_)};
-    const Vector2 right{-forward.y, forward.x};
+    const Vector2 right{forward.y, -forward.x};
     const auto pan_right = finite_or(input.pan_right, 0.0F) * distance_;
     const auto pan_forward = finite_or(input.pan_forward, 0.0F) * distance_;
     focus_[0] = std::clamp(focus_[0] + right[0] * pan_right + forward[0] * pan_forward, bounds_.minimum[0], bounds_.maximum[0]);
@@ -129,6 +129,44 @@ VisualCamera TacticalCamera::camera() const noexcept
 {
     const auto near_plane = std::max(distance_ * 0.005F, 0.1F);
     return look_from(focus_, yaw_, pitch_, distance_, near_plane, distance_ + extent_ * 3.0F, 50.0F);
+}
+
+FlyCamera::FlyCamera(const VisualCamera& from) noexcept
+    : eye_(from.eye), vertical_fov_degrees_(from.vertical_fov_degrees), near_plane_(std::min(from.near_plane, close_near_plane)), far_plane_(from.far_plane)
+{
+    const auto view = from.target - from.eye;
+    yaw_ = std::atan2(view.y, view.x);
+    pitch_ = std::clamp(std::atan2(view.z, std::hypot(view.x, view.y)), -maximum_pitch, maximum_pitch);
+}
+
+Vector3 FlyCamera::forward() const noexcept
+{
+    return {std::cos(pitch_) * std::cos(yaw_), std::cos(pitch_) * std::sin(yaw_), std::sin(pitch_)};
+}
+
+void FlyCamera::apply(const FlyInput& input) noexcept
+{
+    const auto finite = [](const float value)
+    {
+        return std::isfinite(value) ? value : 0.0F;
+    };
+    yaw_ = std::remainder(yaw_ + finite(input.yaw), 2.0F * std::numbers::pi_v<float>);
+    pitch_ = std::clamp(pitch_ + finite(input.pitch), -maximum_pitch, maximum_pitch);
+    const Vector3 right{std::sin(yaw_), -std::cos(yaw_), 0.0F};
+    eye_ = eye_ + forward() * finite(input.forward) + right * finite(input.right) + Vector3{0.0F, 0.0F, finite(input.up)};
+}
+
+VisualCamera FlyCamera::camera() const noexcept
+{
+    VisualCamera camera;
+    camera.eye = eye_;
+    // A target well ahead: users of the camera read the eye-target distance as a view distance.
+    camera.target = eye_ + forward() * fly_target_distance;
+    camera.up = {0.0F, 0.0F, 1.0F};
+    camera.vertical_fov_degrees = vertical_fov_degrees_;
+    camera.near_plane = near_plane_;
+    camera.far_plane = std::max(far_plane_, near_plane_ * 2.0F);
+    return camera;
 }
 
 } // namespace eaw

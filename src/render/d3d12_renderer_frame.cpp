@@ -401,9 +401,11 @@ DirectX::XMFLOAT4X4 D3d12Renderer::Impl::camera_matrix() const
     const auto eye = XMVectorSet(camera.eye[0], camera.eye[1], camera.eye[2], 1.0F);
     const auto target = XMVectorSet(camera.target[0], camera.target[1], camera.target[2], 1.0F);
     const auto up = XMVectorSet(camera.up[0], camera.up[1], camera.up[2], 0.0F);
-    const auto view = XMMatrixLookAtLH(eye, target, up);
+    // The world is right-handed (Z up, X east, Y north, as the game's data and 3ds Max are): a
+    // left-handed view mirrored every scene left to right against the original.
+    const auto view = XMMatrixLookAtRH(eye, target, up);
     const auto aspect = static_cast<float>(width) / static_cast<float>(std::max(height, 1U));
-    const auto projection = XMMatrixPerspectiveFovLH(XMConvertToRadians(camera.vertical_fov_degrees), aspect, camera.near_plane, camera.far_plane);
+    const auto projection = XMMatrixPerspectiveFovRH(XMConvertToRadians(camera.vertical_fov_degrees), aspect, camera.near_plane, camera.far_plane);
     DirectX::XMFLOAT4X4 result;
     XMStoreFloat4x4(&result, XMMatrixTranspose(view * projection));
     return result;
@@ -510,10 +512,10 @@ bool D3d12Renderer::Impl::render()
     }
     constants.selection = {highlighted_pick_id, 0, 0, 0};
     {
-        // The view basis of XMMatrixLookAtLH: right = up x forward, up' = forward x right.
+        // The view basis of XMMatrixLookAtRH: right = forward x up, up' = right x forward.
         const auto forward = camera.target - camera.eye;
-        const auto right = unit(cross(camera.up, forward));
-        const auto view_up = unit(cross(forward, Vector3{right[0], right[1], right[2]}));
+        const auto right = unit(cross(forward, camera.up));
+        const auto view_up = unit(cross(Vector3{right[0], right[1], right[2]}, forward));
         constants.camera_right = right;
         constants.camera_up = view_up;
     }
@@ -733,7 +735,7 @@ bool D3d12Renderer::Impl::render()
     last_draw_calls = draw_calls;
     last_triangles = triangles;
     last_instances = instances_drawn;
-    if ((!overlay_lines.empty() || selection_rectangle || overlay_ui) && overlay_backend_initialized)
+    if ((selection_rectangle || overlay_ui) && overlay_backend_initialized)
     {
         render_overlay(render_target);
     }

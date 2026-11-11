@@ -138,10 +138,10 @@ void SandboxSession::step_particles(const std::chrono::steady_clock::time_point 
     effects.update(seconds);
     if (audio && world && tactical_camera)
     {
-        audio->update(tactical_camera->camera(), world->snapshot(), *world, seconds);
+        audio->update(current_camera(), world->snapshot(), *world, seconds);
     }
     frame_particles.clear();
-    const auto eye = tactical_camera ? tactical_camera->camera().eye : orbit_camera ? orbit_camera->camera().eye : Vector3{};
+    const auto eye = tactical_camera || orbit_camera ? current_camera().eye : Vector3{};
     const auto projectiles = world != nullptr ? std::span<const eaw::ProjectileSnapshot>(world->snapshot().projectiles) : std::span<const eaw::ProjectileSnapshot>{};
     effects.build_sprites(eye, projectiles, static_cast<float>(simulation_clock.interpolation()), static_cast<float>(simulation_clock.tick_seconds()), frame_particles);
     renderer.set_particles(frame_particles);

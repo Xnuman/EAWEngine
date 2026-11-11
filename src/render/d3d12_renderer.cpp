@@ -82,11 +82,6 @@ void D3d12Renderer::set_instances(const std::span<const VisualInstance> instance
     impl_->set_instances(instances);
 }
 
-void D3d12Renderer::set_overlay_text(const std::span<const std::string> lines)
-{
-    impl_->set_overlay_text(lines);
-}
-
 void D3d12Renderer::set_selection_rectangle(const std::optional<std::array<float, 4>>& rectangle)
 {
     impl_->set_selection_rectangle(rectangle);

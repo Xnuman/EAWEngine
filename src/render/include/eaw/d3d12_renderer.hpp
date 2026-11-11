@@ -36,6 +36,9 @@ struct D3d12RendererOptions
     float bloom_strength{0.8F};
     // Detail levels of meshes that have them (eaw/visual_lod.hpp); set_lod_settings changes them.
     VisualLodSettings lod;
+    // Where the overlay's panels keep their positions and sizes between runs (a Dear ImGui settings
+    // file); empty keeps nothing.
+    std::filesystem::path overlay_settings_file;
 };
 
 struct D3d12RendererStats
@@ -207,10 +210,7 @@ public:
     // are counted in stats().dropped_debug_lines.
     void set_debug_lines(std::span<const VisualDebugLine> lines);
     [[nodiscard]] static std::size_t max_debug_lines() noexcept;
-    // Text lines of the on-screen debug panel (top left); an empty line draws a separator and no
-    // lines hides the panel.
-    void set_overlay_text(std::span<const std::string> lines);
-    // Mouse input for the overlay (its "-"/"+" button, moving, and resizing). Call once per frame.
+    // Mouse and keyboard input for the overlay's panels (set_overlay_ui). Call once per frame.
     void set_overlay_input(const VisualOverlayInput& input);
     // Screen-space selection box (x0, y0, x1, y1 in client pixels) drawn over everything; nullopt
     // hides it. Shown even when the statistics panel is hidden.

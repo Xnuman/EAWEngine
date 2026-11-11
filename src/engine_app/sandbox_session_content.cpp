@@ -214,12 +214,13 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
             spawn_names.push_back(type.type_name);
         }
         // The full list comes from the cached XML catalog on a worker (no remount runs meanwhile).
-        if (!pending_spawn_names.valid())
+        if (!pending_spawn_types.valid())
         {
-            pending_spawn_names = std::async(std::launch::async,
+            spawn_types.clear();
+            pending_spawn_types = std::async(std::launch::async,
                                              [&files = vfs, land = map_land, cache = &asset_cache]
                                              {
-                                                 return eaw::spawnable_type_names(files, land, cache);
+                                                 return eaw::spawnable_types(files, land, cache);
                                              });
         }
         spawn_choice = 0;
@@ -242,7 +243,8 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
             }
             orbit_camera.reset();
             renderer.set_camera(tactical_camera->camera());
-            std::cout << "Tactical camera: WASD/arrows or right-drag pan (Shift is faster), left-drag rotates, wheel zooms, Space resets, C toggles the free camera, P pauses the world.\n";
+            std::cout << "Tactical camera: WASD/arrows pan (Shift is faster), wheel zooms, Space resets, C cycles the camera modes (fixed, debug, free), P pauses the "
+                         "world.\n";
         }
     }
     else if (content.model)
@@ -359,7 +361,7 @@ void SandboxSession::poll_hot_reload()
     // remounted here, while no other thread reads the file system, then the scene rebuilds
     // in the background from the cache.
     // Archives are remounted only while no worker reads through the file system.
-    if (options.hot_reload && scene_dependencies && !pending_content.valid() && !pending_package.valid() && !pending_spawn_names.valid())
+    if (options.hot_reload && scene_dependencies && !pending_content.valid() && !pending_package.valid() && !pending_spawn_types.valid())
     {
         if (pending_check.valid() && pending_check.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
         {

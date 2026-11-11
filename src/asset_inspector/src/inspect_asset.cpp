@@ -191,6 +191,18 @@ eaw::Status inspect_alo(const std::span<const std::byte> bytes, const std::size_
         for (const auto& submesh : mesh.submeshes)
         {
             std::cout << "      " << submesh.shader << " vertices=" << submesh.vertex_count << " triangles=" << submesh.triangle_count << " stride=" << submesh.vertex_stride << '\n';
+            // The vertices' extent in the mesh's own space (before its bone's bind transform).
+            if (!submesh.vertices.empty())
+            {
+                auto minimum = submesh.vertices.front().position;
+                auto maximum = minimum;
+                for (const auto& vertex : submesh.vertices)
+                {
+                    minimum = {std::min(minimum.x, vertex.position.x), std::min(minimum.y, vertex.position.y), std::min(minimum.z, vertex.position.z)};
+                    maximum = {std::max(maximum.x, vertex.position.x), std::max(maximum.y, vertex.position.y), std::max(maximum.z, vertex.position.z)};
+                }
+                std::cout << "        extent x " << minimum.x << ".." << maximum.x << " y " << minimum.y << ".." << maximum.y << " z " << minimum.z << ".." << maximum.z << '\n';
+            }
             for (const auto& parameter : submesh.parameters)
             {
                 if (parameter.type == eaw::AloShaderParameterType::texture)

@@ -550,15 +550,17 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
     return package;
 }
 
-std::vector<std::string> spawnable_type_names(const AssetReader& vfs, const bool land, AssetCache* cache)
+std::vector<SpawnTypeInfo> spawnable_types(const AssetReader& vfs, const bool land, AssetCache* cache)
 {
     const auto catalog_entry = ResourceManager(vfs, cache).get<CachedCatalog>(xml_catalog_path);
     // Death clones are wrecks other types leave behind, not units to spawn.
     const auto clones = death_clone_names(*catalog_entry->database, catalog_entry->catalog);
-    std::vector<std::string> names;
-    for (const auto& type : list_spawn_types(*catalog_entry->database, catalog_entry->catalog))
+    std::vector<SpawnTypeInfo> types;
+    for (auto& type : list_spawn_types(*catalog_entry->database, catalog_entry->catalog))
     {
-        if (!type.unit || !(land ? type.land_model : type.space_model))
+        const auto kind = ascii_lower(type.kind);
+        const bool prop = kind.starts_with("prop") || kind == "spaceprop";
+        if ((!type.unit && !prop) || !(land ? type.land_model : type.space_model))
         {
             continue;
         }
@@ -567,9 +569,9 @@ std::vector<std::string> spawnable_type_names(const AssetReader& vfs, const bool
         {
             continue;
         }
-        names.push_back(type.name);
+        types.push_back(std::move(type));
     }
-    return names;
+    return types;
 }
 
 } // namespace eaw

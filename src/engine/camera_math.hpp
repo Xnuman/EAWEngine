@@ -1,6 +1,6 @@
 #pragma once
 
-// Screen <-> world conversions matching the renderer's camera (left-handed look-at, perspective
+// Screen <-> world conversions matching the renderer's camera (right-handed look-at, perspective
 // field of view, depth 0 at the near plane and 1 at the far plane; pixel y grows downward).
 
 #include "eaw/visual_scene.hpp"

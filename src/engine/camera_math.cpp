@@ -10,7 +10,8 @@ namespace {
 // A degenerate camera (eye on its target, or up along the view) looks along +Z.
 constexpr Vector3 fallback_axis{0.0F, 0.0F, 1.0F};
 
-// Left-handed look-at basis: forward toward the target, right = up x forward, true up = forward x right.
+// Right-handed look-at basis (as the renderer's): forward toward the target, right = forward x up,
+// true up = right x forward.
 struct Basis
 {
     Vector3 right;
@@ -21,8 +22,8 @@ struct Basis
 Basis camera_basis(const VisualCamera& camera) noexcept
 {
     const auto forward = normalize_or(camera.target - camera.eye, fallback_axis);
-    const auto right = normalize_or(cross(camera.up, forward), fallback_axis);
-    return {right, cross(forward, right), forward};
+    const auto right = normalize_or(cross(forward, camera.up), fallback_axis);
+    return {right, cross(right, forward), forward};
 }
 
 float tangent_half_fov(const VisualCamera& camera) noexcept

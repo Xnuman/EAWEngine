@@ -31,24 +31,6 @@ std::wstring to_wide(const std::string_view text)
     return result;
 }
 
-std::filesystem::path executable_directory()
-{
-    std::vector<wchar_t> buffer(MAX_PATH);
-    for (;;)
-    {
-        const auto length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-        if (length == 0)
-        {
-            return std::filesystem::current_path();
-        }
-        if (length < buffer.size())
-        {
-            return std::filesystem::path(std::wstring(buffer.data(), length)).parent_path();
-        }
-        buffer.resize(buffer.size() * 2U);
-    }
-}
-
 std::string timestamp()
 {
     const auto seconds = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -84,6 +66,24 @@ void prune_logs(const std::filesystem::path& directory, const std::string& prefi
 }
 
 } // namespace
+
+std::filesystem::path executable_directory()
+{
+    std::vector<wchar_t> buffer(MAX_PATH);
+    for (;;)
+    {
+        const auto length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+        if (length == 0)
+        {
+            return std::filesystem::current_path();
+        }
+        if (length < buffer.size())
+        {
+            return std::filesystem::path(std::wstring(buffer.data(), length)).parent_path();
+        }
+        buffer.resize(buffer.size() * 2U);
+    }
+}
 
 Result<std::filesystem::path> install_log_sinks(const LogSinkOptions& options)
 {

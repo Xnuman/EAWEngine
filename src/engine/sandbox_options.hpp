@@ -68,6 +68,8 @@ struct SandboxOptions
     std::optional<float> fixed_frame_time;
     // Tactical camera on maps: focus (x, y) and view distance, instead of the map's default view.
     std::optional<std::array<float, 3>> camera_view;
+    // Starts in the free flying camera at this eye, looking at this target (x, y, z each).
+    std::optional<std::array<float, 6>> free_camera;
     // Reload the scene every N rendered frames to exercise resource replacement and retirement.
     std::optional<std::uint64_t> reload_every;
     // Per-frame texture upload budget in MiB; zero uploads everything at once.
@@ -92,10 +94,12 @@ struct SandboxOptions
     // --panel menu|statistics|spawn (repeatable): dev panels open at start.
     struct OpenPanels
     {
+        // Accepted for older scenarios: the bar now starts shown.
         bool menu{};
         bool statistics{};
         bool spawn{};
         bool sound{};
+        bool camera{};
     };
     OpenPanels panels;
     // Mouse movement and keys through raw input (--no-raw-input uses window messages).

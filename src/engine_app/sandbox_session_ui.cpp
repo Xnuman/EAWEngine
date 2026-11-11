@@ -10,9 +10,20 @@ namespace eaw {
 
 void SandboxSession::draw_panels()
 {
-    eaw::draw_sandbox_menu(panels, show_all_bounds, show_passability);
+    eaw::draw_sandbox_bar(panels, show_all_bounds, show_passability);
+    eaw::draw_statistics_panel(panels, statistics_lines);
+    auto mode = camera_mode;
+    eaw::CameraPanelView camera_view{&mode, tactical_camera.has_value(), &fly_speed};
+    if (eaw::draw_camera_panel(panels, camera_view) && mode != camera_mode)
+    {
+        set_camera_mode(mode);
+    }
     eaw::SpawnPanelView view;
     view.names = spawn_names;
+    if (spawn_types.size() == spawn_names.size())
+    {
+        view.types = spawn_types;
+    }
     view.loaded = [this](const std::string& name)
     {
         return std::ranges::any_of(spawnable,
@@ -100,10 +111,7 @@ void SandboxSession::update_overlay(const std::chrono::steady_clock::time_point 
     view.stats = renderer.stats();
     view.vsync = options.vsync;
     view.frame_latency = options.frame_latency;
-    view.raw_input = window.input().raw_input;
-    view.raw_events = window.input().raw_events;
     const auto particle_stats = effects.particles().stats();
-    view.paused = world_paused;
     view.particle_effects = particle_stats.instances;
     view.particles = particle_stats.particles;
     view.attached_effects = effects.attached_playing();
@@ -111,52 +119,7 @@ void SandboxSession::update_overlay(const std::chrono::steady_clock::time_point 
     view.skipped_emitters = particle_stats.skipped_emitters;
     view.frames = overlay_frames;
     view.seconds = std::chrono::duration<double>(now - overlay_refreshed).count();
-    view.scene_status = scene_status;
-    view.eye = tactical_camera ? tactical_camera->camera().eye : orbit_camera->camera().eye;
-    if (visual_model)
-    {
-        view.animation_status = animation_status;
-    }
-    else if (animator)
-    {
-        const auto& animation = animator->stats();
-        view.animation_status = std::to_string(animation.animated) + " units animated (" + std::to_string(animation.blending) + " blending), " + std::to_string(animation.corpses) + " corpses, " +
-                                std::to_string(animation.poses) + " poses (" + std::to_string(animation.sampled) + " sampled this frame), palette " + std::to_string(animation.palette_entries) +
-                                (animation.over_budget > 0 ? ", " + std::to_string(animation.over_budget) + " in rest pose (palette full)" : std::string{});
-    }
-    view.animation_playing = animation_playing;
-    std::string selected_text = "none";
-    if (selection.size() == 1)
-    {
-        for (std::size_t index = 0; index < frame_entities.size(); ++index)
-        {
-            if (frame_entities[index].valid() && selection.contains(eaw::entity_key(frame_entities[index])))
-            {
-                selected_text = describe_instance(index);
-                break;
-            }
-        }
-    }
-    else if (!selection.empty())
-    {
-        selected_text = std::to_string(selection.size()) + " objects";
-    }
-    view.selected_text = selected_text;
-    view.world = world;
-    view.selection = &selection;
-    view.dropped_ticks = simulation_clock.dropped_ticks();
-    view.last_tick_ms = last_tick_ms;
-    view.slowest_tick_ms = slowest_tick_ms;
-    view.orders_issued = orders_issued;
-    if (spawn_choice < spawn_names.size())
-    {
-        view.spawn_type = spawn_names[spawn_choice] + (building_type.empty() || !pending_package.valid() ? std::string{} : " (loading " + building_type + ")");
-    }
-    view.spawn_types = spawn_names.size();
-    view.spawn_owner = spawn_owner;
-    view.reload_status = reload_status;
-    view.camera = !tactical_camera ? eaw::SandboxCameraMode::model : free_camera ? eaw::SandboxCameraMode::free : eaw::SandboxCameraMode::rts;
-    renderer.set_overlay_text(eaw::sandbox_overlay_lines(view));
+    statistics_lines = eaw::sandbox_overlay_lines(view);
     overlay_frames = 0;
     overlay_refreshed = now;
 }
@@ -165,11 +128,7 @@ void SandboxSession::update_panel(const eaw::InputState& input, const std::chron
 {
     if (input.keys[static_cast<std::size_t>(eaw::Key::f1)].pressed)
     {
-        panels.menu = !panels.menu;
-    }
-    if (!panels.statistics && statistics_shown)
-    {
-        renderer.set_overlay_text({});
+        panels.bar = !panels.bar;
     }
     // Shown now: refresh at once instead of waiting for the next quarter second.
     if (panels.statistics && !statistics_shown)

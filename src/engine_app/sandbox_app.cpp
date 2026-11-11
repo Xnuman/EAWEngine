@@ -1,5 +1,6 @@
 #include "sandbox_app.hpp"
 #include "sandbox_session.hpp"
+#include "eaw/log_sinks.hpp"
 
 #include "audio/audio_devices.hpp"
 #include "audio/null_audio_device.hpp"
@@ -214,7 +215,7 @@ bool SandboxSession::frame()
     }
     const auto& input = scene_input;
     const bool scene_mouse = !renderer.overlay_wants_mouse();
-    const bool rts_mode = tactical_camera && !free_camera;
+    const bool rts_mode = tactical_camera && camera_mode == eaw::SandboxCameraMode::fixed;
     const Vector2 mouse{static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y)};
     const auto tick = world != nullptr ? world->stats().tick : 0U;
     watchdog.enter("camera", tick);
@@ -350,6 +351,7 @@ int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const Gam
     renderer_options.texture_upload_budget_bytes = options.upload_budget_mib * 1024ULL * 1024ULL;
     renderer_options.bloom = options.bloom_strength > 0.0F;
     renderer_options.bloom_strength = options.bloom_strength;
+    renderer_options.overlay_settings_file = eaw::executable_directory() / "sandbox_imgui.ini";
     renderer_options.lod.policy = options.lod_policy;
     renderer_options.lod.mesh_detail = options.mesh_detail;
     auto created_renderer = eaw::D3d12Renderer::create(window.native_handle(), window.client_width(), window.client_height(), renderer_options);

@@ -21,6 +21,8 @@ struct SpawnTypeInfo
     bool space_model{};
     // A unit or structure kind rather than a prop, marker, effect, or backdrop.
     bool unit{};
+    // The factions it belongs to (XML Affiliation, as written).
+    std::vector<std::string> affiliations;
 };
 
 // Sorted by name (case-insensitive); one entry per name, from the first definition with a model.

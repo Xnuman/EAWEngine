@@ -28,4 +28,7 @@ struct LogSinkOptions
 // and debugger sinks are still installed and the error says why.
 Result<std::filesystem::path> install_log_sinks(const LogSinkOptions& options = {});
 
+// The folder of the running executable (the working directory when it cannot be found).
+[[nodiscard]] std::filesystem::path executable_directory();
+
 } // namespace eaw

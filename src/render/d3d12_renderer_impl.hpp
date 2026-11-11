@@ -270,15 +270,15 @@ struct D3d12Renderer::Impl
     std::array<std::array<ComPtr<ID3D12PipelineState>, 2>, 4> particle_pipelines;
     std::uint64_t last_particles{};
 
-    // Debug overlay: a display-only Dear ImGui panel drawn last into the back buffer. Its font
-    // texture takes slots from texture_slots through the backend's allocation callbacks.
+    // Debug overlay: the caller's Dear ImGui panels (overlay_ui) and the selection rectangle, drawn
+    // last into the back buffer. Its font texture takes slots from texture_slots through the
+    // backend's allocation callbacks. Panel layouts persist in overlay_settings_file (UTF-8, kept
+    // alive for Dear ImGui).
     ImGuiContext* overlay_context{};
     bool overlay_backend_initialized{};
-    std::vector<std::string> overlay_lines;
+    std::string overlay_settings_file;
     std::chrono::steady_clock::time_point overlay_tick{std::chrono::steady_clock::now()};
     VisualOverlayInput overlay_input;
-    ImVec2 overlay_position{10.0F, 10.0F};
-    bool overlay_minimized{};
     bool overlay_wants_mouse{};
     bool overlay_wants_keyboard{};
     std::function<void()> overlay_ui;
@@ -536,8 +536,6 @@ struct D3d12Renderer::Impl
     // Writes the dynamic instances into this frame context's buffer, growing it when needed (the
     // outgrown buffer retires on the direct timeline).
     void write_dynamic_instances(FrameContext& frame);
-
-    void set_overlay_text(const std::span<const std::string> lines);
 
     void set_selection_rectangle(const std::optional<std::array<float, 4>>& rectangle);
 

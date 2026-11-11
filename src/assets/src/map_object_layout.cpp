@@ -198,8 +198,12 @@ template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& s
         {
             layout.diagnostics.push_back(location(*squadron.type) + ": no Squadron_Offsets entry for member " + std::to_string(member) + "; placed at the squadron origin");
         }
+        // Squadron_Offsets are in the squadron's facing frame (+X ahead: stock V formations point
+        // there), while its placement first turns the model a quarter (placed_model_facing): the
+        // offset takes the inverse quarter turn, (x, y) to (y, -x), into the model's frame.
+        static_assert(placed_model_facing == 90.0F, "the offset turn below assumes a quarter turn");
         auto local = Matrix4::identity();
-        set_translation(local, offset);
+        set_translation(local, {offset.y, -offset.x, offset.z});
         placement.transform = local * squadron.transform;
         if (!assign_model(placement))
         {
@@ -248,7 +252,8 @@ std::vector<std::string_view> split_type_names(const std::string_view text)
 
 Matrix4 placed_object_transform(const TedPlacedObject& object) noexcept
 {
-    const auto rotation = axis_rotation(finite_or(object.rotation.z, 0.0F), 2) * (axis_rotation(finite_or(object.rotation.y, 0.0F), 1) * axis_rotation(finite_or(object.rotation.x, 0.0F), 0));
+    const auto rotation = axis_rotation(finite_or(object.rotation.z, 0.0F), 2) *
+                          (axis_rotation(finite_or(object.rotation.y, 0.0F), 1) * (axis_rotation(finite_or(object.rotation.x, 0.0F), 0) * axis_rotation(placed_model_facing, 2)));
     // A zero or non-finite scale would collapse or poison the transform; stock maps use 1.0.
     auto scale = finite_or(object.scale, 1.0F);
     if (scale == 0.0F)

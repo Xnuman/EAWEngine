@@ -1,6 +1,7 @@
 #pragma once
 
 #include "assets/pose.hpp"
+#include "assets/spawn_catalog.hpp"
 #include "eaw/simulation.hpp"
 #include "terrain_height.hpp"
 #include "formats/ted_map.hpp"
@@ -289,9 +290,9 @@ struct SpawnablePackage
 // Builds a type for a land or space map through the same cached XML catalog, movement classes, and
 // combat data as build_visual_map (an error when the type has no model for that context).
 [[nodiscard]] Result<SpawnablePackage> build_spawnable_package(const AssetReader& reader, std::string_view type_name, bool land, AssetCache* cache = nullptr, const MapBuildOptions& options = {});
-// Names of the unit and structure types with a model for land or space maps, sorted
-// case-insensitively (through the cached XML catalog).
-[[nodiscard]] std::vector<std::string> spawnable_type_names(const AssetReader& reader, bool land, AssetCache* cache = nullptr);
+// The unit, structure, and prop types with a model for land or space maps (no death clones,
+// markers, effects, or backdrops), sorted case-insensitively (through the cached XML catalog).
+[[nodiscard]] std::vector<SpawnTypeInfo> spawnable_types(const AssetReader& reader, bool land, AssetCache* cache = nullptr);
 // Points the rigs' effects at renderer texture indices: `renderer_textures[i]` is where the
 // renderer placed particle texture i (D3d12Renderer::add_textures). Effects shared between rigs stay
 // shared.

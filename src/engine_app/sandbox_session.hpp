@@ -47,6 +47,14 @@ namespace eaw {
 
 // Members keep the declaration order the work depends on: the asset cache and archive watch
 // outlive the futures that use them.
+// The free camera's first speed (world units per second; an engine choice, about a squad's width
+// a second at close range) and how its speed changes per wheel step.
+inline constexpr float default_fly_speed = 400.0F;
+inline constexpr float fly_speed_step = 1.25F;
+inline constexpr float fly_fast_factor = 4.0F;
+// Free-camera look: radians per raw mouse count.
+inline constexpr float fly_look_rate = 0.004F;
+
 struct SandboxSession
 {
     const eaw::SandboxOptions& options;
@@ -72,7 +80,10 @@ struct SandboxSession
     // Names Tab cycles through: every unit type with a model for the map (listed in the
     // background once the map is shown), or the loaded spawnable types until then.
     std::vector<std::string> spawn_names;
-    std::future<std::vector<std::string>> pending_spawn_names;
+    std::future<std::vector<eaw::SpawnTypeInfo>> pending_spawn_types;
+    // Each spawn name's kind and factions once the full list arrived (parallel to spawn_names;
+    // empty before), for the spawn panel's filters.
+    std::vector<eaw::SpawnTypeInfo> spawn_types;
     std::size_t spawn_choice = 0;
     // Types added at runtime (kept across hot-reload rebuilds), the package being built, and spawns
     // waiting for their type.
@@ -187,9 +198,10 @@ struct SandboxSession
     bool textures_streamed = false;
     bool reload_check_reported = false;
     std::int64_t click_travel = 0;
-    // Dev panels (F1 opens their menu); statistics starts as --overlay says.
-    eaw::SandboxPanels panels{.menu = options.panels.menu, .statistics = options.overlay || options.panels.statistics, .spawn = options.panels.spawn, .sound = options.panels.sound};
+    // Dev panels under the bar (F1 hides it); statistics starts as --overlay says.
+    eaw::SandboxPanels panels{.statistics = options.overlay || options.panels.statistics, .spawn = options.panels.spawn, .sound = options.panels.sound, .camera = options.panels.camera};
     bool statistics_shown = false;
+    std::vector<std::string> statistics_lines;
     // How many units N and the spawn panel spawn, and the panel's last button presses.
     std::uint32_t spawn_count = 1;
     eaw::SpawnPanelActions panel_actions;
@@ -197,9 +209,13 @@ struct SandboxSession
     std::chrono::steady_clock::time_point overlay_refreshed = std::chrono::steady_clock::now();
     bool automated_pick_sent = false;
     bool automated_move_sent = false;
-    // Maps use the legacy RTS camera (no rotation; left-drag box-selects, right-click moves);
-    // C switches to the free debug camera (drag rotates, right-drag pans).
-    bool free_camera = false;
+    // Maps start in the legacy RTS camera (fixed: no rotation; left-drag box-selects, right-click
+    // moves); C or the camera panel switch to the debug camera (the same camera, drag rotates,
+    // right-drag pans) and the free flying camera (fly_camera, at fly_speed world units per second).
+    eaw::SandboxCameraMode camera_mode = eaw::SandboxCameraMode::fixed;
+    std::optional<eaw::FlyCamera> fly_camera;
+    float fly_speed = default_fly_speed;
+    bool start_camera_applied = false;
     std::optional<Vector2> drag_start;
     bool box_active = false;
     std::uint64_t orders_issued = 0;
@@ -297,6 +313,10 @@ struct SandboxSession
     // The dev panels, drawn by the renderer inside its overlay frame; button presses are applied in
     // the next frame (apply_panel_actions).
     void draw_panels();
+    // The camera the view uses now (free, tactical, or orbit), and a switch of mode (the free camera
+    // starts from the current view).
+    [[nodiscard]] eaw::VisualCamera current_camera() const;
+    void set_camera_mode(eaw::SandboxCameraMode mode);
     void apply_panel_actions();
     void update_debug_lines();
     // Refreshes the statistics panel (four times a second, so the numbers stay readable).

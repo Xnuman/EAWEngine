@@ -368,9 +368,9 @@ void test_camera_controllers()
     tactical.apply({.pan_right = 0.1F});
     const auto right_focus = tactical.focus();
     view = tactical.camera();
-    // Screen right for a left-handed look-at is cross(up, forward).
+    // Screen right for the right-handed look-at is cross(forward, up).
     const eaw::Vector2 forward{view.target.x - view.eye.x, view.target.y - view.eye.y};
-    require(near_equal(right_focus[0] * forward[0] + right_focus[1] * forward[1], 0.0F, 1.0F) && near_equal(std::fabs(right_focus[0]), 150.0F) && right_focus[0] * -forward[1] > 0.0F,
+    require(near_equal(right_focus[0] * forward[0] + right_focus[1] * forward[1], 0.0F, 1.0F) && near_equal(std::fabs(right_focus[0]), 150.0F) && right_focus[0] * forward[1] > 0.0F,
             "tactical right pan is not perpendicular to the heading");
 
     // The focus stays inside the map, and malformed input or bounds cannot poison the view.
@@ -382,6 +382,24 @@ void test_camera_controllers()
     eaw::TacticalCamera degenerate({{std::numeric_limits<float>::quiet_NaN(), 5.0F, 0.0F}, {1.0F, -5.0F, 0.0F}});
     view = degenerate.camera();
     require(std::isfinite(view.eye[0]) && distance(view) >= degenerate.minimum_distance() * 0.999F, "degenerate bounds produced an invalid tactical view");
+
+    // The free camera starts where a view is, moves along its own view, and turns without limit in
+    // yaw but stops short of straight up or down.
+    eaw::VisualCamera start;
+    start.eye = {0.0F, 0.0F, 100.0F};
+    start.target = {100.0F, 0.0F, 100.0F};
+    start.near_plane = 5.0F;
+    eaw::FlyCamera fly(start);
+    require(fly.camera().near_plane <= eaw::FlyCamera::close_near_plane && std::abs(fly.camera().target[1]) < 1e-5F, "the free camera must start at the view it is given");
+    fly.apply({.right = 10.0F, .forward = 50.0F, .up = 5.0F});
+    view = fly.camera();
+    require(std::abs(view.eye[0] - 50.0F) < 1e-3F && std::abs(view.eye[1] + 10.0F) < 1e-3F && std::abs(view.eye[2] - 105.0F) < 1e-3F, "the free camera must move forward, right, and up");
+    fly.apply({.yaw = 1.5707964F, .pitch = 10.0F});
+    view = fly.camera();
+    const auto look = eaw::normalize_or(view.target - view.eye, eaw::Vector3{});
+    require(look.z < 1.0F && look.z > 0.99F && std::abs(look.x) < 0.01F, "the free camera must turn and stop short of straight up");
+    fly.apply({.yaw = std::numeric_limits<float>::quiet_NaN(), .forward = std::numeric_limits<float>::infinity()});
+    require(std::isfinite(fly.camera().eye[0]) && std::isfinite(fly.camera().target[2]), "non-finite free-camera input must be ignored");
 }
 
 void test_rts_control()
