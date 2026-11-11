@@ -562,6 +562,7 @@ Vector3 SimulationWorld::keep_apart(const std::size_t index, Vector3 step)
 void SimulationWorld::apply_formation_move(const SimCommand& command)
 {
     std::vector<std::size_t> movers;
+    std::vector<std::size_t> solos;
     std::vector<FormationMember> members;
     for (const auto id : command.entities)
     {
@@ -571,18 +572,36 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
             ++stale_references_;
             continue;
         }
-        if (max_speeds_[*dense] <= 0.0F || std::ranges::find(movers, *dense) != movers.end())
+        if (max_speeds_[*dense] <= 0.0F || std::ranges::find(movers, *dense) != movers.end() || std::ranges::find(solos, *dense) != solos.end())
         {
             continue;
         }
-        movers.push_back(*dense);
         command_serials_[*dense] = command.serial;
         standing_orders_[*dense].kind = StandingOrder::none;
         standing_orders_[*dense].engaging = false;
+        if (formation_solos_[*dense] != 0)
+        {
+            solos.push_back(*dense);
+            continue;
+        }
+        movers.push_back(*dense);
         // Ships in space keep slots wide enough for a ship to pass between two that have stopped.
         const bool ship_in_space = !ground_.valid() && radii_[*dense] > 0.0F && min_speeds_[*dense] <= 0.0F;
         const auto spacing = ship_in_space ? std::max(formation_spacings_[*dense], space_formation_spacing) : formation_spacings_[*dense];
         members.push_back({id, positions_[*dense], radii_[*dense], spacing, formation_orders_[*dense]});
+    }
+    for (const auto index : solos)
+    {
+        combat_[index].target = {};
+        combat_[index].ordered = false;
+        speed_limits_[index] = 0.0F;
+        group_ids_[index] = 0;
+        auto goal = command.target;
+        if (follows_ground_[index] == 0)
+        {
+            goal.z = positions_[index].z;
+        }
+        plan_move(index, goal);
     }
     if (movers.empty())
     {

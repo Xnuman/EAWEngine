@@ -358,6 +358,25 @@ void test_formations()
     require(!arrived[0].moving && !arrived[1].moving && std::hypot(arrived[0].position.x - arrived[1].position.x, arrived[0].position.y - arrived[1].position.y) >= 14.0F &&
                 std::fabs((arrived[0].position.x + arrived[1].position.x) * 0.5F - 300.0F) < 1.0F,
             "a group must arrive in distinct slots around the target");
+
+    // A solo member (XML FormationGrouping Solo) leaves the group: own speed, straight to the point.
+    eaw::SimulationWorld solo_world(0.1);
+    solo_world.set_ground(ground);
+    const auto walker = solo_world.spawn(
+        {.type_name = "Walker", .position = {50.0F, 100.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F, .formation_solo = true});
+    const auto tank = solo_world.spawn({.type_name = "Slow", .position = {50.0F, 120.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+    const auto other =
+        solo_world.spawn({.type_name = "Slow", .position = {50.0F, 140.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+    require(walker && tank && other, "test spawns must succeed");
+    solo_world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = {*walker, *tank, *other}, .target = {300.0F, 100.0F, 0.0F}});
+    solo_world.step();
+    require(std::fabs(solo_world.snapshot().entities[0].position.x - 60.0F) < 0.5F, "a solo member must keep its own speed");
+    for (int tick = 0; tick < 200; ++tick)
+    {
+        solo_world.step();
+    }
+    const auto& solo = solo_world.snapshot().entities[0];
+    require(!solo.moving && std::hypot(solo.position.x - 300.0F, solo.position.y - 100.0F) < 6.0F, "a solo member must go to the ordered point itself");
 }
 
 void test_narrow_passage()

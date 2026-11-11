@@ -176,6 +176,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
         spawnable.aims_with_body = type_aims_with_body(build.catalog, *definition);
         spawnable.formation_order = type_formation_order(build.catalog, *definition);
         spawnable.formation_spacing = type_formation_spacing(build.catalog, *definition);
+        spawnable.formation_solo = type_formation_solo(build.catalog, *definition);
     }
     build.spawnable.push_back(std::move(spawnable));
     return build.spawnable.size() - 1U;
@@ -346,6 +347,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                     spawn.aims_with_body = spawn.follows_ground && type_aims_with_body(catalog, *placement.type);
                     spawn.formation_order = type_formation_order(catalog, *placement.type);
                     spawn.formation_spacing = type_formation_spacing(catalog, *placement.type);
+                    spawn.formation_solo = type_formation_solo(catalog, *placement.type);
                     if (placement.container != nullptr && placement.needs_formation)
                     {
                         apply_team_movement(type_team_movement(catalog, *placement.container, combat_entry->max_speed_multiplier.of(asset.land)), spawn);

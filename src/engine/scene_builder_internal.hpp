@@ -345,6 +345,8 @@ float type_lod_bias(const GameObjectCatalog& catalog, const XmlDefinition& defin
 // XML FormationOrder (default 2, the most common) and FormationSpacing (default 0.5, likewise).
 std::uint32_t type_formation_order(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// XML FormationGrouping Solo (the other stock value is Standard, the default).
+bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
 // The passability type an immobile placed object stamps on the ground, or nothing when it does not
 // block: its XML OverridePassability (walls: RebelWall, EmpireWall), otherwise Obstacle for

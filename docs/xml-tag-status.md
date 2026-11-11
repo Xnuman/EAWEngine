@@ -23,11 +23,11 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 100 |
+| `done` | 101 |
 | `partial` | 16 |
-| `gap` | 307 |
+| `gap` | 304 |
 | `needs` | 679 |
-| `n/a` | 15 |
+| `n/a` | 17 |
 | total | 1117 |
 
 Systems that `needs` rows wait for, by tag count:
@@ -62,7 +62,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-23 done, 5 partial, 62 gap, 18 needs, 5 n/a.
+24 done, 5 partial, 59 gap, 18 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -188,13 +188,13 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `FormationOrder` | `done` |  |
 | `FormationSpacing` | `done` |  |
-| `FormationGrouping` | `gap` |  |
-| `FormationRaggedness` | `gap` |  |
-| `Formation_Priority` | `gap` |  |
+| `FormationGrouping` | `done` | Solo units take no slot and move on their own (from the name and users) |
+| `FormationRaggedness` | `gap` | scale unknown (0 to 2.5); cosmetic |
+| `Formation_Priority` | `gap` | meaning unknown (precedence when formations combine?) |
 | `FormationPriority` | `gap` |  |
 | `Formation_Prority` | `n/a` | single-use alternate spelling; read together with FormationPriority |
-| `Formation_Formup_Wait_Style` | `gap` |  |
-| `WaitsForFormationFormup` | `gap` |  |
+| `Formation_Formup_Wait_Style` | `n/a` | no formup step; GameConstants ShouldSkipLandFormup |
+| `WaitsForFormationFormup` | `n/a` | as Formation_Formup_Wait_Style |
 | `Ignore_For_Reoptimization` | `gap` |  |
 
 ### Animation rates tied to movement

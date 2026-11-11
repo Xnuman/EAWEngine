@@ -111,6 +111,12 @@ float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefiniti
     return spacing >= 0.0F && spacing <= 100.0F ? spacing : 0.5F;
 }
 
+bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto* node = catalog.field(definition, "FormationGrouping").field;
+    return node != nullptr && ascii_equal_ignoring_case(ascii_trim(node->text), "Solo");
+}
+
 std::optional<std::uint32_t> type_obstacle_passability(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     if (const auto* override_node = catalog.field(definition, "OverridePassability").field)

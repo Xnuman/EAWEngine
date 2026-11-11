@@ -103,6 +103,9 @@ struct EntitySpawn
     // Formation rank (lower stands in front) and spacing (see formation.hpp).
     std::uint32_t formation_order{2};
     float formation_spacing{0.5F};
+    // Takes no slot in a formation move: goes to the ordered point on its own, at its own speed
+    // (XML FormationGrouping Solo: walkers, the largest vehicles, air units, large creatures).
+    bool formation_solo{};
     // Ground occupied while the entity exists (structures, walls, obstacle props).
     std::optional<GroundFootprint> footprint;
     // Flight (fighters): above zero the entity never stops. It flies along its heading at no less than
@@ -703,6 +706,7 @@ private:
     std::vector<SteeringIntent> intents_;
     std::vector<std::uint32_t> formation_orders_;
     std::vector<float> formation_spacings_;
+    std::vector<std::uint8_t> formation_solos_;
     // Group speed of a formation move until the entity arrives; zero when none.
     std::vector<float> speed_limits_;
     std::vector<MovementProfile> movements_;

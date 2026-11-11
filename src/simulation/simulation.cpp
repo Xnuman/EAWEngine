@@ -143,6 +143,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     intents_.emplace_back();
     formation_orders_.push_back(spawn.formation_order);
     formation_spacings_.push_back(spawn.formation_spacing);
+    formation_solos_.push_back(spawn.formation_solo ? 1U : 0U);
     speed_limits_.push_back(0.0F);
     group_ids_.push_back(0);
     group_best_remaining_.push_back(0.0F);
@@ -306,6 +307,7 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         }
         hash = hash_value(hash, formation_orders_[index]);
         hash = hash_value(hash, formation_spacings_[index]);
+        hash = hash_value(hash, formation_solos_[index]);
         hash = hash_value(hash, speed_limits_[index]);
         hash = hash_value(hash, group_ids_[index]);
         hash = hash_value(hash, group_best_remaining_[index]);
@@ -399,6 +401,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         intents_[dense] = intents_[last];
         formation_orders_[dense] = formation_orders_[last];
         formation_spacings_[dense] = formation_spacings_[last];
+        formation_solos_[dense] = formation_solos_[last];
         speed_limits_[dense] = speed_limits_[last];
         group_ids_[dense] = group_ids_[last];
         group_best_remaining_[dense] = group_best_remaining_[last];
@@ -443,6 +446,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     intents_.pop_back();
     formation_orders_.pop_back();
     formation_spacings_.pop_back();
+    formation_solos_.pop_back();
     speed_limits_.pop_back();
     group_ids_.pop_back();
     group_best_remaining_.pop_back();

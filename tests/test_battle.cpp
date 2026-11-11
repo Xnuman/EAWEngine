@@ -70,6 +70,7 @@ void test_combat_content()
                 "<SpaceProp Name=\"Field\"><Behavior>SPACE_OBSTACLE</Behavior><Is_Asteroid_Field> Yes </Is_Asteroid_Field><Space_Obstacle_Radius>700</Space_Obstacle_Radius></SpaceProp>"
                 "<SpaceProp Name=\"Junk\"><Behavior>IDLE</Behavior><Space_Obstacle_Radius>600</Space_Obstacle_Radius></SpaceProp>"
                 "<SpaceUnit Name=\"Fighter\"><Custom_Footprint_Radius>7</Custom_Footprint_Radius></SpaceUnit>"
+                "<GroundVehicle Name=\"Walker\"><FormationGrouping> solo </FormationGrouping></GroundVehicle>"
                 "<Projectile Name=\"Proj_Paced\"><Projectile_Fire_Recharge_Seconds>6</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>2</Projectile_Fire_Pulse_Count></Projectile>"
                 "<GroundVehicle Name=\"Paced\"><Projectile_Types>Proj_Paced, Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>50</Targeting_Max_Attack_Distance></GroundVehicle>"
                 "<HardPoint Name=\"HP_Gun\"><Fire_SFXEvent> Turbo </Fire_SFXEvent><Type> HARD_POINT_WEAPON_LASER </Type><Fire_Projectile_Type>Proj_Tank</Fire_Projectile_Type>"
@@ -155,6 +156,7 @@ void test_combat_content()
     require(eaw::scene_build::type_space_obstacle_radius(catalog, *definition("Dock")) == 130.0F && eaw::scene_build::type_space_obstacle_radius(catalog, *definition("Field")) == 0.0F &&
                 eaw::scene_build::type_space_obstacle_radius(catalog, *definition("Junk")) == 0.0F,
             "a SPACE_OBSTACLE must keep ships at its radius, unless it is a field ships enter");
+    require(eaw::scene_build::type_formation_solo(catalog, *definition("Walker")) && !eaw::scene_build::type_formation_solo(catalog, *definition("Tank")), "FormationGrouping Solo must be read");
     require(eaw::scene_build::type_soft_footprint_radius(catalog, *definition("Fighter")) == 7.0F, "a small craft's footprint radius must stand in for a soft radius");
     require(eaw::parse_xml_bool(" Yes ") == true && eaw::parse_xml_bool("FALSE") == false && eaw::parse_xml_bool("1") == true && !eaw::parse_xml_bool("maybe") && !eaw::parse_xml_bool(""),
             "XML booleans must accept Yes/No, true/false, and 1/0 in any case");
