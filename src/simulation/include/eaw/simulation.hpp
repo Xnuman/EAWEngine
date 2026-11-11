@@ -318,6 +318,10 @@ struct ProjectileSnapshot
     // Presentation only (not hashed): the shot's number in launch order, the same in every snapshot
     // while it flies (effects that follow a shot, such as a missile's trail, are keyed by it).
     std::uint32_t serial{};
+    // Presentation only (not hashed): how far it has flown and how far its aim point is, for drawn
+    // flight shapes (grenade arcs, rocket sways).
+    float flown{};
+    float remaining{};
 };
 
 // An entity combat destroyed in the last tick, where and how it last stood (for death animations

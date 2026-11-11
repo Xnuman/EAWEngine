@@ -619,7 +619,9 @@ void SimulationWorld::publish()
     snapshot_.projectiles.reserve(projectiles_.size());
     for (const auto& projectile : projectiles_)
     {
-        snapshot_.projectiles.push_back({projectile.position, projectile.direction, projectile.owner, projectile.visual, projectile.speed, projectile.serial});
+        const Vector3 to_aim{projectile.aim.x - projectile.position.x, projectile.aim.y - projectile.position.y, projectile.aim.z - projectile.position.z};
+        snapshot_.projectiles.push_back({projectile.position, projectile.direction, projectile.owner, projectile.visual, projectile.speed, projectile.serial, projectile.flown,
+                                         std::sqrt(to_aim.x * to_aim.x + to_aim.y * to_aim.y + to_aim.z * to_aim.z)});
     }
 }
 

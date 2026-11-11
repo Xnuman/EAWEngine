@@ -1,6 +1,7 @@
 #include "projectile_visuals.hpp"
 
 #include "scene_presentation.hpp"
+#include "visual_scene_builder.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>
@@ -35,6 +36,10 @@ template <class T> std::vector<T> numbers(const std::string_view text)
     }
     return values;
 }
+
+// The widest rocket sway drawn: stock offsets are 5 to 15, and one of 180 is of unknown unit (an
+// engine choice).
+constexpr float max_drawn_sway = 50.0F;
 
 } // namespace
 
@@ -72,6 +77,18 @@ void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<c
         };
         visual.impact_effects = {particle_key("Projectile_Absorbed_By_Shields_Particle"), particle_key("Projectile_Object_Detonation_Particle"),
                                  particle_key("Projectile_Object_Armor_Reduced_Detonation_Particle"), particle_key("Projectile_Lifetime_Detonation_Particle")};
+        const auto positive = [&](const std::string_view field)
+        {
+            const auto values = numbers<float>(text(field));
+            return values.size() == 1 && std::isfinite(values.front()) && values.front() > 0.0F ? values.front() : 0.0F;
+        };
+        if (const auto gravity = positive("Projectile_Grenade_Gravity"); gravity > 0.0F)
+        {
+            const auto lob = positive("Projectile_Grenade_Gravity_Lob_Mod");
+            visual.lob_gravity = gravity * (lob > 0.0F ? lob : 1.0F) * provisional_acceleration_scale;
+        }
+        visual.sway = std::min(positive("Projectile_Rocket_Curve_Offset"), max_drawn_sway);
+        visual.sway_after = positive("Projectile_Rocket_Straight_Distance");
         visual.bolt = render.size() == 1 && (render.front() == 1 || render.front() == 2);
         if (!visual.bolt)
         {
@@ -170,11 +187,12 @@ void append_projectile_sprites(const std::span<const ProjectileSnapshot> current
             continue;
         }
         const auto& visual = found->second;
-        const auto& d = projectile.direction;
         // Between the previous tick and this one, as entities are drawn; the bolt's head leads.
-        const auto back = projectile.speed * tick_seconds * (1.0F - std::clamp(interpolation, 0.0F, 1.0F)) + visual.length * 0.5F;
+        const auto pose = projectile_pose(projectile, visual, interpolation, tick_seconds);
+        const auto& d = pose.direction;
+        const auto back = visual.length * 0.5F;
         VisualParticle sprite;
-        sprite.position = {projectile.position.x - d.x * back, projectile.position.y - d.y * back, projectile.position.z - d.z * back};
+        sprite.position = {pose.position.x - d.x * back, pose.position.y - d.y * back, pose.position.z - d.z * back};
         sprite.axis = {d.x, d.y, d.z};
         sprite.half_size = visual.width * 0.5F;
         sprite.tail = visual.length;
@@ -187,11 +205,56 @@ void append_projectile_sprites(const std::span<const ProjectileSnapshot> current
     }
 }
 
-Matrix4 projectile_model_transform(const ProjectileSnapshot& projectile, const ProjectileVisual& visual, const float interpolation, const float tick_seconds)
+ProjectilePose projectile_pose(const ProjectileSnapshot& projectile, const ProjectileVisual& visual, const float interpolation, const float tick_seconds) noexcept
 {
     const auto& d = projectile.direction;
     const auto back = projectile.speed * tick_seconds * (1.0F - std::clamp(interpolation, 0.0F, 1.0F));
-    const Vector3 position{projectile.position.x - d.x * back, projectile.position.y - d.y * back, projectile.position.z - d.z * back};
+    ProjectilePose pose{{projectile.position.x - d.x * back, projectile.position.y - d.y * back, projectile.position.z - d.z * back}, d};
+    const auto flown = std::max(0.0F, projectile.flown - back);
+    const auto remaining = std::max(0.0F, projectile.remaining + back);
+    const auto total = flown + remaining;
+    if (total <= 0.0F || projectile.speed <= 0.0F)
+    {
+        return pose;
+    }
+    // Horizontal heading of the straight path, and its left perpendicular.
+    const auto level = std::hypot(d.x, d.y);
+    const auto ahead_x = level > 0.0F ? d.x / level : 1.0F;
+    const auto ahead_y = level > 0.0F ? d.y / level : 0.0F;
+    Vector3 tangent{d.x * projectile.speed, d.y * projectile.speed, d.z * projectile.speed};
+    if (visual.lob_gravity > 0.0F)
+    {
+        // A ballistic arc over the chord: height g/2 t (T - t), rising at g/2 (T - 2t).
+        const auto t = flown / projectile.speed;
+        const auto time = total / projectile.speed;
+        pose.position.z += visual.lob_gravity * 0.5F * t * (time - t);
+        tangent.z += visual.lob_gravity * 0.5F * (time - 2.0F * t);
+    }
+    if (visual.sway > 0.0F && flown > visual.sway_after && total > visual.sway_after)
+    {
+        const auto span = total - visual.sway_after;
+        const auto phase = 3.14159265F * (flown - visual.sway_after) / span;
+        const auto side = (projectile.serial % 2U) == 0U ? visual.sway : -visual.sway;
+        const auto offset = side * std::sin(phase);
+        const auto rate = side * 3.14159265F / span * std::cos(phase) * projectile.speed;
+        pose.position.x += -ahead_y * offset;
+        pose.position.y += ahead_x * offset;
+        tangent.x += -ahead_y * rate;
+        tangent.y += ahead_x * rate;
+    }
+    const auto length = std::sqrt(tangent.x * tangent.x + tangent.y * tangent.y + tangent.z * tangent.z);
+    if (length > 0.0F)
+    {
+        pose.direction = {tangent.x / length, tangent.y / length, tangent.z / length};
+    }
+    return pose;
+}
+
+Matrix4 projectile_model_transform(const ProjectileSnapshot& projectile, const ProjectileVisual& visual, const float interpolation, const float tick_seconds)
+{
+    const auto pose = projectile_pose(projectile, visual, interpolation, tick_seconds);
+    const auto& d = pose.direction;
+    const auto& position = pose.position;
     const auto heading = std::atan2(d.y, d.x);
     const auto pitch = std::asin(std::clamp(d.z, -1.0F, 1.0F));
     auto scale = Matrix4::identity();

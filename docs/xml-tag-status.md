@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 136 |
+| `done` | 140 |
 | `partial` | 19 |
-| `gap` | 265 |
+| `gap` | 261 |
 | `needs` | 679 |
 | `n/a` | 18 |
 | total | 1117 |
@@ -418,7 +418,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Projectiles and damage delivery
 
-26 done, 3 partial, 17 gap, 48 needs, 1 n/a.
+30 done, 3 partial, 13 gap, 48 needs, 1 n/a.
 
 ### Firing cadence (on the shooter)
 
@@ -463,18 +463,18 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Projectile_Category` | `gap` |  |
+| `Projectile_Category` | `gap` | shapes follow the gravity and curve tags instead |
 | `Projectile_Max_Flight_Distance` | `partial` | 0 means "detonate at once" in the data (death and ability blasts, which the engine detonates where they start), "unlimited" for fired shots |
 | `Projectile_Max_Lifetime` | `done` |  |
 | `Projectile_Acceleration_Per_Frame` | `gap` |  |
 | `Projectile_Max_Scan_Range` | `done` | retargets when the target dies |
 | `Projectile_Target_Point_On_Terrain` | `gap` |  |
 | `Explode_When_Reached_Target_Radius` | `gap` |  |
-| `Projectile_Rocket_Straight_Distance` | `gap` |  |
-| `Projectile_Rocket_Curve_Distance` | `gap` |  |
-| `Projectile_Rocket_Curve_Offset` | `gap` |  |
-| `Projectile_Grenade_Gravity` | `gap` |  |
-| `Projectile_Grenade_Gravity_Lob_Mod` | `gap` |  |
+| `Projectile_Rocket_Straight_Distance` | `done` | drawn sway (presentation) |
+| `Projectile_Rocket_Curve_Distance` | `gap` | the sway is one half sine, not curve points |
+| `Projectile_Rocket_Curve_Offset` | `done` | half-sine sway, at most 50 |
+| `Projectile_Grenade_Gravity` | `done` | drawn lob (presentation) |
+| `Projectile_Grenade_Gravity_Lob_Mod` | `done` |  |
 | `Projectile_Grenade_Can_Lob_Slower` | `gap` |  |
 | `Projectile_Grenade_Sticks_On_Collision` | `gap` |  |
 | `Projectile_Bomb_Fall_Accel_Rate` | `gap` |  |

@@ -54,6 +54,14 @@ struct ProjectileVisual
     std::optional<std::uint32_t> mesh;
     std::shared_ptr<const ParticleEffect> effect;
     float scale{1.0F};
+    // Drawn flight shape over the simulation's straight path (presentation only): a lob's gravity in
+    // world units per s^2 (XML Projectile_Grenade_Gravity x _Lob_Mod, per frame^2 scaled like
+    // accelerations: a guess; 0 flies straight), and a rocket's sway: straight for
+    // `sway_after` (Projectile_Rocket_Straight_Distance), then up to `sway` sideways
+    // (Projectile_Rocket_Curve_Offset) in a half sine, the side alternating by shot.
+    float lob_gravity{};
+    float sway_after{};
+    float sway{};
 
     // Whether the shot has a look of its own (otherwise only its impacts show).
     [[nodiscard]] bool drawn() const noexcept
@@ -77,6 +85,15 @@ void collect_impact_effect_keys(const ProjectileVisualTable& table, std::vector<
 
 // The Particle object played for an impact of `kind` (0 none).
 [[nodiscard]] std::uint32_t impact_effect(const ProjectileVisual& visual, ImpactKind kind) noexcept;
+
+// Where a shot is drawn between the previous tick and this one (`interpolation` 0..1), with its
+// flight shape, and the direction it faces there.
+struct ProjectilePose
+{
+    Vector3 position;
+    Vector3 direction;
+};
+[[nodiscard]] ProjectilePose projectile_pose(const ProjectileSnapshot& projectile, const ProjectileVisual& visual, float interpolation, float tick_seconds) noexcept;
 
 // The world transform of a model projectile `visual` for `projectile`, placed between ticks like a
 // bolt (`interpolation` of a tick after the previous one), its model's -Y axis along the flight.

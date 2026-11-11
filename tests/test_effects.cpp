@@ -122,6 +122,25 @@ void test_projectile_models()
     const auto up = eaw::projectile_model_transform(climbing, missile, 1.0F, 1.0F / 30.0F);
     require(std::abs(up.values[5] + 1.2F) < 1e-3F && std::abs(up.values[6] + 1.6F) < 1e-3F, "a climbing projectile must pitch its nose up");
 
+    // Flight shapes: a lob 100 units at 100 units/s with g = 80 peaks g/2 (T/2)^2 = 10 high mid-way,
+    // nose level there; a sway moves the shot sideways, the side by shot; a plain shot stays put.
+    eaw::ProjectileVisual grenade;
+    grenade.lob_gravity = 80.0F;
+    const eaw::ProjectileSnapshot lobbed{{50.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 5U, 100.0F, 20U, 50.0F, 50.0F};
+    const auto apex = eaw::projectile_pose(lobbed, grenade, 1.0F, 1.0F / 30.0F);
+    require(std::abs(apex.position.z - 10.0F) < 1e-3F && std::abs(apex.direction.z) < 1e-4F, "a lob must peak mid-way, level there");
+    const auto rising = eaw::projectile_pose({{25.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 5U, 100.0F, 20U, 25.0F, 75.0F}, grenade, 1.0F, 1.0F / 30.0F);
+    require(rising.position.z > 0.0F && rising.direction.z > 0.0F, "a lob must climb in its first half");
+    eaw::ProjectileVisual rocket;
+    rocket.sway = 10.0F;
+    rocket.sway_after = 20.0F;
+    const auto left = eaw::projectile_pose({{60.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 5U, 100.0F, 20U, 60.0F, 40.0F}, rocket, 1.0F, 1.0F / 30.0F);
+    const auto right = eaw::projectile_pose({{60.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 5U, 100.0F, 21U, 60.0F, 40.0F}, rocket, 1.0F, 1.0F / 30.0F);
+    const auto early = eaw::projectile_pose({{10.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 5U, 100.0F, 21U, 10.0F, 90.0F}, rocket, 1.0F, 1.0F / 30.0F);
+    require(std::abs(left.position.y - 10.0F) < 1e-3F && std::abs(right.position.y + 10.0F) < 1e-3F && early.position.y == 0.0F, "a rocket must sway after its straight run, the side by shot");
+    const auto plain = eaw::projectile_pose(lobbed, missile, 1.0F, 1.0F / 30.0F);
+    require(plain.position.x == 50.0F && plain.position.z == 0.0F && plain.direction.x == 1.0F, "a shot without a shape must fly straight");
+
     std::vector<eaw::ProjectileSnapshot> shots{shot, {{0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 6U, 300.0F, 12U}, {{0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U, 7U, 300.0F, 13U}};
     std::vector<eaw::VisualInstance> instances;
     std::vector<std::uint32_t> serials;
