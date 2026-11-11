@@ -157,6 +157,28 @@ inline constexpr float provisional_turn_rate_scale = 30.0F * 3.14159265358979F /
 // (Calamari cruiser .02: full speed in 2.5 seconds; T2B .2: in 0.4 seconds). A guess.
 inline constexpr float provisional_acceleration_scale = provisional_max_speed_scale * 30.0F;
 
+// How a company's team moves its members. A company forms teams of its Create_Team_Type container
+// (Stormtrooper_Team for Imperial_Stormtrooper_Squad); in the original the container moves and its
+// members follow it, so the container's Max_Speed (.8 against the member's 1), Max_Rate_Of_Turn,
+// and acceleration are the members' (data; the engine has no team entity, so each member takes
+// them). Unset fields leave the member's own. Space squadrons are not teams in this sense: their
+// fighters fly on their own.
+struct TeamMovement
+{
+    std::optional<float> max_speed;
+    std::optional<float> turn_rate;
+    std::optional<float> acceleration;
+    std::optional<float> deceleration;
+};
+
+inline void apply_team_movement(const TeamMovement& team, EntitySpawn& spawn) noexcept
+{
+    spawn.max_speed = team.max_speed.value_or(spawn.max_speed);
+    spawn.turn_rate = team.turn_rate.value_or(spawn.turn_rate);
+    spawn.movement.acceleration = team.acceleration.value_or(spawn.movement.acceleration);
+    spawn.movement.deceleration = team.deceleration.value_or(spawn.movement.deceleration);
+}
+
 // An XML object type that can be spawned at runtime: its model is part of the map scene's meshes.
 struct SpawnableType
 {
@@ -195,6 +217,8 @@ struct SpawnableType
     // A company (Company_Units): the spawnable types of its members, in list order, spawned
     // together in formation. Empty for ordinary types; a company's own mesh is unused.
     std::vector<std::size_t> members;
+    // A company's team movement, applied to its members.
+    TeamMovement team;
 };
 
 struct VisualMapAsset

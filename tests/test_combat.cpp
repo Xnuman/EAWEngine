@@ -191,6 +191,10 @@ void test_hardpoints_and_fire_cones()
         auto world = make_world();
         auto victim_profile = ship;
         victim_profile.weapons.clear();
+        for (auto& part : victim_profile.hardpoints)
+        {
+            part.death_sound = 77U;
+        }
         eaw::CombatProfile gun;
         gun.health = 100.0F;
         gun.weapons = {eaw::WeaponProfile{.range = 500.0F, .recharge_seconds = 0.1F, .damage = 10.0F, .damages_shield = false}};
@@ -199,10 +203,14 @@ void test_hardpoints_and_fire_cones()
         (void)world.spawn({.type_name = "Gun", .owner = 1, .position = {-200.0F, 0.0F, 0.0F}, .combat = gun});
         require(victim.ok(), "test spawn must succeed");
         // Four shots of 10: three destroy the 30-point engine, the fourth moves on to the next part.
+        std::vector<eaw::HardpointDeathSnapshot> fallen;
         for (int tick = 0; tick < 4; ++tick)
         {
             world.step();
+            fallen.insert(fallen.end(), world.snapshot().hardpoint_deaths.begin(), world.snapshot().hardpoint_deaths.end());
         }
+        require(fallen.size() == 1 && fallen[0].entity == *victim && fallen[0].sound == 77U && fallen[0].position.x < 0.0F,
+                "a destroyed hardpoint must be reported once, with its sound, at its position");
         const auto& damaged = world.snapshot().entities[0];
         require(damaged.health < 1000.0F && damaged.hardpoints == 3 && damaged.hardpoints_destroyed == 1 && world.stats().hardpoints_destroyed == 1, "the nearest hardpoint must be hit and destroyed");
         // Without its engine the ship moves at a quarter of its speed.
@@ -500,6 +508,93 @@ void test_scripted_conditions()
     }
 }
 
+// Shots stray by their weapon's inaccuracy for the target's categories and miss when they land outside
+// its footprint; the draws are part of the state, so a battle replays its misses.
+void test_inaccuracy()
+{
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    const auto fire = [&](const float distance, const std::uint32_t categories, const bool bystander = false)
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        eaw::CombatProfile gun;
+        gun.health = 50.0F;
+        gun.weapons = {eaw::WeaponProfile{.range = 300.0F, .recharge_seconds = 0.1F, .damage = 1.0F, .inaccuracy = {{categories, distance}}}};
+        eaw::CombatProfile target;
+        target.health = 100000.0F;
+        target.categories = 0x80U;
+        (void)world.spawn({.type_name = "Gun", .owner = 1, .combat = gun});
+        (void)world.spawn({.type_name = "Target", .owner = 2, .position = {100.0F, 0.0F, 0.0F}, .combat = target, .radius = 5.0F});
+        if (bystander)
+        {
+            // A large hostile around the target catches every stray shot.
+            auto large = target;
+            large.categories = 0;
+            (void)world.spawn({.type_name = "Bystander", .owner = 2, .position = {100.0F, 0.0F, 0.0F}, .combat = large, .radius = 150.0F});
+        }
+        for (int tick = 0; tick < 60; ++tick)
+        {
+            world.step();
+        }
+        return std::tuple(world.stats().shots_fired, world.stats().hits, world.state_hash());
+    };
+    const auto [sure_shots, sure_hits, sure_hash] = fire(0.0F, 0x80U);
+    require(sure_shots > 20 && sure_hits == sure_shots, "a weapon without inaccuracy must hit every shot");
+    const auto [wide_shots, wide_hits, wide_hash] = fire(100.0F, 0x80U);
+    require(wide_shots == sure_shots && wide_hits < wide_shots / 4U, "a wide stray against a small target must mostly miss");
+    const auto [other_shots, other_hits, other_hash] = fire(100.0F, 0x100U);
+    require(other_hits == other_shots, "inaccuracy for other categories must not apply");
+    const auto [again_shots, again_hits, again_hash] = fire(100.0F, 0x80U);
+    require(again_hits == wide_hits && again_hash == wide_hash, "misses must replay");
+    const auto [all_shots, all_hits, all_hash] = fire(100.0F, eaw::all_categories);
+    require(all_hits < all_shots / 4U, "a fixed radius must apply to every target");
+    const auto [crowd_shots, crowd_hits, crowd_hash] = fire(100.0F, 0x80U, true);
+    require(crowd_hits == crowd_shots, "a stray shot must hit the hostile it lands on");
+}
+
+// A unit's targeting priorities pick its target before distance does; excluded targets are never
+// picked on their own.
+void test_target_priorities()
+{
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    eaw::SimulationWorld world(0.1);
+    world.set_hostility(hostility);
+    eaw::CombatProfile gun;
+    gun.health = 50.0F;
+    gun.weapons = {eaw::WeaponProfile{.range = 300.0F, .recharge_seconds = 1.0F, .damage = 1.0F}};
+    gun.targeting.ranks = {{0x100U, 0, 1.0F}};
+    gun.targeting.excluded_categories = 0x200U;
+    eaw::CombatProfile soldier;
+    soldier.health = 100.0F;
+    soldier.categories = 0x80U;
+    auto tank = soldier;
+    tank.categories = 0x100U;
+    auto flyer = soldier;
+    flyer.categories = 0x200U;
+    (void)world.spawn({.type_name = "Gun", .owner = 1, .combat = gun});
+    const auto near = world.spawn({.type_name = "Soldier", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = soldier});
+    const auto far = world.spawn({.type_name = "Tank", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .combat = tank});
+    require(near.ok() && far.ok(), "test spawns must succeed");
+    world.step();
+    require(world.snapshot().entities[0].target == *far, "a ranked target must be chosen over a nearer unranked one");
+    world.submit({eaw::SimCommandKind::destroy, {*far}});
+    world.step();
+    for (int tick = 0; tick < 20; ++tick)
+    {
+        world.step();
+    }
+    require(world.snapshot().entities[0].target == *near, "an unranked target must be chosen when no ranked one is left");
+    world.submit({eaw::SimCommandKind::destroy, {*near}});
+    (void)world.spawn({.type_name = "Flyer", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = flyer});
+    for (int tick = 0; tick < 20; ++tick)
+    {
+        world.step();
+    }
+    require(!world.snapshot().entities[0].target.valid(), "an excluded target must never be chosen automatically");
+}
+
 const ModuleRegistrar registrar("combat", {
                                               {"test_combat", &test_combat},
                                               {"test_hardpoints_and_fire_cones", &test_hardpoints_and_fire_cones},
@@ -507,6 +602,8 @@ const ModuleRegistrar registrar("combat", {
                                               {"test_stances", &test_stances},
                                               {"test_standing_orders", &test_standing_orders},
                                               {"test_scripted_conditions", &test_scripted_conditions},
+                                              {"test_inaccuracy", &test_inaccuracy},
+                                              {"test_target_priorities", &test_target_priorities},
                                           });
 
 } // namespace

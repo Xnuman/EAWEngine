@@ -103,7 +103,8 @@ The units group alone uses 496 distinct tags, structures 293, containers 143, pr
 hardpoints 56. FoC adds 136 top-level tags; three EAW tags are gone in FoC (`Fire_Bone_C`,
 `Fire_Bone_D`, `Planet_Vigilance`), and the installed data adds `Engine_Hardpoint`,
 `Shield_Generator_Hardpoint`, and `Weapon_Hardpoint` (patch cinematic hardpoints). EAWEngine
-reads about 95 of the 1,005 tags today ([Engine coverage](#engine-coverage)).
+reads about 95 of the 1,005 tags today ([Engine coverage](#engine-coverage)); the status of every
+tag, kept current as work proceeds, is in [xml-tag-status.md](xml-tag-status.md).
 
 ## Inheritance: `Variant_Of_Existing_Type`
 
@@ -2167,7 +2168,10 @@ to parse, so the C float suffix (`0.5f`) is accepted already.
 ## Implications for EAWEngine
 
 Collected from the sections above, most consequential first. Each is a proposal to check and
-schedule, not a decided change; several rest on inference marked in their rows.
+schedule, not a decided change; several rest on inference marked in their rows. Done on
+2026-11-11 (see [status.md](status.md)): items 1 (without the shield interval), 2 (the fire
+cadence; second weapons wait for SWAP_WEAPONS), 3, 4, 5, and the inaccuracy and
+`Targeting_Priority_Set` parts of 2.
 
 1. **Global multipliers.** `GameConstants.xml` scales every top speed by game mode
    (`Object_Max_Speed_Multiplier_Land` 1.56, `_Space` 1.2, `_Galactic` 5.0) and max health

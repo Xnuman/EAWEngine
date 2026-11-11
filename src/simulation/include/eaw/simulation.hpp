@@ -9,6 +9,7 @@
 // which depends only on the spawn/destroy history. Floating-point behavior across compilers or CPUs
 // is not yet guaranteed; cross-machine lockstep will need a stricter numeric policy.
 
+#include "core/random.hpp"
 #include "core/status.hpp"
 
 #include "eaw/combat.hpp"
@@ -175,6 +176,9 @@ inline constexpr float follow_tolerance = 50.0F;
 // The lowest health of an entity that cannot be killed (Set_Cannot_Be_Killed): one hit point, or a
 // hundredth of its health when that is less (an engine choice).
 inline constexpr float unkillable_health_floor = 1.0F;
+// Seed of the combat random stream (where shots stray); an arbitrary fixed value, so a battle
+// replays the same shots.
+inline constexpr std::uint64_t combat_random_seed = 0x5eed0fba771e5ULL;
 inline constexpr float unkillable_health_fraction = 0.01F;
 
 // Space avoidance (engine choices to check in play): in the original, ships neither push each
@@ -339,6 +343,18 @@ struct ShotSnapshot
     std::uint32_t sound{};
 };
 
+// A hardpoint destroyed in the last tick, for its destruction sound and effects (a derived output,
+// not part of the state hash).
+struct HardpointDeathSnapshot
+{
+    // The entity it belongs to and its index in the entity's CombatProfile::hardpoints.
+    EntityId entity;
+    std::uint32_t hardpoint{};
+    Vector3 position;
+    // HardpointProfile::death_sound, or 0.
+    std::uint32_t sound{};
+};
+
 struct SimSnapshot
 {
     std::uint64_t tick{};
@@ -350,6 +366,8 @@ struct SimSnapshot
     std::vector<ImpactSnapshot> impacts;
     // Shots launched in this tick, in launch order.
     std::vector<ShotSnapshot> shots;
+    // Hardpoints destroyed in this tick, in the order they fell.
+    std::vector<HardpointDeathSnapshot> hardpoint_deaths;
 };
 
 // Converts real elapsed time into whole simulation ticks. At most `max_ticks_per_advance` ticks are
@@ -495,6 +513,10 @@ private:
         float speed{};
         float flown{};
         float max_flight{};
+        // Where the shot lands relative to its target's aim point, and whether that is outside the
+        // target (WeaponProfile::inaccuracy).
+        Vector3 stray;
+        bool misses{};
         // Presentation key (WeaponProfile::projectile_visual) and launch number; not hashed.
         std::uint32_t visual{};
         std::uint32_t serial{};
@@ -596,6 +618,19 @@ private:
     // The victim's live targetable hardpoint nearest to `from`, or -1.
     [[nodiscard]] std::int32_t aim_hardpoint(std::size_t victim, const Vector3& from) const noexcept;
     [[nodiscard]] Vector3 aim_point(std::size_t victim, std::int32_t hardpoint) const noexcept;
+    // Where a shot of `weapon` at `victim` lands relative to its aim point (WeaponProfile::inaccuracy;
+    // draws from combat_random_), and whether that misses the victim.
+    [[nodiscard]] Vector3 stray(const WeaponProfile& weapon, std::size_t victim);
+    [[nodiscard]] bool strays_off(std::size_t victim, const Vector3& stray) const noexcept;
+    // The entity a stray shot of `owner` landing at `point` hits instead of its target: the nearest
+    // live, damageable, collidable entity hostile to `owner` whose footprint holds the point.
+    [[nodiscard]] std::optional<std::size_t> stray_victim(const Vector3& point, std::uint32_t owner, std::size_t target) const noexcept;
+    // The radius strays_off measures against (0: unknown size).
+    [[nodiscard]] float target_size(std::size_t index) const noexcept;
+    // The target `index` prefers among the damageable hostiles within `reach` of `center` (in the
+    // ground plane) that `accepts`: the lowest rank of its targeting priorities, then the nearest,
+    // then the lower entity id. Defined in simulation_internal.hpp.
+    template <typename Accepts> [[nodiscard]] std::optional<std::size_t> choose_target(std::size_t index, const Vector3& center, float reach, const Accepts& accepts);
     void run_projectiles();
     void remove_dead();
     [[nodiscard]] bool damageable(std::size_t index) const noexcept;
@@ -721,6 +756,9 @@ private:
     std::vector<DeathSnapshot> deaths_;
     std::vector<ImpactSnapshot> impacts_;
     std::vector<ShotSnapshot> shots_;
+    std::vector<HardpointDeathSnapshot> hardpoint_deaths_;
+    // Where shots stray (WeaponProfile::inaccuracy); part of the state.
+    Pcg32 combat_random_{combat_random_seed};
     // Launch number of the next shot (ProjectileSnapshot::serial; presentation only, not hashed).
     std::uint32_t next_projectile_serial_{1};
     SpatialGrid grid_;

@@ -276,6 +276,8 @@ struct SpawnableBuild
     std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes;
     std::function<const CombatProfile&(const XmlDefinition&, const Model*)> profile_of;
     std::vector<SpawnableType>& spawnable;
+    // GameConstants' Object_Max_Speed_Multiplier for the battle's mode (CombatContent).
+    float speed_multiplier{1.0F};
 };
 
 // Adds an XML type (by name, case-insensitive) to build.spawnable with its model appended to the
@@ -363,7 +365,8 @@ Matrix4 scaled_model_transform(Matrix4 transform, float scale) noexcept;
 // XML Max_Rate_Of_Turn in radians per second (provisional_turn_rate_scale); 0 turns instantly.
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
-// How a type gets up to speed and turns: XML OverrideAcceleration and OverrideDeceleration
+// How a type gets up to speed and turns: XML OverrideAcceleration and OverrideDeceleration (or
+// Override_Acceleration and Override_Deceleration, the team containers' spelling)
 // (provisional_acceleration_scale; absent changes speed at once) and Min_Speed_Fraction_For_Turn. On
 // land it turns at Stopped_Rate_Of_Turn (or Max_Rate_Of_Turn) below that fraction and stops to turn
 // when its way is more than ground_turn_in_place_angle off; in space it cannot turn below that
@@ -373,6 +376,11 @@ MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinit
 // turn, and the turn speed fraction of space ships that do not name one (capital ships).
 inline constexpr float ground_turn_in_place_angle = 0.785398163F;
 inline constexpr float default_space_turn_speed_fraction = 0.25F;
+
+// The movement of the team `company` forms (its XML Create_Team_Type container): the container's
+// Max_Speed (scaled like type_max_speed, times `speed_multiplier`), Max_Rate_Of_Turn, and
+// acceleration where it sets them; empty without a team.
+TeamMovement type_team_movement(const GameObjectCatalog& catalog, const XmlDefinition& company, float speed_multiplier);
 
 // Minimum flight speed of fighters and bombers (SpaceBehavior names FIGHTER_LOCOMOTOR): XML
 // Min_Speed on the Max_Speed scale, or half of `max_speed` without one; 0 for every other type.
@@ -403,6 +411,6 @@ ScriptTypeInfo type_script_info(const GameObjectCatalog& catalog, const XmlDefin
 
 // XML Max_Speed in world units per second (the provisional scale in visual_scene_builder.hpp);
 // unparsable values are 0 with a warning.
-float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings);
+float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings, float mode_multiplier = 1.0F);
 
 } // namespace eaw::scene_build

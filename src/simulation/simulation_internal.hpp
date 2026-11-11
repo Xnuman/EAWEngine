@@ -79,6 +79,13 @@ inline bool valid_profile(const CombatProfile& profile) noexcept
         {
             return false;
         }
+        for (const auto& entry : weapon.inaccuracy)
+        {
+            if (!valid_amount(entry.distance))
+            {
+                return false;
+            }
+        }
     }
     return true;
 }
@@ -119,3 +126,39 @@ inline float wrap_angle(float angle) noexcept
 }
 
 } // namespace eaw::simulation_detail
+
+namespace eaw {
+
+template <typename Accepts> std::optional<std::size_t> SimulationWorld::choose_target(const std::size_t index, const Vector3& center, const float reach, const Accepts& accepts)
+{
+    const auto& priorities = combat_[index].profile.targeting;
+    query_.clear();
+    grid_.query(center, reach, query_);
+    std::optional<std::size_t> best;
+    float best_rank = 0.0F;
+    float best_distance = 0.0F;
+    for (const auto candidate : query_)
+    {
+        if (candidate == index || !damageable(candidate) || !hostility_.hostile(owners_[index], owners_[candidate]) || !accepts(candidate))
+        {
+            continue;
+        }
+        const auto& profile = combat_[candidate].profile;
+        const auto rank = priorities.rank(profile.categories, profile.properties, profile.type_key);
+        const auto distance = simulation_detail::distance_xy(center, positions_[candidate]);
+        if (rank < 0.0F || distance > reach)
+        {
+            continue;
+        }
+        const auto lower = best && (ids_[candidate].index != ids_[*best].index ? ids_[candidate].index < ids_[*best].index : ids_[candidate].generation < ids_[*best].generation);
+        if (!best || rank < best_rank || (rank == best_rank && (distance < best_distance || (distance == best_distance && lower))))
+        {
+            best = candidate;
+            best_rank = rank;
+            best_distance = distance;
+        }
+    }
+    return best;
+}
+
+} // namespace eaw

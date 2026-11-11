@@ -184,8 +184,14 @@ MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinit
         const auto value = type_float_field(catalog, definition, field) * scale;
         return value > 0.0F && std::isfinite(value) ? value : 0.0F;
     };
-    movement.acceleration = rate("OverrideAcceleration", provisional_acceleration_scale);
-    movement.deceleration = rate("OverrideDeceleration", provisional_acceleration_scale);
+    // Team containers spell the fields with an underscore (Override_Acceleration, 40 stock uses);
+    // no stock type uses both spellings.
+    const auto either = [&](const std::string_view field, const std::string_view alias)
+    {
+        return catalog.field(definition, field).field != nullptr ? rate(field, provisional_acceleration_scale) : rate(alias, provisional_acceleration_scale);
+    };
+    movement.acceleration = either("OverrideAcceleration", "Override_Acceleration");
+    movement.deceleration = either("OverrideDeceleration", "Override_Deceleration");
     const bool names_fraction = catalog.field(definition, "Min_Speed_Fraction_For_Turn").field != nullptr;
     const auto fraction = names_fraction ? std::clamp(rate("Min_Speed_Fraction_For_Turn", 1.0F), 0.0F, 1.0F) : (land ? 0.0F : default_space_turn_speed_fraction);
     movement.turn_speed_fraction = fraction;
@@ -196,6 +202,52 @@ MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinit
         movement.turn_in_place_angle = ground_turn_in_place_angle;
     }
     return movement;
+}
+
+TeamMovement type_team_movement(const GameObjectCatalog& catalog, const XmlDefinition& company, const float speed_multiplier)
+{
+    TeamMovement team;
+    const auto* name = catalog.field(company, "Create_Team_Type").field;
+    const auto team_name = name != nullptr ? ascii_trim(name->text) : std::string_view{};
+    if (team_name.empty())
+    {
+        return team;
+    }
+    const XmlDefinition* container = nullptr;
+    for (const auto* candidate : catalog.find(team_name))
+    {
+        if (container == nullptr || ascii_equal_ignoring_case(candidate->type, "Container"))
+        {
+            container = candidate;
+        }
+    }
+    if (container == nullptr)
+    {
+        return team;
+    }
+    const auto sets = [&](const std::string_view field)
+    {
+        return catalog.field(*container, field).field != nullptr;
+    };
+    std::vector<std::string> ignored;
+    if (sets("Max_Speed"))
+    {
+        team.max_speed = type_max_speed(catalog, *container, ignored, speed_multiplier);
+    }
+    if (sets("Max_Rate_Of_Turn"))
+    {
+        team.turn_rate = type_turn_rate(catalog, *container);
+    }
+    const auto movement = type_movement(catalog, *container, true, false);
+    if (sets("OverrideAcceleration") || sets("Override_Acceleration"))
+    {
+        team.acceleration = movement.acceleration;
+    }
+    if (sets("OverrideDeceleration") || sets("Override_Deceleration"))
+    {
+        team.deceleration = movement.deceleration;
+    }
+    return team;
 }
 
 float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, const float max_speed)
@@ -365,7 +417,7 @@ bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& 
     return true;
 }
 
-float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings)
+float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings, const float mode_multiplier)
 {
     const auto speed = catalog.field(definition, "Max_Speed").field;
     if (speed == nullptr)
@@ -396,7 +448,7 @@ float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& defi
         warnings.push_back(definition.name + ": Max_Speed '" + speed->text + "' is out of range");
         return 0.0F;
     }
-    return std::isfinite(value) && value > 0.0F ? value * provisional_max_speed_scale : 0.0F;
+    return std::isfinite(value) && value > 0.0F ? value * provisional_max_speed_scale * mode_multiplier : 0.0F;
 }
 
 } // namespace eaw::scene_build

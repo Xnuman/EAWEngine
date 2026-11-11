@@ -179,6 +179,7 @@ void SimulationWorld::step()
     deaths_.clear();
     impacts_.clear();
     shots_.clear();
+    hardpoint_deaths_.clear();
     run_behavior();
     run_movement();
     run_separation();
@@ -340,7 +341,10 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, projectile.owner);
         hash = hash_value(hash, projectile.damage);
         hash = hash_value(hash, projectile.flown);
+        hash = hash_value(hash, projectile.stray);
+        hash = hash_value(hash, projectile.misses);
     }
+    hash = hash_value(hash, combat_random_.state());
     return hash;
 }
 
@@ -585,6 +589,7 @@ void SimulationWorld::publish()
     snapshot_.deaths = deaths_;
     snapshot_.impacts = impacts_;
     snapshot_.shots = shots_;
+    snapshot_.hardpoint_deaths = hardpoint_deaths_;
     snapshot_.projectiles.clear();
     snapshot_.projectiles.reserve(projectiles_.size());
     for (const auto& projectile : projectiles_)

@@ -228,6 +228,7 @@ Result<SimCommand> Battle::translate(const BattleCommand& command) const
             for (std::size_t member = 0; member < found->members.size(); ++member)
             {
                 translated.spawns.push_back(spawn_of(found->members[member], slots[member].position, command.owner));
+                apply_team_movement(found->team, translated.spawns.back());
             }
         }
         return translated;

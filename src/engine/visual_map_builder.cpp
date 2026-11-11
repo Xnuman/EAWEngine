@@ -117,6 +117,10 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
             }
             SpawnableType company;
             company.type_name = candidate->name;
+            if (build.catalog.field(*candidate, "Company_Units").field != nullptr)
+            {
+                company.team = type_team_movement(build.catalog, *candidate, build.speed_multiplier);
+            }
             for (const auto member : names)
             {
                 if (const auto index = add_spawnable_type(build, std::string(member), depth + 1))
@@ -150,7 +154,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     SpawnableType spawnable;
     spawnable.type_name = definition->name;
     spawnable.mesh = *entry->second;
-    spawnable.max_speed = type_max_speed(build.catalog, *definition, build.builder.scene.warnings);
+    spawnable.max_speed = type_max_speed(build.catalog, *definition, build.builder.scene.warnings, build.speed_multiplier);
     spawnable.team_color = build.catalog.affiliation_color(*definition).value_or(player_team_color(1));
     spawnable.follows_ground = build.land && type_follows_ground(build.catalog, *definition);
     spawnable.passable_types = spawnable.follows_ground ? type_passable_types(build.catalog, *definition, build.movement_classes) : 0U;
@@ -209,7 +213,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             std::vector<std::string> scale_warnings;
             found = combat_profiles
                         .emplace(&definition, combat_profile(catalog, definition, *combat_entry, asset.scene.warnings, model != nullptr ? &model->skeleton : nullptr,
-                                                             type_scale_factor(catalog, definition, scale_warnings)))
+                                                             type_scale_factor(catalog, definition, scale_warnings), combat_entry->max_health_multiplier.of(asset.land)))
                         .first;
         }
         return found->second;
@@ -314,7 +318,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             }
             if (placement.type != nullptr)
             {
-                spawn.max_speed = type_max_speed(catalog, *placement.type, scene.warnings);
+                spawn.max_speed = type_max_speed(catalog, *placement.type, scene.warnings, combat_entry->max_speed_multiplier.of(asset.land));
                 const auto decoded = cached_model(builder, placement.model_path);
                 spawn.combat = profile_of(*placement.type, decoded && decoded->ok() ? &decoded->value() : nullptr);
                 note_damage_bones(builder, placement.model_path, spawn.combat);
@@ -338,6 +342,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                     spawn.aims_with_body = spawn.follows_ground && type_aims_with_body(catalog, *placement.type);
                     spawn.formation_order = type_formation_order(catalog, *placement.type);
                     spawn.formation_spacing = type_formation_spacing(catalog, *placement.type);
+                    if (placement.container != nullptr && placement.needs_formation)
+                    {
+                        apply_team_movement(type_team_movement(catalog, *placement.container, combat_entry->max_speed_multiplier.of(asset.land)), spawn);
+                    }
                 }
             }
             asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size()), placement.type != nullptr ? type_death_style(catalog, *placement.type) : DeathStyle{},
@@ -430,6 +438,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     const auto spawn_context = asset.land ? GameModelContext::land : GameModelContext::space;
     // Each requested name once: an existing entry is reused (company members are often repeated).
     SpawnableBuild spawnable_build{builder, catalog, movement_classes, spawn_context, asset.land, meshes, profile_of, asset.spawnable};
+    spawnable_build.speed_multiplier = combat_entry->max_speed_multiplier.of(asset.land);
     for (const auto& type_name : spawn_types)
     {
         (void)add_spawnable_type(spawnable_build, type_name, 0);
@@ -511,12 +520,13 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
             std::vector<std::string> scale_warnings;
             found = profiles
                         .emplace(&definition, combat_profile(catalog_entry->catalog, definition, *combat_entry, package.meshes.warnings, model != nullptr ? &model->skeleton : nullptr,
-                                                             type_scale_factor(catalog_entry->catalog, definition, scale_warnings)))
+                                                             type_scale_factor(catalog_entry->catalog, definition, scale_warnings), combat_entry->max_health_multiplier.of(land)))
                         .first;
         }
         return found->second;
     };
     SpawnableBuild build{builder, catalog_entry->catalog, movement_entry->classes, land ? GameModelContext::land : GameModelContext::space, land, meshes, profile_of, package.types};
+    build.speed_multiplier = combat_entry->max_speed_multiplier.of(land);
     const auto index = add_spawnable_type(build, std::string(type_name), 0);
     if (!index || package.meshes.meshes.empty())
     {

@@ -28,7 +28,18 @@ void test_combat_content()
                 "<Damage_To_Armor_Mod> Damage_Laser, Armor_Tank, 0.5 </Damage_To_Armor_Mod>"
                 "<Damage_To_Armor_Mod>Damage_Laser, Shield_Tank, 2</Damage_To_Armor_Mod>"
                 "<Damage_To_Armor_Mod>Damage_Laser, Armor_Tank</Damage_To_Armor_Mod>"
+                "<Object_Max_Speed_Multiplier_Land> 1.5 </Object_Max_Speed_Multiplier_Land><Object_Max_Health_Multiplier_Space>2</Object_Max_Health_Multiplier_Space>"
+                "<Object_Max_Health_Multiplier_Land>-1</Object_Max_Health_Multiplier_Land>"
                 "</GameConstants>";
+    }
+    {
+        std::filesystem::create_directories(xml_root / "Enum");
+        std::ofstream file(xml_root / "Enum" / "GameObjectCategoryType.xml", std::ios::binary);
+        file << "<EnumDefinition><Infantry> 0x00000080 </Infantry><Vehicle>0x00000100</Vehicle><Air>0x200</Air><Broken>zz</Broken><All>0xFFFFFFFFFFFFFFFF</All><None>0</None></EnumDefinition>";
+    }
+    {
+        std::ofstream file(xml_root / "Enum" / "GameObjectPropertiesType.xml", std::ios::binary);
+        file << "<EnumDefinition><Turret>0x00000004</Turret><NotOpportunityTarget>0x00000100</NotOpportunityTarget></EnumDefinition>";
     }
     {
         std::ofstream file(xml_root / "Units.xml", std::ios::binary);
@@ -41,8 +52,17 @@ void test_combat_content()
                 "<Armor_Type> Armor_Tank </Armor_Type><Shield_Armor_Type>Shield_Tank</Shield_Armor_Type><Ranged_Target_Z_Adjust>12</Ranged_Target_Z_Adjust>"
                 "<Projectile_Types>Proj_Tank, Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>200</Targeting_Max_Attack_Distance>"
                 "<Projectile_Fire_Recharge_Seconds>1.5</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>3</Projectile_Fire_Pulse_Count>"
-                "<Projectile_Fire_Pulse_Delay_Seconds>0.2</Projectile_Fire_Pulse_Delay_Seconds></GroundVehicle>"
+                "<Projectile_Fire_Pulse_Delay_Seconds>0.2</Projectile_Fire_Pulse_Delay_Seconds><CategoryMask>Vehicle | Air</CategoryMask>"
+                "<Targeting_Fire_Inaccuracy>Infantry, 3</Targeting_Fire_Inaccuracy><Targeting_Fire_Inaccuracy>Air, 70</Targeting_Fire_Inaccuracy>"
+                "<Targeting_Fire_Inaccuracy_Fixed_Radius>50</Targeting_Fire_Inaccuracy_Fixed_Radius></GroundVehicle>"
                 "<GroundStructure Name=\"Wall\"><Tactical_Health>-5</Tactical_Health></GroundStructure>"
+                "<Priority_Set Name=\"AntiTank\"><Attack_Priorities>Turret, 2.0, Vehicle, 1.0, Bogus, 3</Attack_Priorities><Category_Exclusions>Air</Category_Exclusions>"
+                "<Property_Exclusions>NotOpportunityTarget</Property_Exclusions><Unit_Exclusions>Wall, Tank</Unit_Exclusions></Priority_Set>"
+                "<GroundVehicle Name=\"Picky\"><Targeting_Priority_Set>AntiTank</Targeting_Priority_Set><Property_Flags>Turret</Property_Flags></GroundVehicle>"
+                "<Container Name=\"Slow_Team\"><Max_Speed>.5</Max_Speed><Override_Acceleration>.1</Override_Acceleration></Container>"
+                "<GroundCompany Name=\"Slow_Company\"><Create_Team_Type>Slow_Team</Create_Team_Type></GroundCompany>"
+                "<Projectile Name=\"Proj_Paced\"><Projectile_Fire_Recharge_Seconds>6</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>2</Projectile_Fire_Pulse_Count></Projectile>"
+                "<GroundVehicle Name=\"Paced\"><Projectile_Types>Proj_Paced, Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>50</Targeting_Max_Attack_Distance></GroundVehicle>"
                 "<HardPoint Name=\"HP_Gun\"><Fire_SFXEvent> Turbo </Fire_SFXEvent><Type> HARD_POINT_WEAPON_LASER </Type><Fire_Projectile_Type>Proj_Tank</Fire_Projectile_Type>"
                 "<Fire_Min_Recharge_Seconds>3</Fire_Min_Recharge_Seconds><Fire_Max_Recharge_Seconds>4</Fire_Max_Recharge_Seconds><Fire_Pulse_Count>7</Fire_Pulse_Count>"
                 "<Fire_Pulse_Delay_Seconds>0.2</Fire_Pulse_Delay_Seconds><Fire_Range_Distance>2000</Fire_Range_Distance><Damage_Type>Damage_Unknown</Damage_Type></HardPoint>"
@@ -58,8 +78,14 @@ void test_combat_content()
     const auto database = eaw::XmlAssetDatabase::build(vfs);
     const auto catalog = eaw::GameObjectCatalog::build(database);
     const auto content = eaw::load_combat_content(vfs);
-    require(content.damage_table.size() == 2 && content.warnings.size() == 1 && content.warnings[0].find("Damage_To_Armor_Mod") != std::string::npos,
+    require(content.damage_table.size() == 2 && content.warnings.size() == 3 && content.warnings[0].find("Damage_To_Armor_Mod") != std::string::npos &&
+                content.warnings[1].find("Object_Max_Health_Multiplier_Land") != std::string::npos && content.warnings[2].find("Broken") != std::string::npos,
             "damage modifiers must be read and malformed entries reported");
+    require(content.category_bits.size() == 5 && content.categories("Infantry | air, Unknown") == 0x280U && content.categories("All") == 0xffffffffU && content.categories("None") == 0,
+            "category bits must be read from the enum and combined from a list");
+    require(content.max_speed_multiplier.of(true) == 1.5F && content.max_speed_multiplier.of(false) == 1.0F && content.max_health_multiplier.of(false) == 2.0F &&
+                content.max_health_multiplier.of(true) == 1.0F,
+            "the per-mode speed and health multipliers must be read, 1 when absent or invalid");
     const auto laser = content.type_ids.at("damage_laser");
     const auto tank_armor = content.type_ids.at("armor_tank");
     require(content.damage_table.modifier(laser, tank_armor) == 0.5F && content.damage_table.modifier(laser, content.type_ids.at("shield_tank")) == 2.0F,
@@ -74,9 +100,33 @@ void test_combat_content()
     require(tank.health == 100.0F && tank.shield == 50.0F && tank.shield_regen_per_second == 4.0F && tank.armor_type == tank_armor && tank.aim_height == 12.0F && tank.weapons.size() == 1,
             "a type's health, shields, armor, and weapon must be read");
     const auto& weapon = tank.weapons.front();
+    require(tank.categories == 0x300U && weapon.inaccuracy.size() == 3 && weapon.inaccuracy[0].categories == 0x80U && weapon.inaccuracy[0].distance == 3.0F && weapon.inaccuracy[1].distance == 70.0F &&
+                weapon.inaccuracy[2].categories == eaw::all_categories && weapon.inaccuracy[2].distance == 50.0F,
+            "a type's categories and its weapon's inaccuracy by target category must be read");
     require(weapon.range == 200.0F && weapon.recharge_seconds == 1.5F && weapon.pulse_count == 3 && weapon.pulse_delay_seconds == 0.2F && weapon.damage == 7.5F && weapon.damage_type == laser &&
                 weapon.projectile_speed == 10.0F * eaw::provisional_max_speed_scale && weapon.max_flight_distance == 400.0F && !weapon.damages_shield && weapon.damages_health,
             "the first projectile type must supply the shot, through its variant chain");
+    require(warnings.empty(), "a well-formed type must not warn");
+    std::vector<std::string> picky_warnings;
+    const auto picky = eaw::combat_profile(catalog, *definition("Picky"), content, picky_warnings);
+    const auto& wanted = picky.targeting;
+    require(picky.properties == 0x4U && picky.type_key == eaw::game_object_name_crc("Picky") && wanted.ranks.size() == 2 && wanted.ranks[0].categories == 0x100U &&
+                wanted.ranks[1].properties == 0x4U && wanted.excluded_categories == 0x200U && wanted.excluded_properties == 0x100U && wanted.excluded_types.size() == 2 && picky_warnings.size() == 1 &&
+                picky_warnings[0].find("Bogus") != std::string::npos,
+            "a targeting priority set must be read in rank order with its exclusions");
+    require(wanted.rank(0x100U, 0, 0) == 1.0F && wanted.rank(0x80U, 0x4U, 0) == 2.0F && wanted.rank(0x200U, 0, 0) < 0.0F && wanted.rank(0x80U, 0x100U, 0) < 0.0F &&
+                wanted.rank(0x80U, 0, eaw::game_object_name_crc("Tank")) < 0.0F && wanted.rank(0x80U, 0, 0) == eaw::TargetingPriorities::unlisted_rank && wanted.rank(0x300U, 0, 0) == 1.0F,
+            "a match must rank, exclusions must apply only to unmatched targets, and the rest must rank last");
+    const auto team = eaw::scene_build::type_team_movement(catalog, *definition("Slow_Company"), 2.0F);
+    require(team.max_speed && *team.max_speed == 0.5F * eaw::provisional_max_speed_scale * 2.0F && team.acceleration && *team.acceleration == 0.1F * eaw::provisional_acceleration_scale &&
+                !team.turn_rate && !team.deceleration && !eaw::scene_build::type_team_movement(catalog, *definition("Tank"), 1.0F).max_speed,
+            "a company's team must give its members the team's speed and acceleration, and only what it sets");
+    eaw::EntitySpawn member{.max_speed = 30.0F, .turn_rate = 2.0F};
+    eaw::apply_team_movement(team, member);
+    require(member.max_speed == *team.max_speed && member.turn_rate == 2.0F && member.movement.acceleration == *team.acceleration, "team movement must replace only what the team sets");
+    const auto paced = eaw::combat_profile(catalog, *definition("Paced"), content, warnings);
+    require(paced.weapons.size() == 1 && paced.weapons[0].recharge_seconds == 6.0F && paced.weapons[0].pulse_count == 2 && tank.weapons[0].recharge_seconds == 1.5F,
+            "a shooter without its own cadence must take its projectile's");
     require(warnings.empty(), "a well-formed type must not warn");
     const auto wall = eaw::combat_profile(catalog, *definition("Wall"), content, warnings);
     require(wall.health == 0.0F && wall.weapons.empty() && warnings.size() == 1 && warnings[0].find("Tactical_Health") != std::string::npos, "a negative health must be reported and ignored");
@@ -86,6 +136,9 @@ void test_combat_content()
     // Weapon hardpoints become weapons (other hardpoint types do not); the recharge is the midpoint of
     // the min/max range and a hardpoint's Damage_Type overrides its projectile's.
     const auto cruiser = eaw::combat_profile(catalog, *definition("Cruiser"), content, warnings);
+    std::vector<std::string> sturdy_warnings;
+    const auto sturdy = eaw::combat_profile(catalog, *definition("Cruiser"), content, sturdy_warnings, nullptr, 1.0F, 2.0F);
+    require(sturdy.health == 1000.0F && sturdy.hardpoints[1].health == 750.0F, "the health multiplier must scale the object and its hardpoints");
     require(cruiser.weapons.size() == 2 && cruiser.range() == 2000.0F, "every weapon hardpoint must become a weapon");
     require(cruiser.weapons[0].fire_sound == eaw::game_object_name_crc("TURBO") && tank.weapons.front().fire_sound == eaw::game_object_name_crc("Tank_Fire"),
             "a weapon hardpoint must play its Fire_SFXEvent, a unit's weapon its SFXEvent_Fire");

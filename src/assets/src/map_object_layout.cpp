@@ -19,6 +19,9 @@ namespace {
 
 // Bounds expansion of malformed mod data; stock squadrons list at most a handful of members.
 constexpr std::size_t maximum_squadron_members = 64;
+// Distance between squadron members that have no Squadron_Offsets entry, lined up astern (an engine
+// choice; stock offsets are 20-60 units apart).
+constexpr float squadron_fallback_spacing = 40.0F;
 constexpr std::size_t maximum_company_members = 64;
 
 Quaternion axis_rotation(const float degrees, const int axis) noexcept
@@ -150,7 +153,22 @@ template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& s
     {
         return false;
     }
-    const auto offsets = catalog.fields(*squadron.type, "Squadron_Offsets", &layout.diagnostics);
+    auto offsets = catalog.fields(*squadron.type, "Squadron_Offsets", &layout.diagnostics);
+    if (offsets.fields.empty())
+    {
+        // Darth_Vader_TIE_Fighter_Squadron keeps its offsets on its team container.
+        if (const auto* team = catalog.field(*squadron.type, "Create_Team_Type").field)
+        {
+            for (const auto* candidate : catalog.find(ascii_trim(team->text)))
+            {
+                if (auto from_team = catalog.fields(*candidate, "Squadron_Offsets", &layout.diagnostics); !from_team.fields.empty())
+                {
+                    offsets = std::move(from_team);
+                    break;
+                }
+            }
+        }
+    }
     if (members.size() > maximum_squadron_members)
     {
         layout.diagnostics.push_back(location(*squadron.type) + ": Squadron_Units lists " + std::to_string(members.size()) + " members; only the first " + std::to_string(maximum_squadron_members) +
@@ -196,7 +214,9 @@ template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& s
         }
         else
         {
-            layout.diagnostics.push_back(location(*squadron.type) + ": no Squadron_Offsets entry for member " + std::to_string(member) + "; placed at the squadron origin");
+            // Engine choice: members without an offset line up astern instead of stacking.
+            offset = {-squadron_fallback_spacing * static_cast<float>(member + 1U - offsets.fields.size()), 0.0F, 0.0F};
+            layout.diagnostics.push_back(location(*squadron.type) + ": no Squadron_Offsets entry for member " + std::to_string(member) + "; placed astern");
         }
         // Squadron_Offsets are in the squadron's facing frame (+X ahead: stock V formations point
         // there), while its placement first turns the model a quarter (placed_model_facing): the

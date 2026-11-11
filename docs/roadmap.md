@@ -79,7 +79,10 @@ Complete skirmish matches against the AI.
 ## Work order
 
 Set by the owner on 2026-11-10: the base technical systems and M2's renderer come before combat
-presentation and the player layer.
+presentation and the player layer. Inserted by the owner on 2026-11-11, before item 2: the
+game-object tags existing systems should honor, worked through tag by tag from
+[xml-tag-status.md](xml-tag-status.md) (its `gap` and `partial` rows, family by family; the
+rendering rows join item 2).
 
 1. Done (2026-11-10): Audio, first stage (Data stage 2 and Audio stage 1): the effect archives, the
    WAV reader, the sound-event catalog, XAudio2 (optional FMOD) devices, and positional battle
@@ -290,6 +293,11 @@ compared by measured ratios from screenshots, never by recreated scenes):
 - fighter flight angles, heights, and periods;
 - acceleration units (`OverrideAcceleration` as speed per frame per frame), capital ships' turn
   speed fraction (0.25), and the angle at which ground units stop to turn (45 degrees);
+- shot inaccuracy: whether `Targeting_Fire_Inaccuracy`/`Fire_Inaccuracy_Distance` are a scatter
+  radius around the aim point (the engine's reading) and whether a stray shot hits what it lands on;
+  how often infantry, tanks, and capital ships hit in the original;
+- whether `Object_Max_Speed_Multiplier_*` also scales projectile speeds;
+- team movement: whether company members take their team container's speed and acceleration;
 - space avoidance: the look-ahead (3 s of travel, at least 4 radii), the margin (a quarter radius),
   the course steps (11.25 degrees), the formation spacing of ships (slots 4.5 radii apart), which
   units are small enough to fly past (below a fifth of the radius), and that a unit at another

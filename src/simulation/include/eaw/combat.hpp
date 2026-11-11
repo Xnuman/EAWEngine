@@ -47,6 +47,69 @@ struct HardpointProfile
     std::int32_t decal_bone{-1};
     // Presentation only: the bone its XML Engine_Particles names (engine glows), or -1.
     std::int32_t engine_bone{-1};
+    // Presentation only: the sound of its destruction (CRC-32 of its XML Death_Explosion_SFXEvent,
+    // as game_object_name_crc), or 0.
+    std::uint32_t death_sound{};
+};
+
+// How far a weapon's shots stray from targets of some categories: the first entry whose
+// categories the target has applies (bits of the game's GameObjectCategoryType; all bits for a
+// fixed radius: all_categories).
+// CategoryInaccuracy::categories that applies to every target, even one without categories.
+inline constexpr std::uint32_t all_categories = 0xffffffffU;
+
+struct CategoryInaccuracy
+{
+    std::uint32_t categories{};
+    float distance{};
+};
+
+// Whom an entity prefers to shoot (its XML Targeting_Priority_Set). A target matching an entry
+// (by category or property bits) takes that entry's rank, lower first; otherwise excluded
+// categories, properties, and types are never chosen, and the rest rank after every entry. That a
+// match outranks an exclusion is read from the data: AntiInfantry ranks TacticalStructure while
+// excluding Structure. No ranks and no exclusions: every hostile ranks alike (the nearest wins).
+struct TargetPriority
+{
+    std::uint32_t categories{};
+    std::uint32_t properties{};
+    float rank{};
+};
+
+struct TargetingPriorities
+{
+    std::vector<TargetPriority> ranks;
+    std::uint32_t excluded_categories{};
+    std::uint32_t excluded_properties{};
+    // Type keys (CombatProfile::type_key) never chosen.
+    std::vector<std::uint32_t> excluded_types;
+
+    // The rank of a target, or a negative value when it is excluded.
+    [[nodiscard]] float rank(const std::uint32_t categories, const std::uint32_t properties, const std::uint32_t type) const noexcept
+    {
+        for (const auto& entry : ranks)
+        {
+            if ((entry.categories & categories) != 0 || (entry.properties & properties) != 0)
+            {
+                return entry.rank;
+            }
+        }
+        if ((excluded_categories & categories) != 0 || (excluded_properties & properties) != 0)
+        {
+            return -1.0F;
+        }
+        for (const auto excluded : excluded_types)
+        {
+            if (excluded == type)
+            {
+                return -1.0F;
+            }
+        }
+        return unlisted_rank;
+    }
+
+    // The rank of targets no entry names: after every stock rank (the highest is 9).
+    static constexpr float unlisted_rank = 1.0e6F;
 };
 
 // One projectile weapon: fires bursts of `pulse_count` shots `pulse_delay_seconds` apart, one
@@ -76,6 +139,9 @@ struct WeaponProfile
     // The hardpoint the weapon is mounted on (its index in CombatProfile::hardpoints), or -1. The
     // weapon is silent once that hardpoint is destroyed.
     std::int32_t hardpoint{-1};
+    // Each shot lands a random distance up to this from its aim point, in the horizontal plane, and
+    // misses when that is outside the target's footprint radius; empty: every shot hits.
+    std::vector<CategoryInaccuracy> inaccuracy;
     // Presentation only (not simulation state): which projectile type its shots look like (the
     // CRC-32 of the type name, as game_object_name_crc), or 0.
     std::uint32_t projectile_visual{};
@@ -94,6 +160,16 @@ struct CombatProfile
     std::uint16_t shield_armor_type{};
     // Height above the entity's position that shots aim at.
     float aim_height{};
+    // What the entity is, for weapons' inaccuracy (bits of GameObjectCategoryType, from its XML
+    // CategoryMask).
+    std::uint32_t categories{};
+    // Stray shots meant for others hit it where they land on it (XML Collidable_By_Projectile_Living).
+    bool collidable{true};
+    // Property bits (GameObjectPropertiesType, XML Property_Flags) and a key of its type (the CRC-32
+    // of the type name), for others' targeting priorities.
+    std::uint32_t properties{};
+    std::uint32_t type_key{};
+    TargetingPriorities targeting;
     // Every weapon (a land unit's projectile weapon, a ship's weapon hardpoints). Each fires at the
     // entity's target when it is within that weapon's range, with its own recharge and bursts.
     std::vector<WeaponProfile> weapons;

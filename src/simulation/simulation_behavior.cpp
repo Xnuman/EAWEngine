@@ -345,32 +345,11 @@ void SimulationWorld::run_standing_order(const std::size_t index)
             order.scan_timer = retarget_interval;
             const auto& center = guard ? order.point : positions_[index];
             const float reach = guard ? guard_radius : range * acquire_range_factor;
-            // The nearest damageable hostile to the center; equal distances go to the lower id.
-            query_.clear();
-            grid_.query(center, reach, query_);
-            std::optional<std::size_t> best;
-            float best_distance = 0.0F;
-            for (const auto candidate : query_)
-            {
-                if (candidate == index || !damageable(candidate) || !hostility_.hostile(owners_[index], owners_[candidate]))
-                {
-                    continue;
-                }
-                const auto distance = distance_xy(center, positions_[candidate]);
-                if (distance > reach)
-                {
-                    continue;
-                }
-                const auto lower_id = [&](const std::size_t a, const std::size_t b)
-                {
-                    return ids_[a].index != ids_[b].index ? ids_[a].index < ids_[b].index : ids_[a].generation < ids_[b].generation;
-                };
-                if (!best || distance < best_distance || (distance == best_distance && lower_id(candidate, *best)))
-                {
-                    best = candidate;
-                    best_distance = distance;
-                }
-            }
+            const auto best = choose_target(index, center, reach,
+                                            [](std::size_t)
+                                            {
+                                                return true;
+                                            });
             if (best)
             {
                 combat.target = ids_[*best];

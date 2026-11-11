@@ -326,6 +326,23 @@ void BattleAudio::play_tick_events(const SimSnapshot& snapshot, const Simulation
             }
         }
     }
+    // Destroyed hardpoints play their Death_Explosion_SFXEvent (every stock use is on HardPoint
+    // definitions, none on the unit types).
+    for (const auto& fallen : snapshot.hardpoint_deaths)
+    {
+        if (fallen.sound == 0)
+        {
+            continue;
+        }
+        if (const auto event = event_names_.find(fallen.sound); event != event_names_.end())
+        {
+            (void)play_event(event->second, fallen.position);
+        }
+        else
+        {
+            ++stats_.missing;
+        }
+    }
     for (const auto& death : snapshot.deaths)
     {
         const auto key = entity_key(death.id);

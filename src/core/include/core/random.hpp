@@ -21,6 +21,11 @@ public:
     float range(float low, float high) noexcept;
     // Uniform in [0, count); 0 when count is 0.
     std::uint32_t below(std::uint32_t count) noexcept;
+    // The stream position, for state hashes.
+    [[nodiscard]] std::uint64_t state() const noexcept
+    {
+        return state_;
+    }
 
 private:
     std::uint64_t state_{};

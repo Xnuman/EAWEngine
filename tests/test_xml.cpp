@@ -99,6 +99,8 @@ void test_game_object_catalog()
                 "<Squadron Name=\"Test_Squadron\"><Squadron_Units>Unit_A</Squadron_Units><Squadron_Units>Unit_A, Unit_A_Variant, Missing_Member</Squadron_Units>"
                 "<Squadron_Offsets>10.0, 0.0, 0.0</Squadron_Offsets><Squadron_Offsets>bad</Squadron_Offsets></Squadron>"
                 "<Container Name=\"Test_Team\" />"
+                "<Squadron Name=\"Team_Squadron\"><Squadron_Units>Unit_A, Unit_A</Squadron_Units><Create_Team_Type>Offset_Team</Create_Team_Type></Squadron>"
+                "<Container Name=\"Offset_Team\"><Squadron_Offsets>0, 25, 0</Squadron_Offsets></Container>"
                 "<GroundCompany Name=\"Test_Company\"><Land_Model_Name>EI_Unit</Land_Model_Name><Company_Units>Unit_A Unit_A, Missing_Member</Company_Units></GroundCompany>"
                 "<Faction Name=\"Test_Empire\"><Color> 54, 134, 242, 255 </Color></Faction>"
                 "<Faction Name=\"Broken_Faction\"><Color>red</Color></Faction>"
@@ -225,6 +227,17 @@ void test_game_object_catalog()
     const auto wing_origin = eaw::transform_point({}, squadron_layout.placements[1].transform);
     require(squadron_layout.placements[1].member == 1 && std::fabs(wing_origin.x - 10.0F) < 1.0e-4F && std::fabs(wing_origin.y - 20.0F) < 1.0e-4F,
             "malformed squadron offset did not fall back to the squadron origin");
+    // A squadron without offsets takes its team container's; members beyond the list line up astern.
+    eaw::TedMapData team_map;
+    team_map.type = eaw::TedMapType::space;
+    auto team_squadron = squadron_object;
+    team_squadron.crc = eaw::game_object_name_crc("Team_Squadron");
+    team_map.placed_objects.push_back(team_squadron);
+    const auto team_layout = eaw::build_map_object_layout(team_map, catalog, vfs);
+    require(team_layout.placements.size() == 2, "the team squadron must expand into both members");
+    const auto first = eaw::transform_point({}, team_layout.placements[0].transform);
+    const auto second = eaw::transform_point({}, team_layout.placements[1].transform);
+    require(std::fabs(eaw::distance(first, second) - std::sqrt(25.0F * 25.0F + 40.0F * 40.0F)) < 1.0e-3F, "squadron offsets must come from the team container, the rest astern");
     // A land company expands into its members (listed with commas or whitespace) at the company's
     // transform, flagged for arrangement, even though it names a model of its own; a container
     // without a member list is still counted.

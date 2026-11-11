@@ -95,28 +95,11 @@ void SimulationWorld::update_target(const std::size_t index)
         return;
     }
     combat.retarget_timer = retarget_interval;
-    // The nearest damageable hostile in range; equal distances go to the lower entity id.
-    query_.clear();
-    grid_.query(positions_[index], range, query_);
-    std::optional<std::size_t> best;
-    float best_distance = 0.0F;
-    for (const auto candidate : query_)
-    {
-        if (candidate == index || !damageable(candidate) || !hostility_.hostile(owners_[index], owners_[candidate]))
-        {
-            continue;
-        }
-        const auto distance = distance_xy(positions_[index], positions_[candidate]);
-        const auto lower_id = [&](const std::size_t a, const std::size_t b)
-        {
-            return ids_[a].index != ids_[b].index ? ids_[a].index < ids_[b].index : ids_[a].generation < ids_[b].generation;
-        };
-        if (!best || distance < best_distance || (distance == best_distance && lower_id(candidate, *best)))
-        {
-            best = candidate;
-            best_distance = distance;
-        }
-    }
+    const auto best = choose_target(index, positions_[index], range,
+                                    [](std::size_t)
+                                    {
+                                        return true;
+                                    });
     if (best)
     {
         combat.target = ids_[*best];
@@ -190,23 +173,7 @@ void SimulationWorld::run_weapon(const std::size_t index)
             }
             else if ((!combat.ordered || !entity_target) && stances_[index] != Stance::hold_fire)
             {
-                query_.clear();
-                grid_.query(positions_[index], weapon.range, query_);
-                float best_distance = 0.0F;
-                for (const auto candidate : query_)
-                {
-                    if (candidate == index || !damageable(candidate) || !hostility_.hostile(owners_[index], owners_[candidate]) || !covers(candidate))
-                    {
-                        continue;
-                    }
-                    const auto distance = distance_xy(positions_[index], positions_[candidate]);
-                    const bool lower = victim && (ids_[candidate].index != ids_[*victim].index ? ids_[candidate].index < ids_[*victim].index : ids_[candidate].generation < ids_[*victim].generation);
-                    if (!victim || distance < best_distance || (distance == best_distance && lower))
-                    {
-                        victim = candidate;
-                        best_distance = distance;
-                    }
-                }
+                victim = choose_target(index, positions_[index], weapon.range, covers);
             }
             if (!victim)
             {
@@ -251,11 +218,23 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
     const auto origin = world_point(shooter, weapon.mount);
     shots_.push_back({ids_[shooter], origin, weapon.fire_sound});
     const auto hardpoint = aim_hardpoint(victim, origin);
+    const auto offset = stray(weapon, victim);
+    const bool misses = strays_off(victim, offset);
     if (weapon.projectile_speed <= 0.0F)
     {
-        ++hits_;
-        const auto kind = apply_damage(victim, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, hardpoint);
-        const auto point = aim_point(victim, hardpoint);
+        auto point = aim_point(victim, hardpoint);
+        point = {point.x + offset.x, point.y + offset.y, point.z + offset.z};
+        auto kind = ImpactKind::expired;
+        if (!misses)
+        {
+            ++hits_;
+            kind = apply_damage(victim, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, hardpoint);
+        }
+        else if (const auto other = stray_victim(point, owners_[shooter], victim))
+        {
+            ++hits_;
+            kind = apply_damage(*other, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, -1);
+        }
         const Vector3 delta{point.x - origin.x, point.y - origin.y, point.z - origin.z};
         const auto length = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto direction = length > 0.0F ? Vector3{delta.x / length, delta.y / length, delta.z / length} : Vector3{};
@@ -276,7 +255,71 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
     projectile.max_flight = weapon.max_flight_distance;
     projectile.visual = weapon.projectile_visual;
     projectile.serial = next_projectile_serial_++;
+    projectile.stray = offset;
+    projectile.misses = misses;
+    projectile.aim = {projectile.aim.x + offset.x, projectile.aim.y + offset.y, projectile.aim.z + offset.z};
     projectiles_.push_back(projectile);
+}
+
+Vector3 SimulationWorld::stray(const WeaponProfile& weapon, const std::size_t victim)
+{
+    const auto categories = combat_[victim].profile.categories;
+    for (const auto& entry : weapon.inaccuracy)
+    {
+        if (entry.categories != all_categories && (entry.categories & categories) == 0)
+        {
+            continue;
+        }
+        if (entry.distance <= 0.0F)
+        {
+            return {};
+        }
+        // Uniform over the disc of that radius.
+        const auto angle = combat_random_.unit() * 2.0F * std::numbers::pi_v<float>;
+        const auto radius = entry.distance * std::sqrt(combat_random_.unit());
+        return {std::cos(angle) * radius, std::sin(angle) * radius, 0.0F};
+    }
+    return {};
+}
+
+bool SimulationWorld::strays_off(const std::size_t victim, const Vector3& stray) const noexcept
+{
+    // Without a size there is nothing to measure against, and the shot hits.
+    const auto size = target_size(victim);
+    return size > 0.0F && std::hypot(stray.x, stray.y) > size;
+}
+
+float SimulationWorld::target_size(const std::size_t index) const noexcept
+{
+    // The separation footprint, else the obstacle footprint.
+    auto size = radii_[index];
+    if (size <= 0.0F && footprints_[index])
+    {
+        size = std::max(footprints_[index]->half_length, footprints_[index]->half_width);
+    }
+    return size;
+}
+
+std::optional<std::size_t> SimulationWorld::stray_victim(const Vector3& point, const std::uint32_t owner, const std::size_t target) const noexcept
+{
+    // shortcut: a scan over every entity per stray shot; use the spatial grid when battles get big.
+    std::optional<std::size_t> best;
+    float best_distance = 0.0F;
+    for (std::size_t index = 0; index < ids_.size(); ++index)
+    {
+        if (index == target || !combat_[index].profile.collidable || !damageable(index) || !hostility_.hostile(owner, owners_[index]))
+        {
+            continue;
+        }
+        const auto size = target_size(index);
+        const auto distance = std::hypot(point.x - positions_[index].x, point.y - positions_[index].y);
+        if (size > 0.0F && distance <= size && (!best || distance < best_distance))
+        {
+            best = index;
+            best_distance = distance;
+        }
+    }
+    return best;
 }
 
 Vector3 SimulationWorld::world_point(const std::size_t index, const LocalPoint& point) const noexcept
@@ -380,6 +423,8 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
             {
                 part = 0.0F;
                 ++hardpoints_destroyed_;
+                const auto& profile = combat.profile.hardpoints[static_cast<std::size_t>(hardpoint)];
+                hardpoint_deaths_.push_back({ids_[victim], static_cast<std::uint32_t>(hardpoint), world_point(victim, profile.offset), profile.death_sound});
             }
         }
     }
@@ -416,7 +461,8 @@ void SimulationWorld::run_projectiles()
         if (victim)
         {
             // A part destroyed meanwhile still takes the shot's aim; the hit lands on the hull.
-            projectile.aim = aim_point(*victim, projectile.target_hardpoint);
+            const auto aim = aim_point(*victim, projectile.target_hardpoint);
+            projectile.aim = {aim.x + projectile.stray.x, aim.y + projectile.stray.y, aim.z + projectile.stray.z};
         }
         const Vector3 delta{projectile.aim.x - projectile.position.x, projectile.aim.y - projectile.position.y, projectile.aim.z - projectile.position.z};
         const auto distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
@@ -427,15 +473,21 @@ void SimulationWorld::run_projectiles()
         }
         if (distance <= step_length)
         {
-            if (victim && damageable(*victim))
+            if (victim && damageable(*victim) && !projectile.misses)
             {
                 ++hits_;
                 const auto kind = apply_damage(*victim, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, projectile.target_hardpoint);
                 impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind});
             }
+            else if (const auto other = projectile.misses ? stray_victim(projectile.aim, projectile.owner, victim.value_or(ids_.size())) : std::nullopt)
+            {
+                ++hits_;
+                const auto kind = apply_damage(*other, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, -1);
+                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind});
+            }
             else
             {
-                // A dead target's shot reaches the last aim point and is lost there.
+                // A shot that strays off its target, or whose target died, is lost at its aim point.
                 impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, ImpactKind::expired});
             }
             continue;
