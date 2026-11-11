@@ -144,6 +144,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     formation_orders_.push_back(spawn.formation_order);
     formation_spacings_.push_back(spawn.formation_spacing);
     formation_solos_.push_back(spawn.formation_solo ? 1U : 0U);
+    crushes_.push_back(spawn.crush);
     speed_limits_.push_back(0.0F);
     group_ids_.push_back(0);
     group_best_remaining_.push_back(0.0F);
@@ -183,6 +184,7 @@ void SimulationWorld::step()
     hardpoint_deaths_.clear();
     run_behavior();
     run_movement();
+    run_crushing();
     run_separation();
     // Movement and separation are the only systems that move entities, and entities are only added
     // (commands) before and removed (combat) after them, so dense indices line up here.
@@ -231,6 +233,7 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .hits = hits_,
             .kills = kills_,
             .hardpoints_destroyed = hardpoints_destroyed_,
+            .crushed = crushed_,
             .projectiles = projectiles_.size(),
             .separated_pairs = separated_pairs_,
             .waiting_members = waiting_members_,
@@ -308,6 +311,8 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, formation_orders_[index]);
         hash = hash_value(hash, formation_spacings_[index]);
         hash = hash_value(hash, formation_solos_[index]);
+        hash = hash_value(hash, static_cast<std::uint8_t>(crushes_[index].crusher));
+        hash = hash_value(hash, static_cast<std::uint8_t>((crushes_[index].squashable ? 1U : 0U) | (crushes_[index].squashable_by_supercrusher ? 2U : 0U)));
         hash = hash_value(hash, speed_limits_[index]);
         hash = hash_value(hash, group_ids_[index]);
         hash = hash_value(hash, group_best_remaining_[index]);
@@ -402,6 +407,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         formation_orders_[dense] = formation_orders_[last];
         formation_spacings_[dense] = formation_spacings_[last];
         formation_solos_[dense] = formation_solos_[last];
+        crushes_[dense] = crushes_[last];
         speed_limits_[dense] = speed_limits_[last];
         group_ids_[dense] = group_ids_[last];
         group_best_remaining_[dense] = group_best_remaining_[last];
@@ -447,6 +453,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     formation_orders_.pop_back();
     formation_spacings_.pop_back();
     formation_solos_.pop_back();
+    crushes_.pop_back();
     speed_limits_.pop_back();
     group_ids_.pop_back();
     group_best_remaining_.pop_back();

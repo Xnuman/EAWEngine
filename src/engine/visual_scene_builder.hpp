@@ -222,6 +222,7 @@ struct SpawnableType
     std::uint32_t formation_order{2};
     float formation_spacing{0.5F};
     bool formation_solo{};
+    CrushProfile crush;
     ScriptTypeInfo script;
     // A company (Company_Units): the spawnable types of its members, in list order, spawned
     // together in formation. Empty for ordinary types; a company's own mesh is unused.

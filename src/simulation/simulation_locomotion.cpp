@@ -286,6 +286,39 @@ float SimulationWorld::settle_distance(const std::size_t index) const noexcept
 // way); idle units yield more than moving ones, so a moving unit shoulders through instead of
 // stopping. A push never moves a unit onto a cell its class may not enter, and it is limited per
 // tick so packed groups spread out over a few ticks instead of jumping.
+void SimulationWorld::run_crushing()
+{
+    if (!ground_.valid())
+    {
+        return;
+    }
+    // shortcut: every moving crusher scans every entity; use the spatial grid when battles get big.
+    for (std::size_t crusher = 0; crusher < ids_.size(); ++crusher)
+    {
+        const auto kind = crushes_[crusher].crusher;
+        const auto& from = tick_start_positions_[crusher];
+        const auto& at = positions_[crusher];
+        if (kind == Crusher::none || follows_ground_[crusher] == 0 || radii_[crusher] <= 0.0F || (from.x == at.x && from.y == at.y))
+        {
+            continue;
+        }
+        for (std::size_t victim = 0; victim < ids_.size(); ++victim)
+        {
+            const auto& squash = crushes_[victim];
+            const bool may = squash.squashable || (kind == Crusher::supercrusher && squash.squashable_by_supercrusher);
+            const auto& combat = combat_[victim];
+            if (victim == crusher || !may || combat.profile.health <= 0.0F || combat.health <= 0.0F || !hostility_.hostile(owners_[crusher], owners_[victim]))
+            {
+                continue;
+            }
+            if (std::hypot(positions_[victim].x - at.x, positions_[victim].y - at.y) < radii_[crusher] && wound(victim, combat.health) > 0.0F)
+            {
+                ++crushed_;
+            }
+        }
+    }
+}
+
 void SimulationWorld::run_separation()
 {
     separated_pairs_ = 0;

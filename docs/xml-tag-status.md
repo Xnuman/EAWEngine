@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 102 |
+| `done` | 105 |
 | `partial` | 17 |
-| `gap` | 302 |
+| `gap` | 299 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -62,7 +62,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-25 done, 6 partial, 57 gap, 18 needs, 7 n/a.
+28 done, 6 partial, 54 gap, 18 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -99,7 +99,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Begin_Turn_Towards_Distance` | `gap` |  |
 | `Bank_Turn_Angle` | `partial` | limits the flyers' bank; capital ships do not bank yet |
 | `Max_Rate_Of_Roll` | `gap` | needs per-entity bank state in presentation |
-| `Max_Lift` | `gap` |  |
+| `Max_Lift` | `gap` | likely a vertical speed limit, but several fighters say 0.0f |
 | `MaxFacingLookAheadFrames` | `gap` |  |
 | `UseSecondaryFacing` | `gap` |  |
 | `SecondaryTurnAngle` | `gap` |  |
@@ -176,10 +176,10 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Is_Squashable` | `gap` |  |
-| `Is_Squashable_By_Supercrusher` | `gap` |  |
-| `Is_Supercrusher` | `gap` |  |
-| `Squash_Damage_Type` | `gap` |  |
+| `Is_Squashable` | `done` | crushers: vehicle collision classes (an engine choice) |
+| `Is_Squashable_By_Supercrusher` | `done` |  |
+| `Is_Supercrusher` | `done` |  |
+| `Squash_Damage_Type` | `gap` | one user (Dust_Devil); the crush kills outright |
 | `Cache_Crusher_Boxes` | `n/a` | implementation artifact (a cache) |
 
 ### Formations

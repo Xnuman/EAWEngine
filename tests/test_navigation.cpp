@@ -788,6 +788,48 @@ void test_movement_profiles()
             "negative accelerations and turn speed fractions above 1 must be rejected");
 }
 
+void test_crushing()
+{
+    eaw::GroundMap ground;
+    ground.width = 40;
+    ground.height = 40;
+    ground.spacing = 10.0F;
+    ground.heights.assign(1600, 0.0F);
+    ground.passability.assign(1600, eaw::passability::clear);
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    eaw::CombatProfile alive;
+    alive.health = 10.0F;
+    const auto run = [&](const eaw::Crusher kind, const eaw::CrushProfile victim_crush, const std::uint32_t victim_owner)
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        world.set_hostility(hostility);
+        const auto tank = world.spawn({.type_name = "Tank",
+                                       .owner = 1,
+                                       .position = {50.0F, 100.0F, 0.0F},
+                                       .max_speed = 50.0F,
+                                       .follows_ground = true,
+                                       .passable_types = eaw::passability::clear,
+                                       .radius = 10.0F,
+                                       .crush = {.crusher = kind}});
+        const auto victim = world.spawn({.type_name = "Victim", .owner = victim_owner, .position = {150.0F, 100.0F, 0.0F}, .follows_ground = true, .combat = alive, .crush = victim_crush});
+        require(tank && victim, "test spawns must succeed");
+        world.submit({.kind = eaw::SimCommandKind::move, .entities = {*tank}, .target = {250.0F, 100.0F, 0.0F}});
+        for (int tick = 0; tick < 60; ++tick)
+        {
+            world.step();
+        }
+        return world.stats().crushed;
+    };
+    const eaw::CrushProfile infantry{.squashable = true};
+    const eaw::CrushProfile vehicle{.squashable_by_supercrusher = true};
+    require(run(eaw::Crusher::crusher, infantry, 2) == 1, "a moving crusher must run over hostile infantry in its path");
+    require(run(eaw::Crusher::crusher, infantry, 1) == 0 && run(eaw::Crusher::none, infantry, 2) == 0 && run(eaw::Crusher::crusher, {}, 2) == 0,
+            "friends, non-crushers, and unsquashable entities must not be crushed");
+    require(run(eaw::Crusher::crusher, vehicle, 2) == 0 && run(eaw::Crusher::supercrusher, vehicle, 2) == 1, "only a supercrusher must crush vehicles and walls");
+}
+
 const ModuleRegistrar registrar("navigation", {
                                                   {"test_ground_movement", &test_ground_movement},
                                                   {"test_pathfinding", &test_pathfinding},
@@ -800,6 +842,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_space_avoidance", &test_space_avoidance},
                                                   {"test_space_crowds", &test_space_crowds},
                                                   {"test_movement_profiles", &test_movement_profiles},
+                                                  {"test_crushing", &test_crushing},
                                               });
 
 } // namespace

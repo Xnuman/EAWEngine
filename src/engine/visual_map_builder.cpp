@@ -166,6 +166,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     spawnable.lod_bias = type_lod_bias(build.catalog, *definition);
     spawnable.death = type_death_style(build.catalog, *definition);
     spawnable.bank_limit = type_bank_limit(build.catalog, *definition);
+    spawnable.crush = type_crush(build.catalog, *definition);
     spawnable.script = type_script_info(build.catalog, *definition);
     if (spawnable.max_speed > 0.0F)
     {
@@ -324,6 +325,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                 const auto decoded = cached_model(builder, placement.model_path);
                 spawn.combat = profile_of(*placement.type, decoded && decoded->ok() ? &decoded->value() : nullptr);
                 note_damage_bones(builder, placement.model_path, spawn.combat);
+                spawn.crush = type_crush(catalog, *placement.type);
                 // Only mobile units take space for now; structures and props keep overlapping
                 // until their collision footprints are read.
                 if (spawn.max_speed <= 0.0F && asset.land)

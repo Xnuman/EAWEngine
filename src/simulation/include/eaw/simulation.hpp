@@ -44,6 +44,26 @@ struct GroundFootprint
     std::uint32_t passability{passability::obstacle};
 };
 
+// Who runs over whom. A moving ground crusher kills each hostile entity it may crush whose center
+// its footprint radius covers: a crusher (the vehicle collision classes, an engine choice) crushes
+// squashable entities (infantry: XML Is_Squashable), a supercrusher (XML Is_Supercrusher: the
+// AT-ATs, the Gargantuan, the HTT) also those squashable by a supercrusher (vehicles and walls:
+// Is_Squashable_By_Supercrusher). Whether the original spares friendly units is unverified; the
+// engine crushes only hostile ones.
+enum class Crusher : std::uint8_t
+{
+    none,
+    crusher,
+    supercrusher,
+};
+
+struct CrushProfile
+{
+    Crusher crusher{Crusher::none};
+    bool squashable{};
+    bool squashable_by_supercrusher{};
+};
+
 // How a unit acts on its own, between and during orders (the behavior layer; orders always apply).
 // Engine-native: the original's stances are not mapped yet.
 enum class Stance : std::uint8_t
@@ -106,6 +126,7 @@ struct EntitySpawn
     // Takes no slot in a formation move: goes to the ordered point on its own, at its own speed
     // (XML FormationGrouping Solo: walkers, the largest vehicles, air units, large creatures).
     bool formation_solo{};
+    CrushProfile crush;
     // Ground occupied while the entity exists (structures, walls, obstacle props).
     std::optional<GroundFootprint> footprint;
     // Flight (fighters): above zero the entity never stops. It flies along its heading at no less than
@@ -421,6 +442,8 @@ public:
         std::uint64_t hits{};
         std::uint64_t kills{};
         std::uint64_t hardpoints_destroyed{};
+        // Entities run over by crushers.
+        std::uint64_t crushed{};
         std::size_t projectiles{};
         // Overlapping ground pairs pushed apart in the last tick.
         std::size_t separated_pairs{};
@@ -600,6 +623,8 @@ private:
     [[nodiscard]] bool moves_along_heading(std::size_t index) const noexcept;
     [[nodiscard]] float settle_distance(std::size_t index) const noexcept;
     void run_separation();
+    // Crushing (simulation_locomotion.cpp): after movement, before separation pushes the victims out.
+    void run_crushing();
     // Navigation (simulation_navigation.cpp): local avoidance of space ships (detours_).
     void plan_space_avoidance();
     // A space ship's step without the part that would take it deeper into a ship it touches (both
@@ -707,6 +732,7 @@ private:
     std::vector<std::uint32_t> formation_orders_;
     std::vector<float> formation_spacings_;
     std::vector<std::uint8_t> formation_solos_;
+    std::vector<CrushProfile> crushes_;
     // Group speed of a formation move until the entity arrives; zero when none.
     std::vector<float> speed_limits_;
     std::vector<MovementProfile> movements_;
@@ -777,6 +803,7 @@ private:
     std::uint64_t hits_{};
     std::uint64_t kills_{};
     std::uint64_t hardpoints_destroyed_{};
+    std::uint64_t crushed_{};
     std::vector<SimCommand> pending_;
     SimSnapshot snapshot_;
     std::uint64_t commands_applied_{};

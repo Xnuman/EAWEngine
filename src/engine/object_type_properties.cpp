@@ -122,6 +122,31 @@ float type_bank_limit(const GameObjectCatalog& catalog, const XmlDefinition& def
     return degrees * std::numbers::pi_v<float> / 180.0F;
 }
 
+CrushProfile type_crush(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto set = [&](const std::string_view field)
+    {
+        const auto* node = catalog.field(definition, field).field;
+        return node != nullptr && parse_xml_bool(node->text).value_or(false);
+    };
+    CrushProfile crush;
+    crush.squashable = set("Is_Squashable");
+    crush.squashable_by_supercrusher = set("Is_Squashable_By_Supercrusher");
+    if (set("Is_Supercrusher"))
+    {
+        crush.crusher = Crusher::supercrusher;
+    }
+    else if (const auto* collision = catalog.field(definition, "UnitCollisionClass").field)
+    {
+        const auto name = ascii_lower(ascii_trim(collision->text));
+        if (name == "vehicle" || name == "large vehicle" || name == "giant vehicle")
+        {
+            crush.crusher = Crusher::crusher;
+        }
+    }
+    return crush;
+}
+
 bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto* node = catalog.field(definition, "FormationGrouping").field;

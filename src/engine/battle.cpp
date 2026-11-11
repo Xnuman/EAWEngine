@@ -177,6 +177,7 @@ EntitySpawn Battle::spawn_of(const std::size_t type_index, Vector3 position, con
     spawn.formation_order = type.formation_order;
     spawn.formation_spacing = type.formation_spacing;
     spawn.formation_solo = type.formation_solo;
+    spawn.crush = type.crush;
     return spawn;
 }
 

@@ -348,6 +348,10 @@ float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefiniti
 // XML Bank_Turn_Angle in radians (degrees in the file; fighters 40, capital ships 5), at most 90
 // degrees; default_bank_limit when absent.
 float type_bank_limit(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// XML Is_Supercrusher, Is_Squashable, and Is_Squashable_By_Supercrusher; a type that is not a
+// supercrusher crushes when its UnitCollisionClass is Vehicle, Large Vehicle, or Giant Vehicle (an
+// engine choice: the data does not say who crushes infantry).
+CrushProfile type_crush(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // XML FormationGrouping Solo (the other stock value is Standard, the default).
 bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
