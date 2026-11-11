@@ -623,6 +623,13 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             part.engine_bone = static_cast<std::int32_t>(engine->index);
         }
         part.death_sound = sound_of(point, "Death_Explosion_SFXEvent", 0U);
+        if (const auto* explosions = point.node("Death_Explosion_Particles"))
+        {
+            if (const auto names = split_list(explosions->text); !names.empty())
+            {
+                part.death_effect = game_object_name_crc(names.front());
+            }
+        }
         profile.hardpoints.push_back(part);
         const auto part_index = static_cast<std::int32_t>(profile.hardpoints.size() - 1U);
         if (kind != HardpointProfile::Kind::weapon)

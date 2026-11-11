@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 114 |
+| `done` | 115 |
 | `partial` | 17 |
-| `gap` | 290 |
+| `gap` | 289 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -224,7 +224,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-37 done, 1 partial, 64 gap, 33 needs.
+38 done, 1 partial, 63 gap, 33 needs.
 
 ### Health, shields, armor, and energy
 
@@ -275,7 +275,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Is_Targetable` | `done` |  |
 | `Damage_Particles` | `done` |  |
 | `Damage_Decal` | `done` |  |
-| `Death_Explosion_Particles` | `gap` |  |
+| `Death_Explosion_Particles` | `done` | the first entry |
 | `Death_Breakoff_Prop` | `gap` |  |
 | `Repair_Amount_Per_Frame` | `needs repair` |  |
 | `Repair_Cost_Per_Frame` | `needs repair` |  |

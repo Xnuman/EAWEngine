@@ -82,7 +82,8 @@ void test_combat_content()
                 "<HardPoint Name=\"HP_Gun\"><Fire_SFXEvent> Turbo </Fire_SFXEvent><Type> HARD_POINT_WEAPON_LASER </Type><Fire_Projectile_Type>Proj_Tank</Fire_Projectile_Type>"
                 "<Fire_Min_Recharge_Seconds>3</Fire_Min_Recharge_Seconds><Fire_Max_Recharge_Seconds>4</Fire_Max_Recharge_Seconds><Fire_Pulse_Count>7</Fire_Pulse_Count>"
                 "<Fire_Pulse_Delay_Seconds>0.2</Fire_Pulse_Delay_Seconds><Fire_Range_Distance>2000</Fire_Range_Distance><Damage_Type>Damage_Unknown</Damage_Type></HardPoint>"
-                "<HardPoint Name=\"HP_Shield\"><Type>HARD_POINT_SHIELD_GENERATOR</Type><Health>375</Health><Attachment_Bone>HP_Bone</Attachment_Bone></HardPoint>"
+                "<HardPoint Name=\"HP_Shield\"><Death_Explosion_Particles> Big_Boom, Other "
+                "</Death_Explosion_Particles><Type>HARD_POINT_SHIELD_GENERATOR</Type><Health>375</Health><Attachment_Bone>HP_Bone</Attachment_Bone></HardPoint>"
                 "<SpaceUnit Name=\"Cruiser\"><Tactical_Health>500</Tactical_Health><Targeting_Max_Attack_Distance>1500</Targeting_Max_Attack_Distance>"
                 "<HardPoints>HP_Gun, HP_Shield,\n HP_Gun HP_Missing</HardPoints></SpaceUnit>"
                 "<GroundVehicle Name=\"Broken_Gun\"><Tactical_Health>10</Tactical_Health><Projectile_Types>Proj_Missing</Projectile_Types>"
@@ -202,6 +203,7 @@ void test_combat_content()
     const auto sturdy = eaw::combat_profile(catalog, *definition("Cruiser"), content, sturdy_warnings, nullptr, 1.0F, 2.0F);
     require(sturdy.health == 1000.0F && sturdy.hardpoints[1].health == 750.0F, "the health multiplier must scale the object and its hardpoints");
     require(cruiser.weapons.size() == 2 && cruiser.range() == 2000.0F, "every weapon hardpoint must become a weapon");
+    require(cruiser.hardpoints[1].death_effect == eaw::game_object_name_crc("Big_Boom") && cruiser.hardpoints[0].death_effect == 0, "a hardpoint must play its first death explosion");
     require(cruiser.weapons[0].fire_sound == eaw::game_object_name_crc("TURBO") && tank.weapons.front().fire_sound == eaw::game_object_name_crc("Tank_Fire"),
             "a weapon hardpoint must play its Fire_SFXEvent, a unit's weapon its SFXEvent_Fire");
     using Kind = eaw::HardpointProfile::Kind;

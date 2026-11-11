@@ -450,7 +450,7 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
                 part = 0.0F;
                 ++hardpoints_destroyed_;
                 const auto& profile = combat.profile.hardpoints[static_cast<std::size_t>(hardpoint)];
-                hardpoint_deaths_.push_back({ids_[victim], static_cast<std::uint32_t>(hardpoint), world_point(victim, profile.offset), profile.death_sound});
+                hardpoint_deaths_.push_back({ids_[victim], static_cast<std::uint32_t>(hardpoint), world_point(victim, profile.offset), profile.death_sound, profile.death_effect});
             }
         }
     }

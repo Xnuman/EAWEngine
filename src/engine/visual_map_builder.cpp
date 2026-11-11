@@ -24,6 +24,19 @@ using namespace scene_build;
 
 namespace {
 
+// The Particle objects a combat profile's deaths play: its own and its hardpoints'.
+void collect_death_effect_keys(const CombatProfile& profile, std::vector<std::uint32_t>& keys)
+{
+    keys.push_back(profile.death_effect);
+    for (const auto& part : profile.hardpoints)
+    {
+        if (part.death_effect != 0)
+        {
+            keys.push_back(part.death_effect);
+        }
+    }
+}
+
 // Lays each company's members (consecutive entries with one object index) out with the formation
 // used for group orders, centered on the company's placed position and facing its heading, and
 // moves their instances and spawns there (heights from the ground surface). The original arranges
@@ -492,11 +505,11 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         collect_impact_effect_keys(asset.projectile_visuals, keys);
         for (const auto& entity : asset.entities)
         {
-            keys.push_back(entity.spawn.combat.death_effect);
+            collect_death_effect_keys(entity.spawn.combat, keys);
         }
         for (const auto& type : asset.spawnable)
         {
-            keys.push_back(type.combat.death_effect);
+            collect_death_effect_keys(type.combat, keys);
         }
         load_effect_objects(builder, catalog, keys, asset.land, asset.effect_objects);
     }
@@ -576,7 +589,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
         collect_impact_effect_keys(package.projectile_visuals, keys);
         for (const auto& type : package.types)
         {
-            keys.push_back(type.combat.death_effect);
+            collect_death_effect_keys(type.combat, keys);
         }
         load_effect_objects(builder, catalog_entry->catalog, keys, land, package.effect_objects);
     }

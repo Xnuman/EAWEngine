@@ -194,6 +194,7 @@ void test_hardpoints_and_fire_cones()
         for (auto& part : victim_profile.hardpoints)
         {
             part.death_sound = 77U;
+            part.death_effect = 88U;
         }
         eaw::CombatProfile gun;
         gun.health = 100.0F;
@@ -209,8 +210,8 @@ void test_hardpoints_and_fire_cones()
             world.step();
             fallen.insert(fallen.end(), world.snapshot().hardpoint_deaths.begin(), world.snapshot().hardpoint_deaths.end());
         }
-        require(fallen.size() == 1 && fallen[0].entity == *victim && fallen[0].sound == 77U && fallen[0].position.x < 0.0F,
-                "a destroyed hardpoint must be reported once, with its sound, at its position");
+        require(fallen.size() == 1 && fallen[0].entity == *victim && fallen[0].sound == 77U && fallen[0].effect == 88U && fallen[0].position.x < 0.0F,
+                "a destroyed hardpoint must be reported once, with its sound and effect, at its position");
         const auto& damaged = world.snapshot().entities[0];
         require(damaged.health < 1000.0F && damaged.hardpoints == 3 && damaged.hardpoints_destroyed == 1 && world.stats().hardpoints_destroyed == 1, "the nearest hardpoint must be hit and destroyed");
         // Without its engine the ship moves at a quarter of its speed.

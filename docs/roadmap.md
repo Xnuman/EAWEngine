@@ -139,7 +139,10 @@ rendering rows join item 2).
 
 1. Tactical battles. Done: the core, spawning, RTS orders, terrain and passability, A*, group
    movement and formations, space combat with hardpoints, flight, headless battles and replays.
-   Open: combat presentation and fidelity (hardpoint damage visuals, turret rotation,
+   Open: combat presentation and fidelity (hardpoint damage visuals, turret rotation (decided
+   2026-11-11: with the animator's improvement, since an aimed turret makes each instance's pose
+   its own: the aim joins the pose key; `Turret_Bone_Name`/`Barrel_Bone_Name` about the model's up
+   axis and the barrel's horizontal, `Turret_Rotate_Speed`),
    damage-specific death clones and wreck explosions, ground detonations, debris, death-projectile
    blasts, beams for instant-hit weapons), and game and mod identity in order logs.
 2. Skirmish systems: the player layer (the local player's owner, factions and hostility from data

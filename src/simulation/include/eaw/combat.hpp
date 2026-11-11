@@ -50,6 +50,9 @@ struct HardpointProfile
     // Presentation only: the sound of its destruction (CRC-32 of its XML Death_Explosion_SFXEvent,
     // as game_object_name_crc), or 0.
     std::uint32_t death_sound{};
+    // Presentation only: the Particle object its destruction plays (the first entry of its XML
+    // Death_Explosion_Particles, as game_object_name_crc), or 0.
+    std::uint32_t death_effect{};
 };
 
 // How far a weapon's shots stray from targets of some categories: the first entry whose
