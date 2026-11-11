@@ -115,6 +115,19 @@ struct TargetingPriorities
     static constexpr float unlisted_rank = 1.0e6F;
 };
 
+// Damage a shot deals around the point where it ends, hit or not (XML Projectile_Blast_Area_Damage
+// and _Range): every hostile damageable entity whose footprint comes within `range` takes `damage`,
+// or with `tiers` (Projectile_Blast_Area_Dropoff with _Dropoff_Tiers) the damage of its ring: of
+// `tiers` equal rings, the n-th from the center takes (tiers - n) / tiers of it. The direct victim
+// takes the blast besides the shot (many blast projectiles deal no shot damage). Hostile only, and
+// the reading of the tiers, are engine choices.
+struct AreaBlast
+{
+    float damage{};
+    float range{};
+    std::uint32_t tiers{};
+};
+
 // One projectile weapon: fires bursts of `pulse_count` shots `pulse_delay_seconds` apart, one
 // burst every `recharge_seconds` (measured from the start of the previous burst), at targets
 // within `range`.
@@ -138,6 +151,7 @@ struct WeaponProfile
     float max_flight_distance{};
     bool damages_shield{true};
     bool damages_health{true};
+    AreaBlast blast;
     // Where shots leave the entity, and the horizontal arc the weapon covers: centered
     // `cone_direction` radians from the entity's heading (counter-clockwise), `cone_half_angle` to
     // either side (pi or more covers all around).
@@ -189,6 +203,12 @@ struct CombatProfile
     // targeting priorities prefer another (XML Targeting_Stickiness_Time_Threshold, 5 s in most
     // stock uses); 0 keeps the target while it stays valid.
     float stickiness_seconds{};
+    // The blast its death sets off where it dies (the area blast of its XML Death_Projectiles
+    // projectile: stations' detonations), with that projectile's damage type and flags.
+    AreaBlast death_blast;
+    std::uint16_t death_blast_damage_type{};
+    bool death_blast_damages_shield{true};
+    bool death_blast_damages_health{true};
     // Property bits (GameObjectPropertiesType, XML Property_Flags) and a key of its type (the CRC-32
     // of the type name), for others' targeting priorities.
     std::uint32_t properties{};

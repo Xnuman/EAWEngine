@@ -256,6 +256,7 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
         const auto length = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto direction = length > 0.0F ? Vector3{delta.x / length, delta.y / length, delta.z / length} : Vector3{};
         impacts_.push_back({point, direction, weapon.projectile_visual, kind});
+        area_blast(point, owners_[shooter], weapon.blast, weapon.damage_type, weapon.damages_shield, weapon.damages_health);
         return;
     }
     Projectile projectile;
@@ -268,6 +269,7 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
     projectile.damage_type = weapon.damage_type;
     projectile.damages_shield = weapon.damages_shield;
     projectile.damages_health = weapon.damages_health;
+    projectile.blast = weapon.blast;
     projectile.speed = weapon.projectile_speed;
     projectile.max_flight = weapon.max_flight_distance;
     projectile.visual = weapon.projectile_visual;
@@ -518,6 +520,7 @@ void SimulationWorld::run_projectiles()
                 // A shot that strays off its target, or whose target died, is lost at its aim point.
                 impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, ImpactKind::expired});
             }
+            area_blast(projectile.aim, projectile.owner, projectile.blast, projectile.damage_type, projectile.damages_shield, projectile.damages_health);
             continue;
         }
         const auto scale = step_length / distance;
@@ -526,11 +529,41 @@ void SimulationWorld::run_projectiles()
         if (projectile.max_flight > 0.0F && projectile.flown > projectile.max_flight)
         {
             impacts_.push_back({projectile.position, projectile.direction, projectile.visual, ImpactKind::expired});
+            area_blast(projectile.position, projectile.owner, projectile.blast, projectile.damage_type, projectile.damages_shield, projectile.damages_health);
             continue;
         }
         projectiles_[kept++] = projectile;
     }
     projectiles_.resize(kept);
+}
+
+void SimulationWorld::area_blast(const Vector3& point, const std::uint32_t owner, const AreaBlast& blast, const std::uint16_t damage_type, const bool damages_shield, const bool damages_health)
+{
+    if (blast.damage <= 0.0F || blast.range <= 0.0F)
+    {
+        return;
+    }
+    // shortcut: a scan over every entity per blast; use the spatial grid when battles get big.
+    for (std::size_t index = 0; index < ids_.size(); ++index)
+    {
+        if (!damageable(index) || !hostility_.hostile(owner, owners_[index]))
+        {
+            continue;
+        }
+        const auto& at = positions_[index];
+        const auto distance = std::max(0.0F, std::sqrt((at.x - point.x) * (at.x - point.x) + (at.y - point.y) * (at.y - point.y) + (at.z - point.z) * (at.z - point.z)) - target_size(index));
+        if (distance > blast.range)
+        {
+            continue;
+        }
+        auto damage = blast.damage;
+        if (blast.tiers > 0)
+        {
+            const auto ring = std::min(static_cast<std::uint32_t>(distance / blast.range * static_cast<float>(blast.tiers)), blast.tiers - 1U);
+            damage *= static_cast<float>(blast.tiers - ring) / static_cast<float>(blast.tiers);
+        }
+        (void)apply_damage(index, damage, damage_type, damages_shield, damages_health, -1);
+    }
 }
 
 void SimulationWorld::remove_dead()
@@ -542,8 +575,16 @@ void SimulationWorld::remove_dead()
         {
             deaths_.push_back(
                 {ids_[index], positions_[index], headings_[index], pitches_[index], visuals_[index], owners_[index], combat_[index].profile.death_effect, combat_[index].profile.type_key});
+            const auto position = positions_[index];
+            const auto owner = owners_[index];
+            const auto profile_blast = combat_[index].profile.death_blast;
+            const auto blast_type = combat_[index].profile.death_blast_damage_type;
+            const auto blast_shield = combat_[index].profile.death_blast_damages_shield;
+            const auto blast_health = combat_[index].profile.death_blast_damages_health;
             destroy(index);
             ++kills_;
+            // Entities it kills die in this pass when they come later in it, else the next tick.
+            area_blast(position, owner, profile_blast, blast_type, blast_shield, blast_health);
         }
     }
 }

@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 118 |
+| `done` | 123 |
 | `partial` | 18 |
-| `gap` | 285 |
+| `gap` | 280 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -224,7 +224,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-41 done, 2 partial, 59 gap, 33 needs.
+42 done, 2 partial, 58 gap, 33 needs.
 
 ### Health, shields, armor, and energy
 
@@ -384,7 +384,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Death_Fade_Time` | `gap` | needs a per-instance fade in the renderer |
 | `Remove_Upon_Death` | `done` | no corpse |
 | `Death_Leave_Hulk_Behind` | `gap` |  |
-| `Death_Projectiles` | `gap` |  |
+| `Death_Projectiles` | `done` | the projectile's blast where it dies |
 | `Retreat_Self_Destruct_Explosion` | `needs retreat` |  |
 | `Spin_Away_On_Death` | `gap` |  |
 | `Spin_Away_On_Death_Chance` | `gap` |  |
@@ -418,7 +418,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Projectiles and damage delivery
 
-16 done, 3 partial, 28 gap, 48 needs.
+20 done, 3 partial, 24 gap, 48 needs.
 
 ### Firing cadence (on the shooter)
 
@@ -453,11 +453,11 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Projectile_Blast_Area_Damage` | `gap` |  |
-| `Projectile_Blast_Area_Range` | `gap` |  |
-| `Projectile_Blast_Area_Dropoff` | `gap` |  |
-| `Projectile_Blast_Area_Dropoff_Tiers` | `gap` |  |
-| `Projectile_Blast_Area_Immune_Faction` | `gap` |  |
+| `Projectile_Blast_Area_Damage` | `done` | hostiles only |
+| `Projectile_Blast_Area_Range` | `done` | measured to the footprint |
+| `Projectile_Blast_Area_Dropoff` | `done` |  |
+| `Projectile_Blast_Area_Dropoff_Tiers` | `done` | equal rings (inference) |
+| `Projectile_Blast_Area_Immune_Faction` | `gap` | blasts spare friends already; factions are not in the simulation |
 
 ### Flight and guidance
 

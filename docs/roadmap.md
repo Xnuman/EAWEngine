@@ -301,6 +301,8 @@ compared by measured ratios from screenshots, never by recreated scenes):
   how often infantry, tanks, and capital ships hit in the original;
 - whether `Object_Max_Speed_Multiplier_*` also scales projectile speeds;
 - team movement: whether company members take their team container's speed and acceleration;
+- area blasts: whether blasts hurt friendly units (`Friendly_Damage_Amount`), how the dropoff tiers
+  divide the damage, and whether the direct victim takes the blast besides the shot;
 - crushing: which units run over infantry (the engine: vehicle collision classes and
   supercrushers) and whether friendly infantry are crushed;
 - whether ground units stop to turn: GameConstants' `CloseEnoughAngleForMoveStart` is 180 (never

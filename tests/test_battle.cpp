@@ -46,7 +46,9 @@ void test_combat_content()
         file << "<Units>"
                 "<Projectile Name=\"Proj_Base\"><Max_Speed>10</Max_Speed><Projectile_Max_Flight_Distance>400</Projectile_Max_Flight_Distance>"
                 "<Projectile_Does_Shield_Damage>No</Projectile_Does_Shield_Damage><Damage_Type>Damage_Laser</Damage_Type></Projectile>"
-                "<Projectile Name=\"Proj_Tank\"><Variant_Of_Existing_Type>Proj_Base</Variant_Of_Existing_Type><Projectile_Damage>7.5</Projectile_Damage></Projectile>"
+                "<Projectile Name=\"Proj_Tank\"><Variant_Of_Existing_Type>Proj_Base</Variant_Of_Existing_Type><Projectile_Damage>7.5</Projectile_Damage>"
+                "<Projectile_Blast_Area_Damage>30</Projectile_Blast_Area_Damage><Projectile_Blast_Area_Range>60</Projectile_Blast_Area_Range>"
+                "<Projectile_Blast_Area_Dropoff>True</Projectile_Blast_Area_Dropoff><Projectile_Blast_Area_Dropoff_Tiers>4</Projectile_Blast_Area_Dropoff_Tiers></Projectile>"
                 "<GroundVehicle "
                 "Name=\"Tank\"><SFXEvent_Fire>Tank_Fire</SFXEvent_Fire><Tactical_Health>100</Tactical_Health><Shield_Points>50</Shield_Points><Shield_Refresh_Rate>4</Shield_Refresh_Rate>"
                 "<Armor_Type> Armor_Tank </Armor_Type><Shield_Armor_Type>Shield_Tank</Shield_Armor_Type><Ranged_Target_Z_Adjust>12</Ranged_Target_Z_Adjust>"
@@ -125,6 +127,7 @@ void test_combat_content()
     require(weapon.range == 200.0F && weapon.recharge_seconds == 1.5F && weapon.pulse_count == 3 && weapon.pulse_delay_seconds == 0.2F && weapon.damage == 7.5F && weapon.damage_type == laser &&
                 weapon.projectile_speed == 10.0F * eaw::provisional_max_speed_scale && weapon.max_flight_distance == 400.0F && !weapon.damages_shield && weapon.damages_health,
             "the first projectile type must supply the shot, through its variant chain");
+    require(weapon.blast.damage == 30.0F && weapon.blast.range == 60.0F && weapon.blast.tiers == 4, "a projectile's area blast must be read");
     require(warnings.empty(), "a well-formed type must not warn");
     std::vector<std::string> picky_warnings;
     const auto picky = eaw::combat_profile(catalog, *definition("Picky"), content, picky_warnings);

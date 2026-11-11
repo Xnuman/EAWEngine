@@ -410,6 +410,13 @@ void read_projectile(const FieldReader& projectile, const std::string_view name,
     weapon.max_flight_distance = projectile.amount("Projectile_Max_Flight_Distance");
     weapon.damages_shield = projectile.flag("Projectile_Does_Shield_Damage", true);
     weapon.damages_health = projectile.flag("Projectile_Does_Hitpoint_Damage", true);
+    weapon.blast.damage = projectile.amount("Projectile_Blast_Area_Damage");
+    weapon.blast.range = projectile.amount("Projectile_Blast_Area_Range");
+    if (projectile.flag("Projectile_Blast_Area_Dropoff", false))
+    {
+        // Stock tiers are 3, 4, or 5, always given with the dropoff; without them, 3 (an engine choice).
+        weapon.blast.tiers = static_cast<std::uint32_t>(std::clamp(projectile.amount("Projectile_Blast_Area_Dropoff_Tiers", 3.0F), 1.0F, 100.0F));
+    }
 }
 
 // A bone of the model's bind pose by name (case-insensitive): its position in the entity frame
@@ -478,6 +485,25 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     profile.attack_move_response_range = type.amount("Attack_Move_Response_Range");
     profile.guard_chase_range = type.amount("Guard_Chase_Range");
     profile.stickiness_seconds = type.amount("Targeting_Stickiness_Time_Threshold");
+    if (const auto* death_projectiles = type.node("Death_Projectiles"))
+    {
+        if (const auto names = split_list(death_projectiles->text); !names.empty())
+        {
+            if (const auto* blast = find_projectile(catalog, names.front()))
+            {
+                WeaponProfile shot;
+                read_projectile(FieldReader(catalog, *blast, warnings), blast->name, content, shot);
+                profile.death_blast = shot.blast;
+                profile.death_blast_damage_type = shot.damage_type;
+                profile.death_blast_damages_shield = shot.damages_shield;
+                profile.death_blast_damages_health = shot.damages_health;
+            }
+            else
+            {
+                warnings.push_back(definition.name + ": Death_Projectiles names undefined projectile '" + std::string(names.front()) + "'");
+            }
+        }
+    }
     profile.type_key = game_object_name_crc(definition.name);
     profile.targeting = targeting_priorities(catalog, definition, content, warnings);
     if (const auto* flags = type.node("Property_Flags"))

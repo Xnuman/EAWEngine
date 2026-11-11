@@ -656,6 +656,42 @@ void test_target_validity()
     world.step();
     require(world.alive(*immune) && world.snapshot().entities[0].health == 10.0F, "an immune entity must take no damage");
 
+    // An area blast: the victim takes shot and blast; a hostile 30 from the blast takes the second of
+    // two rings' damage, one 60 away nothing, a friend beside the victim nothing.
+    {
+        eaw::SimulationWorld blasting(0.1);
+        blasting.set_hostility(hostility);
+        eaw::CombatProfile bomber;
+        bomber.health = 50.0F;
+        bomber.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 10.0F, .damage = 5.0F, .blast = {.damage = 20.0F, .range = 40.0F, .tiers = 2}}};
+        eaw::CombatProfile sturdy;
+        sturdy.health = 1000.0F;
+        (void)blasting.spawn({.type_name = "Bomber", .owner = 1, .combat = bomber});
+        (void)blasting.spawn({.type_name = "Victim", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = sturdy});
+        (void)blasting.spawn({.type_name = "Near", .owner = 2, .position = {50.0F, 30.0F, 0.0F}, .combat = sturdy});
+        (void)blasting.spawn({.type_name = "Far", .owner = 2, .position = {50.0F, 60.0F, 0.0F}, .combat = sturdy});
+        (void)blasting.spawn({.type_name = "Friend", .owner = 1, .position = {55.0F, 0.0F, 0.0F}, .combat = sturdy});
+        blasting.step();
+        const auto& hurt = blasting.snapshot().entities;
+        require(hurt[1].health == 975.0F && hurt[2].health == 990.0F && hurt[3].health == 1000.0F && hurt[4].health == 1000.0F,
+                "a blast must damage hostiles by ring within its range, the victim besides the shot, and spare friends");
+    }
+    // A death blast (Death_Projectiles): the dying station damages the hostile beside it.
+    {
+        eaw::SimulationWorld station_world(0.1);
+        station_world.set_hostility(hostility);
+        eaw::CombatProfile station;
+        station.health = 10.0F;
+        station.death_blast = {.damage = 50.0F, .range = 100.0F};
+        eaw::CombatProfile sturdy;
+        sturdy.health = 1000.0F;
+        const auto doomed = station_world.spawn({.type_name = "Station", .owner = 2, .combat = station});
+        (void)station_world.spawn({.type_name = "Ship", .owner = 1, .position = {60.0F, 0.0F, 0.0F}, .combat = sturdy});
+        require(doomed.ok(), "test spawn must succeed");
+        station_world.submit({.kind = eaw::SimCommandKind::damage, .entities = {*doomed}, .amount = 100.0F});
+        station_world.step();
+        require(!station_world.alive(*doomed) && station_world.snapshot().entities[0].health == 950.0F, "a death blast must damage the hostiles around the dead");
+    }
     // Two muzzles (Fire_Bone_B): shots alternate between them, the first from the main one.
     {
         eaw::SimulationWorld twin(0.1);

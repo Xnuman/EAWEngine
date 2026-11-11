@@ -543,6 +543,7 @@ private:
         std::uint16_t damage_type{};
         bool damages_shield{};
         bool damages_health{};
+        AreaBlast blast;
         float speed{};
         float flown{};
         float max_flight{};
@@ -662,6 +663,8 @@ private:
     [[nodiscard]] std::optional<std::size_t> stray_victim(const Vector3& point, std::uint32_t owner, std::size_t target) const noexcept;
     // The radius strays_off measures against (0: unknown size).
     [[nodiscard]] float target_size(std::size_t index) const noexcept;
+    // Damages the hostiles of `owner` around `point` (AreaBlast).
+    void area_blast(const Vector3& point, std::uint32_t owner, const AreaBlast& blast, std::uint16_t damage_type, bool damages_shield, bool damages_health);
     // Whether one of `index`'s weapons may fire at `candidate`'s categories (or it has none).
     [[nodiscard]] bool engages(std::size_t index, std::size_t candidate) const noexcept;
     // The target `index` prefers among the damageable hostiles within `reach` of `center` (in the
