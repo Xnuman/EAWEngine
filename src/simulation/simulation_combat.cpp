@@ -218,19 +218,21 @@ void SimulationWorld::run_weapon(const std::size_t index)
         }
         while (state.pulses_left > 0 && state.pulse_timer == 0)
         {
-            launch(index, *victim, weapon);
+            const bool second = weapon.alternate_mount && (state.shots % 2U) == 1U;
+            ++state.shots;
+            launch(index, *victim, weapon, second ? *weapon.alternate_mount : weapon.mount);
             --state.pulses_left;
             state.pulse_timer = ticks_for(weapon.pulse_delay_seconds);
         }
     }
 }
 
-void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim, const WeaponProfile& weapon)
+void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim, const WeaponProfile& weapon, const LocalPoint& mount)
 {
     ++shots_fired_;
     // The tick being run: the snapshot published at its end carries it as its tick.
     last_shot_ticks_[shooter] = tick_ + 1U;
-    const auto origin = world_point(shooter, weapon.mount);
+    const auto origin = world_point(shooter, mount);
     shots_.push_back({ids_[shooter], origin, weapon.fire_sound});
     const auto hardpoint = aim_hardpoint(victim, origin);
     const auto offset = stray(weapon, victim);

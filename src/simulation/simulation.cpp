@@ -283,6 +283,7 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
             hash = hash_value(hash, weapon.pulses_left);
             hash = hash_value(hash, weapon.pulse_timer);
             hash = hash_value(hash, weapon.target);
+            hash = hash_value(hash, weapon.shots);
         }
         hash = hash_value(hash, combat.retarget_timer);
         hash = hash_value(hash, combat.target_ticks);

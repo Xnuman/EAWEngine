@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 115 |
+| `done` | 116 |
 | `partial` | 17 |
-| `gap` | 289 |
+| `gap` | 288 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -224,7 +224,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-38 done, 1 partial, 63 gap, 33 needs.
+39 done, 1 partial, 62 gap, 33 needs.
 
 ### Health, shields, armor, and energy
 
@@ -294,7 +294,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Fire_Pulse_Count` | `done` |  |
 | `Fire_Pulse_Delay_Seconds` | `done` |  |
 | `Fire_Bone_A` | `done` |  |
-| `Fire_Bone_B` | `gap` |  |
+| `Fire_Bone_B` | `done` | alternates with A (inference) |
 | `Fire_Cone_Width` | `done` |  |
 | `Fire_Cone_Height` | `gap` |  |
 | `Fire_Inaccuracy_Distance` | `done` |  |

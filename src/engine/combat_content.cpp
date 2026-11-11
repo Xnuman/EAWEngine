@@ -605,6 +605,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         };
         const auto attachment = find_bone(skeleton, pose, bone_name("Attachment_Bone"), model_scale);
         const auto fire_bone = find_bone(skeleton, pose, bone_name("Fire_Bone_A"), model_scale);
+        const auto second_bone = fire_bone ? find_bone(skeleton, pose, bone_name("Fire_Bone_B"), model_scale) : std::nullopt;
         HardpointProfile part;
         part.kind = kind;
         part.health = point.flag("Is_Destroyable", true) ? point.amount("Health") * health_multiplier : 0.0F;
@@ -663,6 +664,10 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         }
         weapon.fire_sound = sound_of(point, "Fire_SFXEvent", type_fire_sound);
         weapon.mount = fire_bone ? fire_bone->point : part.offset;
+        if (second_bone)
+        {
+            weapon.alternate_mount = second_bone->point;
+        }
         const auto cone = point.amount("Fire_Cone_Width");
         if (fire_bone && cone > 0.0F && cone < 360.0F)
         {

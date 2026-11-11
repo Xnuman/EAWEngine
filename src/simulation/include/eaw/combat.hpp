@@ -142,6 +142,9 @@ struct WeaponProfile
     // `cone_direction` radians from the entity's heading (counter-clockwise), `cone_half_angle` to
     // either side (pi or more covers all around).
     LocalPoint mount;
+    // A second muzzle its shots alternate with (a hardpoint's XML Fire_Bone_B), first shot from
+    // `mount`.
+    std::optional<LocalPoint> alternate_mount;
     float cone_direction{};
     float cone_half_angle{3.14159265F};
     // The hardpoint the weapon is mounted on (its index in CombatProfile::hardpoints), or -1. The

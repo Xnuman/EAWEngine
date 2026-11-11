@@ -514,6 +514,8 @@ private:
             std::uint32_t pulse_timer{};
             // Victim of the current burst.
             EntityId target;
+            // Shots fired (alternates the muzzles of a weapon with two).
+            std::uint32_t shots{};
         };
         std::vector<WeaponState> weapons;
         std::vector<float> hardpoint_health;
@@ -638,7 +640,7 @@ private:
     void run_combat();
     void update_target(std::size_t index);
     void run_weapon(std::size_t index);
-    void launch(std::size_t shooter, std::size_t victim, const WeaponProfile& weapon);
+    void launch(std::size_t shooter, std::size_t victim, const WeaponProfile& weapon, const LocalPoint& mount);
     // Returns what the shot did (shields only, hull, or hull with armor reducing it).
     ImpactKind apply_damage(std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health, std::int32_t hardpoint);
     // A point of an entity's own frame in world space.
