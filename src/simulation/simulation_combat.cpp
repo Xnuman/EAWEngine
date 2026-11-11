@@ -197,7 +197,7 @@ void SimulationWorld::run_weapon(const std::size_t index)
             }
             state.target = ids_[*victim];
             state.pulses_left = std::max(1U, weapon.pulse_count);
-            state.pulse_timer = 0;
+            state.pulse_timer = ticks_for(weapon.appearance_delay_seconds);
             state.cooldown = std::max(1U, ticks_for(weapon.recharge_seconds));
         }
         // A burst keeps firing at its victim, in range or not, until its shots are spent.
@@ -234,8 +234,22 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
     // The tick being run: the snapshot published at its end carries it as its tick.
     last_shot_ticks_[shooter] = tick_ + 1U;
     const auto origin = world_point(shooter, mount);
-    shots_.push_back({ids_[shooter], origin, weapon.fire_sound});
-    const auto hardpoint = aim_hardpoint(victim, origin);
+    shots_.push_back({ids_[shooter], origin, weapon.fire_sound, weapon.launch_effect});
+    auto hardpoint = aim_hardpoint(victim, origin);
+    if (weapon.random_hardpoints && hardpoint >= 0)
+    {
+        // Any intact, targetable part, drawn from the combat stream.
+        std::vector<std::int32_t> parts;
+        const auto& hardpoints = combat_[victim].profile.hardpoints;
+        for (std::size_t part = 0; part < hardpoints.size(); ++part)
+        {
+            if (hardpoints[part].targetable && hardpoints[part].health > 0.0F && combat_[victim].hardpoint_health[part] > 0.0F)
+            {
+                parts.push_back(static_cast<std::int32_t>(part));
+            }
+        }
+        hardpoint = parts[std::min(parts.size() - 1U, static_cast<std::size_t>(combat_random_.unit() * static_cast<float>(parts.size())))];
+    }
     const auto offset = stray(weapon, victim);
     const bool misses = strays_off(victim, offset);
     if (weapon.projectile_speed <= 0.0F)
@@ -271,6 +285,8 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
     projectile.damages_shield = weapon.damages_shield;
     projectile.damages_health = weapon.damages_health;
     projectile.blast = weapon.blast;
+    projectile.lifetime_ticks = weapon.max_lifetime > 0.0F ? std::max(1U, ticks_for(weapon.max_lifetime)) : 0U;
+    projectile.scan_range = weapon.scan_range;
     projectile.speed = weapon.projectile_speed;
     projectile.max_flight = weapon.max_flight_distance;
     projectile.visual = weapon.projectile_visual;
@@ -488,7 +504,30 @@ void SimulationWorld::run_projectiles()
         auto projectile = projectiles_[index];
         // Shots home on their target's current aim point; a dead target's shot flies on to the
         // last point and is lost there.
-        const auto victim = dense_index(projectile.target);
+        auto victim = dense_index(projectile.target);
+        if (!victim && projectile.scan_range > 0.0F)
+        {
+            // A guided shot takes the nearest hostile in scan range of itself (ties: lower index).
+            float best = projectile.scan_range;
+            for (std::size_t other = 0; other < ids_.size(); ++other)
+            {
+                const auto& at = positions_[other];
+                const auto distance = std::sqrt((at.x - projectile.position.x) * (at.x - projectile.position.x) + (at.y - projectile.position.y) * (at.y - projectile.position.y) +
+                                                (at.z - projectile.position.z) * (at.z - projectile.position.z));
+                if (damageable(other) && combat_[other].profile.targetable && hostility_.hostile(projectile.owner, owners_[other]) && distance <= best)
+                {
+                    victim = other;
+                    best = distance;
+                }
+            }
+            if (victim)
+            {
+                projectile.target = ids_[*victim];
+                projectile.target_hardpoint = -1;
+                projectile.stray = {};
+                projectile.misses = false;
+            }
+        }
         if (victim)
         {
             // A part destroyed meanwhile still takes the shot's aim; the hit lands on the hull.
@@ -527,7 +566,8 @@ void SimulationWorld::run_projectiles()
         const auto scale = step_length / distance;
         projectile.position = {projectile.position.x + delta.x * scale, projectile.position.y + delta.y * scale, projectile.position.z + delta.z * scale};
         projectile.flown += step_length;
-        if (projectile.max_flight > 0.0F && projectile.flown > projectile.max_flight)
+        const bool expired = projectile.lifetime_ticks > 0U && --projectile.lifetime_ticks == 0U;
+        if ((projectile.max_flight > 0.0F && projectile.flown > projectile.max_flight) || expired)
         {
             impacts_.push_back({projectile.position, projectile.direction, projectile.visual, ImpactKind::expired});
             area_blast(projectile.position, projectile.owner, projectile.blast, projectile.damage_type, projectile.damages_shield, projectile.damages_health);
@@ -540,14 +580,15 @@ void SimulationWorld::run_projectiles()
 
 void SimulationWorld::area_blast(const Vector3& point, const std::uint32_t owner, const AreaBlast& blast, const std::uint16_t damage_type, const bool damages_shield, const bool damages_health)
 {
-    if (blast.damage <= 0.0F || blast.range <= 0.0F)
+    if ((blast.damage <= 0.0F && blast.friendly_damage <= 0.0F) || blast.range <= 0.0F)
     {
         return;
     }
     // shortcut: a scan over every entity per blast; use the spatial grid when battles get big.
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
-        if (!damageable(index) || !hostility_.hostile(owner, owners_[index]))
+        const bool friendly = owners_[index] == owner;
+        if (!damageable(index) || (!hostility_.hostile(owner, owners_[index]) && !(friendly && blast.friendly_damage > 0.0F)))
         {
             continue;
         }
@@ -557,7 +598,7 @@ void SimulationWorld::area_blast(const Vector3& point, const std::uint32_t owner
         {
             continue;
         }
-        auto damage = blast.damage;
+        auto damage = friendly ? blast.friendly_damage : blast.damage;
         if (blast.tiers > 0)
         {
             const auto ring = std::min(static_cast<std::uint32_t>(distance / blast.range * static_cast<float>(blast.tiers)), blast.tiers - 1U);

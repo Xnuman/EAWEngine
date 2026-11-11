@@ -126,6 +126,9 @@ struct AreaBlast
     float damage{};
     float range{};
     std::uint32_t tiers{};
+    // Damage to the shooter's own entities in range, by the same rings (XML Friendly_Damage_Amount:
+    // only the remote bomb sets it, which suggests blasts spare friends otherwise).
+    float friendly_damage{};
 };
 
 // One projectile weapon: fires bursts of `pulse_count` shots `pulse_delay_seconds` apart, one
@@ -149,6 +152,18 @@ struct WeaponProfile
     float projectile_speed{};
     // A shot that has flown this far without hitting is lost; zero means unlimited.
     float max_flight_distance{};
+    // A shot that has flown this long is lost (XML Projectile_Max_Lifetime: grenades, magnepulse
+    // blobs); zero means unlimited.
+    float max_lifetime{};
+    // A guided shot whose target dies takes the nearest hostile within this of it (XML
+    // Projectile_Max_Scan_Range); zero flies on to the last aim point.
+    float scan_range{};
+    // Hits a random intact hardpoint instead of the nearest (XML
+    // Projectile_Damages_Random_Hard_Points: the hypervelocity gun).
+    bool random_hardpoints{};
+    // The first shot of a burst waits this long for the fire animation (the shooter's XML
+    // Projectile_Appearance_Delay_Frames, frames of 1/30 s, a guess like other frame values).
+    float appearance_delay_seconds{};
     bool damages_shield{true};
     bool damages_health{true};
     AreaBlast blast;
@@ -173,6 +188,9 @@ struct WeaponProfile
     // Presentation only: the sound event a shot plays (the CRC-32 of its name, as
     // game_object_name_crc), or 0.
     std::uint32_t fire_sound{};
+    // Presentation only: the Particle object a shot plays where it leaves (XML
+    // Projectile_Object_Creation_Particle), or 0.
+    std::uint32_t launch_effect{};
 };
 
 struct CombatProfile

@@ -62,6 +62,10 @@ void BattleEffects::play_tick_events(const SimSnapshot& snapshot)
     {
         play_object(fallen.effect, fallen.position);
     }
+    for (const auto& shot : snapshot.shots)
+    {
+        play_object(shot.effect, shot.origin);
+    }
     for (const auto& impact : snapshot.impacts)
     {
         if (const auto found = projectile_visuals_.find(impact.visual); found != projectile_visuals_.end())

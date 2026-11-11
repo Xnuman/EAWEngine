@@ -23,11 +23,11 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 130 |
+| `done` | 136 |
 | `partial` | 19 |
-| `gap` | 272 |
+| `gap` | 265 |
 | `needs` | 679 |
-| `n/a` | 17 |
+| `n/a` | 18 |
 | total | 1117 |
 
 Systems that `needs` rows wait for, by tag count:
@@ -418,7 +418,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Projectiles and damage delivery
 
-20 done, 3 partial, 24 gap, 48 needs.
+26 done, 3 partial, 17 gap, 48 needs, 1 n/a.
 
 ### Firing cadence (on the shooter)
 
@@ -428,7 +428,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Projectile_Fire_Recharge_Seconds` | `done` |  |
 | `Projectile_Fire_Pulse_Count` | `done` |  |
 | `Projectile_Fire_Pulse_Delay_Seconds` | `done` |  |
-| `Projectile_Appearance_Delay_Frames` | `gap` |  |
+| `Projectile_Appearance_Delay_Frames` | `done` | first number of the two-number form |
 
 ### Damage and damage type
 
@@ -440,10 +440,10 @@ Systems that `needs` rows wait for, by tag count:
 | `Projectile_Does_Shield_Damage` | `done` |  |
 | `Projectile_Does_Energy_Damage` | `needs abilities` | energy pool |
 | `Projectile_Energy_Per_Shot` | `needs abilities` | energy pool |
-| `Projectile_Damages_Random_Hard_Points` | `gap` |  |
-| `Friendly_Damage_Amount` | `gap` |  |
+| `Projectile_Damages_Random_Hard_Points` | `done` |  |
+| `Friendly_Damage_Amount` | `done` | the blast's damage to the shooter's own entities |
 | `Projectile_Damage_Delay_Secs` | `gap` |  |
-| `Max_Secs_For_AE_Delayed_Damage` | `gap` |  |
+| `Max_Secs_For_AE_Delayed_Damage` | `n/a` | 0 in every stock use |
 | `Damage` | `needs AI` | obsolete AI strength rating (the code literal is unrelated) |
 | `Damage_Amount` | `needs hero clash` |  |
 | `Projectile_Block_Chance_Modifier` | `needs abilities` | deflection |
@@ -465,9 +465,9 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Projectile_Category` | `gap` |  |
 | `Projectile_Max_Flight_Distance` | `partial` | 0 means "detonate at once" in the data (death and ability blasts, which the engine detonates where they start), "unlimited" for fired shots |
-| `Projectile_Max_Lifetime` | `gap` |  |
+| `Projectile_Max_Lifetime` | `done` |  |
 | `Projectile_Acceleration_Per_Frame` | `gap` |  |
-| `Projectile_Max_Scan_Range` | `gap` |  |
+| `Projectile_Max_Scan_Range` | `done` | retargets when the target dies |
 | `Projectile_Target_Point_On_Terrain` | `gap` |  |
 | `Explode_When_Reached_Target_Radius` | `gap` |  |
 | `Projectile_Rocket_Straight_Distance` | `gap` |  |
@@ -536,7 +536,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Projectile_Ground_Detonation_Particle` | `done` |  |
 | `Projectile_Lifetime_Detonation_Particle` | `done` |  |
 | `Projectile_Ground_Detonation_SurfaceFX` | `gap` |  |
-| `Projectile_Object_Creation_Particle` | `gap` |  |
+| `Projectile_Object_Creation_Particle` | `done` |  |
 | `Explosion_Jitter_Factor` | `gap` |  |
 | `Explosion_Scorch_Mark` | `gap` |  |
 

@@ -358,6 +358,7 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, projectile.damage);
         hash = hash_value(hash, projectile.blast.damage);
         hash = hash_value(hash, projectile.blast.range);
+        hash = hash_value(hash, projectile.lifetime_ticks);
         hash = hash_value(hash, projectile.flown);
         hash = hash_value(hash, projectile.stray);
         hash = hash_value(hash, projectile.misses);

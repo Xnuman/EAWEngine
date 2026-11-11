@@ -48,9 +48,13 @@ void test_combat_content()
                 "<Projectile_Does_Shield_Damage>No</Projectile_Does_Shield_Damage><Damage_Type>Damage_Laser</Damage_Type></Projectile>"
                 "<Projectile Name=\"Proj_Tank\"><Variant_Of_Existing_Type>Proj_Base</Variant_Of_Existing_Type><Projectile_Damage>7.5</Projectile_Damage>"
                 "<Projectile_Blast_Area_Damage>30</Projectile_Blast_Area_Damage><Projectile_Blast_Area_Range>60</Projectile_Blast_Area_Range>"
-                "<Projectile_Blast_Area_Dropoff>True</Projectile_Blast_Area_Dropoff><Projectile_Blast_Area_Dropoff_Tiers>4</Projectile_Blast_Area_Dropoff_Tiers></Projectile>"
+                "<Projectile_Blast_Area_Dropoff>True</Projectile_Blast_Area_Dropoff><Projectile_Blast_Area_Dropoff_Tiers>4</Projectile_Blast_Area_Dropoff_Tiers>"
+                "<Projectile_Max_Lifetime>2</Projectile_Max_Lifetime><Projectile_Max_Scan_Range>300</Projectile_Max_Scan_Range><Projectile_Damages_Random_Hard_Points>Yes</"
+                "Projectile_Damages_Random_Hard_Points>"
+                "<Friendly_Damage_Amount>5</Friendly_Damage_Amount><Projectile_Object_Creation_Particle> Muzzle </Projectile_Object_Creation_Particle></Projectile>"
                 "<GroundVehicle "
-                "Name=\"Tank\"><SFXEvent_Fire>Tank_Fire</SFXEvent_Fire><Tactical_Health>100</Tactical_Health><Shield_Points>50</Shield_Points><Shield_Refresh_Rate>4</Shield_Refresh_Rate>"
+                "Name=\"Tank\"><Projectile_Appearance_Delay_Frames>15,20</Projectile_Appearance_Delay_Frames><SFXEvent_Fire>Tank_Fire</SFXEvent_Fire><Tactical_Health>100</"
+                "Tactical_Health><Shield_Points>50</Shield_Points><Shield_Refresh_Rate>4</Shield_Refresh_Rate>"
                 "<Armor_Type> Armor_Tank </Armor_Type><Shield_Armor_Type>Shield_Tank</Shield_Armor_Type><Ranged_Target_Z_Adjust>12</Ranged_Target_Z_Adjust>"
                 "<Projectile_Types>Proj_Tank, Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>200</Targeting_Max_Attack_Distance>"
                 "<Projectile_Fire_Recharge_Seconds>1.5</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>3</Projectile_Fire_Pulse_Count>"
@@ -131,6 +135,9 @@ void test_combat_content()
                 weapon.projectile_speed == 10.0F * eaw::provisional_max_speed_scale && weapon.max_flight_distance == 400.0F && !weapon.damages_shield && weapon.damages_health,
             "the first projectile type must supply the shot, through its variant chain");
     require(weapon.blast.damage == 30.0F && weapon.blast.range == 60.0F && weapon.blast.tiers == 4, "a projectile's area blast must be read");
+    require(weapon.max_lifetime == 2.0F && weapon.scan_range == 300.0F && weapon.random_hardpoints && weapon.blast.friendly_damage == 5.0F &&
+                weapon.launch_effect == eaw::game_object_name_crc("Muzzle") && weapon.appearance_delay_seconds == 0.5F,
+            "a projectile's flight rules and launch effect and the shooter's appearance delay must be read");
     require(warnings.empty(), "a well-formed type must not warn");
     std::vector<std::string> picky_warnings;
     const auto picky = eaw::combat_profile(catalog, *definition("Picky"), content, picky_warnings);

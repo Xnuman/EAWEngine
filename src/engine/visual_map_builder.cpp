@@ -24,10 +24,16 @@ using namespace scene_build;
 
 namespace {
 
-// The Particle objects a combat profile's deaths play: its own and its hardpoints'.
+// The Particle objects a combat profile plays: its deaths (its own, its spin, its hardpoints') and
+// its weapons' launches.
 void collect_death_effect_keys(const CombatProfile& profile, std::vector<std::uint32_t>& keys)
 {
     keys.push_back(profile.death_effect);
+    keys.push_back(profile.spin_effect);
+    for (const auto& weapon : profile.weapons)
+    {
+        keys.push_back(weapon.launch_effect);
+    }
     for (const auto& part : profile.hardpoints)
     {
         if (part.death_effect != 0)

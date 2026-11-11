@@ -704,6 +704,68 @@ void test_target_validity()
         }
         require(chance == 0.0F ? ticks == 1 && effect == 1U : ticks == 6 && effect == 2U, "a spin away must delay the death by its time and end in its explosion");
     }
+    // Projectile flight rules: a lifetime ends a shot early; a scan range retargets a shot whose
+    // target died; an appearance delay holds the burst's first shot; a friendly blast amount hurts
+    // the shooter's own entities.
+    {
+        const auto shoot = [&](const eaw::WeaponProfile& weapon, const bool kill_first)
+        {
+            eaw::SimulationWorld flight(0.1);
+            flight.set_hostility(hostility);
+            eaw::CombatProfile gun;
+            gun.health = 50.0F;
+            gun.weapons = {weapon};
+            eaw::CombatProfile sturdy;
+            sturdy.health = 1000.0F;
+            (void)flight.spawn({.type_name = "Gun", .owner = 1, .combat = gun});
+            const auto first = flight.spawn({.type_name = "First", .owner = 2, .position = {80.0F, 0.0F, 0.0F}, .combat = sturdy});
+            (void)flight.spawn({.type_name = "Second", .owner = 2, .position = {90.0F, 30.0F, 0.0F}, .combat = sturdy});
+            (void)flight.spawn({.type_name = "Mate", .owner = 1, .position = {85.0F, 0.0F, 0.0F}, .combat = sturdy});
+            flight.step();
+            if (kill_first)
+            {
+                flight.submit({.kind = eaw::SimCommandKind::damage, .entities = {*first}, .amount = 5000.0F});
+            }
+            int fired_at = -1;
+            for (int tick = 1; tick < 30; ++tick)
+            {
+                if (fired_at < 0 && flight.stats().shots_fired > 0)
+                {
+                    fired_at = tick;
+                }
+                flight.step();
+            }
+            return std::pair{flight.stats(), fired_at};
+        };
+        // 200 units/s: the shot at the hostile 80 away flies 0.4 s.
+        const eaw::WeaponProfile slow{.range = 100.0F, .recharge_seconds = 100.0F, .damage = 1.0F, .projectile_speed = 200.0F};
+        auto short_lived = slow;
+        short_lived.max_lifetime = 0.2F;
+        require(shoot(slow, false).first.hits == 1 && shoot(short_lived, false).first.hits == 0, "a shot must be lost when its lifetime ends");
+        auto scanning = slow;
+        scanning.scan_range = 100.0F;
+        require(shoot(slow, true).first.hits == 0 && shoot(scanning, true).first.hits == 1, "a scanning shot must take a new target when its own dies");
+        const eaw::WeaponProfile instant{.range = 100.0F, .recharge_seconds = 100.0F, .damage = 1.0F};
+        auto delayed = instant;
+        delayed.appearance_delay_seconds = 0.5F;
+        require(shoot(delayed, false).second == shoot(instant, false).second + 5, "an appearance delay must hold the burst's first shot");
+    }
+    // A friendly blast amount (Friendly_Damage_Amount): the shooter's mate beside the victim is hurt.
+    {
+        eaw::SimulationWorld mates(0.1);
+        mates.set_hostility(hostility);
+        eaw::CombatProfile bomber;
+        bomber.health = 50.0F;
+        bomber.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 100.0F, .damage = 1.0F, .blast = {.damage = 50.0F, .range = 10.0F, .friendly_damage = 20.0F}}};
+        eaw::CombatProfile sturdy;
+        sturdy.health = 1000.0F;
+        (void)mates.spawn({.type_name = "Bomber", .owner = 1, .combat = bomber});
+        (void)mates.spawn({.type_name = "Victim", .owner = 2, .position = {80.0F, 0.0F, 0.0F}, .combat = sturdy});
+        (void)mates.spawn({.type_name = "Mate", .owner = 1, .position = {85.0F, 0.0F, 0.0F}, .combat = sturdy});
+        mates.step();
+        const auto& hurt = mates.snapshot().entities;
+        require(hurt[1].health == 949.0F && hurt[2].health == 980.0F && hurt[0].health == 50.0F, "a blast's friendly amount must hurt the shooter's own entities in range");
+    }
     // A death blast (Death_Projectiles): the dying station damages the hostile beside it.
     {
         eaw::SimulationWorld station_world(0.1);

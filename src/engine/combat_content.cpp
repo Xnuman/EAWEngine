@@ -411,6 +411,14 @@ void read_projectile(const FieldReader& projectile, const std::string_view name,
     weapon.damages_shield = projectile.flag("Projectile_Does_Shield_Damage", true);
     weapon.damages_health = projectile.flag("Projectile_Does_Hitpoint_Damage", true);
     weapon.blast.damage = projectile.amount("Projectile_Blast_Area_Damage");
+    weapon.blast.friendly_damage = projectile.amount("Friendly_Damage_Amount");
+    weapon.max_lifetime = projectile.amount("Projectile_Max_Lifetime");
+    weapon.scan_range = projectile.amount("Projectile_Max_Scan_Range");
+    weapon.random_hardpoints = projectile.flag("Projectile_Damages_Random_Hard_Points", false);
+    if (const auto* launch = projectile.node("Projectile_Object_Creation_Particle"); launch != nullptr && !ascii_trim(launch->text).empty())
+    {
+        weapon.launch_effect = game_object_name_crc(ascii_trim(launch->text));
+    }
     weapon.blast.range = projectile.amount("Projectile_Blast_Area_Range");
     if (projectile.flag("Projectile_Blast_Area_Dropoff", false))
     {
@@ -533,6 +541,14 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             warnings.push_back(definition.name + ": CategoryMask names unknown category '" + name + "'");
         }
     }
+    // The first of a reader's Projectile_Appearance_Delay_Frames ("15" or "15,20"), in seconds.
+    const auto appearance_delay = [](const FieldReader& reader)
+    {
+        const auto* node = reader.node("Projectile_Appearance_Delay_Frames");
+        const auto items = node != nullptr ? split_list(node->text) : std::vector<std::string_view>{};
+        const auto frames = items.empty() ? std::nullopt : parse_float(items.front());
+        return frames && *frames > 0.0F ? std::min(*frames, 3000.0F) / 30.0F : 0.0F;
+    };
     // Categories a reader's weapons never fire at (unknown names are reported).
     const auto restricted = [&](const FieldReader& reader, const std::string_view owner, const std::string_view field)
     {
@@ -609,6 +625,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 weapon.mount.up = profile.aim_height;
                 weapon.inaccuracy = unit_inaccuracy;
                 weapon.min_range = std::min(type.amount("Targeting_Min_Attack_Distance"), range);
+                weapon.appearance_delay_seconds = appearance_delay(type);
                 weapon.excluded_categories = unit_excluded;
                 profile.weapons.push_back(weapon);
             }
@@ -691,6 +708,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             weapon.damage_type = point.type_id("Damage_Type", content);
         }
         weapon.hardpoint = part_index;
+        weapon.appearance_delay_seconds = appearance_delay(point);
         weapon.excluded_categories = restricted(point, hardpoint->name, "Fire_Category_Restrictions") | unit_excluded;
         weapon.inaccuracy = point.inaccuracy("Fire_Inaccuracy_Distance", content);
         if (weapon.inaccuracy.empty())

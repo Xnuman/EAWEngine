@@ -367,8 +367,9 @@ struct ShotSnapshot
 {
     EntityId shooter;
     Vector3 origin;
-    // The weapon's WeaponProfile::fire_sound, or 0.
+    // The weapon's WeaponProfile::fire_sound and launch_effect, or 0.
     std::uint32_t sound{};
+    std::uint32_t effect{};
 };
 
 // A hardpoint destroyed in the last tick, for its destruction sound and effects (a derived output,
@@ -550,6 +551,9 @@ private:
         AreaBlast blast;
         float speed{};
         float flown{};
+        // Ticks left (WeaponProfile::max_lifetime; 0: none) and the reacquisition range.
+        std::uint32_t lifetime_ticks{};
+        float scan_range{};
         float max_flight{};
         // Where the shot lands relative to its target's aim point, and whether that is outside the
         // target (WeaponProfile::inaccuracy).
