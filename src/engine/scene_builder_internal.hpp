@@ -355,6 +355,8 @@ CrushProfile type_crush(const GameObjectCatalog& catalog, const XmlDefinition& d
 // XML Destruction_Survivors ("type, weight" entries; empty entries and weights of 0 skipped) and
 // Minimum_Destruction_Survivor_Count.
 Survivors type_survivors(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// XML Is_Marker.
+bool type_is_marker(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // XML FormationGrouping Solo (the other stock value is Standard, the default).
 bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 

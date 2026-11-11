@@ -64,7 +64,8 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         const auto& entity = entities[index];
         EAW_ASSERT_MSG(entity.instance < scene.instances.size() && !scene.instances[entity.instance].background,
                        "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(entity.instance) + ", which is missing or a background");
-        if (ids[index])
+        // Markers stay entities but are never drawn: without a template they are skipped.
+        if (ids[index] && !entity.hidden)
         {
             templates_.emplace(entity_key(*ids[index]), Template{scene.instances[entity.instance], entity.spawn.heading, entity.death, entity.bank_limit});
         }

@@ -186,6 +186,12 @@ Survivors type_survivors(const GameObjectCatalog& catalog, const XmlDefinition& 
     return survivors;
 }
 
+bool type_is_marker(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto* node = catalog.field(definition, "Is_Marker").field;
+    return node != nullptr && parse_xml_bool(node->text).value_or(false);
+}
+
 bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto* node = catalog.field(definition, "FormationGrouping").field;

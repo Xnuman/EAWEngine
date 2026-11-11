@@ -77,6 +77,16 @@ void test_scene_presentation()
     const auto& m = instances[2].transform;
     require(std::fabs(std::sqrt(m.values[0] * m.values[0] + m.values[1] * m.values[1] + m.values[2] * m.values[2]) - 0.5F) < 1.0e-5F && std::fabs(m.values[10] - 0.5F) < 1.0e-5F,
             "a spawned type must be drawn at its Scale_Factor");
+
+    // A marker (Is_Marker) is an entity scripts can find, but it is not drawn.
+    eaw::MapEntitySpawn marker{spawn, 1};
+    marker.hidden = true;
+    eaw::BattleMap marker_map;
+    marker_map.entities = std::span(&marker, 1);
+    eaw::Battle marker_battle(marker_map, "TEST.TED", 0.1);
+    const eaw::ScenePresentation marker_presentation(scene, std::span(&marker, 1), marker_battle.map_entity_ids(), {});
+    marker_presentation.build(marker_battle.world().snapshot().entities, {}, instances, ids);
+    require(marker_battle.world().snapshot().entities.size() == 1 && instances.size() == 1 && instances[0].background, "a marker must stay an entity but not be drawn");
 }
 
 // Unit animation: clip names map to roles, snapshots choose roles, entities share sampled poses,

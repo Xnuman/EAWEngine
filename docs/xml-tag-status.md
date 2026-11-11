@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 126 |
+| `done` | 127 |
 | `partial` | 19 |
-| `gap` | 276 |
+| `gap` | 275 |
 | `needs` | 679 |
 | `n/a` | 17 |
 | total | 1117 |
@@ -895,7 +895,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Production, economy, tech, galactic play, AI, visibility, and identity
 
-2 done, 2 partial, 9 gap, 223 needs, 4 n/a.
+3 done, 2 partial, 8 gap, 223 needs, 4 n/a.
 
 ### Faction, identity, and scripts
 
@@ -1185,7 +1185,7 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Is_Marker` | `gap` |  |
+| `Is_Marker` | `done` | not drawn; stays an entity for scripts |
 | `Is_Dummy` | `gap` |  |
 | `Is_Decoration` | `gap` |  |
 | `Is_Discardable` | `n/a` | never true in stock |

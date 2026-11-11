@@ -156,6 +156,9 @@ struct MapEntitySpawn
     // Presentation: the most a flyer banks in a turn (type_bank_limit, radians).
     float bank_limit{default_bank_limit};
     Survivors survivors;
+    // Not drawn: an editor marker (XML Is_Marker: flags, script points, skirmish base positions)
+    // that stays an entity so scripts can find it.
+    bool hidden{};
 };
 
 // XML Max_Speed values are small (infantry 0.8, AT-AT 0.5, TIE fighter 4.5), consistent with world
