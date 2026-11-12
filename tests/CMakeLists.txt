@@ -9,6 +9,7 @@ set(EAW_TEST_MODULES
     formats
     foundation
     launcher
+    localization
     math
     navigation
     presentation
