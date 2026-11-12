@@ -449,6 +449,12 @@ bool D3d12Renderer::Impl::render()
     ensure_bone_capacity(frame, bone_transforms.size());
     std::memcpy(frame.bone_buffer_mapped, bone_transforms.data(), bone_transforms.size() * sizeof(bone_transforms.front()));
     stream_scene_textures();
+    // The overlay's frame is built now: its texture uploads join this frame's pending transitions.
+    const bool draw_overlay = (selection_rectangle || overlay_ui) && overlay_backend_initialized;
+    if (draw_overlay)
+    {
+        prepare_overlay();
+    }
     write_texture_residency(frame);
     const bool dynamic = scene_loaded && dynamic_instances.has_value();
     if (dynamic)
@@ -727,7 +733,7 @@ bool D3d12Renderer::Impl::render()
     last_draw_calls = draw_calls;
     last_triangles = triangles;
     last_instances = instances_drawn;
-    if ((selection_rectangle || overlay_ui) && overlay_backend_initialized)
+    if (draw_overlay)
     {
         render_overlay(render_target);
     }

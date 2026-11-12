@@ -270,14 +270,23 @@ struct D3d12Renderer::Impl
     std::uint64_t last_particles{};
 
     // Debug overlay: the caller's Dear ImGui panels (overlay_ui) and the selection rectangle, drawn
-    // last into the back buffer. Its font texture takes slots from texture_slots through the
-    // backend's allocation callbacks. Panel layouts persist in overlay_settings_file (UTF-8, kept
-    // alive for Dear ImGui).
+    // last into the back buffer. Panel layouts persist in overlay_settings_file (UTF-8, kept alive
+    // for Dear ImGui).
     ImGuiContext* overlay_context{};
     bool overlay_backend_initialized{};
     std::string overlay_settings_file;
     std::chrono::steady_clock::time_point overlay_tick{std::chrono::steady_clock::now()};
     VisualOverlayInput overlay_input;
+    // Dear ImGui's textures (its font atlas), by ImTextureData: uploaded through the renderer's own
+    // upload path (copy queue, a GPU wait on the direct queue, slots and resources retired by fence
+    // value) instead of the backend's, which signals a fence of its own on the direct queue and
+    // waits for it on the CPU. Their BackendUserData stays null, so the backend never frees them.
+    struct OverlayTexture
+    {
+        ComPtr<ID3D12Resource> resource;
+        std::uint32_t descriptor{};
+    };
+    std::unordered_map<const ImTextureData*, OverlayTexture> overlay_textures;
     bool overlay_wants_mouse{};
     bool overlay_wants_keyboard{};
     std::function<void()> overlay_ui;
@@ -403,9 +412,11 @@ struct D3d12Renderer::Impl
 
     void create_statistics_queries();
 
-    // The ImGui DX12 backend uploads its font texture on the direct queue and waits for that upload
-    // on the CPU. This happens only when the font atlas changes (startup, first use of new glyphs),
-    // never per frame; it is a documented exception to the no-CPU-wait rule for this debug overlay.
+    // The Dear ImGui DX12 backend draws the overlay; its textures are ours (overlay_textures). What
+    // remains of the backend's own practice, a documented exception for this debug overlay: it
+    // compiles its two shaders at startup (D3DCompile) and reuses its vertex and index buffers by
+    // frame index, which holds because the overlay is drawn once per frame with frame_count frames
+    // in flight.
     [[nodiscard]] Status create_overlay();
 
     void allocate_overlay_descriptor(D3D12_CPU_DESCRIPTOR_HANDLE& cpu, D3D12_GPU_DESCRIPTOR_HANDLE& gpu);
@@ -414,8 +425,23 @@ struct D3d12Renderer::Impl
 
     void shutdown_overlay() noexcept;
 
-    // Draws the overlay panel into the current back buffer (call after every scene pass).
+    // Builds the overlay's frame (input, panels, draw data) and uploads its texture changes, before
+    // the frame records its pending transitions, so new textures are in their shader state by the
+    // time the overlay draws.
+    void prepare_overlay();
+
+    // Uploads, replaces, or retires the overlay textures Dear ImGui asks for, then takes the
+    // requests away from the backend (ImDrawData::Textures).
+    void update_overlay_textures();
+
+    // Draws the prepared overlay into the current back buffer (call after every scene pass).
     void render_overlay(const D3D12_CPU_DESCRIPTOR_HANDLE render_target);
+
+    // Retires an overlay texture's resource and slot once the direct queue's next signal completes.
+    void retire_overlay_texture(OverlayTexture texture);
+
+    // The shader-visible GPU handle of a texture-table slot.
+    [[nodiscard]] D3D12_GPU_DESCRIPTOR_HANDLE texture_slot_gpu_handle(std::uint32_t slot) const;
 
     // Reads the GPU time of the frame this context recorded last; its fence has completed.
     void collect_timestamps(FrameContext& frame);

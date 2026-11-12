@@ -43,17 +43,104 @@ Status D3d12Renderer::Impl::create_overlay()
     return Status::success();
 }
 
+// The backend's allocation callbacks stay wired up (its initialization requires them), although
+// its texture path, their only user, never runs: update_overlay_textures takes every request.
 void D3d12Renderer::Impl::allocate_overlay_descriptor(D3D12_CPU_DESCRIPTOR_HANDLE& cpu, D3D12_GPU_DESCRIPTOR_HANDLE& gpu)
 {
     reclaim_texture_slots();
     const auto slot = texture_slots.allocate();
-    // The backend allocates its font texture during startup, while the table is nearly empty.
     EAW_ASSERT_MSG(slot.has_value(), "the D3D12 texture table has no slot for a debug overlay texture");
     const auto increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     cpu = shader_heap->GetCPUDescriptorHandleForHeapStart();
     cpu.ptr += static_cast<SIZE_T>(*slot) * increment;
-    gpu = shader_heap->GetGPUDescriptorHandleForHeapStart();
-    gpu.ptr += static_cast<UINT64>(*slot) * increment;
+    gpu = texture_slot_gpu_handle(*slot);
+}
+
+D3D12_GPU_DESCRIPTOR_HANDLE D3d12Renderer::Impl::texture_slot_gpu_handle(const std::uint32_t slot) const
+{
+    auto gpu = shader_heap->GetGPUDescriptorHandleForHeapStart();
+    gpu.ptr += static_cast<UINT64>(slot) * device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    return gpu;
+}
+
+void D3d12Renderer::Impl::retire_overlay_texture(OverlayTexture retired)
+{
+    const auto retire_value = direct_queue.next_value();
+    texture_slots.release(retired.descriptor, retire_value);
+    std::vector<ComPtr<ID3D12Resource>> resources;
+    resources.push_back(std::move(retired.resource));
+    retire_uploaded(std::move(resources), retire_value);
+}
+
+void D3d12Renderer::Impl::update_overlay_textures()
+{
+    auto* draw_data = ImGui::GetDrawData();
+    if (draw_data == nullptr || draw_data->Textures == nullptr)
+    {
+        return;
+    }
+    for (ImTextureData* requested : *draw_data->Textures)
+    {
+        if (requested->Status == ImTextureStatus_WantDestroy)
+        {
+            // Retired by fence value, so frames still drawing with it keep it until they finish.
+            if (const auto found = overlay_textures.find(requested); found != overlay_textures.end())
+            {
+                retire_overlay_texture(std::move(found->second));
+                overlay_textures.erase(found);
+            }
+            requested->SetTexID(ImTextureID_Invalid);
+            requested->SetStatus(ImTextureStatus_Destroyed);
+            continue;
+        }
+        if (requested->Status != ImTextureStatus_WantCreate && requested->Status != ImTextureStatus_WantUpdates)
+        {
+            continue;
+        }
+        // An update uploads the whole texture into a new resource and retires the old one: atlas
+        // changes are rare (startup, first use of new glyphs) and the atlas is small.
+        const auto texture_width = static_cast<std::uint32_t>(requested->Width);
+        const auto texture_height = static_cast<std::uint32_t>(requested->Height);
+        VisualTexture source;
+        source.name = "Dear ImGui texture";
+        source.format = VisualTextureFormat::rgba8_unorm;
+        VisualTextureMip mip;
+        mip.width = texture_width;
+        mip.height = texture_height;
+        mip.row_pitch = static_cast<std::size_t>(texture_width) * 4U;
+        mip.slice_pitch = mip.row_pitch * texture_height;
+        mip.data.resize(mip.slice_pitch);
+        const auto* pixels = static_cast<const std::byte*>(requested->GetPixels());
+        if (requested->Format == ImTextureFormat_RGBA32)
+        {
+            std::memcpy(mip.data.data(), pixels, mip.data.size());
+        }
+        else
+        {
+            // Alpha8: white with the texel as coverage, as the backend expands it.
+            for (std::size_t index = 0; index < static_cast<std::size_t>(texture_width) * texture_height; ++index)
+            {
+                mip.data[index * 4U] = mip.data[index * 4U + 1U] = mip.data[index * 4U + 2U] = std::byte{0xFF};
+                mip.data[index * 4U + 3U] = pixels[index];
+            }
+        }
+        source.mips.push_back(std::move(mip));
+        reclaim_texture_slots();
+        const auto slot = texture_slots.allocate();
+        EAW_ASSERT_MSG(slot.has_value(), "the D3D12 texture table has no slot for a debug overlay texture");
+        auto upload = begin_upload(L"EAWEngine overlay texture upload");
+        auto resource = upload_texture(upload, source, *slot);
+        submit_upload(std::move(upload));
+        if (const auto found = overlay_textures.find(requested); found != overlay_textures.end())
+        {
+            retire_overlay_texture(std::move(found->second));
+        }
+        overlay_textures[requested] = OverlayTexture{std::move(resource), *slot};
+        requested->SetTexID(static_cast<ImTextureID>(texture_slot_gpu_handle(*slot).ptr));
+        requested->SetStatus(ImTextureStatus_OK);
+    }
+    // Handled here: the backend's own texture path (a fence of its own and a CPU wait) never runs.
+    draw_data->Textures = nullptr;
 }
 
 void D3d12Renderer::Impl::free_overlay_descriptor(const D3D12_CPU_DESCRIPTOR_HANDLE cpu)
@@ -75,6 +162,8 @@ void D3d12Renderer::Impl::shutdown_overlay() noexcept
         return;
     }
     ImGui::SetCurrentContext(overlay_context);
+    // The GPU is idle at shutdown (~Impl waits first), so the textures are released directly.
+    overlay_textures.clear();
     if (overlay_backend_initialized)
     {
         ImGui_ImplDX12_Shutdown();
@@ -84,7 +173,7 @@ void D3d12Renderer::Impl::shutdown_overlay() noexcept
     overlay_context = nullptr;
 }
 
-void D3d12Renderer::Impl::render_overlay(const D3D12_CPU_DESCRIPTOR_HANDLE render_target)
+void D3d12Renderer::Impl::prepare_overlay()
 {
     ImGui::SetCurrentContext(overlay_context);
     const auto now = std::chrono::steady_clock::now();
@@ -137,6 +226,12 @@ void D3d12Renderer::Impl::render_overlay(const D3D12_CPU_DESCRIPTOR_HANDLE rende
     overlay_wants_mouse = io.WantCaptureMouse;
     overlay_wants_keyboard = io.WantTextInput;
     ImGui::Render();
+    update_overlay_textures();
+}
+
+void D3d12Renderer::Impl::render_overlay(const D3D12_CPU_DESCRIPTOR_HANDLE render_target)
+{
+    ImGui::SetCurrentContext(overlay_context);
     // The overlay pipeline has one color target and no depth.
     command_list->OMSetRenderTargets(1, &render_target, FALSE, nullptr);
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), command_list.Get());
