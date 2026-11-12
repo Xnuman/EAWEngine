@@ -152,8 +152,10 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
             {
                 break;
             }
-            company.mesh = build.spawnable[company.members.front()].mesh;
+            SpawnableLook company_look;
+            company_look.mesh = build.looks[company.members.front()].mesh;
             build.spawnable.push_back(std::move(company));
+            build.looks.push_back(company_look);
             return build.spawnable.size() - 1U;
         }
         build.builder.scene.warnings.push_back("spawn type '" + type_name + "' has no resolvable " + std::string(to_string(build.context)) + " model");
@@ -178,29 +180,30 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
         return std::nullopt;
     }
     SpawnableType spawnable;
+    SpawnableLook look;
     spawnable.type_name = definition->name;
-    spawnable.mesh = *entry->second;
+    look.mesh = *entry->second;
     spawnable.max_speed = type_max_speed(build.catalog, *definition, build.builder.scene.warnings, build.speed_multiplier);
-    spawnable.team_color = build.catalog.affiliation_color(*definition).value_or(player_team_color(1));
+    look.team_color = build.catalog.affiliation_color(*definition).value_or(player_team_color(1));
     spawnable.follows_ground = build.land && type_follows_ground(build.catalog, *definition);
     spawnable.passable_types = spawnable.follows_ground ? type_passable_types(build.catalog, *definition, build.movement_classes) : 0U;
     const auto decoded = cached_model(build.builder, *path);
     spawnable.combat = build.profile_of(*definition, decoded && decoded->ok() ? &decoded->value() : nullptr);
     note_damage_bones(build.builder, *path, spawnable.combat);
     spawnable.hover_offset = type_float_field(build.catalog, *definition, "Hover_Offset");
-    spawnable.scale = type_scale_factor(build.catalog, *definition, build.builder.scene.warnings);
-    spawnable.lod_bias = type_lod_bias(build.catalog, *definition);
-    spawnable.death = type_death_style(build.catalog, *definition);
-    spawnable.bank_limit = type_bank_limit(build.catalog, *definition);
+    look.scale = type_scale_factor(build.catalog, *definition, build.builder.scene.warnings);
+    look.lod_bias = type_lod_bias(build.catalog, *definition);
+    look.death = type_death_style(build.catalog, *definition);
+    look.bank_limit = type_bank_limit(build.catalog, *definition);
     spawnable.crush = type_crush(build.catalog, *definition);
-    spawnable.animation = type_animation_profile(build.catalog, *definition);
+    look.animation = type_animation_profile(build.catalog, *definition);
     spawnable.survivors = type_survivors(build.catalog, *definition);
     spawnable.script = type_script_info(build.catalog, *definition);
     if (spawnable.max_speed > 0.0F)
     {
         const auto soft_radius = type_soft_footprint_radius(build.catalog, *definition);
         const auto bounds = decoded && decoded->ok() ? drawn_model_bounds(decoded->value(), attachments, true) : ModelBounds{};
-        spawnable.radius = soft_radius > 0.0F ? soft_radius : model_footprint_radius(bounds, scaled_model_transform(Matrix4::identity(), spawnable.scale));
+        spawnable.radius = soft_radius > 0.0F ? soft_radius : model_footprint_radius(bounds, scaled_model_transform(Matrix4::identity(), look.scale));
         spawnable.turn_rate = type_turn_rate(build.catalog, *definition);
         spawnable.min_speed = build.land ? 0.0F : type_min_flight_speed(build.catalog, *definition, spawnable.max_speed);
         spawnable.movement = type_movement(build.catalog, *definition, build.land, spawnable.min_speed > 0.0F);
@@ -211,6 +214,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
         spawnable.formation_raggedness = type_formation_raggedness(build.catalog, *definition);
     }
     build.spawnable.push_back(std::move(spawnable));
+    build.looks.push_back(look);
     return build.spawnable.size() - 1U;
 }
 
@@ -514,7 +518,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     // Types requested for runtime spawning: their models join the mesh library without instances.
     const auto spawn_context = asset.land ? GameModelContext::land : GameModelContext::space;
     // Each requested name once: an existing entry is reused (company members are often repeated).
-    SpawnableBuild spawnable_build{builder, catalog, movement_classes, spawn_context, asset.land, meshes, profile_of, asset.spawnable};
+    SpawnableBuild spawnable_build{builder, catalog, movement_classes, spawn_context, asset.land, meshes, profile_of, asset.spawnable, asset.spawnable_looks};
     spawnable_build.speed_multiplier = combat_entry->max_speed_multiplier.of(asset.land);
     for (const auto& type_name : spawn_types)
     {
@@ -618,7 +622,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
         }
         return found->second;
     };
-    SpawnableBuild build{builder, catalog_entry->catalog, movement_entry->classes, land ? GameModelContext::land : GameModelContext::space, land, meshes, profile_of, package.types};
+    SpawnableBuild build{builder, catalog_entry->catalog, movement_entry->classes, land ? GameModelContext::land : GameModelContext::space, land, meshes, profile_of, package.types, package.looks};
     build.speed_multiplier = combat_entry->max_speed_multiplier.of(land);
     build.speed_multiplier = combat_entry->max_speed_multiplier.of(land);
     const auto index = add_spawnable_type(build, std::string(type_name), 0);

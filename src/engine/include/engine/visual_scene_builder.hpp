@@ -224,102 +224,20 @@ inline constexpr float default_turret_rotate_speed = 5.0F;
 // (Calamari cruiser .02: full speed in 2.5 seconds; T2B .2: in 0.4 seconds). A guess.
 inline constexpr float provisional_acceleration_scale = provisional_max_speed_scale * 30.0F;
 
-// How a company's team moves its members. A company forms teams of its Create_Team_Type container
-// (Stormtrooper_Team for Imperial_Stormtrooper_Squad); in the original the container moves and its
-// members follow it, so the container's Max_Speed (.8 against the member's 1), Max_Rate_Of_Turn,
-// and acceleration are the members' (data; the engine has no team entity, so each member takes
-// them). Unset fields leave the member's own. Space squadrons are not teams in this sense: their
-// fighters fly on their own.
-// How a company splits into teams (XML Max_Squad_Size; teams of 1 or less are no teams) and how
-// a team stands (its Create_Team_Type container's ContainerArrangement and FormationSpacing).
-struct TeamLayout
+// How a spawnable type (a SpawnableType, same index) is drawn: its mesh in the map scene, its team
+// color, XML LOD_Bias (VisualInstance::lod_bias), XML Scale_Factor (the size its model is drawn
+// at; its model-derived footprint and hardpoint positions use it too), its death, the most it
+// banks in a turn when it flies (type_bank_limit, radians), and how its clips play. A company's
+// mesh is its first member's (unused: companies spawn as their members).
+struct SpawnableLook
 {
-    std::uint32_t size{};
-    TeamArrangement arrangement{TeamArrangement::dartboard};
-    float spacing{0.5F};
-};
-
-// Gives `members` (a company's, in member order) their team ids, from `next_team` on, `layout.size`
-// per team, with each member's raggedness; advances `next_team` past them.
-inline void assign_teams(std::span<FormationMember> members, std::span<const float> raggedness, const TeamLayout& layout, std::uint32_t& next_team) noexcept
-{
-    if (layout.size <= 1U)
-    {
-        return;
-    }
-    for (std::size_t index = 0; index < members.size(); ++index)
-    {
-        members[index].team = {next_team + static_cast<std::uint32_t>(index / layout.size), layout.arrangement, layout.spacing, index < raggedness.size() ? raggedness[index] : 0.0F};
-    }
-    next_team += static_cast<std::uint32_t>((members.size() + layout.size - 1U) / layout.size);
-}
-
-struct TeamMovement
-{
-    std::optional<float> max_speed;
-    std::optional<float> turn_rate;
-    std::optional<float> acceleration;
-    std::optional<float> deceleration;
-};
-
-inline void apply_team_movement(const TeamMovement& team, EntitySpawn& spawn) noexcept
-{
-    spawn.max_speed = team.max_speed.value_or(spawn.max_speed);
-    spawn.turn_rate = team.turn_rate.value_or(spawn.turn_rate);
-    spawn.movement.acceleration = team.acceleration.value_or(spawn.movement.acceleration);
-    spawn.movement.deceleration = team.deceleration.value_or(spawn.movement.deceleration);
-}
-
-// An XML object type that can be spawned at runtime: its model is part of the map scene's meshes.
-struct SpawnableType
-{
-    std::string type_name;
     std::uint32_t mesh{};
-    float max_speed{};
     Color team_color{white};
-    // XML LOD_Bias (VisualInstance::lod_bias).
     float lod_bias{1.0F};
-    // Walks on the ground on land maps (Space_Layer Land or None); flyers keep a height instead.
-    bool follows_ground{};
-    // XML Hover_Offset: height above the surface for flyers (air whales 250, snowspeeders 50).
-    float hover_offset{};
-    // XML Scale_Factor: the size its model is drawn at (and its model-derived footprint and
-    // hardpoint positions).
     float scale{1.0F};
-    // Passability types its MovementClass may enter (MovementClassTypeDefs.xml).
-    std::uint32_t passable_types{};
-    // Health, shields, armor, and weapon from XML (combat_content.hpp).
-    CombatProfile combat;
-    // Separation footprint (from the model bounds) and turn rate (XML Max_Rate_Of_Turn); see
-    // EntitySpawn.
-    float radius{};
-    float turn_rate{};
-    // Acceleration and turning (type_movement).
-    MovementProfile movement;
-    // Fighters' minimum flight speed (EntitySpawn::min_speed); 0 for other types.
-    float min_speed{};
-    // Aims with its body (no TURRET behavior); applies when it walks on the ground.
-    bool aims_with_body{};
     DeathStyle death;
-    // Presentation: the most it banks in a turn when it flies (type_bank_limit, radians), and how
-    // its clips play.
     float bank_limit{default_bank_limit};
     AnimationProfile animation;
-    // XML FormationOrder and FormationSpacing (formation.hpp).
-    std::uint32_t formation_order{2};
-    float formation_spacing{0.5F};
-    bool formation_solo{};
-    CrushProfile crush;
-    Survivors survivors;
-    ScriptTypeInfo script;
-    // A company (Company_Units): the spawnable types of its members, in list order, spawned
-    // together in formation. Empty for ordinary types; a company's own mesh is unused.
-    std::vector<std::size_t> members;
-    // A company's team movement, applied to its members, and how it splits into teams.
-    TeamMovement team;
-    TeamLayout team_layout;
-    // XML FormationRaggedness (FormationTeam::raggedness) when it stands in a team.
-    float formation_raggedness{};
 };
 
 struct VisualMapAsset
@@ -357,8 +275,10 @@ struct VisualMapAsset
     // and how each is drawn (same index).
     std::vector<MapEntity> entities;
     std::vector<MapEntityLook> entity_looks;
-    // Types requested for runtime spawning that resolved to a model, in request order.
+    // Types requested for runtime spawning that resolved to a model, in request order, and how each
+    // is drawn (same index).
     std::vector<SpawnableType> spawnable;
+    std::vector<SpawnableLook> spawnable_looks;
     // Ground for the simulation and CPU queries (land maps; invalid for space).
     GroundMap ground;
     // Damage multipliers from GameConstants.xml, with ids matching the entities' combat profiles.
@@ -412,6 +332,7 @@ struct SpawnablePackage
     std::vector<VisualRig> rigs;
     std::vector<Matrix4> rest_palette;
     std::vector<SpawnableType> types;
+    std::vector<SpawnableLook> looks;
     // Textures of the rigs' particle effects (register with D3d12Renderer::add_textures and renumber
     // the effects with renumber_effect_textures).
     std::vector<VisualTexture> particle_textures;

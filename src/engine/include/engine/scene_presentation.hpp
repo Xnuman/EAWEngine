@@ -44,7 +44,7 @@ public:
     // `entities`, as Battle::map_entity_ids; empty ids are skipped) and one template per spawnable
     // type under spawnable_visual(type index).
     ScenePresentation(const VisualScene& scene, std::span<const MapEntity> entities, std::span<const MapEntityLook> looks, std::span<const std::optional<EntityId>> ids,
-                      std::span<const SpawnableType> spawnable);
+                      std::span<const SpawnableLook> spawnable);
 
     // Builds this frame's instances: static backgrounds first, then one per snapshot entity in
     // snapshot order. `entities_out[i]` names the entity behind `instances_out[i]` (invalid for
@@ -56,7 +56,7 @@ public:
     // Meshes added to the renderer's mesh library at runtime (D3d12Renderer::add_meshes), in order,
     // and spawnable types added to the battle (Battle::add_spawnable), in the same order as there.
     void add_meshes(std::span<const VisualMesh> meshes);
-    void add_spawnable(std::span<const SpawnableType> types);
+    void add_spawnable(std::span<const SpawnableLook> types);
 
     // The instance a dead entity leaves behind, posed where it died, with its type's corpse style,
     // and forgets the entity's template; nullopt when the entity was never drawn or its type leaves

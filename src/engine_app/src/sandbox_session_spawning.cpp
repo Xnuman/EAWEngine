@@ -109,9 +109,9 @@ void SandboxSession::poll_packages()
         start_next_package();
         return;
     }
-    for (auto& added_type : package.types)
+    for (auto& added_look : package.looks)
     {
-        added_type.mesh += *added;
+        added_look.mesh += *added;
     }
     for (auto& [key, visual] : package.projectile_visuals)
     {
@@ -121,7 +121,7 @@ void SandboxSession::poll_packages()
         }
     }
     presentation->add_meshes(meshes);
-    presentation->add_spawnable(package.types);
+    presentation->add_spawnable(package.looks);
     {
         const auto placed = register_particle_textures(std::move(package.particle_textures), package.rigs, {}, &package.effect_objects, &package.projectile_visuals);
         effects.add({package.rigs, &package.projectile_visuals, placed_atlas(package.projectile_atlas, placed), &package.effect_objects});

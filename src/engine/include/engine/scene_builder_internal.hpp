@@ -268,6 +268,8 @@ struct SpawnableBuild
     std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes;
     std::function<const CombatProfile&(const XmlDefinition&, const Model*)> profile_of;
     std::vector<SpawnableType>& spawnable;
+    // How each spawnable type is drawn (same index).
+    std::vector<SpawnableLook>& looks;
     // GameConstants' Object_Max_Speed_Multiplier for the battle's mode (CombatContent).
     float speed_multiplier{1.0F};
 };

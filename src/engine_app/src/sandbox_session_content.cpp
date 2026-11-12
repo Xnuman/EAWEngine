@@ -16,7 +16,8 @@
 
 namespace eaw {
 
-void SandboxSession::start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, const std::span<const eaw::MapEntityLook> looks, std::string name)
+void SandboxSession::start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, const std::span<const eaw::MapEntityLook> looks,
+                                      const std::span<const eaw::SpawnableLook> spawnable_looks, std::string name)
 {
     battle_scripts.reset();
     battle.emplace(map, std::move(name), simulation_clock.tick_seconds());
@@ -25,7 +26,7 @@ void SandboxSession::start_simulation(const eaw::VisualScene& scene, const eaw::
     {
         battle_scripts.emplace(vfs);
     }
-    presentation.emplace(scene, map.entities, looks, battle->map_entity_ids(), battle->spawnable());
+    presentation.emplace(scene, map.entities, looks, battle->map_entity_ids(), spawnable_looks);
     previous_snapshot = world->snapshot();
     selection.clear();
     float extent = 0.0F;
@@ -156,7 +157,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
             particle_texture_copy = visual_map.particle_textures;
         }
         const auto placed = register_particle_textures(std::move(visual_map.particle_textures), visual_map.rigs, visual_map.effects, &visual_map.effect_objects, &visual_map.projectile_visuals);
-        start_simulation(layout, eaw::battle_map(visual_map), visual_map.entity_looks, *options.map);
+        start_simulation(layout, eaw::battle_map(visual_map), visual_map.entity_looks, visual_map.spawnable_looks, *options.map);
         audio.reset();
         audio.emplace(vfs, &asset_cache, *audio_device, options.language, visual_map.land);
         animator.emplace(visual_map.rigs, visual_map.rest_palette);
@@ -298,7 +299,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         reload_scene = std::move(reload_copy);
         eaw::BattleMap model_map;
         model_map.entities = model_entity;
-        start_simulation(layout, model_map, model_look, options.model);
+        start_simulation(layout, model_map, model_look, {}, options.model);
         bind_palette = eaw::sample_skin_palette(*visual_model, nullptr, 0.0F);
         renderer.set_bone_transforms(bind_palette);
         if (!content.reload || !orbit_camera)

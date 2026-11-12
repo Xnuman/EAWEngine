@@ -9,6 +9,7 @@
 #include "simulation/combat.hpp"
 #include "simulation/ground_map.hpp"
 #include "simulation/simulation.hpp"
+#include "engine/battle_map.hpp"
 #include "engine/visual_scene_builder.hpp"
 
 #include <cstddef>
@@ -30,19 +31,6 @@ inline constexpr std::uint32_t spawnable_visual_base = 0x80000000U;
 {
     return spawnable_visual_base + static_cast<std::uint32_t>(type_index);
 }
-
-// What a battle needs from a built map (VisualMapAsset holds it; tests build it directly).
-struct BattleMap
-{
-    // Placed entities, spawned in order when the battle starts.
-    std::span<const MapEntity> entities;
-    // Types that spawn orders may name, by XML type name.
-    std::span<const SpawnableType> spawnable;
-    // Ground of land maps (none on space maps).
-    const GroundMap* ground{};
-    DamageTable damage_table;
-    Hostility hostility;
-};
 
 // The map's placed entities, spawnable types, ground, and damage table, with the provisional
 // owner-slot hostility (combat_content.hpp).

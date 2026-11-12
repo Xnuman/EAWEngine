@@ -41,7 +41,7 @@ float flight_bank(const float yaw_rate, const float limit) noexcept
 }
 
 ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<const MapEntity> entities, const std::span<const MapEntityLook> looks,
-                                     const std::span<const std::optional<EntityId>> ids, const std::span<const SpawnableType> spawnable)
+                                     const std::span<const std::optional<EntityId>> ids, const std::span<const SpawnableLook> spawnable)
 {
     EAW_ASSERT_MSG(ids.size() == entities.size() && looks.size() == entities.size(), "scene presentation needs one id slot and one look per map entity");
     for (const auto& mesh : scene.meshes)
@@ -71,7 +71,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
     }
     for (const auto& type : spawnable)
     {
-        EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which the scene does not have");
+        EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "a spawnable type names mesh " + std::to_string(type.mesh) + ", which the scene does not have");
         // The template's transform is the model's own frame at its Scale_Factor; pose_transform turns
         // and places it, keeping the scale.
         VisualInstance instance{type.mesh};
@@ -143,11 +143,11 @@ void ScenePresentation::add_meshes(const std::span<const VisualMesh> meshes)
     }
 }
 
-void ScenePresentation::add_spawnable(const std::span<const SpawnableType> types)
+void ScenePresentation::add_spawnable(const std::span<const SpawnableLook> types)
 {
     for (const auto& type : types)
     {
-        EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "spawnable type '" + type.type_name + "' names mesh " + std::to_string(type.mesh) + ", which presentation does not know");
+        EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "a spawnable type names mesh " + std::to_string(type.mesh) + ", which presentation does not know");
         VisualInstance instance{type.mesh};
         for (std::size_t axis = 0; axis < 3; ++axis)
         {

@@ -564,14 +564,18 @@ void test_runtime_spawnable_registration()
     // A package: a member type and its squad (members relative to the package).
     eaw::SpawnableType walker;
     walker.type_name = "Walker";
-    walker.mesh = 1;
     walker.max_speed = 5.0F;
-    walker.team_color = {0.0F, 1.0F, 0.0F, 1.0F};
     eaw::SpawnableType squad;
     squad.type_name = "Walker_Squad";
-    squad.mesh = 1;
     squad.members = {0, 0};
     const std::array<eaw::SpawnableType, 2> package{walker, squad};
+    eaw::SpawnableLook walker_look;
+    walker_look.mesh = 1;
+    walker_look.team_color = {0.0F, 1.0F, 0.0F, 1.0F};
+    eaw::SpawnableLook squad_look;
+    squad_look.mesh = 1;
+    const std::array<eaw::SpawnableLook, 2> package_looks{walker_look, squad_look};
+    const eaw::SpawnableLook trooper_look;
     const auto first = battle.add_spawnable(package);
     require(first == 1 && battle.spawnable().size() == 3 && battle.spawnable()[2].members == std::vector<std::size_t>{1, 1}, "added company members must point at the added member type");
     expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {50.0F, 0.0F, 0.0F}, .type = "Walker_Squad", .count = 1, .owner = 2}), "spawn of an added squad");
@@ -582,11 +586,11 @@ void test_runtime_spawnable_registration()
     eaw::VisualScene scene;
     scene.meshes.resize(1);
     scene.meshes[0].name = "TROOPER.ALO";
-    eaw::ScenePresentation presentation(scene, {}, {}, {}, std::span(&trooper, 1));
+    eaw::ScenePresentation presentation(scene, {}, {}, {}, std::span(&trooper_look, 1));
     eaw::VisualMesh walker_mesh;
     walker_mesh.name = "WALKER.ALO";
     presentation.add_meshes(std::span(&walker_mesh, 1));
-    presentation.add_spawnable(package);
+    presentation.add_spawnable(package_looks);
     std::vector<eaw::VisualInstance> instances;
     std::vector<eaw::EntityId> ids;
     presentation.build(battle.world().snapshot().entities, {}, instances, ids);

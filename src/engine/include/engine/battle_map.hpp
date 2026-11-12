@@ -1,12 +1,18 @@
 #pragma once
 
 // What a battle knows of a map: gameplay data only, apart from how anything is drawn (the scene,
-// meshes, and each entity's look stay in visual_scene_builder.hpp). Built from the map, the XML
-// types, and the models' skeletons and geometry; never from drawing.
+// meshes, and each entity's and type's look stay in visual_scene_builder.hpp). Built from the map,
+// the XML types, and the models' skeletons and geometry; never from drawing.
 
+#include "simulation/combat.hpp"
+#include "simulation/formation.hpp"
+#include "simulation/ground_map.hpp"
 #include "simulation/simulation.hpp"
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -41,6 +47,106 @@ struct MapEntity
     ScriptTypeInfo script;
     std::string hint;
     Survivors survivors;
+};
+
+// How a company splits into teams (XML Max_Squad_Size; teams of 1 or less are no teams) and how
+// a team stands (its Create_Team_Type container's ContainerArrangement and FormationSpacing).
+struct TeamLayout
+{
+    std::uint32_t size{};
+    TeamArrangement arrangement{TeamArrangement::dartboard};
+    float spacing{0.5F};
+};
+
+// Gives `members` (a company's, in member order) their team ids, from `next_team` on, `layout.size`
+// per team, with each member's raggedness; advances `next_team` past them.
+inline void assign_teams(std::span<FormationMember> members, std::span<const float> raggedness, const TeamLayout& layout, std::uint32_t& next_team) noexcept
+{
+    if (layout.size <= 1U)
+    {
+        return;
+    }
+    for (std::size_t index = 0; index < members.size(); ++index)
+    {
+        members[index].team = {next_team + static_cast<std::uint32_t>(index / layout.size), layout.arrangement, layout.spacing, index < raggedness.size() ? raggedness[index] : 0.0F};
+    }
+    next_team += static_cast<std::uint32_t>((members.size() + layout.size - 1U) / layout.size);
+}
+
+// How a company's team moves its members. A company forms teams of its Create_Team_Type container
+// (Stormtrooper_Team for Imperial_Stormtrooper_Squad); in the original the container moves and its
+// members follow it, so the container's Max_Speed (.8 against the member's 1), Max_Rate_Of_Turn,
+// and acceleration are the members' (data; the engine has no team entity, so each member takes
+// them). Unset fields leave the member's own. Space squadrons are not teams in this sense: their
+// fighters fly on their own.
+struct TeamMovement
+{
+    std::optional<float> max_speed;
+    std::optional<float> turn_rate;
+    std::optional<float> acceleration;
+    std::optional<float> deceleration;
+};
+
+inline void apply_team_movement(const TeamMovement& team, EntitySpawn& spawn) noexcept
+{
+    spawn.max_speed = team.max_speed.value_or(spawn.max_speed);
+    spawn.turn_rate = team.turn_rate.value_or(spawn.turn_rate);
+    spawn.movement.acceleration = team.acceleration.value_or(spawn.movement.acceleration);
+    spawn.movement.deceleration = team.deceleration.value_or(spawn.movement.deceleration);
+}
+
+// An XML object type that can be spawned at runtime, as the battle sees it (its look is a
+// SpawnableLook at the same index).
+struct SpawnableType
+{
+    std::string type_name;
+    float max_speed{};
+    // Walks on the ground on land maps (Space_Layer Land or None); flyers keep a height instead.
+    bool follows_ground{};
+    // XML Hover_Offset: height above the surface for flyers (air whales 250, snowspeeders 50).
+    float hover_offset{};
+    // Passability types its MovementClass may enter (MovementClassTypeDefs.xml).
+    std::uint32_t passable_types{};
+    // Health, shields, armor, and weapon from XML (combat_content.hpp).
+    CombatProfile combat;
+    // Separation footprint (from the model bounds) and turn rate (XML Max_Rate_Of_Turn); see
+    // EntitySpawn.
+    float radius{};
+    float turn_rate{};
+    // Acceleration and turning (type_movement).
+    MovementProfile movement;
+    // Fighters' minimum flight speed (EntitySpawn::min_speed); 0 for other types.
+    float min_speed{};
+    // Aims with its body (no TURRET behavior); applies when it walks on the ground.
+    bool aims_with_body{};
+    // XML FormationOrder and FormationSpacing (formation.hpp).
+    std::uint32_t formation_order{2};
+    float formation_spacing{0.5F};
+    bool formation_solo{};
+    CrushProfile crush;
+    Survivors survivors;
+    ScriptTypeInfo script;
+    // A company (Company_Units): the spawnable types of its members, in list order, spawned
+    // together in formation. Empty for ordinary types.
+    std::vector<std::size_t> members;
+    // A company's team movement, applied to its members, and how it splits into teams.
+    TeamMovement team;
+    TeamLayout team_layout;
+    // XML FormationRaggedness (FormationTeam::raggedness) when it stands in a team.
+    float formation_raggedness{};
+};
+
+// What a battle needs from a built map (VisualMapAsset holds it; tests build it directly).
+struct BattleMap
+{
+    // Placed entities, spawned in order when the battle starts.
+    std::span<const MapEntity> entities;
+    // Types that spawn orders may name, by XML type name.
+    std::span<const SpawnableType> spawnable;
+    // Ground of land maps (none on space maps).
+    const GroundMap* ground{};
+    DamageTable damage_table;
+    Hostility hostility;
 };
 
 } // namespace eaw

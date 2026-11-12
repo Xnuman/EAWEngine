@@ -188,7 +188,8 @@ void test_visual_terrain()
         const std::array<std::string, 2> types{"Test_Tank", "Missing_Type"};
         const auto with_spawns = expect_ok(eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", nullptr, types), "building the map with spawn types");
         require(with_spawns.spawnable.size() == 1 && with_spawns.spawnable[0].type_name == "Test_Tank" &&
-                    std::fabs(with_spawns.spawnable[0].max_speed - 2.0F * eaw::provisional_max_speed_scale) < 1.0e-4F && with_spawns.spawnable[0].mesh < with_spawns.scene.meshes.size(),
+                    std::fabs(with_spawns.spawnable[0].max_speed - 2.0F * eaw::provisional_max_speed_scale) < 1.0e-4F && with_spawns.spawnable_looks.size() == 1 &&
+                    with_spawns.spawnable_looks[0].mesh < with_spawns.scene.meshes.size(),
                 "a spawn type must resolve to a mesh and its scaled speed");
         require(std::ranges::any_of(with_spawns.scene.warnings,
                                     [](const std::string& warning)
