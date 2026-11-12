@@ -267,8 +267,6 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
   higher (changing the comparison changes the hash);
 - the script host's own SplitMix stream beside `core/random` (it is script state, so a move must keep
   its sequence);
-- the engine's categories (battles, presentation, scene building, input, the sandbox's parts) are
-  one library still; review proposal C makes each its own.
 
 ## Performance gates
 

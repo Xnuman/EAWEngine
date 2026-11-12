@@ -44,7 +44,11 @@ Dependencies point inward: a lower layer never includes or links a higher one.
 | | `eaw_localization` | DAT string tables on disk, TSV workspaces, mod text scans, translation checks. | core, formats |
 | Runtime | `eaw_simulation` | Deterministic tactical simulation: entities, components, ticks, commands, snapshots. | core, math |
 | | `eaw_script` | Sandboxed Lua 5.0 host: threads, engine events and callbacks, recording stubs for the unimplemented host API. | vfs, Lua |
-| | `eaw_engine` | Battles and order logs, scripts in battles, scene builders, presentation, cameras, animation, particles, battle sounds. No graphics or audio API. | assets, audio, script, simulation, render contract |
+| | `eaw_battle` | Battles and order logs, the battle runtime, scripts in battles, the battle side of maps, gameplay reads of XML types and models. No render contract. | assets, script, simulation |
+| | `eaw_presentation` | Battle frames, scene presentation, rigs and unit animation, particles, effects, projectile visuals, battle sounds, debug drawing. No graphics or audio API. | battle, audio, render contract |
+| | `eaw_scene` | Scene building: maps, models, terrain, materials, particles, and rigs as engine-native visual data. | battle, presentation, render contract |
+| | `eaw_control` | Camera controllers and math, RTS selection and picking, the terrain height field. | simulation, render contract |
+| | `eaw_sandbox` | The sandbox's testable parts and the headless battle command. | battle, presentation, scene, control |
 | Presentation | `eaw_render_contract` | Engine-native visual data (`visual_scene.hpp`), header only. | math |
 | | `eaw_render_d3d12` | The Direct3D 12 backend. | core, render contract, formats (RGBA images for captures) |
 | | `eaw_platform` | Win32 window, raw input, crash handlers, log sinks. | core |
@@ -62,7 +66,7 @@ Third-party code is pinned in `third_party/`: Dear ImGui (docking branch, by com
 
 Every library and executable keeps its headers under `include/<directory>/` and its sources
 (with private headers) under `src/`, and headers are included by short paths
-(`"core/status.hpp"`, `"simulation/simulation.hpp"`, `"engine/battle.hpp"`). A directory with
+(`"core/status.hpp"`, `"simulation/simulation.hpp"`, `"battle/battle.hpp"`). A directory with
 two targets shares one include folder (`render/` for the contract and the D3D12 backend, `audio/`
 for the contract and the devices). Debug builds of every library and executable carry the `_d`
 suffix.
@@ -152,7 +156,7 @@ tick on.
 
 ### Battles
 
-A `Battle` (`engine/battle.*`) sets a world up from a built map and takes orders in replayable
+A `Battle` (`battle/battle.*`) sets a world up from a built map and takes orders in replayable
 terms: XML type names, owner slots, points, and entity ids. Each order is validated, translated into
 simulation commands for the next tick (a spawn order becomes a `spawn` command carrying the entities
 laid out on a grid or in formation), and recorded with its tick. Entity ids are allocated
@@ -195,7 +199,7 @@ the host only calls. Each object is a userdata (as in the original), one Lua val
 interned kinds so `==` and table keys work; a kind's method names resolve to numeric ids once, and a
 call reads its arguments from the Lua stack and pushes its results without converting or
 allocating. Names the provider lacks stay recording stubs. In battles the provider is
-`BattleScripts` (`engine/battle_scripts.*`), one context per script, under three rules that keep
+`BattleScripts` (`battle/battle_scripts.*`), one context per script, under three rules that keep
 the script phase deterministic and ready for threads:
 
 1. every script reads the same immutable view, the snapshot of the tick that just ran with indices
@@ -244,7 +248,7 @@ whole instance list every frame. Selection is a set of entity ids.
   through model proxies (`AttachedEffects`) and follow the animated bone palette; `BattleEffects`
   derives a battle's effects (attached effects, impacts, deaths, projectile bolts) from its
   snapshots.
-- **Cameras.** Controllers in `eaw_engine` turn input into a `VisualCamera`: an orbit camera for
+- **Cameras.** Controllers in `eaw_control` turn input into a `VisualCamera`: an orbit camera for
   single models, an RTS camera over maps within their bounds, and a free debug camera.
 
 ## Audio
@@ -262,7 +266,7 @@ presets; `resolve_sound_sample` finds a sample under the SFX folder or the langu
 `AudioDevice` (`eaw_audio`) plays PCM voices in categories (effects, voice, music, interface) with
 volume, pitch, pan, and looping; `create_audio_device` (`eaw_audio_devices`) picks XAudio2, FMOD, or
 the null device, and the sandbox falls back to the null device when a backend cannot start.
-`BattleAudio` (`eaw_engine`) is presentation like `BattleEffects`: from each tick's snapshot it plays
+`BattleAudio` (`eaw_presentation`) is presentation like `BattleEffects`: from each tick's snapshot it plays
 weapon fire and deaths, each frame it keeps engine (moving or idle) and ambient loops on the nearest units, places voices
 by the listener (the camera's focus raised by AUDIO.XML's pullback), and applies the event rules
 (chance, instance limits, overlap groups, sample order, volume and pitch ranges, predelays, chains).
@@ -452,10 +456,9 @@ The file-level split of each module.
   provider calls, `ScriptCall`), `script_values` (`ScriptValue` to and from Lua, with read limits),
   `script_stubs` (recording stubs), and `host_api_recorder` (what scripts called), sharing the
   private `script_host_internal.hpp`.
-- `src/engine` (`eaw_engine`), by category (its CMake source groups). The categories depend one
-  way: scene building on presentation and battles, presentation on battles, the sandbox's parts on
-  all of them; input and cameras stand alone.
-  - battles: `battle` (setup, replayable orders, the order log, spawn grids), `battle_map` and
+- The engine is five libraries that depend one way: scene building on presentation and battles,
+  presentation on battles, the sandbox's parts on all of them; cameras and control stand alone.
+  - `src/battle` (`eaw_battle`): `battle` (setup, replayable orders, the order log, spawn grids), `battle_map` and
     `battle_map_builder` (the battle side of a map: placements, companies, spawnable types, ground,
     with the walk the visual build shares in `battle_map_build.hpp`), `battle_runtime` (a battle and
     its scripts on the fixed clock), `battle_log` (reading and writing logs), `battle_scripts`
@@ -463,17 +466,17 @@ The file-level split of each module.
     (XML combat data translated into the simulation's combat profiles), and `object_types` (what
     gameplay reads of XML types and their models: the cached catalog, movement classes, type
     fields, model footprints, hardpoint models);
-  - presentation: `visual_rig` (rigs, clips, palettes), `entity_look` (how entities and spawnable
+  - `src/presentation` (`eaw_presentation`): `visual_rig` (rigs, clips, palettes), `entity_look` (how entities and spawnable
     types are drawn), `battle_frame` (a running battle's tick events and frames),
     `scene_presentation`, `unit_animation`, `particle_effects` (`ParticleWorld`), `attached_effects`,
     `battle_effects`, `battle_audio`, `projectile_visuals`, and `debug_draw`;
-  - scene building, behind `visual_scene_builder.hpp` and sharing `scene_builder_internal.hpp`:
+  - `src/scene` (`eaw_scene`), behind `visual_scene_builder.hpp` and sharing `scene_builder_internal.hpp`:
     `scene_materials` (textures, materials, lighting), `scene_models` (models and rigs),
     `scene_particles` (particle effects and effect objects), `scene_projectiles`, `scene_terrain`
     (terrain, liquids, tracks), `type_looks` (what XML types say about their look), and
     `visual_map_builder` (maps and runtime-spawnable packages);
-  - input and cameras: `camera_controller`, `camera_math`, `rts_control`, `terrain_height`;
-  - the sandbox's testable parts and the headless command: `sandbox_options` (command line),
+  - `src/control` (`eaw_control`): `camera_controller`, `camera_math`, `rts_control`, `terrain_height`;
+  - `src/sandbox` (`eaw_sandbox`), the sandbox's testable parts and the headless command: `sandbox_options` (command line),
     `sandbox_content` (background builds and hot-reload checks), `sandbox_debug_lines` (a pure
     function of a view struct), `battle_runner` (headless runs), and `text_format` (numbers for
     console and overlay text).

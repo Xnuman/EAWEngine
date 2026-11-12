@@ -36,14 +36,14 @@
 #include "localization/localization_scan.hpp"
 #include "localization/localization_workspace.hpp"
 #include "simulation/simulation.hpp"
-#include "engine/camera_controller.hpp"
-#include "engine/camera_math.hpp"
-#include "engine/combat_content.hpp"
-#include "engine/debug_draw.hpp"
-#include "engine/rts_control.hpp"
-#include "engine/scene_presentation.hpp"
-#include "engine/terrain_height.hpp"
-#include "engine/visual_scene_builder.hpp"
+#include "battle/combat_content.hpp"
+#include "presentation/debug_draw.hpp"
+#include "presentation/scene_presentation.hpp"
+#include "scene/visual_scene_builder.hpp"
+#include "control/camera_controller.hpp"
+#include "control/camera_math.hpp"
+#include "control/rts_control.hpp"
+#include "control/terrain_height.hpp"
 
 #include <array>
 #include <bit>

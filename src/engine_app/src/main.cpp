@@ -2,8 +2,8 @@
 #include "vfs/asset_environment.hpp"
 #include "vfs/game_installation.hpp"
 #include "vfs/virtual_file_system.hpp"
-#include "engine/battle_runner.hpp"
-#include "engine/sandbox_options.hpp"
+#include "sandbox/battle_runner.hpp"
+#include "sandbox/sandbox_options.hpp"
 #include "engine_app/image_compare_command.hpp"
 #include "engine_app/lua_survey_command.hpp"
 

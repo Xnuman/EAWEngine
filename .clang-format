@@ -47,7 +47,7 @@ AllowShortLoopsOnASingleLine: false
 # Includes (AGENTS.md): the file's own header; its target's private headers; the project's
 # libraries in one block, innermost layer first; third-party headers; <windows.h> and the other C
 # and system headers; the C++ standard library. Each block sorted. Blocks group by Priority and
-# order by SortPriority, so the non-project categories sort above the layer range (2-16).
+# order by SortPriority, so the non-project categories sort above the layer range (2-20).
 IncludeBlocks: Regroup
 SortIncludes: CaseSensitive
 IncludeCategories:
@@ -87,30 +87,42 @@ IncludeCategories:
   - Regex: '^"platform/'
     Priority: 2
     SortPriority: 12
-  - Regex: '^"engine/'
+  - Regex: '^"battle/'
     Priority: 2
     SortPriority: 13
-  - Regex: '^"launcher/'
+  - Regex: '^"presentation/'
     Priority: 2
     SortPriority: 14
-  - Regex: '^"imgui_app/'
+  - Regex: '^"scene/'
     Priority: 2
     SortPriority: 15
-  - Regex: '^"(engine_app|tools_gui|asset_inspector|dat_editor|dev_launcher)/'
+  - Regex: '^"control/'
     Priority: 2
     SortPriority: 16
+  - Regex: '^"sandbox/'
+    Priority: 2
+    SortPriority: 17
+  - Regex: '^"launcher/'
+    Priority: 2
+    SortPriority: 18
+  - Regex: '^"imgui_app/'
+    Priority: 2
+    SortPriority: 19
+  - Regex: '^"(engine_app|tools_gui|asset_inspector|dat_editor|dev_launcher)/'
+    Priority: 2
+    SortPriority: 20
   - Regex: '^"'
     Priority: 3
-    SortPriority: 20
+    SortPriority: 30
   - Regex: '^<windows\.h>$'
     Priority: 4
-    SortPriority: 30
+    SortPriority: 40
   - Regex: '^<.*\.h>$'
     Priority: 4
-    SortPriority: 31
+    SortPriority: 41
   - Regex: '^<'
     Priority: 6
-    SortPriority: 40
+    SortPriority: 50
 SortUsingDeclarations: Lexicographic
 SpaceBeforeParens: ControlStatements
 SpaceBeforeCpp11BracedList: false

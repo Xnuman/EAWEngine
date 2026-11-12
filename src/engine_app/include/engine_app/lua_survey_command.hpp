@@ -6,7 +6,7 @@
 // the measurement the host API is built from, ranked by use.
 
 #include "vfs/virtual_file_system.hpp"
-#include "engine/sandbox_options.hpp"
+#include "sandbox/sandbox_options.hpp"
 
 namespace eaw {
 

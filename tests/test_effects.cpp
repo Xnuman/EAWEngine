@@ -1,15 +1,15 @@
 // Particle effects and the effects of battles: tracks, the particle world, effect objects, bolts.
 #include "test_support.hpp"
 
-#include "engine/attached_effects.hpp"
-#include "engine/battle.hpp"
-#include "engine/battle_effects.hpp"
-#include "engine/battle_log.hpp"
-#include "engine/particle_effects.hpp"
-#include "engine/projectile_visuals.hpp"
-#include "engine/sandbox_options.hpp"
-#include "engine/scene_builder_internal.hpp"
-#include "engine/unit_animation.hpp"
+#include "battle/battle.hpp"
+#include "battle/battle_log.hpp"
+#include "presentation/attached_effects.hpp"
+#include "presentation/battle_effects.hpp"
+#include "presentation/particle_effects.hpp"
+#include "presentation/projectile_visuals.hpp"
+#include "presentation/unit_animation.hpp"
+#include "scene/scene_builder_internal.hpp"
+#include "sandbox/sandbox_options.hpp"
 
 namespace {
 

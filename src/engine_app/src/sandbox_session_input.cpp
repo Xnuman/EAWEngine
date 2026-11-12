@@ -1,6 +1,6 @@
 #include "core/string_utils.hpp"
 #include "formats/ala_animation_helpers.hpp"
-#include "engine/terrain_height.hpp"
+#include "control/terrain_height.hpp"
 #include "engine_app/sandbox_session.hpp"
 
 #include <algorithm>

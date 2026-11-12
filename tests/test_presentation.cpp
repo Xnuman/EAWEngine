@@ -2,16 +2,16 @@
 #include "test_support.hpp"
 
 #include "formats/alo_model_helpers.hpp"
-#include "engine/battle.hpp"
-#include "engine/battle_effects.hpp"
-#include "engine/battle_frame.hpp"
-#include "engine/battle_log.hpp"
-#include "engine/battle_runtime.hpp"
-#include "engine/particle_effects.hpp"
-#include "engine/projectile_visuals.hpp"
-#include "engine/sandbox_options.hpp"
-#include "engine/scene_builder_internal.hpp"
-#include "engine/unit_animation.hpp"
+#include "battle/battle.hpp"
+#include "battle/battle_log.hpp"
+#include "battle/battle_runtime.hpp"
+#include "presentation/battle_effects.hpp"
+#include "presentation/battle_frame.hpp"
+#include "presentation/particle_effects.hpp"
+#include "presentation/projectile_visuals.hpp"
+#include "presentation/unit_animation.hpp"
+#include "scene/scene_builder_internal.hpp"
+#include "sandbox/sandbox_options.hpp"
 
 namespace {
 
