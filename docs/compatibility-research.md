@@ -79,9 +79,10 @@ Adopted so far:
   place toward the target's nearest live hardpoint, exactly onto its bearing (S-26, S-27); idle
   ships keep their heading (S-22 to S-25). Their 10-degree dead band rests on disassembly and is
   not used.
+- *Straight start*: a space ship that names no `Min_Speed_Fraction_For_Turn` turns only at full
+  speed and keeps it through the turn (S-12: the corvette flies straight 62 frames from rest, turns
+  once it reaches 3.72); the default fraction is 1, where it was 0.25, a guess.
 Recorded and not adopted yet (each changes behavior beyond a constant; proposed to the owner):
-flying
-straight from rest until full speed before turning (S-12; contradicts our 25 % turning floor);
 keeping a held target when a better one appears (S-02) and replacing a removed
 one at the next allowed shot (S-03); `Layer_Z_Adjust` heights (S-10 to S-14, S-32 to S-34); per-
 hardpoint shot counts by bearing (S-22 to S-42) as fire-cone regression cases; hit rates near 40 %

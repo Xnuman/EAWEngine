@@ -206,12 +206,15 @@ float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& defi
 // per frame; EaW-Revised's S-10, S-12, S-26; docs/compatibility-research.md). Callers pass the
 // space multiplier on space maps; on land it is not observed, so they pass 1.
 MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, bool land, bool flyer, float mode_multiplier = 1.0F);
-// Engine choices, not the original's: how far off its way a ground unit stops to turn (the
+// An engine choice, not the original's: how far off its way a ground unit stops to turn (the
 // owner's observation that land units do not turn while moving off; GameConstants'
-// CloseEnoughAngleForMoveStart says 180, which would never stop them, so the two disagree), and the
-// turn speed fraction of space ships that do not name one (capital ships).
+// CloseEnoughAngleForMoveStart says 180, which would never stop them, so the two disagree).
 inline constexpr float ground_turn_in_place_angle = 0.785398163F;
-inline constexpr float default_space_turn_speed_fraction = 0.25F;
+// The turn speed fraction of space ships that do not name one: they turn only at full speed, and
+// keep it through the turn (recorded in the FoC debug build: a corvette, which names none, ordered
+// 90 degrees left from rest flies straight for 62 frames, turns once it reaches 3.72, its full
+// speed, and turns at that speed; EaW-Revised S-12, docs/compatibility-research.md).
+inline constexpr float default_space_turn_speed_fraction = 1.0F;
 
 // The movement of the team `company` forms (its XML Create_Team_Type container): the container's
 // Max_Speed (scaled like type_max_speed, times `speed_multiplier`), Max_Rate_Of_Turn, and
