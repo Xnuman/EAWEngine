@@ -53,6 +53,9 @@ struct HardpointProfile
     // Presentation only: the Particle object its destruction plays (the first entry of its XML
     // Death_Explosion_Particles, as game_object_name_crc), or 0.
     std::uint32_t death_effect{};
+    // Presentation only: its XML Type (HARD_POINT_WEAPON_LASER, ...) as game_object_name_crc, for
+    // the owner's report of the loss (SFXEvent_Hardpoint_Destroyed), or 0.
+    std::uint32_t type_key{};
 };
 
 // How far a weapon's shots stray from targets of some categories: the first entry whose

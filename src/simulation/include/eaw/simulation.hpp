@@ -392,9 +392,10 @@ struct HardpointDeathSnapshot
     EntityId entity;
     std::uint32_t hardpoint{};
     Vector3 position;
-    // HardpointProfile::death_sound and death_effect, or 0.
+    // HardpointProfile::death_sound, death_effect, and type_key, or 0.
     std::uint32_t sound{};
     std::uint32_t effect{};
+    std::uint32_t type_key{};
 };
 
 struct SimSnapshot

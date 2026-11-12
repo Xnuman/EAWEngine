@@ -136,6 +136,9 @@ private:
         std::string spin;
         std::string group_move;
         std::string group_attack;
+        // Its voice reporting the loss of a hardpoint, by the hardpoint's Type key
+        // (SFXEvent_Hardpoint_Destroyed: "HARD_POINT_<kind>, event" entries).
+        std::vector<std::pair<std::uint32_t, std::string>> hardpoint_lost;
     };
     // A projectile type's impact sounds (Projectile_SFXEvent_Detonate, and _Reduced_By_Armor).
     struct ProjectileSounds

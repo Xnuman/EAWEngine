@@ -147,6 +147,17 @@ const BattleAudio::TypeSounds& BattleAudio::type_sounds(const std::string_view t
         sounds.spin = type_field(*catalog_, definition, "Spin_Away_On_Death_SFXEvent_Start_Die");
         sounds.group_move = type_field(*catalog_, definition, "SFXEvent_Group_Move");
         sounds.group_attack = type_field(*catalog_, definition, "SFXEvent_Group_Attack");
+        for (const auto* entry : catalog_->fields(definition, "SFXEvent_Hardpoint_Destroyed").fields)
+        {
+            const auto text = std::string_view(entry->text);
+            const auto comma = text.find(',');
+            const auto kind = ascii_trim(text.substr(0, comma));
+            const auto event = comma == std::string_view::npos ? std::string_view{} : ascii_trim(text.substr(comma + 1));
+            if (!kind.empty() && !event.empty())
+            {
+                sounds.hardpoint_lost.emplace_back(game_object_name_crc(kind), std::string(event));
+            }
+        }
         sounds.ambient_moving_min = std::max(0.0F, scene_build::type_float_field(*catalog_, definition, "SFXEvent_Ambient_Moving_Min_Delay_Seconds"));
         sounds.ambient_moving_max = std::max(sounds.ambient_moving_min, scene_build::type_float_field(*catalog_, definition, "SFXEvent_Ambient_Moving_Max_Delay_Seconds"));
     }
@@ -363,6 +374,15 @@ void BattleAudio::play_tick_events(const SimSnapshot& snapshot, const Simulation
     // definitions, none on the unit types).
     for (const auto& fallen : snapshot.hardpoint_deaths)
     {
+        // The owner reports the loss in its own voice (every owner until the player layer exists).
+        if (world.alive(fallen.entity))
+        {
+            const auto& sounds = type_sounds(world.type_name(fallen.entity));
+            if (const auto line = std::ranges::find(sounds.hardpoint_lost, fallen.type_key, &std::pair<std::uint32_t, std::string>::first); line != sounds.hardpoint_lost.end())
+            {
+                (void)play_event(line->second, fallen.position);
+            }
+        }
         if (fallen.sound == 0)
         {
             continue;

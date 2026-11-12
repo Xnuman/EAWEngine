@@ -23,11 +23,11 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 146 |
+| `done` | 147 |
 | `partial` | 18 |
-| `gap` | 253 |
-| `needs` | 681 |
-| `n/a` | 19 |
+| `gap` | 250 |
+| `needs` | 682 |
+| `n/a` | 20 |
 | total | 1117 |
 
 Systems that `needs` rows wait for, by tag count:
@@ -38,7 +38,7 @@ Systems that `needs` rows wait for, by tag count:
 | galactic | 119 |
 | production | 91 |
 | status effects | 55 |
-| UI | 47 |
+| UI | 48 |
 | super weapons | 34 |
 | hero clash | 23 |
 | battle rules | 20 |
@@ -1487,7 +1487,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Sound events and speech
 
-21 done, 18 gap, 49 needs, 3 n/a.
+22 done, 15 gap, 50 needs, 4 n/a.
 
 ### Unit responses to orders and selection
 
@@ -1586,9 +1586,9 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `SFXEvent_Attack_Hardpoint` | `gap` |  |
-| `SFXEvent_Hardpoint_Destroyed` | `gap` |  |
-| `SFXEvent_Hardpoint_All_Weapons_Destroyed` | `gap` |  |
+| `SFXEvent_Attack_Hardpoint` | `needs UI` | ordering an attack on a hardpoint |
+| `SFXEvent_Hardpoint_Destroyed` | `done` | by hardpoint Type; every owner until the player layer |
+| `SFXEvent_Hardpoint_All_Weapons_Destroyed` | `n/a` | empty in both stock uses |
 | `SFXEvent_Hardpoint` | `n/a` | events undefined; probably dead |
 | `Death_Explosion_SFXEvent` | `done` |  |
 

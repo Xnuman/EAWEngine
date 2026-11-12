@@ -660,6 +660,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         const auto second_bone = fire_bone ? find_bone(skeleton, pose, bone_name("Fire_Bone_B"), model_scale) : std::nullopt;
         HardpointProfile part;
         part.kind = kind;
+        part.type_key = kind_node != nullptr ? game_object_name_crc(ascii_trim(kind_node->text)) : 0U;
         part.health = point.flag("Is_Destroyable", true) ? point.amount("Health") * health_multiplier : 0.0F;
         part.targetable = point.flag("Is_Targetable", true);
         part.offset = attachment ? attachment->point : fire_bone ? fire_bone->point : LocalPoint{};

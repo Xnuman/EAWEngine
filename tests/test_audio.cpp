@@ -436,7 +436,9 @@ void test_impact_and_moving_sounds()
                "</SFXEvent_Ambient_Moving_Min_Delay_Seconds><SFXEvent_Ambient_Moving_Max_Delay_Seconds>1</SFXEvent_Ambient_Moving_Max_Delay_Seconds></GroundVehicle>"
                "<HeroUnit Name=\"Hero\"><SFXEvent_Health_Low_Warning>Low_Line</SFXEvent_Health_Low_Warning>"
                "<SFXEvent_Health_Critical_Warning>Critical_Line</SFXEvent_Health_Critical_Warning>"
-               "<Spin_Away_On_Death_SFXEvent_Start_Die>Spinning</Spin_Away_On_Death_SFXEvent_Start_Die><SFXEvent_Group_Move>Low_Line</SFXEvent_Group_Move></HeroUnit>"
+               "<Spin_Away_On_Death_SFXEvent_Start_Die>Spinning</Spin_Away_On_Death_SFXEvent_Start_Die><SFXEvent_Group_Move>Low_Line</SFXEvent_Group_Move>"
+               "<SFXEvent_Hardpoint_Destroyed>HARD_POINT_ENGINE, </SFXEvent_Hardpoint_Destroyed>"
+               "<SFXEvent_Hardpoint_Destroyed> HARD_POINT_WEAPON_LASER, Critical_Line </SFXEvent_Hardpoint_Destroyed></HeroUnit>"
                "</Units>");
     write_file(root / "Data" / "Audio" / "SFX" / "a.wav", text_of(make_wav(eaw::wav_format::pcm, 1, 16, pcm16({1, 2}))));
     eaw::VirtualFileSystem vfs;
@@ -507,6 +509,11 @@ void test_impact_and_moving_sounds()
         const auto before = audio.stats().played;
         audio.play_tick_events(spinning, hurt);
         require(audio.stats().played == before + 1, "a unit spinning away must play its spin sound");
+        eaw::SimSnapshot lost;
+        lost.hardpoint_deaths = {{unit, 0, {}, 0U, 0U, eaw::game_object_name_crc("HARD_POINT_WEAPON_LASER")}, {unit, 1, {}, 0U, 0U, eaw::game_object_name_crc("HARD_POINT_ENGINE")}};
+        const auto ahead = audio.stats().played;
+        audio.play_tick_events(lost, hurt);
+        require(audio.stats().played == ahead + 1, "a unit must report a lost hardpoint of a kind it has a line for, and nothing for an empty line");
     }
     std::filesystem::remove_all(root, ignored);
 }
