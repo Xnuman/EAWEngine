@@ -436,7 +436,7 @@ void test_impact_and_moving_sounds()
                "</SFXEvent_Ambient_Moving_Min_Delay_Seconds><SFXEvent_Ambient_Moving_Max_Delay_Seconds>1</SFXEvent_Ambient_Moving_Max_Delay_Seconds></GroundVehicle>"
                "<HeroUnit Name=\"Hero\"><SFXEvent_Health_Low_Warning>Low_Line</SFXEvent_Health_Low_Warning>"
                "<SFXEvent_Health_Critical_Warning>Critical_Line</SFXEvent_Health_Critical_Warning>"
-               "<Spin_Away_On_Death_SFXEvent_Start_Die>Spinning</Spin_Away_On_Death_SFXEvent_Start_Die></HeroUnit>"
+               "<Spin_Away_On_Death_SFXEvent_Start_Die>Spinning</Spin_Away_On_Death_SFXEvent_Start_Die><SFXEvent_Group_Move>Low_Line</SFXEvent_Group_Move></HeroUnit>"
                "</Units>");
     write_file(root / "Data" / "Audio" / "SFX" / "a.wav", text_of(make_wav(eaw::wav_format::pcm, 1, 16, pcm16({1, 2}))));
     eaw::VirtualFileSystem vfs;
@@ -467,6 +467,9 @@ void test_impact_and_moving_sounds()
     }
     require(audio.stats().played == played + 2, "a moving unit must play its ambient moving sound every second (two in five half-second frames after the first wait)");
     require(audio.play_response("Walker", eaw::UnitResponse::guard), "a guard order must get the type's guard response");
+    require(audio.play_group_response("Hero", eaw::UnitResponse::move) && !audio.play_group_response("Hero", eaw::UnitResponse::attack) &&
+                !audio.play_group_response("Walker", eaw::UnitResponse::move),
+            "a group order must get a type's group line, and nothing without one");
 
     // Without AMBIENT_SFX among its behaviors, a moving unit plays no ambient sound.
     {

@@ -30,9 +30,23 @@ std::optional<eaw::Vector3> SandboxSession::ground_target(const float x, const f
     return point ? std::optional(eaw::Vector3{(*point)[0], (*point)[1], (*point)[2]}) : std::nullopt;
 }
 
-void SandboxSession::respond(const eaw::EntityId unit, const eaw::UnitResponse response)
+void SandboxSession::respond(const eaw::EntityId unit, const eaw::UnitResponse response, const std::span<const eaw::EntityId> group)
 {
-    if (audio && world && world->alive(unit))
+    if (!audio || !world)
+    {
+        return;
+    }
+    if (group.size() > 1U)
+    {
+        for (const auto member : group)
+        {
+            if (world->alive(member) && audio->play_group_response(world->type_name(member), response))
+            {
+                return;
+            }
+        }
+    }
+    if (world->alive(unit))
     {
         (void)audio->play_response(world->type_name(unit), response);
     }
@@ -56,13 +70,13 @@ void SandboxSession::order_move(const eaw::Vector3& target)
     std::ranges::sort(movers, {}, eaw::entity_key);
     const auto count = movers.size();
     const auto responder = movers.front();
-    if (const auto submitted = battle->submit({.order = eaw::BattleOrder::move, .entities = std::move(movers), .point = target}); !submitted)
+    if (const auto submitted = battle->submit({.order = eaw::BattleOrder::move, .entities = movers, .point = target}); !submitted)
     {
         eaw::log_warning("simulation", submitted.error());
         return;
     }
     ++orders_issued;
-    respond(responder, eaw::UnitResponse::move);
+    respond(responder, eaw::UnitResponse::move, movers);
     std::cout << "Move " << count << " units to " << eaw::format_fixed(target.x, 0) << ", " << eaw::format_fixed(target.y, 0) << ", " << eaw::format_fixed(target.z, 0) << '\n';
 }
 
@@ -83,13 +97,13 @@ void SandboxSession::order_standing(const eaw::BattleOrder order, const eaw::Vec
     std::ranges::sort(units, {}, eaw::entity_key);
     const auto count = units.size();
     const auto responder = units.front();
-    if (const auto submitted = battle->submit({.order = order, .entities = std::move(units), .point = point, .target = target}); !submitted)
+    if (const auto submitted = battle->submit({.order = order, .entities = units, .point = point, .target = target}); !submitted)
     {
         eaw::log_warning("simulation", submitted.error());
         return;
     }
     ++orders_issued;
-    respond(responder, order == eaw::BattleOrder::attack_move ? eaw::UnitResponse::attack : eaw::UnitResponse::guard);
+    respond(responder, order == eaw::BattleOrder::attack_move ? eaw::UnitResponse::attack : eaw::UnitResponse::guard, units);
     std::cout << (order == eaw::BattleOrder::attack_move ? "Attack-move " : "Guard ") << count << " units "
               << (target.valid() ? "with " + std::string(world->type_name(target)) : "at " + eaw::format_fixed(point.x, 0) + ", " + eaw::format_fixed(point.y, 0)) << '\n';
 }
@@ -118,13 +132,13 @@ void SandboxSession::order_attack(const eaw::EntityId victim)
     }
     std::ranges::sort(attackers, {}, eaw::entity_key);
     const auto responder = attackers.front();
-    if (const auto submitted = battle->submit({.order = eaw::BattleOrder::attack, .entities = std::move(attackers), .target = victim}); !submitted)
+    if (const auto submitted = battle->submit({.order = eaw::BattleOrder::attack, .entities = attackers, .target = victim}); !submitted)
     {
         eaw::log_warning("simulation", submitted.error());
         return;
     }
     ++orders_issued;
-    respond(responder, eaw::UnitResponse::attack);
+    respond(responder, eaw::UnitResponse::attack, attackers);
     std::cout << "Attack " << world->type_name(victim) << " (owner " << found->owner << ")\n";
 }
 

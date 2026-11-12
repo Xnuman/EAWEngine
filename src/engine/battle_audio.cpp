@@ -145,6 +145,8 @@ const BattleAudio::TypeSounds& BattleAudio::type_sounds(const std::string_view t
         sounds.health_low = type_field(*catalog_, definition, "SFXEvent_Health_Low_Warning");
         sounds.health_critical = type_field(*catalog_, definition, "SFXEvent_Health_Critical_Warning");
         sounds.spin = type_field(*catalog_, definition, "Spin_Away_On_Death_SFXEvent_Start_Die");
+        sounds.group_move = type_field(*catalog_, definition, "SFXEvent_Group_Move");
+        sounds.group_attack = type_field(*catalog_, definition, "SFXEvent_Group_Attack");
         sounds.ambient_moving_min = std::max(0.0F, scene_build::type_float_field(*catalog_, definition, "SFXEvent_Ambient_Moving_Min_Delay_Seconds"));
         sounds.ambient_moving_max = std::max(sounds.ambient_moving_min, scene_build::type_float_field(*catalog_, definition, "SFXEvent_Ambient_Moving_Max_Delay_Seconds"));
     }
@@ -298,6 +300,13 @@ bool BattleAudio::play_response(const std::string_view type_name, const UnitResp
 {
     const auto& sounds = type_sounds(type_name);
     const auto& event = response == UnitResponse::select ? sounds.select : response == UnitResponse::move ? sounds.move : response == UnitResponse::guard ? sounds.guard : sounds.attack;
+    return !event.empty() && play_event(event);
+}
+
+bool BattleAudio::play_group_response(const std::string_view type_name, const UnitResponse response)
+{
+    const auto& sounds = type_sounds(type_name);
+    const auto& event = response == UnitResponse::move ? sounds.group_move : response == UnitResponse::attack ? sounds.group_attack : std::string{};
     return !event.empty() && play_event(event);
 }
 

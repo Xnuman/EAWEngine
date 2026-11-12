@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 144 |
+| `done` | 146 |
 | `partial` | 18 |
-| `gap` | 255 |
+| `gap` | 253 |
 | `needs` | 681 |
 | `n/a` | 19 |
 | total | 1117 |
@@ -1487,7 +1487,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Sound events and speech
 
-19 done, 20 gap, 49 needs, 3 n/a.
+21 done, 18 gap, 49 needs, 3 n/a.
 
 ### Unit responses to orders and selection
 
@@ -1497,13 +1497,13 @@ Systems that `needs` rows wait for, by tag count:
 | `SFXEvent_Move` | `done` |  |
 | `SFXEvent_Attack` | `done` |  |
 | `SFXEvent_Guard` | `done` |  |
-| `SFXEvent_Stop` | `gap` |  |
+| `SFXEvent_Stop` | `gap` | the sandbox has no stop order yet |
 | `SFXEvent_Move_Opposite` | `gap` |  |
 | `SFXEvent_Fleet_Move` | `needs galactic` |  |
-| `SFXEvent_Group_Move` | `gap` |  |
-| `SFXEvent_Group_Attack` | `gap` |  |
-| `SFXEvent_Assist_Move` | `gap` |  |
-| `SFXEvent_Assist_Attack` | `gap` |  |
+| `SFXEvent_Group_Move` | `done` | a group member with the line speaks it |
+| `SFXEvent_Group_Attack` | `done` |  |
+| `SFXEvent_Assist_Move` | `gap` | trigger unknown |
+| `SFXEvent_Assist_Attack` | `gap` | trigger unknown |
 | `SFXEvent_Attack_With_Non_Hero_Ability` | `needs abilities` |  |
 | `SFXEvent_Barrage` | `needs abilities` |  |
 | `SFXEvent_Attacked` | `gap` |  |

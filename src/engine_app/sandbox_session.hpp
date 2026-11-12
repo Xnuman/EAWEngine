@@ -265,7 +265,9 @@ struct SandboxSession
     // Cameras, selection, picks, and orders (sandbox_session_input.cpp).
     std::optional<eaw::Vector3> ground_target(const float x, const float y) const;
     // The unit's type answers an order or a selection (its XML SFXEvent_Select/Move/Attack).
-    void respond(eaw::EntityId unit, eaw::UnitResponse response);
+    // `unit`'s response to an order; with a group of more than one, a member with a group line
+    // (heroes: SFXEvent_Group_Move, _Group_Attack) speaks it instead (an engine choice of who speaks).
+    void respond(eaw::EntityId unit, eaw::UnitResponse response, std::span<const eaw::EntityId> group = {});
     void order_move(const eaw::Vector3& target);
     void order_attack(const eaw::EntityId victim);
     // Attack-move (Ctrl + right-click) or guard (Shift + right-click) for the selected mobile units:

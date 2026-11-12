@@ -91,6 +91,9 @@ public:
     // A unit type's response to an order (XML SFXEvent_Select, SFXEvent_Move, SFXEvent_Attack,
     // SFXEvent_Guard).
     bool play_response(std::string_view type_name, UnitResponse response);
+    // A unit type's line when ordered as part of a group (XML SFXEvent_Group_Move for moves,
+    // SFXEvent_Group_Attack for attacks; heroes), or false when it has none.
+    bool play_group_response(std::string_view type_name, UnitResponse response);
 
     struct Stats
     {
@@ -131,6 +134,8 @@ private:
         std::string health_low;
         std::string health_critical;
         std::string spin;
+        std::string group_move;
+        std::string group_attack;
     };
     // A projectile type's impact sounds (Projectile_SFXEvent_Detonate, and _Reduced_By_Armor).
     struct ProjectileSounds
