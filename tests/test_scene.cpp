@@ -1,6 +1,7 @@
 // Scene building from decoded assets: the asset cache, materials, terrain, and model visibility.
 #include "test_support.hpp"
 
+#include "assets/legacy_units.hpp"
 #include "assets/model_geometry.hpp"
 #include "battle/battle.hpp"
 #include "battle/battle_log.hpp"
@@ -188,7 +189,7 @@ void test_visual_terrain()
         const std::array<std::string, 2> types{"Test_Tank", "Missing_Type"};
         const auto with_spawns = expect_ok(eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", nullptr, types), "building the map with spawn types");
         const auto& spawnable = with_spawns.battle.spawnable;
-        require(spawnable.size() == 1 && spawnable[0].type_name == "Test_Tank" && std::fabs(spawnable[0].max_speed - 2.0F * eaw::provisional_max_speed_scale) < 1.0e-4F &&
+        require(spawnable.size() == 1 && spawnable[0].type_name == "Test_Tank" && std::fabs(spawnable[0].max_speed - eaw::legacy_units::speed_per_frame(2.0F)) < 1.0e-4F &&
                     with_spawns.spawnable_looks.size() == 1 && with_spawns.spawnable_looks[0].mesh < with_spawns.scene.meshes.size(),
                 "a spawn type must resolve to a mesh and its scaled speed");
         // The battle side alone is what the drawn build holds: no scene needed.

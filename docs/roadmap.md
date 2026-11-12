@@ -287,7 +287,7 @@ Provisional engine choices to check against the original, by black-box observati
 capture-and-compare workflow ([tools.md](tools.md#captures-and-image-regression); features are
 compared by measured ratios from screenshots, never by recreated scenes):
 
-- the ×30 XML speed scale;
+- the original's logic rate, which every per-frame XML value is read at (30 per second, `assets/legacy_units.hpp`: speeds, turn rates, accelerations, frame counts);
 - shield refresh units, and how shields and armor combine;
 - ranges measured in the ground plane;
 - the owner-slot hostility rule;

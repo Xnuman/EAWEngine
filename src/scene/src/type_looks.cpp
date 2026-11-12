@@ -3,6 +3,7 @@
 
 #include "math/scalar.hpp"
 #include "core/string_utils.hpp"
+#include "assets/legacy_units.hpp"
 #include "assets/type_fields.hpp"
 #include "battle/object_types.hpp"
 #include "scene/scene_builder_internal.hpp"
@@ -74,7 +75,7 @@ AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const 
         profile.barrel_bone = 0U;
     }
     const auto speed = type_float_field(catalog, definition, "Turret_Rotate_Speed");
-    profile.turret_rate = (speed > 0.0F ? speed : default_turret_rotate_speed) * provisional_turn_rate_scale;
+    profile.turret_rate = legacy_units::degrees_per_frame(speed > 0.0F ? speed : default_turret_rotate_speed);
     const auto half_arc = [&](const std::string_view field, const float fallback)
     {
         const auto degrees = type_float_field(catalog, definition, field);

@@ -1,6 +1,7 @@
 // Battles above the simulation: combat data from XML, replayable orders, order logs, runtime types.
 #include "test_support.hpp"
 
+#include "assets/legacy_units.hpp"
 #include "battle/battle.hpp"
 #include "battle/battle_log.hpp"
 #include "battle/battle_runtime.hpp"
@@ -139,7 +140,7 @@ void test_combat_content()
     {
         std::vector<std::string> gunner_warnings;
         const auto gunner = eaw::combat_profile(catalog, *definition("Gunner"), content, gunner_warnings);
-        require(gunner.turret && std::fabs(gunner.turret->rate - 4.0F * eaw::provisional_turn_rate_scale) < 1e-5F && std::fabs(gunner.turret->yaw_limit - 0.17453292F) < 1e-5F &&
+        require(gunner.turret && std::fabs(gunner.turret->rate - eaw::legacy_units::degrees_per_frame(4.0F)) < 1e-5F && std::fabs(gunner.turret->yaw_limit - 0.17453292F) < 1e-5F &&
                     gunner.turret->turns_body && !tank.turret,
                 "a type with a turret bone must carry its turret's rate and arc");
     }
@@ -150,7 +151,7 @@ void test_combat_content()
                 weapon.inaccuracy[2].categories == eaw::all_categories && weapon.inaccuracy[2].distance == 50.0F,
             "a type's categories and its weapon's inaccuracy by target category must be read");
     require(weapon.range == 200.0F && weapon.recharge_seconds == 1.5F && weapon.pulse_count == 3 && weapon.pulse_delay_seconds == 0.2F && weapon.damage == 7.5F && weapon.damage_type == laser &&
-                weapon.projectile_speed == 10.0F * eaw::provisional_max_speed_scale && weapon.max_flight_distance == 400.0F && !weapon.damages_shield && weapon.damages_health,
+                weapon.projectile_speed == eaw::legacy_units::speed_per_frame(10.0F) && weapon.max_flight_distance == 400.0F && !weapon.damages_shield && weapon.damages_health,
             "the first projectile type must supply the shot, through its variant chain");
     require(weapon.blast.damage == 30.0F && weapon.blast.range == 60.0F && weapon.blast.tiers == 4, "a projectile's area blast must be read");
     require(weapon.max_lifetime == 2.0F && weapon.scan_range == 300.0F && weapon.random_hardpoints && weapon.blast.friendly_damage == 5.0F &&
@@ -168,7 +169,7 @@ void test_combat_content()
                 wanted.rank(0x80U, 0, eaw::game_object_name_crc("Tank")) < 0.0F && wanted.rank(0x80U, 0, 0) == eaw::TargetingPriorities::unlisted_rank && wanted.rank(0x300U, 0, 0) == 1.0F,
             "a match must rank, exclusions must apply only to unmatched targets, and the rest must rank last");
     const auto team = eaw::type_team_movement(catalog, *definition("Slow_Company"), 2.0F);
-    require(team.max_speed && *team.max_speed == 0.5F * eaw::provisional_max_speed_scale * 2.0F && team.acceleration && *team.acceleration == 0.1F * eaw::provisional_acceleration_scale &&
+    require(team.max_speed && *team.max_speed == eaw::legacy_units::speed_per_frame(0.5F) * 2.0F && team.acceleration && *team.acceleration == eaw::legacy_units::acceleration_per_frame(0.1F) &&
                 !team.turn_rate && !team.deceleration && !eaw::type_team_movement(catalog, *definition("Tank"), 1.0F).max_speed,
             "a company's team must give its members the team's speed and acceleration, and only what it sets");
     {
@@ -229,7 +230,7 @@ void test_combat_content()
                 "a type's animation reference speeds must be read as fractions of Max_Speed, and invalid rates as 1");
         const auto gunner = eaw::scene_build::type_animation_profile(catalog, *definition("Gunner"));
         require(gunner.turret_bone == eaw::game_object_name_crc("TURRET_00") && gunner.barrel_bone == eaw::game_object_name_crc("MuzzleA_00") &&
-                    std::fabs(gunner.turret_rate - 4.0F * eaw::provisional_turn_rate_scale) < 1e-5F && gunner.turret_pitch_limit == eaw::AnimationProfile{}.turret_pitch_limit &&
+                    std::fabs(gunner.turret_rate - eaw::legacy_units::degrees_per_frame(4.0F)) < 1e-5F && gunner.turret_pitch_limit == eaw::AnimationProfile{}.turret_pitch_limit &&
                     plain.turret_bone == 0 && gunner.walk_transition && gunner.pre_turn && !plain.walk_transition,
                 "a type's turret bones, rate, and arcs must be read");
     }
@@ -315,7 +316,7 @@ void test_combat_content()
     }
     const auto& turbolaser = cruiser.weapons.front();
     require(turbolaser.recharge_seconds == 3.5F && turbolaser.pulse_count == 7 && turbolaser.pulse_delay_seconds == 0.2F && turbolaser.damage == 7.5F && turbolaser.damage_type == 0 &&
-                turbolaser.projectile_speed == 10.0F * eaw::provisional_max_speed_scale,
+                turbolaser.projectile_speed == eaw::legacy_units::speed_per_frame(10.0F),
             "a weapon hardpoint must read its fire fields and its projectile");
     require(std::ranges::any_of(warnings,
                                 [](const std::string& warning)

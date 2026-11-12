@@ -3,6 +3,7 @@
 #include "math/scalar.hpp"
 #include "core/string_utils.hpp"
 #include "formats/xml_document.hpp"
+#include "assets/legacy_units.hpp"
 #include "assets/skeleton.hpp"
 #include "assets/type_fields.hpp"
 #include "assets/type_hardpoints.hpp"
@@ -299,7 +300,7 @@ void read_projectile(const TypeFields& projectile, const std::string_view name, 
     weapon.projectile_visual = game_object_name_crc(name);
     weapon.damage = projectile.amount("Projectile_Damage");
     weapon.damage_type = type_id(projectile, "Damage_Type", content);
-    weapon.projectile_speed = projectile.amount("Max_Speed") * provisional_max_speed_scale;
+    weapon.projectile_speed = legacy_units::speed_per_frame(projectile.amount("Max_Speed"));
     weapon.max_flight_distance = projectile.amount("Projectile_Max_Flight_Distance");
     weapon.damages_shield = projectile.flag("Projectile_Does_Shield_Damage", true);
     weapon.damages_health = projectile.flag("Projectile_Does_Hitpoint_Damage", true);
@@ -441,7 +442,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             }
         }
         const auto speed = type.amount("Turret_Rotate_Speed");
-        turret.rate = (speed > 0.0F ? speed : default_turret_rotate_speed) * provisional_turn_rate_scale;
+        turret.rate = legacy_units::degrees_per_frame(speed > 0.0F ? speed : default_turret_rotate_speed);
         if (const auto arc = type.amount("Turret_Rotate_Extent_Degrees"); arc > 0.0F && arc < 360.0F)
         {
             turret.yaw_limit = arc * 0.5F * pi / 180.0F;
@@ -503,7 +504,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         const auto* node = reader.node("Projectile_Appearance_Delay_Frames");
         const auto items = node != nullptr ? split_xml_list(node->text) : std::vector<std::string_view>{};
         const auto frames = items.empty() ? std::nullopt : parse_xml_number(items.front());
-        return frames && *frames > 0.0F ? std::min(*frames, 3000.0F) / 30.0F : 0.0F;
+        return frames && *frames > 0.0F ? legacy_units::frames(std::min(*frames, 3000.0F)) : 0.0F;
     };
     // Categories a reader's weapons never fire at (unknown names are reported).
     const auto restricted = [&](const TypeFields& reader, const std::string_view owner, const std::string_view field)

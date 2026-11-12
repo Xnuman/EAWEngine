@@ -2,6 +2,7 @@
 
 #include "math/scalar.hpp"
 #include "core/string_utils.hpp"
+#include "assets/legacy_units.hpp"
 #include "assets/type_fields.hpp"
 #include "battle/object_types.hpp"
 #include "presentation/scene_presentation.hpp"
@@ -75,7 +76,7 @@ void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<c
         if (const auto gravity = positive("Projectile_Grenade_Gravity"); gravity > 0.0F)
         {
             const auto lob = positive("Projectile_Grenade_Gravity_Lob_Mod");
-            visual.lob_gravity = gravity * (lob > 0.0F ? lob : 1.0F) * provisional_acceleration_scale;
+            visual.lob_gravity = legacy_units::acceleration_per_frame(gravity * (lob > 0.0F ? lob : 1.0F));
         }
         visual.sway = std::min(positive("Projectile_Rocket_Curve_Offset"), max_drawn_sway);
         visual.sway_after = positive("Projectile_Rocket_Straight_Distance");

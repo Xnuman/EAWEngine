@@ -11,6 +11,7 @@ set(SOURCES_DIR "src")
 
 set(EAW_ASSETS_GAME_DATA
     ${HEADERS_DIR}/game_object_catalog.hpp
+    ${HEADERS_DIR}/legacy_units.hpp
     ${HEADERS_DIR}/map_object_layout.hpp
     ${HEADERS_DIR}/spawn_catalog.hpp
     ${HEADERS_DIR}/surface_effects.hpp

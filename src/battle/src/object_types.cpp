@@ -3,6 +3,7 @@
 #include "math/scalar.hpp"
 #include "math/transform.hpp"
 #include "core/string_utils.hpp"
+#include "assets/legacy_units.hpp"
 #include "assets/map_object_layout.hpp"
 #include "assets/skeleton.hpp"
 #include "assets/type_fields.hpp"
@@ -342,7 +343,7 @@ float type_soft_footprint_radius(const GameObjectCatalog& catalog, const XmlDefi
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto rate = type_float_field(catalog, definition, "Max_Rate_Of_Turn");
-    return rate > 0.0F ? rate * provisional_turn_rate_scale : 0.0F;
+    return rate > 0.0F ? legacy_units::degrees_per_frame(rate) : 0.0F;
 }
 
 MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, const bool land, const bool flyer)
@@ -352,25 +353,30 @@ MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinit
     {
         return movement;
     }
-    const auto rate = [&](const std::string_view field, const float scale)
+    const auto rate = [&](const std::string_view field, const auto convert)
     {
-        const auto value = type_float_field(catalog, definition, field) * scale;
+        const auto value = convert(type_float_field(catalog, definition, field));
         return value > 0.0F && std::isfinite(value) ? value : 0.0F;
     };
     // Team containers spell the fields with an underscore (Override_Acceleration, 40 stock uses);
     // no stock type uses both spellings.
     const auto either = [&](const std::string_view field, const std::string_view alias)
     {
-        return catalog.field(definition, field).field != nullptr ? rate(field, provisional_acceleration_scale) : rate(alias, provisional_acceleration_scale);
+        return catalog.field(definition, field).field != nullptr ? rate(field, legacy_units::acceleration_per_frame) : rate(alias, legacy_units::acceleration_per_frame);
     };
     movement.acceleration = either("OverrideAcceleration", "Override_Acceleration");
     movement.deceleration = either("OverrideDeceleration", "Override_Deceleration");
     const bool names_fraction = catalog.field(definition, "Min_Speed_Fraction_For_Turn").field != nullptr;
-    const auto fraction = names_fraction ? std::clamp(rate("Min_Speed_Fraction_For_Turn", 1.0F), 0.0F, 1.0F) : (land ? 0.0F : default_space_turn_speed_fraction);
+    // A fraction of top speed: no unit to convert.
+    const auto fraction_of_speed = [](const float value)
+    {
+        return value;
+    };
+    const auto fraction = names_fraction ? std::clamp(rate("Min_Speed_Fraction_For_Turn", fraction_of_speed), 0.0F, 1.0F) : (land ? 0.0F : default_space_turn_speed_fraction);
     movement.turn_speed_fraction = fraction;
     if (land)
     {
-        const auto stopped = rate("Stopped_Rate_Of_Turn", provisional_turn_rate_scale);
+        const auto stopped = rate("Stopped_Rate_Of_Turn", legacy_units::degrees_per_frame);
         movement.stopped_turn_rate = stopped > 0.0F ? stopped : type_turn_rate(catalog, definition);
         // Degrees; 180 and above never stop to turn (two stock types say 180, one 360).
         const auto* angle = catalog.field(definition, "Close_Enough_Angle_For_Move_Start").field;
@@ -433,7 +439,7 @@ float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinitio
     {
         return 0.0F;
     }
-    const auto speed = type_float_field(catalog, definition, "Min_Speed") * provisional_max_speed_scale;
+    const auto speed = legacy_units::speed_per_frame(type_float_field(catalog, definition, "Min_Speed"));
     return speed > 0.0F && std::isfinite(speed) ? std::min(speed, max_speed) : max_speed * 0.5F;
 }
 
@@ -521,7 +527,7 @@ bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& 
 float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings, const float mode_multiplier)
 {
     const auto value = TypeFields(catalog, definition, &warnings).number("Max_Speed").value_or(0.0F);
-    return value > 0.0F ? value * provisional_max_speed_scale * mode_multiplier : 0.0F;
+    return value > 0.0F ? legacy_units::speed_per_frame(value) * mode_multiplier : 0.0F;
 }
 
 std::vector<ModelAttachment> type_hardpoint_models(const ResourceManager& resources, std::vector<std::string>& warnings, const GameObjectCatalog& catalog, const XmlDefinition& type, const Model* host)

@@ -40,19 +40,9 @@ inline constexpr float identity_model_heading = -half_pi;
 // The heading of a row-vector model transform: the direction of its forward (-Y) axis about +Z.
 [[nodiscard]] float model_forward_heading(const Matrix4& transform) noexcept;
 
-// XML Max_Speed values are small (infantry 0.8, AT-AT 0.5, TIE fighter 4.5), consistent with world
-// units per logic frame. The logic rate is unmeasured; until it is, speeds are scaled as if per 1/30 s.
-// This is a provisional engine assumption, not compatibility evidence.
-inline constexpr float provisional_max_speed_scale = 30.0F;
-// XML Max_Rate_Of_Turn read as degrees per 30 Hz frame, like Max_Speed: infantry 16 (480 degrees per
-// second), tanks 12-20, capital ships 0.4-1.5 (12-45 degrees per second). Provisional.
-inline constexpr float provisional_turn_rate_scale = 30.0F * pi / 180.0F;
-// A turret's turn rate without Turret_Rotate_Speed (degrees per frame; the stock values run 2 to
-// 10; an engine choice).
+// A turret's turn rate without Turret_Rotate_Speed (degrees per frame, legacy_units; the stock
+// values run 2 to 10; an engine choice).
 inline constexpr float default_turret_rotate_speed = 5.0F;
-// XML OverrideAcceleration/OverrideDeceleration read as Max_Speed units per 30 Hz frame per frame
-// (Calamari cruiser .02: full speed in 2.5 seconds; T2B .2: in 0.4 seconds). A guess.
-inline constexpr float provisional_acceleration_scale = provisional_max_speed_scale * 30.0F;
 
 // The XML object catalog borrows its database, so both live behind one stable allocation.
 struct CachedCatalog
@@ -189,12 +179,14 @@ float type_scale_factor(const GameObjectCatalog& catalog, const XmlDefinition& d
 // its file size about its own origin.
 Matrix4 scaled_model_transform(Matrix4 transform, float scale) noexcept;
 
-// XML Max_Rate_Of_Turn in radians per second (provisional_turn_rate_scale); 0 turns instantly.
+// XML Max_Rate_Of_Turn (degrees per frame: infantry 16, 480 degrees per second; tanks 12-20;
+// capital ships 0.4-1.5) in radians per second (legacy_units); 0 turns instantly.
 float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
 // How a type gets up to speed and turns: XML OverrideAcceleration and OverrideDeceleration (or
 // Override_Acceleration and Override_Deceleration, the team containers' spelling)
-// (provisional_acceleration_scale; absent changes speed at once) and Min_Speed_Fraction_For_Turn. On
+// (speed changes per frame, legacy_units: the Calamari cruiser's .02 reaches full speed in 2.5
+// seconds, the T2B's .2 in 0.4; absent changes speed at once) and Min_Speed_Fraction_For_Turn. On
 // land it turns at Stopped_Rate_Of_Turn (or Max_Rate_Of_Turn) below that fraction and stops to turn
 // when its way is more than Close_Enough_Angle_For_Move_Start (degrees; the AT-AT 30) or else
 // ground_turn_in_place_angle off; in space it cannot turn below that
@@ -229,7 +221,8 @@ bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& 
 // What scripts read of a type (XML Lua_Script and CategoryMask, through its variant chain).
 ScriptTypeInfo type_script_info(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
-// XML Max_Speed in world units per second (provisional_max_speed_scale);
+// XML Max_Speed (per frame, legacy_units: infantry 0.8, AT-AT 0.5, TIE fighter 4.5) in world units
+// per second;
 // unparsable values are 0 with a warning.
 float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings, float mode_multiplier = 1.0F);
 
