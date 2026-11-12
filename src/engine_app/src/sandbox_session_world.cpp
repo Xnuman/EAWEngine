@@ -6,7 +6,7 @@
 #include <iostream>
 #include <span>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 std::chrono::steady_clock::time_point SandboxSession::world_now(const std::chrono::steady_clock::time_point now) const
 {
@@ -108,4 +108,4 @@ void SandboxSession::step_particles(const std::chrono::steady_clock::time_point 
     renderer.set_particles(frame_particles);
 }
 
-} // namespace eaw
+} // namespace eaw::engine_app

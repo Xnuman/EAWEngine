@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace eaw {
+namespace eaw::engine_app {
 namespace {
 
 // Where each panel first opens (the gap to the bar and between panels, and the panels' first
@@ -365,4 +365,4 @@ SpawnPanelActions draw_spawn_panel(SandboxPanels& panels, const SpawnPanelView& 
     return actions;
 }
 
-} // namespace eaw
+} // namespace eaw::engine_app

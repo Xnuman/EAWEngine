@@ -3,7 +3,7 @@
 #include "core/string_utils.hpp"
 #include "tools_gui/gui_internal.hpp"
 
-namespace eaw::tools {
+namespace eaw::tools_gui {
 
 void render_asset_workspace(GuiApp::State& state, HWND owner)
 {
@@ -17,13 +17,13 @@ void render_asset_workspace(GuiApp::State& state, HWND owner)
     ImGui::SameLine();
     if (ImGui::Button("Browse...", {110.0F, 0.0F}))
     {
-        if (const auto path = pick_folder(owner, L"Select Empire at War installation"); !path)
+        if (const auto path = gui::pick_folder(owner, L"Select Empire at War installation"); !path)
         {
             state.fail(path.error());
         }
         else if (*path)
         {
-            state.game_root = path_to_utf8(**path);
+            state.game_root = gui::path_to_utf8(**path);
         }
     }
 
@@ -39,7 +39,7 @@ void render_asset_workspace(GuiApp::State& state, HWND owner)
     ImGui::SameLine();
     if (ImGui::Button("Add mod layer..."))
     {
-        if (const auto path = pick_folder(owner, L"Select a mod folder"); !path)
+        if (const auto path = gui::pick_folder(owner, L"Select a mod folder"); !path)
         {
             state.fail(path.error());
         }
@@ -60,7 +60,7 @@ void render_asset_workspace(GuiApp::State& state, HWND owner)
         for (std::size_t index = 0; index < state.mods.size(); ++index)
         {
             ImGui::PushID(static_cast<int>(index));
-            ImGui::BulletText("%s", path_to_utf8(state.mods[index]).c_str());
+            ImGui::BulletText("%s", gui::path_to_utf8(state.mods[index]).c_str());
             ImGui::SameLine();
             if (ImGui::SmallButton("Remove"))
             {
@@ -262,4 +262,4 @@ void render_asset_workspace(GuiApp::State& state, HWND owner)
     }
 }
 
-} // namespace eaw::tools
+} // namespace eaw::tools_gui

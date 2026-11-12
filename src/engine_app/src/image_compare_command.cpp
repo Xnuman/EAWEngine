@@ -13,7 +13,7 @@
 #include <string_view>
 #include <vector>
 
-namespace eaw {
+namespace eaw::engine_app {
 namespace {
 
 void print_usage()
@@ -151,4 +151,4 @@ int run_image_compare(const int argc, const char* const* argv)
     return passed ? 0 : 5;
 }
 
-} // namespace eaw
+} // namespace eaw::engine_app

@@ -8,7 +8,7 @@
 #include "assets/skeleton.hpp"
 #include "tools_gui/gui_internal.hpp"
 
-namespace eaw::tools {
+namespace eaw::tools_gui {
 namespace {
 
 std::vector<PoseBone> preview_pose(const GuiApp::State& state)
@@ -448,4 +448,4 @@ void render_large_model_preview(GuiApp::State& state)
     ImGui::End();
 }
 
-} // namespace eaw::tools
+} // namespace eaw::tools_gui

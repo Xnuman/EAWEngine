@@ -43,7 +43,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 // Members keep the declaration order the work depends on: the asset cache and archive watch
 // outlive the futures that use them.
@@ -195,12 +195,12 @@ struct SandboxSession
     bool reload_check_reported = false;
     std::int64_t click_travel = 0;
     // Dev panels under the bar (F1 hides it); statistics starts as --overlay says.
-    eaw::SandboxPanels panels{.statistics = options.overlay || options.panels.statistics, .spawn = options.panels.spawn, .sound = options.panels.sound, .camera = options.panels.camera};
+    SandboxPanels panels{.statistics = options.overlay || options.panels.statistics, .spawn = options.panels.spawn, .sound = options.panels.sound, .camera = options.panels.camera};
     bool statistics_shown = false;
     std::vector<std::string> statistics_lines;
     // How many units N and the spawn panel spawn, and the panel's last button presses.
     std::uint32_t spawn_count = 1;
-    eaw::SpawnPanelActions panel_actions;
+    SpawnPanelActions panel_actions;
     std::uint64_t overlay_frames = 0;
     std::chrono::steady_clock::time_point overlay_refreshed = std::chrono::steady_clock::now();
     bool automated_pick_sent = false;
@@ -208,7 +208,7 @@ struct SandboxSession
     // Maps start in the legacy RTS camera (fixed: no rotation; left-drag box-selects, right-click
     // moves); C or the camera panel switch to the debug camera (the same camera, drag rotates,
     // right-drag pans) and the free flying camera (fly_camera, at fly_speed world units per second).
-    eaw::SandboxCameraMode camera_mode = eaw::SandboxCameraMode::fixed;
+    SandboxCameraMode camera_mode = SandboxCameraMode::fixed;
     std::optional<eaw::FlyCamera> fly_camera;
     float fly_speed = default_fly_speed;
     bool start_camera_applied = false;
@@ -316,7 +316,7 @@ struct SandboxSession
     // The camera the view uses now (free, tactical, or orbit), and a switch of mode (the free camera
     // starts from the current view).
     [[nodiscard]] eaw::VisualCamera current_camera() const;
-    void set_camera_mode(eaw::SandboxCameraMode mode);
+    void set_camera_mode(SandboxCameraMode mode);
     void apply_panel_actions();
     void update_debug_lines();
     // Refreshes the statistics panel (four times a second, so the numbers stay readable).
@@ -325,4 +325,4 @@ struct SandboxSession
     void update_panel(const eaw::InputState& input, const std::chrono::steady_clock::time_point now);
 };
 
-} // namespace eaw
+} // namespace eaw::engine_app

@@ -7,7 +7,7 @@
 #include "assets/type_hardpoints.hpp"
 #include "tools_gui/gui_internal.hpp"
 
-namespace eaw::tools {
+namespace eaw::tools_gui {
 
 void GuiApp::State::reset_map_objects()
 {
@@ -167,7 +167,7 @@ GuiApp::State::State(ID3D11Device* device) : graphics_device(device)
     const auto installations = InstallationLocator{}.discover();
     if (!installations.empty())
     {
-        game_root = path_to_utf8(installations.front());
+        game_root = gui::path_to_utf8(installations.front());
         message = "Detected Empire at War installation";
     }
     else
@@ -190,7 +190,7 @@ void GuiApp::State::fail(const Error& error)
 
 void GuiApp::State::load_assets()
 {
-    const auto root = utf8_to_path(game_root);
+    const auto root = gui::utf8_to_path(game_root);
     if (!root)
     {
         fail(root.error());
@@ -535,7 +535,7 @@ void GuiApp::State::build_dat(const std::filesystem::path& output)
     const auto baseline = std::filesystem::weakly_canonical(*base_dat_path, path_error);
     path_error.clear();
     const auto destination = std::filesystem::weakly_canonical(output, path_error);
-    if (ascii_lower(path_to_utf8(baseline)) == ascii_lower(path_to_utf8(destination)))
+    if (ascii_lower(gui::path_to_utf8(baseline)) == ascii_lower(gui::path_to_utf8(destination)))
     {
         fail(make_error("Choose a different output path; EAWTools will not overwrite the baseline DAT"));
         return;
@@ -568,7 +568,7 @@ void GuiApp::State::build_dat(const std::filesystem::path& output)
         fail(status.error());
         return;
     }
-    succeed("Built " + path_to_utf8(output) + " with " + std::to_string(dat.entries.size()) + " entries");
+    succeed("Built " + gui::path_to_utf8(output) + " with " + std::to_string(dat.entries.size()) + " entries");
 }
 
 void GuiApp::State::scan_mod(const std::filesystem::path& mod_root)
@@ -635,4 +635,4 @@ Status GuiApp::State::add_localization_row(LocalizationRow row)
     return Status::success();
 }
 
-} // namespace eaw::tools
+} // namespace eaw::tools_gui

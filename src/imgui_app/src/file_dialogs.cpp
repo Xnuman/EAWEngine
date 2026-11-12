@@ -6,7 +6,7 @@
 #include <array>
 #include <string>
 
-namespace eaw::tools {
+namespace eaw::gui {
 namespace {
 
 template <typename Dialog>
@@ -152,4 +152,4 @@ Result<std::filesystem::path> utf8_to_path(const std::string_view text)
     return std::filesystem::path(std::move(result));
 }
 
-} // namespace eaw::tools
+} // namespace eaw::gui

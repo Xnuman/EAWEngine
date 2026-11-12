@@ -3,7 +3,7 @@
 #include "assets/alo_interpretation.hpp"
 #include "asset_inspector/inspector.hpp"
 
-namespace eaw::inspector {
+namespace eaw::asset_inspector {
 namespace {
 
 std::optional<std::string> resolve_texture_reference(const eaw::VirtualFileSystem& vfs, const std::string_view reference)
@@ -362,4 +362,4 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
     }
 }
 
-} // namespace eaw::inspector
+} // namespace eaw::asset_inspector

@@ -10,7 +10,7 @@
 
 #include <set>
 
-namespace eaw::inspector {
+namespace eaw::asset_inspector {
 
 namespace {
 
@@ -198,4 +198,4 @@ void audit_sounds(const eaw::VirtualFileSystem& vfs, const std::string_view lang
     print("Object sound fields naming undefined events:", std::vector<std::string>(undefined_fields.begin(), undefined_fields.end()));
 }
 
-} // namespace eaw::inspector
+} // namespace eaw::asset_inspector

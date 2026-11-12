@@ -3,7 +3,7 @@
 
 #include <bit>
 
-namespace eaw::inspector {
+namespace eaw::asset_inspector {
 namespace {
 
 template <typename Key> void print_counts(const std::string_view title, const std::map<Key, std::size_t>& counts)
@@ -263,4 +263,4 @@ void audit_particles(const eaw::VirtualFileSystem& vfs, const std::string_view p
     }
 }
 
-} // namespace eaw::inspector
+} // namespace eaw::asset_inspector

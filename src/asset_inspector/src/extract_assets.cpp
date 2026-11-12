@@ -8,7 +8,7 @@
 #include "vfs/asset_path.hpp"
 #include "asset_inspector/inspector.hpp"
 
-namespace eaw::inspector {
+namespace eaw::asset_inspector {
 namespace {
 
 // Whether `path` is `folder` or lies inside it (both made absolute and normalized first).
@@ -87,4 +87,4 @@ eaw::Status extract_assets(const eaw::VirtualFileSystem& vfs, const Options& opt
     return {};
 }
 
-} // namespace eaw::inspector
+} // namespace eaw::asset_inspector

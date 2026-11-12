@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 void SandboxSession::spawn_units(const std::size_t type_index, const eaw::Vector3& point, const std::uint32_t count)
 {
@@ -212,4 +212,4 @@ void SandboxSession::run_automation()
     }
 }
 
-} // namespace eaw
+} // namespace eaw::engine_app

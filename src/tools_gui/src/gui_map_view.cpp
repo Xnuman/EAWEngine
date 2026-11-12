@@ -2,7 +2,7 @@
 
 #include "tools_gui/gui_internal.hpp"
 
-namespace eaw::tools {
+namespace eaw::tools_gui {
 namespace {
 
 ImU32 terrain_height_color(const float height)
@@ -804,4 +804,4 @@ void render_large_map_preview(GuiApp::State& state)
     ImGui::End();
 }
 
-} // namespace eaw::tools
+} // namespace eaw::tools_gui

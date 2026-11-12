@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 SandboxSession::SandboxSession(const eaw::SandboxOptions& session_options, eaw::VirtualFileSystem& session_vfs, eaw::PlatformWindow& session_window, eaw::D3d12Renderer& session_renderer)
     : options(session_options), vfs(session_vfs), window(session_window), renderer(session_renderer)
@@ -214,7 +214,7 @@ bool SandboxSession::frame()
     }
     const auto& input = scene_input;
     const bool scene_mouse = !renderer.overlay_wants_mouse();
-    const bool rts_mode = tactical_camera && camera_mode == eaw::SandboxCameraMode::fixed;
+    const bool rts_mode = tactical_camera && camera_mode == SandboxCameraMode::fixed;
     const Vector2 mouse{static_cast<float>(input.mouse_x), static_cast<float>(input.mouse_y)};
     const auto tick = world != nullptr ? world->stats().tick : 0U;
     watchdog.enter("camera", tick);
@@ -276,7 +276,7 @@ int SandboxSession::finish()
     }
     const auto stats = renderer.stats();
     std::cout << "Rendered frames: " << stats.frame_number << '\n';
-    std::cout << "Detail levels (" << eaw::to_string(options.lod_policy) << ", mesh detail " << eaw::format_fixed(options.mesh_detail, 2) << ", last frame): " << stats.reduced_detail_instances
+    std::cout << "Detail levels (" << to_string(options.lod_policy) << ", mesh detail " << eaw::format_fixed(options.mesh_detail, 2) << ", last frame): " << stats.reduced_detail_instances
               << " instances below full detail, " << stats.fading_instances << " cross-fading; " << stats.fades_started << " cross-fades in the run\n";
     const auto particle_stats = effects.particles().stats();
     std::cout << "Particles at exit: " << particle_stats.particles << " in " << particle_stats.instances << " effects (" << effects.attached_playing() << " attached), " << stats.particles
@@ -329,7 +329,7 @@ int SandboxSession::finish()
 int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const GameProfile& profile)
 {
     eaw::WindowDescription window_description;
-    window_description.title = "EAWEngine Visual Sandbox — " + std::string(eaw::to_string(profile.variant));
+    window_description.title = "EAWEngine Visual Sandbox — " + std::string(to_string(profile.variant));
     window_description.width = options.width;
     window_description.height = options.height;
     window_description.raw_input = options.raw_input;
@@ -371,4 +371,4 @@ int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const Gam
     return session.finish();
 }
 
-} // namespace eaw
+} // namespace eaw::engine_app

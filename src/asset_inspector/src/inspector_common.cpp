@@ -2,7 +2,7 @@
 
 #include "asset_inspector/inspector.hpp"
 
-namespace eaw::inspector {
+namespace eaw::asset_inspector {
 
 std::string extension_of(const std::string_view path)
 {
@@ -27,4 +27,4 @@ void record_example(std::map<std::string, AuditExample>& entries, const std::str
     }
 }
 
-} // namespace eaw::inspector
+} // namespace eaw::asset_inspector

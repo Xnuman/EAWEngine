@@ -5,7 +5,7 @@
 
 #include <string>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 void FrameWatchdog::run()
 {
@@ -38,4 +38,4 @@ void FrameWatchdog::run()
     }
 }
 
-} // namespace eaw
+} // namespace eaw::engine_app

@@ -2,7 +2,7 @@
 
 #include "asset_inspector/inspector.hpp"
 
-namespace eaw::inspector {
+namespace eaw::asset_inspector {
 
 eaw::Status audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit, const std::optional<std::filesystem::path>& schema_root, const bool include_foc)
 {
@@ -115,4 +115,4 @@ eaw::Status audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view 
     return eaw::Status::success();
 }
 
-} // namespace eaw::inspector
+} // namespace eaw::asset_inspector

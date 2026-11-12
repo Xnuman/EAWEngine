@@ -17,7 +17,7 @@ public:
     }
 
 private:
-    eaw::tools::GuiApp application_;
+    eaw::tools_gui::GuiApp application_;
 };
 
 } // namespace

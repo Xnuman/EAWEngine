@@ -6,19 +6,19 @@
 #include <string>
 #include <utility>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 void SandboxSession::draw_panels()
 {
-    eaw::draw_sandbox_bar(panels, show_all_bounds, show_passability);
-    eaw::draw_statistics_panel(panels, statistics_lines);
+    draw_sandbox_bar(panels, show_all_bounds, show_passability);
+    draw_statistics_panel(panels, statistics_lines);
     auto mode = camera_mode;
-    eaw::CameraPanelView camera_view{&mode, tactical_camera.has_value(), &fly_speed};
-    if (eaw::draw_camera_panel(panels, camera_view) && mode != camera_mode)
+    CameraPanelView camera_view{&mode, tactical_camera.has_value(), &fly_speed};
+    if (draw_camera_panel(panels, camera_view) && mode != camera_mode)
     {
         set_camera_mode(mode);
     }
-    eaw::SpawnPanelView view;
+    SpawnPanelView view;
     view.names = spawn_names;
     if (spawn_types.size() == spawn_names.size())
     {
@@ -45,10 +45,10 @@ void SandboxSession::draw_panels()
     {
         view.status = std::to_string(pending_spawns.size()) + " spawns waiting";
     }
-    const auto actions = eaw::draw_spawn_panel(panels, view);
+    const auto actions = draw_spawn_panel(panels, view);
     panel_actions.spawn_at_view_center = panel_actions.spawn_at_view_center || actions.spawn_at_view_center;
     static constexpr std::array<std::string_view, eaw::audio_category_count> category_names{"Effects", "Voices", "Music", "Interface"};
-    eaw::SoundPanelView sound;
+    SoundPanelView sound;
     sound.master = &master_volume;
     sound.categories = category_volumes;
     sound.category_names = category_names;
@@ -59,7 +59,7 @@ void SandboxSession::draw_panels()
         sound.status += ", " + std::to_string(stats.played) + " played (" + std::to_string(stats.from_animations) + " by animations), " + std::to_string(stats.replaced) + " replaced, " +
                         std::to_string(stats.skipped) + " skipped, " + std::to_string(stats.missing) + " missing";
     }
-    volumes_changed = eaw::draw_sound_panel(panels, sound) || volumes_changed;
+    volumes_changed = draw_sound_panel(panels, sound) || volumes_changed;
 }
 
 void SandboxSession::apply_panel_actions()
@@ -106,7 +106,7 @@ void SandboxSession::update_debug_lines()
 
 void SandboxSession::update_overlay(const std::chrono::steady_clock::time_point now)
 {
-    eaw::SandboxOverlayView view;
+    SandboxOverlayView view;
     view.adapter_name = renderer.adapter_name();
     view.stats = renderer.stats();
     view.vsync = options.vsync;
@@ -119,7 +119,7 @@ void SandboxSession::update_overlay(const std::chrono::steady_clock::time_point 
     view.skipped_emitters = particle_stats.skipped_emitters;
     view.frames = overlay_frames;
     view.seconds = std::chrono::duration<double>(now - overlay_refreshed).count();
-    statistics_lines = eaw::sandbox_overlay_lines(view);
+    statistics_lines = sandbox_overlay_lines(view);
     overlay_frames = 0;
     overlay_refreshed = now;
 }
@@ -144,4 +144,4 @@ void SandboxSession::update_panel(const eaw::InputState& input, const std::chron
     }
 }
 
-} // namespace eaw
+} // namespace eaw::engine_app

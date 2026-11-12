@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 void SandboxSession::start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, const std::span<const eaw::MapEntityLook> looks,
                                       const std::span<const eaw::SpawnableLook> spawnable_looks, std::string name)
@@ -418,4 +418,4 @@ void SandboxSession::poll_hot_reload()
     }
 }
 
-} // namespace eaw
+} // namespace eaw::engine_app

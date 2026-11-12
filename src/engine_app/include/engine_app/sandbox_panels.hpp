@@ -19,7 +19,7 @@
 #include <string>
 #include <string_view>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 // How the map camera is driven: the legacy RTS view (fixed heading and pitch), the debug view (the
 // same camera, rotated by dragging), or a free flying camera.
@@ -101,4 +101,4 @@ void draw_statistics_panel(SandboxPanels& panels, std::span<const std::string> l
 // True when the mode changed.
 [[nodiscard]] bool draw_camera_panel(SandboxPanels& panels, const CameraPanelView& view);
 
-} // namespace eaw
+} // namespace eaw::engine_app

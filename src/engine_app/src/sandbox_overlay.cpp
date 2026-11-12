@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 std::vector<std::string> sandbox_overlay_lines(const SandboxOverlayView& view)
 {
@@ -36,4 +36,4 @@ std::vector<std::string> sandbox_overlay_lines(const SandboxOverlayView& view)
     };
 }
 
-} // namespace eaw
+} // namespace eaw::engine_app

@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 struct SandboxOverlayView
 {
@@ -31,4 +31,4 @@ struct SandboxOverlayView
 
 [[nodiscard]] std::vector<std::string> sandbox_overlay_lines(const SandboxOverlayView& view);
 
-} // namespace eaw
+} // namespace eaw::engine_app

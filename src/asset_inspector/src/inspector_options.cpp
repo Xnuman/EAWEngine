@@ -3,7 +3,7 @@
 #include "core/string_utils.hpp"
 #include "asset_inspector/inspector.hpp"
 
-namespace eaw::inspector {
+namespace eaw::asset_inspector {
 namespace {
 
 eaw::Result<std::size_t> parse_size(const std::string& value)
@@ -145,4 +145,4 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
     return options;
 }
 
-} // namespace eaw::inspector
+} // namespace eaw::asset_inspector

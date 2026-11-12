@@ -7,7 +7,7 @@
 #include <mutex>
 #include <thread>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 // Reports a frame step that runs longer than its threshold (a stall or an endless loop), naming the
 // step and the simulation tick, from a background thread and every five seconds while it lasts, so
@@ -61,4 +61,4 @@ private:
     std::thread thread_;
 };
 
-} // namespace eaw
+} // namespace eaw::engine_app

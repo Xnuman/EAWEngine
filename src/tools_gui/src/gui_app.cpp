@@ -1,6 +1,6 @@
 #include "tools_gui/gui_internal.hpp"
 
-namespace eaw::tools {
+namespace eaw::tools_gui {
 namespace {
 
 void render_status_bar(GuiApp::State& state)
@@ -87,4 +87,4 @@ void GuiApp::render(const NativeWindowHandle window)
     render_large_model_preview(*state_);
 }
 
-} // namespace eaw::tools
+} // namespace eaw::tools_gui

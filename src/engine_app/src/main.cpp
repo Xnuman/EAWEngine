@@ -39,7 +39,7 @@ int main(const int argc, char** argv)
     // Image regression needs no game installation, window, or device.
     if (argc >= 2 && std::string_view(argv[1]) == "compare-images")
     {
-        return eaw::run_image_compare(argc, argv);
+        return eaw::engine_app::run_image_compare(argc, argv);
     }
     auto parse_result = eaw::parse_sandbox_options(argc, argv);
     if (!parse_result)
@@ -152,11 +152,11 @@ int main(const int argc, char** argv)
         }
         if (options.mode == eaw::RunMode::lua_survey)
         {
-            return eaw::run_lua_survey(options, vfs);
+            return eaw::engine_app::run_lua_survey(options, vfs);
         }
 
 #ifdef _WIN32
-        return eaw::run_sandbox(options, vfs, *profile);
+        return eaw::engine_app::run_sandbox(options, vfs, *profile);
 #else
         std::cerr << "The Direct3D 12 visual sandbox is available on Windows only.
                      ";

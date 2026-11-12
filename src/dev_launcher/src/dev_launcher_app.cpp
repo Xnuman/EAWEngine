@@ -216,7 +216,7 @@ struct DevLauncherApp::State
         std::optional<std::filesystem::path> root;
         if (!scenario.game_root.empty())
         {
-            auto path = tools::utf8_to_path(scenario.game_root);
+            auto path = gui::utf8_to_path(scenario.game_root);
             if (!path)
             {
                 report(path.error().message, true);
@@ -238,13 +238,13 @@ struct DevLauncherApp::State
         const auto profile = make_game_profile(installations.front(), scenario.game);
         if (!profile)
         {
-            report(tools::path_to_utf8(installations.front()) + " is not an Empire at War installation", true);
+            report(gui::path_to_utf8(installations.front()) + " is not an Empire at War installation", true);
             return;
         }
         std::vector<std::filesystem::path> mods;
         for (const auto& mod : scenario.mods)
         {
-            if (auto path = tools::utf8_to_path(mod))
+            if (auto path = gui::utf8_to_path(mod))
             {
                 mods.push_back(*path);
             }
@@ -288,7 +288,7 @@ struct DevLauncherApp::State
                                          {
                                              return list_spawn_types(*shared_vfs);
                                          });
-        report("Listed " + std::to_string(maps.size()) + " maps and " + std::to_string(models.size()) + " models from " + tools::path_to_utf8(installations.front()) +
+        report("Listed " + std::to_string(maps.size()) + " maps and " + std::to_string(models.size()) + " models from " + gui::path_to_utf8(installations.front()) +
                (mount.warnings.empty() ? std::string{} : " (" + std::to_string(mount.warnings.size()) + " mount warnings in the log)"));
     }
 
@@ -439,9 +439,9 @@ void DevLauncherApp::render(HWND window)
         ImGui::SameLine();
         if (ImGui::Button("Browse...##root"))
         {
-            if (const auto picked = tools::pick_folder(window, L"Empire at War installation"); picked && *picked)
+            if (const auto picked = gui::pick_folder(window, L"Empire at War installation"); picked && *picked)
             {
-                scenario.game_root = tools::path_to_utf8(**picked);
+                scenario.game_root = gui::path_to_utf8(**picked);
                 edited(true);
             }
         }
@@ -468,9 +468,9 @@ void DevLauncherApp::render(HWND window)
         }
         if (ImGui::Button("Add mod folder..."))
         {
-            if (const auto picked = tools::pick_folder(window, L"Mod folder"); picked && *picked)
+            if (const auto picked = gui::pick_folder(window, L"Mod folder"); picked && *picked)
             {
-                scenario.mods.push_back(tools::path_to_utf8(**picked));
+                scenario.mods.push_back(gui::path_to_utf8(**picked));
                 edited(true);
             }
         }

@@ -8,7 +8,7 @@
 #include "g_eaw_preview_ps.h"
 #include "g_eaw_preview_vs.h"
 
-namespace eaw::tools {
+namespace eaw::tools_gui {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -379,4 +379,4 @@ Matrix4 orbit_view_projection(const Vector3& center, const float yaw, const floa
     return Matrix4{{x.x, y.x, z.x, 0.0F, x.y, y.y, z.y, 0.0F, x.z, y.z, z.z, 0.0F, -dot(x, center), -dot(y, center), 0.5F - dot(z, center), 1.0F}};
 }
 
-} // namespace eaw::tools
+} // namespace eaw::tools_gui

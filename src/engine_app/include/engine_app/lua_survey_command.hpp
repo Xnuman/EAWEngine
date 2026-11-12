@@ -8,9 +8,9 @@
 #include "vfs/virtual_file_system.hpp"
 #include "sandbox/sandbox_options.hpp"
 
-namespace eaw {
+namespace eaw::engine_app {
 
 // Returns 0, or 1 when the report cannot be written.
 [[nodiscard]] int run_lua_survey(const SandboxOptions& options, const VirtualFileSystem& vfs);
 
-} // namespace eaw
+} // namespace eaw::engine_app

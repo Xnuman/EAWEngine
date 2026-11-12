@@ -6,7 +6,7 @@ struct HWND__;
 struct ID3D11Device;
 using NativeWindowHandle = HWND__*;
 
-namespace eaw::tools {
+namespace eaw::tools_gui {
 
 class GuiApp final
 {
@@ -24,4 +24,4 @@ private:
     std::unique_ptr<State> state_;
 };
 
-} // namespace eaw::tools
+} // namespace eaw::tools_gui

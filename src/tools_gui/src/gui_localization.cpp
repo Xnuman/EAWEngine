@@ -3,7 +3,7 @@
 #include "core/string_utils.hpp"
 #include "tools_gui/gui_internal.hpp"
 
-namespace eaw::tools {
+namespace eaw::tools_gui {
 namespace {
 
 bool status_matches(const std::string& filter, const LocalizationRow& row)
@@ -156,7 +156,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
 
     if (ImGui::Button("Open DAT..."))
     {
-        if (const auto path = open_dat_file(owner, L"Open baseline localization DAT"); !path)
+        if (const auto path = gui::open_dat_file(owner, L"Open baseline localization DAT"); !path)
         {
             state.fail(path.error());
         }
@@ -168,7 +168,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
     ImGui::SameLine();
     if (ImGui::Button("Open workspace..."))
     {
-        if (const auto path = open_workspace_file(owner, L"Open localization workspace"); !path)
+        if (const auto path = gui::open_workspace_file(owner, L"Open localization workspace"); !path)
         {
             state.fail(path.error());
         }
@@ -183,7 +183,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
         auto path = state.workspace_path;
         if (!path)
         {
-            if (auto chosen = save_workspace_file(owner, L"Save localization workspace"); !chosen)
+            if (auto chosen = gui::save_workspace_file(owner, L"Save localization workspace"); !chosen)
             {
                 state.fail(chosen.error());
             }
@@ -200,7 +200,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
     ImGui::SameLine();
     if (ImGui::Button("Save as..."))
     {
-        if (const auto path = save_workspace_file(owner, L"Save localization workspace"); !path)
+        if (const auto path = gui::save_workspace_file(owner, L"Save localization workspace"); !path)
         {
             state.fail(path.error());
         }
@@ -212,7 +212,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
     ImGui::SameLine();
     if (ImGui::Button("Scan mod..."))
     {
-        if (const auto path = pick_folder(owner, L"Select mod root to scan"); !path)
+        if (const auto path = gui::pick_folder(owner, L"Select mod root to scan"); !path)
         {
             state.fail(path.error());
         }
@@ -239,7 +239,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
     ImGui::SameLine();
     if (ImGui::Button("Build DAT..."))
     {
-        if (const auto path = save_dat_string_table(owner, L"Build localization DAT"); !path)
+        if (const auto path = gui::save_dat_string_table(owner, L"Build localization DAT"); !path)
         {
             state.fail(path.error());
         }
@@ -254,7 +254,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
 
     if (state.base_dat_path)
     {
-        label_value("Baseline", path_to_utf8(*state.base_dat_path));
+        label_value("Baseline", gui::path_to_utf8(*state.base_dat_path));
     }
     else
     {
@@ -262,7 +262,7 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
     }
     if (state.workspace_path)
     {
-        label_value("Workspace", path_to_utf8(*state.workspace_path));
+        label_value("Workspace", gui::path_to_utf8(*state.workspace_path));
     }
     ImGui::Checkbox("Skip unresolved TODO rows when building", &state.skip_todo);
     if (state.dirty)
@@ -456,4 +456,4 @@ void render_localization_workspace(GuiApp::State& state, HWND owner)
     }
 }
 
-} // namespace eaw::tools
+} // namespace eaw::tools_gui

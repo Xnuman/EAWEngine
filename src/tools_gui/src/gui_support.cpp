@@ -9,7 +9,7 @@
 #include "assets/pose.hpp"
 #include "tools_gui/gui_internal.hpp"
 
-namespace eaw::tools {
+namespace eaw::tools_gui {
 namespace {
 
 // Surfaces drawn in the color pass. Collision, shadow-volume, heat-distortion, and occluded-unit
@@ -276,7 +276,7 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<co
     std::ostringstream output;
     output << "Virtual path: " << asset.virtual_path << '\n'
            << "Source: " << asset.mount_name << '\n'
-           << "Container: " << path_to_utf8(asset.container) << '\n'
+           << "Container: " << gui::path_to_utf8(asset.container) << '\n'
            << "Size: " << human_size(asset.size) << " (" << asset.size << " bytes)\n\n";
 
     if (extension == ".dat")
@@ -757,4 +757,4 @@ bool draw_gpu_preview(GuiApp::State& state, PreviewTarget& target, const ImVec2 
     return true;
 }
 
-} // namespace eaw::tools
+} // namespace eaw::tools_gui

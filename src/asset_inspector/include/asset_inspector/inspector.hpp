@@ -40,7 +40,7 @@
 #include <string_view>
 #include <vector>
 
-namespace eaw::inspector {
+namespace eaw::asset_inspector {
 
 struct Options
 {
@@ -142,4 +142,4 @@ void audit_sounds(const eaw::VirtualFileSystem& vfs, std::string_view language, 
 
 eaw::Status audit_xml(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit, const std::optional<std::filesystem::path>& schema_root, bool include_foc);
 
-} // namespace eaw::inspector
+} // namespace eaw::asset_inspector

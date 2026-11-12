@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-namespace eaw {
+namespace eaw::engine_app {
 
 std::optional<eaw::Vector3> SandboxSession::ground_target(const float x, const float y) const
 {
@@ -161,28 +161,28 @@ void SandboxSession::order_attack(const eaw::EntityId victim)
 
 eaw::VisualCamera SandboxSession::current_camera() const
 {
-    if (camera_mode == eaw::SandboxCameraMode::free && fly_camera)
+    if (camera_mode == SandboxCameraMode::free && fly_camera)
     {
         return fly_camera->camera();
     }
     return tactical_camera ? tactical_camera->camera() : orbit_camera->camera();
 }
 
-void SandboxSession::set_camera_mode(const eaw::SandboxCameraMode mode)
+void SandboxSession::set_camera_mode(const SandboxCameraMode mode)
 {
-    if (mode == eaw::SandboxCameraMode::free && camera_mode != eaw::SandboxCameraMode::free)
+    if (mode == SandboxCameraMode::free && camera_mode != SandboxCameraMode::free)
     {
         fly_camera.emplace(current_camera());
     }
     camera_mode = mode;
-    if (mode != eaw::SandboxCameraMode::free)
+    if (mode != SandboxCameraMode::free)
     {
         renderer.set_camera(current_camera());
     }
-    std::cout << "Camera: " << eaw::to_string(mode)
-              << (mode == eaw::SandboxCameraMode::free    ? " (right-drag looks, WASD moves, Q/E down/up, Shift faster, wheel speed)\n"
-                  : mode == eaw::SandboxCameraMode::debug ? " (drag rotates, right-drag pans)\n"
-                                                          : " (RTS: drag selects, right-click moves, Ctrl attack-moves, Shift guards)\n");
+    std::cout << "Camera: " << to_string(mode)
+              << (mode == SandboxCameraMode::free    ? " (right-drag looks, WASD moves, Q/E down/up, Shift faster, wheel speed)\n"
+                  : mode == SandboxCameraMode::debug ? " (drag rotates, right-drag pans)\n"
+                                                     : " (RTS: drag selects, right-click moves, Ctrl attack-moves, Shift guards)\n");
 }
 
 void SandboxSession::update_camera(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode)
@@ -204,9 +204,9 @@ void SandboxSession::update_camera(const eaw::InputState& input, const bool scen
         start.eye = {view[0], view[1], view[2]};
         start.target = {view[3], view[4], view[5]};
         fly_camera.emplace(start);
-        camera_mode = eaw::SandboxCameraMode::free;
+        camera_mode = SandboxCameraMode::free;
     }
-    if (camera_mode == eaw::SandboxCameraMode::free && fly_camera)
+    if (camera_mode == SandboxCameraMode::free && fly_camera)
     {
         // Free camera: right-drag looks, WASD moves along the view, Q/E down and up, Shift is
         // faster, the wheel changes the speed.
@@ -377,9 +377,9 @@ void SandboxSession::handle_command_keys(const eaw::InputState& input, const boo
     if (input.keys[static_cast<std::size_t>(eaw::Key::c)].pressed)
     {
         // Fixed, debug, free, and around (models: orbit and free).
-        const auto next = camera_mode == eaw::SandboxCameraMode::fixed   ? (tactical_camera ? eaw::SandboxCameraMode::debug : eaw::SandboxCameraMode::free)
-                          : camera_mode == eaw::SandboxCameraMode::debug ? eaw::SandboxCameraMode::free
-                                                                         : eaw::SandboxCameraMode::fixed;
+        const auto next = camera_mode == SandboxCameraMode::fixed   ? (tactical_camera ? SandboxCameraMode::debug : SandboxCameraMode::free)
+                          : camera_mode == SandboxCameraMode::debug ? SandboxCameraMode::free
+                                                                    : SandboxCameraMode::fixed;
         set_camera_mode(next);
     }
 }
@@ -491,4 +491,4 @@ void SandboxSession::handle_view_keys(const eaw::InputState& input)
     }
 }
 
-} // namespace eaw
+} // namespace eaw::engine_app

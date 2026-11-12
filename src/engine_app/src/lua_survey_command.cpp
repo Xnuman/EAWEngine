@@ -17,7 +17,7 @@
 #include <string_view>
 #include <vector>
 
-namespace eaw {
+namespace eaw::engine_app {
 namespace {
 
 struct ScriptResult
@@ -377,4 +377,4 @@ int run_lua_survey(const SandboxOptions& options, const VirtualFileSystem& vfs)
     return 0;
 }
 
-} // namespace eaw
+} // namespace eaw::engine_app

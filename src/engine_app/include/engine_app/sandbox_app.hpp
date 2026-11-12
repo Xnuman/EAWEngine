@@ -8,9 +8,9 @@
 #include "vfs/virtual_file_system.hpp"
 #include "sandbox/sandbox_options.hpp"
 
-namespace eaw {
+namespace eaw::engine_app {
 
 // Returns the process exit code (1 when the window or device cannot be created).
 [[nodiscard]] int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const GameProfile& profile);
 
-} // namespace eaw
+} // namespace eaw::engine_app

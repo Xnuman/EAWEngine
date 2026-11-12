@@ -10,7 +10,7 @@
 
 #include <iomanip>
 
-namespace eaw::inspector {
+namespace eaw::asset_inspector {
 namespace {
 
 eaw::Status inspect_dat(const std::span<const std::byte> bytes, const std::size_t limit)
@@ -544,4 +544,4 @@ eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& 
     return eaw::Status::success();
 }
 
-} // namespace eaw::inspector
+} // namespace eaw::asset_inspector

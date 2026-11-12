@@ -11,7 +11,7 @@
 #include <span>
 #include <vector>
 
-namespace eaw::tools {
+namespace eaw::tools_gui {
 
 // Small depth-buffered Direct3D 11 renderer for EAWTools model and map previews. It renders into
 // an offscreen texture that the UI shows as an image. It is tool code: the production renderer is
@@ -148,4 +148,4 @@ private:
 // range. Returns the clip-space transform for a `width` x `height` target centered on `center`.
 [[nodiscard]] Matrix4 orbit_view_projection(const Vector3& center, float yaw, float pitch, float scale, float width, float height, float depth_radius) noexcept;
 
-} // namespace eaw::tools
+} // namespace eaw::tools_gui

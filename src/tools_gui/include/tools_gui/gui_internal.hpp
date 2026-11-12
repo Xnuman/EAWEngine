@@ -54,7 +54,7 @@
 #include <utility>
 #include <vector>
 
-namespace eaw::tools {
+namespace eaw::tools_gui {
 
 inline constexpr ImVec4 accent{0.16F, 0.72F, 0.72F, 1.0F};
 
@@ -313,4 +313,4 @@ struct GuiApp::State
     Status add_localization_row(LocalizationRow row);
 };
 
-} // namespace eaw::tools
+} // namespace eaw::tools_gui

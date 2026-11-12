@@ -1,6 +1,6 @@
 #include "asset_inspector/inspector.hpp"
 
-namespace eaw::inspector {
+namespace eaw::asset_inspector {
 namespace {
 
 // Runs the selected command and returns its exit code; failures are returned for main to report.
@@ -163,11 +163,11 @@ eaw::Result<int> run(const Options& options)
 }
 
 } // namespace
-} // namespace eaw::inspector
+} // namespace eaw::asset_inspector
 
 int main(const int argc, char** argv)
 {
-    using namespace eaw::inspector;
+    using namespace eaw::asset_inspector;
     const auto options = parse_options(argc, argv);
     if (!options)
     {

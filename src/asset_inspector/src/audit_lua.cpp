@@ -3,7 +3,7 @@
 #include "core/string_utils.hpp"
 #include "asset_inspector/inspector.hpp"
 
-namespace eaw::inspector {
+namespace eaw::asset_inspector {
 
 void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit)
 {
@@ -223,4 +223,4 @@ void audit_lua(const eaw::VirtualFileSystem& vfs, const std::string_view prefix,
     }
 }
 
-} // namespace eaw::inspector
+} // namespace eaw::asset_inspector
