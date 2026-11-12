@@ -58,6 +58,8 @@ enum class UnitResponse
 inline constexpr float base_rolloff = 0.05F;
 inline constexpr float default_saturation_distance = 200.0F;
 inline constexpr std::size_t max_unit_loops = 16;
+// The pause between an order's response and another unit type's assist line (an engine choice).
+inline constexpr float assist_response_delay = 0.8F;
 // Health fractions at which a unit's low and critical warnings play: the stock GameConstants'
 // Health_Low_Percent_Threshold and Health_Critical_Percent_Threshold (shortcut: fixed here, read
 // GameConstants when a mod changes them).
@@ -81,9 +83,10 @@ public:
     // Once per frame: the listener follows the camera, positioned voices follow it, engine and
     // ambient loops follow the nearest units, delayed and chained events start, finished voices end.
     void update(const VisualCamera& camera, const SimSnapshot& snapshot, const SimulationWorld& world, float seconds);
-    // A sound event by name, at a point (positional events) or heard everywhere; false when it did
-    // not play (unknown, its chance, its instance limit, no voice, or a missing sample).
-    bool play_event(std::string_view name, std::optional<Vector3> position = std::nullopt);
+    // A sound event by name, at a point (positional events) or heard everywhere, `delay` seconds
+    // from now (besides the event's own predelay); false when it did not play (unknown, its chance,
+    // its instance limit, no voice, or a missing sample; a delayed event counts as played).
+    bool play_event(std::string_view name, std::optional<Vector3> position = std::nullopt, float delay = 0.0F);
     // The sounds placed in the animations units played this frame (UnitAnimator::cues): sound rows
     // play their event, surface rows the sound of their SurfaceFX on the ground there (its default
     // settings until terrain surface kinds are known).
@@ -94,6 +97,10 @@ public:
     // A unit type's line when ordered as part of a group (XML SFXEvent_Group_Move for moves,
     // SFXEvent_Group_Attack for attacks; heroes), or false when it has none.
     bool play_group_response(std::string_view type_name, UnitResponse response);
+    // A unit type's answer, `delay` seconds after another type's response, when ordered together
+    // with it (XML SFXEvent_Assist_Move for moves, SFXEvent_Assist_Attack for attacks: "Escorting!"
+    // after Luke's "Understood!"), or false when it has none.
+    bool play_assist_response(std::string_view type_name, UnitResponse response, float delay);
 
     struct Stats
     {
@@ -136,6 +143,8 @@ private:
         std::string spin;
         std::string group_move;
         std::string group_attack;
+        std::string assist_move;
+        std::string assist_attack;
         // Its voice reporting the loss of a hardpoint, by the hardpoint's Type key
         // (SFXEvent_Hardpoint_Destroyed: "HARD_POINT_<kind>, event" entries).
         std::vector<std::pair<std::uint32_t, std::string>> hardpoint_lost;

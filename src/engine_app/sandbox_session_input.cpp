@@ -36,19 +36,35 @@ void SandboxSession::respond(const eaw::EntityId unit, const eaw::UnitResponse r
     {
         return;
     }
+    auto primary = unit;
+    bool spoke = false;
     if (group.size() > 1U)
     {
         for (const auto member : group)
         {
             if (world->alive(member) && audio->play_group_response(world->type_name(member), response))
             {
-                return;
+                primary = member;
+                spoke = true;
+                break;
             }
         }
     }
-    if (world->alive(unit))
+    if (!spoke && world->alive(unit))
     {
         (void)audio->play_response(world->type_name(unit), response);
+    }
+    if (group.size() > 1U && world->alive(primary))
+    {
+        const auto primary_type = std::string(world->type_name(primary));
+        for (const auto member : group)
+        {
+            if (world->alive(member) && !eaw::ascii_equal_ignoring_case(world->type_name(member), primary_type) &&
+                audio->play_assist_response(world->type_name(member), response, eaw::assist_response_delay))
+            {
+                break;
+            }
+        }
     }
 }
 

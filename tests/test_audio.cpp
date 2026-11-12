@@ -431,7 +431,7 @@ void test_impact_and_moving_sounds()
                "<GroundVehicle Name=\"Walker\"><Behavior>IDLE, AMBIENT_SFX</Behavior><SFXEvent_Ambient_Moving>Chirp</SFXEvent_Ambient_Moving>"
                "<SFXEvent_Ambient_Moving_Min_Delay_Seconds>1"
                "</SFXEvent_Ambient_Moving_Min_Delay_Seconds><SFXEvent_Ambient_Moving_Max_Delay_Seconds>1</SFXEvent_Ambient_Moving_Max_Delay_Seconds>"
-               "<SFXEvent_Guard>On_Guard</SFXEvent_Guard></GroundVehicle>"
+               "<SFXEvent_Guard>On_Guard</SFXEvent_Guard><SFXEvent_Assist_Move>On_Guard</SFXEvent_Assist_Move></GroundVehicle>"
                "<GroundVehicle Name=\"Mute\"><SFXEvent_Ambient_Moving>Chirp</SFXEvent_Ambient_Moving><SFXEvent_Ambient_Moving_Min_Delay_Seconds>1"
                "</SFXEvent_Ambient_Moving_Min_Delay_Seconds><SFXEvent_Ambient_Moving_Max_Delay_Seconds>1</SFXEvent_Ambient_Moving_Max_Delay_Seconds></GroundVehicle>"
                "<HeroUnit Name=\"Hero\"><SFXEvent_Health_Low_Warning>Low_Line</SFXEvent_Health_Low_Warning>"
@@ -472,6 +472,17 @@ void test_impact_and_moving_sounds()
     require(audio.play_group_response("Hero", eaw::UnitResponse::move) && !audio.play_group_response("Hero", eaw::UnitResponse::attack) &&
                 !audio.play_group_response("Walker", eaw::UnitResponse::move),
             "a group order must get a type's group line, and nothing without one");
+    {
+        // An assist line waits for its pause.
+        const auto before = audio.stats().played;
+        require(audio.play_assist_response("Walker", eaw::UnitResponse::move, 1.0F) && !audio.play_assist_response("Walker", eaw::UnitResponse::attack, 1.0F),
+                "an assist line must be queued for a move, and nothing without one");
+        eaw::SimulationWorld idle(0.1);
+        audio.update(camera, idle.snapshot(), idle, 0.5F);
+        const auto early = audio.stats().played;
+        audio.update(camera, idle.snapshot(), idle, 0.6F);
+        require(early == before && audio.stats().played == before + 1, "an assist line must start after its pause");
+    }
 
     // Without AMBIENT_SFX among its behaviors, a moving unit plays no ambient sound.
     {

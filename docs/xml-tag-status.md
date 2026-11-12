@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 147 |
+| `done` | 149 |
 | `partial` | 18 |
-| `gap` | 250 |
+| `gap` | 248 |
 | `needs` | 682 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -1487,7 +1487,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Sound events and speech
 
-22 done, 15 gap, 50 needs, 4 n/a.
+24 done, 13 gap, 50 needs, 4 n/a.
 
 ### Unit responses to orders and selection
 
@@ -1502,8 +1502,8 @@ Systems that `needs` rows wait for, by tag count:
 | `SFXEvent_Fleet_Move` | `needs galactic` |  |
 | `SFXEvent_Group_Move` | `done` | a group member with the line speaks it |
 | `SFXEvent_Group_Attack` | `done` |  |
-| `SFXEvent_Assist_Move` | `gap` | trigger unknown |
-| `SFXEvent_Assist_Attack` | `gap` | trigger unknown |
+| `SFXEvent_Assist_Move` | `done` | another type's answer after the response (owner's account) |
+| `SFXEvent_Assist_Attack` | `done` |  |
 | `SFXEvent_Attack_With_Non_Hero_Ability` | `needs abilities` |  |
 | `SFXEvent_Barrage` | `needs abilities` |  |
 | `SFXEvent_Attacked` | `gap` |  |

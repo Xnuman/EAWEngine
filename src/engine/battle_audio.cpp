@@ -147,6 +147,8 @@ const BattleAudio::TypeSounds& BattleAudio::type_sounds(const std::string_view t
         sounds.spin = type_field(*catalog_, definition, "Spin_Away_On_Death_SFXEvent_Start_Die");
         sounds.group_move = type_field(*catalog_, definition, "SFXEvent_Group_Move");
         sounds.group_attack = type_field(*catalog_, definition, "SFXEvent_Group_Attack");
+        sounds.assist_move = type_field(*catalog_, definition, "SFXEvent_Assist_Move");
+        sounds.assist_attack = type_field(*catalog_, definition, "SFXEvent_Assist_Attack");
         for (const auto* entry : catalog_->fields(definition, "SFXEvent_Hardpoint_Destroyed").fields)
         {
             const auto text = std::string_view(entry->text);
@@ -264,7 +266,7 @@ VoiceId BattleAudio::start(const SoundEvent& event, const std::optional<Vector3>
     return voice;
 }
 
-bool BattleAudio::play_event(const std::string_view name, const std::optional<Vector3> position)
+bool BattleAudio::play_event(const std::string_view name, const std::optional<Vector3> position, const float delay)
 {
     const auto* event = events_.find(name);
     if (event == nullptr)
@@ -277,9 +279,10 @@ bool BattleAudio::play_event(const std::string_view name, const std::optional<Ve
         ++stats_.skipped;
         return false;
     }
-    if (event->max_predelay > 0.0F)
+    if (event->max_predelay > 0.0F || delay > 0.0F)
     {
-        pending_.push_back({random_.range(event->min_predelay, std::max(event->min_predelay, event->max_predelay)), event, position});
+        const auto predelay = event->max_predelay > 0.0F ? random_.range(event->min_predelay, std::max(event->min_predelay, event->max_predelay)) : 0.0F;
+        pending_.push_back({std::max(delay, 0.0F) + predelay, event, position});
         return true;
     }
     return start(*event, position, 0) != 0;
@@ -319,6 +322,13 @@ bool BattleAudio::play_group_response(const std::string_view type_name, const Un
     const auto& sounds = type_sounds(type_name);
     const auto& event = response == UnitResponse::move ? sounds.group_move : response == UnitResponse::attack ? sounds.group_attack : std::string{};
     return !event.empty() && play_event(event);
+}
+
+bool BattleAudio::play_assist_response(const std::string_view type_name, const UnitResponse response, const float delay)
+{
+    const auto& sounds = type_sounds(type_name);
+    const auto& event = response == UnitResponse::move ? sounds.assist_move : response == UnitResponse::attack ? sounds.assist_attack : std::string{};
+    return !event.empty() && play_event(event, std::nullopt, delay);
 }
 
 void BattleAudio::play_tick_events(const SimSnapshot& snapshot, const SimulationWorld& world)

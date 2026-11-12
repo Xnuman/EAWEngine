@@ -1152,6 +1152,13 @@ recording stubs (`EAWEngine lua-survey`).
   and nothing waits on it. The engine's semantics (engage hostiles within 1.25 x weapon range on the
   way, break off beyond 2 x weapon range, guard radius the weapon range but at least 150 units, a
   guard of an object follows it and ends when it dies) are engine choices to check in play.
+- **Assist lines.** When the player orders two or more squads of different units together, the
+  unit with the higher priority answers with its own line as usual, and one of the others answers
+  with its assist line after a short pause: Luke Skywalker ordered to move with two rebel
+  squads says "Understood!", then the troopers "Escorting!" (owner's account, 2026-11-12). The
+  engine plays `SFXEvent_Group_*` or the usual response first (a hero's group line wins), then the
+  first unit of another type with an `SFXEvent_Assist_Move` or `_Assist_Attack` line 0.8 s later
+  (the pause and the choice of who speaks are engine choices).
 - **Space ships avoid contact.** Ships do not push each other in the original, friendly or
   hostile; they steer to avoid contact, and units that are small enough, or at another height,
   fly above or below other units (owner's observation, 2026-11-10; it replaces the engine's earlier
