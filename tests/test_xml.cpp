@@ -396,7 +396,11 @@ void test_type_fields()
             "a number with the float suffix or a sign must read cleanly");
     require(eaw::parse_xml_number("12abc", &trailing) == 12.0F && trailing == "abc" && !eaw::parse_xml_number("abc") && !eaw::parse_xml_number("inf") && !eaw::parse_xml_number(""),
             "a number is read like atof, its trailing text reported; non-numbers and infinities are nothing");
-    require(eaw::split_xml_list(" a, ,b ,c ") == std::vector<std::string_view>{"a", "b", "c"}, "list parts must be trimmed and empty ones dropped");
+    require(eaw::split_list(" a, ,b ,c ") == std::vector<std::string_view>{"a", "b", "c"}, "list parts must be trimmed and empty ones dropped");
+    // One rule for every list: commas, pipes, and whitespace (a missing comma or a line break
+    // between items, as stock lists have) all separate.
+    require(eaw::split_list("A | B\n C D,,E\t") == std::vector<std::string_view>{"A", "B", "C", "D", "E"} && eaw::split_list(" ,| ").empty(),
+            "commas, pipes, and whitespace must all separate list items");
 
     const auto root = std::filesystem::temp_directory_path() / "eawengine-type-fields-test";
     std::error_code ignored;

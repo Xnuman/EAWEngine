@@ -37,25 +37,14 @@ std::optional<std::uint32_t> passability_type(const std::string_view name) noexc
 Result<std::uint32_t> parse_passability_list(const std::string_view text)
 {
     std::uint32_t mask = 0;
-    std::size_t start = 0;
-    while (start <= text.size())
+    for (const auto item : split_list(text))
     {
-        const auto separator = text.find('|', start);
-        const auto item = ascii_trim(text.substr(start, separator == std::string_view::npos ? std::string_view::npos : separator - start));
-        if (!item.empty())
+        const auto bit = passability_type(item);
+        if (!bit)
         {
-            const auto bit = passability_type(item);
-            if (!bit)
-            {
-                return make_error("unknown passability type '" + std::string(item) + "'");
-            }
-            mask |= *bit;
+            return make_error("unknown passability type '" + std::string(item) + "'");
         }
-        if (separator == std::string_view::npos)
-        {
-            break;
-        }
-        start = separator + 1;
+        mask |= *bit;
     }
     return mask;
 }

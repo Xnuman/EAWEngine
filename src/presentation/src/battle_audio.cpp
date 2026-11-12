@@ -133,7 +133,7 @@ const BattleAudio::TypeSounds& BattleAudio::type_sounds(const std::string_view t
             {
                 if (const auto* list = catalog_->field(definition, field).field)
                 {
-                    for (const auto name : split_type_names(list->text))
+                    for (const auto name : split_list(list->text))
                     {
                         if (ascii_equal_ignoring_case(name, behavior))
                         {
@@ -157,10 +157,9 @@ const BattleAudio::TypeSounds& BattleAudio::type_sounds(const std::string_view t
         sounds.assist_attack = type_field(*catalog_, definition, "SFXEvent_Assist_Attack");
         for (const auto* entry : catalog_->fields(definition, "SFXEvent_Hardpoint_Destroyed").fields)
         {
-            const auto text = std::string_view(entry->text);
-            const auto comma = text.find(',');
-            const auto kind = ascii_trim(text.substr(0, comma));
-            const auto event = comma == std::string_view::npos ? std::string_view{} : ascii_trim(text.substr(comma + 1));
+            const auto items = split_list(entry->text);
+            const auto kind = items.empty() ? std::string_view{} : items[0];
+            const auto event = items.size() < 2U ? std::string_view{} : items[1];
             if (!kind.empty() && !event.empty())
             {
                 sounds.hardpoint_lost.emplace_back(game_object_name_crc(kind), std::string(event));

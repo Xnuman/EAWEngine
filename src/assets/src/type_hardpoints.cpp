@@ -28,7 +28,7 @@ std::vector<TypeHardpoint> type_hardpoints(const GameObjectCatalog& catalog, con
     {
         return hardpoints;
     }
-    for (const auto name : split_type_names(list->text))
+    for (const auto name : split_list(list->text))
     {
         hardpoints.push_back({std::string(name), find_hardpoint(catalog, name)});
     }

@@ -34,27 +34,6 @@ std::optional<float> parse_xml_number(std::string_view text, std::string_view* t
     return value;
 }
 
-std::vector<std::string_view> split_xml_list(const std::string_view text)
-{
-    std::vector<std::string_view> items;
-    std::size_t start = 0;
-    while (start <= text.size())
-    {
-        const auto separator = text.find(',', start);
-        const auto item = ascii_trim(text.substr(start, separator == std::string_view::npos ? std::string_view::npos : separator - start));
-        if (!item.empty())
-        {
-            items.push_back(item);
-        }
-        if (separator == std::string_view::npos)
-        {
-            break;
-        }
-        start = separator + 1;
-    }
-    return items;
-}
-
 TypeFields::TypeFields(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>* warnings) noexcept : catalog_(catalog), definition_(definition), warnings_(warnings)
 {}
 
@@ -138,7 +117,7 @@ bool TypeFields::flag(const std::string_view field, const bool fallback) const
 std::vector<std::string_view> TypeFields::list(const std::string_view field) const
 {
     const auto* found = node(field);
-    return found != nullptr ? split_xml_list(found->text) : std::vector<std::string_view>{};
+    return found != nullptr ? split_list(found->text) : std::vector<std::string_view>{};
 }
 
 void TypeFields::warn(const std::string_view field, const std::string_view value, const std::string_view expected) const

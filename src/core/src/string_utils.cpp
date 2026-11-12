@@ -73,6 +73,34 @@ void encode_utf8(std::string& output, const char32_t code_point)
 
 } // namespace
 
+std::vector<std::string_view> split_list(const std::string_view text)
+{
+    std::vector<std::string_view> items;
+    const auto separator = [](const char character)
+    {
+        return character == ',' || character == '|' || ascii_is_space(character);
+    };
+    std::size_t start = 0;
+    while (start < text.size())
+    {
+        while (start < text.size() && separator(text[start]))
+        {
+            ++start;
+        }
+        auto end = start;
+        while (end < text.size() && !separator(text[end]))
+        {
+            ++end;
+        }
+        if (end > start)
+        {
+            items.push_back(text.substr(start, end - start));
+        }
+        start = end;
+    }
+    return items;
+}
+
 std::string ascii_lower(const std::string_view text)
 {
     std::string result(text);

@@ -52,6 +52,25 @@ the first mod at highest priority. A synthetic M1 corpus locks this contract,
 including fallback and case/separator normalization. Black-box comparison with
 the legacy runtime remains the authority if an observed edge case differs.
 
+**List separators (corpus audit, 2026-11-13).** Every list in game data is read with one rule,
+`split_list` (core/string_utils): commas, `|`, and ASCII whitespace all separate, empty items are
+dropped. Evidence: over the 638 winning FoC XML files, 33,245 comma lists in 410 tags; whitespace
+inside a comma item occurs in 153 values, and in every list field the engine reads it is a missing
+comma, a line break between items, or padding around a pipe, never a name with a space (the rest
+are prose, such as encyclopedia text, and AI scoring expressions); pipes appear only in masks
+(`CategoryMask`, `Space_Layer`, category and property fields, the movement class definitions) and
+in AI scoring fields the engine does not read. Against the earlier readers (commas only for
+weapon, death, projectile, and targeting lists; pipes only for passability lists; commas and
+whitespace for type names, sounds, and colors), the single rule gives the same items for all 8,019
+stock values of the fields the comma-only, pipe-only, and pair readers parse, and no field read
+with commas and whitespace holds a pipe outside the masks already split on pipes. The one
+exception is a `Unit_Exclusions` list in
+`GroundUnitTargetingPriorities.xml` with a line break instead of a comma between two type names,
+which the comma-only reader took as one name (losing both exclusions). Readers of "names, number"
+groups (`Attack_Priorities`, inaccuracy lines) take a run of names up to the next number, so a
+mask written with `|` stays one entry. Mod data may still differ from stock; the rule is an
+engine choice backed by stock data, not by observation of the original's parser.
+
 Open research questions must be resolved with small black-box tests and recorded
 fixtures: Lua VM and coroutine semantics; XML value/reference rules beyond the
 public schema; floating-point and tick rules; tactical pathing; random-number

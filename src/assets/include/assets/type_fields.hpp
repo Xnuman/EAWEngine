@@ -23,9 +23,6 @@ namespace eaw {
 // number other than a float suffix ('f' or 'F'): empty for a clean value.
 [[nodiscard]] std::optional<float> parse_xml_number(std::string_view text, std::string_view* trailing = nullptr) noexcept;
 
-// The comma-separated parts of an XML list value, trimmed, empty parts dropped.
-[[nodiscard]] std::vector<std::string_view> split_xml_list(std::string_view text);
-
 class TypeFields final
 {
 public:
@@ -58,7 +55,7 @@ public:
     // A yes/no value (parse_xml_bool), `fallback` when absent; a bad value is reported and gives
     // `fallback`.
     [[nodiscard]] bool flag(std::string_view field, bool fallback) const;
-    // The field's comma-separated parts (split_xml_list); empty when absent.
+    // The field's list items (split_list); empty when absent.
     [[nodiscard]] std::vector<std::string_view> list(std::string_view field) const;
 
     // Reports `value` of `field` as not being `expected` ("a non-negative number").

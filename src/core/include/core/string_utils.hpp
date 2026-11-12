@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace eaw {
 
@@ -43,6 +44,12 @@ namespace eaw {
 {
     return character >= ' ' && character <= '~';
 }
+// The items of a list in game data: separated by commas, '|', or ASCII whitespace, in any mix and
+// number, empty items dropped. One rule for every list: the stock XML has no item with a space or a
+// pipe inside it, while missing commas and line breaks between items do occur (corpus audit of
+// 2026-11-13, docs/compatibility-research.md).
+[[nodiscard]] std::vector<std::string_view> split_list(std::string_view text);
+
 [[nodiscard]] std::string ascii_lower(std::string_view text);
 [[nodiscard]] std::string ascii_upper(std::string_view text);
 [[nodiscard]] bool ascii_equal_ignoring_case(std::string_view left, std::string_view right) noexcept;

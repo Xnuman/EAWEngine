@@ -197,8 +197,8 @@ std::optional<Color> GameObjectCatalog::affiliation_color(const XmlDefinition& d
     {
         return std::nullopt;
     }
-    const auto text = std::string_view(affiliation.field->text);
-    const auto faction_name = ascii_trim(text.substr(0, text.find(',')));
+    const auto items = split_list(affiliation.field->text);
+    const auto faction_name = items.empty() ? std::string_view{} : items.front();
     if (faction_name.empty())
     {
         return std::nullopt;
@@ -214,29 +214,22 @@ std::optional<Color> GameObjectCatalog::affiliation_color(const XmlDefinition& d
         {
             return std::nullopt;
         }
-        // "R, G, B[, A]" in 0..255; separators may be commas and/or spaces.
+        // "R, G, B[, A]" in 0..255 (split_list); items past the fourth are not read.
         Color result{0.0F, 0.0F, 0.0F, 1.0F};
         std::size_t count = 0;
-        const auto value = std::string_view(color.field->text);
-        std::size_t position = 0;
-        while (position < value.size() && count < 4U)
+        for (const auto item : split_list(color.field->text))
         {
-            while (position < value.size() && (value[position] == ',' || ascii_is_space(value[position])))
-            {
-                ++position;
-            }
-            if (position >= value.size())
+            if (count == 4U)
             {
                 break;
             }
             float component{};
-            const auto [end, error] = std::from_chars(value.data() + position, value.data() + value.size(), component);
-            if (error != std::errc{} || !std::isfinite(component))
+            const auto [end, error] = std::from_chars(item.data(), item.data() + item.size(), component);
+            if (error != std::errc{} || end != item.data() + item.size() || !std::isfinite(component))
             {
                 return std::nullopt;
             }
             result[count++] = std::clamp(component / 255.0F, 0.0F, 1.0F);
-            position = static_cast<std::size_t>(end - value.data());
         }
         return count >= 3 ? std::optional<Color>{result} : std::nullopt;
     }

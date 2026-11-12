@@ -47,7 +47,7 @@ std::vector<SpawnTypeInfo> list_spawn_types(const XmlAssetDatabase& database, co
         for (const auto* field : {"Company_Units", "Squadron_Units"})
         {
             const auto* members = land && space ? nullptr : catalog.field(definition, field).field;
-            for (const auto member : members != nullptr ? split_type_names(members->text) : std::vector<std::string_view>{})
+            for (const auto member : members != nullptr ? split_list(members->text) : std::vector<std::string_view>{})
             {
                 for (const auto* candidate : catalog.find(member))
                 {
@@ -64,7 +64,7 @@ std::vector<SpawnTypeInfo> list_spawn_types(const XmlAssetDatabase& database, co
         SpawnTypeInfo info{definition.name, definition.type, land, space, std::ranges::find(unit_kinds, kind) != unit_kinds.end(), {}};
         if (const auto* affiliation = catalog.field(definition, "Affiliation").field)
         {
-            for (const auto name : split_type_names(affiliation->text))
+            for (const auto name : split_list(affiliation->text))
             {
                 info.affiliations.emplace_back(name);
             }

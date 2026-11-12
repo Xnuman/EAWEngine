@@ -148,7 +148,11 @@ an engine choice matching the data).
   Masks use `|`: `CategoryMask` (131 objects), `Space_Layer` (69), category fields inside
   abilities, `Property_Flags` (9), `Projectile_Stun_Victims_Category_Mask`,
   `Special_Weapon_Valid_Targets`, `Attack_Category_Restrictions`; the same masks are written with
-  commas or spaces elsewhere, so the separators are interchangeable (data).
+  commas or spaces elsewhere, so the separators are interchangeable (data). No stock list the
+  engine reads has a name with a space in it: whitespace inside a comma-separated item is a missing
+  comma or a line break between items (`Gungan_Warrior Gungan_Warrior`, `Destruction_Survivors`
+  pairs on separate lines), and multi-word values (`Medium Obstacle`) are single values, not lists
+  (corpus audit, 2026-11-13). The engine reads every list with one rule (`split_list`).
 - **Keyed repeats.** Some tags repeat with a key as the first list element, one entry per key:
   `Fire_Inaccuracy_Distance` (262 objects; `category, distance`), `Targeting_Fire_Inaccuracy`
   (105), `Death_Clone` (64; `damage type, clone`), `SFXEvent_Attack_Hardpoint` (62),

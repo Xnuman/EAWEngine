@@ -25,10 +25,6 @@ class AssetReader;
 // The model's turn before the placement rotation: from facing -Y to facing +X (degrees).
 inline constexpr float placed_model_facing = 90.0F;
 
-// Splits a list of XML type names (Squadron_Units, Company_Units) on commas and whitespace. Stock
-// FoC data writes one Company_Units list without commas; type names never contain whitespace.
-[[nodiscard]] std::vector<std::string_view> split_type_names(std::string_view text);
-
 struct MapObjectPlacement
 {
     std::size_t object_index{};

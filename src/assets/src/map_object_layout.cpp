@@ -32,34 +32,22 @@ Quaternion axis_rotation(const float degrees, const int axis) noexcept
     return result;
 }
 
-// Parses "x,y,z" (commas and/or whitespace). Returns nullopt for malformed or non-finite values.
+// Parses "x,y,z" (split_list). Returns nullopt unless there are exactly three finite numbers.
 std::optional<Vector3> parse_vector3(const std::string_view text)
 {
-    std::array<float, 3> values{};
-    std::size_t count = 0;
-    std::size_t position = 0;
-    while (position < text.size() && count < values.size())
+    const auto items = split_list(text);
+    if (items.size() != 3U)
     {
-        while (position < text.size() && (text[position] == ',' || ascii_is_space(text[position])))
-        {
-            ++position;
-        }
-        if (position >= text.size())
-        {
-            break;
-        }
-        float value{};
-        const auto [end, error] = std::from_chars(text.data() + position, text.data() + text.size(), value);
-        if (error != std::errc{} || !std::isfinite(value))
+        return std::nullopt;
+    }
+    std::array<float, 3> values{};
+    for (std::size_t index = 0; index < values.size(); ++index)
+    {
+        const auto [end, error] = std::from_chars(items[index].data(), items[index].data() + items[index].size(), values[index]);
+        if (error != std::errc{} || end != items[index].data() + items[index].size() || !std::isfinite(values[index]))
         {
             return std::nullopt;
         }
-        values[count++] = value;
-        position = static_cast<std::size_t>(end - text.data());
-    }
-    if (count != values.size() || !ascii_trim(text.substr(position)).empty())
-    {
-        return std::nullopt;
     }
     return Vector3{values[0], values[1], values[2]};
 }
@@ -99,7 +87,7 @@ template <typename AssignModel> bool expand_company(const MapObjectPlacement& co
     {
         return false;
     }
-    const auto members = split_type_names(units.field->text);
+    const auto members = split_list(units.field->text);
     if (members.empty())
     {
         return false;
@@ -145,7 +133,7 @@ template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& s
     std::vector<std::string_view> members;
     for (const auto* field : units.fields)
     {
-        const auto names = split_type_names(field->text);
+        const auto names = split_list(field->text);
         members.insert(members.end(), names.begin(), names.end());
     }
     if (members.empty())
@@ -235,34 +223,6 @@ template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& s
 }
 
 } // namespace
-
-std::vector<std::string_view> split_type_names(const std::string_view text)
-{
-    std::vector<std::string_view> result;
-    std::size_t start = 0;
-    const auto separator = [](const char character)
-    {
-        return character == ',' || ascii_is_space(character);
-    };
-    while (start < text.size())
-    {
-        while (start < text.size() && separator(text[start]))
-        {
-            ++start;
-        }
-        auto end = start;
-        while (end < text.size() && !separator(text[end]))
-        {
-            ++end;
-        }
-        if (end > start)
-        {
-            result.push_back(text.substr(start, end - start));
-        }
-        start = end;
-    }
-    return result;
-}
 
 Matrix4 placed_object_transform(const TedPlacedObject& object) noexcept
 {

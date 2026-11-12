@@ -145,11 +145,11 @@ std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::
             std::vector<std::string_view> names;
             if (const auto* company_units = build.catalog.field(*candidate, "Company_Units").field)
             {
-                names = split_type_names(company_units->text);
+                names = split_list(company_units->text);
             }
             for (const auto* squadron_units : build.catalog.fields(*candidate, "Squadron_Units").fields)
             {
-                const auto more = split_type_names(squadron_units->text);
+                const auto more = split_list(squadron_units->text);
                 names.insert(names.end(), more.begin(), more.end());
             }
             if (names.empty() || depth > 0)

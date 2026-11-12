@@ -128,24 +128,24 @@ Survivors type_survivors(const GameObjectCatalog& catalog, const XmlDefinition& 
     {
         return survivors;
     }
-    // Lines of "type, weight".
-    std::string_view text = list->text;
-    while (!text.empty())
+    // "type, weight" entries (split_list): each type is followed by its weight, or by the next
+    // type when the weight is left out (weight 1).
+    const auto items = split_list(list->text);
+    for (std::size_t index = 0; index < items.size(); ++index)
     {
-        const auto end = std::min(text.find('\n'), text.size());
-        const auto line = text.substr(0, end);
-        text.remove_prefix(std::min(end + 1, text.size()));
-        const auto comma = line.find(',');
-        const auto name = ascii_trim(line.substr(0, comma));
-        if (name.empty())
+        const auto name = items[index];
+        if (parse_xml_number(name))
         {
             continue;
         }
         float weight = 1.0F;
-        if (comma != std::string_view::npos)
+        if (index + 1U < items.size())
         {
-            const auto value = ascii_trim(line.substr(comma + 1));
-            (void)std::from_chars(value.data(), value.data() + value.size(), weight);
+            if (const auto value = parse_xml_number(items[index + 1U]))
+            {
+                weight = *value;
+                ++index;
+            }
         }
         if (weight > 0.0F)
         {
@@ -276,7 +276,7 @@ float type_space_obstacle_radius(const GameObjectCatalog& catalog, const XmlDefi
         {
             if (const auto* list = catalog.field(definition, field).field)
             {
-                for (const auto name : split_type_names(list->text))
+                for (const auto name : split_list(list->text))
                 {
                     if (ascii_equal_ignoring_case(name, behavior))
                     {
@@ -445,12 +445,12 @@ float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinitio
 
 std::pair<std::string_view, std::string_view> death_clone_entry(const std::string_view text)
 {
-    const auto comma = text.find(',');
-    if (comma == std::string_view::npos)
+    const auto items = split_list(text);
+    if (items.size() < 2U)
     {
-        return {{}, ascii_trim(text)};
+        return {{}, items.empty() ? std::string_view{} : items.front()};
     }
-    return {ascii_trim(text.substr(0, comma)), ascii_trim(text.substr(comma + 1U))};
+    return {items[0], items[1]};
 }
 
 std::unordered_set<std::string> death_clone_names(const XmlAssetDatabase& database, const GameObjectCatalog& catalog)
@@ -486,19 +486,9 @@ ScriptTypeInfo type_script_info(const GameObjectCatalog& catalog, const XmlDefin
     // CategoryMask: names separated by '|' (stock), commas, or whitespace.
     if (const auto* node = catalog.field(definition, "CategoryMask").field)
     {
-        std::string name;
-        for (const char character : node->text + " ")
+        for (const auto name : split_list(node->text))
         {
-            if (character == '|' || character == ',' || ascii_is_space(character))
-            {
-                if (!name.empty())
-                {
-                    info.categories.push_back(ascii_lower(name));
-                    name.clear();
-                }
-                continue;
-            }
-            name += character;
+            info.categories.push_back(ascii_lower(name));
         }
     }
     return info;
@@ -513,7 +503,7 @@ bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& 
         {
             continue;
         }
-        for (const auto name : split_type_names(list->text))
+        for (const auto name : split_list(list->text))
         {
             if (ascii_lower(std::string(name)) == "turret")
             {

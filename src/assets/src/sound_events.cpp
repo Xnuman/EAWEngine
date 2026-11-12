@@ -54,19 +54,9 @@ std::vector<std::string> names_of(const XmlNode* field)
     {
         return names;
     }
-    std::string name;
-    for (const char character : field->text + " ")
+    for (const auto name : split_list(field->text))
     {
-        if (character == ',' || ascii_is_space(character))
-        {
-            if (!name.empty())
-            {
-                names.push_back(std::move(name));
-                name.clear();
-            }
-            continue;
-        }
-        name += character;
+        names.emplace_back(name);
     }
     return names;
 }

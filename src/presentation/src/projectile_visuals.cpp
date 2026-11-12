@@ -19,7 +19,7 @@ namespace {
 template <class T> std::vector<T> numbers(const std::string_view text)
 {
     std::vector<T> values;
-    for (const auto part : split_xml_list(text))
+    for (const auto part : split_list(text))
     {
         T value{};
         const auto [end, error] = std::from_chars(part.data(), part.data() + part.size(), value);

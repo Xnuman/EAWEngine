@@ -61,13 +61,13 @@ void test_combat_content()
                 "<Projectile_Types>Proj_Tank, Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>200</Targeting_Max_Attack_Distance>"
                 "<Projectile_Fire_Recharge_Seconds>1.5</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>3</Projectile_Fire_Pulse_Count>"
                 "<Projectile_Fire_Pulse_Delay_Seconds>0.2</Projectile_Fire_Pulse_Delay_Seconds><CategoryMask>Vehicle | Air</CategoryMask>"
-                "<Targeting_Fire_Inaccuracy>Infantry, 3</Targeting_Fire_Inaccuracy><Targeting_Fire_Inaccuracy>Air, 70</Targeting_Fire_Inaccuracy>"
+                "<Targeting_Fire_Inaccuracy>Infantry, 3</Targeting_Fire_Inaccuracy><Targeting_Fire_Inaccuracy>Air | Infantry, 70</Targeting_Fire_Inaccuracy>"
                 "<Targeting_Fire_Inaccuracy_Fixed_Radius>50</Targeting_Fire_Inaccuracy_Fixed_Radius></GroundVehicle>"
                 "<GroundStructure Name=\"Wall\"><Tactical_Health>-5</Tactical_Health></GroundStructure>"
                 "<GroundInfantry Name=\"Rifleman\"><Projectile_Types>Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>100</Targeting_Max_Attack_Distance>"
                 "<Ranged_Target_Z_Adjust>5</Ranged_Target_Z_Adjust><CategoryMask>Infantry</CategoryMask></GroundInfantry>"
-                "<Priority_Set Name=\"AntiTank\"><Attack_Priorities>Turret, 2.0, Vehicle, 1.0, Bogus, 3</Attack_Priorities><Category_Exclusions>Air</Category_Exclusions>"
-                "<Property_Exclusions>NotOpportunityTarget</Property_Exclusions><Unit_Exclusions>Wall, Tank</Unit_Exclusions></Priority_Set>"
+                "<Priority_Set Name=\"AntiTank\"><Attack_Priorities>Turret, 2.0, Vehicle | Air, 1.0, Bogus, 3</Attack_Priorities><Category_Exclusions>Air</Category_Exclusions>"
+                "<Property_Exclusions>NotOpportunityTarget</Property_Exclusions><Unit_Exclusions>Wall\n Tank</Unit_Exclusions></Priority_Set>"
                 "<GroundVehicle Name=\"Picky\"><Targeting_Priority_Set>AntiTank</Targeting_Priority_Set><Property_Flags>Turret</Property_Flags></GroundVehicle>"
                 "<Container Name=\"Slow_Team\"><Max_Speed>.5</Max_Speed><Override_Acceleration>.1</Override_Acceleration></Container>"
                 "<GroundCompany Name=\"Slow_Company\"><Create_Team_Type>Slow_Team</Create_Team_Type></GroundCompany>"
@@ -148,7 +148,7 @@ void test_combat_content()
             "a type's health, shields, armor, and weapon must be read");
     const auto& weapon = tank.weapons.front();
     require(tank.categories == 0x300U && weapon.inaccuracy.size() == 3 && weapon.inaccuracy[0].categories == 0x80U && weapon.inaccuracy[0].distance == 3.0F && weapon.inaccuracy[1].distance == 70.0F &&
-                weapon.inaccuracy[2].categories == eaw::all_categories && weapon.inaccuracy[2].distance == 50.0F,
+                weapon.inaccuracy[1].categories == 0x280U && weapon.inaccuracy[2].categories == eaw::all_categories && weapon.inaccuracy[2].distance == 50.0F,
             "a type's categories and its weapon's inaccuracy by target category must be read");
     require(weapon.range == 200.0F && weapon.recharge_seconds == 1.5F && weapon.pulse_count == 3 && weapon.pulse_delay_seconds == 0.2F && weapon.damage == 7.5F && weapon.damage_type == laser &&
                 weapon.projectile_speed == eaw::legacy_units::speed_per_frame(10.0F) && weapon.max_flight_distance == 400.0F && !weapon.damages_shield && weapon.damages_health,
@@ -161,11 +161,11 @@ void test_combat_content()
     std::vector<std::string> picky_warnings;
     const auto picky = eaw::combat_profile(catalog, *definition("Picky"), content, picky_warnings);
     const auto& wanted = picky.targeting;
-    require(picky.properties == 0x4U && picky.type_key == eaw::game_object_name_crc("Picky") && wanted.ranks.size() == 2 && wanted.ranks[0].categories == 0x100U &&
+    require(picky.properties == 0x4U && picky.type_key == eaw::game_object_name_crc("Picky") && wanted.ranks.size() == 2 && wanted.ranks[0].categories == 0x300U &&
                 wanted.ranks[1].properties == 0x4U && wanted.excluded_categories == 0x200U && wanted.excluded_properties == 0x100U && wanted.excluded_types.size() == 2 && picky_warnings.size() == 1 &&
                 picky_warnings[0].find("Bogus") != std::string::npos,
             "a targeting priority set must be read in rank order with its exclusions");
-    require(wanted.rank(0x100U, 0, 0) == 1.0F && wanted.rank(0x80U, 0x4U, 0) == 2.0F && wanted.rank(0x200U, 0, 0) < 0.0F && wanted.rank(0x80U, 0x100U, 0) < 0.0F &&
+    require(wanted.rank(0x100U, 0, 0) == 1.0F && wanted.rank(0x80U, 0x4U, 0) == 2.0F && wanted.rank(0x200U, 0, 0) == 1.0F &&wanted.rank(0x80U, 0x100U, 0) < 0.0F &&
                 wanted.rank(0x80U, 0, eaw::game_object_name_crc("Tank")) < 0.0F && wanted.rank(0x80U, 0, 0) == eaw::TargetingPriorities::unlisted_rank && wanted.rank(0x300U, 0, 0) == 1.0F,
             "a match must rank, exclusions must apply only to unmatched targets, and the rest must rank last");
     const auto team = eaw::type_team_movement(catalog, *definition("Slow_Company"), 2.0F);

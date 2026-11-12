@@ -83,15 +83,47 @@ void load_enum_bits(const AssetReader& reader, const std::string_view path, std:
 
 // Reads one field of a type through its variant chain.
 // "category, distance" lines (Targeting_Fire_Inaccuracy, Fire_Inaccuracy_Distance).
+// A run of names and the number after it, in a "names, number, names, number" list: a name run may
+// be a mask written with '|' (several items). `names` is the run as written between them, for
+// CombatContent::categories and properties; a run without a number ends the list without one.
+struct NamedValue
+{
+    std::string names;
+    std::optional<float> value;
+};
+
+std::vector<NamedValue> named_values(const std::vector<std::string_view>& items)
+{
+    std::vector<NamedValue> groups;
+    NamedValue current;
+    for (const auto item : items)
+    {
+        if (const auto number = parse_xml_number(item))
+        {
+            current.value = number;
+            groups.push_back(std::move(current));
+            current = {};
+            continue;
+        }
+        current.names += current.names.empty() ? std::string(item) : "|" + std::string(item);
+    }
+    if (!current.names.empty())
+    {
+        groups.push_back(std::move(current));
+    }
+    return groups;
+}
+
 std::vector<CategoryInaccuracy> inaccuracy(const TypeFields& fields, const std::string_view field, const CombatContent& content)
 {
     std::vector<CategoryInaccuracy> list;
     for (const auto* line : fields.nodes(field))
     {
-        const auto parts = split_xml_list(line->text);
-        const auto distance = parts.size() == 2 ? parse_xml_number(parts[1]) : std::nullopt;
+        // "categories, distance": the categories may be a mask written with '|' (several names).
+        const auto groups = named_values(split_list(line->text));
+        const auto distance = groups.size() == 1U ? groups.front().value : std::nullopt;
         std::vector<std::string> unknown;
-        const auto categories = parts.empty() ? 0U : content.categories(parts[0], &unknown);
+        const auto categories = groups.size() == 1U ? content.categories(groups.front().names, &unknown) : 0U;
         if (!distance || *distance < 0.0F || categories == 0)
         {
             fields.warn(field, line->text, "'category, non-negative distance'");
@@ -180,7 +212,7 @@ CombatContent load_combat_content(const AssetReader& reader)
             {
                 continue;
             }
-            const auto parts = split_xml_list(entry.text);
+            const auto parts = split_list(entry.text);
             const auto modifier = parts.size() == 3 ? parse_xml_number(parts[2]) : std::nullopt;
             if (!modifier || *modifier < 0.0F)
             {
@@ -203,27 +235,16 @@ namespace {
 std::uint32_t list_bits(const std::unordered_map<std::string, std::uint32_t>& bits_by_name, const std::string_view list, std::vector<std::string>* unknown)
 {
     std::uint32_t bits = 0;
-    std::size_t start = 0;
-    while (start < list.size())
+    for (const auto name : split_list(list))
     {
-        const auto end = list.find_first_of("|, \t\r\n", start);
-        const auto name = list.substr(start, end == std::string_view::npos ? std::string_view::npos : end - start);
-        if (!name.empty())
+        if (const auto found = bits_by_name.find(ascii_lower(name)); found != bits_by_name.end())
         {
-            if (const auto found = bits_by_name.find(ascii_lower(name)); found != bits_by_name.end())
-            {
-                bits |= found->second;
-            }
-            else if (unknown != nullptr)
-            {
-                unknown->emplace_back(name);
-            }
+            bits |= found->second;
         }
-        if (end == std::string_view::npos)
+        else if (unknown != nullptr)
         {
-            break;
+            unknown->emplace_back(name);
         }
-        start = end + 1;
     }
     return bits;
 }
@@ -256,15 +277,14 @@ TargetingPriorities targeting_priorities(const GameObjectCatalog& catalog, const
         const auto* node = catalog.field(*set, field).field;
         return node != nullptr ? std::string_view(node->text) : std::string_view{};
     };
-    // "name, rank, name, rank, ...": a name is a category or a property.
-    const auto entries = split_xml_list(text_of("Attack_Priorities"));
-    for (std::size_t item = 0; item + 1 < entries.size(); item += 2)
+    // "name, rank, name, rank, ...": a name is a category or a property (or a mask of them written
+    // with '|', several names before one rank).
+    for (const auto& group : named_values(split_list(text_of("Attack_Priorities"))))
     {
-        const auto rank = parse_xml_number(entries[item + 1]);
-        TargetPriority entry{content.categories(entries[item]), content.properties(entries[item]), rank.value_or(0.0F)};
-        if (!rank || (entry.categories == 0 && entry.properties == 0))
+        TargetPriority entry{content.categories(group.names), content.properties(group.names), group.value.value_or(0.0F)};
+        if (!group.value || (entry.categories == 0 && entry.properties == 0))
         {
-            warnings.push_back(set->name + ": Attack_Priorities entry '" + std::string(entries[item]) + ", " + std::string(entries[item + 1]) + "' is not 'category or property, rank'");
+            warnings.push_back(set->name + ": Attack_Priorities entry '" + group.names + "' is not 'category or property, rank'");
             continue;
         }
         priorities.ranks.push_back(entry);
@@ -272,7 +292,7 @@ TargetingPriorities targeting_priorities(const GameObjectCatalog& catalog, const
     std::ranges::stable_sort(priorities.ranks, {}, &TargetPriority::rank);
     priorities.excluded_categories = content.categories(text_of("Category_Exclusions"));
     priorities.excluded_properties = content.properties(text_of("Property_Exclusions"));
-    for (const auto excluded : split_xml_list(text_of("Unit_Exclusions")))
+    for (const auto excluded : split_list(text_of("Unit_Exclusions")))
     {
         priorities.excluded_types.push_back(game_object_name_crc(excluded));
     }
@@ -461,7 +481,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     }
     if (const auto* death_projectiles = type.node("Death_Projectiles"))
     {
-        if (const auto names = split_xml_list(death_projectiles->text); !names.empty())
+        if (const auto names = split_list(death_projectiles->text); !names.empty())
         {
             if (const auto* blast = find_projectile(catalog, names.front()))
             {
@@ -502,7 +522,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     const auto appearance_delay = [](const TypeFields& reader)
     {
         const auto* node = reader.node("Projectile_Appearance_Delay_Frames");
-        const auto items = node != nullptr ? split_xml_list(node->text) : std::vector<std::string_view>{};
+        const auto items = node != nullptr ? split_list(node->text) : std::vector<std::string_view>{};
         const auto frames = items.empty() ? std::nullopt : parse_xml_number(items.front());
         return frames && *frames > 0.0F ? legacy_units::frames(std::min(*frames, 3000.0F)) : 0.0F;
     };
@@ -552,7 +572,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     // Presentation: the Particle object its death plays (the first Death_Explosions entry).
     if (const auto* explosions = type.node("Death_Explosions"))
     {
-        if (const auto names = split_xml_list(explosions->text); !names.empty())
+        if (const auto names = split_list(explosions->text); !names.empty())
         {
             profile.death_effect = game_object_name_crc(names.front());
         }
@@ -561,7 +581,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     // The type's own weapon: the first of Projectile_Types.
     if (const auto* projectiles = type.node("Projectile_Types"); projectiles != nullptr && range > 0.0F)
     {
-        if (const auto names = split_xml_list(projectiles->text); !names.empty())
+        if (const auto names = split_list(projectiles->text); !names.empty())
         {
             if (const auto* projectile_type = find_projectile(catalog, names.front()))
             {
@@ -655,7 +675,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         part.death_sound = sound_of(point, "Death_Explosion_SFXEvent", 0U);
         if (const auto* explosions = point.node("Death_Explosion_Particles"))
         {
-            if (const auto names = split_xml_list(explosions->text); !names.empty())
+            if (const auto names = split_list(explosions->text); !names.empty())
             {
                 part.death_effect = game_object_name_crc(names.front());
             }

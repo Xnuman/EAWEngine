@@ -103,26 +103,12 @@ bool parse_float(std::string_view value, float* output = nullptr)
     return true;
 }
 
-std::vector<std::string> split_values(const std::string_view value, const bool pipe_delimiter = false)
+std::vector<std::string> split_values(const std::string_view value)
 {
     std::vector<std::string> result;
-    std::size_t begin = 0;
-    for (std::size_t index = 0; index <= value.size(); ++index)
+    for (const auto item : split_list(value))
     {
-        const bool delimiter = index == value.size() || ascii_is_space(value[index]) || value[index] == ',' || (pipe_delimiter && value[index] == '|');
-        if (!delimiter)
-        {
-            continue;
-        }
-        if (index > begin)
-        {
-            auto token = std::string(ascii_trim(value.substr(begin, index - begin)));
-            if (!token.empty())
-            {
-                result.push_back(std::move(token));
-            }
-        }
-        begin = index + 1;
+        result.emplace_back(item);
     }
     return result;
 }
@@ -270,7 +256,7 @@ std::optional<std::string> validate_value(const XmlTagSchema& tag, const XmlNode
     if (enumeration != nullptr && !enumeration->values.empty())
     {
         const bool list = type == "enumvaluelist" || type == "projectilecategorylist" || enumeration->bitfield || semantic_type == "flaglist";
-        const auto values = list ? split_values(value, true) : std::vector<std::string>{value};
+        const auto values = list ? split_values(value) : std::vector<std::string>{value};
         for (const auto& item : values)
         {
             if (!contains_case_insensitive(enumeration->values, item))
@@ -537,7 +523,7 @@ XmlSchemaValidationResult XmlSchema::validate(const XmlAssetDatabase& database) 
         std::set<std::string> behaviors;
         for (const auto& value : effective_field_values(definition, "behavior"))
         {
-            for (auto behavior : split_values(value, true))
+            for (auto behavior : split_values(value))
             {
                 behaviors.insert(ascii_lower(behavior));
             }
