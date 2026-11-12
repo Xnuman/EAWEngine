@@ -1,6 +1,7 @@
 #include "test_support.hpp"
 
 #include "formats/xml_helpers.hpp"
+#include "assets/type_fields.hpp"
 #include "assets/type_hardpoints.hpp"
 
 namespace {
@@ -386,11 +387,49 @@ void test_xml_schema_validation()
     std::filesystem::remove_all(root, ignored);
 }
 
+// One number rule for every type field (the stock data's "2.0f" included), comma lists, and typed
+// reads through the variant chain with diagnostics that name the declaring variant.
+void test_type_fields()
+{
+    std::string_view trailing;
+    require(eaw::parse_xml_number(" 2.0f ", &trailing) == 2.0F && trailing.empty() && eaw::parse_xml_number("+5", &trailing) == 5.0F && trailing.empty(),
+            "a number with the float suffix or a sign must read cleanly");
+    require(eaw::parse_xml_number("12abc", &trailing) == 12.0F && trailing == "abc" && !eaw::parse_xml_number("abc") && !eaw::parse_xml_number("inf") && !eaw::parse_xml_number(""),
+            "a number is read like atof, its trailing text reported; non-numbers and infinities are nothing");
+    require(eaw::split_xml_list(" a, ,b ,c ") == std::vector<std::string_view>{"a", "b", "c"}, "list parts must be trimmed and empty ones dropped");
+
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-type-fields-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::filesystem::create_directories(root / "Data" / "XML");
+    {
+        std::ofstream file(root / "Data" / "XML" / "Units.xml", std::ios::binary);
+        file << "<Units><GroundVehicle Name=\"Base\"><Max_Speed>2.0f</Max_Speed><Bad>fast</Bad><Junk>3x</Junk><Flag>Yes</Flag><Weird>maybe</Weird>"
+                "<Pair>a, b</Pair></GroundVehicle>"
+                "<GroundVehicle Name=\"Child\"><Variant_Of_Existing_Type>Base</Variant_Of_Existing_Type><Negative>-1</Negative></GroundVehicle></Units>";
+    }
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    const auto database = eaw::XmlAssetDatabase::build(vfs);
+    const auto catalog = eaw::GameObjectCatalog::build(database);
+    std::vector<std::string> warnings;
+    const eaw::TypeFields fields(catalog, *catalog.find("Child").front(), &warnings);
+    require(fields.amount("Max_Speed") == 2.0F && fields.amount("Missing", 7.0F) == 7.0F && fields.signed_value("Negative") == -1.0F && warnings.empty(),
+            "numbers must come through the variant chain without diagnostics");
+    require(fields.amount("Negative") == 0.0F && fields.amount("Bad") == 0.0F && fields.number("Junk") == 3.0F && warnings.size() == 3,
+            "negative amounts, non-numbers, and trailing text must be reported");
+    require(warnings[1] == "Child: Bad 'fast' is not a non-negative number (from Base)", "a diagnostic must name the type, field, value, and declaring variant");
+    require(fields.flag("Flag", false) && !fields.flag("Missing", false) && fields.flag("Weird", true) && warnings.size() == 4 && fields.list("Pair").size() == 2 && fields.text("Pair") == "a, b",
+            "flags, lists, and text must read through the chain");
+    std::filesystem::remove_all(root, ignored);
+}
+
 const ModuleRegistrar registrar("xml", {
                                            {"test_xml_document", &test_xml_document},
                                            {"test_xml_asset_database", &test_xml_asset_database},
                                            {"test_game_object_catalog", &test_game_object_catalog},
                                            {"test_xml_schema_validation", &test_xml_schema_validation},
+                                           {"test_type_fields", &test_type_fields},
                                        });
 
 } // namespace

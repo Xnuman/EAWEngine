@@ -3,6 +3,7 @@
 #include "formats/dds_texture.hpp"
 #include "formats/xml_document.hpp"
 #include "assets/map_object_layout.hpp"
+#include "assets/type_fields.hpp"
 #include "engine/combat_content.hpp"
 #include "engine/scene_builder_internal.hpp"
 
@@ -77,15 +78,7 @@ std::uint32_t type_passable_types(const GameObjectCatalog& catalog, const XmlDef
 
 float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& definition, const std::string_view field)
 {
-    const auto node = catalog.field(definition, field).field;
-    if (node == nullptr)
-    {
-        return 0.0F;
-    }
-    const auto text = ascii_trim(node->text);
-    float value = 0.0F;
-    const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
-    return result.ec == std::errc{} && std::isfinite(value) ? value : 0.0F;
+    return TypeFields(catalog, definition).number(field).value_or(0.0F);
 }
 
 float type_lod_bias(const GameObjectCatalog& catalog, const XmlDefinition& definition)
@@ -121,8 +114,7 @@ CrushProfile type_crush(const GameObjectCatalog& catalog, const XmlDefinition& d
 {
     const auto set = [&](const std::string_view field)
     {
-        const auto* node = catalog.field(definition, field).field;
-        return node != nullptr && parse_xml_bool(node->text).value_or(false);
+        return TypeFields(catalog, definition).flag(field, false);
     };
     CrushProfile crush;
     crush.squashable = set("Is_Squashable");
@@ -228,14 +220,10 @@ AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const 
         profile.walk_reference = reference("Walk_Animation_Speed");
     }
     profile.idle_rate = rate("Idle_Anim_00_Rate_Mod");
-    if (const auto* idle = catalog.field(definition, "Allow_Idle_When_Moving").field)
-    {
-        profile.idle_when_moving = parse_xml_bool(idle->text).value_or(false);
-    }
+    profile.idle_when_moving = TypeFields(catalog, definition).flag("Allow_Idle_When_Moving", false);
     const auto flag = [&](const std::string_view field)
     {
-        const auto* node = catalog.field(definition, field).field;
-        return node != nullptr && parse_xml_bool(node->text).value_or(false);
+        return TypeFields(catalog, definition).flag(field, false);
     };
     profile.pre_turn = flag("Has_Pre_Turn_Anim");
     profile.walk_transition = flag("Walk_Transition");
@@ -265,8 +253,7 @@ AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const 
 
 bool type_is_marker(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
-    const auto* node = catalog.field(definition, "Is_Marker").field;
-    return node != nullptr && parse_xml_bool(node->text).value_or(false);
+    return TypeFields(catalog, definition).flag("Is_Marker", false);
 }
 
 bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition)
@@ -373,8 +360,7 @@ float type_space_obstacle_radius(const GameObjectCatalog& catalog, const XmlDefi
     };
     const auto set = [&](const std::string_view field)
     {
-        const auto* node = catalog.field(definition, field).field;
-        return node != nullptr && parse_xml_bool(node->text).value_or(false);
+        return TypeFields(catalog, definition).flag(field, false);
     };
     // Fields and clouds are entered (their effects wait for space hazards).
     if (!behaves("SPACE_OBSTACLE") || set("Is_Asteroid_Field") || set("Is_Nebula") || set("Is_Ion_Storm"))
@@ -566,10 +552,7 @@ std::pair<std::string_view, std::string_view> death_clone_entry(const std::strin
 DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     DeathStyle style;
-    if (const auto* removed = catalog.field(definition, "Remove_Upon_Death").field)
-    {
-        style.removed = parse_xml_bool(removed->text).value_or(false);
-    }
+    style.removed = TypeFields(catalog, definition).flag("Remove_Upon_Death", false);
     std::string_view chosen;
     for (const auto* entry : catalog.fields(definition, "Death_Clone").fields)
     {
@@ -694,36 +677,8 @@ bool type_aims_with_body(const GameObjectCatalog& catalog, const XmlDefinition& 
 
 float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings, const float mode_multiplier)
 {
-    const auto speed = catalog.field(definition, "Max_Speed").field;
-    if (speed == nullptr)
-    {
-        return 0.0F;
-    }
-    // Like the previous std::stof parse: leading whitespace is skipped and trailing text ignored.
-    const auto& text = speed->text;
-    const auto* first = text.data();
-    const auto* const last = text.data() + text.size();
-    while (first != last && ascii_is_space(*first))
-    {
-        ++first;
-    }
-    if (first != last && *first == '+')
-    {
-        ++first;
-    }
-    float value{};
-    const auto [end, error] = std::from_chars(first, last, value);
-    if (error == std::errc::invalid_argument || end == first)
-    {
-        warnings.push_back(definition.name + ": Max_Speed '" + speed->text + "' is not a number");
-        return 0.0F;
-    }
-    if (error == std::errc::result_out_of_range)
-    {
-        warnings.push_back(definition.name + ": Max_Speed '" + speed->text + "' is out of range");
-        return 0.0F;
-    }
-    return std::isfinite(value) && value > 0.0F ? value * provisional_max_speed_scale * mode_multiplier : 0.0F;
+    const auto value = TypeFields(catalog, definition, &warnings).number("Max_Speed").value_or(0.0F);
+    return value > 0.0F ? value * provisional_max_speed_scale * mode_multiplier : 0.0F;
 }
 
 } // namespace eaw::scene_build

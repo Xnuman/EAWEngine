@@ -4,6 +4,7 @@
 #include "core/string_utils.hpp"
 #include "formats/xml_document.hpp"
 #include "assets/skeleton.hpp"
+#include "assets/type_fields.hpp"
 #include "assets/type_hardpoints.hpp"
 #include "engine/visual_scene_builder.hpp"
 
@@ -22,43 +23,6 @@ namespace {
 constexpr std::string_view game_constants_path = "Data/XML/GameConstants.xml";
 constexpr std::string_view category_enum_path = "Data/XML/Enum/GameObjectCategoryType.xml";
 constexpr std::string_view property_enum_path = "Data/XML/Enum/GameObjectPropertiesType.xml";
-
-std::optional<float> parse_float(std::string_view text) noexcept
-{
-    text = ascii_trim(text);
-    if (!text.empty() && text.front() == '+')
-    {
-        text.remove_prefix(1);
-    }
-    float value{};
-    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
-    if (error != std::errc{} || end == text.data() || !std::isfinite(value))
-    {
-        return std::nullopt;
-    }
-    return value;
-}
-
-std::vector<std::string_view> split_list(const std::string_view text)
-{
-    std::vector<std::string_view> items;
-    std::size_t start = 0;
-    while (start <= text.size())
-    {
-        const auto separator = text.find(',', start);
-        const auto item = ascii_trim(text.substr(start, separator == std::string_view::npos ? std::string_view::npos : separator - start));
-        if (!item.empty())
-        {
-            items.push_back(item);
-        }
-        if (separator == std::string_view::npos)
-        {
-            break;
-        }
-        start = separator + 1;
-    }
-    return items;
-}
 
 std::uint16_t intern(CombatContent& content, const std::string_view name)
 {
@@ -117,110 +81,38 @@ void load_enum_bits(const AssetReader& reader, const std::string_view path, std:
 }
 
 // Reads one field of a type through its variant chain.
-class FieldReader
+// "category, distance" lines (Targeting_Fire_Inaccuracy, Fire_Inaccuracy_Distance).
+std::vector<CategoryInaccuracy> inaccuracy(const TypeFields& fields, const std::string_view field, const CombatContent& content)
 {
-public:
-    FieldReader(const GameObjectCatalog& catalog, const XmlDefinition& definition, std::vector<std::string>& warnings) : catalog_(catalog), definition_(definition), warnings_(warnings)
-    {}
-
-    [[nodiscard]] const XmlNode* node(const std::string_view field) const
+    std::vector<CategoryInaccuracy> list;
+    for (const auto* line : fields.nodes(field))
     {
-        return catalog_.field(definition_, field).field;
+        const auto parts = split_xml_list(line->text);
+        const auto distance = parts.size() == 2 ? parse_xml_number(parts[1]) : std::nullopt;
+        std::vector<std::string> unknown;
+        const auto categories = parts.empty() ? 0U : content.categories(parts[0], &unknown);
+        if (!distance || *distance < 0.0F || categories == 0)
+        {
+            fields.warn(field, line->text, "'category, non-negative distance'");
+            continue;
+        }
+        list.push_back({categories, *distance});
     }
+    return list;
+}
 
-    // Every occurrence of a repeated field, from the nearest definition that declares it.
-    [[nodiscard]] std::vector<const XmlNode*> nodes(const std::string_view field) const
+// A damage or armor type's id (CombatContent::type_ids); 0 when absent.
+std::uint16_t type_id(const TypeFields& fields, const std::string_view field, const CombatContent& content)
+{
+    const auto* found = fields.node(field);
+    if (found == nullptr)
     {
-        return catalog_.fields(definition_, field).fields;
+        return 0;
     }
-
-    // "category, distance" lines (Targeting_Fire_Inaccuracy, Fire_Inaccuracy_Distance).
-    [[nodiscard]] std::vector<CategoryInaccuracy> inaccuracy(const std::string_view field, const CombatContent& content) const
-    {
-        std::vector<CategoryInaccuracy> list;
-        for (const auto* line : nodes(field))
-        {
-            const auto parts = split_list(line->text);
-            const auto distance = parts.size() == 2 ? parse_float(parts[1]) : std::nullopt;
-            std::vector<std::string> unknown;
-            const auto categories = parts.empty() ? 0U : content.categories(parts[0], &unknown);
-            if (!distance || *distance < 0.0F || categories == 0)
-            {
-                warnings_.push_back(definition_.name + ": " + std::string(field) + " '" + line->text + "' is not 'category, non-negative distance'");
-                continue;
-            }
-            list.push_back({categories, *distance});
-        }
-        return list;
-    }
-
-    // A non-negative number, or `fallback` when the field is missing; bad values warn and give 0.
-    [[nodiscard]] float amount(const std::string_view field, const float fallback = 0.0F) const
-    {
-        const auto* found = node(field);
-        if (found == nullptr)
-        {
-            return fallback;
-        }
-        const auto value = parse_float(found->text);
-        if (!value || *value < 0.0F)
-        {
-            warnings_.push_back(definition_.name + ": " + std::string(field) + " '" + found->text + "' is not a non-negative number");
-            return 0.0F;
-        }
-        return *value;
-    }
-
-    // A finite number of either sign, 0 when the field is missing; bad values warn and give 0.
-    [[nodiscard]] float signed_value(const std::string_view field) const
-    {
-        const auto* found = node(field);
-        if (found == nullptr)
-        {
-            return 0.0F;
-        }
-        const auto value = parse_float(found->text);
-        if (!value)
-        {
-            warnings_.push_back(definition_.name + ": " + std::string(field) + " '" + found->text + "' is not a number");
-            return 0.0F;
-        }
-        return *value;
-    }
-
-    [[nodiscard]] bool flag(const std::string_view field, const bool fallback) const
-    {
-        const auto* found = node(field);
-        if (found == nullptr)
-        {
-            return fallback;
-        }
-        if (const auto value = parse_xml_bool(found->text))
-        {
-            return *value;
-        }
-        warnings_.push_back(definition_.name + ": " + std::string(field) + " '" + found->text + "' is not a yes/no value");
-        return fallback;
-    }
-
-    [[nodiscard]] std::uint16_t type_id(const std::string_view field, const CombatContent& content) const
-    {
-        const auto* found = node(field);
-        if (found == nullptr)
-        {
-            return 0;
-        }
-        const auto name = ascii_trim(found->text);
-        const auto id = content.type_ids.find(ascii_lower(name));
-        // A type the damage table never names multiplies by 1 everywhere, exactly like "none".
-        return id == content.type_ids.end() ? std::uint16_t{0} : id->second;
-    }
-
-private:
-    const GameObjectCatalog& catalog_;
-    const XmlDefinition& definition_;
-    std::vector<std::string>& warnings_;
-};
+    const auto id = content.type_ids.find(ascii_lower(ascii_trim(found->text)));
+    // A type the damage table never names multiplies by 1 everywhere, exactly like "none".
+    return id == content.type_ids.end() ? std::uint16_t{0} : id->second;
+}
 
 const XmlDefinition* find_projectile(const GameObjectCatalog& catalog, const std::string_view name)
 {
@@ -254,7 +146,7 @@ CombatContent load_combat_content(const AssetReader& reader)
     }
     const auto multiplier = [&](const XmlNode& entry, float& value)
     {
-        const auto parsed = parse_float(ascii_trim(entry.text));
+        const auto parsed = parse_xml_number(ascii_trim(entry.text));
         if (!parsed || *parsed <= 0.0F)
         {
             content.warnings.push_back(std::string(game_constants_path) + ": " + entry.name + " '" + entry.text + "' is not a positive number");
@@ -287,8 +179,8 @@ CombatContent load_combat_content(const AssetReader& reader)
             {
                 continue;
             }
-            const auto parts = split_list(entry.text);
-            const auto modifier = parts.size() == 3 ? parse_float(parts[2]) : std::nullopt;
+            const auto parts = split_xml_list(entry.text);
+            const auto modifier = parts.size() == 3 ? parse_xml_number(parts[2]) : std::nullopt;
             if (!modifier || *modifier < 0.0F)
             {
                 content.warnings.push_back(std::string(game_constants_path) + ": Damage_To_Armor_Mod '" + entry.text + "' is not 'damage, armor, non-negative modifier'");
@@ -364,10 +256,10 @@ TargetingPriorities targeting_priorities(const GameObjectCatalog& catalog, const
         return node != nullptr ? std::string_view(node->text) : std::string_view{};
     };
     // "name, rank, name, rank, ...": a name is a category or a property.
-    const auto entries = split_list(text_of("Attack_Priorities"));
+    const auto entries = split_xml_list(text_of("Attack_Priorities"));
     for (std::size_t item = 0; item + 1 < entries.size(); item += 2)
     {
-        const auto rank = parse_float(entries[item + 1]);
+        const auto rank = parse_xml_number(entries[item + 1]);
         TargetPriority entry{content.categories(entries[item]), content.properties(entries[item]), rank.value_or(0.0F)};
         if (!rank || (entry.categories == 0 && entry.properties == 0))
         {
@@ -379,7 +271,7 @@ TargetingPriorities targeting_priorities(const GameObjectCatalog& catalog, const
     std::ranges::stable_sort(priorities.ranks, {}, &TargetPriority::rank);
     priorities.excluded_categories = content.categories(text_of("Category_Exclusions"));
     priorities.excluded_properties = content.properties(text_of("Property_Exclusions"));
-    for (const auto excluded : split_list(text_of("Unit_Exclusions")))
+    for (const auto excluded : split_xml_list(text_of("Unit_Exclusions")))
     {
         priorities.excluded_types.push_back(game_object_name_crc(excluded));
     }
@@ -402,11 +294,11 @@ namespace {
 
 // The shot of a projectile type: damage, damage type, speed (scaled like unit speeds), flight limit,
 // and what it damages.
-void read_projectile(const FieldReader& projectile, const std::string_view name, const CombatContent& content, WeaponProfile& weapon)
+void read_projectile(const TypeFields& projectile, const std::string_view name, const CombatContent& content, WeaponProfile& weapon)
 {
     weapon.projectile_visual = game_object_name_crc(name);
     weapon.damage = projectile.amount("Projectile_Damage");
-    weapon.damage_type = projectile.type_id("Damage_Type", content);
+    weapon.damage_type = type_id(projectile, "Damage_Type", content);
     weapon.projectile_speed = projectile.amount("Max_Speed") * provisional_max_speed_scale;
     weapon.max_flight_distance = projectile.amount("Projectile_Max_Flight_Distance");
     weapon.damages_shield = projectile.flag("Projectile_Does_Shield_Damage", true);
@@ -518,7 +410,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                              const float model_scale, const float health_multiplier)
 {
     const auto pose = skeleton != nullptr ? skeleton_bind_pose(*skeleton) : std::vector<Matrix4>{};
-    const FieldReader type(catalog, definition, warnings);
+    const TypeFields type(catalog, definition, &warnings);
     CombatProfile profile;
     profile.health = type.amount("Tactical_Health") * health_multiplier;
     profile.collidable = type.flag("Collidable_By_Projectile_Living", true);
@@ -568,12 +460,12 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     }
     if (const auto* death_projectiles = type.node("Death_Projectiles"))
     {
-        if (const auto names = split_list(death_projectiles->text); !names.empty())
+        if (const auto names = split_xml_list(death_projectiles->text); !names.empty())
         {
             if (const auto* blast = find_projectile(catalog, names.front()))
             {
                 WeaponProfile shot;
-                read_projectile(FieldReader(catalog, *blast, warnings), blast->name, content, shot);
+                read_projectile(TypeFields(catalog, *blast, &warnings), blast->name, content, shot);
                 profile.death_blast = shot.blast;
                 profile.death_blast_damage_type = shot.damage_type;
                 profile.death_blast_damages_shield = shot.damages_shield;
@@ -606,15 +498,15 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         }
     }
     // The first of a reader's Projectile_Appearance_Delay_Frames ("15" or "15,20"), in seconds.
-    const auto appearance_delay = [](const FieldReader& reader)
+    const auto appearance_delay = [](const TypeFields& reader)
     {
         const auto* node = reader.node("Projectile_Appearance_Delay_Frames");
-        const auto items = node != nullptr ? split_list(node->text) : std::vector<std::string_view>{};
-        const auto frames = items.empty() ? std::nullopt : parse_float(items.front());
+        const auto items = node != nullptr ? split_xml_list(node->text) : std::vector<std::string_view>{};
+        const auto frames = items.empty() ? std::nullopt : parse_xml_number(items.front());
         return frames && *frames > 0.0F ? std::min(*frames, 3000.0F) / 30.0F : 0.0F;
     };
     // Categories a reader's weapons never fire at (unknown names are reported).
-    const auto restricted = [&](const FieldReader& reader, const std::string_view owner, const std::string_view field)
+    const auto restricted = [&](const TypeFields& reader, const std::string_view owner, const std::string_view field)
     {
         const auto* node = reader.node(field);
         if (node == nullptr)
@@ -631,10 +523,10 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     };
     const auto unit_excluded = restricted(type, definition.name, "Fire_Category_Restrictions") | restricted(type, definition.name, "Attack_Category_Restrictions");
     // Where the type's own weapons stray, by target category; a fixed radius covers the rest.
-    auto unit_inaccuracy = type.inaccuracy("Targeting_Fire_Inaccuracy", content);
+    auto unit_inaccuracy = inaccuracy(type, "Targeting_Fire_Inaccuracy", content);
     if (unit_inaccuracy.empty())
     {
-        unit_inaccuracy = type.inaccuracy("Fire_Inaccuracy_Distance", content);
+        unit_inaccuracy = inaccuracy(type, "Fire_Inaccuracy_Distance", content);
     }
     if (const auto fixed = type.amount("Targeting_Fire_Inaccuracy_Fixed_Radius"); fixed > 0.0F)
     {
@@ -642,14 +534,14 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     }
     profile.shield = type.amount("Shield_Points");
     profile.shield_regen_per_second = type.amount("Shield_Refresh_Rate");
-    profile.armor_type = type.type_id("Armor_Type", content);
-    profile.shield_armor_type = type.type_id("Shield_Armor_Type", content);
+    profile.armor_type = type_id(type, "Armor_Type", content);
+    profile.shield_armor_type = type_id(type, "Shield_Armor_Type", content);
     // Below the origin is legitimate (stock Underworld_Hero_Shuttle_Landing uses -5.0).
     profile.aim_height = type.signed_value("Ranged_Target_Z_Adjust");
     const auto range = type.amount("Targeting_Max_Attack_Distance");
     // Presentation: the sound event of a shot (a weapon hardpoint's Fire_SFXEvent, else the type's
     // SFXEvent_Fire).
-    const auto sound_of = [](const FieldReader& reader, const std::string_view field, const std::uint32_t fallback)
+    const auto sound_of = [](const TypeFields& reader, const std::string_view field, const std::uint32_t fallback)
     {
         const auto* node = reader.node(field);
         const auto name = node != nullptr ? ascii_trim(node->text) : std::string_view{};
@@ -659,7 +551,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     // Presentation: the Particle object its death plays (the first Death_Explosions entry).
     if (const auto* explosions = type.node("Death_Explosions"))
     {
-        if (const auto names = split_list(explosions->text); !names.empty())
+        if (const auto names = split_xml_list(explosions->text); !names.empty())
         {
             profile.death_effect = game_object_name_crc(names.front());
         }
@@ -668,7 +560,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     // The type's own weapon: the first of Projectile_Types.
     if (const auto* projectiles = type.node("Projectile_Types"); projectiles != nullptr && range > 0.0F)
     {
-        if (const auto names = split_list(projectiles->text); !names.empty())
+        if (const auto names = split_xml_list(projectiles->text); !names.empty())
         {
             if (const auto* projectile_type = find_projectile(catalog, names.front()))
             {
@@ -676,7 +568,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 weapon.range = range;
                 // The cadence is the shooter's; units with several Projectile_Types (Bossk, MAL, the
                 // Disruptor merc) set none and carry it on each projectile instead.
-                const FieldReader shot(catalog, *projectile_type, warnings);
+                const TypeFields shot(catalog, *projectile_type, &warnings);
                 const auto cadence = [&](const std::string_view field, const float fallback)
                 {
                     return type.node(field) != nullptr ? type.amount(field, fallback) : shot.amount(field, fallback);
@@ -730,7 +622,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             warnings.push_back(definition.name + ": hardpoint '" + name + "' is not defined");
             continue;
         }
-        const FieldReader point(catalog, *hardpoint, warnings);
+        const TypeFields point(catalog, *hardpoint, &warnings);
         const auto* kind_node = point.node("Type");
         const auto kind = kind_node != nullptr ? hardpoint_kind(kind_node->text) : HardpointProfile::Kind::other;
         const auto bone_name = [&](const std::string_view field)
@@ -762,7 +654,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         part.death_sound = sound_of(point, "Death_Explosion_SFXEvent", 0U);
         if (const auto* explosions = point.node("Death_Explosion_Particles"))
         {
-            if (const auto names = split_list(explosions->text); !names.empty())
+            if (const auto names = split_xml_list(explosions->text); !names.empty())
             {
                 part.death_effect = game_object_name_crc(names.front());
             }
@@ -786,15 +678,15 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         weapon.recharge_seconds = (minimum + point.amount("Fire_Max_Recharge_Seconds", minimum)) * 0.5F;
         weapon.pulse_count = std::max(1U, static_cast<std::uint32_t>(std::min(point.amount("Fire_Pulse_Count", 1.0F), 1000.0F)));
         weapon.pulse_delay_seconds = point.amount("Fire_Pulse_Delay_Seconds");
-        read_projectile(FieldReader(catalog, *projectile_type, warnings), projectile_type->name, content, weapon);
+        read_projectile(TypeFields(catalog, *projectile_type, &warnings), projectile_type->name, content, weapon);
         if (point.node("Damage_Type") != nullptr)
         {
-            weapon.damage_type = point.type_id("Damage_Type", content);
+            weapon.damage_type = type_id(point, "Damage_Type", content);
         }
         weapon.hardpoint = part_index;
         weapon.appearance_delay_seconds = appearance_delay(point);
         weapon.excluded_categories = restricted(point, hardpoint->name, "Fire_Category_Restrictions") | unit_excluded;
-        weapon.inaccuracy = point.inaccuracy("Fire_Inaccuracy_Distance", content);
+        weapon.inaccuracy = inaccuracy(point, "Fire_Inaccuracy_Distance", content);
         if (weapon.inaccuracy.empty())
         {
             weapon.inaccuracy = unit_inaccuracy;

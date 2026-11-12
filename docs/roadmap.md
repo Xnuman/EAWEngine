@@ -258,8 +258,10 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
 - the asset inspector's and EAWTools' own top-level chunk listing (instead of
   `formats/alamo_chunks`), kept because they list the chunks before a truncation;
 - `PathPoint` (pathfinding) beside eaw_math's `Vector2`;
-- two readers of a type's XML fields with different rules (`type_float_field`, `combat_content`'s
-  `FieldReader`) and five XML list tokenizers with different delimiters;
+- XML list tokenizers with their own delimiters (type names split on commas or spaces in
+  `game_object_catalog`, `map_object_layout`, and `sound_events`; categories on pipes, commas, or
+  spaces in `object_type_properties`; `xml_schema_validate`'s values), where `TypeFields::list`
+  splits on commas: one rule per kind of list, decided against the corpus;
 - `compare_images` (image regression) in eaw_formats;
 - the projectile reacquisition tie-break, whose comment says lower index while the code takes the
   higher (changing the comparison changes the hash);

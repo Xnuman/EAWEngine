@@ -510,6 +510,14 @@ the move. This is an inference from the behavior lists and the observation; the
 original's exact rules (turn speed while aiming, crouching, the stationary
 flag's effect on movement) are not established.
 
+Numbers in XML fields. 577 stock values follow a number with text, nearly all the C float suffix
+(`Select_Box_Z_Adjust` 160 times, `Spin_Away_On_Death_Time` "2.0f", `Spawn_Indigenous_Units_Radius`
+"150.0f"), a few hexadecimal (`PixelShaderVersionHEX` "0x0104") or sizes ("1x1"); two values carry a
+leading `+`. The engine reads every numeric field like C's atof, the leading number taken
+(`parse_xml_number`, `TypeFields`), which reads the suffixed values as written; text after the
+number other than the suffix is reported. That the original reads them so is an inference from the
+data working in the game.
+
 Clip speeds (`Movement_Animation_Speed`, `Walk_Animation_Speed`). Stock
 `Movement_Animation_Speed` (about 130 types) tracks the type's `Max_Speed`:
 equal on most (Stormtrooper 0.8/0.8, T2-B 2.3/2.3, Wampa 1.1903/1.1903, Shaak

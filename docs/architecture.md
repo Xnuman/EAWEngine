@@ -419,7 +419,9 @@ The file-level split of each module.
   (`dds_texture`, `mtd_atlas`), `image` (`png_image`, `rgba_image`), `xml` (`xml_document`,
   `xml_helpers`), `localization` (`dat_string_table` and its helpers), `script`
   (`lua_bytecode`), `audio` (`wav_audio`), and `animation` (`animation_sfx_map`).
-- `src/assets` (`eaw_assets`), by category: `game_data` (`game_object_catalog`, `spawn_catalog`,
+- `src/assets` (`eaw_assets`), by category: `game_data` (`game_object_catalog`, `type_fields` (typed
+  reads of a type's fields through its variants: one number rule, comma lists, yes/no values, and
+  diagnostics naming the declaring variant), `spawn_catalog`,
   `map_object_layout`, `surface_effects`, `xml_asset_database`, and `XmlSchema`, split into `xml_schema_load.cpp` for
   the optional eaw-schema YAML and `xml_schema_validate.cpp`), `model` (`model`, `legacy_material`,
   and `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` rules and default mesh visibility),

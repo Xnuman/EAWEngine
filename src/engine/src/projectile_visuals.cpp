@@ -2,6 +2,7 @@
 
 #include "math/scalar.hpp"
 #include "core/string_utils.hpp"
+#include "assets/type_fields.hpp"
 #include "engine/scene_presentation.hpp"
 #include "engine/visual_scene_builder.hpp"
 
@@ -13,15 +14,12 @@
 namespace eaw {
 namespace {
 
-// Comma-separated numbers ("3,0", "104,181,230,255"); empty when any part does not parse.
+// Comma-separated whole numbers ("3,0", "104,181,230,255"); empty when any part is not one.
 template <class T> std::vector<T> numbers(const std::string_view text)
 {
     std::vector<T> values;
-    std::size_t start = 0;
-    while (start <= text.size())
+    for (const auto part : split_xml_list(text))
     {
-        const auto comma = text.find(',', start);
-        const auto part = ascii_trim(text.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start));
         T value{};
         const auto [end, error] = std::from_chars(part.data(), part.data() + part.size(), value);
         if (error != std::errc{} || end != part.data() + part.size())
@@ -29,11 +27,6 @@ template <class T> std::vector<T> numbers(const std::string_view text)
             return {};
         }
         values.push_back(value);
-        if (comma == std::string_view::npos)
-        {
-            break;
-        }
-        start = comma + 1;
     }
     return values;
 }
@@ -64,24 +57,20 @@ void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<c
         {
             continue;
         }
-        const auto text = [&](const std::string_view field) -> std::string_view
-        {
-            const auto* node = catalog.field(*projectile, field).field;
-            return node != nullptr ? ascii_trim(node->text) : std::string_view{};
-        };
-        const auto render = numbers<int>(text("Projectile_Custom_Render"));
+        const TypeFields fields(catalog, *projectile, &warnings);
+        const auto render = numbers<int>(fields.text("Projectile_Custom_Render"));
         ProjectileVisual visual;
         const auto particle_key = [&](const std::string_view field) -> std::uint32_t
         {
-            const auto name = text(field);
+            const auto name = fields.text(field);
             return name.empty() ? 0U : game_object_name_crc(name);
         };
         visual.impact_effects = {particle_key("Projectile_Absorbed_By_Shields_Particle"), particle_key("Projectile_Object_Detonation_Particle"),
                                  particle_key("Projectile_Object_Armor_Reduced_Detonation_Particle"), particle_key("Projectile_Lifetime_Detonation_Particle")};
         const auto positive = [&](const std::string_view field)
         {
-            const auto values = numbers<float>(text(field));
-            return values.size() == 1 && std::isfinite(values.front()) && values.front() > 0.0F ? values.front() : 0.0F;
+            const auto value = fields.number(field).value_or(0.0F);
+            return value > 0.0F ? value : 0.0F;
         };
         if (const auto gravity = positive("Projectile_Grenade_Gravity"); gravity > 0.0F)
         {
@@ -99,14 +88,14 @@ void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<c
         visual.tinted = render.front() == 2;
         const auto number = [&](const std::string_view field, const float fallback)
         {
-            const auto values = numbers<float>(text(field));
-            if (values.size() == 1 && std::isfinite(values.front()) && values.front() > 0.0F)
+            const auto value = fields.number(field);
+            if (value && *value > 0.0F)
             {
-                return values.front();
+                return *value;
             }
-            if (!text(field).empty())
+            if (value)
             {
-                warnings.push_back(projectile->name + ": " + std::string(field) + " '" + std::string(text(field)) + "' is not a positive number");
+                fields.warn(field, fields.text(field), "a positive number");
             }
             return fallback;
         };
@@ -118,7 +107,7 @@ void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<c
         {
             visual.length *= visual.width;
         }
-        if (const auto slot = numbers<std::uint32_t>(text("Projectile_Texture_Slot")); slot.size() == 2 && slot[0] < projectile_atlas_cells && slot[1] < projectile_atlas_cells)
+        if (const auto slot = numbers<std::uint32_t>(fields.text("Projectile_Texture_Slot")); slot.size() == 2 && slot[0] < projectile_atlas_cells && slot[1] < projectile_atlas_cells)
         {
             visual.column = slot[0];
             visual.row = slot[1];
@@ -129,11 +118,11 @@ void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<c
             visual.column = slot[0] % projectile_atlas_cells;
             visual.row = slot[0] / projectile_atlas_cells;
         }
-        else if (!text("Projectile_Texture_Slot").empty())
+        else if (!fields.text("Projectile_Texture_Slot").empty())
         {
-            warnings.push_back(projectile->name + ": Projectile_Texture_Slot '" + std::string(text("Projectile_Texture_Slot")) + "' is not a cell of the 4x4 atlas");
+            warnings.push_back(projectile->name + ": Projectile_Texture_Slot '" + std::string(fields.text("Projectile_Texture_Slot")) + "' is not a cell of the 4x4 atlas");
         }
-        if (const auto color = numbers<int>(text("Projectile_Laser_Color")); color.size() >= 3)
+        if (const auto color = numbers<int>(fields.text("Projectile_Laser_Color")); color.size() >= 3)
         {
             for (std::size_t channel = 0; channel < 4; ++channel)
             {
