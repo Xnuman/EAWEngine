@@ -107,7 +107,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     battle.name = resolved->virtual_path;
     std::vector<BuiltModel> entity_models;
     std::vector<BuiltModel> spawnable_models;
-    scene_build::build_battle_map(resources, {map, catalog, layout, *movement_entry, *combat_entry, options.textures}, spawn_types, battle, entity_models, spawnable_models);
+    scene_build::build_battle_map(resources, {map, catalog, layout, *movement_entry, *combat_entry}, spawn_types, battle, entity_models, spawnable_models);
 
     auto& scene = asset.scene;
     scene.name = resolved->virtual_path;
@@ -311,7 +311,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
         return found->second;
     };
     std::vector<BuiltModel> models;
-    SpawnableBuild build{resources, catalog_entry->catalog, movement_entry->classes, land ? GameModelContext::land : GameModelContext::space, land, options.textures, profile_of, package.types,
+    SpawnableBuild build{resources, catalog_entry->catalog, movement_entry->classes, land ? GameModelContext::land : GameModelContext::space, land, profile_of, package.types,
                          models,    package.meshes.warnings};
     build.speed_multiplier = combat_entry->max_speed_multiplier.of(land);
     const auto index = add_spawnable_type(build, std::string(type_name), 0);

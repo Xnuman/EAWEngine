@@ -281,9 +281,6 @@ struct BattleMapSources
     const MapObjectLayout& layout;
     const MovementClasses& movement;
     const CombatContent& combat;
-    // Whether hardpoint models are attached (shortcut: headless builds skip them until the hash
-    // change of measuring them is taken on purpose).
-    bool attachments{};
 };
 
 // The walk behind build_battle_map: fills `asset` (its name already set) and, per entity and per
@@ -301,7 +298,6 @@ struct SpawnableBuild
     const std::unordered_map<std::string, std::uint32_t>& movement_classes;
     GameModelContext context{};
     bool land{};
-    bool attachments{};
     std::function<const CombatProfile&(const XmlDefinition&, const Model*)> profile_of;
     std::vector<SpawnableType>& spawnable;
     std::vector<BuiltModel>& models;

@@ -184,7 +184,7 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     }
     const auto host = build.resources.get<Model>(*path);
     const auto* host_model = host->ok() ? &host->value() : nullptr;
-    auto attachments = build.attachments ? type_hardpoint_models(build.resources, build.warnings, build.catalog, *definition, host_model) : std::vector<ModelAttachment>{};
+    auto attachments = type_hardpoint_models(build.resources, build.warnings, build.catalog, *definition, host_model);
     // As for placed objects: the model decides whether the type can be spawned, not drawing.
     if (host_model == nullptr || !has_drawn_geometry(*host_model, attachments, true))
     {
@@ -270,7 +270,7 @@ void scene_build::build_battle_map(const ResourceManager resources, const Battle
         }
         const auto host = resources.get<Model>(placement.model_path);
         const auto* host_model = host->ok() ? &host->value() : nullptr;
-        auto attachments = placement.type != nullptr && sources.attachments ? type_hardpoint_models(resources, asset.warnings, catalog, *placement.type, host_model) : std::vector<ModelAttachment>{};
+        auto attachments = placement.type != nullptr ? type_hardpoint_models(resources, asset.warnings, catalog, *placement.type, host_model) : std::vector<ModelAttachment>{};
         // Whether the placement exists is decided from its model (assets/model_geometry), never
         // from drawing.
         if (host_model == nullptr || !has_drawn_geometry(*host_model, attachments, true))
@@ -373,9 +373,8 @@ void scene_build::build_battle_map(const ResourceManager resources, const Battle
 
     // Types requested for runtime spawning, each name once: an existing entry is reused (company
     // members are often repeated).
-    SpawnableBuild spawnable_build{
-        resources,        catalog,       sources.movement.classes, asset.land ? GameModelContext::land : GameModelContext::space, asset.land, sources.attachments, profile_of, asset.spawnable,
-        spawnable_models, asset.warnings};
+    SpawnableBuild spawnable_build{resources,        catalog,       sources.movement.classes, asset.land ? GameModelContext::land : GameModelContext::space, asset.land, profile_of, asset.spawnable,
+                                   spawnable_models, asset.warnings};
     spawnable_build.speed_multiplier = speed_multiplier;
     for (const auto& type_name : spawn_types)
     {
@@ -423,7 +422,7 @@ Result<BattleMapAsset> build_battle_map(const AssetReader& reader, const std::st
     asset.name = resolved->virtual_path;
     std::vector<BuiltModel> entity_models;
     std::vector<BuiltModel> spawnable_models;
-    scene_build::build_battle_map(resources, {map, catalog_entry->catalog, layout, *movement_entry, *combat_entry, false}, spawn_types, asset, entity_models, spawnable_models);
+    scene_build::build_battle_map(resources, {map, catalog_entry->catalog, layout, *movement_entry, *combat_entry}, spawn_types, asset, entity_models, spawnable_models);
     return asset;
 }
 
