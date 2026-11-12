@@ -552,8 +552,54 @@ Vector3 SimulationWorld::aim_point(const std::size_t victim, const std::int32_t 
     return {to.x, to.y, to.z + combat_[victim].profile.aim_height};
 }
 
-// Provisional semantics: shields absorb a shot first (scaled by the shield armor type); what the
-// shield cannot absorb, converted back to raw damage, reaches the hull scaled by the armor type.
+// The hull of an entity with destroyable parts follows them: max health x min(1, S/T + 0.2), where
+// S/T is the parts' remaining share of their total health (recorded in the FoC debug build: every
+// hull drop of a Nebulon-B under fire lies on this curve, and the hull never loses health to a shot
+// at a part; EaW-Revised's S-45, S-49, S-50, docs/compatibility-research.md). Space ships were
+// recorded; land objects with parts follow the same rule unobserved.
+constexpr float hull_floor_share = 0.2F;
+
+float SimulationWorld::hull_share_of_parts(const std::size_t index) const noexcept
+{
+    const auto& combat = combat_[index];
+    float total = 0.0F;
+    float remaining = 0.0F;
+    for (std::size_t hardpoint = 0; hardpoint < combat.profile.hardpoints.size(); ++hardpoint)
+    {
+        if (combat.profile.hardpoints[hardpoint].health > 0.0F)
+        {
+            total += combat.profile.hardpoints[hardpoint].health;
+            remaining += std::max(combat.hardpoint_health[hardpoint], 0.0F);
+        }
+    }
+    return total > 0.0F ? std::min(1.0F, remaining / total + hull_floor_share) : 1.0F;
+}
+
+bool SimulationWorld::parts_all_destroyed(const std::size_t index) const noexcept
+{
+    const auto& combat = combat_[index];
+    bool any = false;
+    for (std::size_t hardpoint = 0; hardpoint < combat.profile.hardpoints.size(); ++hardpoint)
+    {
+        if (combat.profile.hardpoints[hardpoint].health > 0.0F)
+        {
+            any = true;
+            if (combat.hardpoint_health[hardpoint] > 0.0F)
+            {
+                return false;
+            }
+        }
+    }
+    return any;
+}
+
+// Shields absorb a shot first (scaled by the shield armor type); what the shield cannot absorb,
+// converted back to raw damage, is scaled by the armor type and reaches the part the shot aims at
+// or, without one, the hull. A shot at a part damages only the part (recorded: 4000 scripted damage
+// on a Nebulon-B laser silenced it for good and left the hull at 5400; S-19), and the hull then
+// follows the parts; the entity dies with its last destroyable part unless its type says not to
+// (recorded: the Nebulon-B dies with it at 0.35 or 0.23 of its hull). Damage aimed at no part
+// (blasts, unaimed shots) reaches the hull directly, an engine choice: that case is not observed.
 ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage, const std::uint16_t damage_type, const bool damages_shield, const bool damages_health, const std::int32_t hardpoint)
 {
     auto& combat = combat_[victim];
@@ -577,20 +623,30 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
         {
             kind = ImpactKind::hull_reduced;
         }
-        const auto dealt = wound(victim, damage * modifier);
-        // A shot at a hardpoint damages it too (provisional: the hull and the hit part share the
-        // damage; the original's split is not established).
-        if (hardpoint >= 0)
+        const auto part_index = static_cast<std::size_t>(std::max(hardpoint, 0));
+        const bool at_part = hardpoint >= 0 && combat.profile.hardpoints[part_index].health > 0.0F && combat.hardpoint_health[part_index] > 0.0F;
+        if (!at_part)
         {
-            auto& part = combat.hardpoint_health[static_cast<std::size_t>(hardpoint)];
-            if (part > 0.0F && (part -= dealt) <= 0.0F)
-            {
-                part = 0.0F;
-                ++hardpoints_destroyed_;
-                const auto& profile = combat.profile.hardpoints[static_cast<std::size_t>(hardpoint)];
-                hardpoint_deaths_.push_back({ids_[victim], static_cast<std::uint32_t>(hardpoint), world_point(victim, profile.offset), profile.death_sound, profile.death_effect, profile.type_key});
-            }
+            (void)wound(victim, damage * modifier);
+            return kind;
         }
+        if (combat.invulnerable || combat.profile.immune)
+        {
+            return kind;
+        }
+        auto& part = combat.hardpoint_health[part_index];
+        part -= damage * modifier;
+        if (part <= 0.0F)
+        {
+            part = 0.0F;
+            ++hardpoints_destroyed_;
+            const auto& profile = combat.profile.hardpoints[part_index];
+            hardpoint_deaths_.push_back({ids_[victim], static_cast<std::uint32_t>(part_index), world_point(victim, profile.offset), profile.death_sound, profile.death_effect, profile.type_key});
+        }
+        // The hull follows its parts, and falls with the last of them.
+        const auto followed = combat.profile.health * hull_share_of_parts(victim);
+        const auto lost = combat.profile.dies_with_hardpoints && parts_all_destroyed(victim) ? combat.health : std::max(combat.health - followed, 0.0F);
+        (void)wound(victim, lost);
     }
     return kind;
 }

@@ -270,7 +270,12 @@ struct CombatProfile
     std::vector<WeaponProfile> weapons;
     // Targetable parts (ship hardpoints). Shots aim at the nearest live targetable one; losing every
     // shield generator stops shield recharge and losing every engine slows the entity to a quarter.
+    // With destroyable parts, a shot aimed at a part damages only the part, and the hull follows them
+    // (hull_share_of_parts).
     std::vector<HardpointProfile> hardpoints;
+    // Dies once every destroyable part is gone (XML Should_Be_Destroyed_When_All_Hardpoints_Destroyed,
+    // default yes).
+    bool dies_with_hardpoints{true};
     // Presentation only (not simulation state): the effect played when the entity dies (the CRC-32 of
     // the XML Particle object its Death_Explosions names), or 0.
     std::uint32_t death_effect{};

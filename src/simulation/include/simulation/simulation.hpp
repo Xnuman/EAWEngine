@@ -673,6 +673,10 @@ private:
     void run_combat();
     // Whether this tick refreshes the entity's shield (simulation_combat.cpp).
     [[nodiscard]] bool shield_refresh_due(std::size_t index) const noexcept;
+    // The hull share an entity's destroyable parts leave it, and whether every one is destroyed
+    // (simulation_combat.cpp, apply_damage).
+    [[nodiscard]] float hull_share_of_parts(std::size_t index) const noexcept;
+    [[nodiscard]] bool parts_all_destroyed(std::size_t index) const noexcept;
     void update_target(std::size_t index);
     void run_weapon(std::size_t index);
     void launch(std::size_t shooter, std::size_t victim, const WeaponProfile& weapon, const LocalPoint& mount);

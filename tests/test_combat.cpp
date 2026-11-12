@@ -237,12 +237,36 @@ void test_hardpoints_and_fire_cones()
         require(fallen.size() == 1 && fallen[0].entity == *victim && fallen[0].sound == 77U && fallen[0].effect == 88U && fallen[0].position.x < 0.0F,
                 "a destroyed hardpoint must be reported once, with its sound and effect, at its position");
         const auto& damaged = world.snapshot().entities[0];
-        require(damaged.health < 1000.0F && damaged.hardpoints == 3 && damaged.hardpoints_destroyed == 1 && world.stats().hardpoints_destroyed == 1, "the nearest hardpoint must be hit and destroyed");
+        require(damaged.hardpoints == 3 && damaged.hardpoints_destroyed == 1 && world.stats().hardpoints_destroyed == 1, "the nearest hardpoint must be hit and destroyed");
+        // The hull follows its parts: 60 of their 100 points remain, so 0.6 + 0.2 of its health.
+        require(std::fabs(damaged.health - ship.health * 0.8F) < 1.0e-3F, "a hull must follow its parts' remaining share plus a fifth");
         // Without its engine the ship moves at a quarter of its speed.
         world.submit({eaw::SimCommandKind::move, {*victim}, {0.0F, 400.0F, 0.0F}});
         const auto before = world.snapshot().entities[0].position.y;
         world.step();
         require(std::fabs(world.snapshot().entities[0].position.y - before - 1.0F) < 1.0e-3F, "a ship without engines must move at a quarter speed");
+    }
+
+    // A ship dies with its last destroyable part, unless its type says otherwise.
+    for (const bool dies : {true, false})
+    {
+        auto world = make_world();
+        eaw::CombatProfile hulk;
+        hulk.health = 1000.0F;
+        hulk.dies_with_hardpoints = dies;
+        hulk.hardpoints = {{Kind::weapon, 20.0F, true, {0.0F, 0.0F, 0.0F}}};
+        eaw::CombatProfile gun;
+        gun.health = 100.0F;
+        gun.weapons = {eaw::WeaponProfile{.range = 500.0F, .recharge_seconds = 0.1F, .damage = 10.0F, .damages_shield = false}};
+        const auto victim = world.spawn({.type_name = "Hulk", .owner = 2, .combat = hulk});
+        (void)world.spawn({.type_name = "Gun", .owner = 1, .position = {-200.0F, 0.0F, 0.0F}, .combat = gun});
+        // Two shots of 10 destroy the 20-point part.
+        for (int tick = 0; tick < 2; ++tick)
+        {
+            world.step();
+        }
+        require(world.alive(*victim) != dies && (dies || std::fabs(world.snapshot().entities[0].health - 200.0F) < 1.0e-3F),
+                "a ship must die with its last part, or keep a fifth of its hull when its type says not to");
     }
 }
 

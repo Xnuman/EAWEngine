@@ -280,7 +280,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Death_Breakoff_Prop` | `gap` |  |
 | `Repair_Amount_Per_Frame` | `needs repair` |  |
 | `Repair_Cost_Per_Frame` | `needs repair` |  |
-| `Should_Be_Destroyed_When_All_Hardpoints_Destroyed` | `gap` |  |
+| `Should_Be_Destroyed_When_All_Hardpoints_Destroyed` | `done` | default yes; the hull follows its parts (recorded) |
 | `Shield_Generator_Hardpoint` | `needs cinematics` |  |
 | `Weapon_Hardpoint` | `needs cinematics` |  |
 

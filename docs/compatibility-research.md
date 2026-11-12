@@ -66,13 +66,16 @@ Adopted so far:
   3.72 = 3.1 x 1.2 after 62 frames (0.05 x 1.2 per frame squared), S-12 turns 1.506 = 1.25 x 1.2
   degrees per frame, S-26 turns in place at 0.84 = 1.4 x 1.2 / 2. Land is not recorded and stays
   unscaled.
+- *Hardpoint damage*: a shot aimed at a destroyable hardpoint damages only it (S-19: 4000 on a
+  Nebulon-B laser silenced it and left the hull at 5400); the hull follows the parts at
+  max x min(1, S/T + 0.2) (S-45, S-49, S-50) and the entity dies with its last destroyable part
+  unless `Should_Be_Destroyed_When_All_Hardpoints_Destroyed` is No. Unaimed damage (blasts) still
+  reaches the hull directly, an engine choice; land objects with parts follow the rule unobserved.
 Recorded and not adopted yet (each changes behavior beyond a constant; proposed to the owner):
 turning in place at the rate divided by `TurnInPlaceSlowdownCorvette` (2, S-11, S-26); flying
 straight from rest until full speed before turning (S-12; contradicts our 25 % turning floor);
 ordered ships in range turning toward the target's nearest live hardpoint (S-26, S-27; idle ships
-keep their heading, as ours do); hardpoint-aimed damage going to the hardpoint only, the hull
-capped at min(1, S/T + 0.2) of the destroyable hardpoints' share and dying with the last one (S-19,
-S-45, S-49, S-50); keeping a held target when a better one appears (S-02) and replacing a removed
+keep their heading, as ours do); keeping a held target when a better one appears (S-02) and replacing a removed
 one at the next allowed shot (S-03); `Layer_Z_Adjust` heights (S-10 to S-14, S-32 to S-34); per-
 hardpoint shot counts by bearing (S-22 to S-42) as fire-cone regression cases; hit rates near 40 %
 (corvette on Tartan) and 7 % (Tartan on Nebulon-B), far below our uniform scatter's.
