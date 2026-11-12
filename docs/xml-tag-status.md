@@ -1315,7 +1315,7 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Layer_Z_Adjust` | `gap` |  |
+| `Layer_Z_Adjust` | `partial` | height of units spawned in space (recorded); placements and render layers not yet |
 | `In_Background` | `gap` |  |
 | `In_Midground` | `gap` |  |
 | `In_Midforeground` | `gap` |  |

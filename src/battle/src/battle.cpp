@@ -232,6 +232,11 @@ EntitySpawn Battle::spawn_of(const std::size_t type_index, Vector3 position, con
     {
         position.z = ground.surface_height(position.x, position.y) + (type.follows_ground ? 0.0F : type.hover_offset);
     }
+    else
+    {
+        // In space a unit takes its layer's height, whatever height the order names.
+        position.z = type.layer_z_adjust;
+    }
     EntitySpawn spawn;
     spawn.type_name = type.type_name;
     spawn.owner = owner;

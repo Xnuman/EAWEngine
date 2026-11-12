@@ -558,6 +558,17 @@ void test_spawn_placement()
     require(*ground.passability_at(blocked.x, blocked.y) == eaw::passability::clear && std::hypot(blocked.x - 100.0F, blocked.y - 100.0F) <= 40.0F,
             "a spawn on blocked ground must move to the nearest open cell");
     require(outside.x == 0.0F && outside.y == 190.0F, "a spawn off the map must move onto its edge");
+
+    // In space a unit takes its layer's height (Layer_Z_Adjust), whatever height the order names.
+    eaw::SpawnableType frigate;
+    frigate.type_name = "Frigate";
+    frigate.layer_z_adjust = -90.0F;
+    eaw::BattleMap space;
+    space.spawnable = std::span(&frigate, 1);
+    eaw::Battle space_battle(space, "SPACE.TED", 0.1);
+    expect_ok(space_battle.submit({.order = eaw::BattleOrder::spawn, .point = {100.0F, 100.0F, 50.0F}, .type = "Frigate", .count = 1, .owner = 1}), "spawn in space");
+    space_battle.step();
+    require(space_battle.world().snapshot().entities.size() == 1 && space_battle.world().snapshot().entities[0].position.z == -90.0F, "a unit spawned in space must take its layer's height");
 }
 
 // A destroyed object with Destruction_Survivors leaves its survivors, owned as it was, where it died.

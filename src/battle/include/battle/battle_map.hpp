@@ -112,6 +112,10 @@ struct SpawnableType
     bool follows_ground{};
     // XML Hover_Offset: height above the surface for flyers (air whales 250, snowspeeders 50).
     float hover_offset{};
+    // XML Layer_Z_Adjust: the height a unit spawned in space takes, the space plane being 0
+    // (recorded in the FoC debug build: units staged at 0 sit at their type's value, a corvette -20,
+    // a Nebulon-B -90, an MC80 -290; EaW-Revised S-10 to S-14, S-32 to S-34).
+    float layer_z_adjust{};
     // Passability types its MovementClass may enter (MovementClassTypeDefs.xml).
     std::uint32_t passable_types{};
     // Health, shields, armor, and weapon from XML (combat_content.hpp).

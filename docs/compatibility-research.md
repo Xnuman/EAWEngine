@@ -88,8 +88,12 @@ Adopted so far:
   the engine re-weighs only types that name a threshold), and a removed target is replaced at the
   next shot the fire countdown allows (S-03: each weapon takes the nearest hostile in its range
   and arc when it may fire). A test pins S-02.
+- *Layer heights*: a unit spawned in space takes its type's `Layer_Z_Adjust` as its height, the
+  plane being 0 (S-10 to S-14, S-32 to S-34: corvette -20, Nebulon-B -90, Acclamator -110, MC80
+  -290, Tartan and station 0). Map placements keep their authored height, and the tag's other
+  users (skydomes at -2500, asteroid props at -330) are left to the renderer's layers.
 Recorded and not adopted yet (each changes behavior beyond a constant; proposed to the owner):
-`Layer_Z_Adjust` heights (S-10 to S-14, S-32 to S-34); per-
+per-
 hardpoint shot counts by bearing (S-22 to S-42) as fire-cone regression cases; hit rates near 40 %
 (corvette on Tartan) and 7 % (Tartan on Nebulon-B), far below our uniform scatter's.
 

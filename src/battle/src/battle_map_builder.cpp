@@ -197,6 +197,7 @@ std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::
     spawnable.passable_types = spawnable.follows_ground ? type_passable_types(build.catalog, *definition, build.movement_classes) : 0U;
     spawnable.combat = build.profile_of(*definition, host_model);
     spawnable.hover_offset = type_float_field(build.catalog, *definition, "Hover_Offset");
+    spawnable.layer_z_adjust = type_float_field(build.catalog, *definition, "Layer_Z_Adjust");
     spawnable.crush = type_crush(build.catalog, *definition);
     spawnable.survivors = type_survivors(build.catalog, *definition);
     spawnable.script = type_script_info(build.catalog, *definition);
