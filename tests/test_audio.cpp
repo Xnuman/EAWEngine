@@ -422,6 +422,8 @@ void test_impact_and_moving_sounds()
                                                         "<SFXEvent Name=\"Low_Line\"><Samples>a.wav</Samples></SFXEvent>"
                                                         "<SFXEvent Name=\"Critical_Line\"><Samples>a.wav</Samples></SFXEvent>"
                                                         "<SFXEvent Name=\"Spinning\"><Is_3D>Yes</Is_3D><Samples>a.wav</Samples></SFXEvent>"
+                                                        "<SFXEvent Name=\"Talk_A\"><Overlap_Test>Talk</Overlap_Test><Samples>a.wav</Samples></SFXEvent>"
+                                                        "<SFXEvent Name=\"Talk_B\"><Overlap_Test>Talk</Overlap_Test><Samples>a.wav</Samples></SFXEvent>"
                                                         "</SFXEvents>");
     write_file(root / "Data" / "XML" / "Units.xml",
                "<Units>"
@@ -432,6 +434,8 @@ void test_impact_and_moving_sounds()
                "<SFXEvent_Ambient_Moving_Min_Delay_Seconds>1"
                "</SFXEvent_Ambient_Moving_Min_Delay_Seconds><SFXEvent_Ambient_Moving_Max_Delay_Seconds>1</SFXEvent_Ambient_Moving_Max_Delay_Seconds>"
                "<SFXEvent_Guard>On_Guard</SFXEvent_Guard><SFXEvent_Assist_Move>On_Guard</SFXEvent_Assist_Move></GroundVehicle>"
+               "<GroundVehicle Name=\"Leader\"><SFXEvent_Move>Talk_A</SFXEvent_Move></GroundVehicle>"
+               "<GroundVehicle Name=\"Follower\"><SFXEvent_Assist_Move>Talk_B</SFXEvent_Assist_Move></GroundVehicle>"
                "<GroundVehicle Name=\"Mute\"><SFXEvent_Ambient_Moving>Chirp</SFXEvent_Ambient_Moving><SFXEvent_Ambient_Moving_Min_Delay_Seconds>1"
                "</SFXEvent_Ambient_Moving_Min_Delay_Seconds><SFXEvent_Ambient_Moving_Max_Delay_Seconds>1</SFXEvent_Ambient_Moving_Max_Delay_Seconds></GroundVehicle>"
                "<HeroUnit Name=\"Hero\"><SFXEvent_Health_Low_Warning>Low_Line</SFXEvent_Health_Low_Warning>"
@@ -482,6 +486,22 @@ void test_impact_and_moving_sounds()
         const auto early = audio.stats().played;
         audio.update(camera, idle.snapshot(), idle, 0.6F);
         require(early == before && audio.stats().played == before + 1, "an assist line must start after its pause");
+    }
+    {
+        // An assist line sharing the response's overlap name keeps its whole pause after the
+        // response ends (the null device ends one-shots at its next update) instead of being dropped.
+        eaw::BattleAudio talk(vfs, &cache, device, "English", true);
+        eaw::SimulationWorld idle(0.1);
+        require(talk.play_response("Leader", eaw::UnitResponse::move) && talk.play_assist_response("Follower", eaw::UnitResponse::move, 1.0F), "both lines must be accepted");
+        // The response is heard for the first updates; the assist line plays only its pause after
+        // that (at 1.0 s it would have started over the response and been dropped).
+        float elapsed = 0.0F;
+        while (talk.stats().played < 2 && elapsed < 5.0F)
+        {
+            talk.update(camera, idle.snapshot(), idle, 0.25F);
+            elapsed += 0.25F;
+        }
+        require(talk.stats().played == 2 && talk.stats().skipped == 0 && elapsed > 1.0F, "an assist line must wait for the response to finish, then its pause");
     }
 
     // Without AMBIENT_SFX among its behaviors, a moving unit plays no ambient sound.

@@ -130,7 +130,7 @@ Eighth slice done (2026-11-10): scripted conditions. Simulation commands `set_in
 
 Hardpoint loss reports (2026-11-12): when a hardpoint is destroyed, its owner reports it in its own voice: the owner type's XML `SFXEvent_Hardpoint_Destroyed` entry ("HARD_POINT_<kind>, event") for the hardpoint's `Type` (`HardpointProfile::type_key`, `HardpointDeathSnapshot::type_key`, presentation only); empty entries stay silent. Played for every owner until the player layer decides whose reports are heard.
 
-Assist lines (2026-11-12, from the owner's account of the original): after an order's response, the first unit of another type in the same order with an assist line answers 0.8 s later (XML `SFXEvent_Assist_Move` for moves, `SFXEvent_Assist_Attack` for attacks; `BattleAudio::play_assist_response`, delayed through the pending events, `play_event`'s new delay).
+Assist lines (2026-11-12, from the owner's account of the original): after an order's response, the first unit of another type in the same order with an assist line answers 0.8 s after the response has finished (XML `SFXEvent_Assist_Move` for moves, `SFXEvent_Assist_Attack` for attacks; `BattleAudio::play_assist_response`: a pending event that restarts its pause while a voice of its overlap name plays, dropped after 5 s; the owner noticed lines being lost when they started 0.8 s after the response began).
 
 Group lines (2026-11-12): a sandbox order to more than one unit is answered by a member whose type has a group line (heroes: XML `SFXEvent_Group_Move` for moves, `SFXEvent_Group_Attack` for attacks and attack-moves), else by the first unit's usual response (`BattleAudio::play_group_response`; who speaks is an engine choice).
 

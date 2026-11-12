@@ -58,8 +58,10 @@ enum class UnitResponse
 inline constexpr float base_rolloff = 0.05F;
 inline constexpr float default_saturation_distance = 200.0F;
 inline constexpr std::size_t max_unit_loops = 16;
-// The pause between an order's response and another unit type's assist line (an engine choice).
+// The pause after an order's response before another unit type's assist line, and how long an
+// assist line waits for the voices it must not talk over (engine choices).
 inline constexpr float assist_response_delay = 0.8F;
+inline constexpr float assist_patience_seconds = 5.0F;
 // Health fractions at which a unit's low and critical warnings play: the stock GameConstants'
 // Health_Low_Percent_Threshold and Health_Critical_Percent_Threshold (shortcut: fixed here, read
 // GameConstants when a mod changes them).
@@ -83,10 +85,9 @@ public:
     // Once per frame: the listener follows the camera, positioned voices follow it, engine and
     // ambient loops follow the nearest units, delayed and chained events start, finished voices end.
     void update(const VisualCamera& camera, const SimSnapshot& snapshot, const SimulationWorld& world, float seconds);
-    // A sound event by name, at a point (positional events) or heard everywhere, `delay` seconds
-    // from now (besides the event's own predelay); false when it did not play (unknown, its chance,
-    // its instance limit, no voice, or a missing sample; a delayed event counts as played).
-    bool play_event(std::string_view name, std::optional<Vector3> position = std::nullopt, float delay = 0.0F);
+    // A sound event by name, at a point (positional events) or heard everywhere; false when it did
+    // not play (unknown, its chance, its instance limit, no voice, or a missing sample).
+    bool play_event(std::string_view name, std::optional<Vector3> position = std::nullopt);
     // The sounds placed in the animations units played this frame (UnitAnimator::cues): sound rows
     // play their event, surface rows the sound of their SurfaceFX on the ground there (its default
     // settings until terrain surface kinds are known).
@@ -97,10 +98,11 @@ public:
     // A unit type's line when ordered as part of a group (XML SFXEvent_Group_Move for moves,
     // SFXEvent_Group_Attack for attacks; heroes), or false when it has none.
     bool play_group_response(std::string_view type_name, UnitResponse response);
-    // A unit type's answer, `delay` seconds after another type's response, when ordered together
-    // with it (XML SFXEvent_Assist_Move for moves, SFXEvent_Assist_Attack for attacks: "Escorting!"
-    // after Luke's "Understood!"), or false when it has none.
-    bool play_assist_response(std::string_view type_name, UnitResponse response, float delay);
+    // A unit type's answer to an order given with another type, `pause` seconds after the response
+    // playing now has finished (XML SFXEvent_Assist_Move for moves, SFXEvent_Assist_Attack for
+    // attacks: "Escorting!" after Luke's "Understood!"); false when it has none. It waits while any
+    // voice sharing its overlap name plays, at most assist_patience_seconds.
+    bool play_assist_response(std::string_view type_name, UnitResponse response, float pause);
 
     struct Stats
     {
@@ -169,7 +171,13 @@ private:
         float delay{};
         const SoundEvent* event{};
         std::optional<Vector3> position;
+        // Assist lines: the pause they keep after the voices of their overlap name end (the delay
+        // restarts at it while one plays), and how much longer they may wait.
+        float pause{};
+        float patience{};
     };
+    // Whether a voice sharing `event`'s overlap name plays.
+    [[nodiscard]] bool overlap_busy(const SoundEvent& event) const;
 
     const TypeSounds& type_sounds(std::string_view type_name);
     // Starts `event` now; the voice id, or 0.
