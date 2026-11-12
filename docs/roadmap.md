@@ -281,6 +281,13 @@ Provisional engine choices to check against the original, by black-box observati
 capture-and-compare workflow ([tools.md](tools.md#captures-and-image-regression); features are
 compared by measured ratios from screenshots, never by recreated scenes):
 
+- which definition wins when two registered XML files define one name (to do, needs a small test
+  mod: `GameObjectFiles.xml` listing two files that define the same unit with different build
+  costs; the schema says the first listed wins for game objects and the last for hardpoints;
+  compatibility-research.md, "XML loading");
+- whether the game mounts MEG archives that `MegaFiles.xml` does not list (to do, same kind of mod:
+  an unlisted archive overriding one file; the engine mounts them in lexical order, and the
+  reference tools disagree);
 - the original's logic rate, which every per-frame XML value is read at (30 per second, `assets/legacy_units.hpp`: speeds, turn rates, accelerations, frame counts);
 - shield refresh units, and how shields and armor combine;
 - ranges measured in the ground plane;
