@@ -192,7 +192,8 @@ inline constexpr float default_bank_limit = 1.04719755F;
 // How a placed object (a MapEntity, same index) is drawn: its scene instance, its death, the most a
 // flyer banks in a turn (type_bank_limit, radians), whether it is hidden (an editor marker, XML
 // Is_Marker: flags, script points, skirmish base positions, which stays an entity so scripts can
-// find it), and how its clips play.
+// find it, or an entity whose model could not be added to the scene; `instance` is then unused), and
+// how its clips play.
 struct MapEntityLook
 {
     std::uint32_t instance{};
@@ -227,11 +228,13 @@ inline constexpr float provisional_acceleration_scale = provisional_max_speed_sc
 // How a spawnable type (a SpawnableType, same index) is drawn: its mesh in the map scene, its team
 // color, XML LOD_Bias (VisualInstance::lod_bias), XML Scale_Factor (the size its model is drawn
 // at; its model-derived footprint and hardpoint positions use it too), its death, the most it
-// banks in a turn when it flies (type_bank_limit, radians), and how its clips play. A company's
-// mesh is its first member's (unused: companies spawn as their members).
+// banks in a turn when it flies (type_bank_limit, radians), how its clips play, and whether it is
+// hidden (its model could not be added to the scene; `mesh` is then unused). A company's mesh is its
+// first member's (unused: companies spawn as their members).
 struct SpawnableLook
 {
     std::uint32_t mesh{};
+    bool hidden{};
     Color team_color{white};
     float lod_bias{1.0F};
     float scale{1.0F};
@@ -243,22 +246,10 @@ struct SpawnableLook
 struct VisualMapAsset
 {
     VisualScene scene;
-    bool land{};
-    std::size_t untyped{};
-    std::size_t without_model{};
-    std::size_t missing_model_files{};
-    std::size_t expanded_members{};
-    std::size_t unexpanded_containers{};
-    // Land companies arranged in formation, and their members.
-    std::size_t expanded_companies{};
-    // The next company team id (FormationTeam::id; battles continue from it).
-    std::uint32_t next_team{1};
-    // Immobile obstacles whose footprints the simulation stamps into the ground.
-    std::size_t obstacle_footprints{};
-    // Immobile space objects ships steer around (their Space_Obstacle_Radius).
-    std::size_t space_obstacles{};
-    std::size_t company_members{};
-    std::size_t unrenderable_placements{};
+    // The battle side, built first (build_battle_map's walk); the rest is how it is drawn.
+    BattleMapAsset battle;
+    // Entities whose model has geometry but could not be added to the scene (hidden).
+    std::size_t undrawn_entities{};
     // Resolved backdrop layers ("definition (model path)"), in draw order.
     std::vector<std::string> backdrops;
     // Lighting of the active environment, when it carries a complete lighting block.
@@ -271,18 +262,9 @@ struct VisualMapAsset
     std::size_t tracks{};
     std::size_t faction_colored{};
     std::size_t player_colored{};
-    // One entity per placed object with a drawable model (not backdrops), in scene instance order,
-    // and how each is drawn (same index).
-    std::vector<MapEntity> entities;
+    // How each of battle.entities and battle.spawnable is drawn (same index).
     std::vector<MapEntityLook> entity_looks;
-    // Types requested for runtime spawning that resolved to a model, in request order, and how each
-    // is drawn (same index).
-    std::vector<SpawnableType> spawnable;
     std::vector<SpawnableLook> spawnable_looks;
-    // Ground for the simulation and CPU queries (land maps; invalid for space).
-    GroundMap ground;
-    // Damage multipliers from GameConstants.xml, with ids matching the entities' combat profiles.
-    DamageTable damage_table;
     // One rig per scene mesh (same index), and the scene palette of every mesh's rest pose; each
     // instance's bone_offset is its mesh's rest offset. Upload it with the scene (the renderer
     // resets its palette to identity on load).

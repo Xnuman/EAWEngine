@@ -10,7 +10,6 @@
 #include "simulation/ground_map.hpp"
 #include "simulation/simulation.hpp"
 #include "engine/battle_map.hpp"
-#include "engine/visual_scene_builder.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -31,10 +30,6 @@ inline constexpr std::uint32_t spawnable_visual_base = 0x80000000U;
 {
     return spawnable_visual_base + static_cast<std::uint32_t>(type_index);
 }
-
-// The map's placed entities, spawnable types, ground, and damage table, with the provisional
-// owner-slot hostility (combat_content.hpp).
-[[nodiscard]] BattleMap battle_map(const VisualMapAsset& asset);
 
 // `point` moved onto the ground grid, then, when its cell's passability is not among
 // `passable_types`, to the nearest cell that is (nearest_enterable); unchanged without passability

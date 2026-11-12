@@ -61,28 +61,20 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
     {
         const auto& entity = entities[index];
         const auto& look = looks[index];
+        // Hidden entities (markers, undrawable models) stay entities but are never drawn: without a
+        // template they are skipped.
+        if (look.hidden)
+        {
+            continue;
+        }
         EAW_ASSERT_MSG(look.instance < scene.instances.size() && !scene.instances[look.instance].background,
                        "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(look.instance) + ", which is missing or a background");
-        // Markers stay entities but are never drawn: without a template they are skipped.
-        if (ids[index] && !look.hidden)
+        if (ids[index])
         {
             templates_.emplace(entity_key(*ids[index]), Template{scene.instances[look.instance], entity.spawn.heading, look.death, look.bank_limit, look.animation});
         }
     }
-    for (const auto& type : spawnable)
-    {
-        EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "a spawnable type names mesh " + std::to_string(type.mesh) + ", which the scene does not have");
-        // The template's transform is the model's own frame at its Scale_Factor; pose_transform turns
-        // and places it, keeping the scale.
-        VisualInstance instance{type.mesh};
-        for (std::size_t axis = 0; axis < 3; ++axis)
-        {
-            instance.transform(axis, axis) = type.scale;
-        }
-        instance.team_color = type.team_color;
-        instance.lod_bias = type.lod_bias;
-        spawn_templates_.push_back({instance, identity_model_heading, type.death, type.bank_limit, type.animation});
-    }
+    add_spawnable(spawnable);
 }
 
 void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out,
@@ -112,9 +104,9 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
         {
             found = &placed->second;
         }
-        else if (entity.visual >= spawnable_visual_base && entity.visual - spawnable_visual_base < spawn_templates_.size())
+        else if (entity.visual >= spawnable_visual_base && entity.visual - spawnable_visual_base < spawn_templates_.size() && spawn_templates_[entity.visual - spawnable_visual_base])
         {
-            found = &spawn_templates_[entity.visual - spawnable_visual_base];
+            found = &*spawn_templates_[entity.visual - spawnable_visual_base];
         }
         if (found == nullptr)
         {
@@ -147,7 +139,14 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableLook> types
 {
     for (const auto& type : types)
     {
+        if (type.hidden)
+        {
+            spawn_templates_.emplace_back();
+            continue;
+        }
         EAW_ASSERT_MSG(type.mesh < mesh_names_.size(), "a spawnable type names mesh " + std::to_string(type.mesh) + ", which presentation does not know");
+        // The template's transform is the model's own frame at its Scale_Factor; pose_transform turns
+        // and places it, keeping the scale.
         VisualInstance instance{type.mesh};
         for (std::size_t axis = 0; axis < 3; ++axis)
         {
@@ -155,7 +154,7 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableLook> types
         }
         instance.team_color = type.team_color;
         instance.lod_bias = type.lod_bias;
-        spawn_templates_.push_back({instance, identity_model_heading, type.death, type.bank_limit, type.animation});
+        spawn_templates_.push_back(Template{instance, identity_model_heading, type.death, type.bank_limit, type.animation});
     }
 }
 
@@ -167,9 +166,9 @@ std::optional<ScenePresentation::Corpse> ScenePresentation::corpse_instance(cons
     {
         found = &placed->second;
     }
-    else if (death.visual >= spawnable_visual_base && death.visual - spawnable_visual_base < spawn_templates_.size())
+    else if (death.visual >= spawnable_visual_base && death.visual - spawnable_visual_base < spawn_templates_.size() && spawn_templates_[death.visual - spawnable_visual_base])
     {
-        found = &spawn_templates_[death.visual - spawnable_visual_base];
+        found = &*spawn_templates_[death.visual - spawnable_visual_base];
     }
     if (found == nullptr)
     {

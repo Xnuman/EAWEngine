@@ -187,10 +187,16 @@ void test_visual_terrain()
             << "<Units><GroundVehicle Name=\"Test_Tank\"><Land_Model_Name>TANK.ALO</Land_Model_Name><Max_Speed>2</Max_Speed></GroundVehicle></Units>";
         const std::array<std::string, 2> types{"Test_Tank", "Missing_Type"};
         const auto with_spawns = expect_ok(eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED", nullptr, types), "building the map with spawn types");
-        require(with_spawns.spawnable.size() == 1 && with_spawns.spawnable[0].type_name == "Test_Tank" &&
-                    std::fabs(with_spawns.spawnable[0].max_speed - 2.0F * eaw::provisional_max_speed_scale) < 1.0e-4F && with_spawns.spawnable_looks.size() == 1 &&
-                    with_spawns.spawnable_looks[0].mesh < with_spawns.scene.meshes.size(),
+        const auto& spawnable = with_spawns.battle.spawnable;
+        require(spawnable.size() == 1 && spawnable[0].type_name == "Test_Tank" && std::fabs(spawnable[0].max_speed - 2.0F * eaw::provisional_max_speed_scale) < 1.0e-4F &&
+                    with_spawns.spawnable_looks.size() == 1 && with_spawns.spawnable_looks[0].mesh < with_spawns.scene.meshes.size(),
                 "a spawn type must resolve to a mesh and its scaled speed");
+        // The battle side alone is what the drawn build holds: no scene needed.
+        const auto battle = expect_ok(eaw::build_battle_map(vfs, "Data/Art/Maps/TEST.TED", nullptr, types), "building the battle map");
+        require(battle.land && battle.ground.valid() && battle.ground.heights == with_spawns.battle.ground.heights && battle.entities.size() == with_spawns.battle.entities.size() &&
+                    battle.spawnable.size() == 1 && battle.spawnable[0].max_speed == spawnable[0].max_speed && battle.spawnable[0].radius == spawnable[0].radius,
+                "the battle map must match the battle side of the drawn map");
+        require(!eaw::build_battle_map(vfs, "Data/Art/Maps/MISSING.TED"), "a missing battle map must be reported");
         require(std::ranges::any_of(with_spawns.scene.warnings,
                                     [](const std::string& warning)
                                     {
@@ -216,7 +222,7 @@ void test_visual_terrain()
         require(uncached.scene.textures.front().identity != first.scene.textures.front().identity, "a fresh decode must get a new identity");
     }
     const auto& terrain = asset.scene.terrain;
-    require(asset.land && terrain.layer_count == 3 && terrain.vertices.size() == 12 && terrain.first_material + 3 <= asset.scene.materials.size(), "terrain mesh structure is wrong");
+    require(asset.battle.land && terrain.layer_count == 3 && terrain.vertices.size() == 12 && terrain.first_material + 3 <= asset.scene.materials.size(), "terrain mesh structure is wrong");
     require(asset.scene.materials[terrain.first_material].tint[3] == 1.0F && asset.scene.materials[terrain.first_material + 2].tint[3] == 0.0F, "an untextured terrain layer must carry zero coverage");
     require(std::fabs(asset.scene.materials[terrain.first_material].uv_scale - 1.0F / 64.0F) < 1.0e-7F, "terrain layer tiling was not applied");
     // First triangle: (0,0), (1,0), (1,1) with layers {0, 0, 0} -> sample (1,1) is index 4, layer 0.

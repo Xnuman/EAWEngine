@@ -10,6 +10,7 @@
 #include "assets/asset_cache.hpp"
 #include "assets/game_object_catalog.hpp"
 #include "assets/legacy_material.hpp"
+#include "assets/map_object_layout.hpp"
 #include "assets/model.hpp"
 #include "assets/model_geometry.hpp"
 #include "assets/resource_loaders.hpp"
@@ -249,35 +250,78 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, st
 std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std::string& model_path, std::span<const ModelAttachment> attachments = {});
 
 // The models a type's hardpoints attach to `host` (XML HardPoints entries with Model_To_Attach and
-// an Attachment_Bone the host has), in list order; problems become scene warnings.
-std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& type, const Model* host);
+// an Attachment_Bone the host has), in list order; problems become `warnings`.
+std::vector<ModelAttachment> type_hardpoint_models(const ResourceManager& resources, std::vector<std::string>& warnings, const GameObjectCatalog& catalog, const XmlDefinition& type,
+                                                   const Model* host);
 
 // Key of a mesh built from `model_path` with `attachments` (types sharing a model but not their
 // hardpoints get meshes of their own).
 std::string attached_mesh_key(const std::string& model_path, std::span<const ModelAttachment> attachments);
-// What adding a spawnable type needs: the builder of the scene its meshes join, the XML catalog and
-// movement classes, the model context (land or space), the meshes already appended by model path,
-// a combat profile source (one per type), and the spawnable list to extend.
+// battle_map_builder.cpp: the gameplay walk over a map's placements and spawnable types.
+
+// The model a placed entity or spawnable type was built from, which drawing it starts from: its
+// path (empty for a company, drawn as its members) and hardpoint attachments, its XML type (null for
+// an untyped placement), and, for a placed entity, its transform (the placement's at the type's
+// Scale_Factor, moved into its company's formation) and player slot.
+struct BuiltModel
+{
+    std::string path;
+    std::vector<ModelAttachment> attachments;
+    const XmlDefinition* type{};
+    Matrix4 transform{Matrix4::identity()};
+    float scale{1.0F};
+    std::uint32_t player{};
+};
+
+// What the walk reads: the map and the XML content it was built against.
+struct BattleMapSources
+{
+    const TedMapData& map;
+    const GameObjectCatalog& catalog;
+    const MapObjectLayout& layout;
+    const MovementClasses& movement;
+    const CombatContent& combat;
+    // Whether hardpoint models are attached (shortcut: headless builds skip them until the hash
+    // change of measuring them is taken on purpose).
+    bool attachments{};
+};
+
+// The walk behind build_battle_map: fills `asset` (its name already set) and, per entity and per
+// spawnable type (same index), the model it was built from.
+void build_battle_map(ResourceManager resources, const BattleMapSources& sources, std::span<const std::string> spawn_types, BattleMapAsset& asset, std::vector<BuiltModel>& entity_models,
+                      std::vector<BuiltModel>& spawnable_models);
+
+// What adding a spawnable type needs: the resources its model loads through, the XML catalog and
+// movement classes, the model context (land or space), a combat profile source (one per type), and
+// the spawnable list to extend with the model of each (same index).
 struct SpawnableBuild
 {
-    SceneBuilder& builder;
+    ResourceManager resources;
     const GameObjectCatalog& catalog;
     const std::unordered_map<std::string, std::uint32_t>& movement_classes;
     GameModelContext context{};
     bool land{};
-    std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes;
+    bool attachments{};
     std::function<const CombatProfile&(const XmlDefinition&, const Model*)> profile_of;
     std::vector<SpawnableType>& spawnable;
-    // How each spawnable type is drawn (same index).
-    std::vector<SpawnableLook>& looks;
+    std::vector<BuiltModel>& models;
+    std::vector<std::string>& warnings;
     // GameConstants' Object_Max_Speed_Multiplier for the battle's mode (CombatContent).
     float speed_multiplier{1.0F};
 };
 
-// Adds an XML type (by name, case-insensitive) to build.spawnable with its model appended to the
-// scene, or, for a company or squadron, its members and then itself; returns its index (an
-// existing entry is reused) or nullopt with a warning when it has no model for the context.
+// Adds an XML type (by name, case-insensitive) to build.spawnable, or, for a company or squadron,
+// its members and then itself; returns its index (an existing entry is reused) or nullopt with a
+// warning when it has no model for the context, and nullopt when its model has nothing to draw.
 std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::string& type_name, int depth);
+
+// visual_map_builder.cpp: how what the walk built is drawn.
+
+// Appends the looks of `types` from looks.size() on (their meshes join the builder's scene once per
+// model and attachments, by `meshes`); a type whose model could not be drawn is hidden, with a
+// warning.
+void add_spawnable_looks(SceneBuilder& builder, const GameObjectCatalog& catalog, std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes, std::span<const SpawnableType> types,
+                         std::span<const BuiltModel> models, std::vector<SpawnableLook>& looks);
 
 // A rig per scene mesh (its model, inverse bind pose, role clips, and rest palette range), the
 // concatenated rest palette, every instance's bone offset, and the scene's palette size.

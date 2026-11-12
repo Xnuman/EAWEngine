@@ -266,7 +266,12 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
 - the projectile reacquisition tie-break, whose comment says lower index while the code takes the
   higher (changing the comparison changes the hash);
 - the script host's own SplitMix stream beside `core/random` (it is script state, so a move must keep
-  its sequence).
+  its sequence);
+- headless map builds attach no hardpoint models (`BattleMapSources::attachments`), so footprints
+  of types with `Model_To_Attach` differ from the sandbox's; attaching them changes the hash;
+- `battle_map_builder` shares `scene_builder_internal.hpp` and `object_type_properties` (XML type
+  fields for gameplay and look alike) with scene building, until the engine library is split
+  (review proposal C).
 
 ## Performance gates
 

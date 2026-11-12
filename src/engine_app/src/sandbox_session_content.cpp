@@ -105,8 +105,8 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         auto& visual_map = *content.map;
         const auto& scene = visual_map.scene;
         const auto map_status =
-            scene.name + (visual_map.land ? " (land)" : " (space)") + ", " + std::to_string(scene.instances.size()) + " objects, built in " + eaw::format_fixed(content.build_seconds, 2) + " s";
-        std::cout << "Visual map: " << scene.name << (visual_map.land ? " (land)" : " (space)") << '\n'
+            scene.name + (visual_map.battle.land ? " (land)" : " (space)") + ", " + std::to_string(scene.instances.size()) + " objects, built in " + eaw::format_fixed(content.build_seconds, 2) + " s";
+        std::cout << "Visual map: " << scene.name << (visual_map.battle.land ? " (land)" : " (space)") << '\n'
                   << "Terrain: "
                   << (scene.terrain.vertices.empty() ? std::string("none")
                                                      : std::to_string(scene.terrain.vertices.size() / 3U) + " triangles, " + std::to_string(scene.terrain.layer_count) + " layers" +
@@ -116,11 +116,12 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
                                                                                                           : "") +
                                                            ", " + std::to_string(visual_map.tracks) + " tracks")
                   << '\n'
-                  << "Objects: " << scene.instances.size() << " instances of " << scene.meshes.size() << " models | squadron members expanded: " << visual_map.expanded_members
-                  << " | companies: " << visual_map.expanded_companies << " (" << visual_map.company_members << " members) | obstacle footprints: " << visual_map.obstacle_footprints
-                  << " | space obstacles: " << visual_map.space_obstacles << "\n"
-                  << "Not drawn: " << visual_map.untyped << " untyped, " << visual_map.without_model << " without model, " << visual_map.missing_model_files << " missing model files, "
-                  << visual_map.unexpanded_containers << " containers without members, " << visual_map.unrenderable_placements << " unrenderable models\n"
+                  << "Objects: " << scene.instances.size() << " instances of " << scene.meshes.size() << " models | squadron members expanded: " << visual_map.battle.expanded_members
+                  << " | companies: " << visual_map.battle.expanded_companies << " (" << visual_map.battle.company_members
+                  << " members) | obstacle footprints: " << visual_map.battle.obstacle_footprints << " | space obstacles: " << visual_map.battle.space_obstacles << "\n"
+                  << "Not drawn: " << visual_map.battle.untyped << " untyped, " << visual_map.battle.without_model << " without model, " << visual_map.battle.missing_model_files
+                  << " missing model files, " << visual_map.battle.unexpanded_containers << " containers without members, " << visual_map.battle.placements_without_geometry
+                  << " models without geometry, " << visual_map.undrawn_entities << " undrawable\n"
                   << "Geometry: " << scene.vertices.size() << " vertices, " << scene.indices.size() / 3U << " triangles, " << scene.draws.size() << " draws | Textures: " << scene.textures.size()
                   << " | Built in " << content.build_seconds << " s\n"
                   << "Lighting: " << (visual_map.lighting ? "environment '" + visual_map.environment_name + "'" : std::string("engine default")) << " | team colors: " << visual_map.faction_colored
@@ -157,17 +158,17 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
             particle_texture_copy = visual_map.particle_textures;
         }
         const auto placed = register_particle_textures(std::move(visual_map.particle_textures), visual_map.rigs, visual_map.effects, &visual_map.effect_objects, &visual_map.projectile_visuals);
-        start_simulation(layout, eaw::battle_map(visual_map), visual_map.entity_looks, visual_map.spawnable_looks, *options.map);
+        start_simulation(layout, eaw::battle_map(visual_map.battle), visual_map.entity_looks, visual_map.spawnable_looks, *options.map);
         audio.reset();
-        audio.emplace(vfs, &asset_cache, *audio_device, options.language, visual_map.land);
+        audio.emplace(vfs, &asset_cache, *audio_device, options.language, visual_map.battle.land);
         animator.emplace(visual_map.rigs, visual_map.rest_palette);
         effects.reset({visual_map.rigs, &visual_map.projectile_visuals, placed_atlas(visual_map.projectile_atlas, placed), &visual_map.effect_objects});
         shown_effects = visual_map.effects;
         shown_effect_ids.assign(shown_effects.size(), {});
         effect_center = {(bounds.minimum[0] + bounds.maximum[0]) * 0.5F, (bounds.minimum[1] + bounds.maximum[1]) * 0.5F, 0.0F};
-        if (visual_map.land && visual_map.ground.valid())
+        if (visual_map.battle.land && visual_map.battle.ground.valid())
         {
-            effect_center[2] = visual_map.ground.surface_height(effect_center[0], effect_center[1]);
+            effect_center[2] = visual_map.battle.ground.surface_height(effect_center[0], effect_center[1]);
             effects.set_ground(
                 [this](const float x, const float y) -> std::optional<float>
                 {
@@ -207,9 +208,9 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
             std::cout << "Projectile looks: " << bolts << " bolts, " << models << " models, " << particle_models << " particle systems, "
                       << effects.projectile_visuals().size() - bolts - models - particle_models << " not drawn\n";
         }
-        spawnable = visual_map.spawnable;
-        terrain_heights = visual_map.ground;
-        map_land = visual_map.land;
+        spawnable = visual_map.battle.spawnable;
+        terrain_heights = visual_map.battle.ground;
+        map_land = visual_map.battle.land;
         spawn_names.clear();
         for (const auto& type : spawnable)
         {

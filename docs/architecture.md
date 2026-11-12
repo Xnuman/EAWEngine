@@ -159,7 +159,10 @@ laid out on a grid or in formation), and recorded with its tick. Entity ids are 
 deterministically, so the same map, game data, and order log reproduce the same battle, in the
 sandbox or headless (`EAWEngine battle`). Nothing the simulation reads depends on how a scene is
 built for drawing: the ground (heights, passability, liquid level) and spawns come from map and XML
-data, so a headless build without textures or animations hashes like the sandbox.
+data and the models' geometry. `build_battle_map` builds only that side of a map (a
+`BattleMapAsset`: entities, spawnable types, ground, damage table); `build_visual_map` runs the same
+walk over the placements and then adds the look of each entity and type at the same index
+(`MapEntityLook`, `SpawnableLook`), so a headless battle hashes like the sandbox.
 
 Orders come from the RTS input layer. Box selection projects snapshot positions through the camera
 (`camera_math`, matching the renderer's projection); a right-click finds its world point on the CPU
@@ -450,7 +453,8 @@ The file-level split of each module.
   `script_stubs` (recording stubs), and `host_api_recorder` (what scripts called), sharing the
   private `script_host_internal.hpp`.
 - `src/engine` (`eaw_engine`), by category (its CMake source groups):
-  - battles: `battle` (setup, replayable orders, the order log), `battle_runner` (headless runs),
+  - battles: `battle` (setup, replayable orders, the order log), `battle_map_builder` (the battle
+    side of a map: placements, companies, spawnable types, ground), `battle_runner` (headless runs),
     `battle_log` (reading and writing logs), `battle_scripts` (scripts in battles: the view, the
     provider, blocks, and the script phase), `combat_content` (XML combat data translated into the
     simulation's combat profiles);

@@ -5,7 +5,6 @@
 #include "engine/battle_log.hpp"
 #include "engine/battle_scripts.hpp"
 #include "engine/text_format.hpp"
-#include "engine/visual_scene_builder.hpp"
 
 #include <algorithm>
 #include <array>
@@ -46,7 +45,7 @@ struct BattleRun
 // The point groups spawn around and auto-move goes to: the middle of the ground on land maps, at
 // its surface, and the middle of the placed objects in space. Both come from map data alone, so
 // a headless build (no textures) and a full one place battles alike.
-Vector3 battle_center(const VisualMapAsset& asset)
+Vector3 battle_center(const BattleMapAsset& asset)
 {
     if (asset.ground.valid())
     {
@@ -57,13 +56,13 @@ Vector3 battle_center(const VisualMapAsset& asset)
         center.z = ground.surface_height(center.x, center.y);
         return center;
     }
-    const auto& minimum = asset.scene.bounds_minimum;
-    const auto& maximum = asset.scene.bounds_maximum;
-    return {(minimum[0] + maximum[0]) * 0.5F, (minimum[1] + maximum[1]) * 0.5F, 0.0F};
+    // Without ground, the middle of where the placed models reach.
+    const auto& extent = asset.extent;
+    return {(extent.minimum.x + extent.maximum.x) * 0.5F, (extent.minimum.y + extent.maximum.y) * 0.5F, 0.0F};
 }
 
 // `scripts_reader` resolves game-object scripts; null runs none (--no-scripts).
-BattleRun run_once(const VisualMapAsset& asset, const std::string& map_name, const SandboxOptions& options, const BattleLog* replay, const std::uint64_t ticks, const AssetReader* scripts_reader)
+BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, const SandboxOptions& options, const BattleLog* replay, const std::uint64_t ticks, const AssetReader* scripts_reader)
 {
     BattleRun run;
     Battle battle(battle_map(asset), map_name);
@@ -228,8 +227,8 @@ int run_battle(const SandboxOptions& options, const VirtualFileSystem& vfs)
         add_type(request.type);
     }
     const auto build_start = std::chrono::steady_clock::now();
-    // Nothing is drawn: skip textures and animation clips.
-    auto built = build_visual_map(vfs, map_name, nullptr, spawn_types, MapBuildOptions{.textures = false, .animation_clips = false});
+    // Nothing is drawn: the battle side of the map only.
+    auto built = build_battle_map(vfs, map_name, nullptr, spawn_types);
     if (!built)
     {
         std::cerr << "error: " << built.error().message << '\n';

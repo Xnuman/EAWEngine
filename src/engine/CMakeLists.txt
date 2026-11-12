@@ -17,6 +17,7 @@ set(EAW_ENGINE_BATTLE
     ${HEADERS_DIR}/combat_content.hpp
     ${SOURCES_DIR}/battle.cpp
     ${SOURCES_DIR}/battle_log.cpp
+    ${SOURCES_DIR}/battle_map_builder.cpp
     ${SOURCES_DIR}/battle_runner.cpp
     ${SOURCES_DIR}/battle_scripts.cpp
     ${SOURCES_DIR}/combat_content.cpp

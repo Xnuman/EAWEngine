@@ -141,4 +141,22 @@ ModelBounds drawn_model_bounds(const Model& model, const std::span<const ModelAt
     return bounds;
 }
 
+void add_placed_bounds(ModelBounds& bounds, const ModelBounds& local, const Matrix4& transform) noexcept
+{
+    for (unsigned corner = 0; corner < 8; ++corner)
+    {
+        const Vector3 point = transform_point(
+            {(corner & 1U) != 0 ? local.maximum.x : local.minimum.x, (corner & 2U) != 0 ? local.maximum.y : local.minimum.y, (corner & 4U) != 0 ? local.maximum.z : local.minimum.z}, transform);
+        if (!is_finite(point))
+        {
+            continue;
+        }
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            bounds.minimum[axis] = std::min(bounds.minimum[axis], point[axis]);
+            bounds.maximum[axis] = std::max(bounds.maximum[axis], point[axis]);
+        }
+    }
+}
+
 } // namespace eaw

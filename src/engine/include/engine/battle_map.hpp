@@ -4,6 +4,8 @@
 // meshes, and each entity's and type's look stay in visual_scene_builder.hpp). Built from the map,
 // the XML types, and the models' skeletons and geometry; never from drawing.
 
+#include "core/status.hpp"
+#include "assets/model_geometry.hpp"
 #include "simulation/combat.hpp"
 #include "simulation/formation.hpp"
 #include "simulation/ground_map.hpp"
@@ -14,9 +16,13 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace eaw {
+
+class AssetCache;
+class AssetReader;
 
 // Units an object's destruction leaves (XML Destruction_Survivors: crews, prisoners): each listed
 // type, `count` groups of it, owned by the destroyed object's owner. Every stock entry has weight
@@ -136,7 +142,53 @@ struct SpawnableType
     float formation_raggedness{};
 };
 
-// What a battle needs from a built map (VisualMapAsset holds it; tests build it directly).
+// A map built for a battle (build_battle_map): what BattleMap views, and what the build counted.
+// Built without a scene; a drawn map (VisualMapAsset) holds one beside its look.
+struct BattleMapAsset
+{
+    // The map's virtual path.
+    std::string name;
+    bool land{};
+    // Placements the object layout could not use: without an XML type, without a model for the
+    // map's mode, or naming a missing model file (MapObjectLayout).
+    std::size_t untyped{};
+    std::size_t without_model{};
+    std::size_t missing_model_files{};
+    std::size_t expanded_members{};
+    std::size_t unexpanded_containers{};
+    std::size_t company_members{};
+    // Placements whose model has no drawable geometry, so they are no entities (model_geometry).
+    std::size_t placements_without_geometry{};
+    // Land companies arranged in formation.
+    std::size_t expanded_companies{};
+    // The next company team id (FormationTeam::id; battles continue from it).
+    std::uint32_t next_team{1};
+    // Immobile obstacles whose footprints the simulation stamps into the ground.
+    std::size_t obstacle_footprints{};
+    // Immobile space objects ships steer around (their Space_Obstacle_Radius).
+    std::size_t space_obstacles{};
+    // One entity per placed object whose model has drawable geometry (not backdrops), in
+    // placement order.
+    std::vector<MapEntity> entities;
+    // Types requested for runtime spawning (and what destruction leaves) that resolved to a model,
+    // in request order.
+    std::vector<SpawnableType> spawnable;
+    // Where the placed entities' models reach (their drawn bounds as placed): the frame of a map
+    // without ground.
+    ModelBounds extent;
+    // Ground for the simulation and CPU queries (land maps; invalid for space).
+    GroundMap ground;
+    // Damage multipliers from GameConstants.xml, with ids matching the entities' combat profiles.
+    DamageTable damage_table;
+    std::vector<std::string> warnings;
+};
+
+// Builds the battle side of a map from the TED, the XML types, and the models' skeletons and
+// geometry (through `cache` when given): no textures, meshes, or effects. `spawn_types` are the
+// XML types spawn orders may name; what their destruction leaves joins them.
+[[nodiscard]] Result<BattleMapAsset> build_battle_map(const AssetReader& reader, std::string_view map_path, AssetCache* cache = nullptr, std::span<const std::string> spawn_types = {});
+
+// What a battle needs from a built map (a BattleMapAsset; tests build it directly).
 struct BattleMap
 {
     // Placed entities, spawned in order when the battle starts.
@@ -148,5 +200,9 @@ struct BattleMap
     DamageTable damage_table;
     Hostility hostility;
 };
+
+// The map's placed entities, spawnable types, ground, and damage table, with the provisional
+// owner-slot hostility (combat_content.hpp).
+[[nodiscard]] BattleMap battle_map(const BattleMapAsset& asset);
 
 } // namespace eaw

@@ -303,10 +303,10 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
     return mesh_index;
 }
 
-std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& type, const Model* host)
+std::vector<ModelAttachment> type_hardpoint_models(const ResourceManager& resources, std::vector<std::string>& warnings, const GameObjectCatalog& catalog, const XmlDefinition& type, const Model* host)
 {
     std::vector<ModelAttachment> attachments;
-    if (host == nullptr || !builder.textures)
+    if (host == nullptr)
     {
         return attachments;
     }
@@ -328,16 +328,16 @@ std::vector<ModelAttachment> type_hardpoint_models(SceneBuilder& builder, const 
         }
         const auto bone_name = ascii_lower(text_of(*hardpoint, "Attachment_Bone"));
         const auto bone = find_skeleton_bone(host->skeleton, bone_name);
-        const auto path = resolve_model_path(builder.vfs, model_name);
+        const auto path = resolve_model_path(resources.reader(), model_name);
         if (!bone || !path)
         {
-            builder.scene.warnings.push_back(type.name + ": hardpoint " + name + " attaches " + model_name + (path ? " to missing bone '" + bone_name + "'" : " (file not found)"));
+            warnings.push_back(type.name + ": hardpoint " + name + " attaches " + model_name + (path ? " to missing bone '" + bone_name + "'" : " (file not found)"));
             continue;
         }
-        const auto model = cached_model(builder, *path);
+        const auto model = resources.get<Model>(*path);
         if (!model->ok())
         {
-            builder.scene.warnings.push_back(*path + ": " + model->error().message);
+            warnings.push_back(*path + ": " + model->error().message);
             continue;
         }
         attachments.push_back({*path, std::shared_ptr<const Model>(model, &model->value()), *bone});
@@ -416,12 +416,10 @@ GroundFootprint model_ground_footprint(const ModelBounds& bounds, const Matrix4&
 
 void update_scene_bounds(VisualScene& scene)
 {
-    scene.bounds_minimum = empty_bounds_minimum;
-    scene.bounds_maximum = empty_bounds_maximum;
+    ModelBounds bounds;
     if (!scene.terrain.vertices.empty())
     {
-        scene.bounds_minimum = scene.terrain.bounds_minimum;
-        scene.bounds_maximum = scene.terrain.bounds_maximum;
+        bounds = {scene.terrain.bounds_minimum, scene.terrain.bounds_maximum};
     }
     for (const auto& instance : scene.instances)
     {
@@ -431,23 +429,10 @@ void update_scene_bounds(VisualScene& scene)
             continue;
         }
         const auto& mesh = scene.meshes[instance.mesh];
-        for (unsigned corner = 0; corner < 8; ++corner)
-        {
-            const Vector3 local{(corner & 1U) != 0 ? mesh.bounds_maximum[0] : mesh.bounds_minimum[0], (corner & 2U) != 0 ? mesh.bounds_maximum[1] : mesh.bounds_minimum[1],
-                                (corner & 4U) != 0 ? mesh.bounds_maximum[2] : mesh.bounds_minimum[2]};
-            const auto point = transform_point(local, instance.transform);
-            // Malformed vertex data must not leave the camera framing non-finite.
-            if (!is_finite(point))
-            {
-                continue;
-            }
-            for (std::size_t axis = 0; axis < 3; ++axis)
-            {
-                scene.bounds_minimum[axis] = std::min(scene.bounds_minimum[axis], point[axis]);
-                scene.bounds_maximum[axis] = std::max(scene.bounds_maximum[axis], point[axis]);
-            }
-        }
+        add_placed_bounds(bounds, {mesh.bounds_minimum, mesh.bounds_maximum}, instance.transform);
     }
+    scene.bounds_minimum = bounds.minimum;
+    scene.bounds_maximum = bounds.maximum;
 }
 
 } // namespace eaw::scene_build

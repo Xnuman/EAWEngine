@@ -52,7 +52,7 @@ Vector3 open_ground(const GroundMap& ground, Vector3 point, const std::uint32_t 
     return point;
 }
 
-BattleMap battle_map(const VisualMapAsset& asset)
+BattleMap battle_map(const BattleMapAsset& asset)
 {
     BattleMap map;
     map.entities = asset.entities;

@@ -1,15 +1,11 @@
 #include "core/string_utils.hpp"
-#include "formats/dds_texture.hpp"
-#include "formats/xml_document.hpp"
 #include "assets/map_object_layout.hpp"
 #include "assets/spawn_catalog.hpp"
 #include "engine/combat_content.hpp"
 #include "engine/scene_builder_internal.hpp"
 
 #include <algorithm>
-#include <ranges>
 #include <span>
-#include <system_error>
 
 namespace eaw {
 
@@ -36,186 +32,48 @@ void collect_death_effect_keys(const CombatProfile& profile, std::vector<std::ui
     }
 }
 
-// Lays each company's members (consecutive entries with one object index) out with the formation
-// used for group orders, centered on the company's placed position and facing its heading, and
-// moves their instances and spawns there (heights from the ground surface). The original arranges
-// companies at runtime; this layout is an engine choice.
-template <class Member> void arrange_companies(VisualScene& scene, VisualMapAsset& asset, const std::vector<Member>& members, const GameObjectCatalog& catalog)
-{
-    for (std::size_t first = 0; first < members.size();)
-    {
-        auto last = first;
-        while (last < members.size() && members[last].object_index == members[first].object_index)
-        {
-            ++last;
-        }
-        const auto& origin = scene.instances[members[first].instance].transform;
-        const auto center = translation(origin);
-        const auto facing = model_forward_heading(origin);
-        std::vector<FormationMember> formation;
-        std::vector<float> raggedness;
-        for (auto index = first; index < last; ++index)
-        {
-            const auto& member = members[index];
-            const auto& spawn = asset.entities[member.entity].spawn;
-            const auto radius = spawn.radius > 0.0F ? spawn.radius : model_footprint_radius(member.bounds, scene.instances[member.instance].transform);
-            formation.push_back({EntityId{static_cast<std::uint32_t>(index + 1U), 1}, center, radius, type_formation_spacing(catalog, *member.type), type_formation_order(catalog, *member.type)});
-            raggedness.push_back(type_formation_raggedness(catalog, *member.type));
-        }
-        if (members[first].company != nullptr)
-        {
-            assign_teams(formation, raggedness, type_team_layout(catalog, *members[first].company), asset.next_team);
-        }
-        const auto slots = formation_slots(formation, center, facing);
-        for (auto index = first; index < last; ++index)
-        {
-            auto position = slots[index - first].position;
-            if (asset.ground.valid())
-            {
-                position.z = asset.ground.surface_height(position.x, position.y);
-            }
-            auto& transform = scene.instances[members[index].instance].transform;
-            set_translation(transform, position);
-            asset.entities[members[index].entity].spawn.position = position;
-            asset.entities[members[index].entity].spawn.formation_team = formation[index - first].team;
-        }
-        ++asset.expanded_companies;
-        first = last;
-    }
-}
-
 } // namespace
 
-std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build, const std::string& type_name, const int depth)
+void scene_build::add_spawnable_looks(SceneBuilder& builder, const GameObjectCatalog& catalog, std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes,
+                                      const std::span<const SpawnableType> types, const std::span<const BuiltModel> models, std::vector<SpawnableLook>& looks)
 {
-    for (std::size_t index = 0; index < build.spawnable.size(); ++index)
+    for (auto index = looks.size(); index < types.size(); ++index)
     {
-        if (ascii_lower(build.spawnable[index].type_name) == ascii_lower(type_name))
+        const auto& type = types[index];
+        const auto& model = models[index];
+        SpawnableLook look;
+        if (model.path.empty())
         {
-            return index;
+            // A company (its members come before it).
+            look.mesh = looks[type.members.front()].mesh;
+            look.hidden = looks[type.members.front()].hidden;
+            looks.push_back(look);
+            continue;
         }
-    }
-
-    // A company is its members even when it names a model of its own.
-    const auto is_company = std::ranges::any_of(build.catalog.find(type_name),
-                                                [&](const XmlDefinition* candidate)
-                                                {
-                                                    return build.catalog.field(*candidate, "Company_Units").field != nullptr || build.catalog.field(*candidate, "Squadron_Units").field != nullptr;
-                                                });
-    const XmlDefinition* definition = nullptr;
-    std::optional<GameObjectModelReference> model;
-    for (const auto* candidate : build.catalog.find(type_name))
-    {
-        if ((model = build.catalog.model(*candidate, build.context)))
+        auto [entry, inserted] = meshes.try_emplace(attached_mesh_key(model.path, model.attachments));
+        if (inserted)
         {
-            definition = candidate;
-            break;
+            entry->second = append_scene_model(builder, model.path, model.attachments);
         }
-    }
-    const auto path = model ? resolve_model_path(build.builder.vfs, model->value) : std::nullopt;
-    if (definition == nullptr || !path || (is_company && depth == 0))
-    {
-        // A company spawns its members instead (each resolved like a requested type).
-        for (const auto* candidate : build.catalog.find(type_name))
+        note_animation_source(builder, model.path, catalog, *model.type);
+        note_damage_bones(builder, model.path, type.combat);
+        if (entry->second)
         {
-            // Land companies and space squadrons both spawn as their members (a repeated
-            // Squadron_Units continues the list).
-            std::vector<std::string_view> names;
-            if (const auto* company_units = build.catalog.field(*candidate, "Company_Units").field)
-            {
-                names = split_type_names(company_units->text);
-            }
-            for (const auto* squadron_units : build.catalog.fields(*candidate, "Squadron_Units").fields)
-            {
-                const auto more = split_type_names(squadron_units->text);
-                names.insert(names.end(), more.begin(), more.end());
-            }
-            if (names.empty() || depth > 0)
-            {
-                continue;
-            }
-            SpawnableType company;
-            company.type_name = candidate->name;
-            if (build.catalog.field(*candidate, "Company_Units").field != nullptr)
-            {
-                company.team = type_team_movement(build.catalog, *candidate, build.speed_multiplier);
-                company.team_layout = type_team_layout(build.catalog, *candidate);
-            }
-            for (const auto member : names)
-            {
-                if (const auto index = add_spawnable_type(build, std::string(member), depth + 1))
-                {
-                    company.members.push_back(*index);
-                }
-            }
-            if (company.members.empty())
-            {
-                break;
-            }
-            SpawnableLook company_look;
-            company_look.mesh = build.looks[company.members.front()].mesh;
-            build.spawnable.push_back(std::move(company));
-            build.looks.push_back(company_look);
-            return build.spawnable.size() - 1U;
+            look.mesh = *entry->second;
         }
-        build.builder.scene.warnings.push_back("spawn type '" + type_name + "' has no resolvable " + std::string(to_string(build.context)) + " model");
-        return std::nullopt;
+        else
+        {
+            builder.scene.warnings.push_back(model.path + ": has drawable geometry but could not be added to the scene; '" + type.type_name + "' spawns undrawn");
+            look.hidden = true;
+        }
+        look.team_color = catalog.affiliation_color(*model.type).value_or(player_team_color(1));
+        look.scale = model.scale;
+        look.lod_bias = type_lod_bias(catalog, *model.type);
+        look.death = type_death_style(catalog, *model.type);
+        look.bank_limit = type_bank_limit(catalog, *model.type);
+        look.animation = type_animation_profile(catalog, *model.type);
+        looks.push_back(look);
     }
-    const auto host = cached_model(build.builder, *path);
-    const auto attachments = type_hardpoint_models(build.builder, build.catalog, *definition, host->ok() ? &host->value() : nullptr);
-    auto [entry, inserted] = build.meshes.try_emplace(attached_mesh_key(*path, attachments));
-    if (inserted)
-    {
-        entry->second = append_scene_model(build.builder, *path, attachments);
-    }
-    note_animation_source(build.builder, *path, build.catalog, *definition);
-    // As for placed objects: the model decides whether the type can be spawned, not drawing.
-    if (!host || !host->ok() || !has_drawn_geometry(host->value(), attachments, true))
-    {
-        return std::nullopt;
-    }
-    if (!entry->second)
-    {
-        build.builder.scene.warnings.push_back(*path + ": has drawable geometry but could not be added to the scene; '" + definition->name + "' is not spawnable");
-        return std::nullopt;
-    }
-    SpawnableType spawnable;
-    SpawnableLook look;
-    spawnable.type_name = definition->name;
-    look.mesh = *entry->second;
-    spawnable.max_speed = type_max_speed(build.catalog, *definition, build.builder.scene.warnings, build.speed_multiplier);
-    look.team_color = build.catalog.affiliation_color(*definition).value_or(player_team_color(1));
-    spawnable.follows_ground = build.land && type_follows_ground(build.catalog, *definition);
-    spawnable.passable_types = spawnable.follows_ground ? type_passable_types(build.catalog, *definition, build.movement_classes) : 0U;
-    const auto decoded = cached_model(build.builder, *path);
-    spawnable.combat = build.profile_of(*definition, decoded && decoded->ok() ? &decoded->value() : nullptr);
-    note_damage_bones(build.builder, *path, spawnable.combat);
-    spawnable.hover_offset = type_float_field(build.catalog, *definition, "Hover_Offset");
-    look.scale = type_scale_factor(build.catalog, *definition, build.builder.scene.warnings);
-    look.lod_bias = type_lod_bias(build.catalog, *definition);
-    look.death = type_death_style(build.catalog, *definition);
-    look.bank_limit = type_bank_limit(build.catalog, *definition);
-    spawnable.crush = type_crush(build.catalog, *definition);
-    look.animation = type_animation_profile(build.catalog, *definition);
-    spawnable.survivors = type_survivors(build.catalog, *definition);
-    spawnable.script = type_script_info(build.catalog, *definition);
-    if (spawnable.max_speed > 0.0F)
-    {
-        const auto soft_radius = type_soft_footprint_radius(build.catalog, *definition);
-        const auto bounds = decoded && decoded->ok() ? drawn_model_bounds(decoded->value(), attachments, true) : ModelBounds{};
-        spawnable.radius = soft_radius > 0.0F ? soft_radius : model_footprint_radius(bounds, scaled_model_transform(Matrix4::identity(), look.scale));
-        spawnable.turn_rate = type_turn_rate(build.catalog, *definition);
-        spawnable.min_speed = build.land ? 0.0F : type_min_flight_speed(build.catalog, *definition, spawnable.max_speed);
-        spawnable.movement = type_movement(build.catalog, *definition, build.land, spawnable.min_speed > 0.0F);
-        spawnable.aims_with_body = type_aims_with_body(build.catalog, *definition);
-        spawnable.formation_order = type_formation_order(build.catalog, *definition);
-        spawnable.formation_spacing = type_formation_spacing(build.catalog, *definition);
-        spawnable.formation_solo = type_formation_solo(build.catalog, *definition);
-        spawnable.formation_raggedness = type_formation_raggedness(build.catalog, *definition);
-    }
-    build.spawnable.push_back(std::move(spawnable));
-    build.looks.push_back(look);
-    return build.spawnable.size() - 1U;
 }
 
 Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::string_view map_path, AssetCache* cache, const std::span<const std::string> spawn_types, const MapBuildOptions& options)
@@ -225,230 +83,89 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     {
         return make_error("map was not found: " + std::string(map_path));
     }
+    // The walk and the scene share decoded models; without a cache of the caller's, one for this
+    // build.
+    AssetCache build_cache;
+    if (cache == nullptr)
+    {
+        cache = &build_cache;
+    }
+    const ResourceManager resources(vfs, cache);
     VisualMapAsset asset;
-    const auto map_entry = ResourceManager(vfs, cache).get<TedMapData>(resolved->virtual_path);
+    const auto map_entry = resources.get<TedMapData>(resolved->virtual_path);
     if (!map_entry->ok())
     {
         return with_context(resolved->virtual_path, map_entry->error());
     }
     const auto& map = map_entry->value();
-    asset.land = map.type == TedMapType::land;
-    const auto catalog_entry = ResourceManager(vfs, cache).get<CachedCatalog>(xml_catalog_path);
+    const auto catalog_entry = resources.get<CachedCatalog>(xml_catalog_path);
     const auto& catalog = catalog_entry->catalog;
     const auto layout = build_map_object_layout(map, catalog, vfs);
-    const auto movement_entry = ResourceManager(vfs, cache).get<MovementClasses>(movement_class_path);
-    const auto& movement_classes = movement_entry->classes;
-    const auto combat_entry = ResourceManager(vfs, cache).get<CombatContent>(combat_content_path);
-    asset.damage_table = combat_entry->damage_table;
-    // One profile per type, so a type's warnings are reported once however often it is placed.
-    std::unordered_map<const XmlDefinition*, CombatProfile> combat_profiles;
-    const auto profile_of = [&](const XmlDefinition& definition, const Model* model) -> const CombatProfile&
-    {
-        auto found = combat_profiles.find(&definition);
-        if (found == combat_profiles.end())
-        {
-            std::vector<std::string> scale_warnings;
-            found = combat_profiles
-                        .emplace(&definition, combat_profile(catalog, definition, *combat_entry, asset.scene.warnings, model != nullptr ? &model->skeleton : nullptr,
-                                                             type_scale_factor(catalog, definition, scale_warnings), combat_entry->max_health_multiplier.of(asset.land)))
-                        .first;
-        }
-        return found->second;
-    };
-    asset.untyped = layout.untyped;
-    asset.without_model = layout.without_model;
-    asset.missing_model_files = layout.missing_model_files;
-    asset.expanded_members = layout.expanded_members;
-    asset.company_members = layout.company_members;
-    asset.unexpanded_containers = layout.unexpanded_containers;
+    const auto movement_entry = resources.get<MovementClasses>(movement_class_path);
+    const auto combat_entry = resources.get<CombatContent>(combat_content_path);
+    auto& battle = asset.battle;
+    battle.name = resolved->virtual_path;
+    std::vector<BuiltModel> entity_models;
+    std::vector<BuiltModel> spawnable_models;
+    scene_build::build_battle_map(resources, {map, catalog, layout, *movement_entry, *combat_entry, options.textures}, spawn_types, battle, entity_models, spawnable_models);
 
     auto& scene = asset.scene;
     scene.name = resolved->virtual_path;
+    scene.warnings = battle.warnings;
     SceneBuilder builder{vfs, scene, {}, cache, options.textures, options.animation_clips};
     builder.particle_fidelity = options.particle_fidelity;
-    scene.warnings.insert(scene.warnings.end(), combat_entry->warnings.begin(), combat_entry->warnings.end());
-    if (asset.land)
+    if (battle.land)
     {
-        scene.warnings.insert(scene.warnings.end(), movement_entry->warnings.begin(), movement_entry->warnings.end());
         append_terrain(builder, map);
         asset.water = append_water(builder, map).has_value() ? map.water.type : TedWaterType::none;
-        const auto samples = static_cast<std::size_t>(map.terrain_width) * map.terrain_height;
-        if (map.terrain_width >= 2 && map.terrain_height >= 2 && map.elevation_map.size() >= samples)
-        {
-            auto& field = asset.ground;
-            field.width = map.terrain_width;
-            field.height = map.terrain_height;
-            field.spacing = terrain_sample_spacing;
-            field.heights.reserve(samples);
-            for (std::size_t index = 0; index < samples; ++index)
-            {
-                field.heights.push_back(static_cast<float>(map.elevation_map[index]) / terrain_elevation_scale);
-            }
-            // From map data alone, never from what is drawn (a missing texture must not change the
-            // ground): a liquid surface at or above the lowest ground, as append_water draws it.
-            const auto liquid = map.water.type == TedWaterType::water || map.water.type == TedWaterType::lava || map.water.type == TedWaterType::ice;
-            if (liquid && !field.heights.empty() && map.water.level >= *std::ranges::min_element(field.heights))
-            {
-                field.liquid_level = map.water.level;
-            }
-            if (map.passability_map.size() == samples)
-            {
-                field.passability = map.passability_map;
-            }
-        }
         asset.tracks = append_tracks(builder, map);
     }
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
-    std::unordered_map<std::string, ModelBounds> model_bounds;
-    // Company members (placed at their company's origin) are arranged after the loop.
-    struct CompanyMember
+    for (std::size_t index = 0; index < battle.entities.size(); ++index)
     {
-        std::size_t object_index{};
-        std::size_t entity{};
-        std::size_t instance{};
-        const XmlDefinition* type{};
-        const XmlDefinition* company{};
-        // The member's drawn model bounds (its separation radius when the type gives none).
-        ModelBounds bounds;
-    };
-    std::vector<CompanyMember> company_members;
-    for (const auto& placement : layout.placements)
-    {
-        if (placement.model_path.empty())
-        {
-            continue;
-        }
-        std::vector<ModelAttachment> attachments;
-        if (placement.type != nullptr)
-        {
-            const auto host = cached_model(builder, placement.model_path);
-            attachments = type_hardpoint_models(builder, catalog, *placement.type, host->ok() ? &host->value() : nullptr);
-        }
-        const auto mesh_key = attached_mesh_key(placement.model_path, attachments);
-        auto [entry, inserted] = meshes.try_emplace(mesh_key);
+        const auto& entity = battle.entities[index];
+        const auto& model = entity_models[index];
+        auto [entry, inserted] = meshes.try_emplace(attached_mesh_key(model.path, model.attachments));
         if (inserted)
         {
-            entry->second = append_scene_model(builder, placement.model_path, attachments);
+            entry->second = append_scene_model(builder, model.path, model.attachments);
         }
-        if (placement.type != nullptr)
+        MapEntityLook look;
+        if (model.type != nullptr)
         {
-            note_animation_source(builder, placement.model_path, catalog, *placement.type);
-        }
-        // Whether the placement exists is decided from its model (assets/model_geometry), never
-        // from drawing; a model that exists but could not be drawn is a scene warning.
-        const auto host_model = cached_model(builder, placement.model_path);
-        if (!host_model || !host_model->ok() || !has_drawn_geometry(host_model->value(), attachments, true))
-        {
-            ++asset.unrenderable_placements;
-            continue;
+            note_animation_source(builder, model.path, catalog, *model.type);
+            note_damage_bones(builder, model.path, entity.spawn.combat);
+            look.death = type_death_style(catalog, *model.type);
+            look.bank_limit = type_bank_limit(catalog, *model.type);
+            look.hidden = type_is_marker(catalog, *model.type);
+            look.animation = type_animation_profile(catalog, *model.type);
         }
         if (!entry->second)
         {
-            scene.warnings.push_back(placement.model_path + ": has drawable geometry but could not be added to the scene; the placement is left out");
-            ++asset.unrenderable_placements;
+            // The entity exists (its model has geometry) but is not drawn.
+            scene.warnings.push_back(model.path + ": has drawable geometry but could not be added to the scene; the entity is not drawn");
+            look.hidden = true;
+            ++asset.undrawn_entities;
+            asset.entity_looks.push_back(look);
             continue;
         }
-        // Instances start in their mesh's rest pose (build_map_rigs sets the bone offsets). The type's
-        // Scale_Factor sizes the model; separation and obstacle footprints are measured through it.
-        const auto model_scale = placement.type != nullptr ? type_scale_factor(catalog, *placement.type, scene.warnings) : 1.0F;
-        VisualInstance instance{*entry->second, scaled_model_transform(placement.transform, model_scale)};
-        instance.lod_bias = placement.type != nullptr ? type_lod_bias(catalog, *placement.type) : 1.0F;
-        {
-            const auto& matrix = instance.transform;
-            // The model's drawn bounds, which the type's footprint and radius fall back to.
-            ModelBounds bounds;
-            EntitySpawn spawn;
-            spawn.type_name = placement.type != nullptr ? placement.type->name : std::string{};
-            spawn.owner = map.placed_objects[placement.object_index].player;
-            spawn.position = translation(matrix);
-            // Heading is the direction of the model's forward (-Y) axis about +Z.
-            spawn.heading = model_forward_heading(matrix);
-            spawn.visual = *entry->second;
-            spawn.follows_ground = asset.land && placement.type != nullptr && type_follows_ground(catalog, *placement.type);
-            if (spawn.follows_ground)
-            {
-                spawn.passable_types = type_passable_types(catalog, *placement.type, movement_classes);
-            }
-            if (placement.type != nullptr)
-            {
-                spawn.max_speed = type_max_speed(catalog, *placement.type, scene.warnings, combat_entry->max_speed_multiplier.of(asset.land));
-                const auto decoded = cached_model(builder, placement.model_path);
-                // Once per model and attachments, as the meshes are.
-                auto [measured, fresh] = model_bounds.try_emplace(mesh_key);
-                if (fresh && decoded && decoded->ok())
-                {
-                    measured->second = drawn_model_bounds(decoded->value(), attachments, true);
-                }
-                bounds = measured->second;
-                spawn.combat = profile_of(*placement.type, decoded && decoded->ok() ? &decoded->value() : nullptr);
-                note_damage_bones(builder, placement.model_path, spawn.combat);
-                spawn.crush = type_crush(catalog, *placement.type);
-                // Only mobile units take space for now; structures and props keep overlapping
-                // until their collision footprints are read.
-                if (spawn.max_speed <= 0.0F && asset.land)
-                {
-                    if (const auto blocks = type_obstacle_passability(catalog, *placement.type))
-                    {
-                        spawn.footprint = type_ground_footprint(catalog, *placement.type, matrix, *blocks);
-                        if (!spawn.footprint)
-                        {
-                            spawn.footprint = model_ground_footprint(bounds, matrix, *blocks);
-                        }
-                        ++asset.obstacle_footprints;
-                    }
-                }
-                if (spawn.max_speed > 0.0F)
-                {
-                    const auto soft_radius = type_soft_footprint_radius(catalog, *placement.type);
-                    spawn.radius = soft_radius > 0.0F ? soft_radius : model_footprint_radius(bounds, matrix);
-                    spawn.turn_rate = type_turn_rate(catalog, *placement.type);
-                    spawn.min_speed = asset.land ? 0.0F : type_min_flight_speed(catalog, *placement.type, spawn.max_speed);
-                    spawn.movement = type_movement(catalog, *placement.type, asset.land, spawn.min_speed > 0.0F);
-                    spawn.aims_with_body = spawn.follows_ground && type_aims_with_body(catalog, *placement.type);
-                    spawn.formation_order = type_formation_order(catalog, *placement.type);
-                    spawn.formation_spacing = type_formation_spacing(catalog, *placement.type);
-                    spawn.formation_solo = type_formation_solo(catalog, *placement.type);
-                    if (placement.container != nullptr && placement.needs_formation)
-                    {
-                        apply_team_movement(type_team_movement(catalog, *placement.container, combat_entry->max_speed_multiplier.of(asset.land)), spawn);
-                    }
-                }
-                else if (!asset.land)
-                {
-                    // Space avoidance steers ships around immobile entities with a radius.
-                    // Starbases give only their soft radius (100 to 550).
-                    spawn.radius = type_space_obstacle_radius(catalog, *placement.type);
-                    if (spawn.radius <= 0.0F)
-                    {
-                        spawn.radius = type_soft_footprint_radius(catalog, *placement.type);
-                    }
-                    asset.space_obstacles += spawn.radius > 0.0F ? 1U : 0U;
-                }
-            }
-            asset.entities.push_back({std::move(spawn), placement.type != nullptr ? type_script_info(catalog, *placement.type) : ScriptTypeInfo{}, map.placed_objects[placement.object_index].hint,
-                                      placement.type != nullptr ? type_survivors(catalog, *placement.type) : Survivors{}});
-            asset.entity_looks.push_back({static_cast<std::uint32_t>(scene.instances.size()), placement.type != nullptr ? type_death_style(catalog, *placement.type) : DeathStyle{},
-                                          placement.type != nullptr ? type_bank_limit(catalog, *placement.type) : default_bank_limit,
-                                          placement.type != nullptr && type_is_marker(catalog, *placement.type),
-                                          placement.type != nullptr ? type_animation_profile(catalog, *placement.type) : AnimationProfile{}});
-            if (placement.needs_formation)
-            {
-                company_members.push_back({placement.object_index, asset.entities.size() - 1U, scene.instances.size(), placement.type, placement.container, bounds});
-            }
-        }
-        if (const auto faction = placement.type != nullptr ? catalog.affiliation_color(*placement.type) : std::nullopt)
+        // Instances start in their mesh's rest pose (build_map_rigs sets the bone offsets).
+        VisualInstance instance{*entry->second, model.transform};
+        instance.lod_bias = model.type != nullptr ? type_lod_bias(catalog, *model.type) : 1.0F;
+        if (const auto faction = model.type != nullptr ? catalog.affiliation_color(*model.type) : std::nullopt)
         {
             instance.team_color = *faction;
             ++asset.faction_colored;
         }
         else
         {
-            instance.team_color = player_team_color(map.placed_objects[placement.object_index].player);
+            instance.team_color = player_team_color(model.player);
             ++asset.player_colored;
         }
+        look.instance = static_cast<std::uint32_t>(scene.instances.size());
         scene.instances.push_back(instance);
+        asset.entity_looks.push_back(look);
     }
-    arrange_companies(scene, asset, company_members, catalog);
 
     // Backdrop: the active environment names primary and secondary sky domes. Each name is an XML
     // object (SpacePrimarySkydome, LandPrimarySkydome, ...) whose model is drawn as a camera-
@@ -476,7 +193,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                 scene.warnings.push_back("environment '" + environment.name + "' has non-finite lighting; using the engine default");
             }
         }
-        const auto context = asset.land ? GameModelContext::land : GameModelContext::space;
+        const auto context = battle.land ? GameModelContext::land : GameModelContext::space;
         for (const auto& name : {environment.skybox_primary, environment.skybox_secondary})
         {
             if (name.empty())
@@ -516,46 +233,23 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     }
 
     // Types requested for runtime spawning: their models join the mesh library without instances.
-    const auto spawn_context = asset.land ? GameModelContext::land : GameModelContext::space;
-    // Each requested name once: an existing entry is reused (company members are often repeated).
-    SpawnableBuild spawnable_build{builder, catalog, movement_classes, spawn_context, asset.land, meshes, profile_of, asset.spawnable, asset.spawnable_looks};
-    spawnable_build.speed_multiplier = combat_entry->max_speed_multiplier.of(asset.land);
-    for (const auto& type_name : spawn_types)
-    {
-        (void)add_spawnable_type(spawnable_build, type_name, 0);
-    }
-    // What destroyed objects leave must be spawnable too (survivors of survivors included).
-    for (const auto& entity : asset.entities)
-    {
-        for (const auto& survivor : entity.survivors.types)
-        {
-            (void)add_spawnable_type(spawnable_build, survivor, 0);
-        }
-    }
-    for (std::size_t index = 0; index < asset.spawnable.size(); ++index)
-    {
-        const auto names = asset.spawnable[index].survivors.types;
-        for (const auto& survivor : names)
-        {
-            (void)add_spawnable_type(spawnable_build, survivor, 0);
-        }
-    }
+    add_spawnable_looks(builder, catalog, meshes, battle.spawnable, spawnable_models, asset.spawnable_looks);
 
     // How shots look; model projectiles add meshes, so this comes before the rigs (headless builds
     // skip it, so the simulation's meshes never depend on it).
     if (options.textures)
     {
         std::vector<std::uint32_t> keys;
-        for (const auto& entity : asset.entities)
+        for (const auto& entity : battle.entities)
         {
             collect_projectile_keys(entity.spawn.combat, keys);
         }
-        for (const auto& type : asset.spawnable)
+        for (const auto& type : battle.spawnable)
         {
             collect_projectile_keys(type.combat, keys);
         }
         load_projectile_visuals(builder, catalog, keys, asset.projectile_visuals, asset.projectile_atlas);
-        load_projectile_models(builder, catalog, asset.land, meshes, asset.projectile_visuals);
+        load_projectile_models(builder, catalog, battle.land, meshes, asset.projectile_visuals);
     }
     build_map_rigs(builder, asset.rigs, asset.rest_palette);
     if (options.textures)
@@ -566,26 +260,17 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         }
         std::vector<std::uint32_t> keys;
         collect_impact_effect_keys(asset.projectile_visuals, keys);
-        for (const auto& entity : asset.entities)
+        for (const auto& entity : battle.entities)
         {
             collect_death_effect_keys(entity.spawn.combat, keys);
         }
-        for (const auto& type : asset.spawnable)
+        for (const auto& type : battle.spawnable)
         {
             collect_death_effect_keys(type.combat, keys);
         }
-        load_effect_objects(builder, catalog, keys, asset.land, asset.effect_objects);
+        load_effect_objects(builder, catalog, keys, battle.land, asset.effect_objects);
     }
     asset.particle_textures = std::move(builder.particles.textures);
-    constexpr std::size_t maximum_reported_diagnostics = 50;
-    for (std::size_t index = 0; index < layout.diagnostics.size() && index < maximum_reported_diagnostics; ++index)
-    {
-        scene.warnings.push_back(layout.diagnostics[index]);
-    }
-    if (layout.diagnostics.size() > maximum_reported_diagnostics)
-    {
-        scene.warnings.push_back(std::to_string(layout.diagnostics.size() - maximum_reported_diagnostics) + " more object diagnostics omitted");
-    }
     if (scene.terrain.vertices.empty() && std::ranges::none_of(scene.instances,
                                                                [](const VisualInstance& instance)
                                                                {
@@ -600,14 +285,17 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
 
 Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const std::string_view type_name, const bool land, AssetCache* cache, const MapBuildOptions& options)
 {
-    const auto catalog_entry = ResourceManager(vfs, cache).get<CachedCatalog>(xml_catalog_path);
-    const auto movement_entry = ResourceManager(vfs, cache).get<MovementClasses>(movement_class_path);
-    const auto combat_entry = ResourceManager(vfs, cache).get<CombatContent>(combat_content_path);
+    AssetCache build_cache;
+    if (cache == nullptr)
+    {
+        cache = &build_cache;
+    }
+    const ResourceManager resources(vfs, cache);
+    const auto catalog_entry = resources.get<CachedCatalog>(xml_catalog_path);
+    const auto movement_entry = resources.get<MovementClasses>(movement_class_path);
+    const auto combat_entry = resources.get<CombatContent>(combat_content_path);
     SpawnablePackage package;
     package.meshes.name = std::string(type_name);
-    SceneBuilder builder{vfs, package.meshes, {}, cache, options.textures, options.animation_clips};
-    builder.particle_fidelity = options.particle_fidelity;
-    std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
     std::unordered_map<const XmlDefinition*, CombatProfile> profiles;
     const auto profile_of = [&](const XmlDefinition& definition, const Model* model) -> const CombatProfile&
     {
@@ -622,10 +310,15 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
         }
         return found->second;
     };
-    SpawnableBuild build{builder, catalog_entry->catalog, movement_entry->classes, land ? GameModelContext::land : GameModelContext::space, land, meshes, profile_of, package.types, package.looks};
-    build.speed_multiplier = combat_entry->max_speed_multiplier.of(land);
+    std::vector<BuiltModel> models;
+    SpawnableBuild build{resources, catalog_entry->catalog, movement_entry->classes, land ? GameModelContext::land : GameModelContext::space, land, options.textures, profile_of, package.types,
+                         models,    package.meshes.warnings};
     build.speed_multiplier = combat_entry->max_speed_multiplier.of(land);
     const auto index = add_spawnable_type(build, std::string(type_name), 0);
+    SceneBuilder builder{vfs, package.meshes, {}, cache, options.textures, options.animation_clips};
+    builder.particle_fidelity = options.particle_fidelity;
+    std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
+    add_spawnable_looks(builder, catalog_entry->catalog, meshes, package.types, models, package.looks);
     if (!index || package.meshes.meshes.empty())
     {
         return make_error("spawn type '" + std::string(type_name) + "' has no resolvable " + std::string(land ? "land" : "space") + " model");
@@ -682,43 +375,6 @@ std::vector<SpawnTypeInfo> spawnable_types(const AssetReader& vfs, const bool la
         types.push_back(std::move(type));
     }
     return types;
-}
-
-} // namespace eaw
-
-namespace eaw {
-
-std::string ResourceLoader<scene_build::CachedCatalog>::key(const std::string_view path)
-{
-    return std::string(path);
-}
-
-// The catalog borrows the database, so both are built together behind one allocation.
-scene_build::CachedCatalog ResourceLoader<scene_build::CachedCatalog>::load(const AssetReader& reader, std::string_view)
-{
-    auto database = std::make_unique<XmlAssetDatabase>(XmlAssetDatabase::build(reader));
-    auto catalog = GameObjectCatalog::build(*database);
-    return scene_build::CachedCatalog{std::move(database), std::move(catalog)};
-}
-
-std::string ResourceLoader<scene_build::MovementClasses>::key(const std::string_view path)
-{
-    return std::string(path);
-}
-
-scene_build::MovementClasses ResourceLoader<scene_build::MovementClasses>::load(const AssetReader& reader, std::string_view)
-{
-    return scene_build::load_movement_classes(reader);
-}
-
-std::string ResourceLoader<CombatContent>::key(const std::string_view path)
-{
-    return std::string(path);
-}
-
-CombatContent ResourceLoader<CombatContent>::load(const AssetReader& reader, std::string_view)
-{
-    return load_combat_content(reader);
 }
 
 } // namespace eaw

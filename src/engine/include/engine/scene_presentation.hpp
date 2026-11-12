@@ -83,8 +83,8 @@ private:
     };
     std::vector<VisualInstance> backgrounds_;
     std::unordered_map<std::uint64_t, Template> templates_;
-    // By spawnable type index (visual - spawnable_visual_base).
-    std::vector<Template> spawn_templates_;
+    // By spawnable type index (visual - spawnable_visual_base); none for a hidden type.
+    std::vector<std::optional<Template>> spawn_templates_;
     std::vector<std::string> mesh_names_;
     std::vector<Vector3> mesh_minimum_;
     std::vector<Vector3> mesh_maximum_;

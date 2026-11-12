@@ -72,4 +72,8 @@ struct ModelBounds
 // bone's bind pose), in the model's space.
 [[nodiscard]] ModelBounds drawn_model_bounds(const Model& model, std::span<const ModelAttachment> attachments, bool animated_visibility);
 
+// Grows `bounds` by the eight corners of `local` placed with `transform` (row-vector), skipping
+// corners that are not finite (malformed vertex data must not make a frame non-finite).
+void add_placed_bounds(ModelBounds& bounds, const ModelBounds& local, const Matrix4& transform) noexcept;
+
 } // namespace eaw
