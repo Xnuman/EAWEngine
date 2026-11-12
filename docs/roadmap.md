@@ -255,7 +255,6 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
   `combat_content` instead of one place (see Engine extensions, explicit asset metadata); the
   hardpoint list itself (`type_hardpoints`) and the scorch-subtree rule (`bones_in_subtrees`) are
   shared now;
-- `PathPoint` (pathfinding) beside eaw_math's `Vector2`;
 - XML list tokenizers with their own delimiters (type names split on commas or spaces in
   `game_object_catalog`, `map_object_layout`, and `sound_events`; categories on pipes, commas, or
   spaces in `object_types`; `xml_schema_validate`'s values), where `TypeFields::list`

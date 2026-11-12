@@ -3,6 +3,7 @@
 // Grid pathfinding over a GroundMap's passability cells. Deterministic: integer step costs and a
 // fully ordered open list make the same request on the same ground return the same waypoints.
 
+#include "math/vector.hpp"
 #include "simulation/ground_map.hpp"
 
 #include <cstdint>
@@ -11,13 +12,8 @@
 
 namespace eaw {
 
-struct PathPoint
-{
-    float x{};
-    float y{};
-
-    friend bool operator==(const PathPoint&, const PathPoint&) = default;
-};
+// A point in the ground plane (the pathfinder's name for eaw_math's Vector2).
+using PathPoint = Vector2;
 
 enum class PathStatus : std::uint8_t
 {
