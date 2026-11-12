@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 152 |
+| `done` | 157 |
 | `partial` | 20 |
-| `gap` | 242 |
+| `gap` | 237 |
 | `needs` | 683 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -63,7 +63,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-31 done, 6 partial, 50 gap, 19 needs, 7 n/a.
+34 done, 6 partial, 47 gap, 19 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -213,9 +213,9 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Turret_Rotate_Extent_Degrees` | `gap` |  |
-| `Turret_Elevate_Extent_Degrees` | `gap` |  |
-| `Turret_Rotate_Speed` | `gap` |  |
+| `Turret_Rotate_Extent_Degrees` | `done` | half each way (a guess); aim only, not firing arcs |
+| `Turret_Elevate_Extent_Degrees` | `done` | half each way (a guess) |
+| `Turret_Rotate_Speed` | `done` | per frame (a guess) |
 | `Location_Follows_Terrain` | `gap` |  |
 | `Min_Height_Above_Terrain` | `gap` |  |
 | `MinHeightAboveTerrain` | `gap` |  |
@@ -225,7 +225,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-45 done, 3 partial, 54 gap, 33 needs.
+47 done, 3 partial, 52 gap, 33 needs.
 
 ### Health, shields, armor, and energy
 
@@ -343,10 +343,10 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Turret_Bone_Name` | `gap` |  |
-| `Barrel_Bone_Name` | `gap` |  |
-| `Apply_Y_Turret_Rotate_To_Axis` | `gap` |  |
-| `Apply_Z_Turret_Rotate_To_Axis` | `gap` |  |
+| `Turret_Bone_Name` | `done` | unit turrets; hardpoint turrets not yet |
+| `Barrel_Bone_Name` | `done` |  |
+| `Apply_Y_Turret_Rotate_To_Axis` | `gap` | yaw is about the model up axis instead |
+| `Apply_Z_Turret_Rotate_To_Axis` | `gap` | pitch is about the model horizontal instead |
 | `Turret_Rest_Angle` | `gap` |  |
 | `Turret_Rotation_Offset` | `gap` |  |
 | `Is_Turret` | `gap` |  |

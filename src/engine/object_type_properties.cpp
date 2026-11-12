@@ -227,6 +227,28 @@ AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const 
     {
         profile.idle_when_moving = parse_xml_bool(idle->text).value_or(false);
     }
+    const auto bone = [&](const std::string_view field)
+    {
+        const auto* node = catalog.field(definition, field).field;
+        const auto name = node != nullptr ? ascii_trim(node->text) : std::string_view{};
+        return name.empty() ? 0U : game_object_name_crc(name);
+    };
+    profile.turret_bone = bone("Turret_Bone_Name");
+    profile.barrel_bone = bone("Barrel_Bone_Name");
+    if (profile.barrel_bone == profile.turret_bone)
+    {
+        // Spore plants name one bone as both: it only turns.
+        profile.barrel_bone = 0U;
+    }
+    const auto speed = type_float_field(catalog, definition, "Turret_Rotate_Speed");
+    profile.turret_rate = (speed > 0.0F ? speed : default_turret_rotate_speed) * provisional_turn_rate_scale;
+    const auto half_arc = [&](const std::string_view field, const float fallback)
+    {
+        const auto degrees = type_float_field(catalog, definition, field);
+        return degrees > 0.0F && degrees < 360.0F ? degrees * 0.5F * std::numbers::pi_v<float> / 180.0F : fallback;
+    };
+    profile.turret_yaw_limit = half_arc("Turret_Rotate_Extent_Degrees", std::numbers::pi_v<float>);
+    profile.turret_pitch_limit = half_arc("Turret_Elevate_Extent_Degrees", profile.turret_pitch_limit);
     return profile;
 }
 

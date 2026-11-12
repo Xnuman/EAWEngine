@@ -171,6 +171,46 @@ void test_unit_animation()
     animator.animate(snapshot, entities, instances, 0.5, rest.size(), palette);
     require(animator.stats().over_budget == 101 && palette.size() == rest.size() && instances[5].bone_offset == 0, "units beyond the palette budget must stay in their rest pose");
 
+    // Turret turns: about the model's up axis by +90 degrees the model's forward (-Y) goes to +X
+    // (counter-clockwise, as headings); about -X by a positive angle the nose rises.
+    {
+        const auto pivot = eaw::translation(eaw::skeleton_bind_pose(*model)[0]);
+        const auto turned_point = [&](const eaw::BoneTurn& turn)
+        {
+            std::vector<eaw::Matrix4> skin;
+            const std::array<eaw::BoneTurn, 1> turns{turn};
+            eaw::append_rig_local_palette(rig, eaw::bind_local_pose(*model), skin, turns);
+            return eaw::transform_point({pivot.x, pivot.y - 1.0F, pivot.z}, skin[0]);
+        };
+        const auto yawed = turned_point({0, {0.0F, 0.0F, 1.0F}, 1.5707964F});
+        const auto pitched = turned_point({0, {-1.0F, 0.0F, 0.0F}, 0.5F});
+        require(std::fabs(yawed.x - pivot.x - 1.0F) < 1e-4F && std::fabs(yawed.y - pivot.y) < 1e-4F && pitched.z > pivot.z + 0.4F && pitched.y > pivot.y - 1.0F,
+                "a turret must yaw counter-clockwise about up and a barrel pitch its nose up");
+    }
+    // A unit whose turret aims at a target to its left takes its own pose; its twin without a
+    // target keeps the shared one.
+    {
+        eaw::UnitAnimator gunner(rigs, rest);
+        std::vector<eaw::EntitySnapshot> pair(3);
+        pair[0].id = {1, 1};
+        pair[0].target = {3, 1};
+        pair[1].id = {2, 1};
+        pair[2].id = {3, 1};
+        pair[2].position = {0.0F, 100.0F, 0.0F};
+        std::vector<eaw::EntityId> pair_ids{pair[0].id, pair[1].id};
+        std::vector<eaw::VisualInstance> pair_instances(2);
+        eaw::AnimationProfile turreted;
+        turreted.turret_bone = eaw::game_object_name_crc(model->bones[0].name);
+        turreted.turret_rate = 10.0F;
+        const std::array<eaw::AnimationProfile, 2> profiles{turreted, turreted};
+        std::vector<eaw::Matrix4> aimed_palette;
+        for (int frame = 1; frame <= 4; ++frame)
+        {
+            gunner.animate(pair, pair_ids, pair_instances, 0.25 * frame, 1U << 20U, aimed_palette, profiles);
+        }
+        require(pair_instances[0].bone_offset != pair_instances[1].bone_offset, "an aiming turret must take its own pose");
+    }
+
     // A flyer with only an idle clip (a bird): moving, it stands in its rest pose unless its type
     // allows idling while moving (XML Allow_Idle_When_Moving).
     {

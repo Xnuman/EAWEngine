@@ -1,6 +1,8 @@
 #include "assets/pose.hpp"
 #include "unit_animation.hpp"
 
+#include "assets/game_object_catalog.hpp"
+
 #include "scene_presentation.hpp"
 #include "assets/animation.hpp"
 #include "math/matrix.hpp"
@@ -26,6 +28,10 @@ constexpr std::int32_t rest_clip = -2;
 // Corpses hold their last frame this long after their DIE clip ends, and at most this many are kept.
 constexpr double corpse_linger_seconds = 4.0;
 constexpr std::size_t maximum_corpses = 4096;
+// Turret aims are quantized so that units aiming alike share poses: 128 steps of yaw around the
+// circle, 64 of pitch over a half turn (engine choices: under 3 degrees each).
+constexpr float turret_yaw_step = 6.2831853F / 128.0F;
+constexpr float barrel_pitch_step = 3.14159265F / 64.0F;
 // Frames longer than this (a stall, a hidden window) count as this long.
 constexpr double longest_frame_seconds = 0.25;
 // Sampled poses kept across frames (matrices); beyond it the cache starts over.
@@ -116,7 +122,34 @@ std::size_t UnitAnimator::PoseKeyHash::operator()(const PoseKey& key) const noex
     {
         hash = mix(hash ^ (static_cast<std::uint64_t>(static_cast<std::uint32_t>(layer.clip)) << 32U) ^ (static_cast<std::uint64_t>(layer.slot) << 4U) ^ layer.eighths);
     }
+    hash = mix(hash ^ (static_cast<std::uint64_t>(static_cast<std::uint16_t>(key.yaw)) << 16U) ^ static_cast<std::uint16_t>(key.pitch) ^
+               (static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.turret)) << 32U));
     return static_cast<std::size_t>(hash);
+}
+
+std::int32_t UnitAnimator::bone_of(const std::uint32_t mesh, const std::uint32_t key)
+{
+    if (key == 0 || mesh >= rigs_.size() || !rigs_[mesh].skeleton)
+    {
+        return -1;
+    }
+    const auto lookup = (static_cast<std::uint64_t>(mesh) << 32U) | key;
+    if (const auto found = bones_.find(lookup); found != bones_.end())
+    {
+        return found->second;
+    }
+    std::int32_t index = -1;
+    const auto& bones = rigs_[mesh].skeleton->bones;
+    for (std::size_t bone = 0; bone < bones.size(); ++bone)
+    {
+        if (game_object_name_crc(bones[bone].name) == key)
+        {
+            index = static_cast<std::int32_t>(bone);
+            break;
+        }
+    }
+    bones_.emplace(lookup, index);
+    return index;
 }
 
 std::int32_t UnitAnimator::choose_clip(const std::uint32_t mesh, const AnimationRole role, const EntityId id) const
@@ -181,7 +214,19 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
         total += weight;
         blend_pose(pose, layer_pose, weight / total);
     }
-    append_rig_local_palette(rig, pose, out);
+    // The barrel pitches about the model's horizontal axis under the forward one (nose up for a
+    // positive pitch), then the turret, barrel included, yaws about the model's up axis
+    // (counter-clockwise, as headings).
+    std::vector<BoneTurn> turns;
+    if (key.barrel >= 0 && key.pitch != 0)
+    {
+        turns.push_back({static_cast<std::uint32_t>(key.barrel), {-1.0F, 0.0F, 0.0F}, static_cast<float>(key.pitch) * barrel_pitch_step});
+    }
+    if (key.turret >= 0 && key.yaw != 0)
+    {
+        turns.push_back({static_cast<std::uint32_t>(key.turret), {0.0F, 0.0F, 1.0F}, static_cast<float>(key.yaw) * turret_yaw_step});
+    }
+    append_rig_local_palette(rig, pose, out, turns);
 }
 
 std::optional<std::uint32_t> UnitAnimator::place(const PoseKey& key, const std::size_t max_palette, std::vector<Matrix4>& palette)
@@ -490,10 +535,47 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                                                   {
                                                       return value.clip != no_clip;
                                                   });
-        // Nothing to show but the rest pose: keep the rest offset.
-        if (layers == 0 || (layers == 1 && pose_key.layers[0].clip == rest_clip))
+        // A turret turns toward the unit's target at its rate, and back to rest without one.
+        if (profile.turret_bone != 0)
+        {
+            pose_key.turret = bone_of(instance.mesh, profile.turret_bone);
+            pose_key.barrel = bone_of(instance.mesh, profile.barrel_bone);
+        }
+        if (pose_key.turret >= 0)
+        {
+            float want_yaw = 0.0F;
+            float want_pitch = 0.0F;
+            if (const auto aimed = entity.target.valid() ? snapshot_index_.find(entity_key(entity.target)) : snapshot_index_.end(); aimed != snapshot_index_.end())
+            {
+                const auto& to = snapshot[aimed->second].position;
+                const auto dx = to.x - entity.position.x;
+                const auto dy = to.y - entity.position.y;
+                want_yaw = std::remainder(std::atan2(dy, dx) - entity.heading, 6.2831853F);
+                want_pitch = std::atan2(to.z - entity.position.z, std::max(std::hypot(dx, dy), 1.0F));
+            }
+            want_yaw = std::clamp(want_yaw, -profile.turret_yaw_limit, profile.turret_yaw_limit);
+            want_pitch = std::clamp(want_pitch, -profile.turret_pitch_limit, profile.turret_pitch_limit);
+            const auto turn = profile.turret_rate * static_cast<float>(dt);
+            state.turret_yaw = std::remainder(state.turret_yaw + std::clamp(std::remainder(want_yaw - state.turret_yaw, 6.2831853F), -turn, turn), 6.2831853F);
+            state.barrel_pitch += std::clamp(want_pitch - state.barrel_pitch, -turn, turn);
+            pose_key.yaw = static_cast<std::int16_t>(std::lround(state.turret_yaw / turret_yaw_step));
+            pose_key.pitch = pose_key.barrel >= 0 ? static_cast<std::int16_t>(std::lround(state.barrel_pitch / barrel_pitch_step)) : std::int16_t{0};
+        }
+        const bool aimed = pose_key.yaw != 0 || pose_key.pitch != 0;
+        if (!aimed)
+        {
+            // Unturned turrets share the plain poses.
+            pose_key.turret = -1;
+            pose_key.barrel = -1;
+        }
+        // Nothing to show but the rest pose: keep the rest offset (an aimed turret needs its own).
+        if (!aimed && (layers == 0 || (layers == 1 && pose_key.layers[0].clip == rest_clip)))
         {
             continue;
+        }
+        if (layers == 0)
+        {
+            pose_key.layers[0] = {rest_clip, 0, 8U};
         }
         if (const auto offset = place(pose_key, max_palette, palette))
         {

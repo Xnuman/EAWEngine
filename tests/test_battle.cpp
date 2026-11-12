@@ -91,6 +91,8 @@ void test_combat_content()
                 "<SpaceUnit Name=\"Debris\"><Remove_Upon_Death> true </Remove_Upon_Death></SpaceUnit>"
                 "<Indigenous_Unit Name=\"Bird\"><Movement_Animation_Speed>0.8</Movement_Animation_Speed><Walk_Animation_Speed>0.5</Walk_Animation_Speed>"
                 "<Allow_Idle_When_Moving>Yes</Allow_Idle_When_Moving><Idle_Anim_00_Rate_Mod>-1</Idle_Anim_00_Rate_Mod></Indigenous_Unit>"
+                "<GroundVehicle Name=\"Gunner\"><Turret_Bone_Name> Turret_00 </Turret_Bone_Name><Barrel_Bone_Name>MuzzleA_00</Barrel_Bone_Name><Turret_Rotate_Speed>4</Turret_Rotate_Speed>"
+                "<Turret_Rotate_Extent_Degrees>20</Turret_Rotate_Extent_Degrees><Turret_Elevate_Extent_Degrees>360</Turret_Elevate_Extent_Degrees></GroundVehicle>"
                 "<SpaceUnit Name=\"Banker\"><Bank_Turn_Angle>40</Bank_Turn_Angle></SpaceUnit>"
                 "<Indigenous_Unit Name=\"Swirl\"><Close_Enough_Angle_For_Move_Start>360</Close_Enough_Angle_For_Move_Start></Indigenous_Unit>"
                 "<Projectile Name=\"Proj_Paced\"><Projectile_Fire_Recharge_Seconds>6</Projectile_Fire_Recharge_Seconds><Projectile_Fire_Pulse_Count>2</Projectile_Fire_Pulse_Count></Projectile>"
@@ -213,6 +215,11 @@ void test_combat_content()
         const auto plain = eaw::scene_build::type_animation_profile(catalog, *definition("Tank"));
         require(bird.move_rate == 0.8F && bird.walk_rate == 0.5F && bird.idle_rate == 1.0F && bird.idle_when_moving && plain.move_rate == 1.0F && !plain.idle_when_moving,
                 "a type's animation rates must be read, invalid ones as 1");
+        const auto gunner = eaw::scene_build::type_animation_profile(catalog, *definition("Gunner"));
+        require(gunner.turret_bone == eaw::game_object_name_crc("TURRET_00") && gunner.barrel_bone == eaw::game_object_name_crc("MuzzleA_00") &&
+                    std::fabs(gunner.turret_rate - 4.0F * eaw::provisional_turn_rate_scale) < 1e-5F && std::fabs(gunner.turret_yaw_limit - 0.17453292F) < 1e-5F &&
+                    gunner.turret_pitch_limit == eaw::AnimationProfile{}.turret_pitch_limit && plain.turret_bone == 0,
+                "a type's turret bones, rate, and arcs must be read");
     }
     require(std::fabs(eaw::scene_build::type_bank_limit(catalog, *definition("Banker")) - 0.6981317F) < 1.0e-5F &&
                 eaw::scene_build::type_bank_limit(catalog, *definition("Tank")) == eaw::default_bank_limit,

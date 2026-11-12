@@ -139,10 +139,8 @@ rendering rows join item 2).
 
 1. Tactical battles. Done: the core, spawning, RTS orders, terrain and passability, A*, group
    movement and formations, space combat with hardpoints, flight, headless battles and replays.
-   Open: combat presentation and fidelity (hardpoint damage visuals, turret rotation (decided
-   2026-11-11: with the animator's improvement, since an aimed turret makes each instance's pose
-   its own: the aim joins the pose key; `Turret_Bone_Name`/`Barrel_Bone_Name` about the model's up
-   axis and the barrel's horizontal, `Turret_Rotate_Speed`); in the same step, clip sequencing for
+   Open: combat presentation and fidelity (hardpoint damage visuals, turret rotation of hardpoint
+   turrets (unit turrets done 2026-11-12); clip sequencing for
    walkers' transition clips (`TURNL`/`TURNR` turning in place with `_BEGIN`/`_END`,
    `_QUARTER`/`_HALF`, `MOVESTART`, `MOVE_ENDONE`..`FOUR` by foot phase; XML `Has_Pre_Turn_Anim`,
    `Walk_Transition`, `Rotation_Animation_Speed`, `Locomotor_Has_Animation_Priority`),

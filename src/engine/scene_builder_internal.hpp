@@ -361,7 +361,7 @@ TeamLayout type_team_layout(const GameObjectCatalog& catalog, const XmlDefinitio
 // XML FormationRaggedness, clamped to 0..10.
 float type_formation_raggedness(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // A type's AnimationProfile (Movement_Animation_Speed, Walk_Animation_Speed, Idle_Anim_00_Rate_Mod,
-// Allow_Idle_When_Moving); rates that are missing or not positive are 1.
+// Allow_Idle_When_Moving, the turret tags); rates that are missing or not positive are 1.
 AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // XML Is_Marker.
 bool type_is_marker(const GameObjectCatalog& catalog, const XmlDefinition& definition);

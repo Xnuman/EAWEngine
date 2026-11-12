@@ -60,6 +60,24 @@ struct AnimationProfile
     float walk_rate{1.0F};
     float idle_rate{1.0F};
     bool idle_when_moving{};
+    // A turret that turns toward the unit's target (XML Turret_Bone_Name, Barrel_Bone_Name: the
+    // bones' names as game_object_name_crc, 0 none): the turret bone's subtree yaws about the
+    // model's up axis, the barrel's pitches, at `turret_rate` radians per second (Turret_Rotate_Speed
+    // per 30 Hz frame, a guess like Max_Rate_Of_Turn; 5 without it), within half of
+    // Turret_Rotate_Extent_Degrees and Turret_Elevate_Extent_Degrees each way (a guess; pi: free).
+    std::uint32_t turret_bone{};
+    std::uint32_t barrel_bone{};
+    float turret_rate{};
+    float turret_yaw_limit{3.14159265F};
+    float turret_pitch_limit{1.04719755F};
+};
+
+// A turn of a bone's subtree in model space about the bone's posed position (turret aiming).
+struct BoneTurn
+{
+    std::uint32_t bone{};
+    Vector3 axis;
+    float radians{};
 };
 
 struct VisualClip
@@ -203,6 +221,9 @@ inline constexpr float provisional_max_speed_scale = 30.0F;
 // XML Max_Rate_Of_Turn read as degrees per 30 Hz frame, like Max_Speed: infantry 16 (480 degrees per
 // second), tanks 12-20, capital ships 0.4-1.5 (12-45 degrees per second). Provisional.
 inline constexpr float provisional_turn_rate_scale = 30.0F * 3.14159265358979F / 180.0F;
+// A turret's turn rate without Turret_Rotate_Speed (degrees per frame; the stock values run 2 to
+// 10; an engine choice).
+inline constexpr float default_turret_rotate_speed = 5.0F;
 // XML OverrideAcceleration/OverrideDeceleration read as Max_Speed units per 30 Hz frame per frame
 // (Calamari cruiser .02: full speed in 2.5 seconds; T2B .2: in 0.4 seconds). A guess.
 inline constexpr float provisional_acceleration_scale = provisional_max_speed_scale * 30.0F;
@@ -424,7 +445,8 @@ void renumber_effect_textures(std::span<VisualRig> rigs, std::span<std::shared_p
 // Appends a rig's palette at `seconds` of `animation` (rig.palette_size entries) to `out`. Without
 // an inverse bind pose it appends the rest pose.
 void append_rig_palette(const VisualRig& rig, const Animation& animation, float seconds, std::vector<Matrix4>& out);
-// Appends a rig's palette for a local pose (a blend of clips; see blend_pose).
-void append_rig_local_palette(const VisualRig& rig, std::span<const LocalBone> pose, std::vector<Matrix4>& out);
+// Appends a rig's palette for a local pose (a blend of clips; see blend_pose), its bones turned by
+// `turns` in order (each bone's subtree about the bone's posed position).
+void append_rig_local_palette(const VisualRig& rig, std::span<const LocalBone> pose, std::vector<Matrix4>& out, std::span<const BoneTurn> turns = {});
 
 } // namespace eaw

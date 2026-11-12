@@ -8,6 +8,8 @@
 #include "assets/type_hardpoints.hpp"
 #include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"
+#include "math/quaternion.hpp"
+#include "math/transform.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -640,12 +642,41 @@ void append_rig_palette(const VisualRig& rig, const Animation& animation, const 
     append_rig_local_palette(rig, {}, out);
 }
 
-void append_rig_local_palette(const VisualRig& rig, const std::span<const LocalBone> local_pose, std::vector<Matrix4>& out)
+void append_rig_local_palette(const VisualRig& rig, const std::span<const LocalBone> local_pose, std::vector<Matrix4>& out, const std::span<const BoneTurn> turns)
 {
     const auto first = out.size();
     if (rig.skeleton && rig.inverse_bind_pose.size() == rig.skeleton->bones.size() && !rig.skeleton->bones.empty() && local_pose.size() == rig.skeleton->bones.size())
     {
-        const auto pose = compose_pose(*rig.skeleton, local_pose);
+        auto pose = compose_pose(*rig.skeleton, local_pose);
+        if (!turns.empty())
+        {
+            std::vector<std::int32_t> parents;
+            parents.reserve(rig.skeleton->bones.size());
+            for (const auto& bone : rig.skeleton->bones)
+            {
+                parents.push_back(bone.parent);
+            }
+            for (const auto& turn : turns)
+            {
+                if (turn.bone >= pose.size() || turn.radians == 0.0F)
+                {
+                    continue;
+                }
+                // Row vectors: v' = v T(-pivot) R T(pivot).
+                const auto pivot = translation(pose[turn.bone].transform);
+                const auto around = compose_transform({1.0F, 1.0F, 1.0F}, Quaternion::identity(), {-pivot.x, -pivot.y, -pivot.z}) *
+                                    compose_transform({1.0F, 1.0F, 1.0F}, axis_angle(turn.axis, turn.radians), {}) * compose_transform({1.0F, 1.0F, 1.0F}, Quaternion::identity(), pivot);
+                const std::array<std::uint32_t, 1> root{turn.bone};
+                const auto subtree = bones_in_subtrees(parents, root);
+                for (std::size_t bone = 0; bone < pose.size(); ++bone)
+                {
+                    if (subtree[bone])
+                    {
+                        pose[bone].transform = pose[bone].transform * around;
+                    }
+                }
+            }
+        }
         append_pose_palette(*rig.skeleton, rig.inverse_bind_pose, pose, true, out, rig.intact_hidden);
     }
     if (out.size() - first != rig.palette_size)

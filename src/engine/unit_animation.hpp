@@ -136,6 +136,11 @@ private:
     {
         std::uint32_t mesh{};
         std::array<Layer, 4> layers{};
+        // A turret's aim, in steps (turret_yaw_step, barrel_pitch_step), and its bones (-1: none).
+        std::int32_t turret{-1};
+        std::int32_t barrel{-1};
+        std::int16_t yaw{};
+        std::int16_t pitch{};
         bool operator==(const PoseKey&) const = default;
     };
     struct PoseKeyHash
@@ -166,6 +171,9 @@ private:
         std::int32_t cue_clip{-1};
         double cue_frame{};
         double fire_cue_frame{-1.0};
+        // A turret's current aim relative to the unit's facing (radians).
+        float turret_yaw{};
+        float barrel_pitch{};
     };
 
     struct Corpse
@@ -181,6 +189,8 @@ private:
     // Reports the frames a clip passed from `from` to `to` (a loop of `loop_frames` wraps).
     void add_cue(EntityId entity, const Vector3& position, const VisualClip& clip, double from, double to, double loop_frames);
     [[nodiscard]] std::int32_t choose_clip(std::uint32_t mesh, AnimationRole role, EntityId id) const;
+    // The index of the bone of `mesh` whose name has `key` (game_object_name_crc), or -1.
+    [[nodiscard]] std::int32_t bone_of(std::uint32_t mesh, std::uint32_t key);
     // This frame's palette offset of a pose, sampling it when needed; nullopt when the palette is
     // full.
     [[nodiscard]] std::optional<std::uint32_t> place(const PoseKey& key, std::size_t max_palette, std::vector<Matrix4>& palette);
@@ -197,6 +207,8 @@ private:
     // This frame's palette offset of each pose.
     std::unordered_map<PoseKey, std::uint32_t, PoseKeyHash> frame_offsets_;
     std::unordered_map<std::uint64_t, std::size_t> snapshot_index_;
+    // Bone indices by mesh and name key (bone_of).
+    std::unordered_map<std::uint64_t, std::int32_t> bones_;
     std::vector<Corpse> corpses_;
     std::vector<AnimationCue> cues_;
     std::uint64_t frame_{};
