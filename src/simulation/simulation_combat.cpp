@@ -627,6 +627,7 @@ void SimulationWorld::remove_dead()
                 speed_limits_[index] = 0.0F;
                 group_ids_[index] = 0;
                 standing_orders_[index].kind = StandingOrder::none;
+                spins_.push_back({ids_[index], positions_[index]});
                 continue;
             }
             if (combat.spin_ticks > 1U)

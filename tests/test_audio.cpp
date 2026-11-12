@@ -419,15 +419,25 @@ void test_impact_and_moving_sounds()
                                                         "<SFXEvent Name=\"Thud\"><Is_3D>Yes</Is_3D><Samples>a.wav</Samples></SFXEvent>"
                                                         "<SFXEvent Name=\"Chirp\"><Is_3D>Yes</Is_3D><Samples>a.wav</Samples></SFXEvent>"
                                                         "<SFXEvent Name=\"On_Guard\"><Samples>a.wav</Samples></SFXEvent>"
+                                                        "<SFXEvent Name=\"Low_Line\"><Samples>a.wav</Samples></SFXEvent>"
+                                                        "<SFXEvent Name=\"Critical_Line\"><Samples>a.wav</Samples></SFXEvent>"
+                                                        "<SFXEvent Name=\"Spinning\"><Is_3D>Yes</Is_3D><Samples>a.wav</Samples></SFXEvent>"
                                                         "</SFXEvents>");
-    write_file(root / "Data" / "XML" / "Units.xml", "<Units>"
-                                                    "<Projectile Name=\"Proj_Base\"><Projectile_SFXEvent_Detonate>Boom</Projectile_SFXEvent_Detonate></Projectile>"
-                                                    "<Projectile Name=\"Proj_Armored\"><Variant_Of_Existing_Type>Proj_Base</Variant_Of_Existing_Type>"
-                                                    "<Projectile_SFXEvent_Detonate_Reduced_By_Armor>Thud</Projectile_SFXEvent_Detonate_Reduced_By_Armor></Projectile>"
-                                                    "<GroundVehicle Name=\"Walker\"><SFXEvent_Ambient_Moving>Chirp</SFXEvent_Ambient_Moving><SFXEvent_Ambient_Moving_Min_Delay_Seconds>1"
-                                                    "</SFXEvent_Ambient_Moving_Min_Delay_Seconds><SFXEvent_Ambient_Moving_Max_Delay_Seconds>1</SFXEvent_Ambient_Moving_Max_Delay_Seconds>"
-                                                    "<SFXEvent_Guard>On_Guard</SFXEvent_Guard></GroundVehicle>"
-                                                    "</Units>");
+    write_file(root / "Data" / "XML" / "Units.xml",
+               "<Units>"
+               "<Projectile Name=\"Proj_Base\"><Projectile_SFXEvent_Detonate>Boom</Projectile_SFXEvent_Detonate></Projectile>"
+               "<Projectile Name=\"Proj_Armored\"><Variant_Of_Existing_Type>Proj_Base</Variant_Of_Existing_Type>"
+               "<Projectile_SFXEvent_Detonate_Reduced_By_Armor>Thud</Projectile_SFXEvent_Detonate_Reduced_By_Armor></Projectile>"
+               "<GroundVehicle Name=\"Walker\"><Behavior>IDLE, AMBIENT_SFX</Behavior><SFXEvent_Ambient_Moving>Chirp</SFXEvent_Ambient_Moving>"
+               "<SFXEvent_Ambient_Moving_Min_Delay_Seconds>1"
+               "</SFXEvent_Ambient_Moving_Min_Delay_Seconds><SFXEvent_Ambient_Moving_Max_Delay_Seconds>1</SFXEvent_Ambient_Moving_Max_Delay_Seconds>"
+               "<SFXEvent_Guard>On_Guard</SFXEvent_Guard></GroundVehicle>"
+               "<GroundVehicle Name=\"Mute\"><SFXEvent_Ambient_Moving>Chirp</SFXEvent_Ambient_Moving><SFXEvent_Ambient_Moving_Min_Delay_Seconds>1"
+               "</SFXEvent_Ambient_Moving_Min_Delay_Seconds><SFXEvent_Ambient_Moving_Max_Delay_Seconds>1</SFXEvent_Ambient_Moving_Max_Delay_Seconds></GroundVehicle>"
+               "<HeroUnit Name=\"Hero\"><SFXEvent_Health_Low_Warning>Low_Line</SFXEvent_Health_Low_Warning>"
+               "<SFXEvent_Health_Critical_Warning>Critical_Line</SFXEvent_Health_Critical_Warning>"
+               "<Spin_Away_On_Death_SFXEvent_Start_Die>Spinning</Spin_Away_On_Death_SFXEvent_Start_Die></HeroUnit>"
+               "</Units>");
     write_file(root / "Data" / "Audio" / "SFX" / "a.wav", text_of(make_wav(eaw::wav_format::pcm, 1, 16, pcm16({1, 2}))));
     eaw::VirtualFileSystem vfs;
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
@@ -457,6 +467,44 @@ void test_impact_and_moving_sounds()
     }
     require(audio.stats().played == played + 2, "a moving unit must play its ambient moving sound every second (two in five half-second frames after the first wait)");
     require(audio.play_response("Walker", eaw::UnitResponse::guard), "a guard order must get the type's guard response");
+
+    // Without AMBIENT_SFX among its behaviors, a moving unit plays no ambient sound.
+    {
+        eaw::BattleAudio quiet_audio(vfs, &cache, device, "English", true);
+        eaw::SimulationWorld quiet(0.1);
+        const auto mute = *quiet.spawn({.type_name = "Mute", .owner = 1, .max_speed = 10.0F});
+        quiet.submit({eaw::SimCommandKind::move, {mute}, {1000.0F, 0.0F, 0.0F}});
+        for (int frame = 0; frame < 5; ++frame)
+        {
+            quiet.step();
+            quiet_audio.update(camera, quiet.snapshot(), quiet, 0.5F);
+        }
+        require(quiet_audio.stats().played == 0, "an ambient moving sound must need the AMBIENT_SFX behavior");
+    }
+    // Health warnings: once into the low band (33%), once into the critical band (10%); the spin sound.
+    {
+        eaw::SimulationWorld hurt(0.1);
+        eaw::CombatProfile hero;
+        hero.health = 100.0F;
+        const auto unit = *hurt.spawn({.type_name = "Hero", .owner = 1, .combat = hero});
+        const auto tick = [&](const float damage)
+        {
+            if (damage > 0.0F)
+            {
+                hurt.submit({.kind = eaw::SimCommandKind::damage, .entities = {unit}, .amount = damage});
+            }
+            hurt.step();
+            const auto before = audio.stats().played;
+            audio.play_tick_events(hurt.snapshot(), hurt);
+            return audio.stats().played - before;
+        };
+        require(tick(0.0F) == 0 && tick(70.0F) == 1 && tick(0.0F) == 0 && tick(25.0F) == 1 && tick(0.0F) == 0, "a unit must warn once on falling to low health and once to critical");
+        eaw::SimSnapshot spinning;
+        spinning.spins = {{unit, {}}};
+        const auto before = audio.stats().played;
+        audio.play_tick_events(spinning, hurt);
+        require(audio.stats().played == before + 1, "a unit spinning away must play its spin sound");
+    }
     std::filesystem::remove_all(root, ignored);
 }
 

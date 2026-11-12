@@ -58,6 +58,11 @@ enum class UnitResponse
 inline constexpr float base_rolloff = 0.05F;
 inline constexpr float default_saturation_distance = 200.0F;
 inline constexpr std::size_t max_unit_loops = 16;
+// Health fractions at which a unit's low and critical warnings play: the stock GameConstants'
+// Health_Low_Percent_Threshold and Health_Critical_Percent_Threshold (shortcut: fixed here, read
+// GameConstants when a mod changes them).
+inline constexpr float health_low_fraction = 0.33F;
+inline constexpr float health_critical_fraction = 0.10F;
 
 class BattleAudio final
 {
@@ -116,10 +121,16 @@ private:
         std::string move;
         std::string attack;
         std::string guard;
-        // Played now and then while it moves, every min..max seconds (SFXEvent_Ambient_Moving).
+        // Played now and then while it moves, every min..max seconds (SFXEvent_Ambient_Moving), when
+        // its behaviors include AMBIENT_SFX (a developer comment requires it).
         std::string ambient_moving;
         float ambient_moving_min{};
         float ambient_moving_max{};
+        // Its own voice when its health falls to low and to critical (SFXEvent_Health_Low_Warning,
+        // _Critical_Warning), and its sound when it spins away (Spin_Away_On_Death_SFXEvent_Start_Die).
+        std::string health_low;
+        std::string health_critical;
+        std::string spin;
     };
     // A projectile type's impact sounds (Projectile_SFXEvent_Detonate, and _Reduced_By_Armor).
     struct ProjectileSounds
@@ -171,6 +182,8 @@ private:
     std::unordered_map<std::uint32_t, ProjectileSounds> projectile_sounds_;
     // Moving units' seconds until their next SFXEvent_Ambient_Moving (by entity key).
     std::unordered_map<std::uint64_t, float> ambient_moving_due_;
+    // Per entity: the health band it last reported (0 above low, 1 low, 2 critical).
+    std::unordered_map<std::uint64_t, std::uint8_t> health_bands_;
     // Entity key -> type sounds, kept for entities seen alive so their deaths find them.
     std::unordered_map<std::uint64_t, const TypeSounds*> entity_sounds_;
     // Sequential events: the next sample's index, by event.

@@ -1,6 +1,7 @@
 #include "battle_audio.hpp"
 
 #include "assets/game_object_catalog.hpp"
+#include "assets/map_object_layout.hpp"
 #include "assets/resource_loaders.hpp"
 #include "core/log.hpp"
 #include "core/string_utils.hpp"
@@ -120,7 +121,30 @@ const BattleAudio::TypeSounds& BattleAudio::type_sounds(const std::string_view t
         sounds.move = type_field(*catalog_, definition, "SFXEvent_Move");
         sounds.attack = type_field(*catalog_, definition, "SFXEvent_Attack");
         sounds.guard = type_field(*catalog_, definition, "SFXEvent_Guard");
-        sounds.ambient_moving = type_field(*catalog_, definition, "SFXEvent_Ambient_Moving");
+        const auto behaves = [&](const std::string_view behavior)
+        {
+            for (const auto* field : {"Behavior", "LandBehavior", "SpaceBehavior"})
+            {
+                if (const auto* list = catalog_->field(definition, field).field)
+                {
+                    for (const auto name : split_type_names(list->text))
+                    {
+                        if (ascii_equal_ignoring_case(name, behavior))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        };
+        if (behaves("AMBIENT_SFX"))
+        {
+            sounds.ambient_moving = type_field(*catalog_, definition, "SFXEvent_Ambient_Moving");
+        }
+        sounds.health_low = type_field(*catalog_, definition, "SFXEvent_Health_Low_Warning");
+        sounds.health_critical = type_field(*catalog_, definition, "SFXEvent_Health_Critical_Warning");
+        sounds.spin = type_field(*catalog_, definition, "Spin_Away_On_Death_SFXEvent_Start_Die");
         sounds.ambient_moving_min = std::max(0.0F, scene_build::type_float_field(*catalog_, definition, "SFXEvent_Ambient_Moving_Min_Delay_Seconds"));
         sounds.ambient_moving_max = std::max(sounds.ambient_moving_min, scene_build::type_float_field(*catalog_, definition, "SFXEvent_Ambient_Moving_Max_Delay_Seconds"));
     }
@@ -343,8 +367,40 @@ void BattleAudio::play_tick_events(const SimSnapshot& snapshot, const Simulation
             ++stats_.missing;
         }
     }
+    // Units that start spinning away play their spin sound.
+    for (const auto& spin : snapshot.spins)
+    {
+        if (const auto& sounds = type_sounds(world.type_name(spin.id)); !sounds.spin.empty())
+        {
+            (void)play_event(sounds.spin, spin.position);
+        }
+    }
+    // A unit's own voice when its health falls into the low or the critical band (each band once on
+    // the way down; healing above it lets it play again).
+    for (const auto& entity : snapshot.entities)
+    {
+        // Spinning (dying) units have no health left to warn about.
+        if (entity.max_health <= 0.0F || entity.health <= 0.0F)
+        {
+            continue;
+        }
+        const auto fraction = entity.health / entity.max_health;
+        const std::uint8_t band = fraction <= health_critical_fraction ? 2U : fraction <= health_low_fraction ? 1U : 0U;
+        auto& previous = health_bands_[entity_key(entity.id)];
+        if (band > previous)
+        {
+            const auto& sounds = type_sounds(world.type_name(entity.id));
+            const auto& event = band == 2U ? sounds.health_critical : sounds.health_low;
+            if (!event.empty())
+            {
+                (void)play_event(event, entity.position);
+            }
+        }
+        previous = band;
+    }
     for (const auto& death : snapshot.deaths)
     {
+        health_bands_.erase(entity_key(death.id));
         const auto key = entity_key(death.id);
         if (const auto known = entity_sounds_.find(key); known != entity_sounds_.end())
         {

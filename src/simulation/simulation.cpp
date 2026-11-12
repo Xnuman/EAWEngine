@@ -184,6 +184,7 @@ void SimulationWorld::step()
     impacts_.clear();
     shots_.clear();
     hardpoint_deaths_.clear();
+    spins_.clear();
     run_behavior();
     run_movement();
     run_crushing();
@@ -615,6 +616,7 @@ void SimulationWorld::publish()
     snapshot_.impacts = impacts_;
     snapshot_.shots = shots_;
     snapshot_.hardpoint_deaths = hardpoint_deaths_;
+    snapshot_.spins = spins_;
     snapshot_.projectiles.clear();
     snapshot_.projectiles.reserve(projectiles_.size());
     for (const auto& projectile : projectiles_)

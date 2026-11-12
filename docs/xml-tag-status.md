@@ -23,10 +23,10 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 140 |
-| `partial` | 19 |
-| `gap` | 260 |
-| `needs` | 679 |
+| `done` | 144 |
+| `partial` | 18 |
+| `gap` | 255 |
+| `needs` | 681 |
 | `n/a` | 19 |
 | total | 1117 |
 
@@ -56,6 +56,7 @@ Systems that `needs` rows wait for, by tag count:
 | reinforcement | 4 |
 | base power | 3 |
 | stealth | 3 |
+| player layer | 2 |
 | repair | 2 |
 | retreat | 2 |
 | weather | 1 |
@@ -1486,7 +1487,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Sound events and speech
 
-15 done, 1 partial, 25 gap, 47 needs, 3 n/a.
+19 done, 20 gap, 49 needs, 3 n/a.
 
 ### Unit responses to orders and selection
 
@@ -1537,7 +1538,7 @@ Systems that `needs` rows wait for, by tag count:
 | `SFXEvent_Engine_Cinematic_Focus_Loop` | `needs cinematics` |  |
 | `SFXEvent_Ambient_Loop` | `done` |  |
 | `XSFXEvent_Ambient_Loop` | `n/a` | disabled by its prefix |
-| `SFXEvent_Ambient_Moving` | `partial` | played without the AMBIENT_SFX behavior check |
+| `SFXEvent_Ambient_Moving` | `done` | needs the AMBIENT_SFX behavior |
 | `SFXEvent_Ambient_Moving_Min_Delay_Seconds` | `done` |  |
 | `SFXEvent_Ambient_Moving_Max_Delay_Seconds` | `done` |  |
 | `SFXEvent_Turret_Rotating_Loop` | `gap` |  |
@@ -1550,7 +1551,7 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Death_SFXEvent_Start_Die` | `done` |  |
 | `Death_SFXEvent_End_Die` | `gap` |  |
-| `Spin_Away_On_Death_SFXEvent_Start_Die` | `gap` |  |
+| `Spin_Away_On_Death_SFXEvent_Start_Die` | `done` |  |
 | `Selt_Destruct_SFXEvent_Start_Die` | `needs retreat` |  |
 | `Land_Damage_SFX` | `gap` |  |
 
@@ -1558,14 +1559,14 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `SFXEvent_Health_Low_Warning` | `gap` |  |
-| `SFXEvent_Health_Critical_Warning` | `gap` |  |
+| `SFXEvent_Health_Low_Warning` | `done` | at a third of health; every unit until the player layer |
+| `SFXEvent_Health_Critical_Warning` | `done` | at a tenth |
 | `SFXEvent_Enemy_Health_Low_Warning` | `gap` |  |
 | `SFXEvent_Enemy_Health_Critical_Warning` | `gap` |  |
 | `SFXEvent_Enemy_Damaged_Health_Low_Warning` | `gap` |  |
 | `SFXEvent_Enemy_Damaged_Health_Critical_Warning` | `gap` |  |
-| `SFXEvent_Unit_Under_Attack` | `gap` |  |
-| `SFXEvent_Unit_Lost` | `gap` |  |
+| `SFXEvent_Unit_Under_Attack` | `needs player layer` | advisor line to the owner |
+| `SFXEvent_Unit_Lost` | `needs player layer` | advisor line to the owner |
 
 ### Build and production announcements
 

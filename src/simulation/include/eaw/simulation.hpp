@@ -376,6 +376,14 @@ struct ShotSnapshot
     std::uint32_t effect{};
 };
 
+// An entity that began spinning away in the last tick (CombatProfile::spin_chance), for its sound
+// (a derived output, not part of the state hash).
+struct SpinSnapshot
+{
+    EntityId id;
+    Vector3 position;
+};
+
 // A hardpoint destroyed in the last tick, for its destruction sound and effects (a derived output,
 // not part of the state hash).
 struct HardpointDeathSnapshot
@@ -402,6 +410,7 @@ struct SimSnapshot
     std::vector<ShotSnapshot> shots;
     // Hardpoints destroyed in this tick, in the order they fell.
     std::vector<HardpointDeathSnapshot> hardpoint_deaths;
+    std::vector<SpinSnapshot> spins;
 };
 
 // Converts real elapsed time into whole simulation ticks. At most `max_ticks_per_advance` ticks are
@@ -812,6 +821,7 @@ private:
     std::vector<ImpactSnapshot> impacts_;
     std::vector<ShotSnapshot> shots_;
     std::vector<HardpointDeathSnapshot> hardpoint_deaths_;
+    std::vector<SpinSnapshot> spins_;
     // Where shots stray (WeaponProfile::inaccuracy); part of the state.
     Pcg32 combat_random_{combat_random_seed};
     // Launch number of the next shot (ProjectileSnapshot::serial; presentation only, not hashed).
