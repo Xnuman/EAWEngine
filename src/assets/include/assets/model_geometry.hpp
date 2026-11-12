@@ -63,6 +63,11 @@ struct ModelBounds
     }
 };
 
+// Whether `model` with its `attachments` has anything to draw: a drawn submesh with at least one
+// triangle whose corners are among its vertices. A placed object exists in a battle only then
+// (decorative particle props and geometry-free models do not).
+[[nodiscard]] bool has_drawn_geometry(const Model& model, std::span<const ModelAttachment> attachments, bool animated_visibility);
+
 // The bounds of every drawn vertex of `model` and its `attachments` (each placed at its host
 // bone's bind pose), in the model's space.
 [[nodiscard]] ModelBounds drawn_model_bounds(const Model& model, std::span<const ModelAttachment> attachments, bool animated_visibility);

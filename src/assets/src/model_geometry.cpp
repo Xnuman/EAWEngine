@@ -54,6 +54,50 @@ Vector3 drawn_vertex_position(const Vector3& position, const ModelMesh& mesh, co
     return position;
 }
 
+bool has_drawn_geometry(const Model& model, const std::span<const ModelAttachment> attachments, const bool animated_visibility)
+{
+    const auto any = [&](const Model& source, const bool attached)
+    {
+        const auto filter = drawn_mesh_filter(source, attached, animated_visibility);
+        for (const auto& mesh : source.meshes)
+        {
+            if (!drawn_mesh(source, mesh, filter))
+            {
+                continue;
+            }
+            for (const auto& submesh : mesh.submeshes)
+            {
+                if (!drawn_submesh(submesh))
+                {
+                    continue;
+                }
+                for (std::size_t index = 0; index + 2 < submesh.indices.size(); index += 3)
+                {
+                    const auto count = submesh.vertices.size();
+                    if (submesh.indices[index] < count && submesh.indices[index + 1] < count && submesh.indices[index + 2] < count)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    };
+    if (any(model, false))
+    {
+        return true;
+    }
+    const auto bones = model.skeleton.bones.size();
+    for (const auto& attached : attachments)
+    {
+        if (attached.model && attached.bone < bones && any(*attached.model, true))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 ModelBounds drawn_model_bounds(const Model& model, const std::span<const ModelAttachment> attachments, const bool animated_visibility)
 {
     ModelBounds bounds;

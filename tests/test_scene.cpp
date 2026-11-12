@@ -296,6 +296,13 @@ void test_drawn_model_bounds()
     require(bounds.minimum == eaw::Vector3{0.0F, -3.0F, 0.0F} && bounds.maximum == eaw::Vector3{3.0F, 1.0F, 5.0F},
             "drawn bounds must skip hidden and collision geometry, place rigid meshes on their bone, and add the intact attachment");
     require(eaw::ModelBounds{}.empty() && !bounds.empty(), "bounds without a vertex must be empty");
+    eaw::Model invisible;
+    invisible.skeleton.bones.push_back({"Root", -1, eaw::Matrix4::identity(), true});
+    invisible.meshes = {eaw::ModelMesh{"collision", 0U, false, std::nullopt, std::nullopt, {part({0.0F, 0.0F, 0.0F}, eaw::LegacyMaterialFamily::collision)}}};
+    auto broken = part({0.0F, 0.0F, 0.0F});
+    broken.indices = {0, 1, 7};
+    invisible.meshes.push_back(eaw::ModelMesh{"broken", 0U, false, std::nullopt, std::nullopt, {broken}});
+    require(eaw::has_drawn_geometry(host, {}, true) && !eaw::has_drawn_geometry(invisible, {}, true), "only a drawn submesh with a whole triangle makes a model drawable (and a placed object exist)");
 
     eaw::VirtualFileSystem vfs;
     eaw::VisualScene scene;

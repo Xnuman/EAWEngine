@@ -167,8 +167,14 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
         entry->second = append_scene_model(build.builder, *path, attachments);
     }
     note_animation_source(build.builder, *path, build.catalog, *definition);
+    // As for placed objects: the model decides whether the type can be spawned, not drawing.
+    if (!host || !host->ok() || !has_drawn_geometry(host->value(), attachments, true))
+    {
+        return std::nullopt;
+    }
     if (!entry->second)
     {
+        build.builder.scene.warnings.push_back(*path + ": has drawable geometry but could not be added to the scene; '" + definition->name + "' is not spawnable");
         return std::nullopt;
     }
     SpawnableType spawnable;
@@ -324,8 +330,17 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         {
             note_animation_source(builder, placement.model_path, catalog, *placement.type);
         }
+        // Whether the placement exists is decided from its model (assets/model_geometry), never
+        // from drawing; a model that exists but could not be drawn is a scene warning.
+        const auto host_model = cached_model(builder, placement.model_path);
+        if (!host_model || !host_model->ok() || !has_drawn_geometry(host_model->value(), attachments, true))
+        {
+            ++asset.unrenderable_placements;
+            continue;
+        }
         if (!entry->second)
         {
+            scene.warnings.push_back(placement.model_path + ": has drawable geometry but could not be added to the scene; the placement is left out");
             ++asset.unrenderable_placements;
             continue;
         }
