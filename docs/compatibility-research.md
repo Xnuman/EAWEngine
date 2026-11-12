@@ -82,9 +82,14 @@ Adopted so far:
 - *Straight start*: a space ship that names no `Min_Speed_Fraction_For_Turn` turns only at full
   speed and keeps it through the turn (S-12: the corvette flies straight 62 frames from rest, turns
   once it reaches 3.72); the default fraction is 1, where it was 0.25, a guess.
+- *Target retention* (already the engine's behavior, checked): a held target is kept when a
+  better-ranked one appears (S-02: a TIE Defender, which names no
+  `Targeting_Stickiness_Time_Threshold`, stays on its X-wing for 5 s after a nearer Y-wing arrives;
+  the engine re-weighs only types that name a threshold), and a removed target is replaced at the
+  next shot the fire countdown allows (S-03: each weapon takes the nearest hostile in its range
+  and arc when it may fire). A test pins S-02.
 Recorded and not adopted yet (each changes behavior beyond a constant; proposed to the owner):
-keeping a held target when a better one appears (S-02) and replacing a removed
-one at the next allowed shot (S-03); `Layer_Z_Adjust` heights (S-10 to S-14, S-32 to S-34); per-
+`Layer_Z_Adjust` heights (S-10 to S-14, S-32 to S-34); per-
 hardpoint shot counts by bearing (S-22 to S-42) as fire-cone regression cases; hit rates near 40 %
 (corvette on Tartan) and 7 % (Tartan on Nebulon-B), far below our uniform scatter's.
 

@@ -82,6 +82,35 @@ void test_combat()
         require(hit.shield == 0.0F && hit.health == 24.0F, "damage beyond the shield must reach the hull");
     }
 
+    // A held target is kept when a better-ranked one appears, unless the type names a stickiness
+    // threshold (recorded in the FoC debug build: a TIE Defender, which names none, stays on its
+    // X-wing for the 5 s after a nearer Y-wing, ranked above it, enters range; EaW-Revised S-02).
+    {
+        auto retention_world = make_world();
+        eaw::CombatProfile defender;
+        defender.health = 100.0F;
+        defender.weapons = {eaw::WeaponProfile{.range = 700.0F, .recharge_seconds = 1.0F, .damage = 1.0F}};
+        defender.targeting.ranks = {{0x2U, 0U, 2.0F}, {0x1U, 0U, 3.0F}};
+        eaw::CombatProfile fighter;
+        fighter.health = 1.0e6F;
+        fighter.categories = 0x1U;
+        auto bomber = fighter;
+        bomber.categories = 0x2U;
+        (void)retention_world.spawn({.type_name = "Defender", .owner = 1, .combat = defender});
+        const auto held = retention_world.spawn({.type_name = "Fighter", .owner = 2, .position = {250.0F, 20.0F, 0.0F}, .combat = fighter});
+        for (int tick = 0; tick < 20; ++tick)
+        {
+            retention_world.step();
+        }
+        const bool acquired = retention_world.snapshot().entities[0].target == *held;
+        (void)retention_world.spawn({.type_name = "Bomber", .owner = 2, .position = {180.0F, -25.0F, 0.0F}, .combat = bomber});
+        for (int tick = 0; tick < 50; ++tick)
+        {
+            retention_world.step();
+        }
+        require(acquired && retention_world.snapshot().entities[0].target == *held, "a held target must be kept when a better one appears and no stickiness is named");
+    }
+
     // Shields refresh in steps: Shield_Refresh_Rate points once per interval, on a phase of the
     // unit's own (any interval-long run of ticks holds exactly one refresh).
     {
