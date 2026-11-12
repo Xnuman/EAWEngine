@@ -94,7 +94,8 @@ Adopted so far:
   users (skydomes at -2500, asteroid props at -330) are left to the renderer's layers.
 Recorded and not adopted yet (each changes behavior beyond a constant; proposed to the owner):
 per-
-hardpoint shot counts by bearing (S-22 to S-42) as fire-cone regression cases; hit rates near 40 %
+hardpoint shot counts by bearing (S-22 to S-42) as fire-cone regression cases (postponed to the
+simulation rewrite, which brings the staged battles they need; roadmap, Simulation 1); hit rates near 40 %
 (corvette on Tartan) and 7 % (Tartan on Nebulon-B), far below our uniform scatter's.
 
 **XML loading (2026-11-13).** The game reads its XML through registries: `GameObjectFiles.xml`,

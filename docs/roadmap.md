@@ -144,7 +144,10 @@ rendering rows join item 2).
    `Rotation_Animation_Speed`, and `Locomotor_Has_Animation_Priority` (turn-in-place, begin/end,
    start and stop transitions done 2026-11-12)),
    damage-specific death clones and wreck explosions, ground detonations, debris, death-projectile
-   blasts, beams for instant-hit weapons), and game and mod identity in order logs.
+   blasts, beams for instant-hit weapons), and game and mod identity in order logs. With the
+   simulation rewrite (owner, 2026-11-13): staged battles (a spawn facing, invulnerable targets, a
+   per-hardpoint shot report) and, on them, the fire-cone regression cases from the recorded
+   hardpoint shot counts by bearing (S-22 to S-42, compatibility-research.md).
 2. Skirmish systems: the player layer (the local player's owner, factions and hostility from data
    instead of the provisional slot rule, team colours by owner, fog of war), build pads,
    reinforcements, abilities from `Unit_Abilities_Data` (the infantry crouch first; researched in
