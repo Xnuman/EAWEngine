@@ -1,8 +1,8 @@
 // `inspect`: one asset decoded and summarized by format.
 
-#include "core/byte_order.hpp"
 #include "core/string_utils.hpp"
 #include "formats/ala_animation_helpers.hpp"
+#include "formats/alamo_chunks.hpp"
 #include "formats/alo_model_helpers.hpp"
 #include "formats/dat_string_table_helpers.hpp"
 #include "formats/xml_helpers.hpp"
@@ -84,25 +84,19 @@ eaw::Status inspect_mtd(const std::span<const std::byte> bytes, const std::size_
 void inspect_chunks(const std::span<const std::byte> bytes, const std::size_t limit)
 {
     std::cout << "Format: Alamo chunk container (top-level inventory)\n";
-    std::size_t cursor = 0;
-    std::size_t count = 0;
-    while (cursor + 8 <= bytes.size() && count < limit)
+    // Listed up to the first damaged chunk, so a truncated file still shows what precedes it.
+    const auto listing = eaw::chunk::list_chunks(bytes, 0, bytes.size(), "Alamo");
+    for (std::size_t index = 0; index < std::min(limit, listing.chunks.size()); ++index)
     {
-        const auto type = eaw::little_endian_u32(bytes, cursor);
-        const auto encoded_size = eaw::little_endian_u32(bytes, cursor + 4);
-        const bool container = (encoded_size & 0x80000000U) != 0;
-        const auto size = encoded_size & 0x7fffffffU;
-        std::cout << "  [" << count << "] type=0x" << std::hex << std::setw(8) << std::setfill('0') << type << std::dec << std::setfill(' ') << " size=" << size
-                  << " kind=" << (container ? "container" : "data") << '\n';
-        if (static_cast<std::uint64_t>(cursor) + 8U + size > bytes.size())
-        {
-            std::cout << "  truncated chunk body\n";
-            break;
-        }
-        cursor += 8U + size;
-        ++count;
+        const auto& chunk = listing.chunks[index];
+        std::cout << "  [" << index << "] type=0x" << std::hex << std::setw(8) << std::setfill('0') << chunk.type << std::dec << std::setfill(' ') << " size=" << chunk.size()
+                  << " kind=" << (chunk.container ? "container" : "data") << '\n';
     }
-    std::cout << "Top-level bytes consumed: " << cursor << '/' << bytes.size() << '\n';
+    if (!listing.problem.empty())
+    {
+        std::cout << "  " << listing.problem << '\n';
+    }
+    std::cout << "Top-level bytes read: " << (listing.chunks.empty() ? 0U : listing.chunks.back().end) << '/' << bytes.size() << '\n';
 }
 
 eaw::Status inspect_particles(const std::span<const std::byte> bytes, const std::size_t limit)

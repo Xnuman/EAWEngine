@@ -1,8 +1,8 @@
 // Helpers shared by the workbench panels: text, DDS previews, and asset previews.
 
-#include "core/byte_order.hpp"
 #include "core/string_utils.hpp"
 #include "formats/ala_animation_helpers.hpp"
+#include "formats/alamo_chunks.hpp"
 #include "formats/alo_model_helpers.hpp"
 #include "formats/dat_string_table_helpers.hpp"
 #include "assets/alo_interpretation.hpp"
@@ -514,22 +514,18 @@ Result<std::string> bytes_preview(const ResolvedAsset& asset, const std::span<co
     if (extension == ".alo" || extension == ".ala" || extension == ".ted")
     {
         output << "Alamo chunk container (top-level inventory)\n";
-        std::size_t cursor = 0;
-        std::size_t count = 0;
-        while (cursor + 8 <= bytes.size() && count < 80)
+        // Listed up to the first damaged chunk, so a truncated file still shows what precedes it.
+        constexpr std::size_t maximum_listed_chunks = 80;
+        const auto listing = chunk::list_chunks(bytes, 0, bytes.size(), "Alamo");
+        for (std::size_t index = 0; index < std::min(maximum_listed_chunks, listing.chunks.size()); ++index)
         {
-            const auto type = little_endian_u32(bytes, cursor);
-            const auto encoded_size = little_endian_u32(bytes, cursor + 4);
-            const auto size = encoded_size & 0x7fffffffU;
-            output << '[' << count << "] type=0x" << std::hex << std::setw(8) << std::setfill('0') << type << std::dec << std::setfill(' ') << "  size=" << size << "  "
-                   << ((encoded_size & 0x80000000U) != 0 ? "container" : "data") << '\n';
-            if (static_cast<std::uint64_t>(cursor) + 8U + size > bytes.size())
-            {
-                output << "Truncated chunk body\n";
-                break;
-            }
-            cursor += 8U + size;
-            ++count;
+            const auto& entry = listing.chunks[index];
+            output << '[' << index << "] type=0x" << std::hex << std::setw(8) << std::setfill('0') << entry.type << std::dec << std::setfill(' ') << "  size=" << entry.size() << "  "
+                   << (entry.container ? "container" : "data") << '\n';
+        }
+        if (!listing.problem.empty())
+        {
+            output << listing.problem << '\n';
         }
         return output.str();
     }

@@ -44,8 +44,18 @@ struct MiniChunkRange
     }
 };
 
+// The chunks of a range up to the first that cannot be read, and why reading stopped there (empty
+// when every chunk was read): what tools list for a damaged file.
+struct ChunkListing
+{
+    std::vector<ChunkRange> chunks;
+    std::string problem;
+};
+
 namespace chunk {
 
+// Lists the chunks in bytes[begin, end) as far as they can be read (read_chunks fails instead).
+[[nodiscard]] ChunkListing list_chunks(std::span<const std::byte> bytes, std::size_t begin, std::size_t end, std::string_view format, std::string_view where = {});
 // The chunks in bytes[begin, end). `format` names the file kind in diagnostics ("ALO", "TED") and
 // `where` the part being read (empty for none); errors give the offset and chunk type.
 [[nodiscard]] Result<std::vector<ChunkRange>> read_chunks(std::span<const std::byte> bytes, std::size_t begin, std::size_t end, std::string_view format, std::string_view where = {});

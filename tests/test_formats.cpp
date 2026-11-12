@@ -520,6 +520,11 @@ void test_alamo_chunks()
     auto overlong = file;
     overlong.resize(overlong.size() - 1);
     require(failure(eaw::chunk::read_chunks(overlong, 0, overlong.size(), "TEST"), "TEST chunk 0x300 at offset"), "overlong chunk not reported");
+    // The listing keeps the chunks before the damage and says what stopped it.
+    const auto listing = eaw::chunk::list_chunks(overlong, 0, overlong.size(), "TEST");
+    require(listing.chunks.size() == 1 && listing.chunks[0].type == 0x0200 && listing.problem.find("TEST chunk 0x300 at offset") != std::string::npos &&
+                eaw::chunk::list_chunks(file, 0, file.size(), "TEST").problem.empty(),
+            "a chunk listing must keep the chunks before a damaged one");
     require(failure(eaw::chunk::read_chunks(file, 4, 2, "TEST"), "chunk range is invalid") && failure(eaw::chunk::read_chunks(file, 0, file.size() + 1, "TEST"), "chunk range is invalid"),
             "invalid range not reported");
     auto short_mini = chunks[0];

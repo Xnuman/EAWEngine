@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <bit>
 #include <sstream>
+#include <utility>
 
 namespace eaw::chunk {
 namespace {
@@ -25,19 +26,21 @@ std::string in(const std::string_view where)
 
 } // namespace
 
-Result<std::vector<ChunkRange>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end, const std::string_view format, const std::string_view where)
+ChunkListing list_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end, const std::string_view format, const std::string_view where)
 {
+    ChunkListing listing;
     if (begin > end || end > bytes.size())
     {
-        return make_error(std::string(format) + " chunk range" + in(where) + " is invalid");
+        listing.problem = std::string(format) + " chunk range" + in(where) + " is invalid";
+        return listing;
     }
-    std::vector<ChunkRange> chunks;
     auto cursor = begin;
     while (cursor < end)
     {
         if (end - cursor < 8)
         {
-            return make_error(std::string(format) + in(where) + " ends in a truncated chunk header at offset " + std::to_string(cursor));
+            listing.problem = std::string(format) + in(where) + " ends in a truncated chunk header at offset " + std::to_string(cursor);
+            return listing;
         }
         const auto type = read_u32(bytes, cursor);
         const auto encoded_size = read_u32(bytes, cursor + 4);
@@ -45,12 +48,23 @@ Result<std::vector<ChunkRange>> read_chunks(const std::span<const std::byte> byt
         const auto payload = cursor + 8;
         if (size > end - payload)
         {
-            return make_error(std::string(format) + " chunk " + hex(type) + in(where) + " at offset " + std::to_string(cursor) + " extends past its parent");
+            listing.problem = std::string(format) + " chunk " + hex(type) + in(where) + " at offset " + std::to_string(cursor) + " extends past its parent";
+            return listing;
         }
-        chunks.push_back({type, (encoded_size & 0x80000000U) != 0, payload, payload + size});
+        listing.chunks.push_back({type, (encoded_size & 0x80000000U) != 0, payload, payload + size});
         cursor = payload + size;
     }
-    return chunks;
+    return listing;
+}
+
+Result<std::vector<ChunkRange>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end, const std::string_view format, const std::string_view where)
+{
+    auto listing = list_chunks(bytes, begin, end, format, where);
+    if (!listing.problem.empty())
+    {
+        return make_error(std::move(listing.problem));
+    }
+    return std::move(listing.chunks);
 }
 
 Result<std::vector<MiniChunkRange>> read_minis(const std::span<const std::byte> bytes, const ChunkRange& chunk, const std::string_view format, const std::string_view where)

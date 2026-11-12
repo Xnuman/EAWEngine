@@ -255,14 +255,14 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
   `combat_content` instead of one place (see Engine extensions, explicit asset metadata); the
   hardpoint list itself (`type_hardpoints`) and the scorch-subtree rule (`bones_in_subtrees`) are
   shared now;
-- the asset inspector's and EAWTools' own top-level chunk listing (instead of
-  `formats/alamo_chunks`), kept because they list the chunks before a truncation;
 - `PathPoint` (pathfinding) beside eaw_math's `Vector2`;
 - XML list tokenizers with their own delimiters (type names split on commas or spaces in
   `game_object_catalog`, `map_object_layout`, and `sound_events`; categories on pipes, commas, or
   spaces in `object_types`; `xml_schema_validate`'s values), where `TypeFields::list`
   splits on commas: one rule per kind of list, decided against the corpus;
 - `compare_images` (image regression) in eaw_formats;
+- `using namespace d3d12;` in the renderer's private header, which imports every helper into every
+  renderer source (about 180 uses to qualify; with the renderer restructuring, proposal G);
 - the projectile reacquisition tie-break, which takes the higher dense index (storage order, like
   the other order dependences the simulation rewrite removes; changing it changes the hash);
 - the script host's own SplitMix stream beside `core/random` (it is script state, so a move must keep
