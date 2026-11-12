@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <string_view>
 
 // Offline-compiled shader model 5.0 bytecode (see src/tools_gui/shaders/preview.hlsl).
 #include "g_eaw_preview_ps.h"

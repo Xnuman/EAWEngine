@@ -2,7 +2,6 @@
 #include "formats/alo_particle_system.hpp"
 
 #include <algorithm>
-#include <bit>
 #include <sstream>
 
 namespace eaw {

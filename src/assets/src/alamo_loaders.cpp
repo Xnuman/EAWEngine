@@ -86,12 +86,8 @@ Model load_model(const AloModelData& data)
                 out.color = {1.0F, 1.0F, 1.0F, 1.0F};
                 if (part.material.features.vertex_color)
                 {
-                    const std::array<float, 4> authored{vertex.color.x, vertex.color.y, vertex.color.z, vertex.color.w};
-                    if (std::ranges::all_of(authored,
-                                            [](const float value)
-                                            {
-                                                return std::isfinite(value);
-                                            }))
+                    const Color authored{vertex.color.x, vertex.color.y, vertex.color.z, vertex.color.w};
+                    if (is_finite(authored))
                     {
                         out.color = authored;
                     }

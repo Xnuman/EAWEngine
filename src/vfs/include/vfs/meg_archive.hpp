@@ -4,7 +4,6 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>

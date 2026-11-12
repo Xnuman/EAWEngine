@@ -125,10 +125,9 @@ void test_visual_material_translation()
     const auto& material = scene.materials[0];
     require(material.lighting == eaw::VisualLightingModel::lit && material.gloss == eaw::VisualGlossSource::base_alpha && !material.team_color_mask && material.blend == eaw::VisualBlendMode::opaque,
             "gloss profile did not become a lit, base-alpha-gloss material");
-    require(material.diffuse == std::array<float, 4>{0.25F, 0.5F, 0.75F, 0.123456789F} && material.specular == std::array<float, 3>{1.0F, 1.0F, 1.0F} &&
-                material.emissive == std::array<float, 3>{0.0F, 0.0F, 0.0F},
+    require(material.diffuse == eaw::Color{0.25F, 0.5F, 0.75F, 0.123456789F} && material.specular == eaw::ColorRgb{1.0F, 1.0F, 1.0F} && material.emissive == eaw::ColorRgb{0.0F, 0.0F, 0.0F},
             "material colors were not taken from exact parameters with legacy defaults");
-    require(material.base_color_texture == eaw::invalid_visual_texture && material.tint != std::array<float, 4>{1.0F, 1.0F, 1.0F, 1.0F}, "untextured material did not receive a debug tint");
+    require(material.base_color_texture == eaw::invalid_visual_texture && material.tint != eaw::Color{1.0F, 1.0F, 1.0F, 1.0F}, "untextured material did not receive a debug tint");
     require(scene.instances[0].team_color[3] == 1.0F && !scene.instances[0].background, "model instance team color or layer is wrong");
 
     // A mesh attached to a bone hidden in the bind pose (an alternate state such as debris) is kept
@@ -233,7 +232,7 @@ void test_visual_terrain()
     const auto& water_material = asset.scene.materials[asset.scene.draws[asset.scene.meshes[0].first_draw].material];
     require(asset.water == eaw::TedWaterType::water && asset.scene.meshes.size() == 2 && asset.scene.instances.size() == 2 && asset.scene.vertices.size() == 10 &&
                 asset.scene.vertices[2].position == eaw::Vector3{40.0F, 20.0F, 1.5F} && water_material.blend == eaw::VisualBlendMode::alpha_blend &&
-                water_material.diffuse == std::array<float, 4>{0.4F, 0.6F, 0.8F, 0.75F},
+                water_material.diffuse == eaw::Color{0.4F, 0.6F, 0.8F, 0.75F},
             "water surface was not built over the terrain");
     // The track (5,5)->(35,15), widths 10->6, opacity 0/1/0 becomes a 3-sample draped ribbon.
     const auto& ribbon = asset.scene.vertices;
@@ -348,11 +347,27 @@ void test_resource_manager()
     std::filesystem::remove_all(root, ignored);
 }
 
+// UVScrollRate fills the two scroll components and nothing after them (a four-component value
+// once spilled into uv_scale).
+void test_visual_material_uv_scroll()
+{
+    eaw::LegacyMaterial material;
+    material.features.uv_animation = eaw::LegacyUvAnimation::scroll;
+    material.parameters.push_back({.name = "UVScrollRate", .type = eaw::AloShaderParameterType::vector4, .value = "0.1 0.2 7 9", .values = {0.1F, 0.2F, 7.0F, 9.0F}});
+    eaw::VirtualFileSystem vfs;
+    eaw::VisualScene scene;
+    eaw::scene_build::SceneBuilder builder{vfs, scene};
+    builder.textures = false;
+    const auto visual = eaw::scene_build::make_visual_material(builder, material);
+    require(visual.uv_scroll == std::array<float, 2>{0.1F, 0.2F} && visual.uv_scale == 1.0F, "UVScrollRate must fill the two scroll components only");
+}
+
 const ModuleRegistrar registrar("scene", {
                                              {"test_mesh_states_and_levels", &test_mesh_states_and_levels},
                                              {"test_asset_cache_dependencies", &test_asset_cache_dependencies},
                                              {"test_resource_manager", &test_resource_manager},
                                              {"test_visual_material_translation", &test_visual_material_translation},
+                                             {"test_visual_material_uv_scroll", &test_visual_material_uv_scroll},
                                              {"test_visual_terrain", &test_visual_terrain},
                                              {"test_intact_hidden_bones", &test_intact_hidden_bones},
                                          });

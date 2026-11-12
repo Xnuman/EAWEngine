@@ -255,8 +255,14 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
   `combat_content` instead of one place (see Engine extensions, explicit asset metadata); the
   hardpoint list itself (`type_hardpoints`) and the scorch-subtree rule (`bones_in_subtrees`) are
   shared now;
-- local little-endian readers in `dds_texture`, `mtd_atlas`, the asset inspector, and `tools_gui`,
-  which should use `core/byte_order` (as `alamo_chunks` now does);
+- the asset inspector's and EAWTools' own top-level chunk listing (instead of
+  `formats/alamo_chunks`), kept because they list the chunks before a truncation;
+- `PathPoint` (pathfinding) beside eaw_math's `Vector2`;
+- two readers of a type's XML fields with different rules (`type_float_field`, `combat_content`'s
+  `FieldReader`) and five XML list tokenizers with different delimiters;
+- `compare_images` (image regression) in eaw_formats;
+- the projectile reacquisition tie-break, whose comment says lower index while the code takes the
+  higher (changing the comparison changes the hash);
 - the script host's own SplitMix stream beside `core/random` (it is script state, so a move must keep
   its sequence).
 

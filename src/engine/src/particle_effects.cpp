@@ -99,7 +99,7 @@ struct ParticleWorld::Particle
     // Revolutions; integrated from the rotation-speed track unless fixed.
     float rotation{};
     float rotation_direction{1.0F};
-    std::array<float, 4> color_add{};
+    Color color_add{};
     // Seconds until this particle's trail emitter emits again.
     float trail_clock{};
     bool resting{};

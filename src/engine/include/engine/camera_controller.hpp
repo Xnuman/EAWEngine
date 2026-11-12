@@ -2,8 +2,6 @@
 
 #include "render/visual_scene.hpp"
 
-#include <array>
-
 namespace eaw {
 
 // World-space bounds a camera frames and stays within.

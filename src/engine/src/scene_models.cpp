@@ -12,7 +12,6 @@
 #include "math/transform.hpp"
 
 #include <algorithm>
-#include <atomic>
 #include <charconv>
 #include <cmath>
 #include <filesystem>
@@ -153,7 +152,7 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
     // Each appended draw's damage state and detail level (none: every state or level), parallel to
     // the draws from visual_mesh.first_draw on.
     std::vector<DrawTag> draw_tags;
-    static constexpr std::array<std::array<float, 4>, 6> palette{{
+    static constexpr std::array<Color, 6> palette{{
         {0.35F, 0.78F, 0.82F, 1.0F},
         {0.42F, 0.63F, 0.88F, 1.0F},
         {0.62F, 0.52F, 0.86F, 1.0F},

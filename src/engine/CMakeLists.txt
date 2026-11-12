@@ -24,7 +24,6 @@ set(EAW_ENGINE_BATTLE
 # Scene building: decoded assets to engine-native visual data and type properties.
 set(EAW_ENGINE_SCENE
     ${HEADERS_DIR}/scene_builder_internal.hpp
-    ${HEADERS_DIR}/terrain_height.hpp
     ${HEADERS_DIR}/visual_scene_builder.hpp
     ${SOURCES_DIR}/object_type_properties.cpp
     ${SOURCES_DIR}/scene_materials.cpp
@@ -32,7 +31,6 @@ set(EAW_ENGINE_SCENE
     ${SOURCES_DIR}/scene_particles.cpp
     ${SOURCES_DIR}/scene_projectiles.cpp
     ${SOURCES_DIR}/scene_terrain.cpp
-    ${SOURCES_DIR}/terrain_height.cpp
     ${SOURCES_DIR}/visual_map_builder.cpp
 )
 
@@ -41,6 +39,7 @@ set(EAW_ENGINE_PRESENTATION
     ${HEADERS_DIR}/attached_effects.hpp
     ${HEADERS_DIR}/battle_audio.hpp
     ${HEADERS_DIR}/battle_effects.hpp
+    ${HEADERS_DIR}/debug_draw.hpp
     ${HEADERS_DIR}/particle_effects.hpp
     ${HEADERS_DIR}/projectile_visuals.hpp
     ${HEADERS_DIR}/scene_presentation.hpp
@@ -48,30 +47,31 @@ set(EAW_ENGINE_PRESENTATION
     ${SOURCES_DIR}/attached_effects.cpp
     ${SOURCES_DIR}/battle_audio.cpp
     ${SOURCES_DIR}/battle_effects.cpp
+    ${SOURCES_DIR}/debug_draw.cpp
     ${SOURCES_DIR}/particle_effects.cpp
     ${SOURCES_DIR}/projectile_visuals.cpp
     ${SOURCES_DIR}/scene_presentation.cpp
     ${SOURCES_DIR}/unit_animation.cpp
 )
 
-# Cameras and RTS control.
-set(EAW_ENGINE_CONTROL
+# Input and cameras: camera controllers, RTS control, and picking on the terrain height field.
+set(EAW_ENGINE_INPUT
     ${HEADERS_DIR}/camera_controller.hpp
     ${HEADERS_DIR}/camera_math.hpp
     ${HEADERS_DIR}/rts_control.hpp
+    ${HEADERS_DIR}/terrain_height.hpp
     ${SOURCES_DIR}/camera_controller.cpp
     ${SOURCES_DIR}/camera_math.cpp
     ${SOURCES_DIR}/rts_control.cpp
+    ${SOURCES_DIR}/terrain_height.cpp
 )
 
-# The sandbox's portable parts: options, content lists, and debug drawing.
+# The sandbox's testable parts: options, background content builds, debug lines, and text format.
 set(EAW_ENGINE_SANDBOX
-    ${HEADERS_DIR}/debug_draw.hpp
     ${HEADERS_DIR}/sandbox_content.hpp
     ${HEADERS_DIR}/sandbox_debug_lines.hpp
     ${HEADERS_DIR}/sandbox_options.hpp
     ${HEADERS_DIR}/text_format.hpp
-    ${SOURCES_DIR}/debug_draw.cpp
     ${SOURCES_DIR}/sandbox_content.cpp
     ${SOURCES_DIR}/sandbox_debug_lines.cpp
     ${SOURCES_DIR}/sandbox_options.cpp
@@ -82,7 +82,7 @@ set(EAW_ENGINE_FILES
     ${EAW_ENGINE_BATTLE}
     ${EAW_ENGINE_SCENE}
     ${EAW_ENGINE_PRESENTATION}
-    ${EAW_ENGINE_CONTROL}
+    ${EAW_ENGINE_INPUT}
     ${EAW_ENGINE_SANDBOX}
 )
 # Public headers are the files under HEADERS_DIR; the rest (sources, private headers) are private.
@@ -94,7 +94,7 @@ list(FILTER EAW_ENGINE_SOURCES EXCLUDE REGEX "^${HEADERS_DIR}/")
 source_group("battle" FILES ${EAW_ENGINE_BATTLE})
 source_group("scene" FILES ${EAW_ENGINE_SCENE})
 source_group("presentation" FILES ${EAW_ENGINE_PRESENTATION})
-source_group("control" FILES ${EAW_ENGINE_CONTROL})
+source_group("input" FILES ${EAW_ENGINE_INPUT})
 source_group("sandbox" FILES ${EAW_ENGINE_SANDBOX})
 
 target_sources(eaw_engine

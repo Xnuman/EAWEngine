@@ -3,8 +3,6 @@
 #include "core/string_utils.hpp"
 #include "formats/dat_string_table_helpers.hpp"
 
-#include <algorithm>
-
 namespace eaw {
 namespace {
 

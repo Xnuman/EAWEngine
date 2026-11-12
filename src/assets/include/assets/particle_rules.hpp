@@ -13,6 +13,7 @@
 //     (enhanced), chosen per particle world.
 
 #include "formats/alo_particle_system.hpp"
+#include "render/color.hpp"
 #include "render/visual_scene.hpp"
 
 #include <array>
@@ -123,7 +124,7 @@ struct ParticleEmitterDesc
     // world units), texture cell, rotation speed (revolutions per second).
     std::array<AloParticleTrack, 7> tracks{};
     // Added colour: random up to these per channel (grayscale: one random value for all).
-    std::array<float, 4> color_variance{};
+    Color color_variance{};
     bool color_variance_grayscale{};
     // A fixed random angle (mean revolutions x (1 +- spread)) instead of spinning.
     bool fixed_rotation{};

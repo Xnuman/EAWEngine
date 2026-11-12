@@ -10,15 +10,12 @@
 #include "render/visual_scene.hpp"
 #include "assets/particle_rules.hpp"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
-#include <span>
-#include <string>
 #include <unordered_map>
 #include <vector>
 

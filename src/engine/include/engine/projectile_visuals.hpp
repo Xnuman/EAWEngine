@@ -47,7 +47,7 @@ struct ProjectileVisual
     std::uint32_t row{};
     // Render 2: a teardrop in `color` (`length` already in world units); render 1: the atlas cell.
     bool tinted{};
-    std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
+    Color color{white};
     // Model projectiles (no bolt): the scene mesh drawn along the flight, or the particle system
     // that follows the shot (some projectiles name a particle file as their model), and the XML
     // Scale_Factor both are drawn at.

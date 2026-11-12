@@ -1,46 +1,46 @@
-cmake_minimum_required( VERSION 3.30 )
+cmake_minimum_required(VERSION 3.30)
 
-if( NOT CMAKE_GENERATOR_PLATFORM STREQUAL x64 )
-  message( FATAL_ERROR "Unsupported platform [${CMAKE_GENERATOR_PLATFORM}]" )
+if(NOT CMAKE_GENERATOR_PLATFORM STREQUAL x64)
+  message(FATAL_ERROR "Unsupported platform [${CMAKE_GENERATOR_PLATFORM}]")
 endif()
 
-project( EAWEngine
+project(EAWEngine
     VERSION 0.1.0
     LANGUAGES C CXX
 )
 
-add_definitions( -DUNICODE -D_UNICODE )
+add_compile_definitions(UNICODE _UNICODE)
 
-set( CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD ON )
+set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD ON)
 
-option( EAW_BUILD_TESTS "Build EAWEngine tests" OFF )
-option( EAW_BUILD_GUI "Build the Dear ImGui tool workbench" ON )
+option(EAW_BUILD_TESTS "Build EAWEngine tests" OFF)
+option(EAW_BUILD_GUI "Build the Dear ImGui tool workbench" ON)
 # The optional FMOD audio backend, built against a local FMOD SDK (never committed or fetched).
-option( EAW_AUDIO_FMOD "Build the FMOD audio backend (needs FMOD_ROOT)" OFF )
-set( FMOD_ROOT "" CACHE PATH "Local FMOD Engine SDK (the folder holding api/core)" )
+option(EAW_AUDIO_FMOD "Build the FMOD audio backend (needs FMOD_ROOT)" OFF)
+set(FMOD_ROOT "" CACHE PATH "Local FMOD Engine SDK (the folder holding api/core)")
 
-set( EAW_ENGINE_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" )
+set(EAW_ENGINE_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-set_property( GLOBAL PROPERTY USE_FOLDERS ON )
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Debug builds carry this suffix: libraries through CMAKE_DEBUG_POSTFIX, executables through
 # eaw_debug_postfix_executables at the end of this file.
-set( CMAKE_DEBUG_POSTFIX "_d" )
+set(CMAKE_DEBUG_POSTFIX "_d")
 
-get_filename_component( EAW_ENGINE_BINARY_DIR "${EAW_ENGINE_ROOT_DIR}/executables/" ABSOLUTE )
+get_filename_component(EAW_ENGINE_BINARY_DIR "${EAW_ENGINE_ROOT_DIR}/executables/" ABSOLUTE)
 
-set( CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION "${EAW_ENGINE_BINARY_DIR}" )
-set( CMAKE_RUNTIME_OUTPUT_DIRECTORY "${EAW_ENGINE_BINARY_DIR}" )
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION "${EAW_ENGINE_BINARY_DIR}")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${EAW_ENGINE_BINARY_DIR}")
 
 # EAWEngine does not use C++ exceptions: recoverable failures return eaw::Status/eaw::Result and
 # broken invariants end the process through eaw::fatal_error. Every target, Dear ImGui included,
 # compiles with exception handling disabled (/EHs-c-) and a standard library configured without
 # exceptions (_HAS_EXCEPTIONS=0). CMake's default MSVC flags enable, so it is removed here.
-if( MSVC )
-    string( REGEX REPLACE "/EH[a-z]*" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" )
-    add_compile_options( $<$<COMPILE_LANGUAGE:CXX>:/EHs-c-> )
-    add_compile_definitions( _HAS_EXCEPTIONS=0 )
-endif( )
+if(MSVC)
+    string(REGEX REPLACE "/EH[a-z]*" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/EHs-c->)
+    add_compile_definitions(_HAS_EXCEPTIONS=0)
+endif()
 
 add_compile_definitions(
     NOMINMAX

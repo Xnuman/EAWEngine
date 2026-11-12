@@ -110,10 +110,9 @@ ParticleEmitterDesc normalize_particle_emitter(const AloParticleEmitter& emitter
     desc.bounciness = emitter.bounciness;
 
     desc.tracks = emitter.tracks;
-    desc.color_variance = emitter.random_colors;
-    for (auto& channel : desc.color_variance)
+    for (std::size_t channel = 0; channel < emitter.random_colors.size(); ++channel)
     {
-        channel = std::max(0.0F, channel);
+        desc.color_variance[channel] = std::max(0.0F, emitter.random_colors[channel]);
     }
     desc.color_variance_grayscale = emitter.random_color_grayscale;
     desc.fixed_rotation = emitter.random_rotation;

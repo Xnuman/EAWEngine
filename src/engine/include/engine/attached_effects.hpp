@@ -10,7 +10,6 @@
 #include "engine/particle_effects.hpp"
 #include "engine/visual_scene_builder.hpp"
 
-#include <array>
 #include <cstdint>
 #include <span>
 #include <unordered_map>

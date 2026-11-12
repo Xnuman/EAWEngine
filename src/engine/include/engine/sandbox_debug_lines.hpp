@@ -11,7 +11,6 @@
 #include "simulation/simulation.hpp"
 #include "render/visual_scene.hpp"
 
-#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>

@@ -7,7 +7,6 @@
 #include "formats/png_image.hpp"
 #include "core/file_io.hpp"
 
-#include <array>
 #include <chrono>
 #include <functional>
 #include <future>

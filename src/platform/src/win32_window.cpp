@@ -8,7 +8,6 @@
 #include <vector>
 #include <optional>
 #include <string_view>
-#include <utility>
 
 #include <windows.h>
 #include <windowsx.h>

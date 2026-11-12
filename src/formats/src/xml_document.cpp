@@ -2,7 +2,6 @@
 
 #include "core/string_utils.hpp"
 
-#include <algorithm>
 #include <charconv>
 #include <cstdint>
 #include <optional>

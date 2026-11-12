@@ -6,10 +6,8 @@
 #include "simulation/ground_map.hpp"
 #include "render/visual_scene.hpp"
 
-#include <array>
 #include <cstdint>
 #include <optional>
-#include <vector>
 
 namespace eaw {
 

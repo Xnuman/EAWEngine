@@ -29,7 +29,7 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
                 continue;
             }
             append_debug_box(lines, view.presentation->mesh_minimum(instance.mesh), view.presentation->mesh_maximum(instance.mesh), instance.transform,
-                             instance.highlighted ? std::array<float, 4>{1.0F, 0.85F, 0.25F, 1.0F} : std::array<float, 4>{0.3F, 0.85F, 0.95F, 0.45F});
+                             instance.highlighted ? Color{1.0F, 0.85F, 0.25F, 1.0F} : Color{0.3F, 0.85F, 0.95F, 0.45F});
         }
     }
     if (view.world != nullptr && view.presentation != nullptr)
@@ -50,7 +50,7 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
             constexpr float streak = 14.0F;
             lines.push_back({{p.x - d.x * streak, p.y - d.y * streak, p.z - d.z * streak},
                              {p.x, p.y, p.z},
-                             projectile.owner == view.friendly_owner ? std::array<float, 4>{0.4F, 1.0F, 0.4F, 1.0F} : std::array<float, 4>{1.0F, 0.35F, 0.25F, 1.0F}});
+                             projectile.owner == view.friendly_owner ? Color{0.4F, 1.0F, 0.4F, 1.0F} : Color{1.0F, 0.35F, 0.25F, 1.0F}});
         }
         // Health (green over red) and shield (blue) bars above selected or damaged entities.
         std::unordered_map<std::uint64_t, const EntitySnapshot*> by_key;
@@ -76,7 +76,7 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
             const auto z_scale = std::sqrt(t[8] * t[8] + t[9] * t[9] + t[10] * t[10]);
             const auto top = t[14] + view.presentation->mesh_maximum(view.instances[index].mesh)[2] * z_scale + 6.0F;
             const float half = 15.0F;
-            const auto bar = [&](const float z, const float fraction, const std::array<float, 4>& full, const std::array<float, 4>& empty)
+            const auto bar = [&](const float z, const float fraction, const Color& full, const Color& empty)
             {
                 const auto split = t[12] - half + 2.0F * half * std::clamp(fraction, 0.0F, 1.0F);
                 lines.push_back({{t[12] - half, t[13], z}, {split, t[13], z}, full});
@@ -180,12 +180,12 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
                 {
                     continue;
                 }
-                const std::array<float, 4> color = value == passability::steep           ? std::array<float, 4>{1.0F, 0.25F, 0.2F, 0.85F}
-                                                   : value == passability::water         ? std::array<float, 4>{0.25F, 0.55F, 1.0F, 0.85F}
-                                                   : value == passability::impassable    ? std::array<float, 4>{1.0F, 0.6F, 0.1F, 0.85F}
-                                                   : value == passability::infantry_only ? std::array<float, 4>{0.3F, 1.0F, 0.35F, 0.85F}
-                                                   : value == passability::obstacle      ? std::array<float, 4>{1.0F, 0.3F, 1.0F, 0.85F}
-                                                                                         : std::array<float, 4>{1.0F, 1.0F, 1.0F, 0.85F};
+                const Color color = value == passability::steep           ? Color{1.0F, 0.25F, 0.2F, 0.85F}
+                                    : value == passability::water         ? Color{0.25F, 0.55F, 1.0F, 0.85F}
+                                    : value == passability::impassable    ? Color{1.0F, 0.6F, 0.1F, 0.85F}
+                                    : value == passability::infantry_only ? Color{0.3F, 1.0F, 0.35F, 0.85F}
+                                    : value == passability::obstacle      ? Color{1.0F, 0.3F, 1.0F, 0.85F}
+                                                                          : Color{1.0F, 1.0F, 1.0F, 0.85F};
                 const auto x = static_cast<float>(column) * spacing;
                 const auto y = static_cast<float>(row) * spacing;
                 const auto half = spacing * 0.4F;

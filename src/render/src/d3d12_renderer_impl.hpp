@@ -10,7 +10,6 @@
 #include "render/d3d12_renderer.hpp"
 
 #include <optional>
-#include <unordered_map>
 #include <vector>
 
 namespace eaw {
@@ -73,7 +72,7 @@ struct D3d12Renderer::Impl
     struct DebugVertex
     {
         Vector3 position;
-        std::array<float, 4> color;
+        Color color;
     };
 
     // Layout of FrameConstants in sandbox.hlsl.
@@ -98,8 +97,8 @@ struct D3d12Renderer::Impl
     // Layout of MaterialData in sandbox.hlsl (96 bytes) and its flag bits.
     struct GpuMaterial
     {
-        std::array<float, 4> tint{1.0F, 1.0F, 1.0F, 1.0F};
-        std::array<float, 4> diffuse{1.0F, 1.0F, 1.0F, 1.0F};
+        Color tint{white};
+        Color diffuse{white};
         std::array<float, 4> specular{};
         std::array<float, 4> emissive{};
         std::array<float, 2> uv_scroll{};
@@ -146,8 +145,8 @@ struct D3d12Renderer::Impl
     struct GpuInstance
     {
         Matrix4 transform{Matrix4::zero()};
-        std::array<float, 4> tint{};
-        std::array<float, 4> team_color{};
+        Color tint{};
+        Color team_color{};
         std::uint32_t bone_offset{};
         std::uint32_t flags{};
         // Scene instance index + 1; 0 for instances that are not pickable.
@@ -252,7 +251,7 @@ struct D3d12Renderer::Impl
     {
         Vector3 position{};
         float half_size{};
-        std::array<float, 4> color{};
+        Color color{};
         std::array<float, 4> uv_rect{};
         Vector3 axis{};
         float rotation{};
@@ -387,6 +386,9 @@ struct D3d12Renderer::Impl
     VisualLightRig lighting;
     float scene_time{};
     std::vector<UploadBatch> pending_uploads;
+    // Transitions of uploaded resources out of COMMON, recorded by the next render(). They hold raw
+    // resource pointers: retire_uploaded drops a retired resource's transition, so a signal between
+    // the upload and that render (a resize flush, wait_idle) cannot free a resource a barrier names.
     std::vector<D3D12_RESOURCE_BARRIER> pending_transitions;
 
     // Construction only records the parameters; initialize() creates the device and resources.
@@ -463,6 +465,9 @@ struct D3d12Renderer::Impl
     UploadBatch begin_upload(const std::wstring_view name);
 
     void submit_upload(UploadBatch upload);
+    // Retires resources that may have been uploaded since the last render() at `fence_value`,
+    // dropping their pending transitions first (they are never drawn again).
+    void retire_uploaded(std::vector<ComPtr<ID3D12Resource>> resources, std::uint64_t fence_value);
 
     ComPtr<ID3D12Resource> upload_buffer(UploadBatch& upload, const std::span<const std::byte> bytes, const D3D12_RESOURCE_STATES final_state, const std::wstring_view name);
 
@@ -584,10 +589,6 @@ struct D3d12Renderer::Impl
     void retire_completed_resources();
 
     void retire_completed_uploads();
-
-    void check_device_result(const HRESULT result, const std::string_view operation) const;
-
-    [[nodiscard]] std::string device_removed_diagnostics() const;
 };
 
 } // namespace eaw

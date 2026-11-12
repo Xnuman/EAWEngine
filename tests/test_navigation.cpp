@@ -11,7 +11,6 @@
 
 #include <tuple>
 
-#include <memory>
 #include <numbers>
 
 namespace {

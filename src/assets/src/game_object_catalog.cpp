@@ -190,7 +190,7 @@ GameObjectFieldList GameObjectCatalog::fields(const XmlDefinition& definition, c
     return result;
 }
 
-std::optional<std::array<float, 4>> GameObjectCatalog::affiliation_color(const XmlDefinition& definition) const
+std::optional<Color> GameObjectCatalog::affiliation_color(const XmlDefinition& definition) const
 {
     const auto affiliation = field(definition, "Affiliation");
     if (affiliation.field == nullptr)
@@ -215,11 +215,11 @@ std::optional<std::array<float, 4>> GameObjectCatalog::affiliation_color(const X
             return std::nullopt;
         }
         // "R, G, B[, A]" in 0..255; separators may be commas and/or spaces.
-        std::array<float, 4> result{0.0F, 0.0F, 0.0F, 1.0F};
+        Color result{0.0F, 0.0F, 0.0F, 1.0F};
         std::size_t count = 0;
         const auto value = std::string_view(color.field->text);
         std::size_t position = 0;
-        while (position < value.size() && count < result.size())
+        while (position < value.size() && count < 4U)
         {
             while (position < value.size() && (value[position] == ',' || ascii_is_space(value[position])))
             {
@@ -238,7 +238,7 @@ std::optional<std::array<float, 4>> GameObjectCatalog::affiliation_color(const X
             result[count++] = std::clamp(component / 255.0F, 0.0F, 1.0F);
             position = static_cast<std::size_t>(end - value.data());
         }
-        return count >= 3 ? std::optional<std::array<float, 4>>{result} : std::nullopt;
+        return count >= 3 ? std::optional<Color>{result} : std::nullopt;
     }
     return std::nullopt;
 }

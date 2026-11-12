@@ -9,7 +9,6 @@
 #include <windows.h>
 
 #include <limits>
-#include <vector>
 
 namespace eaw {
 namespace {

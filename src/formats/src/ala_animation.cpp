@@ -1,14 +1,8 @@
 #include "formats/alamo_chunks.hpp"
 #include "formats/ala_animation.hpp"
-#include "core/string_utils.hpp"
 #include "math/transform.hpp"
 
-#include <algorithm>
-#include <bit>
-#include <unordered_map>
-#include <cmath>
 #include <limits>
-#include <sstream>
 
 namespace eaw {
 namespace {

@@ -11,7 +11,6 @@
 #include "render/visual_scene.hpp"
 #include "engine/visual_scene_builder.hpp"
 
-#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>

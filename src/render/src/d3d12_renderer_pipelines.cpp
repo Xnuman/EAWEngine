@@ -111,7 +111,7 @@ void D3d12Renderer::Impl::create_pipeline_state(const wchar_t* name, const D3D12
     }
     else
     {
-        check_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&pipeline)), "CreateGraphicsPipelineState(" + to_utf8(name) + ")");
+        check_device_hresult(device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&pipeline)), device, "CreateGraphicsPipelineState(" + to_utf8(name) + ")");
         if (pipeline_library)
         {
             ++pipeline_cache_misses;
@@ -178,7 +178,7 @@ Status D3d12Renderer::Impl::write_pipeline_cache() const
 
 void D3d12Renderer::Impl::create_pipeline()
 {
-    check_hresult(device->CreateRootSignature(0, g_eaw_sandbox_vs, sizeof(g_eaw_sandbox_vs), IID_PPV_ARGS(&root_signature)), "CreateRootSignature(embedded sandbox root signature)");
+    check_device_hresult(device->CreateRootSignature(0, g_eaw_sandbox_vs, sizeof(g_eaw_sandbox_vs), IID_PPV_ARGS(&root_signature)), device, "CreateRootSignature(embedded sandbox root signature)");
     set_name(root_signature.Get(), L"EAWEngine sandbox root signature");
 
     constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 8> input_layout{{
@@ -381,7 +381,7 @@ void D3d12Renderer::Impl::create_pipeline()
     shader_heap_description.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     shader_heap_description.NumDescriptors = maximum_scene_textures;
     shader_heap_description.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    check_hresult(device->CreateDescriptorHeap(&shader_heap_description, IID_PPV_ARGS(&shader_heap)), "CreateDescriptorHeap(shader visible)");
+    check_device_hresult(device->CreateDescriptorHeap(&shader_heap_description, IID_PPV_ARGS(&shader_heap)), device, "CreateDescriptorHeap(shader visible)");
     set_name(shader_heap.Get(), L"EAWEngine sandbox shader descriptor heap");
     // Every slot starts as a valid null view so unused table entries are well defined.
     D3D12_SHADER_RESOURCE_VIEW_DESC null_view{};

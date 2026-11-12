@@ -10,6 +10,7 @@
 #include "core/status.hpp"
 #include "imgui.h"
 #include "imgui_impl_dx12.h"
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <chrono>
@@ -87,6 +88,20 @@ Status hresult_status(const HRESULT result, const std::string_view operation);
 
 // Failures after startup (frame recording, uploads, synchronization) are unrecoverable.
 void check_hresult(const HRESULT result, const std::string_view operation, const std::source_location location = std::source_location::current());
+
+// The device's removal reason and DRED's report: where each unfinished command list stopped and the
+// page-fault address, when DRED recorded them.
+[[nodiscard]] std::string device_removed_report(ID3D12Device* device);
+
+// A failed call on the device or on one of its objects (a queue, list, allocator, fence, resource):
+// unrecoverable like check_hresult, and a device-removal result reports device_removed_report.
+void check_device_hresult(HRESULT result, ID3D12Device* device, std::string_view operation, std::source_location location = std::source_location::current());
+void check_device_hresult(HRESULT result, ID3D12DeviceChild* object, std::string_view operation, std::source_location location = std::source_location::current());
+template <class Object>
+void check_device_hresult(const HRESULT result, const ComPtr<Object>& object, const std::string_view operation, const std::source_location location = std::source_location::current())
+{
+    check_device_hresult(result, object.Get(), operation, location);
+}
 
 void set_name(ID3D12Object* object, const std::wstring_view name);
 
@@ -168,13 +183,13 @@ public:
     std::uint64_t signal()
     {
         const auto value = next_fence_value_++;
-        check_hresult(queue_->Signal(fence_.Get(), value), "ID3D12CommandQueue::Signal");
+        check_device_hresult(queue_->Signal(fence_.Get(), value), queue_, "ID3D12CommandQueue::Signal");
         return value;
     }
 
     void wait_gpu(const CommandQueue& producer, const std::uint64_t value) const
     {
-        check_hresult(queue_->Wait(producer.fence_.Get(), value), "ID3D12CommandQueue::Wait");
+        check_device_hresult(queue_->Wait(producer.fence_.Get(), value), queue_, "ID3D12CommandQueue::Wait");
     }
 
     void wait_cpu(const std::uint64_t value) const
@@ -183,7 +198,7 @@ public:
         {
             return;
         }
-        check_hresult(fence_->SetEventOnCompletion(value, event_.get()), "ID3D12Fence::SetEventOnCompletion");
+        check_device_hresult(fence_->SetEventOnCompletion(value, event_.get()), fence_, "ID3D12Fence::SetEventOnCompletion");
         const auto wait_result = WaitForSingleObjectEx(event_.get(), INFINITE, FALSE);
         if (wait_result != WAIT_OBJECT_0)
         {

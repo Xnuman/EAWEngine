@@ -10,15 +10,9 @@
 #include "core/file_io.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <cerrno>
 #include <cstdlib>
-#include <fstream>
-#include <functional>
 #include <iterator>
-#include <map>
-#include <optional>
-#include <set>
 #include <system_error>
 
 namespace eaw {

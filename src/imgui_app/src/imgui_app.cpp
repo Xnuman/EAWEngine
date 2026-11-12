@@ -12,7 +12,6 @@
 
 #include <filesystem>
 #include <iterator>
-#include <string>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 

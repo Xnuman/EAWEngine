@@ -5,6 +5,7 @@
 
 #include "audio/audio_device.hpp"
 
+#include <array>
 #include <vector>
 
 namespace eaw {

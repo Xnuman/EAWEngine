@@ -4,7 +4,6 @@
 #include "core/string_utils.hpp"
 
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <limits>
 #include <map>

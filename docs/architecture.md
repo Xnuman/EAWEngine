@@ -50,7 +50,7 @@ Dependencies point inward: a lower layer never includes or links a higher one.
 | | `eaw_platform` | Win32 window, raw input, crash handlers, log sinks. | core |
 | | `eaw_audio` | The engine-native `Sound` (16-bit PCM), the `AudioDevice` interface, spatial gains, the null device. | core, math |
 | | `eaw_audio_devices` | The backends: XAudio2 (default), FMOD (only with `EAW_AUDIO_FMOD` and a local SDK). | audio, XAudio2, FMOD |
-| Programs | `eaw_launch` | Launch configuration, sandbox scenarios, child processes. | vfs |
+| Programs | `eaw_launcher` | Launch configuration, sandbox scenarios, child processes. | vfs |
 | | `eaw_imgui_app` | Shared Win32 + Direct3D 11 + Dear ImGui shell of the desktop tools. | core, platform, imgui |
 
 The executables sit on top: `EAWEngine` (`src/engine_app`), `EAWLauncher`, `EAWDevLauncher`, the
@@ -152,7 +152,7 @@ tick on.
 
 ### Battles
 
-A `Battle` (`src/engine/battle.*`) sets a world up from a built map and takes orders in replayable
+A `Battle` (`engine/battle.*`) sets a world up from a built map and takes orders in replayable
 terms: XML type names, owner slots, points, and entity ids. Each order is validated, translated into
 simulation commands for the next tick (a spawn order becomes a `spawn` command carrying the entities
 laid out on a grid or in formation), and recorded with its tick. Entity ids are allocated
@@ -192,7 +192,7 @@ the host only calls. Each object is a userdata (as in the original), one Lua val
 interned kinds so `==` and table keys work; a kind's method names resolve to numeric ids once, and a
 call reads its arguments from the Lua stack and pushes its results without converting or
 allocating. Names the provider lacks stay recording stubs. In battles the provider is
-`BattleScripts` (`src/engine/battle_scripts.*`), one context per script, under three rules that keep
+`BattleScripts` (`engine/battle_scripts.*`), one context per script, under three rules that keep
 the script phase deterministic and ready for threads:
 
 1. every script reads the same immutable view, the snapshot of the tick that just ran with indices
@@ -271,7 +271,7 @@ choices come from its own `Pcg32` stream; nothing feeds back into the simulation
 ## Renderer
 
 The renderer consumes engine-native data from the render contract (`visual_scene.hpp`): meshes,
-materials, textures, instances, particles, lights, cameras, debug lines. It never parses game files
+materials, textures, instances, particles, lights, cameras, debug lines, with colors as `Color` and `ColorRgb` (`color.hpp`). It never parses game files
 or knows VFS precedence. The first target is **legacy mode**: newly written HLSL driven by the
 decoded legacy ALO materials, approximating the original's look so content behaves as authored. A
 physically based path with engine-native materials follows, using the same material profiles as
@@ -446,7 +446,7 @@ The file-level split of each module.
   provider calls, `ScriptCall`), `script_values` (`ScriptValue` to and from Lua, with read limits),
   `script_stubs` (recording stubs), and `host_api_recorder` (what scripts called), sharing the
   private `script_host_internal.hpp`.
-- `src/engine` (`eaw_engine`):
+- `src/engine` (`eaw_engine`), by category (its CMake source groups):
   - battles: `battle` (setup, replayable orders, the order log), `battle_runner` (headless runs),
     `battle_log` (reading and writing logs), `battle_scripts` (scripts in battles: the view, the
     provider, blocks, and the script phase), `combat_content` (XML combat data translated into the
@@ -480,7 +480,7 @@ The file-level split of each module.
   types, automation), `sandbox_session_world` (ticks, presentation, animation, effects), and
   `sandbox_session_ui` (panels and debug lines); with `frame_watchdog` (stalled frame steps),
   `sandbox_overlay` (statistics text), and `sandbox_panels` (Dear ImGui panels).
-- `src/launcher` (`eaw_launch`): `sandbox_scenario` (scenarios and presets) and `child_process`.
+- `src/launcher` (`eaw_launcher`): `sandbox_scenario` (scenarios and presets) and `child_process`.
 - `src/asset_inspector` (`EAWAssetInspector`): one file per command group (`inspect_asset`,
   `audit_textures`, `audit_lua`, `audit_maps`, `audit_particles`, `audit_xml`) with
   `inspector_options` and `inspector_common`, declared in `inspector.hpp`.

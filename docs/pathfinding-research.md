@@ -12,7 +12,7 @@ pathfinding entry in [compatibility-research.md](compatibility-research.md).
 
 ## Where EAWEngine stands
 
-`GridPathfinder` (`src/simulation/pathfinding.*`) works as follows:
+`GridPathfinder` (`simulation/pathfinding.*`) works as follows:
 
 - It runs A* over the TED passability cells, using each unit's movement-class
   mask.

@@ -148,7 +148,7 @@ vsync=on
 
 Unknown keys and options load with warnings in the log, so presets written by a
 newer build still open. The scenario model and process start live in the
-`eaw_launch` library (`src/launcher`), shared with `EAWLauncher`; the window
+`eaw_launcher` library (`src/launcher`), shared with `EAWLauncher`; the window
 shell is `eaw_imgui_app` (`src/imgui_app`), shared with EAWTools.
 
 ## Headless battles

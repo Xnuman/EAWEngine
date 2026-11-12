@@ -139,8 +139,8 @@ void D3d12Renderer::Impl::create_initial_assets()
 auto D3d12Renderer::Impl::begin_upload(const std::wstring_view name) -> UploadBatch
 {
     UploadBatch result;
-    check_hresult(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&result.allocator)), "CreateCommandAllocator(copy)");
-    check_hresult(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, result.allocator.Get(), nullptr, IID_PPV_ARGS(&result.list)), "CreateCommandList(copy)");
+    check_device_hresult(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&result.allocator)), device, "CreateCommandAllocator(copy)");
+    check_device_hresult(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, result.allocator.Get(), nullptr, IID_PPV_ARGS(&result.list)), device, "CreateCommandList(copy)");
     set_name(result.allocator.Get(), std::wstring(name) + L" allocator");
     set_name(result.list.Get(), std::wstring(name) + L" command list");
     return result;
@@ -150,7 +150,7 @@ void D3d12Renderer::Impl::submit_upload(UploadBatch upload)
 {
     pending_uploads.reserve(pending_uploads.size() + 1U);
     pending_transitions.reserve(pending_transitions.size() + upload.transitions.size());
-    check_hresult(upload.list->Close(), "close upload command list");
+    check_device_hresult(upload.list->Close(), upload.list, "close upload command list");
     ID3D12CommandList* lists[]{upload.list.Get()};
     copy_queue.execute(lists, 1);
     upload.fence_value = copy_queue.signal();
@@ -162,6 +162,25 @@ void D3d12Renderer::Impl::submit_upload(UploadBatch upload)
     pending_uploads.push_back(std::move(upload));
 }
 
+void D3d12Renderer::Impl::retire_uploaded(std::vector<ComPtr<ID3D12Resource>> resources, const std::uint64_t fence_value)
+{
+    std::erase(resources, nullptr);
+    if (resources.empty())
+    {
+        return;
+    }
+    std::erase_if(pending_transitions,
+                  [&](const D3D12_RESOURCE_BARRIER& barrier)
+                  {
+                      return barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION && std::ranges::any_of(resources,
+                                                                                                           [&](const ComPtr<ID3D12Resource>& resource)
+                                                                                                           {
+                                                                                                               return resource.Get() == barrier.Transition.pResource;
+                                                                                                           });
+                  });
+    retired_resources.push(std::move(resources), fence_value);
+}
+
 ComPtr<ID3D12Resource> D3d12Renderer::Impl::upload_buffer(UploadBatch& upload, const std::span<const std::byte> bytes, const D3D12_RESOURCE_STATES final_state, const std::wstring_view name)
 {
     EAW_ASSERT_MSG(!bytes.empty(), "cannot upload an empty D3D12 buffer");
@@ -170,15 +189,15 @@ ComPtr<ID3D12Resource> D3d12Renderer::Impl::upload_buffer(UploadBatch& upload, c
     const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
     ComPtr<ID3D12Resource> resource;
     ComPtr<ID3D12Resource> staging;
-    check_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&resource)),
-                  "CreateCommittedResource(default buffer)");
-    check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&staging)),
-                  "CreateCommittedResource(upload buffer)");
+    check_device_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&resource)), device,
+                         "CreateCommittedResource(default buffer)");
+    check_device_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&staging)), device,
+                         "CreateCommittedResource(upload buffer)");
     set_name(resource.Get(), name);
     set_name(staging.Get(), std::wstring(name) + L" staging");
     void* mapped{};
     const D3D12_RANGE no_read{0, 0};
-    check_hresult(staging->Map(0, &no_read, &mapped), "Map(upload buffer)");
+    check_device_hresult(staging->Map(0, &no_read, &mapped), staging, "Map(upload buffer)");
     std::memcpy(mapped, bytes.data(), bytes.size());
     staging->Unmap(0, nullptr);
     upload.list->CopyBufferRegion(resource.Get(), 0, staging.Get(), 0, bytes.size());
@@ -236,8 +255,8 @@ ComPtr<ID3D12Resource> D3d12Renderer::Impl::upload_texture(UploadBatch& upload, 
     const auto format = description.Format;
     const auto default_heap = heap_properties(D3D12_HEAP_TYPE_DEFAULT);
     ComPtr<ID3D12Resource> resource;
-    check_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&resource)),
-                  "CreateCommittedResource(scene texture)");
+    check_device_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&resource)), device,
+                         "CreateCommittedResource(scene texture)");
     set_name(resource.Get(), std::wstring(source.name.begin(), source.name.end()));
 
     std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints(source.mips.size());
@@ -248,13 +267,13 @@ ComPtr<ID3D12Resource> D3d12Renderer::Impl::upload_texture(UploadBatch& upload, 
     const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
     const auto upload_description = buffer_description(upload_size);
     ComPtr<ID3D12Resource> staging;
-    check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &upload_description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&staging)),
-                  "CreateCommittedResource(texture staging)");
+    check_device_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &upload_description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&staging)), device,
+                         "CreateCommittedResource(texture staging)");
     set_name(staging.Get(), L"EAWEngine texture staging");
 
     std::byte* mapped{};
     const D3D12_RANGE no_read{0, 0};
-    check_hresult(staging->Map(0, &no_read, reinterpret_cast<void**>(&mapped)), "Map(texture staging)");
+    check_device_hresult(staging->Map(0, &no_read, reinterpret_cast<void**>(&mapped)), staging, "Map(texture staging)");
     for (std::size_t mip_index = 0; mip_index < source.mips.size(); ++mip_index)
     {
         const auto& mip = source.mips[mip_index];
@@ -509,11 +528,7 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
         replaced.push_back(std::move(block.index_buffer));
     }
     added_blocks.clear();
-    std::erase(replaced, nullptr);
-    if (!replaced.empty())
-    {
-        retired_resources.push(std::move(replaced), retire_value);
-    }
+    retire_uploaded(std::move(replaced), retire_value);
     // A texture whose identity a resident texture of the outgoing scene already has keeps that
     // texture and descriptor slot instead of uploading again; the rest of the outgoing scene's
     // textures retire.
@@ -642,7 +657,7 @@ Result<std::uint32_t> D3d12Renderer::Impl::add_meshes(VisualScene fragment)
     auto new_material_buffer = upload_buffer(upload, std::as_bytes(std::span(materials)), D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, L"EAWEngine scene material buffer");
     submit_upload(std::move(upload));
     // Frames in flight may still read the previous material buffer.
-    retired_resources.push({std::move(scene_material_buffer)}, direct_queue.next_value());
+    retire_uploaded({std::move(scene_material_buffer)}, direct_queue.next_value());
     scene_material_buffer = std::move(new_material_buffer);
     scene_gpu_materials = std::move(materials);
     block.vertex_view = {block.vertex_buffer->GetGPUVirtualAddress(), static_cast<UINT>(vertex_bytes.size()), sizeof(VisualVertex)};
@@ -771,10 +786,7 @@ void D3d12Renderer::Impl::retire_textures(std::vector<StreamingTexture>& entries
         entry.handle = {};
     }
     entries.clear();
-    if (!resources.empty())
-    {
-        retired_resources.push(std::move(resources), retire_value);
-    }
+    retire_uploaded(std::move(resources), retire_value);
 }
 
 void D3d12Renderer::Impl::stream_scene_textures()
@@ -903,7 +915,7 @@ auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size
                                        return std::isfinite(value);
                                    });
     };
-    if (!finite(material.tint) || !finite(material.diffuse) || !finite(material.specular) || !finite(material.emissive) || !finite(material.uv_scroll) ||
+    if (!is_finite(material.tint) || !is_finite(material.diffuse) || !is_finite(material.specular) || !is_finite(material.emissive) || !finite(material.uv_scroll) ||
         !std::isfinite(material.alpha_test_threshold) || !std::isfinite(material.uv_scale))
     {
         return make_error("visual material " + std::to_string(index) + " (" + material.name + ") has non-finite parameters");

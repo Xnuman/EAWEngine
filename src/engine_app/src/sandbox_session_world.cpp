@@ -1,7 +1,6 @@
 #include "engine_app/sandbox_session.hpp"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cstdint>
 #include <iostream>
@@ -60,7 +59,8 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
             previous_snapshot = world->snapshot();
             watchdog.enter("simulation tick", world->stats().tick);
             const auto tick_start = std::chrono::steady_clock::now();
-            world->step();
+            // Through the battle, as headless runs do: it also spawns the survivors of the dead.
+            battle->step();
             // The script phase follows the tick, as in headless battles (battle_scripts.hpp).
             if (battle_scripts)
             {

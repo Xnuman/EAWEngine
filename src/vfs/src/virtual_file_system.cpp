@@ -5,7 +5,6 @@
 #include "core/file_io.hpp"
 
 #include <algorithm>
-#include <fstream>
 #include <system_error>
 #include <unordered_set>
 

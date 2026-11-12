@@ -31,6 +31,73 @@ void check_hresult(const HRESULT result, const std::string_view operation, const
     }
 }
 
+std::string device_removed_report(ID3D12Device* device)
+{
+    if (device == nullptr)
+    {
+        return "no device";
+    }
+    std::ostringstream stream;
+    stream << "D3D12 device removed (" << hresult_text(device->GetDeviceRemovedReason()) << ')';
+    ComPtr<ID3D12DeviceRemovedExtendedData1> dred;
+    if (FAILED(device->QueryInterface(IID_PPV_ARGS(&dred))))
+    {
+        return stream.str();
+    }
+    D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT1 breadcrumbs{};
+    if (SUCCEEDED(dred->GetAutoBreadcrumbsOutput1(&breadcrumbs)))
+    {
+        // Lists the GPU had not finished: the last operation it completed in each.
+        for (const auto* node = breadcrumbs.pHeadAutoBreadcrumbNode; node != nullptr; node = node->pNext)
+        {
+            const auto completed = node->pLastBreadcrumbValue != nullptr ? *node->pLastBreadcrumbValue : 0U;
+            if (completed >= node->BreadcrumbCount)
+            {
+                continue;
+            }
+            stream << "; unfinished list '" << (node->pCommandListDebugNameA != nullptr ? node->pCommandListDebugNameA : "?") << "' on queue '"
+                   << (node->pCommandQueueDebugNameA != nullptr ? node->pCommandQueueDebugNameA : "?") << "': " << completed << " of " << node->BreadcrumbCount << " operations done";
+            if (completed > 0 && node->pCommandHistory != nullptr)
+            {
+                stream << ", last D3D12_AUTO_BREADCRUMB_OP " << static_cast<int>(node->pCommandHistory[completed - 1U]);
+            }
+        }
+    }
+    D3D12_DRED_PAGE_FAULT_OUTPUT1 page_fault{};
+    if (SUCCEEDED(dred->GetPageFaultAllocationOutput1(&page_fault)) && page_fault.PageFaultVA != 0)
+    {
+        stream << "; page-fault VA: 0x" << std::hex << page_fault.PageFaultVA;
+    }
+    return stream.str();
+}
+
+void check_device_hresult(const HRESULT result, ID3D12Device* device, const std::string_view operation, const std::source_location location)
+{
+    if (SUCCEEDED(result))
+    {
+        return;
+    }
+    if (result == DXGI_ERROR_DEVICE_REMOVED || result == DXGI_ERROR_DEVICE_RESET || result == DXGI_ERROR_DEVICE_HUNG || result == DXGI_ERROR_DRIVER_INTERNAL_ERROR)
+    {
+        fatal_error(hresult_failure(result, operation) + ": " + device_removed_report(device), location);
+    }
+    check_hresult(result, operation, location);
+}
+
+void check_device_hresult(const HRESULT result, ID3D12DeviceChild* object, const std::string_view operation, const std::source_location location)
+{
+    if (SUCCEEDED(result))
+    {
+        return;
+    }
+    ComPtr<ID3D12Device> device;
+    if (object != nullptr)
+    {
+        (void)object->GetDevice(IID_PPV_ARGS(&device));
+    }
+    check_device_hresult(result, device.Get(), operation, location);
+}
+
 void set_name(ID3D12Object* object, const std::wstring_view name)
 {
     if (object != nullptr)
@@ -175,6 +242,14 @@ Result<ComPtr<IDXGIAdapter4>> select_adapter(IDXGIFactory7* factory, const bool 
 
 Status configure_debugging(const bool gpu_validation)
 {
+    // DRED in every build (before the device exists): breadcrumbs and page faults cost little and
+    // are the only report of a device removal in a Release run.
+    ComPtr<ID3D12DeviceRemovedExtendedDataSettings> dred_settings;
+    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&dred_settings))))
+    {
+        dred_settings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+        dred_settings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+    }
 #if !defined(_DEBUG)
     if (!gpu_validation)
     {
@@ -191,13 +266,6 @@ Status configure_debugging(const bool gpu_validation)
         EAW_TRY(hresult_status(debug.As(&validation), "query ID3D12Debug1"));
         validation->SetEnableGPUBasedValidation(TRUE);
         validation->SetEnableSynchronizedCommandQueueValidation(TRUE);
-    }
-
-    ComPtr<ID3D12DeviceRemovedExtendedDataSettings> dred_settings;
-    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&dred_settings))))
-    {
-        dred_settings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
-        dred_settings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
     }
     return Status::success();
 }

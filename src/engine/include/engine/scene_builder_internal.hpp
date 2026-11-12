@@ -29,7 +29,6 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 namespace eaw::scene_build {
@@ -222,7 +221,7 @@ VisualLightRig environment_light_rig(const TedEnvironment& environment);
 bool light_rig_valid(const VisualLightRig& rig) noexcept;
 
 // Fallback colors by player slot for types without a faction affiliation. Index 0 is neutral.
-std::array<float, 4> player_team_color(std::uint32_t player) noexcept;
+Color player_team_color(std::uint32_t player) noexcept;
 
 // scene_models.cpp: models and scene bounds.
 

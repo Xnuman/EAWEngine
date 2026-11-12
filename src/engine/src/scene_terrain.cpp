@@ -6,13 +6,8 @@
 #include "formats/xml_document.hpp"
 
 #include <algorithm>
-#include <atomic>
-#include <charconv>
 #include <cmath>
-#include <filesystem>
-#include <limits>
 #include <ranges>
-#include <span>
 #include <system_error>
 
 namespace eaw::scene_build {

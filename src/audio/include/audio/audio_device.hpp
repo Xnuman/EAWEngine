@@ -7,7 +7,6 @@
 
 #include "audio/sound.hpp"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>

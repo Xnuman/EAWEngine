@@ -105,7 +105,7 @@ void D3d12Renderer::Impl::create_statistics_queries()
     D3D12_QUERY_HEAP_DESC description{};
     description.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
     description.Count = frame_count * 2U;
-    check_hresult(device->CreateQueryHeap(&description, IID_PPV_ARGS(&timestamp_heap)), "CreateQueryHeap(timestamps)");
+    check_device_hresult(device->CreateQueryHeap(&description, IID_PPV_ARGS(&timestamp_heap)), device, "CreateQueryHeap(timestamps)");
     set_name(timestamp_heap.Get(), L"EAWEngine frame timestamps");
     check_hresult(direct_queue.get()->GetTimestampFrequency(&timestamp_frequency), "ID3D12CommandQueue::GetTimestampFrequency");
 }
@@ -120,7 +120,7 @@ void D3d12Renderer::Impl::collect_timestamps(FrameContext& frame)
     std::array<std::uint64_t, 2> ticks{};
     const D3D12_RANGE read_range{0, sizeof(ticks)};
     void* mapped{};
-    check_hresult(frame.timestamp_readback->Map(0, &read_range, &mapped), "Map(frame timestamps)");
+    check_device_hresult(frame.timestamp_readback->Map(0, &read_range, &mapped), frame.timestamp_readback, "Map(frame timestamps)");
     std::memcpy(ticks.data(), mapped, sizeof(ticks));
     const D3D12_RANGE no_write{0, 0};
     frame.timestamp_readback->Unmap(0, &no_write);
@@ -170,18 +170,18 @@ void D3d12Renderer::Impl::create_frame_resources()
     D3D12_DESCRIPTOR_HEAP_DESC heap_description{};
     heap_description.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     heap_description.NumDescriptors = frame_count;
-    check_hresult(device->CreateDescriptorHeap(&heap_description, IID_PPV_ARGS(&rtv_heap)), "CreateDescriptorHeap(RTV)");
+    check_device_hresult(device->CreateDescriptorHeap(&heap_description, IID_PPV_ARGS(&rtv_heap)), device, "CreateDescriptorHeap(RTV)");
     set_name(rtv_heap.Get(), L"EAWEngine back-buffer RTV heap");
     rtv_increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
     for (std::uint32_t index = 0; index < frame_count; ++index)
     {
-        check_hresult(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&frames[index].allocator)), "CreateCommandAllocator(direct)");
+        check_device_hresult(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&frames[index].allocator)), device, "CreateCommandAllocator(direct)");
         set_name(frames[index].allocator.Get(), L"EAWEngine frame allocator " + std::to_wstring(index));
     }
-    check_hresult(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, frames[0].allocator.Get(), nullptr, IID_PPV_ARGS(&command_list)), "CreateCommandList(direct)");
+    check_device_hresult(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, frames[0].allocator.Get(), nullptr, IID_PPV_ARGS(&command_list)), device, "CreateCommandList(direct)");
     set_name(command_list.Get(), L"EAWEngine primary graphics command list");
-    check_hresult(command_list->Close(), "close initial direct command list");
+    check_device_hresult(command_list->Close(), command_list, "close initial direct command list");
     acquire_back_buffers();
     create_depth_buffer();
     create_bone_buffers(1);
@@ -193,7 +193,7 @@ void D3d12Renderer::Impl::acquire_back_buffers()
     auto handle = rtv_heap->GetCPUDescriptorHandleForHeapStart();
     for (std::uint32_t index = 0; index < frame_count; ++index)
     {
-        check_hresult(swap_chain->GetBuffer(index, IID_PPV_ARGS(&frames[index].back_buffer)), "IDXGISwapChain::GetBuffer");
+        check_device_hresult(swap_chain->GetBuffer(index, IID_PPV_ARGS(&frames[index].back_buffer)), device, "IDXGISwapChain::GetBuffer");
         set_name(frames[index].back_buffer.Get(), L"EAWEngine back buffer " + std::to_wstring(index));
         device->CreateRenderTargetView(frames[index].back_buffer.Get(), nullptr, handle);
         handle.ptr += rtv_increment;
@@ -207,7 +207,7 @@ void D3d12Renderer::Impl::create_depth_buffer()
     heap_description.NumDescriptors = 1;
     if (!dsv_heap)
     {
-        check_hresult(device->CreateDescriptorHeap(&heap_description, IID_PPV_ARGS(&dsv_heap)), "CreateDescriptorHeap(DSV)");
+        check_device_hresult(device->CreateDescriptorHeap(&heap_description, IID_PPV_ARGS(&dsv_heap)), device, "CreateDescriptorHeap(DSV)");
         set_name(dsv_heap.Get(), L"EAWEngine depth DSV heap");
     }
 
@@ -225,8 +225,8 @@ void D3d12Renderer::Impl::create_depth_buffer()
     D3D12_CLEAR_VALUE clear{};
     clear.Format = DXGI_FORMAT_D32_FLOAT;
     clear.DepthStencil.Depth = 1.0F;
-    check_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_DEPTH_WRITE, &clear, IID_PPV_ARGS(&depth_buffer)),
-                  "CreateCommittedResource(depth buffer)");
+    check_device_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_DEPTH_WRITE, &clear, IID_PPV_ARGS(&depth_buffer)), device,
+                         "CreateCommittedResource(depth buffer)");
     set_name(depth_buffer.Get(), L"EAWEngine depth buffer");
     device->CreateDepthStencilView(depth_buffer.Get(), nullptr, dsv_heap->GetCPUDescriptorHandleForHeapStart());
 
@@ -236,15 +236,15 @@ void D3d12Renderer::Impl::create_depth_buffer()
         D3D12_DESCRIPTOR_HEAP_DESC pick_heap{};
         pick_heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         pick_heap.NumDescriptors = 1;
-        check_hresult(device->CreateDescriptorHeap(&pick_heap, IID_PPV_ARGS(&pick_rtv_heap)), "CreateDescriptorHeap(pick RTV)");
+        check_device_hresult(device->CreateDescriptorHeap(&pick_heap, IID_PPV_ARGS(&pick_rtv_heap)), device, "CreateDescriptorHeap(pick RTV)");
         set_name(pick_rtv_heap.Get(), L"EAWEngine pick RTV heap");
     }
     description.Format = pick_format;
     description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
     D3D12_CLEAR_VALUE pick_clear{};
     pick_clear.Format = pick_format;
-    check_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_RENDER_TARGET, &pick_clear, IID_PPV_ARGS(&pick_target)),
-                  "CreateCommittedResource(pick target)");
+    check_device_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_RENDER_TARGET, &pick_clear, IID_PPV_ARGS(&pick_target)), device,
+                         "CreateCommittedResource(pick target)");
     set_name(pick_target.Get(), L"EAWEngine pick target");
     device->CreateRenderTargetView(pick_target.Get(), nullptr, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart());
 }
@@ -263,7 +263,7 @@ void D3d12Renderer::Impl::create_post_targets()
         D3D12_DESCRIPTOR_HEAP_DESC heap{};
         heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         heap.NumDescriptors = 3;
-        check_hresult(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&post_rtv_heap)), "CreateDescriptorHeap(post RTV)");
+        check_device_hresult(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&post_rtv_heap)), device, "CreateDescriptorHeap(post RTV)");
         set_name(post_rtv_heap.Get(), L"EAWEngine post-processing RTV heap");
         // Startup: the texture table is nearly empty, and these slots are never released.
         for (auto& slot : post_slots)
@@ -296,8 +296,8 @@ void D3d12Renderer::Impl::create_post_targets()
         clear.Color[1] = 0.031F;
         clear.Color[2] = 0.043F;
         clear.Color[3] = 1.0F;
-        check_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_RENDER_TARGET, &clear, IID_PPV_ARGS(&target)),
-                      "CreateCommittedResource(post-processing target)");
+        check_device_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_RENDER_TARGET, &clear, IID_PPV_ARGS(&target)), device,
+                             "CreateCommittedResource(post-processing target)");
         set_name(target.Get(), name);
         device->CreateRenderTargetView(target.Get(), nullptr, post_rtv(index));
         D3D12_SHADER_RESOURCE_VIEW_DESC view{};
@@ -321,34 +321,37 @@ void D3d12Renderer::Impl::create_constant_buffers()
     for (std::uint32_t index = 0; index < frame_count; ++index)
     {
         auto& frame = frames[index];
-        check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.constant_buffer)),
-                      "CreateCommittedResource(frame constants)");
+        check_device_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.constant_buffer)),
+                             device, "CreateCommittedResource(frame constants)");
         set_name(frame.constant_buffer.Get(), L"EAWEngine frame constants " + std::to_wstring(index));
         const D3D12_RANGE no_read{0, 0};
-        check_hresult(frame.constant_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.constant_buffer_mapped)), "Map(frame constants)");
+        check_device_hresult(frame.constant_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.constant_buffer_mapped)), frame.constant_buffer, "Map(frame constants)");
 
         const auto residency_description = buffer_description(static_cast<std::uint64_t>(maximum_scene_textures) * sizeof(std::uint32_t));
-        check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &residency_description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.residency_buffer)),
-                      "CreateCommittedResource(frame texture residency)");
+        check_device_hresult(
+            device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &residency_description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.residency_buffer)), device,
+            "CreateCommittedResource(frame texture residency)");
         set_name(frame.residency_buffer.Get(), L"EAWEngine frame texture residency " + std::to_wstring(index));
-        check_hresult(frame.residency_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.residency_mapped)), "Map(frame texture residency)");
+        check_device_hresult(frame.residency_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.residency_mapped)), frame.residency_buffer, "Map(frame texture residency)");
 
         const auto readback_heap = heap_properties(D3D12_HEAP_TYPE_READBACK);
         // One placement-aligned slot per pick copied in a frame.
         const auto readback_description = buffer_description(static_cast<std::uint64_t>(maximum_picks_per_frame) * D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
-        check_hresult(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &readback_description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.pick_readback)),
-                      "CreateCommittedResource(frame pick readback)");
+        check_device_hresult(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &readback_description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.pick_readback)),
+                             device, "CreateCommittedResource(frame pick readback)");
         set_name(frame.pick_readback.Get(), L"EAWEngine frame pick readback " + std::to_wstring(index));
 
         const auto debug_description = buffer_description(static_cast<std::uint64_t>(maximum_debug_lines) * 2U * sizeof(DebugVertex));
-        check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &debug_description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.debug_vertex_buffer)),
-                      "CreateCommittedResource(frame debug lines)");
+        check_device_hresult(
+            device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &debug_description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.debug_vertex_buffer)), device,
+            "CreateCommittedResource(frame debug lines)");
         set_name(frame.debug_vertex_buffer.Get(), L"EAWEngine frame debug lines " + std::to_wstring(index));
-        check_hresult(frame.debug_vertex_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.debug_vertices_mapped)), "Map(frame debug lines)");
+        check_device_hresult(frame.debug_vertex_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.debug_vertices_mapped)), frame.debug_vertex_buffer, "Map(frame debug lines)");
 
         const auto timestamp_description = buffer_description(2U * sizeof(std::uint64_t));
-        check_hresult(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &timestamp_description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.timestamp_readback)),
-                      "CreateCommittedResource(frame timestamps)");
+        check_device_hresult(
+            device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &timestamp_description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.timestamp_readback)), device,
+            "CreateCommittedResource(frame timestamps)");
         set_name(frame.timestamp_readback.Get(), L"EAWEngine frame timestamps " + std::to_wstring(index));
     }
 }
@@ -378,11 +381,11 @@ void D3d12Renderer::Impl::ensure_bone_capacity(FrameContext& frame, const std::s
     const auto capacity = static_cast<std::uint32_t>(std::min<std::size_t>(std::max<std::size_t>({count, static_cast<std::size_t>(frame.bone_capacity) * 2U, 256U}), maximum_bone_transforms));
     const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
     const auto description = buffer_description(static_cast<std::uint64_t>(capacity) * sizeof(Matrix4));
-    check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.bone_buffer)),
-                  "CreateCommittedResource(frame bone palette)");
+    check_device_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.bone_buffer)), device,
+                         "CreateCommittedResource(frame bone palette)");
     set_name(frame.bone_buffer.Get(), L"EAWEngine frame bone palette");
     const D3D12_RANGE no_read{0, 0};
-    check_hresult(frame.bone_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.bone_buffer_mapped)), "Map(frame bone palette)");
+    check_device_hresult(frame.bone_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.bone_buffer_mapped)), frame.bone_buffer, "Map(frame bone palette)");
     frame.bone_capacity = capacity;
 }
 
@@ -421,7 +424,7 @@ bool D3d12Renderer::Impl::wait_for_frame_latency()
             const auto removed = device->GetDeviceRemovedReason();
             if (FAILED(removed))
             {
-                check_device_result(removed, "waiting for the DXGI frame-latency object");
+                check_device_hresult(removed, device, "waiting for the DXGI frame-latency object");
             }
             return false;
         }
@@ -453,7 +456,7 @@ void D3d12Renderer::Impl::resize(const std::uint32_t new_width, const std::uint3
 
     width = new_width;
     height = new_height;
-    check_device_result(swap_chain->ResizeBuffers(frame_count, width, height, back_buffer_format, swap_chain_flags), "IDXGISwapChain::ResizeBuffers");
+    check_device_hresult(swap_chain->ResizeBuffers(frame_count, width, height, back_buffer_format, swap_chain_flags), device, "IDXGISwapChain::ResizeBuffers");
     acquire_back_buffers();
     create_depth_buffer();
     create_post_targets();
@@ -524,50 +527,6 @@ void D3d12Renderer::Impl::retire_completed_uploads()
                   {
                       return upload.fence_value <= completed;
                   });
-}
-
-void D3d12Renderer::Impl::check_device_result(const HRESULT result, const std::string_view operation) const
-{
-    if (SUCCEEDED(result))
-    {
-        return;
-    }
-    if (result == DXGI_ERROR_DEVICE_REMOVED || result == DXGI_ERROR_DEVICE_RESET || result == DXGI_ERROR_DEVICE_HUNG || result == DXGI_ERROR_DRIVER_INTERNAL_ERROR)
-    {
-        fatal_error(std::string(operation) + " failed: " + device_removed_diagnostics());
-    }
-    check_hresult(result, operation);
-}
-
-std::string D3d12Renderer::Impl::device_removed_diagnostics() const
-{
-    std::ostringstream stream;
-    const auto reason = device->GetDeviceRemovedReason();
-    stream << "D3D12 device removed (" << hresult_text(reason) << ')';
-
-    ComPtr<ID3D12DeviceRemovedExtendedData1> dred;
-    if (FAILED(device.As(&dred)))
-    {
-        return stream.str();
-    }
-
-    D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT1 breadcrumbs{};
-    if (SUCCEEDED(dred->GetAutoBreadcrumbsOutput1(&breadcrumbs)))
-    {
-        std::size_t node_count = 0;
-        for (auto* node = breadcrumbs.pHeadAutoBreadcrumbNode; node != nullptr; node = node->pNext)
-        {
-            ++node_count;
-        }
-        stream << "; DRED breadcrumb nodes: " << node_count;
-    }
-
-    D3D12_DRED_PAGE_FAULT_OUTPUT1 page_fault{};
-    if (SUCCEEDED(dred->GetPageFaultAllocationOutput1(&page_fault)) && page_fault.PageFaultVA != 0)
-    {
-        stream << "; page-fault VA: 0x" << std::hex << page_fault.PageFaultVA;
-    }
-    return stream.str();
 }
 
 } // namespace eaw

@@ -7,8 +7,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
-#include <unordered_map>
 
 namespace eaw {
 

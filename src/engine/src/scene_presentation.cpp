@@ -1,7 +1,5 @@
 #include "engine/scene_presentation.hpp"
 
-#include "core/log.hpp"
-
 #include <algorithm>
 #include <cmath>
 

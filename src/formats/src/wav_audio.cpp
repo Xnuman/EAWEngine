@@ -2,7 +2,6 @@
 
 #include "core/byte_order.hpp"
 
-#include <algorithm>
 #include <string>
 #include <string_view>
 

@@ -3,11 +3,6 @@
 
 #include "simulation/formation.hpp"
 
-#include <tuple>
-
-#include <memory>
-#include <numbers>
-
 namespace {
 
 using namespace eaw_test;

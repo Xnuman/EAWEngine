@@ -19,12 +19,10 @@
 #include "simulation/simulation_types.hpp"
 #include "simulation/spatial_grid.hpp"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <optional>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>

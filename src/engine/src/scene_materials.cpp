@@ -7,14 +7,14 @@
 #include "core/string_utils.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
-#include <charconv>
 #include <cmath>
 #include <filesystem>
-#include <limits>
 #include <ranges>
 #include <span>
 #include <system_error>
+#include <type_traits>
 
 namespace eaw::scene_build {
 
@@ -189,11 +189,32 @@ const std::vector<float>* material_values(const LegacyMaterial& material, const 
     return nullptr;
 }
 
-template <std::size_t Count> void read_color(const LegacyMaterial& material, const std::string_view name, std::array<float, Count>& target)
+// The components a material parameter fills in `Target`: four for a Color, three for a ColorRgb,
+// and the array's size for a vector parameter (UVScrollRate fills two).
+template <class Target> constexpr std::size_t parameter_components() noexcept
 {
+    if constexpr (std::is_same_v<Target, Color>)
+    {
+        return 4U;
+    }
+    else if constexpr (std::is_same_v<Target, ColorRgb>)
+    {
+        return 3U;
+    }
+    else
+    {
+        return std::tuple_size_v<Target>;
+    }
+}
+
+// A named material parameter (a color, or UVScrollRate) into `target`, component by component;
+// missing and non-finite components keep the target's value.
+template <class Target> void read_color(const LegacyMaterial& material, const std::string_view name, Target& target)
+{
+    constexpr auto channels = parameter_components<Target>();
     if (const auto* values = material_values(material, name))
     {
-        for (std::size_t index = 0; index < Count && index < values->size(); ++index)
+        for (std::size_t index = 0; index < channels && index < values->size(); ++index)
         {
             if (std::isfinite((*values)[index]))
             {
@@ -350,29 +371,25 @@ VisualLightRig environment_light_rig(const TedEnvironment& environment)
     rig.fills = {light(environment.lights[1]), light(environment.lights[2])};
     const auto key_intensity = environment.lights[0].intensity;
     rig.key_specular = {environment.specular[0] * key_intensity, environment.specular[1] * key_intensity, environment.specular[2] * key_intensity};
-    rig.ambient = environment.ambient;
+    rig.ambient = {environment.ambient[0], environment.ambient[1], environment.ambient[2]};
     return rig;
 }
 
 // Whether a light rig decoded from map data is usable (finite values, non-zero directions).
 bool light_rig_valid(const VisualLightRig& rig) noexcept
 {
-    const auto finite = [](const std::array<float, 3>& value)
-    {
-        return std::isfinite(value[0]) && std::isfinite(value[1]) && std::isfinite(value[2]);
-    };
     const auto valid_light = [&](const VisualDirectionalLight& light)
     {
         const auto& direction = light.direction;
-        return is_finite(direction) && finite(light.color) && dot(direction, direction) > 1.0e-12F;
+        return is_finite(direction) && is_finite(light.color) && dot(direction, direction) > 1.0e-12F;
     };
-    return valid_light(rig.key) && valid_light(rig.fills[0]) && valid_light(rig.fills[1]) && finite(rig.key_specular) && finite(rig.ambient);
+    return valid_light(rig.key) && valid_light(rig.fills[0]) && valid_light(rig.fills[1]) && is_finite(rig.key_specular) && is_finite(rig.ambient);
 }
 
 // Fallback colors by player slot for types without a faction affiliation. Index 0 is neutral.
-std::array<float, 4> player_team_color(const std::uint32_t player) noexcept
+Color player_team_color(const std::uint32_t player) noexcept
 {
-    static constexpr std::array<std::array<float, 4>, 8> colors{{
+    static constexpr std::array<Color, 8> colors{{
         {0.70F, 0.70F, 0.70F, 1.0F},
         {0.25F, 0.45F, 0.95F, 1.0F},
         {0.90F, 0.25F, 0.20F, 1.0F},

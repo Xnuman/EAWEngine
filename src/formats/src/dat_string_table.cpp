@@ -4,10 +4,8 @@
 #include "core/checksum.hpp"
 
 #include <algorithm>
-#include <array>
 #include <limits>
 #include <optional>
-#include <unordered_map>
 
 namespace eaw {
 namespace {

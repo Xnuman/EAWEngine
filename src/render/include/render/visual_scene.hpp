@@ -1,5 +1,6 @@
 #pragma once
 
+#include "render/color.hpp"
 #include "math/matrix.hpp"
 #include "math/vector.hpp"
 
@@ -68,7 +69,7 @@ struct VisualDebugLine
 {
     Vector3 from{};
     Vector3 to{};
-    std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
+    Color color{white};
 };
 
 struct VisualVertex
@@ -82,7 +83,7 @@ struct VisualVertex
     Vector3 tangent{1.0F, 0.0F, 0.0F};
     Vector3 binormal{0.0F, 1.0F, 0.0F};
     // Linear RGBA multiplier (authored vertex colors, or opacity fades along track ribbons).
-    std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
+    Color color{white};
 };
 
 inline constexpr std::uint32_t invalid_visual_texture = std::numeric_limits<std::uint32_t>::max();
@@ -112,7 +113,7 @@ struct VisualMaterial
 {
     std::string name;
     // Extra multiplier; the builder uses it to tint untextured surfaces.
-    std::array<float, 4> tint{1.0F, 1.0F, 1.0F, 1.0F};
+    Color tint{white};
     std::uint32_t base_color_texture{invalid_visual_texture};
     std::uint32_t normal_texture{invalid_visual_texture};
     std::uint32_t gloss_texture{invalid_visual_texture};
@@ -124,9 +125,9 @@ struct VisualMaterial
     bool team_color_mask{};
     // Add the specular color, unlit, masked by base-texture alpha (self-illumination).
     bool emissive_mask{};
-    std::array<float, 4> diffuse{1.0F, 1.0F, 1.0F, 1.0F};
-    std::array<float, 3> specular{0.0F, 0.0F, 0.0F};
-    std::array<float, 3> emissive{0.0F, 0.0F, 0.0F};
+    Color diffuse{white};
+    ColorRgb specular{};
+    ColorRgb emissive{};
     // Texture-coordinate offset per second of scene time.
     std::array<float, 2> uv_scroll{0.0F, 0.0F};
     // Multiplier applied to texture coordinates (terrain layers tile world X/Y with it).
@@ -200,10 +201,10 @@ struct VisualInstance
 {
     std::uint32_t mesh{};
     Matrix4 transform{Matrix4::identity()};
-    std::array<float, 4> tint{1.0F, 1.0F, 1.0F, 1.0F};
+    Color tint{white};
     std::uint32_t bone_offset{};
     // Player color applied through materials with a team-color mask.
-    std::array<float, 4> team_color{1.0F, 1.0F, 1.0F, 1.0F};
+    Color team_color{white};
     // Background instances (sky domes and star backdrops) are drawn before the world, centered on
     // the camera (translation ignored), at the far plane, without depth testing, in scene order.
     bool background{};
@@ -222,7 +223,7 @@ struct VisualInstance
 struct VisualDirectionalLight
 {
     Vector3 direction{0.0F, 0.0F, 1.0F};
-    std::array<float, 3> color{};
+    ColorRgb color{};
 };
 
 // Global lighting for legacy-mode shading, matching the TED environment model: a key light that
@@ -231,9 +232,9 @@ struct VisualDirectionalLight
 struct VisualLightRig
 {
     VisualDirectionalLight key{{0.45F, -0.35F, 0.82F}, {0.55F, 0.53F, 0.50F}};
-    std::array<float, 3> key_specular{0.60F, 0.60F, 0.60F};
+    ColorRgb key_specular{0.60F, 0.60F, 0.60F};
     std::array<VisualDirectionalLight, 2> fills{{{{-0.6F, 0.5F, 0.4F}, {0.14F, 0.15F, 0.18F}}, {{0.4F, 0.7F, -0.5F}, {0.08F, 0.08F, 0.10F}}}};
-    std::array<float, 3> ambient{0.10F, 0.10F, 0.11F};
+    ColorRgb ambient{0.10F, 0.10F, 0.11F};
 };
 
 enum class VisualParticleShape : std::uint8_t
@@ -274,7 +275,7 @@ struct VisualParticle
     Vector3 position{};
     float half_size{1.0F};
     // Linear RGBA multiplier of the texture.
-    std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
+    Color color{white};
     // Texture rectangle: u, v of the top-left corner, then width and height (atlas cells).
     std::array<float, 4> uv_rect{0.0F, 0.0F, 1.0F, 1.0F};
     // Kites: the world-space direction of travel (any length; zero draws a billboard).

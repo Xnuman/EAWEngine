@@ -301,7 +301,7 @@ struct SpawnableType
     std::string type_name;
     std::uint32_t mesh{};
     float max_speed{};
-    std::array<float, 4> team_color{1.0F, 1.0F, 1.0F, 1.0F};
+    Color team_color{white};
     // XML LOD_Bias (VisualInstance::lod_bias).
     float lod_bias{1.0F};
     // Walks on the ground on land maps (Space_Layer Land or None); flyers keep a height instead.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "assets/xml_asset_database.hpp"
+#include "render/color.hpp"
 
 #include <array>
 #include <cstdint>
@@ -88,7 +89,7 @@ public:
     // Display color (0..1 RGBA) of the first faction named in the type's Affiliation field, read
     // from that Faction definition's Color (0..255 components). Placed objects are owned by a
     // player slot at runtime; using the declared affiliation is an approximation for previews.
-    [[nodiscard]] std::optional<std::array<float, 4>> affiliation_color(const XmlDefinition& definition) const;
+    [[nodiscard]] std::optional<Color> affiliation_color(const XmlDefinition& definition) const;
 
     [[nodiscard]] std::optional<GameObjectModelReference> model(const XmlDefinition& definition, GameModelContext context, std::vector<std::string>* diagnostics = nullptr) const;
 

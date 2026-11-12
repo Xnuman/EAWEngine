@@ -2,7 +2,6 @@
 #include "core/string_utils.hpp"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cstdint>
 #include <future>

@@ -12,7 +12,7 @@ void D3d12Renderer::Impl::collect_pick(FrameContext& frame)
     }
     const D3D12_RANGE read_range{0, frame.picks.size() * D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT};
     void* mapped{};
-    check_hresult(frame.pick_readback->Map(0, &read_range, &mapped), "Map(pick readback)");
+    check_device_hresult(frame.pick_readback->Map(0, &read_range, &mapped), frame.pick_readback, "Map(pick readback)");
     for (std::size_t index = 0; index < frame.picks.size(); ++index)
     {
         std::array<std::uint32_t, 2> texel{};
@@ -50,7 +50,7 @@ void D3d12Renderer::Impl::collect_capture(FrameContext& frame)
     frame.capture.reset();
     const D3D12_RANGE read_range{0, static_cast<SIZE_T>(copy.bytes)};
     void* mapped{};
-    check_hresult(frame.capture_readback->Map(0, &read_range, &mapped), "Map(capture readback)");
+    check_device_hresult(frame.capture_readback->Map(0, &read_range, &mapped), frame.capture_readback, "Map(capture readback)");
     RgbaImage image;
     image.width = copy.width;
     image.height = copy.height;
@@ -93,8 +93,8 @@ void D3d12Renderer::Impl::record_capture(FrameContext& frame)
     buffer.SampleDesc.Count = 1;
     buffer.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     frame.capture_readback.Reset();
-    check_hresult(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &buffer, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.capture_readback)),
-                  "CreateCommittedResource(capture readback)");
+    check_device_hresult(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &buffer, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.capture_readback)), device,
+                         "CreateCommittedResource(capture readback)");
     set_name(frame.capture_readback.Get(), L"EAWEngine frame capture readback");
     auto to_copy = transition_barrier(frame.back_buffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
     command_list->ResourceBarrier(1, &to_copy);
@@ -131,7 +131,7 @@ void D3d12Renderer::Impl::set_debug_lines(const std::span<const VisualDebugLine>
     EAW_ASSERT_MSG(std::ranges::all_of(lines,
                                        [&](const VisualDebugLine& line)
                                        {
-                                           return is_finite(line.from) && is_finite(line.to) && finite(line.color);
+                                           return is_finite(line.from) && is_finite(line.to) && is_finite(line.color);
                                        }),
                    "debug lines contain non-finite values");
     debug_lines.assign(lines.begin(), lines.end());
@@ -151,8 +151,8 @@ void D3d12Renderer::Impl::set_particles(const std::span<const VisualParticle> ne
     EAW_ASSERT_MSG(std::ranges::all_of(next,
                                        [&](const VisualParticle& particle)
                                        {
-                                           return is_finite(particle.position) && finite(particle.color) && finite(particle.uv_rect) && is_finite(particle.axis) && std::isfinite(particle.half_size) &&
-                                                  std::isfinite(particle.rotation) && std::isfinite(particle.tail);
+                                           return is_finite(particle.position) && is_finite(particle.color) && finite(particle.uv_rect) && is_finite(particle.axis) &&
+                                                  std::isfinite(particle.half_size) && std::isfinite(particle.rotation) && std::isfinite(particle.tail);
                                        }),
                    "particles contain non-finite values");
     particles.assign(next.begin(), next.end());
@@ -183,11 +183,11 @@ void D3d12Renderer::Impl::write_particles(FrameContext& frame)
         const auto capacity = std::max<std::size_t>({gpu_particles.size(), frame.particle_capacity * 2U, 1024U});
         const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
         const auto description = buffer_description(static_cast<std::uint64_t>(capacity) * sizeof(GpuParticle));
-        check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.particle_buffer)),
-                      "CreateCommittedResource(frame particles)");
+        check_device_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.particle_buffer)),
+                             device, "CreateCommittedResource(frame particles)");
         set_name(frame.particle_buffer.Get(), L"EAWEngine frame particles");
         const D3D12_RANGE no_read{0, 0};
-        check_hresult(frame.particle_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.particle_buffer_mapped)), "Map(frame particles)");
+        check_device_hresult(frame.particle_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.particle_buffer_mapped)), frame.particle_buffer, "Map(frame particles)");
         frame.particle_capacity = capacity;
     }
     std::memcpy(frame.particle_buffer_mapped, gpu_particles.data(), gpu_particles.size() * sizeof(GpuParticle));
@@ -212,7 +212,7 @@ void D3d12Renderer::Impl::set_instances(const std::span<const VisualInstance> in
                                            return std::isfinite(value);
                                        });
         };
-        EAW_ASSERT_MSG(is_finite(instance.transform) && finite(instance.tint) && finite(instance.team_color) && std::isfinite(instance.lod_bias),
+        EAW_ASSERT_MSG(is_finite(instance.transform) && is_finite(instance.tint) && is_finite(instance.team_color) && std::isfinite(instance.lod_bias),
                        "visual instance " + std::to_string(index) + " has non-finite values");
     }
     dynamic_instances.emplace(instances.begin(), instances.end());
@@ -336,11 +336,11 @@ void D3d12Renderer::Impl::write_dynamic_instances(FrameContext& frame)
         const auto capacity = std::max<std::size_t>({dynamic_gpu_instances.size(), frame.instance_capacity * 2U, 256U});
         const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
         const auto description = buffer_description(static_cast<std::uint64_t>(capacity) * sizeof(GpuInstance));
-        check_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.instance_buffer)),
-                      "CreateCommittedResource(frame instances)");
+        check_device_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.instance_buffer)),
+                             device, "CreateCommittedResource(frame instances)");
         set_name(frame.instance_buffer.Get(), L"EAWEngine frame instances");
         const D3D12_RANGE no_read{0, 0};
-        check_hresult(frame.instance_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.instance_buffer_mapped)), "Map(frame instances)");
+        check_device_hresult(frame.instance_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.instance_buffer_mapped)), frame.instance_buffer, "Map(frame instances)");
         frame.instance_capacity = capacity;
     }
     std::memcpy(frame.instance_buffer_mapped, dynamic_gpu_instances.data(), dynamic_gpu_instances.size() * sizeof(GpuInstance));
@@ -358,20 +358,12 @@ void D3d12Renderer::Impl::set_highlight(const std::optional<std::uint32_t> insta
 
 void D3d12Renderer::Impl::set_lighting(const VisualLightRig& next)
 {
-    const auto finite = [](const std::array<float, 3>& value)
-    {
-        return std::ranges::all_of(value,
-                                   [](const float component)
-                                   {
-                                       return std::isfinite(component);
-                                   });
-    };
     const auto valid_light = [&](const VisualDirectionalLight& light)
     {
         const auto& direction = light.direction;
-        return is_finite(direction) && finite(light.color) && dot(direction, direction) > 1.0e-12F;
+        return is_finite(direction) && is_finite(light.color) && dot(direction, direction) > 1.0e-12F;
     };
-    EAW_ASSERT_MSG(valid_light(next.key) && valid_light(next.fills[0]) && valid_light(next.fills[1]) && finite(next.key_specular) && finite(next.ambient),
+    EAW_ASSERT_MSG(valid_light(next.key) && valid_light(next.fills[0]) && valid_light(next.fills[1]) && is_finite(next.key_specular) && is_finite(next.ambient),
                    "visual light rig contains non-finite values or a zero light direction");
     lighting = next;
 }
@@ -438,7 +430,7 @@ bool D3d12Renderer::Impl::render()
         {
             return false;
         }
-        check_device_result(test_result, "IDXGISwapChain::Present(test)");
+        check_device_hresult(test_result, device, "IDXGISwapChain::Present(test)");
         occluded = false;
     }
     if (!wait_for_frame_latency())
@@ -497,9 +489,9 @@ bool D3d12Renderer::Impl::render()
         const auto l = length(value);
         return std::array<float, 4>{value.x / l, value.y / l, value.z / l, 0.0F};
     };
-    const auto rgb = [](const std::array<float, 3>& value)
+    const auto rgb = [](const ColorRgb& value)
     {
-        return std::array<float, 4>{value[0], value[1], value[2], 0.0F};
+        return std::array<float, 4>{value.r, value.g, value.b, 0.0F};
     };
     constants.key_direction = unit(lighting.key.direction);
     constants.key_diffuse = rgb(lighting.key.color);
@@ -522,8 +514,8 @@ bool D3d12Renderer::Impl::render()
     constants.post_parameters = {options.bloom_threshold, options.bloom_strength, 0.15F, 0.0F};
     std::memcpy(frame.constant_buffer_mapped, &constants, sizeof(constants));
 
-    check_hresult(frame.allocator->Reset(), "ID3D12CommandAllocator::Reset");
-    check_hresult(command_list->Reset(frame.allocator.Get(), opaque_pipeline.Get()), "ID3D12GraphicsCommandList::Reset");
+    check_device_hresult(frame.allocator->Reset(), frame.allocator, "ID3D12CommandAllocator::Reset");
+    check_device_hresult(command_list->Reset(frame.allocator.Get(), opaque_pipeline.Get()), command_list, "ID3D12GraphicsCommandList::Reset");
     command_list->EndQuery(timestamp_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, frame_index * 2U);
 
     if (!pending_transitions.empty())
@@ -773,14 +765,14 @@ bool D3d12Renderer::Impl::render()
     command_list->EndQuery(timestamp_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, frame_index * 2U + 1U);
     command_list->ResolveQueryData(timestamp_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, frame_index * 2U, 2, frame.timestamp_readback.Get(), 0);
     frame.timestamps_pending = true;
-    check_hresult(command_list->Close(), "ID3D12GraphicsCommandList::Close");
+    check_device_hresult(command_list->Close(), command_list, "ID3D12GraphicsCommandList::Close");
     ID3D12CommandList* lists[]{command_list.Get()};
     direct_queue.execute(lists, 1);
 
     const UINT sync_interval = options.vsync ? 1U : 0U;
     const UINT present_flags = !options.vsync && tearing_supported ? DXGI_PRESENT_ALLOW_TEARING : 0U;
     const auto present_result = swap_chain->Present(sync_interval, present_flags);
-    check_device_result(present_result, "IDXGISwapChain::Present");
+    check_device_hresult(present_result, device, "IDXGISwapChain::Present");
     frame.fence_value = direct_queue.signal();
     ++frame_number;
     if (present_result == DXGI_STATUS_OCCLUDED)

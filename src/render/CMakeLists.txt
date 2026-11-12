@@ -7,6 +7,7 @@ set(SOURCES_DIR "src")
 add_library(eaw_render_contract INTERFACE)
 
 set(EAW_RENDER_CONTRACT_HEADERS
+    ${HEADERS_DIR}/color.hpp
     ${HEADERS_DIR}/visual_lod.hpp
     ${HEADERS_DIR}/visual_scene.hpp
 )
