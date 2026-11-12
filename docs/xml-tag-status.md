@@ -26,9 +26,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 163 |
+| `done` | 164 |
 | `partial` | 22 |
-| `gap` | 207 |
+| `gap` | 206 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -231,7 +231,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-48 done, 3 partial, 49 gap, 35 needs.
+49 done, 3 partial, 48 gap, 35 needs.
 
 ### Health, shields, armor, and energy
 
@@ -382,7 +382,7 @@ Systems that `needs` rows wait for, by tag count:
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Death_Explosions` | `done` |  |
-| `Death_Explosions_End` | `gap` |  |
+| `Death_Explosions_End` | `done` | played where the wreck lay when it goes; wrecks of meshes without a DIE clip leave nothing to end |
 | `Death_Clone` | `partial` | the clone is spawned; damage-type-specific clones are not chosen |
 | `Death_Clone_Is_Obstacle` | `needs wreck entities` | needs wrecks as simulation entities |
 | `IsDeathClone` | `gap` |  |

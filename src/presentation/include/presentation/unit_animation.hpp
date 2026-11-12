@@ -118,6 +118,14 @@ public:
     [[nodiscard]] const Stats& stats() const noexcept;
     // What the last animate() played (valid until the next one).
     [[nodiscard]] const std::vector<AnimationCue>& cues() const noexcept;
+    // A wreck that went in the last animate() with an effect to play there (DeathStyle::end_effect).
+    struct EndedCorpse
+    {
+        Vector3 position;
+        std::uint32_t effect{};
+    };
+    // Valid until the next animate(); wrecks dropped for the corpse limit are not listed.
+    [[nodiscard]] const std::vector<EndedCorpse>& ended_corpses() const noexcept;
     // Rigs of meshes added to the scene at runtime (a SpawnablePackage's rigs and rest palette,
     // rest offsets relative to it); they must follow the meshes the animator already knows.
     void add_rigs(std::span<const VisualRig> rigs, std::span<const Matrix4> rest_palette);
@@ -195,6 +203,7 @@ private:
         double lifetime{};
         // Where its DIE clip was last frame (frames; -1 before the first).
         double cue_frame{-1.0};
+        std::uint32_t end_effect{};
     };
     // Reports the frames a clip passed from `from` to `to` (a loop of `loop_frames` wraps).
     void add_cue(EntityId entity, const Vector3& position, const VisualClip& clip, double from, double to, double loop_frames);
@@ -223,6 +232,7 @@ private:
     std::unordered_map<std::uint64_t, std::int32_t> bones_;
     std::vector<Corpse> corpses_;
     std::vector<AnimationCue> cues_;
+    std::vector<EndedCorpse> ended_corpses_;
     std::uint64_t frame_{};
     Stats stats_;
 };

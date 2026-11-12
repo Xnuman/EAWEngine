@@ -278,6 +278,14 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         {
             collect_death_effect_keys(type.combat, keys);
         }
+        for (const auto& look : asset.entity_looks)
+        {
+            keys.push_back(look.death.end_effect);
+        }
+        for (const auto& look : asset.spawnable_looks)
+        {
+            keys.push_back(look.death.end_effect);
+        }
         load_effect_objects(builder, catalog, keys, battle.land, asset.effect_objects);
     }
     asset.particle_textures = std::move(builder.particles.textures);
@@ -357,6 +365,10 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
         for (const auto& type : package.types)
         {
             collect_death_effect_keys(type.combat, keys);
+        }
+        for (const auto& look : package.looks)
+        {
+            keys.push_back(look.death.end_effect);
         }
         load_effect_objects(builder, catalog_entry->catalog, keys, land, package.effect_objects);
     }

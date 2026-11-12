@@ -144,27 +144,28 @@ DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinitio
             chosen = clone;
         }
     }
-    if (chosen.empty())
+    // The wreck is the clone's; a type without one is its own wreck (AT-AA, the Dark Troopers),
+    // and the same tags on it say how long it stays and what plays when it goes.
+    const auto clones = chosen.empty() ? std::span<const XmlDefinition* const>{} : catalog.find(chosen);
+    const auto& wreck = clones.empty() ? definition : *clones.front();
+    if (!clones.empty() && catalog.field(wreck, "Specific_Death_Anim_Index").field != nullptr)
     {
-        return style;
-    }
-    const auto clones = catalog.find(chosen);
-    if (clones.empty())
-    {
-        return style;
-    }
-    const auto& clone = *clones.front();
-    if (catalog.field(clone, "Specific_Death_Anim_Index").field != nullptr)
-    {
-        const auto index = type_float_field(catalog, clone, "Specific_Death_Anim_Index");
+        const auto index = type_float_field(catalog, wreck, "Specific_Death_Anim_Index");
         if (index >= 0.0F && index < 100.0F)
         {
             style.die_variant = static_cast<std::uint32_t>(index);
         }
     }
-    if (const auto seconds = type_float_field(catalog, clone, "Death_Persistence_Duration"); seconds > 0.0F && seconds < 3600.0F)
+    if (const auto seconds = type_float_field(catalog, wreck, "Death_Persistence_Duration"); seconds > 0.0F && seconds < 3600.0F)
     {
         style.persistence_seconds = seconds;
+    }
+    if (const auto* end = catalog.field(wreck, "Death_Explosions_End").field)
+    {
+        if (const auto names = split_list(end->text); !names.empty())
+        {
+            style.end_effect = game_object_name_crc(names.front());
+        }
     }
     return style;
 }

@@ -92,7 +92,10 @@ void test_combat_content()
                 "<GroundStructure Name=\"Jail\"><Destruction_Survivors>\n Crew_A, 1.0\n  \n Crew_B, 0 \n Crew_C</Destruction_Survivors>"
                 "<Minimum_Destruction_Survivor_Count>4</Minimum_Destruction_Survivor_Count></GroundStructure>"
                 "<GroundInfantry Name=\"Squishy\"><Death_Clone>Damage_Normal, Squishy_Dead</Death_Clone><Death_Clone>Damage_Crush, Squishy_Flat</Death_Clone></GroundInfantry>"
-                "<GroundInfantry Name=\"Squishy_Dead\"><Specific_Death_Anim_Index>1</Specific_Death_Anim_Index></GroundInfantry>"
+                "<GroundInfantry Name=\"Squishy_Dead\"><Specific_Death_Anim_Index>1</Specific_Death_Anim_Index><Death_Persistence_Duration>15</Death_Persistence_Duration>"
+                "<Death_Explosions_End>Big_Boom, Other</Death_Explosions_End></GroundInfantry>"
+                "<GroundInfantry Name=\"Own_Wreck\"><Specific_Death_Anim_Index>3</Specific_Death_Anim_Index><Death_Persistence_Duration>2</Death_Persistence_Duration>"
+                "<Death_Explosions_End>Small_Boom</Death_Explosions_End></GroundInfantry>"
                 "<GroundInfantry Name=\"Squishy_Flat\"><Specific_Death_Anim_Type> Crushed </Specific_Death_Anim_Type><Specific_Death_Anim_Index>0</Specific_Death_Anim_Index></GroundInfantry>"
                 "<SpaceUnit Name=\"Debris\"><Remove_Upon_Death> true </Remove_Upon_Death></SpaceUnit>"
                 "<Indigenous_Unit Name=\"Bird\"><Max_Speed>2</Max_Speed><Movement_Animation_Speed>0.8</Movement_Animation_Speed><Walk_Animation_Speed>0.5</Walk_Animation_Speed>"
@@ -231,6 +234,10 @@ void test_combat_content()
         require(squishy.die_variant == 1U && squishy.crushed && squishy.crushed->role == eaw::AnimationRole::crushed && squishy.crushed->variant == 0U &&
                     !eaw::scene_build::type_death_style(catalog, *definition("Tank")).crushed,
                 "the crush death clone must give the crushed clip, the normal one the DIE variant");
+        const auto own = eaw::scene_build::type_death_style(catalog, *definition("Own_Wreck"));
+        require(squishy.persistence_seconds == 15.0F && squishy.end_effect == eaw::game_object_name_crc("Big_Boom") && own.persistence_seconds == 2.0F &&
+                    own.end_effect == eaw::game_object_name_crc("Small_Boom") && !own.die_variant,
+                "a wreck's persistence and end explosion must come from its death clone, or from the type itself without one (not its DIE variant)");
     }
     require(eaw::scene_build::type_death_style(catalog, *definition("Debris")).removed && !eaw::scene_build::type_death_style(catalog, *definition("Tank")).removed,
             "Remove_Upon_Death must leave no corpse");

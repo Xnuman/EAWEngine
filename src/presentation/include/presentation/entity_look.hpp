@@ -30,6 +30,9 @@ struct DeathStyle
     // (Crushed, or DIE) and Specific_Death_Anim_Index.
     std::optional<DeathClip> crushed;
     std::optional<float> persistence_seconds;
+    // The Particle object played where the wreck is when it goes (the clone's Death_Explosions_End,
+    // its first entry, as a game_object_name_crc key; 0 for none).
+    std::uint32_t end_effect{};
     // Leaves no corpse: removed the moment it dies (XML Remove_Upon_Death: fighters, debris,
     // satellites, most props).
     bool removed{};

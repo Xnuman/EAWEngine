@@ -401,15 +401,17 @@ void test_unit_animation()
     mourner.animate({}, none, drawn, 10.0 + 1.0 + 4.1, 1U << 20U, palette);
     require(drawn.empty() && mourner.stats().corpses == 0, "a corpse must be removed after lingering");
     // A death clone's style: its DIE variant and persistence (30 s for the AT-ST's).
-    mourner.add_corpse(body, {5, 1}, 100.0, eaw::DeathStyle{.die_variant = 0U, .persistence_seconds = 12.0F});
+    eaw::set_translation(body.transform, {5.0F, 6.0F, 7.0F});
+    mourner.add_corpse(body, {5, 1}, 100.0, eaw::DeathStyle{.die_variant = 0U, .persistence_seconds = 12.0F, .end_effect = 77U});
     none.clear();
     drawn.clear();
     mourner.animate({}, none, drawn, 111.0, 1U << 20U, palette);
-    require(drawn.size() == 1, "a death clone's corpse must stay for its persistence");
+    require(drawn.size() == 1 && mourner.ended_corpses().empty(), "a death clone's corpse must stay for its persistence");
     none.clear();
     drawn.clear();
     mourner.animate({}, none, drawn, 112.5, 1U << 20U, palette);
-    require(drawn.empty(), "a death clone's corpse must go once its persistence ends");
+    require(drawn.empty() && mourner.ended_corpses().size() == 1 && mourner.ended_corpses()[0].effect == 77U && mourner.ended_corpses()[0].position == eaw::Vector3{5.0F, 6.0F, 7.0F},
+            "a death clone's corpse must go once its persistence ends, reporting its end effect where it lay");
     // Shots: a mesh with ATTACK and ATTACKIDLE aims with ATTACKIDLE, plays ATTACK from its start on
     // each shot, and fades back to aiming after ATTACK ends (the test clip lasts 1 s).
     auto shooter_rig = rig;

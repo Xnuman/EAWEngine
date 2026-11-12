@@ -317,7 +317,7 @@ void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id,
     }
     const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
     const auto lifetime = style.persistence_seconds ? std::max(static_cast<double>(*style.persistence_seconds), duration) : duration + corpse_linger_seconds;
-    corpses_.push_back({instance, clip, seconds, lifetime});
+    corpses_.push_back({instance, clip, seconds, lifetime, -1.0, style.end_effect});
 }
 
 void UnitAnimator::add_cue(const EntityId entity, const Vector3& position, const VisualClip& clip, const double from, const double to, const double loop_frames)
@@ -337,6 +337,11 @@ void UnitAnimator::add_cue(const EntityId entity, const Vector3& position, const
 const std::vector<AnimationCue>& UnitAnimator::cues() const noexcept
 {
     return cues_;
+}
+
+const std::vector<UnitAnimator::EndedCorpse>& UnitAnimator::ended_corpses() const noexcept
+{
+    return ended_corpses_;
 }
 
 void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, const double seconds, const std::size_t max_palette,
@@ -678,10 +683,19 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         }
     }
     // Corpses: their DIE clip once, then its last frame until they are removed.
+    ended_corpses_.clear();
     std::erase_if(corpses_,
                   [&](const Corpse& corpse)
                   {
-                      return seconds - corpse.died > corpse.lifetime;
+                      if (seconds - corpse.died <= corpse.lifetime)
+                      {
+                          return false;
+                      }
+                      if (corpse.end_effect != 0)
+                      {
+                          ended_corpses_.push_back({translation(corpse.instance.transform), corpse.end_effect});
+                      }
+                      return true;
                   });
     for (auto& corpse : corpses_)
     {
