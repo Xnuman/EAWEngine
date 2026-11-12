@@ -686,6 +686,56 @@ void test_target_validity()
         const auto [side, turned] = engage({.rate = 1.5707964F, .yaw_limit = 0.17453292F}, {0.0F, 100.0F, 0.0F}, 40);
         const auto [stuck, unturned] = engage({.rate = 1.5707964F, .yaw_limit = 0.17453292F, .turns_body = false}, {0.0F, 100.0F, 0.0F}, 40);
         require(side > 0 && turned > 1.2F && stuck < 0 && unturned == 0.0F, "a limited turret must turn its hull to a target beyond its arc, unless its type says no");
+        // A turret weapon fires from its muzzle turned with the turret: 10 ahead of the pivot, the
+        // target to the left, the shot leaves 10 to the left.
+        {
+            eaw::SimulationWorld tanks(0.1);
+            tanks.set_hostility(hostility);
+            eaw::CombatProfile tank;
+            tank.health = 100.0F;
+            tank.weapons = {eaw::WeaponProfile{.range = 200.0F, .recharge_seconds = 10.0F, .damage = 1.0F, .mount = {.forward = 10.0F, .up = 5.0F}, .on_turret = true}};
+            tank.turret = eaw::TurretProfile{.rate = 3.14159265F};
+            eaw::CombatProfile sturdy;
+            sturdy.health = 1000.0F;
+            (void)tanks.spawn({.type_name = "Tank", .owner = 1, .combat = tank});
+            (void)tanks.spawn({.type_name = "Target", .owner = 2, .position = {0.0F, 100.0F, 0.0F}, .combat = sturdy});
+            std::optional<eaw::Vector3> origin;
+            for (int tick = 0; tick < 20 && !origin; ++tick)
+            {
+                tanks.step();
+                if (!tanks.snapshot().shots.empty())
+                {
+                    origin = tanks.snapshot().shots.front().origin;
+                }
+            }
+            require(origin && std::fabs(origin->x) < 0.5F && std::fabs(origin->y - 10.0F) < 0.5F && origin->z == 5.0F, "a turret weapon must fire from its mount turned with the turret");
+        }
+        // The turret follows what its own weapon can reach: the entity's target is out of the turret
+        // weapon's range (a longer hardpoint weapon picked it), a nearer hostile behind gets shot.
+        {
+            eaw::SimulationWorld tanks(0.1);
+            tanks.set_hostility(hostility);
+            eaw::CombatProfile tank;
+            tank.health = 100.0F;
+            tank.hardpoints = {eaw::HardpointProfile{}};
+            tank.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 1.0F, .damage = 1.0F, .on_turret = true},
+                            eaw::WeaponProfile{.range = 300.0F, .recharge_seconds = 100.0F, .hardpoint = 0}};
+            tank.turret = eaw::TurretProfile{.rate = 3.14159265F};
+            eaw::CombatProfile sturdy;
+            sturdy.health = 1000.0F;
+            (void)tanks.spawn({.type_name = "Tank", .owner = 1, .combat = tank});
+            (void)tanks.spawn({.type_name = "Far", .owner = 2, .position = {250.0F, 0.0F, 0.0F}, .combat = sturdy});
+            for (int tick = 0; tick < 5; ++tick)
+            {
+                tanks.step();
+            }
+            (void)tanks.spawn({.type_name = "Near", .owner = 2, .position = {-80.0F, 0.0F, 0.0F}, .combat = sturdy});
+            for (int tick = 0; tick < 40; ++tick)
+            {
+                tanks.step();
+            }
+            require(tanks.snapshot().entities[2].health < 1000.0F, "a turret must turn to the victim its own weapon reaches, not stay on a target beyond it");
+        }
     }
     // An area blast: the victim takes shot and blast; a hostile 30 from the blast takes the second of
     // two rings' damage, one 60 away nothing, a friend beside the victim nothing.

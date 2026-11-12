@@ -89,7 +89,7 @@ void test_combat_content()
                 "<GroundInfantry Name=\"Squishy_Dead\"><Specific_Death_Anim_Index>1</Specific_Death_Anim_Index></GroundInfantry>"
                 "<GroundInfantry Name=\"Squishy_Flat\"><Specific_Death_Anim_Type> Crushed </Specific_Death_Anim_Type><Specific_Death_Anim_Index>0</Specific_Death_Anim_Index></GroundInfantry>"
                 "<SpaceUnit Name=\"Debris\"><Remove_Upon_Death> true </Remove_Upon_Death></SpaceUnit>"
-                "<Indigenous_Unit Name=\"Bird\"><Movement_Animation_Speed>0.8</Movement_Animation_Speed><Walk_Animation_Speed>0.5</Walk_Animation_Speed>"
+                "<Indigenous_Unit Name=\"Bird\"><Max_Speed>2</Max_Speed><Movement_Animation_Speed>0.8</Movement_Animation_Speed><Walk_Animation_Speed>0.5</Walk_Animation_Speed>"
                 "<Allow_Idle_When_Moving>Yes</Allow_Idle_When_Moving><Idle_Anim_00_Rate_Mod>-1</Idle_Anim_00_Rate_Mod></Indigenous_Unit>"
                 "<GroundVehicle Name=\"Gunner\"><Turret_Bone_Name> Turret_00 </Turret_Bone_Name><Barrel_Bone_Name>MuzzleA_00</Barrel_Bone_Name><Turret_Rotate_Speed>4</Turret_Rotate_Speed>"
                 "<Turret_Rotate_Extent_Degrees>20</Turret_Rotate_Extent_Degrees><Turret_Elevate_Extent_Degrees>360</Turret_Elevate_Extent_Degrees><Walk_Transition>Yes</"
@@ -221,8 +221,9 @@ void test_combat_content()
     {
         const auto bird = eaw::scene_build::type_animation_profile(catalog, *definition("Bird"));
         const auto plain = eaw::scene_build::type_animation_profile(catalog, *definition("Tank"));
-        require(bird.move_rate == 0.8F && bird.walk_rate == 0.5F && bird.idle_rate == 1.0F && bird.idle_when_moving && plain.move_rate == 1.0F && !plain.idle_when_moving,
-                "a type's animation rates must be read, invalid ones as 1");
+        require(std::fabs(bird.move_reference - 0.4F) < 1e-6F && std::fabs(bird.walk_reference - 0.25F) < 1e-6F && bird.idle_rate == 1.0F && bird.idle_when_moving && plain.move_reference == 1.0F &&
+                    plain.walk_reference == 0.0F && !plain.idle_when_moving,
+                "a type's animation reference speeds must be read as fractions of Max_Speed, and invalid rates as 1");
         const auto gunner = eaw::scene_build::type_animation_profile(catalog, *definition("Gunner"));
         require(gunner.turret_bone == eaw::game_object_name_crc("TURRET_00") && gunner.barrel_bone == eaw::game_object_name_crc("MuzzleA_00") &&
                     std::fabs(gunner.turret_rate - 4.0F * eaw::provisional_turn_rate_scale) < 1e-5F && gunner.turret_pitch_limit == eaw::AnimationProfile{}.turret_pitch_limit &&

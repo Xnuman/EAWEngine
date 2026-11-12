@@ -60,15 +60,19 @@ struct ClipName
 };
 [[nodiscard]] std::optional<ClipName> parse_clip_name(std::string_view file_stem, std::string_view model_stem);
 
-// How a type's clips play (presentation only). Rates multiply the engine's own playback: the move
-// clip by XML Movement_Animation_Speed, the walk clip by Walk_Animation_Speed, the idle clip by
-// Idle_Anim_00_Rate_Mod (props: 8 spins the huge asteroid masses); a type without a move or walk
-// clip keeps its idle clip while moving when Allow_Idle_When_Moving (birds) instead of standing in
-// its rest pose.
+// How a type's clips play (presentation only). The move and walk clips play at their own rate when
+// the unit goes at a reference speed, given as a fraction of its top speed: XML
+// Movement_Animation_Speed and Walk_Animation_Speed are those speeds in Max_Speed's units (inferred
+// from the corpus: Movement_Animation_Speed equals Max_Speed on most stock units, 0.1366 against 0.5
+// on the AT-AT; Walk_Animation_Speed is about 0.4 of it), so playback scales by speed over
+// reference. The idle clip plays at Idle_Anim_00_Rate_Mod times its rate (props: 8 spins the huge
+// asteroid masses); a type without a move or walk clip keeps its idle clip while moving when
+// Allow_Idle_When_Moving (birds) instead of standing in its rest pose.
 struct AnimationProfile
 {
-    float move_rate{1.0F};
-    float walk_rate{1.0F};
+    float move_reference{1.0F};
+    // 0: the engine's walk speed.
+    float walk_reference{};
     float idle_rate{1.0F};
     bool idle_when_moving{};
     // Transition clips: before and after turning in place (XML Has_Pre_Turn_Anim) and when starting

@@ -76,13 +76,75 @@ void SimulationWorld::aim_turret(const std::size_t index, const float dt)
     }
     const auto& turret = *combat.profile.turret;
     float wanted = 0.0F;
-    if (const auto victim = attack_victim(index))
+    if (const auto victim = turret_victim(index))
     {
         const auto& to = positions_[*victim];
         wanted = std::clamp(wrap_angle(std::atan2(to.y - positions_[index].y, to.x - positions_[index].x) - headings_[index]), -turret.yaw_limit, turret.yaw_limit);
     }
     const auto step = turret.rate > 0.0F ? turret.rate * dt : std::numbers::pi_v<float>;
     combat.turret_yaw = wrap_angle(combat.turret_yaw + std::clamp(wrap_angle(wanted - combat.turret_yaw), -step, step));
+}
+
+std::optional<std::size_t> SimulationWorld::turret_victim(const std::size_t index)
+{
+    const auto& combat = combat_[index];
+    const auto target = attack_victim(index);
+    for (std::size_t slot = 0; slot < combat.profile.weapons.size(); ++slot)
+    {
+        const auto& weapon = combat.profile.weapons[slot];
+        if (weapon.hardpoint >= 0)
+        {
+            continue;
+        }
+        if (const auto& state = combat.weapons[slot]; state.pulses_left > 0)
+        {
+            if (const auto victim = dense_index(state.target))
+            {
+                return victim;
+            }
+        }
+        // As run_weapon picks: the entity's target when the weapon reaches it, else (unless the
+        // target was ordered or the stance holds fire) the nearest the weapon reaches.
+        if (target && in_reach(index, weapon, *target))
+        {
+            return target;
+        }
+        if ((combat.ordered && target) || stances_[index] == Stance::hold_fire)
+        {
+            return target;
+        }
+        if (const auto nearest = choose_target(index, positions_[index], weapon.range,
+                                               [&](const std::size_t candidate)
+                                               {
+                                                   return in_reach(index, weapon, candidate);
+                                               }))
+        {
+            return nearest;
+        }
+        break;
+    }
+    return target;
+}
+
+bool SimulationWorld::in_reach(const std::size_t index, const WeaponProfile& weapon, const std::size_t victim) const noexcept
+{
+    const auto distance = distance_xy(positions_[index], positions_[victim]);
+    return distance <= weapon.range && distance >= weapon.min_range && (weapon.excluded_categories & combat_[victim].profile.categories) == 0;
+}
+
+LocalPoint SimulationWorld::weapon_mount(const std::size_t index, const WeaponProfile& weapon, const LocalPoint& mount) const noexcept
+{
+    const auto& turret = combat_[index].profile.turret;
+    if (!weapon.on_turret || !turret)
+    {
+        return mount;
+    }
+    const auto yaw = combat_[index].turret_yaw;
+    const auto c = std::cos(yaw);
+    const auto s = std::sin(yaw);
+    const auto forward = mount.forward - turret->pivot.forward;
+    const auto left = mount.left - turret->pivot.left;
+    return {turret->pivot.forward + forward * c - left * s, turret->pivot.left + forward * s + left * c, mount.up};
 }
 
 bool SimulationWorld::turret_aimed(const std::size_t index, const std::size_t victim) const noexcept
@@ -188,11 +250,11 @@ void SimulationWorld::run_weapon(const std::size_t index)
             {
                 continue;
             }
-            const auto mount = world_point(index, weapon.mount);
+            const auto mount = world_point(index, weapon_mount(index, weapon, weapon.mount));
+            const auto cone_direction = weapon.cone_direction + (weapon.on_turret ? combat.turret_yaw : 0.0F);
             const auto covers = [&](const std::size_t victim)
             {
-                const auto distance = distance_xy(positions_[index], positions_[victim]);
-                if (distance > weapon.range || distance < weapon.min_range || (weapon.excluded_categories & combat_[victim].profile.categories) != 0)
+                if (!in_reach(index, weapon, victim))
                 {
                     return false;
                 }
@@ -211,7 +273,7 @@ void SimulationWorld::run_weapon(const std::size_t index)
                 }
                 const auto& to = positions_[victim];
                 const auto bearing = std::atan2(to.y - mount.y, to.x - mount.x);
-                return std::fabs(wrap_angle(bearing - (headings_[index] + weapon.cone_direction))) <= weapon.cone_half_angle;
+                return std::fabs(wrap_angle(bearing - (headings_[index] + cone_direction))) <= weapon.cone_half_angle;
             };
             std::optional<std::size_t> victim;
             if (entity_target && covers(*entity_target))
@@ -262,7 +324,7 @@ void SimulationWorld::run_weapon(const std::size_t index)
         {
             const bool second = weapon.alternate_mount && (state.shots % 2U) == 1U;
             ++state.shots;
-            launch(index, *victim, weapon, second ? *weapon.alternate_mount : weapon.mount);
+            launch(index, *victim, weapon, weapon_mount(index, weapon, second ? *weapon.alternate_mount : weapon.mount));
             --state.pulses_left;
             state.pulse_timer = ticks_for(weapon.pulse_delay_seconds);
         }

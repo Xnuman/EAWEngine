@@ -110,7 +110,7 @@ Systems that `needs` rows wait for, by tag count:
 | `SecondaryTurnLookaheadDistance` | `gap` |  |
 | `Has_Pre_Turn_Anim` | `done` | TURNx_BEGIN before, TURNx_END after turning in place |
 | `Walk_Transition` | `done` | MOVESTART and MOVE_END by stride quarter |
-| `Locomotor_Has_Animation_Priority` | `gap` | animator step: movement driven by the walk clip |
+| `Locomotor_Has_Animation_Priority` | `gap` | needs the simulation to wait for MOVESTART: walkers set off at once, so the clip plays while walking |
 | `Should_Cause_Limited_Turrets_To_Turn` | `done` | no: the hull does not turn to a target beyond the arc |
 | `Movement_Directions_Count` | `gap` |  |
 
@@ -202,8 +202,8 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Movement_Animation_Speed` | `done` | multiplies the move clip on top of speed matching |
-| `Walk_Animation_Speed` | `done` |  |
+| `Movement_Animation_Speed` | `done` | speed (Max_Speed units) at which the move clip plays at 1x; inferred from the corpus |
+| `Walk_Animation_Speed` | `done` | as Movement_Animation_Speed, for the walk clip |
 | `Rotation_Animation_Speed` | `gap` | unit unclear (20 typical); turn loops play at their own rate |
 | `Crouch_Animation_Speed` | `needs abilities` | crouch clips play under Spread Out |
 | `Tread_Scroll_Rate` | `gap` |  |
@@ -344,7 +344,7 @@ Systems that `needs` rows wait for, by tag count:
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Turret_Bone_Name` | `done` | unit turrets; hardpoint turrets not yet |
-| `Barrel_Bone_Name` | `done` |  |
+| `Barrel_Bone_Name` | `done` | barrel pitch; the turret weapon fires from it |
 | `Apply_Y_Turret_Rotate_To_Axis` | `gap` | yaw is about the model up axis instead |
 | `Apply_Z_Turret_Rotate_To_Axis` | `gap` | pitch is about the model horizontal instead |
 | `Turret_Rest_Angle` | `gap` |  |

@@ -2,12 +2,14 @@
 
 #include "visual_scene_builder.hpp"
 
+#include "assets/skeleton.hpp"
 #include "assets/type_hardpoints.hpp"
 
 #include "formats/xml_document.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <limits>
@@ -494,9 +496,27 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     profile.attack_move_response_range = type.amount("Attack_Move_Response_Range");
     profile.guard_chase_range = type.amount("Guard_Chase_Range");
     profile.stickiness_seconds = type.amount("Targeting_Stickiness_Time_Threshold");
+    // The turret's bone and the bones it carries (weapons there turn with it).
+    std::vector<bool> on_turret;
+    std::optional<BonePlacement> barrel;
     if (const auto* bone = type.node("Turret_Bone_Name"); bone != nullptr && !ascii_trim(bone->text).empty())
     {
         TurretProfile turret;
+        if (const auto pivot = find_bone(skeleton, pose, bone->text, model_scale))
+        {
+            turret.pivot = pivot->point;
+            std::vector<std::int32_t> parents;
+            for (const auto& each : skeleton->bones)
+            {
+                parents.push_back(each.parent);
+            }
+            const std::array roots{pivot->index};
+            on_turret = bones_in_subtrees(parents, roots);
+            if (const auto* barrel_name = type.node("Barrel_Bone_Name"))
+            {
+                barrel = find_bone(skeleton, pose, barrel_name->text, model_scale);
+            }
+        }
         const auto speed = type.amount("Turret_Rotate_Speed");
         turret.rate = (speed > 0.0F ? speed : default_turret_rotate_speed) * provisional_turn_rate_scale;
         if (const auto arc = type.amount("Turret_Rotate_Extent_Degrees"); arc > 0.0F && arc < 360.0F)
@@ -636,6 +656,12 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 read_projectile(shot, projectile_type->name, content, weapon);
                 weapon.fire_sound = type_fire_sound;
                 weapon.mount.up = profile.aim_height;
+                // A turret's weapon fires from its barrel bone and turns with it.
+                if (profile.turret)
+                {
+                    weapon.on_turret = true;
+                    weapon.mount = barrel ? barrel->point : weapon.mount;
+                }
                 weapon.inaccuracy = unit_inaccuracy;
                 weapon.min_range = std::min(type.amount("Targeting_Min_Attack_Distance"), range);
                 weapon.appearance_delay_seconds = appearance_delay(type);
@@ -731,6 +757,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         }
         weapon.fire_sound = sound_of(point, "Fire_SFXEvent", type_fire_sound);
         weapon.mount = fire_bone ? fire_bone->point : part.offset;
+        weapon.on_turret = profile.turret && fire_bone && fire_bone->index < on_turret.size() && on_turret[fire_bone->index];
         if (second_bone)
         {
             weapon.alternate_mount = second_bone->point;

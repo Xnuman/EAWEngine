@@ -424,7 +424,9 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         const auto lower = clip_of(blend.lower);
         const auto upper = clip_of(blend.upper);
         // The stride phase advances at the blended rate of the moving clips, each sped up or slowed
-        // down by how fast the unit goes against the speed the clip stands for.
+        // down by how fast the unit goes against the speed the clip stands for: the engine's
+        // reference (top speed, or its walk speed) within the playback bounds, rescaled to the
+        // type's own reference speed when its XML gives one (AnimationProfile).
         if (entity.max_speed > 0.0F)
         {
             double rate = 0.0;
@@ -434,9 +436,10 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 {
                     return;
                 }
-                const auto reference = role == AnimationRole::walk_move ? entity.max_speed * walk_speed_fraction : entity.max_speed;
-                const auto playback =
-                    std::clamp(state.display_speed / reference, minimum_playback_rate, maximum_playback_rate) * (role == AnimationRole::walk_move ? profile.walk_rate : profile.move_rate);
+                const bool walking = role == AnimationRole::walk_move;
+                const auto engine_reference = walking ? walk_speed_fraction : 1.0F;
+                const auto type_reference = walking ? (profile.walk_reference > 0.0F ? profile.walk_reference : walk_speed_fraction) : profile.move_reference;
+                const auto playback = std::clamp(state.display_speed / (entity.max_speed * engine_reference), minimum_playback_rate, maximum_playback_rate) * engine_reference / type_reference;
                 rate += static_cast<double>(weight * playback) / static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
             };
             stride_rate(blend.lower, lower, 1.0F - blend.blend);
@@ -540,7 +543,9 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             const auto rate = dt > 0.0 ? std::remainder(entity.heading - state.last_heading, 6.2831853F) / static_cast<float>(dt) : 0.0F;
             const bool slow = state.display_speed < entity.max_speed * turn_in_place_speed_fraction;
             const int turning = slow && std::fabs(rate) > turn_in_place_rate ? (rate > 0.0F ? 1 : -1) : 0;
-            const bool moving = entity.moving || state.display_speed > entity.max_speed * turn_in_place_speed_fraction;
+            // Moving by the shown speed, not the order: a walker turning in place before it sets off has
+            // not started walking yet, and MOVESTART belongs to when it does.
+            const bool moving = !slow;
             const auto start_transition = [&](const std::int32_t clip)
             {
                 if (clip >= 0)

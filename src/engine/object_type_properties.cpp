@@ -220,8 +220,18 @@ AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const 
         return value > 0.0F && value <= 100.0F ? value : 1.0F;
     };
     AnimationProfile profile;
-    profile.move_rate = rate("Movement_Animation_Speed");
-    profile.walk_rate = rate("Walk_Animation_Speed");
+    // Reference speeds as fractions of Max_Speed; without a top speed they cannot be placed.
+    if (const auto top = type_float_field(catalog, definition, "Max_Speed"); top > 0.0F && std::isfinite(top))
+    {
+        const auto reference = [&](const std::string_view field)
+        {
+            const auto value = type_float_field(catalog, definition, field);
+            return value > 0.0F && std::isfinite(value) ? value / top : 0.0F;
+        };
+        const auto move = reference("Movement_Animation_Speed");
+        profile.move_reference = move > 0.0F ? move : 1.0F;
+        profile.walk_reference = reference("Walk_Animation_Speed");
+    }
     profile.idle_rate = rate("Idle_Anim_00_Rate_Mod");
     if (const auto* idle = catalog.field(definition, "Allow_Idle_When_Moving").field)
     {

@@ -510,6 +510,20 @@ the move. This is an inference from the behavior lists and the observation; the
 original's exact rules (turn speed while aiming, crouching, the stationary
 flag's effect on movement) are not established.
 
+Clip speeds (`Movement_Animation_Speed`, `Walk_Animation_Speed`). Stock
+`Movement_Animation_Speed` (about 130 types) tracks the type's `Max_Speed`:
+equal on most (Stormtrooper 0.8/0.8, T2-B 2.3/2.3, Wampa 1.1903/1.1903, Shaak
+0.13/0.13, Rancor 0.75/0.75), lower on others (Rebel trooper 0.65/1, AT-ST
+0.8117/1.2, AT-AT 0.1366/0.5, Bantha 0.07/0.35). `Walk_Animation_Speed` (26
+types) is 0.27 to 0.43 against top speeds near 1, about the 0.4 of top speed
+the engine walks at, and `Crouch_Animation_Speed` (0.537) sits near the halved
+crouched speed. Read as playback multipliers these would play a Shaak's legs at
+0.13 times and an AT-AT's at 0.14 times (the owner saw the AT-AT's walk
+"completely broken" under that reading). The engine reads them as the unit
+speed, in `Max_Speed`'s units, at which the clip plays at its own rate:
+playback scales by speed over that reference. An inference from the corpus;
+the original's bounds on the resulting rate are not known.
+
 Crouching (the SPREAD_OUT ability; deferred to the abilities work in M4).
 Infantry and their squads and teams (Rebel_Trooper, Stormtrooper, Plex_Soldier,
 pirates, field commanders, Rebel_Infantry_Squad, Imperial_Stormtrooper_Squad,

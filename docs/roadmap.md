@@ -316,6 +316,11 @@ compared by measured ratios from screenshots, never by recreated scenes):
 - where weapons fire from: the TIE Crawler's model has `MuzzleA_00`-`_02` bones with hidden
   `_flash` meshes; whether shots cycle through them and how long a flash shows;
 - the times in `ANIMATIONSFXMAPS.TXT` (read as hundredths of a frame);
+- `Movement_Animation_Speed` and `Walk_Animation_Speed` as the speeds at which the move and walk
+  clips play at their own rate (the AT-AT's legs then run at 3.7 times at its top speed), and
+  whether walkers stand still during `MOVESTART` (`Locomotor_Has_Animation_Priority`);
+- turret weapons firing from `Barrel_Bone_Name` and hardpoints under the turret bone turning with
+  it (the T4-B's missiles);
 - how the original picks detail levels (`LOD_Bias`, `MeshDetail`): the engine's distances, pixel
   sizes, hysteresis, and fade time are its own;
 - why `W_LASER_INVISIBLE.ALO` (the land model of 19 melee and environment projectiles) is invisible

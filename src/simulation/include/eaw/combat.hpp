@@ -138,9 +138,11 @@ struct AreaBlast
 // entity's target at `rate` radians per second, at most `yaw_limit` either side of the hull's
 // facing; the weapon fires only while it points at its victim (within turret_aim_tolerance). A
 // target outside a limited arc turns the hull toward it when `turns_body` (XML
-// Should_Cause_Limited_Turrets_To_Turn, default yes).
+// Should_Cause_Limited_Turrets_To_Turn, default yes). Weapons on the turret (WeaponProfile::on_turret)
+// turn about `pivot`, the turret bone's place in the model.
 struct TurretProfile
 {
+    LocalPoint pivot;
     float rate{};
     float yaw_limit{3.14159265F};
     bool turns_body{true};
@@ -191,6 +193,8 @@ struct WeaponProfile
     std::optional<LocalPoint> alternate_mount;
     float cone_direction{};
     float cone_half_angle{3.14159265F};
+    // Carried by the entity's turret (CombatProfile::turret): the mounts and the cone turn with it.
+    bool on_turret{};
     // The hardpoint the weapon is mounted on (its index in CombatProfile::hardpoints), or -1. The
     // weapon is silent once that hardpoint is destroyed.
     std::int32_t hardpoint{-1};

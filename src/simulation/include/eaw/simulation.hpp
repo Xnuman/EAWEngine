@@ -700,9 +700,16 @@ private:
     void area_blast(const Vector3& point, std::uint32_t owner, const AreaBlast& blast, std::uint16_t damage_type, bool damages_shield, bool damages_health);
     // Whether one of `index`'s weapons may fire at `candidate`'s categories (or it has none).
     [[nodiscard]] bool engages(std::size_t index, std::size_t candidate) const noexcept;
-    // Turns `index`'s turret toward its target (CombatProfile::turret), and whether it points at
+    // Turns `index`'s turret toward turret_victim (CombatProfile::turret), and whether it points at
     // `victim` closely enough to fire (true without a turret).
     void aim_turret(std::size_t index, float dt);
+    // The victim `index`'s turret turns toward: its own weapon's burst victim, else the entity's
+    // target within that weapon's reach, else the nearest hostile within it.
+    [[nodiscard]] std::optional<std::size_t> turret_victim(std::size_t index);
+    // Whether `victim` is within `weapon`'s range, beyond its minimum, and of a category it fires at.
+    [[nodiscard]] bool in_reach(std::size_t index, const WeaponProfile& weapon, std::size_t victim) const noexcept;
+    // `mount` of `weapon`, turned with the turret when the weapon is on it.
+    [[nodiscard]] LocalPoint weapon_mount(std::size_t index, const WeaponProfile& weapon, const LocalPoint& mount) const noexcept;
     [[nodiscard]] bool turret_aimed(std::size_t index, std::size_t victim) const noexcept;
     // The target `index` prefers among the damageable hostiles within `reach` of `center` (in the
     // ground plane) that `accepts`: the lowest rank of its targeting priorities, then the nearest,
