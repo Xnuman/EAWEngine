@@ -463,6 +463,39 @@ std::optional<BonePlacement> find_bone(const Skeleton* skeleton, const std::vect
     return std::nullopt;
 }
 
+// A model's MuzzleA_nn bones (the unit's own weapon's muzzles, by the stock naming: B and later
+// letters belong to hardpoints and second weapons), in number order.
+std::vector<BonePlacement> muzzle_bones(const Skeleton* skeleton, const std::vector<Matrix4>& pose, const float scale)
+{
+    constexpr std::string_view prefix = "muzzlea_";
+    std::vector<std::pair<std::uint32_t, BonePlacement>> found;
+    for (std::size_t index = 0; skeleton != nullptr && index < skeleton->bones.size(); ++index)
+    {
+        const auto name = ascii_lower(ascii_trim(skeleton->bones[index].name));
+        std::uint32_t number = 0;
+        if (!name.starts_with(prefix))
+        {
+            continue;
+        }
+        const auto digits = std::string_view(name).substr(prefix.size());
+        if (const auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), number); error != std::errc{} || end != digits.data() + digits.size())
+        {
+            continue;
+        }
+        if (const auto placement = find_bone(skeleton, pose, skeleton->bones[index].name, scale))
+        {
+            found.emplace_back(number, *placement);
+        }
+    }
+    std::ranges::stable_sort(found, {}, &std::pair<std::uint32_t, BonePlacement>::first);
+    std::vector<BonePlacement> muzzles;
+    for (const auto& [number, placement] : found)
+    {
+        muzzles.push_back(placement);
+    }
+    return muzzles;
+}
+
 HardpointProfile::Kind hardpoint_kind(const std::string_view type)
 {
     const auto folded = ascii_lower(ascii_trim(type));
@@ -655,13 +688,26 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 weapon.pulse_delay_seconds = cadence("Projectile_Fire_Pulse_Delay_Seconds", 0.0F);
                 read_projectile(shot, projectile_type->name, content, weapon);
                 weapon.fire_sound = type_fire_sound;
+                // Where the shots leave: the model's MuzzleA_nn bones in turn, else a turret's barrel
+                // bone, else the body at the aim height. Infantry and heroes keep the body: their
+                // bind pose is not a firing pose (arms spread), so their muzzle bones are far off
+                // (an engine choice until shots leave from the animated pose).
                 weapon.mount.up = profile.aim_height;
-                // A turret's weapon fires from its barrel bone and turns with it.
-                if (profile.turret)
+                const auto muzzles = muzzle_bones(skeleton, pose, model_scale);
+                if (!muzzles.empty() && (profile.categories & content.categories("Infantry | LandHero")) == 0)
                 {
-                    weapon.on_turret = true;
-                    weapon.mount = barrel ? barrel->point : weapon.mount;
+                    weapon.mount = muzzles.front().point;
+                    for (std::size_t muzzle = 1; muzzle < muzzles.size(); ++muzzle)
+                    {
+                        weapon.extra_mounts.push_back(muzzles[muzzle].point);
+                    }
                 }
+                else if (barrel)
+                {
+                    weapon.mount = barrel->point;
+                }
+                // A turret carries the unit's weapon and turns it.
+                weapon.on_turret = profile.turret.has_value();
                 weapon.inaccuracy = unit_inaccuracy;
                 weapon.min_range = std::min(type.amount("Targeting_Min_Attack_Distance"), range);
                 weapon.appearance_delay_seconds = appearance_delay(type);
@@ -760,7 +806,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         weapon.on_turret = profile.turret && fire_bone && fire_bone->index < on_turret.size() && on_turret[fire_bone->index];
         if (second_bone)
         {
-            weapon.alternate_mount = second_bone->point;
+            weapon.extra_mounts.push_back(second_bone->point);
         }
         const auto cone = point.amount("Fire_Cone_Width");
         if (fire_bone && cone > 0.0F && cone < 360.0F)

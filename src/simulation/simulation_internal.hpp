@@ -7,6 +7,7 @@
 
 #include "eaw/simulation.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -79,7 +80,7 @@ inline bool valid_profile(const CombatProfile& profile) noexcept
         if (!valid_amount(weapon.range) || !valid_amount(weapon.min_range) || !valid_amount(weapon.recharge_seconds) || !valid_amount(weapon.pulse_delay_seconds) || !valid_amount(weapon.damage) ||
             !valid_amount(weapon.projectile_speed) || !valid_amount(weapon.max_flight_distance) || !valid_amount(weapon.blast.damage) || !valid_amount(weapon.blast.range) ||
             !valid_amount(weapon.blast.friendly_damage) || !valid_amount(weapon.max_lifetime) || !valid_amount(weapon.scan_range) || !valid_amount(weapon.appearance_delay_seconds) ||
-            !finite_point(weapon.mount) || (weapon.alternate_mount && !finite_point(*weapon.alternate_mount)) || !std::isfinite(weapon.cone_direction) || !valid_amount(weapon.cone_half_angle) ||
+            !finite_point(weapon.mount) || !std::ranges::all_of(weapon.extra_mounts, finite_point) || !std::isfinite(weapon.cone_direction) || !valid_amount(weapon.cone_half_angle) ||
             weapon.hardpoint < -1 || weapon.hardpoint >= static_cast<std::int32_t>(profile.hardpoints.size()))
         {
             return false;

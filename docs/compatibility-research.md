@@ -1081,9 +1081,17 @@ particle-audit`.
   is the response when a fleet is sent to another planet in galactic conquest. The engine does not
   play it in battles. `SFXEvent_Group_Move` and `SFXEvent_Group_Attack` (25 each, heroes) are not
   played either.
-- **Muzzles.** Weapon positions are not in the unit XML: the TIE Crawler's model has three
-  `MuzzleA_nn` bones, each with a hidden `MuzzleA_nn_flash` mesh, which the original presumably
-  fires from and flashes; not used by the engine yet.
+- **Muzzles.** Weapon positions are not in the unit XML (no tag names a unit's muzzles). The
+  models carry them: of the 123 models of stock types with `Projectile_Types`, nearly all have
+  `MuzzleA_nn` bones (one in 91, two in 35, four in 11, up to ten), and the pulse count usually
+  matches or multiplies their number (T4-B 2 and 2, T2-B 4 and 4, X-wing 4 and 4, TIE Fighter 2
+  and 2, MPTL 9 and 9, AT-AT 2 and 4). `MuzzleB_nn` bones belong to hardpoints (the T4-B's three
+  missile tubes are `Fire_Bone_A` of `HP_T4B_Tank_03`..`05`) or second weapons. The bones are not
+  stored in number order (the T2-B's run 00, 03, 02, 01). The TIE Crawler's three have hidden
+  `MuzzleA_nn_flash` meshes. The engine fires a unit's shots from the A muzzles in turn, by number
+  (an inference from the naming and the counts). Bind poses of infantry, heroes, and walking
+  robots are not firing poses (a stormtrooper's muzzle sits 6.9 units to the side at the hip, the
+  Phase III dark trooper's 9 units out, the Droideka's in its rolled ball).
 
 ## Lua host protocol
 

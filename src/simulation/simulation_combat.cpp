@@ -322,9 +322,9 @@ void SimulationWorld::run_weapon(const std::size_t index)
         }
         while (state.pulses_left > 0 && state.pulse_timer == 0)
         {
-            const bool second = weapon.alternate_mount && (state.shots % 2U) == 1U;
+            const auto muzzle = state.shots % (weapon.extra_mounts.size() + 1U);
             ++state.shots;
-            launch(index, *victim, weapon, weapon_mount(index, weapon, second ? *weapon.alternate_mount : weapon.mount));
+            launch(index, *victim, weapon, weapon_mount(index, weapon, muzzle == 0 ? weapon.mount : weapon.extra_mounts[muzzle - 1U]));
             --state.pulses_left;
             state.pulse_timer = ticks_for(weapon.pulse_delay_seconds);
         }

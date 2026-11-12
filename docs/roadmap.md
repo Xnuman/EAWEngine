@@ -313,8 +313,9 @@ compared by measured ratios from screenshots, never by recreated scenes):
   the course steps (11.25 degrees), the formation spacing of ships (slots 4.5 radii apart), which
   units are small enough to fly past (below a fifth of the radius), and that a unit at another
   height is passed when the heights differ by more than both radii;
-- where weapons fire from: the TIE Crawler's model has `MuzzleA_00`-`_02` bones with hidden
-  `_flash` meshes; whether shots cycle through them and how long a flash shows;
+- where weapons fire from: whether shots cycle through a unit's `MuzzleA_nn` bones one per shot
+  in number order (the engine's reading), whether infantry fire from their animated muzzle, and
+  how long the TIE Crawler's hidden `MuzzleA_nn_flash` meshes show;
 - the times in `ANIMATIONSFXMAPS.TXT` (read as hundredths of a frame);
 - `Movement_Animation_Speed` and `Walk_Animation_Speed` as the speeds at which the move and walk
   clips play at their own rate (the AT-AT's legs then run at 3.7 times at its top speed), and

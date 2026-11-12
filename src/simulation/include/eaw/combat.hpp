@@ -188,9 +188,9 @@ struct WeaponProfile
     // `cone_direction` radians from the entity's heading (counter-clockwise), `cone_half_angle` to
     // either side (pi or more covers all around).
     LocalPoint mount;
-    // A second muzzle its shots alternate with (a hardpoint's XML Fire_Bone_B), first shot from
-    // `mount`.
-    std::optional<LocalPoint> alternate_mount;
+    // Further muzzles: shots cycle from `mount` through these, one per shot (a hardpoint's XML
+    // Fire_Bone_B; a unit's MuzzleA_01, MuzzleA_02, ... bones).
+    std::vector<LocalPoint> extra_mounts;
     float cone_direction{};
     float cone_half_angle{3.14159265F};
     // Carried by the entity's turret (CombatProfile::turret): the mounts and the cone turn with it.

@@ -863,19 +863,19 @@ void test_target_validity()
         station_world.step();
         require(!station_world.alive(*doomed) && station_world.snapshot().entities[0].health == 950.0F, "a death blast must damage the hostiles around the dead");
     }
-    // Two muzzles (Fire_Bone_B): shots alternate between them, the first from the main one.
+    // Three muzzles (MuzzleA_nn): shots cycle through them, the first from the main one.
     {
         eaw::SimulationWorld twin(0.1);
         twin.set_hostility(hostility);
         eaw::CombatProfile guns;
         guns.health = 50.0F;
-        guns.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 0.1F, .damage = 1.0F, .mount = {.left = 5.0F}, .alternate_mount = eaw::LocalPoint{.left = -5.0F}}};
+        guns.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 0.1F, .damage = 1.0F, .mount = {.left = 5.0F}, .extra_mounts = {{.left = -5.0F}, {.left = 0.0F}}}};
         eaw::CombatProfile sturdy;
         sturdy.health = 1000.0F;
         (void)twin.spawn({.type_name = "Twin", .owner = 1, .combat = guns});
         (void)twin.spawn({.type_name = "Target", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = sturdy});
         std::vector<float> sides;
-        for (int tick = 0; tick < 6 && sides.size() < 3; ++tick)
+        for (int tick = 0; tick < 8 && sides.size() < 4; ++tick)
         {
             twin.step();
             for (const auto& shot : twin.snapshot().shots)
@@ -883,7 +883,7 @@ void test_target_validity()
                 sides.push_back(shot.origin.y);
             }
         }
-        require(sides.size() == 3 && sides[0] > 0.0F && sides[1] < 0.0F && sides[2] > 0.0F, "shots must alternate between the two muzzles");
+        require(sides.size() == 4 && sides[0] > 4.0F && sides[1] < -4.0F && std::fabs(sides[2]) < 1.0F && sides[3] > 4.0F, "shots must cycle through the muzzles in order");
     }
     // Stickiness: a shooter keeps the low-priority target it found, then after 1 s looks again and
     // takes the preferred one that arrived meanwhile.

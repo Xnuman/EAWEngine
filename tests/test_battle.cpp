@@ -62,6 +62,8 @@ void test_combat_content()
                 "<Targeting_Fire_Inaccuracy>Infantry, 3</Targeting_Fire_Inaccuracy><Targeting_Fire_Inaccuracy>Air, 70</Targeting_Fire_Inaccuracy>"
                 "<Targeting_Fire_Inaccuracy_Fixed_Radius>50</Targeting_Fire_Inaccuracy_Fixed_Radius></GroundVehicle>"
                 "<GroundStructure Name=\"Wall\"><Tactical_Health>-5</Tactical_Health></GroundStructure>"
+                "<GroundInfantry Name=\"Rifleman\"><Projectile_Types>Proj_Base</Projectile_Types><Targeting_Max_Attack_Distance>100</Targeting_Max_Attack_Distance>"
+                "<Ranged_Target_Z_Adjust>5</Ranged_Target_Z_Adjust><CategoryMask>Infantry</CategoryMask></GroundInfantry>"
                 "<Priority_Set Name=\"AntiTank\"><Attack_Priorities>Turret, 2.0, Vehicle, 1.0, Bogus, 3</Attack_Priorities><Category_Exclusions>Air</Category_Exclusions>"
                 "<Property_Exclusions>NotOpportunityTarget</Property_Exclusions><Unit_Exclusions>Wall, Tank</Unit_Exclusions></Priority_Set>"
                 "<GroundVehicle Name=\"Picky\"><Targeting_Priority_Set>AntiTank</Targeting_Priority_Set><Property_Flags>Turret</Property_Flags></GroundVehicle>"
@@ -290,6 +292,25 @@ void test_combat_content()
         const auto& doubled = scaled.hardpoints[1].offset;
         require(part.forward == 6.0F && part.left == 4.0F && part.up == 2.0F && doubled.forward == 12.0F && doubled.left == 8.0F && doubled.up == 4.0F,
                 "hardpoint positions must come from bones and scale with the model");
+    }
+    {
+        // A unit's weapon fires from its MuzzleA_nn bones in number order (stored out of order here,
+        // as the T2-B's are); infantry keep the body at their aim height.
+        eaw::AloModelData model;
+        for (const auto& [name, left] : {std::pair{"MuzzleA_01", -2.0F}, std::pair{"MuzzleA_00", 1.0F}, std::pair{"MuzzleB_00", 9.0F}, std::pair{"MuzzleA_02", 3.0F}})
+        {
+            eaw::AloBone bone;
+            bone.name = name;
+            bone.transform = {1.0F, 0.0F, 0.0F, left, 0.0F, 1.0F, 0.0F, -6.0F, 0.0F, 0.0F, 1.0F, 2.0F};
+            model.bones.push_back(bone);
+        }
+        const auto skeleton = eaw::load_skeleton(model);
+        std::vector<std::string> muzzle_warnings;
+        const auto gun = eaw::combat_profile(catalog, *definition("Tank"), content, muzzle_warnings, &skeleton).weapons.front();
+        const auto rifle = eaw::combat_profile(catalog, *definition("Rifleman"), content, muzzle_warnings, &skeleton).weapons.front();
+        require(gun.mount.left == 1.0F && gun.mount.forward == 6.0F && gun.mount.up == 2.0F && gun.extra_mounts.size() == 2 && gun.extra_mounts[0].left == -2.0F && gun.extra_mounts[1].left == 3.0F &&
+                    rifle.mount.left == 0.0F && rifle.mount.up == 5.0F && rifle.extra_mounts.empty(),
+                "a unit's weapon must fire from its MuzzleA bones in number order, infantry from the body");
     }
     const auto& turbolaser = cruiser.weapons.front();
     require(turbolaser.recharge_seconds == 3.5F && turbolaser.pulse_count == 7 && turbolaser.pulse_delay_seconds == 0.2F && turbolaser.damage == 7.5F && turbolaser.damage_type == 0 &&
