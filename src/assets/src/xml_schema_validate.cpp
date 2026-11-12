@@ -1,17 +1,16 @@
 // Validation of a resolved XML object database against the schema: field types, values,
 // repetition, and object references.
 
-#include "assets/xml_schema.hpp"
-#include "assets/game_object_catalog.hpp"
-
 #include "xml_schema_internal.hpp"
 
-#include "vfs/asset_path.hpp"
 #include "core/string_utils.hpp"
+#include "vfs/asset_path.hpp"
+#include "assets/game_object_catalog.hpp"
+#include "assets/xml_schema.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <cerrno>
+#include <charconv>
 #include <cstdlib>
 #include <functional>
 #include <iterator>

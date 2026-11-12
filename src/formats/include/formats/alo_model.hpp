@@ -1,9 +1,9 @@
 #pragma once
 
-#include "formats/alo_generic.hpp"
 #include "math/matrix.hpp"
 #include "math/vector.hpp"
 #include "core/status.hpp"
+#include "formats/alo_generic.hpp"
 
 #include <array>
 #include <cstddef>

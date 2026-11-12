@@ -1,8 +1,7 @@
 #include "assets/sound_events.hpp"
 
-#include "assets/game_object_catalog.hpp"
-
 #include "core/string_utils.hpp"
+#include "assets/game_object_catalog.hpp"
 
 #include <algorithm>
 #include <charconv>

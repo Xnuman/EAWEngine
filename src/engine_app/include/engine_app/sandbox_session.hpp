@@ -4,15 +4,16 @@
 // executable; the member functions are defined by subject in sandbox_app.cpp and the
 // sandbox_session_*.cpp files named below.
 
-#include "engine_app/frame_watchdog.hpp"
-
-#include "assets/asset_cache.hpp"
+#include "core/log.hpp"
 #include "audio/audio_device.hpp"
+#include "render/d3d12_renderer.hpp"
+#include "assets/asset_cache.hpp"
+#include "platform/platform_window.hpp"
+#include "engine/battle.hpp"
 #include "engine/battle_audio.hpp"
 #include "engine/battle_effects.hpp"
-#include "engine/battle.hpp"
-#include "engine/battle_scripts.hpp"
 #include "engine/battle_log.hpp"
+#include "engine/battle_scripts.hpp"
 #include "engine/camera_controller.hpp"
 #include "engine/camera_math.hpp"
 #include "engine/combat_content.hpp"
@@ -20,16 +21,13 @@
 #include "engine/rts_control.hpp"
 #include "engine/sandbox_content.hpp"
 #include "engine/sandbox_debug_lines.hpp"
-#include "engine_app/sandbox_overlay.hpp"
-#include "engine_app/sandbox_panels.hpp"
 #include "engine/scene_presentation.hpp"
 #include "engine/text_format.hpp"
 #include "engine/unit_animation.hpp"
 #include "engine/visual_scene_builder.hpp"
-
-#include "render/d3d12_renderer.hpp"
-#include "core/log.hpp"
-#include "platform/platform_window.hpp"
+#include "engine_app/frame_watchdog.hpp"
+#include "engine_app/sandbox_overlay.hpp"
+#include "engine_app/sandbox_panels.hpp"
 
 #include <array>
 #include <chrono>

@@ -1,8 +1,7 @@
 #include "engine_app/frame_watchdog.hpp"
 
-#include "engine/text_format.hpp"
-
 #include "core/log.hpp"
+#include "engine/text_format.hpp"
 
 #include <string>
 

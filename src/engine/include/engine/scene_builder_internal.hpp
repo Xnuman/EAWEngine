@@ -3,32 +3,31 @@
 // Shared pieces of the visual scene builders (scene_materials, scene_models, scene_terrain,
 // object_type_properties, visual_map_builder); not part of the engine's public interface.
 
+#include "math/matrix.hpp"
+#include "math/vector.hpp"
+#include "vfs/virtual_file_system.hpp"
+#include "formats/ted_map.hpp"
 #include "assets/asset_cache.hpp"
+#include "assets/game_object_catalog.hpp"
+#include "assets/legacy_material.hpp"
+#include "assets/model.hpp"
 #include "assets/resource_loaders.hpp"
 #include "assets/resource_manager.hpp"
+#include "assets/xml_asset_database.hpp"
 #include "engine/combat_content.hpp"
 #include "engine/visual_scene_builder.hpp"
 
-#include "assets/game_object_catalog.hpp"
-#include "assets/legacy_material.hpp"
-#include "formats/ted_map.hpp"
-#include "vfs/virtual_file_system.hpp"
-#include "assets/xml_asset_database.hpp"
-#include "assets/model.hpp"
-#include "math/matrix.hpp"
-#include "math/vector.hpp"
-
-#include <functional>
-#include <unordered_set>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace eaw::scene_build {

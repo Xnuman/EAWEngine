@@ -1,8 +1,8 @@
 #include "assets/surface_effects.hpp"
 
-#include "assets/animation_events.hpp"
 #include "core/string_utils.hpp"
 #include "formats/xml_helpers.hpp"
+#include "assets/animation_events.hpp"
 
 #include <algorithm>
 

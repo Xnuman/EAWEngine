@@ -1,14 +1,13 @@
 // Helpers shared by the workbench panels: text, DDS previews, and asset previews.
 
-#include "assets/pose.hpp"
-#include "tools_gui/gui_internal.hpp"
-
-#include "assets/alo_interpretation.hpp"
 #include "core/byte_order.hpp"
 #include "core/string_utils.hpp"
-#include "formats/alo_model_helpers.hpp"
 #include "formats/ala_animation_helpers.hpp"
+#include "formats/alo_model_helpers.hpp"
 #include "formats/dat_string_table_helpers.hpp"
+#include "assets/alo_interpretation.hpp"
+#include "assets/pose.hpp"
+#include "tools_gui/gui_internal.hpp"
 
 namespace eaw::tools {
 namespace {

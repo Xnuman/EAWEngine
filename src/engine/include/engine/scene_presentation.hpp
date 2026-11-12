@@ -6,9 +6,9 @@
 // drawn without their ids being known in advance. Each frame the interpolated snapshot re-poses
 // them. Background layers (sky domes) stay static.
 
-#include "engine/battle.hpp"
-#include "simulation/simulation.hpp"
 #include "render/visual_scene.hpp"
+#include "simulation/simulation.hpp"
+#include "engine/battle.hpp"
 #include "engine/visual_scene_builder.hpp"
 
 #include <cstdint>

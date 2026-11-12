@@ -1,8 +1,8 @@
 #include "engine_app/image_compare_command.hpp"
 
+#include "core/file_io.hpp"
 #include "formats/png_image.hpp"
 #include "formats/rgba_image.hpp"
-#include "core/file_io.hpp"
 
 #include <charconv>
 #include <filesystem>

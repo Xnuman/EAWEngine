@@ -1,12 +1,11 @@
 // Commands on one DAT file: info, list, get, set, remove, validate.
 
-#include "dat_editor/dat_editor.hpp"
-
-#include "formats/dat_string_table.hpp"
-#include "localization/localization_validation.hpp"
 #include "core/string_utils.hpp"
-#include "localization/localization_workspace.hpp"
+#include "formats/dat_string_table.hpp"
 #include "formats/dat_string_table_helpers.hpp"
+#include "localization/localization_validation.hpp"
+#include "localization/localization_workspace.hpp"
+#include "dat_editor/dat_editor.hpp"
 
 #include <algorithm>
 #include <filesystem>

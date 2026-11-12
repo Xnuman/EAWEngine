@@ -1,4 +1,5 @@
 #include "launcher/sandbox_scenario.hpp"
+
 #include "core/string_utils.hpp"
 
 #include <array>

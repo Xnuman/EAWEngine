@@ -7,15 +7,15 @@
 // snapshots and never feeds back into the simulation; its random choices (samples, volume, pitch)
 // come from a presentation stream of its own.
 
+#include "core/random.hpp"
+#include "audio/audio_device.hpp"
+#include "audio/spatial_audio.hpp"
+#include "render/visual_scene.hpp"
 #include "assets/animation_events.hpp"
 #include "assets/asset_cache.hpp"
 #include "assets/sound_events.hpp"
 #include "assets/surface_effects.hpp"
-#include "audio/audio_device.hpp"
-#include "audio/spatial_audio.hpp"
-#include "core/random.hpp"
 #include "simulation/simulation.hpp"
-#include "render/visual_scene.hpp"
 #include "engine/unit_animation.hpp"
 
 #include <cstdint>

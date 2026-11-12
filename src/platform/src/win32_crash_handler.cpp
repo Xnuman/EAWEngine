@@ -1,6 +1,7 @@
+#include "core/fatal_error.hpp"
 #include "platform/crash_handler.hpp"
 
-#include "core/fatal_error.hpp"
+#include <windows.h>
 
 #include <algorithm>
 #include <array>
@@ -10,8 +11,6 @@
 #include <exception>
 #include <string>
 #include <string_view>
-
-#include <windows.h>
 
 namespace eaw {
 namespace {

@@ -2,8 +2,8 @@
 
 #include "simulation/combat.hpp"
 
-#include <cmath>
 #include <charconv>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <string_view>

@@ -2,11 +2,11 @@
 
 // Command line of EAWEngine: the run mode (sandbox, battle, or doctor) and their options.
 
+#include "core/status.hpp"
 #include "vfs/asset_environment.hpp"
 #include "vfs/game_installation.hpp"
-#include "core/status.hpp"
-#include "assets/particle_rules.hpp"
 #include "render/visual_lod.hpp"
+#include "assets/particle_rules.hpp"
 
 #include <array>
 #include <cstdint>

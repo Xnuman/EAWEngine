@@ -4,8 +4,8 @@
 // category, and one source voice per playing sound, its buffer pointing into the Sound kept alive
 // until the voice is destroyed.
 
-#include "audio/audio_device.hpp"
 #include "core/status.hpp"
+#include "audio/audio_device.hpp"
 
 #include <memory>
 

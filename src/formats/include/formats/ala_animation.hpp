@@ -1,9 +1,9 @@
 #pragma once
 
-#include "formats/alo_model.hpp"
 #include "math/matrix.hpp"
 #include "math/quaternion.hpp"
 #include "math/vector.hpp"
+#include "formats/alo_model.hpp"
 
 #include <cstddef>
 #include <cstdint>

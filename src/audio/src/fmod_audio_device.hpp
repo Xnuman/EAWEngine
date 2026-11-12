@@ -5,8 +5,8 @@
 // from the engine's PCM in place (the Sound stays alive until the sound is released) on a channel
 // in the category's channel group.
 
-#include "audio/audio_device.hpp"
 #include "core/status.hpp"
+#include "audio/audio_device.hpp"
 
 #include <memory>
 

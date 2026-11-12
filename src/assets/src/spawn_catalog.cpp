@@ -1,9 +1,9 @@
 #include "assets/spawn_catalog.hpp"
-#include "assets/map_object_layout.hpp"
 
-#include "assets/game_object_catalog.hpp"
-#include "assets/xml_asset_database.hpp"
 #include "core/string_utils.hpp"
+#include "assets/game_object_catalog.hpp"
+#include "assets/map_object_layout.hpp"
+#include "assets/xml_asset_database.hpp"
 
 #include <algorithm>
 #include <array>

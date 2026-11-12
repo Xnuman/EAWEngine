@@ -5,8 +5,8 @@
 // (EAW_AUDIO_FMOD=ON with FMOD_ROOT), since its license does not let the SDK be committed or
 // fetched; "none" is the null device.
 
-#include "audio/audio_device.hpp"
 #include "core/status.hpp"
+#include "audio/audio_device.hpp"
 
 #include <memory>
 #include <string_view>

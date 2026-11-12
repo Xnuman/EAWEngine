@@ -11,8 +11,8 @@
 // ScriptCall, without converting values or allocating. Names the provider does not implement stay
 // recording stubs, so the survey keeps measuring them.
 
-#include "core/status.hpp"
 #include "math/vector.hpp"
+#include "core/status.hpp"
 
 #include <cstddef>
 #include <cstdint>

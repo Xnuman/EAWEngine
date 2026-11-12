@@ -1,15 +1,15 @@
 // Presentation of a running battle: posing entities, unit animation, cameras, picking, and debug drawing.
 #include "test_support.hpp"
 
+#include "formats/alo_model_helpers.hpp"
 #include "engine/battle.hpp"
 #include "engine/battle_effects.hpp"
 #include "engine/battle_log.hpp"
 #include "engine/particle_effects.hpp"
 #include "engine/projectile_visuals.hpp"
-#include "engine/scene_builder_internal.hpp"
 #include "engine/sandbox_options.hpp"
+#include "engine/scene_builder_internal.hpp"
 #include "engine/unit_animation.hpp"
-#include "formats/alo_model_helpers.hpp"
 
 namespace {
 

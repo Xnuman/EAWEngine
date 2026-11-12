@@ -2,11 +2,11 @@
 
 // Sampling, blending, and composing skeleton poses from animation clips.
 
-#include "assets/animation.hpp"
-#include "assets/skeleton.hpp"
 #include "math/matrix.hpp"
 #include "math/quaternion.hpp"
 #include "math/vector.hpp"
+#include "assets/animation.hpp"
+#include "assets/skeleton.hpp"
 
 #include <span>
 #include <vector>

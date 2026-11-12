@@ -2,8 +2,8 @@
 
 #include "assets/type_hardpoints.hpp"
 
-#include "assets/map_object_layout.hpp"
 #include "core/string_utils.hpp"
+#include "assets/map_object_layout.hpp"
 
 namespace eaw {
 

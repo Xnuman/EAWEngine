@@ -2,8 +2,8 @@
 
 // RTS selection and command helpers shared by the sandbox and, later, the game UI.
 
-#include "simulation/simulation.hpp"
 #include "render/visual_scene.hpp"
+#include "simulation/simulation.hpp"
 
 #include <array>
 #include <cstddef>

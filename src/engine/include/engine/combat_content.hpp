@@ -5,10 +5,10 @@
 // established (shield refresh units, how shields and armor combine), the translation is marked as
 // provisional.
 
+#include "vfs/virtual_file_system.hpp"
+#include "assets/game_object_catalog.hpp"
 #include "assets/skeleton.hpp"
 #include "simulation/combat.hpp"
-#include "assets/game_object_catalog.hpp"
-#include "vfs/virtual_file_system.hpp"
 
 #include <cstdint>
 #include <string>

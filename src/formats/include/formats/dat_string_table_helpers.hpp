@@ -3,8 +3,8 @@
 // Lookups, edits, and validation of DAT string tables. They keep a CRC-sorted table sorted, as the
 // game expects; an unsorted table (some mod tools write them) is searched linearly.
 
-#include "formats/dat_string_table.hpp"
 #include "core/status.hpp"
+#include "formats/dat_string_table.hpp"
 
 #include <string>
 #include <string_view>

@@ -1,17 +1,13 @@
 // Ground movement and navigation: terrain following, paths, separation, formations, groups, footprints, budgets.
 #include "test_support.hpp"
 
-#include <algorithm>
-
-#include <cmath>
-
-#include <limits>
-
 #include "simulation/formation.hpp"
 
-#include <tuple>
-
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <numbers>
+#include <tuple>
 
 namespace {
 

@@ -2,13 +2,13 @@
 
 // How the game asset layer's resources load from the VFS: bytes, a format reader, then a loader.
 
+#include "core/status.hpp"
+#include "formats/ted_map.hpp"
+#include "audio/sound.hpp"
 #include "assets/animation.hpp"
 #include "assets/model.hpp"
 #include "assets/particle_rules.hpp"
 #include "assets/resource_manager.hpp"
-#include "audio/sound.hpp"
-#include "core/status.hpp"
-#include "formats/ted_map.hpp"
 
 #include <optional>
 #include <string>

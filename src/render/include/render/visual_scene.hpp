@@ -1,8 +1,8 @@
 #pragma once
 
-#include "render/color.hpp"
 #include "math/matrix.hpp"
 #include "math/vector.hpp"
+#include "render/color.hpp"
 
 #include <array>
 #include <cstddef>

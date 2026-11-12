@@ -3,12 +3,11 @@
 // What the sandbox shows, built off the render thread: the map or model scene, the model's
 // animations, and the files the build read (for hot reload).
 
+#include "vfs/virtual_file_system.hpp"
 #include "assets/animation.hpp"
 #include "assets/asset_cache.hpp"
 #include "engine/sandbox_options.hpp"
 #include "engine/visual_scene_builder.hpp"
-
-#include "vfs/virtual_file_system.hpp"
 
 #include <optional>
 #include <string>

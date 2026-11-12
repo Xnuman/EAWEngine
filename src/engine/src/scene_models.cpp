@@ -1,15 +1,14 @@
-#include "assets/alamo_loaders.hpp"
-#include "assets/pose.hpp"
-#include "engine/scene_builder_internal.hpp"
-
-#include "engine/combat_content.hpp"
-#include "formats/dds_texture.hpp"
-#include "assets/skeleton.hpp"
-#include "assets/type_hardpoints.hpp"
-#include "formats/xml_document.hpp"
-#include "core/string_utils.hpp"
 #include "math/quaternion.hpp"
 #include "math/transform.hpp"
+#include "core/string_utils.hpp"
+#include "formats/dds_texture.hpp"
+#include "formats/xml_document.hpp"
+#include "assets/alamo_loaders.hpp"
+#include "assets/pose.hpp"
+#include "assets/skeleton.hpp"
+#include "assets/type_hardpoints.hpp"
+#include "engine/combat_content.hpp"
+#include "engine/scene_builder_internal.hpp"
 
 #include <algorithm>
 #include <charconv>

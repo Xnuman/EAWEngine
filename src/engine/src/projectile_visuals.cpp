@@ -1,10 +1,9 @@
 #include "engine/projectile_visuals.hpp"
 
+#include "math/scalar.hpp"
+#include "core/string_utils.hpp"
 #include "engine/scene_presentation.hpp"
 #include "engine/visual_scene_builder.hpp"
-#include "core/string_utils.hpp"
-
-#include "math/scalar.hpp"
 
 #include <algorithm>
 #include <charconv>

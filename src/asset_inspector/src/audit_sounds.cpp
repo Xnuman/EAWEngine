@@ -1,12 +1,12 @@
 // `sound-audit`: the sound-event catalog against the files: every event's samples resolved through
 // the VFS (the sound archives, then speech) and decoded, with what is missing or cannot be decoded.
 
-#include "asset_inspector/inspector.hpp"
+#include "core/string_utils.hpp"
 #include "assets/animation_events.hpp"
 #include "assets/sound_events.hpp"
-#include "assets/surface_effects.hpp"
-#include "core/string_utils.hpp"
 #include "assets/sound_loaders.hpp"
+#include "assets/surface_effects.hpp"
+#include "asset_inspector/inspector.hpp"
 
 #include <set>
 

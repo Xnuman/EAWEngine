@@ -1,15 +1,15 @@
 #pragma once
 
-#include "formats/rgba_image.hpp"
 #include "core/status.hpp"
+#include "formats/rgba_image.hpp"
 #include "render/visual_lod.hpp"
 #include "render/visual_scene.hpp"
 
 #include <array>
 #include <cstdint>
 #include <filesystem>
-#include <memory>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>

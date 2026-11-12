@@ -1,15 +1,15 @@
 #include "dev_launcher/dev_launcher_app.hpp"
 
-#include "vfs/asset_environment.hpp"
-#include "launcher/child_process.hpp"
-#include "imgui_app/file_dialogs.hpp"
-#include "vfs/game_installation.hpp"
-#include "core/log.hpp"
-#include "launcher/sandbox_scenario.hpp"
-#include "assets/spawn_catalog.hpp"
-#include "vfs/virtual_file_system.hpp"
-#include "core/string_utils.hpp"
 #include "core/file_io.hpp"
+#include "core/log.hpp"
+#include "core/string_utils.hpp"
+#include "vfs/asset_environment.hpp"
+#include "vfs/game_installation.hpp"
+#include "vfs/virtual_file_system.hpp"
+#include "assets/spawn_catalog.hpp"
+#include "launcher/child_process.hpp"
+#include "launcher/sandbox_scenario.hpp"
+#include "imgui_app/file_dialogs.hpp"
 
 #include <imgui.h>
 #include <imgui_stdlib.h>

@@ -1,5 +1,6 @@
-#include "formats/alamo_chunks.hpp"
 #include "formats/alo_particle_system.hpp"
+
+#include "formats/alamo_chunks.hpp"
 
 #include <algorithm>
 #include <sstream>

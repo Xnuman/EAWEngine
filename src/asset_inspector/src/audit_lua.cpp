@@ -1,7 +1,7 @@
 // `lua-audit`: Lua sources and bytecode across the layered VFS.
 
-#include "asset_inspector/inspector.hpp"
 #include "core/string_utils.hpp"
+#include "asset_inspector/inspector.hpp"
 
 namespace eaw::inspector {
 

@@ -1,13 +1,12 @@
 // The optional public eaw-schema data: a small reader for its YAML subset, the base and FoC layers
 // merged by name, and the schema's accessors.
 
-#include "assets/xml_schema.hpp"
-
 #include "xml_schema_internal.hpp"
 
-#include "vfs/asset_path.hpp"
-#include "core/string_utils.hpp"
 #include "core/file_io.hpp"
+#include "core/string_utils.hpp"
+#include "vfs/asset_path.hpp"
+#include "assets/xml_schema.hpp"
 
 #include <algorithm>
 #include <cerrno>

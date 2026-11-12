@@ -2,14 +2,15 @@
 // budget, script threads on simulation ticks, and the functions the host implements itself.
 
 #include "script_host_internal.hpp"
+
 #include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <initializer_list>
-#include <utility>
 #include <string_view>
+#include <utility>
 
 namespace eaw {
 namespace {

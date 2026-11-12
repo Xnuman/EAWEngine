@@ -1,8 +1,8 @@
 #include "assets/alamo_loaders.hpp"
 
-#include "assets/alo_interpretation.hpp"
 #include "formats/ala_animation_helpers.hpp"
 #include "formats/alo_model_helpers.hpp"
+#include "assets/alo_interpretation.hpp"
 
 #include <algorithm>
 #include <array>

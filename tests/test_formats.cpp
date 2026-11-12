@@ -1,18 +1,16 @@
-#include "assets/pose.hpp"
 #include "test_support.hpp"
 
-#include "assets/alamo_loaders.hpp"
-
 #include "math/transform.hpp"
-
-#include "assets/alo_interpretation.hpp"
-#include "assets/skeleton.hpp"
-#include "formats/alamo_chunks.hpp"
-#include "formats/png_image.hpp"
-#include "localization/localization_validation.hpp"
-#include "formats/alo_model_helpers.hpp"
 #include "formats/ala_animation_helpers.hpp"
+#include "formats/alamo_chunks.hpp"
+#include "formats/alo_model_helpers.hpp"
 #include "formats/dat_string_table_helpers.hpp"
+#include "formats/png_image.hpp"
+#include "assets/alamo_loaders.hpp"
+#include "assets/alo_interpretation.hpp"
+#include "assets/pose.hpp"
+#include "assets/skeleton.hpp"
+#include "localization/localization_validation.hpp"
 
 namespace {
 

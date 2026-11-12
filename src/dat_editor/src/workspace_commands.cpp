@@ -1,11 +1,10 @@
 // Commands on localization workspaces (TSV) and mods: export, diff, build, scan-mod, add-unit.
 
-#include "dat_editor/dat_editor.hpp"
-
 #include "formats/dat_string_table.hpp"
+#include "formats/dat_string_table_helpers.hpp"
 #include "localization/localization_scan.hpp"
 #include "localization/localization_workspace.hpp"
-#include "formats/dat_string_table_helpers.hpp"
+#include "dat_editor/dat_editor.hpp"
 
 #include <algorithm>
 #include <filesystem>

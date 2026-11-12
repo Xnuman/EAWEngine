@@ -1,7 +1,7 @@
 #include "assets/xml_asset_database.hpp"
 
-#include "vfs/asset_path.hpp"
 #include "core/string_utils.hpp"
+#include "vfs/asset_path.hpp"
 #include "formats/xml_helpers.hpp"
 
 #include <algorithm>

@@ -1,7 +1,7 @@
 #include "imgui_app/imgui_app.hpp"
 
-#include "platform/crash_handler.hpp"
 #include "core/log.hpp"
+#include "platform/crash_handler.hpp"
 #include "platform/log_sinks.hpp"
 
 #include <d3d11.h>

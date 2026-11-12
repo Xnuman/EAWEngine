@@ -4,10 +4,9 @@
 // builds and hot reload, the simulation, cameras, selection and orders, debug drawing, the
 // statistics panel) until the window closes.
 
-#include "engine/sandbox_options.hpp"
-
 #include "vfs/game_installation.hpp"
 #include "vfs/virtual_file_system.hpp"
+#include "engine/sandbox_options.hpp"
 
 namespace eaw {
 

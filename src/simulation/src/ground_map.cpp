@@ -1,11 +1,12 @@
 #include "simulation/ground_map.hpp"
+
 #include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <string>
 #include <utility>
-#include <cmath>
 
 namespace eaw {
 namespace {} // namespace

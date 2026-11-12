@@ -11,7 +11,6 @@
 
 #include "core/random.hpp"
 #include "core/status.hpp"
-
 #include "simulation/combat.hpp"
 #include "simulation/formation.hpp"
 #include "simulation/ground_map.hpp"

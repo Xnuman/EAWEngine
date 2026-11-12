@@ -11,11 +11,10 @@
 // Scale_Factor, nose along the flight: a mesh, whose proxies (missile trails) play as attached
 // effects, or a particle system that moves with the shot.
 
-#include "assets/particle_rules.hpp"
-
-#include "assets/game_object_catalog.hpp"
-#include "simulation/simulation.hpp"
 #include "render/visual_scene.hpp"
+#include "assets/game_object_catalog.hpp"
+#include "assets/particle_rules.hpp"
+#include "simulation/simulation.hpp"
 
 #include <array>
 #include <cstdint>

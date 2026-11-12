@@ -2,11 +2,11 @@
 
 // Loaders from Alamo file-level data (ALO models, ALA animations) to engine-native resources.
 
+#include "formats/ala_animation.hpp"
+#include "formats/alo_model.hpp"
 #include "assets/animation.hpp"
 #include "assets/model.hpp"
 #include "assets/skeleton.hpp"
-#include "formats/ala_animation.hpp"
-#include "formats/alo_model.hpp"
 
 namespace eaw {
 

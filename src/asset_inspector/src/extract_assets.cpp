@@ -4,9 +4,9 @@
 // Archive entry names are untrusted (a mod's MEG may hold any name): one asset_output_path refuses
 // is skipped with a diagnostic instead of written.
 
-#include "asset_inspector/inspector.hpp"
 #include "core/file_io.hpp"
 #include "vfs/asset_path.hpp"
+#include "asset_inspector/inspector.hpp"
 
 namespace eaw::inspector {
 namespace {

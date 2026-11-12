@@ -6,8 +6,8 @@
 // header against its parent before returning ranges, so the decoders above them only index inside
 // ranges that exist.
 
-#include "core/status.hpp"
 #include "math/vector.hpp"
+#include "core/status.hpp"
 
 #include <cstddef>
 #include <cstdint>

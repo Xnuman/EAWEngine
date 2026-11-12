@@ -1,4 +1,5 @@
 #include "engine/battle_log.hpp"
+
 #include "core/file_io.hpp"
 
 #include <array>

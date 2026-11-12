@@ -1,12 +1,11 @@
 #include "engine/battle.hpp"
 
-#include "engine/combat_content.hpp"
-#include "engine/rts_control.hpp"
-
-#include "simulation/formation.hpp"
-#include "simulation/pathfinding.hpp"
 #include "core/log.hpp"
 #include "core/string_utils.hpp"
+#include "simulation/formation.hpp"
+#include "simulation/pathfinding.hpp"
+#include "engine/combat_content.hpp"
+#include "engine/rts_control.hpp"
 
 #include <algorithm>
 #include <cmath>

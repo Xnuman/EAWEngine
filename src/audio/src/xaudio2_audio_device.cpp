@@ -1,7 +1,7 @@
 #include "xaudio2_audio_device.hpp"
 
-#include "audio/spatial_audio.hpp"
 #include "core/log.hpp"
+#include "audio/spatial_audio.hpp"
 
 #include <algorithm>
 #include <array>

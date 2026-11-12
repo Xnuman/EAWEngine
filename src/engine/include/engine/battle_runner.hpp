@@ -7,9 +7,8 @@
 // --check-determinism runs it twice. Returns the process exit code: 0 success, 1 a map that cannot
 // be built or an unreadable log, 4 a replay or determinism mismatch.
 
-#include "engine/sandbox_options.hpp"
-
 #include "vfs/virtual_file_system.hpp"
+#include "engine/sandbox_options.hpp"
 
 namespace eaw {
 

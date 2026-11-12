@@ -18,9 +18,9 @@
 //
 // A driver's tick is: battle.step(), then BattleScripts::run(battle), then the players' orders.
 
-#include "engine/battle.hpp"
-#include "script/script_host.hpp"
 #include "vfs/virtual_file_system.hpp"
+#include "script/script_host.hpp"
+#include "engine/battle.hpp"
 
 #include <cstddef>
 #include <cstdint>

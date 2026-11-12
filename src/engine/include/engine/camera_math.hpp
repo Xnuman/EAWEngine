@@ -3,8 +3,8 @@
 // Screen <-> world conversions matching the renderer's camera (right-handed look-at, perspective
 // field of view, depth 0 at the near plane and 1 at the far plane; pixel y grows downward).
 
-#include "render/visual_scene.hpp"
 #include "math/vector.hpp"
+#include "render/visual_scene.hpp"
 
 #include <optional>
 

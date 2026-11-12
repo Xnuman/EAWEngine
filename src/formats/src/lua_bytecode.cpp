@@ -1,4 +1,5 @@
 #include "formats/lua_bytecode.hpp"
+
 #include "core/string_utils.hpp"
 
 #include <algorithm>

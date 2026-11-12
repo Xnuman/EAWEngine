@@ -1,7 +1,7 @@
 #pragma once
 
-#include "assets/xml_asset_database.hpp"
 #include "render/color.hpp"
+#include "assets/xml_asset_database.hpp"
 
 #include <array>
 #include <cstdint>

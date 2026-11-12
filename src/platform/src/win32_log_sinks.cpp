@@ -1,6 +1,7 @@
+#include "core/log.hpp"
 #include "platform/log_sinks.hpp"
 
-#include "core/log.hpp"
+#include <windows.h>
 
 #include <algorithm>
 #include <array>
@@ -10,8 +11,6 @@
 #include <memory>
 #include <system_error>
 #include <vector>
-
-#include <windows.h>
 
 namespace eaw {
 namespace {

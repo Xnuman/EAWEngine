@@ -1,6 +1,7 @@
-#include "formats/alamo_chunks.hpp"
 #include "formats/ala_animation.hpp"
+
 #include "math/transform.hpp"
+#include "formats/alamo_chunks.hpp"
 
 #include <limits>
 

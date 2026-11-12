@@ -4,19 +4,27 @@
 // fence timeline, handles, resource descriptions, adapter selection, and debug-layer setup. Internal
 // to src/render.
 
-#include "render/d3d12_renderer.hpp"
 #include "core/fatal_error.hpp"
-#include "render/gpu_resource_lifetime.hpp"
 #include "core/status.hpp"
+#include "render/d3d12_renderer.hpp"
+#include "render/gpu_resource_lifetime.hpp"
+
 #include "imgui.h"
 #include "imgui_impl_dx12.h"
+
+#include <windows.h>
+#include <DirectXMath.h>
+#include <d3d12.h>
+#include <dxgi1_6.h>
+#include <wrl/client.h>
+
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <deque>
@@ -25,18 +33,13 @@
 #include <iomanip>
 #include <limits>
 #include <source_location>
-#include <sstream>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <d3d12.h>
-#include <DirectXMath.h>
-#include <dxgi1_6.h>
-#include <windows.h>
-#include <wrl/client.h>
 
 namespace eaw::d3d12 {
 

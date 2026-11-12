@@ -1,9 +1,9 @@
 #include "assets/map_object_layout.hpp"
 
-#include "vfs/virtual_file_system.hpp"
 #include "math/scalar.hpp"
 #include "math/transform.hpp"
 #include "core/string_utils.hpp"
+#include "vfs/virtual_file_system.hpp"
 
 #include <algorithm>
 #include <array>

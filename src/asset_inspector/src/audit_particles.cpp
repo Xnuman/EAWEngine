@@ -1,5 +1,5 @@
-#include "asset_inspector/inspector.hpp"
 #include "core/string_utils.hpp"
+#include "asset_inspector/inspector.hpp"
 
 #include <bit>
 

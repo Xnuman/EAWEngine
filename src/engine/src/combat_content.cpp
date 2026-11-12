@@ -1,14 +1,11 @@
 #include "engine/combat_content.hpp"
 
-#include "engine/visual_scene_builder.hpp"
-
+#include "math/scalar.hpp"
+#include "core/string_utils.hpp"
+#include "formats/xml_document.hpp"
 #include "assets/skeleton.hpp"
 #include "assets/type_hardpoints.hpp"
-
-#include "formats/xml_document.hpp"
-#include "core/string_utils.hpp"
-
-#include "math/scalar.hpp"
+#include "engine/visual_scene_builder.hpp"
 
 #include <algorithm>
 #include <array>

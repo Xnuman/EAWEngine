@@ -5,9 +5,9 @@
 // placement of rigid meshes, hardpoint hosts, palette layout, texture registration) is the scene
 // builder's job.
 
+#include "render/visual_scene.hpp"
 #include "assets/legacy_material.hpp"
 #include "assets/skeleton.hpp"
-#include "render/visual_scene.hpp"
 
 #include <cstdint>
 #include <optional>

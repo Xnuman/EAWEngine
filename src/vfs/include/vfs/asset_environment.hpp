@@ -5,8 +5,8 @@
 
 #include <filesystem>
 #include <span>
-#include <string_view>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace eaw {

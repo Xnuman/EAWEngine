@@ -1,8 +1,7 @@
 #include "engine/sandbox_debug_lines.hpp"
 
-#include "engine/debug_draw.hpp"
-
 #include "math/scalar.hpp"
+#include "engine/debug_draw.hpp"
 
 #include <algorithm>
 #include <cmath>

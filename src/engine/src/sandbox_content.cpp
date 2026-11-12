@@ -1,7 +1,7 @@
 #include "engine/sandbox_content.hpp"
 
-#include "assets/alamo_loaders.hpp"
 #include "formats/ala_animation.hpp"
+#include "assets/alamo_loaders.hpp"
 
 #include <algorithm>
 #include <chrono>

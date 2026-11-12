@@ -5,10 +5,10 @@
 // into simulation commands applied at the next tick boundary and recording it with that tick, so
 // the same map, data, and orders reproduce the same battle. The sandbox and headless runs share it.
 
+#include "core/status.hpp"
 #include "simulation/combat.hpp"
 #include "simulation/ground_map.hpp"
 #include "simulation/simulation.hpp"
-#include "core/status.hpp"
 #include "engine/visual_scene_builder.hpp"
 
 #include <cstddef>

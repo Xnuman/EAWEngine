@@ -1,5 +1,6 @@
-#include "formats/alamo_chunks.hpp"
 #include "formats/alo_model.hpp"
+
+#include "formats/alamo_chunks.hpp"
 
 #include <algorithm>
 #include <iomanip>

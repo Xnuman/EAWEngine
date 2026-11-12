@@ -1,7 +1,7 @@
-#include "formats/alamo_chunks.hpp"
 #include "formats/ted_map.hpp"
 
 #include "core/string_utils.hpp"
+#include "formats/alamo_chunks.hpp"
 
 #include <algorithm>
 #include <cmath>

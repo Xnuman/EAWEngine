@@ -17,8 +17,8 @@
 //
 // Extra arguments to get() reach key() and load() (a particle effect's fidelity profile).
 
-#include "assets/asset_cache.hpp"
 #include "vfs/virtual_file_system.hpp"
+#include "assets/asset_cache.hpp"
 
 #include <memory>
 #include <string_view>

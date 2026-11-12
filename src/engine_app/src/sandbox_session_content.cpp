@@ -1,5 +1,5 @@
-#include "engine_app/sandbox_session.hpp"
 #include "formats/ala_animation_helpers.hpp"
+#include "engine_app/sandbox_session.hpp"
 
 #include <algorithm>
 #include <chrono>

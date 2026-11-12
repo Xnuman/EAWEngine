@@ -1,8 +1,8 @@
 #include "vfs/virtual_file_system.hpp"
 
-#include "vfs/asset_path.hpp"
-#include "core/string_utils.hpp"
 #include "core/file_io.hpp"
+#include "core/string_utils.hpp"
+#include "vfs/asset_path.hpp"
 
 #include <algorithm>
 #include <system_error>

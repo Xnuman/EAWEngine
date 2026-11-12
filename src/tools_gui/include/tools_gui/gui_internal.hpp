@@ -3,38 +3,38 @@
 // Shared pieces of the EAWTools workbench (internal): colors, preview types, the helpers several
 // panels use, and GuiApp::State. Each panel lives in its own gui_*.cpp.
 
-#include "tools_gui/gui_app.hpp"
-
-#include "imgui_app/file_dialogs.hpp"
-#include "tools_gui/preview_renderer.hpp"
-#include "assets/alo_interpretation.hpp"
-#include "assets/pose.hpp"
-#include "formats/alo_model.hpp"
+#include "core/string_utils.hpp"
 #include "vfs/asset_environment.hpp"
+#include "vfs/game_installation.hpp"
+#include "vfs/virtual_file_system.hpp"
+#include "formats/alo_model.hpp"
 #include "formats/dat_string_table.hpp"
 #include "formats/dds_texture.hpp"
-#include "vfs/game_installation.hpp"
-#include "assets/game_object_catalog.hpp"
-#include "assets/legacy_material.hpp"
-#include "localization/localization_scan.hpp"
-#include "localization/localization_workspace.hpp"
-#include "assets/map_object_layout.hpp"
 #include "formats/lua_bytecode.hpp"
 #include "formats/mtd_atlas.hpp"
-#include "core/string_utils.hpp"
 #include "formats/ted_map.hpp"
-#include "vfs/virtual_file_system.hpp"
+#include "assets/alo_interpretation.hpp"
+#include "assets/game_object_catalog.hpp"
+#include "assets/legacy_material.hpp"
+#include "assets/map_object_layout.hpp"
+#include "assets/pose.hpp"
 #include "assets/xml_asset_database.hpp"
+#include "localization/localization_scan.hpp"
+#include "localization/localization_workspace.hpp"
+#include "imgui_app/file_dialogs.hpp"
+#include "tools_gui/gui_app.hpp"
+#include "tools_gui/preview_renderer.hpp"
 
+#include <d3d11.h>
 #include <imgui.h>
 #include <imgui_stdlib.h>
-#include <d3d11.h>
 #include <wrl/client.h>
+
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cmath>
 #include <filesystem>
 #include <functional>
 #include <iomanip>

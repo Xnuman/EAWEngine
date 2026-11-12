@@ -1,17 +1,16 @@
-#include "engine_app/lua_survey_command.hpp"
-#include "engine_app/image_compare_command.hpp"
+#include "core/status.hpp"
 #include "vfs/asset_environment.hpp"
 #include "vfs/game_installation.hpp"
-#include "core/status.hpp"
 #include "vfs/virtual_file_system.hpp"
-
 #include "engine/battle_runner.hpp"
 #include "engine/sandbox_options.hpp"
+#include "engine_app/image_compare_command.hpp"
+#include "engine_app/lua_survey_command.hpp"
 
 #ifdef _WIN32
-#include "platform/crash_handler.hpp"
 #include "core/fatal_error.hpp"
 #include "core/log.hpp"
+#include "platform/crash_handler.hpp"
 #include "platform/log_sinks.hpp"
 #include "engine_app/sandbox_app.hpp"
 #endif

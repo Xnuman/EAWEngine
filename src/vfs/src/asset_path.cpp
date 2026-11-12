@@ -1,4 +1,5 @@
 #include "vfs/asset_path.hpp"
+
 #include "core/string_utils.hpp"
 
 #include <algorithm>

@@ -3,13 +3,13 @@
 #include "math/matrix.hpp"
 #include "math/vector.hpp"
 
+#include <d3d11.h>
+#include <wrl/client.h>
+
 #include <array>
 #include <cstdint>
 #include <span>
 #include <vector>
-
-#include <d3d11.h>
-#include <wrl/client.h>
 
 namespace eaw::tools {
 

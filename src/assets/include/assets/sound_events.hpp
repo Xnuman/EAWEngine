@@ -5,8 +5,8 @@
 // stock effects live in the sound archives under DATA/AUDIO/SFX/ and speech under
 // DATA/AUDIO/SPEECH/<language>/ (resolve_sound_sample).
 
-#include "assets/xml_asset_database.hpp"
 #include "vfs/virtual_file_system.hpp"
+#include "assets/xml_asset_database.hpp"
 
 #include <cstdint>
 #include <optional>

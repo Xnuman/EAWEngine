@@ -1,6 +1,6 @@
-#include "launcher/child_process.hpp"
-#include "vfs/game_installation.hpp"
 #include "core/status.hpp"
+#include "vfs/game_installation.hpp"
+#include "launcher/child_process.hpp"
 
 #include <filesystem>
 #include <iostream>

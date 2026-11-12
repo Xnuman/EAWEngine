@@ -1,15 +1,15 @@
 #include "fmod_audio_device.hpp"
 
-#include "audio/spatial_audio.hpp"
 #include "core/log.hpp"
+#include "audio/spatial_audio.hpp"
+
+#include <fmod_errors.h>
 
 #include <algorithm>
 #include <array>
+#include <fmod.hpp>
 #include <string>
 #include <vector>
-
-#include <fmod.hpp>
-#include <fmod_errors.h>
 
 namespace eaw {
 namespace {

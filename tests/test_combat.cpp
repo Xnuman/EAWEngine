@@ -3,11 +3,10 @@
 
 #include "simulation/formation.hpp"
 
-#include <tuple>
-
 #include <cmath>
 #include <memory>
 #include <numbers>
+#include <tuple>
 
 namespace {
 

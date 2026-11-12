@@ -2,14 +2,11 @@
 
 // Shared declarations of EAWAssetInspector's commands (one source file per command group).
 
-#include "assets/game_object_catalog.hpp"
-#include "assets/legacy_material.hpp"
-#include "assets/map_object_layout.hpp"
-#include "assets/spawn_catalog.hpp"
-#include "assets/xml_asset_database.hpp"
-#include "assets/xml_schema.hpp"
 #include "core/status.hpp"
 #include "core/string_utils.hpp"
+#include "vfs/asset_environment.hpp"
+#include "vfs/game_installation.hpp"
+#include "vfs/virtual_file_system.hpp"
 #include "formats/ala_animation.hpp"
 #include "formats/alo_model.hpp"
 #include "formats/alo_particle_system.hpp"
@@ -19,9 +16,12 @@
 #include "formats/mtd_atlas.hpp"
 #include "formats/ted_map.hpp"
 #include "formats/xml_document.hpp"
-#include "vfs/asset_environment.hpp"
-#include "vfs/game_installation.hpp"
-#include "vfs/virtual_file_system.hpp"
+#include "assets/game_object_catalog.hpp"
+#include "assets/legacy_material.hpp"
+#include "assets/map_object_layout.hpp"
+#include "assets/spawn_catalog.hpp"
+#include "assets/xml_asset_database.hpp"
+#include "assets/xml_schema.hpp"
 
 #include <algorithm>
 #include <charconv>

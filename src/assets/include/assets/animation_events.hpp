@@ -5,8 +5,8 @@
 // on the ground there (assets/surface_effects). Animations are named by file stem
 // (`ei_trooper_move_00` for DATA/ART/MODELS/EI_TROOPER_MOVE_00.ALA), ignoring case.
 
-#include "formats/animation_sfx_map.hpp"
 #include "vfs/virtual_file_system.hpp"
+#include "formats/animation_sfx_map.hpp"
 
 #include <span>
 #include <string>

@@ -1,7 +1,7 @@
 #include "formats/mtd_atlas.hpp"
 
-#include "formats/dat_string_table.hpp"
 #include "core/byte_order.hpp"
+#include "formats/dat_string_table.hpp"
 
 #include <algorithm>
 #include <limits>

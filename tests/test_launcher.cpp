@@ -1,8 +1,8 @@
 #include "test_support.hpp"
 
+#include "assets/spawn_catalog.hpp"
 #include "launcher/child_process.hpp"
 #include "launcher/sandbox_scenario.hpp"
-#include "assets/spawn_catalog.hpp"
 
 namespace {
 

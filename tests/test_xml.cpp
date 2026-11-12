@@ -1,4 +1,5 @@
 #include "test_support.hpp"
+
 #include "formats/xml_helpers.hpp"
 #include "assets/type_hardpoints.hpp"
 

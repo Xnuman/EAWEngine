@@ -5,12 +5,11 @@
 // deaths name, and shots in flight drawn as bolts. Presentation only: nothing here feeds the
 // simulation, and it needs no graphics API (textures are renderer indices the caller registered).
 
+#include "render/visual_scene.hpp"
+#include "simulation/simulation.hpp"
 #include "engine/attached_effects.hpp"
 #include "engine/particle_effects.hpp"
 #include "engine/projectile_visuals.hpp"
-
-#include "simulation/simulation.hpp"
-#include "render/visual_scene.hpp"
 
 #include <cstddef>
 #include <cstdint>

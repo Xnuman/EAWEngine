@@ -1,7 +1,7 @@
 // The DAT localization workspace.
 
-#include "tools_gui/gui_internal.hpp"
 #include "core/string_utils.hpp"
+#include "tools_gui/gui_internal.hpp"
 
 namespace eaw::tools {
 namespace {

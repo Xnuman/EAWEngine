@@ -1,12 +1,12 @@
 #include "engine/battle_audio.hpp"
 
-#include "assets/game_object_catalog.hpp"
-#include "assets/map_object_layout.hpp"
-#include "assets/resource_loaders.hpp"
 #include "core/log.hpp"
 #include "core/string_utils.hpp"
 #include "formats/xml_document.hpp"
 #include "formats/xml_helpers.hpp"
+#include "assets/game_object_catalog.hpp"
+#include "assets/map_object_layout.hpp"
+#include "assets/resource_loaders.hpp"
 #include "engine/scene_builder_internal.hpp"
 #include "engine/scene_presentation.hpp"
 

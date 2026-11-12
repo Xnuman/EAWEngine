@@ -2,8 +2,8 @@
 
 // Values derived from ALO model data.
 
-#include "formats/alo_model.hpp"
 #include "math/matrix.hpp"
+#include "formats/alo_model.hpp"
 
 #include <cstddef>
 #include <cstdint>

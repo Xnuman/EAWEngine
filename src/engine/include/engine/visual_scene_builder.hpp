@@ -1,15 +1,14 @@
 #pragma once
 
+#include "math/scalar.hpp"
+#include "formats/ted_map.hpp"
+#include "render/visual_scene.hpp"
 #include "assets/pose.hpp"
 #include "assets/spawn_catalog.hpp"
 #include "simulation/simulation.hpp"
-#include "engine/terrain_height.hpp"
-#include "formats/ted_map.hpp"
-#include "render/visual_scene.hpp"
 #include "engine/particle_effects.hpp"
 #include "engine/projectile_visuals.hpp"
-
-#include "math/scalar.hpp"
+#include "engine/terrain_height.hpp"
 
 #include <array>
 #include <cstddef>

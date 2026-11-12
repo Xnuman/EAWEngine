@@ -1,13 +1,12 @@
 // `inspect`: one asset decoded and summarized by format.
 
-#include "asset_inspector/inspector.hpp"
-#include "formats/alo_model_helpers.hpp"
-#include "formats/ala_animation_helpers.hpp"
-#include "formats/xml_helpers.hpp"
-#include "formats/dat_string_table_helpers.hpp"
-
 #include "core/byte_order.hpp"
 #include "core/string_utils.hpp"
+#include "formats/ala_animation_helpers.hpp"
+#include "formats/alo_model_helpers.hpp"
+#include "formats/dat_string_table_helpers.hpp"
+#include "formats/xml_helpers.hpp"
+#include "asset_inspector/inspector.hpp"
 
 #include <iomanip>
 

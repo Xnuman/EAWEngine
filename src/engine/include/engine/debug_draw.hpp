@@ -2,8 +2,8 @@
 
 // Builders for debug line overlays (engine-native; the renderer only draws the lines).
 
-#include "render/visual_scene.hpp"
 #include "math/vector.hpp"
+#include "render/visual_scene.hpp"
 
 #include <array>
 #include <vector>

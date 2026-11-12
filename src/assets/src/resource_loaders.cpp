@@ -1,12 +1,12 @@
 #include "assets/resource_loaders.hpp"
-#include "assets/sound_loaders.hpp"
 
-#include "assets/alamo_loaders.hpp"
 #include "core/string_utils.hpp"
 #include "formats/ala_animation.hpp"
 #include "formats/alo_generic.hpp"
 #include "formats/alo_model.hpp"
 #include "formats/alo_particle_system.hpp"
+#include "assets/alamo_loaders.hpp"
+#include "assets/sound_loaders.hpp"
 
 #include <filesystem>
 

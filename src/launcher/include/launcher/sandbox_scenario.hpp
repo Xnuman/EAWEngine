@@ -14,8 +14,8 @@
 // Unknown keys and options are kept as warnings, not errors, so presets written by a newer build
 // still load.
 
-#include "vfs/game_installation.hpp"
 #include "core/status.hpp"
+#include "vfs/game_installation.hpp"
 
 #include <cstdint>
 #include <optional>

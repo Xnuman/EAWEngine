@@ -44,8 +44,73 @@ AllowShortIfStatementsOnASingleLine: Never
 AllowShortLambdasOnASingleLine: None
 AllowShortLoopsOnASingleLine: false
 
-IncludeBlocks: Preserve
-SortIncludes: Never
+# Includes (AGENTS.md): the file's own header; its target's private headers; the project's
+# libraries in one block, innermost layer first; third-party headers; <windows.h> and the other C
+# and system headers; the C++ standard library. Each block sorted. Blocks group by Priority and
+# order by SortPriority, so the non-project categories sort above the layer range (2-16).
+IncludeBlocks: Regroup
+SortIncludes: CaseSensitive
+IncludeCategories:
+  - Regex: '^"[A-Za-z0-9_]+\.hpp"$'
+    Priority: 1
+    SortPriority: 1
+  - Regex: '^"math/'
+    Priority: 2
+    SortPriority: 2
+  - Regex: '^"core/'
+    Priority: 2
+    SortPriority: 3
+  - Regex: '^"vfs/'
+    Priority: 2
+    SortPriority: 4
+  - Regex: '^"formats/'
+    Priority: 2
+    SortPriority: 5
+  - Regex: '^"audio/'
+    Priority: 2
+    SortPriority: 6
+  - Regex: '^"render/'
+    Priority: 2
+    SortPriority: 7
+  - Regex: '^"assets/'
+    Priority: 2
+    SortPriority: 8
+  - Regex: '^"localization/'
+    Priority: 2
+    SortPriority: 9
+  - Regex: '^"simulation/'
+    Priority: 2
+    SortPriority: 10
+  - Regex: '^"script/'
+    Priority: 2
+    SortPriority: 11
+  - Regex: '^"platform/'
+    Priority: 2
+    SortPriority: 12
+  - Regex: '^"engine/'
+    Priority: 2
+    SortPriority: 13
+  - Regex: '^"launcher/'
+    Priority: 2
+    SortPriority: 14
+  - Regex: '^"imgui_app/'
+    Priority: 2
+    SortPriority: 15
+  - Regex: '^"(engine_app|tools_gui|asset_inspector|dat_editor|dev_launcher)/'
+    Priority: 2
+    SortPriority: 16
+  - Regex: '^"'
+    Priority: 3
+    SortPriority: 20
+  - Regex: '^<windows\.h>$'
+    Priority: 4
+    SortPriority: 30
+  - Regex: '^<.*\.h>$'
+    Priority: 4
+    SortPriority: 31
+  - Regex: '^<'
+    Priority: 6
+    SortPriority: 40
 SortUsingDeclarations: Lexicographic
 SpaceBeforeParens: ControlStatements
 SpaceBeforeCpp11BracedList: false

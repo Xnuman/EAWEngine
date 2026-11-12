@@ -5,9 +5,9 @@
 // eaw_formats and a conversion here, so adding one (MP3, Ogg) means one reader and one case below.
 // Every format ends as the same engine-native Sound (16-bit PCM).
 
-#include "audio/sound.hpp"
 #include "core/status.hpp"
 #include "formats/wav_audio.hpp"
+#include "audio/sound.hpp"
 
 #include <cstddef>
 #include <span>

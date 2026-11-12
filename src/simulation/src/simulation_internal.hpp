@@ -5,9 +5,8 @@
 // simulation_locomotion.cpp: movement; simulation_combat.cpp: targeting, weapons, damage). Not part
 // of the public interface.
 
-#include "simulation/simulation.hpp"
-
 #include "math/scalar.hpp"
+#include "simulation/simulation.hpp"
 
 #include <algorithm>
 #include <cmath>

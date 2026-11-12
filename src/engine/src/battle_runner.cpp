@@ -1,13 +1,11 @@
 #include "engine/battle_runner.hpp"
 
-#include "engine/battle_scripts.hpp"
-
+#include "core/log.hpp"
 #include "engine/battle.hpp"
 #include "engine/battle_log.hpp"
+#include "engine/battle_scripts.hpp"
 #include "engine/text_format.hpp"
 #include "engine/visual_scene_builder.hpp"
-
-#include "core/log.hpp"
 
 #include <algorithm>
 #include <array>

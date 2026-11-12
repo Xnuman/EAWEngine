@@ -15,8 +15,8 @@
 // shortest exact form and read back bit-identically, so a replay feeds the simulation the same
 // values. Empty lines and lines starting with '#' are ignored.
 
-#include "engine/battle.hpp"
 #include "core/status.hpp"
+#include "engine/battle.hpp"
 
 #include <filesystem>
 #include <string>

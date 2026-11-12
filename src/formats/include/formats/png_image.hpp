@@ -5,8 +5,8 @@
 // stored blocks, filter 0) and reports anything else as unsupported; it is for the engine's own
 // captures, not for arbitrary PNG files.
 
-#include "formats/rgba_image.hpp"
 #include "core/status.hpp"
+#include "formats/rgba_image.hpp"
 
 #include <cstddef>
 #include <span>

@@ -4,8 +4,8 @@
 // script_stubs.cpp: recording stubs and stub objects; script_events.cpp: the event queue and
 // callbacks; script_values.cpp: values between the engine and Lua). Private to eaw_script.
 
-#include "script/script_host.hpp"
 #include "vfs/virtual_file_system.hpp"
+#include "script/script_host.hpp"
 
 extern "C" {
 #include <lauxlib.h>

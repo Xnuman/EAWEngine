@@ -1,7 +1,8 @@
 #include "test_support.hpp"
 
-#include <algorithm>
 #include <crtdbg.h>
+
+#include <algorithm>
 #include <iostream>
 #include <string_view>
 

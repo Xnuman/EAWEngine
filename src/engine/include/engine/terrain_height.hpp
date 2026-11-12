@@ -3,8 +3,8 @@
 // Screen-ray queries against a land map's ground (GroundMap, from the simulation): order targets
 // and placement under the cursor.
 
-#include "simulation/ground_map.hpp"
 #include "render/visual_scene.hpp"
+#include "simulation/ground_map.hpp"
 
 #include <cstdint>
 #include <optional>

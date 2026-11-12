@@ -1,16 +1,15 @@
+#include "core/log.hpp"
 #include "platform/platform_window.hpp"
 
-#include "core/log.hpp"
+#include <windows.h>
+#include <windowsx.h>
 
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <vector>
 #include <optional>
 #include <string_view>
-
-#include <windows.h>
-#include <windowsx.h>
+#include <vector>
 
 namespace eaw {
 namespace {

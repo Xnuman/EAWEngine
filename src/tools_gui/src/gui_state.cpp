@@ -1,12 +1,11 @@
 // GuiApp::State: asset loading and selection, previews, and DAT and workspace files.
 
-#include "tools_gui/gui_internal.hpp"
-
-#include "assets/alamo_loaders.hpp"
-#include "assets/type_hardpoints.hpp"
 #include "core/string_utils.hpp"
 #include "formats/alo_model_helpers.hpp"
 #include "formats/dat_string_table_helpers.hpp"
+#include "assets/alamo_loaders.hpp"
+#include "assets/type_hardpoints.hpp"
+#include "tools_gui/gui_internal.hpp"
 
 namespace eaw::tools {
 

@@ -28,10 +28,9 @@
 // the engine's (the original's selection and blending are not documented); turns, flinches,
 // deaths, and crouching are not modeled yet.
 
-#include "engine/visual_scene_builder.hpp"
-
-#include "simulation/simulation.hpp"
 #include "render/visual_scene.hpp"
+#include "simulation/simulation.hpp"
+#include "engine/visual_scene_builder.hpp"
 
 #include <array>
 #include <cstddef>

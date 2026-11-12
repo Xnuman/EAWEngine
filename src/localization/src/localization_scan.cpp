@@ -1,6 +1,7 @@
 #include "localization/localization_scan.hpp"
-#include "core/string_utils.hpp"
+
 #include "core/file_io.hpp"
+#include "core/string_utils.hpp"
 #include "formats/dat_string_table_helpers.hpp"
 
 #include <algorithm>

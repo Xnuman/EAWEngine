@@ -1,11 +1,11 @@
 #include "engine_app/sandbox_app.hpp"
-#include "engine_app/sandbox_session.hpp"
-#include "platform/log_sinks.hpp"
 
+#include "core/file_io.hpp"
+#include "formats/png_image.hpp"
 #include "audio/audio_devices.hpp"
 #include "audio/null_audio_device.hpp"
-#include "formats/png_image.hpp"
-#include "core/file_io.hpp"
+#include "platform/log_sinks.hpp"
+#include "engine_app/sandbox_session.hpp"
 
 #include <chrono>
 #include <functional>

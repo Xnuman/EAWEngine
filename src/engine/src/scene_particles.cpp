@@ -1,10 +1,9 @@
 // Particle effects for scene builds: decoding particle ALOs through the asset cache, loading their
 // textures, and attaching them to model proxies.
 
-#include "engine/scene_builder_internal.hpp"
-
-#include "assets/alo_interpretation.hpp"
 #include "core/string_utils.hpp"
+#include "assets/alo_interpretation.hpp"
+#include "engine/scene_builder_internal.hpp"
 
 #include <algorithm>
 #include <charconv>

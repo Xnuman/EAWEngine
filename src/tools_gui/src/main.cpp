@@ -1,5 +1,4 @@
 #include "imgui_app/imgui_app.hpp"
-
 #include "tools_gui/gui_app.hpp"
 
 #include <memory>

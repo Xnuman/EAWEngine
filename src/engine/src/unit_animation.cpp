@@ -1,12 +1,11 @@
-#include "assets/pose.hpp"
 #include "engine/unit_animation.hpp"
 
-#include "assets/game_object_catalog.hpp"
-
-#include "engine/scene_presentation.hpp"
-#include "assets/animation.hpp"
 #include "math/matrix.hpp"
 #include "math/scalar.hpp"
+#include "assets/animation.hpp"
+#include "assets/game_object_catalog.hpp"
+#include "assets/pose.hpp"
+#include "engine/scene_presentation.hpp"
 
 #include <algorithm>
 #include <cmath>

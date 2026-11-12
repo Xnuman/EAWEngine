@@ -1,9 +1,8 @@
 // How shots look, for scene builds: bolts (custom-render projectiles, the pill atlas), and model
 // projectiles, whose meshes join the scene's mesh library or whose particle systems are decoded.
 
-#include "engine/scene_builder_internal.hpp"
-
 #include "formats/alo_particle_system.hpp"
+#include "engine/scene_builder_internal.hpp"
 
 #include <charconv>
 #include <cmath>

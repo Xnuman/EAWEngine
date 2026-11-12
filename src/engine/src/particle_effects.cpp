@@ -1,9 +1,9 @@
 #include "engine/particle_effects.hpp"
 
-#include "core/random.hpp"
 #include "math/matrix.hpp"
 #include "math/scalar.hpp"
 #include "math/vector.hpp"
+#include "core/random.hpp"
 
 #include <algorithm>
 #include <cmath>

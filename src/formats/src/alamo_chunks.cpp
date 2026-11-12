@@ -1,6 +1,6 @@
 #include "formats/alamo_chunks.hpp"
-#include "core/byte_order.hpp"
 
+#include "core/byte_order.hpp"
 #include "core/fatal_error.hpp"
 
 #include <algorithm>

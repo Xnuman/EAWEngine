@@ -1,12 +1,12 @@
 // The 3D model preview with its animation pose.
 
+#include "core/string_utils.hpp"
+#include "formats/alo_model_helpers.hpp"
 #include "assets/alo_interpretation.hpp"
 #include "assets/animation.hpp"
 #include "assets/pose.hpp"
 #include "assets/skeleton.hpp"
 #include "tools_gui/gui_internal.hpp"
-#include "core/string_utils.hpp"
-#include "formats/alo_model_helpers.hpp"
 
 namespace eaw::tools {
 namespace {

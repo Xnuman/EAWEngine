@@ -2,15 +2,15 @@
 // archives' mounting, and battle sounds.
 #include "test_support.hpp"
 
-#include "assets/animation_events.hpp"
-#include "assets/sound_events.hpp"
-#include "assets/surface_effects.hpp"
-#include "assets/sound_loaders.hpp"
-#include "audio/null_audio_device.hpp"
-#include "audio/spatial_audio.hpp"
-#include "engine/battle_audio.hpp"
 #include "formats/animation_sfx_map.hpp"
 #include "formats/wav_audio.hpp"
+#include "audio/null_audio_device.hpp"
+#include "audio/spatial_audio.hpp"
+#include "assets/animation_events.hpp"
+#include "assets/sound_events.hpp"
+#include "assets/sound_loaders.hpp"
+#include "assets/surface_effects.hpp"
+#include "engine/battle_audio.hpp"
 
 #include <cmath>
 
