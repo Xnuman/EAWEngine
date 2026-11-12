@@ -17,6 +17,9 @@ changing rows, `scripts/update-tag-status.ps1` recounts the summary and the fami
 The first classification (2026-11-11) was made from the catalogue: tags the code reads by name,
 then each catalogue subsection's subject, then per-tag corrections. Rows are corrected as work
 reaches them; a `gap` that turns out to need a new system moves to `needs`, and the reverse.
+A second pass over the gameplay rows (2026-11-13) moved 22 such rows: holstering, the player's
+announcements and faction filters (player layer), hero teams, and wrecks that block movement
+(wreck entities, with the simulation rewrite).
 Ability fields and classes are listed as the catalogue lists them (one row per field or class).
 
 ## Summary
@@ -25,8 +28,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 | --- | --- |
 | `done` | 162 |
 | `partial` | 21 |
-| `gap` | 231 |
-| `needs` | 683 |
+| `gap` | 209 |
+| `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
 
@@ -48,17 +51,20 @@ Systems that `needs` rows wait for, by tag count:
 | radar | 14 |
 | AI | 11 |
 | cinematics | 11 |
+| player layer | 11 |
 | garrisons | 9 |
 | transports | 9 |
+| holstering | 8 |
 | space hazards | 8 |
 | tactical overview | 8 |
 | secondary locomotor | 5 |
 | reinforcement | 4 |
 | base power | 3 |
+| hero teams | 3 |
 | stealth | 3 |
-| player layer | 2 |
 | repair | 2 |
 | retreat | 2 |
+| wreck entities | 2 |
 | weather | 1 |
 
 ## Movement, locomotion, formations, and collision
@@ -225,7 +231,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-48 done, 3 partial, 51 gap, 33 needs.
+48 done, 3 partial, 49 gap, 35 needs.
 
 ### Health, shields, armor, and energy
 
@@ -378,9 +384,9 @@ Systems that `needs` rows wait for, by tag count:
 | `Death_Explosions` | `done` |  |
 | `Death_Explosions_End` | `gap` |  |
 | `Death_Clone` | `partial` | the clone is spawned; damage-type-specific clones are not chosen |
-| `Death_Clone_Is_Obstacle` | `gap` | needs wrecks as simulation entities |
+| `Death_Clone_Is_Obstacle` | `needs wreck entities` | needs wrecks as simulation entities |
 | `IsDeathClone` | `gap` |  |
-| `IsDeathCloneObstacle` | `gap` | as Death_Clone_Is_Obstacle |
+| `IsDeathCloneObstacle` | `needs wreck entities` | as Death_Clone_Is_Obstacle |
 | `Death_Persistence_Duration` | `done` |  |
 | `Death_Fade_Time` | `gap` | needs a per-instance fade in the renderer |
 | `Remove_Upon_Death` | `done` | no corpse |
@@ -419,7 +425,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Projectiles and damage delivery
 
-30 done, 3 partial, 12 gap, 48 needs, 2 n/a.
+30 done, 3 partial, 11 gap, 49 needs, 2 n/a.
 
 ### Firing cadence (on the shooter)
 
@@ -458,7 +464,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Projectile_Blast_Area_Range` | `done` | measured to the footprint |
 | `Projectile_Blast_Area_Dropoff` | `done` |  |
 | `Projectile_Blast_Area_Dropoff_Tiers` | `done` | equal rings (inference) |
-| `Projectile_Blast_Area_Immune_Faction` | `gap` | blasts spare friends already; factions are not in the simulation |
+| `Projectile_Blast_Area_Immune_Faction` | `needs player layer` | blasts spare friends already; factions are not in the simulation |
 
 ### Flight and guidance
 
@@ -680,7 +686,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Companies, squadrons, teams, transports, garrisons, spawning, and special systems
 
-5 done, 1 partial, 17 gap, 114 needs.
+5 done, 1 partial, 8 gap, 123 needs.
 
 ### Companies and teams
 
@@ -690,13 +696,13 @@ Systems that `needs` rows wait for, by tag count:
 | `Company_Transport_Unit` | `needs transports` |  |
 | `Create_Team_Type` | `partial` | company members only; squadrons ignore it |
 | `Max_Squad_Size` | `done` | teams in formations; not yet one selectable unit |
-| `Create_Team` | `gap` |  |
+| `Create_Team` | `needs hero teams` |  |
 | `ContainerArrangement` | `done` | Rows and Dartboard |
 | `Is_Force_Sensitive` | `needs abilities` |  |
 | `Is_Stealth_Company` | `needs stealth` |  |
 | `Required_Orbiting_Units` | `needs galactic` |  |
-| `Share_Damage_With_Teammates` | `gap` |  |
-| `Redirect_Damage_To_Teammates` | `gap` |  |
+| `Share_Damage_With_Teammates` | `needs hero teams` |  |
+| `Redirect_Damage_To_Teammates` | `needs hero teams` |  |
 | `Respawn_Whole_Team_When_Killed` | `needs reinforcement` |  |
 
 ### Space squadrons
@@ -789,12 +795,12 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Holster_Weapon_Bone_Name` | `gap` |  |
-| `Holster_Drawn_Bone_Translation` | `gap` |  |
-| `Holster_Holstered_Bone_Translation` | `gap` |  |
-| `Holster_Transition_Time_In_Secs` | `gap` |  |
-| `Holster_Minimum_Drawn_Time_In_Secs` | `gap` |  |
-| `Holster_Disable_Engine_Loops` | `gap` |  |
+| `Holster_Weapon_Bone_Name` | `needs holstering` |  |
+| `Holster_Drawn_Bone_Translation` | `needs holstering` |  |
+| `Holster_Holstered_Bone_Translation` | `needs holstering` |  |
+| `Holster_Transition_Time_In_Secs` | `needs holstering` |  |
+| `Holster_Minimum_Drawn_Time_In_Secs` | `needs holstering` |  |
+| `Holster_Disable_Engine_Loops` | `needs holstering` |  |
 
 ### Hero clash
 
@@ -896,7 +902,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Production, economy, tech, galactic play, AI, visibility, and identity
 
-4 done, 2 partial, 7 gap, 223 needs, 4 n/a.
+4 done, 2 partial, 5 gap, 225 needs, 4 n/a.
 
 ### Faction, identity, and scripts
 
@@ -904,7 +910,7 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Affiliation` | `partial` | first faction only (preview colour, spawn filter) |
 | `Faction` | `needs galactic` | black-market item faction (the code literal is a definition type) |
-| `Faction_Anim_Subindex` | `gap` | animation sub-index by owner (reinforcement pedestals) |
+| `Faction_Anim_Subindex` | `needs player layer` | animation sub-index by owner (reinforcement pedestals) |
 | `Political_Faction` | `needs galactic` |  |
 | `Ship_Class` | `needs galactic` |  |
 | `Moniker` | `needs galactic` |  |
@@ -914,7 +920,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Is_Homogeneous` | `needs galactic` |  |
 | `Unique_Ground_Unit` | `needs galactic` |  |
 | `Unique_Space_Unit` | `needs galactic` |  |
-| `Loads_When_Faction_Present` | `gap` | spawn filter |
+| `Loads_When_Faction_Present` | `needs player layer` | spawn filter |
 | `Lua_Script` | `done` |  |
 | `Execute_Script_On_Type` | `gap` | object scripts |
 | `GalacticBehavior` | `needs galactic` |  |
@@ -1487,7 +1493,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Sound events and speech
 
-23 done, 1 partial, 13 gap, 50 needs, 4 n/a.
+23 done, 1 partial, 5 gap, 58 needs, 4 n/a.
 
 ### Unit responses to orders and selection
 
@@ -1506,11 +1512,11 @@ Systems that `needs` rows wait for, by tag count:
 | `SFXEvent_Assist_Attack` | `done` |  |
 | `SFXEvent_Attack_With_Non_Hero_Ability` | `needs abilities` |  |
 | `SFXEvent_Barrage` | `needs abilities` |  |
-| `SFXEvent_Attacked` | `gap` |  |
-| `SFXEvent_Announce` | `gap` |  |
+| `SFXEvent_Attacked` | `needs player layer` |  |
+| `SFXEvent_Announce` | `needs player layer` |  |
 | `SFXEvent_Deploy` | `needs deploying` |  |
-| `SFXEvent_Draw_Weapon` | `gap` |  |
-| `SFXEvent_Holster_Weapon` | `gap` |  |
+| `SFXEvent_Draw_Weapon` | `needs holstering` |  |
+| `SFXEvent_Holster_Weapon` | `needs holstering` |  |
 | `SFXEvent_Hero_Respawned` | `needs reinforcement` |  |
 | `Play_SFXEvent_On_Sighting` | `needs fog of war` |  |
 | `SFXEvent_Cough_Override` | `needs status effects` | gas or poison cough |
@@ -1561,10 +1567,10 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `SFXEvent_Health_Low_Warning` | `done` | at a third of health; every unit until the player layer |
 | `SFXEvent_Health_Critical_Warning` | `done` | at a tenth |
-| `SFXEvent_Enemy_Health_Low_Warning` | `gap` |  |
-| `SFXEvent_Enemy_Health_Critical_Warning` | `gap` |  |
-| `SFXEvent_Enemy_Damaged_Health_Low_Warning` | `gap` |  |
-| `SFXEvent_Enemy_Damaged_Health_Critical_Warning` | `gap` |  |
+| `SFXEvent_Enemy_Health_Low_Warning` | `needs player layer` |  |
+| `SFXEvent_Enemy_Health_Critical_Warning` | `needs player layer` |  |
+| `SFXEvent_Enemy_Damaged_Health_Low_Warning` | `needs player layer` |  |
+| `SFXEvent_Enemy_Damaged_Health_Critical_Warning` | `needs player layer` |  |
 | `SFXEvent_Unit_Under_Attack` | `needs player layer` | advisor line to the owner |
 | `SFXEvent_Unit_Lost` | `needs player layer` | advisor line to the owner |
 
