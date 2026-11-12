@@ -52,6 +52,31 @@ the first mod at highest priority. A synthetic M1 corpus locks this contract,
 including fallback and case/separator normalization. Black-box comparison with
 the legacy runtime remains the authority if an observed edge case differs.
 
+**XML loading (2026-11-13).** The game reads its XML through registries: `GameObjectFiles.xml`,
+`SFXEventFiles.xml`, `FactionFiles.xml`, `CommandBarComponentFiles.xml`, `CampaignFiles.xml`,
+`HardPointDataFiles.xml`, `TargetingPrioritySetFiles.xml`, `TradeRouteFiles.xml`, and
+`MousePointerFiles.xml` each list the files of one kind, loaded in list order; other files are
+opened by name (`GameConstants.xml`, `MovementClassTypeDefs.xml`, `SurfaceFX.xml`, and 23 more), and
+some folders are walked whole (`Enum/`, the AI folders); campaigns reach their story files by
+reference. Source: the public eaw-schema (Alamo Engine Tools, MIT, `eaw/meta/metafiles.yaml`), which
+also gives each registry's rule for a name two of its files define: the first keeps it for game
+objects, SFX events, and factions; the last for hardpoints, campaigns, trade routes, command bar
+components, and mouse pointers; targeting priority sets merge (read as first-wins here; no stock
+set is defined twice). The schema says the rules were measured but not how; they are a reference's
+claim, to be confirmed by a black-box test (two registered files defining one unit with different
+costs). `XmlAssetDatabase` follows it: registered files first, in list order (a last-wins
+registry's reversed, so the first definition a lookup finds is the winner either way), then every
+other file. A definition in a file nothing reaches is left out when its element type is one the
+game loads only through lists (it occurs in a file reached through a registry or a reference); a
+type never loaded through a list stays, since the schema's list of files opened by name may be
+incomplete. Stock FoC: no registry entry names a missing file; 208 files are unreached, holding
+4,725 story `Event`s and 88 `Campaign`s of EAW's campaigns (left out: FoC's `CampaignFiles.xml`
+does not list them) and 17 black market items and ambient map sounds (kept); no game object is in
+an unreached file. The winner changes for 6 of the 122 game-object names defined twice (abilities
+and projectiles such as `TIE_Defender_Ion_Cannon_Shot`, which resolved to a copy in
+`Corruption_Special_Units.xml` before) and for 2 trade routes; battle hashes, captures, and the
+spawn list are unchanged.
+
 **List separators (corpus audit, 2026-11-13).** Every list in game data is read with one rule,
 `split_list` (core/string_utils): commas, `|`, and ASCII whitespace all separate, empty items are
 dropped. Evidence: over the 638 winning FoC XML files, 33,245 comma lists in 410 tags; whitespace

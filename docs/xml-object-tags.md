@@ -82,9 +82,11 @@ from `HardPointDataFiles.xml`, and the other databases from their own metafiles 
 `CampaignFiles`, `FactionFiles`, `CommandBarComponentFiles`, `TargetingPrioritySetFiles`,
 `TradeRouteFiles`, `MousePointerFiles`, `DataMinerXMLFiles`). A developer comment on the listing
 says a file was moved up so its objects appear first on the build bar: list order is visible to
-the player. EAWEngine indexes the final VFS winners of every XML file instead of following the
-metafiles (`xml-audit`); following them is needed once load order matters (build bars, duplicate
-names).
+the player. EAWEngine loads XML the same way (`XmlAssetDatabase`, 2026-11-13): the files the
+registries list, in list order, then the rest; a duplicated name resolves by its registry's rule;
+and a definition in a file nothing reaches is left out when its type is one the game loads only
+through lists (FoC: 208 files, 4,725 story events and 88 campaigns of EAW's campaigns; see
+compatibility-research.md, "XML loading").
 
 ## Tags at a glance
 

@@ -408,7 +408,7 @@ directories, ALO model structure, ALA animation structure, TED maps, Petroglyph
 XML, and Lua source/bytecode. The XML
 reader accepts the game's multi-root fragments and historical declaration
 syntax, preserves element/attribute/field order and source lines, and indexes
-typed `Name` definitions case-insensitively. `xml-audit` reports definition-type
+typed `Name` definitions case-insensitively. `xml-audit` reports registry entries naming no file, the files no registry or reference reaches (and the definitions left out of them), definition-type
 coverage, duplicate type/name keys, XML file references, missing references,
 and parse failures across the final VFS winners. The combined stock FoC/EAW
 corpus currently parses all 638 resolved XML files and indexes 21,283 named

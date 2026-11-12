@@ -60,8 +60,20 @@ void test_xml_asset_database()
     std::filesystem::create_directories(xml_root);
     {
         std::ofstream file(xml_root / "GameObjectFiles.xml", std::ios::binary);
-        file << "<GameObjectFiles><File>Units.xml</File>"
-                "<File>Missing.xml</File></GameObjectFiles>";
+        file << "<GameObjectFiles><File>Units.xml</File><!-- <File>Overrides.xml</File> -->"
+                "<File>Missing.xml</File><File>AAA_Units.xml</File></GameObjectFiles>";
+    }
+    {
+        // Listed after Units.xml though it sorts first: game objects keep the first registered.
+        std::ofstream file(xml_root / "AAA_Units.xml", std::ios::binary);
+        file << "<SpaceUnit Name=\"Unit_A\"><Build_Cost_Credits>300</Build_Cost_Credits></SpaceUnit>";
+    }
+    {
+        // Hardpoints keep the last registered (a last-wins registry).
+        std::ofstream file(xml_root / "HardPointDataFiles.xml", std::ios::binary);
+        file << "<HardPointDataFiles><File>Points_A.xml</File><File>Points_B.xml</File></HardPointDataFiles>";
+        std::ofstream(xml_root / "Points_A.xml", std::ios::binary) << "<HardPoint Name=\"HP_Gun\"><Type>A</Type></HardPoint>";
+        std::ofstream(xml_root / "Points_B.xml", std::ios::binary) << "<HardPoint Name=\"HP_Gun\"><Type>B</Type></HardPoint>";
     }
     {
         std::ofstream file(xml_root / "Units.xml", std::ios::binary);
@@ -78,17 +90,18 @@ void test_xml_asset_database()
     eaw::VirtualFileSystem vfs;
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
     const auto database = eaw::XmlAssetDatabase::build(vfs);
-    require(database.document_count() == 3 && database.parsed_document_count() == 3 && database.failures().empty(), "XML database document accounting failed");
-    require(database.definitions().size() == 3, "XML database named definition discovery failed");
+    require(database.document_count() == 7 && database.parsed_document_count() == 7 && database.failures().empty(), "XML database document accounting failed");
+    // Overrides.xml is listed by no registry (its entry is commented out), so its unit is not loaded.
+    require(database.definitions().size() == 5 && database.unreached_files().size() == 1 && database.unreached_definition_count() == 1,
+            "a unit in a file no registry lists must be left out and reported");
+    require(database.missing_registry_entries().size() == 1 && database.missing_registry_entries()[0].value == "Missing.xml", "a registry entry naming no file must be reported");
     const auto matches = database.find("spaceunit", "unit_a");
-    const auto ordered_fields = std::ranges::find_if(matches,
-                                                     [](const auto* match)
-                                                     {
-                                                         return match->fields.size() == 2 && match->fields[0].name == "Text_ID" && match->fields[1].name == "Build_Cost_Credits";
-                                                     });
-    require(matches.size() == 2 && ordered_fields != matches.end(), "XML database typed lookup or field order failed");
-    require(database.duplicates().size() == 1, "XML duplicate definition diagnostics failed");
-    require(database.includes().size() == 2 && database.includes()[0].resolved && !database.includes()[1].resolved, "XML include resolution diagnostics failed");
+    require(matches.size() == 2 && matches.front()->fields.size() == 2 && matches.front()->fields[0].name == "Text_ID" && matches.front()->fields[1].name == "Build_Cost_Credits",
+            "a game object name must resolve to the first registered definition, with its fields in order");
+    const auto points = database.find("hardpoint", "hp_gun");
+    require(points.size() == 2 && eaw::ascii_find_ignoring_case(points.front()->source_path, "points_b", 0) != std::string_view::npos,
+            "a hardpoint name must resolve to the last registered definition");
+    require(database.duplicates().size() == 2, "XML duplicate definition diagnostics failed");
     std::filesystem::remove_all(root, ignored);
 }
 

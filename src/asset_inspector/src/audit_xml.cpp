@@ -26,7 +26,9 @@ eaw::Status audit_xml(const eaw::VirtualFileSystem& vfs, const std::string_view 
               << "Definition types: " << definitions_by_type.size() << '\n'
               << "Duplicate type/name keys: " << database.duplicates().size() << '\n'
               << "XML file references: " << database.includes().size() << '\n'
-              << "Missing XML file references: " << missing_includes << '\n';
+              << "Missing XML file references: " << missing_includes << '\n'
+              << "Registry entries naming no parsed file: " << database.missing_registry_entries().size() << '\n'
+              << "Files no registry or reference reaches: " << database.unreached_files().size() << " (" << database.unreached_definition_count() << " definitions of list-loaded types left out)\n";
 
     std::cout << "\nMost common definition types:\n";
     std::vector<std::pair<std::string, std::size_t>> sorted_types(definitions_by_type.begin(), definitions_by_type.end());
