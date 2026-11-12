@@ -306,10 +306,10 @@ int SandboxSession::finish()
         std::cout << "Animation (last frame): " << animation.animated << " units animated, " << animation.blending << " blending, " << animation.corpses << " corpses, " << animation.poses
                   << " poses, palette " << animation.palette_entries << " entries, " << animation.over_budget << " in rest pose (palette full)\n";
     }
-    if (options.record && battle)
+    if (options.record && runtime)
     {
         // The current battle's orders (a hot reload or scene replacement starts a new battle).
-        auto log = battle->log();
+        auto log = runtime->battle().log();
         log.end_tick = world->stats().tick;
         log.end_hash = world->state_hash();
         if (const auto saved = eaw::save_battle_log(*options.record, log); !saved)

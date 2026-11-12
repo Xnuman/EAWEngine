@@ -16,7 +16,7 @@ namespace eaw {
 void SandboxSession::spawn_units(const std::size_t type_index, const eaw::Vector3& point, const std::uint32_t count)
 {
     const auto& type = spawnable[type_index];
-    if (const auto submitted = battle->submit({.order = eaw::BattleOrder::spawn, .point = point, .type = type.type_name, .count = count, .owner = spawn_owner}); !submitted)
+    if (const auto submitted = runtime->battle().submit({.order = eaw::BattleOrder::spawn, .point = point, .type = type.type_name, .count = count, .owner = spawn_owner}); !submitted)
     {
         eaw::log_warning("simulation", submitted.error());
         return;
@@ -63,7 +63,7 @@ void SandboxSession::poll_packages()
     if (pending_spawn_types.valid() && pending_spawn_types.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
     {
         auto types = pending_spawn_types.get();
-        if (!types.empty() && battle)
+        if (!types.empty() && runtime)
         {
             const auto current = spawn_choice < spawn_names.size() ? spawn_names[spawn_choice] : std::string{};
             spawn_names.clear();
@@ -88,7 +88,7 @@ void SandboxSession::poll_packages()
     {
         return ascii_lower(spawn.type) == ascii_lower(type);
     };
-    if (!built || !battle || !presentation || !animator)
+    if (!built || !runtime || !presentation || !animator)
     {
         eaw::log_warning("sandbox", built ? eaw::Error{"the map changed while " + type + " was being built"} : built.error());
         std::erase_if(pending_spawns, waiting);
@@ -127,8 +127,8 @@ void SandboxSession::poll_packages()
         effects.add({package.rigs, &package.projectile_visuals, placed_atlas(package.projectile_atlas, placed), &package.effect_objects});
     }
     animator->add_rigs(package.rigs, package.rest_palette);
-    (void)battle->add_spawnable(package.types);
-    spawnable.assign(battle->spawnable().begin(), battle->spawnable().end());
+    (void)runtime->battle().add_spawnable(package.types);
+    spawnable.assign(runtime->battle().spawnable().begin(), runtime->battle().spawnable().end());
     runtime_types.push_back(type);
     std::cout << "Loaded " << type << " (" << meshes.size() << " meshes)\n";
     const auto owner = spawn_owner;

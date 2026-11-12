@@ -4,6 +4,7 @@
 #include "engine/battle.hpp"
 #include "engine/battle_effects.hpp"
 #include "engine/battle_log.hpp"
+#include "engine/battle_runtime.hpp"
 #include "engine/battle_scripts.hpp"
 #include "engine/particle_effects.hpp"
 #include "engine/projectile_visuals.hpp"
@@ -349,9 +350,24 @@ void test_battle_orders()
     map.spawnable = types;
     map.hostility.set(1, 2, true);
 
-    const auto run = [&](const bool record)
+    // Through a Battle alone or through a BattleRuntime (no scripts without a reader), which must step
+    // it alike.
+    const auto run = [&](const bool record, const bool through_runtime)
     {
-        eaw::Battle battle(map, "TEST.TED", 1.0 / 30.0);
+        eaw::BattleRuntime runtime(map, "TEST.TED", nullptr);
+        eaw::Battle plain(map, "TEST.TED", 1.0 / 30.0);
+        auto& battle = through_runtime ? runtime.battle() : plain;
+        const auto step = [&]
+        {
+            if (through_runtime)
+            {
+                runtime.step();
+            }
+            else
+            {
+                plain.step();
+            }
+        };
         expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {0.0F, 0.0F, 0.0F}, .type = "Fighter_Squadron", .count = 2, .owner = 1}), "squadron spawn");
         expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {300.0F, 0.0F, 0.0F}, .type = "Fighter", .count = 4, .owner = 2}), "fighter spawn");
         // Rejected orders change nothing and are not recorded.
@@ -361,7 +377,7 @@ void test_battle_orders()
         require(!battle.submit({.order = eaw::BattleOrder::move, .point = {1.0F, 2.0F, 3.0F}}), "an order without entities must be rejected");
         require(!battle.submit({.order = eaw::BattleOrder::move, .entities = {eaw::EntityId{1, 1}}, .point = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F}}),
                 "a non-finite point must be rejected");
-        battle.step();
+        step();
         require(battle.world().snapshot().entities.size() == 10, "spawn orders must apply at the next tick (two squadrons of three and four fighters)");
         if (record)
         {
@@ -378,13 +394,18 @@ void test_battle_orders()
         expect_ok(battle.submit({.order = eaw::BattleOrder::move, .entities = squadron_ids, .point = {600.0F, 200.0F, 0.0F}}), "move order");
         for (int tick = 0; tick < 300; ++tick)
         {
-            battle.step();
+            step();
         }
         return std::pair{battle.world().state_hash(), battle.world().stats().kills};
     };
-    const auto first = run(true);
-    const auto second = run(false);
+    const auto first = run(true, false);
+    const auto second = run(false, false);
     require(first.first == second.first && first.second == second.second, "the same orders must reproduce the same battle");
+    require(run(true, true) == first, "a battle runtime must step its battle as Battle::step does");
+    // The runtime's clock owes ticks by real time, at most eight per advance (FixedStepClock).
+    eaw::BattleRuntime clock_check(map, "TEST.TED", nullptr);
+    require(clock_check.scripts() == nullptr && clock_check.ticks_due(0.5 / 30.0) == 0 && clock_check.ticks_due(0.6 / 30.0) == 1 && clock_check.ticks_due(10.0) == 8,
+            "a battle runtime must owe ticks by elapsed real time");
     require(first.second > 0, "the test battle must be a real fight");
 }
 

@@ -13,6 +13,7 @@
 #include "engine/battle_audio.hpp"
 #include "engine/battle_effects.hpp"
 #include "engine/battle_log.hpp"
+#include "engine/battle_runtime.hpp"
 #include "engine/battle_scripts.hpp"
 #include "engine/camera_controller.hpp"
 #include "engine/camera_math.hpp"
@@ -115,9 +116,8 @@ struct SandboxSession
     // battle's world (null before the first scene).
     // Declared first among the frame state so it outlives nothing it reports on.
     FrameWatchdog watchdog;
-    std::optional<eaw::Battle> battle;
-    // Game-object scripts of the battle (none with --no-scripts).
-    std::optional<eaw::BattleScripts> battle_scripts;
+    // The battle with its scripts (none with --no-scripts) on the fixed simulation clock.
+    std::optional<eaw::BattleRuntime> runtime;
     eaw::SimulationWorld* world = nullptr;
     std::optional<eaw::ScenePresentation> presentation;
     // Map units' animation (presentation only) and the palette it fills each frame.
@@ -148,7 +148,7 @@ struct SandboxSession
     // while the cameras keep working; orders given meanwhile apply after it resumes.
     bool world_paused = false;
     std::chrono::steady_clock::time_point paused_since;
-    eaw::FixedStepClock simulation_clock{30.0};
+    // The world before the last tick, which presentation interpolates from.
     eaw::SimSnapshot previous_snapshot;
     std::vector<eaw::VisualInstance> frame_instances;
     std::vector<eaw::EntityId> frame_entities;

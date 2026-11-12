@@ -51,29 +51,22 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
 {
     if (world && presentation)
     {
-        const auto ticks = world_paused ? 0U : simulation_clock.advance(std::chrono::duration<double>(now - simulation_tick).count());
+        const auto ticks = world_paused ? 0U : runtime->ticks_due(std::chrono::duration<double>(now - simulation_tick).count());
         simulation_tick = now;
         const auto world_seconds = std::chrono::duration<double>(world_now(now) - map_animation_start).count();
         for (std::uint32_t tick = 0; tick < ticks; ++tick)
         {
             previous_snapshot = world->snapshot();
             watchdog.enter("simulation tick", world->stats().tick);
-            const auto tick_start = std::chrono::steady_clock::now();
-            // Through the battle, as headless runs do: it also spawns the survivors of the dead.
-            battle->step();
-            // The script phase follows the tick, as in headless battles (battle_scripts.hpp).
-            if (battle_scripts)
+            runtime->step();
+            if (const auto* scripts = runtime->scripts(); scripts != nullptr && audio)
             {
-                battle_scripts->run(*battle);
-                if (audio)
+                for (const auto& request : scripts->sound_requests())
                 {
-                    for (const auto& request : battle_scripts->sound_requests())
-                    {
-                        (void)audio->play_event(request.event, request.position);
-                    }
+                    (void)audio->play_event(request.event, request.position);
                 }
             }
-            last_tick_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tick_start).count();
+            last_tick_ms = runtime->last_step_milliseconds();
             slowest_tick_ms = std::max(slowest_tick_ms, last_tick_ms);
             // Every tick's deaths and impacts, so none is lost when a frame runs several ticks.
             for (const auto& death : world->snapshot().deaths)
@@ -89,13 +82,13 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
                 audio->play_tick_events(world->snapshot(), *world);
             }
         }
-        const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
+        const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), runtime->interpolation());
         watchdog.enter("presentation", world->stats().tick);
         presentation->build(entities, selection, frame_instances, frame_entities, &frame_animations);
         // Model projectiles follow the entities, without an entity (never picked) and at rest pose.
         const auto first_projectile = frame_instances.size();
-        const auto interpolation = static_cast<float>(simulation_clock.interpolation());
-        const auto tick_seconds = static_cast<float>(simulation_clock.tick_seconds());
+        const auto interpolation = runtime->interpolation();
+        const auto tick_seconds = static_cast<float>(runtime->tick_seconds());
         frame_projectile_serials.clear();
         eaw::append_projectile_instances(world->snapshot().projectiles, effects.projectile_visuals(), interpolation, tick_seconds, frame_instances, frame_projectile_serials);
         frame_entities.resize(frame_instances.size());
@@ -143,7 +136,8 @@ void SandboxSession::step_particles(const std::chrono::steady_clock::time_point 
     frame_particles.clear();
     const auto eye = tactical_camera || orbit_camera ? current_camera().eye : Vector3{};
     const auto projectiles = world != nullptr ? std::span<const eaw::ProjectileSnapshot>(world->snapshot().projectiles) : std::span<const eaw::ProjectileSnapshot>{};
-    effects.build_sprites(eye, projectiles, static_cast<float>(simulation_clock.interpolation()), static_cast<float>(simulation_clock.tick_seconds()), frame_particles);
+    // Without a battle there are no shots to place between ticks.
+    effects.build_sprites(eye, projectiles, runtime ? runtime->interpolation() : 0.0F, runtime ? static_cast<float>(runtime->tick_seconds()) : 0.0F, frame_particles);
     renderer.set_particles(frame_particles);
 }
 

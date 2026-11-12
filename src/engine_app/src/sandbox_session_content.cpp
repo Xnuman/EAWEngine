@@ -19,14 +19,9 @@ namespace eaw {
 void SandboxSession::start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, const std::span<const eaw::MapEntityLook> looks,
                                       const std::span<const eaw::SpawnableLook> spawnable_looks, std::string name)
 {
-    battle_scripts.reset();
-    battle.emplace(map, std::move(name), simulation_clock.tick_seconds());
-    world = &battle->world();
-    if (options.scripts)
-    {
-        battle_scripts.emplace(vfs);
-    }
-    presentation.emplace(scene, map.entities, looks, battle->map_entity_ids(), spawnable_looks);
+    runtime.emplace(map, std::move(name), options.scripts ? &vfs : nullptr);
+    world = &runtime->battle().world();
+    presentation.emplace(scene, map.entities, looks, runtime->battle().map_entity_ids(), spawnable_looks);
     previous_snapshot = world->snapshot();
     selection.clear();
     float extent = 0.0F;

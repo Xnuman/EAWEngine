@@ -454,7 +454,9 @@ The file-level split of each module.
   private `script_host_internal.hpp`.
 - `src/engine` (`eaw_engine`), by category (its CMake source groups):
   - battles: `battle` (setup, replayable orders, the order log), `battle_map_builder` (the battle
-    side of a map: placements, companies, spawnable types, ground), `battle_runner` (headless runs),
+    side of a map: placements, companies, spawnable types, ground), `battle_runtime` (a battle and
+    its scripts on the fixed clock, stepped alike by the sandbox and headless runs), `battle_runner`
+    (headless runs),
     `battle_log` (reading and writing logs), `battle_scripts` (scripts in battles: the view, the
     provider, blocks, and the script phase), `combat_content` (XML combat data translated into the
     simulation's combat profiles);

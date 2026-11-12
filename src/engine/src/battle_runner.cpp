@@ -3,6 +3,7 @@
 #include "core/log.hpp"
 #include "engine/battle.hpp"
 #include "engine/battle_log.hpp"
+#include "engine/battle_runtime.hpp"
 #include "engine/battle_scripts.hpp"
 #include "engine/text_format.hpp"
 
@@ -65,12 +66,8 @@ Vector3 battle_center(const BattleMapAsset& asset)
 BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, const SandboxOptions& options, const BattleLog* replay, const std::uint64_t ticks, const AssetReader* scripts_reader)
 {
     BattleRun run;
-    Battle battle(battle_map(asset), map_name);
-    std::optional<BattleScripts> scripts;
-    if (scripts_reader != nullptr)
-    {
-        scripts.emplace(*scripts_reader);
-    }
+    BattleRuntime runtime(battle_map(asset), map_name, scripts_reader);
+    auto& battle = runtime.battle();
     auto& world = battle.world();
     run.starting_entities = world.stats().entities;
     const auto center = battle_center(asset);
@@ -135,17 +132,10 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
                 }
             }
         }
-        const auto tick_start = std::chrono::steady_clock::now();
-        battle.step();
-        // The script phase follows the tick; its orders apply in the next one (battle_scripts.hpp).
-        if (scripts)
+        runtime.step();
+        if (runtime.last_step_milliseconds() > run.slowest_ms)
         {
-            scripts->run(battle);
-        }
-        const auto milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tick_start).count();
-        if (milliseconds > run.slowest_ms)
-        {
-            run.slowest_ms = milliseconds;
+            run.slowest_ms = runtime.last_step_milliseconds();
             run.slowest_tick = tick + 1U;
         }
     }
@@ -153,7 +143,7 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
     run.hash = world.state_hash();
     run.stats = world.stats();
     run.log = battle.log();
-    if (scripts)
+    if (const auto* scripts = runtime.scripts())
     {
         run.scripts = scripts->stats();
     }
