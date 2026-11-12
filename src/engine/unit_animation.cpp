@@ -266,7 +266,7 @@ const std::vector<AnimationCue>& UnitAnimator::cues() const noexcept
 }
 
 void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, const double seconds, const std::size_t max_palette,
-                           std::vector<Matrix4>& palette)
+                           std::vector<Matrix4>& palette, const std::span<const AnimationProfile> animations)
 {
     EAW_ASSERT_MSG(entities.size() == instances.size(), "unit animation needs one entity slot per instance");
     ++frame_;
@@ -305,6 +305,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         const auto& entity = snapshot[found->second];
         const auto key = entity_key(entity.id);
         const auto wanted = wanted_animation_role(entity);
+        const auto profile = index < animations.size() ? animations[index] : AnimationProfile{};
         auto& state = states_[key];
         if (state.frame == 0 || state.mesh != instance.mesh)
         {
@@ -337,6 +338,10 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             case AnimationRole::walk_move:
                 return state.walk;
             case AnimationRole::move:
+                if (state.move < 0 && state.walk < 0 && profile.idle_when_moving)
+                {
+                    return state.idle >= 0 ? state.idle : rest_clip;
+                }
                 return state.move >= 0 ? state.move : state.walk;
             default:
                 return state.idle >= 0 ? state.idle : rest_clip;
@@ -356,7 +361,8 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                     return;
                 }
                 const auto reference = role == AnimationRole::walk_move ? entity.max_speed * walk_speed_fraction : entity.max_speed;
-                const auto playback = std::clamp(state.display_speed / reference, minimum_playback_rate, maximum_playback_rate);
+                const auto playback =
+                    std::clamp(state.display_speed / reference, minimum_playback_rate, maximum_playback_rate) * (role == AnimationRole::walk_move ? profile.walk_rate : profile.move_rate);
                 rate += static_cast<double>(weight * playback) / static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
             };
             stride_rate(blend.lower, lower, 1.0F - blend.blend);
@@ -402,7 +408,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 return {rest_clip, 0, amount};
             }
             const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
-            const auto time = role == AnimationRole::idle ? seconds - state.idle_start : state.stride_phase * duration;
+            const auto time = role == AnimationRole::idle ? (seconds - state.idle_start) * static_cast<double>(profile.idle_rate) : state.stride_phase * duration;
             return {clip, slot_of(instance.mesh, clip, time), amount};
         };
         const auto fire_eighths = eighths(fire);
@@ -422,7 +428,8 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             {
                 const auto& visual_clip = rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)];
                 const auto duration = static_cast<double>(animation_duration(*visual_clip.animation));
-                const auto time = role == AnimationRole::idle ? std::fmod(std::max(seconds - state.idle_start, 0.0), std::max(duration, 1.0e-6)) : state.stride_phase * duration;
+                const auto time = role == AnimationRole::idle ? std::fmod(std::max(seconds - state.idle_start, 0.0) * static_cast<double>(profile.idle_rate), std::max(duration, 1.0e-6))
+                                                              : state.stride_phase * duration;
                 const auto frame = time * static_cast<double>(visual_clip.animation->frames_per_second);
                 if (clip == state.cue_clip)
                 {

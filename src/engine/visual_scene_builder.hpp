@@ -46,6 +46,19 @@ struct ClipName
 };
 [[nodiscard]] std::optional<ClipName> parse_clip_name(std::string_view file_stem, std::string_view model_stem);
 
+// How a type's clips play (presentation only). Rates multiply the engine's own playback: the move
+// clip by XML Movement_Animation_Speed, the walk clip by Walk_Animation_Speed, the idle clip by
+// Idle_Anim_00_Rate_Mod (props: 8 spins the huge asteroid masses); a type without a move or walk
+// clip keeps its idle clip while moving when Allow_Idle_When_Moving (birds) instead of standing in
+// its rest pose.
+struct AnimationProfile
+{
+    float move_rate{1.0F};
+    float walk_rate{1.0F};
+    float idle_rate{1.0F};
+    bool idle_when_moving{};
+};
+
 struct VisualClip
 {
     AnimationRole role{};
@@ -159,6 +172,7 @@ struct MapEntitySpawn
     // Not drawn: an editor marker (XML Is_Marker: flags, script points, skirmish base positions)
     // that stays an entity so scripts can find it.
     bool hidden{};
+    AnimationProfile animation;
 };
 
 // XML Max_Speed values are small (infantry 0.8, AT-AT 0.5, TIE fighter 4.5), consistent with world
@@ -257,8 +271,10 @@ struct SpawnableType
     // Aims with its body (no TURRET behavior); applies when it walks on the ground.
     bool aims_with_body{};
     DeathStyle death;
-    // Presentation: the most it banks in a turn when it flies (type_bank_limit, radians).
+    // Presentation: the most it banks in a turn when it flies (type_bank_limit, radians), and how
+    // its clips play.
     float bank_limit{default_bank_limit};
+    AnimationProfile animation;
     // XML FormationOrder and FormationSpacing (formation.hpp).
     std::uint32_t formation_order{2};
     float formation_spacing{0.5F};

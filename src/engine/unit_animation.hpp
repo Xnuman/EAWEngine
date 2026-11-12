@@ -107,7 +107,7 @@ public:
     // `max_palette` entries. `seconds` is presentation time and should not go backwards (a step back
     // counts as no time passing).
     void animate(std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, double seconds, std::size_t max_palette,
-                 std::vector<Matrix4>& palette);
+                 std::vector<Matrix4>& palette, std::span<const AnimationProfile> animations = {});
     // Keeps a dead entity's instance (ScenePresentation::corpse_instance) as a corpse that plays a
     // DIE clip from `seconds` on; ignored when its mesh has none. At most 4096 corpses are kept (the
     // oldest go first).

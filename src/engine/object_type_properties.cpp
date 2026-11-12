@@ -212,6 +212,24 @@ float type_formation_raggedness(const GameObjectCatalog& catalog, const XmlDefin
     return std::clamp(type_float_field(catalog, definition, "FormationRaggedness"), 0.0F, 10.0F);
 }
 
+AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto rate = [&](const std::string_view field)
+    {
+        const auto value = type_float_field(catalog, definition, field);
+        return value > 0.0F && value <= 100.0F ? value : 1.0F;
+    };
+    AnimationProfile profile;
+    profile.move_rate = rate("Movement_Animation_Speed");
+    profile.walk_rate = rate("Walk_Animation_Speed");
+    profile.idle_rate = rate("Idle_Anim_00_Rate_Mod");
+    if (const auto* idle = catalog.field(definition, "Allow_Idle_When_Moving").field)
+    {
+        profile.idle_when_moving = parse_xml_bool(idle->text).value_or(false);
+    }
+    return profile;
+}
+
 bool type_is_marker(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto* node = catalog.field(definition, "Is_Marker").field;

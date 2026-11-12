@@ -170,6 +170,31 @@ void test_unit_animation()
     animator.animate(snapshot, entities, instances, 0.5, rest.size(), palette);
     require(animator.stats().over_budget == 101 && palette.size() == rest.size() && instances[5].bone_offset == 0, "units beyond the palette budget must stay in their rest pose");
 
+    // A flyer with only an idle clip (a bird): moving, it stands in its rest pose unless its type
+    // allows idling while moving (XML Allow_Idle_When_Moving).
+    {
+        auto idle_only = rig;
+        idle_only.clips = {{eaw::AnimationRole::idle, 0, "IDLE_00", animation}};
+        const std::array<eaw::VisualRig, 1> bird_rigs{idle_only};
+        const std::vector<eaw::Matrix4> bird_rest(2, eaw::Matrix4::identity());
+        eaw::EntitySnapshot bird;
+        bird.id = {5, 1};
+        bird.moving = true;
+        bird.speed = 10.0F;
+        bird.max_speed = 10.0F;
+        const auto animated = [&](const bool idle_when_moving)
+        {
+            eaw::UnitAnimator flock(bird_rigs, bird_rest);
+            std::vector<eaw::EntityId> ids{bird.id};
+            std::vector<eaw::VisualInstance> shown(1);
+            std::vector<eaw::Matrix4> bird_palette;
+            const std::array<eaw::AnimationProfile, 1> profiles{eaw::AnimationProfile{.idle_when_moving = idle_when_moving}};
+            flock.animate(std::span(&bird, 1), ids, shown, 1.0, 1U << 20U, bird_palette, profiles);
+            return flock.stats().animated;
+        };
+        require(animated(false) == 0 && animated(true) == 1, "a moving type without a move clip must idle only when its type allows it");
+    }
+
     // Cues: a still unit's IDLE (30 frames, 1 s) reported frame by frame passes every frame of each
     // loop once, wrapping at the loop's end; a unit at rest pose, a background, and a clipless mesh
     // report nothing.

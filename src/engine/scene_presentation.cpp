@@ -67,7 +67,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         // Markers stay entities but are never drawn: without a template they are skipped.
         if (ids[index] && !entity.hidden)
         {
-            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[entity.instance], entity.spawn.heading, entity.death, entity.bank_limit});
+            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[entity.instance], entity.spawn.heading, entity.death, entity.bank_limit, entity.animation});
         }
     }
     for (const auto& type : spawnable)
@@ -82,13 +82,17 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         }
         instance.team_color = type.team_color;
         instance.lod_bias = type.lod_bias;
-        spawn_templates_.push_back({instance, identity_model_heading, type.death, type.bank_limit});
+        spawn_templates_.push_back({instance, identity_model_heading, type.death, type.bank_limit, type.animation});
     }
 }
 
 void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out,
-                              std::vector<EntityId>& entities_out) const
+                              std::vector<EntityId>& entities_out, std::vector<AnimationProfile>* animations_out) const
 {
+    if (animations_out != nullptr)
+    {
+        animations_out->clear();
+    }
     instances_out.clear();
     entities_out.clear();
     instances_out.reserve(backgrounds_.size() + snapshot.size());
@@ -97,6 +101,10 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
     {
         instances_out.push_back(background);
         entities_out.emplace_back();
+        if (animations_out != nullptr)
+        {
+            animations_out->emplace_back();
+        }
     }
     for (const auto& entity : snapshot)
     {
@@ -119,6 +127,10 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
         instance.key = entity_key(entity.id);
         instances_out.push_back(instance);
         entities_out.push_back(entity.id);
+        if (animations_out != nullptr)
+        {
+            animations_out->push_back(found->animation);
+        }
     }
 }
 
@@ -144,7 +156,7 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableType> types
         }
         instance.team_color = type.team_color;
         instance.lod_bias = type.lod_bias;
-        spawn_templates_.push_back({instance, identity_model_heading, type.death, type.bank_limit});
+        spawn_templates_.push_back({instance, identity_model_heading, type.death, type.bank_limit, type.animation});
     }
 }
 

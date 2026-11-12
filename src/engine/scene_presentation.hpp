@@ -49,7 +49,9 @@ public:
     // Builds this frame's instances: static backgrounds first, then one per snapshot entity in
     // snapshot order. `entities_out[i]` names the entity behind `instances_out[i]` (invalid for
     // backgrounds), so picks and selections can be mapped back.
-    void build(std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out, std::vector<EntityId>& entities_out) const;
+    // `animations_out`, when given, receives each instance's AnimationProfile (backgrounds a default).
+    void build(std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out, std::vector<EntityId>& entities_out,
+               std::vector<AnimationProfile>* animations_out = nullptr) const;
 
     // Meshes added to the renderer's mesh library at runtime (D3d12Renderer::add_meshes), in order,
     // and spawnable types added to the battle (Battle::add_spawnable), in the same order as there.
@@ -77,6 +79,7 @@ private:
         float base_heading{};
         DeathStyle death;
         float bank_limit{default_bank_limit};
+        AnimationProfile animation;
     };
     std::vector<VisualInstance> backgrounds_;
     std::unordered_map<std::uint64_t, Template> templates_;

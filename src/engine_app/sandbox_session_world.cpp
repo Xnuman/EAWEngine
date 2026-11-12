@@ -91,7 +91,7 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
         }
         const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), simulation_clock.interpolation());
         watchdog.enter("presentation", world->stats().tick);
-        presentation->build(entities, selection, frame_instances, frame_entities);
+        presentation->build(entities, selection, frame_instances, frame_entities, &frame_animations);
         // Model projectiles follow the entities, without an entity (never picked) and at rest pose.
         const auto first_projectile = frame_instances.size();
         const auto interpolation = static_cast<float>(simulation_clock.interpolation());
@@ -103,7 +103,7 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
         {
             watchdog.enter("unit animation", world->stats().tick);
             // The palette goes first: set_instances checks bone ranges against it.
-            animator->animate(entities, frame_entities, frame_instances, world_seconds, eaw::D3d12Renderer::max_bone_transforms(), frame_palette);
+            animator->animate(entities, frame_entities, frame_instances, world_seconds, eaw::D3d12Renderer::max_bone_transforms(), frame_palette, frame_animations);
             renderer.set_bone_transforms(frame_palette);
             if (audio)
             {

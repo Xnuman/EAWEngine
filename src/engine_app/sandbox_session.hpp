@@ -154,6 +154,8 @@ struct SandboxSession
     eaw::SimSnapshot previous_snapshot;
     std::vector<eaw::VisualInstance> frame_instances;
     std::vector<eaw::EntityId> frame_entities;
+    // How each drawn instance's clips play (ScenePresentation::build).
+    std::vector<eaw::AnimationProfile> frame_animations;
     // Shots drawn as models this frame (after the entities in frame_instances) and their serials.
     std::vector<std::uint32_t> frame_projectile_serials;
     std::unordered_set<std::uint64_t> selection;

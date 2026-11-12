@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 148 |
+| `done` | 152 |
 | `partial` | 19 |
-| `gap` | 248 |
+| `gap` | 244 |
 | `needs` | 682 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -63,7 +63,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-29 done, 6 partial, 53 gap, 18 needs, 7 n/a.
+31 done, 6 partial, 51 gap, 18 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -202,8 +202,8 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Movement_Animation_Speed` | `gap` |  |
-| `Walk_Animation_Speed` | `gap` |  |
+| `Movement_Animation_Speed` | `done` | multiplies the move clip on top of speed matching |
+| `Walk_Animation_Speed` | `done` |  |
 | `Rotation_Animation_Speed` | `gap` |  |
 | `Crouch_Animation_Speed` | `gap` |  |
 | `Tread_Scroll_Rate` | `gap` |  |
@@ -1215,7 +1215,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Models, rendering, animation, user interface, and text
 
-13 done, 3 partial, 91 gap, 83 needs, 3 n/a.
+15 done, 3 partial, 89 gap, 83 needs, 3 n/a.
 
 ### Core structure (summary; see the overview chapters)
 
@@ -1300,8 +1300,8 @@ Systems that `needs` rows wait for, by tag count:
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Loop_Idle_Anim_00` | `gap` |  |
-| `Idle_Anim_00_Rate_Mod` | `gap` |  |
-| `Allow_Idle_When_Moving` | `gap` |  |
+| `Idle_Anim_00_Rate_Mod` | `done` | the last occurrence wins on the two repeating asteroid masses |
+| `Allow_Idle_When_Moving` | `done` |  |
 | `Land_Model_Anim_Override_Name` | `done` |  |
 | `Specific_Death_Anim_Index` | `done` |  |
 | `Specific_Death_Anim_Type` | `gap` |  |
