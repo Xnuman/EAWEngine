@@ -23,8 +23,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 149 |
-| `partial` | 18 |
+| `done` | 148 |
+| `partial` | 19 |
 | `gap` | 248 |
 | `needs` | 682 |
 | `n/a` | 20 |
@@ -1487,7 +1487,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Sound events and speech
 
-24 done, 13 gap, 50 needs, 4 n/a.
+23 done, 1 partial, 13 gap, 50 needs, 4 n/a.
 
 ### Unit responses to orders and selection
 
@@ -1533,7 +1533,7 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `SFXEvent_Engine_Moving_Loop` | `done` |  |
+| `SFXEvent_Engine_Moving_Loop` | `partial` | jetpack types (secondary locomotor) stay silent until it exists |
 | `SFXEvent_Engine_Idle_Loop` | `done` |  |
 | `SFXEvent_Engine_Cinematic_Focus_Loop` | `needs cinematics` |  |
 | `SFXEvent_Ambient_Loop` | `done` |  |

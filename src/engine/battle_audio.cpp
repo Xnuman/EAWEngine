@@ -114,7 +114,13 @@ const BattleAudio::TypeSounds& BattleAudio::type_sounds(const std::string_view t
         const auto& definition = *definitions.front();
         sounds.death = type_field(*catalog_, definition, "Death_SFXEvent_Start_Die");
         sounds.death_explosion = type_field(*catalog_, definition, "Death_Explosion_SFXEvent");
-        sounds.engine_loop = type_field(*catalog_, definition, "SFXEvent_Engine_Moving_Loop");
+        // A type with a secondary locomotor (jetpacks: Boba Fett, the Dark Troopers) plays its moving
+        // loop only on it (a developer comment: Boba's loop is for flying with his jet pack); the
+        // engine has no secondary locomotor yet, so the loop stays silent.
+        if (type_field(*catalog_, definition, "Secondary_Locomotor_Name").empty())
+        {
+            sounds.engine_loop = type_field(*catalog_, definition, "SFXEvent_Engine_Moving_Loop");
+        }
         sounds.engine_idle_loop = type_field(*catalog_, definition, "SFXEvent_Engine_Idle_Loop");
         sounds.ambient_loop = type_field(*catalog_, definition, "SFXEvent_Ambient_Loop");
         sounds.select = type_field(*catalog_, definition, "SFXEvent_Select");
@@ -309,14 +315,51 @@ bool BattleAudio::play_response(const std::string_view type_name, const UnitResp
 {
     const auto& sounds = type_sounds(type_name);
     const auto& event = response == UnitResponse::select ? sounds.select : response == UnitResponse::move ? sounds.move : response == UnitResponse::guard ? sounds.guard : sounds.attack;
-    return !event.empty() && play_event(event);
+    return !event.empty() && play_response_event(event);
+}
+
+bool BattleAudio::play_response_event(const std::string& name)
+{
+    const auto* event = events_.find(name);
+    if (event == nullptr)
+    {
+        ++stats_.missing;
+        return false;
+    }
+    if (event->probability < 1.0F && random_.unit() >= event->probability)
+    {
+        ++stats_.skipped;
+        return false;
+    }
+    if (event->max_predelay > 0.0F)
+    {
+        Pending pending{random_.range(event->min_predelay, std::max(event->min_predelay, event->max_predelay)), event, std::nullopt};
+        pending.response = true;
+        pending_.push_back(pending);
+        return true;
+    }
+    const auto voice = start(*event, std::nullopt, 0);
+    if (const auto found = std::ranges::find(voices_, voice, &Voice::id); voice != 0 && found != voices_.end())
+    {
+        found->response = true;
+    }
+    return voice != 0;
+}
+
+bool BattleAudio::response_busy() const
+{
+    return std::ranges::any_of(voices_, &Voice::response) || std::ranges::any_of(pending_,
+                                                                                 [](const Pending& pending)
+                                                                                 {
+                                                                                     return pending.response && pending.pause <= 0.0F;
+                                                                                 });
 }
 
 bool BattleAudio::play_group_response(const std::string_view type_name, const UnitResponse response)
 {
     const auto& sounds = type_sounds(type_name);
     const auto& event = response == UnitResponse::move ? sounds.group_move : response == UnitResponse::attack ? sounds.group_attack : std::string{};
-    return !event.empty() && play_event(event);
+    return !event.empty() && play_response_event(event);
 }
 
 bool BattleAudio::play_assist_response(const std::string_view type_name, const UnitResponse response, const float pause)
@@ -333,7 +376,7 @@ bool BattleAudio::play_assist_response(const std::string_view type_name, const U
         ++stats_.missing;
         return false;
     }
-    pending_.push_back({pause, event, std::nullopt, pause, assist_patience_seconds});
+    pending_.push_back({pause, event, std::nullopt, pause, assist_patience_seconds, true});
     return true;
 }
 
@@ -618,8 +661,8 @@ void BattleAudio::update(const VisualCamera& camera, const SimSnapshot& snapshot
     for (auto& pending : pending_)
     {
         pending.delay -= seconds;
-        // An assist line keeps its pause after the voice it would talk over.
-        if (pending.pause > 0.0F && overlap_busy(*pending.event))
+        // An assist line keeps its pause after the answers it would talk over.
+        if (pending.pause > 0.0F && (response_busy() || overlap_busy(*pending.event)))
         {
             pending.delay = pending.pause;
             pending.patience -= seconds;
@@ -643,7 +686,11 @@ void BattleAudio::update(const VisualCamera& camera, const SimSnapshot& snapshot
                   });
     for (const auto& pending : due)
     {
-        (void)start(*pending.event, pending.position, 0);
+        const auto voice = start(*pending.event, pending.position, 0);
+        if (const auto found = std::ranges::find(voices_, voice, &Voice::id); pending.response && voice != 0 && found != voices_.end())
+        {
+            found->response = true;
+        }
     }
 
     update_unit_loops(snapshot, world);

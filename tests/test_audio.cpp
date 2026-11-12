@@ -436,6 +436,9 @@ void test_impact_and_moving_sounds()
                "<SFXEvent_Guard>On_Guard</SFXEvent_Guard><SFXEvent_Assist_Move>On_Guard</SFXEvent_Assist_Move></GroundVehicle>"
                "<GroundVehicle Name=\"Leader\"><SFXEvent_Move>Talk_A</SFXEvent_Move></GroundVehicle>"
                "<GroundVehicle Name=\"Follower\"><SFXEvent_Assist_Move>Talk_B</SFXEvent_Assist_Move></GroundVehicle>"
+               "<GroundVehicle Name=\"Other_Leader\"><SFXEvent_Move>Chirp</SFXEvent_Move></GroundVehicle>"
+               "<HeroUnit Name=\"Jetpacker\"><Secondary_Locomotor_Name>JETPACK_LOCOMOTOR</Secondary_Locomotor_Name>"
+               "<SFXEvent_Engine_Moving_Loop>Chirp</SFXEvent_Engine_Moving_Loop></HeroUnit>"
                "<GroundVehicle Name=\"Mute\"><SFXEvent_Ambient_Moving>Chirp</SFXEvent_Ambient_Moving><SFXEvent_Ambient_Moving_Min_Delay_Seconds>1"
                "</SFXEvent_Ambient_Moving_Min_Delay_Seconds><SFXEvent_Ambient_Moving_Max_Delay_Seconds>1</SFXEvent_Ambient_Moving_Max_Delay_Seconds></GroundVehicle>"
                "<HeroUnit Name=\"Hero\"><SFXEvent_Health_Low_Warning>Low_Line</SFXEvent_Health_Low_Warning>"
@@ -477,15 +480,15 @@ void test_impact_and_moving_sounds()
                 !audio.play_group_response("Walker", eaw::UnitResponse::move),
             "a group order must get a type's group line, and nothing without one");
     {
-        // An assist line waits for its pause.
-        const auto before = audio.stats().played;
-        require(audio.play_assist_response("Walker", eaw::UnitResponse::move, 1.0F) && !audio.play_assist_response("Walker", eaw::UnitResponse::attack, 1.0F),
+        // An assist line waits for its pause (with nothing else said).
+        eaw::BattleAudio quiet_audio(vfs, &cache, device, "English", true);
+        require(quiet_audio.play_assist_response("Walker", eaw::UnitResponse::move, 1.0F) && !quiet_audio.play_assist_response("Walker", eaw::UnitResponse::attack, 1.0F),
                 "an assist line must be queued for a move, and nothing without one");
         eaw::SimulationWorld idle(0.1);
-        audio.update(camera, idle.snapshot(), idle, 0.5F);
-        const auto early = audio.stats().played;
-        audio.update(camera, idle.snapshot(), idle, 0.6F);
-        require(early == before && audio.stats().played == before + 1, "an assist line must start after its pause");
+        quiet_audio.update(camera, idle.snapshot(), idle, 0.5F);
+        const auto early = quiet_audio.stats().played;
+        quiet_audio.update(camera, idle.snapshot(), idle, 0.6F);
+        require(early == 0 && quiet_audio.stats().played == 1, "an assist line must start after its pause");
     }
     {
         // An assist line sharing the response's overlap name keeps its whole pause after the
@@ -502,6 +505,32 @@ void test_impact_and_moving_sounds()
             elapsed += 0.25F;
         }
         require(talk.stats().played == 2 && talk.stats().skipped == 0 && elapsed > 1.0F, "an assist line must wait for the response to finish, then its pause");
+    }
+    {
+        // The same when the response has another overlap name (or none): it is an answer to an order.
+        eaw::BattleAudio talk(vfs, &cache, device, "English", true);
+        eaw::SimulationWorld idle(0.1);
+        require(talk.play_response("Other_Leader", eaw::UnitResponse::move) && talk.play_assist_response("Follower", eaw::UnitResponse::move, 1.0F), "both lines must be accepted");
+        float elapsed = 0.0F;
+        while (talk.stats().played < 2 && elapsed < 5.0F)
+        {
+            talk.update(camera, idle.snapshot(), idle, 0.25F);
+            elapsed += 0.25F;
+        }
+        require(talk.stats().played == 2 && elapsed > 1.0F, "an assist line must wait for a response of any overlap name");
+    }
+    {
+        // A type with a secondary locomotor (a jetpack) plays its moving loop only on it: walking is silent.
+        eaw::BattleAudio jets(vfs, &cache, device, "English", true);
+        eaw::SimulationWorld walk(0.1);
+        const auto boba = *walk.spawn({.type_name = "Jetpacker", .owner = 1, .max_speed = 10.0F});
+        walk.submit({eaw::SimCommandKind::move, {boba}, {1000.0F, 0.0F, 0.0F}});
+        for (int frame = 0; frame < 3; ++frame)
+        {
+            walk.step();
+            jets.update(camera, walk.snapshot(), walk, 0.5F);
+        }
+        require(jets.stats().played == 0, "a jetpack's moving loop must not play while the unit walks");
     }
 
     // Without AMBIENT_SFX among its behaviors, a moving unit plays no ambient sound.

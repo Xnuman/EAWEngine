@@ -101,7 +101,8 @@ public:
     // A unit type's answer to an order given with another type, `pause` seconds after the response
     // playing now has finished (XML SFXEvent_Assist_Move for moves, SFXEvent_Assist_Attack for
     // attacks: "Escorting!" after Luke's "Understood!"); false when it has none. It waits while any
-    // voice sharing its overlap name plays, at most assist_patience_seconds.
+    // answer to an order plays (whatever its overlap name) or a voice sharing its own overlap name
+    // does, at most assist_patience_seconds.
     bool play_assist_response(std::string_view type_name, UnitResponse response, float pause);
 
     struct Stats
@@ -165,6 +166,8 @@ private:
         float volume{1.0F};
         // The unit a loop follows (its entity key), else 0.
         std::uint64_t entity{};
+        // A unit's spoken answer to an order (assist lines wait for these to end).
+        bool response{};
     };
     struct Pending
     {
@@ -175,7 +178,12 @@ private:
         // restarts at it while one plays), and how much longer they may wait.
         float pause{};
         float patience{};
+        bool response{};
     };
+    // Plays a unit's spoken answer to an order, marked so that assist lines wait for it.
+    bool play_response_event(const std::string& name);
+    // Whether an answer to an order is playing or waiting for its predelay.
+    [[nodiscard]] bool response_busy() const;
     // Whether a voice sharing `event`'s overlap name plays.
     [[nodiscard]] bool overlap_busy(const SoundEvent& event) const;
 
