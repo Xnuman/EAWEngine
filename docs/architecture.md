@@ -465,7 +465,7 @@ The file-level split of each module.
     animations), `scene_particles` (particle effects and effect objects), `scene_projectiles`,
     `scene_terrain` (terrain, liquids, tracks), `object_type_properties` (movement and speed fields
     of XML types), and `visual_map_builder` (maps and runtime-spawnable packages);
-  - presentation: `scene_presentation`, `unit_animation`, `particle_effects` (`ParticleWorld`),
+  - presentation: `battle_frame` (a running battle's tick events and frames), `scene_presentation`, `unit_animation`, `particle_effects` (`ParticleWorld`),
     `attached_effects`, `battle_effects`, `battle_audio`, `projectile_visuals`, and `debug_draw`;
   - input and cameras: `camera_controller`, `camera_math`, `rts_control`, `terrain_height`;
   - the sandbox's testable parts: `sandbox_options` (command line), `sandbox_content` (background

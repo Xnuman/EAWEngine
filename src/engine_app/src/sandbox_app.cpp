@@ -63,8 +63,8 @@ SandboxSession::SandboxSession(const eaw::SandboxOptions& session_options, eaw::
 
 std::string SandboxSession::describe_instance(const std::size_t index) const
 {
-    const auto& instance = frame_instances[index];
-    const auto type = frame_entities[index].valid() && world != nullptr ? std::string(world->type_name(frame_entities[index])) : std::string{};
+    const auto& instance = battle_frame.instances[index];
+    const auto type = battle_frame.entities[index].valid() && world != nullptr ? std::string(world->type_name(battle_frame.entities[index])) : std::string{};
     const auto& mesh = presentation->mesh_name(instance.mesh);
     return type.empty() || type == mesh ? mesh : type + " (" + mesh + ")";
 }
@@ -269,9 +269,9 @@ int SandboxSession::finish()
     while (const auto pick = renderer.take_pick())
     {
         std::cout << "Selected: "
-                  << (pick->instance && *pick->instance < frame_entities.size() && frame_entities[*pick->instance].valid() ? describe_instance(*pick->instance)
-                      : pick->terrain                                                                                      ? std::string("terrain")
-                                                                                                                           : std::string("nothing"))
+                  << (pick->instance && *pick->instance < battle_frame.entities.size() && battle_frame.entities[*pick->instance].valid() ? describe_instance(*pick->instance)
+                      : pick->terrain                                                                                                    ? std::string("terrain")
+                                                                                                                                         : std::string("nothing"))
                   << '\n';
     }
     const auto stats = renderer.stats();

@@ -51,6 +51,7 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
 {
     if (world && presentation)
     {
+        eaw::BattlePresenters presenters{*presentation, animator ? &*animator : nullptr, effects, audio ? &*audio : nullptr};
         const auto ticks = world_paused ? 0U : runtime->ticks_due(std::chrono::duration<double>(now - simulation_tick).count());
         simulation_tick = now;
         const auto world_seconds = std::chrono::duration<double>(world_now(now) - map_animation_start).count();
@@ -59,58 +60,24 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
             previous_snapshot = world->snapshot();
             watchdog.enter("simulation tick", world->stats().tick);
             runtime->step();
-            if (const auto* scripts = runtime->scripts(); scripts != nullptr && audio)
-            {
-                for (const auto& request : scripts->sound_requests())
-                {
-                    (void)audio->play_event(request.event, request.position);
-                }
-            }
             last_tick_ms = runtime->last_step_milliseconds();
             slowest_tick_ms = std::max(slowest_tick_ms, last_tick_ms);
-            // Every tick's deaths and impacts, so none is lost when a frame runs several ticks.
-            for (const auto& death : world->snapshot().deaths)
-            {
-                if (const auto corpse = presentation->corpse_instance(death); corpse && animator)
-                {
-                    animator->add_corpse(corpse->instance, death.id, world_seconds, corpse->style, death.crushed);
-                }
-            }
-            effects.play_tick_events(world->snapshot());
-            if (audio)
-            {
-                audio->play_tick_events(world->snapshot(), *world);
-            }
+            // Every tick's events, so none is lost when a frame runs several ticks.
+            eaw::present_tick(*runtime, presenters, world_seconds);
         }
-        const auto entities = eaw::interpolate_snapshots(previous_snapshot, world->snapshot(), runtime->interpolation());
         watchdog.enter("presentation", world->stats().tick);
-        presentation->build(entities, selection, frame_instances, frame_entities, &frame_animations);
-        // Model projectiles follow the entities, without an entity (never picked) and at rest pose.
-        const auto first_projectile = frame_instances.size();
-        const auto interpolation = runtime->interpolation();
-        const auto tick_seconds = static_cast<float>(runtime->tick_seconds());
-        frame_projectile_serials.clear();
-        eaw::append_projectile_instances(world->snapshot().projectiles, effects.projectile_visuals(), interpolation, tick_seconds, frame_instances, frame_projectile_serials);
-        frame_entities.resize(frame_instances.size());
+        eaw::build_battle_frame(*runtime, previous_snapshot, selection, world_seconds, eaw::D3d12Renderer::max_bone_transforms(), presenters, battle_frame);
         if (animator)
         {
-            watchdog.enter("unit animation", world->stats().tick);
             // The palette goes first: set_instances checks bone ranges against it.
-            animator->animate(entities, frame_entities, frame_instances, world_seconds, eaw::D3d12Renderer::max_bone_transforms(), frame_palette, frame_animations);
-            renderer.set_bone_transforms(frame_palette);
-            if (audio)
-            {
-                audio->play_animation_cues(animator->cues());
-            }
-            effects.attach(frame_instances, frame_entities, frame_palette, entities, world_seconds);
-            effects.follow_projectiles(std::span(frame_instances).subspan(first_projectile), frame_projectile_serials, frame_palette, world->snapshot().projectiles, interpolation, tick_seconds);
+            renderer.set_bone_transforms(battle_frame.palette);
         }
         for (const auto request : unbound_picks)
         {
-            pick_entities[request] = frame_entities;
+            pick_entities[request] = battle_frame.entities;
         }
         unbound_picks.clear();
-        renderer.set_instances(frame_instances);
+        renderer.set_instances(battle_frame.instances);
         update_debug_lines();
     }
 }

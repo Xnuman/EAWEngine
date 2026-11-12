@@ -87,8 +87,8 @@ void SandboxSession::update_debug_lines()
     eaw::SandboxDebugView view;
     view.presentation = presentation ? &*presentation : nullptr;
     view.world = world;
-    view.instances = frame_instances;
-    view.entities = frame_entities;
+    view.instances = battle_frame.instances;
+    view.entities = battle_frame.entities;
     view.selection = &selection;
     // The simulation's ground shows structure footprints stamped into its passability.
     view.ground = world ? &world->ground() : &terrain_heights;

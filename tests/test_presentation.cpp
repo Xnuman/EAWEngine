@@ -4,7 +4,9 @@
 #include "formats/alo_model_helpers.hpp"
 #include "engine/battle.hpp"
 #include "engine/battle_effects.hpp"
+#include "engine/battle_frame.hpp"
 #include "engine/battle_log.hpp"
+#include "engine/battle_runtime.hpp"
 #include "engine/particle_effects.hpp"
 #include "engine/projectile_visuals.hpp"
 #include "engine/sandbox_options.hpp"
@@ -90,6 +92,21 @@ void test_scene_presentation()
     const eaw::ScenePresentation marker_presentation(scene, std::span(&marker, 1), std::span(&marker_look, 1), marker_battle.map_entity_ids(), {});
     marker_presentation.build(marker_battle.world().snapshot().entities, {}, instances, ids);
     require(marker_battle.world().snapshot().entities.size() == 1 && instances.size() == 1 && instances[0].background, "a marker must stay an entity but not be drawn");
+
+    // A frame of a running battle, built without a window: backgrounds, then entities with their
+    // ids; no palette without an animator.
+    eaw::BattleRuntime runtime(map, "TEST.TED", nullptr);
+    eaw::ScenePresentation frame_presentation(scene, entities, looks, runtime.battle().map_entity_ids(), std::span(&spawnable_look, 1));
+    eaw::BattleEffects effects;
+    eaw::BattlePresenters presenters{frame_presentation, nullptr, effects, nullptr};
+    const auto previous = runtime.battle().world().snapshot();
+    runtime.step();
+    eaw::present_tick(runtime, presenters, 0.0);
+    eaw::BattleFrame frame;
+    eaw::build_battle_frame(runtime, previous, {}, 0.0, 0, presenters, frame);
+    require(frame.instances.size() == 2 && frame.entities.size() == 2 && frame.instances[0].background && frame.entities[1] == runtime.battle().world().snapshot().entities[0].id &&
+                frame.palette.empty() && frame.projectile_serials.empty(),
+            "a battle frame must hold the backgrounds and the posed entities");
 }
 
 // Unit animation: clip names map to roles, snapshots choose roles, entities share sampled poses,

@@ -389,7 +389,7 @@ void SandboxSession::process_picks()
     {
         // Pick ids are positions in the instance list of the frame that drew the pick.
         const auto recorded = pick_entities.find(pick->request);
-        const auto& entities_then = recorded != pick_entities.end() ? recorded->second : frame_entities;
+        const auto& entities_then = recorded != pick_entities.end() ? recorded->second : battle_frame.entities;
         const auto entity = pick->instance && *pick->instance < entities_then.size() ? entities_then[*pick->instance] : eaw::EntityId{};
         const bool attack = attack_picks.erase(pick->request) != 0;
         const bool guard = guard_picks.erase(pick->request) != 0;

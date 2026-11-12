@@ -12,6 +12,7 @@
 #include "engine/battle.hpp"
 #include "engine/battle_audio.hpp"
 #include "engine/battle_effects.hpp"
+#include "engine/battle_frame.hpp"
 #include "engine/battle_log.hpp"
 #include "engine/battle_runtime.hpp"
 #include "engine/battle_scripts.hpp"
@@ -122,7 +123,6 @@ struct SandboxSession
     std::optional<eaw::ScenePresentation> presentation;
     // Map units' animation (presentation only) and the palette it fills each frame.
     std::optional<eaw::UnitAnimator> animator;
-    std::vector<Matrix4> frame_palette;
     // The battle's effects (presentation only: drawn units' proxies, impacts and deaths, bolts), and
     // the --effect effects, which play at the map center and restart when they end.
     eaw::BattleEffects effects{eaw::particle_interpretation(options.particle_fidelity).draw_order};
@@ -150,12 +150,8 @@ struct SandboxSession
     std::chrono::steady_clock::time_point paused_since;
     // The world before the last tick, which presentation interpolates from.
     eaw::SimSnapshot previous_snapshot;
-    std::vector<eaw::VisualInstance> frame_instances;
-    std::vector<eaw::EntityId> frame_entities;
-    // How each drawn instance's clips play (ScenePresentation::build).
-    std::vector<eaw::AnimationProfile> frame_animations;
-    // Shots drawn as models this frame (after the entities in frame_instances) and their serials.
-    std::vector<std::uint32_t> frame_projectile_serials;
+    // The battle's last frame (build_battle_frame).
+    eaw::BattleFrame battle_frame;
     std::unordered_set<std::uint64_t> selection;
     std::chrono::steady_clock::time_point simulation_tick = std::chrono::steady_clock::now();
     float axis_length = 1.0F;
