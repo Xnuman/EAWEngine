@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 157 |
+| `done` | 159 |
 | `partial` | 20 |
-| `gap` | 237 |
+| `gap` | 235 |
 | `needs` | 683 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -63,7 +63,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-34 done, 6 partial, 47 gap, 19 needs, 7 n/a.
+36 done, 6 partial, 45 gap, 19 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -108,8 +108,8 @@ Systems that `needs` rows wait for, by tag count:
 | `MinSecondaryTurnROTCoefficient` | `gap` |  |
 | `MaxSecondaryTurnROTCoefficient` | `gap` |  |
 | `SecondaryTurnLookaheadDistance` | `gap` |  |
-| `Has_Pre_Turn_Anim` | `gap` | animator step: transition clips (TURNL/R, _BEGIN/_END, MOVESTART, MOVE_END*) |
-| `Walk_Transition` | `gap` | animator step: transition clips (TURNL/R, _BEGIN/_END, MOVESTART, MOVE_END*) |
+| `Has_Pre_Turn_Anim` | `done` | TURNx_BEGIN before, TURNx_END after turning in place |
+| `Walk_Transition` | `done` | MOVESTART and MOVE_END by stride quarter |
 | `Locomotor_Has_Animation_Priority` | `gap` | animator step: movement driven by the walk clip |
 | `Should_Cause_Limited_Turrets_To_Turn` | `gap` |  |
 | `Movement_Directions_Count` | `gap` |  |
@@ -204,7 +204,7 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Movement_Animation_Speed` | `done` | multiplies the move clip on top of speed matching |
 | `Walk_Animation_Speed` | `done` |  |
-| `Rotation_Animation_Speed` | `gap` | animator step: transition clips (TURNL/R, _BEGIN/_END, MOVESTART, MOVE_END*) |
+| `Rotation_Animation_Speed` | `gap` | unit unclear (20 typical); turn loops play at their own rate |
 | `Crouch_Animation_Speed` | `needs abilities` | crouch clips play under Spread Out |
 | `Tread_Scroll_Rate` | `gap` |  |
 | `Cinematic_Anim_Speed` | `needs cinematics` |  |

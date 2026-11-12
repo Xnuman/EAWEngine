@@ -38,6 +38,17 @@ enum class AnimationRole : std::uint8_t
     // A death by being run over (CRUSHED_nn clips; a Damage_Crush death clone's
     // Specific_Death_Anim_Type Crushed).
     crushed,
+    // Walkers' transitions: turning in place to the left and right (TURNL_nn, TURNR_nn loops), the
+    // clips before and after such a turn (TURNL_BEGIN, TURNL_END, ...), starting to walk
+    // (MOVESTART), and stopping (MOVE_ENDONE..MOVE_ENDFOUR: variants 0..3, by the stride's quarter).
+    turn_left,
+    turn_right,
+    turn_left_begin,
+    turn_left_end,
+    turn_right_begin,
+    turn_right_end,
+    move_start,
+    move_end,
 };
 
 // The role a clip file name (without directory and extension) plays for `model_stem`, and its
@@ -65,6 +76,10 @@ struct AnimationProfile
     // model's up axis, the barrel's pitches, at `turret_rate` radians per second (Turret_Rotate_Speed
     // per 30 Hz frame, a guess like Max_Rate_Of_Turn; 5 without it), within half of
     // Turret_Rotate_Extent_Degrees and Turret_Elevate_Extent_Degrees each way (a guess; pi: free).
+    // Transition clips: before and after turning in place (XML Has_Pre_Turn_Anim) and when starting
+    // and stopping a walk (XML Walk_Transition).
+    bool pre_turn{};
+    bool walk_transition{};
     std::uint32_t turret_bone{};
     std::uint32_t barrel_bone{};
     float turret_rate{};

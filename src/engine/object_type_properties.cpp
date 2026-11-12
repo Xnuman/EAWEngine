@@ -227,6 +227,13 @@ AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const 
     {
         profile.idle_when_moving = parse_xml_bool(idle->text).value_or(false);
     }
+    const auto flag = [&](const std::string_view field)
+    {
+        const auto* node = catalog.field(definition, field).field;
+        return node != nullptr && parse_xml_bool(node->text).value_or(false);
+    };
+    profile.pre_turn = flag("Has_Pre_Turn_Anim");
+    profile.walk_transition = flag("Walk_Transition");
     const auto bone = [&](const std::string_view field)
     {
         const auto* node = catalog.field(definition, field).field;

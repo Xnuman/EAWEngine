@@ -140,10 +140,9 @@ rendering rows join item 2).
 1. Tactical battles. Done: the core, spawning, RTS orders, terrain and passability, A*, group
    movement and formations, space combat with hardpoints, flight, headless battles and replays.
    Open: combat presentation and fidelity (hardpoint damage visuals, turret rotation of hardpoint
-   turrets (unit turrets done 2026-11-12); clip sequencing for
-   walkers' transition clips (`TURNL`/`TURNR` turning in place with `_BEGIN`/`_END`,
-   `_QUARTER`/`_HALF`, `MOVESTART`, `MOVE_ENDONE`..`FOUR` by foot phase; XML `Has_Pre_Turn_Anim`,
-   `Walk_Transition`, `Rotation_Animation_Speed`, `Locomotor_Has_Animation_Priority`),
+   turrets (unit turrets done 2026-11-12); walkers' `_QUARTER`/`_HALF` turn clips,
+   `Rotation_Animation_Speed`, and `Locomotor_Has_Animation_Priority` (turn-in-place, begin/end,
+   start and stop transitions done 2026-11-12)),
    damage-specific death clones and wreck explosions, ground detonations, debris, death-projectile
    blasts, beams for instant-hit weapons), and game and mod identity in order logs.
 2. Skirmish systems: the player layer (the local player's owner, factions and hostility from data

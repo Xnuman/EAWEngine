@@ -32,6 +32,10 @@ constexpr std::size_t maximum_corpses = 4096;
 // circle, 64 of pitch over a half turn (engine choices: under 3 degrees each).
 constexpr float turret_yaw_step = 6.2831853F / 128.0F;
 constexpr float barrel_pitch_step = 3.14159265F / 64.0F;
+// A unit turns in place when its heading changes faster than this (radians per second) while it
+// moves slower than turn_in_place_speed_fraction of its top speed (engine choices).
+constexpr float turn_in_place_rate = 0.15F;
+constexpr float turn_in_place_speed_fraction = 0.1F;
 // Frames longer than this (a stall, a hidden window) count as this long.
 constexpr double longest_frame_seconds = 0.25;
 // Sampled poses kept across frames (matrices); beyond it the cache starts over.
@@ -150,6 +154,17 @@ std::int32_t UnitAnimator::bone_of(const std::uint32_t mesh, const std::uint32_t
     }
     bones_.emplace(lookup, index);
     return index;
+}
+
+std::int32_t UnitAnimator::find_clip(const std::uint32_t mesh, const AnimationRole role, const std::uint32_t variant) const
+{
+    const auto& clips = rigs_[mesh].clips;
+    const auto found = std::ranges::find_if(clips,
+                                            [&](const VisualClip& clip)
+                                            {
+                                                return clip.role == role && clip.variant == variant;
+                                            });
+    return found != clips.end() ? static_cast<std::int32_t>(found - clips.begin()) : -1;
 }
 
 std::int32_t UnitAnimator::choose_clip(const std::uint32_t mesh, const AnimationRole role, const EntityId id) const
@@ -515,12 +530,87 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         {
             state.fire_cue_frame = -1.0;
         }
+        // Walkers' transitions: turning in place plays the turn loop (after its BEGIN clip, and its END
+        // clip once the turn stops, with Has_Pre_Turn_Anim); starting and stopping a walk play
+        // MOVESTART and the MOVE_END clip of the stride's quarter (Walk_Transition). A one-shot
+        // transition replaces locomotion until it ends.
+        std::int32_t override_clip = -1;
+        double override_time = 0.0;
+        {
+            const auto rate = dt > 0.0 ? std::remainder(entity.heading - state.last_heading, 6.2831853F) / static_cast<float>(dt) : 0.0F;
+            const bool slow = state.display_speed < entity.max_speed * turn_in_place_speed_fraction;
+            const int turning = slow && std::fabs(rate) > turn_in_place_rate ? (rate > 0.0F ? 1 : -1) : 0;
+            const bool moving = entity.moving || state.display_speed > entity.max_speed * turn_in_place_speed_fraction;
+            const auto start_transition = [&](const std::int32_t clip)
+            {
+                if (clip >= 0)
+                {
+                    state.transition = clip;
+                    state.transition_start = seconds;
+                }
+            };
+            if (state.frame_seen)
+            {
+                if (profile.walk_transition && moving && !state.was_moving)
+                {
+                    start_transition(find_clip(instance.mesh, AnimationRole::move_start, 0));
+                }
+                else if (profile.walk_transition && !moving && state.was_moving)
+                {
+                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(std::clamp(state.stride_phase * 4.0, 0.0, 3.0))));
+                }
+                else if (profile.pre_turn && turning != 0 && state.turning == 0)
+                {
+                    start_transition(find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left_begin : AnimationRole::turn_right_begin, 0));
+                }
+                else if (profile.pre_turn && turning == 0 && state.turning != 0)
+                {
+                    start_transition(find_clip(instance.mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0));
+                }
+            }
+            if (turning != 0 && turning != state.turning)
+            {
+                state.turn_start = seconds;
+            }
+            state.turning = turning;
+            state.was_moving = moving;
+            state.last_heading = entity.heading;
+            state.frame_seen = true;
+            if (state.transition >= 0)
+            {
+                const auto elapsed = seconds - state.transition_start;
+                const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.transition)].animation));
+                if (elapsed < duration)
+                {
+                    override_clip = state.transition;
+                    override_time = elapsed;
+                }
+                else
+                {
+                    state.transition = -1;
+                }
+            }
+            if (override_clip < 0 && turning != 0)
+            {
+                const auto loop = find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left : AnimationRole::turn_right, 0);
+                if (loop >= 0)
+                {
+                    override_clip = loop;
+                    override_time = seconds - state.turn_start;
+                }
+            }
+        }
         PoseKey pose_key{instance.mesh, {}};
         pose_key.layers[0] = layer(lower, blend.lower, locomotion * (1.0F - blend.blend));
         pose_key.layers[1] = upper == lower ? Layer{} : layer(upper, blend.upper, locomotion * blend.blend);
         if (upper == lower)
         {
             pose_key.layers[0] = layer(lower, blend.lower, locomotion);
+        }
+        if (override_clip >= 0)
+        {
+            pose_key.layers[0] = {override_clip, slot_of(instance.mesh, override_clip, override_time), eighths(locomotion)};
+            pose_key.layers[1] = {};
         }
         if (aim_eighths > 0)
         {

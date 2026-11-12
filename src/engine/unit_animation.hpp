@@ -174,6 +174,15 @@ private:
         // A turret's current aim relative to the unit's facing (radians).
         float turret_yaw{};
         float barrel_pitch{};
+        // Transitions: the heading and motion seen last frame, the turn in place under way (-1 right,
+        // 1 left, 0 none) and since when, and the one-shot clip playing (-1 none) and since when.
+        float last_heading{};
+        bool was_moving{};
+        int turning{};
+        double turn_start{};
+        std::int32_t transition{-1};
+        double transition_start{};
+        bool frame_seen{};
     };
 
     struct Corpse
@@ -189,6 +198,8 @@ private:
     // Reports the frames a clip passed from `from` to `to` (a loop of `loop_frames` wraps).
     void add_cue(EntityId entity, const Vector3& position, const VisualClip& clip, double from, double to, double loop_frames);
     [[nodiscard]] std::int32_t choose_clip(std::uint32_t mesh, AnimationRole role, EntityId id) const;
+    // The clip of `mesh` with `role` and `variant`, or -1.
+    [[nodiscard]] std::int32_t find_clip(std::uint32_t mesh, AnimationRole role, std::uint32_t variant) const;
     // The index of the bone of `mesh` whose name has `key` (game_object_name_crc), or -1.
     [[nodiscard]] std::int32_t bone_of(std::uint32_t mesh, std::uint32_t key);
     // This frame's palette offset of a pose, sampling it when needed; nullopt when the palette is

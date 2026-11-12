@@ -712,7 +712,16 @@ std::optional<ClipName> parse_clip_name(const std::string_view file_stem, const 
     {
         return std::nullopt;
     }
-    static constexpr std::array<std::pair<std::string_view, AnimationRole>, 7> roles{{
+    // Stopping clips carry their foot in the name, not the number.
+    static constexpr std::array<std::string_view, 4> endings{"move_endone", "move_endtwo", "move_endthree", "move_endfour"};
+    for (std::size_t index = 0; index < endings.size(); ++index)
+    {
+        if (rest.substr(0, underscore) == endings[index])
+        {
+            return ClipName{AnimationRole::move_end, static_cast<std::uint32_t>(index)};
+        }
+    }
+    static constexpr std::array<std::pair<std::string_view, AnimationRole>, 14> roles{{
         {"idle", AnimationRole::idle},
         {"move", AnimationRole::move},
         {"walkmove", AnimationRole::walk_move},
@@ -720,6 +729,13 @@ std::optional<ClipName> parse_clip_name(const std::string_view file_stem, const 
         {"attackidle", AnimationRole::attack_idle},
         {"die", AnimationRole::die},
         {"crushed", AnimationRole::crushed},
+        {"turnl", AnimationRole::turn_left},
+        {"turnr", AnimationRole::turn_right},
+        {"turnl_begin", AnimationRole::turn_left_begin},
+        {"turnl_end", AnimationRole::turn_left_end},
+        {"turnr_begin", AnimationRole::turn_right_begin},
+        {"turnr_end", AnimationRole::turn_right_end},
+        {"movestart", AnimationRole::move_start},
     }};
     const auto role = rest.substr(0, underscore);
     for (const auto& [name, value] : roles)

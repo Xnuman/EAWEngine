@@ -211,6 +211,49 @@ void test_unit_animation()
         require(pair_instances[0].bone_offset != pair_instances[1].bone_offset, "an aiming turret must take its own pose");
     }
 
+    // Walker transition clips: names, turning in place, and the start of a walk.
+    {
+        const auto walker_clip = [](const char* file)
+        {
+            return eaw::parse_clip_name(file, "ev_at-at");
+        };
+        require(walker_clip("EV_AT-AT_TURNL_BEGIN_00") && walker_clip("EV_AT-AT_TURNL_BEGIN_00")->role == eaw::AnimationRole::turn_left_begin &&
+                    walker_clip("EV_AT-AT_TURNR_00")->role == eaw::AnimationRole::turn_right && walker_clip("EV_AT-AT_MOVESTART_00")->role == eaw::AnimationRole::move_start &&
+                    walker_clip("EV_AT-AT_MOVE_ENDTHREE_00")->role == eaw::AnimationRole::move_end && walker_clip("EV_AT-AT_MOVE_ENDTHREE_00")->variant == 2U,
+                "walker transition clips must be named roles, MOVE_END by its foot");
+        auto walker_rig = rig;
+        walker_rig.clips = {{eaw::AnimationRole::idle, 0, "IDLE_00", animation},
+                            {eaw::AnimationRole::move, 0, "MOVE_00", animation},
+                            {eaw::AnimationRole::turn_left, 0, "TURNL_00", animation},
+                            {eaw::AnimationRole::move_start, 0, "MOVESTART_00", animation}};
+        const std::array<eaw::VisualRig, 1> walker_rigs{walker_rig};
+        const std::vector<eaw::Matrix4> walker_rest(2, eaw::Matrix4::identity());
+        // A unit turning left on the spot and its still twin: different clips, so different poses.
+        eaw::UnitAnimator walkers(walker_rigs, walker_rest);
+        std::vector<eaw::EntitySnapshot> both(2);
+        both[0].id = {1, 1};
+        both[1].id = {2, 1};
+        both[0].max_speed = both[1].max_speed = 10.0F;
+        std::vector<eaw::EntityId> both_ids{both[0].id, both[1].id};
+        std::vector<eaw::VisualInstance> both_instances(2);
+        std::vector<eaw::Matrix4> walker_palette;
+        for (int frame = 1; frame <= 3; ++frame)
+        {
+            both[0].heading = 0.5F * static_cast<float>(frame);
+            walkers.animate(both, both_ids, both_instances, 0.25 * frame, 1U << 20U, walker_palette);
+        }
+        require(both_instances[0].bone_offset != both_instances[1].bone_offset, "a unit turning on the spot must play its turn clip");
+        // Starting to walk with Walk_Transition plays MOVESTART first: unlike its twin without it.
+        eaw::UnitAnimator starters(walker_rigs, walker_rest);
+        both[0].heading = 0.0F;
+        const std::array<eaw::AnimationProfile, 2> starting{eaw::AnimationProfile{.walk_transition = true}, eaw::AnimationProfile{}};
+        starters.animate(both, both_ids, both_instances, 1.0, 1U << 20U, walker_palette, starting);
+        both[0].moving = both[1].moving = true;
+        both[0].speed = both[1].speed = 10.0F;
+        starters.animate(both, both_ids, both_instances, 1.1, 1U << 20U, walker_palette, starting);
+        require(both_instances[0].bone_offset != both_instances[1].bone_offset, "a walker starting to move must play its start clip");
+    }
+
     // A flyer with only an idle clip (a bird): moving, it stands in its rest pose unless its type
     // allows idling while moving (XML Allow_Idle_When_Moving).
     {
