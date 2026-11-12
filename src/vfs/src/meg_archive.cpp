@@ -68,6 +68,15 @@ Result<MegArchive> MegArchive::open(std::filesystem::path archive_path)
     {
         return where("unsupported or corrupt MEG header");
     }
+    // The tables must fit the file before anything is reserved for them: each filename takes at
+    // least its 2-byte length, each file record 20 bytes (MEG v1).
+    constexpr std::uint64_t header_bytes = 8;
+    constexpr std::uint64_t minimum_filename_bytes = 2;
+    constexpr std::uint64_t file_record_bytes = 20;
+    if (header_bytes + *filename_count * minimum_filename_bytes + *file_count * file_record_bytes > *length)
+    {
+        return where("MEG header counts more entries than the archive can hold");
+    }
 
     std::vector<std::string> names;
     names.reserve(*filename_count);
@@ -121,7 +130,12 @@ Result<MegArchive> MegArchive::open(std::filesystem::path archive_path)
         entry.path = names[*name_index];
         const auto position = archive.entries_.size();
         archive.entries_.push_back(std::move(entry));
-        archive.lookup_.insert_or_assign(archive.entries_.back().path, position);
+        // A path listed twice resolves to its later record (an engine choice without evidence); the
+        // count lets the mount report it.
+        if (!archive.lookup_.insert_or_assign(archive.entries_.back().path, position).second)
+        {
+            ++archive.duplicate_paths_;
+        }
     }
     return archive;
 }
@@ -129,6 +143,11 @@ Result<MegArchive> MegArchive::open(std::filesystem::path archive_path)
 const std::filesystem::path& MegArchive::path() const noexcept
 {
     return path_;
+}
+
+std::size_t MegArchive::duplicate_paths() const noexcept
+{
+    return duplicate_paths_;
 }
 
 std::span<const MegEntry> MegArchive::entries() const noexcept

@@ -74,13 +74,37 @@ std::vector<std::string> vdf_path_values(const std::string_view contents)
     return values;
 }
 
-// The trimmed text of every `<File>...</File>` element (tags matched case-insensitively; the text
-// contains no '<'), as written in megafiles.xml.
-// This is a second, minimal XML parser beside eaw_formats' read_xml, kept so the VFS does not depend
-// on the format library; it does not handle comments, CDATA, entities, or UTF-16 manifests. Revisit
-// (read_xml, or a VFS-owned manifest reader) if a mod's megafiles.xml needs any of them.
-std::vector<std::string> manifest_file_entries(const std::string_view contents)
+// The text with its XML comments removed; an unterminated comment runs to the end, as XML has it.
+std::string without_xml_comments(const std::string_view text)
 {
+    constexpr std::string_view comment_open = "<!--";
+    constexpr std::string_view comment_close = "-->";
+    std::string result;
+    result.reserve(text.size());
+    std::size_t position = 0;
+    while (position < text.size())
+    {
+        const auto open = text.find(comment_open, position);
+        result.append(text.substr(position, open == std::string_view::npos ? std::string_view::npos : open - position));
+        if (open == std::string_view::npos)
+        {
+            break;
+        }
+        const auto close = text.find(comment_close, open + comment_open.size());
+        position = close == std::string_view::npos ? text.size() : close + comment_close.size();
+    }
+    return result;
+}
+
+// The trimmed text of every `<File>...</File>` element outside comments (tags matched
+// case-insensitively; the text contains no '<'), as written in megafiles.xml.
+// This is a second, minimal XML parser beside eaw_formats' read_xml, kept so the VFS does not depend
+// on the format library; it does not handle CDATA, entities, or UTF-16 manifests. Revisit
+// (read_xml, or a VFS-owned manifest reader) if a mod's megafiles.xml needs any of them.
+std::vector<std::string> manifest_file_entries(const std::string_view manifest)
+{
+    const auto uncommented = without_xml_comments(manifest);
+    const std::string_view contents = uncommented;
     constexpr std::string_view open_tag = "<file>";
     constexpr std::string_view close_tag = "</file>";
     std::vector<std::string> entries;

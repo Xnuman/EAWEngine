@@ -9,6 +9,11 @@
 namespace eaw {
 namespace {
 
+// The deepest element nesting read: the parser recurses once per level, so mod data nested without
+// bound must fail with a diagnostic instead of overflowing the stack. Stock XML nests at most 5
+// levels (CONTAINERS.XML); 256 is an engine choice with ample room for mods.
+constexpr std::size_t maximum_xml_depth = 256;
+
 Result<std::string> decode_entities(const std::string_view input)
 {
     std::string output;
@@ -143,7 +148,7 @@ public:
             }
             else if (peek() == '<')
             {
-                document.roots.push_back(parse_node());
+                document.roots.push_back(parse_node(1));
             }
             else
             {
@@ -374,10 +379,15 @@ private:
         return attribute;
     }
 
-    XmlNode parse_node()
+    XmlNode parse_node(const std::size_t depth)
     {
         expect('<');
         XmlNode node;
+        if (depth > maximum_xml_depth)
+        {
+            fail("elements are nested more than " + std::to_string(maximum_xml_depth) + " levels deep");
+            return node;
+        }
         if (peek() == '/')
         {
             fail("unexpected closing element");
@@ -467,7 +477,7 @@ private:
             }
             if (peek() == '<')
             {
-                node.children.push_back(parse_node());
+                node.children.push_back(parse_node(depth + 1U));
                 continue;
             }
             const auto begin = position_;

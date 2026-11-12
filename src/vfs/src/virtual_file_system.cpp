@@ -1,6 +1,7 @@
 #include "vfs/virtual_file_system.hpp"
 
 #include "core/file_io.hpp"
+#include "core/log.hpp"
 #include "core/string_utils.hpp"
 #include "vfs/asset_path.hpp"
 
@@ -109,6 +110,10 @@ Result<std::unique_ptr<MegMount>> MegMount::open(std::string name, std::filesyst
         folder.push_back('/');
     }
     EAW_TRY_ASSIGN(auto opened, MegArchive::open(std::move(archive)));
+    if (opened.duplicate_paths() != 0)
+    {
+        log_warning("vfs", opened.path().string() + ": " + std::to_string(opened.duplicate_paths()) + " file paths appear more than once; each resolves to its later record");
+    }
     return std::make_unique<MegMount>(std::move(name), std::move(opened), std::move(folder));
 }
 

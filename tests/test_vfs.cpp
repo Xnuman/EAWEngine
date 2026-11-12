@@ -51,6 +51,24 @@ void test_meg_archive_and_vfs_basics()
     require(resolved && resolved->size == 8, "VFS MEG resolution failed");
     std::error_code ignored;
     std::filesystem::remove(archive_path, ignored);
+
+    // A header counting more entries than the file can hold fails before anything is allocated for
+    // them; a path listed twice resolves to its later record and is counted.
+    const auto malformed_path = std::filesystem::temp_directory_path() / "eawengine-oversized-header.meg";
+    {
+        const std::array<std::uint8_t, 12> header{0x40, 0x42, 0x0F, 0x00, 0x40, 0x42, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x00};
+        std::ofstream(malformed_path, std::ios::binary).write(reinterpret_cast<const char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    }
+    const auto oversized = eaw::MegArchive::open(malformed_path);
+    require(!oversized && oversized.error().message.find("can hold") != std::string::npos, "a MEG header counting more entries than the file holds must be rejected");
+    std::filesystem::remove(malformed_path, ignored);
+    const auto duplicate_path = std::filesystem::temp_directory_path() / "eawengine-duplicate-paths.meg";
+    write_test_meg(duplicate_path, {{"DATA/XML/SAME.XML", "first"}, {"data\\xml\\same.xml", "second"}});
+    const auto duplicates = expect_ok(eaw::MegArchive::open(duplicate_path), "opening a MEG archive with a repeated path");
+    const auto* later = duplicates.find("DATA/XML/SAME.XML");
+    require(duplicates.duplicate_paths() == 1 && later != nullptr && expect_ok(duplicates.read(*later), "reading the repeated path").size() == 6,
+            "a repeated MEG path must be counted and resolve to its later record");
+    std::filesystem::remove(duplicate_path, ignored);
 }
 
 void test_patch_order()
@@ -58,21 +76,24 @@ void test_patch_order()
     const auto root = std::filesystem::temp_directory_path() / "eawengine-patch-order-test";
     const auto data = root / "Data";
     std::filesystem::create_directories(data);
-    for (const auto* name : {"Config.meg", "Patch2.meg", "64Patch.meg", "Patch.meg"})
+    for (const auto* name : {"Config.meg", "Hidden.meg", "Patch2.meg", "64Patch.meg", "Patch.meg"})
     {
         std::ofstream(data / name, std::ios::binary).put('\0');
     }
     {
+        // A commented-out entry is not listed: its archive mounts as an unlisted one, after the
+        // listed archives.
         std::ofstream manifest(data / "megafiles.xml", std::ios::binary);
-        manifest << "<Mega_Files><File>Data\\Config.meg</File></Mega_Files>";
+        manifest << "<Mega_Files><!-- <File>Data\\Hidden.meg</File> --><File>Data\\Config.meg</File></Mega_Files>";
     }
 
     const auto archives = eaw::discover_meg_archives(root);
-    require(archives.size() == 4, "unexpected archive discovery count");
-    require(archives[0].filename() == "Config.meg", "manifest order failed");
-    require(archives[1].filename() == "Patch.meg", "base patch order failed");
-    require(archives[2].filename() == "Patch2.meg", "numbered patch order failed");
-    require(archives[3].filename() == "64Patch.meg", "64-bit patch order failed");
+    require(archives.size() == 5, "unexpected archive discovery count");
+    require(archives[0].filename() == "Config.meg", "manifest order failed (a commented-out entry must not be listed)");
+    require(archives[1].filename() == "Hidden.meg", "an unlisted archive must follow the listed ones");
+    require(archives[2].filename() == "Patch.meg", "base patch order failed");
+    require(archives[3].filename() == "Patch2.meg", "numbered patch order failed");
+    require(archives[4].filename() == "64Patch.meg", "64-bit patch order failed");
 
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);

@@ -32,6 +32,23 @@ void test_xml_document()
     const auto unterminated = eaw::read_xml("<A>\n<B attribute=\"x\"");
     require(!unterminated.ok() && unterminated.error().message.starts_with("XML line 2:"), "unterminated XML was accepted");
     require(!eaw::read_xml("<A>&#xd800;</A>").ok(), "an invalid XML character reference was accepted");
+    // Nesting is bounded (the parser recurses per level): 256 levels read, deeper fails cleanly.
+    const auto nested = [](const std::size_t levels)
+    {
+        std::string text;
+        for (std::size_t level = 0; level < levels; ++level)
+        {
+            text += "<N>";
+        }
+        for (std::size_t level = 0; level < levels; ++level)
+        {
+            text += "</N>";
+        }
+        return eaw::read_xml(text);
+    };
+    const auto too_deep = nested(100'000);
+    require(nested(256).ok() && !too_deep.ok() && too_deep.error().message.find("nested more than 256 levels") != std::string::npos,
+            "XML nesting must be bounded with a diagnostic, never a stack overflow");
 }
 
 void test_xml_asset_database()

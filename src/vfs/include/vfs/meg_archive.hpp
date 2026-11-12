@@ -32,6 +32,8 @@ public:
     // Nothing for paths that are absent or not valid asset paths.
     [[nodiscard]] const MegEntry* find(std::string_view virtual_path) const;
     [[nodiscard]] Result<std::vector<std::byte>> read(const MegEntry& entry) const;
+    // Records whose path an earlier record of the archive already has (the later one is used).
+    [[nodiscard]] std::size_t duplicate_paths() const noexcept;
 
 private:
     MegArchive() = default;
@@ -39,6 +41,7 @@ private:
     std::filesystem::path path_;
     std::vector<MegEntry> entries_;
     std::unordered_map<std::string, std::size_t> lookup_;
+    std::size_t duplicate_paths_{};
 };
 
 } // namespace eaw
