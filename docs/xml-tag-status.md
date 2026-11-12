@@ -27,8 +27,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 | Status | Tags |
 | --- | --- |
 | `done` | 163 |
-| `partial` | 21 |
-| `gap` | 208 |
+| `partial` | 22 |
+| `gap` | 207 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -69,7 +69,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-37 done, 6 partial, 44 gap, 19 needs, 7 n/a.
+37 done, 7 partial, 43 gap, 19 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -141,7 +141,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Snap_Movement_Orders_To_Center` | `gap` |  |
 | `Autonomous_Move_Extension_Vs_Attacker` | `gap` |  |
 | `Max_Distance_From_Spawner` | `needs unit spawning` |  |
-| `Is_Stationary_When_Attacking` | `gap` |  |
+| `Is_Stationary_When_Attacking` | `partial` | not read: its 11 Yes users (Jedi, Sith, guards) are infantry, and every ground unit without a TURRET behavior already holds fire while moving; whether units without the tag fire on the move in the original is to observe |
 | `Destroy_When_Stunned_Over_Water` | `needs status effects` | stun |
 | `Stationary_Space_Layer` | `gap` |  |
 
