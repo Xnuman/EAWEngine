@@ -8,7 +8,7 @@
 #include "assets/sound_loaders.hpp"
 #include "audio/null_audio_device.hpp"
 #include "audio/spatial_audio.hpp"
-#include "battle_audio.hpp"
+#include "engine/battle_audio.hpp"
 #include "formats/animation_sfx_map.hpp"
 #include "formats/wav_audio.hpp"
 

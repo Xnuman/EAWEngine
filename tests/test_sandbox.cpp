@@ -1,14 +1,14 @@
 // The sandbox command line.
 #include "test_support.hpp"
 
-#include "battle.hpp"
-#include "battle_effects.hpp"
-#include "battle_log.hpp"
-#include "particle_effects.hpp"
-#include "projectile_visuals.hpp"
-#include "scene_builder_internal.hpp"
-#include "sandbox_options.hpp"
-#include "unit_animation.hpp"
+#include "engine/battle.hpp"
+#include "engine/battle_effects.hpp"
+#include "engine/battle_log.hpp"
+#include "engine/particle_effects.hpp"
+#include "engine/projectile_visuals.hpp"
+#include "engine/scene_builder_internal.hpp"
+#include "engine/sandbox_options.hpp"
+#include "engine/unit_animation.hpp"
 
 namespace {
 

@@ -2,7 +2,6 @@
 #include "formats/alo_model.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <bit>
 #include <cmath>
 #include <cstring>
@@ -24,6 +23,7 @@ using chunk::read_i32;
 using chunk::read_string;
 using chunk::read_u16;
 using chunk::read_u32;
+using chunk::read_vector3;
 
 Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
 {
@@ -33,11 +33,6 @@ Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, c
 Result<std::vector<MiniChunk>> read_minis(const std::span<const std::byte> bytes, const Chunk& parent)
 {
     return chunk::read_minis(bytes, parent, "ALO");
-}
-
-Vector3 read_vector3(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    return {read_float(bytes, offset), read_float(bytes, offset + 4), read_float(bytes, offset + 8)};
 }
 
 // Decodes numeric parameter components from the parameter's own data chunk. A chunk shorter than

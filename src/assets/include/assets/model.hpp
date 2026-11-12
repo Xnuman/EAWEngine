@@ -7,7 +7,7 @@
 
 #include "assets/legacy_material.hpp"
 #include "assets/skeleton.hpp"
-#include "eaw/visual_scene.hpp"
+#include "render/visual_scene.hpp"
 
 #include <cstdint>
 #include <optional>

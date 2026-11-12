@@ -2,6 +2,7 @@
 
 // Scalar constants and angle conversions shared by the math types.
 
+#include <cmath>
 #include <numbers>
 
 namespace eaw {
@@ -18,6 +19,12 @@ inline constexpr float half_pi = 0.5F * pi;
 [[nodiscard]] constexpr float radians_to_degrees(const float radians) noexcept
 {
     return radians * (180.0F / pi);
+}
+
+// `value`, or `fallback` when it is NaN or infinite.
+[[nodiscard]] inline float finite_or(const float value, const float fallback) noexcept
+{
+    return std::isfinite(value) ? value : fallback;
 }
 
 } // namespace eaw

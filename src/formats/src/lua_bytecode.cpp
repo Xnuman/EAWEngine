@@ -2,7 +2,6 @@
 #include "core/string_utils.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <limits>
 #include <optional>
 #include <set>
@@ -25,12 +24,12 @@ struct Token
 
 bool identifier_start(const unsigned char character) noexcept
 {
-    return std::isalpha(character) != 0 || character == '_';
+    return ascii_is_alpha(static_cast<char>(character)) || character == '_';
 }
 
 bool identifier_continue(const unsigned char character) noexcept
 {
-    return std::isalnum(character) != 0 || character == '_';
+    return ascii_is_alnum(static_cast<char>(character)) || character == '_';
 }
 
 std::size_t long_bracket_end(const std::string_view source, const std::size_t begin)
@@ -65,7 +64,7 @@ std::vector<Token> tokenize(const std::string_view source, std::vector<std::stri
     while (cursor < source.size())
     {
         const auto character = static_cast<unsigned char>(source[cursor]);
-        if (std::isspace(character) != 0)
+        if (ascii_is_space(static_cast<char>(character)))
         {
             ++cursor;
             continue;

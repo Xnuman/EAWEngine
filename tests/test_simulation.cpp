@@ -1,7 +1,7 @@
 // The simulation core: ids, components, commands, ticks, and what snapshots report.
 #include "test_support.hpp"
 
-#include "eaw/formation.hpp"
+#include "simulation/formation.hpp"
 
 #include <tuple>
 

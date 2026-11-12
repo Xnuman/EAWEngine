@@ -1,6 +1,7 @@
 #include "formats/mtd_atlas.hpp"
 
 #include "formats/dat_string_table.hpp"
+#include "core/byte_order.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -11,12 +12,8 @@ namespace {
 // Callers check the table size before reading, so an out-of-range read is a bug.
 std::uint32_t read_u32(const std::span<const std::byte> bytes, std::size_t& cursor)
 {
-    EAW_ASSERT(cursor + 4 <= bytes.size());
-    std::uint32_t value = 0;
-    for (unsigned shift = 0; shift < 32; shift += 8)
-    {
-        value |= static_cast<std::uint32_t>(std::to_integer<unsigned char>(bytes[cursor++])) << shift;
-    }
+    const auto value = little_endian_u32(bytes, cursor);
+    cursor += 4;
     return value;
 }
 

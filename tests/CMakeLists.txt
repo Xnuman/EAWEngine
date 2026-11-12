@@ -30,7 +30,7 @@ foreach(test_module IN LISTS EAW_TEST_MODULES)
     list(APPEND EAW_TEST_SOURCES test_${test_module}.cpp)
 endforeach()
 
-source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${EAW_TEST_SOURCES})
+source_group("" FILES ${EAW_TEST_SOURCES})
 
 add_executable(EAWEngineTests ${EAW_TEST_SOURCES})
 target_link_libraries(EAWEngineTests PRIVATE eaw_assets eaw_localization eaw_engine eaw_launch eaw_math eaw_script)

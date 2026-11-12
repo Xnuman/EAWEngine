@@ -1,15 +1,14 @@
 #include "assets/map_object_layout.hpp"
 
 #include "vfs/virtual_file_system.hpp"
+#include "math/scalar.hpp"
 #include "math/transform.hpp"
 #include "core/string_utils.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <charconv>
 #include <cmath>
-#include <numbers>
 #include <optional>
 #include <string_view>
 #include <unordered_map>
@@ -26,7 +25,7 @@ constexpr std::size_t maximum_company_members = 64;
 
 Quaternion axis_rotation(const float degrees, const int axis) noexcept
 {
-    const auto half = degrees * std::numbers::pi_v<float> / 360.0F;
+    const auto half = degrees * pi / 360.0F;
     const auto s = std::sin(half);
     Quaternion result{0.0F, 0.0F, 0.0F, std::cos(half)};
     (axis == 0 ? result.x : axis == 1 ? result.y : result.z) = s;
@@ -41,7 +40,7 @@ std::optional<Vector3> parse_vector3(const std::string_view text)
     std::size_t position = 0;
     while (position < text.size() && count < values.size())
     {
-        while (position < text.size() && (text[position] == ',' || std::isspace(static_cast<unsigned char>(text[position]))))
+        while (position < text.size() && (text[position] == ',' || ascii_is_space(text[position])))
         {
             ++position;
         }
@@ -235,11 +234,6 @@ template <typename AssignModel> bool expand_squadron(const MapObjectPlacement& s
     return true;
 }
 
-float finite_or(const float value, const float fallback) noexcept
-{
-    return std::isfinite(value) ? value : fallback;
-}
-
 } // namespace
 
 std::vector<std::string_view> split_type_names(const std::string_view text)
@@ -248,7 +242,7 @@ std::vector<std::string_view> split_type_names(const std::string_view text)
     std::size_t start = 0;
     const auto separator = [](const char character)
     {
-        return character == ',' || std::isspace(static_cast<unsigned char>(character)) != 0;
+        return character == ',' || ascii_is_space(character);
     };
     while (start < text.size())
     {

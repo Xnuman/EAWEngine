@@ -7,7 +7,7 @@
 
 #include <limits>
 
-#include "eaw/formation.hpp"
+#include "simulation/formation.hpp"
 
 #include <tuple>
 

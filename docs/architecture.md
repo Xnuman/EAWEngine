@@ -60,10 +60,12 @@ capability one of them needs goes into a library, never into scraping another pr
 Third-party code is pinned in `third_party/`: Dear ImGui (docking branch, by commit) and Lua 5.0.3
 (MIT, by archive hash, built with only the base, string, table, and math libraries).
 
-Libraries keep public headers under `include/<library>/` and are included by short paths
-(`"core/status.hpp"`, `"assets/model.hpp"`). The libraries not converted yet
-(simulation, render, platform, launch, imgui_app) still use `include/eaw/`. Debug builds of
-every library and executable carry the `_d` suffix.
+Every library and executable keeps its headers under `include/<directory>/` and its sources
+(with private headers) under `src/`, and headers are included by short paths
+(`"core/status.hpp"`, `"simulation/simulation.hpp"`, `"engine/battle.hpp"`). A directory with
+two targets shares one include folder (`render/` for the contract and the D3D12 backend, `audio/`
+for the contract and the devices). Debug builds of every library and executable carry the `_d`
+suffix.
 
 ## Resource pipeline
 
@@ -276,7 +278,7 @@ never compiled, embedded, or shipped.
 number, 0 first), each with detail levels (most detailed first), as ranges of the scene's draws:
 untagged parts appear in every range, so geometry is shared and only draw records repeat. The
 engine chooses a unit's state (`VisualInstance::state`, gameplay); the renderer chooses its level
-(`eaw/visual_lod.hpp`), by distance, projected screen size, or a hybrid of the two (or off),
+(`render/visual_lod.hpp`), by distance, projected screen size, or a hybrid of the two (or off),
 scaled by the instance's `lod_bias` (XML `LOD_Bias`) and the mesh-detail setting, with a hysteresis
 band. Instances with a stable `key` (the entity key) cross-fade between levels: both levels are
 drawn for `fade_seconds` with complementary 4x4 ordered-dither masks (`GpuInstance::fade`, a

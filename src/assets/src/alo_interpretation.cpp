@@ -4,7 +4,6 @@
 #include "core/string_utils.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <bit>
 #include <cmath>
 #include <cstring>
@@ -18,7 +17,7 @@ namespace eaw {
 AloNameVariant alo_name_variant(const std::string_view name) noexcept
 {
     std::size_t digits = 0;
-    while (digits < name.size() && digits < 9 && std::isdigit(static_cast<unsigned char>(name[name.size() - 1 - digits])) != 0)
+    while (digits < name.size() && digits < 9 && ascii_is_digit(name[name.size() - 1 - digits]))
     {
         ++digits;
     }

@@ -1,0 +1,639 @@
+// GuiApp::State: asset loading and selection, previews, and DAT and workspace files.
+
+#include "tools_gui/gui_internal.hpp"
+
+#include "assets/alamo_loaders.hpp"
+#include "assets/type_hardpoints.hpp"
+#include "core/string_utils.hpp"
+#include "formats/alo_model_helpers.hpp"
+#include "formats/dat_string_table_helpers.hpp"
+
+namespace eaw::tools {
+
+void GuiApp::State::reset_map_objects()
+{
+    map_object_layout.reset();
+    map_object_placement.clear();
+    map_object_warnings.clear();
+    map_object_drawn.clear();
+    map_object_cached = false;
+}
+
+void GuiApp::State::load_map_objects()
+{
+    reset_map_objects();
+    if (!preview_map)
+    {
+        return;
+    }
+    ensure_object_index();
+    map_object_layout = build_map_object_layout(*preview_map, object_index->catalog, vfs);
+    map_object_placement.assign(preview_map->placed_objects.size(), -1);
+    for (std::size_t index = 0; index < map_object_layout->placements.size(); ++index)
+    {
+        const auto& placement = map_object_layout->placements[index];
+        map_object_placement[placement.object_index] = static_cast<int>(index);
+        if (placement.model_path.empty() || map_models.contains(placement.model_path))
+        {
+            continue;
+        }
+        auto& gpu = map_models[placement.model_path];
+        const auto model = read_model(vfs, placement.model_path);
+        if (!model)
+        {
+            // Particle ALOs and malformed models fall back to a marker.
+            map_object_warnings.push_back(placement.model_path + ": " + model.error().message);
+            continue;
+        }
+        const auto geometry = build_preview_geometry(*model, nullptr, {}, false,
+                                                     [this](const std::string& reference)
+                                                     {
+                                                         return load_texture(object_textures, map_object_warnings, reference);
+                                                     });
+        gpu.radius = std::max(geometry.radius, 1.0F);
+        gpu.valid = renderer.ready() && !geometry.indices.empty() && gpu.mesh.upload(renderer.device(), renderer.context(), geometry.vertices, geometry.indices, geometry.parts);
+    }
+}
+
+void GuiApp::State::ensure_object_index()
+{
+    if (!object_index)
+    {
+        auto index = std::make_unique<ObjectIndex>();
+        index->database = XmlAssetDatabase::build(vfs);
+        index->catalog = GameObjectCatalog::build(index->database);
+        object_index = std::move(index);
+    }
+}
+
+void GuiApp::State::find_preview_types()
+{
+    preview_types.clear();
+    preview_type_index = -1;
+    preview_hardpoints.clear();
+    preview_type_warnings.clear();
+    if (!preview_model || selected_asset < 0 || static_cast<std::size_t>(selected_asset) >= assets.size())
+    {
+        return;
+    }
+    ensure_object_index();
+    const auto file = ascii_lower(std::filesystem::path(assets[static_cast<std::size_t>(selected_asset)].virtual_path).stem().string());
+    const auto& catalog = object_index->catalog;
+    for (const auto& definition : object_index->database.definitions())
+    {
+        for (const auto context : {GameModelContext::land, GameModelContext::space})
+        {
+            const auto reference = catalog.model(definition, context);
+            if (reference && ascii_lower(std::filesystem::path(reference->value).stem().string()) == file)
+            {
+                preview_types.push_back(&definition);
+                break;
+            }
+        }
+    }
+    // Types with hardpoints first: they are what the hardpoint list is for.
+    std::ranges::stable_sort(preview_types, std::greater{},
+                             [&](const XmlDefinition* type)
+                             {
+                                 return !type_hardpoints(catalog, *type).empty();
+                             });
+    select_preview_type(preview_types.empty() ? -1 : 0);
+}
+
+void GuiApp::State::select_preview_type(const int index)
+{
+    preview_type_index = index;
+    preview_hardpoints.clear();
+    preview_type_warnings.clear();
+    model_mesh_cached = false;
+    if (index < 0 || static_cast<std::size_t>(index) >= preview_types.size() || !object_index || !preview_skeleton)
+    {
+        return;
+    }
+    const auto& catalog = object_index->catalog;
+    const auto text_of = [&](const XmlDefinition& definition, const std::string_view field)
+    {
+        const auto* node = catalog.field(definition, field).field;
+        return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
+    };
+    for (const auto& [name, definition] : type_hardpoints(catalog, *preview_types[static_cast<std::size_t>(index)]))
+    {
+        PreviewHardpoint hardpoint;
+        hardpoint.name = name;
+        if (definition == nullptr)
+        {
+            preview_type_warnings.push_back("hardpoint " + name + " is not defined");
+            preview_hardpoints.push_back(std::move(hardpoint));
+            continue;
+        }
+        hardpoint.kind = text_of(*definition, "Type");
+        const auto attachment = text_of(*definition, "Attachment_Bone");
+        hardpoint.bone = find_skeleton_bone(*preview_skeleton, attachment.empty() ? text_of(*definition, "Fire_Bone_A") : attachment);
+        hardpoint.decal_bone = find_skeleton_bone(*preview_skeleton, text_of(*definition, "Damage_Decal"));
+        if (const auto model_name = text_of(*definition, "Model_To_Attach"); !model_name.empty())
+        {
+            const auto path = resolve_model_path(vfs, model_name);
+            auto model = path ? read_model(vfs, *path) : Result<AloModelData>(make_error("file not found"));
+            if (!model)
+            {
+                preview_type_warnings.push_back(name + ": " + model_name + ": " + model.error().message);
+            }
+            else
+            {
+                hardpoint.attached_path = *path;
+                hardpoint.attached = std::move(model).value();
+                for (const auto& mesh : hardpoint.attached->meshes)
+                {
+                    for (const auto& submesh : mesh.submeshes)
+                    {
+                        for (const auto& parameter : submesh.parameters)
+                        {
+                            if (parameter.type == AloShaderParameterType::texture && !parameter.value.empty())
+                            {
+                                static_cast<void>(load_texture(preview_textures, preview_texture_warnings, parameter.value));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        preview_hardpoints.push_back(std::move(hardpoint));
+    }
+}
+
+GuiApp::State::State(ID3D11Device* device) : graphics_device(device)
+{
+    // Previews fall back to a message when the GPU preview pipeline is unavailable.
+    static_cast<void>(renderer.initialize(device));
+    const auto installations = InstallationLocator{}.discover();
+    if (!installations.empty())
+    {
+        game_root = path_to_utf8(installations.front());
+        message = "Detected Empire at War installation";
+    }
+    else
+    {
+        message = "Choose the Empire at War installation folder";
+    }
+}
+
+void GuiApp::State::succeed(std::string text)
+{
+    message = std::move(text);
+    message_error = false;
+}
+
+void GuiApp::State::fail(const Error& error)
+{
+    message = error.message;
+    message_error = true;
+}
+
+void GuiApp::State::load_assets()
+{
+    const auto root = utf8_to_path(game_root);
+    if (!root)
+    {
+        fail(root.error());
+        return;
+    }
+    const auto profile = make_game_profile(*root, variant);
+    if (!profile)
+    {
+        fail(make_error("The selected folder is not an Empire at War installation"));
+        return;
+    }
+    VirtualFileSystem next;
+    const auto report = mount_game_assets(next, *profile, mods);
+    auto listed = next.list("Data");
+    std::ranges::sort(listed, {}, &ResolvedAsset::virtual_path);
+    vfs = std::move(next);
+    assets = std::move(listed);
+    mount_warnings = report.warnings;
+    selected_asset = -1;
+    asset_preview.clear();
+    preview_model.reset();
+    preview_skeleton.reset();
+    preview_map.reset();
+    preview_inverse_bind.clear();
+    preview_animation_assets.clear();
+    preview_animation.reset();
+    preview_animation_index = -1;
+    preview_time = 0.0F;
+    preview_types.clear();
+    preview_type_index = -1;
+    preview_hardpoints.clear();
+    preview_type_warnings.clear();
+    model_mesh_cached = false;
+    preview_textures.clear();
+    preview_texture_warnings.clear();
+    map_preview_triangles.clear();
+    map_preview_cached = false;
+    map_preview_large_window = false;
+    model_preview_large_window = false;
+    object_index.reset();
+    map_models.clear();
+    object_textures.clear();
+    reset_map_objects();
+    succeed("Loaded " + std::to_string(assets.size()) + " logical assets from " + std::to_string(vfs.mounts().size()) + " layers");
+}
+
+void GuiApp::State::select_preview_animation(const int index)
+{
+    preview_animation_index = index;
+    preview_animation.reset();
+    preview_time = 0.0F;
+    if (index < 0)
+    {
+        return;
+    }
+    if (static_cast<std::size_t>(index) >= preview_animation_assets.size())
+    {
+        fail(make_error("The selected animation is no longer available"));
+        return;
+    }
+    const auto& asset = preview_animation_assets[static_cast<std::size_t>(index)];
+    const auto bytes = vfs.read(asset.virtual_path);
+    if (!bytes)
+    {
+        fail(bytes.error());
+        return;
+    }
+    auto animation = read_ala(*bytes);
+    if (!animation)
+    {
+        fail(animation.error());
+        return;
+    }
+    preview_animation = load_animation(*animation);
+    succeed("Loaded animation " + asset.virtual_path);
+}
+
+void GuiApp::State::inspect_asset(const int index)
+{
+    if (index < 0 || static_cast<std::size_t>(index) >= assets.size())
+    {
+        return;
+    }
+    selected_asset = index;
+    const auto& asset = assets[static_cast<std::size_t>(index)];
+    const auto read = vfs.read(asset.virtual_path);
+    auto preview = read ? bytes_preview(asset, *read) : Result<std::string>(read.error());
+    if (!preview)
+    {
+        // Shown in the preview pane as well as the status line.
+        fail(preview.error());
+        asset_preview = preview.error().message;
+        return;
+    }
+    const auto& bytes = *read;
+    asset_preview = std::move(preview).value();
+    preview_model.reset();
+    preview_skeleton.reset();
+    preview_map.reset();
+    preview_inverse_bind.clear();
+    preview_animation_assets.clear();
+    preview_animation.reset();
+    preview_animation_index = -1;
+    preview_time = 0.0F;
+    preview_types.clear();
+    preview_type_index = -1;
+    preview_hardpoints.clear();
+    preview_type_warnings.clear();
+    model_mesh_cached = false;
+    preview_textures.clear();
+    preview_texture_warnings.clear();
+    map_preview_triangles.clear();
+    map_preview_cached = false;
+    reset_map_objects();
+    terrain_mesh_cached = false;
+
+    const auto selected_path = std::filesystem::path(asset.virtual_path);
+    const auto extension = ascii_lower(selected_path.extension().string());
+    if (extension != ".ted")
+    {
+        map_preview_large_window = false;
+    }
+    if (extension != ".alo")
+    {
+        model_preview_large_window = false;
+    }
+    if (extension == ".ted")
+    {
+        auto map = read_ted(bytes);
+        if (!map)
+        {
+            return;
+        }
+        preview_map = std::move(map).value();
+        load_map_objects();
+        return;
+    }
+    if (extension != ".alo")
+    {
+        return;
+    }
+    auto model = read_alo<AloModelData>(bytes);
+    if (!model)
+    {
+        return;
+    }
+    preview_model = std::move(model).value();
+    preview_skeleton = load_skeleton(*preview_model);
+    preview_variants = alo_model_variants(*preview_model);
+    preview_alternate = 0;
+    preview_detail = -1;
+    const auto bind_pose = skeleton_bind_pose(*preview_skeleton);
+    preview_inverse_bind.reserve(bind_pose.size());
+    for (const auto& transform : bind_pose)
+    {
+        const auto inverted = inverse(transform);
+        if (!inverted)
+        {
+            const auto error = make_error("ALO bone transform is singular");
+            fail(error);
+            asset_preview = error.message;
+            return;
+        }
+        preview_inverse_bind.push_back(*inverted);
+    }
+
+    const auto directory = ascii_lower(selected_path.parent_path().generic_string());
+    const auto stem = ascii_lower(selected_path.stem().string());
+    for (const auto& candidate : assets)
+    {
+        const auto candidate_path = std::filesystem::path(candidate.virtual_path);
+        if (ascii_lower(candidate_path.extension().string()) != ".ala" || ascii_lower(candidate_path.parent_path().generic_string()) != directory)
+        {
+            continue;
+        }
+        const auto candidate_stem = ascii_lower(candidate_path.stem().string());
+        if (candidate_stem == stem || candidate_stem.starts_with(stem + "_"))
+        {
+            preview_animation_assets.push_back(candidate);
+        }
+    }
+
+    for (const auto& mesh : preview_model->meshes)
+    {
+        for (const auto& submesh : mesh.submeshes)
+        {
+            for (const auto& parameter : submesh.parameters)
+            {
+                if (parameter.type == AloShaderParameterType::texture && !parameter.value.empty())
+                {
+                    static_cast<void>(load_texture(preview_textures, preview_texture_warnings, parameter.value));
+                }
+            }
+        }
+    }
+    find_preview_types();
+}
+
+ID3D11ShaderResourceView* GuiApp::State::load_texture(std::unordered_map<std::string, PreviewTexture>& cache, std::vector<std::string>& warnings, const std::string& reference)
+{
+    const auto key = ascii_lower(reference);
+    if (const auto found = cache.find(key); found != cache.end())
+    {
+        return found->second.view.Get();
+    }
+    auto& entry = cache[key];
+    auto filename = std::filesystem::path(reference).filename();
+    filename.replace_extension(".DDS");
+    const std::array candidates{std::string("DATA/ART/TEXTURES/") + filename.generic_string(), std::string("DATA/ART/") + filename.generic_string(), filename.generic_string()};
+    for (const auto& virtual_path : candidates)
+    {
+        if (!vfs.resolve(virtual_path))
+        {
+            continue;
+        }
+        const auto bytes = vfs.read(virtual_path);
+        auto texture = bytes ? create_dds_texture(graphics_device, *bytes) : Result<PreviewTexture>(bytes.error());
+        if (texture)
+        {
+            entry = std::move(texture).value();
+        }
+        else
+        {
+            warnings.push_back(reference + ": " + texture.error().message);
+        }
+        return entry.view.Get();
+    }
+    warnings.push_back(reference + ": matching DDS not found");
+    return nullptr;
+}
+
+void GuiApp::State::open_dat(const std::filesystem::path& path)
+{
+    const auto dat = load_dat_string_table(path);
+    if (!dat)
+    {
+        fail(dat.error());
+        return;
+    }
+    auto loaded = workspace_rows_from_dat(*dat);
+    if (!loaded)
+    {
+        fail(loaded.error());
+        return;
+    }
+    base_dat_path = path;
+    workspace_path.reset();
+    rows = std::move(loaded).value();
+    selected_row = rows.empty() ? -1 : 0;
+    dirty = false;
+    validation_messages.clear();
+    succeed("Opened " + std::to_string(rows.size()) + " localization entries");
+}
+
+void GuiApp::State::open_workspace(const std::filesystem::path& path)
+{
+    auto loaded = read_localization_workspace(path);
+    if (!loaded)
+    {
+        fail(loaded.error());
+        return;
+    }
+    rows = std::move(loaded).value();
+    workspace_path = path;
+    selected_row = rows.empty() ? -1 : 0;
+    dirty = false;
+    validation_messages.clear();
+    succeed("Opened workspace with " + std::to_string(rows.size()) + " rows");
+}
+
+void GuiApp::State::save_workspace(const std::filesystem::path& path)
+{
+    if (const auto status = write_localization_workspace(path, rows, true); !status)
+    {
+        fail(status.error());
+        return;
+    }
+    workspace_path = path;
+    dirty = false;
+    succeed("Saved localization workspace");
+}
+
+void GuiApp::State::validate_workspace()
+{
+    validation_messages.clear();
+    std::unordered_set<std::string> keys;
+    for (const auto& row : rows)
+    {
+        if (row.key.empty())
+        {
+            validation_messages.emplace_back("Error: a row has an empty key");
+        }
+        else if (!keys.insert(ascii_lower(row.key)).second)
+        {
+            validation_messages.push_back(std::string(ascii_lower(row.key) == "text_end_of_data" ? "Warning: " : "Error: ") + "duplicate key " + row.key);
+        }
+        if (ascii_lower(row.status) == "todo")
+        {
+            if (row.text.empty())
+            {
+                validation_messages.push_back("TODO: " + row.key);
+            }
+            else
+            {
+                validation_messages.push_back("Warning: " + row.key + " has text but is still marked TODO; its value will be included");
+            }
+        }
+    }
+    if (base_dat_path)
+    {
+        auto candidate = load_dat_string_table(*base_dat_path);
+        const auto applied = candidate ? apply_localization_workspace(*candidate, rows, skip_todo) : Status(candidate.error());
+        if (!applied)
+        {
+            validation_messages.push_back("Error: " + applied.error().message);
+        }
+        else
+        {
+            for (const auto& issue : dat_validate(*candidate))
+            {
+                validation_messages.push_back(std::string(issue.severity == DatIssueSeverity::error ? "Error: " : "Warning: ") + issue.message);
+            }
+        }
+    }
+    const auto errors = std::ranges::count_if(validation_messages,
+                                              [](const auto& item)
+                                              {
+                                                  return item.starts_with("Error:");
+                                              });
+    succeed(errors == 0 ? "Validation completed without errors" : "Validation found " + std::to_string(errors) + " errors");
+    message_error = errors != 0;
+}
+
+void GuiApp::State::build_dat(const std::filesystem::path& output)
+{
+    if (!base_dat_path)
+    {
+        fail(make_error("Open a baseline DAT before building an output DAT"));
+        return;
+    }
+    std::error_code path_error;
+    const auto baseline = std::filesystem::weakly_canonical(*base_dat_path, path_error);
+    path_error.clear();
+    const auto destination = std::filesystem::weakly_canonical(output, path_error);
+    if (ascii_lower(path_to_utf8(baseline)) == ascii_lower(path_to_utf8(destination)))
+    {
+        fail(make_error("Choose a different output path; EAWTools will not overwrite the baseline DAT"));
+        return;
+    }
+    auto loaded = load_dat_string_table(*base_dat_path);
+    if (!loaded)
+    {
+        fail(loaded.error());
+        return;
+    }
+    auto& dat = *loaded;
+    if (const auto status = apply_localization_workspace(dat, rows, skip_todo); !status)
+    {
+        fail(status.error());
+        return;
+    }
+    const auto issues = dat_validate(dat);
+    const auto errors = std::ranges::count_if(issues,
+                                              [](const auto& issue)
+                                              {
+                                                  return issue.severity == DatIssueSeverity::error;
+                                              });
+    if (errors != 0)
+    {
+        fail(make_error("The built DAT has " + std::to_string(errors) + " validation errors"));
+        return;
+    }
+    if (const auto status = save_dat_string_table(output, dat, WriteMode::replace); !status)
+    {
+        fail(status.error());
+        return;
+    }
+    succeed("Built " + path_to_utf8(output) + " with " + std::to_string(dat.entries.size()) + " entries");
+}
+
+void GuiApp::State::scan_mod(const std::filesystem::path& mod_root)
+{
+    if (!base_dat_path)
+    {
+        fail(make_error("Open a baseline DAT before scanning a mod"));
+        return;
+    }
+    const auto baseline = load_dat_string_table(*base_dat_path);
+    if (!baseline)
+    {
+        fail(baseline.error());
+        return;
+    }
+    const auto scanned = scan_mod_localization(mod_root, *baseline);
+    if (!scanned)
+    {
+        fail(scanned.error());
+        return;
+    }
+    const auto& result = *scanned;
+    std::unordered_set<std::string> existing;
+    for (const auto& row : rows)
+    {
+        existing.insert(ascii_lower(row.key));
+    }
+    std::size_t added = 0;
+    for (const auto& row : result.missing)
+    {
+        if (existing.insert(ascii_lower(row.key)).second)
+        {
+            rows.push_back(row);
+            ++added;
+        }
+    }
+    std::ranges::sort(rows,
+                      [](const auto& left, const auto& right)
+                      {
+                          return std::tie(left.group, left.key) < std::tie(right.group, right.key);
+                      });
+    dirty = dirty || added != 0;
+    selected_row = rows.empty() ? -1 : 0;
+    succeed("Scanned " + std::to_string(result.reference_count) + " references and added " + std::to_string(added) + " missing keys");
+}
+
+Status GuiApp::State::add_localization_row(LocalizationRow row)
+{
+    if (row.key.empty())
+    {
+        return make_error("Localization key cannot be empty");
+    }
+    if (std::ranges::any_of(rows,
+                            [&](const auto& existing)
+                            {
+                                return ascii_lower(existing.key) == ascii_lower(row.key);
+                            }))
+    {
+        return make_error("The workspace already contains " + row.key);
+    }
+    rows.push_back(std::move(row));
+    selected_row = static_cast<int>(rows.size() - 1);
+    dirty = true;
+    return Status::success();
+}
+
+} // namespace eaw::tools

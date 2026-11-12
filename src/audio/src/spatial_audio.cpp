@@ -1,8 +1,9 @@
 #include "audio/spatial_audio.hpp"
 
+#include "math/scalar.hpp"
+
 #include <algorithm>
 #include <cmath>
-#include <numbers>
 
 namespace eaw {
 
@@ -26,7 +27,7 @@ SpatialGain spatialize(const AudioListener& listener, const Vector3& source, con
 
 StereoGains stereo_gains(const float pan)
 {
-    const float angle = (std::clamp(pan, -1.0F, 1.0F) + 1.0F) * std::numbers::pi_v<float> * 0.25F;
+    const float angle = (std::clamp(pan, -1.0F, 1.0F) + 1.0F) * pi * 0.25F;
     return {std::cos(angle), std::sin(angle)};
 }
 

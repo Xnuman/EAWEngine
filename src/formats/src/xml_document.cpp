@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <charconv>
-#include <cctype>
 #include <cstdint>
 #include <optional>
 
@@ -230,7 +229,7 @@ private:
 
     void skip_space()
     {
-        while (!at_end() && std::isspace(static_cast<unsigned char>(peek())))
+        while (!at_end() && ascii_is_space(peek()))
         {
             take();
         }
@@ -239,7 +238,7 @@ private:
     [[nodiscard]] static bool name_character(const char value) noexcept
     {
         const auto character = static_cast<unsigned char>(value);
-        return std::isalnum(character) || value == '_' || value == '-' || value == ':' || value == '.';
+        return ascii_is_alnum(static_cast<char>(character)) || value == '_' || value == '-' || value == ':' || value == '.';
     }
 
     std::string parse_name()
@@ -274,7 +273,7 @@ private:
     {
         const auto target_begin = position_ + 2;
         const bool xml_declaration = target_begin + 3 <= source_.size() && ascii_equal_ignoring_case(source_.substr(target_begin, 3), "xml") &&
-                                     (target_begin + 3 == source_.size() || std::isspace(static_cast<unsigned char>(source_[target_begin + 3])) || source_[target_begin + 3] == '?');
+                                     (target_begin + 3 == source_.size() || ascii_is_space(source_[target_begin + 3]) || source_[target_begin + 3] == '?');
         char quote = '\0';
         while (!at_end())
         {

@@ -25,6 +25,24 @@ namespace eaw {
 {
     return character == ' ' || character == '\t' || character == '\n' || character == '\v' || character == '\f' || character == '\r';
 }
+// 0-9, A-Z or a-z, either of those, and space through tilde (std::isdigit, std::isalpha,
+// std::isalnum, and std::isprint in the "C" locale, without depending on the locale).
+[[nodiscard]] constexpr bool ascii_is_digit(const char character) noexcept
+{
+    return character >= '0' && character <= '9';
+}
+[[nodiscard]] constexpr bool ascii_is_alpha(const char character) noexcept
+{
+    return (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z');
+}
+[[nodiscard]] constexpr bool ascii_is_alnum(const char character) noexcept
+{
+    return ascii_is_digit(character) || ascii_is_alpha(character);
+}
+[[nodiscard]] constexpr bool ascii_is_print(const char character) noexcept
+{
+    return character >= ' ' && character <= '~';
+}
 [[nodiscard]] std::string ascii_lower(std::string_view text);
 [[nodiscard]] std::string ascii_upper(std::string_view text);
 [[nodiscard]] bool ascii_equal_ignoring_case(std::string_view left, std::string_view right) noexcept;

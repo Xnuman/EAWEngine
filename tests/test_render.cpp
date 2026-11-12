@@ -1,6 +1,6 @@
 #include "test_support.hpp"
 
-#include "eaw/visual_lod.hpp"
+#include "render/visual_lod.hpp"
 
 #include <cmath>
 

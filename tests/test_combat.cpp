@@ -1,7 +1,7 @@
 // Combat: targeting, weapons, damage, hardpoints, body aiming, and stances.
 #include "test_support.hpp"
 
-#include "eaw/formation.hpp"
+#include "simulation/formation.hpp"
 
 #include <tuple>
 

@@ -1,7 +1,7 @@
 // Flight: fighter locomotion, flight planes, half loops, and dogfights.
 #include "test_support.hpp"
 
-#include "eaw/formation.hpp"
+#include "simulation/formation.hpp"
 
 #include <tuple>
 

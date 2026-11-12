@@ -117,6 +117,11 @@ float read_float(const std::span<const std::byte> bytes, const std::size_t offse
     return std::bit_cast<float>(read_u32(bytes, offset));
 }
 
+Vector3 read_vector3(const std::span<const std::byte> bytes, const std::size_t offset)
+{
+    return {read_float(bytes, offset), read_float(bytes, offset + 4), read_float(bytes, offset + 8)};
+}
+
 std::string read_string(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end)
 {
     EAW_ASSERT_MSG(begin <= end && end <= bytes.size(), "chunk file string range is invalid");

@@ -11,7 +11,6 @@
 
 #include <algorithm>
 #include <charconv>
-#include <cctype>
 #include <cerrno>
 #include <cstdlib>
 #include <fstream>
@@ -31,7 +30,7 @@ std::string canonical_name(const std::string_view value)
     result.reserve(value.size());
     for (const auto character : value)
     {
-        if (std::isalnum(static_cast<unsigned char>(character)))
+        if (ascii_is_alnum(character))
         {
             result.push_back(ascii_lower(character));
         }
@@ -112,7 +111,7 @@ std::vector<std::string> split_values(const std::string_view value, const bool p
     std::size_t begin = 0;
     for (std::size_t index = 0; index <= value.size(); ++index)
     {
-        const bool delimiter = index == value.size() || std::isspace(static_cast<unsigned char>(value[index])) || value[index] == ',' || (pipe_delimiter && value[index] == '|');
+        const bool delimiter = index == value.size() || ascii_is_space(value[index]) || value[index] == ',' || (pipe_delimiter && value[index] == '|');
         if (!delimiter)
         {
             continue;

@@ -6,6 +6,9 @@
 #include "formats/xml_helpers.hpp"
 #include "formats/dat_string_table_helpers.hpp"
 
+#include "core/byte_order.hpp"
+#include "core/string_utils.hpp"
+
 #include <iomanip>
 
 namespace eaw::inspector {
@@ -86,8 +89,8 @@ void inspect_chunks(const std::span<const std::byte> bytes, const std::size_t li
     std::size_t count = 0;
     while (cursor + 8 <= bytes.size() && count < limit)
     {
-        const auto type = little_u32(bytes, cursor);
-        const auto encoded_size = little_u32(bytes, cursor + 4);
+        const auto type = eaw::little_endian_u32(bytes, cursor);
+        const auto encoded_size = eaw::little_endian_u32(bytes, cursor + 4);
         const bool container = (encoded_size & 0x80000000U) != 0;
         const auto size = encoded_size & 0x7fffffffU;
         std::cout << "  [" << count << "] type=0x" << std::hex << std::setw(8) << std::setfill('0') << type << std::dec << std::setfill(' ') << " size=" << size
@@ -379,7 +382,7 @@ std::vector<std::string> localization_references(const std::string& xml)
     // Keys are "TEXT_" plus one or more of [A-Za-z0-9_.-], starting at a word boundary.
     const auto word_character = [](const char character)
     {
-        return std::isalnum(static_cast<unsigned char>(character)) != 0 || character == '_';
+        return ascii_is_alnum(character) || character == '_';
     };
     std::set<std::string> unique;
     std::size_t position = 0;

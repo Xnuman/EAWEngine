@@ -23,13 +23,10 @@ set(EAW_ASSET_INSPECTOR_SOURCES
     ${SOURCES_DIR}/main.cpp
 )
 
-source_group(TREE ${CMAKE_CURRENT_LIST_DIR}
-  FILES
-     ${EAW_ASSET_INSPECTOR_SOURCES}
-     ${EAW_ASSET_INSPECTOR_HEADERS})
+source_group("" FILES ${EAW_ASSET_INSPECTOR_HEADERS} ${EAW_ASSET_INSPECTOR_SOURCES})
 
-target_sources(EAWAssetInspector 
-  PUBLIC
+target_sources(EAWAssetInspector
+  PRIVATE
     FILE_SET "eaw_asset_inspector_headers"
       TYPE HEADERS
       BASE_DIRS "include/"
@@ -38,7 +35,4 @@ target_sources(EAWAssetInspector
     ${EAW_ASSET_INSPECTOR_SOURCES}
 )
 
-target_link_libraries(EAWAssetInspector
-    PRIVATE
-        eaw_assets
-)
+target_link_libraries(EAWAssetInspector PRIVATE eaw_assets)

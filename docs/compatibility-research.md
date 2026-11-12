@@ -705,7 +705,7 @@ particle-audit`.
   Z after their facing, so a model's -Y axis points along the flight, as the
   engine already assumes for units. These are the fork's statements, to be
   checked before the simulation relies on them.
-- **Playback** (`src/engine/particle_effects.cpp`), following the particle
+- **Playback** (`src/engine/src/particle_effects.cpp`), following the particle
   editor where it is clear:
   - emission starts after the initial delay: bursts of the per-burst count
     every burst delay, limited by the burst count (0 or -1 unlimited), or one

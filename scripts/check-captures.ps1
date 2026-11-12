@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Renders the reference scenes on WARP and compares them with an earlier capture set.
+    Renders the reference scenes on WARP (or the GPU) and compares them with an earlier capture set.
 
 .DESCRIPTION
     The captures a change that should not alter the look is checked against (AGENTS.md, "Build and
@@ -9,7 +9,9 @@
     presentation clock (docs/tools.md, "Captures and image regression"). Captures go to -Output;
     with -Reference, each is compared with the file of the same name there by
     EAWEngine compare-images. Captures of the stock game derive from protected data: keep both
-    folders outside the repository.
+    folders outside the repository. -Hardware renders on the GPU instead of WARP: faster and
+    deterministic for one driver, so its references are per machine and never compared with WARP
+    ones.
 
 .EXAMPLE
     .\scripts\check-captures.ps1 -Output D:\eaw-captures\before
@@ -21,7 +23,8 @@ param(
     [string] $Reference,
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Release',
-    [string] $GameRoot
+    [string] $GameRoot,
+    [switch] $Hardware
 )
 
 Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot) -ErrorAction Stop
@@ -33,7 +36,8 @@ if (-not (Test-Path -LiteralPath $engine)) {
 }
 New-Item -ItemType Directory -Force -Path $Output -ErrorAction Stop | Out-Null
 
-$common = @('sandbox', '--game', 'foc', '--warp', '--vsync', 'off', '--width', '960', '--height', '540')
+$common = @('sandbox', '--game', 'foc', '--vsync', 'off', '--width', '960', '--height', '540')
+if (-not $Hardware) { $common += '--warp' }
 if ($GameRoot) { $common += @('--game-root', $GameRoot) }
 $kuat = @('--map', 'DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED', '--spawn', 'Rebel_X-Wing_Squadron:2@1', '--spawn', 'TIE_Fighter_Squadron:2@2', '--auto-move')
 $scenes = [ordered]@{

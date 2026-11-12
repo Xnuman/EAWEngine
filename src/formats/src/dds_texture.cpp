@@ -1,5 +1,7 @@
 #include "formats/dds_texture.hpp"
 
+#include "core/byte_order.hpp"
+
 #include <algorithm>
 #include <limits>
 #include <optional>
@@ -12,16 +14,10 @@ constexpr std::uint32_t fourcc(const char a, const char b, const char c, const c
     return static_cast<std::uint32_t>(a) | (static_cast<std::uint32_t>(b) << 8U) | (static_cast<std::uint32_t>(c) << 16U) | (static_cast<std::uint32_t>(d) << 24U);
 }
 
-// Callers check the header size before reading, so an out-of-range read is a bug.
+// Callers check the header size before reading, so an out-of-range read is a bug (asserted).
 std::uint32_t read_u32(const std::span<const std::byte> bytes, const std::size_t offset)
 {
-    EAW_ASSERT(offset + 4 <= bytes.size());
-    std::uint32_t value = 0;
-    for (unsigned shift = 0; shift < 32; shift += 8)
-    {
-        value |= static_cast<std::uint32_t>(std::to_integer<unsigned char>(bytes[offset + shift / 8])) << shift;
-    }
-    return value;
+    return little_endian_u32(bytes, offset);
 }
 
 // Nothing when the product overflows the address space.

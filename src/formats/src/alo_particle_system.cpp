@@ -13,6 +13,7 @@ using Chunk = ChunkRange;
 using MiniChunk = MiniChunkRange;
 using chunk::read_float;
 using chunk::read_u32;
+using chunk::read_vector3;
 
 Result<std::vector<Chunk>> read_chunks(const std::span<const std::byte> bytes, const std::size_t begin, const std::size_t end, const std::string_view where)
 {
@@ -133,11 +134,6 @@ std::size_t property_size(const PropertyKind kind)
     default:
         return 0;
     }
-}
-
-Vector3 read_vector3(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    return {read_float(bytes, offset), read_float(bytes, offset + 4), read_float(bytes, offset + 8)};
 }
 
 void apply_property(AloParticleEmitter& emitter, const std::uint8_t id, const std::span<const std::byte> bytes, const std::size_t offset)

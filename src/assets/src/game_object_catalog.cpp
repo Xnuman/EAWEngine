@@ -9,7 +9,6 @@
 #include <array>
 #include <charconv>
 #include <cmath>
-#include <cctype>
 #include <filesystem>
 
 namespace eaw {
@@ -222,7 +221,7 @@ std::optional<std::array<float, 4>> GameObjectCatalog::affiliation_color(const X
         std::size_t position = 0;
         while (position < value.size() && count < result.size())
         {
-            while (position < value.size() && (value[position] == ',' || std::isspace(static_cast<unsigned char>(value[position]))))
+            while (position < value.size() && (value[position] == ',' || ascii_is_space(value[position])))
             {
                 ++position;
             }

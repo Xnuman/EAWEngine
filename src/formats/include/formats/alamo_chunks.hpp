@@ -7,6 +7,7 @@
 // ranges that exist.
 
 #include "core/status.hpp"
+#include "math/vector.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -61,6 +62,8 @@ namespace chunk {
 [[nodiscard]] std::uint16_t read_u16(std::span<const std::byte> bytes, std::size_t offset);
 [[nodiscard]] std::int16_t read_i16(std::span<const std::byte> bytes, std::size_t offset);
 [[nodiscard]] float read_float(std::span<const std::byte> bytes, std::size_t offset);
+// Three floats (x, y, z).
+[[nodiscard]] Vector3 read_vector3(std::span<const std::byte> bytes, std::size_t offset);
 // The narrow string in bytes[begin, end), ending at the first NUL.
 [[nodiscard]] std::string read_string(std::span<const std::byte> bytes, std::size_t begin, std::size_t end);
 

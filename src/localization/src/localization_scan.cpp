@@ -4,7 +4,6 @@
 #include "formats/dat_string_table_helpers.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <fstream>
 #include <map>
 #include <set>
@@ -103,7 +102,7 @@ Result<LocalizationScanResult> scan_mod_localization(const std::filesystem::path
             while (end < contents.size())
             {
                 const auto character = static_cast<unsigned char>(contents[end]);
-                if (!std::isalnum(character) && character != '_' && character != '.' && character != '-')
+                if (!ascii_is_alnum(static_cast<char>(character)) && character != '_' && character != '.' && character != '-')
                 {
                     break;
                 }

@@ -246,8 +246,6 @@ Not a stage plan: leftovers are fixed while features touch the code around them,
 periodic whole-project reviews add to this list or turn it into a plan of steps (AGENTS.md, "Code
 health"). Remove an entry when it is fixed. Known leftovers after the reorganization of 2026-11:
 
-- the libraries still on `include/eaw/` (simulation, render, platform, launch, imgui_app)
-  and the engine without an include directory, against the short-include rule;
 - the minimal second XML reader in `game_installation` (kept so the VFS does not depend on the
   formats; noted in the code);
 - `MegArchive`, whose index decoding and entry reads were left together on purpose;

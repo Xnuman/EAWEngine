@@ -66,8 +66,6 @@ eaw::Result<Options> parse_options(int argc, char** argv);
 
 std::string extension_of(std::string_view path);
 
-std::uint32_t little_u32(std::span<const std::byte> bytes, std::size_t offset);
-
 // Reports a failure: "asset inspector error: ..." and exit code 1.
 int report_error(const eaw::Error& error);
 

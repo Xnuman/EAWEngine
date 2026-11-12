@@ -13,7 +13,7 @@
 //     (enhanced), chosen per particle world.
 
 #include "formats/alo_particle_system.hpp"
-#include "eaw/visual_scene.hpp"
+#include "render/visual_scene.hpp"
 
 #include <array>
 #include <cstdint>

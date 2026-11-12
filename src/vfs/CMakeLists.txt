@@ -31,10 +31,11 @@ set(EAW_VFS_FILES
     ${EAW_VFS_ARCHIVE}
     ${EAW_VFS_INSTALLATION}
 )
+# Public headers are the files under HEADERS_DIR; the rest (sources, private headers) are private.
 set(EAW_VFS_HEADERS ${EAW_VFS_FILES})
-list(FILTER EAW_VFS_HEADERS INCLUDE REGEX "\\.hpp$")
+list(FILTER EAW_VFS_HEADERS INCLUDE REGEX "^${HEADERS_DIR}/")
 set(EAW_VFS_SOURCES ${EAW_VFS_FILES})
-list(FILTER EAW_VFS_SOURCES INCLUDE REGEX "\\.cpp$")
+list(FILTER EAW_VFS_SOURCES EXCLUDE REGEX "^${HEADERS_DIR}/")
 
 source_group("file_system" FILES ${EAW_VFS_FILE_SYSTEM})
 source_group("archive" FILES ${EAW_VFS_ARCHIVE})

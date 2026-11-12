@@ -11,17 +11,6 @@ std::string extension_of(const std::string_view path)
     return extension.empty() ? "<none>" : extension;
 }
 
-std::uint32_t little_u32(const std::span<const std::byte> bytes, const std::size_t offset)
-{
-    EAW_ASSERT_MSG(offset + 4 <= bytes.size(), "asset is too short for the requested header");
-    std::uint32_t value = 0;
-    for (unsigned index = 0; index < 4; ++index)
-    {
-        value |= static_cast<std::uint32_t>(std::to_integer<unsigned char>(bytes[offset + index])) << (index * 8U);
-    }
-    return value;
-}
-
 int report_error(const eaw::Error& error)
 {
     std::cerr << "asset inspector error: " << error.message << '\n';

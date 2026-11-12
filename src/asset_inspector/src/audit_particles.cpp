@@ -40,7 +40,7 @@ std::string warning_kind(const std::string& warning)
     std::string kind;
     for (const auto character : text)
     {
-        if (std::isdigit(static_cast<unsigned char>(character)) == 0)
+        if (!ascii_is_digit(character))
         {
             kind.push_back(character);
         }
