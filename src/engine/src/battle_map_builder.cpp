@@ -6,16 +6,15 @@
 #include "assets/map_object_layout.hpp"
 #include "assets/spawn_catalog.hpp"
 #include "engine/battle_map.hpp"
+#include "engine/battle_map_build.hpp"
 #include "engine/combat_content.hpp"
-#include "engine/scene_builder_internal.hpp"
+#include "engine/object_types.hpp"
 
 #include <algorithm>
 #include <ranges>
 #include <span>
 
 namespace eaw {
-
-using namespace scene_build;
 
 namespace {
 
@@ -109,7 +108,7 @@ GroundMap map_ground(const TedMapData& map)
 
 } // namespace
 
-std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build, const std::string& type_name, const int depth)
+std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::string& type_name, const int depth)
 {
     for (std::size_t index = 0; index < build.spawnable.size(); ++index)
     {
@@ -219,8 +218,8 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     return build.spawnable.size() - 1U;
 }
 
-void scene_build::build_battle_map(const ResourceManager resources, const BattleMapSources& sources, const std::span<const std::string> spawn_types, BattleMapAsset& asset,
-                                   std::vector<BuiltModel>& entity_models, std::vector<BuiltModel>& spawnable_models)
+void build_battle_map(const ResourceManager resources, const BattleMapSources& sources, const std::span<const std::string> spawn_types, BattleMapAsset& asset, std::vector<BuiltModel>& entity_models,
+                      std::vector<BuiltModel>& spawnable_models)
 {
     const auto& map = sources.map;
     const auto& catalog = sources.catalog;
@@ -422,31 +421,55 @@ Result<BattleMapAsset> build_battle_map(const AssetReader& reader, const std::st
     asset.name = resolved->virtual_path;
     std::vector<BuiltModel> entity_models;
     std::vector<BuiltModel> spawnable_models;
-    scene_build::build_battle_map(resources, {map, catalog_entry->catalog, layout, *movement_entry, *combat_entry}, spawn_types, asset, entity_models, spawnable_models);
+    build_battle_map(resources, {map, catalog_entry->catalog, layout, *movement_entry, *combat_entry}, spawn_types, asset, entity_models, spawnable_models);
     return asset;
 }
 
-std::string ResourceLoader<scene_build::CachedCatalog>::key(const std::string_view path)
+std::vector<SpawnTypeInfo> spawnable_types(const AssetReader& vfs, const bool land, AssetCache* cache)
+{
+    const auto catalog_entry = ResourceManager(vfs, cache).get<CachedCatalog>(xml_catalog_path);
+    // Death clones are wrecks other types leave behind, not units to spawn.
+    const auto clones = death_clone_names(*catalog_entry->database, catalog_entry->catalog);
+    std::vector<SpawnTypeInfo> types;
+    for (auto& type : list_spawn_types(*catalog_entry->database, catalog_entry->catalog))
+    {
+        const auto kind = ascii_lower(type.kind);
+        const bool prop = kind.starts_with("prop") || kind == "spaceprop";
+        if ((!type.unit && !prop) || !(land ? type.land_model : type.space_model))
+        {
+            continue;
+        }
+        const auto definitions = catalog_entry->catalog.find(type.name);
+        if (!definitions.empty() && type_is_death_clone(catalog_entry->catalog, *definitions.front(), clones))
+        {
+            continue;
+        }
+        types.push_back(std::move(type));
+    }
+    return types;
+}
+
+std::string ResourceLoader<CachedCatalog>::key(const std::string_view path)
 {
     return std::string(path);
 }
 
 // The catalog borrows the database, so both are built together behind one allocation.
-scene_build::CachedCatalog ResourceLoader<scene_build::CachedCatalog>::load(const AssetReader& reader, std::string_view)
+CachedCatalog ResourceLoader<CachedCatalog>::load(const AssetReader& reader, std::string_view)
 {
     auto database = std::make_unique<XmlAssetDatabase>(XmlAssetDatabase::build(reader));
     auto catalog = GameObjectCatalog::build(*database);
-    return scene_build::CachedCatalog{std::move(database), std::move(catalog)};
+    return CachedCatalog{std::move(database), std::move(catalog)};
 }
 
-std::string ResourceLoader<scene_build::MovementClasses>::key(const std::string_view path)
+std::string ResourceLoader<MovementClasses>::key(const std::string_view path)
 {
     return std::string(path);
 }
 
-scene_build::MovementClasses ResourceLoader<scene_build::MovementClasses>::load(const AssetReader& reader, std::string_view)
+MovementClasses ResourceLoader<MovementClasses>::load(const AssetReader& reader, std::string_view)
 {
-    return scene_build::load_movement_classes(reader);
+    return load_movement_classes(reader);
 }
 
 std::string ResourceLoader<CombatContent>::key(const std::string_view path)

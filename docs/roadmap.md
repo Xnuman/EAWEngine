@@ -260,16 +260,15 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
 - `PathPoint` (pathfinding) beside eaw_math's `Vector2`;
 - XML list tokenizers with their own delimiters (type names split on commas or spaces in
   `game_object_catalog`, `map_object_layout`, and `sound_events`; categories on pipes, commas, or
-  spaces in `object_type_properties`; `xml_schema_validate`'s values), where `TypeFields::list`
+  spaces in `object_types`; `xml_schema_validate`'s values), where `TypeFields::list`
   splits on commas: one rule per kind of list, decided against the corpus;
 - `compare_images` (image regression) in eaw_formats;
 - the projectile reacquisition tie-break, whose comment says lower index while the code takes the
   higher (changing the comparison changes the hash);
 - the script host's own SplitMix stream beside `core/random` (it is script state, so a move must keep
   its sequence);
-- `battle_map_builder` shares `scene_builder_internal.hpp` and `object_type_properties` (XML type
-  fields for gameplay and look alike) with scene building, until the engine library is split
-  (review proposal C).
+- the engine's categories (battles, presentation, scene building, input, the sandbox's parts) are
+  one library still; review proposal C makes each its own.
 
 ## Performance gates
 

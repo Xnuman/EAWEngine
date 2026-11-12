@@ -7,34 +7,35 @@ add_library(eaw_engine STATIC)
 set(HEADERS_DIR "include/engine")
 set(SOURCES_DIR "src")
 
-# Battles: orders, logs, headless runs, scripts, and combat data from XML.
+# Battles: orders, logs, the runtime, scripts, the battle side of maps, and gameplay data from XML.
 set(EAW_ENGINE_BATTLE
     ${HEADERS_DIR}/battle.hpp
     ${HEADERS_DIR}/battle_log.hpp
     ${HEADERS_DIR}/battle_map.hpp
-    ${HEADERS_DIR}/battle_runner.hpp
+    ${HEADERS_DIR}/battle_map_build.hpp
     ${HEADERS_DIR}/battle_runtime.hpp
     ${HEADERS_DIR}/battle_scripts.hpp
     ${HEADERS_DIR}/combat_content.hpp
+    ${HEADERS_DIR}/object_types.hpp
     ${SOURCES_DIR}/battle.cpp
     ${SOURCES_DIR}/battle_log.cpp
     ${SOURCES_DIR}/battle_map_builder.cpp
-    ${SOURCES_DIR}/battle_runner.cpp
     ${SOURCES_DIR}/battle_runtime.cpp
     ${SOURCES_DIR}/battle_scripts.cpp
     ${SOURCES_DIR}/combat_content.cpp
+    ${SOURCES_DIR}/object_types.cpp
 )
 
-# Scene building: decoded assets to engine-native visual data and type properties.
+# Scene building: decoded assets to engine-native visual data, and what XML types say about their look.
 set(EAW_ENGINE_SCENE
     ${HEADERS_DIR}/scene_builder_internal.hpp
     ${HEADERS_DIR}/visual_scene_builder.hpp
-    ${SOURCES_DIR}/object_type_properties.cpp
     ${SOURCES_DIR}/scene_materials.cpp
     ${SOURCES_DIR}/scene_models.cpp
     ${SOURCES_DIR}/scene_particles.cpp
     ${SOURCES_DIR}/scene_projectiles.cpp
     ${SOURCES_DIR}/scene_terrain.cpp
+    ${SOURCES_DIR}/type_looks.cpp
     ${SOURCES_DIR}/visual_map_builder.cpp
 )
 
@@ -45,10 +46,12 @@ set(EAW_ENGINE_PRESENTATION
     ${HEADERS_DIR}/battle_effects.hpp
     ${HEADERS_DIR}/battle_frame.hpp
     ${HEADERS_DIR}/debug_draw.hpp
+    ${HEADERS_DIR}/entity_look.hpp
     ${HEADERS_DIR}/particle_effects.hpp
     ${HEADERS_DIR}/projectile_visuals.hpp
     ${HEADERS_DIR}/scene_presentation.hpp
     ${HEADERS_DIR}/unit_animation.hpp
+    ${HEADERS_DIR}/visual_rig.hpp
     ${SOURCES_DIR}/attached_effects.cpp
     ${SOURCES_DIR}/battle_audio.cpp
     ${SOURCES_DIR}/battle_effects.cpp
@@ -58,6 +61,7 @@ set(EAW_ENGINE_PRESENTATION
     ${SOURCES_DIR}/projectile_visuals.cpp
     ${SOURCES_DIR}/scene_presentation.cpp
     ${SOURCES_DIR}/unit_animation.cpp
+    ${SOURCES_DIR}/visual_rig.cpp
 )
 
 # Input and cameras: camera controllers, RTS control, and picking on the terrain height field.
@@ -72,12 +76,15 @@ set(EAW_ENGINE_INPUT
     ${SOURCES_DIR}/terrain_height.cpp
 )
 
-# The sandbox's testable parts: options, background content builds, debug lines, and text format.
+# The sandbox's testable parts and the headless battle command: options, background content
+# builds, debug lines, text format, and headless runs.
 set(EAW_ENGINE_SANDBOX
+    ${HEADERS_DIR}/battle_runner.hpp
     ${HEADERS_DIR}/sandbox_content.hpp
     ${HEADERS_DIR}/sandbox_debug_lines.hpp
     ${HEADERS_DIR}/sandbox_options.hpp
     ${HEADERS_DIR}/text_format.hpp
+    ${SOURCES_DIR}/battle_runner.cpp
     ${SOURCES_DIR}/sandbox_content.cpp
     ${SOURCES_DIR}/sandbox_debug_lines.cpp
     ${SOURCES_DIR}/sandbox_options.cpp

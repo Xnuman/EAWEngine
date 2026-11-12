@@ -31,6 +31,10 @@ inline constexpr std::uint32_t spawnable_visual_base = 0x80000000U;
     return spawnable_visual_base + static_cast<std::uint32_t>(type_index);
 }
 
+// Destinations for `count` units ordered to `target`: a centered square grid with `spacing` world
+// units between neighbors (straight-line movement has no formations or collision yet).
+[[nodiscard]] std::vector<Vector3> grid_targets(const Vector3& target, std::size_t count, float spacing);
+
 // `point` moved onto the ground grid, then, when its cell's passability is not among
 // `passable_types`, to the nearest cell that is (nearest_enterable); unchanged without passability
 // data. Spawn orders place ground units with it.

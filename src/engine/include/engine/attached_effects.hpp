@@ -7,8 +7,10 @@
 #include "render/visual_scene.hpp"
 #include "simulation/simulation.hpp"
 #include "simulation/simulation_types.hpp"
+#include "engine/entity_look.hpp"
+#include "engine/object_types.hpp"
 #include "engine/particle_effects.hpp"
-#include "engine/visual_scene_builder.hpp"
+#include "engine/visual_rig.hpp"
 
 #include <cstdint>
 #include <span>

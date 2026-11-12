@@ -167,9 +167,9 @@ void test_combat_content()
     require(wanted.rank(0x100U, 0, 0) == 1.0F && wanted.rank(0x80U, 0x4U, 0) == 2.0F && wanted.rank(0x200U, 0, 0) < 0.0F && wanted.rank(0x80U, 0x100U, 0) < 0.0F &&
                 wanted.rank(0x80U, 0, eaw::game_object_name_crc("Tank")) < 0.0F && wanted.rank(0x80U, 0, 0) == eaw::TargetingPriorities::unlisted_rank && wanted.rank(0x300U, 0, 0) == 1.0F,
             "a match must rank, exclusions must apply only to unmatched targets, and the rest must rank last");
-    const auto team = eaw::scene_build::type_team_movement(catalog, *definition("Slow_Company"), 2.0F);
+    const auto team = eaw::type_team_movement(catalog, *definition("Slow_Company"), 2.0F);
     require(team.max_speed && *team.max_speed == 0.5F * eaw::provisional_max_speed_scale * 2.0F && team.acceleration && *team.acceleration == 0.1F * eaw::provisional_acceleration_scale &&
-                !team.turn_rate && !team.deceleration && !eaw::scene_build::type_team_movement(catalog, *definition("Tank"), 1.0F).max_speed,
+                !team.turn_rate && !team.deceleration && !eaw::type_team_movement(catalog, *definition("Tank"), 1.0F).max_speed,
             "a company's team must give its members the team's speed and acceleration, and only what it sets");
     {
         // Rotated a quarter turn and moved: the type's forward (x) maps to the model's -Y.
@@ -184,33 +184,33 @@ void test_combat_content()
         {
             return std::fabs(a - b) < 1.0e-3F;
         };
-        const auto rock = eaw::scene_build::type_ground_footprint(catalog, *definition("Rock"), placement, eaw::passability::obstacle);
+        const auto rock = eaw::type_ground_footprint(catalog, *definition("Rock"), placement, eaw::passability::obstacle);
         require(rock && near(rock->center.x, 103.0F) && near(rock->center.y, 190.0F) && rock->half_length == 30.0F && rock->half_width == 24.0F && near(rock->heading, 1.5707964F),
                 "hard extents must be half extents around their offset, the type's x along the model's forward");
-        const auto pad = eaw::scene_build::type_ground_footprint(catalog, *definition("Pad"), eaw::Matrix4::identity(), eaw::passability::obstacle);
-        const auto on_pad = eaw::scene_build::type_ground_footprint(catalog, *definition("On_Pad"), eaw::Matrix4::identity(), eaw::passability::obstacle);
+        const auto pad = eaw::type_ground_footprint(catalog, *definition("Pad"), eaw::Matrix4::identity(), eaw::passability::obstacle);
+        const auto on_pad = eaw::type_ground_footprint(catalog, *definition("On_Pad"), eaw::Matrix4::identity(), eaw::passability::obstacle);
         require(pad && near(pad->center.x, 0.0F) && near(pad->center.y, -20.0F) && pad->half_length == 10.0F && pad->half_width == 20.0F && on_pad && near(on_pad->center.y, -20.0F) &&
-                    on_pad->half_width == 20.0F && !eaw::scene_build::type_ground_footprint(catalog, *definition("Tank"), eaw::Matrix4::identity(), eaw::passability::obstacle),
+                    on_pad->half_width == 20.0F && !eaw::type_ground_footprint(catalog, *definition("Tank"), eaw::Matrix4::identity(), eaw::passability::obstacle),
                 "an obstacle rectangle must win over hard extents, a proxy type must lend its own, and a type without either must give none");
     }
-    require(eaw::scene_build::type_space_obstacle_radius(catalog, *definition("Dock")) == 130.0F && eaw::scene_build::type_space_obstacle_radius(catalog, *definition("Field")) == 0.0F &&
-                eaw::scene_build::type_space_obstacle_radius(catalog, *definition("Junk")) == 0.0F,
+    require(eaw::type_space_obstacle_radius(catalog, *definition("Dock")) == 130.0F && eaw::type_space_obstacle_radius(catalog, *definition("Field")) == 0.0F &&
+                eaw::type_space_obstacle_radius(catalog, *definition("Junk")) == 0.0F,
             "a SPACE_OBSTACLE must keep ships at its radius, unless it is a field ships enter");
-    require(std::fabs(eaw::scene_build::type_movement(catalog, *definition("Walker"), true, false).turn_in_place_angle - 0.5235988F) < 1.0e-5F &&
-                std::fabs(eaw::scene_build::type_movement(catalog, *definition("Swirl"), true, false).turn_in_place_angle - 3.1415927F) < 1.0e-5F &&
-                eaw::scene_build::type_movement(catalog, *definition("Tank"), true, false).turn_in_place_angle == eaw::scene_build::ground_turn_in_place_angle,
+    require(std::fabs(eaw::type_movement(catalog, *definition("Walker"), true, false).turn_in_place_angle - 0.5235988F) < 1.0e-5F &&
+                std::fabs(eaw::type_movement(catalog, *definition("Swirl"), true, false).turn_in_place_angle - 3.1415927F) < 1.0e-5F &&
+                eaw::type_movement(catalog, *definition("Tank"), true, false).turn_in_place_angle == eaw::ground_turn_in_place_angle,
             "a type's move-start angle must replace the default, at most half a turn");
     {
-        const auto crusher = eaw::scene_build::type_crush(catalog, *definition("Crusher"));
-        const auto stomper = eaw::scene_build::type_crush(catalog, *definition("Stomper"));
-        const auto trooper = eaw::scene_build::type_crush(catalog, *definition("Trooper"));
+        const auto crusher = eaw::type_crush(catalog, *definition("Crusher"));
+        const auto stomper = eaw::type_crush(catalog, *definition("Stomper"));
+        const auto trooper = eaw::type_crush(catalog, *definition("Trooper"));
         require(crusher.crusher == eaw::Crusher::crusher && crusher.squashable_by_supercrusher && !crusher.squashable && stomper.crusher == eaw::Crusher::supercrusher &&
                     trooper.crusher == eaw::Crusher::none && trooper.squashable,
                 "vehicle classes must crush, Is_Supercrusher must supercrush, and the squash flags must be read");
     }
     {
-        const auto survivors = eaw::scene_build::type_survivors(catalog, *definition("Jail"));
-        require(survivors.types == std::vector<std::string>{"Crew_A", "Crew_C"} && survivors.count == 4 && eaw::scene_build::type_survivors(catalog, *definition("Tank")).types.empty(),
+        const auto survivors = eaw::type_survivors(catalog, *definition("Jail"));
+        require(survivors.types == std::vector<std::string>{"Crew_A", "Crew_C"} && survivors.count == 4 && eaw::type_survivors(catalog, *definition("Tank")).types.empty(),
                 "survivor lines must be read, weight-0 and empty lines skipped, with the minimum count");
     }
     {
@@ -236,15 +236,15 @@ void test_combat_content()
     require(std::fabs(eaw::scene_build::type_bank_limit(catalog, *definition("Banker")) - 0.6981317F) < 1.0e-5F &&
                 eaw::scene_build::type_bank_limit(catalog, *definition("Tank")) == eaw::default_bank_limit,
             "Bank_Turn_Angle must limit the bank, 60 degrees without it");
-    require(eaw::scene_build::type_formation_solo(catalog, *definition("Walker")) && !eaw::scene_build::type_formation_solo(catalog, *definition("Tank")), "FormationGrouping Solo must be read");
-    require(eaw::scene_build::type_soft_footprint_radius(catalog, *definition("Fighter")) == 7.0F, "a small craft's footprint radius must stand in for a soft radius");
+    require(eaw::type_formation_solo(catalog, *definition("Walker")) && !eaw::type_formation_solo(catalog, *definition("Tank")), "FormationGrouping Solo must be read");
+    require(eaw::type_soft_footprint_radius(catalog, *definition("Fighter")) == 7.0F, "a small craft's footprint radius must stand in for a soft radius");
     require(eaw::parse_xml_bool(" Yes ") == true && eaw::parse_xml_bool("FALSE") == false && eaw::parse_xml_bool("1") == true && !eaw::parse_xml_bool("maybe") && !eaw::parse_xml_bool(""),
             "XML booleans must accept Yes/No, true/false, and 1/0 in any case");
     {
-        const auto rows = eaw::scene_build::type_team_layout(catalog, *definition("Row_Company"));
-        const auto none = eaw::scene_build::type_team_layout(catalog, *definition("Slow_Company"));
+        const auto rows = eaw::type_team_layout(catalog, *definition("Row_Company"));
+        const auto none = eaw::type_team_layout(catalog, *definition("Slow_Company"));
         require(rows.size == 9 && rows.arrangement == eaw::TeamArrangement::rows && rows.spacing == 1.0F && none.size == 0 && none.arrangement == eaw::TeamArrangement::dartboard &&
-                    eaw::scene_build::type_formation_raggedness(catalog, *definition("Ragged")) == 1.6F,
+                    eaw::type_formation_raggedness(catalog, *definition("Ragged")) == 1.6F,
                 "a company's team size, arrangement, and spacing and a member's raggedness must be read");
         std::vector<eaw::FormationMember> members(20);
         std::uint32_t next_team = 5;

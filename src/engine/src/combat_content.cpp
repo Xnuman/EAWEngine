@@ -6,7 +6,7 @@
 #include "assets/skeleton.hpp"
 #include "assets/type_fields.hpp"
 #include "assets/type_hardpoints.hpp"
-#include "engine/visual_scene_builder.hpp"
+#include "engine/object_types.hpp"
 
 #include <algorithm>
 #include <array>

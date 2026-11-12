@@ -3,8 +3,8 @@
 #include "math/scalar.hpp"
 #include "core/string_utils.hpp"
 #include "assets/type_fields.hpp"
+#include "engine/object_types.hpp"
 #include "engine/scene_presentation.hpp"
-#include "engine/visual_scene_builder.hpp"
 
 #include <algorithm>
 #include <charconv>

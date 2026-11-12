@@ -1,7 +1,6 @@
 #include "core/string_utils.hpp"
 #include "assets/map_object_layout.hpp"
 #include "assets/spawn_catalog.hpp"
-#include "engine/combat_content.hpp"
 #include "engine/scene_builder_internal.hpp"
 
 #include <algorithm>
@@ -107,7 +106,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     battle.name = resolved->virtual_path;
     std::vector<BuiltModel> entity_models;
     std::vector<BuiltModel> spawnable_models;
-    scene_build::build_battle_map(resources, {map, catalog, layout, *movement_entry, *combat_entry}, spawn_types, battle, entity_models, spawnable_models);
+    build_battle_map(resources, {map, catalog, layout, *movement_entry, *combat_entry}, spawn_types, battle, entity_models, spawnable_models);
 
     auto& scene = asset.scene;
     scene.name = resolved->virtual_path;
@@ -351,30 +350,6 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
     }
     package.particle_textures = std::move(builder.particles.textures);
     return package;
-}
-
-std::vector<SpawnTypeInfo> spawnable_types(const AssetReader& vfs, const bool land, AssetCache* cache)
-{
-    const auto catalog_entry = ResourceManager(vfs, cache).get<CachedCatalog>(xml_catalog_path);
-    // Death clones are wrecks other types leave behind, not units to spawn.
-    const auto clones = death_clone_names(*catalog_entry->database, catalog_entry->catalog);
-    std::vector<SpawnTypeInfo> types;
-    for (auto& type : list_spawn_types(*catalog_entry->database, catalog_entry->catalog))
-    {
-        const auto kind = ascii_lower(type.kind);
-        const bool prop = kind.starts_with("prop") || kind == "spaceprop";
-        if ((!type.unit && !prop) || !(land ? type.land_model : type.space_model))
-        {
-            continue;
-        }
-        const auto definitions = catalog_entry->catalog.find(type.name);
-        if (!definitions.empty() && type_is_death_clone(catalog_entry->catalog, *definitions.front(), clones))
-        {
-            continue;
-        }
-        types.push_back(std::move(type));
-    }
-    return types;
 }
 
 } // namespace eaw

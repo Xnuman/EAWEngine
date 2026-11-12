@@ -1,11 +1,12 @@
+#include "engine/object_types.hpp"
+
 #include "math/scalar.hpp"
+#include "math/transform.hpp"
 #include "core/string_utils.hpp"
-#include "formats/dds_texture.hpp"
-#include "formats/xml_document.hpp"
 #include "assets/map_object_layout.hpp"
+#include "assets/skeleton.hpp"
 #include "assets/type_fields.hpp"
-#include "engine/combat_content.hpp"
-#include "engine/scene_builder_internal.hpp"
+#include "assets/type_hardpoints.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -14,7 +15,7 @@
 #include <span>
 #include <system_error>
 
-namespace eaw::scene_build {
+namespace eaw {
 
 // Whether a type walks on the ground of land maps. XML Space_Layer is "Land" for ground vehicles,
 // infantry, and heroes, and "None" for walkers such as Ewoks; air units (snowspeeders, air whales)
@@ -81,12 +82,6 @@ float type_float_field(const GameObjectCatalog& catalog, const XmlDefinition& de
     return TypeFields(catalog, definition).number(field).value_or(0.0F);
 }
 
-float type_lod_bias(const GameObjectCatalog& catalog, const XmlDefinition& definition)
-{
-    const auto bias = type_float_field(catalog, definition, "LOD_Bias");
-    return bias > 0.0F ? bias : 1.0F;
-}
-
 std::uint32_t type_formation_order(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto order = type_float_field(catalog, definition, "FormationOrder");
@@ -98,16 +93,6 @@ float type_formation_spacing(const GameObjectCatalog& catalog, const XmlDefiniti
     const auto* node = catalog.field(definition, "FormationSpacing").field;
     const auto spacing = node != nullptr ? type_float_field(catalog, definition, "FormationSpacing") : 0.5F;
     return spacing >= 0.0F && spacing <= 100.0F ? spacing : 0.5F;
-}
-
-float type_bank_limit(const GameObjectCatalog& catalog, const XmlDefinition& definition)
-{
-    if (catalog.field(definition, "Bank_Turn_Angle").field == nullptr)
-    {
-        return default_bank_limit;
-    }
-    const auto degrees = std::clamp(type_float_field(catalog, definition, "Bank_Turn_Angle"), 0.0F, 90.0F);
-    return degrees * pi / 180.0F;
 }
 
 CrushProfile type_crush(const GameObjectCatalog& catalog, const XmlDefinition& definition)
@@ -197,63 +182,6 @@ TeamLayout type_team_layout(const GameObjectCatalog& catalog, const XmlDefinitio
 float type_formation_raggedness(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     return std::clamp(type_float_field(catalog, definition, "FormationRaggedness"), 0.0F, 10.0F);
-}
-
-AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition)
-{
-    const auto rate = [&](const std::string_view field)
-    {
-        const auto value = type_float_field(catalog, definition, field);
-        return value > 0.0F && value <= 100.0F ? value : 1.0F;
-    };
-    AnimationProfile profile;
-    // Reference speeds as fractions of Max_Speed; without a top speed they cannot be placed.
-    if (const auto top = type_float_field(catalog, definition, "Max_Speed"); top > 0.0F && std::isfinite(top))
-    {
-        const auto reference = [&](const std::string_view field)
-        {
-            const auto value = type_float_field(catalog, definition, field);
-            return value > 0.0F && std::isfinite(value) ? value / top : 0.0F;
-        };
-        const auto move = reference("Movement_Animation_Speed");
-        profile.move_reference = move > 0.0F ? move : 1.0F;
-        profile.walk_reference = reference("Walk_Animation_Speed");
-    }
-    profile.idle_rate = rate("Idle_Anim_00_Rate_Mod");
-    profile.idle_when_moving = TypeFields(catalog, definition).flag("Allow_Idle_When_Moving", false);
-    const auto flag = [&](const std::string_view field)
-    {
-        return TypeFields(catalog, definition).flag(field, false);
-    };
-    profile.pre_turn = flag("Has_Pre_Turn_Anim");
-    profile.walk_transition = flag("Walk_Transition");
-    const auto bone = [&](const std::string_view field)
-    {
-        const auto* node = catalog.field(definition, field).field;
-        const auto name = node != nullptr ? ascii_trim(node->text) : std::string_view{};
-        return name.empty() ? 0U : game_object_name_crc(name);
-    };
-    profile.turret_bone = bone("Turret_Bone_Name");
-    profile.barrel_bone = bone("Barrel_Bone_Name");
-    if (profile.barrel_bone == profile.turret_bone)
-    {
-        // Spore plants name one bone as both: it only turns.
-        profile.barrel_bone = 0U;
-    }
-    const auto speed = type_float_field(catalog, definition, "Turret_Rotate_Speed");
-    profile.turret_rate = (speed > 0.0F ? speed : default_turret_rotate_speed) * provisional_turn_rate_scale;
-    const auto half_arc = [&](const std::string_view field, const float fallback)
-    {
-        const auto degrees = type_float_field(catalog, definition, field);
-        return degrees > 0.0F && degrees < 360.0F ? degrees * 0.5F * pi / 180.0F : fallback;
-    };
-    profile.turret_pitch_limit = half_arc("Turret_Elevate_Extent_Degrees", profile.turret_pitch_limit);
-    return profile;
-}
-
-bool type_is_marker(const GameObjectCatalog& catalog, const XmlDefinition& definition)
-{
-    return TypeFields(catalog, definition).flag("Is_Marker", false);
 }
 
 bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& definition)
@@ -509,34 +437,6 @@ float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinitio
     return speed > 0.0F && std::isfinite(speed) ? std::min(speed, max_speed) : max_speed * 0.5F;
 }
 
-std::string type_animation_source(const GameObjectCatalog& catalog, const XmlDefinition& definition)
-{
-    for (const auto* field : {"Land_Model_Anim_Override_Name", "Space_Model_Anim_Override_Name"})
-    {
-        if (const auto* value = catalog.field(definition, field).field)
-        {
-            const auto name = ascii_trim(value->text);
-            if (!name.empty())
-            {
-                return std::string(name);
-            }
-        }
-    }
-    return {};
-}
-
-void note_animation_source(SceneBuilder& builder, const std::string& model_path, const GameObjectCatalog& catalog, const XmlDefinition& definition)
-{
-    if (auto source = type_animation_source(catalog, definition); !source.empty())
-    {
-        builder.animation_sources.try_emplace(ascii_lower(model_path), std::move(source));
-    }
-}
-
-namespace {
-
-// The clone type a Death_Clone entry ("Damage_Normal, AT_ST_Walker_Death_Clone_00") names, and its
-// damage type, both trimmed.
 std::pair<std::string_view, std::string_view> death_clone_entry(const std::string_view text)
 {
     const auto comma = text.find(',');
@@ -545,63 +445,6 @@ std::pair<std::string_view, std::string_view> death_clone_entry(const std::strin
         return {{}, ascii_trim(text)};
     }
     return {ascii_trim(text.substr(0, comma)), ascii_trim(text.substr(comma + 1U))};
-}
-
-} // namespace
-
-DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition)
-{
-    DeathStyle style;
-    style.removed = TypeFields(catalog, definition).flag("Remove_Upon_Death", false);
-    std::string_view chosen;
-    for (const auto* entry : catalog.fields(definition, "Death_Clone").fields)
-    {
-        // The crush clone's clip, for deaths by crushing.
-        if (const auto [crush_damage, crush_clone] = death_clone_entry(entry->text); ascii_equal_ignoring_case(crush_damage, "Damage_Crush") && !crush_clone.empty())
-        {
-            if (const auto found = catalog.find(crush_clone); !found.empty())
-            {
-                const auto* kind = catalog.field(*found.front(), "Specific_Death_Anim_Type").field;
-                DeathClip clip;
-                clip.role = kind != nullptr && ascii_equal_ignoring_case(ascii_trim(kind->text), "Crushed") ? AnimationRole::crushed : AnimationRole::die;
-                const auto index = type_float_field(catalog, *found.front(), "Specific_Death_Anim_Index");
-                clip.variant = index >= 0.0F && index < 100.0F ? static_cast<std::uint32_t>(index) : 0U;
-                style.crushed = clip;
-            }
-        }
-        const auto [damage, clone] = death_clone_entry(entry->text);
-        if (clone.empty())
-        {
-            continue;
-        }
-        if (chosen.empty() || ascii_lower(std::string(damage)) == "damage_normal")
-        {
-            chosen = clone;
-        }
-    }
-    if (chosen.empty())
-    {
-        return style;
-    }
-    const auto clones = catalog.find(chosen);
-    if (clones.empty())
-    {
-        return style;
-    }
-    const auto& clone = *clones.front();
-    if (catalog.field(clone, "Specific_Death_Anim_Index").field != nullptr)
-    {
-        const auto index = type_float_field(catalog, clone, "Specific_Death_Anim_Index");
-        if (index >= 0.0F && index < 100.0F)
-        {
-            style.die_variant = static_cast<std::uint32_t>(index);
-        }
-    }
-    if (const auto seconds = type_float_field(catalog, clone, "Death_Persistence_Duration"); seconds > 0.0F && seconds < 3600.0F)
-    {
-        style.persistence_seconds = seconds;
-    }
-    return style;
 }
 
 std::unordered_set<std::string> death_clone_names(const XmlAssetDatabase& database, const GameObjectCatalog& catalog)
@@ -681,4 +524,101 @@ float type_max_speed(const GameObjectCatalog& catalog, const XmlDefinition& defi
     return value > 0.0F ? value * provisional_max_speed_scale * mode_multiplier : 0.0F;
 }
 
-} // namespace eaw::scene_build
+std::vector<ModelAttachment> type_hardpoint_models(const ResourceManager& resources, std::vector<std::string>& warnings, const GameObjectCatalog& catalog, const XmlDefinition& type, const Model* host)
+{
+    std::vector<ModelAttachment> attachments;
+    if (host == nullptr)
+    {
+        return attachments;
+    }
+    const auto text_of = [&](const XmlDefinition& definition, const std::string_view name)
+    {
+        const auto* node = catalog.field(definition, name).field;
+        return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
+    };
+    for (const auto& [name, hardpoint] : type_hardpoints(catalog, type))
+    {
+        if (hardpoint == nullptr)
+        {
+            continue;
+        }
+        const auto model_name = text_of(*hardpoint, "Model_To_Attach");
+        if (model_name.empty())
+        {
+            continue;
+        }
+        const auto bone_name = ascii_lower(text_of(*hardpoint, "Attachment_Bone"));
+        const auto bone = find_skeleton_bone(host->skeleton, bone_name);
+        const auto path = resolve_model_path(resources.reader(), model_name);
+        if (!bone || !path)
+        {
+            warnings.push_back(type.name + ": hardpoint " + name + " attaches " + model_name + (path ? " to missing bone '" + bone_name + "'" : " (file not found)"));
+            continue;
+        }
+        const auto model = resources.get<Model>(*path);
+        if (!model->ok())
+        {
+            warnings.push_back(*path + ": " + model->error().message);
+            continue;
+        }
+        attachments.push_back({*path, std::shared_ptr<const Model>(model, &model->value()), *bone});
+    }
+    return attachments;
+}
+
+std::string attached_mesh_key(const std::string& model_path, const std::span<const ModelAttachment> attachments)
+{
+    auto key = ascii_lower(model_path);
+    for (const auto& attachment : attachments)
+    {
+        key += "|" + ascii_lower(attachment.path) + "@" + std::to_string(attachment.bone);
+    }
+    return key;
+}
+
+// Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
+float model_footprint_radius(const ModelBounds& bounds, const Matrix4& transform)
+{
+    if (bounds.empty())
+    {
+        return 0.0F;
+    }
+    const auto width = bounds.maximum[0] - bounds.minimum[0];
+    const auto depth = bounds.maximum[1] - bounds.minimum[1];
+    const auto scale = std::sqrt(transform.values[0] * transform.values[0] + transform.values[1] * transform.values[1] + transform.values[2] * transform.values[2]);
+    const auto radius = 0.25F * (width + depth) * scale;
+    return std::isfinite(radius) && radius > 0.0F ? radius : 0.0F;
+}
+
+GroundFootprint model_ground_footprint(const ModelBounds& bounds, const Matrix4& transform, const std::uint32_t passability_type)
+{
+    GroundFootprint footprint;
+    footprint.passability = passability_type;
+    if (bounds.empty())
+    {
+        return footprint;
+    }
+    const auto scale = std::sqrt(transform.values[0] * transform.values[0] + transform.values[1] * transform.values[1] + transform.values[2] * transform.values[2]);
+    const auto local_x = (bounds.minimum[0] + bounds.maximum[0]) * 0.5F;
+    const auto local_y = (bounds.minimum[1] + bounds.maximum[1]) * 0.5F;
+    // Row-vector transform: world = local.x * row0 + local.y * row1 + translation.
+    footprint.center = {local_x * transform.values[0] + local_y * transform.values[4] + transform.values[12], local_x * transform.values[1] + local_y * transform.values[5] + transform.values[13],
+                        transform.values[14]};
+    footprint.half_length = std::max(0.0F, (bounds.maximum[0] - bounds.minimum[0]) * 0.5F * scale);
+    footprint.half_width = std::max(0.0F, (bounds.maximum[1] - bounds.minimum[1]) * 0.5F * scale);
+    footprint.heading = std::atan2(transform.values[1], transform.values[0]);
+    if (!std::isfinite(footprint.center.x) || !std::isfinite(footprint.center.y) || !std::isfinite(footprint.half_length) || !std::isfinite(footprint.half_width) || !std::isfinite(footprint.heading))
+    {
+        footprint = GroundFootprint{};
+        footprint.passability = passability_type;
+    }
+    return footprint;
+}
+
+float model_forward_heading(const Matrix4& transform) noexcept
+{
+    // Row 1 is the model's +Y axis in world space; forward is its negation.
+    return std::atan2(-transform.values[5], -transform.values[4]);
+}
+
+} // namespace eaw

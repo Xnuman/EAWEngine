@@ -6,6 +6,7 @@
 
 #include "core/status.hpp"
 #include "assets/model_geometry.hpp"
+#include "assets/spawn_catalog.hpp"
 #include "simulation/combat.hpp"
 #include "simulation/formation.hpp"
 #include "simulation/ground_map.hpp"
@@ -187,6 +188,10 @@ struct BattleMapAsset
 // geometry (through `cache` when given): no textures, meshes, or effects. `spawn_types` are the
 // XML types spawn orders may name; what their destruction leaves joins them.
 [[nodiscard]] Result<BattleMapAsset> build_battle_map(const AssetReader& reader, std::string_view map_path, AssetCache* cache = nullptr, std::span<const std::string> spawn_types = {});
+
+// The unit, structure, and prop types with a model for land or space maps (no death clones,
+// markers, effects, or backdrops), sorted case-insensitively (through the cached XML catalog).
+[[nodiscard]] std::vector<SpawnTypeInfo> spawnable_types(const AssetReader& reader, bool land, AssetCache* cache = nullptr);
 
 // What a battle needs from a built map (a BattleMapAsset; tests build it directly).
 struct BattleMap

@@ -5,7 +5,6 @@
 #include "simulation/formation.hpp"
 #include "simulation/pathfinding.hpp"
 #include "engine/combat_content.hpp"
-#include "engine/rts_control.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -50,6 +49,25 @@ Vector3 open_ground(const GroundMap& ground, Vector3 point, const std::uint32_t 
         point.y = open->y;
     }
     return point;
+}
+
+std::vector<Vector3> grid_targets(const Vector3& target, const std::size_t count, const float spacing)
+{
+    std::vector<Vector3> result;
+    if (count == 0)
+    {
+        return result;
+    }
+    const auto columns = static_cast<std::size_t>(std::ceil(std::sqrt(static_cast<double>(count))));
+    const auto rows = (count + columns - 1U) / columns;
+    result.reserve(count);
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        const auto column = static_cast<float>(index % columns) - static_cast<float>(columns - 1U) * 0.5F;
+        const auto row = static_cast<float>(index / columns) - static_cast<float>(rows - 1U) * 0.5F;
+        result.push_back({target.x + column * spacing, target.y + row * spacing, target.z});
+    }
+    return result;
 }
 
 BattleMap battle_map(const BattleMapAsset& asset)

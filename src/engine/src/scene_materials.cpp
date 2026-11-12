@@ -1,8 +1,5 @@
 #include "core/string_utils.hpp"
 #include "formats/dds_texture.hpp"
-#include "formats/xml_document.hpp"
-#include "assets/map_object_layout.hpp"
-#include "engine/combat_content.hpp"
 #include "engine/scene_builder_internal.hpp"
 
 #include <algorithm>

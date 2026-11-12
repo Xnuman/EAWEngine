@@ -452,25 +452,31 @@ The file-level split of each module.
   provider calls, `ScriptCall`), `script_values` (`ScriptValue` to and from Lua, with read limits),
   `script_stubs` (recording stubs), and `host_api_recorder` (what scripts called), sharing the
   private `script_host_internal.hpp`.
-- `src/engine` (`eaw_engine`), by category (its CMake source groups):
-  - battles: `battle` (setup, replayable orders, the order log), `battle_map_builder` (the battle
-    side of a map: placements, companies, spawnable types, ground), `battle_runtime` (a battle and
-    its scripts on the fixed clock, stepped alike by the sandbox and headless runs), `battle_runner`
-    (headless runs),
-    `battle_log` (reading and writing logs), `battle_scripts` (scripts in battles: the view, the
-    provider, blocks, and the script phase), `combat_content` (XML combat data translated into the
-    simulation's combat profiles);
+- `src/engine` (`eaw_engine`), by category (its CMake source groups). The categories depend one
+  way: scene building on presentation and battles, presentation on battles, the sandbox's parts on
+  all of them; input and cameras stand alone.
+  - battles: `battle` (setup, replayable orders, the order log, spawn grids), `battle_map` and
+    `battle_map_builder` (the battle side of a map: placements, companies, spawnable types, ground,
+    with the walk the visual build shares in `battle_map_build.hpp`), `battle_runtime` (a battle and
+    its scripts on the fixed clock), `battle_log` (reading and writing logs), `battle_scripts`
+    (scripts in battles: the view, the provider, blocks, and the script phase), `combat_content`
+    (XML combat data translated into the simulation's combat profiles), and `object_types` (what
+    gameplay reads of XML types and their models: the cached catalog, movement classes, type
+    fields, model footprints, hardpoint models);
+  - presentation: `visual_rig` (rigs, clips, palettes), `entity_look` (how entities and spawnable
+    types are drawn), `battle_frame` (a running battle's tick events and frames),
+    `scene_presentation`, `unit_animation`, `particle_effects` (`ParticleWorld`), `attached_effects`,
+    `battle_effects`, `battle_audio`, `projectile_visuals`, and `debug_draw`;
   - scene building, behind `visual_scene_builder.hpp` and sharing `scene_builder_internal.hpp`:
-    `scene_materials` (textures, materials, lighting), `scene_models` (models, palettes,
-    animations), `scene_particles` (particle effects and effect objects), `scene_projectiles`,
-    `scene_terrain` (terrain, liquids, tracks), `object_type_properties` (movement and speed fields
-    of XML types), and `visual_map_builder` (maps and runtime-spawnable packages);
-  - presentation: `battle_frame` (a running battle's tick events and frames), `scene_presentation`, `unit_animation`, `particle_effects` (`ParticleWorld`),
-    `attached_effects`, `battle_effects`, `battle_audio`, `projectile_visuals`, and `debug_draw`;
+    `scene_materials` (textures, materials, lighting), `scene_models` (models and rigs),
+    `scene_particles` (particle effects and effect objects), `scene_projectiles`, `scene_terrain`
+    (terrain, liquids, tracks), `type_looks` (what XML types say about their look), and
+    `visual_map_builder` (maps and runtime-spawnable packages);
   - input and cameras: `camera_controller`, `camera_math`, `rts_control`, `terrain_height`;
-  - the sandbox's testable parts: `sandbox_options` (command line), `sandbox_content` (background
-    builds and hot-reload checks), and `sandbox_debug_lines` (a pure function of a view struct);
-    `text_format` formats numbers for console and overlay text.
+  - the sandbox's testable parts and the headless command: `sandbox_options` (command line),
+    `sandbox_content` (background builds and hot-reload checks), `sandbox_debug_lines` (a pure
+    function of a view struct), `battle_runner` (headless runs), and `text_format` (numbers for
+    console and overlay text).
 - `src/render`: `eaw_render_contract` is `visual_scene.hpp`. The D3D12 backend's public interface is
   `d3d12_renderer.hpp` with `gpu_resource_lifetime.hpp`; the implementation class in
   `d3d12_renderer_impl.hpp` is defined by subject in `d3d12_renderer_device.cpp` (startup, swap

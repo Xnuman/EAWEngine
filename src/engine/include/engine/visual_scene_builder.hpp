@@ -7,9 +7,11 @@
 #include "assets/spawn_catalog.hpp"
 #include "simulation/simulation.hpp"
 #include "engine/battle_map.hpp"
+#include "engine/entity_look.hpp"
+#include "engine/object_types.hpp"
 #include "engine/particle_effects.hpp"
 #include "engine/projectile_visuals.hpp"
-#include "engine/terrain_height.hpp"
+#include "engine/visual_rig.hpp"
 
 #include <array>
 #include <cstddef>
@@ -25,129 +27,6 @@ namespace eaw {
 class AssetReader;
 class AssetCache;
 
-// What a unit is doing, as far as choosing its animation goes. Clips are found by the stock naming
-// convention <MODEL>_<ROLE>_<NN>.ALA beside the model (IDLE 539 stock files, MOVE 158, WALKMOVE 53,
-// ATTACK 160, ATTACKIDLE 108, DIE 301); NN numbers variants. Other roles (TURNL, CROUCHIDLE,
-// FW_DIE, ...) are not used yet.
-enum class AnimationRole : std::uint8_t
-{
-    idle,
-    move,
-    walk_move,
-    attack,
-    attack_idle,
-    die,
-    // A death by being run over (CRUSHED_nn clips; a Damage_Crush death clone's
-    // Specific_Death_Anim_Type Crushed).
-    crushed,
-    // Walkers' transitions: turning in place to the left and right (TURNL_nn, TURNR_nn loops), the
-    // clips before and after such a turn (TURNL_BEGIN, TURNL_END, ...), starting to walk
-    // (MOVESTART), and stopping (MOVE_ENDONE..MOVE_ENDFOUR: variants 0..3, by the stride's quarter).
-    turn_left,
-    turn_right,
-    turn_left_begin,
-    turn_left_end,
-    turn_right_begin,
-    turn_right_end,
-    move_start,
-    move_end,
-};
-
-// The role a clip file name (without directory and extension) plays for `model_stem`, and its
-// variant number; nullopt for other files and roles. Case-insensitive.
-struct ClipName
-{
-    AnimationRole role{};
-    std::uint32_t variant{};
-};
-[[nodiscard]] std::optional<ClipName> parse_clip_name(std::string_view file_stem, std::string_view model_stem);
-
-// How a type's clips play (presentation only). The move and walk clips play at their own rate when
-// the unit goes at a reference speed, given as a fraction of its top speed: XML
-// Movement_Animation_Speed and Walk_Animation_Speed are those speeds in Max_Speed's units (inferred
-// from the corpus: Movement_Animation_Speed equals Max_Speed on most stock units, 0.1366 against 0.5
-// on the AT-AT; Walk_Animation_Speed is about 0.4 of it), so playback scales by speed over
-// reference. The idle clip plays at Idle_Anim_00_Rate_Mod times its rate (props: 8 spins the huge
-// asteroid masses); a type without a move or walk clip keeps its idle clip while moving when
-// Allow_Idle_When_Moving (birds) instead of standing in its rest pose.
-struct AnimationProfile
-{
-    float move_reference{1.0F};
-    // 0: the engine's walk speed.
-    float walk_reference{};
-    float idle_rate{1.0F};
-    bool idle_when_moving{};
-    // Transition clips: before and after turning in place (XML Has_Pre_Turn_Anim) and when starting
-    // and stopping a walk (XML Walk_Transition).
-    bool pre_turn{};
-    bool walk_transition{};
-    // A turret (XML Turret_Bone_Name, Barrel_Bone_Name: the bones' names as game_object_name_crc, 0
-    // none): the turret bone's subtree yaws about the model's up axis to the simulation's turret
-    // direction (EntitySnapshot::turret_yaw, which also decides when it fires), and the barrel's
-    // pitches toward the target at `turret_rate` radians per second (Turret_Rotate_Speed per 30 Hz
-    // frame, a guess like Max_Rate_Of_Turn; 5 without it), within half of
-    // Turret_Elevate_Extent_Degrees each way (a guess).
-    std::uint32_t turret_bone{};
-    std::uint32_t barrel_bone{};
-    float turret_rate{};
-    float turret_pitch_limit{1.04719755F};
-};
-
-// A turn of a bone's subtree in model space about the bone's posed position (turret aiming).
-struct BoneTurn
-{
-    std::uint32_t bone{};
-    Vector3 axis;
-    float radians{};
-};
-
-struct VisualClip
-{
-    AnimationRole role{};
-    std::uint32_t variant{};
-    std::string path;
-    std::shared_ptr<const Animation> animation;
-};
-
-// A map mesh's skeleton for animation: the model, the inverse of its bind pose (empty when the bind
-// pose cannot be inverted; the mesh then stays in its rest pose), where its rest palette starts in
-// the scene palette, and its clips sorted by role and variant. A rest palette is the mesh's bind
-// pose: identity skin matrices, then the visibility half with attachments of bones hidden in the
-// bind pose collapsed (see sample_skin_palette).
-// A particle effect attached to a model bone (an ALO proxy naming a particle system). The effect's
-// texture indices point into the build's particle texture list.
-struct VisualEffectAttachment
-{
-    std::shared_ptr<const ParticleEffect> effect;
-    std::uint32_t bone{};
-    std::string proxy;
-    // A hardpoint's damage effect (the proxy hangs under the bone its XML Damage_Particles names):
-    // that bone, shown once the hardpoint is damaged (not driven yet), else -1.
-    std::int32_t damage_bone{-1};
-    // The mesh emit-from-mesh emitters spawn on (the mesh on the proxy bone's parent, in the proxy
-    // bone's space), when the effect has such emitters and the model has that mesh.
-    std::shared_ptr<const ParticleEmitMesh> emit_mesh;
-    // An engine effect (named pe_*, or under a hardpoint's Engine_Particles bone): it glows with the
-    // unit's speed.
-    bool engine{};
-};
-
-struct VisualRig
-{
-    std::shared_ptr<const Skeleton> skeleton;
-    std::vector<Matrix4> inverse_bind_pose;
-    std::uint32_t rest_offset{};
-    // Palette entries the mesh uses (its rest palette's size).
-    std::uint32_t palette_size{};
-    std::vector<VisualClip> clips;
-    // Particle effects on the model's visible proxies.
-    std::vector<VisualEffectAttachment> effects;
-    // Per bone: hidden while the entity is intact (a hardpoint's Damage_Decal bone and its children,
-    // whose scorch meshes appear once that hardpoint is destroyed). Applied to the palette's
-    // visibility half; empty when nothing is hidden.
-    std::vector<bool> intact_hidden;
-};
-
 struct VisualModelAsset
 {
     VisualScene scene;
@@ -158,91 +37,8 @@ struct VisualModelAsset
     bool visibility_palette{};
 };
 
-// A stock or mod map's placed objects as one instanced scene (no terrain yet). Counts describe
-// placed objects that could not be drawn and why.
-// A placed map object as a simulation entity: its spawn data and the scene instance that showed it
-// at load (mesh, original transform, colors), which presentation re-poses from snapshots.
-// How a unit's corpse looks, from the death clone it leaves under normal damage (XML Death_Clone
-// "Damage_Normal, <type>", else its first entry): the clone's Specific_Death_Anim_Index picks the
-// DIE variant and its Death_Persistence_Duration how long the wreck stays, in seconds (the AT-ST's
-// stays 30 s). Without a clone a corpse plays a DIE variant chosen by its id and stays 4 s after it.
-// A clip a death plays: its role and variant.
-struct DeathClip
-{
-    AnimationRole role{AnimationRole::die};
-    std::uint32_t variant{};
-};
-
-struct DeathStyle
-{
-    std::optional<std::uint32_t> die_variant;
-    // The clip of a death by crushing: the Damage_Crush death clone's Specific_Death_Anim_Type
-    // (Crushed, or DIE) and Specific_Death_Anim_Index.
-    std::optional<DeathClip> crushed;
-    std::optional<float> persistence_seconds;
-    // Leaves no corpse: removed the moment it dies (XML Remove_Upon_Death: fighters, debris,
-    // satellites, most props).
-    bool removed{};
-};
-
-// The most a flyer banks in a turn when its type names no Bank_Turn_Angle: 60 degrees (an engine
-// choice).
-inline constexpr float default_bank_limit = 1.04719755F;
-
-// How a placed object (a MapEntity, same index) is drawn: its scene instance, its death, the most a
-// flyer banks in a turn (type_bank_limit, radians), whether it is hidden (an editor marker, XML
-// Is_Marker: flags, script points, skirmish base positions, which stays an entity so scripts can
-// find it, or an entity whose model could not be added to the scene; `instance` is then unused), and
-// how its clips play.
-struct MapEntityLook
-{
-    std::uint32_t instance{};
-    DeathStyle death;
-    float bank_limit{default_bank_limit};
-    bool hidden{};
-    AnimationProfile animation;
-};
-
-// XML Max_Speed values are small (infantry 0.8, AT-AT 0.5, TIE fighter 4.5), consistent with world
-// units per logic frame. The logic rate is unmeasured; until it is, speeds are scaled as if per 1/30 s.
-// This is a provisional engine assumption, not compatibility evidence.
-// Alamo models face -Y: every stock muzzle and fire bone sits at negative Y and points along -Y
-// (T2B, AT-ST, X-wing, Star Destroyer; see docs/compatibility-research.md). An entity's heading is
-// the direction of its model's forward axis about +Z, so an unrotated model has this heading.
-inline constexpr float identity_model_heading = -half_pi;
-
-// The heading of a row-vector model transform: the direction of its forward (-Y) axis about +Z.
-[[nodiscard]] float model_forward_heading(const Matrix4& transform) noexcept;
-
-inline constexpr float provisional_max_speed_scale = 30.0F;
-// XML Max_Rate_Of_Turn read as degrees per 30 Hz frame, like Max_Speed: infantry 16 (480 degrees per
-// second), tanks 12-20, capital ships 0.4-1.5 (12-45 degrees per second). Provisional.
-inline constexpr float provisional_turn_rate_scale = 30.0F * pi / 180.0F;
-// A turret's turn rate without Turret_Rotate_Speed (degrees per frame; the stock values run 2 to
-// 10; an engine choice).
-inline constexpr float default_turret_rotate_speed = 5.0F;
-// XML OverrideAcceleration/OverrideDeceleration read as Max_Speed units per 30 Hz frame per frame
-// (Calamari cruiser .02: full speed in 2.5 seconds; T2B .2: in 0.4 seconds). A guess.
-inline constexpr float provisional_acceleration_scale = provisional_max_speed_scale * 30.0F;
-
-// How a spawnable type (a SpawnableType, same index) is drawn: its mesh in the map scene, its team
-// color, XML LOD_Bias (VisualInstance::lod_bias), XML Scale_Factor (the size its model is drawn
-// at; its model-derived footprint and hardpoint positions use it too), its death, the most it
-// banks in a turn when it flies (type_bank_limit, radians), how its clips play, and whether it is
-// hidden (its model could not be added to the scene; `mesh` is then unused). A company's mesh is its
-// first member's (unused: companies spawn as their members).
-struct SpawnableLook
-{
-    std::uint32_t mesh{};
-    bool hidden{};
-    Color team_color{white};
-    float lod_bias{1.0F};
-    float scale{1.0F};
-    DeathStyle death;
-    float bank_limit{default_bank_limit};
-    AnimationProfile animation;
-};
-
+// A stock or mod map built for drawing: its scene, its battle side, and how each entity and type is
+// drawn, with counts of what could not be drawn and why.
 struct VisualMapAsset
 {
     VisualScene scene;
@@ -329,9 +125,6 @@ struct SpawnablePackage
 // Builds a type for a land or space map through the same cached XML catalog, movement classes, and
 // combat data as build_visual_map (an error when the type has no model for that context).
 [[nodiscard]] Result<SpawnablePackage> build_spawnable_package(const AssetReader& reader, std::string_view type_name, bool land, AssetCache* cache = nullptr, const MapBuildOptions& options = {});
-// The unit, structure, and prop types with a model for land or space maps (no death clones,
-// markers, effects, or backdrops), sorted case-insensitively (through the cached XML catalog).
-[[nodiscard]] std::vector<SpawnTypeInfo> spawnable_types(const AssetReader& reader, bool land, AssetCache* cache = nullptr);
 // Points the rigs' effects at renderer texture indices: `renderer_textures[i]` is where the
 // renderer placed particle texture i (D3d12Renderer::add_textures). Effects shared between rigs stay
 // shared.
@@ -343,11 +136,5 @@ void renumber_effect_textures(std::span<VisualRig> rigs, std::span<std::shared_p
 // Skin matrices for the model's bones (bind pose without an animation). With a visibility palette,
 // a second half repeats them, collapsed to a point for bones the pose hides.
 [[nodiscard]] std::vector<Matrix4> sample_skin_palette(const VisualModelAsset& asset, const Animation* animation, float seconds);
-// Appends a rig's palette at `seconds` of `animation` (rig.palette_size entries) to `out`. Without
-// an inverse bind pose it appends the rest pose.
-void append_rig_palette(const VisualRig& rig, const Animation& animation, float seconds, std::vector<Matrix4>& out);
-// Appends a rig's palette for a local pose (a blend of clips; see blend_pose), its bones turned by
-// `turns` in order (each bone's subtree about the bone's posed position).
-void append_rig_local_palette(const VisualRig& rig, std::span<const LocalBone> pose, std::vector<Matrix4>& out, std::span<const BoneTurn> turns = {});
 
 } // namespace eaw

@@ -7,7 +7,7 @@
 #include "assets/game_object_catalog.hpp"
 #include "assets/map_object_layout.hpp"
 #include "assets/resource_loaders.hpp"
-#include "engine/scene_builder_internal.hpp"
+#include "engine/object_types.hpp"
 #include "engine/scene_presentation.hpp"
 
 #include <algorithm>
@@ -64,7 +64,7 @@ AudioModeSettings read_audio_mode_settings(const AssetReader& reader, const bool
 BattleAudio::BattleAudio(const AssetReader& reader, AssetCache* cache, AudioDevice& device, std::string language, const bool land, const std::uint64_t seed)
     : reader_(reader), cache_(cache), device_(device), language_(std::move(language)), settings_(read_audio_mode_settings(reader, land)), random_(seed)
 {
-    const auto entry = ResourceManager(reader, cache).get<scene_build::CachedCatalog>(scene_build::xml_catalog_path);
+    const auto entry = ResourceManager(reader, cache).get<CachedCatalog>(xml_catalog_path);
     events_ = SoundEventCatalog::build(*entry->database);
     catalog_ = &entry->catalog;
     catalog_owner_ = entry;
@@ -166,8 +166,8 @@ const BattleAudio::TypeSounds& BattleAudio::type_sounds(const std::string_view t
                 sounds.hardpoint_lost.emplace_back(game_object_name_crc(kind), std::string(event));
             }
         }
-        sounds.ambient_moving_min = std::max(0.0F, scene_build::type_float_field(*catalog_, definition, "SFXEvent_Ambient_Moving_Min_Delay_Seconds"));
-        sounds.ambient_moving_max = std::max(sounds.ambient_moving_min, scene_build::type_float_field(*catalog_, definition, "SFXEvent_Ambient_Moving_Max_Delay_Seconds"));
+        sounds.ambient_moving_min = std::max(0.0F, type_float_field(*catalog_, definition, "SFXEvent_Ambient_Moving_Min_Delay_Seconds"));
+        sounds.ambient_moving_max = std::max(sounds.ambient_moving_min, type_float_field(*catalog_, definition, "SFXEvent_Ambient_Moving_Max_Delay_Seconds"));
     }
     return type_sounds_.emplace(std::move(key), std::move(sounds)).first->second;
 }

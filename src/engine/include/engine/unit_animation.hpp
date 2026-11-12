@@ -30,7 +30,9 @@
 
 #include "render/visual_scene.hpp"
 #include "simulation/simulation.hpp"
-#include "engine/visual_scene_builder.hpp"
+#include "engine/entity_look.hpp"
+#include "engine/object_types.hpp"
+#include "engine/visual_rig.hpp"
 
 #include <array>
 #include <cstddef>
