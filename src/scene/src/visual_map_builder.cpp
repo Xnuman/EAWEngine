@@ -106,7 +106,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     battle.name = resolved->virtual_path;
     std::vector<BuiltModel> entity_models;
     std::vector<BuiltModel> spawnable_models;
-    build_battle_map(resources, {map, catalog, layout, *movement_entry, *combat_entry}, spawn_types, battle, entity_models, spawnable_models);
+    std::vector<BuiltModel> decoration_models;
+    build_battle_map(resources, {map, catalog, layout, *movement_entry, *combat_entry}, spawn_types, battle, entity_models, spawnable_models, &decoration_models);
 
     auto& scene = asset.scene;
     scene.name = resolved->virtual_path;
@@ -120,10 +121,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         asset.tracks = append_tracks(builder, map);
     }
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
-    for (std::size_t index = 0; index < battle.entities.size(); ++index)
+    // How a placed model is drawn: its mesh (once per model and attachments), its instance, and its
+    // look; `combat` (null for decorations) names its damage bones.
+    const auto draw_placed = [&](const BuiltModel& model, const CombatProfile* combat)
     {
-        const auto& entity = battle.entities[index];
-        const auto& model = entity_models[index];
         auto [entry, inserted] = meshes.try_emplace(attached_mesh_key(model.path, model.attachments));
         if (inserted)
         {
@@ -133,7 +134,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         if (model.type != nullptr)
         {
             note_animation_source(builder, model.path, catalog, *model.type);
-            note_damage_bones(builder, model.path, entity.spawn.combat);
+            if (combat != nullptr)
+            {
+                note_damage_bones(builder, model.path, *combat);
+            }
             look.death = type_death_style(catalog, *model.type);
             look.bank_limit = type_bank_limit(catalog, *model.type);
             look.hidden = type_is_marker(catalog, *model.type);
@@ -141,12 +145,11 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         }
         if (!entry->second)
         {
-            // The entity exists (its model has geometry) but is not drawn.
-            scene.warnings.push_back(model.path + ": has drawable geometry but could not be added to the scene; the entity is not drawn");
+            // The object exists (its model has geometry) but is not drawn.
+            scene.warnings.push_back(model.path + ": has drawable geometry but could not be added to the scene; the object is not drawn");
             look.hidden = true;
             ++asset.undrawn_entities;
-            asset.entity_looks.push_back(look);
-            continue;
+            return look;
         }
         // Instances start in their mesh's rest pose (build_map_rigs sets the bone offsets).
         VisualInstance instance{*entry->second, model.transform};
@@ -163,7 +166,15 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         }
         look.instance = static_cast<std::uint32_t>(scene.instances.size());
         scene.instances.push_back(instance);
-        asset.entity_looks.push_back(look);
+        return look;
+    };
+    for (std::size_t index = 0; index < battle.entities.size(); ++index)
+    {
+        asset.entity_looks.push_back(draw_placed(entity_models[index], &battle.entities[index].spawn.combat));
+    }
+    for (const auto& model : decoration_models)
+    {
+        asset.decorations.push_back({draw_placed(model, nullptr), translation(model.transform), model_forward_heading(model.transform), model.player});
     }
 
     // Backdrop: the active environment names primary and secondary sky domes. Each name is an XML

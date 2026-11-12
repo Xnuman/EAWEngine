@@ -164,6 +164,8 @@ struct BattleMapAsset
     std::size_t company_members{};
     // Placements whose model has no drawable geometry, so they are no entities (model_geometry).
     std::size_t placements_without_geometry{};
+    // Placements of decorations (XML Is_Decoration): drawn, never simulated, so no entities.
+    std::size_t decorations{};
     // Land companies arranged in formation.
     std::size_t expanded_companies{};
     // The next company team id (FormationTeam::id; battles continue from it).

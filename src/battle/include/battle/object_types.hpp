@@ -179,6 +179,10 @@ float type_scale_factor(const GameObjectCatalog& catalog, const XmlDefinition& d
 // its file size about its own origin.
 Matrix4 scaled_model_transform(Matrix4 transform, float scale) noexcept;
 
+// XML Is_Decoration: the object is drawn but never simulated (a developer comment in the stock XML:
+// decorations are neither simulated nor synchronized, and only idle objects may be decorations).
+bool type_is_decoration(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+
 // How many times slower a ship turns in place than on the move: GameConstants'
 // TurnInPlaceSlowdown for its Space_Layer (the first named: Corvette, Frigate, Capital), 1 for
 // other layers. Recorded for the corvette layer in the FoC debug build (factor 2: a corvette turns

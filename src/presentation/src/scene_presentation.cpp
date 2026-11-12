@@ -41,7 +41,7 @@ float flight_bank(const float yaw_rate, const float limit) noexcept
 }
 
 ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<const MapEntity> entities, const std::span<const MapEntityLook> looks,
-                                     const std::span<const std::optional<EntityId>> ids, const std::span<const SpawnableLook> spawnable)
+                                     const std::span<const std::optional<EntityId>> ids, const std::span<const SpawnableLook> spawnable, const std::span<const Decoration> decorations)
 {
     EAW_ASSERT_MSG(ids.size() == entities.size() && looks.size() == entities.size(), "scene presentation needs one id slot and one look per map entity");
     for (const auto& mesh : scene.meshes)
@@ -75,6 +75,23 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         }
     }
     add_spawnable(spawnable);
+    for (std::size_t index = 0; index < decorations.size(); ++index)
+    {
+        const auto& decoration = decorations[index];
+        if (decoration.look.hidden)
+        {
+            continue;
+        }
+        EAW_ASSERT_MSG(decoration.look.instance < scene.instances.size() && !scene.instances[decoration.look.instance].background, "a decoration names a scene instance it does not have");
+        const EntityId id{decoration_id_base + static_cast<std::uint32_t>(index), 1};
+        templates_.emplace(entity_key(id), Template{scene.instances[decoration.look.instance], decoration.heading, decoration.look.death, decoration.look.bank_limit, decoration.look.animation});
+        EntitySnapshot snapshot;
+        snapshot.id = id;
+        snapshot.position = decoration.position;
+        snapshot.heading = decoration.heading;
+        snapshot.owner = decoration.owner;
+        decoration_snapshots_.push_back(snapshot);
+    }
 }
 
 void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out,

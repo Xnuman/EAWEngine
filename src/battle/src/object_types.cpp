@@ -346,6 +346,11 @@ float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& defi
     return rate > 0.0F ? legacy_units::degrees_per_frame(rate) * mode_multiplier : 0.0F;
 }
 
+bool type_is_decoration(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    return TypeFields(catalog, definition, nullptr).flag("Is_Decoration", false);
+}
+
 float type_turn_in_place_slowdown(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content)
 {
     const auto* layer = catalog.field(definition, "Space_Layer").field;

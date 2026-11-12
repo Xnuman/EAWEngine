@@ -50,9 +50,10 @@ struct BattleMapSources
 };
 
 // The walk behind build_battle_map: fills `asset` (its name already set) and, per entity and per
-// spawnable type (same index), the model it was built from.
+// spawnable type (same index), the model it was built from, and the models of the decorations
+// placed (not entities; null when nothing draws them).
 void build_battle_map(ResourceManager resources, const BattleMapSources& sources, std::span<const std::string> spawn_types, BattleMapAsset& asset, std::vector<BuiltModel>& entity_models,
-                      std::vector<BuiltModel>& spawnable_models);
+                      std::vector<BuiltModel>& spawnable_models, std::vector<BuiltModel>* decoration_models = nullptr);
 
 // What adding a spawnable type needs: the resources its model loads through, the XML catalog and
 // movement classes, the model context (land or space), a combat profile source (one per type), and

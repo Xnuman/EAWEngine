@@ -3,6 +3,7 @@
 // How a battle's entities and spawnable types are drawn, beside what the battle knows of them
 // (battle_map.hpp): their mesh or scene instance, team color, scale, death, bank, and clips.
 
+#include "math/vector.hpp"
 #include "render/color.hpp"
 #include "presentation/visual_rig.hpp"
 
@@ -68,6 +69,16 @@ struct SpawnableLook
     DeathStyle death;
     float bank_limit{default_bank_limit};
     AnimationProfile animation;
+};
+
+// A decoration (XML Is_Decoration): a placed object that is drawn and animated but never simulated.
+// Presentation poses it from `position` and `heading` like an idle entity of `owner`.
+struct Decoration
+{
+    MapEntityLook look;
+    Vector3 position;
+    float heading{};
+    std::uint32_t owner{};
 };
 
 } // namespace eaw

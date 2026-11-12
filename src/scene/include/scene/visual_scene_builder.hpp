@@ -60,6 +60,8 @@ struct VisualMapAsset
     std::size_t player_colored{};
     // How each of battle.entities and battle.spawnable is drawn (same index).
     std::vector<MapEntityLook> entity_looks;
+    // Decorations (XML Is_Decoration), drawn and animated by presentation, never simulated.
+    std::vector<Decoration> decorations;
     std::vector<SpawnableLook> spawnable_looks;
     // One rig per scene mesh (same index), and the scene palette of every mesh's rest pose; each
     // instance's bone_offset is its mesh's rest offset. Upload it with the scene (the renderer

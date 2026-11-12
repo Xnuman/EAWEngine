@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 160 |
-| `partial` | 20 |
-| `gap` | 234 |
+| `done` | 162 |
+| `partial` | 21 |
+| `gap` | 231 |
 | `needs` | 683 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -225,7 +225,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-47 done, 3 partial, 52 gap, 33 needs.
+48 done, 3 partial, 51 gap, 33 needs.
 
 ### Health, shields, armor, and energy
 
@@ -896,7 +896,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Production, economy, tech, galactic play, AI, visibility, and identity
 
-3 done, 2 partial, 8 gap, 223 needs, 4 n/a.
+4 done, 2 partial, 7 gap, 223 needs, 4 n/a.
 
 ### Faction, identity, and scripts
 
@@ -1188,7 +1188,7 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Is_Marker` | `done` | not drawn; stays an entity for scripts |
 | `Is_Dummy` | `gap` |  |
-| `Is_Decoration` | `gap` |  |
+| `Is_Decoration` | `done` | drawn and animated, never simulated; outside the state hash; still part of the map extent |
 | `Is_Discardable` | `n/a` | never true in stock |
 | `Is_Branched_Map_Discardable` | `n/a` | never true in stock |
 | `Is_Editor_Placed` | `n/a` | editor flag |
@@ -1215,7 +1215,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Models, rendering, animation, user interface, and text
 
-15 done, 4 partial, 88 gap, 83 needs, 3 n/a.
+15 done, 5 partial, 87 gap, 83 needs, 3 n/a.
 
 ### Core structure (summary; see the overview chapters)
 

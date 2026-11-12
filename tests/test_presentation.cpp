@@ -107,6 +107,18 @@ void test_scene_presentation()
     require(frame.instances.size() == 2 && frame.entities.size() == 2 && frame.instances[0].background && frame.entities[1] == runtime.battle().world().snapshot().entities[0].id &&
                 frame.palette.empty() && frame.projectile_serials.empty(),
             "a battle frame must hold the backgrounds and the posed entities");
+
+    // A decoration (XML Is_Decoration) is drawn and posed like an idle entity under an id of its
+    // own; the simulation never sees it.
+    const std::array<eaw::Decoration, 1> decorations{{{eaw::MapEntityLook{1}, {40.0F, 0.0F, 0.0F}, 0.0F, 0U}}};
+    const eaw::ScenePresentation decorated(scene, {}, {}, {}, {}, decorations);
+    const auto decoration_snapshots = decorated.decoration_snapshots();
+    std::vector<eaw::VisualInstance> drawn;
+    std::vector<eaw::EntityId> drawn_ids;
+    decorated.build(decoration_snapshots, {}, drawn, drawn_ids);
+    require(decoration_snapshots.size() == 1 && decoration_snapshots[0].id.index == eaw::decoration_id_base && drawn.size() == 2 && drawn_ids[1] == decoration_snapshots[0].id &&
+                std::fabs(drawn[1].transform.values[12] - 40.0F) < 1.0e-4F,
+            "a decoration must be drawn where it was placed, under its own id");
 }
 
 // Unit animation: clip names map to roles, snapshots choose roles, entities share sampled poses,

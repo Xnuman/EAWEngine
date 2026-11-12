@@ -226,8 +226,8 @@ int run_battle(const SandboxOptions& options, const VirtualFileSystem& vfs)
     }
     const auto& asset = built.value();
     std::cout << "Battle: " << map_name << (asset.land ? " (land)" : " (space)") << ", built in "
-              << format_fixed(std::chrono::duration<double>(std::chrono::steady_clock::now() - build_start).count(), 2) << " s | " << asset.entities.size() << " placed objects, "
-              << asset.spawnable.size() << " spawnable types\n";
+              << format_fixed(std::chrono::duration<double>(std::chrono::steady_clock::now() - build_start).count(), 2) << " s | " << asset.entities.size() << " placed objects (" << asset.decorations
+              << " decorations, not simulated), " << asset.spawnable.size() << " spawnable types\n";
     for (const auto& type : spawn_types)
     {
         if (std::ranges::find(asset.spawnable, type, &SpawnableType::type_name) == asset.spawnable.end())

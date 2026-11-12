@@ -39,6 +39,10 @@ namespace eaw {
     return (static_cast<std::uint64_t>(id.generation) << 32U) | id.index;
 }
 
+// The first entity index of decorations (ScenePresentation::decoration_snapshots), far above the
+// indices the simulation hands out.
+inline constexpr std::uint32_t decoration_id_base = 0x40000000U;
+
 class ScenePresentation final
 {
 public:
@@ -46,7 +50,7 @@ public:
     // `entities`, as Battle::map_entity_ids; empty ids are skipped) and one template per spawnable
     // type under spawnable_visual(type index).
     ScenePresentation(const VisualScene& scene, std::span<const MapEntity> entities, std::span<const MapEntityLook> looks, std::span<const std::optional<EntityId>> ids,
-                      std::span<const SpawnableLook> spawnable);
+                      std::span<const SpawnableLook> spawnable, std::span<const Decoration> decorations = {});
 
     // Builds this frame's instances: static backgrounds first, then one per snapshot entity in
     // snapshot order. `entities_out[i]` names the entity behind `instances_out[i]` (invalid for
@@ -58,6 +62,14 @@ public:
     // Meshes added to the renderer's mesh library at runtime (D3d12Renderer::add_meshes), in order,
     // and spawnable types added to the battle (Battle::add_spawnable), in the same order as there.
     void add_meshes(std::span<const VisualMesh> meshes);
+    // Idle snapshots of the decorations, with ids of their own (decoration_id_base on): append them to
+    // the world's snapshot so decorations are posed, animated, and given their effects like
+    // entities, though the simulation never sees them.
+    [[nodiscard]] std::span<const EntitySnapshot> decoration_snapshots() const noexcept
+    {
+        return decoration_snapshots_;
+    }
+
     void add_spawnable(std::span<const SpawnableLook> types);
 
     // The instance a dead entity leaves behind, posed where it died, with its type's corpse style,
@@ -87,6 +99,7 @@ private:
     std::unordered_map<std::uint64_t, Template> templates_;
     // By spawnable type index (visual - spawnable_visual_base); none for a hidden type.
     std::vector<std::optional<Template>> spawn_templates_;
+    std::vector<EntitySnapshot> decoration_snapshots_;
     std::vector<std::string> mesh_names_;
     std::vector<Vector3> mesh_minimum_;
     std::vector<Vector3> mesh_maximum_;

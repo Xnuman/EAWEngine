@@ -242,7 +242,8 @@ struct SandboxSession
     void write_finished_capture();
 
     // Showing built content, hot reload (sandbox_session_content.cpp).
-    void start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, std::span<const eaw::MapEntityLook> looks, std::span<const eaw::SpawnableLook> spawnable_looks, std::string name);
+    void start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, std::span<const eaw::MapEntityLook> looks, std::span<const eaw::SpawnableLook> spawnable_looks, std::string name,
+                          std::span<const eaw::Decoration> decorations = {});
     // Registers particle textures with the renderer and points the effects at them (white when
     // registration fails); returns where each texture landed (empty on failure).
     std::vector<std::uint32_t> register_particle_textures(std::vector<eaw::VisualTexture> textures, std::span<eaw::VisualRig> rigs, std::span<std::shared_ptr<const eaw::ParticleEffect>> named_effects,

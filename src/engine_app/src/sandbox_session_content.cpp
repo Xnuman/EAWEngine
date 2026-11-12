@@ -17,11 +17,11 @@
 namespace eaw::engine_app {
 
 void SandboxSession::start_simulation(const eaw::VisualScene& scene, const eaw::BattleMap& map, const std::span<const eaw::MapEntityLook> looks,
-                                      const std::span<const eaw::SpawnableLook> spawnable_looks, std::string name)
+                                      const std::span<const eaw::SpawnableLook> spawnable_looks, std::string name, const std::span<const eaw::Decoration> decorations)
 {
     runtime.emplace(map, std::move(name), options.scripts ? &vfs : nullptr);
     world = &runtime->battle().world();
-    presentation.emplace(scene, map.entities, looks, runtime->battle().map_entity_ids(), spawnable_looks);
+    presentation.emplace(scene, map.entities, looks, runtime->battle().map_entity_ids(), spawnable_looks, decorations);
     previous_snapshot = world->snapshot();
     selection.clear();
     float extent = 0.0F;
@@ -113,7 +113,8 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
                   << '\n'
                   << "Objects: " << scene.instances.size() << " instances of " << scene.meshes.size() << " models | squadron members expanded: " << visual_map.battle.expanded_members
                   << " | companies: " << visual_map.battle.expanded_companies << " (" << visual_map.battle.company_members
-                  << " members) | obstacle footprints: " << visual_map.battle.obstacle_footprints << " | space obstacles: " << visual_map.battle.space_obstacles << "\n"
+                  << " members) | obstacle footprints: " << visual_map.battle.obstacle_footprints << " | space obstacles: " << visual_map.battle.space_obstacles
+                  << " | decorations: " << visual_map.battle.decorations << "\n"
                   << "Not drawn: " << visual_map.battle.untyped << " untyped, " << visual_map.battle.without_model << " without model, " << visual_map.battle.missing_model_files
                   << " missing model files, " << visual_map.battle.unexpanded_containers << " containers without members, " << visual_map.battle.placements_without_geometry
                   << " models without geometry, " << visual_map.undrawn_entities << " undrawable\n"
@@ -153,7 +154,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
             particle_texture_copy = visual_map.particle_textures;
         }
         const auto placed = register_particle_textures(std::move(visual_map.particle_textures), visual_map.rigs, visual_map.effects, &visual_map.effect_objects, &visual_map.projectile_visuals);
-        start_simulation(layout, eaw::battle_map(visual_map.battle), visual_map.entity_looks, visual_map.spawnable_looks, *options.map);
+        start_simulation(layout, eaw::battle_map(visual_map.battle), visual_map.entity_looks, visual_map.spawnable_looks, *options.map, visual_map.decorations);
         audio.reset();
         audio.emplace(vfs, &asset_cache, *audio_device, options.language, visual_map.battle.land);
         animator.emplace(visual_map.rigs, visual_map.rest_palette);

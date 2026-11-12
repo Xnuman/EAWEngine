@@ -226,7 +226,7 @@ std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::
 }
 
 void build_battle_map(const ResourceManager resources, const BattleMapSources& sources, const std::span<const std::string> spawn_types, BattleMapAsset& asset, std::vector<BuiltModel>& entity_models,
-                      std::vector<BuiltModel>& spawnable_models)
+                      std::vector<BuiltModel>& spawnable_models, std::vector<BuiltModel>* decoration_models)
 {
     const auto& map = sources.map;
     const auto& catalog = sources.catalog;
@@ -269,6 +269,7 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
     // radius fall back to and the map's extent is measured from.
     std::unordered_map<std::string, ModelBounds> model_bounds;
     std::vector<ModelBounds> entity_bounds;
+    std::vector<std::pair<ModelBounds, Matrix4>> decoration_extents;
     std::vector<CompanyMember> company_members;
     for (const auto& placement : layout.placements)
     {
@@ -297,6 +298,17 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
         const auto model_scale = placement.type != nullptr ? type_scale_factor(catalog, *placement.type, asset.warnings) : 1.0F;
         const auto matrix = scaled_model_transform(placement.transform, model_scale);
         const auto& placed = map.placed_objects[placement.object_index];
+        // Decorations are drawn, never simulated; they still frame the map (its extent).
+        if (placement.type != nullptr && type_is_decoration(catalog, *placement.type))
+        {
+            ++asset.decorations;
+            decoration_extents.emplace_back(bounds, matrix);
+            if (decoration_models != nullptr)
+            {
+                decoration_models->push_back({placement.model_path, std::move(attachments), placement.type, matrix, model_scale, placed.player});
+            }
+            continue;
+        }
         EntitySpawn spawn;
         spawn.type_name = placement.type != nullptr ? placement.type->name : std::string{};
         spawn.owner = placed.player;
@@ -372,6 +384,10 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
     for (std::size_t index = 0; index < entity_models.size(); ++index)
     {
         add_placed_bounds(asset.extent, entity_bounds[index], entity_models[index].transform);
+    }
+    for (const auto& [bounds, transform] : decoration_extents)
+    {
+        add_placed_bounds(asset.extent, bounds, transform);
     }
     constexpr std::size_t maximum_reported_diagnostics = 50;
     for (std::size_t index = 0; index < layout.diagnostics.size() && index < maximum_reported_diagnostics; ++index)

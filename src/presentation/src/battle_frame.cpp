@@ -36,7 +36,10 @@ void build_battle_frame(const BattleRuntime& runtime, const SimSnapshot& previou
     const auto& current = runtime.battle().world().snapshot();
     const auto interpolation = runtime.interpolation();
     const auto tick_seconds = static_cast<float>(runtime.tick_seconds());
-    const auto entities = interpolate_snapshots(previous, current, interpolation);
+    auto entities = interpolate_snapshots(previous, current, interpolation);
+    // Decorations are posed and animated like idle entities the simulation never sees.
+    const auto decorations = presenters.presentation.decoration_snapshots();
+    entities.insert(entities.end(), decorations.begin(), decorations.end());
     presenters.presentation.build(entities, selected, frame.instances, frame.entities, &frame.animations);
     // Model projectiles follow the entities, without an entity (never picked) and at rest pose.
     const auto first_projectile = frame.instances.size();
