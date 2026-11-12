@@ -121,6 +121,7 @@ void test_spawn_catalog()
                 "<SpaceUnit Name=\"Frigate_Variant\"><Variant_Of_Existing_Type>Frigate</Variant_Of_Existing_Type></SpaceUnit>"
                 "<Props_Generic Name=\"barrel\"><Land_Model_Name>W_Barrel.alo</Land_Model_Name></Props_Generic>"
                 "<GroundCompany Name=\"Company_Without_Model\" />"
+                "<HeroCompany Name=\"Hero_Team\"><Company_Units>Tank, Missing</Company_Units></HeroCompany>"
                 "<SFXEvent Name=\"Tank\" />"
                 "</Units>";
     }
@@ -128,10 +129,11 @@ void test_spawn_catalog()
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
     const auto types = eaw::list_spawn_types(vfs);
     std::filesystem::remove_all(root, ignored);
-    require(types.size() == 4 && types[0].name == "barrel" && types[1].name == "Frigate" && types[2].name == "Frigate_Variant" && types[3].name == "Tank",
-            "spawnable types must be every named definition with a model, sorted case-insensitively");
-    require(!types[0].unit && types[1].unit && types[1].space_model && !types[1].land_model && types[2].space_model && types[3].land_model && types[3].kind == "GroundVehicle",
+    require(types.size() == 5 && types[0].name == "barrel" && types[1].name == "Frigate" && types[2].name == "Frigate_Variant" && types[3].name == "Hero_Team" && types[4].name == "Tank",
+            "spawnable types must be every named definition with a model, or a company with a member that has one, sorted case-insensitively");
+    require(!types[0].unit && types[1].unit && types[1].space_model && !types[1].land_model && types[2].space_model && types[4].land_model && types[4].kind == "GroundVehicle",
             "spawnable types must record their kind and model contexts, through variants");
+    require(types[3].unit && types[3].land_model && !types[3].space_model, "a company without a model must spawn where its members have models");
 }
 
 const ModuleRegistrar registrar("launcher", {

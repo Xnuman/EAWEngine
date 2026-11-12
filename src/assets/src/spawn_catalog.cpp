@@ -40,8 +40,22 @@ std::vector<SpawnTypeInfo> list_spawn_types(const XmlAssetDatabase& database, co
         {
             continue;
         }
-        const bool land = catalog.model(definition, GameModelContext::land).has_value();
-        const bool space = catalog.model(definition, GameModelContext::space).has_value();
+        bool land = catalog.model(definition, GameModelContext::land).has_value();
+        bool space = catalog.model(definition, GameModelContext::space).has_value();
+        // A company or squadron without a model of its own (hero companies such as Han_Solo_Team or
+        // General Veers') spawns where one of its members has one.
+        for (const auto* field : {"Company_Units", "Squadron_Units"})
+        {
+            const auto* members = land && space ? nullptr : catalog.field(definition, field).field;
+            for (const auto member : members != nullptr ? split_type_names(members->text) : std::vector<std::string_view>{})
+            {
+                for (const auto* candidate : catalog.find(member))
+                {
+                    land = land || catalog.model(*candidate, GameModelContext::land).has_value();
+                    space = space || catalog.model(*candidate, GameModelContext::space).has_value();
+                }
+            }
+        }
         if ((!land && !space) || !seen.insert(ascii_lower(definition.name)).second)
         {
             continue;

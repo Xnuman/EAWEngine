@@ -130,6 +130,8 @@ Eighth slice done (2026-11-10): scripted conditions. Simulation commands `set_in
 
 Hardpoint loss reports (2026-11-12): when a hardpoint is destroyed, its owner reports it in its own voice: the owner type's XML `SFXEvent_Hardpoint_Destroyed` entry ("HARD_POINT_<kind>, event") for the hardpoint's `Type` (`HardpointProfile::type_key`, `HardpointDeathSnapshot::type_key`, presentation only); empty entries stay silent. Played for every owner until the player layer decides whose reports are heard.
 
+Spawnable hero companies (2026-11-12, reported by the owner: the spawn menu's Heroes lacked most named heroes): the spawn catalog lists a company or squadron without a model of its own where one of its members has a model (`list_spawn_types`), so the hero companies the game fields (`Darth_Team`, `Han_Solo_Team` with Chewbacca, `Luke_Skywalker_Jedi_Team`, `Emperor_Palpatine_Team`; 36 in FoC) appear; spawning them already worked.
+
 Assist lines (2026-11-12, from the owner's account of the original): after an order's response, the first unit of another type in the same order with an assist line answers 0.8 s after the response has finished (XML `SFXEvent_Assist_Move` for moves, `SFXEvent_Assist_Attack` for attacks; `BattleAudio::play_assist_response`: a pending event that restarts its pause while a voice of its overlap name plays, dropped after 5 s; the owner noticed lines being lost when they started 0.8 s after the response began).
 
 Group lines (2026-11-12): a sandbox order to more than one unit is answered by a member whose type has a group line (heroes: XML `SFXEvent_Group_Move` for moves, `SFXEvent_Group_Attack` for attacks and attack-moves), else by the first unit's usual response (`BattleAudio::play_group_response`; who speaks is an engine choice).
