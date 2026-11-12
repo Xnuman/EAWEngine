@@ -74,6 +74,7 @@ void test_combat_content()
                 "<Container Name=\"Row_Team\"><ContainerArrangement> Rows </ContainerArrangement><FormationSpacing>1</FormationSpacing></Container>"
                 "<GroundCompany Name=\"Row_Company\"><Create_Team_Type>Row_Team</Create_Team_Type><Max_Squad_Size>9</Max_Squad_Size></GroundCompany>"
                 "<GroundInfantry Name=\"Ragged\"><FormationRaggedness>1.6</FormationRaggedness></GroundInfantry>"
+                "<SpaceUnit Name=\"Frigate_Ship\"><Space_Layer>Frigate | Corvette</Space_Layer></SpaceUnit>"
                 "<Prop Name=\"Rock\"><Custom_Hard_XExtent>24</Custom_Hard_XExtent><Custom_Hard_YExtent>30</Custom_Hard_YExtent><Custom_Hard_XExtent_Offset>3</Custom_Hard_XExtent_Offset>"
                 "<Custom_Hard_YExtent_Offset>-10</Custom_Hard_YExtent_Offset></Prop>"
                 "<Prop Name=\"Pad\"><Obstacle_Width>40</Obstacle_Width><Obstacle_Height>20</Obstacle_Height><Obstacle_X_Offset>0</Obstacle_X_Offset><Obstacle_Y_Offset>-10</Obstacle_Y_Offset>"
@@ -202,6 +203,14 @@ void test_combat_content()
                 std::fabs(eaw::type_movement(catalog, *definition("Swirl"), true, false).turn_in_place_angle - 3.1415927F) < 1.0e-5F &&
                 eaw::type_movement(catalog, *definition("Tank"), true, false).turn_in_place_angle == eaw::ground_turn_in_place_angle,
             "a type's move-start angle must replace the default, at most half a turn");
+    {
+        // Ships turn in place slower by their Space_Layer's factor (the first layer named).
+        eaw::CombatContent slowdowns;
+        slowdowns.turn_in_place_slowdown_corvette = 2.0F;
+        slowdowns.turn_in_place_slowdown_frigate = 3.0F;
+        require(eaw::type_turn_in_place_slowdown(catalog, *definition("Frigate_Ship"), slowdowns) == 3.0F && eaw::type_turn_in_place_slowdown(catalog, *definition("Tank"), slowdowns) == 1.0F,
+                "a ship's turn-in-place slowdown must follow its first Space_Layer");
+    }
     {
         const auto crusher = eaw::type_crush(catalog, *definition("Crusher"));
         const auto stomper = eaw::type_crush(catalog, *definition("Stomper"));

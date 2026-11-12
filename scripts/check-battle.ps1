@@ -16,7 +16,7 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Release',
     # The state hash at tick 1500 since the last change that altered the simulation on purpose.
-    [string] $Expected = '0x94836fbc0149669a',
+    [string] $Expected = '0x4d4fde35264e932a',
     [string] $GameRoot
 )
 

@@ -71,8 +71,12 @@ Adopted so far:
   max x min(1, S/T + 0.2) (S-45, S-49, S-50) and the entity dies with its last destroyable part
   unless `Should_Be_Destroyed_When_All_Hardpoints_Destroyed` is No. Unaimed damage (blasts) still
   reaches the hull directly, an engine choice; land objects with parts follow the rule unobserved.
+- *Turning in place*: a ship without a move order turns at its turn rate divided by GameConstants'
+  `TurnInPlaceSlowdown` for its `Space_Layer` (corvette 2: S-11 turns 90 degrees in 120 frames,
+  S-26 0.84 = 1.4 x 1.2 / 2 degrees per frame; frigate 3 and capital 4 are the data's, not
+  observed).
 Recorded and not adopted yet (each changes behavior beyond a constant; proposed to the owner):
-turning in place at the rate divided by `TurnInPlaceSlowdownCorvette` (2, S-11, S-26); flying
+flying
 straight from rest until full speed before turning (S-12; contradicts our 25 % turning floor);
 ordered ships in range turning toward the target's nearest live hardpoint (S-26, S-27; idle ships
 keep their heading, as ours do); keeping a held target when a better one appears (S-02) and replacing a removed

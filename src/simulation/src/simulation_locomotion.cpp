@@ -209,7 +209,8 @@ float SimulationWorld::steer(const std::size_t index, const float desired, const
     }
     const auto& movement = movements_[index];
     const bool slow = move_targets_[index] && movement.turn_speed_fraction > 0.0F && drive_speeds_[index] < movement.turn_speed_fraction * travel_speed(index);
-    const auto rate = slow ? movement.stopped_turn_rate : turn_rates_[index];
+    const auto standing = !move_targets_[index] && movement.turn_in_place_rate > 0.0F;
+    const auto rate = slow ? movement.stopped_turn_rate : standing ? movement.turn_in_place_rate : turn_rates_[index];
     if (rate <= 0.0F)
     {
         return std::max(0.0F, std::cos(difference));

@@ -179,6 +179,13 @@ float type_scale_factor(const GameObjectCatalog& catalog, const XmlDefinition& d
 // its file size about its own origin.
 Matrix4 scaled_model_transform(Matrix4 transform, float scale) noexcept;
 
+// How many times slower a ship turns in place than on the move: GameConstants'
+// TurnInPlaceSlowdown for its Space_Layer (the first named: Corvette, Frigate, Capital), 1 for
+// other layers. Recorded for the corvette layer in the FoC debug build (factor 2: a corvette turns
+// 90 degrees in 120 frames in place, a Tartan 0.84 = 1.4 x 1.2 / 2 degrees per frame; EaW-Revised
+// S-11, S-26); the frigate and capital factors are the data's, not observed.
+float type_turn_in_place_slowdown(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content);
+
 // XML Max_Rate_Of_Turn (degrees per frame: infantry 16, 480 degrees per second; tanks 12-20;
 // capital ships 0.4-1.5) in radians per second (legacy_units); 0 turns instantly.
 // Times `mode_multiplier`: in space the game scales turn rates by Object_Max_Speed_Multiplier_Space

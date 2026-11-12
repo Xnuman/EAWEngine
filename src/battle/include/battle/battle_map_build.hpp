@@ -70,6 +70,8 @@ struct SpawnableBuild
     std::vector<std::string>& warnings;
     // GameConstants' Object_Max_Speed_Multiplier for the battle's mode (CombatContent).
     float speed_multiplier{1.0F};
+    // GameConstants, for the turn-in-place slowdown of space ships (null: none).
+    const CombatContent* combat{};
 };
 
 // Adds an XML type (by name, case-insensitive) to build.spawnable, or, for a company or squadron,

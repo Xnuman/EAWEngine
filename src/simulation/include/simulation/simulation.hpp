@@ -90,6 +90,9 @@ struct MovementProfile
     // A mover whose way is more than this off its heading (radians) stops and turns before moving
     // off; zero turns while moving (ground units stop at corners this sharp).
     float turn_in_place_angle{};
+    // Turn rate (radians per second) while the entity has no move order and turns in place (space
+    // ships facing their target); zero turns at its turn rate.
+    float turn_in_place_rate{};
 };
 
 // Everything needed to create an entity. `type_name` is the XML object type (informational for

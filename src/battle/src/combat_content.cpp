@@ -204,6 +204,18 @@ CombatContent load_combat_content(const AssetReader& reader)
             {
                 multiplier(entry, content.shield_recharge_interval_seconds);
             }
+            else if (name == "turninplaceslowdowncorvette")
+            {
+                multiplier(entry, content.turn_in_place_slowdown_corvette);
+            }
+            else if (name == "turninplaceslowdownfrigate")
+            {
+                multiplier(entry, content.turn_in_place_slowdown_frigate);
+            }
+            else if (name == "turninplaceslowdowncapital")
+            {
+                multiplier(entry, content.turn_in_place_slowdown_capital);
+            }
             else if (name == "object_max_health_multiplier_land")
             {
                 multiplier(entry, content.max_health_multiplier.land);

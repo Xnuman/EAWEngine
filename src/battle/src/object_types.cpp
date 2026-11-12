@@ -346,6 +346,21 @@ float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& defi
     return rate > 0.0F ? legacy_units::degrees_per_frame(rate) * mode_multiplier : 0.0F;
 }
 
+float type_turn_in_place_slowdown(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content)
+{
+    const auto* layer = catalog.field(definition, "Space_Layer").field;
+    const auto items = layer != nullptr ? split_list(layer->text) : std::vector<std::string_view>{};
+    if (items.empty())
+    {
+        return 1.0F;
+    }
+    const auto first = ascii_lower(items.front());
+    return first == "corvette"  ? content.turn_in_place_slowdown_corvette
+           : first == "frigate" ? content.turn_in_place_slowdown_frigate
+           : first == "capital" ? content.turn_in_place_slowdown_capital
+                                : 1.0F;
+}
+
 MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, const bool land, const bool flyer, const float mode_multiplier)
 {
     MovementProfile movement;

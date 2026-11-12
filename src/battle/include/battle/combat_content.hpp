@@ -41,6 +41,11 @@ struct CombatContent
     // GameConstants ShieldRechargeIntervalInSecs: how often shields add their Shield_Refresh_Rate
     // (stock 3.0; 3.0 when absent, the stock value).
     float shield_recharge_interval_seconds{3.0F};
+    // GameConstants TurnInPlaceSlowdownCorvette, -Frigate, -Capital: how many times slower a ship of
+    // that Space_Layer turns in place than on the move (stock 2, 3, 4; 1 when absent).
+    float turn_in_place_slowdown_corvette{1.0F};
+    float turn_in_place_slowdown_frigate{1.0F};
+    float turn_in_place_slowdown_capital{1.0F};
     // GameObjectCategoryType names (ASCII-folded) to their bits, from Data/XML/Enum (the names
     // CategoryMask and the inaccuracy lists use).
     std::unordered_map<std::string, std::uint32_t> category_bits;
