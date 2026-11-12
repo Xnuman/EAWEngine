@@ -219,7 +219,10 @@ struct CombatProfile
     // Hit points; zero means the entity cannot be damaged or targeted.
     float health{};
     float shield{};
-    float shield_regen_per_second{};
+    // Shield points added once per refresh interval (XML Shield_Refresh_Rate), every
+    // `shield_refresh_seconds` (GameConstants ShieldRechargeIntervalInSecs); 0 never refreshes.
+    float shield_refresh{};
+    float shield_refresh_seconds{3.0F};
     std::uint16_t armor_type{};
     std::uint16_t shield_armor_type{};
     // Height above the entity's position that shots aim at.

@@ -204,9 +204,11 @@ std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::
     {
         const auto soft_radius = type_soft_footprint_radius(build.catalog, *definition);
         spawnable.radius = soft_radius > 0.0F ? soft_radius : model_footprint_radius(drawn_model_bounds(*host_model, attachments, true), scaled_model_transform(Matrix4::identity(), scale));
-        spawnable.turn_rate = type_turn_rate(build.catalog, *definition);
+        // Turn rates and acceleration take the mode's speed multiplier in space (type_movement).
+        const auto motion_multiplier = build.land ? 1.0F : build.speed_multiplier;
+        spawnable.turn_rate = type_turn_rate(build.catalog, *definition, motion_multiplier);
         spawnable.min_speed = build.land ? 0.0F : type_min_flight_speed(build.catalog, *definition, spawnable.max_speed);
-        spawnable.movement = type_movement(build.catalog, *definition, build.land, spawnable.min_speed > 0.0F);
+        spawnable.movement = type_movement(build.catalog, *definition, build.land, spawnable.min_speed > 0.0F, motion_multiplier);
         spawnable.aims_with_body = type_aims_with_body(build.catalog, *definition);
         spawnable.formation_order = type_formation_order(build.catalog, *definition);
         spawnable.formation_spacing = type_formation_spacing(build.catalog, *definition);
@@ -240,6 +242,8 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
         asset.ground = map_ground(map);
     }
     const auto speed_multiplier = combat.max_speed_multiplier.of(asset.land);
+    // Turn rates and acceleration take the mode's speed multiplier in space (type_movement).
+    const auto motion_multiplier = asset.land ? 1.0F : speed_multiplier;
     // One profile per type, so a type's warnings are reported once however often it is placed.
     std::unordered_map<const XmlDefinition*, CombatProfile> combat_profiles;
     const auto profile_of = [&](const XmlDefinition& definition, const Model* model) -> const CombatProfile&
@@ -322,9 +326,9 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
             {
                 const auto soft_radius = type_soft_footprint_radius(catalog, *placement.type);
                 spawn.radius = soft_radius > 0.0F ? soft_radius : model_footprint_radius(bounds, matrix);
-                spawn.turn_rate = type_turn_rate(catalog, *placement.type);
+                spawn.turn_rate = type_turn_rate(catalog, *placement.type, motion_multiplier);
                 spawn.min_speed = asset.land ? 0.0F : type_min_flight_speed(catalog, *placement.type, spawn.max_speed);
-                spawn.movement = type_movement(catalog, *placement.type, asset.land, spawn.min_speed > 0.0F);
+                spawn.movement = type_movement(catalog, *placement.type, asset.land, spawn.min_speed > 0.0F, motion_multiplier);
                 spawn.aims_with_body = spawn.follows_ground && type_aims_with_body(catalog, *placement.type);
                 spawn.formation_order = type_formation_order(catalog, *placement.type);
                 spawn.formation_spacing = type_formation_spacing(catalog, *placement.type);

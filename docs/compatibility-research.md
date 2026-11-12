@@ -52,6 +52,31 @@ the first mod at highest priority. A synthetic M1 corpus locks this contract,
 including fallback and case/separator normalization. Black-box comparison with
 the legacy runtime remains the authority if an observed edge case differs.
 
+**Recorded rules from EaW-Revised (2026-11-13).** EaW-Revised (GPL-3.0; read, never copied)
+recorded fixed-force space scenarios in the publicly available FoC debug build at run time
+(`tests/fidelity/S-NN-*.json`, 30 logical ticks per second, three runs agreeing; their
+`docs/behaviour/space-movement.md`, `space-damage.md`, `combat-time-to-kill.md`). Under the owner's
+ruling these observations are evidence; rules of theirs resting only on static disassembly are not.
+Adopted so far:
+- *Shields refresh in steps*: `Shield_Refresh_Rate` once per `ShieldRechargeIntervalInSecs`
+  (stock 3.0 s): +10 every 90 frames in S-15, S-51, S-52, the Tartan and the Nebulon-B five
+  frames apart. The engine draws each unit's phase from its id (how the game chooses it is not
+  observed).
+- *The space speed multiplier scales acceleration, deceleration, and turn rate*: S-10 peaks at
+  3.72 = 3.1 x 1.2 after 62 frames (0.05 x 1.2 per frame squared), S-12 turns 1.506 = 1.25 x 1.2
+  degrees per frame, S-26 turns in place at 0.84 = 1.4 x 1.2 / 2. Land is not recorded and stays
+  unscaled.
+Recorded and not adopted yet (each changes behavior beyond a constant; proposed to the owner):
+turning in place at the rate divided by `TurnInPlaceSlowdownCorvette` (2, S-11, S-26); flying
+straight from rest until full speed before turning (S-12; contradicts our 25 % turning floor);
+ordered ships in range turning toward the target's nearest live hardpoint (S-26, S-27; idle ships
+keep their heading, as ours do); hardpoint-aimed damage going to the hardpoint only, the hull
+capped at min(1, S/T + 0.2) of the destroyable hardpoints' share and dying with the last one (S-19,
+S-45, S-49, S-50); keeping a held target when a better one appears (S-02) and replacing a removed
+one at the next allowed shot (S-03); `Layer_Z_Adjust` heights (S-10 to S-14, S-32 to S-34); per-
+hardpoint shot counts by bearing (S-22 to S-42) as fire-cone regression cases; hit rates near 40 %
+(corvette on Tartan) and 7 % (Tartan on Nebulon-B), far below our uniform scatter's.
+
 **XML loading (2026-11-13).** The game reads its XML through registries: `GameObjectFiles.xml`,
 `SFXEventFiles.xml`, `FactionFiles.xml`, `CommandBarComponentFiles.xml`, `CampaignFiles.xml`,
 `HardPointDataFiles.xml`, `TargetingPrioritySetFiles.xml`, `TradeRouteFiles.xml`, and

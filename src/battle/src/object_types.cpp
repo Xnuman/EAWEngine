@@ -340,13 +340,13 @@ float type_soft_footprint_radius(const GameObjectCatalog& catalog, const XmlDefi
     return 0.0F;
 }
 
-float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition, const float mode_multiplier)
 {
     const auto rate = type_float_field(catalog, definition, "Max_Rate_Of_Turn");
-    return rate > 0.0F ? legacy_units::degrees_per_frame(rate) : 0.0F;
+    return rate > 0.0F ? legacy_units::degrees_per_frame(rate) * mode_multiplier : 0.0F;
 }
 
-MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, const bool land, const bool flyer)
+MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, const bool land, const bool flyer, const float mode_multiplier)
 {
     MovementProfile movement;
     if (flyer)
@@ -364,8 +364,8 @@ MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinit
     {
         return catalog.field(definition, field).field != nullptr ? rate(field, legacy_units::acceleration_per_frame) : rate(alias, legacy_units::acceleration_per_frame);
     };
-    movement.acceleration = either("OverrideAcceleration", "Override_Acceleration");
-    movement.deceleration = either("OverrideDeceleration", "Override_Deceleration");
+    movement.acceleration = either("OverrideAcceleration", "Override_Acceleration") * mode_multiplier;
+    movement.deceleration = either("OverrideDeceleration", "Override_Deceleration") * mode_multiplier;
     const bool names_fraction = catalog.field(definition, "Min_Speed_Fraction_For_Turn").field != nullptr;
     // A fraction of top speed: no unit to convert.
     const auto fraction_of_speed = [](const float value)
@@ -377,7 +377,7 @@ MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinit
     if (land)
     {
         const auto stopped = rate("Stopped_Rate_Of_Turn", legacy_units::degrees_per_frame);
-        movement.stopped_turn_rate = stopped > 0.0F ? stopped : type_turn_rate(catalog, definition);
+        movement.stopped_turn_rate = stopped > 0.0F ? stopped * mode_multiplier : type_turn_rate(catalog, definition, mode_multiplier);
         // Degrees; 180 and above never stop to turn (two stock types say 180, one 360).
         const auto* angle = catalog.field(definition, "Close_Enough_Angle_For_Move_Start").field;
         const auto degrees = angle != nullptr ? type_float_field(catalog, definition, "Close_Enough_Angle_For_Move_Start") : 0.0F;

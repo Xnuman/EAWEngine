@@ -37,6 +37,20 @@ bool SimulationWorld::damageable(const std::size_t index) const noexcept
     return combat_[index].profile.health > 0.0F && combat_[index].health > 0.0F;
 }
 
+// Shields refresh in steps: Shield_Refresh_Rate points once every refresh interval, each unit on a
+// phase of its own (recorded in the FoC debug build: +10 every 90 frames, two ships 5 frames apart;
+// EaW-Revised's S-15, S-51, S-52, docs/compatibility-research.md). How the original chooses the
+// phase is not observed; one from the entity's stable id spreads units the same way (an engine
+// choice), and keeps the refresh a function of the tick, so it adds no state to hash.
+bool SimulationWorld::shield_refresh_due(const std::size_t index) const noexcept
+{
+    const auto interval = static_cast<std::uint64_t>(std::max(1.0, std::round(static_cast<double>(combat_[index].profile.shield_refresh_seconds) / tick_seconds_)));
+    // A multiplicative hash (Knuth's) of the id spreads consecutive ids over the interval.
+    constexpr std::uint64_t phase_multiplier = 2654435761U;
+    const auto phase = (static_cast<std::uint64_t>(ids_[index].index) * phase_multiplier) % interval;
+    return (tick_ + phase) % interval == 0;
+}
+
 // Order within a tick: shields recharge, then every armed entity (in dense order) updates its
 // target and fires, then shots fly and hit, then the dead are removed. Entities are only removed
 // at the end, so dense indices stay valid throughout.
@@ -47,9 +61,10 @@ void SimulationWorld::run_combat()
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
         auto& combat = combat_[index];
-        if (combat.shield < combat.profile.shield && combat.health > 0.0F && keeps(index, HardpointProfile::Kind::shield_generator))
+        if (combat.shield < combat.profile.shield && combat.health > 0.0F && combat.profile.shield_refresh > 0.0F && keeps(index, HardpointProfile::Kind::shield_generator) &&
+            shield_refresh_due(index))
         {
-            combat.shield = std::min(combat.profile.shield, combat.shield + combat.profile.shield_regen_per_second * dt);
+            combat.shield = std::min(combat.profile.shield, combat.shield + combat.profile.shield_refresh);
         }
     }
     for (std::size_t index = 0; index < ids_.size(); ++index)

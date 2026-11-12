@@ -181,7 +181,9 @@ Matrix4 scaled_model_transform(Matrix4 transform, float scale) noexcept;
 
 // XML Max_Rate_Of_Turn (degrees per frame: infantry 16, 480 degrees per second; tanks 12-20;
 // capital ships 0.4-1.5) in radians per second (legacy_units); 0 turns instantly.
-float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// Times `mode_multiplier`: in space the game scales turn rates by Object_Max_Speed_Multiplier_Space
+// as it does speeds (recorded, see type_movement).
+float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& definition, float mode_multiplier = 1.0F);
 
 // How a type gets up to speed and turns: XML OverrideAcceleration and OverrideDeceleration (or
 // Override_Acceleration and Override_Deceleration, the team containers' spelling)
@@ -191,7 +193,12 @@ float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& defi
 // when its way is more than Close_Enough_Angle_For_Move_Start (degrees; the AT-AT 30) or else
 // ground_turn_in_place_angle off; in space it cannot turn below that
 // fraction (default_space_turn_speed_fraction without one). The default profile for flyers.
-MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, bool land, bool flyer);
+// Acceleration, deceleration, and turn rates are times `mode_multiplier`: in space the game scales them
+// by Object_Max_Speed_Multiplier_Space like Max_Speed (recorded in the FoC debug build: a corvette
+// reaches 3.72 = 3.1 x 1.2 in 62 frames, 0.05 x 1.2 per frame, and turns 1.506 = 1.25 x 1.2 degrees
+// per frame; EaW-Revised's S-10, S-12, S-26; docs/compatibility-research.md). Callers pass the
+// space multiplier on space maps; on land it is not observed, so they pass 1.
+MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, bool land, bool flyer, float mode_multiplier = 1.0F);
 // Engine choices, not the original's: how far off its way a ground unit stops to turn (the
 // owner's observation that land units do not turn while moving off; GameConstants'
 // CloseEnoughAngleForMoveStart says 180, which would never stop them, so the two disagree), and the

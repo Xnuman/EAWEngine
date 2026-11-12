@@ -82,6 +82,31 @@ void test_combat()
         require(hit.shield == 0.0F && hit.health == 24.0F, "damage beyond the shield must reach the hull");
     }
 
+    // Shields refresh in steps: Shield_Refresh_Rate points once per interval, on a phase of the
+    // unit's own (any interval-long run of ticks holds exactly one refresh).
+    {
+        auto refresh_world = make_world();
+        auto one_shot = gun;
+        one_shot.weapons.front().recharge_seconds = 1000.0F;
+        one_shot.weapons.front().pulse_count = 1;
+        auto refreshing = target;
+        refreshing.shield = 30.0F;
+        refreshing.shield_refresh = 5.0F;
+        refreshing.shield_refresh_seconds = 1.0F;
+        (void)refresh_world.spawn({.type_name = "Shooter", .owner = 1, .combat = one_shot});
+        (void)refresh_world.spawn({.type_name = "Refreshing", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = refreshing});
+        refresh_world.step();
+        const auto after_hit = refresh_world.snapshot().entities[1].shield;
+        bool stepped_only = true;
+        for (int tick = 0; tick < 10; ++tick)
+        {
+            refresh_world.step();
+            const auto shield = refresh_world.snapshot().entities[1].shield;
+            stepped_only = stepped_only && (shield == after_hit || shield == after_hit + 5.0F);
+        }
+        require(after_hit < 30.0F && stepped_only && refresh_world.snapshot().entities[1].shield == after_hit + 5.0F, "a shield must refresh by its whole amount exactly once per interval");
+    }
+
     // Projectiles fly at their speed and hit later.
     {
         auto flight_world = make_world();
@@ -152,7 +177,7 @@ void test_hardpoints_and_fire_cones()
     eaw::CombatProfile ship;
     ship.health = 1000.0F;
     ship.shield = 50.0F;
-    ship.shield_regen_per_second = 10.0F;
+    ship.shield_refresh = 10.0F;
     ship.hardpoints = {{Kind::weapon, 40.0F, true, {20.0F, 0.0F, 0.0F}}, {Kind::shield_generator, 30.0F, true, {0.0F, 10.0F, 0.0F}}, {Kind::engine, 30.0F, true, {-20.0F, 0.0F, 0.0F}}};
     ship.weapons = {eaw::WeaponProfile{
         .range = 500.0F, .recharge_seconds = 0.5F, .damage = 5.0F, .mount = {20.0F, 0.0F, 0.0F}, .cone_direction = 0.0F, .cone_half_angle = std::numbers::pi_v<float> / 4.0F, .hardpoint = 0}};

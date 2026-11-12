@@ -72,7 +72,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Max_Speed` | `done` |  |
 | `Min_Speed` | `partial` | read only for FIGHTER_LOCOMOTOR types |
 | `Alternate_Max_Speed` | `needs secondary locomotor` | jetpack and phase heroes |
-| `OverrideAcceleration` | `done` |  |
+| `OverrideAcceleration` | `done` | times the space speed multiplier in space (recorded) |
 | `OverrideDeceleration` | `done` |  |
 | `Override_Acceleration` | `done` |  |
 | `Override_Deceleration` | `done` |  |
@@ -92,7 +92,7 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Max_Rate_Of_Turn` | `done` |  |
+| `Max_Rate_Of_Turn` | `done` | times the space speed multiplier in space (recorded); land unscaled (not observed) |
 | `Alternate_Max_Rate_Of_Turn` | `needs secondary locomotor` | jetpack and phase heroes |
 | `Stopped_Rate_Of_Turn` | `done` |  |
 | `Min_Speed_Fraction_For_Turn` | `done` |  |
@@ -233,7 +233,7 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Tactical_Health` | `done` |  |
 | `Shield_Points` | `done` |  |
-| `Shield_Refresh_Rate` | `done` |  |
+| `Shield_Refresh_Rate` | `done` | points per ShieldRechargeIntervalInSecs, stepped (recorded) |
 | `Armor_Type` | `done` |  |
 | `Shield_Armor_Type` | `done` |  |
 | `Energy_Capacity` | `needs abilities` | energy pool |

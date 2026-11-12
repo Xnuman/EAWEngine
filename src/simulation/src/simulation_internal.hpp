@@ -54,8 +54,8 @@ inline bool valid_profile(const CombatProfile& profile) noexcept
 {
     if (!valid_amount(profile.health) || !valid_amount(profile.shield) || !valid_amount(profile.attack_move_response_range) || !valid_amount(profile.guard_chase_range) ||
         !valid_amount(profile.stickiness_seconds) || !valid_amount(profile.death_blast.damage) || !valid_amount(profile.death_blast.range) || !valid_amount(profile.spin_chance) ||
-        (profile.turret && (!valid_amount(profile.turret->rate) || !valid_amount(profile.turret->yaw_limit))) || !valid_amount(profile.spin_seconds) ||
-        !valid_amount(profile.shield_regen_per_second) || !std::isfinite(profile.aim_height))
+        (profile.turret && (!valid_amount(profile.turret->rate) || !valid_amount(profile.turret->yaw_limit))) || !valid_amount(profile.spin_seconds) || !valid_amount(profile.shield_refresh) ||
+        !valid_amount(profile.shield_refresh_seconds) || !std::isfinite(profile.aim_height))
     {
         return false;
     }

@@ -200,6 +200,10 @@ CombatContent load_combat_content(const AssetReader& reader)
             {
                 multiplier(entry, content.max_speed_multiplier.space);
             }
+            else if (name == "shieldrechargeintervalinsecs")
+            {
+                multiplier(entry, content.shield_recharge_interval_seconds);
+            }
             else if (name == "object_max_health_multiplier_land")
             {
                 multiplier(entry, content.max_health_multiplier.land);
@@ -554,7 +558,8 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         unit_inaccuracy.push_back({all_categories, fixed});
     }
     profile.shield = type.amount("Shield_Points");
-    profile.shield_regen_per_second = type.amount("Shield_Refresh_Rate");
+    profile.shield_refresh = type.amount("Shield_Refresh_Rate");
+    profile.shield_refresh_seconds = content.shield_recharge_interval_seconds;
     profile.armor_type = type_id(type, "Armor_Type", content);
     profile.shield_armor_type = type_id(type, "Shield_Armor_Type", content);
     // Below the origin is legitimate (stock Underworld_Hero_Shuttle_Landing uses -5.0).

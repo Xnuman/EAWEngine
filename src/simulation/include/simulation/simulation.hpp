@@ -671,6 +671,8 @@ private:
     // Stamps (or removes) an entity's footprint into the ground's passability.
     void stamp_footprint(std::size_t index, bool add);
     void run_combat();
+    // Whether this tick refreshes the entity's shield (simulation_combat.cpp).
+    [[nodiscard]] bool shield_refresh_due(std::size_t index) const noexcept;
     void update_target(std::size_t index);
     void run_weapon(std::size_t index);
     void launch(std::size_t shooter, std::size_t victim, const WeaponProfile& weapon, const LocalPoint& mount);

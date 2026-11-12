@@ -144,7 +144,8 @@ void test_combat_content()
                     gunner.turret->turns_body && !tank.turret,
                 "a type with a turret bone must carry its turret's rate and arc");
     }
-    require(tank.health == 100.0F && tank.shield == 50.0F && tank.shield_regen_per_second == 4.0F && tank.armor_type == tank_armor && tank.aim_height == 12.0F && tank.weapons.size() == 1,
+    require(tank.health == 100.0F && tank.shield == 50.0F && tank.shield_refresh == 4.0F && tank.shield_refresh_seconds == 3.0F && tank.armor_type == tank_armor && tank.aim_height == 12.0F &&
+                tank.weapons.size() == 1,
             "a type's health, shields, armor, and weapon must be read");
     const auto& weapon = tank.weapons.front();
     require(tank.categories == 0x300U && weapon.inaccuracy.size() == 3 && weapon.inaccuracy[0].categories == 0x80U && weapon.inaccuracy[0].distance == 3.0F && weapon.inaccuracy[1].distance == 70.0F &&
@@ -165,7 +166,7 @@ void test_combat_content()
                 wanted.ranks[1].properties == 0x4U && wanted.excluded_categories == 0x200U && wanted.excluded_properties == 0x100U && wanted.excluded_types.size() == 2 && picky_warnings.size() == 1 &&
                 picky_warnings[0].find("Bogus") != std::string::npos,
             "a targeting priority set must be read in rank order with its exclusions");
-    require(wanted.rank(0x100U, 0, 0) == 1.0F && wanted.rank(0x80U, 0x4U, 0) == 2.0F && wanted.rank(0x200U, 0, 0) == 1.0F &&wanted.rank(0x80U, 0x100U, 0) < 0.0F &&
+    require(wanted.rank(0x100U, 0, 0) == 1.0F && wanted.rank(0x80U, 0x4U, 0) == 2.0F && wanted.rank(0x200U, 0, 0) == 1.0F && wanted.rank(0x80U, 0x100U, 0) < 0.0F &&
                 wanted.rank(0x80U, 0, eaw::game_object_name_crc("Tank")) < 0.0F && wanted.rank(0x80U, 0, 0) == eaw::TargetingPriorities::unlisted_rank && wanted.rank(0x300U, 0, 0) == 1.0F,
             "a match must rank, exclusions must apply only to unmatched targets, and the rest must rank last");
     const auto team = eaw::type_team_movement(catalog, *definition("Slow_Company"), 2.0F);

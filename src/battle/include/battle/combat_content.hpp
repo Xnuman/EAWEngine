@@ -38,6 +38,9 @@ struct CombatContent
     // on land and 1.2 in space, health 1.0 on land and 1.5 in space). 1 when absent.
     ModeMultipliers max_speed_multiplier;
     ModeMultipliers max_health_multiplier;
+    // GameConstants ShieldRechargeIntervalInSecs: how often shields add their Shield_Refresh_Rate
+    // (stock 3.0; 3.0 when absent, the stock value).
+    float shield_recharge_interval_seconds{3.0F};
     // GameObjectCategoryType names (ASCII-folded) to their bits, from Data/XML/Enum (the names
     // CategoryMask and the inaccuracy lists use).
     std::unordered_map<std::string, std::uint32_t> category_bits;
@@ -59,7 +62,7 @@ struct CombatContent
 [[nodiscard]] CombatContent load_combat_content(const AssetReader& reader);
 
 // Health, shields, armor, and the first projectile weapon of an object type:
-//   Tactical_Health, Shield_Points, Shield_Refresh_Rate (provisionally points per second),
+//   Tactical_Health, Shield_Points, Shield_Refresh_Rate (points per shield recharge interval),
 //   Armor_Type, Shield_Armor_Type, Ranged_Target_Z_Adjust (aim height);
 //   Projectile_Types (first entry), Targeting_Max_Attack_Distance, Projectile_Fire_Recharge_Seconds,
 //   Projectile_Fire_Pulse_Count, Projectile_Fire_Pulse_Delay_Seconds;
