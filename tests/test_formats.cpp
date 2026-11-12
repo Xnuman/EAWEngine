@@ -417,9 +417,9 @@ void test_dat_string_table()
     require(!eaw::utf8_to_utf16("\xc3") && !eaw::utf16_to_utf8(std::u16string(1, char16_t{0xd800})), "invalid UTF-8/UTF-16 was accepted");
 }
 
-// PNG captures round-trip exactly (including images spanning several stored deflate blocks), the
-// reader rejects what it does not support with a reason, and comparison measures differences.
-void test_png_and_image_compare()
+// PNG captures round-trip exactly (including images spanning several stored deflate blocks), and the
+// reader rejects what it does not support with a reason.
+void test_png_image()
 {
     eaw::RgbaImage image;
     image.width = 200;
@@ -470,20 +470,6 @@ void test_png_and_image_compare()
         }
     }
     require(rejected(compressed, "compressed PNG data is not supported"), "a compressed PNG block must be reported as unsupported");
-
-    auto changed = image;
-    changed.pixels[0] = static_cast<std::uint8_t>(changed.pixels[0] + 100U);
-    changed.pixels[4 * 50 + 1] = static_cast<std::uint8_t>(changed.pixels[4 * 50 + 1] + 3U);
-    const auto difference = expect_ok(eaw::compare_images(image, changed), "image compare");
-    require(difference.max_error == 100 && difference.changed_pixels == 1 && difference.pixels == 24000 && difference.mean_error > 0.0 && difference.visualization.valid() &&
-                difference.visualization.pixels[0] == 255 && difference.visualization.pixels[1] == 0,
-            "image comparison must measure and mark differences");
-    const auto same = expect_ok(eaw::compare_images(image, image), "image compare");
-    require(same.max_error == 0 && same.changed_pixels == 0 && same.mean_error == 0.0, "identical images must not differ");
-    auto smaller = image;
-    smaller.height = 10;
-    smaller.pixels.resize(static_cast<std::size_t>(smaller.width) * smaller.height * 4U);
-    require(!eaw::compare_images(image, smaller), "images of different sizes must not compare");
 }
 
 // The shared chunk container: ranges, the container flag, nesting, and every malformed header named
@@ -582,7 +568,7 @@ void test_particle_system()
 }
 
 const ModuleRegistrar registrar("formats", {
-                                               {"test_png_and_image_compare", &test_png_and_image_compare},
+                                               {"test_png_image", &test_png_image},
                                                {"test_alamo_chunks", &test_alamo_chunks},
                                                {"test_particle_system", &test_particle_system},
                                                {"test_alo_model", &test_alo_model},

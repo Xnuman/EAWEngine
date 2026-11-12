@@ -2,7 +2,7 @@
 
 #include "core/file_io.hpp"
 #include "formats/png_image.hpp"
-#include "formats/rgba_image.hpp"
+#include "image_compare/image_compare.hpp"
 
 #include <charconv>
 #include <filesystem>

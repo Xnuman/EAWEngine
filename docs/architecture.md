@@ -42,6 +42,7 @@ Dependencies point inward: a lower layer never includes or links a higher one.
 | | `eaw_formats` | Lossless readers and writers of the original's file formats; no I/O. | core, math |
 | | `eaw_assets` | The game asset layer: XML object database and catalogs, sound events, loaders, engine-native resources, the resource manager. | core, formats, vfs, math, render contract, audio |
 | | `eaw_localization` | DAT string tables on disk, TSV workspaces, mod text scans, translation checks. | core, formats |
+| | `eaw_image_compare` | Image regression: how two RGBA images differ (capture checks, `compare-images`). | core, formats |
 | Runtime | `eaw_simulation` | Deterministic tactical simulation: entities, components, ticks, commands, snapshots. | core, math |
 | | `eaw_script` | Sandboxed Lua 5.0 host: threads, engine events and callbacks, recording stubs for the unimplemented host API. | vfs, Lua |
 | | `eaw_battle` | Battles and order logs, the battle runtime, scripts in battles, the battle side of maps, gameplay reads of XML types and models. No render contract. | assets, script, simulation |

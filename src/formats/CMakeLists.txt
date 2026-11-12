@@ -42,7 +42,6 @@ set(EAW_FORMATS_IMAGE
     ${HEADERS_DIR}/png_image.hpp
     ${HEADERS_DIR}/rgba_image.hpp
     ${SOURCES_DIR}/png_image.cpp
-    ${SOURCES_DIR}/rgba_image.cpp
 )
 
 set(EAW_FORMATS_XML

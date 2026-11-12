@@ -1,4 +1,4 @@
-#include "formats/rgba_image.hpp"
+#include "image_compare/image_compare.hpp"
 
 #include <algorithm>
 #include <cstdlib>
