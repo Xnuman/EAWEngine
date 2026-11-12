@@ -25,9 +25,129 @@ void budget_hook(lua_State* state, lua_Debug*)
     if (host.remaining_instructions <= static_cast<std::uint64_t>(hook_interval))
     {
         host.remaining_instructions = 0;
+        host.budget_exhausted = true;
         luaL_error(state, "instruction budget of %d exceeded (a loop without Sleep?)", static_cast<int>(host.options.instruction_budget));
     }
     host.remaining_instructions -= static_cast<std::uint64_t>(hook_interval);
+}
+
+// After a protected call made by a script: a spent budget or a memory error is not the script's
+// to catch; it goes on to the host. The error object is on top of the stack.
+void rethrow_if_unrecoverable(lua_State* state, const int status)
+{
+    if (status != 0 && (status == LUA_ERRMEM || host_of(state).budget_exhausted))
+    {
+        lua_error(state);
+    }
+}
+
+// pcall, xpcall, and coroutine.resume as Lua 5.0's base library defines them, but re-raising what
+// rethrow_if_unrecoverable names.
+int lua_guarded_pcall(lua_State* state)
+{
+    luaL_checkany(state, 1);
+    const auto status = lua_pcall(state, lua_gettop(state) - 1, LUA_MULTRET, 0);
+    rethrow_if_unrecoverable(state, status);
+    lua_pushboolean(state, status == 0 ? 1 : 0);
+    lua_insert(state, 1);
+    return lua_gettop(state);
+}
+
+int lua_guarded_xpcall(lua_State* state)
+{
+    luaL_checkany(state, 2);
+    lua_settop(state, 2);
+    // The error handler below the function.
+    lua_insert(state, 1);
+    const auto status = lua_pcall(state, 0, LUA_MULTRET, 1);
+    rethrow_if_unrecoverable(state, status);
+    lua_pushboolean(state, status == 0 ? 1 : 0);
+    lua_replace(state, 1);
+    return lua_gettop(state);
+}
+
+int lua_guarded_resume(lua_State* state)
+{
+    auto* coroutine = lua_tothread(state, 1);
+    luaL_argcheck(state, coroutine != nullptr, 1, "coroutine expected");
+    const auto arguments = lua_gettop(state) - 1;
+    if (lua_checkstack(coroutine, arguments) == 0)
+    {
+        return luaL_error(state, "too many arguments to resume");
+    }
+    lua_xmove(state, coroutine, arguments);
+    const auto status = lua_resume(coroutine, arguments);
+    if (status != 0)
+    {
+        lua_xmove(coroutine, state, 1);
+        rethrow_if_unrecoverable(state, status);
+        lua_pushboolean(state, 0);
+        lua_insert(state, -2);
+        return 2;
+    }
+    const auto results = lua_gettop(coroutine);
+    if (lua_checkstack(state, results + 1) == 0)
+    {
+        return luaL_error(state, "too many results to resume");
+    }
+    lua_xmove(coroutine, state, results);
+    lua_pushboolean(state, 1);
+    lua_insert(state, -(results + 1));
+    return results + 1;
+}
+
+// collectgarbage([limit]) without the limit: a script may ask for a collection, never switch the
+// collector off by raising its threshold.
+int lua_full_collect(lua_State* state)
+{
+    lua_setgcthreshold(state, 0);
+    return 0;
+}
+
+// string.rep (upvalue 1) with a cap on the result, and on the count (an empty string repeated
+// billions of times is a loop the instruction budget cannot see).
+int lua_bounded_rep(lua_State* state)
+{
+    std::size_t length = 0;
+    (void)luaL_checklstring(state, 1, &length);
+    const auto count = static_cast<double>(luaL_checknumber(state, 2));
+    const auto limit = static_cast<double>(max_script_string_bytes);
+    if (!std::isfinite(count) || count > limit || static_cast<double>(length) * count > limit)
+    {
+        return luaL_error(state, "string.rep: a result of more than %d bytes is refused", static_cast<int>(max_script_string_bytes));
+    }
+    lua_pushvalue(state, lua_upvalueindex(1));
+    lua_insert(state, 1);
+    lua_call(state, lua_gettop(state) - 1, 1);
+    return 1;
+}
+
+// string.find, string.gfind, and string.gsub (upvalue 1) with a cap on the pattern's length.
+int lua_bounded_pattern(lua_State* state)
+{
+    std::size_t length = 0;
+    (void)luaL_checklstring(state, 2, &length);
+    if (length > max_script_pattern_length)
+    {
+        return luaL_error(state, "a pattern of more than %d characters is refused", static_cast<int>(max_script_pattern_length));
+    }
+    lua_pushvalue(state, lua_upvalueindex(1));
+    lua_insert(state, 1);
+    lua_call(state, lua_gettop(state) - 1, LUA_MULTRET);
+    return lua_gettop(state);
+}
+
+// Replaces table.field with `wrapper`, which gets the original as its upvalue 1.
+void wrap_library_function(lua_State* state, const char* table, const char* field, const lua_CFunction wrapper)
+{
+    lua_pushstring(state, table);
+    lua_rawget(state, LUA_GLOBALSINDEX);
+    lua_pushstring(state, field);
+    lua_pushstring(state, field);
+    lua_rawget(state, -3);
+    lua_pushcclosure(state, wrapper, 1);
+    lua_rawset(state, -3);
+    lua_pop(state, 1);
 }
 
 // Error handler of protected calls: the message plus the script positions of the stack.
@@ -198,6 +318,10 @@ int lua_create_thread(lua_State* state)
     if (!lua_isfunction(state, 1) || lua_iscfunction(state, 1))
     {
         return luaL_error(state, "Create_Thread: '%s' is not a script function", name.c_str());
+    }
+    if (host.live_thread_count() >= max_script_threads)
+    {
+        return luaL_error(state, "Create_Thread: more than %d script threads", static_cast<int>(max_script_threads));
     }
     // Arguments after the function become the thread's first arguments.
     const auto arguments = lua_gettop(state) - 1;
@@ -427,9 +551,20 @@ Status ScriptHost::Impl::setup()
     lua_settop(state, 0);
     luaopen_math(state);
     lua_settop(state, 0);
-    for (const auto* name : {"dofile", "loadfile", "load", "gcinfo"})
+    // newproxy makes userdata with a script-chosen metatable: forged engine objects and __gc
+    // metamethods, which run outside the instruction budget.
+    for (const auto* name : {"dofile", "loadfile", "load", "gcinfo", "newproxy"})
     {
         clear_global(state, name);
+    }
+    set_global_function(state, "pcall", lua_guarded_pcall);
+    set_global_function(state, "xpcall", lua_guarded_xpcall);
+    set_global_function(state, "collectgarbage", lua_full_collect);
+    set_library_function(state, "coroutine", "resume", lua_guarded_resume);
+    wrap_library_function(state, "string", "rep", lua_bounded_rep);
+    for (const auto* name : {"find", "gfind", "gsub"})
+    {
+        wrap_library_function(state, "string", name, lua_bounded_pattern);
     }
     set_global_function(state, "loadstring", lua_safe_loadstring);
     set_global_function(state, "print", lua_print);
@@ -527,6 +662,24 @@ std::uint64_t ScriptHost::Impl::service_interval() const
         return 1;
     }
     return std::max<std::uint64_t>(1U, static_cast<std::uint64_t>(std::llround(rate / options.tick_seconds)));
+}
+
+void ScriptHost::Impl::halt(const std::string_view context, const std::string_view message)
+{
+    record_error(context, std::string(message) + " (the script is stopped)");
+    exited = true;
+    // The Lua state stays as it is until the host is destroyed; nothing calls into it again.
+    threads.clear();
+    events.clear();
+}
+
+std::size_t ScriptHost::Impl::live_thread_count() const noexcept
+{
+    return static_cast<std::size_t>(std::ranges::count_if(threads,
+                                                          [](const Thread& thread)
+                                                          {
+                                                              return thread.coroutine != nullptr;
+                                                          }));
 }
 
 void ScriptHost::Impl::finish_exit()
@@ -628,6 +781,7 @@ Status ScriptHost::Impl::protected_call(const int arguments, const std::string_v
     if (call_depth == 0)
     {
         remaining_instructions = options.instruction_budget;
+        budget_exhausted = false;
     }
     const auto base = lua_gettop(state) - arguments;
     lua_pushcfunction(state, traceback);
@@ -646,6 +800,11 @@ Status ScriptHost::Impl::protected_call(const int arguments, const std::string_v
     }
     std::string message = lua_isstring(state, -1) ? lua_tostring(state, -1) : "(error object is not a string)";
     lua_pop(state, 1);
+    if (status == LUA_ERRMEM)
+    {
+        halt(context, message);
+        return make_error(std::string(context) + ": " + message + " (the script is stopped)");
+    }
     record_error(context, message);
     return make_error(std::string(context) + ": " + message);
 }
@@ -917,6 +1076,14 @@ std::set<std::string> script_defined_globals(const AssetReader& reader)
 
 Status ScriptHost::start_thread(const std::string_view function)
 {
+    if (impl_->exited)
+    {
+        return {};
+    }
+    if (impl_->live_thread_count() >= max_script_threads)
+    {
+        return make_error("cannot start '" + std::string(function) + "': more than " + std::to_string(max_script_threads) + " script threads");
+    }
     lua_pushlstring(impl_->state, function.data(), function.size());
     lua_rawget(impl_->state, LUA_GLOBALSINDEX);
     if (!lua_isfunction(impl_->state, -1) || lua_iscfunction(impl_->state, -1))
@@ -944,12 +1111,22 @@ void ScriptHost::tick()
             continue;
         }
         host.remaining_instructions = host.options.instruction_budget;
+        host.budget_exhausted = false;
         host.current_thread = host.threads[index].id;
         const auto arguments = host.threads[index].started ? 0 : host.threads[index].first_arguments;
         host.threads[index].started = true;
         auto* coroutine = host.threads[index].coroutine;
+        // A resume is a call level: a require inside the thread shares its budget and never ends
+        // the script (and with it this coroutine) before the resume returns.
+        ++host.call_depth;
         const auto status = lua_resume(coroutine, arguments);
+        --host.call_depth;
         host.current_thread = -1;
+        if (status == LUA_ERRMEM)
+        {
+            host.halt("thread " + host.threads[index].function, lua_isstring(coroutine, -1) ? lua_tostring(coroutine, -1) : "not enough memory");
+            break;
+        }
         // Spawning may have grown the vector; refer to the thread by index from here.
         auto& resumed = host.threads[index];
         bool finished = false;

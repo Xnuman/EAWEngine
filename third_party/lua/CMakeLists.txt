@@ -10,6 +10,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(lua)
 
+# The script sandbox's limits inside Lua (eaw_lua_config.h): a memory cap through lmem.c's
+# l_realloc, and a step limit on pattern matching in a patched copy of lstrlib.c, compiled instead
+# of the original.
+include(eaw_lua_patch_lstrlib.cmake)
+set(EAW_LUA_LSTRLIB "${CMAKE_CURRENT_BINARY_DIR}/lstrlib.c")
+eaw_lua_patch_lstrlib("${lua_SOURCE_DIR}/src/lib/lstrlib.c" "${EAW_LUA_LSTRLIB}")
+
 set(EAW_LUA_SOURCES
     ${lua_SOURCE_DIR}/include/lauxlib.h
     ${lua_SOURCE_DIR}/include/lua.h
@@ -36,14 +43,23 @@ set(EAW_LUA_SOURCES
     ${lua_SOURCE_DIR}/src/lib/lauxlib.c
     ${lua_SOURCE_DIR}/src/lib/lbaselib.c
     ${lua_SOURCE_DIR}/src/lib/lmathlib.c
-    ${lua_SOURCE_DIR}/src/lib/lstrlib.c
     ${lua_SOURCE_DIR}/src/lib/ltablib.c
 )
+set(EAW_LUA_CONFIGURATION
+    ${CMAKE_CURRENT_SOURCE_DIR}/eaw_lua_config.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/eaw_lua_memory.c
+)
 source_group(TREE ${lua_SOURCE_DIR} FILES ${EAW_LUA_SOURCES})
+source_group("eawengine" FILES ${EAW_LUA_CONFIGURATION} ${EAW_LUA_LSTRLIB})
 
-add_library(eaw_lua STATIC ${EAW_LUA_SOURCES})
+add_library(eaw_lua STATIC ${EAW_LUA_SOURCES} ${EAW_LUA_LSTRLIB} ${EAW_LUA_CONFIGURATION})
 set_target_properties(eaw_lua PROPERTIES FOLDER "third_party" LINKER_LANGUAGE C)
 target_include_directories(eaw_lua PUBLIC ${lua_SOURCE_DIR}/include PRIVATE ${lua_SOURCE_DIR}/src)
+if(MSVC)
+    target_compile_options(eaw_lua PRIVATE "/FI${CMAKE_CURRENT_SOURCE_DIR}/eaw_lua_config.h")
+else()
+    target_compile_options(eaw_lua PRIVATE -include "${CMAKE_CURRENT_SOURCE_DIR}/eaw_lua_config.h")
+endif()
 if(MSVC)
     # Third-party C of its time: its own warning level, and the CRT's "unsafe function" notes off.
     # Reviewed 64-bit warnings: C4311 truncates pointers only to hash them into table slots

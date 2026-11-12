@@ -34,6 +34,14 @@ inline constexpr std::size_t max_script_warnings = 256;
 // Output lines a host keeps (the stock scripts write debug messages on every service); later ones
 // are only counted. An engine choice.
 inline constexpr std::size_t max_script_output = 4096;
+// Sandbox limits on what one script may ask for (engine choices, far above what stock scripts use):
+// live script threads, the length of a string.find/gfind/gsub pattern (pattern matching recurses
+// per pattern item, so this bounds its C stack), and the size of a string.rep result. Memory as a
+// whole is capped per Lua state in the Lua build (third_party/lua/eaw_lua_config.h), and pattern
+// matching steps there too.
+inline constexpr std::size_t max_script_threads = 256;
+inline constexpr std::size_t max_script_pattern_length = 1024;
+inline constexpr std::size_t max_script_string_bytes = 16U * 1024U * 1024U;
 
 struct ScriptHostOptions
 {

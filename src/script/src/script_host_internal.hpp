@@ -68,6 +68,9 @@ public:
     std::int64_t current_thread{-1};
     std::uint64_t random_state{};
     std::uint64_t remaining_instructions{};
+    // The budget ran out in the current call or resume: scripts cannot catch it (pcall, xpcall, and
+    // coroutine.resume re-raise it), so the error reaches the host.
+    bool budget_exhausted{};
     // Protected calls in progress (a require inside a script nests one).
     int call_depth{};
     std::vector<ScriptError> errors;
@@ -106,6 +109,11 @@ public:
     std::uint64_t service_interval() const;
     // Ends the script after _ScriptExit (its threads and their thread values).
     void finish_exit();
+    // Stops the script for good after an error that leaves it unsafe to call again (out of memory):
+    // records it and forgets its threads and events without calling into Lua.
+    void halt(std::string_view context, std::string_view message);
+    // Live script threads (ended ones wait for the end of the tick to be removed).
+    [[nodiscard]] std::size_t live_thread_count() const noexcept;
     // Ends one thread: releases its coroutine and its thread values.
     void end_thread(Thread& thread);
     // Create_Thread.Kill: ends the thread with that id now, or at its next yield if it is running.

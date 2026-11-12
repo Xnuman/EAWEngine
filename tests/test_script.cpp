@@ -5,9 +5,11 @@
 #include "test_support.hpp"
 
 #include "script/script_host.hpp"
+#include "script/script_object.hpp"
 #include "script/script_value.hpp"
 
 #include <algorithm>
+#include <array>
 #include <fstream>
 #include <memory>
 #include <set>
@@ -326,6 +328,107 @@ void test_script_owned_globals()
     require(names == std::vector<std::string>{"Assigned", "Defined", "Table", "text"}, "owned globals must skip comments, strings, comparisons, and fields");
 }
 
+// One kind of engine object for the hostile scripts: Make_Thing() gives a Thing whose Get_Id()
+// returns its index.
+class ThingProvider final : public eaw::ScriptObjectProvider
+{
+public:
+    [[nodiscard]] std::span<const eaw::ScriptObjectKind> kinds() const noexcept override
+    {
+        return kinds_;
+    }
+    [[nodiscard]] std::span<const std::string_view> functions() const noexcept override
+    {
+        return functions_;
+    }
+    eaw::Status call_function(std::size_t, eaw::ScriptCall& call) override
+    {
+        call.return_object({.kind = 0, .index = 7});
+        return {};
+    }
+    eaw::Status call_method(const eaw::ScriptObject& object, std::size_t, eaw::ScriptCall& call) override
+    {
+        call.return_number(static_cast<double>(object.index));
+        return {};
+    }
+
+private:
+    static constexpr std::array<std::string_view, 1> methods_{"Get_Id"};
+    static constexpr std::array<std::string_view, 1> functions_{"Make_Thing"};
+    std::array<eaw::ScriptObjectKind, 1> kinds_{eaw::ScriptObjectKind{.name = "Thing", .methods = methods_}};
+};
+
+// Hostile scripts (mods are untrusted): no forged engine objects or metamethods on them, a budget
+// that pcall, xpcall, and coroutine.resume cannot swallow, and caps on memory, string.rep, patterns,
+// threads, and the collector. Each must end in an error the host reports, never a hang or a crash.
+void test_script_hostile_scripts()
+{
+    ScriptFixture fixture("hostile");
+    fixture.write("Data/Scripts/GameObject/Hostile.lua", "function Proxy() print('proxy ' .. type(newproxy(true))) end\n"
+                                                         "function Locked()\n"
+                                                         "  local thing = Make_Thing()\n"
+                                                         "  print(tostring(getmetatable(thing)) .. ' ' .. tostring(pcall(setmetatable, thing, {})) .. ' ' .. thing.Get_Id())\n"
+                                                         "end\n"
+                                                         "function Swallow_Pcall() while true do pcall(function() while true do end end) end end\n"
+                                                         "function Swallow_Xpcall() while true do xpcall(function() while true do end end, function(e) return e end) end end\n"
+                                                         "function Swallow_Resume() while true do coroutine.resume(coroutine.create(function() while true do end end)) end end\n"
+                                                         "function Huge_Rep() return string.rep('x', 1000000000) end\n"
+                                                         "function Empty_Rep() return string.rep('', 2147483647) end\n"
+                                                         "function Backtrack() return string.find(string.rep('a', 30), string.rep('a?', 30) .. string.rep('a', 30)) end\n"
+                                                         "function Long_Pattern() return string.find('a', string.rep('a?', 5000)) end\n"
+                                                         "function Collector() collectgarbage(2147483647) print('collected') end\n"
+                                                         "function Many_Threads() for i = 1, 1000 do Create_Thread('Idle') end end\n"
+                                                         "function Idle() while true do coroutine.yield(true) end end\n"
+                                                         "function Hog() local s = 'x' for i = 1, 40 do s = s .. s end end\n");
+    ThingProvider provider;
+    const auto host_with_provider = [&]
+    {
+        fixture.vfs.mount(std::make_unique<eaw::DirectoryMount>("test", fixture.root));
+        eaw::ScriptHostOptions options{1, 1.0 / 30.0, 200000};
+        options.objects = &provider;
+        auto host = expect_ok(eaw::ScriptHost::create(fixture.vfs, options), "creating a script host");
+        expect_ok(host->load("Hostile"), "loading the hostile script");
+        return host;
+    };
+    const auto fails_with = [](eaw::ScriptHost& host, const std::string_view function, const std::string_view message)
+    {
+        const auto result = host.call(function);
+        return !result && result.error().message.find(message) != std::string::npos;
+    };
+
+    auto host = host_with_provider();
+    expect_ok(host->call("Proxy"), "Proxy");
+    require(printed(*host, "proxy table"), "newproxy must be gone (a stub like any unknown name), so scripts cannot make userdata");
+    expect_ok(host->call("Locked"), "Locked");
+    require(printed(*host, "locked false 7"), "engine objects' metatables must be locked and their methods still work");
+    require(fails_with(*host, "Swallow_Pcall", "instruction budget") && fails_with(*host, "Swallow_Xpcall", "instruction budget") && fails_with(*host, "Swallow_Resume", "instruction budget"),
+            "pcall, xpcall, and coroutine.resume must not swallow a spent budget");
+    require(fails_with(*host, "Huge_Rep", "string.rep") && fails_with(*host, "Empty_Rep", "string.rep"), "string.rep must refuse huge results and counts");
+    require(fails_with(*host, "Backtrack", "pattern too complex") && fails_with(*host, "Long_Pattern", "pattern of more than"),
+            "pattern matching must stop on exponential backtracking and refuse overlong patterns");
+    expect_ok(host->call("Collector"), "Collector");
+    require(printed(*host, "collected"), "collectgarbage with a limit must only collect");
+    require(fails_with(*host, "Many_Threads", "script threads") && host->live_threads() == eaw::max_script_threads, "script threads must be capped");
+
+    // _ScriptExit then a first require inside a thread: the require runs within the thread's resume,
+    // so it neither resets the budget nor ends the script under the running coroutine.
+    fixture.write("Data/Scripts/Library/Late_Module.lua", "Late_Loaded = true\n");
+    fixture.write("Data/Scripts/GameObject/Leaver.lua", "function Leave() _ScriptExit() require('Late_Module') print('after require') coroutine.yield(true) print('never') end\n");
+    {
+        auto leaver = host_with_provider();
+        expect_ok(leaver->load("Leaver"), "loading the leaver");
+        expect_ok(leaver->start_thread("Leave"), "starting Leave");
+        leaver->tick();
+        require(printed(*leaver, "after require") && !printed(*leaver, "never") && leaver->exited() && leaver->live_threads() == 0,
+                "a require after _ScriptExit must finish inside the thread, which then ends");
+    }
+
+    auto hog = host_with_provider();
+    require(fails_with(*hog, "Hog", "not enough memory") && hog->exited(), "a script past its memory cap must fail and be stopped");
+    expect_ok(hog->call("Proxy"), "calling a stopped script");
+    require(hog->output().empty(), "a stopped script must never run again");
+}
+
 const ModuleRegistrar registrar("script", {
                                               {"test_script_sandbox_and_stubs", &test_script_sandbox_and_stubs},
                                               {"test_script_threads_and_require", &test_script_threads_and_require},
@@ -335,6 +438,7 @@ const ModuleRegistrar registrar("script", {
                                               {"test_script_globals_read_back", &test_script_globals_read_back},
                                               {"test_script_thread_control_and_game_random", &test_script_thread_control_and_game_random},
                                               {"test_script_owned_globals", &test_script_owned_globals},
+                                              {"test_script_hostile_scripts", &test_script_hostile_scripts},
                                           });
 
 } // namespace

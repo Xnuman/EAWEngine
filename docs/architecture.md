@@ -173,7 +173,13 @@ per unit, spread in id order so the command stream stays deterministic.
 or debug access, `print` to the log, `math.random` from its own seeded stream, `require` resolved
 through the VFS, and compiled chunks refused (Lua 5.0 does not verify bytecode). Script threads are
 coroutines woken on simulation ticks, and every call and resume runs under an instruction budget so
-a script that never yields cannot hang the engine. The host functions implemented so far are real;
+a script that never yields cannot hang the engine. Mods are untrusted, so the sandbox also holds
+against hostile scripts: no `newproxy` and locked engine-object metatables (no forged objects, no
+`__gc` outside the budget), a spent budget or a memory error that `pcall`, `xpcall`, and
+`coroutine.resume` re-raise instead of swallowing, a memory cap per Lua state and a step limit on
+pattern matching inside the Lua build (`third_party/lua/eaw_lua_config.h`), caps on `string.rep`,
+pattern length, and script threads (`script_host.hpp`), a `collectgarbage` that only collects, and a
+script that runs out of memory stopped for good. The host functions implemented so far are real;
 every other engine function a script calls is a recording stub that logs the call and returns a
 neutral object, so `EAWEngine lua-survey` can measure which host API the stock scripts use before the
 engine implements it. The engine talks to a script through `ScriptValue`s: it sets globals (the

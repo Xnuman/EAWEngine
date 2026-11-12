@@ -59,6 +59,12 @@ int object_method(lua_State* state)
     const auto object = object_at(state, lua_upvalueindex(1));
     const auto method = static_cast<std::size_t>(lua_tonumber(state, lua_upvalueindex(2)));
     auto& provider = provider_of(state);
+    // The metatables are locked, so this only holds a real object; checked anyway, since a wrong
+    // kind or method id would index past the provider's tables.
+    if (!object || object->kind >= provider.kinds().size() || method >= provider.kinds()[object->kind].methods.size())
+    {
+        return luaL_error(state, "an engine method called without its engine object");
+    }
     const auto& kind = provider.kinds()[object->kind];
     if (host_of(state).options.recorder != nullptr)
     {
@@ -152,6 +158,11 @@ void install_objects(ScriptHost::Impl& host)
         lua_rawset(state, -3);
         lua_pushstring(state, "__tostring");
         lua_pushcfunction(state, object_text);
+        lua_rawset(state, -3);
+        // Locked: getmetatable gives this string and setmetatable fails, so scripts can neither reach
+        // the methods' closures nor add metamethods (__gc runs outside the instruction budget).
+        lua_pushstring(state, "__metatable");
+        lua_pushstring(state, "locked");
         lua_rawset(state, -3);
         lua_pushstring(state, kind_field);
         lua_pushnumber(state, static_cast<lua_Number>(kind));
