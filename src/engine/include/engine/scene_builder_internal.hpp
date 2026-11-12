@@ -11,6 +11,7 @@
 #include "assets/game_object_catalog.hpp"
 #include "assets/legacy_material.hpp"
 #include "assets/model.hpp"
+#include "assets/model_geometry.hpp"
 #include "assets/resource_loaders.hpp"
 #include "assets/resource_manager.hpp"
 #include "assets/xml_asset_database.hpp"
@@ -238,13 +239,6 @@ std::shared_ptr<const Result<Model>> cached_model(SceneBuilder& builder, const s
 // A model that cannot be appended leaves no geometry, indices, or materials behind.
 // A model attached rigidly to a bone of the model it joins: an XML hardpoint's Model_To_Attach at
 // its Attachment_Bone (turrets, gun batteries, shield generators drawn as their own models).
-struct ModelAttachment
-{
-    std::string path;
-    std::shared_ptr<const Model> model;
-    std::uint32_t bone{};
-};
-
 // `attachments` are appended into the same mesh, placed at their bone's bind pose and bound to that
 // bone (so they follow its pose and visibility).
 Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, std::string_view name, bool animated_visibility = false, std::span<const ModelAttachment> attachments = {});
@@ -290,15 +284,15 @@ void build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& rigs, std::ve
 // Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
 void update_scene_bounds(VisualScene& scene);
 
-// Separation footprint of a mesh placed with `transform` (row-vector): a quarter of the summed X and
-// Y extents of its bounds, scaled by the transform's horizontal scale. An engine choice until
-// collision meshes and UnitCollisionClass are interpreted.
-float mesh_footprint_radius(const VisualScene& scene, std::uint32_t mesh, const Matrix4& transform);
+// Separation footprint of a model placed with `transform` (row-vector): a quarter of the summed X
+// and Y extents of its drawn bounds (assets/model_geometry), scaled by the transform's horizontal
+// scale. An engine choice until collision meshes and UnitCollisionClass are interpreted.
+float model_footprint_radius(const ModelBounds& bounds, const Matrix4& transform);
 
-// The ground rectangle of a mesh placed with `transform`: its bounds' X/Y extent, rotated and scaled
-// with the placement, with the given passability type. An engine choice until collision meshes
-// are read.
-GroundFootprint mesh_ground_footprint(const VisualScene& scene, std::uint32_t mesh, const Matrix4& transform, std::uint32_t passability_type);
+// The ground rectangle of a model placed with `transform`: its drawn bounds' X/Y extent, rotated
+// and scaled with the placement, with the given passability type. An engine choice until collision
+// meshes are read.
+GroundFootprint model_ground_footprint(const ModelBounds& bounds, const Matrix4& transform, std::uint32_t passability_type);
 
 // scene_terrain.cpp: land terrain, liquid surfaces, and tracks.
 

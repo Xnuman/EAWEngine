@@ -1,6 +1,7 @@
 // Scene building from decoded assets: the asset cache, materials, terrain, and model visibility.
 #include "test_support.hpp"
 
+#include "assets/model_geometry.hpp"
 #include "engine/battle.hpp"
 #include "engine/battle_effects.hpp"
 #include "engine/battle_log.hpp"
@@ -261,6 +262,49 @@ void test_intact_hidden_bones()
             "intact-hidden bone was not collapsed");
 }
 
+// The drawn bounds gameplay measures (footprints, radii) and the drawn mesh share one rule: hidden
+// meshes and collision geometry are left out, rigid meshes sit on their bone's bind pose, and an
+// attached model (a hardpoint's) at its host bone counts in its intact state only.
+void test_drawn_model_bounds()
+{
+    const auto part = [](const eaw::Vector3& corner, const eaw::LegacyMaterialFamily family = eaw::LegacyMaterialFamily::unknown)
+    {
+        eaw::ModelSubmesh submesh;
+        submesh.material.family = family;
+        submesh.vertices.resize(3);
+        submesh.vertices[0].position = corner;
+        submesh.vertices[1].position = {corner.x + 1.0F, corner.y, corner.z};
+        submesh.vertices[2].position = {corner.x, corner.y + 1.0F, corner.z};
+        submesh.indices = {0, 1, 2};
+        return submesh;
+    };
+    auto shifted = eaw::Matrix4::identity();
+    eaw::set_translation(shifted, {0.0F, 0.0F, 5.0F});
+    eaw::Model host;
+    host.skeleton.bones.push_back({"Root", -1, eaw::Matrix4::identity(), true});
+    host.skeleton.bones.push_back({"Mount", 0, shifted, true});
+    host.meshes = {eaw::ModelMesh{"hull", 0U, false, std::nullopt, std::nullopt, {part({0.0F, 0.0F, 0.0F})}},
+                   eaw::ModelMesh{"hidden", 0U, true, std::nullopt, std::nullopt, {part({100.0F, 0.0F, 0.0F})}},
+                   eaw::ModelMesh{"collision", 0U, false, std::nullopt, std::nullopt, {part({-100.0F, 0.0F, 0.0F}, eaw::LegacyMaterialFamily::collision)}},
+                   eaw::ModelMesh{"turret", 1U, false, std::nullopt, std::nullopt, {part({2.0F, 0.0F, 0.0F})}}};
+    auto attached = std::make_shared<eaw::Model>();
+    attached->skeleton.bones.push_back({"Root", -1, eaw::Matrix4::identity(), true});
+    attached->meshes = {eaw::ModelMesh{"gun", 0U, false, std::nullopt, std::nullopt, {part({0.0F, -3.0F, 0.0F})}},
+                        eaw::ModelMesh{"gun_ALT1", 0U, false, 1U, std::nullopt, {part({0.0F, 50.0F, 0.0F})}}};
+    const std::array attachments{eaw::ModelAttachment{"GUN.ALO", attached, 1U}};
+    const auto bounds = eaw::drawn_model_bounds(host, attachments, true);
+    require(bounds.minimum == eaw::Vector3{0.0F, -3.0F, 0.0F} && bounds.maximum == eaw::Vector3{3.0F, 1.0F, 5.0F},
+            "drawn bounds must skip hidden and collision geometry, place rigid meshes on their bone, and add the intact attachment");
+    require(eaw::ModelBounds{}.empty() && !bounds.empty(), "bounds without a vertex must be empty");
+
+    eaw::VirtualFileSystem vfs;
+    eaw::VisualScene scene;
+    eaw::scene_build::SceneBuilder builder{vfs, scene};
+    builder.textures = false;
+    const auto mesh = expect_ok(eaw::scene_build::append_model(builder, host, "host", true, attachments), "appending the host");
+    require(scene.meshes[mesh].bounds_minimum == bounds.minimum && scene.meshes[mesh].bounds_maximum == bounds.maximum, "the drawn mesh must have the gameplay bounds");
+}
+
 // A model's damage states and detail levels become runs of draws: untagged parts in every run,
 // tagged ones only in their state or level, states from 0 up, levels most detailed (highest
 // _LOD number) first, and the default range is state 0 at full detail. A model without tags keeps
@@ -368,6 +412,7 @@ const ModuleRegistrar registrar("scene", {
                                              {"test_resource_manager", &test_resource_manager},
                                              {"test_visual_material_translation", &test_visual_material_translation},
                                              {"test_visual_material_uv_scroll", &test_visual_material_uv_scroll},
+                                             {"test_drawn_model_bounds", &test_drawn_model_bounds},
                                              {"test_visual_terrain", &test_visual_terrain},
                                              {"test_intact_hidden_bones", &test_intact_hidden_bones},
                                          });

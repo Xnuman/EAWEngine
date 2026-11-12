@@ -423,7 +423,8 @@ The file-level split of each module.
   reads of a type's fields through its variants: one number rule, comma lists, yes/no values, and
   diagnostics naming the declaring variant), `spawn_catalog`,
   `map_object_layout`, `surface_effects`, `xml_asset_database`, and `XmlSchema`, split into `xml_schema_load.cpp` for
-  the optional eaw-schema YAML and `xml_schema_validate.cpp`), `model` (`model`, `legacy_material`,
+  the optional eaw-schema YAML and `xml_schema_validate.cpp`), `model` (`model`, `model_geometry` (which geometry is drawn, and its bounds:
+  one rule for scene building and the footprints gameplay measures), `legacy_material`,
   and `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` rules and default mesh visibility),
   `animation` (`skeleton`, `animation`, and `pose`: sampling, blending, composition, retargeting by
   bone name; `animation_events`: sounds and surface triggers at frames of animations), `particle` (`particle_rules`: `ParticleEffect`, the fidelity profiles, and

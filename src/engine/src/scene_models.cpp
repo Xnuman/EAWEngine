@@ -136,8 +136,6 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
     visual_mesh.name = name;
     visual_mesh.first_draw = static_cast<std::uint32_t>(scene.draws.size());
     visual_mesh.bone_count = animated_visibility ? bone_count * 2U : bone_count;
-    visual_mesh.bounds_minimum = empty_bounds_minimum;
-    visual_mesh.bounds_maximum = empty_bounds_maximum;
     const auto first_vertex = scene.vertices.size();
     const auto first_scene_index = scene.indices.size();
     const auto first_material = scene.materials.size();
@@ -164,52 +162,30 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
     // pose and bound rigidly to that bone, in the host's palette.
     const auto append_geometry = [&](const Model& source, const std::vector<Matrix4>& source_bind, const Matrix4* host, const std::optional<std::uint32_t> host_bone) -> Status
     {
-        // Bone visibility is either animated through the visibility palette or, for maps and
-        // attached models, fixed to the bind pose.
-        const bool apply_bind_pose_bones = host != nullptr || !animated_visibility;
+        // Which meshes are drawn (assets/model_geometry): bone visibility is animated through the
+        // visibility palette or, for maps and attached models, fixed to the bind pose; an attached
+        // model (a hardpoint's) shows its own default appearance, intact at full detail.
         const auto& bones = source.skeleton.bones;
-        // An attached model (a hardpoint's) shows its own default appearance: intact, full detail.
-        std::optional<std::uint32_t> attached_detail;
-        if (host != nullptr)
-        {
-            for (const auto& mesh : source.meshes)
-            {
-                if (mesh.detail_level)
-                {
-                    attached_detail = std::max(attached_detail.value_or(0U), *mesh.detail_level);
-                }
-            }
-        }
+        const auto filter = drawn_mesh_filter(source, host != nullptr, animated_visibility);
         for (std::size_t mesh_index = 0; mesh_index < source.meshes.size(); ++mesh_index)
         {
             const auto& mesh = source.meshes[mesh_index];
-            const bool hidden_bone = apply_bind_pose_bones && mesh.attached_bone && *mesh.attached_bone < bones.size() && !bones[*mesh.attached_bone].visible;
-            if (mesh.hidden || hidden_bone)
-            {
-                continue;
-            }
-            if (host != nullptr && ((mesh.damage_state && *mesh.damage_state != 0) || (mesh.detail_level && mesh.detail_level != attached_detail)))
+            if (!drawn_mesh(source, mesh, filter))
             {
                 continue;
             }
             const DrawTag tag = host != nullptr ? DrawTag{} : DrawTag{mesh.damage_state, mesh.detail_level};
             for (const auto& submesh : mesh.submeshes)
             {
-                if (submesh.vertices.empty() || submesh.indices.empty())
-                {
-                    continue;
-                }
                 const auto& material = submesh.material;
-                if (material.family == LegacyMaterialFamily::collision || material.family == LegacyMaterialFamily::shadow)
+                if (!drawn_submesh(submesh))
                 {
-                    continue;
-                }
-                // Heat distortion and occluded-unit overlays target dedicated passes (a distortion buffer
-                // and a depth-greater silhouette) that the sandbox does not implement yet. Drawing them
-                // into the color pass would be wrong, so they are skipped with a diagnostic.
-                if (material.family == LegacyMaterialFamily::heat || material.family == LegacyMaterialFamily::occluded)
-                {
-                    scene.warnings.push_back(mesh.name + ": skipped " + material.source_shader + " (" + std::string(to_string(material.family)) + " pass is not implemented)");
+                    // Heat distortion and occluded-unit overlays target dedicated passes (a distortion
+                    // buffer and a depth-greater silhouette) that the sandbox does not implement yet.
+                    if (!submesh.vertices.empty() && !submesh.indices.empty() && (material.family == LegacyMaterialFamily::heat || material.family == LegacyMaterialFamily::occluded))
+                    {
+                        scene.warnings.push_back(mesh.name + ": skipped " + material.source_shader + " (" + std::string(to_string(material.family)) + " pass is not implemented)");
+                    }
                     continue;
                 }
 
@@ -231,7 +207,7 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
                 }
                 for (const auto& vertex : submesh.vertices)
                 {
-                    auto position = attachment != nullptr ? transform_point(vertex.position, *attachment) : vertex.position;
+                    auto position = drawn_vertex_position(vertex.position, mesh, submesh, source_bind);
                     auto normal = attachment != nullptr ? transform_normal(vertex.normal, *attachment) : vertex.normal;
                     auto tangent = attachment != nullptr ? transform_normal(vertex.tangent, *attachment) : vertex.tangent;
                     auto binormal = attachment != nullptr ? transform_normal(vertex.binormal, *attachment) : vertex.binormal;
@@ -261,12 +237,6 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
                         bone_weights[0] = 1.0F;
                     }
                     scene.vertices.push_back({position, normal, vertex.texture_coordinates, bone_indices, bone_weights, tangent, binormal, vertex.color});
-                    visual_mesh.bounds_minimum[0] = std::min(visual_mesh.bounds_minimum[0], position.x);
-                    visual_mesh.bounds_minimum[1] = std::min(visual_mesh.bounds_minimum[1], position.y);
-                    visual_mesh.bounds_minimum[2] = std::min(visual_mesh.bounds_minimum[2], position.z);
-                    visual_mesh.bounds_maximum[0] = std::max(visual_mesh.bounds_maximum[0], position.x);
-                    visual_mesh.bounds_maximum[1] = std::max(visual_mesh.bounds_maximum[1], position.y);
-                    visual_mesh.bounds_maximum[2] = std::max(visual_mesh.bounds_maximum[2], position.z);
                 }
 
                 const auto first_index = static_cast<std::uint32_t>(scene.indices.size());
@@ -323,6 +293,10 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
         roll_back();
         return make_error("ALO model has no visible renderable geometry");
     }
+    // The bounds gameplay measures too (footprints), from the same rule as the drawn geometry.
+    const auto bounds = drawn_model_bounds(model, attachments, animated_visibility);
+    visual_mesh.bounds_minimum = bounds.minimum;
+    visual_mesh.bounds_maximum = bounds.maximum;
     arrange_states_and_levels(scene, visual_mesh, draw_tags);
     const auto mesh_index = static_cast<std::uint32_t>(scene.meshes.size());
     scene.meshes.push_back(std::move(visual_mesh));
@@ -402,37 +376,35 @@ std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std
 }
 
 // Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
-float mesh_footprint_radius(const VisualScene& scene, const std::uint32_t mesh, const Matrix4& transform)
+float model_footprint_radius(const ModelBounds& bounds, const Matrix4& transform)
 {
-    if (mesh >= scene.meshes.size())
+    if (bounds.empty())
     {
         return 0.0F;
     }
-    const auto& bounds = scene.meshes[mesh];
-    const auto width = bounds.bounds_maximum[0] - bounds.bounds_minimum[0];
-    const auto depth = bounds.bounds_maximum[1] - bounds.bounds_minimum[1];
+    const auto width = bounds.maximum[0] - bounds.minimum[0];
+    const auto depth = bounds.maximum[1] - bounds.minimum[1];
     const auto scale = std::sqrt(transform.values[0] * transform.values[0] + transform.values[1] * transform.values[1] + transform.values[2] * transform.values[2]);
     const auto radius = 0.25F * (width + depth) * scale;
     return std::isfinite(radius) && radius > 0.0F ? radius : 0.0F;
 }
 
-GroundFootprint mesh_ground_footprint(const VisualScene& scene, const std::uint32_t mesh, const Matrix4& transform, const std::uint32_t passability_type)
+GroundFootprint model_ground_footprint(const ModelBounds& bounds, const Matrix4& transform, const std::uint32_t passability_type)
 {
     GroundFootprint footprint;
     footprint.passability = passability_type;
-    if (mesh >= scene.meshes.size())
+    if (bounds.empty())
     {
         return footprint;
     }
-    const auto& bounds = scene.meshes[mesh];
     const auto scale = std::sqrt(transform.values[0] * transform.values[0] + transform.values[1] * transform.values[1] + transform.values[2] * transform.values[2]);
-    const auto local_x = (bounds.bounds_minimum[0] + bounds.bounds_maximum[0]) * 0.5F;
-    const auto local_y = (bounds.bounds_minimum[1] + bounds.bounds_maximum[1]) * 0.5F;
+    const auto local_x = (bounds.minimum[0] + bounds.maximum[0]) * 0.5F;
+    const auto local_y = (bounds.minimum[1] + bounds.maximum[1]) * 0.5F;
     // Row-vector transform: world = local.x * row0 + local.y * row1 + translation.
     footprint.center = {local_x * transform.values[0] + local_y * transform.values[4] + transform.values[12], local_x * transform.values[1] + local_y * transform.values[5] + transform.values[13],
                         transform.values[14]};
-    footprint.half_length = std::max(0.0F, (bounds.bounds_maximum[0] - bounds.bounds_minimum[0]) * 0.5F * scale);
-    footprint.half_width = std::max(0.0F, (bounds.bounds_maximum[1] - bounds.bounds_minimum[1]) * 0.5F * scale);
+    footprint.half_length = std::max(0.0F, (bounds.maximum[0] - bounds.minimum[0]) * 0.5F * scale);
+    footprint.half_width = std::max(0.0F, (bounds.maximum[1] - bounds.minimum[1]) * 0.5F * scale);
     footprint.heading = std::atan2(transform.values[1], transform.values[0]);
     if (!std::isfinite(footprint.center.x) || !std::isfinite(footprint.center.y) || !std::isfinite(footprint.half_length) || !std::isfinite(footprint.half_width) || !std::isfinite(footprint.heading))
     {

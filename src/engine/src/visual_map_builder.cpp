@@ -58,7 +58,7 @@ template <class Member> void arrange_companies(VisualScene& scene, VisualMapAsse
         {
             const auto& member = members[index];
             const auto& spawn = asset.entities[member.entity].spawn;
-            const auto radius = spawn.radius > 0.0F ? spawn.radius : mesh_footprint_radius(scene, scene.instances[member.instance].mesh, scene.instances[member.instance].transform);
+            const auto radius = spawn.radius > 0.0F ? spawn.radius : model_footprint_radius(member.bounds, scene.instances[member.instance].transform);
             formation.push_back({EntityId{static_cast<std::uint32_t>(index + 1U), 1}, center, radius, type_formation_spacing(catalog, *member.type), type_formation_order(catalog, *member.type)});
             raggedness.push_back(type_formation_raggedness(catalog, *member.type));
         }
@@ -193,7 +193,8 @@ std::optional<std::size_t> scene_build::add_spawnable_type(SpawnableBuild& build
     if (spawnable.max_speed > 0.0F)
     {
         const auto soft_radius = type_soft_footprint_radius(build.catalog, *definition);
-        spawnable.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(build.builder.scene, spawnable.mesh, scaled_model_transform(Matrix4::identity(), spawnable.scale));
+        const auto bounds = decoded && decoded->ok() ? drawn_model_bounds(decoded->value(), attachments, true) : ModelBounds{};
+        spawnable.radius = soft_radius > 0.0F ? soft_radius : model_footprint_radius(bounds, scaled_model_transform(Matrix4::identity(), spawnable.scale));
         spawnable.turn_rate = type_turn_rate(build.catalog, *definition);
         spawnable.min_speed = build.land ? 0.0F : type_min_flight_speed(build.catalog, *definition, spawnable.max_speed);
         spawnable.movement = type_movement(build.catalog, *definition, build.land, spawnable.min_speed > 0.0F);
@@ -288,6 +289,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         asset.tracks = append_tracks(builder, map);
     }
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
+    std::unordered_map<std::string, ModelBounds> model_bounds;
     // Company members (placed at their company's origin) are arranged after the loop.
     struct CompanyMember
     {
@@ -296,6 +298,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         std::size_t instance{};
         const XmlDefinition* type{};
         const XmlDefinition* company{};
+        // The member's drawn model bounds (its separation radius when the type gives none).
+        ModelBounds bounds;
     };
     std::vector<CompanyMember> company_members;
     for (const auto& placement : layout.placements)
@@ -310,7 +314,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             const auto host = cached_model(builder, placement.model_path);
             attachments = type_hardpoint_models(builder, catalog, *placement.type, host->ok() ? &host->value() : nullptr);
         }
-        auto [entry, inserted] = meshes.try_emplace(attached_mesh_key(placement.model_path, attachments));
+        const auto mesh_key = attached_mesh_key(placement.model_path, attachments);
+        auto [entry, inserted] = meshes.try_emplace(mesh_key);
         if (inserted)
         {
             entry->second = append_scene_model(builder, placement.model_path, attachments);
@@ -331,6 +336,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         instance.lod_bias = placement.type != nullptr ? type_lod_bias(catalog, *placement.type) : 1.0F;
         {
             const auto& matrix = instance.transform;
+            // The model's drawn bounds, which the type's footprint and radius fall back to.
+            ModelBounds bounds;
             EntitySpawn spawn;
             spawn.type_name = placement.type != nullptr ? placement.type->name : std::string{};
             spawn.owner = map.placed_objects[placement.object_index].player;
@@ -347,6 +354,13 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             {
                 spawn.max_speed = type_max_speed(catalog, *placement.type, scene.warnings, combat_entry->max_speed_multiplier.of(asset.land));
                 const auto decoded = cached_model(builder, placement.model_path);
+                // Once per model and attachments, as the meshes are.
+                auto [measured, fresh] = model_bounds.try_emplace(mesh_key);
+                if (fresh && decoded && decoded->ok())
+                {
+                    measured->second = drawn_model_bounds(decoded->value(), attachments, true);
+                }
+                bounds = measured->second;
                 spawn.combat = profile_of(*placement.type, decoded && decoded->ok() ? &decoded->value() : nullptr);
                 note_damage_bones(builder, placement.model_path, spawn.combat);
                 spawn.crush = type_crush(catalog, *placement.type);
@@ -359,7 +373,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                         spawn.footprint = type_ground_footprint(catalog, *placement.type, matrix, *blocks);
                         if (!spawn.footprint)
                         {
-                            spawn.footprint = mesh_ground_footprint(scene, *entry->second, matrix, *blocks);
+                            spawn.footprint = model_ground_footprint(bounds, matrix, *blocks);
                         }
                         ++asset.obstacle_footprints;
                     }
@@ -367,7 +381,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                 if (spawn.max_speed > 0.0F)
                 {
                     const auto soft_radius = type_soft_footprint_radius(catalog, *placement.type);
-                    spawn.radius = soft_radius > 0.0F ? soft_radius : mesh_footprint_radius(scene, *entry->second, matrix);
+                    spawn.radius = soft_radius > 0.0F ? soft_radius : model_footprint_radius(bounds, matrix);
                     spawn.turn_rate = type_turn_rate(catalog, *placement.type);
                     spawn.min_speed = asset.land ? 0.0F : type_min_flight_speed(catalog, *placement.type, spawn.max_speed);
                     spawn.movement = type_movement(catalog, *placement.type, asset.land, spawn.min_speed > 0.0F);
@@ -399,7 +413,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                                       placement.type != nullptr ? type_animation_profile(catalog, *placement.type) : AnimationProfile{}});
             if (placement.needs_formation)
             {
-                company_members.push_back({placement.object_index, asset.entities.size() - 1U, scene.instances.size(), placement.type, placement.container});
+                company_members.push_back({placement.object_index, asset.entities.size() - 1U, scene.instances.size(), placement.type, placement.container, bounds});
             }
         }
         if (const auto faction = placement.type != nullptr ? catalog.affiliation_color(*placement.type) : std::nullopt)

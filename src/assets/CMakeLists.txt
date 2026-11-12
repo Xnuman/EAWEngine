@@ -34,8 +34,10 @@ set(EAW_ASSETS_MODEL
     ${HEADERS_DIR}/alo_interpretation.hpp
     ${HEADERS_DIR}/legacy_material.hpp
     ${HEADERS_DIR}/model.hpp
+    ${HEADERS_DIR}/model_geometry.hpp
     ${SOURCES_DIR}/alo_interpretation.cpp
     ${SOURCES_DIR}/legacy_material.cpp
+    ${SOURCES_DIR}/model_geometry.cpp
 )
 
 set(EAW_ASSETS_ANIMATION
