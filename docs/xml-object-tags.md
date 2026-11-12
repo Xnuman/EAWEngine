@@ -433,7 +433,7 @@ These tags set how an object moves (speed, turning, acceleration, flight attitud
 | `Snap_Movement_Orders_To_Center` | prop 1 (Prop_Good_Ground_Area) | true | Move orders onto this object go to its center (name). |
 | `Autonomous_Move_Extension_Vs_Attacker` | containers 70, units 55, props 2 (127) | float 0..500; 200 typical | How far a unit may move on its own to respond to an attacker (name). |
 | `Max_Distance_From_Spawner` | ground structures 49, props 4 (53) | int 0..220; 150 typical | Leash of units spawned by a structure (civilian houses) (name, data). |
-| `Is_Stationary_When_Attacking` | heroes 8, others 4 (12) | 11 Yes | Unit stops to attack (Jedi, Vader, Palpatine, Elite Guard) (name, data). |
+| `Is_Stationary_When_Attacking` | heroes 8, others 4 (12) | 11 Yes | Unit stops to attack (Jedi, Vader, Palpatine, Elite Guard) (name, data). Most infantry stop to attack anyway (owner's recollection); the one No is `Dark_Trooper_PhaseI`, a melee unit, perhaps attacking on the move (to check). |
 | `Destroy_When_Stunned_Over_Water` | vehicle 1 (MAL_Rocket_Vehicle) | Yes | FoC only. Dies when stunned above water (name). |
 | `Stationary_Space_Layer` | vehicle 1 (Snowspeeder) | Land | Layer used while not moving (the landed speeder) (name, data). |
 

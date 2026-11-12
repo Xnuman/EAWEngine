@@ -291,6 +291,9 @@ compared by measured ratios from screenshots, never by recreated scenes):
 - whether the game mounts MEG archives that `MegaFiles.xml` does not list (to do, same kind of mod:
   an unlisted archive overriding one file; the engine mounts them in lexical order, and the
   reference tools disagree);
+- whether melee units attack on the move: most infantry stop to attack (the owner's recollection,
+  2026-11-13, which the engine follows), but `Dark_Trooper_PhaseI` sets
+  `Is_Stationary_When_Attacking` to No, the only explicit No in stock;
 - the original's logic rate, which every per-frame XML value is read at (30 per second, `assets/legacy_units.hpp`: speeds, turn rates, accelerations, frame counts);
 - shield refresh units, and how shields and armor combine;
 - ranges measured in the ground plane;

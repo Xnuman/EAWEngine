@@ -141,7 +141,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Snap_Movement_Orders_To_Center` | `gap` |  |
 | `Autonomous_Move_Extension_Vs_Attacker` | `gap` |  |
 | `Max_Distance_From_Spawner` | `needs unit spawning` |  |
-| `Is_Stationary_When_Attacking` | `partial` | not read: its 11 Yes users (Jedi, Sith, guards) are infantry, and every ground unit without a TURRET behavior already holds fire while moving; whether units without the tag fire on the move in the original is to observe |
+| `Is_Stationary_When_Attacking` | `partial` | not read: every ground unit without a TURRET behavior stops to attack, as most infantry do in the original (owner's recollection), which covers the 11 Yes users; the one explicit No (Dark Trooper phase I, melee) is to check |
 | `Destroy_When_Stunned_Over_Water` | `needs status effects` | stun |
 | `Stationary_Space_Layer` | `gap` |  |
 
