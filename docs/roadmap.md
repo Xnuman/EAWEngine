@@ -142,7 +142,10 @@ rendering rows join item 2).
    Open: combat presentation and fidelity (hardpoint damage visuals, turret rotation (decided
    2026-11-11: with the animator's improvement, since an aimed turret makes each instance's pose
    its own: the aim joins the pose key; `Turret_Bone_Name`/`Barrel_Bone_Name` about the model's up
-   axis and the barrel's horizontal, `Turret_Rotate_Speed`),
+   axis and the barrel's horizontal, `Turret_Rotate_Speed`); in the same step, clip sequencing for
+   walkers' transition clips (`TURNL`/`TURNR` turning in place with `_BEGIN`/`_END`,
+   `_QUARTER`/`_HALF`, `MOVESTART`, `MOVE_ENDONE`..`FOUR` by foot phase; XML `Has_Pre_Turn_Anim`,
+   `Walk_Transition`, `Rotation_Animation_Speed`, `Locomotor_Has_Animation_Priority`),
    damage-specific death clones and wreck explosions, ground detonations, debris, death-projectile
    blasts, beams for instant-hit weapons), and game and mod identity in order logs.
 2. Skirmish systems: the player layer (the local player's owner, factions and hostility from data

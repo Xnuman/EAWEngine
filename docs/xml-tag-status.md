@@ -25,8 +25,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 | --- | --- |
 | `done` | 152 |
 | `partial` | 20 |
-| `gap` | 243 |
-| `needs` | 682 |
+| `gap` | 242 |
+| `needs` | 683 |
 | `n/a` | 20 |
 | total | 1117 |
 
@@ -34,7 +34,7 @@ Systems that `needs` rows wait for, by tag count:
 
 | System | Tags |
 | --- | --- |
-| abilities | 148 |
+| abilities | 149 |
 | galactic | 119 |
 | production | 91 |
 | status effects | 55 |
@@ -63,7 +63,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-31 done, 6 partial, 51 gap, 18 needs, 7 n/a.
+31 done, 6 partial, 50 gap, 19 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -108,9 +108,9 @@ Systems that `needs` rows wait for, by tag count:
 | `MinSecondaryTurnROTCoefficient` | `gap` |  |
 | `MaxSecondaryTurnROTCoefficient` | `gap` |  |
 | `SecondaryTurnLookaheadDistance` | `gap` |  |
-| `Has_Pre_Turn_Anim` | `gap` |  |
-| `Walk_Transition` | `gap` |  |
-| `Locomotor_Has_Animation_Priority` | `gap` |  |
+| `Has_Pre_Turn_Anim` | `gap` | animator step: transition clips (TURNL/R, _BEGIN/_END, MOVESTART, MOVE_END*) |
+| `Walk_Transition` | `gap` | animator step: transition clips (TURNL/R, _BEGIN/_END, MOVESTART, MOVE_END*) |
+| `Locomotor_Has_Animation_Priority` | `gap` | animator step: movement driven by the walk clip |
 | `Should_Cause_Limited_Turrets_To_Turn` | `gap` |  |
 | `Movement_Directions_Count` | `gap` |  |
 
@@ -204,8 +204,8 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Movement_Animation_Speed` | `done` | multiplies the move clip on top of speed matching |
 | `Walk_Animation_Speed` | `done` |  |
-| `Rotation_Animation_Speed` | `gap` |  |
-| `Crouch_Animation_Speed` | `gap` |  |
+| `Rotation_Animation_Speed` | `gap` | animator step: transition clips (TURNL/R, _BEGIN/_END, MOVESTART, MOVE_END*) |
+| `Crouch_Animation_Speed` | `needs abilities` | crouch clips play under Spread Out |
 | `Tread_Scroll_Rate` | `gap` |  |
 | `Cinematic_Anim_Speed` | `needs cinematics` |  |
 
