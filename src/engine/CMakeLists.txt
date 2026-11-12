@@ -11,6 +11,7 @@ set(SOURCES_DIR "src")
 set(EAW_ENGINE_BATTLE
     ${HEADERS_DIR}/battle.hpp
     ${HEADERS_DIR}/battle_log.hpp
+    ${HEADERS_DIR}/battle_map.hpp
     ${HEADERS_DIR}/battle_runner.hpp
     ${HEADERS_DIR}/battle_scripts.hpp
     ${HEADERS_DIR}/combat_content.hpp

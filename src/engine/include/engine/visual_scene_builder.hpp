@@ -6,6 +6,7 @@
 #include "assets/pose.hpp"
 #include "assets/spawn_catalog.hpp"
 #include "simulation/simulation.hpp"
+#include "engine/battle_map.hpp"
 #include "engine/particle_effects.hpp"
 #include "engine/projectile_visuals.hpp"
 #include "engine/terrain_height.hpp"
@@ -184,44 +185,19 @@ struct DeathStyle
     bool removed{};
 };
 
-// Units an object's destruction leaves (XML Destruction_Survivors: crews, prisoners): each listed
-// type, `count` groups of it, owned by the destroyed object's owner. Every stock entry has weight
-// 1.0, so each spawns; a count range (Minimum_/Maximum_Destruction_Survivor_Count, one prison)
-// spawns its minimum. Both are engine choices.
-struct Survivors
-{
-    std::vector<std::string> types;
-    std::uint32_t count{1};
-};
-
-// What scripts read of an object type beyond its name: its game-object script (XML Lua_Script;
-// empty: none), its categories (XML CategoryMask, folded: "infantry", "landhero"), and its combat
-// rating (XML AI_Combat_Power, which Get_Combat_Rating presumably reads; 0 when absent).
-struct ScriptTypeInfo
-{
-    std::string lua_script;
-    std::vector<std::string> categories;
-    float combat_rating{};
-};
-
 // The most a flyer banks in a turn when its type names no Bank_Turn_Angle: 60 degrees (an engine
 // choice).
 inline constexpr float default_bank_limit = 1.04719755F;
 
-struct MapEntitySpawn
+// How a placed object (a MapEntity, same index) is drawn: its scene instance, its death, the most a
+// flyer banks in a turn (type_bank_limit, radians), whether it is hidden (an editor marker, XML
+// Is_Marker: flags, script points, skirmish base positions, which stays an entity so scripts can
+// find it), and how its clips play.
+struct MapEntityLook
 {
-    EntitySpawn spawn;
     std::uint32_t instance{};
     DeathStyle death;
-    ScriptTypeInfo script;
-    // The name scripts find the placed object by (TedPlacedObject::hint; company members share
-    // their company's).
-    std::string hint;
-    // Presentation: the most a flyer banks in a turn (type_bank_limit, radians).
     float bank_limit{default_bank_limit};
-    Survivors survivors;
-    // Not drawn: an editor marker (XML Is_Marker: flags, script points, skirmish base positions)
-    // that stays an entity so scripts can find it.
     bool hidden{};
     AnimationProfile animation;
 };
@@ -377,8 +353,10 @@ struct VisualMapAsset
     std::size_t tracks{};
     std::size_t faction_colored{};
     std::size_t player_colored{};
-    // One entity per drawn placed object (not backdrops), in scene instance order.
-    std::vector<MapEntitySpawn> entities;
+    // One entity per placed object with a drawable model (not backdrops), in scene instance order,
+    // and how each is drawn (same index).
+    std::vector<MapEntity> entities;
+    std::vector<MapEntityLook> entity_looks;
     // Types requested for runtime spawning that resolved to a model, in request order.
     std::vector<SpawnableType> spawnable;
     // Ground for the simulation and CPU queries (land maps; invalid for space).

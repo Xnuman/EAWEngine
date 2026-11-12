@@ -44,7 +44,8 @@ void test_scene_presentation()
     eaw::EntitySpawn broken = spawn;
     broken.type_name = "Broken_Unit";
     broken.position.x = std::numeric_limits<float>::infinity();
-    const std::array<eaw::MapEntitySpawn, 2> entities{{{spawn, 1}, {broken, 1}}};
+    const std::array<eaw::MapEntity, 2> entities{{{spawn}, {broken}}};
+    const std::array<eaw::MapEntityLook, 2> looks{{{1}, {1}}};
     eaw::SpawnableType spawnable;
     spawnable.type_name = "Spawned_Unit";
     spawnable.mesh = 0;
@@ -55,7 +56,7 @@ void test_scene_presentation()
     map.spawnable = std::span(&spawnable, 1);
     eaw::Battle battle(map, "TEST.TED", 0.1);
     auto& world = battle.world();
-    const eaw::ScenePresentation presentation(scene, entities, battle.map_entity_ids(), battle.spawnable());
+    const eaw::ScenePresentation presentation(scene, entities, looks, battle.map_entity_ids(), battle.spawnable());
     require(world.snapshot().entities.size() == 1 && battle.map_entity_ids()[0] && !battle.map_entity_ids()[1], "a battle must spawn the valid map entity and skip the broken one");
     const auto id = world.snapshot().entities[0].id;
     world.submit({eaw::SimCommandKind::move, {id}, {10.0F, 5.0F, 0.0F}});
@@ -79,12 +80,13 @@ void test_scene_presentation()
             "a spawned type must be drawn at its Scale_Factor");
 
     // A marker (Is_Marker) is an entity scripts can find, but it is not drawn.
-    eaw::MapEntitySpawn marker{spawn, 1};
-    marker.hidden = true;
+    const eaw::MapEntity marker{spawn};
+    eaw::MapEntityLook marker_look{1};
+    marker_look.hidden = true;
     eaw::BattleMap marker_map;
     marker_map.entities = std::span(&marker, 1);
     eaw::Battle marker_battle(marker_map, "TEST.TED", 0.1);
-    const eaw::ScenePresentation marker_presentation(scene, std::span(&marker, 1), marker_battle.map_entity_ids(), {});
+    const eaw::ScenePresentation marker_presentation(scene, std::span(&marker, 1), std::span(&marker_look, 1), marker_battle.map_entity_ids(), {});
     marker_presentation.build(marker_battle.world().snapshot().entities, {}, instances, ids);
     require(marker_battle.world().snapshot().entities.size() == 1 && instances.size() == 1 && instances[0].background, "a marker must stay an entity but not be drawn");
 }

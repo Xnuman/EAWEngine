@@ -43,7 +43,8 @@ public:
     // Records each placed entity's template from `scene.instances` under its id (`ids` parallels
     // `entities`, as Battle::map_entity_ids; empty ids are skipped) and one template per spawnable
     // type under spawnable_visual(type index).
-    ScenePresentation(const VisualScene& scene, std::span<const MapEntitySpawn> entities, std::span<const std::optional<EntityId>> ids, std::span<const SpawnableType> spawnable);
+    ScenePresentation(const VisualScene& scene, std::span<const MapEntity> entities, std::span<const MapEntityLook> looks, std::span<const std::optional<EntityId>> ids,
+                      std::span<const SpawnableType> spawnable);
 
     // Builds this frame's instances: static backgrounds first, then one per snapshot entity in
     // snapshot order. `entities_out[i]` names the entity behind `instances_out[i]` (invalid for

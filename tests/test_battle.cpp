@@ -582,7 +582,7 @@ void test_runtime_spawnable_registration()
     eaw::VisualScene scene;
     scene.meshes.resize(1);
     scene.meshes[0].name = "TROOPER.ALO";
-    eaw::ScenePresentation presentation(scene, {}, {}, std::span(&trooper, 1));
+    eaw::ScenePresentation presentation(scene, {}, {}, {}, std::span(&trooper, 1));
     eaw::VisualMesh walker_mesh;
     walker_mesh.name = "WALKER.ALO";
     presentation.add_meshes(std::span(&walker_mesh, 1));
@@ -788,7 +788,7 @@ void test_battle_object_scripts()
     broken.type_name = "Broken";
     broken.script.lua_script = "No_Such_Script";
     const std::array<eaw::SpawnableType, 2> types{walker, broken};
-    eaw::MapEntitySpawn beacon;
+    eaw::MapEntity beacon;
     beacon.spawn.type_name = "Beacon";
     beacon.spawn.owner = 2;
     beacon.spawn.position = {300.0F, 0.0F, 0.0F};

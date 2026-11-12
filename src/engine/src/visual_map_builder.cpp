@@ -421,11 +421,12 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                     asset.space_obstacles += spawn.radius > 0.0F ? 1U : 0U;
                 }
             }
-            asset.entities.push_back({std::move(spawn), static_cast<std::uint32_t>(scene.instances.size()), placement.type != nullptr ? type_death_style(catalog, *placement.type) : DeathStyle{},
-                                      placement.type != nullptr ? type_script_info(catalog, *placement.type) : ScriptTypeInfo{}, map.placed_objects[placement.object_index].hint,
-                                      placement.type != nullptr ? type_bank_limit(catalog, *placement.type) : default_bank_limit,
-                                      placement.type != nullptr ? type_survivors(catalog, *placement.type) : Survivors{}, placement.type != nullptr && type_is_marker(catalog, *placement.type),
-                                      placement.type != nullptr ? type_animation_profile(catalog, *placement.type) : AnimationProfile{}});
+            asset.entities.push_back({std::move(spawn), placement.type != nullptr ? type_script_info(catalog, *placement.type) : ScriptTypeInfo{}, map.placed_objects[placement.object_index].hint,
+                                      placement.type != nullptr ? type_survivors(catalog, *placement.type) : Survivors{}});
+            asset.entity_looks.push_back({static_cast<std::uint32_t>(scene.instances.size()), placement.type != nullptr ? type_death_style(catalog, *placement.type) : DeathStyle{},
+                                          placement.type != nullptr ? type_bank_limit(catalog, *placement.type) : default_bank_limit,
+                                          placement.type != nullptr && type_is_marker(catalog, *placement.type),
+                                          placement.type != nullptr ? type_animation_profile(catalog, *placement.type) : AnimationProfile{}});
             if (placement.needs_formation)
             {
                 company_members.push_back({placement.object_index, asset.entities.size() - 1U, scene.instances.size(), placement.type, placement.container, bounds});

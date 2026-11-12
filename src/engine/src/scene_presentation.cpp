@@ -40,10 +40,10 @@ float flight_bank(const float yaw_rate, const float limit) noexcept
     return std::isfinite(yaw_rate) ? std::clamp(yaw_rate * 0.6F, -limit, limit) : 0.0F;
 }
 
-ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<const MapEntitySpawn> entities, const std::span<const std::optional<EntityId>> ids,
-                                     const std::span<const SpawnableType> spawnable)
+ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<const MapEntity> entities, const std::span<const MapEntityLook> looks,
+                                     const std::span<const std::optional<EntityId>> ids, const std::span<const SpawnableType> spawnable)
 {
-    EAW_ASSERT_MSG(ids.size() == entities.size(), "scene presentation needs one id slot per map entity");
+    EAW_ASSERT_MSG(ids.size() == entities.size() && looks.size() == entities.size(), "scene presentation needs one id slot and one look per map entity");
     for (const auto& mesh : scene.meshes)
     {
         mesh_names_.push_back(mesh.name);
@@ -60,12 +60,13 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
     for (std::size_t index = 0; index < entities.size(); ++index)
     {
         const auto& entity = entities[index];
-        EAW_ASSERT_MSG(entity.instance < scene.instances.size() && !scene.instances[entity.instance].background,
-                       "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(entity.instance) + ", which is missing or a background");
+        const auto& look = looks[index];
+        EAW_ASSERT_MSG(look.instance < scene.instances.size() && !scene.instances[look.instance].background,
+                       "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(look.instance) + ", which is missing or a background");
         // Markers stay entities but are never drawn: without a template they are skipped.
-        if (ids[index] && !entity.hidden)
+        if (ids[index] && !look.hidden)
         {
-            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[entity.instance], entity.spawn.heading, entity.death, entity.bank_limit, entity.animation});
+            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[look.instance], entity.spawn.heading, look.death, look.bank_limit, look.animation});
         }
     }
     for (const auto& type : spawnable)

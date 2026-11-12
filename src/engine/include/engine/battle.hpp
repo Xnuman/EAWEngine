@@ -35,7 +35,7 @@ inline constexpr std::uint32_t spawnable_visual_base = 0x80000000U;
 struct BattleMap
 {
     // Placed entities, spawned in order when the battle starts.
-    std::span<const MapEntitySpawn> entities;
+    std::span<const MapEntity> entities;
     // Types that spawn orders may name, by XML type name.
     std::span<const SpawnableType> spawnable;
     // Ground of land maps (none on space maps).
