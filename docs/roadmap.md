@@ -263,8 +263,8 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
   spaces in `object_types`; `xml_schema_validate`'s values), where `TypeFields::list`
   splits on commas: one rule per kind of list, decided against the corpus;
 - `compare_images` (image regression) in eaw_formats;
-- the projectile reacquisition tie-break, whose comment says lower index while the code takes the
-  higher (changing the comparison changes the hash);
+- the projectile reacquisition tie-break, which takes the higher dense index (storage order, like
+  the other order dependences the simulation rewrite removes; changing it changes the hash);
 - the script host's own SplitMix stream beside `core/random` (it is script state, so a move must keep
   its sequence);
 

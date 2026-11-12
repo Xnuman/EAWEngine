@@ -609,7 +609,9 @@ void SimulationWorld::run_projectiles()
         auto victim = dense_index(projectile.target);
         if (!victim && projectile.scan_range > 0.0F)
         {
-            // A guided shot takes the nearest hostile in scan range of itself (ties: lower index).
+            // A guided shot takes the nearest hostile in scan range of itself (ties: the higher dense
+            // index, the last one the scan meets; storage order, so the simulation rewrite settles
+            // it, proposal F of the 2026-11 review; changing it changes the hash).
             float best = projectile.scan_range;
             for (std::size_t other = 0; other < ids_.size(); ++other)
             {
