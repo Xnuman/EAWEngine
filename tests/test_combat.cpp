@@ -268,6 +268,33 @@ void test_hardpoints_and_fire_cones()
         require(world.alive(*victim) != dies && (dies || std::fabs(world.snapshot().entities[0].health - 200.0F) < 1.0e-3F),
                 "a ship must die with its last part, or keep a fifth of its hull when its type says not to");
     }
+
+    // An ordered ship turns in place toward its target's nearest live hardpoint; an idle one keeps
+    // its heading.
+    for (const bool ordered : {true, false})
+    {
+        auto world = make_world();
+        // Its 500-unit weapons put the target in range, so it stands and turns.
+        const auto gunship = ship;
+        eaw::CombatProfile mark;
+        mark.health = 100.0F;
+        mark.hardpoints = {{Kind::weapon, 20.0F, true, {0.0F, 30.0F, 0.0F}}};
+        const auto shooter = world.spawn({.type_name = "Gunship", .owner = 1, .combat = gunship, .turn_rate = 1.0F});
+        const auto target = world.spawn({.type_name = "Mark", .owner = 2, .position = {-300.0F, 0.0F, 0.0F}, .combat = mark});
+        if (ordered)
+        {
+            world.submit({.kind = eaw::SimCommandKind::attack, .entities = {*shooter}, .target_entity = *target});
+        }
+        for (int tick = 0; tick < 40; ++tick)
+        {
+            world.step();
+        }
+        // The part sits 30 to the target's left, so it bears slightly off due west.
+        const auto bearing = std::atan2(30.0F, -300.0F);
+        const auto heading = world.snapshot().entities[0].heading;
+        require(ordered ? std::fabs(std::remainder(heading - bearing, 2.0F * std::numbers::pi_v<float>)) < 1.0e-3F : heading == 0.0F,
+                "an ordered ship must turn to its target's nearest hardpoint, an idle one keep its heading");
+    }
 }
 
 // Body-aiming units (infantry) turn to face their target, fire only facing it, and never while

@@ -75,11 +75,14 @@ Adopted so far:
   `TurnInPlaceSlowdown` for its `Space_Layer` (corvette 2: S-11 turns 90 degrees in 120 frames,
   S-26 0.84 = 1.4 x 1.2 / 2 degrees per frame; frigate 3 and capital 4 are the data's, not
   observed).
+- *Facing an ordered target*: a space ship with an attack order and its target in range turns in
+  place toward the target's nearest live hardpoint, exactly onto its bearing (S-26, S-27); idle
+  ships keep their heading (S-22 to S-25). Their 10-degree dead band rests on disassembly and is
+  not used.
 Recorded and not adopted yet (each changes behavior beyond a constant; proposed to the owner):
 flying
 straight from rest until full speed before turning (S-12; contradicts our 25 % turning floor);
-ordered ships in range turning toward the target's nearest live hardpoint (S-26, S-27; idle ships
-keep their heading, as ours do); keeping a held target when a better one appears (S-02) and replacing a removed
+keeping a held target when a better one appears (S-02) and replacing a removed
 one at the next allowed shot (S-03); `Layer_Z_Adjust` heights (S-10 to S-14, S-32 to S-34); per-
 hardpoint shot counts by bearing (S-22 to S-42) as fire-cone regression cases; hit rates near 40 %
 (corvette on Tartan) and 7 % (Tartan on Nebulon-B), far below our uniform scatter's.

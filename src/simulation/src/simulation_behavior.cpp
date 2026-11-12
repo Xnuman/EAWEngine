@@ -193,6 +193,13 @@ void SimulationWorld::run_behavior()
                     {
                         intents_[index].point = to;
                     }
+                    else if (combat_[index].ordered && follows_ground_[index] == 0 && !ground_.valid())
+                    {
+                        // An ordered space ship turns in place toward its target's nearest live
+                        // hardpoint; an idle one keeps its heading (recorded in the FoC debug build:
+                        // EaW-Revised S-22 to S-27, docs/compatibility-research.md).
+                        intents_[index].point = aim_point(*victim, aim_hardpoint(*victim, positions_[index]));
+                    }
                 }
             }
         }
