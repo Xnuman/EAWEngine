@@ -26,9 +26,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 162 |
+| `done` | 163 |
 | `partial` | 21 |
-| `gap` | 209 |
+| `gap` | 208 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -1493,7 +1493,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Sound events and speech
 
-23 done, 1 partial, 5 gap, 58 needs, 4 n/a.
+24 done, 1 partial, 4 gap, 58 needs, 4 n/a.
 
 ### Unit responses to orders and selection
 
@@ -1547,7 +1547,7 @@ Systems that `needs` rows wait for, by tag count:
 | `SFXEvent_Ambient_Moving` | `done` | needs the AMBIENT_SFX behavior |
 | `SFXEvent_Ambient_Moving_Min_Delay_Seconds` | `done` |  |
 | `SFXEvent_Ambient_Moving_Max_Delay_Seconds` | `done` |  |
-| `SFXEvent_Turret_Rotating_Loop` | `gap` |  |
+| `SFXEvent_Turret_Rotating_Loop` | `done` | while the turret's direction changes between ticks (unit turrets; hardpoint turrets do not turn yet) |
 | `SFXEvent_Powered_Active_Loop` | `needs base power` |  |
 | `SFXEvent_Debug_Test_Loop` | `n/a` | debug sound |
 

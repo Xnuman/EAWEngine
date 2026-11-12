@@ -58,6 +58,9 @@ enum class UnitResponse
 inline constexpr float base_rolloff = 0.05F;
 inline constexpr float default_saturation_distance = 200.0F;
 inline constexpr std::size_t max_unit_loops = 16;
+// A turret whose direction changed by more than this between two ticks is turning, and its motor
+// loop plays (radians; an engine choice, small enough for slow capital turrets).
+inline constexpr float turret_turning_epsilon = 1.0e-4F;
 // The pause after an order's response before another unit type's assist line, and how long an
 // assist line waits for the voices it must not talk over (engine choices).
 inline constexpr float assist_response_delay = 0.2F;
@@ -130,6 +133,8 @@ private:
         std::string engine_loop;
         std::string engine_idle_loop;
         std::string ambient_loop;
+        // Played while its turret turns (SFXEvent_Turret_Rotating_Loop).
+        std::string turret_loop;
         std::string select;
         std::string move;
         std::string attack;
@@ -217,6 +222,14 @@ private:
     std::unordered_map<std::uint64_t, float> ambient_moving_due_;
     // Per entity: the health band it last reported (0 above low, 1 low, 2 critical).
     std::unordered_map<std::uint64_t, std::uint8_t> health_bands_;
+    // Per turreted entity: its turret direction at the last tick seen, and whether it changed then.
+    struct TurretMotion
+    {
+        std::uint64_t tick{};
+        float yaw{};
+        bool turning{};
+    };
+    std::unordered_map<std::uint64_t, TurretMotion> turret_motion_;
     // Entity key -> type sounds, kept for entities seen alive so their deaths find them.
     std::unordered_map<std::uint64_t, const TypeSounds*> entity_sounds_;
     // Sequential events: the next sample's index, by event.

@@ -345,6 +345,49 @@ void test_unit_loops()
     std::filesystem::remove_all(root, ignored);
 }
 
+// A turret's motor loop plays while the turret turns to its victim and stops once it points at it.
+void test_turret_loop()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-turret-loop-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    write_file(root / "Data" / "XML" / "SFXEvents.xml", "<SFXEvents><SFXEvent Name=\"Motor\"><Is_3D>Yes</Is_3D><Play_Count>-1</Play_Count><Samples>loop.wav</Samples></SFXEvent></SFXEvents>");
+    write_file(root / "Data" / "XML" / "Units.xml", "<Units><GroundVehicle Name=\"Tank\"><SFXEvent_Turret_Rotating_Loop>Motor</SFXEvent_Turret_Rotating_Loop></GroundVehicle></Units>");
+    write_file(root / "Data" / "Audio" / "SFX" / "loop.wav", text_of(make_wav(eaw::wav_format::pcm, 1, 16, pcm16({1, 2}))));
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    eaw::AssetCache cache;
+    eaw::NullAudioDevice device;
+    eaw::BattleAudio audio(vfs, &cache, device, "English", true);
+    eaw::SimulationWorld world(0.1);
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    world.set_hostility(hostility);
+    eaw::CombatProfile tank;
+    tank.health = 100.0F;
+    tank.weapons = {eaw::WeaponProfile{.range = 200.0F, .recharge_seconds = 10.0F, .damage = 1.0F}};
+    // 90 degrees per second: half a turn to the target behind takes 20 ticks.
+    tank.turret = eaw::TurretProfile{.rate = 1.5707964F};
+    eaw::CombatProfile sturdy;
+    sturdy.health = 1000.0F;
+    (void)world.spawn({.type_name = "Tank", .owner = 1, .combat = tank});
+    (void)world.spawn({.type_name = "Target", .owner = 2, .position = {-100.0F, 0.0F, 0.0F}, .combat = sturdy});
+    const eaw::VisualCamera camera{{0.0F, -100.0F, 100.0F}, {0.0F, 0.0F, 0.0F}};
+    world.step();
+    audio.update(camera, world.snapshot(), world, 0.1F);
+    world.step();
+    audio.update(camera, world.snapshot(), world, 0.1F);
+    audio.update(camera, world.snapshot(), world, 0.05F);
+    require(device.played().size() == 1 && device.active_voices() == 1, "a turning turret must play its motor loop, once, frames between ticks included");
+    for (int tick = 0; tick < 30; ++tick)
+    {
+        world.step();
+        audio.update(camera, world.snapshot(), world, 0.1F);
+    }
+    require(device.active_voices() == 0, "a turret that points at its victim must stop its motor");
+    std::filesystem::remove_all(root, ignored);
+}
+
 // The animation event table: rows as written (tabs or spaces, CR LF, a byte-order mark), their
 // meaning (frames in hundredths, NONE left out, bad rows reported), lookup by stem; surface effects
 // by trigger and surface with the default as fallback; and cues playing what they pass.
@@ -587,6 +630,7 @@ const ModuleRegistrar registrar("audio", {
                                              {"test_sound_events", &test_sound_events},
                                              {"test_battle_audio", &test_battle_audio},
                                              {"test_unit_loops", &test_unit_loops},
+                                             {"test_turret_loop", &test_turret_loop},
                                              {"test_animation_events", &test_animation_events},
                                              {"test_impact_and_moving_sounds", &test_impact_and_moving_sounds},
                                          });

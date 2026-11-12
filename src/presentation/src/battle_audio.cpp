@@ -123,6 +123,7 @@ const BattleAudio::TypeSounds& BattleAudio::type_sounds(const std::string_view t
         }
         sounds.engine_idle_loop = type_field(*catalog_, definition, "SFXEvent_Engine_Idle_Loop");
         sounds.ambient_loop = type_field(*catalog_, definition, "SFXEvent_Ambient_Loop");
+        sounds.turret_loop = type_field(*catalog_, definition, "SFXEvent_Turret_Rotating_Loop");
         sounds.select = type_field(*catalog_, definition, "SFXEvent_Select");
         sounds.move = type_field(*catalog_, definition, "SFXEvent_Move");
         sounds.attack = type_field(*catalog_, definition, "SFXEvent_Attack");
@@ -575,7 +576,9 @@ void BattleAudio::update_ambient_moving(const SimSnapshot& snapshot, const Simul
 void BattleAudio::update_unit_loops(const SimSnapshot& snapshot, const SimulationWorld& world)
 {
     // Each unit's loops: its engine while it moves (SFXEvent_Engine_Moving_Loop) or idles
-    // (SFXEvent_Engine_Idle_Loop), and its ambient sound (SFXEvent_Ambient_Loop) either way; the
+    // (SFXEvent_Engine_Idle_Loop), its ambient sound (SFXEvent_Ambient_Loop) either way, and its
+    // turret motor while the turret turns (SFXEvent_Turret_Rotating_Loop; the XML comment: while it
+    // turns to aim; judged between ticks, so frames between them keep the answer); the
     // nearest max_unit_loops of them play, nearest the listener first.
     struct Wanted
     {
@@ -596,7 +599,20 @@ void BattleAudio::update_unit_loops(const SimSnapshot& snapshot, const Simulatio
         const auto& sounds = *known->second;
         const bool moving = entity.moving || entity.speed > 0.0F;
         const auto range = distance(entity.position, listener_.position);
-        for (const auto* name : {moving ? &sounds.engine_loop : &sounds.engine_idle_loop, &sounds.ambient_loop})
+        bool turret_turning = false;
+        if (!sounds.turret_loop.empty())
+        {
+            auto& turret = turret_motion_[key];
+            if (turret.tick != snapshot.tick)
+            {
+                turret.turning = turret.tick != 0 && std::abs(entity.turret_yaw - turret.yaw) > turret_turning_epsilon;
+                turret.tick = snapshot.tick;
+                turret.yaw = entity.turret_yaw;
+            }
+            turret_turning = turret.turning;
+        }
+        static const std::string no_loop;
+        for (const auto* name : {moving ? &sounds.engine_loop : &sounds.engine_idle_loop, &sounds.ambient_loop, turret_turning ? &sounds.turret_loop : &no_loop})
         {
             if (const auto* event = name->empty() ? nullptr : events_.find(*name))
             {
@@ -604,6 +620,12 @@ void BattleAudio::update_unit_loops(const SimSnapshot& snapshot, const Simulatio
             }
         }
     }
+    // Turrets of entities gone from the snapshot are forgotten.
+    std::erase_if(turret_motion_,
+                  [&](const auto& entry)
+                  {
+                      return entry.second.tick != snapshot.tick;
+                  });
     std::ranges::sort(wanted,
                       [](const Wanted& left, const Wanted& right)
                       {
