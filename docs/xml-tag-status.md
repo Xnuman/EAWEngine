@@ -24,8 +24,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 | Status | Tags |
 | --- | --- |
 | `done` | 152 |
-| `partial` | 19 |
-| `gap` | 244 |
+| `partial` | 20 |
+| `gap` | 243 |
 | `needs` | 682 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -1215,7 +1215,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Models, rendering, animation, user interface, and text
 
-15 done, 3 partial, 89 gap, 83 needs, 3 n/a.
+15 done, 4 partial, 88 gap, 83 needs, 3 n/a.
 
 ### Core structure (summary; see the overview chapters)
 
@@ -1304,7 +1304,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Allow_Idle_When_Moving` | `done` |  |
 | `Land_Model_Anim_Override_Name` | `done` |  |
 | `Specific_Death_Anim_Index` | `done` |  |
-| `Specific_Death_Anim_Type` | `gap` |  |
+| `Specific_Death_Anim_Type` | `partial` | Crushed (and DIE) for crushing; the Force and fire types wait for abilities |
 | `Should_Death_Clone_Play_Idle` | `gap` |  |
 | `Cinematic_Anim_Index` | `needs cinematics` |  |
 | `Cinematic_Anim_Blend_Seconds` | `needs cinematics` |  |

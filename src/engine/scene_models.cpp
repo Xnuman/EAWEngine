@@ -681,13 +681,14 @@ std::optional<ClipName> parse_clip_name(const std::string_view file_stem, const 
     {
         return std::nullopt;
     }
-    static constexpr std::array<std::pair<std::string_view, AnimationRole>, 6> roles{{
+    static constexpr std::array<std::pair<std::string_view, AnimationRole>, 7> roles{{
         {"idle", AnimationRole::idle},
         {"move", AnimationRole::move},
         {"walkmove", AnimationRole::walk_move},
         {"attack", AnimationRole::attack},
         {"attackidle", AnimationRole::attack_idle},
         {"die", AnimationRole::die},
+        {"crushed", AnimationRole::crushed},
     }};
     const auto role = rest.substr(0, underscore);
     for (const auto& [name, value] : roles)

@@ -316,6 +316,7 @@ void SimulationWorld::run_crushing()
             if (std::hypot(positions_[victim].x - at.x, positions_[victim].y - at.y) < radii_[crusher] && wound(victim, combat.health) > 0.0F)
             {
                 ++crushed_;
+                combat_[victim].crushed = true;
             }
         }
     }

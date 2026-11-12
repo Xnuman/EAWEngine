@@ -212,7 +212,7 @@ std::optional<std::uint32_t> UnitAnimator::place(const PoseKey& key, const std::
     return offset;
 }
 
-void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id, const double seconds, const DeathStyle& style)
+void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id, const double seconds, const DeathStyle& style, const bool crushed)
 {
     if (instance.mesh >= rigs_.size() || !rigs_[instance.mesh].skeleton)
     {
@@ -227,6 +227,20 @@ void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id,
                                                    [&](const VisualClip& candidate)
                                                    {
                                                        return candidate.role == AnimationRole::die && candidate.variant == *style.die_variant;
+                                                   });
+        if (specific != clips.end())
+        {
+            clip = static_cast<std::int32_t>(specific - clips.begin());
+        }
+    }
+    if (crushed && style.crushed)
+    {
+        // The crush clone's clip when the mesh has it.
+        const auto& clips = rigs_[instance.mesh].clips;
+        const auto specific = std::ranges::find_if(clips,
+                                                   [&](const VisualClip& candidate)
+                                                   {
+                                                       return candidate.role == style.crushed->role && candidate.variant == style.crushed->variant;
                                                    });
         if (specific != clips.end())
         {

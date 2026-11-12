@@ -882,6 +882,11 @@ void test_crushing()
         for (int tick = 0; tick < 60; ++tick)
         {
             world.step();
+            // A crushed death is reported as one (for its crushed clip).
+            for (const auto& death : world.snapshot().deaths)
+            {
+                require(death.crushed, "a death by crushing must be reported as crushed");
+            }
         }
         return world.stats().crushed;
     };

@@ -540,6 +540,19 @@ DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinitio
     std::string_view chosen;
     for (const auto* entry : catalog.fields(definition, "Death_Clone").fields)
     {
+        // The crush clone's clip, for deaths by crushing.
+        if (const auto [crush_damage, crush_clone] = death_clone_entry(entry->text); ascii_equal_ignoring_case(crush_damage, "Damage_Crush") && !crush_clone.empty())
+        {
+            if (const auto found = catalog.find(crush_clone); !found.empty())
+            {
+                const auto* kind = catalog.field(*found.front(), "Specific_Death_Anim_Type").field;
+                DeathClip clip;
+                clip.role = kind != nullptr && ascii_equal_ignoring_case(ascii_trim(kind->text), "Crushed") ? AnimationRole::crushed : AnimationRole::die;
+                const auto index = type_float_field(catalog, *found.front(), "Specific_Death_Anim_Index");
+                clip.variant = index >= 0.0F && index < 100.0F ? static_cast<std::uint32_t>(index) : 0U;
+                style.crushed = clip;
+            }
+        }
         const auto [damage, clone] = death_clone_entry(entry->text);
         if (clone.empty())
         {
@@ -548,10 +561,6 @@ DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinitio
         if (chosen.empty() || ascii_lower(std::string(damage)) == "damage_normal")
         {
             chosen = clone;
-        }
-        if (ascii_lower(std::string(damage)) == "damage_normal")
-        {
-            break;
         }
     }
     if (chosen.empty())

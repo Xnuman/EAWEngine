@@ -80,7 +80,7 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
             {
                 if (const auto corpse = presentation->corpse_instance(death); corpse && animator)
                 {
-                    animator->add_corpse(corpse->instance, death.id, world_seconds, corpse->style);
+                    animator->add_corpse(corpse->instance, death.id, world_seconds, corpse->style, death.crushed);
                 }
             }
             effects.play_tick_events(world->snapshot());

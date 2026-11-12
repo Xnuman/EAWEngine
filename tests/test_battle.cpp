@@ -85,6 +85,9 @@ void test_combat_content()
                 "<GroundInfantry Name=\"Trooper\"><UnitCollisionClass>Infantry</UnitCollisionClass><Is_Squashable>true</Is_Squashable></GroundInfantry>"
                 "<GroundStructure Name=\"Jail\"><Destruction_Survivors>\n Crew_A, 1.0\n  \n Crew_B, 0 \n Crew_C</Destruction_Survivors>"
                 "<Minimum_Destruction_Survivor_Count>4</Minimum_Destruction_Survivor_Count></GroundStructure>"
+                "<GroundInfantry Name=\"Squishy\"><Death_Clone>Damage_Normal, Squishy_Dead</Death_Clone><Death_Clone>Damage_Crush, Squishy_Flat</Death_Clone></GroundInfantry>"
+                "<GroundInfantry Name=\"Squishy_Dead\"><Specific_Death_Anim_Index>1</Specific_Death_Anim_Index></GroundInfantry>"
+                "<GroundInfantry Name=\"Squishy_Flat\"><Specific_Death_Anim_Type> Crushed </Specific_Death_Anim_Type><Specific_Death_Anim_Index>0</Specific_Death_Anim_Index></GroundInfantry>"
                 "<SpaceUnit Name=\"Debris\"><Remove_Upon_Death> true </Remove_Upon_Death></SpaceUnit>"
                 "<Indigenous_Unit Name=\"Bird\"><Movement_Animation_Speed>0.8</Movement_Animation_Speed><Walk_Animation_Speed>0.5</Walk_Animation_Speed>"
                 "<Allow_Idle_When_Moving>Yes</Allow_Idle_When_Moving><Idle_Anim_00_Rate_Mod>-1</Idle_Anim_00_Rate_Mod></Indigenous_Unit>"
@@ -196,6 +199,12 @@ void test_combat_content()
         const auto survivors = eaw::scene_build::type_survivors(catalog, *definition("Jail"));
         require(survivors.types == std::vector<std::string>{"Crew_A", "Crew_C"} && survivors.count == 4 && eaw::scene_build::type_survivors(catalog, *definition("Tank")).types.empty(),
                 "survivor lines must be read, weight-0 and empty lines skipped, with the minimum count");
+    }
+    {
+        const auto squishy = eaw::scene_build::type_death_style(catalog, *definition("Squishy"));
+        require(squishy.die_variant == 1U && squishy.crushed && squishy.crushed->role == eaw::AnimationRole::crushed && squishy.crushed->variant == 0U &&
+                    !eaw::scene_build::type_death_style(catalog, *definition("Tank")).crushed,
+                "the crush death clone must give the crushed clip, the normal one the DIE variant");
     }
     require(eaw::scene_build::type_death_style(catalog, *definition("Debris")).removed && !eaw::scene_build::type_death_style(catalog, *definition("Tank")).removed,
             "Remove_Upon_Death must leave no corpse");

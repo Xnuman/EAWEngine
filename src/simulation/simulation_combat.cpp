@@ -637,7 +637,7 @@ void SimulationWorld::remove_dead()
             }
             const bool spun = combat.spin_ticks != 0;
             deaths_.push_back({ids_[index], positions_[index], headings_[index], pitches_[index], visuals_[index], owners_[index],
-                               spun && combat.profile.spin_effect != 0 ? combat.profile.spin_effect : combat.profile.death_effect, combat.profile.type_key});
+                               spun && combat.profile.spin_effect != 0 ? combat.profile.spin_effect : combat.profile.death_effect, combat.profile.type_key, combat.crushed});
             const auto position = positions_[index];
             const auto owner = owners_[index];
             const auto profile_blast = combat_[index].profile.death_blast;

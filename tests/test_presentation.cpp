@@ -101,6 +101,7 @@ void test_unit_animation()
     require(clip("EI_TROOPER_WALKMOVE_12") && clip("EI_TROOPER_WALKMOVE_12")->role == eaw::AnimationRole::walk_move && clip("EI_TROOPER_WALKMOVE_12")->variant == 12,
             "WALKMOVE_12 must be walk-move variant 12");
     require(clip("ei_trooper_attackidle_01") && clip("ei_trooper_attackidle_01")->role == eaw::AnimationRole::attack_idle, "clip names must be case-insensitive");
+    require(clip("EI_TROOPER_CRUSHED_00") && clip("EI_TROOPER_CRUSHED_00")->role == eaw::AnimationRole::crushed, "CRUSHED_00 must be a crushed death clip");
     require(!clip("OTHER_IDLE_00") && !clip("EI_TROOPER_IDLE") && !clip("EI_TROOPER_IDLE_0X") && !clip("EI_TROOPER_ATTACKFLINCHL_00"), "other roles, models, and malformed names must not be clips");
 
     eaw::EntitySnapshot standing;
@@ -284,7 +285,7 @@ void test_unit_animation()
     mourner.animate({}, none, drawn, 10.0 + 1.0 + 4.1, 1U << 20U, palette);
     require(drawn.empty() && mourner.stats().corpses == 0, "a corpse must be removed after lingering");
     // A death clone's style: its DIE variant and persistence (30 s for the AT-ST's).
-    mourner.add_corpse(body, {5, 1}, 100.0, eaw::DeathStyle{0U, 12.0F});
+    mourner.add_corpse(body, {5, 1}, 100.0, eaw::DeathStyle{.die_variant = 0U, .persistence_seconds = 12.0F});
     none.clear();
     drawn.clear();
     mourner.animate({}, none, drawn, 111.0, 1U << 20U, palette);

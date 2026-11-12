@@ -338,6 +338,8 @@ struct DeathSnapshot
     std::uint32_t death_effect{};
     // Its type (CombatProfile::type_key), for what its death leaves (survivors).
     std::uint32_t type_key{};
+    // Presentation (not hashed): it was run over (its crushed death clip).
+    bool crushed{};
 };
 
 // What a shot did when it ended.
@@ -545,6 +547,8 @@ private:
         std::uint32_t target_ticks{};
         // Ticks left of a spin away (CombatProfile::spin_chance); 0 when not spinning.
         std::uint32_t spin_ticks{};
+        // Presentation (not hashed): the killing blow was a crushing (DeathSnapshot::crushed).
+        bool crushed{};
         // Scripted conditions: no damage at all, and health that damage cannot take below the floor.
         bool invulnerable{};
         bool cannot_be_killed{};

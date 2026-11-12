@@ -35,6 +35,9 @@ enum class AnimationRole : std::uint8_t
     attack,
     attack_idle,
     die,
+    // A death by being run over (CRUSHED_nn clips; a Damage_Crush death clone's
+    // Specific_Death_Anim_Type Crushed).
+    crushed,
 };
 
 // The role a clip file name (without directory and extension) plays for `model_stem`, and its
@@ -124,9 +127,19 @@ struct VisualModelAsset
 // "Damage_Normal, <type>", else its first entry): the clone's Specific_Death_Anim_Index picks the
 // DIE variant and its Death_Persistence_Duration how long the wreck stays, in seconds (the AT-ST's
 // stays 30 s). Without a clone a corpse plays a DIE variant chosen by its id and stays 4 s after it.
+// A clip a death plays: its role and variant.
+struct DeathClip
+{
+    AnimationRole role{AnimationRole::die};
+    std::uint32_t variant{};
+};
+
 struct DeathStyle
 {
     std::optional<std::uint32_t> die_variant;
+    // The clip of a death by crushing: the Damage_Crush death clone's Specific_Death_Anim_Type
+    // (Crushed, or DIE) and Specific_Death_Anim_Index.
+    std::optional<DeathClip> crushed;
     std::optional<float> persistence_seconds;
     // Leaves no corpse: removed the moment it dies (XML Remove_Upon_Death: fighters, debris,
     // satellites, most props).

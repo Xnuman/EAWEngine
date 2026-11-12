@@ -111,8 +111,9 @@ public:
     // Keeps a dead entity's instance (ScenePresentation::corpse_instance) as a corpse that plays a
     // DIE clip from `seconds` on; ignored when its mesh has none. At most 4096 corpses are kept (the
     // oldest go first).
-    // `style` picks the DIE variant and how long the corpse stays (DeathStyle).
-    void add_corpse(const VisualInstance& instance, EntityId id, double seconds, const DeathStyle& style = {});
+    // `style` picks the DIE variant and how long the corpse stays (DeathStyle); a crushed death plays
+    // the style's crushed clip when the mesh has it.
+    void add_corpse(const VisualInstance& instance, EntityId id, double seconds, const DeathStyle& style = {}, bool crushed = false);
     [[nodiscard]] const Stats& stats() const noexcept;
     // What the last animate() played (valid until the next one).
     [[nodiscard]] const std::vector<AnimationCue>& cues() const noexcept;
