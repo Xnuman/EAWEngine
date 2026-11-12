@@ -23,9 +23,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 159 |
+| `done` | 160 |
 | `partial` | 20 |
-| `gap` | 235 |
+| `gap` | 234 |
 | `needs` | 683 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -63,7 +63,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-36 done, 6 partial, 45 gap, 19 needs, 7 n/a.
+37 done, 6 partial, 44 gap, 19 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -111,7 +111,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Has_Pre_Turn_Anim` | `done` | TURNx_BEGIN before, TURNx_END after turning in place |
 | `Walk_Transition` | `done` | MOVESTART and MOVE_END by stride quarter |
 | `Locomotor_Has_Animation_Priority` | `gap` | animator step: movement driven by the walk clip |
-| `Should_Cause_Limited_Turrets_To_Turn` | `gap` |  |
+| `Should_Cause_Limited_Turrets_To_Turn` | `done` | no: the hull does not turn to a target beyond the arc |
 | `Movement_Directions_Count` | `gap` |  |
 
 ### Locomotors and movement class

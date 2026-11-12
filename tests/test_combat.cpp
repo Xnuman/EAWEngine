@@ -656,6 +656,37 @@ void test_target_validity()
     world.step();
     require(world.alive(*immune) && world.snapshot().entities[0].health == 10.0F, "an immune entity must take no damage");
 
+    // Turrets: the weapon fires only once the turret points at the victim; a limited turret turns the
+    // hull toward a target outside its arc, unless its type says it does not.
+    {
+        const auto engage = [&](const eaw::TurretProfile& turret, const eaw::Vector3& at, const int ticks)
+        {
+            eaw::SimulationWorld tanks(0.1);
+            tanks.set_hostility(hostility);
+            eaw::CombatProfile tank;
+            tank.health = 100.0F;
+            tank.weapons = {eaw::WeaponProfile{.range = 200.0F, .recharge_seconds = 10.0F, .damage = 1.0F}};
+            tank.turret = turret;
+            eaw::CombatProfile sturdy;
+            sturdy.health = 1000.0F;
+            (void)tanks.spawn({.type_name = "Tank", .owner = 1, .max_speed = 10.0F, .combat = tank, .turn_rate = 3.14159265F});
+            (void)tanks.spawn({.type_name = "Target", .owner = 2, .position = at, .combat = sturdy});
+            int first_shot = -1;
+            for (int tick = 1; tick <= ticks && first_shot < 0; ++tick)
+            {
+                tanks.step();
+                first_shot = tanks.stats().shots_fired > 0 ? tick : -1;
+            }
+            return std::pair{first_shot, tanks.snapshot().entities[0].heading};
+        };
+        // A full turret at 90 degrees per second, the target behind: it turns half a turn first.
+        const auto [behind, kept] = engage({.rate = 1.5707964F}, {-100.0F, 0.0F, 0.0F}, 40);
+        require(behind >= 19 && behind <= 22 && kept == 0.0F, "a turret must turn to its victim before its weapon fires, the hull staying put");
+        // A 10-degree turret, the target to the side: the hull turns; or, without that, nothing fires.
+        const auto [side, turned] = engage({.rate = 1.5707964F, .yaw_limit = 0.17453292F}, {0.0F, 100.0F, 0.0F}, 40);
+        const auto [stuck, unturned] = engage({.rate = 1.5707964F, .yaw_limit = 0.17453292F, .turns_body = false}, {0.0F, 100.0F, 0.0F}, 40);
+        require(side > 0 && turned > 1.2F && stuck < 0 && unturned == 0.0F, "a limited turret must turn its hull to a target beyond its arc, unless its type says no");
+    }
     // An area blast: the victim takes shot and blast; a hostile 30 from the blast takes the second of
     // two rings' damage, one 60 away nothing, a friend beside the victim nothing.
     {

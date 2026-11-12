@@ -11,6 +11,7 @@
 #include <charconv>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -493,6 +494,18 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
     profile.attack_move_response_range = type.amount("Attack_Move_Response_Range");
     profile.guard_chase_range = type.amount("Guard_Chase_Range");
     profile.stickiness_seconds = type.amount("Targeting_Stickiness_Time_Threshold");
+    if (const auto* bone = type.node("Turret_Bone_Name"); bone != nullptr && !ascii_trim(bone->text).empty())
+    {
+        TurretProfile turret;
+        const auto speed = type.amount("Turret_Rotate_Speed");
+        turret.rate = (speed > 0.0F ? speed : default_turret_rotate_speed) * provisional_turn_rate_scale;
+        if (const auto arc = type.amount("Turret_Rotate_Extent_Degrees"); arc > 0.0F && arc < 360.0F)
+        {
+            turret.yaw_limit = arc * 0.5F * std::numbers::pi_v<float> / 180.0F;
+        }
+        turret.turns_body = type.flag("Should_Cause_Limited_Turrets_To_Turn", true);
+        profile.turret = turret;
+    }
     if (type.flag("Spin_Away_On_Death", false))
     {
         profile.spin_chance = std::min(type.amount("Spin_Away_On_Death_Chance"), 1.0F);

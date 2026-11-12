@@ -59,11 +59,42 @@ void SimulationWorld::run_combat()
         if (!combat_[index].profile.weapons.empty() && combat_[index].health > 0.0F)
         {
             update_target(index);
+            aim_turret(index, dt);
             run_weapon(index);
         }
     }
     run_projectiles();
     remove_dead();
+}
+
+void SimulationWorld::aim_turret(const std::size_t index, const float dt)
+{
+    auto& combat = combat_[index];
+    if (!combat.profile.turret)
+    {
+        return;
+    }
+    const auto& turret = *combat.profile.turret;
+    float wanted = 0.0F;
+    if (const auto victim = attack_victim(index))
+    {
+        const auto& to = positions_[*victim];
+        wanted = std::clamp(wrap_angle(std::atan2(to.y - positions_[index].y, to.x - positions_[index].x) - headings_[index]), -turret.yaw_limit, turret.yaw_limit);
+    }
+    const auto step = turret.rate > 0.0F ? turret.rate * dt : std::numbers::pi_v<float>;
+    combat.turret_yaw = wrap_angle(combat.turret_yaw + std::clamp(wrap_angle(wanted - combat.turret_yaw), -step, step));
+}
+
+bool SimulationWorld::turret_aimed(const std::size_t index, const std::size_t victim) const noexcept
+{
+    const auto& combat = combat_[index];
+    if (!combat.profile.turret)
+    {
+        return true;
+    }
+    const auto& to = positions_[victim];
+    const auto bearing = std::atan2(to.y - positions_[index].y, to.x - positions_[index].x);
+    return std::fabs(wrap_angle(bearing - (headings_[index] + combat.turret_yaw))) <= turret_aim_tolerance;
 }
 
 void SimulationWorld::update_target(const std::size_t index)
@@ -195,6 +226,11 @@ void SimulationWorld::run_weapon(const std::size_t index)
             {
                 continue;
             }
+            // A turret's own weapon waits until the turret points at its victim.
+            if (weapon.hardpoint < 0 && !turret_aimed(index, *victim))
+            {
+                continue;
+            }
             state.target = ids_[*victim];
             state.pulses_left = std::max(1U, weapon.pulse_count);
             state.pulse_timer = ticks_for(weapon.appearance_delay_seconds);
@@ -216,6 +252,11 @@ void SimulationWorld::run_weapon(const std::size_t index)
                 // Turned away mid-burst: the rest of the burst waits until it faces the victim again.
                 continue;
             }
+        }
+        if (weapon.hardpoint < 0 && !turret_aimed(index, *victim))
+        {
+            // Turned away mid-burst: the rest waits until the turret is back on the victim.
+            continue;
         }
         while (state.pulses_left > 0 && state.pulse_timer == 0)
         {

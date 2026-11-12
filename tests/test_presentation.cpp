@@ -194,6 +194,7 @@ void test_unit_animation()
         std::vector<eaw::EntitySnapshot> pair(3);
         pair[0].id = {1, 1};
         pair[0].target = {3, 1};
+        pair[0].turret_yaw = 1.5F;
         pair[1].id = {2, 1};
         pair[2].id = {3, 1};
         pair[2].position = {0.0F, 100.0F, 0.0F};

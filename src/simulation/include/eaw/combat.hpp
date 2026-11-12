@@ -134,6 +134,18 @@ struct AreaBlast
     float friendly_damage{};
 };
 
+// A turret that carries the entity's own weapon (XML Turret_Bone_Name): it turns toward the
+// entity's target at `rate` radians per second, at most `yaw_limit` either side of the hull's
+// facing; the weapon fires only while it points at its victim (within turret_aim_tolerance). A
+// target outside a limited arc turns the hull toward it when `turns_body` (XML
+// Should_Cause_Limited_Turrets_To_Turn, default yes).
+struct TurretProfile
+{
+    float rate{};
+    float yaw_limit{3.14159265F};
+    bool turns_body{true};
+};
+
 // One projectile weapon: fires bursts of `pulse_count` shots `pulse_delay_seconds` apart, one
 // burst every `recharge_seconds` (measured from the start of the previous burst), at targets
 // within `range`.
@@ -237,6 +249,8 @@ struct CombatProfile
     float spin_chance{};
     float spin_seconds{};
     std::uint32_t spin_effect{};
+    // The turret its own weapons sit on (hardpoint weapons are not on it), if any.
+    std::optional<TurretProfile> turret;
     // Property bits (GameObjectPropertiesType, XML Property_Flags) and a key of its type (the CRC-32
     // of the type name), for others' targeting priorities.
     std::uint32_t properties{};

@@ -180,12 +180,20 @@ void SimulationWorld::run_behavior()
             {
                 pursue_ordered_target(index);
             }
-            // Standing body-aimers turn to face their target (ordered or picked on their own).
-            if (aims_with_body_[index] != 0 && !move_targets_[index])
+            // Standing body-aimers turn to face their target (ordered or picked on their own), and so
+            // do units whose limited turret cannot reach it (unless their turret does not turn them).
+            if (!move_targets_[index])
             {
                 if (const auto victim = attack_victim(index))
                 {
-                    intents_[index].point = positions_[*victim];
+                    const auto& turret = combat_[index].profile.turret;
+                    const auto& to = positions_[*victim];
+                    const bool beyond_turret = turret && turret->turns_body && turret->yaw_limit < std::numbers::pi_v<float> &&
+                                               std::fabs(wrap_angle(std::atan2(to.y - positions_[index].y, to.x - positions_[index].x) - headings_[index])) > turret->yaw_limit;
+                    if (aims_with_body_[index] != 0 || beyond_turret)
+                    {
+                        intents_[index].point = to;
+                    }
                 }
             }
         }

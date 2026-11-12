@@ -133,6 +133,13 @@ void test_combat_content()
     };
     std::vector<std::string> warnings;
     const auto tank = eaw::combat_profile(catalog, *definition("Tank"), content, warnings);
+    {
+        std::vector<std::string> gunner_warnings;
+        const auto gunner = eaw::combat_profile(catalog, *definition("Gunner"), content, gunner_warnings);
+        require(gunner.turret && std::fabs(gunner.turret->rate - 4.0F * eaw::provisional_turn_rate_scale) < 1e-5F && std::fabs(gunner.turret->yaw_limit - 0.17453292F) < 1e-5F &&
+                    gunner.turret->turns_body && !tank.turret,
+                "a type with a turret bone must carry its turret's rate and arc");
+    }
     require(tank.health == 100.0F && tank.shield == 50.0F && tank.shield_regen_per_second == 4.0F && tank.armor_type == tank_armor && tank.aim_height == 12.0F && tank.weapons.size() == 1,
             "a type's health, shields, armor, and weapon must be read");
     const auto& weapon = tank.weapons.front();
@@ -218,8 +225,8 @@ void test_combat_content()
                 "a type's animation rates must be read, invalid ones as 1");
         const auto gunner = eaw::scene_build::type_animation_profile(catalog, *definition("Gunner"));
         require(gunner.turret_bone == eaw::game_object_name_crc("TURRET_00") && gunner.barrel_bone == eaw::game_object_name_crc("MuzzleA_00") &&
-                    std::fabs(gunner.turret_rate - 4.0F * eaw::provisional_turn_rate_scale) < 1e-5F && std::fabs(gunner.turret_yaw_limit - 0.17453292F) < 1e-5F &&
-                    gunner.turret_pitch_limit == eaw::AnimationProfile{}.turret_pitch_limit && plain.turret_bone == 0 && gunner.walk_transition && gunner.pre_turn && !plain.walk_transition,
+                    std::fabs(gunner.turret_rate - 4.0F * eaw::provisional_turn_rate_scale) < 1e-5F && gunner.turret_pitch_limit == eaw::AnimationProfile{}.turret_pitch_limit &&
+                    plain.turret_bone == 0 && gunner.walk_transition && gunner.pre_turn && !plain.walk_transition,
                 "a type's turret bones, rate, and arcs must be read");
     }
     require(std::fabs(eaw::scene_build::type_bank_limit(catalog, *definition("Banker")) - 0.6981317F) < 1.0e-5F &&

@@ -633,20 +633,18 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         }
         if (pose_key.turret >= 0)
         {
-            float want_yaw = 0.0F;
             float want_pitch = 0.0F;
             if (const auto aimed = entity.target.valid() ? snapshot_index_.find(entity_key(entity.target)) : snapshot_index_.end(); aimed != snapshot_index_.end())
             {
                 const auto& to = snapshot[aimed->second].position;
                 const auto dx = to.x - entity.position.x;
                 const auto dy = to.y - entity.position.y;
-                want_yaw = std::remainder(std::atan2(dy, dx) - entity.heading, 6.2831853F);
                 want_pitch = std::atan2(to.z - entity.position.z, std::max(std::hypot(dx, dy), 1.0F));
             }
-            want_yaw = std::clamp(want_yaw, -profile.turret_yaw_limit, profile.turret_yaw_limit);
             want_pitch = std::clamp(want_pitch, -profile.turret_pitch_limit, profile.turret_pitch_limit);
             const auto turn = profile.turret_rate * static_cast<float>(dt);
-            state.turret_yaw = std::remainder(state.turret_yaw + std::clamp(std::remainder(want_yaw - state.turret_yaw, 6.2831853F), -turn, turn), 6.2831853F);
+            // The simulation's turret direction: what is drawn is what fires.
+            state.turret_yaw = entity.turret_yaw;
             state.barrel_pitch += std::clamp(want_pitch - state.barrel_pitch, -turn, turn);
             pose_key.yaw = static_cast<std::int16_t>(std::lround(state.turret_yaw / turret_yaw_step));
             pose_key.pitch = pose_key.barrel >= 0 ? static_cast<std::int16_t>(std::lround(state.barrel_pitch / barrel_pitch_step)) : std::int16_t{0};

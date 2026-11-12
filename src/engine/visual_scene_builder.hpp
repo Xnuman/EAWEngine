@@ -71,19 +71,19 @@ struct AnimationProfile
     float walk_rate{1.0F};
     float idle_rate{1.0F};
     bool idle_when_moving{};
-    // A turret that turns toward the unit's target (XML Turret_Bone_Name, Barrel_Bone_Name: the
-    // bones' names as game_object_name_crc, 0 none): the turret bone's subtree yaws about the
-    // model's up axis, the barrel's pitches, at `turret_rate` radians per second (Turret_Rotate_Speed
-    // per 30 Hz frame, a guess like Max_Rate_Of_Turn; 5 without it), within half of
-    // Turret_Rotate_Extent_Degrees and Turret_Elevate_Extent_Degrees each way (a guess; pi: free).
     // Transition clips: before and after turning in place (XML Has_Pre_Turn_Anim) and when starting
     // and stopping a walk (XML Walk_Transition).
     bool pre_turn{};
     bool walk_transition{};
+    // A turret (XML Turret_Bone_Name, Barrel_Bone_Name: the bones' names as game_object_name_crc, 0
+    // none): the turret bone's subtree yaws about the model's up axis to the simulation's turret
+    // direction (EntitySnapshot::turret_yaw, which also decides when it fires), and the barrel's
+    // pitches toward the target at `turret_rate` radians per second (Turret_Rotate_Speed per 30 Hz
+    // frame, a guess like Max_Rate_Of_Turn; 5 without it), within half of
+    // Turret_Elevate_Extent_Degrees each way (a guess).
     std::uint32_t turret_bone{};
     std::uint32_t barrel_bone{};
     float turret_rate{};
-    float turret_yaw_limit{3.14159265F};
     float turret_pitch_limit{1.04719755F};
 };
 

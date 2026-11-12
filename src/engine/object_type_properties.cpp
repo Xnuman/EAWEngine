@@ -254,7 +254,6 @@ AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const 
         const auto degrees = type_float_field(catalog, definition, field);
         return degrees > 0.0F && degrees < 360.0F ? degrees * 0.5F * std::numbers::pi_v<float> / 180.0F : fallback;
     };
-    profile.turret_yaw_limit = half_arc("Turret_Rotate_Extent_Degrees", std::numbers::pi_v<float>);
     profile.turret_pitch_limit = half_arc("Turret_Elevate_Extent_Degrees", profile.turret_pitch_limit);
     return profile;
 }

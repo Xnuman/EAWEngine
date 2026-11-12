@@ -261,6 +261,8 @@ struct SimCommand
 // How far off a body-aiming entity's heading its target may be for it to fire (20 degrees, after
 // the stock Crouch_Move_Fire_Angle_Cutoff; an engine choice).
 inline constexpr float body_aim_tolerance = 0.349066F;
+// How far off its victim a turret may point and still fire (5 degrees; an engine choice).
+inline constexpr float turret_aim_tolerance = 0.0872665F;
 
 struct EntitySnapshot
 {
@@ -295,6 +297,9 @@ struct EntitySnapshot
     // Flyers: roll left from a half-loop that has not unwound yet (radians; presentation adds it to
     // the bank). Zero otherwise.
     float roll{};
+    // A turreted entity's turret direction relative to its facing (CombatProfile::turret; radians,
+    // counter-clockwise); zero otherwise.
+    float turret_yaw{};
     // Tick in which the entity last launched a shot (0: never); for animation and effects, not part
     // of the state hash.
     std::uint64_t last_shot_tick{};
@@ -549,6 +554,8 @@ private:
         std::uint32_t spin_ticks{};
         // Presentation (not hashed): the killing blow was a crushing (DeathSnapshot::crushed).
         bool crushed{};
+        // The turret's direction relative to the hull's facing (radians, counter-clockwise).
+        float turret_yaw{};
         // Scripted conditions: no damage at all, and health that damage cannot take below the floor.
         bool invulnerable{};
         bool cannot_be_killed{};
@@ -693,6 +700,10 @@ private:
     void area_blast(const Vector3& point, std::uint32_t owner, const AreaBlast& blast, std::uint16_t damage_type, bool damages_shield, bool damages_health);
     // Whether one of `index`'s weapons may fire at `candidate`'s categories (or it has none).
     [[nodiscard]] bool engages(std::size_t index, std::size_t candidate) const noexcept;
+    // Turns `index`'s turret toward its target (CombatProfile::turret), and whether it points at
+    // `victim` closely enough to fire (true without a turret).
+    void aim_turret(std::size_t index, float dt);
+    [[nodiscard]] bool turret_aimed(std::size_t index, std::size_t victim) const noexcept;
     // The target `index` prefers among the damageable hostiles within `reach` of `center` (in the
     // ground plane) that `accepts`: the lowest rank of its targeting priorities, then the nearest,
     // then the lower entity id. Defined in simulation_internal.hpp.
