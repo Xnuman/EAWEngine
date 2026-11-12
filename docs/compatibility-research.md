@@ -1157,7 +1157,7 @@ recording stubs (`EAWEngine lua-survey`).
   with its assist line after a short pause: Luke Skywalker ordered to move with two rebel
   squads says "Understood!", then the troopers "Escorting!" (owner's account, 2026-11-12). The
   engine plays `SFXEvent_Group_*` or the usual response first (a hero's group line wins), then the
-  first unit of another type with an `SFXEvent_Assist_Move` or `_Assist_Attack` line 0.8 s later
+  first unit of another type with an `SFXEvent_Assist_Move` or `_Assist_Attack` line 0.2 s after the response ends
   (the pause and the choice of who speaks are engine choices).
 - **Space ships avoid contact.** Ships do not push each other in the original, friendly or
   hostile; they steer to avoid contact, and units that are small enough, or at another height,

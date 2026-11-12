@@ -60,7 +60,7 @@ inline constexpr float default_saturation_distance = 200.0F;
 inline constexpr std::size_t max_unit_loops = 16;
 // The pause after an order's response before another unit type's assist line, and how long an
 // assist line waits for the voices it must not talk over (engine choices).
-inline constexpr float assist_response_delay = 0.8F;
+inline constexpr float assist_response_delay = 0.2F;
 inline constexpr float assist_patience_seconds = 5.0F;
 // Health fractions at which a unit's low and critical warnings play: the stock GameConstants'
 // Health_Low_Percent_Threshold and Health_Critical_Percent_Threshold (shortcut: fixed here, read
