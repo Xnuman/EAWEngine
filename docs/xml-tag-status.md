@@ -1412,6 +1412,9 @@ Systems that `needs` rows wait for, by tag count:
 
 ### Tactical cameras
 
+Postponed by the owner (2026-11-13): battles use the engine's own cameras for now; these rows stay
+`gap` until that changes.
+
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Distance_Default` | `gap` |  |

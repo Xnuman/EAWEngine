@@ -302,7 +302,8 @@ compared by measured ratios from screenshots, never by recreated scenes):
 - whether unit `Scale_Factor` (applied to models, attached effects, model-derived footprints, and
   hardpoint positions) also scales collision and selection, and whether `Custom_Soft_Footprint_Radius`
   is meant before or after it (the engine leaves it unscaled);
-- the RTS camera's angles, zoom range, and pan speeds;
+- the RTS camera's angles, zoom range, and pan speeds (the engine's own cameras for now, by the
+  owner's choice of 2026-11-13; the TacticalCameras.xml tags are postponed);
 - attack-move and guard: the acquisition range (1.25 x weapon range), the leash (2 x weapon
   range), the guard radius (weapon range, at least 150 units), and how far a followed object may
   move before the unit follows (50 units);
