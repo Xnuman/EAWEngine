@@ -246,6 +246,9 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
         std::uint32_t state{};
         std::uint32_t level{};
         float fade{};
+        // Squared distance from the camera to the bounding sphere's center (transparent draws are
+        // ordered by it).
+        float depth{};
     };
     std::vector<Entry> entries;
     entries.reserve(instances.size());
@@ -261,22 +264,26 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
         const auto found = std::ranges::find(levels.alternates, instance.state);
         const auto state = found != levels.alternates.end() ? static_cast<std::uint32_t>(found - levels.alternates.begin()) : 0U;
         const auto level_count = static_cast<std::uint32_t>(levels.draws[state].size());
-        if (instance.background || level_count <= 1)
-        {
-            entries.push_back({index, state, 0, 0.0F});
-            continue;
-        }
         // The bounding sphere in the world: its center through the transform, its radius by the
         // largest axis scale.
-        const auto& m = instance.transform.values;
         const auto center = transform_point(levels.center, instance.transform);
+        const auto offset = center - camera.eye;
+        // A non-finite transform sorts as nearest rather than breaking the order.
+        const float squared = dot(offset, offset);
+        const float depth = std::isfinite(squared) ? squared : 0.0F;
+        if (instance.background || level_count <= 1)
+        {
+            entries.push_back({index, state, 0, 0.0F, depth});
+            continue;
+        }
+        const auto& m = instance.transform.values;
         const float scale = std::max({std::hypot(m[0], m[1], m[2]), std::hypot(m[4], m[5], m[6]), std::hypot(m[8], m[9], m[10])});
         const float position = visual_lod_position(lod_settings, instance.lod_bias, length(center - camera.eye), levels.radius * scale, fov, viewport);
         if (instance.key == 0)
         {
             const auto level = visual_lod_level(position, level_count, std::nullopt, lod_settings.hysteresis);
             reduced_detail_instances += level != 0 ? 1U : 0U;
-            entries.push_back({index, state, level, 0.0F});
+            entries.push_back({index, state, level, 0.0F, depth});
             continue;
         }
         const auto choice = lod_tracker.update(instance.key, instance.mesh, state, position, level_count, scene_time, lod_settings);
@@ -284,12 +291,12 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
         reduced_detail_instances += choice.level != 0 ? 1U : 0U;
         if (choice.from)
         {
-            entries.push_back({index, state, choice.level, choice.fade});
-            entries.push_back({index, state, *choice.from, -choice.fade});
+            entries.push_back({index, state, choice.level, choice.fade, depth});
+            entries.push_back({index, state, *choice.from, -choice.fade, depth});
             ++fading_instances;
             continue;
         }
-        entries.push_back({index, state, choice.level, 0.0F});
+        entries.push_back({index, state, choice.level, 0.0F, depth});
     }
     lod_tracker.end_pass();
 
@@ -302,6 +309,22 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
     std::ranges::stable_sort(entries, {}, range_key);
     gpu_instances.clear();
     draws.clear();
+    // Blended surfaces of the world (alpha and additive, which write no depth) are drawn after the
+    // rest, instance by instance from the farthest, so they blend over what lies behind them; a
+    // model's own parts keep their order. Backgrounds keep scene order.
+    // shortcut: one draw per blended part and instance (hundreds on a busy map); merge neighbours of
+    // one mesh in the sorted order if draw counts start to matter.
+    const auto blended = [](const GpuDraw& draw)
+    {
+        return draw.blend == VisualBlendMode::alpha_blend || draw.blend == VisualBlendMode::additive;
+    };
+    struct Blended
+    {
+        float depth{};
+        std::uint32_t gpu_instance{};
+        const Entry* entry{};
+    };
+    std::vector<Blended> blended_instances;
     std::size_t range_start = 0;
     for (std::size_t position = 0; position <= entries.size(); ++position)
     {
@@ -318,12 +341,22 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
             {
                 const auto& first = entries[range_start];
                 const auto& instance = instances[first.instance];
+                bool has_blended = false;
                 for (auto draw : scene_mesh_levels[instance.mesh].draws[first.state][first.level])
                 {
+                    if (!instance.background && blended(draw))
+                    {
+                        has_blended = true;
+                        continue;
+                    }
                     draw.first_instance = static_cast<std::uint32_t>(range_start);
                     draw.instance_count = static_cast<std::uint32_t>(position - range_start);
                     draw.background = instance.background;
                     draws.push_back(draw);
+                }
+                for (std::size_t member = range_start; has_blended && member < position; ++member)
+                {
+                    blended_instances.push_back({entries[member].depth, static_cast<std::uint32_t>(member), &entries[member]});
                 }
             }
             range_start = position;
@@ -334,6 +367,24 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
                              {
                                  return draw.background ? 0U : 1U + static_cast<unsigned>(draw.blend);
                              });
+    // Farthest first; equal depths in instance order.
+    std::ranges::sort(blended_instances,
+                      [](const Blended& left, const Blended& right)
+                      {
+                          return left.depth != right.depth ? left.depth > right.depth : left.gpu_instance < right.gpu_instance;
+                      });
+    for (const auto& item : blended_instances)
+    {
+        for (auto draw : scene_mesh_levels[instances[item.entry->instance].mesh].draws[item.entry->state][item.entry->level])
+        {
+            if (blended(draw))
+            {
+                draw.first_instance = item.gpu_instance;
+                draw.instance_count = 1;
+                draws.push_back(draw);
+            }
+        }
+    }
     if (gpu_instances.empty())
     {
         gpu_instances.push_back({Matrix4::identity(), {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0.0F});
