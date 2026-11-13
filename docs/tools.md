@@ -409,6 +409,11 @@ or parent-traversing names, a colon (a drive or an NTFS stream), or a Windows de
 extracted files are the game's protected data: keep them outside the repository, and never quote
 them in committed files. `--limit` does not apply.
 
+`texture-png <texture path> --output <file.png>` writes the top level of one texture as a PNG,
+to look at a texture's layout or channels with ordinary tools (the decal atlas
+`DATA/ART/TEXTURES/D_MASTER_DECAL.DDS` was read this way). Uncompressed formats only; the same
+read-only rule applies, and the image is the game's protected data.
+
 Current semantic inspectors cover DAT string tables, DDS textures, MTD atlas
 directories, ALO model structure, ALA animation structure, TED maps, Petroglyph
 XML, and Lua source/bytecode. The XML

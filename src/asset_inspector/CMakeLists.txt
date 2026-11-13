@@ -21,6 +21,7 @@ set(EAW_ASSET_INSPECTOR_SOURCES
     ${SOURCES_DIR}/inspector_common.cpp
     ${SOURCES_DIR}/inspector_options.cpp
     ${SOURCES_DIR}/main.cpp
+    ${SOURCES_DIR}/texture_png.cpp
 )
 
 source_group("" FILES ${EAW_ASSET_INSPECTOR_HEADERS} ${EAW_ASSET_INSPECTOR_SOURCES})

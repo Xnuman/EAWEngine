@@ -36,7 +36,8 @@ void usage()
               << "  EAWAssetInspector localization-refs <xml-path> [options]\n"
               << "  EAWAssetInspector extract [prefix] --output <folder> [options]\n"
               << "  EAWAssetInspector spawn-types [options]\n"
-              << "  EAWAssetInspector sound-audit [options]\n\n"
+              << "  EAWAssetInspector sound-audit [options]\n"
+              << "  EAWAssetInspector texture-png <texture-path> --output <file.png> [options]\n\n"
               << "Options:\n"
               << "  --game-root <path>      Installation root (auto-detected by default)\n"
               << "  --game <eaw|foc>        Game profile (default: foc)\n"
@@ -46,7 +47,7 @@ void usage()
               << "  --prefix <path>         Summary/list prefix (default: Data)\n"
               << "  --extension <.xml>      Filter list by extension\n"
               << "  --limit <count>         Maximum list/sample rows (not used by extract)\n"
-              << "  --output <folder>       extract: folder to write the files to (outside the game and mods)\n"
+              << "  --output <path>         extract: folder to write the files to; texture-png: the PNG file (outside the game and mods)\n"
               << "  --overwrite             extract: replace files that already exist there\n";
 }
 
@@ -58,7 +59,7 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
     {
         options.command = argv[index++];
     }
-    if ((options.command == "inspect" || options.command == "localization-refs") && index < argc && argv[index][0] != '-')
+    if ((options.command == "inspect" || options.command == "localization-refs" || options.command == "texture-png") && index < argc && argv[index][0] != '-')
     {
         options.operand = argv[index++];
     }
@@ -138,7 +139,7 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
             return eaw::make_error("unknown option: " + argument);
         }
     }
-    if ((options.command == "inspect" || options.command == "localization-refs") && options.operand.empty())
+    if ((options.command == "inspect" || options.command == "localization-refs" || options.command == "texture-png") && options.operand.empty())
     {
         return eaw::make_error(options.command + " requires a virtual asset path");
     }

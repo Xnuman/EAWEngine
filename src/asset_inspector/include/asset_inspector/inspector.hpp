@@ -137,6 +137,14 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std:
 // (the installation and the mods) and skips entry names that could escape the folder.
 eaw::Status extract_assets(const eaw::VirtualFileSystem& vfs, const Options& options, const std::vector<std::filesystem::path>& read_only_roots);
 
+// Whether `path` is `folder` or lies inside it (both made absolute and normalized first; an
+// undecidable case counts as inside, so nothing is written there).
+[[nodiscard]] bool is_within(const std::filesystem::path& path, const std::filesystem::path& folder);
+
+// Writes the top level of the texture at options.operand as a PNG to options.output (uncompressed
+// formats only); refuses an output inside any of `read_only_roots`.
+eaw::Status texture_png(const eaw::VirtualFileSystem& vfs, const Options& options, const std::vector<std::filesystem::path>& read_only_roots);
+
 // Resolves and decodes every sound event's samples and reports what is missing or not decodable.
 void audit_sounds(const eaw::VirtualFileSystem& vfs, std::string_view language, std::size_t limit);
 

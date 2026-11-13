@@ -27,4 +27,18 @@ void record_example(std::map<std::string, AuditExample>& entries, const std::str
     }
 }
 
+bool is_within(const std::filesystem::path& path, const std::filesystem::path& folder)
+{
+    std::error_code error;
+    const auto absolute_path = std::filesystem::weakly_canonical(path, error);
+    const auto absolute_folder = std::filesystem::weakly_canonical(folder, error);
+    if (error)
+    {
+        // Undecidable: treat as inside, so nothing is written there.
+        return true;
+    }
+    const auto relative = absolute_path.lexically_relative(absolute_folder);
+    return !relative.empty() && *relative.begin() != "..";
+}
+
 } // namespace eaw::asset_inspector
