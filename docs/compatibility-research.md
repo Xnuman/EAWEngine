@@ -1060,6 +1060,19 @@ particle-audit`.
   bone's bind pose, bound rigidly to that bone. Hardpoint models are drawn in
   their own bind pose; their animations (turret rotation) and their removal
   when destroyed come with hardpoint presentation.
+- **Terrain decals (2026-11-13).** `TerrainDecalFX.xml` defines 19 `Decal`s (footprints and
+  explosion scorches) by atlas cell, not by texture: every one picks `UV_Slot` cells of
+  `D_MASTER_DECAL.DDS` (512x512 BGRA8, in both games), read with `EAWAssetInspector texture-png`:
+  a 4x4 grid of 128-texel cells whose alpha is each mark's shape and whose color is a
+  tangent-space normal for the `DECAL_BUMP_ALPHA` footprints (rows 0-1; the massive scorch a 2x2
+  block at 2,1, matching its `Slot_Scale` 2) and black for the `DIFFUSE_ALPHA` scorches (row 3,
+  plus a burst at 1,2), so scorches darken by alpha times `Intensity` and footprints dent the
+  lighting. `Default` (cell 0,7, outside the grid) and `Shadow` (cell 1,0, the Rancor's foot) look
+  unused. Decals are placed through `SurfaceFX` entries (`Decal_Name` per surface kind):
+  footprint triggers from animation foot plants, and `Explosion_Scorch_Mark` on 36 `Particle`
+  explosion objects (`EXPLOSION_SCORCH_MARK_SMALL` and so on, none on water). Vehicle tracks are a
+  separate system (`DynamicTrackFX.xml`: textured ribbons). Map-placed decals occur in one stock
+  map only, without texture names.
 - **Hardpoint scorch meshes.** `Damage_Decal` names a bone (`HP_*_BLAST`,
   245 stock uses) that carries a small alpha-blended mesh of its own: the Star
   Destroyer has seven (`HP_F-R_Blast` and so on, `MeshAlpha` with

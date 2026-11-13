@@ -1,6 +1,7 @@
 // Particle effects and the effects of battles: tracks, the particle world, effect objects, bolts.
 #include "test_support.hpp"
 
+#include "assets/terrain_decals.hpp"
 #include "battle/battle.hpp"
 #include "battle/battle_log.hpp"
 #include "presentation/attached_effects.hpp"
@@ -651,6 +652,42 @@ void test_battle_effects()
     require(effects.particles().stats().instances == 0 && effects.effect_objects() == 0 && effects.bolts() == nullptr, "a battle effect reset kept effects");
 }
 
+// Terrain decals: modes, sizes, angles, fades, and atlas cells as written (a span limiting which
+// cells fit, cells outside the atlas dropped with a warning), found by name ignoring case.
+void test_terrain_decals()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-terrain-decals-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    write_file(root / "Data" / "XML" / "TerrainDecalFX.xml",
+               "<TerrainDecals>"
+               "<Decal Name=\"Foot\"><Render_Mode>DECAL_BUMP_ALPHA</Render_Mode><Intensity>0.65</Intensity><Scale>25, 20</Scale><UV_Slot>1,0</UV_Slot>"
+               "<Fadeout_Time>40</Fadeout_Time><Permanent>false</Permanent></Decal>"
+               "<Decal Name=\"Scorch\"><Render_Mode>DIFFUSE_ALPHA</Render_Mode><Intensity>.33</Intensity><Scale>10, 10</Scale><Z_Angle>90</Z_Angle>"
+               "<UV_Slot>0,3,   1,3</UV_Slot><Random_Size_Offset>0.1</Random_Size_Offset><Random_Rotate>Yes</Random_Rotate><Permanent>true</Permanent></Decal>"
+               "<Decal Name=\"Massive\"><Render_Mode>DECAL_BUMP_ALPHA</Render_Mode><Scale>50, 50</Scale><UV_Slot>2,1, 3,1</UV_Slot><Slot_Scale>2</Slot_Scale></Decal>"
+               "<Decal Name=\"Off_Atlas\"><Render_Mode>GLOWING</Render_Mode><UV_Slot>0,7</UV_Slot></Decal>"
+               "</TerrainDecals>");
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    std::vector<std::string> warnings;
+    const auto decals = eaw::TerrainDecalCatalog::build(eaw::XmlAssetDatabase::build(vfs), &warnings);
+    const auto* foot = decals.find("FOOT");
+    const auto* scorch = decals.find("scorch");
+    const auto* massive = decals.find("Massive");
+    const auto* off = decals.find("Off_Atlas");
+    require(decals.size() == 4 && foot != nullptr && scorch != nullptr && massive != nullptr && off != nullptr && decals.find("missing") == nullptr, "decals must be found by name");
+    require(foot->mode == eaw::TerrainDecalMode::bump_alpha && foot->intensity == 0.65F && foot->width == 25.0F && foot->height == 20.0F && foot->fade_seconds == 40.0F && !foot->permanent &&
+                foot->cells.size() == 1 && foot->cells[0].column == 1U && foot->cells[0].row == 0U,
+            "a footprint must keep its mode, opacity, size, fade, and cell");
+    require(scorch->mode == eaw::TerrainDecalMode::diffuse_alpha && std::fabs(scorch->angle - 1.5707964F) < 1.0e-5F && scorch->random_rotate && scorch->size_variation == 0.1F && scorch->permanent &&
+                scorch->cells.size() == 2 && scorch->cells[1].column == 1U && scorch->cells[1].row == 3U,
+            "a scorch must keep its angle, randomness, permanence, and both cells");
+    require(massive->cell_span == 2U && massive->cells.size() == 1 && massive->cells[0].column == 2U, "a two-cell span must keep only the cells it fits from");
+    require(off->cells.empty() && warnings.size() == 3, "a cell outside the atlas and an unknown mode must be reported");
+    std::filesystem::remove_all(root, ignored);
+}
+
 const ModuleRegistrar registrar("effects", {
                                                {"test_particle_tracks", &test_particle_tracks},
                                                {"test_particle_world", &test_particle_world},
@@ -659,6 +696,7 @@ const ModuleRegistrar registrar("effects", {
                                                {"test_battle_effects", &test_battle_effects},
                                                {"test_projectile_models", &test_projectile_models},
                                                {"test_attached_effect_scale", &test_attached_effect_scale},
+                                               {"test_terrain_decals", &test_terrain_decals},
                                            });
 
 } // namespace

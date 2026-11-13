@@ -27,8 +27,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 | Status | Tags |
 | --- | --- |
 | `done` | 168 |
-| `partial` | 23 |
-| `gap` | 201 |
+| `partial` | 30 |
+| `gap` | 194 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -1221,7 +1221,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Models, rendering, animation, user interface, and text
 
-18 done, 6 partial, 83 gap, 83 needs, 3 n/a.
+18 done, 13 partial, 76 gap, 83 needs, 3 n/a.
 
 ### Core structure (summary; see the overview chapters)
 
@@ -1465,13 +1465,13 @@ Postponed by the owner (2026-11-13): battles use the engine's own cameras for no
 | `Blob_Intensity` | `gap` |  |
 | `Flare` | `gap` |  |
 | `Category` | `gap` |  |
-| `Render_Mode` | `gap` |  |
-| `UV_Slot` | `gap` |  |
-| `Slot_Scale` | `gap` |  |
-| `Z_Angle` | `gap` |  |
-| `Random_Rotate` | `gap` |  |
-| `Random_Size_Offset` | `gap` |  |
-| `Fadeout_Time` | `gap` |  |
+| `Render_Mode` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
+| `UV_Slot` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
+| `Slot_Scale` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
+| `Z_Angle` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
+| `Random_Rotate` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
+| `Random_Size_Offset` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
+| `Fadeout_Time` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
 
 ### Wind disturbance
 

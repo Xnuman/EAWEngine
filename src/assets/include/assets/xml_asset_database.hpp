@@ -22,6 +22,10 @@ struct XmlDefinition
     std::vector<XmlNode> fields;
 };
 
+// A definition's field by name, ignoring case; the last occurrence wins, matching ordinary XML
+// override expectations for repeated tags. Null when absent.
+[[nodiscard]] const XmlNode* definition_field(const XmlDefinition& definition, std::string_view field_name) noexcept;
+
 struct XmlParseFailure
 {
     std::string source_path;

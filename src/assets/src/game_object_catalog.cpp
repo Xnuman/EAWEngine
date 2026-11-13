@@ -17,20 +17,6 @@ namespace {
 // A stock variant chain is a handful of links; this only stops runaway or cyclic mod data.
 constexpr std::size_t maximum_variant_depth = 64;
 
-const XmlNode* direct_field(const XmlDefinition& definition, const std::string_view field_name) noexcept
-{
-    // The last occurrence wins, matching ordinary XML override expectations for repeated tags.
-    const XmlNode* found = nullptr;
-    for (const auto& field : definition.fields)
-    {
-        if (ascii_equal_ignoring_case(field.name, field_name))
-        {
-            found = &field;
-        }
-    }
-    return found;
-}
-
 std::string location(const XmlDefinition& definition)
 {
     return definition.source_path + ":" + std::to_string(definition.line) + " " + definition.type + " '" + definition.name + "'";
@@ -116,7 +102,7 @@ GameObjectFieldLookup GameObjectCatalog::field(const XmlDefinition& definition, 
     const XmlDefinition* current = &definition;
     while (current != nullptr)
     {
-        if (const auto* found = direct_field(*current, field_name))
+        if (const auto* found = definition_field(*current, field_name))
         {
             return {found, current};
         }
@@ -130,7 +116,7 @@ GameObjectFieldLookup GameObjectCatalog::field(const XmlDefinition& definition, 
         }
         visited.push_back(current);
 
-        const auto* variant = direct_field(*current, "Variant_Of_Existing_Type");
+        const auto* variant = definition_field(*current, "Variant_Of_Existing_Type");
         const auto parent_name = variant == nullptr ? std::string_view{} : ascii_trim(variant->text);
         if (parent_name.empty())
         {

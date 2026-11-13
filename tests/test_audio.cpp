@@ -10,6 +10,7 @@
 #include "assets/sound_events.hpp"
 #include "assets/sound_loaders.hpp"
 #include "assets/surface_effects.hpp"
+#include "assets/terrain_decals.hpp"
 #include "presentation/battle_audio.hpp"
 
 #include <cmath>
@@ -150,12 +151,6 @@ void test_null_audio_device()
     device.set_category_volume(eaw::AudioCategory::music, 0.5F);
     device.set_master_volume(0.2F);
     require(device.category_volume(eaw::AudioCategory::music) == 0.5F && device.master_volume() == 0.2F, "category and master volumes must be kept");
-}
-
-void write_file(const std::filesystem::path& path, const std::string_view text)
-{
-    std::filesystem::create_directories(path.parent_path());
-    std::ofstream(path, std::ios::binary) << text;
 }
 
 std::string text_of(const std::vector<std::byte>& bytes)

@@ -380,4 +380,17 @@ std::vector<const XmlDefinition*> XmlAssetDatabase::find(const std::string_view 
     return result;
 }
 
+const XmlNode* definition_field(const XmlDefinition& definition, const std::string_view field_name) noexcept
+{
+    const XmlNode* found = nullptr;
+    for (const auto& field : definition.fields)
+    {
+        if (ascii_equal_ignoring_case(field.name, field_name))
+        {
+            found = &field;
+        }
+    }
+    return found;
+}
+
 } // namespace eaw

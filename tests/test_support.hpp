@@ -104,6 +104,8 @@ template <typename Integer> void write_little_endian(std::ostream& stream, Integ
 }
 
 void write_test_meg(const std::filesystem::path& path, const std::vector<std::pair<std::string, std::string>>& entries);
+// Writes `text` to `path`, creating its folders (fixture files in a temporary folder).
+void write_file(const std::filesystem::path& path, std::string_view text);
 
 std::filesystem::path write_test_meg();
 

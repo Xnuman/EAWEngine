@@ -31,6 +31,12 @@ void expect_ok(const eaw::Status& status, const std::string& what)
     require(status.ok(), what + ": " + (status.ok() ? std::string{} : status.error().message));
 }
 
+void write_file(const std::filesystem::path& path, const std::string_view text)
+{
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream(path, std::ios::binary) << text;
+}
+
 void write_test_meg(const std::filesystem::path& path, const std::vector<std::pair<std::string, std::string>>& entries)
 {
     std::filesystem::create_directories(path.parent_path());

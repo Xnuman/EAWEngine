@@ -263,6 +263,9 @@ Not a stage plan: leftovers are fixed while features touch the code around them,
 periodic whole-project reviews add to this list or turn it into a plan of steps (AGENTS.md, "Code
 health"). Remove an entry when it is fixed. Known leftovers after the reorganization of 2026-11:
 
+- two rules for a definition's repeated field: `definition_field` (`xml_asset_database`, used by
+  game objects and decals) takes the last occurrence, `sound_events`' private `field_of` the first;
+  merge once the sound events' rule is checked against the data;
 - the minimal second XML reader in `game_installation` (kept so the VFS does not depend on the
   formats; noted in the code);
 - `MegArchive`, whose index decoding and entry reads were left together on purpose;
