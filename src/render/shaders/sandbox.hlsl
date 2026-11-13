@@ -343,6 +343,11 @@ static const float WATER_FOAM_FLAT_SHARE = 0.35f;   // foam over a flat bottom, 
 static const float WATER_FOAM_LINE_SPACING = 2.5f;  // depth (units) between rolling lines
 static const float WATER_FOAM_LINE_SPEED = 1.2f;    // their travel (units of depth per second)
 static const float3 WATER_FOAM_COLOR = float3(0.9f, 0.92f, 0.95f);
+static const float WATER_REFLECTION_DISTORTION = 0.015f; // screen share the bent normal shifts the reflection
+
+// Planar reflections (water_reflections.hlsl): per screen pixel 0, or the source pixel the
+// mirrored scene shows there as ((row + 1) << 16) | column.
+StructuredBuffer<uint> water_reflections : register(t7);
 
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 PixelOutput water_ps(PixelInput input)
@@ -415,7 +420,21 @@ PixelOutput water_ps(PixelInput input)
         const bool above = shifted_depth < 1.0f && shifted_h.z / shifted_h.w > input.world_position.z;
         const float3 seen = refraction.Load(int3(above ? int2(input.position.xy) : shifted_pixel, 0)).rgb;
         const float3 water = lerp(seen, body, 1.0f - transmittance);
-        output.color = float4(apply_fog(lerp(lerp(water, sky, fresnel) + glint, foam_lit, foam), input.world_position), shore);
+        // What the surface mirrors: the scene where planar reflections found it (this row or the next
+        // ones, to fill one-pixel holes), else the sky.
+        float3 reflection = sky;
+        if (water_plane.y != 0.0f)
+        {
+            const int2 at = int2(clamp(input.position.xy + bent.xy * WATER_REFLECTION_DISTORTION * size.y, float2(0.0f, 0.0f), size - 1.0f));
+            uint source = water_reflections[uint(at.y) * width + uint(at.x)];
+            source = source != 0u ? source : water_reflections[uint(min(at.y + 1, int(height) - 1)) * width + uint(at.x)];
+            source = source != 0u ? source : water_reflections[uint(max(at.y - 1, 0)) * width + uint(at.x)];
+            if (source != 0u)
+            {
+                reflection = refraction.Load(int3(int(source & 0xFFFFu), int(source >> 16) - 1, 0)).rgb;
+            }
+        }
+        output.color = float4(apply_fog(lerp(lerp(water, reflection, fresnel) + glint, foam_lit, foam), input.world_position), shore);
     }
     else
     {

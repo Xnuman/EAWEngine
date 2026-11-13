@@ -9,6 +9,8 @@ D3D12_RESOURCE_STATES d3d12_state(const GraphAccess access) noexcept
 {
     switch (access)
     {
+    case GraphAccess::common:
+        return D3D12_RESOURCE_STATE_COMMON;
     case GraphAccess::render_target:
         return D3D12_RESOURCE_STATE_RENDER_TARGET;
     case GraphAccess::depth_write:
@@ -17,6 +19,10 @@ D3D12_RESOURCE_STATES d3d12_state(const GraphAccess access) noexcept
         return D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     case GraphAccess::shader_read:
         return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    case GraphAccess::compute_read:
+        return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    case GraphAccess::unordered_access:
+        return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     case GraphAccess::copy_source:
         return D3D12_RESOURCE_STATE_COPY_SOURCE;
     case GraphAccess::copy_dest:
@@ -832,6 +838,8 @@ bool D3d12Renderer::Impl::render()
     // (with bloom or anti-aliasing; otherwise it blends over the frame).
     const bool refraction = options.graphics.water == VisualWaterMode::enhanced && (options.graphics.bloom || options.graphics.anti_aliasing != VisualAntiAliasing::off);
     constants.water_parameters = {options.graphics.water == VisualWaterMode::enhanced ? 1U : 0U, depth_slot, post_slots[7], refraction ? 1U : 0U};
+    const bool water_reflections = refraction && water_level.has_value();
+    constants.water_plane = {water_level.value_or(0.0F), water_reflections ? 1.0F : 0.0F, 0.0F, 0.0F};
     if (options.graphics.fog != VisualFogMode::off && lighting.fog.enabled)
     {
         constants.fog_color = {lighting.fog.color.r, lighting.fog.color.g, lighting.fog.color.b, options.graphics.fog == VisualFogMode::enhanced ? 2.0F : 1.0F};
@@ -945,6 +953,8 @@ bool D3d12Renderer::Impl::render()
         // 7 terrain decals, 8 their grid.
         command_list->SetGraphicsRootShaderResourceView(7, frame.decal_buffer->GetGPUVirtualAddress());
         command_list->SetGraphicsRootShaderResourceView(8, frame.decal_grid_buffer->GetGPUVirtualAddress());
+        // 9 the water's planar reflection sources.
+        command_list->SetGraphicsRootShaderResourceView(9, water_reflection_sources->GetGPUVirtualAddress());
         command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     };
     // Scene draws [begin, end): the water only, or everything but it; the terrain before the first
@@ -1054,6 +1064,29 @@ bool D3d12Renderer::Impl::render()
                                  command_list->CopyResource(refraction_color.Get(), scene_color.Get());
                              });
         water_uses.push_back({copy, GraphAccess::shader_read});
+        if (water_level)
+        {
+            const auto sources = import_resource(water_reflection_sources.Get(), "water reflection sources", GraphAccess::common, GraphAccess::common);
+            frame_graph.add_pass("water reflections", {{depth, GraphAccess::compute_read}, {sources, GraphAccess::unordered_access}},
+                                 [&]
+                                 {
+                                     ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
+                                     command_list->SetDescriptorHeaps(1, descriptor_heaps);
+                                     command_list->SetComputeRootSignature(water_reflection_root_signature.Get());
+                                     command_list->SetComputeRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
+                                     command_list->SetComputeRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
+                                     command_list->SetComputeRootUnorderedAccessView(2, water_reflection_sources->GetGPUVirtualAddress());
+                                     command_list->SetPipelineState(water_reflection_clear_pipeline.Get());
+                                     constexpr std::uint32_t clear_group = 64;
+                                     command_list->Dispatch((width * height + clear_group - 1U) / clear_group, 1, 1);
+                                     const auto between = uav_barrier(water_reflection_sources.Get());
+                                     command_list->ResourceBarrier(1, &between);
+                                     command_list->SetPipelineState(water_reflection_project_pipeline.Get());
+                                     constexpr std::uint32_t project_group = 8;
+                                     command_list->Dispatch((width + project_group - 1U) / project_group, (height + project_group - 1U) / project_group, 1);
+                                 });
+            water_uses.push_back({sources, GraphAccess::shader_read});
+        }
     }
     if (has_water)
     {

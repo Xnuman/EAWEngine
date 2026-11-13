@@ -154,6 +154,14 @@ D3D12_RESOURCE_BARRIER transition_barrier(ID3D12Resource* resource, const D3D12_
     return barrier;
 }
 
+D3D12_RESOURCE_BARRIER uav_barrier(ID3D12Resource* resource)
+{
+    D3D12_RESOURCE_BARRIER barrier{};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    barrier.UAV.pResource = resource;
+    return barrier;
+}
+
 bool query_tearing_support(IDXGIFactory7* factory)
 {
     BOOL supported = FALSE;

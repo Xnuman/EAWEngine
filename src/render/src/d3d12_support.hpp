@@ -285,6 +285,8 @@ D3D12_HEAP_PROPERTIES heap_properties(const D3D12_HEAP_TYPE type);
 D3D12_RESOURCE_DESC buffer_description(const std::uint64_t size);
 
 D3D12_RESOURCE_BARRIER transition_barrier(ID3D12Resource* resource, const D3D12_RESOURCE_STATES before, const D3D12_RESOURCE_STATES after);
+// Orders unordered-access writes to `resource` before later ones (two dispatches in one pass).
+D3D12_RESOURCE_BARRIER uav_barrier(ID3D12Resource* resource);
 
 bool query_tearing_support(IDXGIFactory7* factory);
 

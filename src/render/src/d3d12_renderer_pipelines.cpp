@@ -28,6 +28,8 @@
 #include "g_eaw_terrain_shadow_ps.h"
 #include "g_eaw_terrain_shadow_vs.h"
 #include "g_eaw_terrain_vs.h"
+#include "g_eaw_water_clear_cs.h"
+#include "g_eaw_water_project_cs.h"
 #include "g_eaw_water_ps.h"
 
 namespace eaw {
@@ -275,6 +277,14 @@ void D3d12Renderer::Impl::create_pipeline()
     auto water = description;
     water.PS = {g_eaw_water_ps, sizeof(g_eaw_water_ps)};
     create_pipeline_state(L"water", water, water_pipeline);
+    check_device_hresult(device->CreateRootSignature(0, g_eaw_water_clear_cs, sizeof(g_eaw_water_clear_cs), IID_PPV_ARGS(&water_reflection_root_signature)), device,
+                         "CreateRootSignature(water reflections)");
+    D3D12_COMPUTE_PIPELINE_STATE_DESC compute{};
+    compute.pRootSignature = water_reflection_root_signature.Get();
+    compute.CS = {g_eaw_water_clear_cs, sizeof(g_eaw_water_clear_cs)};
+    check_device_hresult(device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&water_reflection_clear_pipeline)), device, "CreateComputePipelineState(water reflection clear)");
+    compute.CS = {g_eaw_water_project_cs, sizeof(g_eaw_water_project_cs)};
+    check_device_hresult(device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&water_reflection_project_pipeline)), device, "CreateComputePipelineState(water reflection projection)");
 
     description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
     description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;

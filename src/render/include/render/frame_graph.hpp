@@ -19,12 +19,18 @@ namespace eaw {
 
 enum class GraphAccess : std::uint8_t
 {
+    // A buffer between frames (buffers return to it after every submission).
+    common,
     render_target,
     depth_write,
     // The depth buffer bound read-only for testing and sampled at once (water reads the scene's
     // depth while testing against it).
     depth_read,
     shader_read,
+    // Read by a compute shader.
+    compute_read,
+    // Written by a compute shader.
+    unordered_access,
     copy_source,
     copy_dest,
     present,

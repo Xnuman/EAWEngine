@@ -585,6 +585,19 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
     // whose bounds can reach far below the ground).
     fog_floor = terrain.vertices.empty() ? scene.bounds_minimum.z : terrain.bounds_minimum.z;
     terrain_minimum = terrain.vertices.empty() ? Vector2{} : Vector2{terrain.bounds_minimum.x, terrain.bounds_minimum.y};
+    // The water plane's height, from the mesh whose draws are the water.
+    water_level.reset();
+    for (const auto& mesh : scene.meshes)
+    {
+        for (auto draw_index = mesh.first_draw; draw_index < mesh.first_draw + mesh.draw_count && draw_index < scene.draws.size(); ++draw_index)
+        {
+            const auto material = scene.draws[draw_index].material;
+            if (material < scene.materials.size() && scene.materials[material].water && std::isfinite(mesh.bounds_minimum.z))
+            {
+                water_level = mesh.bounds_minimum.z;
+            }
+        }
+    }
     terrain_maximum = terrain.vertices.empty() ? Vector2{} : Vector2{terrain.bounds_maximum.x, terrain.bounds_maximum.y};
     if (terrain_vertex_buffer)
     {

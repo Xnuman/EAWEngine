@@ -16,6 +16,7 @@
     "SRV(t4, visibility = SHADER_VISIBILITY_PIXEL), " \
     "SRV(t5, visibility = SHADER_VISIBILITY_PIXEL), " \
     "SRV(t6, visibility = SHADER_VISIBILITY_PIXEL), " \
+    "SRV(t7, visibility = SHADER_VISIBILITY_PIXEL), " \
     "StaticSampler(s0, filter = FILTER_ANISOTROPIC, maxAnisotropy = 8, addressU = TEXTURE_ADDRESS_WRAP, addressV = TEXTURE_ADDRESS_WRAP, " \
     "addressW = TEXTURE_ADDRESS_WRAP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK, " \
     "visibility = SHADER_VISIBILITY_PIXEL), " \
@@ -79,6 +80,7 @@ cbuffer FrameConstants : register(b0)
     float4 decal_grid;     // xy the terrain decal grid's corner, zw its cells per world unit
     uint4 decal_grid_size; // x, y cells per side, z the decal count
     uint4 water_parameters; // x enhanced water (1) or legacy (0), y the depth buffer's texture slot, z the refraction copy's, w refraction on (1)
+    float4 water_plane;     // x the water plane's height, y planar reflections on (1)
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and

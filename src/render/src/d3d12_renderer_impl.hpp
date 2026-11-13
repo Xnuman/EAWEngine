@@ -117,8 +117,10 @@ struct D3d12Renderer::Impl
         // Decal grid: x, y its corner, z, w cells per world unit; and cells per side, decal count.
         std::array<float, 4> decal_grid{};
         std::array<std::uint32_t, 4> decal_grid_size{};
-        // Water: x enhanced (1) or legacy (0), y the depth buffer's texture slot.
+        // Water: x enhanced (1) or legacy (0), y the depth buffer's texture slot, z the refraction
+        // copy's, w refraction on; the plane's height and planar reflections on (1).
         std::array<std::uint32_t, 4> water_parameters{};
+        std::array<float, 4> water_plane{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal
@@ -404,6 +406,14 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12PipelineState> alpha_pipeline;
     // Enhanced water: the alpha pipeline with the water pixel shader.
     ComPtr<ID3D12PipelineState> water_pipeline;
+    // Planar reflections of the water (water_reflections.hlsl): a source per screen pixel, cleared
+    // and filled by two compute shaders with their own root signature.
+    ComPtr<ID3D12RootSignature> water_reflection_root_signature;
+    ComPtr<ID3D12PipelineState> water_reflection_clear_pipeline;
+    ComPtr<ID3D12PipelineState> water_reflection_project_pipeline;
+    ComPtr<ID3D12Resource> water_reflection_sources;
+    // The loaded scene's water plane height (from its water mesh), if it has one.
+    std::optional<float> water_level;
     ComPtr<ID3D12PipelineState> additive_pipeline;
     ComPtr<ID3D12PipelineState> background_opaque_pipeline;
     ComPtr<ID3D12PipelineState> terrain_pipeline;
@@ -591,7 +601,7 @@ struct D3d12Renderer::Impl
     // payload (ID3D12PipelineLibrary::Serialize output). Any mismatch or driver rejection discards
     // the cache; failures never stop rendering.
     static constexpr std::array<char, 8> pipeline_cache_magic{'E', 'A', 'W', 'P', 'S', 'O', '0', '1'};
-    static constexpr std::uint64_t pipeline_layout_version = 3;
+    static constexpr std::uint64_t pipeline_layout_version = 4;
     static constexpr std::uint64_t maximum_pipeline_cache_bytes = 256ULL * 1024ULL * 1024ULL;
 
     static std::uint64_t fnv1a(std::uint64_t hash, const std::span<const std::byte> bytes) noexcept;

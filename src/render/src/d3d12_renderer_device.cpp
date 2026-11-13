@@ -327,6 +327,13 @@ void D3d12Renderer::Impl::create_post_targets()
     make_target(taa_history[1], width, height, back_buffer_format, 5, L"EAWEngine TAA history B");
     make_target(motion_target, width, height, motion_format, 6, L"EAWEngine motion", {motion_unknown, motion_unknown, 0.0F, 0.0F});
     make_target(refraction_color, width, height, back_buffer_format, 7, L"EAWEngine refraction copy");
+    {
+        auto description = buffer_description(static_cast<std::uint64_t>(width) * height * sizeof(std::uint32_t));
+        description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        check_device_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&water_reflection_sources)), device,
+                             "CreateCommittedResource(water reflection sources)");
+        set_name(water_reflection_sources.Get(), L"EAWEngine water reflection sources");
+    }
     taa_history_valid = false;
     D3D12_SHADER_RESOURCE_VIEW_DESC depth_view{};
     depth_view.Format = DXGI_FORMAT_R32_FLOAT;

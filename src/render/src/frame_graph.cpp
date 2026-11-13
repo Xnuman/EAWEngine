@@ -10,6 +10,8 @@ const char* to_string(const GraphAccess access) noexcept
 {
     switch (access)
     {
+    case GraphAccess::common:
+        return "common";
     case GraphAccess::render_target:
         return "render target";
     case GraphAccess::depth_write:
@@ -18,6 +20,10 @@ const char* to_string(const GraphAccess access) noexcept
         return "depth read";
     case GraphAccess::shader_read:
         return "shader read";
+    case GraphAccess::compute_read:
+        return "compute read";
+    case GraphAccess::unordered_access:
+        return "unordered access";
     case GraphAccess::copy_source:
         return "copy source";
     case GraphAccess::copy_dest:
