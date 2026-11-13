@@ -90,7 +90,7 @@ rendering rows join item 2).
 2. M2's renderer (Rendering stages 1 and 2), in this order: damage states and LODs (detail levels
    done 2026-11-11: renderer-side selection by distance, screen size, or both, with cross-fades;
    damage states done 2026-11-13: chosen from health, with their effects, sounds, and rubble;
-   left: hardpoint damage effects, and skinned and gameplay-driven visibility), depth-sorted transparency, HDR with tone mapping and anti-aliasing,
+   hardpoint damage visuals belong to combat presentation, Simulation 1), depth-sorted transparency, HDR with tone mapping and anti-aliasing,
    shadows, fog, decals (map and runtime), special materials (shields, planets, nebula, heat
    distortion, wind bend, occluded units, reflections), weather and soft particles, look tuning.
    This closes M2.
