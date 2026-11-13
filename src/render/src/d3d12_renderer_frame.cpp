@@ -469,10 +469,10 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
                 }
                 current_instances.try_emplace(instance.key, PreviousInstance{instance.transform, instance.bone_offset});
             }
-            gpu_instances.push_back(
-                {instance.transform, instance.tint, instance.team_color, instance.bone_offset,
-                 (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U) | (instance.receives_shadows ? 0U : no_shadows_instance_flag),
-                 entry.instance + 1U, entry.fade, previous_bone_offset, previous_transform});
+            gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset,
+                                     (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U) |
+                                         (instance.receives_shadows ? 0U : no_shadows_instance_flag) | (instance.silhouette ? silhouette_instance_flag : 0U),
+                                     entry.instance + 1U, entry.fade, previous_bone_offset, previous_transform});
         }
         if (position == entries.size() || (position > range_start && range_key(entries[position]) != range_key(entries[range_start])))
         {
@@ -1229,6 +1229,62 @@ bool D3d12Renderer::Impl::render()
                              {
                                  bind_scene(read_only_depth);
                                  record_draws(0, frame_draws.size(), true, false);
+                             });
+    }
+    // Occlusion silhouettes: the hidden parts of flagged units into the mask, then over the scene.
+    const bool has_silhouettes = options.graphics.occlusion_silhouettes && dynamic && std::ranges::any_of(*dynamic_instances, &VisualInstance::silhouette);
+    if (has_silhouettes)
+    {
+        const auto mask = import_resource(silhouette_mask.Get(), "silhouette mask", GraphAccess::render_target, GraphAccess::render_target);
+        frame_graph.add_pass("silhouettes", {{mask, GraphAccess::render_target}, {depth, GraphAccess::depth_read}, {pick, GraphAccess::shader_read}},
+                             [&]
+                             {
+                                 bind_scene(read_only_depth);
+                                 const auto target = post_rtv(9);
+                                 constexpr std::array clear{0.0F, 0.0F, 0.0F, 0.0F};
+                                 command_list->OMSetRenderTargets(1, &target, FALSE, &read_only_depth);
+                                 // 11 the pick target's integer view.
+                                 auto pick_view = shader_heap->GetGPUDescriptorHandleForHeapStart();
+                                 pick_view.ptr += static_cast<UINT64>(pick_slot) * device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                                 command_list->SetGraphicsRootDescriptorTable(11, pick_view);
+                                 command_list->ClearRenderTargetView(target, clear.data(), 0, nullptr);
+                                 // shortcut: every opaque and alpha-tested draw runs again and the pixel
+                                 // shader drops unflagged instances; draw only meshes with a flagged
+                                 // instance if this pass shows up in frame times.
+                                 std::uint32_t bound_block = std::numeric_limits<std::uint32_t>::max();
+                                 command_list->SetPipelineState(silhouette_pipeline.Get());
+                                 for (std::size_t index = 0; index < transparent_begin; ++index)
+                                 {
+                                     const auto& draw = frame_draws[index];
+                                     if (draw.background || draw.water)
+                                     {
+                                         continue;
+                                     }
+                                     if (draw.block != bound_block)
+                                     {
+                                         const auto& vertex_view = draw.block == 0 ? scene_vertex_view : added_blocks[draw.block - 1U].vertex_view;
+                                         const auto& index_view = draw.block == 0 ? scene_index_view : added_blocks[draw.block - 1U].index_view;
+                                         command_list->IASetVertexBuffers(0, 1, &vertex_view);
+                                         command_list->IASetIndexBuffer(&index_view);
+                                         bound_block = draw.block;
+                                     }
+                                     const std::array<std::uint32_t, 2> draw_constants{draw.first_instance, draw.material};
+                                     command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
+                                     command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
+                                     ++draw_calls;
+                                 }
+                             });
+        frame_graph.add_pass("silhouette composite", {{scene, GraphAccess::render_target}, {mask, GraphAccess::shader_read}},
+                             [&]
+                             {
+                                 command_list->OMSetRenderTargets(1, &scene_target, FALSE, nullptr);
+                                 command_list->RSSetViewports(1, &viewport);
+                                 command_list->RSSetScissorRects(1, &scissor);
+                                 command_list->SetPipelineState(silhouette_composite_pipeline.Get());
+                                 const std::array<std::uint32_t, 2> composite_constants{post_slots[9], 0U};
+                                 command_list->SetGraphicsRoot32BitConstants(5, 2, composite_constants.data(), 0);
+                                 command_list->DrawInstanced(3, 1, 0, 0);
+                                 ++draw_calls;
                              });
     }
     frame_graph.add_pass("transparent", std::move(transparent_uses),

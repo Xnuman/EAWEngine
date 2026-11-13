@@ -285,6 +285,9 @@ void D3d12Renderer::Impl::create_post_targets()
         const auto allocated = texture_slots.allocate();
         EAW_ASSERT_MSG(allocated.has_value(), "the D3D12 texture table has no slot for the depth view");
         depth_slot = *allocated;
+        const auto pick_allocated = texture_slots.allocate();
+        EAW_ASSERT_MSG(pick_allocated.has_value(), "the D3D12 texture table has no slot for the pick view");
+        pick_slot = *pick_allocated;
     }
     bloom_width = std::max(1U, (width + bloom_downscale - 1U) / bloom_downscale);
     bloom_height = std::max(1U, (height + bloom_downscale - 1U) / bloom_downscale);
@@ -328,6 +331,7 @@ void D3d12Renderer::Impl::create_post_targets()
     make_target(motion_target, width, height, motion_format, 6, L"EAWEngine motion", {motion_unknown, motion_unknown, 0.0F, 0.0F});
     make_target(refraction_color, width, height, back_buffer_format, 7, L"EAWEngine refraction copy");
     make_target(sky_atlas, sky_face_size * 3U, sky_face_size * 2U, back_buffer_format, 8, L"EAWEngine sky atlas", {0.0F, 0.0F, 0.0F, 1.0F});
+    make_target(silhouette_mask, width, height, back_buffer_format, 9, L"EAWEngine silhouette mask", {0.0F, 0.0F, 0.0F, 0.0F});
     if (!sky_light)
     {
         auto description = buffer_description(9U * sizeof(std::array<float, 4>));
@@ -352,6 +356,14 @@ void D3d12Renderer::Impl::create_post_targets()
     auto depth_handle = shader_heap->GetCPUDescriptorHandleForHeapStart();
     depth_handle.ptr += static_cast<SIZE_T>(depth_slot) * increment;
     device->CreateShaderResourceView(depth_buffer.Get(), &depth_view, depth_handle);
+    D3D12_SHADER_RESOURCE_VIEW_DESC pick_view{};
+    pick_view.Format = pick_format;
+    pick_view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    pick_view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    pick_view.Texture2D.MipLevels = 1;
+    auto pick_handle = shader_heap->GetCPUDescriptorHandleForHeapStart();
+    pick_handle.ptr += static_cast<SIZE_T>(pick_slot) * increment;
+    device->CreateShaderResourceView(pick_target.Get(), &pick_view, pick_handle);
 }
 
 void D3d12Renderer::Impl::create_shadow_maps()

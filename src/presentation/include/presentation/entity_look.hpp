@@ -75,6 +75,7 @@ struct SpawnableLook
     float lod_bias{1.0F};
     float scale{1.0F};
     bool receives_shadows{true};
+    bool silhouette{};
     DeathStyle death;
     float bank_limit{default_bank_limit};
     AnimationProfile animation;

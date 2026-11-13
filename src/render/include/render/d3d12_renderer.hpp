@@ -47,6 +47,9 @@ struct D3d12GraphicsSettings
     // Enhanced: the fill light of the world dims by how much sky the terrain under it sees
     // (VisualTerrain::sky_visibility_texture).
     bool sky_visibility{false};
+    // Units whose type asks for it show through what hides them (GameConstants'
+    // Occlusion_Silhouettes_Enabled is on in the stock data).
+    bool occlusion_silhouettes{true};
 };
 
 struct D3d12RendererOptions

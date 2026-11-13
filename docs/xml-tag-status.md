@@ -26,9 +26,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 176 |
+| `done` | 177 |
 | `partial` | 24 |
-| `gap` | 192 |
+| `gap` | 191 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -1221,7 +1221,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Models, rendering, animation, user interface, and text
 
-25 done, 7 partial, 75 gap, 83 needs, 3 n/a.
+26 done, 7 partial, 74 gap, 83 needs, 3 n/a.
 
 ### Core structure (summary; see the overview chapters)
 
@@ -1269,7 +1269,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Blob_Shadow_Below_Detail_Level` | `gap` |  |
 | `Exclude_From_Distance_Fade` | `gap` |  |
 | `Allow_Particle_Model_Culling` | `gap` |  |
-| `Occlusion_Silhouette_Enabled` | `gap` |  |
+| `Occlusion_Silhouette_Enabled` | `done` | team-colored silhouette where hidden; the global GameConstants switch is a Graphics setting |
 
 ### Shadows, selection blobs, and ground marks
 

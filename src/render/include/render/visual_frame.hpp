@@ -40,6 +40,9 @@ struct VisualInstance
     // Darkened where key-light shadows fall on it (backdrops such as planets are not: XML
     // In_Background; backgrounds never are).
     bool receives_shadows{true};
+    // Drawn as a silhouette in its team color where something hides it (XML
+    // Occlusion_Silhouette_Enabled; the legacy OccludedUnit shaders).
+    bool silhouette{};
 };
 
 // A directional light; `direction` points from the surface toward the light (any length).

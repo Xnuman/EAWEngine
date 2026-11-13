@@ -91,6 +91,13 @@ float4 bloom_composite_ps(PostInput input) : SV_TARGET
     return float4(scene + bloom * post_parameters.y, 1.0f);
 }
 
+// The occlusion silhouettes' mask (texture instance_base) over the scene: its color at its alpha.
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+float4 silhouette_composite_ps(PostInput input) : SV_TARGET
+{
+    return scene_textures[instance_base].Load(int3(input.position.xy, 0));
+}
+
 // Edge anti-aliasing: a post pass in the manner of FXAA, written for this engine. A pixel on a
 // contrasting edge is resampled across the edge, as far as its place along the edge (found by
 // walking to both ends) says the stair step covers it, or by its contrast with its 3x3 average for

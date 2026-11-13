@@ -18,6 +18,7 @@
     "SRV(t6, visibility = SHADER_VISIBILITY_PIXEL), " \
     "SRV(t7, visibility = SHADER_VISIBILITY_PIXEL), " \
     "SRV(t8, visibility = SHADER_VISIBILITY_PIXEL), " \
+    "DescriptorTable(SRV(t9, numDescriptors = 1), visibility = SHADER_VISIBILITY_PIXEL), " \
     "StaticSampler(s0, filter = FILTER_ANISOTROPIC, maxAnisotropy = 8, addressU = TEXTURE_ADDRESS_WRAP, addressV = TEXTURE_ADDRESS_WRAP, " \
     "addressW = TEXTURE_ADDRESS_WRAP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK, " \
     "visibility = SHADER_VISIBILITY_PIXEL), " \
@@ -52,6 +53,7 @@ static const uint MATERIAL_CLOUD_SHADOW = 1u << 7;
 static const uint INSTANCE_BACKGROUND = 1u;
 static const uint INSTANCE_HIGHLIGHTED = 2u;
 static const uint INSTANCE_NO_SHADOWS = 4u;
+static const uint INSTANCE_SILHOUETTE = 8u;
 
 cbuffer FrameConstants : register(b0)
 {

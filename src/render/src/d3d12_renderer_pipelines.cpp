@@ -24,6 +24,8 @@
 #include "g_eaw_sandbox_vs.h"
 #include "g_eaw_shadow_ps.h"
 #include "g_eaw_shadow_vs.h"
+#include "g_eaw_silhouette_composite_ps.h"
+#include "g_eaw_silhouette_ps.h"
 #include "g_eaw_sky_light_cs.h"
 #include "g_eaw_terrain_ps.h"
 #include "g_eaw_terrain_shadow_ps.h"
@@ -248,6 +250,29 @@ void D3d12Renderer::Impl::create_pipeline()
     description.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     description.SampleDesc.Count = 1;
     create_pipeline_state(L"opaque", description, opaque_pipeline);
+    // Occlusion silhouettes: the pixel shader keeps only parts the scene's depth shows something
+    // clearly nearer than (a hardware depth-greater test let every visible unit through: redrawn
+    // geometry does not reproduce its stored depth exactly), no depth writes, and a max blend so
+    // overlapping parts of a unit never stack. Back faces are dropped in the shader (models are
+    // drawn two-sided).
+    {
+        auto silhouette = description;
+        silhouette.PS = {g_eaw_silhouette_ps, sizeof(g_eaw_silhouette_ps)};
+        silhouette.NumRenderTargets = 1;
+        silhouette.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
+        silhouette.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
+        silhouette.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+        silhouette.DepthStencilState.DepthEnable = FALSE;
+        auto& target = silhouette.BlendState.RenderTarget[0];
+        target.BlendEnable = TRUE;
+        target.SrcBlend = D3D12_BLEND_ONE;
+        target.DestBlend = D3D12_BLEND_ONE;
+        target.BlendOp = D3D12_BLEND_OP_MAX;
+        target.SrcBlendAlpha = D3D12_BLEND_ONE;
+        target.DestBlendAlpha = D3D12_BLEND_ONE;
+        target.BlendOpAlpha = D3D12_BLEND_OP_MAX;
+        create_pipeline_state(L"occlusion silhouette", silhouette, silhouette_pipeline);
+    }
 
     // Shadow casters: depth only, biased by slope; alpha-tested ones cut their holes.
     const auto shadow_variant = [&](D3D12_GRAPHICS_PIPELINE_STATE_DESC variant)
@@ -454,6 +479,16 @@ void D3d12Renderer::Impl::create_pipeline()
         create_pipeline_state(L"bloom composite", post, bloom_composite_pipeline);
         post.PS = {g_eaw_post_edge_aa_ps, sizeof(g_eaw_post_edge_aa_ps)};
         create_pipeline_state(L"edge anti-aliasing", post, edge_aa_pipeline);
+        // The silhouette mask blended over the scene.
+        {
+            auto composite = post;
+            composite.PS = {g_eaw_silhouette_composite_ps, sizeof(g_eaw_silhouette_composite_ps)};
+            composite.BlendState.RenderTarget[0].BlendEnable = TRUE;
+            composite.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+            composite.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+            composite.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+            create_pipeline_state(L"silhouette composite", composite, silhouette_composite_pipeline);
+        }
         // The resolve writes the frame and the next history at once.
         post.NumRenderTargets = 2;
         post.RTVFormats[1] = back_buffer_format;

@@ -196,6 +196,7 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
         flash.key = 0;
         flash.state = 0;
         flash.highlighted = false;
+        flash.silhouette = false;
         for (std::size_t row = 0; row < 3; ++row)
         {
             for (std::size_t column = 0; column < 3; ++column)
@@ -259,6 +260,7 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableLook> types
         instance.team_color = type.team_color;
         instance.lod_bias = type.lod_bias;
         instance.receives_shadows = type.receives_shadows;
+        instance.silhouette = type.silhouette;
         spawn_templates_.push_back(Template{instance, identity_model_heading, type.death, type.bank_limit, type.animation, type.damage, type.shield_mesh});
     }
 }

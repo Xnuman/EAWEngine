@@ -567,6 +567,50 @@ PixelOutput water_ps(PixelInput input)
     return output;
 }
 
+// Occlusion silhouettes (the legacy OccludedUnit shaders): where a flagged unit is hidden, its team
+// color at half strength (the legacy default color's alpha; the original's color for players is not
+// established: an engine choice). Hidden means the pixel shows another object, at least
+// SILHOUETTE_TOLERANCE world units nearer the camera than the unit's surface (an engine choice).
+// Alpha-tested parts keep their holes.
+static const float SILHOUETTE_ALPHA = 0.5f;
+static const float SILHOUETTE_TOLERANCE = 0.5f;
+// The pick target (pick id, depth bits per pixel): where the pixel shows the unit itself, it is not
+// hidden, however its own parts overlap (the legacy shaders' stencil served the same end).
+Texture2D<uint2> pick_view : register(t9);
+
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+float4 silhouette_ps(PixelInput input) : SV_TARGET
+{
+    // Models are drawn two-sided (ALO winding is not reliable), so back faces, which a unit's own
+    // front hides, are told apart by the normal, as the shading does.
+    if ((input.instance_flags & INSTANCE_SILHOUETTE) == 0u || dot(input.normal, camera_position_time.xyz - input.world_position) < 0.0f)
+    {
+        discard;
+    }
+    if (pick_view.Load(int3(input.position.xy, 0)).x == input.pick_id)
+    {
+        discard;
+    }
+    Texture2D scene_depth = scene_textures[water_parameters.y];
+    uint width = 1u;
+    uint height = 1u;
+    scene_depth.GetDimensions(width, height);
+    const float stored = scene_depth.Load(int3(input.position.xy, 0)).r;
+    const float2 ndc = float2(input.position.x / width * 2.0f - 1.0f, 1.0f - input.position.y / height * 2.0f);
+    const float4 stored_h = mul(float4(ndc, stored, 1.0f), inverse_view_projection);
+    const float stored_distance = distance(stored_h.xyz / stored_h.w, camera_position_time.xyz);
+    if (stored >= 1.0f || stored_distance > distance(input.world_position, camera_position_time.xyz) - SILHOUETTE_TOLERANCE)
+    {
+        discard;
+    }
+    const MaterialData material = materials[material_index];
+    if ((material.flags & MATERIAL_ALPHA_TEST) != 0u)
+    {
+        clip(sample_texture(material.base_texture, input.uv * material.specular.w + material.uv_scroll * camera_position_time.w).a - material.alpha_cutoff);
+    }
+    return float4(input.team_color.rgb, SILHOUETTE_ALPHA);
+}
+
 // Shadow casting: a model into the cascade `pass_index` (depth only); alpha-tested surfaces cut
 // their holes with the same test as when drawn.
 struct ShadowPixelInput

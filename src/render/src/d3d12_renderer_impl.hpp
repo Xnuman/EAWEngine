@@ -255,6 +255,7 @@ struct D3d12Renderer::Impl
     static constexpr std::uint32_t highlighted_instance_flag = 2U;
     // No key-light shadows fall on it (VisualInstance::receives_shadows; INSTANCE_NO_SHADOWS).
     static constexpr std::uint32_t no_shadows_instance_flag = 4U;
+    static constexpr std::uint32_t silhouette_instance_flag = 8U;
 
     HWND window{};
     D3d12RendererOptions options;
@@ -324,15 +325,19 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12Resource> refraction_color;
     // The sky capture (post slot 8): six cube faces of the background draws, three by two.
     ComPtr<ID3D12Resource> sky_atlas;
+    // Occlusion silhouettes (post slot 9): the hidden parts of flagged units in their team color.
+    ComPtr<ID3D12Resource> silhouette_mask;
     // The sky's light as nine spherical-harmonic colors (sky_light.hlsl).
     ComPtr<ID3D12Resource> sky_light;
     std::array<ComPtr<ID3D12Resource>, 2> bloom_targets;
     ComPtr<ID3D12DescriptorHeap> post_rtv_heap;
     // Texture slots (and RTVs, same index) of scene_color, the bloom targets, post_color, the two
     // TAA history targets, and the motion target.
-    std::array<std::uint32_t, 9> post_slots{};
+    std::array<std::uint32_t, 10> post_slots{};
     // The depth buffer's shader view (temporal anti-aliasing reprojects by depth).
     std::uint32_t depth_slot{};
+    // The pick target's integer view (occlusion silhouettes read which instance each pixel shows).
+    std::uint32_t pick_slot{};
     std::uint32_t bloom_width{1};
     std::uint32_t bloom_height{1};
     ComPtr<ID3D12PipelineState> bloom_extract_pipeline;
@@ -446,6 +451,10 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12PipelineState> sky_capture_alpha_pipeline;
     ComPtr<ID3D12PipelineState> sky_capture_additive_pipeline;
     ComPtr<ID3D12PipelineState> sky_light_pipeline;
+    // Occlusion silhouettes: the hidden parts into the mask (depth greater, max blend), then the mask
+    // over the scene.
+    ComPtr<ID3D12PipelineState> silhouette_pipeline;
+    ComPtr<ID3D12PipelineState> silhouette_composite_pipeline;
     ComPtr<ID3D12Resource> water_reflection_sources;
     // The loaded scene's water plane height (from its water mesh), if it has one.
     std::optional<float> water_level;
@@ -641,7 +650,7 @@ struct D3d12Renderer::Impl
     // payload (ID3D12PipelineLibrary::Serialize output). Any mismatch or driver rejection discards
     // the cache; failures never stop rendering.
     static constexpr std::array<char, 8> pipeline_cache_magic{'E', 'A', 'W', 'P', 'S', 'O', '0', '1'};
-    static constexpr std::uint64_t pipeline_layout_version = 6;
+    static constexpr std::uint64_t pipeline_layout_version = 8;
     static constexpr std::uint64_t maximum_pipeline_cache_bytes = 256ULL * 1024ULL * 1024ULL;
 
     static std::uint64_t fnv1a(std::uint64_t hash, const std::span<const std::byte> bytes) noexcept;

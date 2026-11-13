@@ -120,6 +120,11 @@ bool type_receives_shadows(const GameObjectCatalog& catalog, const XmlDefinition
     return !TypeFields(catalog, definition).flag("In_Background", false);
 }
 
+bool type_silhouette(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    return TypeFields(catalog, definition).flag("Occlusion_Silhouette_Enabled", false);
+}
+
 void add_track_layers(SceneBuilder& builder, const GameObjectCatalog& catalog, const SurfaceEffectCatalog& surfaces, const DynamicTrackCatalog& tracks, const XmlDefinition& type,
                       TrackLayerTable& table)
 {

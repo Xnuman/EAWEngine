@@ -250,6 +250,8 @@ void note_animation_source(SceneBuilder& builder, const std::string& model_path,
 DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // Whether shadows fall on the type's model: not on backdrops (XML In_Background: planets, nebulas).
 bool type_receives_shadows(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// XML Occlusion_Silhouette_Enabled: the type shows through what hides it.
+bool type_silhouette(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // Adds the trails `type` lays while it moves (its SurfaceFX_Name entries whose default surface names a
 // dynamic track: one layer per tread bone, else one under the unit) to `table`, loading their
 // textures into builder.particles; a type already in the table is left as it is.

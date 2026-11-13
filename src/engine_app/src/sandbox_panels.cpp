@@ -239,6 +239,7 @@ bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view)
         graphics.water = static_cast<eaw::VisualWaterMode>(water);
         changed |= ImGui::Checkbox("Terrain decals", view.decals);
         changed |= ImGui::Checkbox("Cloud shadows", &graphics.cloud_shadows);
+        changed |= ImGui::Checkbox("Occlusion silhouettes", &graphics.occlusion_silhouettes);
         changed |= ImGui::Checkbox("Sky ambient (enhanced)", &graphics.sky_ambient);
         changed |= ImGui::Checkbox("Sky visibility (enhanced)", &graphics.sky_visibility);
         ImGui::Separator();
