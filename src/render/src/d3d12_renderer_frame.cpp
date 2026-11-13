@@ -965,6 +965,9 @@ bool D3d12Renderer::Impl::render()
     const auto motion = import_resource(motion_target.Get(), "motion", GraphAccess::render_target, GraphAccess::render_target);
     const auto scene = bloom || anti_aliasing ? import_resource(scene_color.Get(), "scene color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
     const auto composite = bloom && anti_aliasing ? import_resource(post_color.Get(), "post color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
+    // The scene copy that enhanced water refracts and heat distortion shifts: one resource, so one import (two would
+    // track its state apart).
+    const auto refraction_copy = import_resource(refraction_color.Get(), "refraction copy", GraphAccess::render_target, GraphAccess::render_target);
 
     // Key-light shadows: every cascade's map, drawn before the scene samples them.
     std::vector<FrameGraph::Use> scene_uses{{scene, GraphAccess::render_target}, {pick, GraphAccess::render_target}, {motion, GraphAccess::render_target}, {depth, GraphAccess::depth_write}};
@@ -1207,7 +1210,7 @@ bool D3d12Renderer::Impl::render()
                          });
     if (has_water && options.graphics.water == VisualWaterMode::enhanced && scene != back_buffer)
     {
-        const auto copy = import_resource(refraction_color.Get(), "refraction copy", GraphAccess::render_target, GraphAccess::render_target);
+        const auto copy = refraction_copy;
         frame_graph.add_pass("scene copy", {{scene, GraphAccess::copy_source}, {copy, GraphAccess::copy_dest}},
                              [&]
                              {
@@ -1363,7 +1366,7 @@ bool D3d12Renderer::Impl::render()
         {
             heat_for_taa = heat;
         }
-        const auto heat_copy = import_resource(refraction_color.Get(), "refraction copy (heat)", GraphAccess::render_target, GraphAccess::render_target);
+        const auto heat_copy = refraction_copy;
         frame_graph.add_pass("heat", {{heat, GraphAccess::render_target}, {depth, GraphAccess::depth_read}},
                              [&]
                              {
