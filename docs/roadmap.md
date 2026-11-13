@@ -123,8 +123,11 @@ rendering rows join item 2).
 1. Legacy-mode features content depends on: damage-state (`_ALT<n>`) and LOD switching,
    skinned-mesh and gameplay-driven visibility; depth-sorted transparency; map decals (no texture
    link established yet) and runtime scorch marks; shadows (the original uses stencil shadow
-   volumes, an implementation artifact: which objects cast and receive is the content contract,
-   the technique is the engine's choice); fog; shield, planet (atmosphere, clouds, city lights),
+   volumes, an implementation artifact; the engine uses stable cascaded shadow maps from each map's
+   key light, land and space alike, and every model casts: the owner's choice of 2026-11-13 over
+   the original's per-model shadow meshes, for quality; skies, backdrops, markers, blended parts,
+   and particles do not; in progress: cascade math done 2026-11-13, the shadow pass and receiving
+   next); fog; shield, planet (atmosphere, clouds, city lights),
    nebula, heat-distortion, wind-bend, and occluded-unit materials; cube reflections (no stock
    material uses them); weather and soft particles.
 2. Modern presentation without an original counterpart, chosen freely: anti-aliasing, HDR with

@@ -2,6 +2,7 @@
 
 #include "render/frame_graph.hpp"
 #include "render/lod_selection.hpp"
+#include "render/shadow_cascades.hpp"
 
 #include <cmath>
 
@@ -169,11 +170,80 @@ void test_frame_graph()
     require(graph.pass_count() == 0, "a cleared graph must have no passes");
 }
 
+// Shadow cascades: slices from the camera's near plane to the scene's far edge (rounded up), each
+// slice inside its map, the scene's depth inside every map, and a pan smaller than a texel moving
+// the map by whole texels only; degenerate input gives none.
+void test_shadow_cascades()
+{
+    eaw::VisualCamera camera;
+    camera.eye = {0.0F, -1000.0F, 1500.0F};
+    camera.target = {0.0F, 0.0F, 0.0F};
+    camera.near_plane = 10.0F;
+    camera.far_plane = 50000.0F;
+    camera.vertical_fov_degrees = 50.0F;
+    const eaw::Vector3 scene_minimum{-4000.0F, -4000.0F, -50.0F};
+    const eaw::Vector3 scene_maximum{4000.0F, 4000.0F, 300.0F};
+    const eaw::Vector3 sun{0.4F, -0.3F, 0.8F};
+    const eaw::ShadowCascadeSettings settings;
+    const auto cascades = eaw::compute_shadow_cascades(camera, 16.0F / 9.0F, sun, scene_minimum, scene_maximum, settings);
+    require(cascades.count == 3 && cascades.cascades[0].split_distance < cascades.cascades[1].split_distance && cascades.cascades[1].split_distance < cascades.cascades[2].split_distance &&
+                cascades.cascades[2].split_distance >= 4063.0F && cascades.cascades[2].split_distance <= 4063.0F * 1.4143F,
+            "cascades must split the view from near to the scene's far edge, rounded up");
+
+    const auto view = eaw::normalize(camera.target - camera.eye);
+    const auto right = eaw::normalize(eaw::cross(view, camera.up));
+    const auto up = eaw::cross(right, view);
+    const float half_height = std::tan(25.0F * 0.017453292F);
+    const float half_width = half_height * 16.0F / 9.0F;
+    float slice_near = camera.near_plane;
+    bool inside = true;
+    for (std::uint32_t index = 0; index < cascades.count; ++index)
+    {
+        const auto& cascade = cascades.cascades[index];
+        for (const float along : {slice_near, cascade.split_distance})
+        {
+            for (const float sx : {-1.0F, 1.0F})
+            {
+                for (const float sy : {-1.0F, 1.0F})
+                {
+                    const auto corner = camera.eye + view * along + right * (sx * half_width * along) + up * (sy * half_height * along);
+                    const auto clip = eaw::transform_point(corner, cascade.view_projection);
+                    inside = inside && std::fabs(clip.x) <= 1.001F && std::fabs(clip.y) <= 1.001F && clip.z >= 0.0F && clip.z <= 1.0F;
+                }
+            }
+        }
+        for (const auto& corner : {scene_minimum, scene_maximum, eaw::Vector3{scene_minimum.x, scene_maximum.y, scene_maximum.z}, eaw::Vector3{scene_maximum.x, scene_minimum.y, scene_minimum.z}})
+        {
+            const auto depth = eaw::transform_point(corner, cascade.view_projection).z;
+            inside = inside && depth >= 0.0F && depth <= 1.0F;
+        }
+        slice_near = cascade.split_distance;
+    }
+    require(inside, "every slice must lie inside its cascade, and the scene's depth inside every cascade");
+
+    auto panned = camera;
+    panned.eye.x += 0.37F;
+    panned.target.x += 0.37F;
+    const auto moved = eaw::compute_shadow_cascades(panned, 16.0F / 9.0F, sun, scene_minimum, scene_maximum, settings);
+    const eaw::Vector3 point{120.0F, 80.0F, 0.0F};
+    const auto texels = [&](const eaw::ShadowCascade& cascade)
+    {
+        return eaw::transform_point(point, cascade.view_projection).x * static_cast<float>(settings.resolution) * 0.5F;
+    };
+    const float shift = texels(moved.cascades[0]) - texels(cascades.cascades[0]);
+    require(moved.cascades[0].texel_size == cascades.cascades[0].texel_size && std::fabs(shift - std::round(shift)) < 0.02F, "a pan must move a cascade by whole texels only");
+
+    require(eaw::compute_shadow_cascades(camera, 1.0F, {}, scene_minimum, scene_maximum, settings).count == 0 &&
+                eaw::compute_shadow_cascades(camera, 1.0F, sun, {-10.0F, -5000.0F, 0.0F}, {10.0F, -4000.0F, 0.0F}, settings).count == 0,
+            "a missing light or a scene behind the camera must give no cascades");
+}
+
 const ModuleRegistrar registrar("render", {
                                               {"test_frame_graph", &test_frame_graph},
                                               {"test_gpu_resource_lifetime", &test_gpu_resource_lifetime},
                                               {"test_lod_selection", &test_lod_selection},
                                               {"test_lod_tracking", &test_lod_tracking},
+                                              {"test_shadow_cascades", &test_shadow_cascades},
                                           });
 
 } // namespace
