@@ -345,6 +345,21 @@ compared by measured ratios from screenshots, never by recreated scenes):
   in the original although its mesh is an unhidden additive quad with a visible texture;
 - a test map built in the original's map editor, if one can be made, for matching static placement.
 
+### Play-feel audit (owner, pending)
+
+The owner checks how play feels in one pass later instead of after each change (2026-11-13). Changes
+waiting for it, oldest first:
+
+- shields refreshing in 3 s steps; in space, the speed multiplier also scaling acceleration and
+  turning;
+- hardpoint damage: the hull following its parts, ships dying with their last destroyable part;
+- ships turning in place slower by Space_Layer, ordered ships turning to their target's hardpoint,
+  space ships turning only at full speed by default, spawned ships at their layer's height;
+- decorations drawn but not simulated (Fondor 02 has 532);
+- the debug overlay's own texture uploads (the F1 panels);
+- turret motor loops; wreck end explosions and the longer wrecks of AT-AA and the Dark Troopers;
+- idles: random variants one after another, lone idles pausing 2-4 s.
+
 ## Engine extensions (opt-in, outside legacy mode)
 
 Each becomes available once the track stage it builds on exists. Stock data and existing mods never
