@@ -64,7 +64,9 @@ inline constexpr std::uint32_t flat_normal_texture_slot = 2;
 inline constexpr std::uint32_t fallback_texture_count = 3;
 
 // Per-frame constant buffers are 256-byte aligned, as D3D12 requires for CBVs.
-inline constexpr std::uint64_t frame_constant_bytes = 1024;
+inline constexpr std::uint64_t frame_constant_bytes = 2048;
+// The sky capture's cube faces (texels per side; six faces laid out three by two in the sky atlas).
+inline constexpr std::uint32_t sky_face_size = 64;
 // Bloom works at a quarter of the screen resolution in a small floating-point format.
 inline constexpr DXGI_FORMAT bloom_format = DXGI_FORMAT_R11G11B10_FLOAT;
 inline constexpr std::uint32_t bloom_downscale = 4;

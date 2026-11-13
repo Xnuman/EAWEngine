@@ -41,6 +41,9 @@ struct D3d12GraphicsSettings
     VisualWaterMode water{VisualWaterMode::legacy};
     // The environment's cloud shadows on the terrain (VisualLightRig::clouds), as the original.
     bool cloud_shadows{true};
+    // Enhanced: the ambient takes the captured sky's light (its color and direction, at the map's own
+    // ambient brightness; docs/sky-research.md).
+    bool sky_ambient{false};
 };
 
 struct D3d12RendererOptions

@@ -239,6 +239,7 @@ bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view)
         graphics.water = static_cast<eaw::VisualWaterMode>(water);
         changed |= ImGui::Checkbox("Terrain decals", view.decals);
         changed |= ImGui::Checkbox("Cloud shadows", &graphics.cloud_shadows);
+        changed |= ImGui::Checkbox("Sky ambient (enhanced)", &graphics.sky_ambient);
         ImGui::Separator();
         static constexpr std::array<const char*, 4> policies{"Off (full detail)", "Distance", "Screen size", "Hybrid"};
         auto policy = static_cast<int>(view.lod->policy);

@@ -92,6 +92,7 @@ set(EAW_RENDER_D3D12_SHADERS
     shaders/particle.hlsl
     shaders/post.hlsl
     shaders/sandbox.hlsl
+    shaders/sky_light.hlsl
     shaders/terrain.hlsl
     shaders/water_reflections.hlsl
 )
@@ -123,6 +124,7 @@ eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl shadow_vs vs_6_0 g_
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl shadow_ps ps_6_0 g_eaw_shadow_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl water_ps ps_6_0 g_eaw_water_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/water_reflections.hlsl clear_cs cs_6_0 g_eaw_water_clear_cs)
+eaw_compile_shader(eaw_render_d3d12 dxc shaders/sky_light.hlsl sky_light_cs cs_6_0 g_eaw_sky_light_cs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/water_reflections.hlsl project_cs cs_6_0 g_eaw_water_project_cs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/debug.hlsl debug_vs vs_6_0 g_eaw_debug_vs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/debug.hlsl debug_ps ps_6_0 g_eaw_debug_ps)

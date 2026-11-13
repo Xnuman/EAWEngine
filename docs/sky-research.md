@@ -74,7 +74,7 @@ vertex-colored background spheres; a Sins II developer reply suggests its skybox
 RTS ranking is a judgment from the camera's geometry and the general literature. Hillaire's lookup
 table sizes and timings were recalled, not read.
 
-## Proposed plan (for the owner)
+## Plan (agreed with the owner, 2026-11-13; capture on the GPU)
 
 Legacy (done 2026-11-13): the dome lit as the Skydome material, its clouds, the nebula wobble and
 brightness. Enhanced, before HDR: (a) cloud shadows from the TED environment's cloud layer, (b) a

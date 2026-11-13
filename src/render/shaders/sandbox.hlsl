@@ -188,7 +188,9 @@ PixelInput vs_main(VertexInput input)
         // Backgrounds follow the camera: transforming a direction (w = 0) drops the view
         // translation, and the depth is pinned just inside the far plane.
         const float3 direction = mul(float4(position.xyz, 0.0f), instance.transform).xyz;
-        output.position = mul(float4(direction, 0.0f), view_projection);
+        // The sky capture draws backgrounds into its cube faces.
+        const float4x4 projection = pass_index >= SKY_FACE_PASS ? sky_face_view_projection[pass_index - SKY_FACE_PASS] : view_projection;
+        output.position = mul(float4(direction, 0.0f), projection);
         output.position.z = output.position.w * 0.999999f;
         output.world_position = camera_position_time.xyz + direction;
         // No motion: backgrounds mask the motion target.
@@ -504,7 +506,7 @@ PixelOutput water_ps(PixelInput input)
     const float3 body = legacy_lit_color(base.rgb, normal, input.world_position, 0.0f, material.diffuse.rgb, float3(0.0f, 0.0f, 0.0f), material.emissive.rgb, tint, input.position.xy, true);
     // The sky the surface reflects, from the map's lights (an engine choice until there is a sky
     // probe).
-    const float3 sky = ambient.rgb + key_diffuse.rgb * 0.5f;
+    const float3 sky = sky_parameters.y != 0u ? sample_sky(reflect(-view, normal)) : ambient.rgb + key_diffuse.rgb * 0.5f;
     const float3 light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
     const float3 half_vector = safe_normalize(light + view, normal);
     const float lit = dot(surface_normal, light) > 0.0f ? key_light_visibility(input.world_position, surface_normal, input.position.xy) : 0.0f;

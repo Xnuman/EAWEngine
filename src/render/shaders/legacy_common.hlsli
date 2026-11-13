@@ -17,6 +17,7 @@
     "SRV(t5, visibility = SHADER_VISIBILITY_PIXEL), " \
     "SRV(t6, visibility = SHADER_VISIBILITY_PIXEL), " \
     "SRV(t7, visibility = SHADER_VISIBILITY_PIXEL), " \
+    "SRV(t8, visibility = SHADER_VISIBILITY_PIXEL), " \
     "StaticSampler(s0, filter = FILTER_ANISOTROPIC, maxAnisotropy = 8, addressU = TEXTURE_ADDRESS_WRAP, addressV = TEXTURE_ADDRESS_WRAP, " \
     "addressW = TEXTURE_ADDRESS_WRAP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK, " \
     "visibility = SHADER_VISIBILITY_PIXEL), " \
@@ -91,6 +92,11 @@ cbuffer FrameConstants : register(b0)
     float4 grass_wind;         // xyz the wind's direction, w its speed (1-10)
     float4 cloud_shadow;       // x 1 / the cloud texture's repeat, yz its drift so far
     uint4 cloud_parameters;    // x the cloud texture's logical id, y cloud shadows on
+    // The sky capture: each cube face's matrix for the background draws (pass index SKY_FACE_PASS +
+    // face); x the atlas's texture slot, y a sky was captured, z the ambient takes its light, w the
+    // face size.
+    float4x4 sky_face_view_projection[6];
+    uint4 sky_parameters;
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
@@ -165,6 +171,58 @@ float4 sample_texture_top(const uint texture, const float2 uv)
 float4 sample_texture(const uint texture, const float2 uv)
 {
     return scene_textures[NonUniformResourceIndex(texture_residency[texture])].Sample(surface_sampler, uv);
+}
+
+// The sky capture's cube faces (keep in step with sky_faces in d3d12_renderer_frame.cpp): forward,
+// right, and up of each, and its cell in the three-by-two atlas.
+static const uint SKY_FACE_PASS = 16u;
+float3 sky_face_forward(const uint face)
+{
+    const float3 forwards[6] = {float3(1, 0, 0), float3(-1, 0, 0), float3(0, 1, 0), float3(0, -1, 0), float3(0, 0, 1), float3(0, 0, -1)};
+    return forwards[face];
+}
+float3 sky_face_right(const uint face)
+{
+    const float3 rights[6] = {float3(0, 1, 0), float3(0, -1, 0), float3(-1, 0, 0), float3(1, 0, 0), float3(1, 0, 0), float3(1, 0, 0)};
+    return rights[face];
+}
+float3 sky_face_up(const uint face)
+{
+    const float3 ups[6] = {float3(0, 0, 1), float3(0, 0, 1), float3(0, 0, 1), float3(0, 0, 1), float3(0, 1, 0), float3(0, -1, 0)};
+    return ups[face];
+}
+uint2 sky_face_cell(const uint face)
+{
+    return uint2(face % 3u, face / 3u);
+}
+
+// The captured sky in a direction (inside the face, a texel from its edges so filtering stays on it).
+float3 sample_sky(const float3 direction)
+{
+    const float3 magnitude = abs(direction);
+    uint face = magnitude.x >= magnitude.y && magnitude.x >= magnitude.z ? (direction.x >= 0.0f ? 0u : 1u)
+                : magnitude.y >= magnitude.z                            ? (direction.y >= 0.0f ? 2u : 3u)
+                                                                        : (direction.z >= 0.0f ? 4u : 5u);
+    const float along = dot(direction, sky_face_forward(face));
+    const float2 ndc = float2(dot(direction, sky_face_right(face)), dot(direction, sky_face_up(face))) / max(along, 1.0e-4f);
+    const float size = (float)sky_parameters.w;
+    const float2 local = clamp(float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f), 1.0f / size, 1.0f - 1.0f / size);
+    const float2 uv = (float2(sky_face_cell(face)) + local) / float2(3.0f, 2.0f);
+    return scene_textures[sky_parameters.x].SampleLevel(surface_sampler, uv, 0.0f).rgb;
+}
+
+// Second-order spherical harmonics' nine real basis functions in a unit direction.
+void sh_basis(const float3 n, out float basis[9])
+{
+    basis[0] = 0.282095f;
+    basis[1] = 0.488603f * n.y;
+    basis[2] = 0.488603f * n.z;
+    basis[3] = 0.488603f * n.x;
+    basis[4] = 1.092548f * n.x * n.y;
+    basis[5] = 1.092548f * n.y * n.z;
+    basis[6] = 0.315392f * (3.0f * n.z * n.z - 1.0f);
+    basis[7] = 1.092548f * n.x * n.z;
+    basis[8] = 0.546274f * (n.x * n.x - n.y * n.y);
 }
 
 // The environment's cloud shadows at a world position: the cloud texture's color, mapped over the
@@ -251,6 +309,12 @@ float fog_amount(const float3 world)
 }
 
 // The fog's color toward `world`: enhanced fog brightens toward the key light.
+// Enhanced fog leans toward the captured sky just above the horizon in the view's direction, so far
+// terrain meets the sky without a seam (docs/sky-research.md): this share of the way, and that far
+// above the horizon (engine choices).
+static const float FOG_HORIZON_SHARE = 0.5f;
+static const float FOG_HORIZON_LIFT = 0.05f;
+
 float3 fog_tint(const float3 world)
 {
     if ((uint)fog_color.w != 2u)
@@ -259,7 +323,13 @@ float3 fog_tint(const float3 world)
     }
     const float3 direction = safe_normalize(world - camera_position_time.xyz, camera_forward.xyz);
     const float toward = saturate(dot(direction, safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f))));
-    return fog_color.rgb + key_diffuse.rgb * pow(toward, FOG_SUN_EXPONENT) * FOG_SUN_GLOW;
+    float3 base = fog_color.rgb;
+    if (sky_parameters.y != 0u)
+    {
+        const float3 horizon = safe_normalize(float3(direction.xy, FOG_HORIZON_LIFT * length(direction.xy)), float3(1.0f, 0.0f, 0.0f));
+        base = lerp(base, sample_sky(horizon), FOG_HORIZON_SHARE);
+    }
+    return base + key_diffuse.rgb * pow(toward, FOG_SUN_EXPONENT) * FOG_SUN_GLOW;
 }
 
 // A surface seen through the fog.
@@ -354,13 +424,50 @@ float key_light_visibility(const float3 world, const float3 normal, const float2
 // Legacy-mode surface lighting shared by meshes and terrain: ambient plus two diffuse fill lights
 // and a key light, the 2x diffuse convention, and an exponent-16 highlight scaled by gloss. Shadows
 // take away the key light only (diffuse and highlight), as the original's shadow volumes did.
+// The sky's light (sky_light.hlsl), nine spherical-harmonic colors.
+StructuredBuffer<float4> sky_light : register(t8);
+// How much of the ambient follows the sky when sky ambient is on (an engine choice).
+static const float SKY_AMBIENT_SHARE = 0.75f;
+
+// The irradiance the sky gives a surface facing `normal`, over pi (radiance units, so a uniform sky
+// of color c gives c): the cosine-convolved harmonics.
+float3 sky_irradiance(const float3 normal)
+{
+    float basis[9];
+    sh_basis(normal, basis);
+    const float bands[9] = {3.141593f, 2.094395f, 2.094395f, 2.094395f, 0.785398f, 0.785398f, 0.785398f, 0.785398f, 0.785398f};
+    float3 total = float3(0.0f, 0.0f, 0.0f);
+    for (uint term = 0u; term < 9u; ++term)
+    {
+        total += sky_light[term].rgb * bands[term] * basis[term];
+    }
+    return max(total, 0.0f) / 3.141593f;
+}
+
+// The fill light with the sky's color and direction blended in, at the map's own fill brightness:
+// the sky's average (its first harmonic) is scaled to the legacy fill's average brightness.
+float3 sky_fill(const float3 normal, const float3 legacy_fill)
+{
+    if (sky_parameters.z == 0u)
+    {
+        return legacy_fill;
+    }
+    const float3 average_sky = sky_light[0].rgb * 0.282095f;
+    const float3 average_fill = ambient.rgb + 0.5f * (fill_diffuse[0].rgb + fill_diffuse[1].rgb);
+    const float3 luminance = float3(0.2126f, 0.7152f, 0.0722f);
+    const float scale = dot(average_fill, luminance) / max(dot(average_sky, luminance), 1.0e-4f);
+    return lerp(legacy_fill, sky_irradiance(normal) * scale, SKY_AMBIENT_SHARE);
+}
+
 float3 legacy_lit_color(const float3 albedo, const float3 normal, const float3 world_position, const float gloss, const float3 diffuse, const float3 specular,
                         const float3 emissive, const float3 tint, const float2 pixel, const bool receives_shadows)
 {
     const float3 view = safe_normalize(camera_position_time.xyz - world_position, float3(0.0f, 0.0f, 1.0f));
     const float3 light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
     const float3 half_vector = safe_normalize(light + view, normal);
-    const float3 fill = ambient.rgb + saturate(dot(normal, fill_direction[0].xyz)) * fill_diffuse[0].rgb + saturate(dot(normal, fill_direction[1].xyz)) * fill_diffuse[1].rgb;
+    const float3 legacy_fill = ambient.rgb + saturate(dot(normal, fill_direction[0].xyz)) * fill_diffuse[0].rgb + saturate(dot(normal, fill_direction[1].xyz)) * fill_diffuse[1].rgb;
+    // The sky's light shapes the fill of the world's surfaces (never the backgrounds it was captured from).
+    const float3 fill = receives_shadows ? sky_fill(normal, legacy_fill) : legacy_fill;
     const float facing = saturate(dot(normal, light));
     // Surfaces facing away get no key light anyway; their highlight stays as it was without shadows.
     const float key = facing > 0.0f && receives_shadows ? key_light_visibility(world_position, normal, pixel) : 1.0f;

@@ -131,6 +131,11 @@ struct D3d12Renderer::Impl
         // id and whether they are on.
         std::array<float, 4> cloud_shadow{};
         std::array<std::uint32_t, 4> cloud_parameters{};
+        // The sky capture: each cube face's matrix for the background draws (pass index
+        // sky_face_pass + face), the atlas's texture slot, whether the frame has a sky, whether the
+        // ambient takes the sky's light, and the face size.
+        std::array<DirectX::XMFLOAT4X4, 6> sky_face_view_projection;
+        std::array<std::uint32_t, 4> sky_parameters{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal
@@ -313,11 +318,15 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12Resource> scene_color;
     // The opaque scene copied before the water pass (post slot 7), which enhanced water refracts.
     ComPtr<ID3D12Resource> refraction_color;
+    // The sky capture (post slot 8): six cube faces of the background draws, three by two.
+    ComPtr<ID3D12Resource> sky_atlas;
+    // The sky's light as nine spherical-harmonic colors (sky_light.hlsl).
+    ComPtr<ID3D12Resource> sky_light;
     std::array<ComPtr<ID3D12Resource>, 2> bloom_targets;
     ComPtr<ID3D12DescriptorHeap> post_rtv_heap;
     // Texture slots (and RTVs, same index) of scene_color, the bloom targets, post_color, the two
     // TAA history targets, and the motion target.
-    std::array<std::uint32_t, 8> post_slots{};
+    std::array<std::uint32_t, 9> post_slots{};
     // The depth buffer's shader view (temporal anti-aliasing reprojects by depth).
     std::uint32_t depth_slot{};
     std::uint32_t bloom_width{1};
@@ -427,6 +436,12 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12RootSignature> water_reflection_root_signature;
     ComPtr<ID3D12PipelineState> water_reflection_clear_pipeline;
     ComPtr<ID3D12PipelineState> water_reflection_project_pipeline;
+    // The background pipelines drawing into the sky atlas (one target, no depth, both faces), and
+    // the sky light's projection (the water reflections' root signature).
+    ComPtr<ID3D12PipelineState> sky_capture_opaque_pipeline;
+    ComPtr<ID3D12PipelineState> sky_capture_alpha_pipeline;
+    ComPtr<ID3D12PipelineState> sky_capture_additive_pipeline;
+    ComPtr<ID3D12PipelineState> sky_light_pipeline;
     ComPtr<ID3D12Resource> water_reflection_sources;
     // The loaded scene's water plane height (from its water mesh), if it has one.
     std::optional<float> water_level;
@@ -619,7 +634,7 @@ struct D3d12Renderer::Impl
     // payload (ID3D12PipelineLibrary::Serialize output). Any mismatch or driver rejection discards
     // the cache; failures never stop rendering.
     static constexpr std::array<char, 8> pipeline_cache_magic{'E', 'A', 'W', 'P', 'S', 'O', '0', '1'};
-    static constexpr std::uint64_t pipeline_layout_version = 5;
+    static constexpr std::uint64_t pipeline_layout_version = 6;
     static constexpr std::uint64_t maximum_pipeline_cache_bytes = 256ULL * 1024ULL * 1024ULL;
 
     static std::uint64_t fnv1a(std::uint64_t hash, const std::span<const std::byte> bytes) noexcept;

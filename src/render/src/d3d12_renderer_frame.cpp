@@ -5,6 +5,25 @@
 namespace eaw {
 namespace {
 
+// The sky capture's cube faces: forward, right, and up (keep in step with sky_face_* in
+// legacy_common.hlsli); the atlas holds faces 0-2 in its top row and 3-5 below.
+struct SkyFace
+{
+    Vector3 forward;
+    Vector3 right;
+    Vector3 up;
+};
+constexpr std::array<SkyFace, 6> sky_faces{{
+    {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}},
+    {{-1.0F, 0.0F, 0.0F}, {0.0F, -1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}},
+    {{0.0F, 1.0F, 0.0F}, {-1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}},
+    {{0.0F, -1.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}},
+    {{0.0F, 0.0F, 1.0F}, {1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}},
+    {{0.0F, 0.0F, -1.0F}, {1.0F, 0.0F, 0.0F}, {0.0F, -1.0F, 0.0F}},
+}};
+// The pass index (draw root constant 2) of the sky capture's first face.
+constexpr std::uint32_t sky_face_pass = 16;
+
 D3D12_RESOURCE_STATES d3d12_state(const GraphAccess access) noexcept
 {
     switch (access)
@@ -854,6 +873,16 @@ bool D3d12Renderer::Impl::render()
             constants.cloud_parameters = {static_cast<std::uint32_t>(fallback_texture_count + clouds.texture), 1U, 0U, 0U};
         }
     }
+    // The sky capture's faces: clip = (direction . right, direction . up, direction . forward,
+    // direction . forward), so each face spans 90 degrees (the same bases as sky_face_* in the shaders).
+    for (std::uint32_t face = 0; face < sky_faces.size(); ++face)
+    {
+        const auto& [forward, right, up] = sky_faces[face];
+        const DirectX::XMMATRIX matrix(right.x, up.x, forward.x, forward.x, right.y, up.y, forward.y, forward.y, right.z, up.z, forward.z, forward.z, 0.0F, 0.0F, 0.0F, 1.0F);
+        DirectX::XMStoreFloat4x4(&constants.sky_face_view_projection[face], DirectX::XMMatrixTranspose(matrix));
+    }
+    const bool has_sky = scene_loaded && std::ranges::any_of(dynamic ? dynamic_draws : scene_draws, &GpuDraw::background);
+    constants.sky_parameters = {post_slots[8], has_sky ? 1U : 0U, has_sky && options.graphics.sky_ambient ? 1U : 0U, sky_face_size};
     const auto wind_direction = normalize_or(lighting.wind.direction, Vector3{1.0F, 0.0F, 0.0F});
     constants.grass_wind = {wind_direction.x, wind_direction.y, 0.0F, std::isfinite(lighting.wind.speed) ? std::max(lighting.wind.speed, 0.0F) : 0.0F};
     if (options.graphics.fog != VisualFogMode::off && lighting.fog.enabled)
@@ -920,6 +949,87 @@ bool D3d12Renderer::Impl::render()
 
     // Key-light shadows: every cascade's map, drawn before the scene samples them.
     std::vector<FrameGraph::Use> scene_uses{{scene, GraphAccess::render_target}, {pick, GraphAccess::render_target}, {motion, GraphAccess::render_target}, {depth, GraphAccess::depth_write}};
+
+    // The sky capture: the background draws into six cube faces, then their light projected to
+    // spherical harmonics, which the scene passes read.
+    const auto sky_light_buffer = import_resource(sky_light.Get(), "sky light", GraphAccess::common, GraphAccess::common);
+    if (has_sky)
+    {
+        const auto atlas = import_resource(sky_atlas.Get(), "sky atlas", GraphAccess::render_target, GraphAccess::render_target);
+        frame_graph.add_pass("sky capture", {{atlas, GraphAccess::render_target}},
+                             [&]
+                             {
+                                 const auto target = post_rtv(8);
+                                 constexpr std::array clear{0.0F, 0.0F, 0.0F, 1.0F};
+                                 command_list->ClearRenderTargetView(target, clear.data(), 0, nullptr);
+                                 command_list->OMSetRenderTargets(1, &target, FALSE, nullptr);
+                                 ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
+                                 command_list->SetDescriptorHeaps(1, descriptor_heaps);
+                                 command_list->SetGraphicsRootSignature(root_signature.Get());
+                                 command_list->SetGraphicsRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
+                                 command_list->SetGraphicsRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
+                                 command_list->SetGraphicsRootShaderResourceView(2, frame.bone_buffer->GetGPUVirtualAddress());
+                                 command_list->SetGraphicsRootShaderResourceView(3, (dynamic ? frame.instance_buffer : scene_instance_buffer)->GetGPUVirtualAddress());
+                                 command_list->SetGraphicsRootShaderResourceView(4, scene_material_buffer->GetGPUVirtualAddress());
+                                 command_list->SetGraphicsRootShaderResourceView(6, frame.residency_buffer->GetGPUVirtualAddress());
+                                 command_list->SetGraphicsRootShaderResourceView(7, frame.decal_buffer->GetGPUVirtualAddress());
+                                 command_list->SetGraphicsRootShaderResourceView(8, frame.decal_grid_buffer->GetGPUVirtualAddress());
+                                 command_list->SetGraphicsRootShaderResourceView(9, water_reflection_sources->GetGPUVirtualAddress());
+                                 command_list->SetGraphicsRootShaderResourceView(10, sky_light->GetGPUVirtualAddress());
+                                 command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                                 for (std::uint32_t face = 0; face < sky_faces.size(); ++face)
+                                 {
+                                     D3D12_VIEWPORT face_viewport{};
+                                     face_viewport.TopLeftX = static_cast<float>((face % 3U) * sky_face_size);
+                                     face_viewport.TopLeftY = static_cast<float>((face / 3U) * sky_face_size);
+                                     face_viewport.Width = static_cast<float>(sky_face_size);
+                                     face_viewport.Height = static_cast<float>(sky_face_size);
+                                     face_viewport.MaxDepth = 1.0F;
+                                     const D3D12_RECT face_scissor{static_cast<LONG>((face % 3U) * sky_face_size), static_cast<LONG>((face / 3U) * sky_face_size),
+                                                                   static_cast<LONG>((face % 3U + 1U) * sky_face_size), static_cast<LONG>((face / 3U + 1U) * sky_face_size)};
+                                     command_list->RSSetViewports(1, &face_viewport);
+                                     command_list->RSSetScissorRects(1, &face_scissor);
+                                     command_list->SetGraphicsRoot32BitConstant(5, sky_face_pass + face, 2);
+                                     std::uint32_t bound_block = std::numeric_limits<std::uint32_t>::max();
+                                     for (const auto& draw : dynamic ? dynamic_draws : scene_draws)
+                                     {
+                                         if (!draw.background)
+                                         {
+                                             continue;
+                                         }
+                                         if (draw.block != bound_block)
+                                         {
+                                             const auto& vertex_view = draw.block == 0 ? scene_vertex_view : added_blocks[draw.block - 1U].vertex_view;
+                                             const auto& index_view = draw.block == 0 ? scene_index_view : added_blocks[draw.block - 1U].index_view;
+                                             command_list->IASetVertexBuffers(0, 1, &vertex_view);
+                                             command_list->IASetIndexBuffer(&index_view);
+                                             bound_block = draw.block;
+                                         }
+                                         command_list->SetPipelineState(draw.blend == VisualBlendMode::alpha_blend ? sky_capture_alpha_pipeline.Get()
+                                                                        : draw.blend == VisualBlendMode::additive  ? sky_capture_additive_pipeline.Get()
+                                                                                                                   : sky_capture_opaque_pipeline.Get());
+                                         const std::array<std::uint32_t, 2> draw_constants{draw.first_instance, draw.material};
+                                         command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
+                                         command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
+                                         ++draw_calls;
+                                     }
+                                 }
+                                 command_list->SetGraphicsRoot32BitConstant(5, 0U, 2);
+                             });
+        frame_graph.add_pass("sky light", {{atlas, GraphAccess::compute_read}, {sky_light_buffer, GraphAccess::unordered_access}},
+                             [&]
+                             {
+                                 ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
+                                 command_list->SetDescriptorHeaps(1, descriptor_heaps);
+                                 command_list->SetComputeRootSignature(water_reflection_root_signature.Get());
+                                 command_list->SetComputeRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
+                                 command_list->SetComputeRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
+                                 command_list->SetComputeRootUnorderedAccessView(2, sky_light->GetGPUVirtualAddress());
+                                 command_list->SetPipelineState(sky_light_pipeline.Get());
+                                 command_list->Dispatch(1, 1, 1);
+                             });
+        scene_uses.push_back({sky_light_buffer, GraphAccess::shader_read});
+    }
     if (frame_cascades.count > 0)
     {
         std::vector<FrameGraph::Use> shadow_writes;
@@ -969,8 +1079,11 @@ bool D3d12Renderer::Impl::render()
         // 7 terrain decals, 8 their grid.
         command_list->SetGraphicsRootShaderResourceView(7, frame.decal_buffer->GetGPUVirtualAddress());
         command_list->SetGraphicsRootShaderResourceView(8, frame.decal_grid_buffer->GetGPUVirtualAddress());
-        // 9 the water's planar reflection sources.
+        // 9 the water's planar reflection sources, 10 the sky's light.
         command_list->SetGraphicsRootShaderResourceView(9, water_reflection_sources->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(10, sky_light->GetGPUVirtualAddress());
+        // The pass index stays 0 outside shadow and sky-capture passes.
+        command_list->SetGraphicsRoot32BitConstant(5, 0U, 2);
         command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     };
     // Scene draws [begin, end): the water only, or everything but it; the terrain before the first

@@ -122,9 +122,11 @@ rendering rows join item 2).
    reading Shield_Flash_* from GameConstants remain. Legacy sky domes and nebulae done 2026-11-13;
    enhanced sky agreed 2026-11-13 from [sky-research.md](sky-research.md): cloud shadows (done, a
    legacy feature), a sky capture for the water's reflection fallback and a sky-tinted ambient, fog
-   toward the horizon color; the sun disk, star intensity, and an atmosphere after HDR.
+   toward the horizon color (all done 2026-11-13); the sun disk, star intensity, and an atmosphere
+   after HDR.
    Global illumination (the owner, 2026-11-13: the sky as a major contributor), in steps: sky
-   irradiance (the captured sky projected to spherical harmonics, the ambient term), then sky
+   irradiance (the captured sky projected to spherical harmonics, the ambient term; done 2026-11-13
+   as the enhanced sky ambient), then sky
    visibility (how much sky each terrain point sees, from the heightfield once at load, applied to
    the terrain and to units standing on it), then bounced light once lighting is linear (HDR).
    This closes M2.

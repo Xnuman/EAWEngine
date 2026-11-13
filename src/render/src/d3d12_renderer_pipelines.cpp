@@ -24,6 +24,7 @@
 #include "g_eaw_sandbox_vs.h"
 #include "g_eaw_shadow_ps.h"
 #include "g_eaw_shadow_vs.h"
+#include "g_eaw_sky_light_cs.h"
 #include "g_eaw_terrain_ps.h"
 #include "g_eaw_terrain_shadow_ps.h"
 #include "g_eaw_terrain_shadow_vs.h"
@@ -284,6 +285,8 @@ void D3d12Renderer::Impl::create_pipeline()
     compute.pRootSignature = water_reflection_root_signature.Get();
     compute.CS = {g_eaw_water_clear_cs, sizeof(g_eaw_water_clear_cs)};
     check_device_hresult(device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&water_reflection_clear_pipeline)), device, "CreateComputePipelineState(water reflection clear)");
+    compute.CS = {g_eaw_sky_light_cs, sizeof(g_eaw_sky_light_cs)};
+    check_device_hresult(device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&sky_light_pipeline)), device, "CreateComputePipelineState(sky light)");
     compute.CS = {g_eaw_water_project_cs, sizeof(g_eaw_water_project_cs)};
     check_device_hresult(device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&water_reflection_project_pipeline)), device, "CreateComputePipelineState(water reflection projection)");
 
@@ -302,6 +305,27 @@ void D3d12Renderer::Impl::create_pipeline()
     description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
     description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
     create_pipeline_state(L"background opaque", description, background_opaque_pipeline);
+    // The sky capture: the background pipelines into one target without depth, both faces drawn
+    // (the capture's face bases need not match the camera's handedness).
+    {
+        auto sky = description;
+        sky.NumRenderTargets = 1;
+        sky.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
+        sky.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
+        sky.DSVFormat = DXGI_FORMAT_UNKNOWN;
+        sky.DepthStencilState.DepthEnable = FALSE;
+        sky.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+        create_pipeline_state(L"sky capture opaque", sky, sky_capture_opaque_pipeline);
+        sky.BlendState.RenderTarget[0].BlendEnable = TRUE;
+        sky.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+        sky.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+        sky.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+        sky.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+        create_pipeline_state(L"sky capture alpha", sky, sky_capture_alpha_pipeline);
+        sky.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+        sky.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
+        create_pipeline_state(L"sky capture additive", sky, sky_capture_additive_pipeline);
+    }
 
     // Terrain: opaque, depth-written, with its own vertex layout and shaders.
     constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 4> terrain_layout{{
