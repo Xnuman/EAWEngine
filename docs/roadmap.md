@@ -155,7 +155,8 @@ rendering rows join item 2).
 
 1. Tactical battles. Done: the core, spawning, RTS orders, terrain and passability, A*, group
    movement and formations, space combat with hardpoints, flight, headless battles and replays.
-   Open: combat presentation and fidelity (hardpoint damage visuals, turret rotation of hardpoint
+   Open: AT-AT animations are broken (the owner, 2026-11-13: in the sandbox an AT-AT can stay in its
+   idle clip while ordered to move); combat presentation and fidelity (hardpoint damage visuals, turret rotation of hardpoint
    turrets (unit turrets done 2026-11-12); walkers' `_QUARTER`/`_HALF` turn clips,
    `Rotation_Animation_Speed`, and `Locomotor_Has_Animation_Priority` (turn-in-place, begin/end,
    start and stop transitions done 2026-11-12)),
