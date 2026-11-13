@@ -774,8 +774,8 @@ void test_footprints()
     eaw::VisualInstance walker{0};
     eaw::set_translation(walker.transform, {100.0F, 50.0F, 10.0F});
     const std::vector<eaw::VisualInstance> instances{walker};
-    auto foot = eaw::Matrix4::identity();
-    eaw::set_translation(foot, {5.0F, 0.0F, 0.0F});
+    // The foot bone turned a quarter, its X axis along the world's +Y.
+    const eaw::Matrix4 foot({0.0F, 1.0F, 0.0F, 0.0F, -1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 5.0F, 0.0F, 0.0F, 1.0F});
     const std::vector<eaw::Matrix4> palette{foot};
 
     eaw::BattleEffects effects;
@@ -788,8 +788,8 @@ void test_footprints()
     std::vector<eaw::VisualDecal> decals;
     effects.build_decals(decals);
     require(decals.size() == 1 && std::fabs(decals[0].center.x - 105.0F) < 1.0e-4F && std::fabs(decals[0].center.y - 50.0F) < 1.0e-4F && decals[0].mode == eaw::VisualDecalMode::bump &&
-                decals[0].half_size == eaw::Vector2{5.0F, 10.0F} && std::fabs(std::fabs(decals[0].rotation) - 3.14159265F) < 1.0e-4F && decals[0].uv_rect[0] == 0.5F,
-            "a foot plant must leave its decal at the foot bone, turned with the unit");
+                decals[0].half_size == eaw::Vector2{5.0F, 10.0F} && std::fabs(std::fabs(decals[0].rotation) - 1.5707964F) < 1.0e-4F && decals[0].uv_rect[0] == 0.5F,
+            "a foot plant must leave its decal at the foot bone, its +X along the bone's X axis");
     std::filesystem::remove_all(root, ignored);
 }
 

@@ -1069,7 +1069,11 @@ particle-audit`.
   plus a burst at 1,2), so scorches darken by alpha times `Intensity` and footprints dent the
   lighting. `Default` (cell 0,7, outside the grid) and `Shadow` (cell 1,0, the Rancor's foot) look
   unused. Decals are placed through `SurfaceFX` entries (`Decal_Name` per surface kind):
-  footprint triggers from animation foot plants, and `Explosion_Scorch_Mark` on 36 `Particle`
+  footprint triggers from animation foot plants (each print drawn along its foot bone: the AT-ST's
+  cell, long along U (62x39 texels), sits under `B_Foot_L/R` whose X axis points forward, and the
+  AT-AA's mirrored left and right cells, long along V (91x120), under `B_Toes_*` whose X axis points
+  sideways, so the print's U follows the bone's X; the round AT-AT, pod-walker, and Rancor prints do
+  not show it; a reading of the data that the owner's AT-ST observation supports), and `Explosion_Scorch_Mark` on 36 `Particle`
   explosion objects (`EXPLOSION_SCORCH_MARK_SMALL` and so on, none on water). Vehicle tracks are a
   separate system (`DynamicTrackFX.xml`: textured ribbons): 11 tracks with a texture, width,
   opacity, segment length, fade distances, and a render mode; the bump ones (`w_tank_track_01`,

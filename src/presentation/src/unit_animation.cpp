@@ -366,6 +366,12 @@ std::optional<Vector3> UnitAnimator::bone_position(const AnimationCue& cue, cons
 
 std::optional<Vector3> UnitAnimator::bone_position(const std::size_t index, const std::string_view bone, const std::span<const VisualInstance> instances, const std::span<const Matrix4> palette) const
 {
+    const auto transform = bone_transform(index, bone, instances, palette);
+    return transform ? std::optional<Vector3>(translation(*transform)) : std::nullopt;
+}
+
+std::optional<Matrix4> UnitAnimator::bone_transform(const std::size_t index, const std::string_view bone, const std::span<const VisualInstance> instances, const std::span<const Matrix4> palette) const
+{
     if (index >= instances.size())
     {
         return std::nullopt;
@@ -387,7 +393,7 @@ std::optional<Vector3> UnitAnimator::bone_position(const std::size_t index, cons
         const auto bind = skeleton_bind_pose(skeleton);
         const auto skin = static_cast<std::size_t>(instance.bone_offset) + bone_index;
         const auto model = skin < palette.size() ? bind[bone_index] * palette[skin] : bind[bone_index];
-        return transform_point(translation(model), instance.transform);
+        return model * instance.transform;
     }
     return std::nullopt;
 }

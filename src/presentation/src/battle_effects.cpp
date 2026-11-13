@@ -19,6 +19,9 @@ constexpr float scorch_ground_reach = 40.0F;
 // such as a respawn), and trails keep at most this many points (engine choices).
 constexpr float trail_break_segments = 4.0F;
 constexpr std::size_t maximum_trail_points = 256;
+// A footprint follows its bone's X axis when that axis leans at least this far from vertical
+// (the sine of its angle from straight up; an engine choice).
+constexpr float minimum_ground_axis = 0.25F;
 
 } // namespace
 
@@ -244,11 +247,21 @@ void BattleEffects::leave_footprints(const std::span<const AnimationCue> cues, c
                          {
                              return;
                          }
-                         const auto position = animator.bone_position(cue, event.bone, instances, palette).value_or(cue.position);
-                         // Turned with the unit: its model faces -Y, so the mark's +Y points along
-                         // the unit's facing (an engine choice until compared with the original).
+                         const auto bone = animator.bone_transform(static_cast<std::size_t>(cue.instance), event.bone, instances, palette);
+                         const auto position = bone ? translation(*bone) : cue.position;
+                         // The mark's +X follows the event bone's X axis on the ground: the stock
+                         // atlas draws each print along its foot bone (the AT-ST's prints run along U
+                         // under bones whose X points forward, the AT-AA's along V under bones whose X
+                         // points sideways; a reading of the data, the owner seeing the AT-ST's turned
+                         // by a quarter when it followed the unit). Without the bone, or with its X
+                         // axis near vertical, the mark's +Y points along the unit's facing (models
+                         // face -Y).
                          float facing = 0.0F;
-                         if (cue.instance < instances.size())
+                         if (bone && std::hypot((*bone)(0, 0), (*bone)(0, 1)) > minimum_ground_axis * length(Vector3{(*bone)(0, 0), (*bone)(0, 1), (*bone)(0, 2)}))
+                         {
+                             facing = std::atan2((*bone)(0, 1), (*bone)(0, 0));
+                         }
+                         else if (cue.instance < instances.size())
                          {
                              const auto& m = instances[cue.instance].transform;
                              facing = std::atan2(-m(1, 1), -m(1, 0)) - 1.5707964F;
