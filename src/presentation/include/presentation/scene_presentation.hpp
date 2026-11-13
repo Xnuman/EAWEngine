@@ -70,6 +70,8 @@ public:
     // Shield flashes: a shot an entity's shields absorbed (ImpactSnapshot::target, kind shield) shows
     // its model's shield mesh, if it has one, growing through shield_flash_scales for
     // shield_flash_step seconds each, from `seconds` (presentation time).
+    // Not called for ordinary hits (they show the projectile's Projectile_Absorbed_By_Shields_Particle):
+    // kept for the shield abilities (SHIELD_FLARE, MISSILE_SHIELD, DEFEND), not implemented yet.
     void flash_shields(std::span<const ImpactSnapshot> impacts, double seconds);
 
     // Meshes added to the renderer's mesh library at runtime (D3d12Renderer::add_meshes), in order,

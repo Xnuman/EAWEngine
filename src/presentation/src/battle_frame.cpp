@@ -37,12 +37,14 @@ void present_tick(const BattleRuntime& runtime, BattlePresenters& presenters, co
             }
             if (const auto bones = presenters.presentation.hardpoint_bones(*owner, fallen.hardpoint))
             {
-                presenters.animator->destroy_hardpoint(fallen.entity, bones->mesh, bones->bones.decal_bone, bones->bones.attachment_bone);
+                presenters.animator->destroy_hardpoint(fallen.entity, bones->mesh, bones->bones);
             }
         }
     }
     presenters.effects.play_tick_events(world.snapshot());
-    presenters.presentation.flash_shields(world.snapshot().impacts, world_seconds);
+    // Shield hits show the projectile's absorb particle (play_tick_events); the shield mesh flash
+    // (flash_shields) belongs to shield abilities, which are not implemented yet (the owner's
+    // reading, 2026-11-14).
     if (presenters.audio != nullptr)
     {
         presenters.audio->play_tick_events(world.snapshot(), world);

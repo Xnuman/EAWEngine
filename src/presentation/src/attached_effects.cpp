@@ -34,8 +34,9 @@ void AttachedEffects::add_rigs(const std::span<const VisualRig> rigs)
             mesh.visibility_half = mesh.bone_count != 0 && rig.palette_size >= mesh.bone_count * 2U;
             for (const auto& attachment : rig.effects)
             {
-                // Hardpoint damage effects wait for per-hardpoint damage in snapshots.
-                if (attachment.effect && attachment.bone < bind_pose.size() && attachment.damage_bone < 0)
+                // Hardpoint damage effects hang under bones hidden until the hardpoint is destroyed
+                // (UnitAnimator::destroy_hardpoint): the visibility half shows them then.
+                if (attachment.effect && attachment.bone < bind_pose.size())
                 {
                     mesh.attachments.push_back({attachment.effect, attachment.emit_mesh, attachment.bone, bind_pose[attachment.bone], attachment.engine, attachment.state});
                 }

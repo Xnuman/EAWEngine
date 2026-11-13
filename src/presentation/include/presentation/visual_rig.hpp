@@ -121,7 +121,7 @@ struct VisualEffectAttachment
     std::uint32_t bone{};
     std::string proxy;
     // A hardpoint's damage effect (the proxy hangs under the bone its XML Damage_Particles names):
-    // that bone, shown once the hardpoint is damaged (not driven yet), else -1.
+    // that bone, shown once the hardpoint is destroyed (its bone is hidden while intact), else -1.
     std::int32_t damage_bone{-1};
     // The mesh emit-from-mesh emitters spawn on (the mesh on the proxy bone's parent, in the proxy
     // bone's space), when the effect has such emitters and the model has that mesh.
@@ -149,9 +149,9 @@ struct VisualRig
     std::vector<VisualClip> clips;
     // Particle effects on the model's visible proxies.
     std::vector<VisualEffectAttachment> effects;
-    // Per bone: hidden while the entity is intact (a hardpoint's Damage_Decal bone and its children,
-    // whose scorch meshes appear once that hardpoint is destroyed). Applied to the palette's
-    // visibility half; empty when nothing is hidden.
+    // Per bone: hidden while the entity is intact (a hardpoint's Damage_Decal and Damage_Particles
+    // bones and their children: scorch meshes and damage effects that appear once that hardpoint is
+    // destroyed). Applied to the palette's visibility half; empty when nothing is hidden.
     std::vector<bool> intact_hidden;
 };
 

@@ -337,10 +337,10 @@ void test_unit_animation()
         require(both_instances[0].bone_offset != both_instances[1].bone_offset, "a walker starting to move must play its start clip");
 
         // Walk transitions play at the move clip's rate at top speed: with a reference of a quarter
-        // of its top speed (the AT-AT's Movement_Animation_Speed against its Max_Speed is 0.27),
-        // the 1 s MOVESTART is over after 0.25 s and the walker then shows the same pose as its twin
-        // without transitions; at its own rate (a reference of its top speed) it is still playing.
-        // MOVESTART gets its own clip (the test clip raised 5 units), so its poses differ from MOVE's.
+        // of its top speed (the AT-AT's Movement_Animation_Speed against its Max_Speed is 0.27), the
+        // 1 s MOVESTART is over after 0.25 s (and its 0.25 s fade out after 0.5 s); at its own rate (a
+        // reference of its top speed) it is still playing at 0.5 s. MOVESTART gets its own clip (the
+        // test clip raised 5 units), so its bone stands 5 higher than MOVE's.
         auto raised = *animation;
         for (auto& track : raised.tracks)
         {
@@ -352,7 +352,8 @@ void test_unit_animation()
         auto start_rig = walker_rig;
         start_rig.clips[3].animation = std::make_shared<const eaw::Animation>(std::move(raised));
         const std::array<eaw::VisualRig, 1> start_rigs{start_rig};
-        const auto pose_after = [&](const bool transition, const double after, const float reference)
+        // The height of the walker's bone `after` seconds into its walk.
+        const auto height_after = [&](const double after, const float reference)
         {
             eaw::UnitAnimator walker(start_rigs, walker_rest);
             std::vector<eaw::EntitySnapshot> one(1);
@@ -361,7 +362,7 @@ void test_unit_animation()
             std::vector<eaw::EntityId> one_id{one[0].id};
             std::vector<eaw::VisualInstance> shown(1);
             std::vector<eaw::Matrix4> palette;
-            const std::array<eaw::AnimationProfile, 1> profile{eaw::AnimationProfile{.move_reference = reference, .walk_transition = transition}};
+            const std::array<eaw::AnimationProfile, 1> profile{eaw::AnimationProfile{.move_reference = reference, .walk_transition = true}};
             walker.animate(one, one_id, shown, 1.0, 1U << 20U, palette, profile);
             one[0].moving = true;
             one[0].speed = 10.0F;
@@ -369,18 +370,9 @@ void test_unit_animation()
             {
                 walker.animate(one, one_id, shown, at, 1U << 20U, palette, profile);
             }
-            return std::vector<eaw::Matrix4>(palette.begin() + shown[0].bone_offset, palette.begin() + shown[0].bone_offset + 2);
+            return palette[shown[0].bone_offset].values[14];
         };
-        const auto same = [](const std::vector<eaw::Matrix4>& a, const std::vector<eaw::Matrix4>& b)
-        {
-            return std::ranges::equal(a, b,
-                                      [](const eaw::Matrix4& x, const eaw::Matrix4& y)
-                                      {
-                                          return std::ranges::equal(x.values, y.values);
-                                      });
-        };
-        require(same(pose_after(true, 0.5, 0.25F), pose_after(false, 0.5, 0.25F)) && !same(pose_after(true, 0.5, 1.0F), pose_after(false, 0.5, 1.0F)),
-                "a walk transition must play at the move clip's rate at top speed");
+        require(height_after(0.5, 1.0F) - height_after(1.0, 0.25F) > 4.0F, "a walk transition must play at the move clip's rate at top speed");
     }
 
     // Destroyed hardpoints on a clipless ship: its scorch bone (hidden while intact) appears and it
@@ -404,7 +396,7 @@ void test_unit_animation()
             std::vector<eaw::Matrix4> palette_out;
             if (destroyed)
             {
-                ships.destroy_hardpoint(pair[0].id, 0, decal ? 0 : -1, decal ? -1 : 0);
+                ships.destroy_hardpoint(pair[0].id, 0, eaw::HardpointLook{.decal_bone = decal ? 0 : -1, .attachment_bone = decal ? -1 : 0});
             }
             ships.animate(pair, ids, shown, 1.0, 1U << 20U, palette_out);
             const auto at = [&](const std::uint32_t offset) -> const eaw::Matrix4&
@@ -421,6 +413,32 @@ void test_unit_animation()
         const auto stripped = ship_palette(false, true);
         require(!intact[0] && !intact[2] && scorched[0] && scorched[1] && scorched[2], "a destroyed hardpoint's scorch bone must appear on its ship alone");
         require(stripped[0] && !stripped[2], "a destroyed hardpoint's attached model must go");
+
+        // The Star Destroyer's layout: the scorch bone hangs under the attachment bone. The attached
+        // model (bone 0) goes, the scorch (bone 1, its child) appears.
+        auto layered = std::make_shared<eaw::Skeleton>();
+        layered->bones = {{"HP_Bone", -1, eaw::Matrix4::identity(), true}, {"HP_Blast", 0, eaw::Matrix4::identity(), true}};
+        eaw::VisualRig hull;
+        hull.skeleton = layered;
+        hull.inverse_bind_pose = {eaw::Matrix4::identity(), eaw::Matrix4::identity()};
+        hull.palette_size = 4;
+        hull.intact_hidden = {false, true};
+        const std::array<eaw::VisualRig, 1> hulls{hull};
+        std::vector<eaw::Matrix4> hull_rest;
+        eaw::append_rest_palette(*layered, hull_rest, hull.intact_hidden);
+        eaw::UnitAnimator hull_animator(hulls, hull_rest);
+        std::vector<eaw::EntitySnapshot> one(1);
+        one[0].id = {4, 1};
+        std::vector<eaw::EntityId> one_id{one[0].id};
+        std::vector<eaw::VisualInstance> shown(1);
+        std::vector<eaw::Matrix4> hull_palette;
+        hull_animator.destroy_hardpoint(one[0].id, 0, eaw::HardpointLook{.decal_bone = 1, .attachment_bone = 0});
+        hull_animator.animate(one, one_id, shown, 1.0, 1U << 20U, hull_palette);
+        const auto visible = [&](const std::uint32_t bone)
+        {
+            return !std::ranges::equal(hull_palette[shown[0].bone_offset + 2U + bone].values, eaw::collapsed_bone.values);
+        };
+        require(shown[0].bone_offset + 4U <= hull_palette.size() && !visible(0) && visible(1), "a scorch bone under the attachment bone must appear while the attached model goes");
     }
 
     // A flyer with only an idle clip (a bird): moving, it stands in its rest pose unless its type

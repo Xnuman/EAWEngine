@@ -49,12 +49,13 @@ inline constexpr float default_bank_limit = 1.04719755F;
 // find it, or an entity whose model could not be added to the scene; `instance` is then unused), and
 // how its clips play.
 // A hardpoint's bones on its unit's model (CombatProfile::hardpoints, same index): its scorch marks
-// (Damage_Decal), hidden until it is destroyed, and the bone its attached model hangs on
-// (Model_To_Attach), whose model goes with it; -1 for none.
+// (Damage_Decal) and damage effects (Damage_Particles), hidden until it is destroyed, and the bone
+// its attached model hangs on (Model_To_Attach), whose model goes with it; -1 for none.
 struct HardpointLook
 {
     std::int32_t decal_bone{-1};
     std::int32_t attachment_bone{-1};
+    std::int32_t damage_bone{-1};
 };
 
 struct MapEntityLook

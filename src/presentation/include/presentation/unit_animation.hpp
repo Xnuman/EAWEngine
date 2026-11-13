@@ -131,10 +131,11 @@ public:
     // counts as no time passing).
     void animate(std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, double seconds, std::size_t max_palette,
                  std::vector<Matrix4>& palette, std::span<const AnimationProfile> animations = {});
-    // Shows that `entity`'s hardpoint on `mesh` is destroyed: its scorch bones (`decal_bone` and
-    // below) appear and its attached model (`attachment_bone` and below) goes; -1 for none. The
-    // entity then draws with a palette of its own, also without clips.
-    void destroy_hardpoint(EntityId entity, std::uint32_t mesh, std::int32_t decal_bone, std::int32_t attachment_bone);
+    // Shows that `entity`'s hardpoint on `mesh` is destroyed: its scorch meshes and damage effects
+    // (`decal_bone`, `damage_bone`, and below) appear and its attached model (bound to
+    // `attachment_bone` alone; the scorch and damage bones often hang below it) goes; -1 for none.
+    // The entity then draws with a palette of its own, also without clips.
+    void destroy_hardpoint(EntityId entity, std::uint32_t mesh, const HardpointLook& bones);
     // Keeps a dead entity's instance (ScenePresentation::corpse_instance) as a corpse that plays a
     // DIE clip from `seconds` on; without one, only an instance in a damage state stays (rubble),
     // for the style's persistence or for good. At most 4096 corpses are kept (the oldest go first).
@@ -239,8 +240,14 @@ private:
         float turn_playback{1.0F};
         std::int32_t transition{-1};
         double transition_start{};
-        // The rate the one-shot transition plays at.
+        // The rate the one-shot transition plays at, and whether it starts a walk (MOVESTART: the
+        // stride waits at its start until it ends).
         float transition_playback{1.0F};
+        bool transition_starts_walk{};
+        // A transition that ended, held at its last frame while it fades out (-1 none), and when it
+        // ended.
+        std::int32_t fading{-1};
+        double fading_since{};
         bool frame_seen{};
     };
 

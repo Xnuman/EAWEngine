@@ -45,7 +45,7 @@ std::vector<HardpointLook> hardpoint_looks(const CombatProfile& combat)
     looks.reserve(combat.hardpoints.size());
     for (const auto& hardpoint : combat.hardpoints)
     {
-        looks.push_back({hardpoint.decal_bone, hardpoint.attachment_bone});
+        looks.push_back({hardpoint.decal_bone, hardpoint.attachment_bone, hardpoint.damage_bone});
     }
     return looks;
 }

@@ -42,6 +42,9 @@ constexpr float turn_in_place_speed_fraction = 0.1F;
 // Bounds of a transition's playback rate (engine choices; the stock AT-AT walks at 3.7x, the
 // Bantha at 5x).
 constexpr float minimum_transition_playback = 0.25F;
+// Transitions fade in from the pose before them and out into the one after them over this long
+// (engine choice).
+constexpr double transition_fade_seconds = 0.25;
 constexpr float maximum_transition_playback = 6.0F;
 // Frames longer than this (a stall, a hidden window) count as this long.
 constexpr double longest_frame_seconds = 0.25;
@@ -262,9 +265,9 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
     append_rig_local_palette(rig, pose, out, turns, mask != masks_by_hash_.end() ? &mask->second : nullptr);
 }
 
-void UnitAnimator::destroy_hardpoint(const EntityId entity, const std::uint32_t mesh, const std::int32_t decal_bone, const std::int32_t attachment_bone)
+void UnitAnimator::destroy_hardpoint(const EntityId entity, const std::uint32_t mesh, const HardpointLook& hardpoint)
 {
-    if (mesh >= rigs_.size() || !rigs_[mesh].skeleton || (decal_bone < 0 && attachment_bone < 0))
+    if (mesh >= rigs_.size() || !rigs_[mesh].skeleton || (hardpoint.decal_bone < 0 && hardpoint.attachment_bone < 0 && hardpoint.damage_bone < 0))
     {
         return;
     }
@@ -284,6 +287,7 @@ void UnitAnimator::destroy_hardpoint(const EntityId entity, const std::uint32_t 
     }
     const auto apply = [&](const std::int32_t root, const bool hide)
     {
+        // A whole subtree (scorch meshes and damage proxies hang below their bones).
         if (root < 0 || static_cast<std::size_t>(root) >= bones)
         {
             return;
@@ -298,8 +302,12 @@ void UnitAnimator::destroy_hardpoint(const EntityId entity, const std::uint32_t 
             }
         }
     };
-    apply(decal_bone, false);
-    apply(attachment_bone, true);
+    apply(hardpoint.decal_bone, false);
+    apply(hardpoint.damage_bone, false);
+    if (hardpoint.attachment_bone >= 0 && static_cast<std::size_t>(hardpoint.attachment_bone) < bones)
+    {
+        mask.hidden[static_cast<std::size_t>(hardpoint.attachment_bone)] = true;
+    }
     // The mask's content hash (never 0, which means the rig's own).
     auto hash = mix(0x6d61736bULL ^ mesh);
     for (std::size_t bone = 0; bone < bones; ++bone)
@@ -701,6 +709,8 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         // transition replaces locomotion until it ends.
         std::int32_t override_clip = -1;
         double override_time = 0.0;
+        // How much of the locomotion the override takes (transitions fade in and out).
+        float override_weight = 1.0F;
         {
             const auto rate = dt > 0.0 ? std::remainder(entity.heading - state.last_heading, two_pi) / static_cast<float>(dt) : 0.0F;
             const bool slow = state.display_speed < entity.max_speed * turn_in_place_speed_fraction;
@@ -716,20 +726,22 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             {
                 state.turn_playback = turn_playback;
             }
-            const auto start_transition = [&](const std::int32_t clip, const float playback)
+            const auto start_transition = [&](const std::int32_t clip, const float playback, const bool starts_walk = false)
             {
                 if (clip >= 0)
                 {
                     state.transition = clip;
                     state.transition_start = seconds;
                     state.transition_playback = playback;
+                    state.transition_starts_walk = starts_walk;
+                    state.fading = -1;
                 }
             };
             if (state.frame_seen)
             {
                 if (profile.walk_transition && moving && !state.was_moving)
                 {
-                    start_transition(find_clip(instance.mesh, AnimationRole::move_start, 0), walk_playback);
+                    start_transition(find_clip(instance.mesh, AnimationRole::move_start, 0), walk_playback, true);
                 }
                 else if (profile.walk_transition && !moving && state.was_moving)
                 {
@@ -764,10 +776,34 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 {
                     override_clip = state.transition;
                     override_time = elapsed;
+                    override_weight = static_cast<float>(std::clamp((seconds - state.transition_start) / transition_fade_seconds, 0.0, 1.0));
+                    // MOVE goes on from where MOVESTART ends: its first frame.
+                    if (state.transition_starts_walk)
+                    {
+                        state.stride_phase = 0.0;
+                    }
                 }
                 else
                 {
+                    state.fading = state.transition;
+                    state.fading_since = state.transition_start + duration / static_cast<double>(state.transition_playback);
                     state.transition = -1;
+                }
+            }
+            // An ended transition holds its last frame while the next pose fades in.
+            if (override_clip < 0 && state.fading >= 0)
+            {
+                const auto since = seconds - state.fading_since;
+                if (since < transition_fade_seconds && turning == 0)
+                {
+                    const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.fading)].animation));
+                    override_clip = state.fading;
+                    override_time = duration * 0.9999;
+                    override_weight = static_cast<float>(1.0 - std::clamp(since / transition_fade_seconds, 0.0, 1.0));
+                }
+                else
+                {
+                    state.fading = -1;
                 }
             }
             if (override_clip < 0 && turning != 0)
@@ -777,6 +813,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 {
                     override_clip = loop;
                     override_time = state.turn_time;
+                    override_weight = 1.0F;
                 }
             }
         }
@@ -790,8 +827,13 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         }
         if (override_clip >= 0)
         {
-            pose_key.layers[0] = {override_clip, slot_of(instance.mesh, override_clip, override_time), eighths(locomotion)};
-            pose_key.layers[1] = {};
+            // While it fades, the override shares the locomotion with the clip that leads it.
+            const auto override_eighths = eighths(locomotion * override_weight);
+            const auto rest = eighths(locomotion) > override_eighths ? eighths(locomotion) - override_eighths : 0U;
+            const bool upper_leads = upper != lower && blend.blend > 0.5F;
+            const auto leading = upper_leads ? upper : lower;
+            pose_key.layers[0] = rest > 0U ? layer(leading, upper_leads ? blend.upper : blend.lower, static_cast<float>(rest) / 8.0F) : Layer{};
+            pose_key.layers[1] = {override_clip, slot_of(instance.mesh, override_clip, override_time), override_eighths};
         }
         if (aim_eighths > 0)
         {

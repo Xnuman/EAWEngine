@@ -499,16 +499,23 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
         if (model->ok())
         {
             rig.skeleton = std::shared_ptr<const Skeleton>(model, &model->value().skeleton);
-            // Scorch marks of hardpoints (their Damage_Decal bones and everything below) wait for
-            // the hardpoint's destruction.
-            if (const auto decals = builder.decal_bones.find(ascii_lower(mesh.name)); decals != builder.decal_bones.end())
+            // Scorch marks and damage effects of hardpoints (their Damage_Decal and Damage_Particles
+            // bones and everything below) wait for the hardpoint's destruction.
+            std::vector<std::uint32_t> roots;
+            for (const auto* bones : {&builder.decal_bones, &builder.damage_bones})
+            {
+                if (const auto found = bones->find(ascii_lower(mesh.name)); found != bones->end())
+                {
+                    roots.insert(roots.end(), found->second.begin(), found->second.end());
+                }
+            }
+            if (!roots.empty())
             {
                 std::vector<std::int32_t> parents;
                 for (const auto& bone : rig.skeleton->bones)
                 {
                     parents.push_back(bone.parent);
                 }
-                const std::vector<std::uint32_t> roots(decals->second.begin(), decals->second.end());
                 rig.intact_hidden = bones_in_subtrees(parents, roots);
             }
             append_rest_palette(*rig.skeleton, rest_palette, rig.intact_hidden);
