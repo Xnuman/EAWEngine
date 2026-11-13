@@ -52,6 +52,12 @@ cbuffer FrameConstants : register(b0)
     float4 camera_right; // world-space view basis for camera-facing particles
     float4 camera_up;
     float4 post_parameters; // x bloom threshold, y bloom strength, z bloom knee
+    // Temporal anti-aliasing: view_projection is jittered then; these are not. The inverse is the
+    // current frame's, the previous the last frame's.
+    float4x4 unjittered_view_projection;
+    float4x4 inverse_view_projection;
+    float4x4 previous_view_projection;
+    float4 taa_parameters; // xy jitter (NDC), z history valid (1) or not (0), w weight of the new frame
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and

@@ -18,6 +18,7 @@
 #include "g_eaw_post_composite_ps.h"
 #include "g_eaw_post_edge_aa_ps.h"
 #include "g_eaw_post_extract_ps.h"
+#include "g_eaw_post_taa_ps.h"
 #include "g_eaw_post_vs.h"
 #include "g_eaw_sandbox_ps.h"
 #include "g_eaw_sandbox_vs.h"
@@ -378,6 +379,11 @@ void D3d12Renderer::Impl::create_pipeline()
         create_pipeline_state(L"bloom composite", post, bloom_composite_pipeline);
         post.PS = {g_eaw_post_edge_aa_ps, sizeof(g_eaw_post_edge_aa_ps)};
         create_pipeline_state(L"edge anti-aliasing", post, edge_aa_pipeline);
+        // The resolve writes the frame and the next history at once.
+        post.NumRenderTargets = 2;
+        post.RTVFormats[1] = back_buffer_format;
+        post.PS = {g_eaw_post_taa_ps, sizeof(g_eaw_post_taa_ps)};
+        create_pipeline_state(L"temporal anti-aliasing", post, taa_pipeline);
     }
 
     D3D12_DESCRIPTOR_HEAP_DESC shader_heap_description{};

@@ -93,6 +93,10 @@ struct D3d12Renderer::Impl
         std::array<float, 4> camera_right{};
         std::array<float, 4> camera_up{};
         std::array<float, 4> post_parameters{};
+        DirectX::XMFLOAT4X4 unjittered_view_projection;
+        DirectX::XMFLOAT4X4 inverse_view_projection;
+        DirectX::XMFLOAT4X4 previous_view_projection;
+        std::array<float, 4> taa_parameters{};
     };
     static_assert(sizeof(FrameConstants) <= frame_constant_bytes);
 
@@ -238,8 +242,11 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12Resource> scene_color;
     std::array<ComPtr<ID3D12Resource>, 2> bloom_targets;
     ComPtr<ID3D12DescriptorHeap> post_rtv_heap;
-    // Texture slots (and RTVs, same index) of scene_color, the bloom targets, and post_color.
-    std::array<std::uint32_t, 4> post_slots{};
+    // Texture slots (and RTVs, same index) of scene_color, the bloom targets, post_color, and the
+    // two TAA history targets.
+    std::array<std::uint32_t, 6> post_slots{};
+    // The depth buffer's shader view (temporal anti-aliasing reprojects by depth).
+    std::uint32_t depth_slot{};
     std::uint32_t bloom_width{1};
     std::uint32_t bloom_height{1};
     ComPtr<ID3D12PipelineState> bloom_extract_pipeline;
@@ -249,6 +256,15 @@ struct D3d12Renderer::Impl
     // buffer (without bloom it reads scene_color).
     ComPtr<ID3D12Resource> post_color;
     ComPtr<ID3D12PipelineState> edge_aa_pipeline;
+    // Temporal anti-aliasing: the history ping-pongs between two targets (index: the one written
+    // last); it is invalid after a resize or a frame without TAA. previous_camera is the last
+    // frame's unjittered view-projection (transposed, as in the constants).
+    std::array<ComPtr<ID3D12Resource>, 2> taa_history;
+    ComPtr<ID3D12PipelineState> taa_pipeline;
+    std::uint32_t taa_history_index{};
+    bool taa_history_valid{};
+    std::uint64_t taa_frame{};
+    DirectX::XMFLOAT4X4 previous_camera{};
     // Creates (or, after a resize, recreates) the post-processing targets and their views.
     void create_post_targets();
     [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE post_rtv(std::size_t index) const;
@@ -607,7 +623,8 @@ struct D3d12Renderer::Impl
 
     void set_camera(const VisualCamera& next);
 
-    [[nodiscard]] DirectX::XMFLOAT4X4 camera_matrix() const;
+    // The camera's view-projection, unjittered and not transposed.
+    [[nodiscard]] DirectX::XMMATRIX camera_view_projection() const;
 
     bool render();
 

@@ -26,7 +26,8 @@ struct DebugPixelOutput
 DebugPixelInput debug_vs(DebugVertexInput input)
 {
     DebugPixelInput output;
-    output.position = mul(float4(input.position, 1.0f), view_projection);
+    // Unjittered, so lines do not shimmer under temporal anti-aliasing.
+    output.position = mul(float4(input.position, 1.0f), unjittered_view_projection);
     output.color = input.color;
     return output;
 }

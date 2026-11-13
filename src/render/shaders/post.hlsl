@@ -1,5 +1,5 @@
 // EAWEngine D3D12 post-processing: bloom (a bright pass at reduced resolution, separable Gaussian
-// blurs, and a composite of scene plus bloom) and edge anti-aliasing. Fullscreen passes draw one
+// blurs, and a composite of scene plus bloom), edge anti-aliasing, and temporal anti-aliasing. Fullscreen passes draw one
 // triangle from SV_VertexID. Written for this engine; compiled offline by DXC (shader model 6.0).
 //
 // Root constants (b1): instance_base is the source texture's descriptor slot; material_index is the
@@ -191,4 +191,80 @@ float4 edge_aa_ps(PostInput input) : SV_TARGET
     const float sub = smoothstep(0.0f, 1.0f, saturate(abs(average - center) / range));
     const float offset = max(edge_offset, sub * sub * subpixel_strength);
     return float4(source.SampleLevel(clamp_sampler, uv + across * offset, 0.0f).rgb, 1.0f);
+}
+
+// Temporal anti-aliasing, written for this engine: every frame is rendered with a sub-pixel jitter,
+// and this pass blends it with the accumulated history. Each pixel finds where its surface was last
+// frame from the depth buffer and the previous camera (camera motion only: moving objects rely on
+// the clamp below), and the history is clipped to the colour range of the current 3x3 neighbourhood
+// so stale colours do not ghost. Root constants: instance_base is the frame's colour slot,
+// material_index the history slot (low 16 bits) and the depth slot (high 16 bits).
+static const float taa_clip_spread = 1.25f;
+
+struct TaaOutput
+{
+    float4 frame : SV_TARGET0;
+    float4 history : SV_TARGET1;
+};
+
+float3 to_ycocg(const float3 rgb)
+{
+    return float3(0.25f * rgb.r + 0.5f * rgb.g + 0.25f * rgb.b, 0.5f * rgb.r - 0.5f * rgb.b, -0.25f * rgb.r + 0.5f * rgb.g - 0.25f * rgb.b);
+}
+
+float3 from_ycocg(const float3 ycocg)
+{
+    return float3(ycocg.x + ycocg.y - ycocg.z, ycocg.x + ycocg.z, ycocg.x - ycocg.y - ycocg.z);
+}
+
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+TaaOutput taa_resolve_ps(PostInput input)
+{
+    Texture2D frame = scene_textures[instance_base];
+    Texture2D history = scene_textures[material_index & 0xFFFFu];
+    Texture2D depth = scene_textures[material_index >> 16u];
+    const int2 pixel = int2(input.position.xy);
+    const float3 current = frame.Load(int3(pixel, 0)).rgb;
+
+    // The colour range of the neighbourhood (mean and spread in YCoCg), and its nearest depth, so
+    // an edge reprojects with its foreground.
+    float3 mean = 0.0f;
+    float3 square = 0.0f;
+    float nearest = 1.0f;
+    [unroll] for (int y = -1; y <= 1; ++y)
+    {
+        [unroll] for (int x = -1; x <= 1; ++x)
+        {
+            const int2 at = pixel + int2(x, y);
+            const float3 sample = to_ycocg(frame.Load(int3(at, 0)).rgb);
+            mean += sample;
+            square += sample * sample;
+            nearest = min(nearest, depth.Load(int3(at, 0)).r);
+        }
+    }
+    mean /= 9.0f;
+    const float3 spread = sqrt(max(square / 9.0f - mean * mean, 0.0f)) * taa_clip_spread;
+
+    // Where this surface was last frame: back to the world through the unjittered camera, then
+    // into the previous frame.
+    const float2 ndc = float2(input.uv.x * 2.0f - 1.0f, 1.0f - input.uv.y * 2.0f) - taa_parameters.xy;
+    float4 world = mul(float4(ndc, nearest, 1.0f), inverse_view_projection);
+    world /= world.w;
+    const float4 before = mul(world, previous_view_projection);
+    // The jitter goes back on, so only real motion moves the sample: a still camera reads the
+    // history at this very pixel instead of a fraction off it (which would blur every frame).
+    const float2 before_ndc = before.xy / before.w + taa_parameters.xy;
+    const float2 before_uv = float2(before_ndc.x * 0.5f + 0.5f, 0.5f - before_ndc.y * 0.5f);
+    const bool inside = before.w > 0.0f && all(before_uv >= 0.0f) && all(before_uv <= 1.0f);
+
+    TaaOutput output;
+    float3 result = current;
+    if (taa_parameters.z > 0.0f && inside)
+    {
+        const float3 past = from_ycocg(clamp(to_ycocg(history.SampleLevel(clamp_sampler, before_uv, 0.0f).rgb), mean - spread, mean + spread));
+        result = lerp(past, current, taa_parameters.w);
+    }
+    output.frame = float4(result, 1.0f);
+    output.history = float4(result, 1.0f);
+    return output;
 }

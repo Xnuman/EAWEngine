@@ -90,7 +90,8 @@ void print_sandbox_usage()
               << "  --upload-budget <MiB>  Texture bytes streamed per frame (default 64; 0 uploads all at once)\n"
               << "  --bloom <strength>     Bloom strength (default 0.8; 0 disables it)\n"
               << "  --no-bloom             Disable bloom\n"
-              << "  --no-aa                Disable edge anti-aliasing\n"
+              << "  --aa <mode>            Anti-aliasing: off, fxaa (default), or taa\n"
+              << "  --no-aa                Disable anti-aliasing (--aa off)\n"
               << "  --lod <off|distance|screen|hybrid> How meshes pick their detail level (default hybrid; off: full detail)\n"
               << "  --mesh-detail <0..1>   Mesh detail setting: 1 keeps detail farthest (default 1)\n"
               << "  --particles <legacy|enhanced> How particle effects are interpreted (default legacy, as the original)\n"
@@ -414,7 +415,17 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         }
         else if (argument == "--no-aa")
         {
-            options.anti_aliasing = false;
+            options.anti_aliasing = VisualAntiAliasing::off;
+        }
+        else if (argument == "--aa")
+        {
+            EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
+            const auto mode = visual_anti_aliasing(value);
+            if (!mode)
+            {
+                return make_error("--aa must be off, fxaa, or taa");
+            }
+            options.anti_aliasing = *mode;
         }
         else if (argument == "--lod")
         {

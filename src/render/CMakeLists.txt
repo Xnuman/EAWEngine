@@ -10,6 +10,7 @@ add_library(eaw_render_contract INTERFACE)
 
 set(EAW_RENDER_CONTRACT_HEADERS
     ${HEADERS_DIR}/color.hpp
+    ${HEADERS_DIR}/visual_anti_aliasing.hpp
     ${HEADERS_DIR}/visual_camera.hpp
     ${HEADERS_DIR}/visual_frame.hpp
     ${HEADERS_DIR}/visual_lod.hpp
@@ -121,3 +122,4 @@ eaw_compile_shader(eaw_render_d3d12 dxc shaders/post.hlsl bloom_extract_ps ps_6_
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/post.hlsl bloom_blur_ps ps_6_0 g_eaw_post_blur_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/post.hlsl bloom_composite_ps ps_6_0 g_eaw_post_composite_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/post.hlsl edge_aa_ps ps_6_0 g_eaw_post_edge_aa_ps)
+eaw_compile_shader(eaw_render_d3d12 dxc shaders/post.hlsl taa_resolve_ps ps_6_0 g_eaw_post_taa_ps)

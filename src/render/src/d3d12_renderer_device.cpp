@@ -217,7 +217,8 @@ void D3d12Renderer::Impl::create_depth_buffer()
     description.Height = height;
     description.DepthOrArraySize = 1;
     description.MipLevels = 1;
-    description.Format = DXGI_FORMAT_D32_FLOAT;
+    // Typeless, so temporal anti-aliasing can read it through a float view.
+    description.Format = DXGI_FORMAT_R32_TYPELESS;
     description.SampleDesc.Count = 1;
     description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     description.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
@@ -228,7 +229,10 @@ void D3d12Renderer::Impl::create_depth_buffer()
     check_device_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_DEPTH_WRITE, &clear, IID_PPV_ARGS(&depth_buffer)), device,
                          "CreateCommittedResource(depth buffer)");
     set_name(depth_buffer.Get(), L"EAWEngine depth buffer");
-    device->CreateDepthStencilView(depth_buffer.Get(), nullptr, dsv_heap->GetCPUDescriptorHandleForHeapStart());
+    D3D12_DEPTH_STENCIL_VIEW_DESC depth_view{};
+    depth_view.Format = DXGI_FORMAT_D32_FLOAT;
+    depth_view.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+    device->CreateDepthStencilView(depth_buffer.Get(), &depth_view, dsv_heap->GetCPUDescriptorHandleForHeapStart());
 
     // Selection target: the pick id of the surface in front at every pixel.
     if (!pick_rtv_heap)
@@ -272,6 +276,9 @@ void D3d12Renderer::Impl::create_post_targets()
             EAW_ASSERT_MSG(allocated.has_value(), "the D3D12 texture table has no slot for a post-processing target");
             slot = *allocated;
         }
+        const auto allocated = texture_slots.allocate();
+        EAW_ASSERT_MSG(allocated.has_value(), "the D3D12 texture table has no slot for the depth view");
+        depth_slot = *allocated;
     }
     bloom_width = std::max(1U, (width + bloom_downscale - 1U) / bloom_downscale);
     bloom_height = std::max(1U, (height + bloom_downscale - 1U) / bloom_downscale);
@@ -313,6 +320,17 @@ void D3d12Renderer::Impl::create_post_targets()
     make_target(bloom_targets[0], bloom_width, bloom_height, bloom_format, 1, L"EAWEngine bloom A");
     make_target(bloom_targets[1], bloom_width, bloom_height, bloom_format, 2, L"EAWEngine bloom B");
     make_target(post_color, width, height, back_buffer_format, 3, L"EAWEngine post color");
+    make_target(taa_history[0], width, height, back_buffer_format, 4, L"EAWEngine TAA history A");
+    make_target(taa_history[1], width, height, back_buffer_format, 5, L"EAWEngine TAA history B");
+    taa_history_valid = false;
+    D3D12_SHADER_RESOURCE_VIEW_DESC depth_view{};
+    depth_view.Format = DXGI_FORMAT_R32_FLOAT;
+    depth_view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    depth_view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    depth_view.Texture2D.MipLevels = 1;
+    auto depth_handle = shader_heap->GetCPUDescriptorHandleForHeapStart();
+    depth_handle.ptr += static_cast<SIZE_T>(depth_slot) * increment;
+    device->CreateShaderResourceView(depth_buffer.Get(), &depth_view, depth_handle);
 }
 
 void D3d12Renderer::Impl::create_constant_buffers()

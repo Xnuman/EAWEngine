@@ -23,6 +23,25 @@ D3D12_RESOURCE_STATES d3d12_state(const GraphAccess access) noexcept
     return D3D12_RESOURCE_STATE_COMMON;
 }
 
+// Temporal anti-aliasing (engine choices): the jitter cycles through this many points of the
+// Halton (2, 3) sequence, and each frame adds this share of itself to the history.
+constexpr std::uint64_t taa_jitter_samples = 8;
+constexpr float taa_new_frame_weight = 0.1F;
+
+// The radical inverse of `index` in `base`: the Halton sequence's point, in [0, 1).
+float halton(std::uint64_t index, const std::uint64_t base) noexcept
+{
+    float result = 0.0F;
+    float fraction = 1.0F;
+    while (index > 0)
+    {
+        fraction /= static_cast<float>(base);
+        result += fraction * static_cast<float>(index % base);
+        index /= base;
+    }
+    return result;
+}
+
 } // namespace
 
 void D3d12Renderer::Impl::collect_pick(FrameContext& frame)
@@ -456,7 +475,7 @@ void D3d12Renderer::Impl::set_camera(const VisualCamera& next)
     camera = next;
 }
 
-DirectX::XMFLOAT4X4 D3d12Renderer::Impl::camera_matrix() const
+DirectX::XMMATRIX D3d12Renderer::Impl::camera_view_projection() const
 {
     using namespace DirectX;
     const auto eye = XMVectorSet(camera.eye[0], camera.eye[1], camera.eye[2], 1.0F);
@@ -467,9 +486,7 @@ DirectX::XMFLOAT4X4 D3d12Renderer::Impl::camera_matrix() const
     const auto view = XMMatrixLookAtRH(eye, target, up);
     const auto aspect = static_cast<float>(width) / static_cast<float>(std::max(height, 1U));
     const auto projection = XMMatrixPerspectiveFovRH(XMConvertToRadians(camera.vertical_fov_degrees), aspect, camera.near_plane, camera.far_plane);
-    DirectX::XMFLOAT4X4 result;
-    XMStoreFloat4x4(&result, XMMatrixTranspose(view * projection));
-    return result;
+    return view * projection;
 }
 
 bool D3d12Renderer::Impl::render()
@@ -557,7 +574,26 @@ bool D3d12Renderer::Impl::render()
     }
     // This frame context's fence has completed above, so its constants can be rewritten.
     FrameConstants constants{};
-    constants.view_projection = camera_matrix();
+    {
+        // Under temporal anti-aliasing the scene is drawn a sub-pixel off each frame (a translation
+        // in clip space); the resolve reprojects with the unjittered matrices.
+        using namespace DirectX;
+        const bool taa = options.anti_aliasing == VisualAntiAliasing::taa;
+        const auto unjittered = camera_view_projection();
+        std::array<float, 2> jitter{};
+        if (taa)
+        {
+            const auto sample = taa_frame++ % taa_jitter_samples + 1U;
+            jitter = {(halton(sample, 2) - 0.5F) * 2.0F / static_cast<float>(std::max(width, 1U)), (halton(sample, 3) - 0.5F) * 2.0F / static_cast<float>(std::max(height, 1U))};
+        }
+        XMStoreFloat4x4(&constants.view_projection, XMMatrixTranspose(unjittered * XMMatrixTranslation(jitter[0], jitter[1], 0.0F)));
+        XMStoreFloat4x4(&constants.unjittered_view_projection, XMMatrixTranspose(unjittered));
+        XMStoreFloat4x4(&constants.inverse_view_projection, XMMatrixTranspose(XMMatrixInverse(nullptr, unjittered)));
+        const bool history = taa && taa_history_valid;
+        constants.previous_view_projection = history ? previous_camera : constants.unjittered_view_projection;
+        constants.taa_parameters = {jitter[0], jitter[1], history ? 1.0F : 0.0F, taa_new_frame_weight};
+        previous_camera = constants.unjittered_view_projection;
+    }
     constants.camera_position_time = {camera.eye[0], camera.eye[1], camera.eye[2], scene_time};
     const auto unit = [](const Vector3& value)
     {
@@ -614,12 +650,13 @@ bool D3d12Renderer::Impl::render()
     // post_color when anti-aliasing follows, else to the back buffer, and anti-aliasing fills the
     // back buffer from the composite (or from the scene without bloom).
     const bool bloom = options.bloom;
-    const bool anti_aliasing = options.anti_aliasing;
+    const bool anti_aliasing = options.anti_aliasing != VisualAntiAliasing::off;
+    const bool temporal = options.anti_aliasing == VisualAntiAliasing::taa;
     const auto scene_target = bloom || anti_aliasing ? post_rtv(0) : render_target;
     const auto composite_target = anti_aliasing ? post_rtv(3) : render_target;
 
     // The frame's passes and how each uses its resources (render/frame_graph.hpp); the graph places
-    // the barriers. The depth buffer stays in DEPTH_WRITE throughout and is not tracked.
+    // the barriers.
     frame_graph.clear();
     graph_resources.clear();
     const auto import_resource = [&](ID3D12Resource* resource, const char* name, const GraphAccess initial, const GraphAccess final)
@@ -629,11 +666,12 @@ bool D3d12Renderer::Impl::render()
     };
     const auto back_buffer = import_resource(frame.back_buffer.Get(), "back buffer", GraphAccess::present, GraphAccess::present);
     const auto pick = import_resource(pick_target.Get(), "pick target", GraphAccess::render_target, GraphAccess::render_target);
+    const auto depth = import_resource(depth_buffer.Get(), "depth", GraphAccess::depth_write, GraphAccess::depth_write);
     const auto scene = bloom || anti_aliasing ? import_resource(scene_color.Get(), "scene color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
     const auto composite = bloom && anti_aliasing ? import_resource(post_color.Get(), "post color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
 
     frame_graph.add_pass(
-        "scene", {{scene, GraphAccess::render_target}, {pick, GraphAccess::render_target}},
+        "scene", {{scene, GraphAccess::render_target}, {pick, GraphAccess::render_target}, {depth, GraphAccess::depth_write}},
         [&]
         {
             const std::array targets{scene_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};
@@ -804,7 +842,37 @@ bool D3d12Renderer::Impl::render()
                              });
     }
 
-    if (anti_aliasing)
+    if (temporal)
+    {
+        const auto source = bloom ? composite : scene;
+        const auto source_slot = bloom ? post_slots[3] : post_slots[0];
+        const auto last = taa_history_index;
+        const auto next = 1U - last;
+        const auto history_last = import_resource(taa_history[last].Get(), "TAA history (last)", GraphAccess::render_target, GraphAccess::render_target);
+        const auto history_next = import_resource(taa_history[next].Get(), "TAA history (next)", GraphAccess::render_target, GraphAccess::render_target);
+        frame_graph.add_pass("temporal anti-aliasing",
+                             {{source, GraphAccess::shader_read},
+                              {depth, GraphAccess::shader_read},
+                              {history_last, GraphAccess::shader_read},
+                              {back_buffer, GraphAccess::render_target},
+                              {history_next, GraphAccess::render_target}},
+                             [&, source_slot, last, next]
+                             {
+                                 const std::array taa_targets{render_target, post_rtv(4U + next)};
+                                 command_list->OMSetRenderTargets(static_cast<UINT>(taa_targets.size()), taa_targets.data(), FALSE, nullptr);
+                                 command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                                 command_list->RSSetViewports(1, &viewport);
+                                 command_list->RSSetScissorRects(1, &scissor);
+                                 command_list->SetPipelineState(taa_pipeline.Get());
+                                 const std::array<std::uint32_t, 2> taa_constants{source_slot, post_slots[4U + last] | (depth_slot << 16U)};
+                                 command_list->SetGraphicsRoot32BitConstants(5, 2, taa_constants.data(), 0);
+                                 command_list->DrawInstanced(3, 1, 0, 0);
+                                 ++draw_calls;
+                             });
+        taa_history_index = next;
+        taa_history_valid = true;
+    }
+    else if (anti_aliasing)
     {
         const auto source = bloom ? composite : scene;
         const auto source_slot = bloom ? post_slots[3] : post_slots[0];
@@ -823,6 +891,11 @@ bool D3d12Renderer::Impl::render()
                              });
     }
 
+    if (!temporal)
+    {
+        taa_history_valid = false;
+    }
+
     // A requested capture copies the frame as the scene and post-processing left it.
     if (capture_requested)
     {
@@ -834,7 +907,7 @@ bool D3d12Renderer::Impl::render()
     }
 
     // Debug lines and the overlay draw over the frame, with the scene's depth and pick target.
-    frame_graph.add_pass("debug and overlay", {{back_buffer, GraphAccess::render_target}, {pick, GraphAccess::render_target}},
+    frame_graph.add_pass("debug and overlay", {{back_buffer, GraphAccess::render_target}, {pick, GraphAccess::render_target}, {depth, GraphAccess::depth_write}},
                          [&]
                          {
                              const std::array final_targets{render_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};

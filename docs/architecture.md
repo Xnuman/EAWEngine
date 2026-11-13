@@ -486,8 +486,8 @@ The file-level split of each module.
 - `src/render`: `eaw_render_contract` holds the visual data by subject: `visual_vertex` (model and
   terrain vertices, all the asset layer needs), `visual_texture`, `visual_material`, `visual_mesh`
   (draws, damage states, detail levels, terrain), `visual_camera` (all control needs), `visual_frame`
-  (instances, lights, particles, debug lines), and `visual_scene` (the whole scene), with `color` and
-  `visual_lod` (the detail-level strategy and settings). `eaw_render_core` holds `lod_selection`
+  (instances, lights, particles, debug lines), and `visual_scene` (the whole scene), with `color`,
+  `visual_lod` (the detail-level strategy and settings), and `visual_anti_aliasing` (off, FXAA, TAA). `eaw_render_core` holds `lod_selection`
   (levels, hysteresis, cross-fades), `gpu_resource_lifetime`, and `frame_graph` (passes declare how
   they use each resource; the graph orders the transitions in neutral access kinds, which the backend
   maps to its resource states). The D3D12 backend's public
