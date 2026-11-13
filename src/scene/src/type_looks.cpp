@@ -115,6 +115,11 @@ void note_animation_source(SceneBuilder& builder, const std::string& model_path,
     }
 }
 
+bool type_receives_shadows(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    return !TypeFields(catalog, definition).flag("In_Background", false);
+}
+
 DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     DeathStyle style;

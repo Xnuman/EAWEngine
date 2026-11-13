@@ -99,6 +99,7 @@ void test_combat_content()
                 "<Death_Explosions_End>Small_Boom</Death_Explosions_End></GroundInfantry>"
                 "<GroundInfantry Name=\"Squishy_Flat\"><Specific_Death_Anim_Type> Crushed </Specific_Death_Anim_Type><Specific_Death_Anim_Index>0</Specific_Death_Anim_Index></GroundInfantry>"
                 "<SpaceUnit Name=\"Debris\"><Remove_Upon_Death> true </Remove_Upon_Death></SpaceUnit>"
+                "<SpaceProp Name=\"Backdrop_Planet\"><In_Background> Yes </In_Background></SpaceProp>"
                 "<GroundStructure Name=\"Tower\"><Land_Damage_Thresholds>1, 0.66, 0.33, 0</Land_Damage_Thresholds><Land_Damage_Alternates>0,1,2,3</Land_Damage_Alternates></GroundStructure>"
                 "<GroundStructure Name=\"Build_Pad\"><Land_Damage_Thresholds>1</Land_Damage_Thresholds><Land_Damage_Alternates>3</Land_Damage_Alternates></GroundStructure>"
                 "<GroundStructure Name=\"Odd_Tower\"><Land_Damage_Thresholds>1, 0.5, 0.25</Land_Damage_Thresholds><Land_Damage_Alternates>0, 1.5, 2</Land_Damage_Alternates></GroundStructure>"
@@ -245,6 +246,8 @@ void test_combat_content()
     }
     require(eaw::scene_build::type_death_style(catalog, *definition("Debris")).removed && !eaw::scene_build::type_death_style(catalog, *definition("Tank")).removed,
             "Remove_Upon_Death must leave no corpse");
+    require(!eaw::scene_build::type_receives_shadows(catalog, *definition("Backdrop_Planet")) && eaw::scene_build::type_receives_shadows(catalog, *definition("Tank")),
+            "backdrops (In_Background) must receive no shadows");
     {
         const auto tower = eaw::type_damage_states(catalog, *definition("Tower"));
         const auto pad = eaw::type_damage_states(catalog, *definition("Build_Pad"));

@@ -177,6 +177,7 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableLook> types
         }
         instance.team_color = type.team_color;
         instance.lod_bias = type.lod_bias;
+        instance.receives_shadows = type.receives_shadows;
         spawn_templates_.push_back(Template{instance, identity_model_heading, type.death, type.bank_limit, type.animation, type.damage});
     }
 }

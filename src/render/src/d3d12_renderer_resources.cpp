@@ -382,9 +382,10 @@ Status D3d12Renderer::Impl::load_scene(VisualScene scene)
             range.first = static_cast<std::uint32_t>(gpu_instances.size());
         }
         ++range.second;
-        gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset,
-                                 (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U), index + 1U, 0U, instance.bone_offset,
-                                 instance.transform});
+        gpu_instances.push_back(
+            {instance.transform, instance.tint, instance.team_color, instance.bone_offset,
+             (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U) | (instance.receives_shadows ? 0U : no_shadows_instance_flag), index + 1U,
+             0U, instance.bone_offset, instance.transform});
     }
 
     auto upload = begin_upload(L"EAWEngine scene upload");

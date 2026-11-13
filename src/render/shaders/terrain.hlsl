@@ -108,7 +108,7 @@ float4 shade_terrain(TerrainPixelInput input)
         specular += layer.specular.rgb * weight;
     }
     const float3 normal = safe_normalize(tangent_normal.x * tangent + tangent_normal.y * binormal + tangent_normal.z * surface_normal, surface_normal);
-    return float4(legacy_lit_color(albedo, normal, input.world_position, gloss, diffuse, specular, float3(0.0f, 0.0f, 0.0f), float3(1.0f, 1.0f, 1.0f), input.position.xy), 1.0f);
+    return float4(legacy_lit_color(albedo, normal, input.world_position, gloss, diffuse, specular, float3(0.0f, 0.0f, 0.0f), float3(1.0f, 1.0f, 1.0f), input.position.xy, true), 1.0f);
 }
 
 struct TerrainPixelOutput

@@ -233,7 +233,8 @@ float4 shade(PixelInput input)
     {
         gloss = sample_texture(material.gloss_texture, uv).r;
     }
-    float3 color = legacy_lit_color(albedo, normal, input.world_position, gloss, material.diffuse.rgb, material.specular.rgb, material.emissive.rgb, tint.rgb, input.position.xy);
+    float3 color = legacy_lit_color(albedo, normal, input.world_position, gloss, material.diffuse.rgb, material.specular.rgb, material.emissive.rgb, tint.rgb, input.position.xy,
+                                   (input.instance_flags & (INSTANCE_NO_SHADOWS | INSTANCE_BACKGROUND)) == 0u);
     if ((material.flags & MATERIAL_EMISSIVE_MASK) != 0u)
     {
         color += material.specular.rgb * base.a;

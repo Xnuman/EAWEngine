@@ -1798,7 +1798,7 @@ This family holds the tags that decide how an object looks and how the interface
 | Tag | Used by | Values | Meaning |
 |---|---|---|---|
 | `Layer_Z_Adjust` | 262 objects: units 99, props 78, skydomes 51, structures 33 | float -2,500 to 100 (`0.0` 55, `-330.0` 52, `-2500.0` 39) | Depth offset that moves the object between render layers (name); large negatives on backdrops push them behind (data). Not read. |
-| `In_Background` | 109 objects: skydomes 52, props 45, particles 10, units 2 | bool (`Yes`/`yes` 68, `no`/`No` 41) | Draw in the background layer behind the battle (name). Not read. |
+| `In_Background` | 109 objects: skydomes 52, props 45, particles 10, units 2 | bool (`Yes`/`yes` 68, `no`/`No` 41) | Draw in the background layer behind the battle (name). Engine: such objects (planets, nebulas, ring stations) receive no key-light shadows (owner's choice); the layer itself is not modeled. |
 | `In_Midground` | 2 particles (galactic corruption) | `true` | Draw in a middle layer (name). FoC only. |
 | `In_Midforeground` | 1 particle (galactic corruption line) | `true` | Draw in a layer in front of the midground (name). FoC only. |
 | `Sort_Order_Adjust` | 248 objects: props 226 (space props 224), skydomes 22 | `-1` 247; 1 empty | Draw-order correction for transparent backdrop art (name). Not read. |

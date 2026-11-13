@@ -35,6 +35,9 @@ struct VisualInstance
     std::uint64_t key{};
     // How much farther than usual the instance keeps its detail (its type's LOD_Bias; 1 as given).
     float lod_bias{1.0F};
+    // Darkened where key-light shadows fall on it (backdrops such as planets are not: XML
+    // In_Background; backgrounds never are).
+    bool receives_shadows{true};
 };
 
 // A directional light; `direction` points from the surface toward the light (any length).

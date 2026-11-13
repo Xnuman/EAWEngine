@@ -40,6 +40,7 @@ static const uint LIGHTING_LIT = 1u;
 static const uint LIGHTING_NORMAL_MAPPED = 2u;
 static const uint INSTANCE_BACKGROUND = 1u;
 static const uint INSTANCE_HIGHLIGHTED = 2u;
+static const uint INSTANCE_NO_SHADOWS = 4u;
 
 cbuffer FrameConstants : register(b0)
 {
@@ -208,7 +209,7 @@ float key_light_visibility(const float3 world, const float3 normal, const float2
 // and a key light, the 2x diffuse convention, and an exponent-16 highlight scaled by gloss. Shadows
 // take away the key light only (diffuse and highlight), as the original's shadow volumes did.
 float3 legacy_lit_color(const float3 albedo, const float3 normal, const float3 world_position, const float gloss, const float3 diffuse, const float3 specular,
-                        const float3 emissive, const float3 tint, const float2 pixel)
+                        const float3 emissive, const float3 tint, const float2 pixel, const bool receives_shadows)
 {
     const float3 view = safe_normalize(camera_position_time.xyz - world_position, float3(0.0f, 0.0f, 1.0f));
     const float3 light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
@@ -216,7 +217,7 @@ float3 legacy_lit_color(const float3 albedo, const float3 normal, const float3 w
     const float3 fill = ambient.rgb + saturate(dot(normal, fill_direction[0].xyz)) * fill_diffuse[0].rgb + saturate(dot(normal, fill_direction[1].xyz)) * fill_diffuse[1].rgb;
     const float facing = saturate(dot(normal, light));
     // Surfaces facing away get no key light anyway; their highlight stays as it was without shadows.
-    const float key = facing > 0.0f ? key_light_visibility(world_position, normal, pixel) : 1.0f;
+    const float key = facing > 0.0f && receives_shadows ? key_light_visibility(world_position, normal, pixel) : 1.0f;
     const float3 diffuse_light = diffuse * (fill + facing * key * key_diffuse.rgb) + emissive;
     const float3 highlight = specular * key_specular.rgb * pow(saturate(dot(normal, half_vector)), 16.0f) * gloss * key;
     // Legacy 2x diffuse convention: lighting near 0.5 reproduces the texture color.

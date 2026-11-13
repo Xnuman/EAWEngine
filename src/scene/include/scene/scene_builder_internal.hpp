@@ -230,6 +230,8 @@ std::string type_animation_source(const GameObjectCatalog& catalog, const XmlDef
 void note_animation_source(SceneBuilder& builder, const std::string& model_path, const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // The corpse style of a type from its normal death clone (DeathStyle).
 DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// Whether shadows fall on the type's model: not on backdrops (XML In_Background: planets, nebulas).
+bool type_receives_shadows(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
 // scene_terrain.cpp: land terrain, liquid surfaces, and tracks.
 

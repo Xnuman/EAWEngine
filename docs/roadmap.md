@@ -376,7 +376,7 @@ waiting for it, oldest first:
   ghosting behind particles and blended parts, softness against FXAA, the hybrid mode;
 - transparent model parts drawn back to front (canopies, glass, glows on models);
 - key-light shadows (on by default, `--shadows off` to compare): their darkness, softness, and
-  reach; whether planets should receive them (the Kuat ring station casts a band across its planet);
+  reach (backdrops such as planets receive none, owner 2026-11-13);
 - damage states on land: damaged meshes and their `_ALT` effects by health, the state sounds, and
   rubble that stays (structures without a death animation keep their last state for good).
 

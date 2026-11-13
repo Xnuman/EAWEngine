@@ -72,6 +72,7 @@ struct SpawnableLook
     Color team_color{white};
     float lod_bias{1.0F};
     float scale{1.0F};
+    bool receives_shadows{true};
     DeathStyle death;
     float bank_limit{default_bank_limit};
     AnimationProfile animation;

@@ -187,6 +187,8 @@ struct D3d12Renderer::Impl
 
     static constexpr std::uint32_t background_instance_flag = 1U;
     static constexpr std::uint32_t highlighted_instance_flag = 2U;
+    // No key-light shadows fall on it (VisualInstance::receives_shadows; INSTANCE_NO_SHADOWS).
+    static constexpr std::uint32_t no_shadows_instance_flag = 4U;
 
     HWND window{};
     D3d12RendererOptions options;

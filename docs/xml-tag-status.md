@@ -27,8 +27,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 | Status | Tags |
 | --- | --- |
 | `done` | 168 |
-| `partial` | 22 |
-| `gap` | 202 |
+| `partial` | 23 |
+| `gap` | 201 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -1221,7 +1221,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Models, rendering, animation, user interface, and text
 
-18 done, 5 partial, 84 gap, 83 needs, 3 n/a.
+18 done, 6 partial, 83 gap, 83 needs, 3 n/a.
 
 ### Core structure (summary; see the overview chapters)
 
@@ -1322,7 +1322,7 @@ Systems that `needs` rows wait for, by tag count:
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Layer_Z_Adjust` | `partial` | height of units spawned in space (recorded); placements and render layers not yet |
-| `In_Background` | `gap` |  |
+| `In_Background` | `partial` | backdrops receive no shadows (owner, 2026-11-13); the background drawing layer is not modeled |
 | `In_Midground` | `gap` |  |
 | `In_Midforeground` | `gap` |  |
 | `Sort_Order_Adjust` | `gap` |  |

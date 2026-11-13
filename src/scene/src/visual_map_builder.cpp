@@ -68,6 +68,7 @@ void scene_build::add_spawnable_looks(SceneBuilder& builder, const GameObjectCat
         look.team_color = catalog.affiliation_color(*model.type).value_or(player_team_color(1));
         look.scale = model.scale;
         look.lod_bias = type_lod_bias(catalog, *model.type);
+        look.receives_shadows = type_receives_shadows(catalog, *model.type);
         look.death = type_death_style(catalog, *model.type);
         look.bank_limit = type_bank_limit(catalog, *model.type);
         look.animation = type_animation_profile(catalog, *model.type);
@@ -163,6 +164,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         // Instances start in their mesh's rest pose (build_map_rigs sets the bone offsets).
         VisualInstance instance{*entry->second, model.transform};
         instance.lod_bias = model.type != nullptr ? type_lod_bias(catalog, *model.type) : 1.0F;
+        instance.receives_shadows = model.type == nullptr || type_receives_shadows(catalog, *model.type);
         if (const auto faction = model.type != nullptr ? catalog.affiliation_color(*model.type) : std::nullopt)
         {
             instance.team_color = *faction;

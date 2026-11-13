@@ -366,9 +366,10 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
                 }
                 current_instances.try_emplace(instance.key, PreviousInstance{instance.transform, instance.bone_offset});
             }
-            gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset,
-                                     (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U), entry.instance + 1U, entry.fade,
-                                     previous_bone_offset, previous_transform});
+            gpu_instances.push_back(
+                {instance.transform, instance.tint, instance.team_color, instance.bone_offset,
+                 (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U) | (instance.receives_shadows ? 0U : no_shadows_instance_flag),
+                 entry.instance + 1U, entry.fade, previous_bone_offset, previous_transform});
         }
         if (position == entries.size() || (position > range_start && range_key(entries[position]) != range_key(entries[range_start])))
         {
