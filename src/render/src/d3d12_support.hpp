@@ -78,7 +78,9 @@ inline constexpr DXGI_FORMAT pick_format = DXGI_FORMAT_R32G32_UINT;
 // Enhanced heat distortion's signed, additive shifts.
 inline constexpr DXGI_FORMAT heat_signed_format = DXGI_FORMAT_R16G16_FLOAT;
 // Screen motion since last frame (UV units), written by models for temporal anti-aliasing.
-inline constexpr DXGI_FORMAT motion_format = DXGI_FORMAT_R16G16_FLOAT;
+// Motion (red, green: screen motion) and the reactive mask (blue: how much particle light a pixel
+// took, which temporal and edge anti-aliasing leave alone).
+inline constexpr DXGI_FORMAT motion_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 // Where nothing wrote motion (MOTION_UNKNOWN in legacy_common.hlsli).
 inline constexpr float motion_unknown = 1000.0F;
 // Shadow maps: texels per side allowed (the option is clamped), the slope-scaled depth bias of

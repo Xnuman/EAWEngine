@@ -154,6 +154,14 @@ float4 silhouette_composite_ps(PostInput input) : SV_TARGET
 static const float edge_contrast_minimum = 0.0312f;
 static const float edge_contrast_relative = 0.125f;
 static const float subpixel_strength = 0.75f;
+// Where particles marked the reactive mask (the motion target's blue; material_index is its slot),
+// the edge pass keeps the pixel: thin bolts and sparks are not jagged edges to blur (engine choice).
+static const float REACTIVE_GAIN = 2.0f;
+
+float reactive_at(const float2 position)
+{
+    return saturate(scene_textures[material_index].Load(int3(position, 0)).b * REACTIVE_GAIN);
+}
 static const int edge_search_steps = 10;
 static const float edge_search_stride[edge_search_steps] = {1.0f, 1.0f, 1.0f, 1.0f, 1.5f, 2.0f, 2.0f, 2.0f, 4.0f, 8.0f};
 
@@ -246,7 +254,7 @@ float4 edge_aa_ps(PostInput input) : SV_TARGET
     const float average = (2.0f * (north + south + west + east) + north_west + north_east + south_west + south_east) / 12.0f;
     const float sub = smoothstep(0.0f, 1.0f, saturate(abs(average - center) / range));
     const float offset = max(edge_offset, sub * sub * subpixel_strength);
-    return float4(source.SampleLevel(clamp_sampler, uv + across * offset, 0.0f).rgb, 1.0f);
+    return float4(lerp(source.SampleLevel(clamp_sampler, uv + across * offset, 0.0f).rgb, color, reactive_at(input.position.xy)), 1.0f);
 }
 
 // Temporal anti-aliasing, written for this engine: every frame is rendered with a sub-pixel jitter,
@@ -263,6 +271,8 @@ struct TaaOutput
     float4 frame : SV_TARGET0;
     float4 history : SV_TARGET1;
 };
+
+static const float TAA_REACTIVE_WEIGHT = 0.85f;
 
 float3 to_ycocg(const float3 rgb)
 {
@@ -331,6 +341,9 @@ TaaOutput taa_resolve_ps(PostInput input)
         // Where enhanced heat shifts the image, the new frame weighs more (a reactive mask), so TAA
         // neither smears the distortion nor averages its shimmer away (an engine choice).
         float weight = taa_parameters.w;
+        // Particles (bolts, sparks) write no motion: where they lit the pixel, the new frame weighs
+        // up to TAA_REACTIVE_WEIGHT so they are neither smeared nor averaged away (engine choice).
+        weight = lerp(weight, TAA_REACTIVE_WEIGHT, saturate(motion.Load(int3(pixel, 0)).b * REACTIVE_GAIN));
         if (heat_slots.y != 0u)
         {
             const float2 heat = scene_textures[heat_slots.x].Load(int3(input.position.xy, 0)).rg;

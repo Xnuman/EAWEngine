@@ -245,8 +245,10 @@ void D3d12Renderer::Impl::create_pipeline()
     // surfaces; masked for blended effects and backgrounds so they cannot be selected.
     description.BlendState.RenderTarget[1] = blend;
     description.BlendState.RenderTarget[1].BlendEnable = FALSE;
-    // Target 2 is the motion target: written by opaque and alpha-tested models only.
+    // Target 2 is the motion target: its motion (red, green) written by opaque and alpha-tested
+    // models only; its reactive mask (blue) by particles.
     description.BlendState.RenderTarget[2] = description.BlendState.RenderTarget[1];
+    description.BlendState.RenderTarget[2].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_RED | D3D12_COLOR_WRITE_ENABLE_GREEN;
     description.NumRenderTargets = 3;
     description.RTVFormats[0] = back_buffer_format;
     description.RTVFormats[1] = pick_format;
@@ -399,8 +401,20 @@ void D3d12Renderer::Impl::create_pipeline()
     description.NumRenderTargets = 3;
     description.RTVFormats[2] = motion_format;
 
-    // Particles: no vertex input, no culling, depth-tested (or not) without depth or pick writes.
+    // Particles: no vertex input, no culling, depth-tested (or not) without depth or pick writes;
+    // each raises the reactive mask (the motion target's blue) to its own strength.
     description.VS = {g_eaw_particle_vs, sizeof(g_eaw_particle_vs)};
+    {
+        auto& reactive = description.BlendState.RenderTarget[2];
+        reactive.BlendEnable = TRUE;
+        reactive.SrcBlend = D3D12_BLEND_ONE;
+        reactive.DestBlend = D3D12_BLEND_ONE;
+        reactive.BlendOp = D3D12_BLEND_OP_MAX;
+        reactive.SrcBlendAlpha = D3D12_BLEND_ONE;
+        reactive.DestBlendAlpha = D3D12_BLEND_ONE;
+        reactive.BlendOpAlpha = D3D12_BLEND_OP_MAX;
+        reactive.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_BLUE;
+    }
     description.InputLayout = {nullptr, 0};
     description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     description.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;

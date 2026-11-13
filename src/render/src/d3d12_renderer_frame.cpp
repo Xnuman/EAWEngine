@@ -1497,12 +1497,12 @@ bool D3d12Renderer::Impl::render()
         {
             // The edge pass over TAA's result (the history it just wrote) into the back buffer.
             const auto history_slot = post_slots[4U + next];
-            frame_graph.add_pass("edge anti-aliasing after TAA", {{history_next, GraphAccess::shader_read}, {back_buffer, GraphAccess::render_target}},
+            frame_graph.add_pass("edge anti-aliasing after TAA", {{history_next, GraphAccess::shader_read}, {motion, GraphAccess::shader_read}, {back_buffer, GraphAccess::render_target}},
                                  [&, history_slot]
                                  {
                                      command_list->OMSetRenderTargets(1, &render_target, FALSE, nullptr);
                                      command_list->SetPipelineState(edge_aa_pipeline.Get());
-                                     const std::array<std::uint32_t, 2> post_constants{history_slot, 0U};
+                                     const std::array<std::uint32_t, 2> post_constants{history_slot, post_slots[6]};
                                      command_list->SetGraphicsRoot32BitConstants(5, 2, post_constants.data(), 0);
                                      command_list->DrawInstanced(3, 1, 0, 0);
                                      ++draw_calls;
@@ -1513,7 +1513,7 @@ bool D3d12Renderer::Impl::render()
     {
         const auto source = bloom ? composite : scene;
         const auto source_slot = bloom ? post_slots[3] : post_slots[0];
-        frame_graph.add_pass("edge anti-aliasing", {{source, GraphAccess::shader_read}, {back_buffer, GraphAccess::render_target}},
+        frame_graph.add_pass("edge anti-aliasing", {{source, GraphAccess::shader_read}, {motion, GraphAccess::shader_read}, {back_buffer, GraphAccess::render_target}},
                              [&, source_slot]
                              {
                                  command_list->OMSetRenderTargets(1, &render_target, FALSE, nullptr);
@@ -1521,7 +1521,8 @@ bool D3d12Renderer::Impl::render()
                                  command_list->RSSetViewports(1, &viewport);
                                  command_list->RSSetScissorRects(1, &scissor);
                                  command_list->SetPipelineState(edge_aa_pipeline.Get());
-                                 const std::array<std::uint32_t, 2> post_constants{source_slot, 0U};
+                                 // The edge pass reads the reactive mask from the motion target.
+                                 const std::array<std::uint32_t, 2> post_constants{source_slot, post_slots[6]};
                                  command_list->SetGraphicsRoot32BitConstants(5, 2, post_constants.data(), 0);
                                  command_list->DrawInstanced(3, 1, 0, 0);
                                  ++draw_calls;

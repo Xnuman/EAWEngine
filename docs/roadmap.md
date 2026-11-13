@@ -92,7 +92,7 @@ rendering rows join item 2).
    damage states done 2026-11-13: chosen from health, with their effects, sounds, and rubble;
    hardpoint damage visuals belong to combat presentation, Simulation 1), depth-sorted transparency (done 2026-11-13), HDR with tone mapping and anti-aliasing (edge
    temporal, and hybrid (TAA then FXAA) anti-aliasing done 2026-11-13, with per-object motion vectors for models (blended parts and particles still
-   reproject by camera motion); HDR postponed by the owner (2026-11-13) to the later
+   reproject by camera motion, but particles mark a reactive mask that TAA and FXAA respect, 2026-11-13); HDR postponed by the owner (2026-11-13) to the later
    visual enhancement: it needs linear lighting, since the shading works in display space like the
    original's, so it starts the enhanced lighting profile with the physically based path),
    shadows, fog (done 2026-11-13: legacy and enhanced height fog, particles included; volumetric fog

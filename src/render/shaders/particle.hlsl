@@ -75,8 +75,16 @@ float soft_particle_fade(const ParticlePixelInput input)
 struct ParticlePixelOutput
 {
     float4 color : SV_TARGET0;
-    uint2 pick : SV_TARGET1; // masked by the pipeline; declared to match the bound targets
+    uint2 pick : SV_TARGET1;     // masked by the pipeline; declared to match the bound targets
+    float4 reactive : SV_TARGET2; // blue only: the reactive mask (anti-aliasing leaves it alone)
 };
+
+// How strongly a particle marks its pixels for anti-aliasing to leave alone: added light by its
+// brightest channel, blended particles by their opacity.
+float4 particle_reactive(const float4 color, const bool additive)
+{
+    return float4(0.0f, 0.0f, saturate(additive ? max(color.r, max(color.g, color.b)) : color.a), 0.0f);
+}
 
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 ParticlePixelInput particle_vs(const uint vertex : SV_VertexID, const uint instance : SV_InstanceID)
@@ -190,6 +198,7 @@ ParticlePixelOutput particle_ps(ParticlePixelInput input)
         drop.color = teardrop(input.local, input.color);
         drop.color.rgb = fade_added_light(drop.color.rgb, input.world);
         drop.pick = uint2(0u, 0u);
+        drop.reactive = particle_reactive(drop.color, (input.flags & FLAG_ADDITIVE) != 0u);
         return drop;
     }
     float4 texel = input.texture == NO_TEXTURE ? float4(1.0f, 1.0f, 1.0f, 1.0f) : sample_texture(input.texture, input.uv);
@@ -208,6 +217,7 @@ ParticlePixelOutput particle_ps(ParticlePixelInput input)
         output.color.rgb *= soft;
     }
     output.pick = uint2(0u, 0u);
+    output.reactive = particle_reactive(output.color, (input.flags & FLAG_ADDITIVE) != 0u);
     return output;
 }
 
@@ -221,6 +231,7 @@ ParticlePixelOutput particle_modulate_ps(ParticlePixelInput input)
     // Fog weakens the darkening toward no change (white); so does a near surface behind (soft).
     output.color = float4(lerp(lerp(float3(1.0f, 1.0f, 1.0f), color.rgb, color.a * soft_particle_fade(input)), float3(1.0f, 1.0f, 1.0f), fog_amount(input.world)), 1.0f);
     output.pick = uint2(0u, 0u);
+    output.reactive = float4(0.0f, 0.0f, 0.0f, 0.0f);
     return output;
 }
 
