@@ -450,9 +450,12 @@ void test_unit_animation()
     require(at(20.0F, true).blend == 1.0F && at(1.25F, false).upper == eaw::AnimationRole::move && std::fabs(at(1.25F, false).blend - 0.5F) < 1.0e-6F && at(5.0F, false).blend == 1.0F,
             "the blend must saturate and blend straight into MOVE without WALKMOVE");
 
-    // A slow unit blends idle and move; a unit that starts moving out of an attack fades the attack
-    // out over 0.2 s.
-    eaw::UnitAnimator blender(rigs, rest);
+    // A slow unit blends idle and move; a unit that starts moving out of its aiming pose (ATTACKIDLE)
+    // fades it out over 0.2 s.
+    auto aiming_rig = rig;
+    aiming_rig.clips.push_back({eaw::AnimationRole::attack_idle, 0, "ATTACKIDLE_00", animation});
+    const std::array<eaw::VisualRig, 1> aiming_rigs{aiming_rig};
+    eaw::UnitAnimator blender(aiming_rigs, rest);
     std::vector<eaw::EntitySnapshot> pair(2);
     pair[0].id = {1, 1};
     pair[0].max_speed = 10.0F;
@@ -473,6 +476,50 @@ void test_unit_animation()
     blender.animate(pair, pair_ids, pair_instances, 1.4, 1U << 20U, palette);
     blender.animate(pair, pair_ids, pair_instances, 2.0, 1U << 20U, palette);
     require(blender.stats().blending == 1, "the attack must have faded out and the fast unit settled into MOVE");
+
+    // Without ATTACKIDLE a unit with a target shows no aiming pose (its ATTACK belongs to its shots:
+    // the T4-B's gun recoil looped while it had a target, in range or not), and a shot plays ATTACK.
+    // ATTACK gets its own clip (the test clip raised 5 units) so its poses differ from IDLE's.
+    {
+        auto raised_attack = *animation;
+        for (auto& track : raised_attack.tracks)
+        {
+            for (auto& key : track.keys)
+            {
+                key.translation.z += 5.0F;
+            }
+        }
+        auto gun_rig = rig;
+        gun_rig.clips[2].animation = std::make_shared<const eaw::Animation>(std::move(raised_attack));
+        const std::array<eaw::VisualRig, 1> gun_rigs{gun_rig};
+        // The pose at 1.6 s of a unit with or without a target, that fired at 1.55 s or not.
+        const auto pose = [&](const bool targeting, const bool fired)
+        {
+            eaw::UnitAnimator gunner(gun_rigs, rest);
+            std::vector<eaw::EntitySnapshot> tank(1);
+            tank[0].id = {3, 1};
+            tank[0].max_speed = 10.0F;
+            tank[0].target = targeting ? eaw::EntityId{1, 1} : eaw::EntityId{};
+            std::vector<eaw::EntityId> tank_id{tank[0].id};
+            std::vector<eaw::VisualInstance> shown(1);
+            std::vector<eaw::Matrix4> tank_palette;
+            gunner.animate(tank, tank_id, shown, 1.0, 1U << 20U, tank_palette);
+            gunner.animate(tank, tank_id, shown, 1.5, 1U << 20U, tank_palette);
+            tank[0].last_shot_tick = fired ? 10U : 0U;
+            gunner.animate(tank, tank_id, shown, 1.55, 1U << 20U, tank_palette);
+            gunner.animate(tank, tank_id, shown, 1.6, 1U << 20U, tank_palette);
+            return std::vector<eaw::Matrix4>(tank_palette.begin() + shown[0].bone_offset, tank_palette.begin() + shown[0].bone_offset + 2);
+        };
+        const auto same_pose = [](const std::vector<eaw::Matrix4>& a, const std::vector<eaw::Matrix4>& b)
+        {
+            return std::ranges::equal(a, b,
+                                      [](const eaw::Matrix4& x, const eaw::Matrix4& y)
+                                      {
+                                          return std::ranges::equal(x.values, y.values);
+                                      });
+        };
+        require(same_pose(pose(true, false), pose(false, false)) && !same_pose(pose(true, true), pose(false, false)), "a unit without ATTACKIDLE must not aim, and must play ATTACK when it fires");
+    }
 
     // Corpses: a mesh with a DIE clip keeps its dead for the clip plus 4 s, drawn after the living
     // and not pickable; a mesh without one keeps nothing.

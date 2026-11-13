@@ -471,7 +471,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             state.display_speed = std::isfinite(entity.speed) ? entity.speed : 0.0F;
             state.idle_start = seconds - unit_fraction(key, 0x1d1eULL) * 60.0;
             state.stride_phase = unit_fraction(key, 0x57e9ULL);
-            state.attack_weight = wanted == AnimationRole::attack && (state.attack >= 0 || state.attack_idle >= 0) ? 1.0F : 0.0F;
+            state.attack_weight = wanted == AnimationRole::attack && state.attack_idle >= 0 ? 1.0F : 0.0F;
             state.last_seconds = seconds;
         }
         const auto dt = std::clamp(seconds - state.last_seconds, 0.0, longest_frame_seconds);
@@ -542,8 +542,10 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             state.stride_phase = std::fmod(state.stride_phase + rate * dt, 1.0);
         }
 
-        // Aiming fades in while standing with a target, and out otherwise.
-        const auto aim_clip = state.attack_idle >= 0 ? state.attack_idle : state.attack;
+        // Aiming (ATTACKIDLE) fades in while standing with a target, and out otherwise. A mesh without
+        // it shows no aiming pose: its ATTACK belongs to the shots (the T4-B's gun recoil looped
+        // while it had a target, in range or not; the owner's report).
+        const auto aim_clip = state.attack_idle;
         const auto attack_target = wanted == AnimationRole::attack && aim_clip >= 0 ? 1.0F : 0.0F;
         const auto fade = static_cast<float>(dt) / attack_fade_seconds;
         state.attack_weight = attack_target > state.attack_weight ? std::min(attack_target, state.attack_weight + fade) : std::max(attack_target, state.attack_weight - fade);
@@ -561,7 +563,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         }
         float fire = 0.0F;
         double fire_time = 0.0;
-        if (state.attack >= 0 && state.attack_idle >= 0)
+        if (state.attack >= 0)
         {
             const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.attack)].animation));
             fire = state.since_shot < duration ? 1.0F : static_cast<float>(std::clamp(1.0 - (state.since_shot - duration) / shot_fade_seconds, 0.0, 1.0));

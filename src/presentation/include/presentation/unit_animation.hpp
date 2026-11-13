@@ -13,7 +13,8 @@
 //   0.2 s, over its locomotion, and out again when it moves or loses its target. Every shot (the
 //   snapshot's last_shot_tick) plays ATTACK once from its start, fading back to the aiming pose
 //   over 0.15 s after it ends; a turreted unit firing on the move plays it over its locomotion.
-//   A mesh without ATTACKIDLE loops ATTACK as its aiming pose, one without ATTACK only aims.
+//   A mesh without ATTACKIDLE has no aiming pose and plays ATTACK only with its shots (each pulse
+//   of a burst restarts it), one without ATTACK only aims.
 //
 // - Death. A unit combat destroyed leaves a corpse (add_corpse) that plays a DIE variant once,
 //   holds its last frame for 4 s, and is then removed; corpses of meshes without a DIE clip are

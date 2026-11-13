@@ -145,7 +145,8 @@ rendering rows join item 2).
    b. Bugs that need no rework: walker animation state changes (start from rest, turn, and stop
       play wrongly and slowly; done 2026-11-13: transitions play at the walk's and turn's rates); the T4-B's two weapons (missile launcher and laser cannons, with
       different ranges): their gun animations play out of range and loop instead of following the
-      actual shots; walkers do not crush enemy infantry; destroyed space hardpoints are not
+      actual shots (done 2026-11-13: ATTACK plays with the shots only; the missile launcher is the
+      ROCKET_ATTACK unit ability, not implemented yet, with the other unit abilities); walkers do not crush enemy infantry; destroyed space hardpoints are not
       replaced by their destroyed versions.
    c. Research and one design document for an entity-component system (modern engines' ECS,
       data-driven composition, archetypes) and the job system: entities as ids, components in
