@@ -319,6 +319,71 @@ PixelOutput ps_main(PixelInput input)
     return output;
 }
 
+// Enhanced water (docs/water-research.md): the surface's color and opacity come from what lies
+// beneath it. The view ray's path through the water, from the opaque depth, hides the bottom by
+// Beer-Lambert absorption (clear in the shallows, the water's own color when deep); the surface
+// fades in over the first units of depth at the shore; two normal layers (the map's bump map, the
+// second finer, turned, and drifting another way) bend the light; reflectance follows Schlick's
+// Fresnel toward a sky color; and the key light leaves a sharp glint. All constants are engine
+// choices, tuned by eye.
+static const float WATER_CLARITY = 20.0f;          // path through water (units) that hides 63 % of the bottom
+static const float WATER_SHORE_FADE = 3.0f;        // depth (units) over which the surface fades in
+static const float WATER_DETAIL_SCALE = 2.7f;      // second normal layer's repeats per first-layer repeat
+static const float WATER_DETAIL_DRIFT = 1.7f;      // its scroll relative to the first layer's
+static const float WATER_GLINT_POWER = 256.0f;
+static const float WATER_GLINT_STRENGTH = 1.5f;
+static const float WATER_BASE_REFLECTANCE = 0.02f; // water's reflectance looking straight down
+
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+PixelOutput water_ps(PixelInput input)
+{
+    const MaterialData material = materials[material_index];
+    const float time = camera_position_time.w;
+    const float2 tiled = input.uv * material.specular.w;
+    const float2 uv = tiled + material.uv_scroll * time;
+    const float2 detail_uv = mul(float2x2(0.8f, -0.6f, 0.6f, 0.8f), tiled * WATER_DETAIL_SCALE) + float2(-material.uv_scroll.y, material.uv_scroll.x) * WATER_DETAIL_DRIFT * time;
+    const float3 first = sample_texture(material.normal_texture, uv).xyz * 2.0f - 1.0f;
+    const float3 second = sample_texture(material.normal_texture, detail_uv).xyz * 2.0f - 1.0f;
+    const float3 bent = safe_normalize(float3(first.xy + second.xy, first.z * second.z), float3(0.0f, 0.0f, 1.0f));
+    const float3 surface_normal = safe_normalize(input.normal, float3(0.0f, 0.0f, 1.0f));
+    const float3 tangent = safe_normalize(input.tangent, float3(1.0f, 0.0f, 0.0f));
+    const float3 binormal = safe_normalize(input.binormal, float3(0.0f, 1.0f, 0.0f));
+    const float3 normal = safe_normalize(bent.x * tangent + bent.y * binormal + bent.z * surface_normal, surface_normal);
+
+    // What lies beneath this pixel: the opaque scene's depth, back to a world position.
+    Texture2D scene_depth = scene_textures[water_parameters.y];
+    uint width = 1u;
+    uint height = 1u;
+    scene_depth.GetDimensions(width, height);
+    const float depth = scene_depth.Load(int3(input.position.xy, 0)).r;
+    const float2 ndc = float2(input.position.x / width * 2.0f - 1.0f, 1.0f - input.position.y / height * 2.0f);
+    const float4 beneath_h = mul(float4(ndc, depth, 1.0f), inverse_view_projection);
+    const float3 beneath = beneath_h.xyz / beneath_h.w;
+    const bool bottomless = depth >= 1.0f;
+    const float path = bottomless ? 1.0e6f : distance(input.world_position, beneath);
+    const float below = bottomless ? 1.0e6f : max(input.world_position.z - beneath.z, 0.0f);
+
+    const float3 view = safe_normalize(camera_position_time.xyz - input.world_position, float3(0.0f, 0.0f, 1.0f));
+    const float fresnel = WATER_BASE_REFLECTANCE + (1.0f - WATER_BASE_REFLECTANCE) * pow(1.0f - saturate(dot(normal, view)), 5.0f);
+    const float4 base = sample_texture(material.base_texture, uv);
+    const float3 tint = (material.tint * input.tint * input.vertex_color).rgb;
+    const float3 body = legacy_lit_color(base.rgb, normal, input.world_position, 0.0f, material.diffuse.rgb, float3(0.0f, 0.0f, 0.0f), material.emissive.rgb, tint, input.position.xy, true);
+    // The sky the surface reflects, from the map's lights (an engine choice until there is a sky
+    // probe).
+    const float3 sky = ambient.rgb + key_diffuse.rgb * 0.5f;
+    const float3 light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
+    const float3 half_vector = safe_normalize(light + view, normal);
+    const float lit = dot(surface_normal, light) > 0.0f ? key_light_visibility(input.world_position, surface_normal, input.position.xy) : 0.0f;
+    const float3 glint = key_specular.rgb * material.specular.rgb * pow(saturate(dot(normal, half_vector)), WATER_GLINT_POWER) * WATER_GLINT_STRENGTH * lit;
+
+    PixelOutput output;
+    const float alpha = max(1.0f - exp(-path / WATER_CLARITY), fresnel) * saturate(below / WATER_SHORE_FADE);
+    output.color = float4(apply_fog(lerp(body, sky, fresnel) + glint, input.world_position), alpha);
+    output.pick = uint2(0u, 0u);
+    output.motion = float2(MOTION_UNKNOWN, MOTION_UNKNOWN);
+    return output;
+}
+
 // Shadow casting: a model into the cascade `pass_index` (depth only); alpha-tested surfaces cut
 // their holes with the same test as when drawn.
 struct ShadowPixelInput

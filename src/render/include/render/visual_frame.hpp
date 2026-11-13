@@ -90,6 +90,33 @@ enum class VisualFogMode : std::uint8_t
     return std::nullopt;
 }
 
+// How the renderer draws the map's water: as the original (the surface blended at its material's
+// opacity, the legacy profile), or from the depth of what lies beneath it, with a soft shore, two
+// normal layers, a sun glint, and reflectance growing toward grazing views (enhanced;
+// docs/water-research.md; engine choices).
+enum class VisualWaterMode : std::uint8_t
+{
+    legacy,
+    enhanced,
+};
+
+[[nodiscard]] constexpr std::string_view to_string(const VisualWaterMode mode) noexcept
+{
+    return mode == VisualWaterMode::enhanced ? "enhanced" : "legacy";
+}
+
+[[nodiscard]] constexpr std::optional<VisualWaterMode> visual_water_mode(const std::string_view name) noexcept
+{
+    for (const auto mode : {VisualWaterMode::legacy, VisualWaterMode::enhanced})
+    {
+        if (name == to_string(mode))
+        {
+            return mode;
+        }
+    }
+    return std::nullopt;
+}
+
 // Distance fog of the map environment: surfaces blend toward `color` linearly with view distance,
 // from none at `start` to all at `end`. Additive surfaces and backgrounds are not fogged (as in the
 // legacy shaders).

@@ -106,7 +106,10 @@ rendering rows join item 2).
    from research into current and RTS practice, [water-research.md](water-research.md), agreed
    2026-11-13: depth color, refraction from a scene copy, shoreline and foam, layered normals,
    sun glint, planar screen-space reflections with a sky fallback; general screen-space
-   reflections join the enhanced lighting step, and water then moves onto them), skydomes and nebulae (`Skydome` 19, `Nebula` 15),
+   reflections join the enhanced lighting step, and water then moves onto them; done 2026-11-13:
+   water drawn again (scenery), its own pass, enhanced depth color, shore fade, two normal layers,
+   Fresnel toward a sky color, glint; next: the TED water fields, refraction, foam, planar
+   reflections), skydomes and nebulae (`Skydome` 19, `Nebula` 15),
    occluded units (chosen by the engine, not by materials), heat distortion (`MeshHeat` 3, plus
    heat particles), reflections (`MeshAdditiveReflection` 3; no stock material uses the reflective
    profiles); then weather and soft particles, look tuning.

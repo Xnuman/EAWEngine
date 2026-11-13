@@ -118,6 +118,7 @@ eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl vs_main vs_6_0 g_ea
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl ps_main ps_6_0 g_eaw_sandbox_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl shadow_vs vs_6_0 g_eaw_shadow_vs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl shadow_ps ps_6_0 g_eaw_shadow_ps)
+eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl water_ps ps_6_0 g_eaw_water_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/debug.hlsl debug_vs vs_6_0 g_eaw_debug_vs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/debug.hlsl debug_ps ps_6_0 g_eaw_debug_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/particle.hlsl particle_vs vs_6_0 g_eaw_particle_vs)

@@ -93,6 +93,14 @@ void test_scene_presentation()
     marker_presentation.build(marker_battle.world().snapshot().entities, {}, instances, ids);
     require(marker_battle.world().snapshot().entities.size() == 1 && instances.size() == 1 && instances[0].background, "a marker must stay an entity but not be drawn");
 
+    // An instance no entity claims (the water plane, terrain tracks) is drawn as scenery after the
+    // backgrounds.
+    auto water_scene = scene;
+    water_scene.instances.push_back(eaw::VisualInstance{0});
+    const eaw::ScenePresentation water_presentation(water_scene, std::span(&marker, 1), std::span(&marker_look, 1), marker_battle.map_entity_ids(), {});
+    water_presentation.build(marker_battle.world().snapshot().entities, {}, instances, ids);
+    require(instances.size() == 2 && instances[0].background && !instances[1].background && instances[1].mesh == 0 && !ids[1].valid(), "an instance no entity claims must be drawn as scenery");
+
     // A frame of a running battle, built without a window: backgrounds, then entities with their
     // ids; no palette without an animator.
     eaw::BattleRuntime runtime(map, "TEST.TED", nullptr);

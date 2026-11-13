@@ -84,6 +84,9 @@ struct VisualMaterial
     float alpha_test_threshold{0.5F};
     // Read only with VisualLightingModel::planet.
     VisualPlanet planet;
+    // The map's water surface: drawn after the opaque surfaces and before the transparent ones,
+    // where enhanced water reads the depth of what lies beneath it.
+    bool water{};
 };
 
 } // namespace eaw

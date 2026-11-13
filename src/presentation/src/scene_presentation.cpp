@@ -93,6 +93,30 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         snapshot.owner = decoration.owner;
         decoration_snapshots_.push_back(snapshot);
     }
+    // Scenery: every other instance of the world, so nothing the scene builds goes undrawn because
+    // no entity claims it. Hidden looks claim theirs too (markers stay invisible).
+    std::vector<bool> claimed(scene.instances.size(), false);
+    for (const auto& look : looks)
+    {
+        if (look.instance < claimed.size())
+        {
+            claimed[look.instance] = true;
+        }
+    }
+    for (const auto& decoration : decorations)
+    {
+        if (decoration.look.instance < claimed.size())
+        {
+            claimed[decoration.look.instance] = true;
+        }
+    }
+    for (std::size_t index = 0; index < scene.instances.size(); ++index)
+    {
+        if (!claimed[index] && !scene.instances[index].background)
+        {
+            scenery_.push_back(scene.instances[index]);
+        }
+    }
 }
 
 void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out,
@@ -104,11 +128,20 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
     }
     instances_out.clear();
     entities_out.clear();
-    instances_out.reserve(backgrounds_.size() + snapshot.size());
-    entities_out.reserve(backgrounds_.size() + snapshot.size());
+    instances_out.reserve(backgrounds_.size() + scenery_.size() + snapshot.size());
+    entities_out.reserve(backgrounds_.size() + scenery_.size() + snapshot.size());
     for (const auto& background : backgrounds_)
     {
         instances_out.push_back(background);
+        entities_out.emplace_back();
+        if (animations_out != nullptr)
+        {
+            animations_out->emplace_back();
+        }
+    }
+    for (const auto& scenery : scenery_)
+    {
+        instances_out.push_back(scenery);
         entities_out.emplace_back();
         if (animations_out != nullptr)
         {

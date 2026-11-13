@@ -14,6 +14,8 @@ const char* to_string(const GraphAccess access) noexcept
         return "render target";
     case GraphAccess::depth_write:
         return "depth write";
+    case GraphAccess::depth_read:
+        return "depth read";
     case GraphAccess::shader_read:
         return "shader read";
     case GraphAccess::copy_source:

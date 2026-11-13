@@ -230,6 +230,13 @@ bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view)
         ImGui::SameLine();
         changed |= ImGui::RadioButton("Enhanced##fog", &fog, static_cast<int>(eaw::VisualFogMode::enhanced));
         graphics.fog = static_cast<eaw::VisualFogMode>(fog);
+        auto water = static_cast<int>(graphics.water);
+        ImGui::TextUnformatted("Water");
+        ImGui::SameLine();
+        changed |= ImGui::RadioButton("Legacy##water", &water, static_cast<int>(eaw::VisualWaterMode::legacy));
+        ImGui::SameLine();
+        changed |= ImGui::RadioButton("Enhanced##water", &water, static_cast<int>(eaw::VisualWaterMode::enhanced));
+        graphics.water = static_cast<eaw::VisualWaterMode>(water);
         changed |= ImGui::Checkbox("Terrain decals", view.decals);
         ImGui::Separator();
         static constexpr std::array<const char*, 4> policies{"Off (full detail)", "Distance", "Screen size", "Hybrid"};

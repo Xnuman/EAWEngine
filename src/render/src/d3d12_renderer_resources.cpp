@@ -483,7 +483,9 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
         const auto gpu_draw = [&](const std::uint32_t draw_index)
         {
             const auto& draw = scene.draws[draw_index];
-            return GpuDraw{draw, draw.material, scene.materials[draw.material].blend, 0, 0, false};
+            auto result = GpuDraw{draw, draw.material, scene.materials[draw.material].blend, 0, 0, false};
+            result.water = scene.materials[draw.material].water;
+            return result;
         };
         new_mesh_levels[mesh_index] = mesh_levels(mesh, gpu_draw);
         new_mesh_draws[mesh_index] = new_mesh_levels[mesh_index].draws.front().front();
@@ -508,6 +510,7 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
                 return make_error("visual scene draw references data outside its buffers");
             }
             new_draws.push_back({draw, draw.material, scene.materials[draw.material].blend, first_instance, instance_count, background});
+            new_draws.back().water = scene.materials[draw.material].water;
         }
     }
     // Backgrounds first in scene (mesh) order so later layers paint over earlier ones; then the
@@ -684,6 +687,7 @@ Result<std::uint32_t> D3d12Renderer::Impl::add_meshes(VisualScene fragment)
             const auto& draw = fragment.draws[draw_index];
             GpuDraw result{draw, first_material + draw.material, fragment.materials[draw.material].blend, 0, 0, false};
             result.block = block_index;
+            result.water = fragment.materials[draw.material].water;
             return result;
         };
         auto levels = mesh_levels(mesh, gpu_draw);

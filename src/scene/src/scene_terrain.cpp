@@ -186,6 +186,7 @@ std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMapDat
     if (type == TedWaterType::water)
     {
         material.name = "water surface";
+        material.water = true;
         material.blend = VisualBlendMode::alpha_blend;
         material.diffuse[3] = 0.75F;
         material.base_color_texture = texture(map.water_maps[1]);

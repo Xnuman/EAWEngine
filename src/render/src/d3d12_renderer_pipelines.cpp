@@ -28,6 +28,7 @@
 #include "g_eaw_terrain_shadow_ps.h"
 #include "g_eaw_terrain_shadow_vs.h"
 #include "g_eaw_terrain_vs.h"
+#include "g_eaw_water_ps.h"
 
 namespace eaw {
 
@@ -56,6 +57,7 @@ void D3d12Renderer::Impl::open_pipeline_cache()
     key = fnv1a(key, std::as_bytes(std::span(g_eaw_sandbox_ps)));
     key = fnv1a(key, std::as_bytes(std::span(g_eaw_terrain_vs)));
     key = fnv1a(key, std::as_bytes(std::span(g_eaw_terrain_ps)));
+    key = fnv1a(key, std::as_bytes(std::span(g_eaw_water_ps)));
     key = fnv1a(key, std::as_bytes(std::span(&pipeline_layout_version, 1)));
     pipeline_cache_key = key;
     pipeline_cache_file = options.pipeline_cache_directory / "d3d12_pipelines.bin";
@@ -270,6 +272,9 @@ void D3d12Renderer::Impl::create_pipeline()
     description.BlendState.RenderTarget[1].RenderTargetWriteMask = 0;
     description.BlendState.RenderTarget[2].RenderTargetWriteMask = 0;
     create_pipeline_state(L"alpha", description, alpha_pipeline);
+    auto water = description;
+    water.PS = {g_eaw_water_ps, sizeof(g_eaw_water_ps)};
+    create_pipeline_state(L"water", water, water_pipeline);
 
     description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
     description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;

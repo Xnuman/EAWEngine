@@ -97,6 +97,9 @@ private:
         std::vector<DamageStep> damage;
     };
     std::vector<VisualInstance> backgrounds_;
+    // The map's own surfaces that no entity or decoration draws (the water plane, terrain tracks),
+    // drawn every frame after the backgrounds.
+    std::vector<VisualInstance> scenery_;
     std::unordered_map<std::uint64_t, Template> templates_;
     // By spawnable type index (visual - spawnable_visual_base); none for a hidden type.
     std::vector<std::optional<Template>> spawn_templates_;

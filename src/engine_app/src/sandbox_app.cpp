@@ -354,6 +354,7 @@ int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const Gam
     renderer_options.graphics.anti_aliasing = options.anti_aliasing;
     renderer_options.graphics.shadows = options.shadows;
     renderer_options.graphics.fog = options.fog;
+    renderer_options.graphics.water = options.water;
     renderer_options.overlay_settings_file = eaw::executable_directory() / "sandbox_imgui.ini";
     renderer_options.lod.policy = options.lod_policy;
     renderer_options.lod.mesh_detail = options.mesh_detail;

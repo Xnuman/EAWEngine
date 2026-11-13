@@ -21,6 +21,9 @@ enum class GraphAccess : std::uint8_t
 {
     render_target,
     depth_write,
+    // The depth buffer bound read-only for testing and sampled at once (water reads the scene's
+    // depth while testing against it).
+    depth_read,
     shader_read,
     copy_source,
     present,

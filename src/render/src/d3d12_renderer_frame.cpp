@@ -13,6 +13,8 @@ D3D12_RESOURCE_STATES d3d12_state(const GraphAccess access) noexcept
         return D3D12_RESOURCE_STATE_RENDER_TARGET;
     case GraphAccess::depth_write:
         return D3D12_RESOURCE_STATE_DEPTH_WRITE;
+    case GraphAccess::depth_read:
+        return D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     case GraphAccess::shader_read:
         return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     case GraphAccess::copy_source:
@@ -824,6 +826,7 @@ bool D3d12Renderer::Impl::render()
     }
     // Fog: its color with the mode in w (0 off, 1 legacy, 2 enhanced), its start and end, and for
     // enhanced fog the height it is densest at (fog_floor) and how fast it thins upward.
+    constants.water_parameters = {options.graphics.water == VisualWaterMode::enhanced ? 1U : 0U, depth_slot, 0U, 0U};
     if (options.graphics.fog != VisualFogMode::off && lighting.fog.enabled)
     {
         constants.fog_color = {lighting.fog.color.r, lighting.fog.color.g, lighting.fog.color.b, options.graphics.fog == VisualFogMode::enhanced ? 2.0F : 1.0F};
@@ -904,134 +907,183 @@ bool D3d12Renderer::Impl::render()
                              });
     }
 
-    frame_graph.add_pass(
-        "scene", std::move(scene_uses),
-        [&]
+    // The scene in three passes: the opaque part (backgrounds, opaque and alpha-tested surfaces, the
+    // terrain); the map's water, testing against the opaque depth while enhanced water samples it;
+    // and the transparent part (blended surfaces from the farthest, then particles).
+    const auto& frame_draws = dynamic ? dynamic_draws : scene_draws;
+    const auto transparent_begin = static_cast<std::size_t>(std::ranges::find_if(frame_draws,
+                                                                                 [](const GpuDraw& draw)
+                                                                                 {
+                                                                                     return !draw.background && (draw.blend == VisualBlendMode::alpha_blend || draw.blend == VisualBlendMode::additive);
+                                                                                 }) -
+                                                            frame_draws.begin());
+    const bool has_water = scene_loaded && std::ranges::any_of(frame_draws, &GpuDraw::water);
+    auto read_only_depth = depth_target;
+    read_only_depth.ptr += device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    const auto bind_scene = [&](const D3D12_CPU_DESCRIPTOR_HANDLE depth_view)
+    {
+        const std::array targets{scene_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart(), post_rtv(6)};
+        command_list->RSSetViewports(1, &viewport);
+        command_list->RSSetScissorRects(1, &scissor);
+        command_list->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), FALSE, &depth_view);
+        ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
+        command_list->SetDescriptorHeaps(1, descriptor_heaps);
+        command_list->SetGraphicsRootSignature(root_signature.Get());
+        // Root parameters (legacy_common.hlsli): 0 frame CBV, 1 texture table, 2 bones, 3 instances,
+        // 4 materials, 5 draw constants (first instance, material), 6 texture residency.
+        command_list->SetGraphicsRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
+        command_list->SetGraphicsRootShaderResourceView(2, frame.bone_buffer->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(3, (dynamic ? frame.instance_buffer : scene_loaded ? scene_instance_buffer : identity_instance_buffer)->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(4, (scene_loaded ? scene_material_buffer : identity_material_buffer)->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(6, frame.residency_buffer->GetGPUVirtualAddress());
+        // 7 terrain decals, 8 their grid.
+        command_list->SetGraphicsRootShaderResourceView(7, frame.decal_buffer->GetGPUVirtualAddress());
+        command_list->SetGraphicsRootShaderResourceView(8, frame.decal_grid_buffer->GetGPUVirtualAddress());
+        command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    };
+    // Scene draws [begin, end): the water only, or everything but it; the terrain before the first
+    // world draw (or after the last) when `terrain` is set.
+    const auto record_draws = [&](const std::size_t begin, const std::size_t end, const bool water, const bool terrain)
+    {
+        bool terrain_drawn = !terrain || terrain_vertex_count == 0;
+        const auto draw_terrain = [&]
         {
-            const std::array targets{scene_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart(), post_rtv(6)};
-            command_list->RSSetViewports(1, &viewport);
-            command_list->RSSetScissorRects(1, &scissor);
-            command_list->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), FALSE, &depth_target);
-            constexpr std::array clear_color{0.018F, 0.031F, 0.043F, 1.0F};
-            constexpr std::array clear_pick{0.0F, 0.0F, 0.0F, 0.0F};
-            command_list->ClearRenderTargetView(scene_target, clear_color.data(), 0, nullptr);
-            command_list->ClearRenderTargetView(targets[1], clear_pick.data(), 0, nullptr);
-            constexpr std::array clear_motion{motion_unknown, motion_unknown, 0.0F, 0.0F};
-            command_list->ClearRenderTargetView(targets[2], clear_motion.data(), 0, nullptr);
-            command_list->ClearDepthStencilView(depth_target, D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
-
-            ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
-            command_list->SetDescriptorHeaps(1, descriptor_heaps);
-            command_list->SetGraphicsRootSignature(root_signature.Get());
-            // Root parameters (legacy_common.hlsli): 0 frame CBV, 1 texture table, 2 bones, 3 instances,
-            // 4 materials, 5 draw constants (first instance, material), 6 texture residency.
-            command_list->SetGraphicsRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
-            command_list->SetGraphicsRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
-            command_list->SetGraphicsRootShaderResourceView(2, frame.bone_buffer->GetGPUVirtualAddress());
-            command_list->SetGraphicsRootShaderResourceView(3, (dynamic ? frame.instance_buffer : scene_loaded ? scene_instance_buffer : identity_instance_buffer)->GetGPUVirtualAddress());
-            command_list->SetGraphicsRootShaderResourceView(4, (scene_loaded ? scene_material_buffer : identity_material_buffer)->GetGPUVirtualAddress());
-            command_list->SetGraphicsRootShaderResourceView(6, frame.residency_buffer->GetGPUVirtualAddress());
-            // 7 terrain decals, 8 their grid.
-            command_list->SetGraphicsRootShaderResourceView(7, frame.decal_buffer->GetGPUVirtualAddress());
-            command_list->SetGraphicsRootShaderResourceView(8, frame.decal_grid_buffer->GetGPUVirtualAddress());
-            command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-            if (!scene_loaded)
+            command_list->SetPipelineState(terrain_pipeline.Get());
+            const std::array<std::uint32_t, 2> terrain_constants{0U, terrain_first_material};
+            command_list->SetGraphicsRoot32BitConstants(5, 2, terrain_constants.data(), 0);
+            command_list->IASetVertexBuffers(0, 1, &terrain_vertex_view);
+            command_list->DrawInstanced(terrain_vertex_count, 1, 0, 0);
+            ++draw_calls;
+            triangles += terrain_vertex_count / 3U;
+            terrain_drawn = true;
+        };
+        // Geometry blocks: 0 is the scene's, others came from add_meshes.
+        std::uint32_t bound_block = 0;
+        const auto bind_block = [&](const std::uint32_t block)
+        {
+            const auto& vertex_view = block == 0 ? scene_vertex_view : added_blocks[block - 1U].vertex_view;
+            const auto& index_view = block == 0 ? scene_index_view : added_blocks[block - 1U].index_view;
+            command_list->IASetVertexBuffers(0, 1, &vertex_view);
+            command_list->IASetIndexBuffer(&index_view);
+            bound_block = block;
+        };
+        bind_block(0);
+        for (std::size_t index = begin; index < end; ++index)
+        {
+            const auto& draw = frame_draws[index];
+            if (draw.water != water)
             {
-                command_list->SetPipelineState(opaque_pipeline.Get());
-                const std::array<std::uint32_t, 2> draw_constants{0U, 0U};
-                command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
-                command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view);
-                command_list->DrawInstanced(3, 1, 0, 0);
-                ++draw_calls;
-                ++triangles;
-                ++instances_drawn;
+                continue;
             }
-            else
+            if (!terrain_drawn && !draw.background)
             {
-                bool terrain_drawn = terrain_vertex_count == 0;
-                const auto draw_terrain = [&]
-                {
-                    command_list->SetPipelineState(terrain_pipeline.Get());
-                    const std::array<std::uint32_t, 2> terrain_constants{0U, terrain_first_material};
-                    command_list->SetGraphicsRoot32BitConstants(5, 2, terrain_constants.data(), 0);
-                    command_list->IASetVertexBuffers(0, 1, &terrain_vertex_view);
-                    command_list->DrawInstanced(terrain_vertex_count, 1, 0, 0);
-                    ++draw_calls;
-                    triangles += terrain_vertex_count / 3U;
-                    terrain_drawn = true;
-                };
-                // Geometry blocks: 0 is the scene's, others came from add_meshes.
-                std::uint32_t bound_block = 0;
-                const auto bind_block = [&](const std::uint32_t block)
-                {
-                    const auto& vertex_view = block == 0 ? scene_vertex_view : added_blocks[block - 1U].vertex_view;
-                    const auto& index_view = block == 0 ? scene_index_view : added_blocks[block - 1U].index_view;
-                    command_list->IASetVertexBuffers(0, 1, &vertex_view);
-                    command_list->IASetIndexBuffer(&index_view);
-                    bound_block = block;
-                };
-                bind_block(0);
-                for (const auto& draw : dynamic ? dynamic_draws : scene_draws)
-                {
-                    if (!terrain_drawn && !draw.background)
-                    {
-                        draw_terrain();
-                        bind_block(bound_block);
-                    }
-                    if (draw.block != bound_block)
-                    {
-                        bind_block(draw.block);
-                    }
-                    ID3D12PipelineState* pipeline = draw.background ? background_opaque_pipeline.Get() : opaque_pipeline.Get();
-                    if (draw.blend == VisualBlendMode::alpha_blend)
-                    {
-                        pipeline = draw.background ? background_alpha_pipeline.Get() : alpha_pipeline.Get();
-                    }
-                    else if (draw.blend == VisualBlendMode::additive)
-                    {
-                        pipeline = draw.background ? background_additive_pipeline.Get() : additive_pipeline.Get();
-                    }
-                    command_list->SetPipelineState(pipeline);
-                    const std::array<std::uint32_t, 2> draw_constants{draw.first_instance, draw.material};
-                    command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
-                    command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
-                    ++draw_calls;
-                    triangles += static_cast<std::uint64_t>(draw.geometry.index_count / 3U) * draw.instance_count;
-                    instances_drawn += draw.instance_count;
-                }
-                if (!terrain_drawn)
-                {
-                    draw_terrain();
-                }
+                draw_terrain();
+                bind_block(bound_block);
             }
+            if (draw.block != bound_block)
+            {
+                bind_block(draw.block);
+            }
+            ID3D12PipelineState* pipeline = draw.background ? background_opaque_pipeline.Get() : opaque_pipeline.Get();
+            if (draw.blend == VisualBlendMode::alpha_blend)
+            {
+                pipeline = draw.background ? background_alpha_pipeline.Get() : alpha_pipeline.Get();
+            }
+            else if (draw.blend == VisualBlendMode::additive)
+            {
+                pipeline = draw.background ? background_additive_pipeline.Get() : additive_pipeline.Get();
+            }
+            if (water && options.graphics.water == VisualWaterMode::enhanced)
+            {
+                pipeline = water_pipeline.Get();
+            }
+            command_list->SetPipelineState(pipeline);
+            const std::array<std::uint32_t, 2> draw_constants{draw.first_instance, draw.material};
+            command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
+            command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
+            ++draw_calls;
+            triangles += static_cast<std::uint64_t>(draw.geometry.index_count / 3U) * draw.instance_count;
+            instances_drawn += draw.instance_count;
+        }
+        if (!terrain_drawn)
+        {
+            draw_terrain();
+        }
+    };
 
-            // Particles: runs of one blend and depth mode, in the given (back-to-front) order.
-            if (!gpu_particles.empty())
-            {
-                command_list->SetGraphicsRootShaderResourceView(3, frame.particle_buffer->GetGPUVirtualAddress());
-                std::size_t run_start = 0;
-                const auto pipeline_of = [&](const VisualParticle& particle)
-                {
-                    return particle_pipelines[static_cast<std::size_t>(particle.blend)][particle.depth_test ? 0U : 1U].Get();
-                };
-                for (std::size_t index = 1; index <= particles.size(); ++index)
-                {
-                    if (index < particles.size() && pipeline_of(particles[index]) == pipeline_of(particles[run_start]))
-                    {
-                        continue;
-                    }
-                    command_list->SetPipelineState(pipeline_of(particles[run_start]));
-                    const std::array<std::uint32_t, 2> particle_constants{static_cast<std::uint32_t>(run_start), 0U};
-                    command_list->SetGraphicsRoot32BitConstants(5, 2, particle_constants.data(), 0);
-                    command_list->DrawInstanced(6, static_cast<UINT>(index - run_start), 0, 0);
-                    ++draw_calls;
-                    triangles += static_cast<std::uint64_t>(index - run_start) * 2U;
-                    run_start = index;
-                }
-            }
-            last_particles = gpu_particles.size();
-        });
+    auto water_uses = scene_uses;
+    auto transparent_uses = scene_uses;
+    water_uses[3] = {depth, GraphAccess::depth_read};
+    frame_graph.add_pass("scene", std::move(scene_uses),
+                         [&]
+                         {
+                             bind_scene(depth_target);
+                             constexpr std::array clear_color{0.018F, 0.031F, 0.043F, 1.0F};
+                             constexpr std::array clear_pick{0.0F, 0.0F, 0.0F, 0.0F};
+                             command_list->ClearRenderTargetView(scene_target, clear_color.data(), 0, nullptr);
+                             command_list->ClearRenderTargetView(pick_rtv_heap->GetCPUDescriptorHandleForHeapStart(), clear_pick.data(), 0, nullptr);
+                             constexpr std::array clear_motion{motion_unknown, motion_unknown, 0.0F, 0.0F};
+                             command_list->ClearRenderTargetView(post_rtv(6), clear_motion.data(), 0, nullptr);
+                             command_list->ClearDepthStencilView(depth_target, D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
+                             if (!scene_loaded)
+                             {
+                                 command_list->SetPipelineState(opaque_pipeline.Get());
+                                 const std::array<std::uint32_t, 2> draw_constants{0U, 0U};
+                                 command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
+                                 command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view);
+                                 command_list->DrawInstanced(3, 1, 0, 0);
+                                 ++draw_calls;
+                                 ++triangles;
+                                 ++instances_drawn;
+                                 return;
+                             }
+                             record_draws(0, transparent_begin, false, true);
+                         });
+    if (has_water)
+    {
+        frame_graph.add_pass("water", std::move(water_uses),
+                             [&]
+                             {
+                                 bind_scene(read_only_depth);
+                                 record_draws(0, frame_draws.size(), true, false);
+                             });
+    }
+    frame_graph.add_pass("transparent", std::move(transparent_uses),
+                         [&]
+                         {
+                             bind_scene(depth_target);
+                             if (scene_loaded)
+                             {
+                                 record_draws(transparent_begin, frame_draws.size(), false, false);
+                             }
+
+                             // Particles: runs of one blend and depth mode, in the given (back-to-front) order.
+                             if (!gpu_particles.empty())
+                             {
+                                 command_list->SetGraphicsRootShaderResourceView(3, frame.particle_buffer->GetGPUVirtualAddress());
+                                 std::size_t run_start = 0;
+                                 const auto pipeline_of = [&](const VisualParticle& particle)
+                                 {
+                                     return particle_pipelines[static_cast<std::size_t>(particle.blend)][particle.depth_test ? 0U : 1U].Get();
+                                 };
+                                 for (std::size_t index = 1; index <= particles.size(); ++index)
+                                 {
+                                     if (index < particles.size() && pipeline_of(particles[index]) == pipeline_of(particles[run_start]))
+                                     {
+                                         continue;
+                                     }
+                                     command_list->SetPipelineState(pipeline_of(particles[run_start]));
+                                     const std::array<std::uint32_t, 2> particle_constants{static_cast<std::uint32_t>(run_start), 0U};
+                                     command_list->SetGraphicsRoot32BitConstants(5, 2, particle_constants.data(), 0);
+                                     command_list->DrawInstanced(6, static_cast<UINT>(index - run_start), 0, 0);
+                                     ++draw_calls;
+                                     triangles += static_cast<std::uint64_t>(index - run_start) * 2U;
+                                     run_start = index;
+                                 }
+                             }
+                             last_particles = gpu_particles.size();
+                         });
 
     if (bloom)
     {

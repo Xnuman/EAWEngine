@@ -205,7 +205,8 @@ void D3d12Renderer::Impl::create_depth_buffer()
 {
     D3D12_DESCRIPTOR_HEAP_DESC heap_description{};
     heap_description.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    heap_description.NumDescriptors = 1;
+    // The depth view, and a read-only one for passes that sample depth while testing against it.
+    heap_description.NumDescriptors = 2;
     if (!dsv_heap)
     {
         check_device_hresult(device->CreateDescriptorHeap(&heap_description, IID_PPV_ARGS(&dsv_heap)), device, "CreateDescriptorHeap(DSV)");
@@ -234,6 +235,10 @@ void D3d12Renderer::Impl::create_depth_buffer()
     depth_view.Format = DXGI_FORMAT_D32_FLOAT;
     depth_view.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
     device->CreateDepthStencilView(depth_buffer.Get(), &depth_view, dsv_heap->GetCPUDescriptorHandleForHeapStart());
+    depth_view.Flags = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
+    auto read_only = dsv_heap->GetCPUDescriptorHandleForHeapStart();
+    read_only.ptr += device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    device->CreateDepthStencilView(depth_buffer.Get(), &depth_view, read_only);
 
     // Selection target: the pick id of the surface in front at every pixel.
     if (!pick_rtv_heap)

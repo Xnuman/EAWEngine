@@ -37,6 +37,8 @@ struct D3d12GraphicsSettings
     std::uint32_t shadow_cascades{3};
     // How the map environment's fog is drawn (VisualLightRig::fog), when it has one.
     VisualFogMode fog{VisualFogMode::legacy};
+    // How the map's water surface is drawn (VisualMaterial::water).
+    VisualWaterMode water{VisualWaterMode::legacy};
 };
 
 struct D3d12RendererOptions
