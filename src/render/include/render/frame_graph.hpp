@@ -26,6 +26,7 @@ enum class GraphAccess : std::uint8_t
     depth_read,
     shader_read,
     copy_source,
+    copy_dest,
     present,
 };
 

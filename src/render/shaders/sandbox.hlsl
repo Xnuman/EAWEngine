@@ -333,6 +333,8 @@ static const float WATER_DETAIL_DRIFT = 1.7f;      // its scroll relative to the
 static const float WATER_GLINT_POWER = 256.0f;
 static const float WATER_GLINT_STRENGTH = 1.5f;
 static const float WATER_BASE_REFLECTANCE = 0.02f; // water's reflectance looking straight down
+static const float WATER_REFRACTION = 0.02f;       // screen share the bent normal shifts what lies beneath
+static const float WATER_REFRACTION_DEPTH = 4.0f;  // depth (units) over which refraction grows to full
 
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 PixelOutput water_ps(PixelInput input)
@@ -377,8 +379,29 @@ PixelOutput water_ps(PixelInput input)
     const float3 glint = key_specular.rgb * material.specular.rgb * pow(saturate(dot(normal, half_vector)), WATER_GLINT_POWER) * WATER_GLINT_STRENGTH * lit;
 
     PixelOutput output;
-    const float alpha = max(1.0f - exp(-path / WATER_CLARITY), fresnel) * saturate(below / WATER_SHORE_FADE);
-    output.color = float4(apply_fog(lerp(body, sky, fresnel) + glint, input.world_position), alpha);
+    const float shore = saturate(below / WATER_SHORE_FADE);
+    const float transmittance = exp(-path / WATER_CLARITY);
+    if (water_parameters.w != 0u)
+    {
+        // Refraction: what lies beneath, seen through the bent surface; where the shifted pixel
+        // shows something standing above the water, the unshifted one is used instead.
+        Texture2D refraction = scene_textures[water_parameters.z];
+        const float2 size = float2(width, height);
+        const float2 shifted = input.position.xy + bent.xy * WATER_REFRACTION * size.y * saturate(below / WATER_REFRACTION_DEPTH);
+        const int2 shifted_pixel = int2(clamp(shifted, float2(0.0f, 0.0f), size - 1.0f));
+        const float shifted_depth = scene_depth.Load(int3(shifted_pixel, 0)).r;
+        const float2 shifted_ndc = float2((shifted_pixel.x + 0.5f) / width * 2.0f - 1.0f, 1.0f - (shifted_pixel.y + 0.5f) / height * 2.0f);
+        const float4 shifted_h = mul(float4(shifted_ndc, shifted_depth, 1.0f), inverse_view_projection);
+        const bool above = shifted_depth < 1.0f && shifted_h.z / shifted_h.w > input.world_position.z;
+        const float3 seen = refraction.Load(int3(above ? int2(input.position.xy) : shifted_pixel, 0)).rgb;
+        const float3 water = lerp(seen, body, 1.0f - transmittance);
+        output.color = float4(apply_fog(lerp(water, sky, fresnel) + glint, input.world_position), shore);
+    }
+    else
+    {
+        const float alpha = max(1.0f - transmittance, fresnel) * shore;
+        output.color = float4(apply_fog(lerp(body, sky, fresnel) + glint, input.world_position), alpha);
+    }
     output.pick = uint2(0u, 0u);
     output.motion = float2(MOTION_UNKNOWN, MOTION_UNKNOWN);
     return output;

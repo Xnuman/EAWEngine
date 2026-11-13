@@ -326,6 +326,7 @@ void D3d12Renderer::Impl::create_post_targets()
     make_target(taa_history[0], width, height, back_buffer_format, 4, L"EAWEngine TAA history A");
     make_target(taa_history[1], width, height, back_buffer_format, 5, L"EAWEngine TAA history B");
     make_target(motion_target, width, height, motion_format, 6, L"EAWEngine motion", {motion_unknown, motion_unknown, 0.0F, 0.0F});
+    make_target(refraction_color, width, height, back_buffer_format, 7, L"EAWEngine refraction copy");
     taa_history_valid = false;
     D3D12_SHADER_RESOURCE_VIEW_DESC depth_view{};
     depth_view.Format = DXGI_FORMAT_R32_FLOAT;

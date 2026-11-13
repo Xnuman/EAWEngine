@@ -19,6 +19,8 @@ D3D12_RESOURCE_STATES d3d12_state(const GraphAccess access) noexcept
         return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     case GraphAccess::copy_source:
         return D3D12_RESOURCE_STATE_COPY_SOURCE;
+    case GraphAccess::copy_dest:
+        return D3D12_RESOURCE_STATE_COPY_DEST;
     case GraphAccess::present:
         return D3D12_RESOURCE_STATE_PRESENT;
     }
@@ -826,7 +828,10 @@ bool D3d12Renderer::Impl::render()
     }
     // Fog: its color with the mode in w (0 off, 1 legacy, 2 enhanced), its start and end, and for
     // enhanced fog the height it is densest at (fog_floor) and how fast it thins upward.
-    constants.water_parameters = {options.graphics.water == VisualWaterMode::enhanced ? 1U : 0U, depth_slot, 0U, 0U};
+    // Enhanced water refracts a copy of the opaque scene when the scene renders into scene_color
+    // (with bloom or anti-aliasing; otherwise it blends over the frame).
+    const bool refraction = options.graphics.water == VisualWaterMode::enhanced && (options.graphics.bloom || options.graphics.anti_aliasing != VisualAntiAliasing::off);
+    constants.water_parameters = {options.graphics.water == VisualWaterMode::enhanced ? 1U : 0U, depth_slot, post_slots[7], refraction ? 1U : 0U};
     if (options.graphics.fog != VisualFogMode::off && lighting.fog.enabled)
     {
         constants.fog_color = {lighting.fog.color.r, lighting.fog.color.g, lighting.fog.color.b, options.graphics.fog == VisualFogMode::enhanced ? 2.0F : 1.0F};
@@ -1040,6 +1045,16 @@ bool D3d12Renderer::Impl::render()
                              }
                              record_draws(0, transparent_begin, false, true);
                          });
+    if (has_water && options.graphics.water == VisualWaterMode::enhanced && scene != back_buffer)
+    {
+        const auto copy = import_resource(refraction_color.Get(), "refraction copy", GraphAccess::render_target, GraphAccess::render_target);
+        frame_graph.add_pass("scene copy", {{scene, GraphAccess::copy_source}, {copy, GraphAccess::copy_dest}},
+                             [&]
+                             {
+                                 command_list->CopyResource(refraction_color.Get(), scene_color.Get());
+                             });
+        water_uses.push_back({copy, GraphAccess::shader_read});
+    }
     if (has_water)
     {
         frame_graph.add_pass("water", std::move(water_uses),

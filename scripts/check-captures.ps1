@@ -45,6 +45,7 @@ if ($GameRoot) { $common += @('--game-root', $GameRoot) }
 # Space-separated, so one string works from any caller ('--aa taa'; powershell -File joins arrays).
 $common += @($ExtraArguments | ForEach-Object { $_ -split '\s+' } | Where-Object { $_ })
 $kuat = @('--map', 'DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED', '--spawn', 'Rebel_X-Wing_Squadron:2@1', '--spawn', 'TIE_Fighter_Squadron:2@2', '--auto-move')
+$water = @('--map', 'DATA/ART/MAPS/_LAND_PLANET_MONCALIMARI_02.TED', '--fog', 'off')
 $scenes = [ordered]@{
     'kuat_90'        = $kuat + @('--capture-frame', '90')
     'kuat_300'       = $kuat + @('--capture-frame', '300')
@@ -52,6 +53,9 @@ $scenes = [ordered]@{
     'capital_120'    = @('--map', 'DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED', '--spawn', 'Star_Destroyer:1@2', '--spawn', 'Calamari_Cruiser:1@1', '--spawn', 'Rebel_X-Wing_Squadron:1@1', '--auto-move', '--capture-frame', '120')
     'darktrooper_20' = @('--model', 'DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO', '--capture-frame', '20')
     'default_5'      = @('--capture-frame', '5')
+    # Water (legacy and enhanced): the reference scenes above have none.
+    'water_60'       = $water + @('--capture-frame', '60')
+    'water_enhanced_60' = $water + @('--water', 'enhanced', '--capture-frame', '60')
 }
 
 $failed = 0

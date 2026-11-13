@@ -20,6 +20,8 @@ const char* to_string(const GraphAccess access) noexcept
         return "shader read";
     case GraphAccess::copy_source:
         return "copy source";
+    case GraphAccess::copy_dest:
+        return "copy destination";
     case GraphAccess::present:
         return "present";
     }

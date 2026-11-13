@@ -246,7 +246,7 @@ repository from their own location and use the built executables):
 `check-battle.ps1` holds the expected hash as its default; a change that alters the simulation on
 purpose updates it and says why. `check-captures.ps1` renders a Kuat fighter battle (frames 90 and
 300), a Utapau land battle (200), a capital ship duel at Kuat (120), the dark trooper model (20),
-and the validation scene (5), and writes a diff image next to each capture that changed. They
+the validation scene (5), and Mon Calamari 02's water without fog, legacy and enhanced (60), and writes a diff image next to each capture that changed. They
 render on WARP; `-Hardware` renders on the GPU instead (faster and deterministic for one driver, so
 its references are per machine and never compared with WARP ones). `-ExtraArguments` passes
 options to every scene, so a change behind an option can be checked with the option off against

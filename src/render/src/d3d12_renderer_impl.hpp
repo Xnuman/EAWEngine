@@ -293,11 +293,13 @@ struct D3d12Renderer::Impl
     // bloom_targets[0] at reduced size, blurs ping-pong between the two, and a composite writes the
     // back buffer. Their shader views sit in texture-table slots reserved at startup.
     ComPtr<ID3D12Resource> scene_color;
+    // The opaque scene copied before the water pass (post slot 7), which enhanced water refracts.
+    ComPtr<ID3D12Resource> refraction_color;
     std::array<ComPtr<ID3D12Resource>, 2> bloom_targets;
     ComPtr<ID3D12DescriptorHeap> post_rtv_heap;
     // Texture slots (and RTVs, same index) of scene_color, the bloom targets, post_color, the two
     // TAA history targets, and the motion target.
-    std::array<std::uint32_t, 7> post_slots{};
+    std::array<std::uint32_t, 8> post_slots{};
     // The depth buffer's shader view (temporal anti-aliasing reprojects by depth).
     std::uint32_t depth_slot{};
     std::uint32_t bloom_width{1};

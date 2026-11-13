@@ -78,7 +78,7 @@ cbuffer FrameConstants : register(b0)
     float4 fog_range; // x start, y end (distance), z the height enhanced fog is densest at, w its falloff per unit of height
     float4 decal_grid;     // xy the terrain decal grid's corner, zw its cells per world unit
     uint4 decal_grid_size; // x, y cells per side, z the decal count
-    uint4 water_parameters; // x enhanced water (1) or legacy (0), y the depth buffer's texture slot
+    uint4 water_parameters; // x enhanced water (1) or legacy (0), y the depth buffer's texture slot, z the refraction copy's, w refraction on (1)
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
