@@ -8,7 +8,7 @@
 //   neighbouring clips and a blend between them; a mesh without WALKMOVE blends IDLE into MOVE
 //   by a quarter of its top speed. WALKMOVE and MOVE share one normalized phase so steps stay in
 //   step while they blend, and play faster or slower with the speed (0.5x to 1.5x) to limit foot
-//   sliding. IDLE loops on its own.
+//   sliding. IDLE plays on its own (AnimationProfile::loop_first_idle says how).
 // - Attack. A unit with a target that stands still fades its aiming pose (ATTACKIDLE) in over
 //   0.2 s, over its locomotion, and out again when it moves or loses its target. Every shot (the
 //   snapshot's last_shot_tick) plays ATTACK once from its start, fading back to the aiming pose
@@ -170,6 +170,8 @@ private:
         double since_shot{1.0e9};
         float display_speed{};
         double idle_start{};
+        // Idles played to their end so far (picks the next random variant).
+        std::uint64_t idle_plays{};
         // Normalized phase shared by WALKMOVE and MOVE.
         double stride_phase{};
         float attack_weight{};
@@ -207,7 +209,8 @@ private:
     };
     // Reports the frames a clip passed from `from` to `to` (a loop of `loop_frames` wraps).
     void add_cue(EntityId entity, const Vector3& position, const VisualClip& clip, double from, double to, double loop_frames);
-    [[nodiscard]] std::int32_t choose_clip(std::uint32_t mesh, AnimationRole role, EntityId id) const;
+    // A variant of `role` for `id` (`salt` 0 for its first choice, another for later ones).
+    [[nodiscard]] std::int32_t choose_clip(std::uint32_t mesh, AnimationRole role, EntityId id, std::uint64_t salt = 0) const;
     // The clip of `mesh` with `role` and `variant`, or -1.
     [[nodiscard]] std::int32_t find_clip(std::uint32_t mesh, AnimationRole role, std::uint32_t variant) const;
     // The index of the bone of `mesh` whose name has `key` (game_object_name_crc), or -1.

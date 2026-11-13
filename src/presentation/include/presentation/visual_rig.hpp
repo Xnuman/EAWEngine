@@ -72,6 +72,10 @@ struct AnimationProfile
     // 0: the engine's walk speed.
     float walk_reference{};
     float idle_rate{1.0F};
+    // Loops IDLE_00 (XML Loop_Idle_Anim_00); otherwise each idle that ends is followed by a random
+    // IDLE variant, and a lone IDLE clip plays again after a 2-4 s pause (the owner's recollection
+    // and choice, 2026-11-13; engine choices until observed).
+    bool loop_first_idle{};
     bool idle_when_moving{};
     // Transition clips: before and after turning in place (XML Has_Pre_Turn_Anim) and when starting
     // and stopping a walk (XML Walk_Transition).

@@ -26,8 +26,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 164 |
-| `partial` | 23 |
+| `done` | 165 |
+| `partial` | 22 |
 | `gap` | 205 |
 | `needs` | 705 |
 | `n/a` | 20 |
@@ -1221,7 +1221,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Models, rendering, animation, user interface, and text
 
-15 done, 6 partial, 86 gap, 83 needs, 3 n/a.
+16 done, 5 partial, 86 gap, 83 needs, 3 n/a.
 
 ### Core structure (summary; see the overview chapters)
 
@@ -1305,7 +1305,7 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Loop_Idle_Anim_00` | `partial` | not read: Yes users have at most one IDLE clip, which the engine loops anyway; how No units play their idles (now and then?) is to observe |
+| `Loop_Idle_Anim_00` | `done` | Yes loops IDLE_00; otherwise a random IDLE variant follows each that ends, and a lone one replays after 2-4 s (owner's recollection and choice, to observe) |
 | `Idle_Anim_00_Rate_Mod` | `done` | the last occurrence wins on the two repeating asteroid masses |
 | `Allow_Idle_When_Moving` | `done` |  |
 | `Land_Model_Anim_Override_Name` | `done` |  |

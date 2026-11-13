@@ -291,6 +291,9 @@ compared by measured ratios from screenshots, never by recreated scenes):
 - whether the game mounts MEG archives that `MegaFiles.xml` does not list (to do, same kind of mod:
   an unlisted archive overriding one file; the engine mounts them in lexical order, and the
   reference tools disagree);
+- idle animations: whether units play a random IDLE variant after each one ends, and how long a
+  lone idle that does not loop (`Loop_Idle_Anim_00` No) rests before playing again (the engine:
+  2-4 s, the owner's choice of 2026-11-13);
 - whether melee units attack on the move: most infantry stop to attack (the owner's recollection,
   2026-11-13, which the engine follows), but `Dark_Trooper_PhaseI` sets
   `Is_Stationary_When_Attacking` to No, the only explicit No in stock;

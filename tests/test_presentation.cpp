@@ -313,9 +313,12 @@ void test_unit_animation()
     }
 
     // Cues: a still unit's IDLE (30 frames, 1 s) reported frame by frame passes every frame of each
-    // loop once, wrapping at the loop's end; a unit at rest pose, a background, and a clipless mesh
-    // report nothing.
+    // loop once, wrapping at the loop's end (a type that loops it: Loop_Idle_Anim_00); a unit at
+    // rest pose, a background, and a clipless mesh report nothing.
     {
+        eaw::AnimationProfile looped;
+        looped.loop_first_idle = true;
+        const std::array<eaw::AnimationProfile, 1> looped_profiles{looped};
         eaw::UnitAnimator cue_animator(rigs, rest);
         std::vector<eaw::EntitySnapshot> one{snapshot.front()};
         std::vector<eaw::EntityId> ids{one.front().id};
@@ -326,7 +329,7 @@ void test_unit_animation()
         {
             auto frame_instances = shown;
             auto frame_ids = ids;
-            cue_animator.animate(one, frame_ids, frame_instances, 1.0 + step / 30.0, 1U << 20U, palette);
+            cue_animator.animate(one, frame_ids, frame_instances, 1.0 + step / 30.0, 1U << 20U, palette, looped_profiles);
             for (const auto& cue : cue_animator.cues())
             {
                 require(cue.entity == one.front().id && cue.clip == "IDLE_00" && cue.from_frame >= -1.0 && cue.to_frame <= 30.0 && cue.to_frame > cue.from_frame, "cues must lie within the clip");
@@ -444,6 +447,51 @@ void test_unit_animation()
     require(frame(21.5) == 0, "the unit must aim again once ATTACK has faded");
     aiming[0].last_shot_tick = 9;
     require(frame(21.6) == 0, "the next shot must restart ATTACK");
+
+    // Idles: each idle that ends is followed by a random IDLE variant, unless the type loops
+    // IDLE_00 (Loop_Idle_Anim_00); a lone idle that does not loop pauses 2-4 s between plays.
+    {
+        auto idler_rig = rig;
+        idler_rig.clips = {{eaw::AnimationRole::idle, 0, "IDLE_00", animation}, {eaw::AnimationRole::idle, 1, "IDLE_01", animation}};
+        const std::array<eaw::VisualRig, 2> idle_rigs{idler_rig, still};
+        std::vector<eaw::EntitySnapshot> lone_idler(1);
+        lone_idler[0].id = {7, 1};
+        lone_idler[0].max_speed = 10.0F;
+        const auto played = [&](const bool loop_first, const std::span<const eaw::VisualRig> rigs_used = {}, std::size_t* busy_frames = nullptr)
+        {
+            eaw::AnimationProfile profile;
+            profile.loop_first_idle = loop_first;
+            const std::array<eaw::AnimationProfile, 1> profiles{profile};
+            eaw::UnitAnimator idler(rigs_used.empty() ? std::span<const eaw::VisualRig>(idle_rigs) : rigs_used, rest);
+            std::set<std::string> clips;
+            for (int step = 0; step < 600; ++step)
+            {
+                std::vector<eaw::EntityId> ids{lone_idler[0].id};
+                std::vector<eaw::VisualInstance> idle_instances(1);
+                idler.animate(lone_idler, ids, idle_instances, static_cast<double>(step) * 0.05, 1U << 20U, palette, profiles);
+                for (const auto& cue : idler.cues())
+                {
+                    clips.emplace(cue.clip);
+                }
+                if (busy_frames != nullptr && !idler.cues().empty())
+                {
+                    ++*busy_frames;
+                }
+            }
+            return clips;
+        };
+        require(played(false) == std::set<std::string>{"IDLE_00", "IDLE_01"} && played(true) == std::set<std::string>{"IDLE_00"},
+                "a unit must move on to random idles as each ends, one that loops IDLE_00 must keep it");
+        // The test clip lasts 1 s: looped, nearly every frame plays it; paused, at most a third.
+        auto lone_rig = rig;
+        lone_rig.clips = {{eaw::AnimationRole::idle, 0, "IDLE_00", animation}};
+        const std::array<eaw::VisualRig, 2> lone_rigs{lone_rig, still};
+        std::size_t looping = 0;
+        std::size_t pausing = 0;
+        (void)played(true, lone_rigs, &looping);
+        (void)played(false, lone_rigs, &pausing);
+        require(looping > 550 && pausing > 100 && pausing < 200, "a lone idle that does not loop must rest 2-4 s between plays");
+    }
 
     require(eaw::parse_clip_name("EI_TROOPER_DIE_01", "EI_TROOPER") && eaw::parse_clip_name("EI_TROOPER_DIE_01", "EI_TROOPER")->role == eaw::AnimationRole::die &&
                 !eaw::parse_clip_name("EI_TROOPER_FW_DIE_00", "EI_TROOPER"),

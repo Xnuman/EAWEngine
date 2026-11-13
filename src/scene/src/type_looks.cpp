@@ -55,6 +55,7 @@ AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const 
     }
     profile.idle_rate = rate("Idle_Anim_00_Rate_Mod");
     profile.idle_when_moving = TypeFields(catalog, definition).flag("Allow_Idle_When_Moving", false);
+    profile.loop_first_idle = TypeFields(catalog, definition).flag("Loop_Idle_Anim_00", false);
     const auto flag = [&](const std::string_view field)
     {
         return TypeFields(catalog, definition).flag(field, false);

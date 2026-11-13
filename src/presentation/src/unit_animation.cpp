@@ -41,6 +41,15 @@ constexpr double longest_frame_seconds = 0.25;
 // Sampled poses kept across frames (matrices); beyond it the cache starts over.
 constexpr std::size_t pose_cache_limit = 4U * 1024U * 1024U;
 
+// The most idles one frame moves past (a first sight starts up to a minute in), and the salt that
+// spreads an entity's successive idle choices.
+constexpr std::size_t maximum_idle_switches = 256;
+constexpr std::uint64_t idle_variant_salt = 0x9e3779b97f4a7c15ULL;
+// A unit with a single IDLE clip that does not loop it waits this long before playing it again
+// (seconds, random in between; the owner's choice, 2026-11-13, until the original is observed).
+constexpr double single_idle_pause_min_seconds = 2.0;
+constexpr double single_idle_pause_max_seconds = 4.0;
+
 std::uint64_t mix(std::uint64_t value) noexcept
 {
     // SplitMix64 finalizer: a stable per-entity hash for variants and phases.
@@ -167,7 +176,7 @@ std::int32_t UnitAnimator::find_clip(const std::uint32_t mesh, const AnimationRo
     return found != clips.end() ? static_cast<std::int32_t>(found - clips.begin()) : -1;
 }
 
-std::int32_t UnitAnimator::choose_clip(const std::uint32_t mesh, const AnimationRole role, const EntityId id) const
+std::int32_t UnitAnimator::choose_clip(const std::uint32_t mesh, const AnimationRole role, const EntityId id, const std::uint64_t salt) const
 {
     const auto& clips = rigs_[mesh].clips;
     const auto first = std::ranges::find(clips, role, &VisualClip::role);
@@ -176,7 +185,7 @@ std::int32_t UnitAnimator::choose_clip(const std::uint32_t mesh, const Animation
         return -1;
     }
     const auto count = static_cast<std::uint64_t>(std::ranges::count(clips, role, &VisualClip::role));
-    return static_cast<std::int32_t>(first - clips.begin()) + static_cast<std::int32_t>(mix(entity_key(id)) % count);
+    return static_cast<std::int32_t>(first - clips.begin()) + static_cast<std::int32_t>(mix(entity_key(id) ^ salt) % count);
 }
 
 std::uint32_t UnitAnimator::slot_count(const std::uint32_t mesh, const std::int32_t clip) const
@@ -391,6 +400,10 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             state = {};
             state.mesh = instance.mesh;
             state.idle = choose_clip(instance.mesh, AnimationRole::idle, entity.id);
+            if (const auto first = find_clip(instance.mesh, AnimationRole::idle, 0U); profile.loop_first_idle && first >= 0)
+            {
+                state.idle = first;
+            }
             state.walk = choose_clip(instance.mesh, AnimationRole::walk_move, entity.id);
             state.move = choose_clip(instance.mesh, AnimationRole::move, entity.id);
             state.attack = choose_clip(instance.mesh, AnimationRole::attack, entity.id);
@@ -404,6 +417,24 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         }
         const auto dt = std::clamp(seconds - state.last_seconds, 0.0, longest_frame_seconds);
         state.last_seconds = seconds;
+        // An idle that ended is followed by a random IDLE variant (AnimationProfile::loop_first_idle);
+        // a unit seen for the first time may be several idles in.
+        for (std::size_t played = 0; state.idle >= 0 && !profile.loop_first_idle && played < maximum_idle_switches; ++played)
+        {
+            const auto length = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.idle)].animation)) / static_cast<double>(profile.idle_rate);
+            if (length <= 0.0 || seconds - state.idle_start < length)
+            {
+                break;
+            }
+            state.idle_start += length;
+            state.idle = choose_clip(instance.mesh, AnimationRole::idle, entity.id, ++state.idle_plays * idle_variant_salt);
+            if (std::ranges::count(rigs_[instance.mesh].clips, AnimationRole::idle, &VisualClip::role) == 1)
+            {
+                // The lone idle starts again after a pause, holding its first frame until then.
+                const auto pause = unit_fraction(key, state.idle_plays * idle_variant_salt);
+                state.idle_start += single_idle_pause_min_seconds + pause * (single_idle_pause_max_seconds - single_idle_pause_min_seconds);
+            }
+        }
         state.frame = frame_;
         const auto target_speed = std::isfinite(entity.speed) ? std::max(entity.speed, 0.0F) : 0.0F;
         state.display_speed += (target_speed - state.display_speed) * std::min(1.0F, static_cast<float>(dt) / speed_smoothing_seconds);
