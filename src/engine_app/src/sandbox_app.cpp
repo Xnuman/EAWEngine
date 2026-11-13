@@ -350,6 +350,7 @@ int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const Gam
     renderer_options.texture_upload_budget_bytes = options.upload_budget_mib * 1024ULL * 1024ULL;
     renderer_options.bloom = options.bloom_strength > 0.0F;
     renderer_options.bloom_strength = options.bloom_strength;
+    renderer_options.anti_aliasing = options.anti_aliasing;
     renderer_options.overlay_settings_file = eaw::executable_directory() / "sandbox_imgui.ini";
     renderer_options.lod.policy = options.lod_policy;
     renderer_options.lod.mesh_detail = options.mesh_detail;

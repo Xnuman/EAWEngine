@@ -35,6 +35,7 @@ EAWEngine.exe sandbox --game foc --model DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO
 | `--audio <xaudio2\|fmod\|none>`, `--no-audio` | Audio backend (default `xaudio2`; `fmod` only in builds configured with `-DEAW_AUDIO_FMOD=ON -DFMOD_ROOT=<local SDK>`). A backend that cannot start falls back to silence with a warning; the run summary counts sounds played, skipped by their rules, and missing. Maps play weapon fire, deaths, engine loops, and unit responses to selections and orders. |
 | `--particles legacy\|enhanced` | How particle effects are interpreted: legacy (default) reproduces the original's look-defining quirks, enhanced improves them. |
 | `--bloom <strength>`, `--no-bloom` | Bloom strength (default 0.8). |
+| `--no-aa` | Turn off edge anti-aliasing (an FXAA-style pass over the finished frame, on by default). |
 | `--lod <off\|distance\|screen\|hybrid>` | How meshes with detail levels pick one (default `hybrid`: screen size, full detail near, the least far away; `off`: always full detail). |
 | `--mesh-detail <0..1>` | The mesh-detail setting (as the graphics presets' `MeshDetail`): 1 keeps detail 1.5 times as far as the base thresholds, 0 half as far (default 1). |
 | `--hot-reload` | Rebuild the scene when one of its loose files or MEG archives changes, re-decoding only what changed; the camera is kept. |
@@ -244,7 +245,9 @@ purpose updates it and says why. `check-captures.ps1` renders a Kuat fighter bat
 300), a Utapau land battle (200), a capital ship duel at Kuat (120), the dark trooper model (20),
 and the validation scene (5), and writes a diff image next to each capture that changed. They
 render on WARP; `-Hardware` renders on the GPU instead (faster and deterministic for one driver, so
-its references are per machine and never compared with WARP ones).
+its references are per machine and never compared with WARP ones). `-ExtraArguments` passes
+options to every scene, so a change behind an option can be checked with the option off against
+the earlier references (`-ExtraArguments '--no-aa'`).
 
 ## Captures and image regression
 

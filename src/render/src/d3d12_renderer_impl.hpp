@@ -238,12 +238,17 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12Resource> scene_color;
     std::array<ComPtr<ID3D12Resource>, 2> bloom_targets;
     ComPtr<ID3D12DescriptorHeap> post_rtv_heap;
-    std::array<std::uint32_t, 3> post_slots{};
+    // Texture slots (and RTVs, same index) of scene_color, the bloom targets, and post_color.
+    std::array<std::uint32_t, 4> post_slots{};
     std::uint32_t bloom_width{1};
     std::uint32_t bloom_height{1};
     ComPtr<ID3D12PipelineState> bloom_extract_pipeline;
     ComPtr<ID3D12PipelineState> bloom_blur_pipeline;
     ComPtr<ID3D12PipelineState> bloom_composite_pipeline;
+    // Edge anti-aliasing: the composite goes to post_color, which the pass reads into the back
+    // buffer (without bloom it reads scene_color).
+    ComPtr<ID3D12Resource> post_color;
+    ComPtr<ID3D12PipelineState> edge_aa_pipeline;
     // Creates (or, after a resize, recreates) the post-processing targets and their views.
     void create_post_targets();
     [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE post_rtv(std::size_t index) const;

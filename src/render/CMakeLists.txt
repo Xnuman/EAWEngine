@@ -120,3 +120,4 @@ eaw_compile_shader(eaw_render_d3d12 dxc shaders/post.hlsl fullscreen_vs vs_6_0 g
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/post.hlsl bloom_extract_ps ps_6_0 g_eaw_post_extract_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/post.hlsl bloom_blur_ps ps_6_0 g_eaw_post_blur_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/post.hlsl bloom_composite_ps ps_6_0 g_eaw_post_composite_ps)
+eaw_compile_shader(eaw_render_d3d12 dxc shaders/post.hlsl edge_aa_ps ps_6_0 g_eaw_post_edge_aa_ps)

@@ -33,6 +33,7 @@ void test_sandbox_options()
             "--spawn must read its type, count, and owner");
     require(expect_ok(parse({"--help"}), "parsing --help").show_help && expect_ok(parse({"doctor"}), "parsing doctor").mode == eaw::RunMode::doctor && !expect_ok(parse({}), "parsing nothing").overlay,
             "the help flag, doctor mode, and the hidden statistics panel must be the defaults they claim");
+    require(expect_ok(parse({}), "parsing nothing").anti_aliasing && !expect_ok(parse({"--no-aa"}), "parsing --no-aa").anti_aliasing, "edge anti-aliasing must be on unless --no-aa");
     require(!parse({"--spawn", "Tank:1@64"}) && !parse({"--spawn", "Tank:1001"}) && !parse({"--spawn", ":3"}) && !parse({"--vsync", "maybe"}) && !parse({"--width", "0"}) && !parse({"--bogus"}) &&
                 !parse({"--map"}) && !parse({"--frame-latency", "3"}),
             "invalid sandbox options must be rejected");

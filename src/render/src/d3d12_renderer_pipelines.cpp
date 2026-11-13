@@ -16,6 +16,7 @@
 #include "g_eaw_particle_vs.h"
 #include "g_eaw_post_blur_ps.h"
 #include "g_eaw_post_composite_ps.h"
+#include "g_eaw_post_edge_aa_ps.h"
 #include "g_eaw_post_extract_ps.h"
 #include "g_eaw_post_vs.h"
 #include "g_eaw_sandbox_ps.h"
@@ -375,6 +376,8 @@ void D3d12Renderer::Impl::create_pipeline()
         post.RTVFormats[0] = back_buffer_format;
         post.PS = {g_eaw_post_composite_ps, sizeof(g_eaw_post_composite_ps)};
         create_pipeline_state(L"bloom composite", post, bloom_composite_pipeline);
+        post.PS = {g_eaw_post_edge_aa_ps, sizeof(g_eaw_post_edge_aa_ps)};
+        create_pipeline_state(L"edge anti-aliasing", post, edge_aa_pipeline);
     }
 
     D3D12_DESCRIPTOR_HEAP_DESC shader_heap_description{};

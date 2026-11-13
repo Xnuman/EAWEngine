@@ -11,11 +11,13 @@
     EAWEngine compare-images. Captures of the stock game derive from protected data: keep both
     folders outside the repository. -Hardware renders on the GPU instead of WARP: faster and
     deterministic for one driver, so its references are per machine and never compared with WARP
-    ones.
+    ones. -ExtraArguments are passed to every scene (renderer options such as --no-aa), so a change
+    can be checked with an option against references made without it.
 
 .EXAMPLE
     .\scripts\check-captures.ps1 -Output D:\eaw-captures\before
     .\scripts\check-captures.ps1 -Output D:\eaw-captures\after -Reference D:\eaw-captures\before
+    .\scripts\check-captures.ps1 -Output D:\eaw-captures\no-aa -Reference D:\eaw-captures\before -ExtraArguments '--no-aa'
 #>
 param(
     [Parameter(Mandatory)]
@@ -24,7 +26,8 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Release',
     [string] $GameRoot,
-    [switch] $Hardware
+    [switch] $Hardware,
+    [string[]] $ExtraArguments = @()
 )
 
 Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot) -ErrorAction Stop
@@ -39,6 +42,7 @@ New-Item -ItemType Directory -Force -Path $Output -ErrorAction Stop | Out-Null
 $common = @('sandbox', '--game', 'foc', '--vsync', 'off', '--width', '960', '--height', '540')
 if (-not $Hardware) { $common += '--warp' }
 if ($GameRoot) { $common += @('--game-root', $GameRoot) }
+$common += $ExtraArguments
 $kuat = @('--map', 'DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED', '--spawn', 'Rebel_X-Wing_Squadron:2@1', '--spawn', 'TIE_Fighter_Squadron:2@2', '--auto-move')
 $scenes = [ordered]@{
     'kuat_90'        = $kuat + @('--capture-frame', '90')

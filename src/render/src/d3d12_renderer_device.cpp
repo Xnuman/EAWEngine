@@ -262,7 +262,7 @@ void D3d12Renderer::Impl::create_post_targets()
     {
         D3D12_DESCRIPTOR_HEAP_DESC heap{};
         heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        heap.NumDescriptors = 3;
+        heap.NumDescriptors = static_cast<UINT>(post_slots.size());
         check_device_hresult(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&post_rtv_heap)), device, "CreateDescriptorHeap(post RTV)");
         set_name(post_rtv_heap.Get(), L"EAWEngine post-processing RTV heap");
         // Startup: the texture table is nearly empty, and these slots are never released.
@@ -312,6 +312,7 @@ void D3d12Renderer::Impl::create_post_targets()
     make_target(scene_color, width, height, back_buffer_format, 0, L"EAWEngine scene color");
     make_target(bloom_targets[0], bloom_width, bloom_height, bloom_format, 1, L"EAWEngine bloom A");
     make_target(bloom_targets[1], bloom_width, bloom_height, bloom_format, 2, L"EAWEngine bloom B");
+    make_target(post_color, width, height, back_buffer_format, 3, L"EAWEngine post color");
 }
 
 void D3d12Renderer::Impl::create_constant_buffers()

@@ -610,9 +610,13 @@ bool D3d12Renderer::Impl::render()
     auto render_target = rtv_heap->GetCPUDescriptorHandleForHeapStart();
     render_target.ptr += static_cast<SIZE_T>(frame_index) * rtv_increment;
     const auto depth_target = dsv_heap->GetCPUDescriptorHandleForHeapStart();
-    // With bloom the scene renders into its own target, and the composite fills the back buffer.
+    // With bloom or anti-aliasing the scene renders into its own target; the composite goes to
+    // post_color when anti-aliasing follows, else to the back buffer, and anti-aliasing fills the
+    // back buffer from the composite (or from the scene without bloom).
     const bool bloom = options.bloom;
-    const auto scene_target = bloom ? post_rtv(0) : render_target;
+    const bool anti_aliasing = options.anti_aliasing;
+    const auto scene_target = bloom || anti_aliasing ? post_rtv(0) : render_target;
+    const auto composite_target = anti_aliasing ? post_rtv(3) : render_target;
 
     // The frame's passes and how each uses its resources (render/frame_graph.hpp); the graph places
     // the barriers. The depth buffer stays in DEPTH_WRITE throughout and is not tracked.
@@ -625,7 +629,8 @@ bool D3d12Renderer::Impl::render()
     };
     const auto back_buffer = import_resource(frame.back_buffer.Get(), "back buffer", GraphAccess::present, GraphAccess::present);
     const auto pick = import_resource(pick_target.Get(), "pick target", GraphAccess::render_target, GraphAccess::render_target);
-    const auto scene = bloom ? import_resource(scene_color.Get(), "scene color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
+    const auto scene = bloom || anti_aliasing ? import_resource(scene_color.Get(), "scene color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
+    const auto composite = bloom && anti_aliasing ? import_resource(post_color.Get(), "post color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
 
     frame_graph.add_pass(
         "scene", {{scene, GraphAccess::render_target}, {pick, GraphAccess::render_target}},
@@ -790,12 +795,31 @@ bool D3d12Renderer::Impl::render()
                                      pass(bloom_blur_pipeline.Get(), post_rtv(1), post_slots[2], 1U);
                                  });
         }
-        frame_graph.add_pass("bloom composite", {{scene, GraphAccess::shader_read}, {bloom_a, GraphAccess::shader_read}, {back_buffer, GraphAccess::render_target}},
+        frame_graph.add_pass("bloom composite", {{scene, GraphAccess::shader_read}, {bloom_a, GraphAccess::shader_read}, {composite, GraphAccess::render_target}},
                              [&, pass]
                              {
                                  command_list->RSSetViewports(1, &viewport);
                                  command_list->RSSetScissorRects(1, &scissor);
-                                 pass(bloom_composite_pipeline.Get(), render_target, post_slots[0], post_slots[1]);
+                                 pass(bloom_composite_pipeline.Get(), composite_target, post_slots[0], post_slots[1]);
+                             });
+    }
+
+    if (anti_aliasing)
+    {
+        const auto source = bloom ? composite : scene;
+        const auto source_slot = bloom ? post_slots[3] : post_slots[0];
+        frame_graph.add_pass("edge anti-aliasing", {{source, GraphAccess::shader_read}, {back_buffer, GraphAccess::render_target}},
+                             [&, source_slot]
+                             {
+                                 command_list->OMSetRenderTargets(1, &render_target, FALSE, nullptr);
+                                 command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                                 command_list->RSSetViewports(1, &viewport);
+                                 command_list->RSSetScissorRects(1, &scissor);
+                                 command_list->SetPipelineState(edge_aa_pipeline.Get());
+                                 const std::array<std::uint32_t, 2> post_constants{source_slot, 0U};
+                                 command_list->SetGraphicsRoot32BitConstants(5, 2, post_constants.data(), 0);
+                                 command_list->DrawInstanced(3, 1, 0, 0);
+                                 ++draw_calls;
                              });
     }
 

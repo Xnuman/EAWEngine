@@ -35,6 +35,9 @@ struct D3d12RendererOptions
     bool bloom{true};
     float bloom_threshold{0.6F};
     float bloom_strength{0.8F};
+    // Edge anti-aliasing: a post pass in the manner of FXAA over the finished frame (an engine
+    // choice; the original draws without anti-aliasing as far as is known).
+    bool anti_aliasing{true};
     // Detail levels of meshes that have them (eaw/visual_lod.hpp); set_lod_settings changes them.
     VisualLodSettings lod;
     // Where the overlay's panels keep their positions and sizes between runs (a Dear ImGui settings
