@@ -1050,7 +1050,7 @@ particle-audit`.
   `Particle` objects. Objects that cannot play (no model, a mesh instead of a
   particle system, a projectile without a detonation particle, an undefined
   name) are kept, play nothing, and are reported once per build.
-- **Not drawn yet:** heat distortion (170 emitters) and weather (5), which
+- **Not drawn yet:** weather (5 emitters); heat distortion (170) is drawn since 2026-11-13, which
   need passes of their own; wind is ignored; freeze time is kept but unused.
 - **Proxies.** Model proxies name their effect without directory or
   extension (`pe_Z95engines` is `Data/Art/Models/pe_Z95engines.alo`). The

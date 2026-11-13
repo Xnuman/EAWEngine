@@ -140,7 +140,7 @@ struct ParticleEmitterDesc
     bool kite_tail_by_speed{};
     VisualParticleBlend blend{VisualParticleBlend::additive};
     bool depth_test{true};
-    // False for emitters the renderer has no pass for (heat distortion, weather): they never emit.
+    // False for emitters the renderer has no pass for (weather): they never emit.
     bool drawn{true};
 
     // Child emitters (indices into the effect; -1 none): one burst at each particle's death, and a

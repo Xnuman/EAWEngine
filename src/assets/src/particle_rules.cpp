@@ -128,10 +128,10 @@ ParticleEmitterDesc normalize_particle_emitter(const AloParticleEmitter& emitter
     desc.shape = emitter.has_tail ? VisualParticleShape::kite : (emitter.world_oriented ? VisualParticleShape::ground : VisualParticleShape::billboard);
     desc.kite_tail = emitter.tail_size;
     desc.kite_tail_by_speed = emitter.parent_link_strength != 0.0F;
-    desc.blend = blend_intent(emitter.blend_mode, rules.additive_uses_alpha);
+    desc.blend = emitter.heat ? VisualParticleBlend::heat : blend_intent(emitter.blend_mode, rules.additive_uses_alpha);
     desc.depth_test = !emitter.no_depth_test;
-    // No heat-distortion or weather pass exists yet.
-    desc.drawn = !emitter.heat && !emitter.weather && emitter.blend_mode != 10;
+    // No weather pass exists yet; heat particles draw into the distortion buffer.
+    desc.drawn = !emitter.weather && emitter.blend_mode != 10;
     desc.death_child = emitter.death_child;
     desc.life_child = emitter.life_child;
     return desc;

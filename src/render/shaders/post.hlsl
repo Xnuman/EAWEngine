@@ -91,6 +91,24 @@ float4 bloom_composite_ps(PostInput input) : SV_TARGET
     return float4(scene + bloom * post_parameters.y, 1.0f);
 }
 
+// Heat distortion: the scene copy (texture instance_base) sampled shifted by the heat buffer
+// (texture material_index; 0.5 shifts nothing), a bump color of 1 or 0 moving the sample by
+// HEAT_SHIFT of the screen's height. How far the original shifted is not known: an engine choice.
+static const float HEAT_SHIFT = 0.015f;
+
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+float4 heat_ps(PostInput input) : SV_TARGET
+{
+    Texture2D scene_copy = scene_textures[instance_base];
+    uint width = 1u;
+    uint height = 1u;
+    scene_copy.GetDimensions(width, height);
+    // 128/255 (the 8-bit buffer's 0.5) is exactly no shift.
+    const float2 bend = (scene_textures[material_index].Load(int3(input.position.xy, 0)).rg - 128.0f / 255.0f) * 2.0f;
+    const float2 shift = bend * HEAT_SHIFT * float2((float)height / (float)width, 1.0f);
+    return float4(scene_copy.Sample(clamp_sampler, input.uv + shift).rgb, 1.0f);
+}
+
 // The occlusion silhouettes' mask (texture instance_base) over the scene: its color at its alpha.
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 float4 silhouette_composite_ps(PostInput input) : SV_TARGET

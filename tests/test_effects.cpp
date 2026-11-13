@@ -477,15 +477,22 @@ void test_particle_world()
     std::ranges::sort(glow_x);
     require(glow_x == std::vector<float>{-50.0F, 0.0F, 50.0F}, "every-vertex mesh emission failed");
 
-    // Heat particles have no pass yet: they are skipped, not drawn.
+    // Heat particles draw into the heat-distortion buffer: emitted with the heat blend.
     auto heat = make_test_emitter();
     heat.heat = true;
     eaw::ParticleWorld hot;
     hot.play(make_test_effect({heat}), eaw::Matrix4::identity(), 1);
     hot.update(0.1F);
-    std::vector<eaw::VisualParticle> none;
-    hot.build_sprites({}, none);
-    require(none.empty() && hot.stats().skipped_emitters == 1, "heat particles were drawn");
+    std::vector<eaw::VisualParticle> shimmer;
+    hot.build_sprites({}, shimmer);
+    require(!shimmer.empty() &&
+                std::ranges::all_of(shimmer,
+                                    [](const eaw::VisualParticle& particle)
+                                    {
+                                        return particle.blend == eaw::VisualParticleBlend::heat;
+                                    }) &&
+                hot.stats().skipped_emitters == 0,
+            "heat particles must be emitted with the heat blend");
 }
 
 // XML Particle objects resolve to their effect and Scale_Factor; Death_Explosions entries that name

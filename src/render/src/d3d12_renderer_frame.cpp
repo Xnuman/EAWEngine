@@ -1301,14 +1301,20 @@ bool D3d12Renderer::Impl::render()
                              {
                                  command_list->SetGraphicsRootShaderResourceView(3, frame.particle_buffer->GetGPUVirtualAddress());
                                  std::size_t run_start = 0;
-                                 const auto pipeline_of = [&](const VisualParticle& particle)
+                                 // Heat particles draw in the heat pass, not here.
+                                 const auto pipeline_of = [&](const VisualParticle& particle) -> ID3D12PipelineState*
                                  {
-                                     return particle_pipelines[static_cast<std::size_t>(particle.blend)][particle.depth_test ? 0U : 1U].Get();
+                                     return particle.blend == VisualParticleBlend::heat ? nullptr : particle_pipelines[static_cast<std::size_t>(particle.blend)][particle.depth_test ? 0U : 1U].Get();
                                  };
                                  for (std::size_t index = 1; index <= particles.size(); ++index)
                                  {
                                      if (index < particles.size() && pipeline_of(particles[index]) == pipeline_of(particles[run_start]))
                                      {
+                                         continue;
+                                     }
+                                     if (pipeline_of(particles[run_start]) == nullptr)
+                                     {
+                                         run_start = index;
                                          continue;
                                      }
                                      command_list->SetPipelineState(pipeline_of(particles[run_start]));
@@ -1322,6 +1328,65 @@ bool D3d12Renderer::Impl::render()
                              }
                              last_particles = gpu_particles.size();
                          });
+
+    // Heat distortion: heat particles blend their bump colors into the heat buffer, the scene is
+    // copied, and a fullscreen pass redraws it shifted by the buffer (only when the scene renders
+    // into its own target).
+    const bool has_heat = scene != back_buffer && std::ranges::any_of(particles,
+                                                                      [](const VisualParticle& particle)
+                                                                      {
+                                                                          return particle.blend == VisualParticleBlend::heat;
+                                                                      });
+    if (has_heat)
+    {
+        const auto heat = import_resource(heat_buffer.Get(), "heat distortion", GraphAccess::render_target, GraphAccess::render_target);
+        const auto heat_copy = import_resource(refraction_color.Get(), "refraction copy (heat)", GraphAccess::render_target, GraphAccess::render_target);
+        frame_graph.add_pass("heat", {{heat, GraphAccess::render_target}, {depth, GraphAccess::depth_read}},
+                             [&]
+                             {
+                                 bind_scene(read_only_depth);
+                                 const auto target = post_rtv(10);
+                                 constexpr std::array neutral{0.5F, 0.5F, 0.5F, 0.0F};
+                                 command_list->OMSetRenderTargets(1, &target, FALSE, &read_only_depth);
+                                 command_list->ClearRenderTargetView(target, neutral.data(), 0, nullptr);
+                                 command_list->SetGraphicsRootShaderResourceView(3, frame.particle_buffer->GetGPUVirtualAddress());
+                                 command_list->SetPipelineState(heat_particle_pipeline.Get());
+                                 std::size_t run_start = 0;
+                                 for (std::size_t index = 0; index <= particles.size(); ++index)
+                                 {
+                                     const bool heat_here = index < particles.size() && particles[index].blend == VisualParticleBlend::heat;
+                                     if (heat_here)
+                                     {
+                                         continue;
+                                     }
+                                     if (index > run_start)
+                                     {
+                                         const std::array<std::uint32_t, 2> particle_constants{static_cast<std::uint32_t>(run_start), 0U};
+                                         command_list->SetGraphicsRoot32BitConstants(5, 2, particle_constants.data(), 0);
+                                         command_list->DrawInstanced(6, static_cast<UINT>(index - run_start), 0, 0);
+                                         ++draw_calls;
+                                     }
+                                     run_start = index + 1;
+                                 }
+                             });
+        frame_graph.add_pass("heat copy", {{scene, GraphAccess::copy_source}, {heat_copy, GraphAccess::copy_dest}},
+                             [&]
+                             {
+                                 command_list->CopyResource(refraction_color.Get(), scene_color.Get());
+                             });
+        frame_graph.add_pass("heat apply", {{scene, GraphAccess::render_target}, {heat_copy, GraphAccess::shader_read}, {heat, GraphAccess::shader_read}},
+                             [&]
+                             {
+                                 command_list->OMSetRenderTargets(1, &scene_target, FALSE, nullptr);
+                                 command_list->RSSetViewports(1, &viewport);
+                                 command_list->RSSetScissorRects(1, &scissor);
+                                 command_list->SetPipelineState(heat_apply_pipeline.Get());
+                                 const std::array<std::uint32_t, 2> heat_constants{post_slots[7], post_slots[10]};
+                                 command_list->SetGraphicsRoot32BitConstants(5, 2, heat_constants.data(), 0);
+                                 command_list->DrawInstanced(3, 1, 0, 0);
+                                 ++draw_calls;
+                             });
+    }
 
     if (bloom)
     {

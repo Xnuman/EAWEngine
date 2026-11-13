@@ -11,6 +11,7 @@
 // points embed the root signature, which the renderer creates from the vertex shader blob.
 #include "g_eaw_debug_ps.h"
 #include "g_eaw_debug_vs.h"
+#include "g_eaw_particle_heat_ps.h"
 #include "g_eaw_particle_modulate_ps.h"
 #include "g_eaw_particle_ps.h"
 #include "g_eaw_particle_vs.h"
@@ -18,6 +19,7 @@
 #include "g_eaw_post_composite_ps.h"
 #include "g_eaw_post_edge_aa_ps.h"
 #include "g_eaw_post_extract_ps.h"
+#include "g_eaw_post_heat_ps.h"
 #include "g_eaw_post_taa_ps.h"
 #include "g_eaw_post_vs.h"
 #include "g_eaw_sandbox_ps.h"
@@ -446,6 +448,24 @@ void D3d12Renderer::Impl::create_pipeline()
         description.DepthStencilState.DepthEnable = FALSE;
         create_pipeline_state((std::wstring(name) + L" (no depth test)").c_str(), description, particle_pipelines[blend_index][1]);
     }
+    // Heat particles: their bump texture blended by alpha into the heat buffer, depth tested against
+    // the scene (read-only), as the legacy heat shaders blend into their distortion texture.
+    {
+        auto heat = description;
+        heat.PS = {g_eaw_particle_heat_ps, sizeof(g_eaw_particle_heat_ps)};
+        heat.NumRenderTargets = 1;
+        heat.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
+        heat.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
+        heat.DepthStencilState.DepthEnable = TRUE;
+        heat.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+        auto& target = heat.BlendState.RenderTarget[0];
+        target.BlendEnable = TRUE;
+        target.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+        target.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+        target.SrcBlendAlpha = D3D12_BLEND_ONE;
+        target.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+        create_pipeline_state(L"heat particles", heat, heat_particle_pipeline);
+    }
 
     // Post-processing: fullscreen triangles into one target, no depth, no blending.
     {
@@ -489,6 +509,8 @@ void D3d12Renderer::Impl::create_pipeline()
             composite.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
             create_pipeline_state(L"silhouette composite", composite, silhouette_composite_pipeline);
         }
+        post.PS = {g_eaw_post_heat_ps, sizeof(g_eaw_post_heat_ps)};
+        create_pipeline_state(L"heat distortion", post, heat_apply_pipeline);
         // The resolve writes the frame and the next history at once.
         post.NumRenderTargets = 2;
         post.RTVFormats[1] = back_buffer_format;

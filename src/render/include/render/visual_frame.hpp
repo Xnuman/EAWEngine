@@ -193,6 +193,9 @@ enum class VisualParticleBlend : std::uint8_t
     modulate,
     // Colour x texture x alpha added to the scene (enhanced additive).
     additive_alpha,
+    // Heat distortion: the texture (a bump map) blended by alpha into the distortion buffer, which
+    // shifts what lies behind it (the legacy heat shaders and heat particles).
+    heat,
 };
 
 // One particle sprite in world space, expanded to a quad on the GPU. Particles are drawn after the

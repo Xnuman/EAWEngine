@@ -332,6 +332,7 @@ void D3d12Renderer::Impl::create_post_targets()
     make_target(refraction_color, width, height, back_buffer_format, 7, L"EAWEngine refraction copy");
     make_target(sky_atlas, sky_face_size * 3U, sky_face_size * 2U, back_buffer_format, 8, L"EAWEngine sky atlas", {0.0F, 0.0F, 0.0F, 1.0F});
     make_target(silhouette_mask, width, height, back_buffer_format, 9, L"EAWEngine silhouette mask", {0.0F, 0.0F, 0.0F, 0.0F});
+    make_target(heat_buffer, width, height, back_buffer_format, 10, L"EAWEngine heat distortion", {0.5F, 0.5F, 0.5F, 0.0F});
     if (!sky_light)
     {
         auto description = buffer_description(9U * sizeof(std::array<float, 4>));

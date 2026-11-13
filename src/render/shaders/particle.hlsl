@@ -191,3 +191,12 @@ ParticlePixelOutput particle_modulate_ps(ParticlePixelInput input)
     output.pick = uint2(0u, 0u);
     return output;
 }
+
+// Heat particles: their texture's bump colors at the particle's opacity, blended into the heat
+// buffer (no texture: neutral, shifting nothing).
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+float4 particle_heat_ps(ParticlePixelInput input) : SV_TARGET
+{
+    const float4 texel = input.texture == NO_TEXTURE ? float4(0.5f, 0.5f, 1.0f, 0.0f) : sample_texture(input.texture, input.uv);
+    return float4(texel.rgb, texel.a * input.color.a);
+}
