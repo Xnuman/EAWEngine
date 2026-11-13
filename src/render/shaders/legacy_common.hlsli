@@ -50,6 +50,7 @@ static const uint LIGHTING_NEBULA = 6u;
 static const uint MATERIAL_CLOUDS = 1u << 5;
 static const uint MATERIAL_GRASS = 1u << 6;
 static const uint MATERIAL_CLOUD_SHADOW = 1u << 7;
+static const uint MATERIAL_WATER = 1u << 10; // bits 8-9 hold the gloss source
 static const uint INSTANCE_BACKGROUND = 1u;
 static const uint INSTANCE_HIGHLIGHTED = 2u;
 static const uint INSTANCE_NO_SHADOWS = 4u;

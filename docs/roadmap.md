@@ -140,7 +140,8 @@ rendering rows join item 2).
    rework. In this order:
    a. Visual fixes: the line across planets (done 2026-11-13: bone billboards), skydomes too bright (done 2026-11-13: bloom
       ignores the sky and fog, the sky ambient is balanced upward) for the lighting they feed
-      (the sky capture, sky ambient, horizon fog), water that tiles visibly.
+      (the sky capture, sky ambient, horizon fog), water that tiles visibly (done 2026-11-13: a broad
+      anti-tiling layer in both modes; the TED repeat fields remain to be read).
    b. Bugs that need no rework: walker animation state changes (start from rest, turn, and stop
       play wrongly and slowly); the T4-B's two weapons (missile launcher and laser cannons, with
       different ranges): their gun animations play out of range and loop instead of following the

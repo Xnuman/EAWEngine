@@ -1,4 +1,4 @@
-// EAWEngine D3D12 legacy-mode surface shaders: instanced, skinned geometry with engine-native
+﻿// EAWEngine D3D12 legacy-mode surface shaders: instanced, skinned geometry with engine-native
 // materials (see VisualMaterial). The lighting approximates how Alamo materials were meant to
 // look -- ambient plus two fill lights and a directional key light, a 2x diffuse convention, and a
 // fixed exponent-16 highlight -- as documented in docs/legacy-shader-mapping.md. This file is
@@ -365,11 +365,37 @@ float3 shade_shield(const PixelInput input, const MaterialData material, const f
     return energy * wave * tint * material.diffuse.rgb;
 }
 
+// Water in both modes: a broad layer of its bump map and base color at an unrelated angle and scale,
+// so no grid lines up across a wide surface (engine choices; the repeat itself is one too).
+static const float WATER_BROAD_SCALE = 0.19f; // its repeats per repeat of the surface's own layer
+static const float WATER_BROAD_DRIFT = 0.45f; // its scroll relative to that layer's
+static const float WATER_BROAD_SHARE = 0.45f;  // its share of the bend
+static const float WATER_BROAD_COLOR = 0.5f;  // its share of the base color
+
+float2 water_broad_uv(const MaterialData material, const float2 tiled)
+{
+    return mul(float2x2(0.28f, 0.96f, -0.96f, 0.28f), tiled * WATER_BROAD_SCALE) + material.uv_scroll * WATER_BROAD_DRIFT * camera_position_time.w;
+}
+
+// The bend of `layers` (tangent space) with the broad layer's added.
+float3 water_broad_bend(const MaterialData material, const float2 broad_uv, const float3 layers)
+{
+    const float3 broad = sample_texture(material.normal_texture, broad_uv).xyz * 2.0f - 1.0f;
+    return safe_normalize(float3(layers.xy + broad.xy * WATER_BROAD_SHARE, layers.z * broad.z), float3(0.0f, 0.0f, 1.0f));
+}
+
+float4 water_broad_base(const MaterialData material, const float2 uv, const float2 broad_uv)
+{
+    return lerp(sample_texture(material.base_texture, uv), sample_texture(material.base_texture, broad_uv), WATER_BROAD_COLOR);
+}
+
 float4 shade(PixelInput input)
 {
     const MaterialData material = materials[material_index];
     const float2 uv = input.uv * material.specular.w + material.uv_scroll * camera_position_time.w;
-    const float4 base = sample_texture(material.base_texture, uv);
+    const bool water = (material.flags & MATERIAL_WATER) != 0u;
+    const float2 broad_uv = water_broad_uv(material, input.uv * material.specular.w);
+    const float4 base = water ? water_broad_base(material, uv, broad_uv) : sample_texture(material.base_texture, uv);
     const float4 tint = material.tint * input.tint * input.vertex_color;
     if ((material.flags & MATERIAL_ALPHA_TEST) != 0u)
     {
@@ -432,7 +458,8 @@ float4 shade(PixelInput input)
     if (material.lighting == LIGHTING_NORMAL_MAPPED)
     {
         normal_sample = sample_texture(material.normal_texture, uv);
-        const float3 tangent_normal = normal_sample.xyz * 2.0f - 1.0f;
+        const float3 sampled = normal_sample.xyz * 2.0f - 1.0f;
+        const float3 tangent_normal = water ? water_broad_bend(material, broad_uv, sampled) : sampled;
         const float3 tangent = safe_normalize(input.tangent, float3(1.0f, 0.0f, 0.0f));
         const float3 binormal = safe_normalize(input.binormal, float3(0.0f, 1.0f, 0.0f));
         normal = safe_normalize(tangent_normal.x * tangent + tangent_normal.y * binormal + tangent_normal.z * normal, normal);
@@ -538,7 +565,8 @@ PixelOutput water_ps(PixelInput input)
     const float2 detail_uv = mul(float2x2(0.8f, -0.6f, 0.6f, 0.8f), tiled * WATER_DETAIL_SCALE) + float2(-material.uv_scroll.y, material.uv_scroll.x) * WATER_DETAIL_DRIFT * time;
     const float3 first = sample_texture(material.normal_texture, uv).xyz * 2.0f - 1.0f;
     const float3 second = sample_texture(material.normal_texture, detail_uv).xyz * 2.0f - 1.0f;
-    const float3 bent = safe_normalize(float3(first.xy + second.xy, first.z * second.z), float3(0.0f, 0.0f, 1.0f));
+    const float2 broad_uv = water_broad_uv(material, tiled);
+    const float3 bent = water_broad_bend(material, broad_uv, float3(first.xy + second.xy, first.z * second.z));
     const float3 surface_normal = safe_normalize(input.normal, float3(0.0f, 0.0f, 1.0f));
     const float3 tangent = safe_normalize(input.tangent, float3(1.0f, 0.0f, 0.0f));
     const float3 binormal = safe_normalize(input.binormal, float3(0.0f, 1.0f, 0.0f));
@@ -559,7 +587,7 @@ PixelOutput water_ps(PixelInput input)
 
     const float3 view = safe_normalize(camera_position_time.xyz - input.world_position, float3(0.0f, 0.0f, 1.0f));
     const float fresnel = WATER_BASE_REFLECTANCE + (1.0f - WATER_BASE_REFLECTANCE) * pow(1.0f - saturate(dot(normal, view)), 5.0f);
-    const float4 base = sample_texture(material.base_texture, uv);
+    const float4 base = water_broad_base(material, uv, broad_uv);
     const float3 tint = (material.tint * input.tint * input.vertex_color).rgb;
     const float3 body = legacy_lit_color(base.rgb, normal, input.world_position, 0.0f, material.diffuse.rgb, float3(0.0f, 0.0f, 0.0f), material.emissive.rgb, tint, input.position.xy, true);
     // The sky the surface reflects, from the map's lights (an engine choice until there is a sky
