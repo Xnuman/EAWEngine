@@ -91,8 +91,9 @@ rendering rows join item 2).
    done 2026-11-11: renderer-side selection by distance, screen size, or both, with cross-fades;
    damage states done 2026-11-13: chosen from health, with their effects, sounds, and rubble;
    hardpoint damage visuals belong to combat presentation, Simulation 1), depth-sorted transparency (done 2026-11-13), HDR with tone mapping and anti-aliasing (edge
-   anti-aliasing done 2026-11-13; TAA once motion vectors exist; HDR as an option, the legacy look
-   staying the default),
+   anti-aliasing done 2026-11-13; TAA next; HDR postponed by the owner (2026-11-13) to the later
+   visual enhancement: it needs linear lighting, since the shading works in display space like the
+   original's, so it starts the enhanced lighting profile with the physically based path),
    shadows, fog, decals (map and runtime), special materials (shields, planets, nebula, heat
    distortion, wind bend, occluded units, reflections), weather and soft particles, look tuning.
    This closes M2.
