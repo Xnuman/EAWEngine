@@ -263,6 +263,11 @@ PixelOutput ps_main(PixelInput input)
     // Blended pipelines mask the pick target, so only opaque and alpha-tested surfaces are pickable.
     PixelOutput output;
     output.color = shade(input);
+    // Distance fog, except on additive surfaces and backgrounds (as in the legacy shaders).
+    if ((materials[material_index].flags & MATERIAL_ADDITIVE) == 0u && (input.instance_flags & INSTANCE_BACKGROUND) == 0u)
+    {
+        output.color.rgb = apply_fog(output.color.rgb, input.world_position);
+    }
     output.color.rgb = apply_selection_highlight(output.color.rgb, input.pick_id, input.instance_flags);
     output.pick = uint2(input.pick_id, asuint(input.position.z));
     output.motion = (input.current_clip.xy / input.current_clip.w - input.previous_clip.xy / input.previous_clip.w) * float2(0.5f, -0.5f);

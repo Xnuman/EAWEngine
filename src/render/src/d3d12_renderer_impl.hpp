@@ -104,6 +104,8 @@ struct D3d12Renderer::Impl
         std::array<float, 4> camera_forward{};
         std::array<std::uint32_t, 4> shadow_slots{};
         std::array<float, 4> shadow_parameters{};
+        std::array<float, 4> fog_color{};
+        std::array<float, 4> fog_range{};
     };
     static_assert(sizeof(FrameConstants) <= frame_constant_bytes);
 

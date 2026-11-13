@@ -262,8 +262,15 @@ horizon, while fills are tinted and usually below it. This matches the legacy
 shaders' engine-supplied key light plus a fill term derived from lights. The
 engine treats each light's direction as pointing from the surface toward the
 light and scales colors by intensity; the axis convention, and scaling the
-specular color by the key intensity, are inferences. The remaining fields
-(apparently fog color and range, wind, and cloud settings) are preserved raw.
+specular color by the key intensity, are inferences. Fog (2026-11-13, `map-audit`'s
+environment field survey): 0x0f is an RGB color, 0x10 a one-byte switch, 0x11 and
+0x12 start and end distances. Of the 135 land environments the stock maps use, 123
+switch it on with authored colors and ranges (Utapau tan from 1500 to 5000, Fondor
+0 to 3500, the Sith tombs dark grey from 0 to 1255); the 12 switched off all keep
+the editor's defaults (white, 1000 to 10000), and no space environment uses it.
+The legacy shaders make fog linear in view distance and skip it on additive,
+shield, heat, sky, and nebula surfaces. The remaining fields (apparently wind and
+cloud settings) are preserved raw.
 
 Faction definitions carry a 0..255 RGBA `Color`. A placed object's owner is a
 player slot chosen at runtime, so previews color team-color masks with the

@@ -47,6 +47,17 @@ struct VisualDirectionalLight
     ColorRgb color{};
 };
 
+// Distance fog of the map environment: surfaces blend toward `color` linearly with view distance,
+// from none at `start` to all at `end`. Additive surfaces and backgrounds are not fogged (as in the
+// legacy shaders).
+struct VisualFog
+{
+    bool enabled{};
+    ColorRgb color{};
+    float start{};
+    float end{};
+};
+
 // Global lighting for legacy-mode shading, matching the TED environment model: a key light that
 // also drives the highlight, two diffuse fill lights, and ambient. Maps supply their active
 // environment; the defaults are an engine choice for model inspection.
@@ -56,6 +67,8 @@ struct VisualLightRig
     ColorRgb key_specular{0.60F, 0.60F, 0.60F};
     std::array<VisualDirectionalLight, 2> fills{{{{-0.6F, 0.5F, 0.4F}, {0.14F, 0.15F, 0.18F}}, {{0.4F, 0.7F, -0.5F}, {0.08F, 0.08F, 0.10F}}}};
     ColorRgb ambient{0.10F, 0.10F, 0.11F};
+    // The environment's fog (none by default).
+    VisualFog fog;
 };
 
 enum class VisualParticleShape : std::uint8_t

@@ -49,7 +49,16 @@ struct TedEnvironment
     std::array<TedLight, 3> lights{};
     std::array<float, 3> specular{};
     std::array<float, 3> ambient{};
-    // Every mini-chunk in source order, including fields not interpreted yet (fog, wind, clouds).
+    // Distance fog: color (mini 0x0f), switch (0x10, one byte), start and end distances (0x11,
+    // 0x12). `has_fog` is false when any is absent or malformed. On in 123 of the 135 land
+    // environments the stock maps use, never in space; switched-off ones keep the editor's defaults
+    // (white, 1000 to 10000).
+    bool has_fog{};
+    bool fog_enabled{};
+    std::array<float, 3> fog_color{};
+    float fog_start{};
+    float fog_end{};
+    // Every mini-chunk in source order, including fields not interpreted yet (wind, clouds).
     std::vector<TedEnvironmentField> fields;
 };
 

@@ -81,6 +81,8 @@ struct SandboxOptions
     VisualAntiAliasing anti_aliasing{VisualAntiAliasing::fxaa};
     // Key-light shadows (--shadows on|off).
     bool shadows{true};
+    // The map's distance fog (--fog on|off).
+    bool fog{true};
     // Detail-level selection (--lod) and the mesh-detail setting (--mesh-detail, 0..1).
     VisualLodPolicy lod_policy{VisualLodPolicy::hybrid};
     float mesh_detail{1.0F};

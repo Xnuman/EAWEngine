@@ -747,6 +747,12 @@ bool D3d12Renderer::Impl::render()
         constants.shadow_parameters = {static_cast<float>(frame_cascades.count), shadow_normal_offset_texels, shadow_blend_band,
                                        shadow_resolution != 0 ? shadow_filter_texels / static_cast<float>(shadow_resolution) : 0.0F};
     }
+    // Distance fog: color with w 1 when on, and its start and end view distances.
+    if (options.fog && lighting.fog.enabled)
+    {
+        constants.fog_color = {lighting.fog.color.r, lighting.fog.color.g, lighting.fog.color.b, 1.0F};
+        constants.fog_range = {lighting.fog.start, lighting.fog.end, 0.0F, 0.0F};
+    }
     std::memcpy(frame.constant_buffer_mapped, &constants, sizeof(constants));
 
     check_device_hresult(frame.allocator->Reset(), frame.allocator, "ID3D12CommandAllocator::Reset");

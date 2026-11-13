@@ -3,6 +3,85 @@
 #include "asset_inspector/inspector.hpp"
 
 namespace eaw::asset_inspector {
+namespace {
+
+// What the active environments of land or space maps store under one mini-chunk type: how often,
+// in what sizes, and the range of each 4-byte word read as a float and as an integer (fields not
+// decoded yet, such as fog, wind, and clouds, are identified from these).
+struct EnvironmentFieldStats
+{
+    std::size_t count{};
+    std::set<std::size_t> sizes;
+    std::array<float, 4> float_minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+    std::array<float, 4> float_maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+    std::array<std::int64_t, 4> integer_minimum{std::numeric_limits<std::int64_t>::max(), std::numeric_limits<std::int64_t>::max(), std::numeric_limits<std::int64_t>::max(),
+                                                std::numeric_limits<std::int64_t>::max()};
+    std::array<std::int64_t, 4> integer_maximum{std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::min(),
+                                                std::numeric_limits<std::int64_t>::min()};
+    std::set<std::string> texts;
+};
+
+void add_environment_field(EnvironmentFieldStats& stats, const std::span<const std::byte> payload)
+{
+    ++stats.count;
+    stats.sizes.insert(payload.size());
+    // Payloads of whole 4-byte words (up to four): each word as a float and as a signed integer.
+    if (payload.size() % 4U == 0 && payload.size() <= 16U)
+    {
+        for (std::size_t word = 0; word * 4U < payload.size(); ++word)
+        {
+            std::int32_t integer = 0;
+            float value = 0.0F;
+            std::memcpy(&integer, payload.data() + word * 4U, 4U);
+            std::memcpy(&value, payload.data() + word * 4U, 4U);
+            stats.integer_minimum[word] = std::min<std::int64_t>(stats.integer_minimum[word], integer);
+            stats.integer_maximum[word] = std::max<std::int64_t>(stats.integer_maximum[word], integer);
+            if (std::isfinite(value))
+            {
+                stats.float_minimum[word] = std::min(stats.float_minimum[word], value);
+                stats.float_maximum[word] = std::max(stats.float_maximum[word], value);
+            }
+        }
+        return;
+    }
+    // Anything else: a few distinct values as text where printable.
+    if (stats.texts.size() < 4U)
+    {
+        std::string text;
+        for (const auto byte : payload)
+        {
+            const auto character = static_cast<char>(byte);
+            if (character == '\0')
+            {
+                break;
+            }
+            text += character >= 32 && character < 127 ? character : '?';
+        }
+        stats.texts.insert(text);
+    }
+}
+
+void print_environment_fields(const std::string_view label, const std::map<std::uint8_t, EnvironmentFieldStats>& fields)
+{
+    std::cout << "Active environment fields of " << label << " maps:\n";
+    for (const auto& [type, stats] : fields)
+    {
+        std::cout << "  0x" << std::hex << static_cast<unsigned>(type) << std::dec << ": " << stats.count << " x " << (stats.sizes.size() == 1 ? std::to_string(*stats.sizes.begin()) : "mixed")
+                  << " bytes";
+        for (std::size_t word = 0; word < 4U && stats.integer_minimum[word] <= stats.integer_maximum[word]; ++word)
+        {
+            std::cout << " | word " << word << ": float " << stats.float_minimum[word] << ".." << stats.float_maximum[word] << ", int " << stats.integer_minimum[word] << ".."
+                      << stats.integer_maximum[word];
+        }
+        for (const auto& text : stats.texts)
+        {
+            std::cout << " | \"" << text << '"';
+        }
+        std::cout << '\n';
+    }
+}
+
+} // namespace
 
 void audit_map_objects(const eaw::VirtualFileSystem& vfs, const std::string_view prefix, const std::size_t limit)
 {
@@ -219,6 +298,8 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
     std::set<std::string> hints;
     std::size_t active_environment_out_of_range = 0;
     std::map<std::uint32_t, std::size_t> active_environments;
+    std::map<std::uint8_t, EnvironmentFieldStats> land_fields;
+    std::map<std::uint8_t, EnvironmentFieldStats> space_fields;
     std::vector<std::pair<std::string, std::string>> failures;
     for (const auto& asset : assets)
     {
@@ -251,6 +332,14 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
         {
             ++active_environments[map.active_environment];
             active_environment_out_of_range += map.active_environment >= map.environments.size() ? 1U : 0U;
+            if (map.active_environment < map.environments.size() && map.type != eaw::TedMapType::unknown)
+            {
+                auto& fields = map.type == eaw::TedMapType::land ? land_fields : space_fields;
+                for (const auto& field : map.environments[map.active_environment].fields)
+                {
+                    add_environment_field(fields[field.type], field.payload);
+                }
+            }
         }
         terrain_layers += map.terrain_layers.size();
         objects += map.object_count;
@@ -284,7 +373,10 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
     {
         std::cout << ' ' << index << 'x' << count;
     }
-    std::cout << '\n' << "Warnings: " << warnings << '\n' << "Failures: " << failures.size() << '\n';
+    std::cout << '\n';
+    print_environment_fields("land", land_fields);
+    print_environment_fields("space", space_fields);
+    std::cout << "Warnings: " << warnings << '\n' << "Failures: " << failures.size() << '\n';
     for (std::size_t index = 0; index < std::min(limit, failures.size()); ++index)
     {
         std::cout << "  " << failures[index].first << ": " << failures[index].second << '\n';

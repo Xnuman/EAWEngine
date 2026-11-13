@@ -325,7 +325,7 @@ std::vector<std::byte> make_test_ted()
     append_string(value, "DAY_BLUE_SKY");
     append_mini(environment_data, 0x19, value);
     // Complete lighting block: key/fill/fill colors, specular, ambient, intensities, azimuths,
-    // elevations (mini types 0x00-0x0d), plus an uninterpreted fog-distance field.
+    // elevations (mini types 0x00-0x0d), plus fog (0x0f-0x12).
     const auto append_floats = [&](const std::uint8_t type, const std::vector<float>& floats)
     {
         std::vector<std::byte> payload;
@@ -349,7 +349,10 @@ std::vector<std::byte> make_test_ted()
     append_floats(0x0b, {0.4F});
     append_floats(0x0c, {-0.3F});
     append_floats(0x0d, {-0.2F});
-    append_floats(0x12, {10000.0F});
+    append_floats(0x0f, {0.6F, 0.5F, 0.4F});
+    append_mini(environment_data, 0x10, std::vector<std::byte>{std::byte{1}});
+    append_floats(0x11, {500.0F});
+    append_floats(0x12, {3500.0F});
     std::vector<std::byte> environment_list;
     append_chunk(environment_list, 6, environment_data);
     std::vector<std::byte> night_environment;

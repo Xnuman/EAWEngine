@@ -70,6 +70,8 @@ cbuffer FrameConstants : register(b0)
     float4 camera_forward; // xyz the view direction
     uint4 shadow_slots;
     float4 shadow_parameters; // x cascade count (0: no shadows), y normal offset in texels, z blend band share, w filter radius in UV
+    float4 fog_color; // rgb the map's fog color, w 1 when fog is on
+    float4 fog_range; // x start, y end (view distance)
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
@@ -127,6 +129,17 @@ float3 safe_normalize(const float3 value, const float3 fallback)
 {
     const float length_squared = dot(value, value);
     return length_squared > 1.0e-12f ? value * rsqrt(length_squared) : fallback;
+}
+
+// Distance fog: linear in view distance from start to end (the legacy shaders' model).
+float3 apply_fog(const float3 color, const float3 world)
+{
+    if (fog_color.w <= 0.0f)
+    {
+        return color;
+    }
+    const float distance = dot(world - camera_position_time.xyz, camera_forward.xyz);
+    return lerp(color, fog_color.rgb, saturate((distance - fog_range.x) / max(fog_range.y - fog_range.x, 1.0e-3f)));
 }
 
 // Shadow filtering: taps of a Poisson disk (unit radius), turned per pixel and frame by a noise

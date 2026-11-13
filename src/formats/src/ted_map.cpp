@@ -144,6 +144,8 @@ Status parse_environments(const std::span<const std::byte> bytes, const Chunk& c
                     target = read_float(bytes, mini.payload);
                     return true;
                 };
+                // Fog fields 0x0f-0x12, each well formed.
+                std::array<bool, 4> fog_seen{};
                 EAW_TRY_ASSIGN(const auto minis, read_minis(bytes, environment_chunk));
                 for (const auto& mini : minis)
                 {
@@ -182,6 +184,19 @@ Status parse_environments(const std::span<const std::byte> bytes, const Chunk& c
                     }
                     switch (mini.type)
                     {
+                    case 0x0f:
+                        fog_seen[0] = read_rgb(mini, environment.fog_color);
+                        break;
+                    case 0x10:
+                        fog_seen[1] = mini.end - mini.payload == 1;
+                        environment.fog_enabled = fog_seen[1] && bytes[mini.payload] != std::byte{0};
+                        break;
+                    case 0x11:
+                        fog_seen[2] = read_scalar(mini, environment.fog_start);
+                        break;
+                    case 0x12:
+                        fog_seen[3] = read_scalar(mini, environment.fog_end);
+                        break;
                     case 0x14:
                         environment.name = read_string(bytes, mini.payload, mini.end);
                         break;
@@ -201,6 +216,11 @@ Status parse_environments(const std::span<const std::byte> bytes, const Chunk& c
                         break;
                     }
                 }
+                environment.has_fog = std::ranges::all_of(fog_seen,
+                                                          [](const bool value)
+                                                          {
+                                                              return value;
+                                                          });
                 environment.has_lighting = std::ranges::all_of(seen,
                                                                [](const bool value)
                                                                {

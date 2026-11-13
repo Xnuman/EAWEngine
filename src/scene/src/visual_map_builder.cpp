@@ -202,6 +202,14 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         }
         const auto& environment = map.environments[environment_index];
         asset.environment_name = environment.name;
+        // Fog the environment switches on, with a usable range.
+        const bool fog_usable = environment.has_fog && environment.fog_enabled && std::isfinite(environment.fog_start) && std::isfinite(environment.fog_end) &&
+                                environment.fog_end > environment.fog_start &&
+                                std::ranges::all_of(environment.fog_color,
+                                                    [](const float channel)
+                                                    {
+                                                        return std::isfinite(channel);
+                                                    });
         if (environment.has_lighting)
         {
             const auto rig = environment_light_rig(environment);
@@ -213,6 +221,15 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             {
                 scene.warnings.push_back("environment '" + environment.name + "' has non-finite lighting; using the engine default");
             }
+        }
+        if (fog_usable)
+        {
+            // On the engine's default lights when the environment's are unusable.
+            if (!asset.lighting)
+            {
+                asset.lighting = VisualLightRig{};
+            }
+            asset.lighting->fog = {true, {environment.fog_color[0], environment.fog_color[1], environment.fog_color[2]}, environment.fog_start, environment.fog_end};
         }
         const auto context = battle.land ? GameModelContext::land : GameModelContext::space;
         for (const auto& name : {environment.skybox_primary, environment.skybox_secondary})

@@ -39,6 +39,7 @@ void test_sandbox_options()
             "anti-aliasing must be FXAA unless --aa or --no-aa says otherwise");
     require(expect_ok(parse({}), "parsing nothing").shadows && !expect_ok(parse({"--shadows", "off"}), "parsing --shadows off").shadows && !parse({"--shadows", "maybe"}),
             "shadows must be on unless --shadows off");
+    require(expect_ok(parse({}), "parsing nothing").fog && !expect_ok(parse({"--fog", "off"}), "parsing --fog off").fog && !parse({"--fog", "thick"}), "fog must be on unless --fog off");
     require(!parse({"--spawn", "Tank:1@64"}) && !parse({"--spawn", "Tank:1001"}) && !parse({"--spawn", ":3"}) && !parse({"--vsync", "maybe"}) && !parse({"--width", "0"}) && !parse({"--bogus"}) &&
                 !parse({"--map"}) && !parse({"--frame-latency", "3"}),
             "invalid sandbox options must be rejected");
