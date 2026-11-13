@@ -195,10 +195,11 @@ float4 edge_aa_ps(PostInput input) : SV_TARGET
 
 // Temporal anti-aliasing, written for this engine: every frame is rendered with a sub-pixel jitter,
 // and this pass blends it with the accumulated history. Each pixel finds where its surface was last
-// frame from the depth buffer and the previous camera (camera motion only: moving objects rely on
-// the clamp below), and the history is clipped to the colour range of the current 3x3 neighbourhood
-// so stale colours do not ghost. Root constants: instance_base is the frame's colour slot,
-// material_index the history slot (low 16 bits) and the depth slot (high 16 bits).
+// frame from its motion vector (models that write one) or else from the depth buffer and the
+// previous camera, and the history is clipped to the colour range of the current 3x3 neighbourhood
+// so stale colours do not ghost. Root constants: instance_base is the frame's colour slot (low 16
+// bits) and the motion slot (high 16 bits), material_index the history slot (low 16 bits) and the
+// depth slot (high 16 bits).
 static const float taa_clip_spread = 1.25f;
 
 struct TaaOutput
@@ -220,7 +221,8 @@ float3 from_ycocg(const float3 ycocg)
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 TaaOutput taa_resolve_ps(PostInput input)
 {
-    Texture2D frame = scene_textures[instance_base];
+    Texture2D frame = scene_textures[instance_base & 0xFFFFu];
+    Texture2D motion = scene_textures[instance_base >> 16u];
     Texture2D history = scene_textures[material_index & 0xFFFFu];
     Texture2D depth = scene_textures[material_index >> 16u];
     const int2 pixel = int2(input.position.xy);
@@ -231,6 +233,7 @@ TaaOutput taa_resolve_ps(PostInput input)
     float3 mean = 0.0f;
     float3 square = 0.0f;
     float nearest = 1.0f;
+    int2 nearest_at = pixel;
     [unroll] for (int y = -1; y <= 1; ++y)
     {
         [unroll] for (int x = -1; x <= 1; ++x)
@@ -239,14 +242,20 @@ TaaOutput taa_resolve_ps(PostInput input)
             const float3 sample = to_ycocg(frame.Load(int3(at, 0)).rgb);
             mean += sample;
             square += sample * sample;
-            nearest = min(nearest, depth.Load(int3(at, 0)).r);
+            const float at_depth = depth.Load(int3(at, 0)).r;
+            if (at_depth < nearest)
+            {
+                nearest = at_depth;
+                nearest_at = at;
+            }
         }
     }
     mean /= 9.0f;
     const float3 spread = sqrt(max(square / 9.0f - mean * mean, 0.0f)) * taa_clip_spread;
 
-    // Where this surface was last frame: back to the world through the unjittered camera, then
-    // into the previous frame.
+    // Where this surface was last frame: by its motion vector when it wrote one, else back to the
+    // world through the unjittered camera and into the previous frame.
+    const float2 moved = motion.Load(int3(nearest_at, 0)).rg;
     const float2 ndc = float2(input.uv.x * 2.0f - 1.0f, 1.0f - input.uv.y * 2.0f) - taa_parameters.xy;
     float4 world = mul(float4(ndc, nearest, 1.0f), inverse_view_projection);
     world /= world.w;
@@ -254,8 +263,9 @@ TaaOutput taa_resolve_ps(PostInput input)
     // The jitter goes back on, so only real motion moves the sample: a still camera reads the
     // history at this very pixel instead of a fraction off it (which would blur every frame).
     const float2 before_ndc = before.xy / before.w + taa_parameters.xy;
-    const float2 before_uv = float2(before_ndc.x * 0.5f + 0.5f, 0.5f - before_ndc.y * 0.5f);
-    const bool inside = before.w > 0.0f && all(before_uv >= 0.0f) && all(before_uv <= 1.0f);
+    const bool known = moved.x < MOTION_UNKNOWN * 0.5f;
+    const float2 before_uv = known ? input.uv - moved : float2(before_ndc.x * 0.5f + 0.5f, 0.5f - before_ndc.y * 0.5f);
+    const bool inside = (known || before.w > 0.0f) && all(before_uv >= 0.0f) && all(before_uv <= 1.0f);
 
     TaaOutput output;
     float3 result = current;

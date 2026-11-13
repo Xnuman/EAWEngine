@@ -56,13 +56,17 @@ cbuffer FrameConstants : register(b0)
     // current frame's, the previous the last frame's.
     float4x4 unjittered_view_projection;
     float4x4 inverse_view_projection;
-    float4x4 previous_view_projection;
+    float4x4 previous_view_projection; // the last frame's camera (the current one in the first frame)
     float4 taa_parameters; // xy jitter (NDC), z history valid (1) or not (0), w weight of the new frame
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
 // PICK_TERRAIN the terrain. Keep in sync with d3d12_renderer.cpp.
 static const uint PICK_TERRAIN = 0xFFFFFFFFu;
+
+// The motion target is cleared to this where nothing wrote motion (backgrounds, blended surfaces,
+// terrain, particles); keep in sync with d3d12_renderer_frame.cpp. Real motion stays far below.
+static const float MOTION_UNKNOWN = 1000.0f;
 
 // Highlighted when the instance is flagged (selection groups) or is the single highlighted pick id.
 float3 apply_selection_highlight(const float3 color, const uint pick_id, const uint instance_flags)

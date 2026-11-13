@@ -284,8 +284,8 @@ void D3d12Renderer::Impl::create_post_targets()
     bloom_height = std::max(1U, (height + bloom_downscale - 1U) / bloom_downscale);
     const auto default_heap = heap_properties(D3D12_HEAP_TYPE_DEFAULT);
     const auto increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    const auto make_target =
-        [&](ComPtr<ID3D12Resource>& target, const std::uint32_t target_width, const std::uint32_t target_height, const DXGI_FORMAT format, const std::size_t index, const wchar_t* name)
+    const auto make_target = [&](ComPtr<ID3D12Resource>& target, const std::uint32_t target_width, const std::uint32_t target_height, const DXGI_FORMAT format, const std::size_t index,
+                                 const wchar_t* name, const std::array<float, 4>& clear_color = {0.018F, 0.031F, 0.043F, 1.0F})
     {
         D3D12_RESOURCE_DESC description{};
         description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -299,10 +299,7 @@ void D3d12Renderer::Impl::create_post_targets()
         description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
         D3D12_CLEAR_VALUE clear{};
         clear.Format = format;
-        clear.Color[0] = 0.018F;
-        clear.Color[1] = 0.031F;
-        clear.Color[2] = 0.043F;
-        clear.Color[3] = 1.0F;
+        std::ranges::copy(clear_color, std::begin(clear.Color));
         check_device_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_RENDER_TARGET, &clear, IID_PPV_ARGS(&target)), device,
                              "CreateCommittedResource(post-processing target)");
         set_name(target.Get(), name);
@@ -322,6 +319,7 @@ void D3d12Renderer::Impl::create_post_targets()
     make_target(post_color, width, height, back_buffer_format, 3, L"EAWEngine post color");
     make_target(taa_history[0], width, height, back_buffer_format, 4, L"EAWEngine TAA history A");
     make_target(taa_history[1], width, height, back_buffer_format, 5, L"EAWEngine TAA history B");
+    make_target(motion_target, width, height, motion_format, 6, L"EAWEngine motion", {motion_unknown, motion_unknown, 0.0F, 0.0F});
     taa_history_valid = false;
     D3D12_SHADER_RESOURCE_VIEW_DESC depth_view{};
     depth_view.Format = DXGI_FORMAT_R32_FLOAT;

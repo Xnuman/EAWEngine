@@ -147,7 +147,7 @@ struct D3d12Renderer::Impl
         std::uint32_t block{};
     };
 
-    // Structured-buffer layout shared with the vertex shader (112 bytes).
+    // Structured-buffer layout shared with the vertex shader (180 bytes, packed).
     struct GpuInstance
     {
         Matrix4 transform{Matrix4::zero()};
@@ -160,7 +160,12 @@ struct D3d12Renderer::Impl
         // Detail-level cross-fade: 0 drawn whole; t in (0, 1) the incoming level drawn on a
         // dither fraction t of the pixels; -t the outgoing level on the other pixels.
         float fade{};
+        // Last frame's palette offset and transform (motion vectors); the current ones when the
+        // instance is new or has no key.
+        std::uint32_t previous_bone_offset{};
+        Matrix4 previous_transform{Matrix4::identity()};
     };
+    static_assert(sizeof(GpuInstance) == 180 && offsetof(GpuInstance, previous_transform) == 116, "GpuInstance must match InstanceData in sandbox.hlsl");
 
     // A mesh's draws by damage state and detail level ([state][level], most detailed first; one
     // state of one level for a mesh without either), the states' alternate numbers, and its
@@ -242,9 +247,9 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12Resource> scene_color;
     std::array<ComPtr<ID3D12Resource>, 2> bloom_targets;
     ComPtr<ID3D12DescriptorHeap> post_rtv_heap;
-    // Texture slots (and RTVs, same index) of scene_color, the bloom targets, post_color, and the
-    // two TAA history targets.
-    std::array<std::uint32_t, 6> post_slots{};
+    // Texture slots (and RTVs, same index) of scene_color, the bloom targets, post_color, the two
+    // TAA history targets, and the motion target.
+    std::array<std::uint32_t, 7> post_slots{};
     // The depth buffer's shader view (temporal anti-aliasing reprojects by depth).
     std::uint32_t depth_slot{};
     std::uint32_t bloom_width{1};
@@ -260,6 +265,20 @@ struct D3d12Renderer::Impl
     // last); it is invalid after a resize or a frame without TAA. previous_camera is the last
     // frame's unjittered view-projection (transposed, as in the constants).
     std::array<ComPtr<ID3D12Resource>, 2> taa_history;
+    // Screen motion of the models drawn this frame (motion_format), written in the scene pass.
+    ComPtr<ID3D12Resource> motion_target;
+    // Motion vectors: last frame's palette (uploaded after the current one, so instances can
+    // address it), each keyed instance's last transform and palette offset, and whether a last
+    // camera exists.
+    std::vector<Matrix4> previous_bone_transforms;
+    struct PreviousInstance
+    {
+        Matrix4 transform{Matrix4::identity()};
+        std::uint32_t bone_offset{};
+    };
+    std::unordered_map<std::uint64_t, PreviousInstance> previous_instances;
+    std::unordered_map<std::uint64_t, PreviousInstance> current_instances;
+    bool previous_camera_known{};
     ComPtr<ID3D12PipelineState> taa_pipeline;
     std::uint32_t taa_history_index{};
     bool taa_history_valid{};

@@ -73,6 +73,10 @@ inline constexpr DXGI_FORMAT back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
 // Pick target texel: (pick id, depth-buffer value bits) so a click also yields a world position.
 inline constexpr DXGI_FORMAT pick_format = DXGI_FORMAT_R32G32_UINT;
+// Screen motion since last frame (UV units), written by models for temporal anti-aliasing.
+inline constexpr DXGI_FORMAT motion_format = DXGI_FORMAT_R16G16_FLOAT;
+// Where nothing wrote motion (MOTION_UNKNOWN in legacy_common.hlsli).
+inline constexpr float motion_unknown = 1000.0F;
 
 // Temporary per-frame debug line capacity (an implementation limit, diagnosed through stats).
 inline constexpr std::size_t maximum_debug_lines = 32768;

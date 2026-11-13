@@ -24,6 +24,9 @@ struct InstanceData
     uint pick_id;
     // Detail-level cross-fade (d3d12_renderer_impl.hpp GpuInstance::fade).
     float fade;
+    // Last frame's palette offset and transform, for motion vectors (the current ones when new).
+    uint previous_bone_offset;
+    row_major float4x4 previous_transform;
 };
 
 StructuredBuffer<BoneTransform> bones : register(t1);
@@ -56,12 +59,17 @@ struct PixelInput
     nointerpolation uint pick_id : PICKID;
     nointerpolation uint instance_flags : INSTANCEFLAGS;
     nointerpolation float fade : FADE;
+    // Unjittered clip positions now and last frame (motion vectors).
+    float4 current_clip : TEXCOORD1;
+    float4 previous_clip : TEXCOORD2;
 };
 
 struct PixelOutput
 {
     float4 color : SV_TARGET0;
     uint2 pick : SV_TARGET1; // (pick id, depth bits)
+    // Screen motion since last frame in UV units (masked for blended surfaces and backgrounds).
+    float2 motion : SV_TARGET2;
 };
 
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
@@ -105,6 +113,29 @@ PixelInput vs_main(VertexInput input)
         binormal /= total_weight;
     }
 
+    // Last frame's skinned position, from last frame's palette.
+    float4 previous = 0.0f;
+    float previous_weight = 0.0f;
+    [unroll]
+    for (uint before = 0; before < 4; ++before)
+    {
+        const float weight = input.bone_weights[before];
+        if (weight <= 0.0f)
+        {
+            continue;
+        }
+        previous += mul(float4(input.position, 1.0f), bones[input.bone_indices[before] + instance.previous_bone_offset].transform) * weight;
+        previous_weight += weight;
+    }
+    if (previous_weight <= 0.000001f)
+    {
+        previous = float4(input.position, 1.0f);
+    }
+    else if (abs(previous_weight - 1.0f) > 0.0001f)
+    {
+        previous /= previous_weight;
+    }
+
     PixelInput output;
     if ((instance.flags & INSTANCE_BACKGROUND) != 0u)
     {
@@ -114,12 +145,17 @@ PixelInput vs_main(VertexInput input)
         output.position = mul(float4(direction, 0.0f), view_projection);
         output.position.z = output.position.w * 0.999999f;
         output.world_position = camera_position_time.xyz + direction;
+        // No motion: backgrounds mask the motion target.
+        output.current_clip = output.position;
+        output.previous_clip = output.position;
     }
     else
     {
         const float4 world = mul(position, instance.transform);
         output.position = mul(world, view_projection);
         output.world_position = world.xyz;
+        output.current_clip = mul(world, unjittered_view_projection);
+        output.previous_clip = mul(mul(previous, instance.previous_transform), previous_view_projection);
     }
     output.normal = mul(float4(normal, 0.0f), instance.transform).xyz;
     output.tangent = mul(float4(tangent, 0.0f), instance.transform).xyz;
@@ -225,5 +261,6 @@ PixelOutput ps_main(PixelInput input)
     output.color = shade(input);
     output.color.rgb = apply_selection_highlight(output.color.rgb, input.pick_id, input.instance_flags);
     output.pick = uint2(input.pick_id, asuint(input.position.z));
+    output.motion = (input.current_clip.xy / input.current_clip.w - input.previous_clip.xy / input.previous_clip.w) * float2(0.5f, -0.5f);
     return output;
 }

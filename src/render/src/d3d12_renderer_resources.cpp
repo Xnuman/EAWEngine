@@ -383,7 +383,8 @@ Status D3d12Renderer::Impl::load_scene(VisualScene scene)
         }
         ++range.second;
         gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset,
-                                 (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U), index + 1U, 0U});
+                                 (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U), index + 1U, 0U, instance.bone_offset,
+                                 instance.transform});
     }
 
     auto upload = begin_upload(L"EAWEngine scene upload");
@@ -586,6 +587,8 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
     scene_mesh_bone_counts = std::move(new_mesh_bone_counts);
     lod_tracker.clear();
     fades_started = 0;
+    previous_instances.clear();
+    previous_bone_transforms.clear();
     scene_bone_capacity = std::max(scene.bone_count, 1U);
     dynamic_instances.reset();
     highlighted_pick_id = 0;

@@ -91,8 +91,8 @@ rendering rows join item 2).
    done 2026-11-11: renderer-side selection by distance, screen size, or both, with cross-fades;
    damage states done 2026-11-13: chosen from health, with their effects, sounds, and rubble;
    hardpoint damage visuals belong to combat presentation, Simulation 1), depth-sorted transparency (done 2026-11-13), HDR with tone mapping and anti-aliasing (edge
-   temporal, and hybrid (TAA then FXAA) anti-aliasing done 2026-11-13, TAA reprojecting by camera motion only; per-object motion
-   vectors for moving units next; HDR postponed by the owner (2026-11-13) to the later
+   temporal, and hybrid (TAA then FXAA) anti-aliasing done 2026-11-13, with per-object motion vectors for models (blended parts and particles still
+   reproject by camera motion); HDR postponed by the owner (2026-11-13) to the later
    visual enhancement: it needs linear lighting, since the shading works in display space like the
    original's, so it starts the enhanced lighting profile with the physically based path),
    shadows, fog, decals (map and runtime), special materials (shields, planets, nebula, heat
@@ -370,7 +370,7 @@ waiting for it, oldest first:
 - turret motor loops; wreck end explosions and the longer wrecks of AT-AA and the Dark Troopers;
 - idles: random variants one after another, lone idles pausing 2-4 s;
 - edge anti-aliasing on by default (`--no-aa` to compare), temporal anti-aliasing (`--aa taa`), and both (`--aa hybrid`):
-  ghosting behind moving units and particles, softness against FXAA;
+  ghosting behind particles and blended parts, softness against FXAA, the hybrid mode;
 - transparent model parts drawn back to front (canopies, glass, glows on models);
 - damage states on land: damaged meshes and their `_ALT` effects by health, the state sounds, and
   rubble that stays (structures without a death animation keep their last state for good).

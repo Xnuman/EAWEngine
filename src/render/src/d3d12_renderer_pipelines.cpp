@@ -229,9 +229,12 @@ void D3d12Renderer::Impl::create_pipeline()
     // surfaces; masked for blended effects and backgrounds so they cannot be selected.
     description.BlendState.RenderTarget[1] = blend;
     description.BlendState.RenderTarget[1].BlendEnable = FALSE;
-    description.NumRenderTargets = 2;
+    // Target 2 is the motion target: written by opaque and alpha-tested models only.
+    description.BlendState.RenderTarget[2] = description.BlendState.RenderTarget[1];
+    description.NumRenderTargets = 3;
     description.RTVFormats[0] = back_buffer_format;
     description.RTVFormats[1] = pick_format;
+    description.RTVFormats[2] = motion_format;
     description.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     description.SampleDesc.Count = 1;
     create_pipeline_state(L"opaque", description, opaque_pipeline);
@@ -243,6 +246,7 @@ void D3d12Renderer::Impl::create_pipeline()
     description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
     description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
     description.BlendState.RenderTarget[1].RenderTargetWriteMask = 0;
+    description.BlendState.RenderTarget[2].RenderTargetWriteMask = 0;
     create_pipeline_state(L"alpha", description, alpha_pipeline);
 
     description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
@@ -293,7 +297,12 @@ void D3d12Renderer::Impl::create_pipeline()
     description.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
     description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
     description.BlendState.RenderTarget[1].RenderTargetWriteMask = 0;
+    // Drawn after the scene pass, over the frame and the pick target only.
+    description.NumRenderTargets = 2;
+    description.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
     create_pipeline_state(L"debug lines", description, debug_pipeline);
+    description.NumRenderTargets = 3;
+    description.RTVFormats[2] = motion_format;
 
     // Particles: no vertex input, no culling, depth-tested (or not) without depth or pick writes.
     description.VS = {g_eaw_particle_vs, sizeof(g_eaw_particle_vs)};

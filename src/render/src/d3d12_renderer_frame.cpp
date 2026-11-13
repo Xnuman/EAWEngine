@@ -344,6 +344,10 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
         const Entry* entry{};
     };
     std::vector<Blended> blended_instances;
+    // Last frame's transform and palette offset of keyed instances (motion vectors); last frame's
+    // palette follows the current one in the bone buffer.
+    const auto previous_palette = static_cast<std::uint32_t>(bone_transforms.size());
+    current_instances.clear();
     std::size_t range_start = 0;
     for (std::size_t position = 0; position <= entries.size(); ++position)
     {
@@ -351,8 +355,20 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
         {
             const auto& entry = entries[position];
             const auto& instance = instances[entry.instance];
+            auto previous_transform = instance.transform;
+            auto previous_bone_offset = instance.bone_offset;
+            if (instance.key != 0)
+            {
+                if (const auto found = previous_instances.find(instance.key); found != previous_instances.end())
+                {
+                    previous_transform = found->second.transform;
+                    previous_bone_offset = found->second.bone_offset + previous_palette;
+                }
+                current_instances.try_emplace(instance.key, PreviousInstance{instance.transform, instance.bone_offset});
+            }
             gpu_instances.push_back({instance.transform, instance.tint, instance.team_color, instance.bone_offset,
-                                     (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U), entry.instance + 1U, entry.fade});
+                                     (instance.background ? background_instance_flag : 0U) | (instance.highlighted ? highlighted_instance_flag : 0U), entry.instance + 1U, entry.fade,
+                                     previous_bone_offset, previous_transform});
         }
         if (position == entries.size() || (position > range_start && range_key(entries[position]) != range_key(entries[range_start])))
         {
@@ -408,6 +424,7 @@ void D3d12Renderer::Impl::batch_instances(const std::vector<VisualInstance>& ins
     {
         gpu_instances.push_back({Matrix4::identity(), {1.0F, 1.0F, 1.0F, 1.0F}, {1.0F, 1.0F, 1.0F, 1.0F}, 0, 0, 0, 0.0F});
     }
+    std::swap(previous_instances, current_instances);
 }
 
 void D3d12Renderer::Impl::write_dynamic_instances(FrameContext& frame)
@@ -532,8 +549,17 @@ bool D3d12Renderer::Impl::render()
     }
     // This context's capture finished with its fence; read it before the context is reused.
     collect_capture(frame);
-    ensure_bone_capacity(frame, bone_transforms.size());
+    // The palette, then last frame's (motion vectors address it past the current one; the first
+    // frame repeats the current one).
+    if (previous_bone_transforms.empty())
+    {
+        previous_bone_transforms = bone_transforms;
+    }
+    ensure_bone_capacity(frame, bone_transforms.size() + previous_bone_transforms.size());
     std::memcpy(frame.bone_buffer_mapped, bone_transforms.data(), bone_transforms.size() * sizeof(bone_transforms.front()));
+    std::memcpy(frame.bone_buffer_mapped + bone_transforms.size() * sizeof(Matrix4), previous_bone_transforms.data(), previous_bone_transforms.size() * sizeof(Matrix4));
+    // The next frame's previous palette is this one (batching below needs only its size).
+    previous_bone_transforms = bone_transforms;
     stream_scene_textures();
     // The overlay's frame is built now: its texture uploads join this frame's pending transitions.
     const bool draw_overlay = (selection_rectangle || overlay_ui) && overlay_backend_initialized;
@@ -590,7 +616,8 @@ bool D3d12Renderer::Impl::render()
         XMStoreFloat4x4(&constants.unjittered_view_projection, XMMatrixTranspose(unjittered));
         XMStoreFloat4x4(&constants.inverse_view_projection, XMMatrixTranspose(XMMatrixInverse(nullptr, unjittered)));
         const bool history = taa && taa_history_valid;
-        constants.previous_view_projection = history ? previous_camera : constants.unjittered_view_projection;
+        constants.previous_view_projection = previous_camera_known ? previous_camera : constants.unjittered_view_projection;
+        previous_camera_known = true;
         constants.taa_parameters = {jitter[0], jitter[1], history ? 1.0F : 0.0F, taa_new_frame_weight};
         previous_camera = constants.unjittered_view_projection;
     }
@@ -668,19 +695,22 @@ bool D3d12Renderer::Impl::render()
     const auto back_buffer = import_resource(frame.back_buffer.Get(), "back buffer", GraphAccess::present, GraphAccess::present);
     const auto pick = import_resource(pick_target.Get(), "pick target", GraphAccess::render_target, GraphAccess::render_target);
     const auto depth = import_resource(depth_buffer.Get(), "depth", GraphAccess::depth_write, GraphAccess::depth_write);
+    const auto motion = import_resource(motion_target.Get(), "motion", GraphAccess::render_target, GraphAccess::render_target);
     const auto scene = bloom || anti_aliasing ? import_resource(scene_color.Get(), "scene color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
     const auto composite = bloom && anti_aliasing ? import_resource(post_color.Get(), "post color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
 
     frame_graph.add_pass(
-        "scene", {{scene, GraphAccess::render_target}, {pick, GraphAccess::render_target}, {depth, GraphAccess::depth_write}},
+        "scene", {{scene, GraphAccess::render_target}, {pick, GraphAccess::render_target}, {motion, GraphAccess::render_target}, {depth, GraphAccess::depth_write}},
         [&]
         {
-            const std::array targets{scene_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};
+            const std::array targets{scene_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart(), post_rtv(6)};
             command_list->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), FALSE, &depth_target);
             constexpr std::array clear_color{0.018F, 0.031F, 0.043F, 1.0F};
             constexpr std::array clear_pick{0.0F, 0.0F, 0.0F, 0.0F};
             command_list->ClearRenderTargetView(scene_target, clear_color.data(), 0, nullptr);
             command_list->ClearRenderTargetView(targets[1], clear_pick.data(), 0, nullptr);
+            constexpr std::array clear_motion{motion_unknown, motion_unknown, 0.0F, 0.0F};
+            command_list->ClearRenderTargetView(targets[2], clear_motion.data(), 0, nullptr);
             command_list->ClearDepthStencilView(depth_target, D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
 
             ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
@@ -854,6 +884,7 @@ bool D3d12Renderer::Impl::render()
         frame_graph.add_pass("temporal anti-aliasing",
                              {{source, GraphAccess::shader_read},
                               {depth, GraphAccess::shader_read},
+                              {motion, GraphAccess::shader_read},
                               {history_last, GraphAccess::shader_read},
                               {back_buffer, GraphAccess::render_target},
                               {history_next, GraphAccess::render_target}},
@@ -865,7 +896,7 @@ bool D3d12Renderer::Impl::render()
                                  command_list->RSSetViewports(1, &viewport);
                                  command_list->RSSetScissorRects(1, &scissor);
                                  command_list->SetPipelineState(taa_pipeline.Get());
-                                 const std::array<std::uint32_t, 2> taa_constants{source_slot, post_slots[4U + last] | (depth_slot << 16U)};
+                                 const std::array<std::uint32_t, 2> taa_constants{source_slot | (post_slots[6] << 16U), post_slots[4U + last] | (depth_slot << 16U)};
                                  command_list->SetGraphicsRoot32BitConstants(5, 2, taa_constants.data(), 0);
                                  command_list->DrawInstanced(3, 1, 0, 0);
                                  ++draw_calls;
