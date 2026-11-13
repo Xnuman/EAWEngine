@@ -98,7 +98,7 @@ void SandboxSession::step_particles(const std::chrono::steady_clock::time_point 
     if (weather.active() && (tactical_camera || orbit_camera))
     {
         const auto camera = current_camera();
-        weather.update(effects.particles(), seconds, camera.eye, eaw::normalize_or(camera.target - camera.eye, Vector3{0.0F, 0.0F, -1.0F}));
+        weather.update(effects.particles(), seconds, camera.eye, camera.target);
         renderer.set_lighting(eaw::lightning_rig(base_lighting, weather.flash()));
     }
     effects.update(seconds);

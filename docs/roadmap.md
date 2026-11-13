@@ -167,8 +167,8 @@ rendering rows join item 2).
    and particles do not; done 2026-11-13: cascades, the shadow pass, and receiving; open: per-cascade
    culling, cached distant cascades, blob shadows at low detail, PCSS as an enhanced option); fog; shield, planet (atmosphere, clouds, city lights),
    nebula, heat-distortion, wind-bend, and occluded-unit materials; cube reflections (no stock
-   material uses them); weather (done 2026-11-13; open: the fog plane, the weather cube's size and fade-out,
-   wrapping particles when the camera pans, weather kinds in gameplay through WeatherModifiers.xml,
+   material uses them); weather (done 2026-11-13; tiled over the ground in view since the owner's report; open: the fog plane, the weather
+   cube's size, distance, and fade-out, tiles that appear while panning filling from the top, weather kinds in gameplay through WeatherModifiers.xml,
    with the timeline then on the battle's ticks); soft particles (done 2026-11-13, enhanced option).
 2. Modern presentation without an original counterpart, chosen freely: anti-aliasing, HDR with
    tone mapping beside the existing bloom, and look tuning against the owner's screenshots (hotter

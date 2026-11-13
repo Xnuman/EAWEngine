@@ -133,7 +133,6 @@ ParticleEmitterDesc normalize_particle_emitter(const AloParticleEmitter& emitter
     // Heat particles draw into the distortion buffer; weather emitters draw where the map's weather
     // places their effect (presentation's MapWeather).
     desc.drawn = emitter.blend_mode != 10;
-    desc.weather_distance = emitter.weather && std::isfinite(emitter.weather_cube_distance) ? std::max(emitter.weather_cube_distance, 0.0F) : 0.0F;
     desc.death_child = emitter.death_child;
     desc.life_child = emitter.life_child;
     return desc;

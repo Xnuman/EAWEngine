@@ -904,12 +904,14 @@ void test_weather()
                 eaw::sample_weather(eaw::WeatherScenario{}, 5.0).kind == eaw::WeatherKind::clear,
             "the weather must ease into the next phase over the ease-out and loop after the last");
 
-    // A weather emitter, 100 particles a second, 300 ahead of the camera; the phase runs it at half.
+    // A weather emitter, 100 particles a second from a 200-wide cube; the phase runs it at half. A
+    // camera 50 above its focus sees the 2 x 2 tiles around it, each hanging 100 up (half a tile).
     auto rain = make_test_emitter();
     rain.particles_per_second = 100;
     rain.lifetime = 10.0F;
     rain.weather = true;
-    rain.weather_cube_distance = 300.0F;
+    rain.groups[2].type = 2;
+    rain.groups[2].side_length = 200.0F;
     auto source = std::make_shared<eaw::WeatherSource>();
     source->scenario.phases = {{eaw::WeatherKind::rain, 0.5F, 0.0F, 100.0F, 0.0F, 0.0F}};
     source->effect = make_test_effect({rain});
@@ -918,13 +920,28 @@ void test_weather()
     weather.reset(source);
     for (int frame = 0; frame < 8; ++frame)
     {
-        weather.update(world, 0.25F, {0.0F, 0.0F, 1000.0F}, {0.0F, 0.0F, -1.0F});
+        weather.update(world, 0.25F, {0.0F, 0.0F, 50.0F}, {0.0F, 0.0F, 0.0F});
         world.update(0.25F);
     }
     std::vector<eaw::VisualParticle> sprites;
-    world.build_sprites({0.0F, 0.0F, 1000.0F}, sprites);
-    require(weather.state().kind == eaw::WeatherKind::rain && sprites.size() >= 95 && sprites.size() <= 105 && near(sprites.front().position[2], 700.0F),
-            "the map's weather must emit as strongly as its phase says, ahead of the camera");
+    world.build_sprites({0.0F, 0.0F, 50.0F}, sprites);
+    const auto in_tiles =
+        std::ranges::all_of(sprites,
+                            [](const eaw::VisualParticle& sprite)
+                            {
+                                return std::fabs(sprite.position[0]) <= 200.0F && std::fabs(sprite.position[1]) <= 200.0F && sprite.position[2] >= 0.0F && sprite.position[2] <= 200.0F;
+                            });
+    require(weather.state().kind == eaw::WeatherKind::rain && weather.tiles() == 4 && sprites.size() >= 380 && sprites.size() <= 420 && in_tiles,
+            "the map's weather must cover the ground in view in tiles, emitting as strongly as its phase says");
+    // Zoomed far out, many tiles share the particle budget.
+    for (int frame = 0; frame < 4; ++frame)
+    {
+        weather.update(world, 0.25F, {0.0F, 0.0F, 5000.0F}, {0.0F, 0.0F, 0.0F});
+        world.update(0.25F);
+    }
+    require(weather.tiles() == static_cast<std::size_t>(eaw::max_weather_tiles_per_side * eaw::max_weather_tiles_per_side) &&
+                world.stats().particles < static_cast<std::size_t>(eaw::weather_particle_budget),
+            "a wide view must be covered by at most the tile limit, within the particle budget");
     const auto flashed = eaw::lightning_rig(eaw::VisualLightRig{}, 1.0F);
     require(flashed.ambient.r > eaw::VisualLightRig{}.ambient.r && eaw::lightning_rig(eaw::VisualLightRig{}, 0.0F).ambient.r == eaw::VisualLightRig{}.ambient.r,
             "a lightning flash must brighten the lights, and no flash leave them");

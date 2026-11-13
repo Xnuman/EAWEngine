@@ -1065,11 +1065,13 @@ particle-audit`.
   400 (snow; fade-out distance 300, 0 for the others); `p_dust_storm` (sandstorms) has no weather
   flag (1200/s smoke puffs 100-200 across). How the original places these effects, what the cube
   size and fade-out distance do, and what the fog-plane value means are not known. The engine's
-  reading, all inferences or engine choices: the effect sits on the view ray at its emitters' cube
-  distance (500 without one), in world axes, emitting at the phase's intensity times its authored
-  rate; phases play in order and loop; a phase's ease-out is the last part of its duration,
+  reading, all inferences or engine choices: the effect plays once per tile of a world-aligned grid
+  over the ground in view (a tile as wide as its spawn volume, hung so its particles reach the
+  ground; at most 16 x 16 tiles and 40,000 particles, thinning the rate), emitting at the phase's
+  intensity times its authored rate (placing one effect ahead of the camera, the first reading,
+  left the rest of a zoomed-out view dry); phases play in order and loop; a phase's ease-out is the last part of its duration,
   blending toward the next phase; lightning is a flash of the scene's ambient and key light at a
-  rate proportional to the intensity. The cube size, fade-out distance, and fog plane are unused.
+  rate proportional to the intensity. The cube size and distance, fade-out distance, and fog plane are unused.
 - **Not drawn yet:** heat distortion (170) is drawn since 2026-11-13 and weather (5) since the same
   day; wind is ignored; freeze time is kept but unused.
 - **Proxies.** Model proxies name their effect without directory or
