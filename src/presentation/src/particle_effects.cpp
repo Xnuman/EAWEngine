@@ -137,6 +137,7 @@ struct ParticleWorld::Instance
     std::uint32_t generation{};
     bool live{};
     float intensity{1.0F};
+    float rate{1.0F};
     float scale{1.0F};
     bool emitting{true};
     bool stopped{};
@@ -260,6 +261,14 @@ void ParticleWorld::set_intensity(const ParticleInstanceId id, const float inten
     if (auto* instance = find(id))
     {
         instance->intensity = std::clamp(intensity, 0.0F, 1.0F);
+    }
+}
+
+void ParticleWorld::set_emission_rate(const ParticleInstanceId id, const float rate)
+{
+    if (auto* instance = find(id))
+    {
+        instance->rate = std::isfinite(rate) ? std::max(rate, 0.0F) : 0.0F;
     }
 }
 
@@ -443,7 +452,7 @@ void ParticleWorld::step_instance(Instance& instance, const float update_seconds
     // A singular previous transform carries nothing over (identity), as before.
     const auto carried = inverse_affine(instance.previous_transform).value_or(Matrix4::identity()) * instance.transform;
     instance.previous_transform = instance.transform;
-    const bool may_emit = instance.emitting && !instance.stopped;
+    const bool may_emit = instance.emitting && !instance.stopped && instance.rate > 0.0F;
     for (std::size_t e = 0; e < emitters.size(); ++e)
     {
         const auto& emitter = emitters[e];
@@ -459,7 +468,7 @@ void ParticleWorld::step_instance(Instance& instance, const float update_seconds
         state.clock += seconds;
         if (!state.child && !state.finished && may_emit && state.drawn)
         {
-            const auto interval = emitter.interval;
+            const auto interval = emitter.interval / instance.rate;
             // Each emission happens at its own time within the update, where the emitter was then
             // (its translation interpolated), so a moving emitter leaves an even trail.
             const auto update_start = state.clock - seconds;

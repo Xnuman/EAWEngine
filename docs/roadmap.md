@@ -116,7 +116,9 @@ rendering rows join item 2).
    them by eye and the chosen values become the defaults), skydomes and nebulae (`Skydome` 19, `Nebula` 15),
    occluded units (chosen by the engine, not by materials), heat distortion (`MeshHeat` 3, plus
    heat particles), reflections (`MeshAdditiveReflection` 3; no stock material uses the reflective
-   profiles); then weather and soft particles (soft particles done 2026-11-13, enhanced), look tuning. Wind bend for trees and waving grass
+   profiles); then weather and soft particles (both done 2026-11-13: soft particles enhanced; legacy
+   weather from the map's scenario, with the cube size, fade-out distance, and fog plane still unused
+   and the placement an engine choice for the owner to check), look tuning. Wind bend for trees and waving grass
    (second UV set) done 2026-11-13; grass's distance fade later. Occluded-unit silhouettes done 2026-11-13. Heat distortion from heat
    particles done 2026-11-13 (the 3 heat meshes remain); the enhanced heat mode from
    [heat-research.md](heat-research.md) done 2026-11-13 (shockwave rings later, as an option). Shields done 2026-11-13 (the
@@ -165,7 +167,9 @@ rendering rows join item 2).
    and particles do not; done 2026-11-13: cascades, the shadow pass, and receiving; open: per-cascade
    culling, cached distant cascades, blob shadows at low detail, PCSS as an enhanced option); fog; shield, planet (atmosphere, clouds, city lights),
    nebula, heat-distortion, wind-bend, and occluded-unit materials; cube reflections (no stock
-   material uses them); weather; soft particles (done 2026-11-13, enhanced option).
+   material uses them); weather (done 2026-11-13; open: the fog plane, the weather cube's size and fade-out,
+   wrapping particles when the camera pans, weather kinds in gameplay through WeatherModifiers.xml,
+   with the timeline then on the battle's ticks); soft particles (done 2026-11-13, enhanced option).
 2. Modern presentation without an original counterpart, chosen freely: anti-aliasing, HDR with
    tone mapping beside the existing bloom, and look tuning against the owner's screenshots (hotter
    engine-glow cores, more contrast on hulls).
@@ -243,7 +247,7 @@ rendering rows join item 2).
    `Resume_Mode_Based_Music`, `Stop_All_Speech`.
 
 Not tied to a stage yet: weather and environment ambience (`WEATHERAUDIO.XML`, needs the map's
-weather and environment kind from TED, with Rendering's weather); scripts' `Weather_Audio_Pause` and
+weather kind, which `MapWeather::state()` now gives, and the environment kind from TED); scripts' `Weather_Audio_Pause` and
 the music and speech calls, as further requests on the script presentation channel
 (`Play_SFX_Event` uses it already);
 hardpoint destruction reports, `Death_SFXEvent_End_Die`, `Land_Damage_SFX`, turret rotation,

@@ -19,6 +19,7 @@ set(EAW_ASSETS_GAME_DATA
     ${HEADERS_DIR}/terrain_decals.hpp
     ${HEADERS_DIR}/type_fields.hpp
     ${HEADERS_DIR}/type_hardpoints.hpp
+    ${HEADERS_DIR}/weather_scenarios.hpp
     ${HEADERS_DIR}/xml_asset_database.hpp
     ${HEADERS_DIR}/xml_schema.hpp
     ${SOURCES_DIR}/dynamic_tracks.cpp
@@ -29,6 +30,7 @@ set(EAW_ASSETS_GAME_DATA
     ${SOURCES_DIR}/terrain_decals.cpp
     ${SOURCES_DIR}/type_fields.cpp
     ${SOURCES_DIR}/type_hardpoints.cpp
+    ${SOURCES_DIR}/weather_scenarios.cpp
     ${SOURCES_DIR}/xml_asset_database.cpp
     ${SOURCES_DIR}/xml_schema_internal.hpp
     ${SOURCES_DIR}/xml_schema_load.cpp

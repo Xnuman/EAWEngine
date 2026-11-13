@@ -130,8 +130,10 @@ ParticleEmitterDesc normalize_particle_emitter(const AloParticleEmitter& emitter
     desc.kite_tail_by_speed = emitter.parent_link_strength != 0.0F;
     desc.blend = emitter.heat ? VisualParticleBlend::heat : blend_intent(emitter.blend_mode, rules.additive_uses_alpha);
     desc.depth_test = !emitter.no_depth_test;
-    // No weather pass exists yet; heat particles draw into the distortion buffer.
-    desc.drawn = !emitter.weather && emitter.blend_mode != 10;
+    // Heat particles draw into the distortion buffer; weather emitters draw where the map's weather
+    // places their effect (presentation's MapWeather).
+    desc.drawn = emitter.blend_mode != 10;
+    desc.weather_distance = emitter.weather && std::isfinite(emitter.weather_cube_distance) ? std::max(emitter.weather_cube_distance, 0.0F) : 0.0F;
     desc.death_child = emitter.death_child;
     desc.life_child = emitter.life_child;
     return desc;

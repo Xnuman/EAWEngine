@@ -5,6 +5,7 @@
 #include "assets/spawn_catalog.hpp"
 #include "assets/surface_effects.hpp"
 #include "assets/terrain_decals.hpp"
+#include "assets/weather_scenarios.hpp"
 #include "scene/scene_builder_internal.hpp"
 
 #include <algorithm>
@@ -202,6 +203,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     // object (SpacePrimarySkydome, LandPrimarySkydome, ...) whose model is drawn as a camera-
     // centered background layer, primary first. The stored index can be out of range in
     // malformed data; the first environment is used then.
+    std::string weather_scenario;
     if (!map.environments.empty())
     {
         auto environment_index = static_cast<std::size_t>(map.active_environment);
@@ -212,6 +214,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         }
         const auto& environment = map.environments[environment_index];
         asset.environment_name = environment.name;
+        weather_scenario = environment.scenario;
         // Fog the environment switches on, with a usable range.
         const bool fog_usable = environment.has_fog && environment.fog_enabled && std::isfinite(environment.fog_start) && std::isfinite(environment.fog_end) &&
                                 environment.fog_end > environment.fog_start &&
@@ -358,6 +361,25 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                 }
             }
             asset.footprints = std::move(footprints);
+            // The weather the environment names (WeatherScenarios.xml) and the effect drawing it.
+            if (!weather_scenario.empty())
+            {
+                const auto scenarios = WeatherScenarioCatalog::build(*catalog_entry->database, &scene.warnings);
+                if (const auto* scenario = scenarios.find(weather_scenario))
+                {
+                    auto weather = std::make_shared<WeatherSource>();
+                    weather->scenario = *scenario;
+                    if (!scenario->emitter.empty())
+                    {
+                        weather->effect = particle_effect(builder, scenario->emitter);
+                    }
+                    asset.weather = std::move(weather);
+                }
+                else
+                {
+                    scene.warnings.push_back("weather scenario '" + weather_scenario + "' is not defined; the map has no weather");
+                }
+            }
             if (asset.decal_atlas == invalid_visual_texture)
             {
                 asset.decal_atlas = particle_library_texture(builder, std::string(decal_atlas_texture), "terrain decals");

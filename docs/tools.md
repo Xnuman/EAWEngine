@@ -373,6 +373,10 @@ EAWAssetInspector.exe inspect Data/Text/MasterTextFile_English.dat
 # extent in the mesh's own space, materials
 EAWAssetInspector.exe inspect Data/Art/Models/Some_Unit.alo
 
+# A particle system: each emitter's texture, blend, rate, kind, gravity (weather emitters also
+# their cube size, fade-out, and distance, speed, and spawn cube), and tracks
+EAWAssetInspector.exe inspect Data/Art/Models/p_rain_med00.alo
+
 # Unique TEXT_* references in one resolved XML file
 EAWAssetInspector.exe localization-refs Data/XML/Units.xml
 

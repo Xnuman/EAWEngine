@@ -140,8 +140,11 @@ struct ParticleEmitterDesc
     bool kite_tail_by_speed{};
     VisualParticleBlend blend{VisualParticleBlend::additive};
     bool depth_test{true};
-    // False for emitters the renderer has no pass for (weather): they never emit.
+    // False for emitters the renderer has no pass for: they never emit.
     bool drawn{true};
+    // Weather emitters: how far ahead of the camera the map's weather places the effect (the
+    // emitter's weather cube distance); 0 for others.
+    float weather_distance{};
 
     // Child emitters (indices into the effect; -1 none): one burst at each particle's death, and a
     // trail emitter on each living particle.

@@ -1050,8 +1050,28 @@ particle-audit`.
   `Particle` objects. Objects that cannot play (no model, a mesh instead of a
   particle system, a projectile without a detonation particle, an undefined
   name) are kept, play nothing, and are reported once per build.
-- **Not drawn yet:** weather (5 emitters); heat distortion (170) is drawn since 2026-11-13, which
-  need passes of their own; wind is ignored; freeze time is kept but unused.
+- **Weather** (2026-11-13). A land map's active environment names a weather scenario (TED
+  environment field 0x29); `WeatherScenarios.xml` defines 13 (`Weather_Scenario`, attribute
+  `emitter_name` naming a particle effect, then `Phase` elements in order: a weather kind as the
+  phase name, CLEAR, ASH, RAIN, SANDSTORM, or SNOW, other names meaning CLEAR as the file's own
+  header says; `Emitter_Intensity`, `Lightning_Intensity`, `Duration`, `Ease_Out_Duration`, and an
+  optional `Fog_Plane_Interpolation_Alpha`). Of 114 stock land maps, 49 have an active environment
+  that names one: RAIN_RANDOM 20, DEFAULT_ALWAYS_CLEAR 9, ASH_RANDOM 5, BLIZZARD_RANDOM 4,
+  RAIN_CONSTANT 4, SANDSTORM_CONSTANT 3, SANDSTORM_RANDOM 2, SNOW_RANDOM 2 (all environments
+  together name 129). The scenarios' effects: `p_rain_med00` (one kite emitter, 2000/s, 1 s,
+  falling at 300), `P_Snowblizzard` (two, 1000/s each, 3 s, drifting sideways at 84 and 177 while
+  falling at 150), `P_SnowSleet` (2000/s, 3 s), `p_rain_of_ash` (3000/s, 1 s), all with the weather
+  flag, a cube spawn shape of side 200-250, and weather cube size and distance 500 (rain, ash) or
+  400 (snow; fade-out distance 300, 0 for the others); `p_dust_storm` (sandstorms) has no weather
+  flag (1200/s smoke puffs 100-200 across). How the original places these effects, what the cube
+  size and fade-out distance do, and what the fog-plane value means are not known. The engine's
+  reading, all inferences or engine choices: the effect sits on the view ray at its emitters' cube
+  distance (500 without one), in world axes, emitting at the phase's intensity times its authored
+  rate; phases play in order and loop; a phase's ease-out is the last part of its duration,
+  blending toward the next phase; lightning is a flash of the scene's ambient and key light at a
+  rate proportional to the intensity. The cube size, fade-out distance, and fog plane are unused.
+- **Not drawn yet:** heat distortion (170) is drawn since 2026-11-13 and weather (5) since the same
+  day; wind is ignored; freeze time is kept but unused.
 - **Proxies.** Model proxies name their effect without directory or
   extension (`pe_Z95engines` is `Data/Art/Models/pe_Z95engines.alo`). The
   stock station and capital-ship models also carry proxies tagged like meshes:

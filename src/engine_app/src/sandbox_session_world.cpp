@@ -95,6 +95,12 @@ void SandboxSession::step_particles(const std::chrono::steady_clock::time_point 
             shown_effect_ids[index] = effects.particles().play(shown_effects[index], transform, shown_effect_seed++);
         }
     }
+    if (weather.active() && (tactical_camera || orbit_camera))
+    {
+        const auto camera = current_camera();
+        weather.update(effects.particles(), seconds, camera.eye, eaw::normalize_or(camera.target - camera.eye, Vector3{0.0F, 0.0F, -1.0F}));
+        renderer.set_lighting(eaw::lightning_rig(base_lighting, weather.flash()));
+    }
     effects.update(seconds);
     if (audio && world && tactical_camera)
     {

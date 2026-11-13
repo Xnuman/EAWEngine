@@ -3,10 +3,12 @@
 
 #include "assets/dynamic_tracks.hpp"
 #include "assets/terrain_decals.hpp"
+#include "assets/weather_scenarios.hpp"
 #include "battle/battle.hpp"
 #include "battle/battle_log.hpp"
 #include "presentation/attached_effects.hpp"
 #include "presentation/battle_effects.hpp"
+#include "presentation/map_weather.hpp"
 #include "presentation/particle_effects.hpp"
 #include "presentation/projectile_visuals.hpp"
 #include "presentation/unit_animation.hpp"
@@ -864,6 +866,70 @@ void test_trails()
     require(effects.trail_count() == 0, "a trail whose unit stood still past its fade must go");
 }
 
+// Weather scenarios: phases as written (an unknown phase name is clear, a phase without a duration
+// is left out), the timeline easing into the next phase over the ease-out and looping; the map's
+// weather keeps its effect ahead of the camera, emitting as strongly as the phase says.
+void test_weather()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-weather-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    write_file(root / "Data" / "XML" / "WeatherScenarios.xml",
+               "<Weather_Scenarios><Weather_Scenario name=\"Storm\" emitter_name=\"p_rain.alo\">"
+               "<Phase name=\"RAIN\"><Emitter_Intensity>1.0</Emitter_Intensity><Lightning_Intensity>0.5</Lightning_Intensity><Duration>10</Duration><Ease_Out_Duration>4</Ease_Out_Duration>"
+               "<Fog_Plane_Interpolation_Alpha>0.2</Fog_Plane_Interpolation_Alpha></Phase>"
+               "<Phase name=\"DRIZZLE\"><Emitter_Intensity>0</Emitter_Intensity><Lightning_Intensity>x</Lightning_Intensity><Duration>5</Duration><Ease_Out_Duration>0</Ease_Out_Duration></Phase>"
+               "<Phase name=\"SNOW\"><Emitter_Intensity>1</Emitter_Intensity></Phase>"
+               "</Weather_Scenario></Weather_Scenarios>");
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    std::vector<std::string> warnings;
+    const auto catalog = eaw::WeatherScenarioCatalog::build(eaw::XmlAssetDatabase::build(vfs), &warnings);
+    std::filesystem::remove_all(root, ignored);
+    const auto* storm = catalog.find("storm");
+    require(catalog.size() == 1 && storm != nullptr && storm->emitter == "p_rain.alo" && storm->phases.size() == 2 && storm->phases[0].kind == eaw::WeatherKind::rain &&
+                storm->phases[0].fog_plane_alpha == 0.2F && storm->phases[1].kind == eaw::WeatherKind::clear && storm->phases[1].lightning_intensity == 0.0F && warnings.size() == 2,
+            "weather scenarios must keep their phases, read unknown names as clear, and leave out a phase without a duration");
+
+    const auto near = [](const float a, const float b)
+    {
+        return std::fabs(a - b) < 1.0e-4F;
+    };
+    const auto at = [&](const double seconds)
+    {
+        return eaw::sample_weather(*storm, seconds);
+    };
+    require(at(2.0).kind == eaw::WeatherKind::rain && near(at(2.0).emitter_intensity, 1.0F) && near(at(8.0).emitter_intensity, 0.5F) && near(at(8.0).lightning_intensity, 0.25F) &&
+                at(12.0).kind == eaw::WeatherKind::clear && near(at(12.0).emitter_intensity, 0.0F) && near(at(17.0).emitter_intensity, 1.0F) &&
+                eaw::sample_weather(eaw::WeatherScenario{}, 5.0).kind == eaw::WeatherKind::clear,
+            "the weather must ease into the next phase over the ease-out and loop after the last");
+
+    // A weather emitter, 100 particles a second, 300 ahead of the camera; the phase runs it at half.
+    auto rain = make_test_emitter();
+    rain.particles_per_second = 100;
+    rain.lifetime = 10.0F;
+    rain.weather = true;
+    rain.weather_cube_distance = 300.0F;
+    auto source = std::make_shared<eaw::WeatherSource>();
+    source->scenario.phases = {{eaw::WeatherKind::rain, 0.5F, 0.0F, 100.0F, 0.0F, 0.0F}};
+    source->effect = make_test_effect({rain});
+    eaw::ParticleWorld world;
+    eaw::MapWeather weather;
+    weather.reset(source);
+    for (int frame = 0; frame < 8; ++frame)
+    {
+        weather.update(world, 0.25F, {0.0F, 0.0F, 1000.0F}, {0.0F, 0.0F, -1.0F});
+        world.update(0.25F);
+    }
+    std::vector<eaw::VisualParticle> sprites;
+    world.build_sprites({0.0F, 0.0F, 1000.0F}, sprites);
+    require(weather.state().kind == eaw::WeatherKind::rain && sprites.size() >= 95 && sprites.size() <= 105 && near(sprites.front().position[2], 700.0F),
+            "the map's weather must emit as strongly as its phase says, ahead of the camera");
+    const auto flashed = eaw::lightning_rig(eaw::VisualLightRig{}, 1.0F);
+    require(flashed.ambient.r > eaw::VisualLightRig{}.ambient.r && eaw::lightning_rig(eaw::VisualLightRig{}, 0.0F).ambient.r == eaw::VisualLightRig{}.ambient.r,
+            "a lightning flash must brighten the lights, and no flash leave them");
+}
+
 const ModuleRegistrar registrar("effects", {
                                                {"test_particle_tracks", &test_particle_tracks},
                                                {"test_particle_world", &test_particle_world},
@@ -876,6 +942,7 @@ const ModuleRegistrar registrar("effects", {
                                                {"test_scorch_marks", &test_scorch_marks},
                                                {"test_footprints", &test_footprints},
                                                {"test_trails", &test_trails},
+                                               {"test_weather", &test_weather},
                                            });
 
 } // namespace

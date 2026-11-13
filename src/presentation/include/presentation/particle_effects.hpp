@@ -92,6 +92,9 @@ public:
     // follow their unit's speed). Size goes from 50% and opacity from 15% at 0 to full at 1 (engine
     // choices fitted by eye to the original's engine glows); values are clamped to 0..1.
     void set_intensity(ParticleInstanceId id, float intensity);
+    // Scales how often a playing effect's emitters emit (weather): 1 as authored, 0 not at all;
+    // negative or non-finite values count as 0.
+    void set_emission_rate(ParticleInstanceId id, float rate);
     // Stops emitting; the particles live out when the system leaves particles, else vanish now.
     void stop(ParticleInstanceId id);
     void remove(ParticleInstanceId id);

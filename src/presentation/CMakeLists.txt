@@ -15,6 +15,7 @@ set(EAW_PRESENTATION_HEADERS
     ${HEADERS_DIR}/damage_states.hpp
     ${HEADERS_DIR}/debug_draw.hpp
     ${HEADERS_DIR}/entity_look.hpp
+    ${HEADERS_DIR}/map_weather.hpp
     ${HEADERS_DIR}/particle_effects.hpp
     ${HEADERS_DIR}/projectile_visuals.hpp
     ${HEADERS_DIR}/scene_presentation.hpp
@@ -29,6 +30,7 @@ set(EAW_PRESENTATION_SOURCES
     ${SOURCES_DIR}/battle_frame.cpp
     ${SOURCES_DIR}/damage_states.cpp
     ${SOURCES_DIR}/debug_draw.cpp
+    ${SOURCES_DIR}/map_weather.cpp
     ${SOURCES_DIR}/particle_effects.cpp
     ${SOURCES_DIR}/projectile_visuals.cpp
     ${SOURCES_DIR}/scene_presentation.cpp

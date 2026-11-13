@@ -116,6 +116,15 @@ eaw::Status inspect_particles(const std::span<const std::byte> bytes, const std:
                   << (emitter.has_tail ? " kite" : "") << (emitter.world_oriented ? " xy-aligned" : "") << (emitter.heat ? " heat" : "") << (emitter.weather ? " weather" : "")
                   << (emitter.emit_from_mesh != 0 ? " from-mesh " + std::to_string(emitter.emit_from_mesh) : std::string{}) << (emitter.link_to_system ? " linked" : "") << " cells "
                   << emitter.texture_cells << " groups " << emitter.groups[0].type << '/' << emitter.groups[2].type;
+        std::cout << " gravity " << emitter.gravity;
+        if (emitter.weather)
+        {
+            const auto& speed = emitter.groups[0];
+            const auto& position = emitter.groups[2];
+            std::cout << " cube " << emitter.weather_cube_size << " fade " << emitter.weather_fadeout_distance << " cube-distance " << emitter.weather_cube_distance << " speed " << speed.value.x
+                      << ',' << speed.value.y << ',' << speed.value.z << " (" << speed.minimum.z << ".." << speed.maximum.z << ") position side " << position.side_length << " box "
+                      << position.minimum.z << ".." << position.maximum.z;
+        }
         if (emitter.death_child >= 0)
         {
             std::cout << " on-death " << emitter.death_child;

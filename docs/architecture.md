@@ -431,7 +431,7 @@ The file-level split of each module.
 - `src/assets` (`eaw_assets`), by category: `game_data` (`game_object_catalog`, `type_fields` (typed
   reads of a type's fields through its variants: one number rule, comma lists, yes/no values, and
   diagnostics naming the declaring variant), `spawn_catalog`,
-  `map_object_layout`, `surface_effects`, `terrain_decals`, `dynamic_tracks`, `xml_asset_database`, and `XmlSchema`, split into `xml_schema_load.cpp` for
+  `map_object_layout`, `surface_effects`, `terrain_decals`, `dynamic_tracks`, `weather_scenarios`, `xml_asset_database`, and `XmlSchema`, split into `xml_schema_load.cpp` for
   the optional eaw-schema YAML and `xml_schema_validate.cpp`), `model` (`model`, `model_geometry` (which geometry is drawn, and its bounds:
   one rule for scene building and the footprints gameplay measures), `legacy_material`,
   and `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` rules and default mesh visibility),
@@ -472,7 +472,7 @@ The file-level split of each module.
     types are drawn), `damage_states` (a land model's `_ALT` state by health), `battle_frame` (a running
     battle's tick events and frames),
     `scene_presentation`, `unit_animation`, `particle_effects` (`ParticleWorld`), `attached_effects`,
-    `battle_effects`, `battle_audio`, `projectile_visuals`, and `debug_draw`;
+    `battle_effects`, `map_weather`, `battle_audio`, `projectile_visuals`, and `debug_draw`;
   - `src/scene` (`eaw_scene`), behind `visual_scene_builder.hpp` and sharing `scene_builder_internal.hpp`:
     `scene_materials` (textures, materials, lighting), `scene_models` (models and rigs),
     `scene_particles` (particle effects and effect objects), `scene_projectiles`, `scene_terrain`

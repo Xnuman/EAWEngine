@@ -10,6 +10,7 @@
 #include "battle/object_types.hpp"
 #include "presentation/battle_effects.hpp"
 #include "presentation/entity_look.hpp"
+#include "presentation/map_weather.hpp"
 #include "presentation/particle_effects.hpp"
 #include "presentation/projectile_visuals.hpp"
 #include "presentation/visual_rig.hpp"
@@ -82,6 +83,8 @@ struct VisualMapAsset
     std::shared_ptr<const FootprintSource> footprints;
     // On land: the trails its unit types lay, by type (texture indices into the particle textures).
     TrackLayerTable track_layers;
+    // On land: the weather scenario the active environment names, with its effect; null without one.
+    std::shared_ptr<const WeatherSource> weather;
     // The Particle objects shot impacts and deaths name, as in SpawnablePackage.
     ParticleEffectObjectTable effect_objects;
 };

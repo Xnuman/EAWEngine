@@ -175,6 +175,17 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         effects.reset({visual_map.rigs, &visual_map.projectile_visuals, placed_atlas(visual_map.projectile_atlas, placed), &visual_map.effect_objects, placed_atlas(visual_map.decal_atlas, placed),
                        visual_map.footprints, &placed_tracks(visual_map.track_layers, placed)});
         shown_effects = visual_map.effects;
+        // The weather's effect, pointed at the renderer's textures like the others.
+        auto weather_source = visual_map.weather;
+        if (weather_source && weather_source->effect)
+        {
+            std::array<std::shared_ptr<const eaw::ParticleEffect>, 1> weather_effect{weather_source->effect};
+            eaw::renumber_effect_textures({}, weather_effect, placed);
+            auto placed_weather = std::make_shared<eaw::WeatherSource>(*weather_source);
+            placed_weather->effect = std::move(weather_effect[0]);
+            weather_source = std::move(placed_weather);
+        }
+        weather.reset(std::move(weather_source));
         shown_effect_ids.assign(shown_effects.size(), {});
         effect_center = {(bounds.minimum[0] + bounds.maximum[0]) * 0.5F, (bounds.minimum[1] + bounds.maximum[1]) * 0.5F, 0.0F};
         if (visual_map.battle.land && visual_map.battle.ground.valid())
@@ -243,6 +254,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         {
             std::cout << "Spawnable: " << type.type_name << " (speed " << eaw::format_fixed(type.max_speed, 1) << ")\n";
         }
+        base_lighting = visual_map.lighting.value_or(eaw::VisualLightRig{});
         if (visual_map.lighting)
         {
             renderer.set_lighting(*visual_map.lighting);

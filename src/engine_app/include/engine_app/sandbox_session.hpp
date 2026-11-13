@@ -17,6 +17,7 @@
 #include "presentation/battle_audio.hpp"
 #include "presentation/battle_effects.hpp"
 #include "presentation/battle_frame.hpp"
+#include "presentation/map_weather.hpp"
 #include "presentation/particle_effects.hpp"
 #include "presentation/scene_presentation.hpp"
 #include "presentation/unit_animation.hpp"
@@ -133,6 +134,9 @@ struct SandboxSession
     std::vector<eaw::ParticleInstanceId> shown_effect_ids;
     Vector3 effect_center{};
     std::uint64_t shown_effect_seed = 1;
+    // The map's weather, and the lights its lightning flashes brighten.
+    eaw::MapWeather weather;
+    eaw::VisualLightRig base_lighting;
     std::chrono::steady_clock::time_point particle_tick = std::chrono::steady_clock::now();
     // Presentation time (presentation_now): the wall clock, or with --fixed-frame-time (and for
     // --capture) a clock advanced by a fixed step each frame.
