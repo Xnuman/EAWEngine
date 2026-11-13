@@ -37,7 +37,7 @@ void AttachedEffects::add_rigs(const std::span<const VisualRig> rigs)
                 // Hardpoint damage effects wait for per-hardpoint damage in snapshots.
                 if (attachment.effect && attachment.bone < bind_pose.size() && attachment.damage_bone < 0)
                 {
-                    mesh.attachments.push_back({attachment.effect, attachment.emit_mesh, attachment.bone, bind_pose[attachment.bone], attachment.engine});
+                    mesh.attachments.push_back({attachment.effect, attachment.emit_mesh, attachment.bone, bind_pose[attachment.bone], attachment.engine, attachment.state});
                 }
             }
         }
@@ -88,7 +88,8 @@ void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualI
             const auto& attachment = mesh.attachments[a];
             const auto skin = static_cast<std::size_t>(instance.bone_offset) + attachment.bone;
             auto bone = attachment.bind;
-            bool shown = true;
+            // An effect of another damage state stops emitting; its particles live out.
+            bool shown = !attachment.state || *attachment.state == instance.state;
             if (skin < palette.size())
             {
                 bone = attachment.bind * palette[skin];
@@ -100,7 +101,7 @@ void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualI
                 if (visibility < palette.size())
                 {
                     const auto& m = palette[visibility].values;
-                    shown = m[0] != 0.0F || m[5] != 0.0F || m[10] != 0.0F;
+                    shown = shown && (m[0] != 0.0F || m[5] != 0.0F || m[10] != 0.0F);
                 }
             }
             // The instance's uniform scale (a type's Scale_Factor) sizes the effect, particles

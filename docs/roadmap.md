@@ -89,8 +89,8 @@ rendering rows join item 2).
    sounds from presentation.
 2. M2's renderer (Rendering stages 1 and 2), in this order: damage states and LODs (detail levels
    done 2026-11-11: renderer-side selection by distance, screen size, or both, with cross-fades;
-   damage states next: chosen from health, with their effects, sounds, and rubble; with skinned and
-   gameplay-driven visibility), depth-sorted transparency, HDR with tone mapping and anti-aliasing,
+   damage states done 2026-11-13: chosen from health, with their effects, sounds, and rubble;
+   left: hardpoint damage effects, and skinned and gameplay-driven visibility), depth-sorted transparency, HDR with tone mapping and anti-aliasing,
    shadows, fog, decals (map and runtime), special materials (shields, planets, nebula, heat
    distortion, wind bend, occluded units, reflections), weather and soft particles, look tuning.
    This closes M2.
@@ -358,7 +358,9 @@ waiting for it, oldest first:
 - decorations drawn but not simulated (Fondor 02 has 532);
 - the debug overlay's own texture uploads (the F1 panels);
 - turret motor loops; wreck end explosions and the longer wrecks of AT-AA and the Dark Troopers;
-- idles: random variants one after another, lone idles pausing 2-4 s.
+- idles: random variants one after another, lone idles pausing 2-4 s;
+- damage states on land: damaged meshes and their `_ALT` effects by health, the state sounds, and
+  rubble that stays (structures without a death animation keep their last state for good).
 
 ## Engine extensions (opt-in, outside legacy mode)
 

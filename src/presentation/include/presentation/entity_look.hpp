@@ -5,6 +5,7 @@
 
 #include "math/vector.hpp"
 #include "render/color.hpp"
+#include "presentation/damage_states.hpp"
 #include "presentation/visual_rig.hpp"
 
 #include <cstdint>
@@ -54,6 +55,8 @@ struct MapEntityLook
     float bank_limit{default_bank_limit};
     bool hidden{};
     AnimationProfile animation;
+    // Its land model's damage states (empty in space and for types without them).
+    std::vector<DamageStep> damage;
 };
 
 // How a spawnable type (a SpawnableType, same index) is drawn: its mesh in the map scene, its team
@@ -72,6 +75,7 @@ struct SpawnableLook
     DeathStyle death;
     float bank_limit{default_bank_limit};
     AnimationProfile animation;
+    std::vector<DamageStep> damage;
 };
 
 // A decoration (XML Is_Decoration): a placed object that is drawn and animated but never simulated.

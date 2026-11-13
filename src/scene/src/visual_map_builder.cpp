@@ -34,7 +34,7 @@ void collect_death_effect_keys(const CombatProfile& profile, std::vector<std::ui
 } // namespace
 
 void scene_build::add_spawnable_looks(SceneBuilder& builder, const GameObjectCatalog& catalog, std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes,
-                                      const std::span<const SpawnableType> types, const std::span<const BuiltModel> models, std::vector<SpawnableLook>& looks)
+                                      const std::span<const SpawnableType> types, const std::span<const BuiltModel> models, std::vector<SpawnableLook>& looks, const bool land)
 {
     for (auto index = looks.size(); index < types.size(); ++index)
     {
@@ -71,6 +71,10 @@ void scene_build::add_spawnable_looks(SceneBuilder& builder, const GameObjectCat
         look.death = type_death_style(catalog, *model.type);
         look.bank_limit = type_bank_limit(catalog, *model.type);
         look.animation = type_animation_profile(catalog, *model.type);
+        if (land)
+        {
+            look.damage = type_damage_states(catalog, *model.type, &builder.scene.warnings);
+        }
         looks.push_back(look);
     }
 }
@@ -142,6 +146,11 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             look.bank_limit = type_bank_limit(catalog, *model.type);
             look.hidden = type_is_marker(catalog, *model.type);
             look.animation = type_animation_profile(catalog, *model.type);
+            // Land_Damage_*: the land model's states.
+            if (battle.land)
+            {
+                look.damage = type_damage_states(catalog, *model.type, &scene.warnings);
+            }
         }
         if (!entry->second)
         {
@@ -243,7 +252,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     }
 
     // Types requested for runtime spawning: their models join the mesh library without instances.
-    add_spawnable_looks(builder, catalog, meshes, battle.spawnable, spawnable_models, asset.spawnable_looks);
+    add_spawnable_looks(builder, catalog, meshes, battle.spawnable, spawnable_models, asset.spawnable_looks, battle.land);
 
     // How shots look; model projectiles add meshes, so this comes before the rigs (headless builds
     // skip it, so the simulation's meshes never depend on it).
@@ -337,7 +346,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
     SceneBuilder builder{vfs, package.meshes, {}, cache, options.textures, options.animation_clips};
     builder.particle_fidelity = options.particle_fidelity;
     std::unordered_map<std::string, std::optional<std::uint32_t>> meshes;
-    add_spawnable_looks(builder, catalog_entry->catalog, meshes, package.types, models, package.looks);
+    add_spawnable_looks(builder, catalog_entry->catalog, meshes, package.types, models, package.looks, land);
     if (!index || package.meshes.meshes.empty())
     {
         return make_error("spawn type '" + std::string(type_name) + "' has no resolvable " + std::string(land ? "land" : "space") + " model");

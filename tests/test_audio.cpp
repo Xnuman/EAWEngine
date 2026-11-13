@@ -489,6 +489,8 @@ void test_impact_and_moving_sounds()
                "<Spin_Away_On_Death_SFXEvent_Start_Die>Spinning</Spin_Away_On_Death_SFXEvent_Start_Die><SFXEvent_Group_Move>Low_Line</SFXEvent_Group_Move>"
                "<SFXEvent_Hardpoint_Destroyed>HARD_POINT_ENGINE, </SFXEvent_Hardpoint_Destroyed>"
                "<SFXEvent_Hardpoint_Destroyed> HARD_POINT_WEAPON_LASER, Critical_Line </SFXEvent_Hardpoint_Destroyed></HeroUnit>"
+               "<GroundStructure Name=\"Tower\"><Land_Damage_Thresholds>1, 0.5, 0.2</Land_Damage_Thresholds><Land_Damage_Alternates>0, 1, 2</Land_Damage_Alternates>"
+               "<Land_Damage_SFX>null, Chirp, NULL</Land_Damage_SFX></GroundStructure>"
                "</Units>");
     write_file(root / "Data" / "Audio" / "SFX" / "a.wav", text_of(make_wav(eaw::wav_format::pcm, 1, 16, pcm16({1, 2}))));
     eaw::VirtualFileSystem vfs;
@@ -617,6 +619,25 @@ void test_impact_and_moving_sounds()
         const auto ahead = audio.stats().played;
         audio.play_tick_events(lost, hurt);
         require(audio.stats().played == ahead + 1, "a unit must report a lost hardpoint of a kind it has a line for, and nothing for an empty line");
+    }
+    // Land_Damage_SFX: the sound of each damage state entered on the way down, none for null.
+    {
+        eaw::SimulationWorld hurt(0.1);
+        eaw::CombatProfile tower;
+        tower.health = 100.0F;
+        const auto unit = *hurt.spawn({.type_name = "Tower", .owner = 1, .combat = tower});
+        const auto tick = [&](const float damage)
+        {
+            if (damage > 0.0F)
+            {
+                hurt.submit({.kind = eaw::SimCommandKind::damage, .entities = {unit}, .amount = damage});
+            }
+            hurt.step();
+            const auto before = audio.stats().played;
+            audio.play_tick_events(hurt.snapshot(), hurt);
+            return audio.stats().played - before;
+        };
+        require(tick(0.0F) == 0 && tick(55.0F) == 1 && tick(0.0F) == 0 && tick(30.0F) == 0, "a structure must sound entering a damage state with a sound, once, and not for null");
     }
     std::filesystem::remove_all(root, ignored);
 }

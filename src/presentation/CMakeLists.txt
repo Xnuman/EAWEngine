@@ -12,6 +12,7 @@ set(EAW_PRESENTATION_HEADERS
     ${HEADERS_DIR}/battle_audio.hpp
     ${HEADERS_DIR}/battle_effects.hpp
     ${HEADERS_DIR}/battle_frame.hpp
+    ${HEADERS_DIR}/damage_states.hpp
     ${HEADERS_DIR}/debug_draw.hpp
     ${HEADERS_DIR}/entity_look.hpp
     ${HEADERS_DIR}/particle_effects.hpp
@@ -26,6 +27,7 @@ set(EAW_PRESENTATION_SOURCES
     ${SOURCES_DIR}/battle_audio.cpp
     ${SOURCES_DIR}/battle_effects.cpp
     ${SOURCES_DIR}/battle_frame.cpp
+    ${SOURCES_DIR}/damage_states.cpp
     ${SOURCES_DIR}/debug_draw.cpp
     ${SOURCES_DIR}/particle_effects.cpp
     ${SOURCES_DIR}/projectile_visuals.cpp

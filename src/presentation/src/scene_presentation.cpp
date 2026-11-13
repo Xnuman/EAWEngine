@@ -71,7 +71,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
                        "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(look.instance) + ", which is missing or a background");
         if (ids[index])
         {
-            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[look.instance], entity.spawn.heading, look.death, look.bank_limit, look.animation});
+            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[look.instance], entity.spawn.heading, look.death, look.bank_limit, look.animation, look.damage});
         }
     }
     add_spawnable(spawnable);
@@ -84,7 +84,8 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         }
         EAW_ASSERT_MSG(decoration.look.instance < scene.instances.size() && !scene.instances[decoration.look.instance].background, "a decoration names a scene instance it does not have");
         const EntityId id{decoration_id_base + static_cast<std::uint32_t>(index), 1};
-        templates_.emplace(entity_key(id), Template{scene.instances[decoration.look.instance], decoration.heading, decoration.look.death, decoration.look.bank_limit, decoration.look.animation});
+        templates_.emplace(entity_key(id), Template{scene.instances[decoration.look.instance], decoration.heading, decoration.look.death, decoration.look.bank_limit, decoration.look.animation,
+                                                    decoration.look.damage});
         EntitySnapshot snapshot;
         snapshot.id = id;
         snapshot.position = decoration.position;
@@ -133,6 +134,11 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
         instance.transform = pose_transform(instance.transform, found->base_heading, entity.position, entity.heading, entity.pitch, flight_bank(entity.yaw_rate, found->bank_limit) + entity.roll);
         instance.highlighted = selected.contains(entity_key(entity.id));
         instance.key = entity_key(entity.id);
+        // The land model's damage state by health (decorations, with no health, stay intact).
+        if (!found->damage.empty() && entity.max_health > 0.0F)
+        {
+            instance.state = damage_alternate(found->damage, entity.health / entity.max_health);
+        }
         instances_out.push_back(instance);
         entities_out.push_back(entity.id);
         if (animations_out != nullptr)
@@ -171,7 +177,7 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableLook> types
         }
         instance.team_color = type.team_color;
         instance.lod_bias = type.lod_bias;
-        spawn_templates_.push_back(Template{instance, identity_model_heading, type.death, type.bank_limit, type.animation});
+        spawn_templates_.push_back(Template{instance, identity_model_heading, type.death, type.bank_limit, type.animation, type.damage});
     }
 }
 
@@ -194,6 +200,11 @@ std::optional<ScenePresentation::Corpse> ScenePresentation::corpse_instance(cons
     auto instance = found->instance;
     instance.transform = pose_transform(instance.transform, found->base_heading, death.position, death.heading, death.pitch);
     instance.highlighted = false;
+    // A wreck shows its model's last damage state (rubble), the one for no health left.
+    if (!found->damage.empty())
+    {
+        instance.state = damage_alternate(found->damage, 0.0F);
+    }
     const auto style = found->death;
     if (placed != templates_.end())
     {

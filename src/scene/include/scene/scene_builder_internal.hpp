@@ -198,9 +198,9 @@ std::optional<std::uint32_t> append_scene_model(SceneBuilder& builder, const std
 
 // Appends the looks of `types` from looks.size() on (their meshes join the builder's scene once per
 // model and attachments, by `meshes`); a type whose model could not be drawn is hidden, with a
-// warning.
+// warning. On `land` they carry their land model's damage states.
 void add_spawnable_looks(SceneBuilder& builder, const GameObjectCatalog& catalog, std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes, std::span<const SpawnableType> types,
-                         std::span<const BuiltModel> models, std::vector<SpawnableLook>& looks);
+                         std::span<const BuiltModel> models, std::vector<SpawnableLook>& looks, bool land);
 
 // A rig per scene mesh (its model, inverse bind pose, role clips, and rest palette range), the
 // concatenated rest palette, every instance's bone offset, and the scene's palette size.

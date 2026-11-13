@@ -26,9 +26,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 165 |
+| `done` | 168 |
 | `partial` | 22 |
-| `gap` | 205 |
+| `gap` | 202 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -1221,7 +1221,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Models, rendering, animation, user interface, and text
 
-16 done, 5 partial, 86 gap, 83 needs, 3 n/a.
+18 done, 5 partial, 84 gap, 83 needs, 3 n/a.
 
 ### Core structure (summary; see the overview chapters)
 
@@ -1290,8 +1290,8 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Land_Damage_Thresholds` | `gap` |  |
-| `Land_Damage_Alternates` | `gap` |  |
+| `Land_Damage_Thresholds` | `done` | on land; the state of the last threshold the health fraction is at or below |
+| `Land_Damage_Alternates` | `done` | meshes and `_ALT<n>` proxy effects of the state; wrecks show the state for no health |
 | `Asteroid_Damage_Hit_Particles` | `needs space hazards` |  |
 | `Model_To_Attach` | `done` |  |
 | `Attachment_Bone` | `done` |  |
@@ -1496,7 +1496,7 @@ Postponed by the owner (2026-11-13): battles use the engine's own cameras for no
 
 ## Sound events and speech
 
-24 done, 1 partial, 4 gap, 58 needs, 4 n/a.
+25 done, 1 partial, 3 gap, 58 needs, 4 n/a.
 
 ### Unit responses to orders and selection
 
@@ -1562,7 +1562,7 @@ Postponed by the owner (2026-11-13): battles use the engine's own cameras for no
 | `Death_SFXEvent_End_Die` | `gap` |  |
 | `Spin_Away_On_Death_SFXEvent_Start_Die` | `done` |  |
 | `Selt_Destruct_SFXEvent_Start_Die` | `needs retreat` |  |
-| `Land_Damage_SFX` | `gap` |  |
+| `Land_Damage_SFX` | `done` | on entering a state on the way down, on land |
 
 ### Health and base warnings
 

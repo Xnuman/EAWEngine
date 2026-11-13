@@ -125,6 +125,9 @@ struct VisualEffectAttachment
     // An engine effect (named pe_*, or under a hardpoint's Engine_Particles bone): it glows with the
     // unit's speed.
     bool engine{};
+    // The damage state it belongs to (an _ALT<n> proxy: shown only while the instance draws that
+    // state, VisualInstance::state); none for an effect shown in every state.
+    std::optional<std::uint32_t> state;
 };
 
 // A map mesh's skeleton for animation: the model, the inverse of its bind pose (empty when the bind

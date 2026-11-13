@@ -1766,8 +1766,8 @@ This family holds the tags that decide how an object looks and how the interface
 
 | Tag | Used by | Values | Meaning |
 |---|---|---|---|
-| `Land_Damage_Thresholds` | 219 objects: structures 184, units 27, props 8 | list of health fractions, descending (`1, 0.66, 0.33, 0` 127, `1, 0.66, 0.33` 45, `1` 35) | Health fractions at which the land model switches damage state (data; recorded in compatibility-research). Not read by the engine. |
-| `Land_Damage_Alternates` | same 219 objects | parallel list of `_ALT<n>` indices (`0, 1, 2, 3` 127, `0, 1, 2` 45, `3` 35) | The model alternate shown for each threshold (data). Build pads use a single `1` / `3` pair. Not read: the engine keeps every `_ALT<n>` mesh but has no health-driven state switch yet. |
+| `Land_Damage_Thresholds` | 219 objects: structures 184, units 27, props 8 | list of health fractions, descending (`1, 0.66, 0.33, 0` 127, `1, 0.66, 0.33` 45, `1` 35) | Health fractions at which the land model switches damage state (data; recorded in compatibility-research). Engine: on land, the state of the last threshold the health fraction is at or below. |
+| `Land_Damage_Alternates` | same 219 objects | parallel list of `_ALT<n>` indices (`0, 1, 2, 3` 127, `0, 1, 2` 45, `3` 35) | The model alternate shown for each threshold (data). Build pads use a single `1` / `3` pair. Engine: the meshes and `_ALT<n>` proxy effects drawn in that state; a wreck shows the state for no health. |
 | `Asteroid_Damage_Hit_Particles` | 57 objects (units 56) | particle name: `Small_Damage_Space` 34, `Large_Damage_Space` 21 (one lower-case `large_...`) | Effect played when an asteroid field damages the ship (name, data). Not read. |
 | `Model_To_Attach` | 220 hardpoints | `.alo` file (189 distinct); 2 empty | Separate model drawn for the hardpoint, attached to the host (data). Engine: `scene_models.cpp` loads it and attaches it at `Attachment_Bone`, warning on a missing file or bone. |
 | `Attachment_Bone` | 267 hardpoints | bone name (144 distinct; `HP_E_BONE` 15) | Bone of the host the hardpoint model and its position attach to; a comment notes it also centers the HUD reticle when nothing is attached (comment). Engine: attachment point for `Model_To_Attach` and the hardpoint's position (falling back to `Fire_Bone_A`). |
@@ -1983,7 +1983,7 @@ These are not presentation tags; they appear here because the classifier grouped
 - Likely ignored stray spellings: `Model_Name` (1, a MiscObject), `GUI_Model` (1, beside the 119 `GUI_Model_Name`), `Scale` on 2 space props that also set `Scale_Factor`, and one `Radar_Range_Icon_Name` with a doubled `.tga.tga`. One `Asteroid_Damage_Hit_Particles` writes `large_Damage_Space` in lower case, which is harmless because names are case-insensitive.
 - Contradictory repeats: two huge-asteroid props set `Idle_Anim_00_Rate_Mod` twice (8.0 then 1.0); `Select_Box_Scale` repeats up to 3 times in 5 objects; `Blob_Shadow_*`, `GUI_Bracket_Size`, `Is_Visible_On_Radar`, `Icon_Name` each repeat in a few objects. Which occurrence wins (first or last) has not been confirmed for the original, so these are good test cases.
 - FoC only: `LOD_Bias`, `LensFlare`/`Flare`, `In_Midground`, `In_Midforeground`, `Slot_Scale`, `GUI_Bias`, `Not_Really_Selectable`, `Include_In_UI_Map_Header`, `Show_In_Sidebar_Tray`, black-market `Localized_Name`/`Localized_Description`/`Used_By_Units`, `Cinematic_Object_Only`, and the bounty and corruption tags. Installed only (patch): `Engine_Hardpoint` in a cinematic hardpoint file.
-- Damage states: `Land_Damage_Thresholds` and `Land_Damage_Alternates` (219 objects, parallel lists) are not read. The engine keeps `_ALT<n>` meshes but still needs a health-driven state switch that reads both lists and treats the build-pad form (`1` with `3`) correctly.
+- Damage states: `Land_Damage_Thresholds` and `Land_Damage_Alternates` (219 objects, parallel lists) are read on land: an entity shows the alternate of the last threshold its health fraction is at or below, so the build-pad form (`1` with `3`) shows ALT3 at any health.
 - Death animation: the engine reads `Specific_Death_Anim_Index` but not `Specific_Death_Anim_Type` (FW_DIE, FL_DIE, Crushed, FIRE_DIE...). 79 of the 102 index values are empty, and an empty value reads as variant 0. Damage-type clones need the type to choose their clip.
 - `Land_Terrain_Model_Mapping` (3 stock infantry) swaps models by terrain type, for snow and sand troopers. The engine always draws `Land_Model_Name`, so Arctic, Desert, and Volcanic maps show the wrong trooper skins.
 - The detail-cutoff tags fit the graphics presets: `Blob_Shadow_Below_Detail_Level` matches `ShadowDetail` 0-3, `No_Reflection`/`No_Refraction` match `WaterDetailLevel` 0-2, and `No_Particle_Below_Detail_Level` matches `ParticleDetail` 0.4-1.0. The value 99 means "never". This mapping is inferred from value ranges, not confirmed.
@@ -2056,7 +2056,7 @@ These tags name audio events that an object plays: unit voice responses, weapon 
 | `Death_SFXEvent_End_Die` | vehicles 14, unique 4 (18) | event (4 distinct: corvette, AT-ST, Calamari, tank death sounds) | sound at the end of a death sequence, on death clones such as `AT_AT_Walker_Death_Clone_*` (name, data). Not played. |
 | `Spin_Away_On_Death_SFXEvent_Start_Die` | space units 14, bombing units 3, unique 3, vehicles 2 (22) | event `Unit_<fighter>_Spinning_By` (5 distinct) | sound of a fighter spinning away when it dies, paired with `Spin_Away_On_Death_Explosion` (name, data). Not played. |
 | `Selt_Destruct_SFXEvent_Start_Die` | vehicles 2, space units 2, infantry 1 (5) | `Unit_ZC_Self_Destruct` 3, `Unit_TIE_Mauler_Self_Destruct`, `Unit_Ewok_Death` | sound when a self-destruct sequence begins (comment). Misspelt (`Selt`), but the only spelling in all three data sets, so presumably what the game parses. Not played. |
-| `Land_Damage_SFX` | structures 183, units 27, props 8 (218) | comma list, one per damage state: `null,SFX_Grenade_Detonation, SFX_Grenade_Detonation,null` 134, all-`null` 35, ...; `null` is none | sound on entering each `Land_Damage_Thresholds` state (data; already in compatibility-research). Not played. |
+| `Land_Damage_SFX` | structures 183, units 27, props 8 (218) | comma list, one per damage state: `null,SFX_Grenade_Detonation, SFX_Grenade_Detonation,null` 134, all-`null` 35, ...; `null` is none | sound on entering each `Land_Damage_Thresholds` state (data; already in compatibility-research). Played on land when a unit enters a state on the way down. |
 
 #### Health and base warnings
 | Tag | Used by | Values | Meaning |
@@ -2203,8 +2203,8 @@ cadence; second weapons wait for SWAP_WEAPONS), 3, 4, 5, and the inaccuracy and
    `Squadron_Offsets` of their own (Vader's takes them from its team container), so the engine
    stacks their members.
 6. **Damage states.** `Land_Damage_Thresholds` and `Land_Damage_Alternates` (219 objects) drive
-   the health-based `_ALT` model states; `Specific_Death_Anim_Type` picks directional and special
-   death clips. Neither is read.
+   the health-based `_ALT` model states (read since 2026-11-13); `Specific_Death_Anim_Type` picks
+   directional and special death clips.
 7. **Determinism.** `Is_Decoration` (1,063 objects) marks objects that the original keeps
    unsynchronized and idle-only (developer comment), so they can stay out of the simulation and
    its hash.

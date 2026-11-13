@@ -91,6 +91,30 @@ void test_attached_effect_scale()
     require(normal.half_size > 0.0F && std::fabs(doubled.half_size - 2.0F * normal.half_size) < 1e-3F && std::fabs(doubled.position[2] - 2.0F * normal.position[2]) < 1e-2F &&
                 doubled.position[0] == 100.0F,
             "an attached effect must scale with its unit");
+
+    // An _ALT<n> effect plays only while its unit draws damage state n, also on a rig whose bones
+    // can be hidden (the visibility half of the palette).
+    auto damaged_rig = rig;
+    damaged_rig.palette_size = 2;
+    damaged_rig.effects.back().state = 1U;
+    const std::vector<eaw::VisualRig> damaged_rigs{damaged_rig};
+    const std::vector<eaw::Matrix4> shown_palette{eaw::Matrix4::identity(), eaw::Matrix4::identity()};
+    const auto sprites_in = [&](const std::uint32_t state)
+    {
+        eaw::ParticleWorld world;
+        eaw::AttachedEffects effects;
+        effects.set_rigs(damaged_rigs);
+        eaw::VisualInstance unit{0};
+        unit.state = state;
+        const std::vector<eaw::VisualInstance> instances{unit};
+        const std::vector<eaw::EntityId> ids{eaw::EntityId{1, 1}};
+        effects.update(world, instances, ids, shown_palette);
+        world.update(0.01F);
+        std::vector<eaw::VisualParticle> sprites;
+        world.build_sprites({0.0F, 0.0F, 0.0F}, sprites);
+        return sprites.size();
+    };
+    require(sprites_in(0U) == 0U && sprites_in(1U) == 1U, "a damage state's effect must play only in that state");
 }
 
 // Model projectiles: drawn nose along the flight at their scale, between ticks; their particle

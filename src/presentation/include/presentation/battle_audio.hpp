@@ -16,6 +16,7 @@
 #include "assets/sound_events.hpp"
 #include "assets/surface_effects.hpp"
 #include "simulation/simulation.hpp"
+#include "presentation/damage_states.hpp"
 #include "presentation/unit_animation.hpp"
 
 #include <cstdint>
@@ -148,6 +149,10 @@ private:
         // _Critical_Warning), and its sound when it spins away (Spin_Away_On_Death_SFXEvent_Start_Die).
         std::string health_low;
         std::string health_critical;
+        // Land battles: its damage states and the sound of entering each (Land_Damage_SFX, the
+        // parallel list; empty for `null`).
+        std::vector<DamageStep> damage_steps;
+        std::vector<std::string> damage_sounds;
         std::string spin;
         std::string group_move;
         std::string group_attack;
@@ -205,6 +210,7 @@ private:
     AudioDevice& device_;
     std::string language_;
     AudioModeSettings settings_;
+    bool land_{};
     SoundEventCatalog events_;
     AnimationEventTable animation_events_;
     SurfaceEffectCatalog surface_effects_;
@@ -222,6 +228,8 @@ private:
     std::unordered_map<std::uint64_t, float> ambient_moving_due_;
     // Per entity: the health band it last reported (0 above low, 1 low, 2 critical).
     std::unordered_map<std::uint64_t, std::uint8_t> health_bands_;
+    // Per entity: the damage step it shows (DamageStep index + 1; 0 above the first threshold).
+    std::unordered_map<std::uint64_t, std::size_t> damage_steps_;
     // Per turreted entity: its turret direction at the last tick seen, and whether it changed then.
     struct TurretMotion
     {

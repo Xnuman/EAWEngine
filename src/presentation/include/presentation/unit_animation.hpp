@@ -17,7 +17,7 @@
 //
 // - Death. A unit combat destroyed leaves a corpse (add_corpse) that plays a DIE variant once,
 //   holds its last frame for 4 s, and is then removed; corpses of meshes without a DIE clip are
-//   not kept (they vanish at once, as before). Corpses are drawn after the living units with
+//   kept only when they show a damage state (rubble, at rest pose), else they vanish at once. Corpses are drawn after the living units with
 //   invalid entity ids, so they cannot be picked.
 //
 // Clip variants come from the entity's id; loops start at an id-dependent phase so neighbours do
@@ -110,8 +110,8 @@ public:
     void animate(std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, double seconds, std::size_t max_palette,
                  std::vector<Matrix4>& palette, std::span<const AnimationProfile> animations = {});
     // Keeps a dead entity's instance (ScenePresentation::corpse_instance) as a corpse that plays a
-    // DIE clip from `seconds` on; ignored when its mesh has none. At most 4096 corpses are kept (the
-    // oldest go first).
+    // DIE clip from `seconds` on; without one, only an instance in a damage state stays (rubble),
+    // for the style's persistence or for good. At most 4096 corpses are kept (the oldest go first).
     // `style` picks the DIE variant and how long the corpse stays (DeathStyle); a crushed death plays
     // the style's crushed clip when the mesh has it.
     void add_corpse(const VisualInstance& instance, EntityId id, double seconds, const DeathStyle& style = {}, bool crushed = false);

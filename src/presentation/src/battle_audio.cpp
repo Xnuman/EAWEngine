@@ -7,6 +7,7 @@
 #include "assets/game_object_catalog.hpp"
 #include "assets/map_object_layout.hpp"
 #include "assets/resource_loaders.hpp"
+#include "assets/type_fields.hpp"
 #include "battle/object_types.hpp"
 #include "presentation/scene_presentation.hpp"
 
@@ -62,7 +63,7 @@ AudioModeSettings read_audio_mode_settings(const AssetReader& reader, const bool
 }
 
 BattleAudio::BattleAudio(const AssetReader& reader, AssetCache* cache, AudioDevice& device, std::string language, const bool land, const std::uint64_t seed)
-    : reader_(reader), cache_(cache), device_(device), language_(std::move(language)), settings_(read_audio_mode_settings(reader, land)), random_(seed)
+    : reader_(reader), cache_(cache), device_(device), language_(std::move(language)), settings_(read_audio_mode_settings(reader, land)), land_(land), random_(seed)
 {
     const auto entry = ResourceManager(reader, cache).get<CachedCatalog>(xml_catalog_path);
     events_ = SoundEventCatalog::build(*entry->database);
@@ -151,6 +152,14 @@ const BattleAudio::TypeSounds& BattleAudio::type_sounds(const std::string_view t
         }
         sounds.health_low = type_field(*catalog_, definition, "SFXEvent_Health_Low_Warning");
         sounds.health_critical = type_field(*catalog_, definition, "SFXEvent_Health_Critical_Warning");
+        if (land_)
+        {
+            sounds.damage_steps = type_damage_states(*catalog_, definition);
+            for (const auto item : TypeFields(*catalog_, definition).list("Land_Damage_SFX"))
+            {
+                sounds.damage_sounds.emplace_back(ascii_equal_ignoring_case(item, "null") ? std::string_view{} : item);
+            }
+        }
         sounds.spin = type_field(*catalog_, definition, "Spin_Away_On_Death_SFXEvent_Start_Die");
         sounds.group_move = type_field(*catalog_, definition, "SFXEvent_Group_Move");
         sounds.group_attack = type_field(*catalog_, definition, "SFXEvent_Group_Attack");
@@ -494,10 +503,24 @@ void BattleAudio::play_tick_events(const SimSnapshot& snapshot, const Simulation
             }
         }
         previous = band;
+        // Land_Damage_SFX: the sound of a damage state the unit enters on the way down (first sight
+        // only records where it is).
+        if (const auto& sounds = type_sounds(world.type_name(entity.id)); !sounds.damage_steps.empty())
+        {
+            const auto step = damage_step(sounds.damage_steps, fraction);
+            const auto current = step ? *step + 1U : 0U;
+            const auto [seen, first] = damage_steps_.try_emplace(entity_key(entity.id), current);
+            if (!first && current > seen->second && *step < sounds.damage_sounds.size() && !sounds.damage_sounds[*step].empty())
+            {
+                (void)play_event(sounds.damage_sounds[*step], entity.position);
+            }
+            seen->second = current;
+        }
     }
     for (const auto& death : snapshot.deaths)
     {
         health_bands_.erase(entity_key(death.id));
+        damage_steps_.erase(entity_key(death.id));
         const auto key = entity_key(death.id);
         if (const auto known = entity_sounds_.find(key); known != entity_sounds_.end())
         {

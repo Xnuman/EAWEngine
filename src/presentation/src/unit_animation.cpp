@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace eaw {
 namespace {
@@ -283,11 +284,12 @@ std::optional<std::uint32_t> UnitAnimator::place(const PoseKey& key, const std::
 
 void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id, const double seconds, const DeathStyle& style, const bool crushed)
 {
-    if (instance.mesh >= rigs_.size() || !rigs_[instance.mesh].skeleton)
+    if (instance.mesh >= rigs_.size())
     {
         return;
     }
-    auto clip = choose_clip(instance.mesh, AnimationRole::die, id);
+    // A mesh without a skeleton has no clips: it can only leave rubble.
+    auto clip = rigs_[instance.mesh].skeleton ? choose_clip(instance.mesh, AnimationRole::die, id) : -1;
     if (style.die_variant)
     {
         // The death clone's DIE variant when the mesh has it.
@@ -318,6 +320,17 @@ void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id,
     }
     if (clip < 0)
     {
+        // Without a DIE clip only a damaged state stays (a structure's rubble, at rest pose): for its
+        // persistence, else for good (an engine choice: the original's rubble lasts, as remembered).
+        if (instance.state != 0U)
+        {
+            if (corpses_.size() >= maximum_corpses)
+            {
+                corpses_.erase(corpses_.begin());
+            }
+            const auto lifetime = style.persistence_seconds ? static_cast<double>(*style.persistence_seconds) : std::numeric_limits<double>::infinity();
+            corpses_.push_back({instance, -1, seconds, lifetime, -1.0, style.end_effect});
+        }
         return;
     }
     if (corpses_.size() >= maximum_corpses)
@@ -730,6 +743,15 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                   });
     for (auto& corpse : corpses_)
     {
+        if (corpse.clip < 0)
+        {
+            auto instance = corpse.instance;
+            instance.bone_offset = rigs_[instance.mesh].rest_offset;
+            instances.push_back(instance);
+            entities.emplace_back();
+            ++stats_.corpses;
+            continue;
+        }
         const auto& die_clip = rigs_[corpse.instance.mesh].clips[static_cast<std::size_t>(corpse.clip)];
         const auto duration = static_cast<double>(animation_duration(*die_clip.animation));
         const auto time = std::clamp(seconds - corpse.died, 0.0, duration * 0.9999);

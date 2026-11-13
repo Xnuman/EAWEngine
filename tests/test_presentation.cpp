@@ -119,6 +119,31 @@ void test_scene_presentation()
     require(decoration_snapshots.size() == 1 && decoration_snapshots[0].id.index == eaw::decoration_id_base && drawn.size() == 2 && drawn_ids[1] == decoration_snapshots[0].id &&
                 std::fabs(drawn[1].transform.values[12] - 40.0F) < 1.0e-4F,
             "a decoration must be drawn where it was placed, under its own id");
+
+    // Damage states (Land_Damage_Thresholds/_Alternates): the state for the health fraction, and a
+    // wreck shows the state for no health (rubble).
+    {
+        eaw::MapEntityLook damaged_look{1};
+        damaged_look.damage = {{1.0F, 0U}, {0.66F, 1U}, {0.33F, 2U}, {0.0F, 3U}};
+        eaw::BattleMap damaged_map;
+        damaged_map.entities = std::span(&marker, 1);
+        eaw::Battle damaged_battle(damaged_map, "TEST.TED", 0.1);
+        eaw::ScenePresentation damaged(scene, std::span(&marker, 1), std::span(&damaged_look, 1), damaged_battle.map_entity_ids(), {});
+        auto shown = damaged_battle.world().snapshot().entities;
+        const auto state_at = [&](const float health)
+        {
+            shown[0].health = health;
+            shown[0].max_health = 100.0F;
+            damaged.build(shown, {}, instances, ids);
+            return instances.back().state;
+        };
+        require(state_at(100.0F) == 0U && state_at(80.0F) == 0U && state_at(66.0F) == 1U && state_at(50.0F) == 1U && state_at(10.0F) == 2U,
+                "an entity must show the damage state of its health fraction");
+        eaw::DeathSnapshot death;
+        death.id = shown[0].id;
+        const auto wreck = damaged.corpse_instance(death);
+        require(wreck && wreck->instance.state == 3U, "a wreck must show the damage state for no health");
+    }
 }
 
 // Unit animation: clip names map to roles, snapshots choose roles, entities share sampled poses,
@@ -415,6 +440,14 @@ void test_unit_animation()
     mourner.animate({}, none, drawn, 112.5, 1U << 20U, palette);
     require(drawn.empty() && mourner.ended_corpses().size() == 1 && mourner.ended_corpses()[0].effect == 77U && mourner.ended_corpses()[0].position == eaw::Vector3{5.0F, 6.0F, 7.0F},
             "a death clone's corpse must go once its persistence ends, reporting its end effect where it lay");
+    // A clipless mesh in a damage state keeps its rubble, at rest pose, for good.
+    auto rubble = prop;
+    rubble.state = 3U;
+    mourner.add_corpse(rubble, {6, 1}, 200.0);
+    none.clear();
+    drawn.clear();
+    mourner.animate({}, none, drawn, 9000.0, 1U << 20U, palette);
+    require(drawn.size() == 1 && drawn[0].state == 3U && drawn[0].bone_offset == death_rigs[1].rest_offset, "rubble must stay at rest pose");
     // Shots: a mesh with ATTACK and ATTACKIDLE aims with ATTACKIDLE, plays ATTACK from its start on
     // each shot, and fades back to aiming after ATTACK ends (the test clip lasts 1 s).
     auto shooter_rig = rig;

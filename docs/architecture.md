@@ -468,7 +468,8 @@ The file-level split of each module.
     gameplay reads of XML types and their models: the cached catalog, movement classes, type
     fields, model footprints, hardpoint models);
   - `src/presentation` (`eaw_presentation`): `visual_rig` (rigs, clips, palettes), `entity_look` (how entities and spawnable
-    types are drawn), `battle_frame` (a running battle's tick events and frames),
+    types are drawn), `damage_states` (a land model's `_ALT` state by health), `battle_frame` (a running
+    battle's tick events and frames),
     `scene_presentation`, `unit_animation`, `particle_effects` (`ParticleWorld`), `attached_effects`,
     `battle_effects`, `battle_audio`, `projectile_visuals`, and `debug_draw`;
   - `src/scene` (`eaw_scene`), behind `visual_scene_builder.hpp` and sharing `scene_builder_internal.hpp`:

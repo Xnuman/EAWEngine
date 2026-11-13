@@ -50,6 +50,7 @@ private:
         // The bone's bind-pose transform in model space (row-vector convention).
         Matrix4 bind{Matrix4::identity()};
         bool engine{};
+        std::optional<std::uint32_t> state;
     };
     struct MeshEffects
     {

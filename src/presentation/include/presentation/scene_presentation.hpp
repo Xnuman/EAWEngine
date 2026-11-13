@@ -94,6 +94,7 @@ private:
         DeathStyle death;
         float bank_limit{default_bank_limit};
         AnimationProfile animation;
+        std::vector<DamageStep> damage;
     };
     std::vector<VisualInstance> backgrounds_;
     std::unordered_map<std::uint64_t, Template> templates_;

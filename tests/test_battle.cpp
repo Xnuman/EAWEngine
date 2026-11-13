@@ -7,6 +7,7 @@
 #include "battle/battle_runtime.hpp"
 #include "battle/battle_scripts.hpp"
 #include "presentation/battle_effects.hpp"
+#include "presentation/damage_states.hpp"
 #include "presentation/particle_effects.hpp"
 #include "presentation/projectile_visuals.hpp"
 #include "presentation/unit_animation.hpp"
@@ -98,6 +99,9 @@ void test_combat_content()
                 "<Death_Explosions_End>Small_Boom</Death_Explosions_End></GroundInfantry>"
                 "<GroundInfantry Name=\"Squishy_Flat\"><Specific_Death_Anim_Type> Crushed </Specific_Death_Anim_Type><Specific_Death_Anim_Index>0</Specific_Death_Anim_Index></GroundInfantry>"
                 "<SpaceUnit Name=\"Debris\"><Remove_Upon_Death> true </Remove_Upon_Death></SpaceUnit>"
+                "<GroundStructure Name=\"Tower\"><Land_Damage_Thresholds>1, 0.66, 0.33, 0</Land_Damage_Thresholds><Land_Damage_Alternates>0,1,2,3</Land_Damage_Alternates></GroundStructure>"
+                "<GroundStructure Name=\"Build_Pad\"><Land_Damage_Thresholds>1</Land_Damage_Thresholds><Land_Damage_Alternates>3</Land_Damage_Alternates></GroundStructure>"
+                "<GroundStructure Name=\"Odd_Tower\"><Land_Damage_Thresholds>1, 0.5, 0.25</Land_Damage_Thresholds><Land_Damage_Alternates>0, 1.5, 2</Land_Damage_Alternates></GroundStructure>"
                 "<Indigenous_Unit Name=\"Bird\"><Max_Speed>2</Max_Speed><Movement_Animation_Speed>0.8</Movement_Animation_Speed><Walk_Animation_Speed>0.5</Walk_Animation_Speed>"
                 "<Allow_Idle_When_Moving>Yes</Allow_Idle_When_Moving><Idle_Anim_00_Rate_Mod>-1</Idle_Anim_00_Rate_Mod></Indigenous_Unit>"
                 "<GroundVehicle Name=\"Gunner\"><Turret_Bone_Name> Turret_00 </Turret_Bone_Name><Barrel_Bone_Name>MuzzleA_00</Barrel_Bone_Name><Turret_Rotate_Speed>4</Turret_Rotate_Speed>"
@@ -241,6 +245,19 @@ void test_combat_content()
     }
     require(eaw::scene_build::type_death_style(catalog, *definition("Debris")).removed && !eaw::scene_build::type_death_style(catalog, *definition("Tank")).removed,
             "Remove_Upon_Death must leave no corpse");
+    {
+        const auto tower = eaw::type_damage_states(catalog, *definition("Tower"));
+        const auto pad = eaw::type_damage_states(catalog, *definition("Build_Pad"));
+        std::vector<std::string> odd_warnings;
+        const auto odd = eaw::type_damage_states(catalog, *definition("Odd_Tower"), &odd_warnings);
+        require(tower.size() == 4 && tower[1].threshold == 0.66F && tower[3].alternate == 3U && eaw::type_damage_states(catalog, *definition("Tank")).empty(),
+                "damage states must pair the thresholds with the alternates");
+        require(eaw::damage_alternate(tower, 1.0F) == 0U && eaw::damage_alternate(tower, 0.7F) == 0U && eaw::damage_alternate(tower, 0.5F) == 1U && eaw::damage_alternate(tower, 0.0F) == 3U &&
+                    eaw::damage_alternate({}, 0.1F) == 0U && !eaw::damage_step(tower, 1.5F),
+                "the state must be the last threshold the health fraction is at or below");
+        require(pad.size() == 1 && eaw::damage_alternate(pad, 1.0F) == 3U && eaw::damage_alternate(pad, 0.2F) == 3U, "a build pad's single pair must show its alternate at any health");
+        require(odd.size() == 1 && odd_warnings.size() == 1, "a bad alternate must end the list with a warning");
+    }
     {
         const auto bird = eaw::scene_build::type_animation_profile(catalog, *definition("Bird"));
         const auto plain = eaw::scene_build::type_animation_profile(catalog, *definition("Tank"));

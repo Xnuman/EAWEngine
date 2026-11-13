@@ -9,6 +9,8 @@
 #include <charconv>
 #include <cmath>
 #include <filesystem>
+#include <iterator>
+#include <optional>
 #include <unordered_map>
 
 namespace eaw {
@@ -328,6 +330,7 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const M
         }
         return -1;
     };
+    std::vector<VisualEffectAttachment> damaged;
     for (const auto& proxy : model.proxies)
     {
         // Hidden proxies (damage effects, alternate states) are shown by gameplay, which does not
@@ -336,12 +339,17 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const M
         {
             continue;
         }
-        // State-variant tags as on meshes: _ALT1 and up belong to damaged states (the intact model is
-        // shown), and of several detail levels the first is kept; the tag is not part of the file name.
+        // State-variant tags as on meshes: an _ALT<n> effect shows only in damage state n, and of
+        // several detail levels the first is kept; the tag is not part of the file name.
         auto name = proxy.name;
+        std::optional<std::uint32_t> state;
         if (const auto variant = alo_name_variant(name); variant.kind != AloVariantKind::none)
         {
-            if (variant.index != 0)
+            if (variant.kind == AloVariantKind::alternate)
+            {
+                state = variant.index;
+            }
+            else if (variant.index != 0)
             {
                 continue;
             }
@@ -357,9 +365,12 @@ std::vector<VisualEffectAttachment> proxy_effects(SceneBuilder& builder, const M
             auto emit_mesh = from_mesh ? proxy_emit_mesh(model, proxy.bone) : nullptr;
             // Engine effects: the stock "pe_" naming, or a proxy under a hardpoint's Engine_Particles bone.
             const bool engine = ascii_lower(name).starts_with("pe_") || (engines != builder.engine_bones.end() && under(proxy.bone, engines->second));
-            attachments.push_back({std::move(effect), proxy.bone, proxy.name, damage_bone_of(proxy.bone), std::move(emit_mesh), engine});
+            (state.value_or(0U) == 0U ? attachments : damaged).push_back({std::move(effect), proxy.bone, proxy.name, damage_bone_of(proxy.bone), std::move(emit_mesh), engine, state});
         }
     }
+    // Effects of damaged states go last, so the intact ones keep their places (an effect's place
+    // seeds its particles).
+    attachments.insert(attachments.end(), std::make_move_iterator(damaged.begin()), std::make_move_iterator(damaged.end()));
     return attachments;
 }
 

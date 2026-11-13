@@ -321,8 +321,9 @@ so ALT0 is read as the intact state. A trailing `_LOD<n>` marks a detail level:
 (LOD1), 123,516 (LOD2), and 12,315 (LOD3, five meshes). Per model, LOD0 is the
 sparsest level in 137 of 145, and the densest is usually the highest index, so
 higher indices are read as more detailed. The engine's default appearance
-therefore shows ALT0 and each model's highest LOD index. Switching on damage or
-distance is runtime behavior and is not modeled yet. These are corpus findings.
+therefore shows ALT0 and each model's highest LOD index. The engine switches levels
+by distance (2026-11-11) and states by health (2026-11-13, `Land_Damage_Thresholds`).
+These are corpus findings.
 
 Many terrain layers name no color texture (3,369 stock layer entries; their mini
 0x14 is always 0, while textured layers use 1-16). They are painted widely: 40 of
