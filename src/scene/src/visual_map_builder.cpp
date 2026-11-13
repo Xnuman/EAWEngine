@@ -38,6 +38,18 @@ void collect_death_effect_keys(const CombatProfile& profile, std::vector<std::ui
     }
 }
 
+// Each hardpoint's scorch and attachment bones, for presentation to show its destruction.
+std::vector<HardpointLook> hardpoint_looks(const CombatProfile& combat)
+{
+    std::vector<HardpointLook> looks;
+    looks.reserve(combat.hardpoints.size());
+    for (const auto& hardpoint : combat.hardpoints)
+    {
+        looks.push_back({hardpoint.decal_bone, hardpoint.attachment_bone});
+    }
+    return looks;
+}
+
 } // namespace
 
 void scene_build::add_spawnable_looks(SceneBuilder& builder, const GameObjectCatalog& catalog, std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes,
@@ -67,6 +79,7 @@ void scene_build::add_spawnable_looks(SceneBuilder& builder, const GameObjectCat
         {
             look.mesh = *entry->second;
             look.shield_mesh = append_shield_flash(builder, model.path);
+            look.hardpoints = hardpoint_looks(type.combat);
         }
         else
         {
@@ -171,6 +184,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             return look;
         }
         look.shield_mesh = append_shield_flash(builder, model.path);
+        if (combat != nullptr)
+        {
+            look.hardpoints = hardpoint_looks(*combat);
+        }
         // Instances start in their mesh's rest pose (build_map_rigs sets the bone offsets).
         VisualInstance instance{*entry->second, model.transform};
         instance.lod_bias = model.type != nullptr ? type_lod_bias(catalog, *model.type) : 1.0F;

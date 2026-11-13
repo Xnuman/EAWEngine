@@ -383,6 +383,46 @@ void test_unit_animation()
                 "a walk transition must play at the move clip's rate at top speed");
     }
 
+    // Destroyed hardpoints on a clipless ship: its scorch bone (hidden while intact) appears and it
+    // draws with a palette of its own, its intact twin keeps the shared rest palette; an attachment
+    // bone's model goes (its bone collapses).
+    {
+        const auto ship_palette = [&](const bool decal, const bool destroyed)
+        {
+            auto ship_rig = rig;
+            ship_rig.clips.clear();
+            ship_rig.intact_hidden = {decal};
+            const std::array<eaw::VisualRig, 1> ship_rigs{ship_rig};
+            std::vector<eaw::Matrix4> ship_rest;
+            eaw::append_rest_palette(*ship_rig.skeleton, ship_rest, ship_rig.intact_hidden);
+            eaw::UnitAnimator ships(ship_rigs, ship_rest);
+            std::vector<eaw::EntitySnapshot> pair(2);
+            pair[0].id = {1, 1};
+            pair[1].id = {2, 1};
+            std::vector<eaw::EntityId> ids{pair[0].id, pair[1].id};
+            std::vector<eaw::VisualInstance> shown(2);
+            std::vector<eaw::Matrix4> palette_out;
+            if (destroyed)
+            {
+                ships.destroy_hardpoint(pair[0].id, 0, decal ? 0 : -1, decal ? -1 : 0);
+            }
+            ships.animate(pair, ids, shown, 1.0, 1U << 20U, palette_out);
+            const auto at = [&](const std::uint32_t offset) -> const eaw::Matrix4&
+            {
+                return offset < ship_rig.rest_offset + ship_rest.size() && offset >= ship_rig.rest_offset ? ship_rest[offset - ship_rig.rest_offset + 1U] : palette_out[offset + 1U];
+            };
+            const bool own = shown[0].bone_offset != ship_rig.rest_offset;
+            const bool twin_shared = shown[1].bone_offset == ship_rig.rest_offset;
+            const bool visible = !std::ranges::equal(at(shown[0].bone_offset).values, eaw::collapsed_bone.values);
+            return std::array<bool, 3>{own, twin_shared, visible};
+        };
+        const auto intact = ship_palette(true, false);
+        const auto scorched = ship_palette(true, true);
+        const auto stripped = ship_palette(false, true);
+        require(!intact[0] && !intact[2] && scorched[0] && scorched[1] && scorched[2], "a destroyed hardpoint's scorch bone must appear on its ship alone");
+        require(stripped[0] && !stripped[2], "a destroyed hardpoint's attached model must go");
+    }
+
     // A flyer with only an idle clip (a bird): moving, it stands in its rest pose unless its type
     // allows idling while moving (XML Allow_Idle_When_Moving).
     {

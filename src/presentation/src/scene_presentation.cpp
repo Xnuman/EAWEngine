@@ -71,7 +71,8 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
                        "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(look.instance) + ", which is missing or a background");
         if (ids[index])
         {
-            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[look.instance], entity.spawn.heading, look.death, look.bank_limit, look.animation, look.damage, look.shield_mesh});
+            templates_.emplace(entity_key(*ids[index]),
+                               Template{scene.instances[look.instance], entity.spawn.heading, look.death, look.bank_limit, look.animation, look.damage, look.shield_mesh, look.hardpoints});
         }
     }
     add_spawnable(spawnable);
@@ -85,7 +86,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         EAW_ASSERT_MSG(decoration.look.instance < scene.instances.size() && !scene.instances[decoration.look.instance].background, "a decoration names a scene instance it does not have");
         const EntityId id{decoration_id_base + static_cast<std::uint32_t>(index), 1};
         templates_.emplace(entity_key(id), Template{scene.instances[decoration.look.instance], decoration.heading, decoration.look.death, decoration.look.bank_limit, decoration.look.animation,
-                                                    decoration.look.damage, decoration.look.shield_mesh});
+                                                    decoration.look.damage, decoration.look.shield_mesh, decoration.look.hardpoints});
         EntitySnapshot snapshot;
         snapshot.id = id;
         snapshot.position = decoration.position;
@@ -150,15 +151,7 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
     }
     for (const auto& entity : snapshot)
     {
-        const Template* found = nullptr;
-        if (const auto placed = templates_.find(entity_key(entity.id)); placed != templates_.end())
-        {
-            found = &placed->second;
-        }
-        else if (entity.visual >= spawnable_visual_base && entity.visual - spawnable_visual_base < spawn_templates_.size() && spawn_templates_[entity.visual - spawnable_visual_base])
-        {
-            found = &*spawn_templates_[entity.visual - spawnable_visual_base];
-        }
+        const auto* found = template_of(entity.id, entity.visual);
         if (found == nullptr)
         {
             continue;
@@ -261,22 +254,37 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableLook> types
         instance.lod_bias = type.lod_bias;
         instance.receives_shadows = type.receives_shadows;
         instance.silhouette = type.silhouette;
-        spawn_templates_.push_back(Template{instance, identity_model_heading, type.death, type.bank_limit, type.animation, type.damage, type.shield_mesh});
+        spawn_templates_.push_back(Template{instance, identity_model_heading, type.death, type.bank_limit, type.animation, type.damage, type.shield_mesh, type.hardpoints});
     }
+}
+
+const ScenePresentation::Template* ScenePresentation::template_of(const EntityId id, const std::uint32_t visual) const
+{
+    if (const auto placed = templates_.find(entity_key(id)); placed != templates_.end())
+    {
+        return &placed->second;
+    }
+    if (visual >= spawnable_visual_base && visual - spawnable_visual_base < spawn_templates_.size() && spawn_templates_[visual - spawnable_visual_base])
+    {
+        return &*spawn_templates_[visual - spawnable_visual_base];
+    }
+    return nullptr;
+}
+
+std::optional<ScenePresentation::HardpointBones> ScenePresentation::hardpoint_bones(const EntitySnapshot& entity, const std::uint32_t hardpoint) const
+{
+    const auto* found = template_of(entity.id, entity.visual);
+    if (found == nullptr || hardpoint >= found->hardpoints.size())
+    {
+        return std::nullopt;
+    }
+    return HardpointBones{found->instance.mesh, found->hardpoints[hardpoint]};
 }
 
 std::optional<ScenePresentation::Corpse> ScenePresentation::corpse_instance(const DeathSnapshot& death)
 {
-    const Template* found = nullptr;
+    const auto* found = template_of(death.id, death.visual);
     const auto placed = templates_.find(entity_key(death.id));
-    if (placed != templates_.end())
-    {
-        found = &placed->second;
-    }
-    else if (death.visual >= spawnable_visual_base && death.visual - spawnable_visual_base < spawn_templates_.size() && spawn_templates_[death.visual - spawnable_visual_base])
-    {
-        found = &*spawn_templates_[death.visual - spawnable_visual_base];
-    }
     if (found == nullptr)
     {
         return std::nullopt;

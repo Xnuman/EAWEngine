@@ -169,6 +169,7 @@ void append_rest_palette(const Skeleton& skeleton, std::vector<Matrix4>& out, co
 void append_rig_palette(const VisualRig& rig, const Animation& animation, float seconds, std::vector<Matrix4>& out);
 // Appends a rig's palette for a local pose (a blend of clips; see blend_pose), its bones turned by
 // `turns` in order (each bone's subtree about the bone's posed position).
-void append_rig_local_palette(const VisualRig& rig, std::span<const LocalBone> pose, std::vector<Matrix4>& out, std::span<const BoneTurn> turns = {});
+// `hidden`, when given, replaces the rig's intact_hidden (an entity with destroyed hardpoints).
+void append_rig_local_palette(const VisualRig& rig, std::span<const LocalBone> pose, std::vector<Matrix4>& out, std::span<const BoneTurn> turns = {}, const std::vector<bool>* hidden = nullptr);
 
 } // namespace eaw

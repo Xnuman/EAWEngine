@@ -690,6 +690,10 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         {
             part.engine_bone = static_cast<std::int32_t>(engine->index);
         }
+        if (attachment && !bone_name("Model_To_Attach").empty())
+        {
+            part.attachment_bone = static_cast<std::int32_t>(attachment->index);
+        }
         part.death_sound = sound_of(point, "Death_Explosion_SFXEvent", 0U);
         if (const auto* explosions = point.node("Death_Explosion_Particles"))
         {

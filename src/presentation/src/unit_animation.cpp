@@ -144,6 +144,7 @@ std::size_t UnitAnimator::PoseKeyHash::operator()(const PoseKey& key) const noex
     }
     hash = mix(hash ^ (static_cast<std::uint64_t>(static_cast<std::uint16_t>(key.yaw)) << 16U) ^ static_cast<std::uint16_t>(key.pitch) ^
                (static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.turret)) << 32U));
+    hash = mix(hash ^ key.mask);
     return static_cast<std::size_t>(hash);
 }
 
@@ -257,7 +258,56 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
     {
         turns.push_back({static_cast<std::uint32_t>(key.turret), {0.0F, 0.0F, 1.0F}, static_cast<float>(key.yaw) * turret_yaw_step});
     }
-    append_rig_local_palette(rig, pose, out, turns);
+    const auto mask = key.mask != 0 ? masks_by_hash_.find(key.mask) : masks_by_hash_.end();
+    append_rig_local_palette(rig, pose, out, turns, mask != masks_by_hash_.end() ? &mask->second : nullptr);
+}
+
+void UnitAnimator::destroy_hardpoint(const EntityId entity, const std::uint32_t mesh, const std::int32_t decal_bone, const std::int32_t attachment_bone)
+{
+    if (mesh >= rigs_.size() || !rigs_[mesh].skeleton || (decal_bone < 0 && attachment_bone < 0))
+    {
+        return;
+    }
+    const auto& rig = rigs_[mesh];
+    const auto bones = rig.skeleton->bones.size();
+    auto& mask = bone_masks_[entity_key(entity)];
+    if (mask.mesh != mesh || mask.hidden.size() != bones)
+    {
+        mask.mesh = mesh;
+        mask.hidden = rig.intact_hidden.size() == bones ? rig.intact_hidden : std::vector<bool>(bones, false);
+    }
+    std::vector<std::int32_t> parents;
+    parents.reserve(bones);
+    for (const auto& bone : rig.skeleton->bones)
+    {
+        parents.push_back(bone.parent);
+    }
+    const auto apply = [&](const std::int32_t root, const bool hide)
+    {
+        if (root < 0 || static_cast<std::size_t>(root) >= bones)
+        {
+            return;
+        }
+        const std::array<std::uint32_t, 1> roots{static_cast<std::uint32_t>(root)};
+        const auto subtree = bones_in_subtrees(parents, roots);
+        for (std::size_t bone = 0; bone < bones; ++bone)
+        {
+            if (subtree[bone])
+            {
+                mask.hidden[bone] = hide;
+            }
+        }
+    };
+    apply(decal_bone, false);
+    apply(attachment_bone, true);
+    // The mask's content hash (never 0, which means the rig's own).
+    auto hash = mix(0x6d61736bULL ^ mesh);
+    for (std::size_t bone = 0; bone < bones; ++bone)
+    {
+        hash = mix(hash ^ (mask.hidden[bone] ? bone + 1U : 0U));
+    }
+    mask.hash = hash != 0 ? hash : 1U;
+    masks_by_hash_.emplace(mask.hash, mask.hidden);
 }
 
 std::optional<std::uint32_t> UnitAnimator::place(const PoseKey& key, const std::size_t max_palette, std::vector<Matrix4>& palette)
@@ -290,6 +340,7 @@ std::optional<std::uint32_t> UnitAnimator::place(const PoseKey& key, const std::
 
 void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id, const double seconds, const DeathStyle& style, const bool crushed)
 {
+    bone_masks_.erase(entity_key(id));
     if (instance.mesh >= rigs_.size())
     {
         return;
@@ -440,8 +491,22 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         }
         const auto& rig = rigs_[instance.mesh];
         instance.bone_offset = rig.rest_offset;
-        if (!entities[index].valid() || rig.clips.empty() || !rig.skeleton)
+        if (!entities[index].valid() || !rig.skeleton)
         {
+            continue;
+        }
+        const auto masked = bone_masks_.find(entity_key(entities[index]));
+        const auto mask = masked != bone_masks_.end() && masked->second.mesh == instance.mesh ? masked->second.hash : 0U;
+        if (rig.clips.empty())
+        {
+            // No clips: the rest pose, its own only with a mask (destroyed hardpoints).
+            PoseKey rest{instance.mesh, {}};
+            rest.layers[0] = {rest_clip, 0, 8U};
+            rest.mask = mask;
+            if (const auto offset = mask != 0 ? place(rest, max_palette, palette) : std::nullopt)
+            {
+                instance.bone_offset = *offset;
+            }
             continue;
         }
         const auto found = snapshot_index_.find(entity_key(entities[index]));
@@ -716,6 +781,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             }
         }
         PoseKey pose_key{instance.mesh, {}};
+        pose_key.mask = mask;
         pose_key.layers[0] = layer(lower, blend.lower, locomotion * (1.0F - blend.blend));
         pose_key.layers[1] = upper == lower ? Layer{} : layer(upper, blend.upper, locomotion * blend.blend);
         if (upper == lower)
@@ -771,8 +837,9 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             pose_key.turret = -1;
             pose_key.barrel = -1;
         }
-        // Nothing to show but the rest pose: keep the rest offset (an aimed turret needs its own).
-        if (!aimed && (layers == 0 || (layers == 1 && pose_key.layers[0].clip == rest_clip)))
+        // Nothing to show but the rest pose: keep the rest offset (an aimed turret or a mask needs its
+        // own).
+        if (!aimed && mask == 0 && (layers == 0 || (layers == 1 && pose_key.layers[0].clip == rest_clip)))
         {
             continue;
         }

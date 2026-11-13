@@ -131,6 +131,10 @@ public:
     // counts as no time passing).
     void animate(std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, double seconds, std::size_t max_palette,
                  std::vector<Matrix4>& palette, std::span<const AnimationProfile> animations = {});
+    // Shows that `entity`'s hardpoint on `mesh` is destroyed: its scorch bones (`decal_bone` and
+    // below) appear and its attached model (`attachment_bone` and below) goes; -1 for none. The
+    // entity then draws with a palette of its own, also without clips.
+    void destroy_hardpoint(EntityId entity, std::uint32_t mesh, std::int32_t decal_bone, std::int32_t attachment_bone);
     // Keeps a dead entity's instance (ScenePresentation::corpse_instance) as a corpse that plays a
     // DIE clip from `seconds` on; without one, only an instance in a damage state stays (rubble),
     // for the style's persistence or for good. At most 4096 corpses are kept (the oldest go first).
@@ -180,11 +184,21 @@ private:
         std::int32_t barrel{-1};
         std::int16_t yaw{};
         std::int16_t pitch{};
+        // The entity's bone mask (destroyed hardpoints) by its content hash, 0 for the rig's own.
+        std::uint64_t mask{};
         bool operator==(const PoseKey&) const = default;
     };
     struct PoseKeyHash
     {
         std::size_t operator()(const PoseKey& key) const noexcept;
+    };
+    // An entity's bone mask: which bones its palette hides (the rig's intact_hidden with destroyed
+    // hardpoints applied), for its mesh.
+    struct BoneMask
+    {
+        std::uint32_t mesh{};
+        std::vector<bool> hidden;
+        std::uint64_t hash{};
     };
     struct EntityState
     {
@@ -259,6 +273,9 @@ private:
     std::vector<VisualRig> rigs_;
     std::vector<Matrix4> rest_palette_;
     std::unordered_map<std::uint64_t, EntityState> states_;
+    // Bone masks by entity key, and by content hash for sampling (PoseKey::mask).
+    std::unordered_map<std::uint64_t, BoneMask> bone_masks_;
+    std::unordered_map<std::uint64_t, std::vector<bool>> masks_by_hash_;
     // Sampled poses, kept across frames up to a size limit.
     std::unordered_map<PoseKey, std::vector<Matrix4>, PoseKeyHash> pose_cache_;
     std::size_t cached_entries_{};

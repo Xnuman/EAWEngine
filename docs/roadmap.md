@@ -147,7 +147,7 @@ rendering rows join item 2).
       different ranges): their gun animations play out of range and loop instead of following the
       actual shots (done 2026-11-13: ATTACK plays with the shots only; the missile launcher is the
       ROCKET_ATTACK unit ability, not implemented yet, with the other unit abilities); walkers do not crush enemy infantry (done 2026-11-13: crushers and what they crush do not push each other); destroyed space hardpoints are not
-      replaced by their destroyed versions.
+      replaced by their destroyed versions (done 2026-11-13: scorch marks appear and attached models go; Death_Breakoff_Prop pieces remain).
    c. Research and one design document for an entity-component system (modern engines' ECS,
       data-driven composition, archetypes) and the job system: entities as ids, components in
       their own storage, systems over component sets with declared reads and writes, XML types as

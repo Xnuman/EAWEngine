@@ -95,6 +95,15 @@ public:
     };
     [[nodiscard]] std::optional<Corpse> corpse_instance(const DeathSnapshot& death);
 
+    // The mesh `entity` is drawn with and the bones of its hardpoint `hardpoint`
+    // (MapEntityLook::hardpoints); nullopt when it is not drawn or has no such hardpoint.
+    struct HardpointBones
+    {
+        std::uint32_t mesh{};
+        HardpointLook bones;
+    };
+    [[nodiscard]] std::optional<HardpointBones> hardpoint_bones(const EntitySnapshot& entity, std::uint32_t hardpoint) const;
+
     [[nodiscard]] const std::string& mesh_name(std::uint32_t mesh) const;
     [[nodiscard]] const Vector3& mesh_minimum(std::uint32_t mesh) const;
     [[nodiscard]] const Vector3& mesh_maximum(std::uint32_t mesh) const;
@@ -109,6 +118,7 @@ private:
         AnimationProfile animation;
         std::vector<DamageStep> damage;
         std::optional<std::uint32_t> shield_mesh;
+        std::vector<HardpointLook> hardpoints;
     };
     std::vector<VisualInstance> backgrounds_;
     // Entity key -> presentation time of its last shield hit (flash_shields).
@@ -123,6 +133,10 @@ private:
     std::vector<std::string> mesh_names_;
     std::vector<Vector3> mesh_minimum_;
     std::vector<Vector3> mesh_maximum_;
+
+    // An entity's template: placed entities by id, spawned ones by their type's visual; null when
+    // it has none.
+    [[nodiscard]] const Template* template_of(EntityId id, std::uint32_t visual) const;
 };
 
 } // namespace eaw

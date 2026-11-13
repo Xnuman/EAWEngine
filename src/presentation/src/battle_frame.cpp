@@ -2,6 +2,7 @@
 
 #include "presentation/projectile_visuals.hpp"
 
+#include <algorithm>
 #include <span>
 
 namespace eaw {
@@ -21,6 +22,23 @@ void present_tick(const BattleRuntime& runtime, BattlePresenters& presenters, co
         if (const auto corpse = presenters.presentation.corpse_instance(death); corpse && presenters.animator != nullptr)
         {
             presenters.animator->add_corpse(corpse->instance, death.id, world_seconds, corpse->style, death.crushed);
+        }
+    }
+    // Destroyed hardpoints: their scorch marks appear and their attached models go.
+    if (presenters.animator != nullptr && !world.snapshot().hardpoint_deaths.empty())
+    {
+        for (const auto& fallen : world.snapshot().hardpoint_deaths)
+        {
+            const auto& entities = world.snapshot().entities;
+            const auto owner = std::ranges::find(entities, fallen.entity, &EntitySnapshot::id);
+            if (owner == entities.end())
+            {
+                continue;
+            }
+            if (const auto bones = presenters.presentation.hardpoint_bones(*owner, fallen.hardpoint))
+            {
+                presenters.animator->destroy_hardpoint(fallen.entity, bones->mesh, bones->bones.decal_bone, bones->bones.attachment_bone);
+            }
         }
     }
     presenters.effects.play_tick_events(world.snapshot());

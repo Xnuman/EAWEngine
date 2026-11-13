@@ -67,8 +67,9 @@ void append_rig_palette(const VisualRig& rig, const Animation& animation, const 
     append_rig_local_palette(rig, {}, out);
 }
 
-void append_rig_local_palette(const VisualRig& rig, const std::span<const LocalBone> local_pose, std::vector<Matrix4>& out, const std::span<const BoneTurn> turns)
+void append_rig_local_palette(const VisualRig& rig, const std::span<const LocalBone> local_pose, std::vector<Matrix4>& out, const std::span<const BoneTurn> turns, const std::vector<bool>* hidden)
 {
+    const auto& mask = hidden != nullptr ? *hidden : rig.intact_hidden;
     const auto first = out.size();
     if (rig.skeleton && rig.inverse_bind_pose.size() == rig.skeleton->bones.size() && !rig.skeleton->bones.empty() && local_pose.size() == rig.skeleton->bones.size())
     {
@@ -102,7 +103,7 @@ void append_rig_local_palette(const VisualRig& rig, const std::span<const LocalB
                 }
             }
         }
-        append_pose_palette(*rig.skeleton, rig.inverse_bind_pose, pose, true, out, rig.intact_hidden);
+        append_pose_palette(*rig.skeleton, rig.inverse_bind_pose, pose, true, out, mask);
     }
     if (out.size() - first != rig.palette_size)
     {
@@ -110,7 +111,7 @@ void append_rig_local_palette(const VisualRig& rig, const std::span<const LocalB
         out.erase(out.begin() + static_cast<std::ptrdiff_t>(first), out.end());
         if (rig.skeleton)
         {
-            append_rest_palette(*rig.skeleton, out, rig.intact_hidden);
+            append_rest_palette(*rig.skeleton, out, mask);
         }
         out.resize(first + rig.palette_size, Matrix4::identity());
     }

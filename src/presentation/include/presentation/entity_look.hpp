@@ -48,6 +48,15 @@ inline constexpr float default_bank_limit = 1.04719755F;
 // Is_Marker: flags, script points, skirmish base positions, which stays an entity so scripts can
 // find it, or an entity whose model could not be added to the scene; `instance` is then unused), and
 // how its clips play.
+// A hardpoint's bones on its unit's model (CombatProfile::hardpoints, same index): its scorch marks
+// (Damage_Decal), hidden until it is destroyed, and the bone its attached model hangs on
+// (Model_To_Attach), whose model goes with it; -1 for none.
+struct HardpointLook
+{
+    std::int32_t decal_bone{-1};
+    std::int32_t attachment_bone{-1};
+};
+
 struct MapEntityLook
 {
     std::uint32_t instance{};
@@ -59,6 +68,7 @@ struct MapEntityLook
     std::vector<DamageStep> damage;
     // Its model's shield flash mesh (scene_build::append_shield_flash), if it has one.
     std::optional<std::uint32_t> shield_mesh;
+    std::vector<HardpointLook> hardpoints;
 };
 
 // How a spawnable type (a SpawnableType, same index) is drawn: its mesh in the map scene, its team
@@ -81,6 +91,7 @@ struct SpawnableLook
     AnimationProfile animation;
     std::vector<DamageStep> damage;
     std::optional<std::uint32_t> shield_mesh;
+    std::vector<HardpointLook> hardpoints;
 };
 
 // A decoration (XML Is_Decoration): a placed object that is drawn and animated but never simulated.
