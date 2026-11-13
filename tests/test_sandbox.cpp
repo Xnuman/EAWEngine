@@ -49,6 +49,8 @@ void test_sandbox_options()
     require(expect_ok(parse({}), "parsing nothing").heat == eaw::VisualHeatMode::legacy && expect_ok(parse({"--heat", "enhanced"}), "parsing --heat enhanced").heat == eaw::VisualHeatMode::enhanced &&
                 !parse({"--heat", "hot"}),
             "heat must be legacy unless --heat enhanced");
+    require(!expect_ok(parse({}), "parsing nothing").soft_particles && expect_ok(parse({"--soft-particles"}), "parsing --soft-particles").soft_particles,
+            "soft particles must be off unless --soft-particles");
     require(!parse({"--spawn", "Tank:1@64"}) && !parse({"--spawn", "Tank:1001"}) && !parse({"--spawn", ":3"}) && !parse({"--vsync", "maybe"}) && !parse({"--width", "0"}) && !parse({"--bogus"}) &&
                 !parse({"--map"}) && !parse({"--frame-latency", "3"}),
             "invalid sandbox options must be rejected");

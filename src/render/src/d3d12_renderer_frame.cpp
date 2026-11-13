@@ -231,9 +231,9 @@ void D3d12Renderer::Impl::write_particles(FrameContext& frame)
     for (const auto& particle : particles)
     {
         const auto logical = particle.texture < scene_textures.size() ? static_cast<std::uint32_t>(fallback_texture_count + particle.texture) : invalid_visual_texture;
-        gpu_particles.push_back({particle.position, particle.half_size, particle.color, particle.uv_rect, particle.axis, particle.rotation, particle.tail, logical,
-                                 static_cast<std::uint32_t>(particle.shape),
-                                 (particle.monochrome ? 1U : 0U) | (particle.blend == VisualParticleBlend::additive || particle.blend == VisualParticleBlend::additive_alpha ? 2U : 0U)});
+        gpu_particles.push_back(
+            {particle.position, particle.half_size, particle.color, particle.uv_rect, particle.axis, particle.rotation, particle.tail, logical, static_cast<std::uint32_t>(particle.shape),
+             (particle.monochrome ? 1U : 0U) | (particle.blend == VisualParticleBlend::additive || particle.blend == VisualParticleBlend::additive_alpha ? 2U : 0U) | (particle.depth_test ? 0U : 4U)});
     }
     if (gpu_particles.empty())
     {
@@ -896,6 +896,7 @@ bool D3d12Renderer::Impl::render()
                                      static_cast<float>(std::max(height, 1U)), 0.0F};
         constants.heat_slots = {post_slots[11], heat_drawn ? 1U : 0U, 0U, 0U};
     }
+    constants.particle_parameters = {options.graphics.soft_particles ? 1U : 0U, 0U, 0U, 0U};
     if (options.graphics.sky_visibility && sky_visibility_texture && *sky_visibility_texture < scene_textures.size())
     {
         constants.sky_visibility_map = sky_visibility_map;
@@ -1177,6 +1178,8 @@ bool D3d12Renderer::Impl::render()
     auto water_uses = scene_uses;
     auto transparent_uses = scene_uses;
     water_uses[3] = {depth, GraphAccess::depth_read};
+    // Nothing transparent writes depth, so the pass binds it read-only (soft particles sample it).
+    transparent_uses[3] = {depth, GraphAccess::depth_read};
     frame_graph.add_pass("scene", std::move(scene_uses),
                          [&]
                          {
@@ -1303,7 +1306,7 @@ bool D3d12Renderer::Impl::render()
     frame_graph.add_pass("transparent", std::move(transparent_uses),
                          [&]
                          {
-                             bind_scene(depth_target);
+                             bind_scene(read_only_depth);
                              if (scene_loaded)
                              {
                                  record_draws(transparent_begin, frame_draws.size(), false, false);

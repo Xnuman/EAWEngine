@@ -16,7 +16,7 @@ struct ParticleData
     float tail;
     uint texture;
     uint shape;
-    uint flags; // bit 0: monochrome
+    uint flags; // bit 0: monochrome, 1: additive, 2: not depth tested
 };
 
 static const uint SHAPE_BILLBOARD = 0u;
@@ -45,6 +45,32 @@ struct ParticlePixelInput
     // Where the pixel lies (fog).
     float3 world : POSITION1;
 };
+
+// Soft particles (enhanced): a depth-tested particle fades out as the opaque surface behind it comes
+// within SOFT_PARTICLE_RANGE world units (an engine choice); 1 when off or not depth tested.
+static const float SOFT_PARTICLE_RANGE = 20.0f;
+static const uint FLAG_NO_DEPTH_TEST = 4u;
+
+float soft_particle_fade(const ParticlePixelInput input)
+{
+    if (particle_parameters.x == 0u || (input.flags & FLAG_NO_DEPTH_TEST) != 0u)
+    {
+        return 1.0f;
+    }
+    Texture2D scene_depth = scene_textures[water_parameters.y];
+    uint width = 1u;
+    uint height = 1u;
+    scene_depth.GetDimensions(width, height);
+    const float stored = scene_depth.Load(int3(input.position.xy, 0)).r;
+    if (stored >= 1.0f)
+    {
+        return 1.0f;
+    }
+    const float2 ndc = float2(input.position.x / width * 2.0f - 1.0f, 1.0f - input.position.y / height * 2.0f);
+    const float4 behind = mul(float4(ndc, stored, 1.0f), inverse_view_projection);
+    const float gap = distance(behind.xyz / behind.w, camera_position_time.xyz) - distance(input.world, camera_position_time.xyz);
+    return saturate(gap / SOFT_PARTICLE_RANGE);
+}
 
 struct ParticlePixelOutput
 {
@@ -175,6 +201,12 @@ ParticlePixelOutput particle_ps(ParticlePixelInput input)
     ParticlePixelOutput output;
     output.color = texel * input.color;
     output.color.rgb = (input.flags & FLAG_ADDITIVE) != 0u ? fade_added_light(output.color.rgb, input.world) : apply_fog(output.color.rgb, input.world);
+    const float soft = soft_particle_fade(input);
+    output.color.a *= soft;
+    if ((input.flags & FLAG_ADDITIVE) != 0u)
+    {
+        output.color.rgb *= soft;
+    }
     output.pick = uint2(0u, 0u);
     return output;
 }
@@ -186,8 +218,8 @@ ParticlePixelOutput particle_modulate_ps(ParticlePixelInput input)
     const float4 texel = input.texture == NO_TEXTURE ? float4(1.0f, 1.0f, 1.0f, 1.0f) : sample_texture(input.texture, input.uv);
     const float4 color = texel * input.color;
     ParticlePixelOutput output;
-    // Fog weakens the darkening toward no change (white).
-    output.color = float4(lerp(lerp(float3(1.0f, 1.0f, 1.0f), color.rgb, color.a), float3(1.0f, 1.0f, 1.0f), fog_amount(input.world)), 1.0f);
+    // Fog weakens the darkening toward no change (white); so does a near surface behind (soft).
+    output.color = float4(lerp(lerp(float3(1.0f, 1.0f, 1.0f), color.rgb, color.a * soft_particle_fade(input)), float3(1.0f, 1.0f, 1.0f), fog_amount(input.world)), 1.0f);
     output.pick = uint2(0u, 0u);
     return output;
 }

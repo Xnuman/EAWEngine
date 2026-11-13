@@ -144,6 +144,8 @@ struct D3d12Renderer::Impl
         // signed buffer's slot and whether TAA weighs the new frame up where heat is.
         std::array<float, 4> heat_parameters{};
         std::array<std::uint32_t, 4> heat_slots{};
+        // Particles: soft particles on.
+        std::array<std::uint32_t, 4> particle_parameters{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal

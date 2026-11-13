@@ -88,6 +88,8 @@ struct SandboxOptions
     VisualWaterMode water{VisualWaterMode::legacy};
     // Heat distortion (--heat legacy|enhanced).
     VisualHeatMode heat{VisualHeatMode::legacy};
+    // Soft particles (--soft-particles, enhanced).
+    bool soft_particles{false};
     // Detail-level selection (--lod) and the mesh-detail setting (--mesh-detail, 0..1).
     VisualLodPolicy lod_policy{VisualLodPolicy::hybrid};
     float mesh_detail{1.0F};

@@ -52,6 +52,9 @@ struct D3d12GraphicsSettings
     bool occlusion_silhouettes{true};
     // How heat distortion is drawn (VisualParticleBlend::heat).
     VisualHeatMode heat{VisualHeatMode::legacy};
+    // Enhanced: depth-tested particles fade out as the surface behind them comes near, instead of
+    // cutting a hard line where they meet it (soft particles).
+    bool soft_particles{false};
 };
 
 struct D3d12RendererOptions
