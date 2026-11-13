@@ -4,7 +4,7 @@
 // field of view, depth 0 at the near plane and 1 at the far plane; pixel y grows downward).
 
 #include "math/vector.hpp"
-#include "render/visual_scene.hpp"
+#include "render/visual_camera.hpp"
 
 #include <optional>
 

@@ -2,6 +2,7 @@
 
 #include "core/status.hpp"
 #include "formats/rgba_image.hpp"
+#include "render/visual_camera.hpp"
 #include "render/visual_lod.hpp"
 #include "render/visual_scene.hpp"
 

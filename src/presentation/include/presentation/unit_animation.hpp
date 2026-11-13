@@ -28,7 +28,7 @@
 // the engine's (the original's selection and blending are not documented); turns, flinches,
 // deaths, and crouching are not modeled yet.
 
-#include "render/visual_scene.hpp"
+#include "render/visual_frame.hpp"
 #include "simulation/simulation.hpp"
 #include "battle/object_types.hpp"
 #include "presentation/entity_look.hpp"

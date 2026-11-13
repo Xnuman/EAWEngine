@@ -5,7 +5,7 @@
 // The sandbox's debug lines for one frame: bounds and axes, shots in flight, health and shield bars,
 // selected units' routes, and the passability overlay.
 
-#include "render/visual_scene.hpp"
+#include "render/visual_frame.hpp"
 #include "simulation/ground_map.hpp"
 #include "simulation/simulation.hpp"
 #include "presentation/scene_presentation.hpp"

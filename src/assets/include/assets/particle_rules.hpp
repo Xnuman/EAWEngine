@@ -14,7 +14,7 @@
 
 #include "formats/alo_particle_system.hpp"
 #include "render/color.hpp"
-#include "render/visual_scene.hpp"
+#include "render/visual_frame.hpp"
 
 #include <array>
 #include <cstdint>

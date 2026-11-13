@@ -3,7 +3,7 @@
 // Screen-ray queries against a land map's ground (GroundMap, from the simulation): order targets
 // and placement under the cursor.
 
-#include "render/visual_scene.hpp"
+#include "render/visual_camera.hpp"
 #include "simulation/ground_map.hpp"
 
 #include <cstdint>

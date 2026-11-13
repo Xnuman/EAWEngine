@@ -8,8 +8,14 @@ add_library(eaw_render_contract INTERFACE)
 
 set(EAW_RENDER_CONTRACT_HEADERS
     ${HEADERS_DIR}/color.hpp
+    ${HEADERS_DIR}/visual_camera.hpp
+    ${HEADERS_DIR}/visual_frame.hpp
     ${HEADERS_DIR}/visual_lod.hpp
+    ${HEADERS_DIR}/visual_material.hpp
+    ${HEADERS_DIR}/visual_mesh.hpp
     ${HEADERS_DIR}/visual_scene.hpp
+    ${HEADERS_DIR}/visual_texture.hpp
+    ${HEADERS_DIR}/visual_vertex.hpp
 )
 
 source_group("" FILES ${EAW_RENDER_CONTRACT_HEADERS})

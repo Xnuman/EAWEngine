@@ -4,7 +4,7 @@
 // glows) for every drawn entity, keeps them at their bones as the entity moves and animates, hides
 // them while their bone is hidden, and stops them when the entity is no longer drawn.
 
-#include "render/visual_scene.hpp"
+#include "render/visual_frame.hpp"
 #include "simulation/simulation.hpp"
 #include "simulation/simulation_types.hpp"
 #include "battle/object_types.hpp"

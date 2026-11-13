@@ -10,7 +10,7 @@
 #include "core/random.hpp"
 #include "audio/audio_device.hpp"
 #include "audio/spatial_audio.hpp"
-#include "render/visual_scene.hpp"
+#include "render/visual_camera.hpp"
 #include "assets/animation_events.hpp"
 #include "assets/asset_cache.hpp"
 #include "assets/sound_events.hpp"

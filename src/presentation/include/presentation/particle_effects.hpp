@@ -7,7 +7,7 @@
 // clear and is otherwise an engine choice (docs/compatibility-research.md, "Particle systems").
 
 #include "formats/alo_particle_system.hpp"
-#include "render/visual_scene.hpp"
+#include "render/visual_frame.hpp"
 #include "assets/particle_rules.hpp"
 
 #include <cstddef>

@@ -7,7 +7,7 @@
 // ranges against it).
 
 #include "math/matrix.hpp"
-#include "render/visual_scene.hpp"
+#include "render/visual_frame.hpp"
 #include "simulation/simulation.hpp"
 #include "battle/battle_runtime.hpp"
 #include "presentation/battle_audio.hpp"

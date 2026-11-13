@@ -50,7 +50,7 @@ Dependencies point inward: a lower layer never includes or links a higher one.
 | | `eaw_scene` | Scene building: maps, models, terrain, materials, particles, and rigs as engine-native visual data. | battle, presentation, render contract |
 | | `eaw_control` | Camera controllers and math, RTS selection and picking, the terrain height field. | simulation, render contract |
 | | `eaw_sandbox` | The sandbox's testable parts and the headless battle command. | battle, presentation, scene, control |
-| Presentation | `eaw_render_contract` | Engine-native visual data (`visual_scene.hpp`), header only. | math |
+| Presentation | `eaw_render_contract` | Engine-native visual data, one header per subject (`visual_vertex`, `visual_texture`, `visual_material`, `visual_mesh`, `visual_camera`, `visual_frame`, the `visual_scene` aggregate), header only. | math |
 | | `eaw_render_d3d12` | The Direct3D 12 backend. | core, render contract, formats (RGBA images for captures) |
 | | `eaw_platform` | Win32 window, raw input, crash handlers, log sinks. | core |
 | | `eaw_audio` | The engine-native `Sound` (16-bit PCM), the `AudioDevice` interface, spatial gains, the null device. | core, math |
@@ -278,7 +278,7 @@ choices come from its own `Pcg32` stream; nothing feeds back into the simulation
 
 ## Renderer
 
-The renderer consumes engine-native data from the render contract (`visual_scene.hpp`): meshes,
+The renderer consumes engine-native data from the render contract (`render/visual_*.hpp`): meshes,
 materials, textures, instances, particles, lights, cameras, debug lines, with colors as `Color` and `ColorRgb` (`color.hpp`). It never parses game files
 or knows VFS precedence. The first target is **legacy mode**: newly written HLSL driven by the
 decoded legacy ALO materials, approximating the original's look so content behaves as authored. A
@@ -482,7 +482,11 @@ The file-level split of each module.
     `sandbox_content` (background builds and hot-reload checks), `sandbox_debug_lines` (a pure
     function of a view struct), `battle_runner` (headless runs), and `text_format` (numbers for
     console and overlay text).
-- `src/render`: `eaw_render_contract` is `visual_scene.hpp`. The D3D12 backend's public interface is
+- `src/render`: `eaw_render_contract` holds the visual data by subject: `visual_vertex` (model and
+  terrain vertices, all the asset layer needs), `visual_texture`, `visual_material`, `visual_mesh`
+  (draws, damage states, detail levels, terrain), `visual_camera` (all control needs), `visual_frame`
+  (instances, lights, particles, debug lines), and `visual_scene` (the whole scene), with `color` and
+  `visual_lod`. The D3D12 backend's public interface is
   `d3d12_renderer.hpp` with `gpu_resource_lifetime.hpp`; the implementation class in
   `d3d12_renderer_impl.hpp` is defined by subject in `d3d12_renderer_device.cpp` (startup, swap
   chain, buffers, waits, retirement), `_pipelines.cpp` (pipeline states and cache),

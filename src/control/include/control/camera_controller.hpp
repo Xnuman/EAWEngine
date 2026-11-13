@@ -1,6 +1,6 @@
 #pragma once
 
-#include "render/visual_scene.hpp"
+#include "render/visual_camera.hpp"
 
 namespace eaw {
 
