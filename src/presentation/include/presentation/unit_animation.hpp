@@ -143,6 +143,8 @@ public:
     // palette animate() filled; none when the cue names no instance or its mesh has no such bone
     // (names compared ignoring case).
     [[nodiscard]] std::optional<Vector3> bone_position(const AnimationCue& cue, std::string_view bone, std::span<const VisualInstance> instances, std::span<const Matrix4> palette) const;
+    // The same for the instance at `instance` in `instances`.
+    [[nodiscard]] std::optional<Vector3> bone_position(std::size_t instance, std::string_view bone, std::span<const VisualInstance> instances, std::span<const Matrix4> palette) const;
     // A wreck that went in the last animate() with an effect to play there (DeathStyle::end_effect).
     struct EndedCorpse
     {

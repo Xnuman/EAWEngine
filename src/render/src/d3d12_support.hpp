@@ -93,7 +93,7 @@ inline constexpr float fog_height_scale = 400.0F;
 inline constexpr std::uint32_t decal_grid_cells = 64;
 // Particle buffers start with room for this many (an engine choice).
 inline constexpr std::size_t minimum_particle_capacity = 1024;
-inline constexpr std::uint32_t maximum_decals_per_cell = 32;
+inline constexpr std::uint32_t maximum_decals_per_cell = 64;
 
 // Temporary per-frame debug line capacity (an implementation limit, diagnosed through stats).
 inline constexpr std::size_t maximum_debug_lines = 32768;

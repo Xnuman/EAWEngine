@@ -52,6 +52,7 @@ void build_battle_frame(const BattleRuntime& runtime, const SimSnapshot& previou
     }
     presenters.animator->animate(entities, frame.entities, frame.instances, world_seconds, max_palette, frame.palette, frame.animations);
     presenters.effects.leave_footprints(presenters.animator->cues(), frame.instances, frame.palette, *presenters.animator);
+    presenters.effects.lay_tracks(runtime.battle().world(), frame.instances, frame.entities, frame.palette, *presenters.animator, world_seconds);
     for (const auto& ended : presenters.animator->ended_corpses())
     {
         presenters.effects.play_object(ended.effect, ended.position);

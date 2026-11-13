@@ -1,6 +1,7 @@
 // Particle effects and the effects of battles: tracks, the particle world, effect objects, bolts.
 #include "test_support.hpp"
 
+#include "assets/dynamic_tracks.hpp"
 #include "assets/terrain_decals.hpp"
 #include "battle/battle.hpp"
 #include "battle/battle_log.hpp"
@@ -792,6 +793,70 @@ void test_footprints()
     std::filesystem::remove_all(root, ignored);
 }
 
+// Dynamic tracks: fields as written (C-style "f" suffixes included), a track without a texture
+// reported and left out. Trails: a moving unit lays a segment each time it has moved a segment's
+// length, its texture repeating along the trail one width per repeat, and a trail whose unit
+// stands still fades and goes.
+void test_trails()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-trails-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    write_file(root / "Data" / "XML" / "DynamicTrackFX.xml",
+               "<DynamicTracks><DynamicTrack name=\"Treads\"><width>5.0f</width><texture_name>w_tank_track_01.tga</texture_name><opacity>.5</opacity><segment_length>7</segment_length>"
+               "<fade_begin_distance>200.0</fade_begin_distance><fade_end_distance>280.0</fade_end_distance><fade_distance_per_second>10.0</fade_distance_per_second>"
+               "<Render_Mode>DECAL_BUMP_ALPHA</Render_Mode></DynamicTrack>"
+               "<DynamicTrack name=\"Blank\"><width>5</width><segment_length>7</segment_length></DynamicTrack></DynamicTracks>");
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    std::vector<std::string> warnings;
+    const auto tracks = eaw::DynamicTrackCatalog::build(eaw::XmlAssetDatabase::build(vfs), &warnings);
+    const auto* treads = tracks.find("TREADS");
+    require(tracks.size() == 1 && treads != nullptr && treads->width == 5.0F && treads->opacity == 0.5F && treads->segment_length == 7.0F && treads->fade_begin == 200.0F &&
+                treads->fade_end == 280.0F && treads->fade_per_second == 10.0F && treads->mode == eaw::TerrainDecalMode::bump_alpha && treads->texture == "w_tank_track_01.tga" && warnings.size() == 1,
+            "dynamic tracks must keep their fields, and one without a texture must be left out with a warning");
+    std::filesystem::remove_all(root, ignored);
+
+    eaw::DynamicTrack track;
+    track.width = 4.0F;
+    track.segment_length = 10.0F;
+    track.fade_begin = 100.0F;
+    track.fade_end = 150.0F;
+    track.fade_per_second = 10.0F;
+    eaw::TrackLayerTable table;
+    table["tank"] = {eaw::TrackLayer{track, {}, 3U}};
+    eaw::BattleEffects effects;
+    effects.reset({{}, nullptr, eaw::invalid_visual_texture, nullptr, eaw::invalid_visual_texture, nullptr, &table});
+    effects.set_ground(
+        [](float, float)
+        {
+            return std::optional<float>(0.0F);
+        });
+    eaw::SimulationWorld world(0.1);
+    const auto tank = *world.spawn({.type_name = "Tank", .owner = 1});
+    const eaw::UnitAnimator animator(std::span<const eaw::VisualRig>{}, std::span<const eaw::Matrix4>{});
+    const auto drive = [&](const float x, const double seconds)
+    {
+        eaw::VisualInstance instance{0};
+        eaw::set_translation(instance.transform, {x, 0.0F, 0.0F});
+        const std::vector<eaw::VisualInstance> instances{instance};
+        const std::vector<eaw::EntityId> ids{tank};
+        effects.lay_tracks(world, instances, ids, {}, animator, seconds);
+    };
+    drive(0.0F, 0.0);
+    drive(5.0F, 0.1);
+    drive(12.0F, 0.2);
+    drive(24.0F, 0.3);
+    std::vector<eaw::VisualDecal> decals;
+    effects.build_decals(decals);
+    require(effects.trail_count() == 1 && decals.size() == 2 && decals[0].center == eaw::Vector2{6.0F, 0.0F} && decals[1].center == eaw::Vector2{18.0F, 0.0F} &&
+                decals[0].half_size == eaw::Vector2{2.0F, 6.0F} && std::fabs(decals[0].rotation + 1.5707964F) < 1.0e-5F && decals[1].uv_rect[1] == 3.0F && decals[1].texture == 3U &&
+                decals[0].opacity == 1.0F,
+            "a moving unit must lay a segment per segment length, its texture running along the trail");
+    drive(24.0F, 30.0);
+    require(effects.trail_count() == 0, "a trail whose unit stood still past its fade must go");
+}
+
 const ModuleRegistrar registrar("effects", {
                                                {"test_particle_tracks", &test_particle_tracks},
                                                {"test_particle_world", &test_particle_world},
@@ -803,6 +868,7 @@ const ModuleRegistrar registrar("effects", {
                                                {"test_terrain_decals", &test_terrain_decals},
                                                {"test_scorch_marks", &test_scorch_marks},
                                                {"test_footprints", &test_footprints},
+                                               {"test_trails", &test_trails},
                                            });
 
 } // namespace

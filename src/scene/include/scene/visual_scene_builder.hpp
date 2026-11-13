@@ -80,6 +80,8 @@ struct VisualMapAsset
     std::uint32_t decal_atlas{invalid_visual_texture};
     // On land: what lays footprints (shared with battle effects); null in space or without textures.
     std::shared_ptr<const FootprintSource> footprints;
+    // On land: the trails its unit types lay, by type (texture indices into the particle textures).
+    TrackLayerTable track_layers;
     // The Particle objects shot impacts and deaths name, as in SpawnablePackage.
     ParticleEffectObjectTable effect_objects;
 };
@@ -127,6 +129,8 @@ struct SpawnablePackage
     std::uint32_t projectile_atlas{invalid_visual_texture};
     // The terrain decal atlas (scorch marks), when an effect object leaves one; as projectile_atlas.
     std::uint32_t decal_atlas{invalid_visual_texture};
+    // On land: the trails its types lay, as VisualMapAsset::track_layers.
+    TrackLayerTable track_layers;
     // The XML Particle objects the types' shot impacts and deaths name (effects index
     // particle_textures).
     ParticleEffectObjectTable effect_objects;

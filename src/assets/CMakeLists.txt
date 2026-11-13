@@ -10,6 +10,7 @@ set(HEADERS_DIR "include/assets")
 set(SOURCES_DIR "src")
 
 set(EAW_ASSETS_GAME_DATA
+    ${HEADERS_DIR}/dynamic_tracks.hpp
     ${HEADERS_DIR}/game_object_catalog.hpp
     ${HEADERS_DIR}/legacy_units.hpp
     ${HEADERS_DIR}/map_object_layout.hpp
@@ -20,6 +21,7 @@ set(EAW_ASSETS_GAME_DATA
     ${HEADERS_DIR}/type_hardpoints.hpp
     ${HEADERS_DIR}/xml_asset_database.hpp
     ${HEADERS_DIR}/xml_schema.hpp
+    ${SOURCES_DIR}/dynamic_tracks.cpp
     ${SOURCES_DIR}/game_object_catalog.cpp
     ${SOURCES_DIR}/map_object_layout.cpp
     ${SOURCES_DIR}/spawn_catalog.cpp

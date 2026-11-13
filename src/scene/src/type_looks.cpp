@@ -120,6 +120,45 @@ bool type_receives_shadows(const GameObjectCatalog& catalog, const XmlDefinition
     return !TypeFields(catalog, definition).flag("In_Background", false);
 }
 
+void add_track_layers(SceneBuilder& builder, const GameObjectCatalog& catalog, const SurfaceEffectCatalog& surfaces, const DynamicTrackCatalog& tracks, const XmlDefinition& type,
+                      TrackLayerTable& table)
+{
+    const auto key = ascii_lower(type.name);
+    if (table.contains(key))
+    {
+        return;
+    }
+    std::vector<TrackLayer> layers;
+    for (const auto name : TypeFields(catalog, type).list("SurfaceFX_Name"))
+    {
+        const auto* settings = surfaces.find(name);
+        if (settings == nullptr || settings->track.empty())
+        {
+            continue;
+        }
+        const auto* track = tracks.find(settings->track);
+        if (track == nullptr)
+        {
+            builder.scene.warnings.push_back(type.name + ": dynamic track " + settings->track + " is not defined; it lays no trail");
+            continue;
+        }
+        const auto texture = particle_library_texture(builder, track->texture, "dynamic tracks");
+        if (settings->track_left_bone.empty() && settings->track_right_bone.empty())
+        {
+            layers.push_back({*track, {}, texture});
+            continue;
+        }
+        for (const auto* bone : {&settings->track_left_bone, &settings->track_right_bone})
+        {
+            if (!bone->empty())
+            {
+                layers.push_back({*track, *bone, texture});
+            }
+        }
+    }
+    table.emplace(key, std::move(layers));
+}
+
 DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     DeathStyle style;

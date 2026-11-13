@@ -128,6 +128,7 @@ struct SandboxSession
     eaw::BattleEffects effects{eaw::particle_interpretation(options.particle_fidelity).draw_order};
     std::vector<eaw::VisualParticle> frame_particles;
     std::vector<eaw::VisualDecal> frame_decals;
+    eaw::TrackLayerTable renderer_tracks;
     std::vector<std::shared_ptr<const eaw::ParticleEffect>> shown_effects;
     std::vector<eaw::ParticleInstanceId> shown_effect_ids;
     Vector3 effect_center{};
@@ -252,6 +253,8 @@ struct SandboxSession
     // The renderer texture of a build's bolt atlas (`atlas` indexes its particle textures, `placed`
     // says where they landed), or invalid_visual_texture.
     static std::uint32_t placed_atlas(std::uint32_t atlas, std::span<const std::uint32_t> placed);
+    // A track table with its textures as renderer indices (held in renderer_tracks until the next call).
+    const eaw::TrackLayerTable& placed_tracks(const eaw::TrackLayerTable& tracks, std::span<const std::uint32_t> placed);
     bool load_content_scene(eaw::VisualScene scene, const bool reload);
     static eaw::VisualScene presentation_layout(const eaw::VisualScene& scene);
     void apply_content(eaw::SandboxContent content);

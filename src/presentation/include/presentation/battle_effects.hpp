@@ -8,6 +8,7 @@
 #include "core/random.hpp"
 #include "render/visual_frame.hpp"
 #include "render/visual_texture.hpp"
+#include "assets/dynamic_tracks.hpp"
 #include "assets/surface_effects.hpp"
 #include "assets/terrain_decals.hpp"
 #include "simulation/simulation.hpp"
@@ -20,6 +21,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -34,6 +36,18 @@ struct FootprintSource
     TerrainDecalCatalog decals;
 };
 
+// A trail a unit type lays on the ground while it moves (through its SurfaceFX_Name): the track,
+// the bone it runs under (empty: under the unit), and the track's texture (a renderer index).
+struct TrackLayer
+{
+    DynamicTrack track;
+    std::string bone;
+    std::uint32_t texture{invalid_visual_texture};
+};
+
+// Track layers by lower-case type name.
+using TrackLayerTable = std::unordered_map<std::string, std::vector<TrackLayer>>;
+
 // What a map or a spawn package brings: rigs parallel to its meshes, how its shots look (`atlas` is
 // the bolt atlas's renderer texture, or invalid_visual_texture), and its Particle objects. Effect
 // textures must already be renderer indices (renumber_effect_textures).
@@ -47,6 +61,8 @@ struct BattleEffectContent
     std::uint32_t decal_atlas{invalid_visual_texture};
     // A land map's footprints (shared with the map), or null.
     std::shared_ptr<const FootprintSource> footprints;
+    // The trails its unit types lay on land, or null.
+    const TrackLayerTable* tracks{};
 };
 
 class BattleEffects
@@ -87,7 +103,18 @@ public:
     // the event's bone when the animator finds it (else the unit), turned with the unit.
     void leave_footprints(std::span<const AnimationCue> cues, std::span<const VisualInstance> instances, std::span<const Matrix4> palette, const UnitAnimator& animator);
 
-    // Appends this frame's marks on the terrain (scorches, footprints), faded as they age.
+    // Extends the trails of this frame's drawn units (`instances` with their `entities`, as
+    // UnitAnimator::animate left them) whose types lay tracks, at the track's bone or the unit, by a
+    // segment each time the point has moved a segment's length; `seconds` is presentation time.
+    void lay_tracks(const SimulationWorld& world, std::span<const VisualInstance> instances, std::span<const EntityId> entities, std::span<const Matrix4> palette, const UnitAnimator& animator,
+                    double seconds);
+    [[nodiscard]] std::size_t trail_count() const noexcept
+    {
+        return trails_.size();
+    }
+
+    // Appends this frame's marks on the terrain (scorches, footprints, trail segments), faded as
+    // they age.
     void build_decals(std::vector<VisualDecal>& decals) const;
     [[nodiscard]] std::size_t decal_count() const noexcept
     {
@@ -154,6 +181,20 @@ private:
     };
     std::vector<LiveDecal> decals_;
     std::shared_ptr<const FootprintSource> footprints_;
+    // Trails: each unit's per track layer, its points along the path with their distance from the
+    // trail's start, and when its head last moved (fade time); kept until they have faded.
+    TrackLayerTable track_layers_;
+    struct Trail
+    {
+        const TrackLayer* layer{};
+        std::vector<Vector2> points;
+        std::vector<float> distances;
+        double last_moved{};
+        std::uint64_t frame{};
+    };
+    std::unordered_map<std::uint64_t, Trail> trails_;
+    std::uint64_t track_frame_{};
+    double track_seconds_{};
     std::uint32_t decal_atlas_{invalid_visual_texture};
     ParticleGroundHeight ground_;
     Pcg32 decal_random_{1};

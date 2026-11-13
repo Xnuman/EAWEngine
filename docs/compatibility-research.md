@@ -1071,7 +1071,15 @@ particle-audit`.
   unused. Decals are placed through `SurfaceFX` entries (`Decal_Name` per surface kind):
   footprint triggers from animation foot plants, and `Explosion_Scorch_Mark` on 36 `Particle`
   explosion objects (`EXPLOSION_SCORCH_MARK_SMALL` and so on, none on water). Vehicle tracks are a
-  separate system (`DynamicTrackFX.xml`: textured ribbons). Map-placed decals occur in one stock
+  separate system (`DynamicTrackFX.xml`: textured ribbons): 11 tracks with a texture, width,
+  opacity, segment length, fade distances, and a render mode; the bump ones (`w_tank_track_01`,
+  `w_footprint00`, R2-D2's) are BC3 tangent-space normals with opaque alpha, the diffuse ones
+  (`Trk_Dirt`, `Trk_Grass`, 20 wide) are named only by the `DYNAMIC_TRACK_*` SurfaceFX entries,
+  which no stock unit lists. Units opt in by `SurfaceFX_Name` (stock: `Generic_Footprint` on
+  infantry, `Generic_Track` on the T4-B, Juggernaut, and Pulse Tank in FoC, `Generic_Track_Half` on
+  the MPTL and TIE Crawler); the
+  SurfaceFX names the track and the tread bones. That a trail repeats its texture one width per
+  repeat along its length is a reading of the textures' square layout, not observed. Map-placed decals occur in one stock
   map only, without texture names.
 - **Hardpoint scorch meshes.** `Damage_Decal` names a bone (`HP_*_BLAST`,
   245 stock uses) that carries a small alpha-blended mesh of its own: the Star

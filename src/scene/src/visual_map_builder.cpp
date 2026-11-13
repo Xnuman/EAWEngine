@@ -1,5 +1,6 @@
 #include "core/string_utils.hpp"
 #include "assets/animation_events.hpp"
+#include "assets/dynamic_tracks.hpp"
 #include "assets/map_object_layout.hpp"
 #include "assets/spawn_catalog.hpp"
 #include "assets/surface_effects.hpp"
@@ -325,6 +326,18 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             footprints->events = std::make_shared<const AnimationEventTable>(load_animation_events(vfs, &scene.warnings));
             footprints->surfaces = SurfaceEffectCatalog::build(*catalog_entry->database);
             footprints->decals = TerrainDecalCatalog::build(*catalog_entry->database);
+            // Trails of every placed and spawnable type.
+            const auto tracks = DynamicTrackCatalog::build(*catalog_entry->database, &scene.warnings);
+            for (const auto* models : {&entity_models, &spawnable_models})
+            {
+                for (const auto& model : *models)
+                {
+                    if (model.type != nullptr)
+                    {
+                        add_track_layers(builder, catalog, footprints->surfaces, tracks, *model.type, asset.track_layers);
+                    }
+                }
+            }
             asset.footprints = std::move(footprints);
             if (asset.decal_atlas == invalid_visual_texture)
             {
@@ -415,6 +428,18 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
             keys.push_back(look.death.end_effect);
         }
         load_effect_objects(builder, catalog_entry->catalog, *catalog_entry->database, keys, land, package.effect_objects, package.decal_atlas);
+        if (land)
+        {
+            const auto surfaces = SurfaceEffectCatalog::build(*catalog_entry->database);
+            const auto tracks = DynamicTrackCatalog::build(*catalog_entry->database);
+            for (const auto& model : models)
+            {
+                if (model.type != nullptr)
+                {
+                    add_track_layers(builder, catalog_entry->catalog, surfaces, tracks, *model.type, package.track_layers);
+                }
+            }
+        }
     }
     package.particle_textures = std::move(builder.particles.textures);
     return package;

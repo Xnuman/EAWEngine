@@ -1,5 +1,7 @@
 #include "presentation/battle_effects.hpp"
 
+#include "core/string_utils.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -13,6 +15,10 @@ namespace {
 constexpr float decal_fade_seconds = 2.0F;
 constexpr std::size_t maximum_decals = 2048;
 constexpr float scorch_ground_reach = 40.0F;
+// A trail point farther than this many segments from the last starts a new trail (a unit that jumped,
+// such as a respawn), and trails keep at most this many points (engine choices).
+constexpr float trail_break_segments = 4.0F;
+constexpr std::size_t maximum_trail_points = 256;
 
 } // namespace
 
@@ -33,6 +39,8 @@ void BattleEffects::reset(const BattleEffectContent& content)
     decals_.clear();
     decal_atlas_ = invalid_visual_texture;
     footprints_.reset();
+    track_layers_.clear();
+    trails_.clear();
     attached_.set_rigs(content.rigs);
     projectile_attached_.set_rigs(content.rigs);
     take(content);
@@ -66,6 +74,11 @@ void BattleEffects::take(const BattleEffectContent& content)
     if (!footprints_)
     {
         footprints_ = content.footprints;
+    }
+    if (content.tracks != nullptr)
+    {
+        // A type already known keeps its layers: existing trails point at them.
+        track_layers_.insert(content.tracks->begin(), content.tracks->end());
     }
 }
 
@@ -254,6 +267,77 @@ void BattleEffects::leave_footprints(const std::span<const AnimationCue> cues, c
                      });
 }
 
+void BattleEffects::lay_tracks(const SimulationWorld& world, const std::span<const VisualInstance> instances, const std::span<const EntityId> entities, const std::span<const Matrix4> palette,
+                               const UnitAnimator& animator, const double seconds)
+{
+    ++track_frame_;
+    track_seconds_ = seconds;
+    if (track_layers_.empty() || ground_ == nullptr)
+    {
+        return;
+    }
+    for (std::size_t index = 0; index < instances.size() && index < entities.size(); ++index)
+    {
+        const auto entity = entities[index];
+        if (!entity.valid())
+        {
+            continue;
+        }
+        const auto layers = track_layers_.find(ascii_lower(world.type_name(entity)));
+        if (layers == track_layers_.end())
+        {
+            continue;
+        }
+        for (std::size_t layer_index = 0; layer_index < layers->second.size(); ++layer_index)
+        {
+            const auto& layer = layers->second[layer_index];
+            const auto point3 =
+                layer.bone.empty() ? translation(instances[index].transform) : animator.bone_position(index, layer.bone, instances, palette).value_or(translation(instances[index].transform));
+            const Vector2 point{point3.x, point3.y};
+            const auto key = (static_cast<std::uint64_t>(entity.index) << 32U) ^ (static_cast<std::uint64_t>(entity.generation) << 8U) ^ layer_index;
+            auto& trail = trails_[key];
+            trail.layer = &layer;
+            trail.frame = track_frame_;
+            const auto step = layer.track.segment_length;
+            if (!trail.points.empty())
+            {
+                const auto moved = length(point - trail.points.back());
+                if (moved > step * trail_break_segments)
+                {
+                    trail.points.clear();
+                    trail.distances.clear();
+                }
+                else if (moved < step)
+                {
+                    continue;
+                }
+            }
+            trail.distances.push_back(trail.points.empty() ? 0.0F : trail.distances.back() + length(point - trail.points.back()));
+            trail.points.push_back(point);
+            trail.last_moved = seconds;
+            if (trail.points.size() > maximum_trail_points)
+            {
+                trail.points.erase(trail.points.begin());
+                trail.distances.erase(trail.distances.begin());
+            }
+        }
+    }
+    // Trails fade: points beyond the fade end go, and empty trails with them.
+    std::erase_if(trails_,
+                  [&](auto& entry)
+                  {
+                      auto& trail = entry.second;
+                      const auto& track = trail.layer->track;
+                      const auto idle = static_cast<float>(seconds - trail.last_moved) * track.fade_per_second;
+                      while (trail.points.size() > 1 && trail.distances.back() - trail.distances[1] + idle > track.fade_end)
+                      {
+                          trail.points.erase(trail.points.begin());
+                          trail.distances.erase(trail.distances.begin());
+                      }
+                      return trail.points.size() < 2 && (trail.frame != track_frame_ || idle > track.fade_end);
+                  });
+}
+
 void BattleEffects::build_decals(std::vector<VisualDecal>& decals) const
 {
     constexpr float cell = 1.0F / static_cast<float>(decal_atlas_cells);
@@ -275,6 +359,44 @@ void BattleEffects::build_decals(std::vector<VisualDecal>& decals) const
                           : decal.mode == TerrainDecalMode::additive ? VisualDecalMode::additive
                                                                      : VisualDecalMode::diffuse,
                           opacity});
+    }
+    // Trail segments: a rectangle from each point to the next, its texture running along the
+    // trail one width per repeat, fading from the fade begin to the fade end behind the head (and
+    // further as time passes since the head last moved).
+    for (const auto& [key, trail] : trails_)
+    {
+        const auto& layer = *trail.layer;
+        const auto& track = layer.track;
+        if (layer.texture == invalid_visual_texture)
+        {
+            continue;
+        }
+        const auto idle = static_cast<float>(track_seconds_ - trail.last_moved) * track.fade_per_second;
+        const auto mode = track.mode == TerrainDecalMode::bump_alpha ? VisualDecalMode::bump : track.mode == TerrainDecalMode::additive ? VisualDecalMode::additive : VisualDecalMode::diffuse;
+        for (std::size_t point = 1; point < trail.points.size(); ++point)
+        {
+            const auto from = trail.points[point - 1];
+            const auto to = trail.points[point];
+            const auto along = to - from;
+            const auto span = length(along);
+            if (!(span > 0.0F))
+            {
+                continue;
+            }
+            const auto behind = trail.distances.back() - trail.distances[point] + idle;
+            const auto fade = track.fade_end > track.fade_begin ? std::clamp(1.0F - (behind - track.fade_begin) / (track.fade_end - track.fade_begin), 0.0F, 1.0F) : 1.0F;
+            if (fade <= 0.0F)
+            {
+                continue;
+            }
+            decals.push_back({(from + to) * 0.5F,
+                              {track.width * 0.5F, span * 0.5F},
+                              std::atan2(along.y, along.x) - 1.5707964F,
+                              {0.0F, trail.distances[point - 1] / track.width, 1.0F, span / track.width},
+                              layer.texture,
+                              mode,
+                              track.opacity * fade});
+        }
     }
 }
 

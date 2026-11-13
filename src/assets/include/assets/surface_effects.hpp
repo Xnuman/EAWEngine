@@ -21,6 +21,11 @@ struct SurfaceEffectSettings
     std::string sound;
     std::string particle;
     std::string decal;
+    // The trail it lays while its unit moves (Dynamic_Track_Name) and the bones the two treads run
+    // under (Dynamic_Track_Left_Bone, _Right_Bone; none: one trail under the unit).
+    std::string track;
+    std::string track_left_bone;
+    std::string track_right_bone;
 };
 
 class SurfaceEffectCatalog final

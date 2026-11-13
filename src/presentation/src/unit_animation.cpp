@@ -361,27 +361,32 @@ void UnitAnimator::add_cue(const EntityId entity, const Vector3& position, const
 
 std::optional<Vector3> UnitAnimator::bone_position(const AnimationCue& cue, const std::string_view bone, const std::span<const VisualInstance> instances, const std::span<const Matrix4> palette) const
 {
-    if (cue.instance >= instances.size())
+    return bone_position(static_cast<std::size_t>(cue.instance), bone, instances, palette);
+}
+
+std::optional<Vector3> UnitAnimator::bone_position(const std::size_t index, const std::string_view bone, const std::span<const VisualInstance> instances, const std::span<const Matrix4> palette) const
+{
+    if (index >= instances.size())
     {
         return std::nullopt;
     }
-    const auto& instance = instances[cue.instance];
+    const auto& instance = instances[index];
     if (instance.mesh >= rigs_.size() || !rigs_[instance.mesh].skeleton)
     {
         return std::nullopt;
     }
     const auto& skeleton = *rigs_[instance.mesh].skeleton;
-    for (std::size_t index = 0; index < skeleton.bones.size(); ++index)
+    for (std::size_t bone_index = 0; bone_index < skeleton.bones.size(); ++bone_index)
     {
-        if (!ascii_equal_ignoring_case(skeleton.bones[index].name, bone))
+        if (!ascii_equal_ignoring_case(skeleton.bones[bone_index].name, bone))
         {
             continue;
         }
         // The bone's model-space pose: its bind pose through its skinning matrix (as attached
         // effects place theirs); its rest pose when the palette does not reach it.
         const auto bind = skeleton_bind_pose(skeleton);
-        const auto skin = static_cast<std::size_t>(instance.bone_offset) + index;
-        const auto model = skin < palette.size() ? bind[index] * palette[skin] : bind[index];
+        const auto skin = static_cast<std::size_t>(instance.bone_offset) + bone_index;
+        const auto model = skin < palette.size() ? bind[bone_index] * palette[skin] : bind[bone_index];
         return transform_point(translation(model), instance.transform);
     }
     return std::nullopt;

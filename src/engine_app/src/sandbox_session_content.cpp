@@ -58,6 +58,20 @@ std::uint32_t SandboxSession::placed_atlas(const std::uint32_t atlas, const std:
     return atlas < placed.size() ? placed[atlas] : eaw::invalid_visual_texture;
 }
 
+const eaw::TrackLayerTable& SandboxSession::placed_tracks(const eaw::TrackLayerTable& tracks, const std::span<const std::uint32_t> placed)
+{
+    // Battle effects copy the layers, so one table serves each call.
+    renderer_tracks = tracks;
+    for (auto& [type, layers] : renderer_tracks)
+    {
+        for (auto& layer : layers)
+        {
+            layer.texture = placed_atlas(layer.texture, placed);
+        }
+    }
+    return renderer_tracks;
+}
+
 bool SandboxSession::load_content_scene(eaw::VisualScene scene, const bool reload)
 {
     const auto loaded = renderer.load_scene(std::move(scene));
@@ -159,7 +173,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         audio.emplace(vfs, &asset_cache, *audio_device, options.language, visual_map.battle.land);
         animator.emplace(visual_map.rigs, visual_map.rest_palette);
         effects.reset({visual_map.rigs, &visual_map.projectile_visuals, placed_atlas(visual_map.projectile_atlas, placed), &visual_map.effect_objects, placed_atlas(visual_map.decal_atlas, placed),
-                       visual_map.footprints});
+                       visual_map.footprints, &placed_tracks(visual_map.track_layers, placed)});
         shown_effects = visual_map.effects;
         shown_effect_ids.assign(shown_effects.size(), {});
         effect_center = {(bounds.minimum[0] + bounds.maximum[0]) * 0.5F, (bounds.minimum[1] + bounds.maximum[1]) * 0.5F, 0.0F};

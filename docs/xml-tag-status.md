@@ -27,8 +27,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 | Status | Tags |
 | --- | --- |
 | `done` | 176 |
-| `partial` | 23 |
-| `gap` | 193 |
+| `partial` | 24 |
+| `gap` | 192 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -1221,7 +1221,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Models, rendering, animation, user interface, and text
 
-25 done, 6 partial, 76 gap, 83 needs, 3 n/a.
+25 done, 7 partial, 75 gap, 83 needs, 3 n/a.
 
 ### Core structure (summary; see the overview chapters)
 
@@ -1280,7 +1280,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Blob_Shadow_Bone_Name` | `gap` |  |
 | `Selection_Blob_Material_Name` | `needs UI` | selection marks |
 | `Highlight_Blob_Material_Name` | `needs UI` | selection marks |
-| `SurfaceFX_Name` | `gap` |  |
+| `SurfaceFX_Name` | `partial` | dynamic tracks (trails) and walkers' footprints; sounds, particles, and hover effects not yet |
 | `Terrain_Texture_Modifier_Material` | `gap` |  |
 | `Terrain_Texture_Modifier_Square` | `gap` |  |
 | `Terrain_Texture_Modifier_Join_Distance` | `gap` |  |

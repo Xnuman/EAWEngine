@@ -41,7 +41,8 @@ SurfaceEffectCatalog SurfaceEffectCatalog::build(const XmlAssetDatabase& databas
             {
                 continue;
             }
-            entry->second.push_back({ascii_lower(ascii_trim(surface->value)), child_text(field, "SoundFX_Name"), child_text(field, "Particle_Name"), child_text(field, "Decal_Name")});
+            entry->second.push_back({ascii_lower(ascii_trim(surface->value)), child_text(field, "SoundFX_Name"), child_text(field, "Particle_Name"), child_text(field, "Decal_Name"),
+                                     child_text(field, "Dynamic_Track_Name"), child_text(field, "Dynamic_Track_Left_Bone"), child_text(field, "Dynamic_Track_Right_Bone")});
         }
     }
     return catalog;

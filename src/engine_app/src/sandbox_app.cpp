@@ -281,7 +281,7 @@ int SandboxSession::finish()
     const auto particle_stats = effects.particles().stats();
     std::cout << "Particles at exit: " << particle_stats.particles << " in " << particle_stats.instances << " effects (" << effects.attached_playing() << " attached), " << stats.particles
               << " drawn in the last frame, " << particle_stats.dropped_particles << " dropped, " << particle_stats.skipped_emitters << " emitters without a pass\n";
-    std::cout << "Terrain marks at exit: " << effects.decal_count() << " (scorches and footprints)\n";
+    std::cout << "Terrain marks at exit: " << effects.decal_count() << " (scorches and footprints), " << effects.trail_count() << " trails\n";
     if (options.reload_every)
     {
         std::cout << "Scene reloads: " << scene_reloads << '\n';
