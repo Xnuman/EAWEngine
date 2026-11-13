@@ -103,7 +103,7 @@ rendering rows join item 2).
    296: atmosphere rim, clouds, city lights), wind bend (`Tree` 185, `Grass` 14), shields
    (`MeshShield` 27, seen in every space battle), water (the owner's addition: legacy from the TED
    water data, since the published shaders hold no water shader, and an enhanced mode designed
-   from research into current and RTS practice), skydomes and nebulae (`Skydome` 19, `Nebula` 15),
+   from research into current and RTS practice, [water-research.md](water-research.md)), skydomes and nebulae (`Skydome` 19, `Nebula` 15),
    occluded units (chosen by the engine, not by materials), heat distortion (`MeshHeat` 3, plus
    heat particles), reflections (`MeshAdditiveReflection` 3; no stock material uses the reflective
    profiles); then weather and soft particles, look tuning.
