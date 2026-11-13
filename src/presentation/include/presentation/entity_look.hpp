@@ -57,6 +57,8 @@ struct MapEntityLook
     AnimationProfile animation;
     // Its land model's damage states (empty in space and for types without them).
     std::vector<DamageStep> damage;
+    // Its model's shield flash mesh (scene_build::append_shield_flash), if it has one.
+    std::optional<std::uint32_t> shield_mesh;
 };
 
 // How a spawnable type (a SpawnableType, same index) is drawn: its mesh in the map scene, its team
@@ -77,6 +79,7 @@ struct SpawnableLook
     float bank_limit{default_bank_limit};
     AnimationProfile animation;
     std::vector<DamageStep> damage;
+    std::optional<std::uint32_t> shield_mesh;
 };
 
 // A decoration (XML Is_Decoration): a placed object that is drawn and animated but never simulated.

@@ -374,20 +374,23 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
         auto point = aim_point(victim, hardpoint);
         point = {point.x + offset.x, point.y + offset.y, point.z + offset.z};
         auto kind = ImpactKind::expired;
+        EntityId struck;
         if (!misses)
         {
             ++hits_;
             kind = apply_damage(victim, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, hardpoint);
+            struck = ids_[victim];
         }
         else if (const auto other = stray_victim(point, owners_[shooter], victim))
         {
             ++hits_;
             kind = apply_damage(*other, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, -1);
+            struck = ids_[*other];
         }
         const Vector3 delta{point.x - origin.x, point.y - origin.y, point.z - origin.z};
         const auto length = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto direction = length > 0.0F ? Vector3{delta.x / length, delta.y / length, delta.z / length} : Vector3{};
-        impacts_.push_back({point, direction, weapon.projectile_visual, kind});
+        impacts_.push_back({point, direction, weapon.projectile_visual, kind, struck});
         area_blast(point, owners_[shooter], weapon.blast, weapon.damage_type, weapon.damages_shield, weapon.damages_health);
         return;
     }
@@ -722,13 +725,13 @@ void SimulationWorld::run_projectiles()
             {
                 ++hits_;
                 const auto kind = apply_damage(*victim, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, projectile.target_hardpoint);
-                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind});
+                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind, ids_[*victim]});
             }
             else if (const auto other = projectile.misses ? stray_victim(projectile.aim, projectile.owner, victim.value_or(ids_.size())) : std::nullopt)
             {
                 ++hits_;
                 const auto kind = apply_damage(*other, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, -1);
-                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind});
+                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind, ids_[*other]});
             }
             else
             {

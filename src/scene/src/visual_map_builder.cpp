@@ -65,6 +65,7 @@ void scene_build::add_spawnable_looks(SceneBuilder& builder, const GameObjectCat
         if (entry->second)
         {
             look.mesh = *entry->second;
+            look.shield_mesh = append_shield_flash(builder, model.path);
         }
         else
         {
@@ -167,6 +168,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             ++asset.undrawn_entities;
             return look;
         }
+        look.shield_mesh = append_shield_flash(builder, model.path);
         // Instances start in their mesh's rest pose (build_map_rigs sets the bone offsets).
         VisualInstance instance{*entry->second, model.transform};
         instance.lod_bias = model.type != nullptr ? type_lod_bias(catalog, *model.type) : 1.0F;

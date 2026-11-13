@@ -159,4 +159,48 @@ void add_placed_bounds(ModelBounds& bounds, const ModelBounds& local, const Matr
     }
 }
 
+void assign_billboard_centers(const std::span<VisualVertex> vertices, const std::span<const std::uint32_t> indices)
+{
+    // Connected pieces by union-find over the triangles' corners.
+    std::vector<std::uint32_t> parent(vertices.size());
+    for (std::uint32_t index = 0; index < parent.size(); ++index)
+    {
+        parent[index] = index;
+    }
+    const auto root = [&](std::uint32_t index)
+    {
+        while (parent[index] != index)
+        {
+            parent[index] = parent[parent[index]];
+            index = parent[index];
+        }
+        return index;
+    };
+    for (std::size_t corner = 0; corner + 2 < indices.size(); corner += 3)
+    {
+        const auto a = indices[corner];
+        const auto b = indices[corner + 1];
+        const auto c = indices[corner + 2];
+        if (a >= vertices.size() || b >= vertices.size() || c >= vertices.size())
+        {
+            continue;
+        }
+        parent[root(b)] = root(a);
+        parent[root(c)] = root(a);
+    }
+    std::vector<Vector2> sums(vertices.size());
+    std::vector<std::uint32_t> counts(vertices.size(), 0U);
+    for (std::uint32_t index = 0; index < vertices.size(); ++index)
+    {
+        const auto piece = root(index);
+        sums[piece] = sums[piece] + Vector2{vertices[index].position.x, vertices[index].position.y};
+        ++counts[piece];
+    }
+    for (std::uint32_t index = 0; index < vertices.size(); ++index)
+    {
+        const auto piece = root(index);
+        vertices[index].texture_coordinates_1 = sums[piece] * (1.0F / static_cast<float>(counts[piece]));
+    }
+}
+
 } // namespace eaw

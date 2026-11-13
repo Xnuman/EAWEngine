@@ -101,6 +101,23 @@ void test_scene_presentation()
     water_presentation.build(marker_battle.world().snapshot().entities, {}, instances, ids);
     require(instances.size() == 2 && instances[0].background && !instances[1].background && instances[1].mesh == 0 && !ids[1].valid(), "an instance no entity claims must be drawn as scenery");
 
+    // A shot the shields absorbed flashes the entity's shield mesh after it, growing by step and gone
+    // after the last.
+    auto shielded_looks = looks;
+    shielded_looks[0].shield_mesh = 1U;
+    eaw::ScenePresentation shield_presentation(scene, entities, shielded_looks, battle.map_entity_ids(), std::span(&spawnable_look, 1));
+    const auto shielded = world.snapshot().entities[0].id;
+    const std::array<eaw::ImpactSnapshot, 2> hits{{{{}, {}, 0U, eaw::ImpactKind::hull, shielded}, {{}, {}, 0U, eaw::ImpactKind::shield, shielded}}};
+    shield_presentation.flash_shields(hits, 10.0);
+    const std::vector<eaw::EntitySnapshot> one{world.snapshot().entities[0]};
+    shield_presentation.build(one, {}, instances, ids, nullptr, 10.15);
+    require(instances.size() == 3 && instances[2].mesh == 1U && !ids[2].valid() &&
+                std::fabs(eaw::length(eaw::Vector3{instances[2].transform(0, 0), instances[2].transform(0, 1), instances[2].transform(0, 2)}) -
+                          1.1F * eaw::length(eaw::Vector3{instances[1].transform(0, 0), instances[1].transform(0, 1), instances[1].transform(0, 2)})) < 1.0e-4F,
+            "a shield hit must show the shield mesh after its entity, at the step's scale");
+    shield_presentation.build(one, {}, instances, ids, nullptr, 10.35);
+    require(instances.size() == 2, "the shield flash must end after its last step");
+
     // A frame of a running battle, built without a window: backgrounds, then entities with their
     // ids; no palette without an animator.
     eaw::BattleRuntime runtime(map, "TEST.TED", nullptr);

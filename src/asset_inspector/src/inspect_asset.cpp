@@ -198,6 +198,15 @@ eaw::Status inspect_alo(const std::span<const std::byte> bytes, const std::size_
                     maximum = {std::max(maximum.x, vertex.position.x), std::max(maximum.y, vertex.position.y), std::max(maximum.z, vertex.position.z)};
                 }
                 std::cout << "        extent x " << minimum.x << ".." << maximum.x << " y " << minimum.y << ".." << maximum.y << " z " << minimum.z << ".." << maximum.z << '\n';
+                // The second texture-coordinate set's range (grass keeps its clump centers there).
+                auto second_minimum = submesh.vertices.front().texture_coordinates[1];
+                auto second_maximum = second_minimum;
+                for (const auto& vertex : submesh.vertices)
+                {
+                    second_minimum = {std::min(second_minimum.x, vertex.texture_coordinates[1].x), std::min(second_minimum.y, vertex.texture_coordinates[1].y)};
+                    second_maximum = {std::max(second_maximum.x, vertex.texture_coordinates[1].x), std::max(second_maximum.y, vertex.texture_coordinates[1].y)};
+                }
+                std::cout << "        second UV u " << second_minimum.x << ".." << second_maximum.x << " v " << second_minimum.y << ".." << second_maximum.y << '\n';
             }
             // Every shader parameter as written (textures by name, numbers as their text).
             for (const auto& parameter : submesh.parameters)

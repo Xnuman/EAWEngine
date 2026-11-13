@@ -370,6 +370,8 @@ struct ImpactSnapshot
     // The weapon's projectile visual key (WeaponProfile::projectile_visual).
     std::uint32_t visual{};
     ImpactKind kind{ImpactKind::hull};
+    // The entity the shot struck (invalid when it struck nothing).
+    EntityId target;
 };
 
 // A shot launched in the last tick (each pulse of each weapon), for fire sounds and muzzle effects

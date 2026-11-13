@@ -76,4 +76,11 @@ struct ModelBounds
 // corners that are not finite (malformed vertex data must not make a frame non-finite).
 void add_placed_bounds(ModelBounds& bounds, const ModelBounds& local, const Matrix4& transform) noexcept;
 
+// Billboard grass (the Grass material): the stock files leave their second texture-coordinate set
+// empty, so the clump centers the billboards turn about are computed here, as the original engine
+// must have done ("x, y center of each billboard polygon", the legacy shader's comment): each
+// connected piece of the submesh (a billboard: two triangles over four vertices in the stock grass)
+// gets the mean x, y of its vertices in `texture_coordinates_1`. Indices out of range are ignored.
+void assign_billboard_centers(std::span<VisualVertex> vertices, std::span<const std::uint32_t> indices);
+
 } // namespace eaw

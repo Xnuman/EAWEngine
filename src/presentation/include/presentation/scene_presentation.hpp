@@ -13,6 +13,7 @@
 #include "presentation/entity_look.hpp"
 #include "presentation/visual_rig.hpp"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -43,6 +44,11 @@ namespace eaw {
 // indices the simulation hands out.
 inline constexpr std::uint32_t decoration_id_base = 0x40000000U;
 
+// The shield flash (GameConstants' Shield_Flash_Scale "1.0, 1.1, 1.25" and Shield_Flash_Duration
+// 0.1, read as one step per scale; the stock values, not read from the file yet).
+inline constexpr std::array<float, 3> shield_flash_scales{1.0F, 1.1F, 1.25F};
+inline constexpr double shield_flash_step = 0.1;
+
 class ScenePresentation final
 {
 public:
@@ -56,8 +62,15 @@ public:
     // snapshot order. `entities_out[i]` names the entity behind `instances_out[i]` (invalid for
     // backgrounds), so picks and selections can be mapped back.
     // `animations_out`, when given, receives each instance's AnimationProfile (backgrounds a default).
+    // `seconds` is presentation time: an entity whose shields flash (flash_shields) is followed by
+    // its shield mesh, drawn without an entity.
     void build(std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out, std::vector<EntityId>& entities_out,
-               std::vector<AnimationProfile>* animations_out = nullptr) const;
+               std::vector<AnimationProfile>* animations_out = nullptr, double seconds = 0.0) const;
+
+    // Shield flashes: a shot an entity's shields absorbed (ImpactSnapshot::target, kind shield) shows
+    // its model's shield mesh, if it has one, growing through shield_flash_scales for
+    // shield_flash_step seconds each, from `seconds` (presentation time).
+    void flash_shields(std::span<const ImpactSnapshot> impacts, double seconds);
 
     // Meshes added to the renderer's mesh library at runtime (D3d12Renderer::add_meshes), in order,
     // and spawnable types added to the battle (Battle::add_spawnable), in the same order as there.
@@ -95,8 +108,11 @@ private:
         float bank_limit{default_bank_limit};
         AnimationProfile animation;
         std::vector<DamageStep> damage;
+        std::optional<std::uint32_t> shield_mesh;
     };
     std::vector<VisualInstance> backgrounds_;
+    // Entity key -> presentation time of its last shield hit (flash_shields).
+    std::unordered_map<std::uint64_t, double> shield_hits_;
     // The map's own surfaces that no entity or decoration draws (the water plane, terrain tracks),
     // drawn every frame after the backgrounds.
     std::vector<VisualInstance> scenery_;

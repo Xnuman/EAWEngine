@@ -3,6 +3,7 @@
 #include "formats/ala_animation_helpers.hpp"
 #include "formats/alo_model_helpers.hpp"
 #include "assets/alo_interpretation.hpp"
+#include "assets/model_geometry.hpp"
 
 #include <algorithm>
 #include <array>
@@ -96,6 +97,10 @@ Model load_model(const AloModelData& data)
                 part.vertices.push_back(out);
             }
             part.indices.assign(submesh.indices.begin(), submesh.indices.end());
+            if (part.material.vertex.billboard)
+            {
+                assign_billboard_centers(part.vertices, part.indices);
+            }
             loaded.submeshes.push_back(std::move(part));
         }
         model.meshes.push_back(std::move(loaded));

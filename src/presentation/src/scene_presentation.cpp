@@ -71,7 +71,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
                        "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(look.instance) + ", which is missing or a background");
         if (ids[index])
         {
-            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[look.instance], entity.spawn.heading, look.death, look.bank_limit, look.animation, look.damage});
+            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[look.instance], entity.spawn.heading, look.death, look.bank_limit, look.animation, look.damage, look.shield_mesh});
         }
     }
     add_spawnable(spawnable);
@@ -85,7 +85,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         EAW_ASSERT_MSG(decoration.look.instance < scene.instances.size() && !scene.instances[decoration.look.instance].background, "a decoration names a scene instance it does not have");
         const EntityId id{decoration_id_base + static_cast<std::uint32_t>(index), 1};
         templates_.emplace(entity_key(id), Template{scene.instances[decoration.look.instance], decoration.heading, decoration.look.death, decoration.look.bank_limit, decoration.look.animation,
-                                                    decoration.look.damage});
+                                                    decoration.look.damage, decoration.look.shield_mesh});
         EntitySnapshot snapshot;
         snapshot.id = id;
         snapshot.position = decoration.position;
@@ -120,7 +120,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
 }
 
 void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out,
-                              std::vector<EntityId>& entities_out, std::vector<AnimationProfile>* animations_out) const
+                              std::vector<EntityId>& entities_out, std::vector<AnimationProfile>* animations_out, const double seconds) const
 {
     if (animations_out != nullptr)
     {
@@ -178,6 +178,53 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
         {
             animations_out->push_back(found->animation);
         }
+        // The shield flash: the model's shield mesh around it, grown by the step's scale (about the
+        // model's origin), drawn in its rest pose without an entity.
+        const auto hit = found->shield_mesh ? shield_hits_.find(instance.key) : shield_hits_.end();
+        if (hit == shield_hits_.end() || seconds < hit->second)
+        {
+            continue;
+        }
+        const auto step = static_cast<std::size_t>((seconds - hit->second) / shield_flash_step);
+        if (step >= shield_flash_scales.size())
+        {
+            continue;
+        }
+        auto flash = instance;
+        flash.mesh = *found->shield_mesh;
+        flash.key = 0;
+        flash.state = 0;
+        flash.highlighted = false;
+        for (std::size_t row = 0; row < 3; ++row)
+        {
+            for (std::size_t column = 0; column < 3; ++column)
+            {
+                flash.transform(row, column) *= shield_flash_scales[step];
+            }
+        }
+        instances_out.push_back(flash);
+        entities_out.emplace_back();
+        if (animations_out != nullptr)
+        {
+            animations_out->emplace_back();
+        }
+    }
+}
+
+void ScenePresentation::flash_shields(const std::span<const ImpactSnapshot> impacts, const double seconds)
+{
+    const auto last = shield_flash_step * static_cast<double>(shield_flash_scales.size());
+    std::erase_if(shield_hits_,
+                  [&](const auto& entry)
+                  {
+                      return seconds - entry.second >= last;
+                  });
+    for (const auto& impact : impacts)
+    {
+        if (impact.kind == ImpactKind::shield && impact.target.valid())
+        {
+            shield_hits_[entity_key(impact.target)] = seconds;
+        }
     }
 }
 
@@ -211,7 +258,7 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableLook> types
         instance.team_color = type.team_color;
         instance.lod_bias = type.lod_bias;
         instance.receives_shadows = type.receives_shadows;
-        spawn_templates_.push_back(Template{instance, identity_model_heading, type.death, type.bank_limit, type.animation, type.damage});
+        spawn_templates_.push_back(Template{instance, identity_model_heading, type.death, type.bank_limit, type.animation, type.damage, type.shield_mesh});
     }
 }
 

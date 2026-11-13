@@ -118,7 +118,12 @@ void arrange_states_and_levels(VisualScene& scene, VisualMesh& mesh, const std::
 
 } // namespace
 
-Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, const std::string_view name, const bool animated_visibility, const std::span<const ModelAttachment> attachments)
+// The name of the hidden mesh a model shows as its shield flash (stock: capital ships and base
+// shield generators; "SHIELD" on some).
+constexpr std::string_view shield_flash_mesh = "shield";
+
+Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, const std::string_view name, const bool animated_visibility, const std::span<const ModelAttachment> attachments,
+                                   const ModelPart part)
 {
     auto& scene = builder.scene;
     const auto bind_pose = skeleton_bind_pose(model.skeleton);
@@ -165,11 +170,12 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
         for (std::size_t mesh_index = 0; mesh_index < source.meshes.size(); ++mesh_index)
         {
             const auto& mesh = source.meshes[mesh_index];
-            if (!drawn_mesh(source, mesh, filter))
+            const bool selected = part == ModelPart::drawn ? drawn_mesh(source, mesh, filter) : host == nullptr && mesh.hidden && ascii_equal_ignoring_case(mesh.name, shield_flash_mesh);
+            if (!selected)
             {
                 continue;
             }
-            const DrawTag tag = host != nullptr ? DrawTag{} : DrawTag{mesh.damage_state, mesh.detail_level};
+            const DrawTag tag = host != nullptr || part != ModelPart::drawn ? DrawTag{} : DrawTag{mesh.damage_state, mesh.detail_level};
             for (const auto& submesh : mesh.submeshes)
             {
                 const auto& material = submesh.material;
@@ -231,7 +237,7 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
                         bone_indices[0] = animated_visibility ? bone_count + *mesh.attached_bone : *mesh.attached_bone;
                         bone_weights[0] = 1.0F;
                     }
-                    scene.vertices.push_back({position, normal, vertex.texture_coordinates, bone_indices, bone_weights, tangent, binormal, vertex.color});
+                    scene.vertices.push_back({position, normal, vertex.texture_coordinates, bone_indices, bone_weights, tangent, binormal, vertex.color, vertex.texture_coordinates_1});
                 }
 
                 const auto first_index = static_cast<std::uint32_t>(scene.indices.size());
@@ -296,6 +302,33 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
     const auto mesh_index = static_cast<std::uint32_t>(scene.meshes.size());
     scene.meshes.push_back(std::move(visual_mesh));
     return mesh_index;
+}
+
+std::optional<std::uint32_t> append_shield_flash(SceneBuilder& builder, const std::string& model_path)
+{
+    auto [entry, inserted] = builder.shield_flash_meshes.try_emplace(ascii_lower(model_path));
+    if (!inserted)
+    {
+        return entry->second;
+    }
+    const auto model = cached_model(builder, model_path);
+    if (!model->ok() || std::ranges::none_of(model->value().meshes,
+                                             [](const ModelMesh& mesh)
+                                             {
+                                                 return mesh.hidden && ascii_equal_ignoring_case(mesh.name, shield_flash_mesh);
+                                             }))
+    {
+        return std::nullopt;
+    }
+    // The same bone layout as the model's own mesh (the visibility half included).
+    auto mesh = append_model(builder, model->value(), model_path + " (shield flash)", true, {}, ModelPart::shield_flash);
+    if (!mesh)
+    {
+        builder.scene.warnings.push_back(model_path + ": its shield flash: " + mesh.error().message);
+        return std::nullopt;
+    }
+    entry->second = *mesh;
+    return *mesh;
 }
 
 // Decodes and appends a model referenced by a map (placed object, backdrop, or spawn type). Particle

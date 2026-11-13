@@ -462,7 +462,25 @@ void test_visual_material_shield()
             "a shield material must keep its layers in the legacy shader's pairing");
 }
 
+// Billboard clump centers: each connected piece takes the mean x, y of its vertices.
+void test_billboard_centers()
+{
+    std::vector<eaw::VisualVertex> vertices(8);
+    const std::array<eaw::Vector3, 8> corners{
+        {{0.0F, 0.0F, 0.0F}, {2.0F, 0.0F, 0.0F}, {2.0F, 0.0F, 4.0F}, {0.0F, 0.0F, 4.0F}, {10.0F, 6.0F, 0.0F}, {12.0F, 6.0F, 0.0F}, {12.0F, 6.0F, 4.0F}, {10.0F, 6.0F, 4.0F}}};
+    for (std::size_t index = 0; index < vertices.size(); ++index)
+    {
+        vertices[index].position = corners[index];
+    }
+    const std::vector<std::uint32_t> indices{0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 99, 1, 2};
+    eaw::assign_billboard_centers(vertices, indices);
+    require(vertices[0].texture_coordinates_1 == eaw::Vector2{1.0F, 0.0F} && vertices[3].texture_coordinates_1 == eaw::Vector2{1.0F, 0.0F} &&
+                vertices[5].texture_coordinates_1 == eaw::Vector2{11.0F, 6.0F},
+            "each billboard must turn about the center of its own vertices");
+}
+
 const ModuleRegistrar registrar("scene", {
+                                             {"test_billboard_centers", &test_billboard_centers},
                                              {"test_visual_material_shield", &test_visual_material_shield},
                                              {"test_visual_material_planet", &test_visual_material_planet},
                                              {"test_mesh_states_and_levels", &test_mesh_states_and_levels},

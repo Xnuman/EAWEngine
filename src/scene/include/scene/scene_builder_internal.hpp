@@ -78,6 +78,8 @@ struct SceneBuilder
     // Folded model path -> the model whose clips it plays (XML Land_Model_Anim_Override_Name of the
     // first type that appended it).
     std::unordered_map<std::string, std::string> animation_sources;
+    // Folded model path -> its shield flash mesh (append_shield_flash), once per model.
+    std::unordered_map<std::string, std::optional<std::uint32_t>> shield_flash_meshes;
 };
 
 // The builder's resources: its reader and, when there is one, the shared cache.
@@ -190,7 +192,20 @@ std::shared_ptr<const Result<Model>> cached_model(SceneBuilder& builder, const s
 // its Attachment_Bone (turrets, gun batteries, shield generators drawn as their own models).
 // `attachments` are appended into the same mesh, placed at their bone's bind pose and bound to that
 // bone (so they follow its pose and visibility).
-Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, std::string_view name, bool animated_visibility = false, std::span<const ModelAttachment> attachments = {});
+// Which meshes of a model append_model draws: the ones shown (drawn_mesh), or its shield flash: the
+// hidden mesh named "shield" (capital ships, base shield generators) that presentation shows when the
+// shield takes a hit.
+enum class ModelPart : std::uint8_t
+{
+    drawn,
+    shield_flash,
+};
+
+Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, std::string_view name, bool animated_visibility = false, std::span<const ModelAttachment> attachments = {},
+                                   ModelPart part = ModelPart::drawn);
+// The model's shield flash as its own mesh (named after the model, so it takes no rig, effects, or
+// clips of its own: it is drawn in the model's rest pose); none when the model has no shield mesh.
+std::optional<std::uint32_t> append_shield_flash(SceneBuilder& builder, const std::string& model_path);
 
 // Decodes and appends a model referenced by a map (placed object, backdrop, or spawn type), with its
 // attachments. Particle ALOs and malformed models are reported once as scene warnings and yield

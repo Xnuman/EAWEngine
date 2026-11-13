@@ -117,7 +117,9 @@ rendering rows join item 2).
    occluded units (chosen by the engine, not by materials), heat distortion (`MeshHeat` 3, plus
    heat particles), reflections (`MeshAdditiveReflection` 3; no stock material uses the reflective
    profiles); then weather and soft particles, look tuning. Wind bend for trees and waving grass
-   (second UV set) done 2026-11-13; grass's distance fade later.
+   (second UV set) done 2026-11-13; grass's distance fade later. Shields done 2026-11-13 (the
+   material and hit flashes); the FoC stealth meshes' visibility (when the original shows them) and
+   reading Shield_Flash_* from GameConstants remain.
    This closes M2.
 3. The job system (Simulation stage 4's base), then input bindings (Platform and input stage 2).
 4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).

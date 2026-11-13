@@ -24,6 +24,7 @@ void present_tick(const BattleRuntime& runtime, BattlePresenters& presenters, co
         }
     }
     presenters.effects.play_tick_events(world.snapshot());
+    presenters.presentation.flash_shields(world.snapshot().impacts, world_seconds);
     if (presenters.audio != nullptr)
     {
         presenters.audio->play_tick_events(world.snapshot(), world);
@@ -40,7 +41,7 @@ void build_battle_frame(const BattleRuntime& runtime, const SimSnapshot& previou
     // Decorations are posed and animated like idle entities the simulation never sees.
     const auto decorations = presenters.presentation.decoration_snapshots();
     entities.insert(entities.end(), decorations.begin(), decorations.end());
-    presenters.presentation.build(entities, selected, frame.instances, frame.entities, &frame.animations);
+    presenters.presentation.build(entities, selected, frame.instances, frame.entities, &frame.animations, world_seconds);
     // Model projectiles follow the entities, without an entity (never picked) and at rest pose.
     const auto first_projectile = frame.instances.size();
     frame.projectile_serials.clear();
