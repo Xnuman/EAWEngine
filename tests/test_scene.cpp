@@ -421,7 +421,28 @@ void test_visual_material_uv_scroll()
     require(visual.uv_scroll == std::array<float, 2>{0.1F, 0.2F} && visual.uv_scale == 1.0F, "UVScrollRate must fill the two scroll components only");
 }
 
+// A planet material keeps its layers: the atmosphere, city color, power, and cloud scroll as authored,
+// the legacy defaults where a parameter is missing.
+void test_visual_material_planet()
+{
+    eaw::LegacyMaterial material;
+    material.family = eaw::LegacyMaterialFamily::planet;
+    material.features.lighting = eaw::LegacyLightingModel::planet_atmosphere;
+    material.features.gloss = eaw::LegacyGlossSource::normal_alpha;
+    material.parameters.push_back({.name = "Atmosphere", .type = eaw::AloShaderParameterType::vector4, .value = "0.2 0.4 0.8 0.5", .values = {0.2F, 0.4F, 0.8F, 0.5F}});
+    material.parameters.push_back({.name = "CloudScrollRate", .type = eaw::AloShaderParameterType::scalar, .value = "0.01", .values = {0.01F}});
+    eaw::VirtualFileSystem vfs;
+    eaw::VisualScene scene;
+    eaw::scene_build::SceneBuilder builder{vfs, scene};
+    builder.textures = false;
+    const auto visual = eaw::scene_build::make_visual_material(builder, material);
+    require(visual.lighting == eaw::VisualLightingModel::planet && visual.gloss == eaw::VisualGlossSource::normal_alpha && visual.planet.atmosphere == eaw::Color{0.2F, 0.4F, 0.8F, 0.5F} &&
+                visual.planet.cloud_scroll == 0.01F && visual.planet.atmosphere_power == 4.5F && visual.planet.city_color == eaw::ColorRgb{1.0F, 1.0F, 1.0F},
+            "a planet material must keep its atmosphere and cloud scroll, with the legacy defaults for the rest");
+}
+
 const ModuleRegistrar registrar("scene", {
+                                             {"test_visual_material_planet", &test_visual_material_planet},
                                              {"test_mesh_states_and_levels", &test_mesh_states_and_levels},
                                              {"test_asset_cache_dependencies", &test_asset_cache_dependencies},
                                              {"test_resource_manager", &test_resource_manager},

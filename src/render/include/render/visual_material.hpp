@@ -27,6 +27,9 @@ enum class VisualLightingModel
     lit,
     // Fill plus key light on a tangent-space normal map.
     normal_mapped,
+    // A planet (VisualMaterial::planet): normal-mapped surface with an atmosphere rim, a scrolling
+    // cloud layer lit by its own normal map, and city lights on the night side.
+    planet,
 };
 
 // Which texture channel scales the key-light highlight.
@@ -36,6 +39,21 @@ enum class VisualGlossSource
     base_alpha,
     normal_alpha,
     gloss_red,
+};
+
+// The planet layers (VisualLightingModel::planet; docs/legacy-shader-mapping.md): the cloud texture
+// (alpha is coverage) and its normal map, scrolling along U at `cloud_scroll` per second; the
+// atmosphere color added toward the rim, `atmosphere.a` its strength and `atmosphere_power` how
+// tightly it hugs the rim; and the city-light color, masked by base alpha on the night side. The
+// defaults are the legacy parameters' defaults.
+struct VisualPlanet
+{
+    std::uint32_t cloud_texture{invalid_visual_texture};
+    std::uint32_t cloud_normal_texture{invalid_visual_texture};
+    Color atmosphere{0.0F, 0.0F, 0.0F, 1.0F};
+    float atmosphere_power{4.5F};
+    ColorRgb city_color{1.0F, 1.0F, 1.0F};
+    float cloud_scroll{0.0025F};
 };
 
 // Engine-native surface description consumed by the legacy-mode shading path. Colors are linear
@@ -64,6 +82,8 @@ struct VisualMaterial
     // Multiplier applied to texture coordinates (terrain layers tile world X/Y with it).
     float uv_scale{1.0F};
     float alpha_test_threshold{0.5F};
+    // Read only with VisualLightingModel::planet.
+    VisualPlanet planet;
 };
 
 } // namespace eaw

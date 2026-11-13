@@ -40,6 +40,8 @@ static const uint GLOSS_RED = 3u;
 static const uint LIGHTING_UNLIT = 0u;
 static const uint LIGHTING_LIT = 1u;
 static const uint LIGHTING_NORMAL_MAPPED = 2u;
+static const uint LIGHTING_PLANET = 3u;
+static const uint MATERIAL_CLOUDS = 1u << 5;
 static const uint INSTANCE_BACKGROUND = 1u;
 static const uint INSTANCE_HIGHLIGHTED = 2u;
 static const uint INSTANCE_NO_SHADOWS = 4u;
@@ -114,6 +116,12 @@ struct MaterialData
     uint normal_texture;
     uint gloss_texture;
     uint lighting;
+    float4 atmosphere;       // rgb color, a strength (planets)
+    float4 city_color_power; // rgb city lights, w atmosphere power
+    uint cloud_texture;
+    uint cloud_normal_texture;
+    float cloud_scroll;
+    uint material_padding;
 };
 
 Texture2D scene_textures[4096] : register(t0, space1);

@@ -334,6 +334,29 @@ VisualMaterial make_visual_material(SceneBuilder& builder, const LegacyMaterial&
         }
         result.team_color_mask = features.colorize;
         result.emissive_mask = features.base_alpha_emissive;
+        if (features.lighting == LegacyLightingModel::planet_atmosphere)
+        {
+            // Specular is masked by normal alpha even without a normal map (the flat one's alpha).
+            result.lighting = VisualLightingModel::planet;
+            result.gloss = VisualGlossSource::normal_alpha;
+            auto& planet = result.planet;
+            if (const auto* cloud = texture_binding(material, LegacyTextureSemantic::cloud))
+            {
+                planet.cloud_texture = scene_texture(builder, cloud->reference);
+            }
+            if (const auto* cloud_normal = texture_binding(material, LegacyTextureSemantic::cloud_normal))
+            {
+                planet.cloud_normal_texture = scene_texture(builder, cloud_normal->reference);
+            }
+            read_color(material, "Atmosphere", planet.atmosphere);
+            read_color(material, "CityColor", planet.city_color);
+            std::array<float, 1> power{planet.atmosphere_power};
+            read_color(material, "AtmospherePower", power);
+            planet.atmosphere_power = power[0];
+            std::array<float, 1> scroll{planet.cloud_scroll};
+            read_color(material, "CloudScrollRate", scroll);
+            planet.cloud_scroll = scroll[0];
+        }
     }
 
     if (features.uv_animation == LegacyUvAnimation::scroll)

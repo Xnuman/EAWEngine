@@ -147,8 +147,17 @@ struct D3d12Renderer::Impl
         std::uint32_t normal_texture{flat_normal_texture_slot};
         std::uint32_t gloss_texture{white_texture_slot};
         std::uint32_t lighting{};
+        // Planets (VisualPlanet): atmosphere rgb and strength; city light rgb and the atmosphere
+        // power; the cloud layers and their scroll.
+        std::array<float, 4> atmosphere{};
+        std::array<float, 4> city_color_power{};
+        std::uint32_t cloud_texture{white_texture_slot};
+        std::uint32_t cloud_normal_texture{flat_normal_texture_slot};
+        float cloud_scroll{};
+        std::uint32_t padding{};
     };
-    static_assert(sizeof(GpuMaterial) == 96);
+    static_assert(sizeof(GpuMaterial) == 144);
+    static constexpr std::uint32_t material_clouds = 1U << 5U;
     static constexpr std::uint32_t material_alpha_test = 1U << 0U;
     static constexpr std::uint32_t material_alpha_blend = 1U << 1U;
     static constexpr std::uint32_t material_additive = 1U << 2U;

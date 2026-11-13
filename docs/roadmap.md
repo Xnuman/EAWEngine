@@ -98,8 +98,15 @@ rendering rows join item 2).
    shadows, fog (done 2026-11-13: legacy and enhanced height fog, particles included; volumetric fog
    for light shafts and smoke later, the owner agreeing), decals (map and runtime; terrain decals in
    the terrain shader, scorch marks, footprints, and DynamicTrackFX trails done 2026-11-13;
-   the one map with placed decals later; screen-space decals if the renderer becomes deferred), special materials (shields, planets, nebula, heat
-   distortion, wind bend, occluded units, reflections), weather and soft particles, look tuning.
+   the one map with placed decals later; screen-space decals if the renderer becomes deferred), special materials, in the order of stock
+   use measured by `texture-audit` (2026-11-13; 9,294 material instances): planets (`Planet`
+   296: atmosphere rim, clouds, city lights), wind bend (`Tree` 185, `Grass` 14), shields
+   (`MeshShield` 27, seen in every space battle), water (the owner's addition: legacy from the TED
+   water data, since the published shaders hold no water shader, and an enhanced mode designed
+   from research into current and RTS practice), skydomes and nebulae (`Skydome` 19, `Nebula` 15),
+   occluded units (chosen by the engine, not by materials), heat distortion (`MeshHeat` 3, plus
+   heat particles), reflections (`MeshAdditiveReflection` 3; no stock material uses the reflective
+   profiles); then weather and soft particles, look tuning.
    This closes M2.
 3. The job system (Simulation stage 4's base), then input bindings (Platform and input stage 2).
 4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).

@@ -203,4 +203,5 @@ It reproduces the documented behavior, not the original code:
 | Alpha test, alpha blend, additive | Implemented; transparency is not depth-sorted. |
 | UV scroll (`UVScrollRate`, nebula at 3x) | Implemented; `UVOffset` (always zero in stock data) is not applied. |
 | Per-map lighting from TED environments | Implemented from the active environment; single-model inspection uses an engine default rig. |
-| Cube reflection (no stock material uses the reflective profiles), planet atmosphere/clouds/city lights, shield layers, nebula wobble, wind bend, heat, occluded silhouettes, shadow volumes, fog, fog of war | Not yet. |
+| Planets (atmosphere rim, scrolling cloud layer lit by its own normal map, city lights past the terminator, normal-alpha highlight) | Implemented (2026-11-13) as `VisualLightingModel::planet` with `VisualPlanet`; the fill comes from the sphere's normal as the legacy per-vertex fill did, the rest per pixel; planets take no shadows. |
+| Cube reflection (no stock material uses the reflective profiles), shield layers, nebula wobble, wind bend, heat, occluded silhouettes, shadow volumes, fog, fog of war | Not yet. |

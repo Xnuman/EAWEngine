@@ -174,6 +174,44 @@ PixelInput vs_main(VertexInput input)
 }
 
 
+// A planet (docs/legacy-shader-mapping.md, Planet): the surface lit through its normal map, brightened
+// toward the atmosphere color at the rim, with city lights (base alpha) on the night side under a
+// cloud layer that scrolls along U and is lit by its own normal map. The fill comes from the
+// sphere's own normal, as the legacy planet lit it per vertex; planets take no shadows.
+float3 shade_planet(const PixelInput input, const MaterialData material, const float2 uv, const float4 base)
+{
+    const float3 view = safe_normalize(camera_position_time.xyz - input.world_position, float3(0.0f, 0.0f, 1.0f));
+    const float3 sphere_normal = safe_normalize(input.normal, float3(0.0f, 0.0f, 1.0f));
+    const float3 tangent = safe_normalize(input.tangent, float3(1.0f, 0.0f, 0.0f));
+    const float3 binormal = safe_normalize(input.binormal, float3(0.0f, 1.0f, 0.0f));
+    const float3 light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
+    const float3 fill = ambient.rgb + saturate(dot(sphere_normal, fill_direction[0].xyz)) * fill_diffuse[0].rgb + saturate(dot(sphere_normal, fill_direction[1].xyz)) * fill_diffuse[1].rgb;
+    const float3 fill_light = material.diffuse.rgb * fill + material.emissive.rgb;
+
+    float4 cloud = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    if ((material.flags & MATERIAL_CLOUDS) != 0u)
+    {
+        const float2 cloud_uv = uv + float2(material.cloud_scroll * camera_position_time.w, 0.0f);
+        cloud = sample_texture(material.cloud_texture, cloud_uv);
+        const float3 bent = sample_texture(material.cloud_normal_texture, cloud_uv).xyz * 2.0f - 1.0f;
+        const float3 cloud_normal = safe_normalize(bent.x * tangent + bent.y * binormal + bent.z * sphere_normal, sphere_normal);
+        cloud.rgb = (cloud.rgb * saturate(dot(cloud_normal, light)) * key_diffuse.rgb + fill_light) * 2.0f;
+    }
+
+    const float4 normal_sample = sample_texture(material.normal_texture, uv);
+    const float3 bent = normal_sample.xyz * 2.0f - 1.0f;
+    const float3 normal = safe_normalize(bent.x * tangent + bent.y * binormal + bent.z * sphere_normal, sphere_normal);
+    const float rim = pow(saturate(1.0f - dot(sphere_normal, view)), material.city_color_power.w) * 2.0f * material.atmosphere.a;
+    const float3 surface = base.rgb + material.atmosphere.rgb * rim;
+    const float3 half_vector = safe_normalize(light + view, normal);
+    float3 color = surface * (saturate(dot(normal, light)) * material.diffuse.rgb * key_diffuse.rgb + fill_light) * 2.0f;
+    // City lights switch on sharply past the terminator (a 32x steep ramp of the sphere's N.L).
+    const float night = saturate(-32.0f * dot(sphere_normal, light));
+    color += base.a * night * (1.0f - cloud.a) * material.city_color_power.rgb;
+    color += key_specular.rgb * material.specular.rgb * pow(saturate(dot(normal, half_vector)), 16.0f) * normal_sample.a;
+    return lerp(color, cloud.rgb, cloud.a);
+}
+
 float4 shade(PixelInput input)
 {
     const MaterialData material = materials[material_index];
@@ -194,6 +232,12 @@ float4 shade(PixelInput input)
         }
         const float alpha = (material.flags & MATERIAL_ALPHA_BLEND) != 0u ? base.a * material.diffuse.a * tint.a : 1.0f;
         return float4(color, alpha);
+    }
+
+    if (material.lighting == LIGHTING_PLANET)
+    {
+        const float alpha = (material.flags & MATERIAL_ALPHA_BLEND) != 0u ? base.a * material.diffuse.a * tint.a : 1.0f;
+        return float4(shade_planet(input, material, uv, base) * tint.rgb, alpha);
     }
 
     float3 albedo = base.rgb;
