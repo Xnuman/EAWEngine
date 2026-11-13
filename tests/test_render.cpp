@@ -3,6 +3,7 @@
 #include "render/frame_graph.hpp"
 #include "render/lod_selection.hpp"
 #include "render/shadow_cascades.hpp"
+#include "render/wind_bend.hpp"
 
 #include <cmath>
 
@@ -238,12 +239,32 @@ void test_shadow_cascades()
             "a missing light or a scene behind the camera must give no cascades");
 }
 
+// Wind bend: no wind holds still; a strong wind leans downwind by up to the strong offset, swelling
+// and easing with the gust, never upwind.
+void test_wind_bend()
+{
+    require(eaw::wind_bend({{1.0F, 0.0F, 0.0F}, 0.0F}, 3.0F).offset == eaw::Vector3{}, "no wind must not bend");
+    float least = 1.0e9F;
+    float most = 0.0F;
+    for (int step = 0; step < 40; ++step)
+    {
+        const auto bend = eaw::wind_bend({{0.0F, 2.0F, 0.0F}, eaw::wind_strong_speed}, static_cast<float>(step) * 0.1F);
+        require(bend.offset.x == 0.0F && bend.offset.z == 0.0F && bend.offset.y > 0.0F, "the bend must lean downwind along the normalized direction");
+        least = std::min(least, bend.offset.y);
+        most = std::max(most, bend.offset.y);
+    }
+    require(most <= eaw::wind_bend_strong_offset + 1.0e-4F && most > eaw::wind_bend_strong_offset * 0.95F && least < eaw::wind_bend_strong_offset * (1.0F - eaw::wind_gust_share) * 1.05F &&
+                std::fabs(eaw::wind_bend({}, 0.0F).inverse_height_squared - 1.0F / (eaw::wind_bend_height * eaw::wind_bend_height)) < 1.0e-9F,
+            "a strong wind must sway between the gust's low and the full offset");
+}
+
 const ModuleRegistrar registrar("render", {
                                               {"test_frame_graph", &test_frame_graph},
                                               {"test_gpu_resource_lifetime", &test_gpu_resource_lifetime},
                                               {"test_lod_selection", &test_lod_selection},
                                               {"test_lod_tracking", &test_lod_tracking},
                                               {"test_shadow_cascades", &test_shadow_cascades},
+                                              {"test_wind_bend", &test_wind_bend},
                                           });
 
 } // namespace

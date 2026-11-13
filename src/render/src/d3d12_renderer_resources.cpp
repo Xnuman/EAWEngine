@@ -945,7 +945,7 @@ auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size
     };
     if (!is_finite(material.tint) || !is_finite(material.diffuse) || !is_finite(material.specular) || !is_finite(material.emissive) || !finite(material.uv_scroll) ||
         !std::isfinite(material.alpha_test_threshold) || !std::isfinite(material.uv_scale) || !is_finite(material.planet.atmosphere) || !is_finite(material.planet.city_color) ||
-        !std::isfinite(material.planet.atmosphere_power) || !std::isfinite(material.planet.cloud_scroll))
+        !std::isfinite(material.planet.atmosphere_power) || !std::isfinite(material.planet.cloud_scroll) || !std::isfinite(material.bend_scale))
     {
         return make_error("visual material " + std::to_string(index) + " (" + material.name + ") has non-finite parameters");
     }
@@ -960,6 +960,7 @@ auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size
     EAW_TRY_ASSIGN(result.normal_texture, slot(material.normal_texture, flat_normal_texture_slot, "normal"));
     EAW_TRY_ASSIGN(result.gloss_texture, slot(material.gloss_texture, white_texture_slot, "gloss"));
     result.lighting = static_cast<std::uint32_t>(material.lighting);
+    result.bend_scale = material.bend_scale;
     result.flags = (material.blend == VisualBlendMode::alpha_test ? material_alpha_test : 0U) | (material.blend == VisualBlendMode::alpha_blend ? material_alpha_blend : 0U) |
                    (material.blend == VisualBlendMode::additive ? material_additive : 0U) | (material.team_color_mask ? material_team_color : 0U) |
                    (material.emissive_mask ? material_emissive_mask : 0U) | (static_cast<std::uint32_t>(material.gloss) << material_gloss_shift);

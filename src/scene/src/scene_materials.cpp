@@ -359,6 +359,14 @@ VisualMaterial make_visual_material(SceneBuilder& builder, const LegacyMaterial&
         }
     }
 
+    if (features.vertex_animation == LegacyVertexAnimation::wind_bend)
+    {
+        // The Tree material's BendScale (1 when absent, its default).
+        std::array<float, 1> bend{1.0F};
+        read_color(material, "BendScale", bend);
+        result.bend_scale = bend[0];
+    }
+
     if (features.uv_animation == LegacyUvAnimation::scroll)
     {
         read_color(material, "UVScrollRate", result.uv_scroll);

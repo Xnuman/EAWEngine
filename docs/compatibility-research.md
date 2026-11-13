@@ -270,7 +270,12 @@ switch it on with authored colors and ranges (Utapau tan from 1500 to 5000, Fond
 the editor's defaults (white, 1000 to 10000), and no space environment uses it.
 The legacy shaders make fog linear in view distance and skip it on additive,
 shield, heat, sky, and nebula surfaces. The remaining fields (apparently wind and
-cloud settings) are preserved raw.
+cloud settings) are preserved raw. Wind (2026-11-13, per-map values from `inspect`): 0x2c reads
+as the wind speed on a 1-10 scale (2 on most maps, 7 on the blizzard maps Hoth, Ilum, and Polus,
+10 on stormy Kamino and Honoghr; the legacy grass shader calls 10 a strong wind) and 0x2b as its
+direction in degrees (0 on most, 30-120 elsewhere); 0x2d (350-1000) and 0x2f (a cloud texture)
+belong to the cloud layer. 119 of the 135 land environments carry 0x2b-0x2f. Readings to confirm
+with the editor's labels; the angle's zero and sense are not established.
 
 Faction definitions carry a 0..255 RGBA `Color`. A placed object's owner is a
 player slot chosen at runtime, so previews color team-color masks with the

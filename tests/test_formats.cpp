@@ -371,10 +371,11 @@ void test_ted_map()
     require(map.terrain_layers[0].color_texture == "GROUND.TGA" && map.environments.size() == 2 && map.environments[0].name == "Noon_Clear" && map.environments[0].skybox_primary == "DAY_BLUE_SKY" &&
                 map.active_environment == 1 && map.environments[0].has_lighting && map.environments[0].lights[0].color == std::array<float, 3>{1.0F, 0.9F, 0.8F} &&
                 map.environments[0].lights[2].intensity == 0.25F && map.environments[0].lights[1].azimuth == 3.0F && map.environments[0].lights[0].elevation == 0.4F &&
-                map.environments[0].ambient[0] == 0.05F && map.environments[0].fields.size() == 20 && map.environments[0].fields.back().type == 0x12 &&
+                map.environments[0].ambient[0] == 0.05F && map.environments[0].fields.size() == 22 && map.environments[0].fields.back().type == 0x2c &&
                 map.environments[0].fields.back().payload.size() == 4 && !map.environments[1].has_lighting && map.warnings.size() == 1 && map.environments[0].has_fog &&
                 map.environments[0].fog_enabled && map.environments[0].fog_color == std::array<float, 3>{0.6F, 0.5F, 0.4F} && map.environments[0].fog_start == 500.0F &&
-                map.environments[0].fog_end == 3500.0F && !map.environments[1].has_fog,
+                map.environments[0].fog_end == 3500.0F && !map.environments[1].has_fog && map.environments[0].has_wind && map.environments[0].wind_direction == 90.0F &&
+                map.environments[0].wind_speed == 7.0F && !map.environments[1].has_wind,
             "TED dependency decoding failed");
     require(map.object_count == 1 && map.object_types.size() == 1 && map.object_types[0].crc == 0x12345678U && map.zone_count == 1, "TED object or zone decoding failed");
     require(map.placed_objects.size() == 1 && map.placed_objects[0].instance_id == 42U && map.placed_objects[0].crc == 0x12345678U && map.placed_objects[0].player == 3U &&

@@ -204,4 +204,5 @@ It reproduces the documented behavior, not the original code:
 | UV scroll (`UVScrollRate`, nebula at 3x) | Implemented; `UVOffset` (always zero in stock data) is not applied. |
 | Per-map lighting from TED environments | Implemented from the active environment; single-model inspection uses an engine default rig. |
 | Planets (atmosphere rim, scrolling cloud layer lit by its own normal map, city lights past the terminator, normal-alpha highlight) | Implemented (2026-11-13) as `VisualLightingModel::planet` with `VisualPlanet`; the fill comes from the sphere's normal as the legacy per-vertex fill did, the rest per pixel; planets take no shadows. |
+| Wind bend (`Tree`) | Implemented (2026-11-13): BendScale x the engine's bend offset x height squared, in the scene and shadow vertex shaders; the offset's animation is an engine choice (`render/wind_bend.hpp`). `Grass` waving not yet. |
 | Cube reflection (no stock material uses the reflective profiles), shield layers, nebula wobble, wind bend, heat, occluded silhouettes, shadow volumes, fog, fog of war | Not yet. |

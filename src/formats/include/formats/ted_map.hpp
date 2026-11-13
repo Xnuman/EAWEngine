@@ -58,6 +58,12 @@ struct TedEnvironment
     std::array<float, 3> fog_color{};
     float fog_start{};
     float fog_end{};
+    // Wind (a reading of the stock values, not documented): direction in degrees (mini 0x2b, 0-120
+    // in the stock maps, 0 on most) and speed (0x2c, 1-10, 2 on most, 7 on the blizzard maps, 10 on
+    // stormy Kamino). `has_wind` is false when either is absent (16 of the 135 land environments).
+    bool has_wind{};
+    float wind_direction{};
+    float wind_speed{};
     // Every mini-chunk in source order, including fields not interpreted yet (wind, clouds).
     std::vector<TedEnvironmentField> fields;
 };

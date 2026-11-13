@@ -11,6 +11,7 @@
 #include "render/frame_graph.hpp"
 #include "render/lod_selection.hpp"
 #include "render/shadow_cascades.hpp"
+#include "render/wind_bend.hpp"
 
 #include <optional>
 #include <vector>
@@ -121,6 +122,9 @@ struct D3d12Renderer::Impl
         // copy's, w refraction on; the plane's height and planar reflections on (1).
         std::array<std::uint32_t, 4> water_parameters{};
         std::array<float, 4> water_plane{};
+        // Wind bend (render/wind_bend.hpp) now and last frame: xyz the offset, w 1 / height^2.
+        std::array<float, 4> wind_bend{};
+        std::array<float, 4> previous_wind_bend{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal
@@ -158,7 +162,7 @@ struct D3d12Renderer::Impl
         std::uint32_t cloud_texture{white_texture_slot};
         std::uint32_t cloud_normal_texture{flat_normal_texture_slot};
         float cloud_scroll{};
-        std::uint32_t padding{};
+        float bend_scale{};
     };
     static_assert(sizeof(GpuMaterial) == 144);
     static constexpr std::uint32_t material_clouds = 1U << 5U;
@@ -414,6 +418,8 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12Resource> water_reflection_sources;
     // The loaded scene's water plane height (from its water mesh), if it has one.
     std::optional<float> water_level;
+    // Last frame's wind bend (motion vectors of swaying trees); none before the first frame.
+    std::optional<std::array<float, 4>> previous_wind_bend;
     ComPtr<ID3D12PipelineState> additive_pipeline;
     ComPtr<ID3D12PipelineState> background_opaque_pipeline;
     ComPtr<ID3D12PipelineState> terrain_pipeline;

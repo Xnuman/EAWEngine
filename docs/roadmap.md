@@ -116,7 +116,8 @@ rendering rows join item 2).
    them by eye and the chosen values become the defaults), skydomes and nebulae (`Skydome` 19, `Nebula` 15),
    occluded units (chosen by the engine, not by materials), heat distortion (`MeshHeat` 3, plus
    heat particles), reflections (`MeshAdditiveReflection` 3; no stock material uses the reflective
-   profiles); then weather and soft particles, look tuning.
+   profiles); then weather and soft particles, look tuning. Wind bend for trees done 2026-11-13;
+   grass waving next (its clump-center vertex attribute to decode).
    This closes M2.
 3. The job system (Simulation stage 4's base), then input bindings (Platform and input stage 2).
 4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).

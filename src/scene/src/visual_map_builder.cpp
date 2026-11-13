@@ -8,6 +8,8 @@
 #include "scene/scene_builder_internal.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <numbers>
 #include <span>
 
 namespace eaw {
@@ -234,6 +236,12 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                 asset.lighting = VisualLightRig{};
             }
             asset.lighting->fog = {true, {environment.fog_color[0], environment.fog_color[1], environment.fog_color[2]}, environment.fog_start, environment.fog_end};
+        }
+        if (asset.lighting && environment.has_wind && std::isfinite(environment.wind_direction) && std::isfinite(environment.wind_speed))
+        {
+            // Degrees counterclockwise from +X (a reading, unconfirmed against the game).
+            const auto angle = environment.wind_direction * std::numbers::pi_v<float> / 180.0F;
+            asset.lighting->wind = {{std::cos(angle), std::sin(angle), 0.0F}, std::max(environment.wind_speed, 0.0F)};
         }
         const auto context = battle.land ? GameModelContext::land : GameModelContext::space;
         for (const auto& name : {environment.skybox_primary, environment.skybox_secondary})

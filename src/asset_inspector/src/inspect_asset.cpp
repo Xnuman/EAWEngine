@@ -199,12 +199,10 @@ eaw::Status inspect_alo(const std::span<const std::byte> bytes, const std::size_
                 }
                 std::cout << "        extent x " << minimum.x << ".." << maximum.x << " y " << minimum.y << ".." << maximum.y << " z " << minimum.z << ".." << maximum.z << '\n';
             }
+            // Every shader parameter as written (textures by name, numbers as their text).
             for (const auto& parameter : submesh.parameters)
             {
-                if (parameter.type == eaw::AloShaderParameterType::texture)
-                {
-                    std::cout << "        " << parameter.name << '=' << parameter.value << '\n';
-                }
+                std::cout << "        " << parameter.name << '=' << parameter.value << '\n';
             }
         }
     }
@@ -258,6 +256,45 @@ eaw::Status inspect_ala(const std::span<const std::byte> bytes, const std::size_
     return eaw::Status::success();
 }
 
+// A map field as 4-byte words read as floats, or as text when it ends in a NUL after printable
+// characters (how the undecoded liquid, cloud, and wind fields are identified).
+void print_map_field(const eaw::TedEnvironmentField& field)
+{
+    std::cout << "  0x" << std::hex << static_cast<unsigned>(field.type) << std::dec << ':';
+    // Text ends in a NUL after printable characters (a 16-byte name would otherwise read as words).
+    const bool text = field.payload.size() > 1U && field.payload.back() == std::byte{0} &&
+                      std::all_of(field.payload.begin(), field.payload.end() - 1,
+                                  [](const std::byte byte)
+                                  {
+                                      const auto character = static_cast<unsigned char>(byte);
+                                      return character >= 32U && character < 127U;
+                                  });
+    if (!text && !field.payload.empty() && field.payload.size() % 4U == 0 && field.payload.size() <= 16U)
+    {
+        for (std::size_t offset = 0; offset < field.payload.size(); offset += 4U)
+        {
+            float value = 0.0F;
+            std::memcpy(&value, field.payload.data() + offset, 4U);
+            std::cout << ' ' << value;
+        }
+    }
+    else
+    {
+        std::cout << " \"";
+        for (const auto byte : field.payload)
+        {
+            const auto character = static_cast<char>(byte);
+            if (character == '\0')
+            {
+                break;
+            }
+            std::cout << (character >= 32 && character < 127 ? character : '?');
+        }
+        std::cout << '"';
+    }
+    std::cout << '\n';
+}
+
 eaw::Status inspect_ted(const std::span<const std::byte> bytes, const std::size_t limit)
 {
     EAW_TRY_ASSIGN(const auto map, eaw::read_ted(bytes));
@@ -294,44 +331,18 @@ eaw::Status inspect_ted(const std::span<const std::byte> bytes, const std::size_
     }
     std::cout << "Liquid: type " << map.water.raw_type << ", level " << map.water.level << ", color " << map.water.color[0] << ' ' << map.water.color[1] << ' ' << map.water.color[2] << ", textures '"
               << map.water_maps[0] << "' '" << map.water_maps[1] << "' '" << map.water_maps[2] << "'\n";
-    // Every terrain-information field: 4-byte words as floats, anything else as text (the liquid
-    // and cloud fields not decoded yet are identified from these).
     std::cout << "Terrain-information fields:\n";
     for (const auto& field : map.terrain_info_fields)
     {
-        std::cout << "  0x" << std::hex << static_cast<unsigned>(field.type) << std::dec << ':';
-        // Text ends in a NUL after printable characters (a 16-byte name would otherwise read as words).
-        const bool text = field.payload.size() > 1U && field.payload.back() == std::byte{0} &&
-                          std::all_of(field.payload.begin(), field.payload.end() - 1,
-                                      [](const std::byte byte)
-                                      {
-                                          const auto character = static_cast<unsigned char>(byte);
-                                          return character >= 32U && character < 127U;
-                                      });
-        if (!text && !field.payload.empty() && field.payload.size() % 4U == 0 && field.payload.size() <= 16U)
+        print_map_field(field);
+    }
+    if (map.active_environment < map.environments.size())
+    {
+        std::cout << "Active environment fields:\n";
+        for (const auto& field : map.environments[map.active_environment].fields)
         {
-            for (std::size_t offset = 0; offset < field.payload.size(); offset += 4U)
-            {
-                float value = 0.0F;
-                std::memcpy(&value, field.payload.data() + offset, 4U);
-                std::cout << ' ' << value;
-            }
+            print_map_field(field);
         }
-        else
-        {
-            std::cout << " \"";
-            for (const auto byte : field.payload)
-            {
-                const auto character = static_cast<char>(byte);
-                if (character == '\0')
-                {
-                    break;
-                }
-                std::cout << (character >= 32 && character < 127 ? character : '?');
-            }
-            std::cout << '"';
-        }
-        std::cout << '\n';
     }
     std::cout << "Terrain textures:\n";
     for (std::size_t index = 0; index < std::min(limit, map.terrain_layers.size()); ++index)

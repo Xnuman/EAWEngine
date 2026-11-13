@@ -81,6 +81,8 @@ cbuffer FrameConstants : register(b0)
     uint4 decal_grid_size; // x, y cells per side, z the decal count
     uint4 water_parameters; // x enhanced water (1) or legacy (0), y the depth buffer's texture slot, z the refraction copy's, w refraction on (1)
     float4 water_plane;     // x the water plane's height, y planar reflections on (1)
+    float4 wind_bend;          // xyz the wind's bend offset, w 1 / height^2 (render/wind_bend.hpp)
+    float4 previous_wind_bend; // the same last frame
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
@@ -124,8 +126,14 @@ struct MaterialData
     uint cloud_texture;
     uint cloud_normal_texture;
     float cloud_scroll;
-    uint material_padding;
+    float bend_scale; // wind bend (trees), 0 none
 };
+
+// Wind bend (the Tree material): a vertex sways by its height above the model's origin, squared.
+float3 wind_offset(const float4 bend, const float height, const float scale)
+{
+    return scale * bend.xyz * (height * height * bend.w);
+}
 
 Texture2D scene_textures[4096] : register(t0, space1);
 StructuredBuffer<MaterialData> materials : register(t3);

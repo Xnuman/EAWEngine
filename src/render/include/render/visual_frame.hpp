@@ -117,6 +117,15 @@ enum class VisualWaterMode : std::uint8_t
     return std::nullopt;
 }
 
+// The map environment's wind: the direction it blows toward on the ground (z ignored) and its
+// speed on the editor's scale (1-10, 10 a strong wind; the default 2). From TED environment fields
+// 0x2b (direction in degrees) and 0x2c (speed), a reading of the stock maps' values.
+struct VisualWind
+{
+    Vector3 direction{1.0F, 0.0F, 0.0F};
+    float speed{2.0F};
+};
+
 // Distance fog of the map environment: surfaces blend toward `color` linearly with view distance,
 // from none at `start` to all at `end`. Additive surfaces and backgrounds are not fogged (as in the
 // legacy shaders).
@@ -139,6 +148,7 @@ struct VisualLightRig
     ColorRgb ambient{0.10F, 0.10F, 0.11F};
     // The environment's fog (none by default).
     VisualFog fog;
+    VisualWind wind;
 };
 
 enum class VisualParticleShape : std::uint8_t

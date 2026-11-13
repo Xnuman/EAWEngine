@@ -840,6 +840,10 @@ bool D3d12Renderer::Impl::render()
     constants.water_parameters = {options.graphics.water == VisualWaterMode::enhanced ? 1U : 0U, depth_slot, post_slots[7], refraction ? 1U : 0U};
     const bool water_reflections = refraction && water_level.has_value();
     constants.water_plane = {water_level.value_or(0.0F), water_reflections ? 1.0F : 0.0F, 0.0F, 0.0F};
+    const auto bend = wind_bend(lighting.wind, scene_time);
+    constants.wind_bend = {bend.offset.x, bend.offset.y, bend.offset.z, bend.inverse_height_squared};
+    constants.previous_wind_bend = previous_wind_bend.value_or(constants.wind_bend);
+    previous_wind_bend = constants.wind_bend;
     if (options.graphics.fog != VisualFogMode::off && lighting.fog.enabled)
     {
         constants.fog_color = {lighting.fog.color.r, lighting.fog.color.g, lighting.fog.color.b, options.graphics.fog == VisualFogMode::enhanced ? 2.0F : 1.0F};

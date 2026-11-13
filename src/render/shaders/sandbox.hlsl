@@ -154,11 +154,15 @@ PixelInput vs_main(VertexInput input)
     }
     else
     {
-        const float4 world = mul(position, instance.transform);
+        const float bend_scale = materials[material_index].bend_scale;
+        float4 world = mul(position, instance.transform);
+        world.xyz += wind_offset(wind_bend, position.z, bend_scale);
+        float4 previous_world = mul(previous, instance.previous_transform);
+        previous_world.xyz += wind_offset(previous_wind_bend, previous.z, bend_scale);
         output.position = mul(world, view_projection);
         output.world_position = world.xyz;
         output.current_clip = mul(world, unjittered_view_projection);
-        output.previous_clip = mul(mul(previous, instance.previous_transform), previous_view_projection);
+        output.previous_clip = mul(previous_world, previous_view_projection);
     }
     output.normal = mul(float4(normal, 0.0f), instance.transform).xyz;
     output.tangent = mul(float4(tangent, 0.0f), instance.transform).xyz;
@@ -459,7 +463,10 @@ ShadowPixelInput shadow_vs(VertexInput input)
 {
     const InstanceData instance = instances[instance_base + input.instance_id];
     ShadowPixelInput output;
-    output.position = mul(mul(skinned_position(input, instance.bone_offset), instance.transform), shadow_view_projection[pass_index]);
+    const float4 position = skinned_position(input, instance.bone_offset);
+    float4 world = mul(position, instance.transform);
+    world.xyz += wind_offset(wind_bend, position.z, materials[material_index].bend_scale);
+    output.position = mul(world, shadow_view_projection[pass_index]);
     output.uv = input.uv;
     return output;
 }
