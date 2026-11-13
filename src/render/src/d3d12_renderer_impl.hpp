@@ -140,6 +140,10 @@ struct D3d12Renderer::Impl
         // logical id and whether it is on.
         std::array<float, 4> sky_visibility_map{};
         std::array<std::uint32_t, 4> sky_visibility_parameters{};
+        // Enhanced heat: the projection's vertical scale, the screen's width over height; the
+        // signed buffer's slot and whether TAA weighs the new frame up where heat is.
+        std::array<float, 4> heat_parameters{};
+        std::array<std::uint32_t, 4> heat_slots{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal
@@ -329,13 +333,15 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12Resource> silhouette_mask;
     // Heat distortion (post slot 10): the bump colors heat particles blended in, 0.5 shifting nothing.
     ComPtr<ID3D12Resource> heat_buffer;
+    // Enhanced heat distortion (post slot 11): signed shifts in texture units, added up (RG16F).
+    ComPtr<ID3D12Resource> heat_signed_buffer;
     // The sky's light as nine spherical-harmonic colors (sky_light.hlsl).
     ComPtr<ID3D12Resource> sky_light;
     std::array<ComPtr<ID3D12Resource>, 2> bloom_targets;
     ComPtr<ID3D12DescriptorHeap> post_rtv_heap;
     // Texture slots (and RTVs, same index) of scene_color, the bloom targets, post_color, the two
     // TAA history targets, and the motion target.
-    std::array<std::uint32_t, 11> post_slots{};
+    std::array<std::uint32_t, 12> post_slots{};
     // The depth buffer's shader view (temporal anti-aliasing reprojects by depth).
     std::uint32_t depth_slot{};
     // The pick target's integer view (occlusion silhouettes read which instance each pixel shows).
@@ -460,6 +466,8 @@ struct D3d12Renderer::Impl
     // Heat distortion: heat particles into the heat buffer, then the scene shifted by it.
     ComPtr<ID3D12PipelineState> heat_particle_pipeline;
     ComPtr<ID3D12PipelineState> heat_apply_pipeline;
+    ComPtr<ID3D12PipelineState> heat_particle_enhanced_pipeline;
+    ComPtr<ID3D12PipelineState> heat_apply_enhanced_pipeline;
     ComPtr<ID3D12Resource> water_reflection_sources;
     // The loaded scene's water plane height (from its water mesh), if it has one.
     std::optional<float> water_level;
@@ -655,7 +663,7 @@ struct D3d12Renderer::Impl
     // payload (ID3D12PipelineLibrary::Serialize output). Any mismatch or driver rejection discards
     // the cache; failures never stop rendering.
     static constexpr std::array<char, 8> pipeline_cache_magic{'E', 'A', 'W', 'P', 'S', 'O', '0', '1'};
-    static constexpr std::uint64_t pipeline_layout_version = 9;
+    static constexpr std::uint64_t pipeline_layout_version = 10;
     static constexpr std::uint64_t maximum_pipeline_cache_bytes = 256ULL * 1024ULL * 1024ULL;
 
     static std::uint64_t fnv1a(std::uint64_t hash, const std::span<const std::byte> bytes) noexcept;

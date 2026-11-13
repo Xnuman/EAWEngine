@@ -64,7 +64,7 @@ lighting and distortion update; nothing on readability). The readability advice 
 scaling are reasoning, not shipped evidence; some details (Flax, Godot, Unreal 4's buffer format) were
 read through search excerpts only.
 
-## Proposed plan (for the owner)
+## Plan (agreed with the owner, 2026-11-13; done the same day, item 4 as a TAA reactive mask)
 
 Enhanced heat, opt-in beside the legacy one: (1) foreground rejection with a soft depth fade, (2) a
 signed RG16F buffer with additive accumulation, (3) the shift defined in world units and capped in

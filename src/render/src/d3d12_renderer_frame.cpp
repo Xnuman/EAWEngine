@@ -883,6 +883,19 @@ bool D3d12Renderer::Impl::render()
     }
     const bool has_sky = scene_loaded && std::ranges::any_of(dynamic ? dynamic_draws : scene_draws, &GpuDraw::background);
     constants.sky_parameters = {post_slots[8], has_sky ? 1U : 0U, has_sky && options.graphics.sky_ambient ? 1U : 0U, sky_face_size};
+    {
+        // Enhanced heat: the projection's vertical scale (1 / tan of half the field of view) and the
+        // screen's aspect, the signed buffer's slot, and TAA's reactive weight when heat is drawn.
+        const auto half_fov = camera.vertical_fov_degrees * 0.5F * 3.14159265F / 180.0F;
+        const bool heat_drawn = options.graphics.heat == VisualHeatMode::enhanced && std::ranges::any_of(particles,
+                                                                                                         [](const VisualParticle& particle)
+                                                                                                         {
+                                                                                                             return particle.blend == VisualParticleBlend::heat;
+                                                                                                         });
+        constants.heat_parameters = {std::tan(half_fov) > 0.0F ? 1.0F / std::tan(half_fov) : 1.0F, static_cast<float>(width) / static_cast<float>(std::max(height, 1U)),
+                                     static_cast<float>(std::max(height, 1U)), 0.0F};
+        constants.heat_slots = {post_slots[11], heat_drawn ? 1U : 0U, 0U, 0U};
+    }
     if (options.graphics.sky_visibility && sky_visibility_texture && *sky_visibility_texture < scene_textures.size())
     {
         constants.sky_visibility_map = sky_visibility_map;
@@ -1337,20 +1350,28 @@ bool D3d12Renderer::Impl::render()
                                                                       {
                                                                           return particle.blend == VisualParticleBlend::heat;
                                                                       });
+    const bool enhanced_heat = has_heat && options.graphics.heat == VisualHeatMode::enhanced;
+    std::optional<std::uint32_t> heat_for_taa;
     if (has_heat)
     {
-        const auto heat = import_resource(heat_buffer.Get(), "heat distortion", GraphAccess::render_target, GraphAccess::render_target);
+        const auto heat = enhanced_heat ? import_resource(heat_signed_buffer.Get(), "heat distortion (signed)", GraphAccess::render_target, GraphAccess::render_target)
+                                        : import_resource(heat_buffer.Get(), "heat distortion", GraphAccess::render_target, GraphAccess::render_target);
+        if (enhanced_heat)
+        {
+            heat_for_taa = heat;
+        }
         const auto heat_copy = import_resource(refraction_color.Get(), "refraction copy (heat)", GraphAccess::render_target, GraphAccess::render_target);
         frame_graph.add_pass("heat", {{heat, GraphAccess::render_target}, {depth, GraphAccess::depth_read}},
                              [&]
                              {
                                  bind_scene(read_only_depth);
-                                 const auto target = post_rtv(10);
+                                 const auto target = post_rtv(enhanced_heat ? 11 : 10);
                                  constexpr std::array neutral{0.5F, 0.5F, 0.5F, 0.0F};
+                                 constexpr std::array zero{0.0F, 0.0F, 0.0F, 0.0F};
                                  command_list->OMSetRenderTargets(1, &target, FALSE, &read_only_depth);
-                                 command_list->ClearRenderTargetView(target, neutral.data(), 0, nullptr);
+                                 command_list->ClearRenderTargetView(target, enhanced_heat ? zero.data() : neutral.data(), 0, nullptr);
                                  command_list->SetGraphicsRootShaderResourceView(3, frame.particle_buffer->GetGPUVirtualAddress());
-                                 command_list->SetPipelineState(heat_particle_pipeline.Get());
+                                 command_list->SetPipelineState(enhanced_heat ? heat_particle_enhanced_pipeline.Get() : heat_particle_pipeline.Get());
                                  std::size_t run_start = 0;
                                  for (std::size_t index = 0; index <= particles.size(); ++index)
                                  {
@@ -1374,14 +1395,14 @@ bool D3d12Renderer::Impl::render()
                              {
                                  command_list->CopyResource(refraction_color.Get(), scene_color.Get());
                              });
-        frame_graph.add_pass("heat apply", {{scene, GraphAccess::render_target}, {heat_copy, GraphAccess::shader_read}, {heat, GraphAccess::shader_read}},
+        frame_graph.add_pass("heat apply", {{scene, GraphAccess::render_target}, {heat_copy, GraphAccess::shader_read}, {heat, GraphAccess::shader_read}, {depth, GraphAccess::shader_read}},
                              [&]
                              {
                                  command_list->OMSetRenderTargets(1, &scene_target, FALSE, nullptr);
                                  command_list->RSSetViewports(1, &viewport);
                                  command_list->RSSetScissorRects(1, &scissor);
-                                 command_list->SetPipelineState(heat_apply_pipeline.Get());
-                                 const std::array<std::uint32_t, 2> heat_constants{post_slots[7], post_slots[10]};
+                                 command_list->SetPipelineState(enhanced_heat ? heat_apply_enhanced_pipeline.Get() : heat_apply_pipeline.Get());
+                                 const std::array<std::uint32_t, 2> heat_constants{post_slots[7], post_slots[enhanced_heat ? 11U : 10U]};
                                  command_list->SetGraphicsRoot32BitConstants(5, 2, heat_constants.data(), 0);
                                  command_list->DrawInstanced(3, 1, 0, 0);
                                  ++draw_calls;
@@ -1446,13 +1467,14 @@ bool D3d12Renderer::Impl::render()
         const auto next = 1U - last;
         const auto history_last = import_resource(taa_history[last].Get(), "TAA history (last)", GraphAccess::render_target, GraphAccess::render_target);
         const auto history_next = import_resource(taa_history[next].Get(), "TAA history (next)", GraphAccess::render_target, GraphAccess::render_target);
-        frame_graph.add_pass("temporal anti-aliasing",
-                             {{source, GraphAccess::shader_read},
-                              {depth, GraphAccess::shader_read},
-                              {motion, GraphAccess::shader_read},
-                              {history_last, GraphAccess::shader_read},
-                              {back_buffer, GraphAccess::render_target},
-                              {history_next, GraphAccess::render_target}},
+        std::vector<FrameGraph::Use> taa_uses{{source, GraphAccess::shader_read},       {depth, GraphAccess::shader_read},         {motion, GraphAccess::shader_read},
+                                              {history_last, GraphAccess::shader_read}, {back_buffer, GraphAccess::render_target}, {history_next, GraphAccess::render_target}};
+        // Enhanced heat tells TAA where heat is (it weighs the new frame up there).
+        if (heat_for_taa)
+        {
+            taa_uses.push_back({*heat_for_taa, GraphAccess::shader_read});
+        }
+        frame_graph.add_pass("temporal anti-aliasing", std::move(taa_uses),
                              [&, source_slot, last, next]
                              {
                                  const std::array taa_targets{render_target, post_rtv(4U + next)};

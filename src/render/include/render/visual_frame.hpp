@@ -139,6 +139,33 @@ struct VisualCloudShadow
     Vector3 velocity{};
 };
 
+// How heat distortion is drawn: as now (bump colors over a neutral 8-bit buffer, a fixed screen
+// shift; the legacy profile), or signed and additive in 16 bits, the shift sized in world units and
+// capped in pixels, with a faint shimmer, foreground samples rejected, faded screen edges, and
+// temporal anti-aliasing told where heat is (enhanced; docs/heat-research.md; engine choices).
+enum class VisualHeatMode : std::uint8_t
+{
+    legacy,
+    enhanced,
+};
+
+[[nodiscard]] constexpr std::string_view to_string(const VisualHeatMode mode) noexcept
+{
+    return mode == VisualHeatMode::enhanced ? "enhanced" : "legacy";
+}
+
+[[nodiscard]] constexpr std::optional<VisualHeatMode> visual_heat_mode(const std::string_view name) noexcept
+{
+    for (const auto mode : {VisualHeatMode::legacy, VisualHeatMode::enhanced})
+    {
+        if (name == to_string(mode))
+        {
+            return mode;
+        }
+    }
+    return std::nullopt;
+}
+
 // Distance fog of the map environment: surfaces blend toward `color` linearly with view distance,
 // from none at `start` to all at `end`. Additive surfaces and backgrounds are not fogged (as in the
 // legacy shaders).

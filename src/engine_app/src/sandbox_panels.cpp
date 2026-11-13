@@ -237,6 +237,13 @@ bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view)
         ImGui::SameLine();
         changed |= ImGui::RadioButton("Enhanced##water", &water, static_cast<int>(eaw::VisualWaterMode::enhanced));
         graphics.water = static_cast<eaw::VisualWaterMode>(water);
+        auto heat = static_cast<int>(graphics.heat);
+        ImGui::TextUnformatted("Heat");
+        ImGui::SameLine();
+        changed |= ImGui::RadioButton("Legacy##heat", &heat, static_cast<int>(eaw::VisualHeatMode::legacy));
+        ImGui::SameLine();
+        changed |= ImGui::RadioButton("Enhanced##heat", &heat, static_cast<int>(eaw::VisualHeatMode::enhanced));
+        graphics.heat = static_cast<eaw::VisualHeatMode>(heat);
         changed |= ImGui::Checkbox("Terrain decals", view.decals);
         changed |= ImGui::Checkbox("Cloud shadows", &graphics.cloud_shadows);
         changed |= ImGui::Checkbox("Occlusion silhouettes", &graphics.occlusion_silhouettes);

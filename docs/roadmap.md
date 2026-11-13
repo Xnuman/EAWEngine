@@ -118,8 +118,8 @@ rendering rows join item 2).
    heat particles), reflections (`MeshAdditiveReflection` 3; no stock material uses the reflective
    profiles); then weather and soft particles, look tuning. Wind bend for trees and waving grass
    (second UV set) done 2026-11-13; grass's distance fade later. Occluded-unit silhouettes done 2026-11-13. Heat distortion from heat
-   particles done 2026-11-13 (the 3 heat meshes remain; an enhanced heat mode proposed in
-   [heat-research.md](heat-research.md), awaiting the owner). Shields done 2026-11-13 (the
+   particles done 2026-11-13 (the 3 heat meshes remain); the enhanced heat mode from
+   [heat-research.md](heat-research.md) done 2026-11-13 (shockwave rings later, as an option). Shields done 2026-11-13 (the
    material and hit flashes); the FoC stealth meshes' visibility (when the original shows them) and
    reading Shield_Flash_* from GameConstants remain. Legacy sky domes and nebulae done 2026-11-13;
    enhanced sky agreed 2026-11-13 from [sky-research.md](sky-research.md): cloud shadows (done, a

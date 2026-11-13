@@ -109,6 +109,37 @@ float4 heat_ps(PostInput input) : SV_TARGET
     return float4(scene_copy.Sample(clamp_sampler, input.uv + shift).rgb, 1.0f);
 }
 
+// Enhanced heat: the scene copy (texture instance_base) shifted by the signed buffer (texture
+// material_index, shifts in texture units), the shift faded near the screen's edges and where the
+// shifted sample shows something nearer the camera than this pixel (the foreground would be dragged
+// into the heat: "leaking"), softly over HEAT_FOREGROUND_FADE world units. Engine choices.
+static const float HEAT_EDGE_FADE = 0.03f;
+static const float HEAT_FOREGROUND_FADE = 4.0f;
+
+float heat_view_distance(const Texture2D depth, const float2 uv)
+{
+    uint width = 1u;
+    uint height = 1u;
+    depth.GetDimensions(width, height);
+    const float stored = depth.SampleLevel(clamp_sampler, uv, 0.0f).r;
+    const float4 world = mul(float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, stored, 1.0f), inverse_view_projection);
+    return stored >= 1.0f ? 1.0e6f : distance(world.xyz / world.w, camera_position_time.xyz);
+}
+
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+float4 heat_enhanced_ps(PostInput input) : SV_TARGET
+{
+    Texture2D scene_copy = scene_textures[instance_base];
+    float2 shift = scene_textures[material_index].Load(int3(input.position.xy, 0)).rg;
+    const float2 edge = min(input.uv, 1.0f - input.uv);
+    shift *= saturate(min(edge.x, edge.y) / HEAT_EDGE_FADE);
+    Texture2D depth = scene_textures[water_parameters.y];
+    const float here = heat_view_distance(depth, input.uv);
+    const float there = heat_view_distance(depth, input.uv + shift);
+    shift *= saturate((there - here) / HEAT_FOREGROUND_FADE + 1.0f);
+    return float4(scene_copy.Sample(clamp_sampler, input.uv + shift).rgb, 1.0f);
+}
+
 // The occlusion silhouettes' mask (texture instance_base) over the scene: its color at its alpha.
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 float4 silhouette_composite_ps(PostInput input) : SV_TARGET
@@ -297,7 +328,15 @@ TaaOutput taa_resolve_ps(PostInput input)
     if (taa_parameters.z > 0.0f && inside)
     {
         const float3 past = from_ycocg(clamp(to_ycocg(history.SampleLevel(clamp_sampler, before_uv, 0.0f).rgb), mean - spread, mean + spread));
-        result = lerp(past, current, taa_parameters.w);
+        // Where enhanced heat shifts the image, the new frame weighs more (a reactive mask), so TAA
+        // neither smears the distortion nor averages its shimmer away (an engine choice).
+        float weight = taa_parameters.w;
+        if (heat_slots.y != 0u)
+        {
+            const float2 heat = scene_textures[heat_slots.x].Load(int3(input.position.xy, 0)).rg;
+            weight = lerp(weight, 0.6f, saturate(length(heat) * 400.0f));
+        }
+        result = lerp(past, current, weight);
     }
     output.frame = float4(result, 1.0f);
     output.history = float4(result, 1.0f);

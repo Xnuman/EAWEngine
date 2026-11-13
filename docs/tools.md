@@ -36,6 +36,7 @@ EAWEngine.exe sandbox --game foc --model DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO
 | `--particles legacy\|enhanced` | How particle effects are interpreted: legacy (default) reproduces the original's look-defining quirks, enhanced improves them. |
 | `--bloom <strength>`, `--no-bloom` | Bloom strength (default 0.8). |
 | `--water <mode>` | The map's water: `legacy` (the surface blended at its material's opacity, the default) or `enhanced` (color and opacity from the depth beneath, soft shores, two normal layers, Fresnel, sun glint; docs/water-research.md). Also in the Graphics panel. |
+| `--heat <mode>` | Heat distortion: `legacy` (the default) or `enhanced` (signed 16-bit accumulation, shift sized in world units, shimmer, foreground rejection, faded edges, TAA reactive weight; docs/heat-research.md). Also in the Graphics panel. |
 | `--fog <mode>` | The map environment's fog: `legacy` (the original's linear fog, the default; `on`), `enhanced` (exponential height fog brightening toward the sun), or `off`. |
 | `--shadows <on\|off>` | Key-light shadows (cascaded shadow maps, on by default). |
 | `--aa <mode>`, `--no-aa` | Anti-aliasing: `fxaa` (an edge pass over the finished frame, the default), `taa` (temporal), `hybrid` (TAA, then the edge pass over its result), or `off` (`--no-aa`). |

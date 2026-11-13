@@ -101,6 +101,8 @@ cbuffer FrameConstants : register(b0)
     uint4 sky_parameters;
     float4 sky_visibility_map;        // world X, Y to the sky visibility texture: scale xy, offset zw
     uint4 sky_visibility_parameters;  // x its logical id, y on
+    float4 heat_parameters; // x the projection's vertical scale, y width over height, z the height in pixels
+    uint4 heat_slots;       // x the signed heat buffer's slot, y TAA weighs heat (1)
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and

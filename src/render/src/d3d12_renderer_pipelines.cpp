@@ -11,6 +11,7 @@
 // points embed the root signature, which the renderer creates from the vertex shader blob.
 #include "g_eaw_debug_ps.h"
 #include "g_eaw_debug_vs.h"
+#include "g_eaw_particle_heat_enhanced_ps.h"
 #include "g_eaw_particle_heat_ps.h"
 #include "g_eaw_particle_modulate_ps.h"
 #include "g_eaw_particle_ps.h"
@@ -19,6 +20,7 @@
 #include "g_eaw_post_composite_ps.h"
 #include "g_eaw_post_edge_aa_ps.h"
 #include "g_eaw_post_extract_ps.h"
+#include "g_eaw_post_heat_enhanced_ps.h"
 #include "g_eaw_post_heat_ps.h"
 #include "g_eaw_post_taa_ps.h"
 #include "g_eaw_post_vs.h"
@@ -465,6 +467,14 @@ void D3d12Renderer::Impl::create_pipeline()
         target.SrcBlendAlpha = D3D12_BLEND_ONE;
         target.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
         create_pipeline_state(L"heat particles", heat, heat_particle_pipeline);
+        // Enhanced: signed shifts added up in 16-bit float.
+        heat.PS = {g_eaw_particle_heat_enhanced_ps, sizeof(g_eaw_particle_heat_enhanced_ps)};
+        heat.RTVFormats[0] = heat_signed_format;
+        target.SrcBlend = D3D12_BLEND_ONE;
+        target.DestBlend = D3D12_BLEND_ONE;
+        target.SrcBlendAlpha = D3D12_BLEND_ONE;
+        target.DestBlendAlpha = D3D12_BLEND_ONE;
+        create_pipeline_state(L"heat particles (enhanced)", heat, heat_particle_enhanced_pipeline);
     }
 
     // Post-processing: fullscreen triangles into one target, no depth, no blending.
@@ -511,6 +521,8 @@ void D3d12Renderer::Impl::create_pipeline()
         }
         post.PS = {g_eaw_post_heat_ps, sizeof(g_eaw_post_heat_ps)};
         create_pipeline_state(L"heat distortion", post, heat_apply_pipeline);
+        post.PS = {g_eaw_post_heat_enhanced_ps, sizeof(g_eaw_post_heat_enhanced_ps)};
+        create_pipeline_state(L"heat distortion (enhanced)", post, heat_apply_enhanced_pipeline);
         // The resolve writes the frame and the next history at once.
         post.NumRenderTargets = 2;
         post.RTVFormats[1] = back_buffer_format;

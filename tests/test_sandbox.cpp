@@ -46,6 +46,9 @@ void test_sandbox_options()
     require(expect_ok(parse({}), "parsing nothing").water == eaw::VisualWaterMode::legacy &&
                 expect_ok(parse({"--water", "enhanced"}), "parsing --water enhanced").water == eaw::VisualWaterMode::enhanced && !parse({"--water", "deep"}),
             "water must be legacy unless --water enhanced");
+    require(expect_ok(parse({}), "parsing nothing").heat == eaw::VisualHeatMode::legacy && expect_ok(parse({"--heat", "enhanced"}), "parsing --heat enhanced").heat == eaw::VisualHeatMode::enhanced &&
+                !parse({"--heat", "hot"}),
+            "heat must be legacy unless --heat enhanced");
     require(!parse({"--spawn", "Tank:1@64"}) && !parse({"--spawn", "Tank:1001"}) && !parse({"--spawn", ":3"}) && !parse({"--vsync", "maybe"}) && !parse({"--width", "0"}) && !parse({"--bogus"}) &&
                 !parse({"--map"}) && !parse({"--frame-latency", "3"}),
             "invalid sandbox options must be rejected");

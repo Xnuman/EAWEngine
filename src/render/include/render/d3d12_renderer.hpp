@@ -50,6 +50,8 @@ struct D3d12GraphicsSettings
     // Units whose type asks for it show through what hides them (GameConstants'
     // Occlusion_Silhouettes_Enabled is on in the stock data).
     bool occlusion_silhouettes{true};
+    // How heat distortion is drawn (VisualParticleBlend::heat).
+    VisualHeatMode heat{VisualHeatMode::legacy};
 };
 
 struct D3d12RendererOptions
