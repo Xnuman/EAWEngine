@@ -36,8 +36,8 @@ struct D3d12RendererOptions
     bool bloom{true};
     float bloom_threshold{0.6F};
     float bloom_strength{0.8F};
-    // Anti-aliasing: an edge pass in the manner of FXAA over the finished frame, or temporal
-    // (jittered frames blended with the reprojected history); engine choices.
+    // Anti-aliasing: an edge pass in the manner of FXAA over the finished frame, temporal (jittered
+    // frames blended with the reprojected history), or both; engine choices.
     VisualAntiAliasing anti_aliasing{VisualAntiAliasing::fxaa};
     // Detail levels of meshes that have them (eaw/visual_lod.hpp); set_lod_settings changes them.
     VisualLodSettings lod;

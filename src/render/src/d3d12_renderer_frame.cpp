@@ -578,7 +578,7 @@ bool D3d12Renderer::Impl::render()
         // Under temporal anti-aliasing the scene is drawn a sub-pixel off each frame (a translation
         // in clip space); the resolve reprojects with the unjittered matrices.
         using namespace DirectX;
-        const bool taa = options.anti_aliasing == VisualAntiAliasing::taa;
+        const bool taa = options.anti_aliasing == VisualAntiAliasing::taa || options.anti_aliasing == VisualAntiAliasing::hybrid;
         const auto unjittered = camera_view_projection();
         std::array<float, 2> jitter{};
         if (taa)
@@ -651,7 +651,8 @@ bool D3d12Renderer::Impl::render()
     // back buffer from the composite (or from the scene without bloom).
     const bool bloom = options.bloom;
     const bool anti_aliasing = options.anti_aliasing != VisualAntiAliasing::off;
-    const bool temporal = options.anti_aliasing == VisualAntiAliasing::taa;
+    const bool temporal = options.anti_aliasing == VisualAntiAliasing::taa || options.anti_aliasing == VisualAntiAliasing::hybrid;
+    const bool hybrid = options.anti_aliasing == VisualAntiAliasing::hybrid;
     const auto scene_target = bloom || anti_aliasing ? post_rtv(0) : render_target;
     const auto composite_target = anti_aliasing ? post_rtv(3) : render_target;
 
@@ -871,6 +872,21 @@ bool D3d12Renderer::Impl::render()
                              });
         taa_history_index = next;
         taa_history_valid = true;
+        if (hybrid)
+        {
+            // The edge pass over TAA's result (the history it just wrote) into the back buffer.
+            const auto history_slot = post_slots[4U + next];
+            frame_graph.add_pass("edge anti-aliasing after TAA", {{history_next, GraphAccess::shader_read}, {back_buffer, GraphAccess::render_target}},
+                                 [&, history_slot]
+                                 {
+                                     command_list->OMSetRenderTargets(1, &render_target, FALSE, nullptr);
+                                     command_list->SetPipelineState(edge_aa_pipeline.Get());
+                                     const std::array<std::uint32_t, 2> post_constants{history_slot, 0U};
+                                     command_list->SetGraphicsRoot32BitConstants(5, 2, post_constants.data(), 0);
+                                     command_list->DrawInstanced(3, 1, 0, 0);
+                                     ++draw_calls;
+                                 });
+        }
     }
     else if (anti_aliasing)
     {

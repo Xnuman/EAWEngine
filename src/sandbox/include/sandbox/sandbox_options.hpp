@@ -77,7 +77,7 @@ struct SandboxOptions
     std::uint64_t upload_budget_mib{64};
     // Bloom strength (0 turns bloom off; --no-bloom is the same).
     float bloom_strength{0.8F};
-    // Anti-aliasing (--aa off|fxaa|taa; --no-aa is off).
+    // Anti-aliasing (--aa off|fxaa|taa|hybrid; --no-aa is off).
     VisualAntiAliasing anti_aliasing{VisualAntiAliasing::fxaa};
     // Detail-level selection (--lod) and the mesh-detail setting (--mesh-detail, 0..1).
     VisualLodPolicy lod_policy{VisualLodPolicy::hybrid};
