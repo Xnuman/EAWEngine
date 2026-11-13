@@ -844,6 +844,16 @@ bool D3d12Renderer::Impl::render()
     constants.wind_bend = {bend.offset.x, bend.offset.y, bend.offset.z, bend.inverse_height_squared};
     constants.previous_wind_bend = previous_wind_bend.value_or(constants.wind_bend);
     previous_wind_bend = constants.wind_bend;
+    {
+        const auto& clouds = lighting.clouds;
+        const bool on = options.graphics.cloud_shadows && clouds.texture < scene_textures.size() && std::isfinite(clouds.scale) && clouds.scale > 0.0F && is_finite(clouds.velocity);
+        if (on)
+        {
+            const auto drift = 1.0F / clouds.scale * scene_time;
+            constants.cloud_shadow = {1.0F / clouds.scale, clouds.velocity.x * drift, clouds.velocity.y * drift, 0.0F};
+            constants.cloud_parameters = {static_cast<std::uint32_t>(fallback_texture_count + clouds.texture), 1U, 0U, 0U};
+        }
+    }
     const auto wind_direction = normalize_or(lighting.wind.direction, Vector3{1.0F, 0.0F, 0.0F});
     constants.grass_wind = {wind_direction.x, wind_direction.y, 0.0F, std::isfinite(lighting.wind.speed) ? std::max(lighting.wind.speed, 0.0F) : 0.0F};
     if (options.graphics.fog != VisualFogMode::off && lighting.fog.enabled)

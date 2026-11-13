@@ -359,6 +359,7 @@ VisualMaterial make_visual_material(SceneBuilder& builder, const LegacyMaterial&
         }
     }
 
+    result.cloud_shadow = features.cloud_shadow;
     if (features.lighting == LegacyLightingModel::sky_dome)
     {
         result.lighting = VisualLightingModel::sky;

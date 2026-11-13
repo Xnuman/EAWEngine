@@ -245,6 +245,13 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             const auto angle = environment.wind_direction * std::numbers::pi_v<float> / 180.0F;
             asset.lighting->wind = {{std::cos(angle), std::sin(angle), 0.0F}, std::max(environment.wind_speed, 0.0F)};
         }
+        if (asset.lighting && environment.has_cloud_layer && std::isfinite(environment.cloud_scale) && environment.cloud_scale > 0.0F && std::isfinite(environment.cloud_speed))
+        {
+            // The clouds drift along the wind's direction (the terrain chunk's 0x10 velocity agrees).
+            const auto angle = (environment.has_wind && std::isfinite(environment.wind_direction) ? environment.wind_direction : 0.0F) * std::numbers::pi_v<float> / 180.0F;
+            asset.lighting->clouds = {
+                scene_texture(builder, environment.clouds), environment.cloud_scale, {std::cos(angle) * environment.cloud_speed, std::sin(angle) * environment.cloud_speed, 0.0F}};
+        }
         const auto context = battle.land ? GameModelContext::land : GameModelContext::space;
         for (const auto& name : {environment.skybox_primary, environment.skybox_secondary})
         {

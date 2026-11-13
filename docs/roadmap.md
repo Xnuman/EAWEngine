@@ -120,10 +120,13 @@ rendering rows join item 2).
    (second UV set) done 2026-11-13; grass's distance fade later. Shields done 2026-11-13 (the
    material and hit flashes); the FoC stealth meshes' visibility (when the original shows them) and
    reading Shield_Flash_* from GameConstants remain. Legacy sky domes and nebulae done 2026-11-13;
-   the enhanced sky awaits the owner's choice from [sky-research.md](sky-research.md) (proposed:
-   cloud shadows from the TED cloud layer, a sky capture for the water's reflection fallback and a
-   sky-tinted ambient, fog toward the horizon color; the sun disk, star intensity, and an atmosphere
-   after HDR).
+   enhanced sky agreed 2026-11-13 from [sky-research.md](sky-research.md): cloud shadows (done, a
+   legacy feature), a sky capture for the water's reflection fallback and a sky-tinted ambient, fog
+   toward the horizon color; the sun disk, star intensity, and an atmosphere after HDR.
+   Global illumination (the owner, 2026-11-13: the sky as a major contributor), in steps: sky
+   irradiance (the captured sky projected to spherical harmonics, the ambient term), then sky
+   visibility (how much sky each terrain point sees, from the heightfield once at load, applied to
+   the terrain and to units standing on it), then bounced light once lighting is linear (HDR).
    This closes M2.
 3. The job system (Simulation stage 4's base), then input bindings (Platform and input stage 2).
 4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).

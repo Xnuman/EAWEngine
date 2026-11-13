@@ -39,6 +39,8 @@ struct D3d12GraphicsSettings
     VisualFogMode fog{VisualFogMode::legacy};
     // How the map's water surface is drawn (VisualMaterial::water).
     VisualWaterMode water{VisualWaterMode::legacy};
+    // The environment's cloud shadows on the terrain (VisualLightRig::clouds), as the original.
+    bool cloud_shadows{true};
 };
 
 struct D3d12RendererOptions

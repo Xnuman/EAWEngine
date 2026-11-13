@@ -150,6 +150,8 @@ struct VisualMaterial
     // swings between `diffuse` and `grass_diffuse_alt` with the wave.
     bool grass{};
     Color grass_diffuse_alt{white};
+    // Takes the environment's cloud shadows (VisualCloudShadow), as the legacy terrain meshes do.
+    bool cloud_shadow{};
 };
 
 } // namespace eaw

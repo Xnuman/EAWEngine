@@ -361,6 +361,8 @@ std::vector<std::byte> make_test_ted()
     append_floats(0x12, {3500.0F});
     append_floats(0x2b, {90.0F});
     append_floats(0x2c, {7.0F});
+    append_floats(0x2d, {800.0F});
+    append_floats(0x2e, {30.0F});
     std::vector<std::byte> environment_list;
     append_chunk(environment_list, 6, environment_data);
     std::vector<std::byte> night_environment;

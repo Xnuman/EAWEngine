@@ -126,6 +126,16 @@ struct VisualWind
     float speed{2.0F};
 };
 
+// The environment's cloud shadows (the legacy terrain shaders multiply their lighting by a cloud
+// texture mapped over the world's X and Y): `texture` (a scene texture) repeats every `scale` world
+// units and drifts at `velocity` units per second. None without a texture.
+struct VisualCloudShadow
+{
+    std::uint32_t texture{invalid_visual_texture};
+    float scale{1000.0F};
+    Vector3 velocity{};
+};
+
 // Distance fog of the map environment: surfaces blend toward `color` linearly with view distance,
 // from none at `start` to all at `end`. Additive surfaces and backgrounds are not fogged (as in the
 // legacy shaders).
@@ -149,6 +159,7 @@ struct VisualLightRig
     // The environment's fog (none by default).
     VisualFog fog;
     VisualWind wind;
+    VisualCloudShadow clouds;
 };
 
 enum class VisualParticleShape : std::uint8_t

@@ -238,6 +238,7 @@ bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view)
         changed |= ImGui::RadioButton("Enhanced##water", &water, static_cast<int>(eaw::VisualWaterMode::enhanced));
         graphics.water = static_cast<eaw::VisualWaterMode>(water);
         changed |= ImGui::Checkbox("Terrain decals", view.decals);
+        changed |= ImGui::Checkbox("Cloud shadows", &graphics.cloud_shadows);
         ImGui::Separator();
         static constexpr std::array<const char*, 4> policies{"Off (full detail)", "Distance", "Screen size", "Hybrid"};
         auto policy = static_cast<int>(view.lod->policy);

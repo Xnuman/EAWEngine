@@ -47,6 +47,7 @@ static const uint LIGHTING_SKY = 5u;
 static const uint LIGHTING_NEBULA = 6u;
 static const uint MATERIAL_CLOUDS = 1u << 5;
 static const uint MATERIAL_GRASS = 1u << 6;
+static const uint MATERIAL_CLOUD_SHADOW = 1u << 7;
 static const uint INSTANCE_BACKGROUND = 1u;
 static const uint INSTANCE_HIGHLIGHTED = 2u;
 static const uint INSTANCE_NO_SHADOWS = 4u;
@@ -88,6 +89,8 @@ cbuffer FrameConstants : register(b0)
     float4 wind_bend;          // xyz the wind's bend offset, w 1 / height^2 (render/wind_bend.hpp)
     float4 previous_wind_bend; // the same last frame
     float4 grass_wind;         // xyz the wind's direction, w its speed (1-10)
+    float4 cloud_shadow;       // x 1 / the cloud texture's repeat, yz its drift so far
+    uint4 cloud_parameters;    // x the cloud texture's logical id, y cloud shadows on
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
@@ -162,6 +165,18 @@ float4 sample_texture_top(const uint texture, const float2 uv)
 float4 sample_texture(const uint texture, const float2 uv)
 {
     return scene_textures[NonUniformResourceIndex(texture_residency[texture])].Sample(surface_sampler, uv);
+}
+
+// The environment's cloud shadows at a world position: the cloud texture's color, mapped over the
+// world's X and Y and drifting (the legacy terrain shaders multiply their lighting by it); white
+// when off.
+float3 cloud_shadow_color(const float3 world)
+{
+    if (cloud_parameters.y == 0u)
+    {
+        return float3(1.0f, 1.0f, 1.0f);
+    }
+    return sample_texture(cloud_parameters.x, world.xy * cloud_shadow.x - cloud_shadow.yz).rgb;
 }
 
 float3 safe_normalize(const float3 value, const float3 fallback)

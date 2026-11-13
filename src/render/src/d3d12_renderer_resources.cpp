@@ -969,6 +969,7 @@ auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size
                    (material.blend == VisualBlendMode::additive ? material_additive : 0U) | (material.team_color_mask ? material_team_color : 0U) |
                    (material.emissive_mask ? material_emissive_mask : 0U) | (static_cast<std::uint32_t>(material.gloss) << material_gloss_shift);
     result.flags |= material.grass ? material_grass : 0U;
+    result.flags |= material.cloud_shadow ? material_cloud_shadow : 0U;
     if (material.lighting == VisualLightingModel::sky)
     {
         result.layer_a = {material.sky.cloud_scale, material.sky.cloud_scroll, 0.0F, 0.0F};

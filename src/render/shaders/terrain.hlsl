@@ -196,7 +196,7 @@ TerrainPixelOutput terrain_ps(TerrainPixelInput input)
 {
     TerrainPixelOutput output;
     output.color = shade_terrain(input);
-    output.color.rgb = apply_fog(output.color.rgb, input.world_position);
+    output.color.rgb = apply_fog(output.color.rgb * cloud_shadow_color(input.world_position), input.world_position);
     output.pick = uint2(PICK_TERRAIN, asuint(input.position.z));
     return output;
 }

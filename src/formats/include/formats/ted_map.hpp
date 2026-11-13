@@ -64,6 +64,14 @@ struct TedEnvironment
     bool has_wind{};
     float wind_direction{};
     float wind_speed{};
+    // The cloud layer whose shadows drift over the terrain: `clouds` (mini 0x2f) repeats every
+    // `cloud_scale` world units (0x2d, 350-1000) and drifts at `cloud_speed` units per second (0x2e,
+    // 0-80, 30 on most maps) along `wind_direction`. A reading: the terrain-information chunk's 0x10
+    // holds speed x (cos, sin) of that direction on the stock maps. `has_cloud_layer` is false when
+    // a field is absent or the texture is empty.
+    bool has_cloud_layer{};
+    float cloud_scale{};
+    float cloud_speed{};
     // Every mini-chunk in source order, including fields not interpreted yet (wind, clouds).
     std::vector<TedEnvironmentField> fields;
 };

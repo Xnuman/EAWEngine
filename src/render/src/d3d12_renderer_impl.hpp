@@ -127,6 +127,10 @@ struct D3d12Renderer::Impl
         std::array<float, 4> previous_wind_bend{};
         // Grass wind: xyz the direction, w the speed (VisualWind).
         std::array<float, 4> grass_wind{};
+        // Cloud shadows: x 1 / scale, yz the drift so far in texture units; the texture's logical
+        // id and whether they are on.
+        std::array<float, 4> cloud_shadow{};
+        std::array<std::uint32_t, 4> cloud_parameters{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal
@@ -173,6 +177,7 @@ struct D3d12Renderer::Impl
     static_assert(sizeof(GpuMaterial) == 160);
     static constexpr std::uint32_t material_clouds = 1U << 5U;
     static constexpr std::uint32_t material_grass = 1U << 6U;
+    static constexpr std::uint32_t material_cloud_shadow = 1U << 7U;
     static constexpr std::uint32_t material_alpha_test = 1U << 0U;
     static constexpr std::uint32_t material_alpha_blend = 1U << 1U;
     static constexpr std::uint32_t material_additive = 1U << 2U;

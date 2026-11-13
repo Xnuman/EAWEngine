@@ -274,7 +274,11 @@ cloud settings) are preserved raw. Wind (2026-11-13, per-map values from `inspec
 as the wind speed on a 1-10 scale (2 on most maps, 7 on the blizzard maps Hoth, Ilum, and Polus,
 10 on stormy Kamino and Honoghr; the legacy grass shader calls 10 a strong wind) and 0x2b as its
 direction in degrees (0 on most, 30-120 elsewhere); 0x2d (350-1000) and 0x2f (a cloud texture)
-belong to the cloud layer. 119 of the 135 land environments carry 0x2b-0x2f. Readings to confirm
+belong to the cloud layer. 119 of the 135 land environments carry 0x2b-0x2f. Clouds (2026-11-13):
+0x2d is the cloud texture's repeat in world units, 0x2e its drift speed (0-80, 30 on most), and the
+drift follows 0x2b: the terrain-information chunk's 0x10 is speed x (cos, sin) of that direction
+((30, 0, 0) on Dantooine 02 with 0x2b 0 and 0x2e 30; components up to 21.21 = 30 sin 45 elsewhere),
+and its 0x0e and 0x0f repeat the texture and scale. Readings to confirm
 with the editor's labels; the angle's zero and sense are not established.
 
 Faction definitions carry a 0..255 RGBA `Color`. A placed object's owner is a

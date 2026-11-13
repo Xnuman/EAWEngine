@@ -147,6 +147,7 @@ Status parse_environments(const std::span<const std::byte> bytes, const Chunk& c
                 // Fog fields 0x0f-0x12, each well formed.
                 std::array<bool, 4> fog_seen{};
                 std::array<bool, 2> wind_seen{};
+                std::array<bool, 2> cloud_seen{};
                 EAW_TRY_ASSIGN(const auto minis, read_minis(bytes, environment_chunk));
                 for (const auto& mini : minis)
                 {
@@ -204,6 +205,12 @@ Status parse_environments(const std::span<const std::byte> bytes, const Chunk& c
                     case 0x2c:
                         wind_seen[1] = read_scalar(mini, environment.wind_speed);
                         break;
+                    case 0x2d:
+                        cloud_seen[0] = read_scalar(mini, environment.cloud_scale);
+                        break;
+                    case 0x2e:
+                        cloud_seen[1] = read_scalar(mini, environment.cloud_speed);
+                        break;
                     case 0x14:
                         environment.name = read_string(bytes, mini.payload, mini.end);
                         break;
@@ -224,6 +231,7 @@ Status parse_environments(const std::span<const std::byte> bytes, const Chunk& c
                     }
                 }
                 environment.has_wind = wind_seen[0] && wind_seen[1];
+                environment.has_cloud_layer = cloud_seen[0] && cloud_seen[1] && !environment.clouds.empty();
                 environment.has_fog = std::ranges::all_of(fog_seen,
                                                           [](const bool value)
                                                           {

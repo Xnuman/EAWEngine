@@ -422,6 +422,10 @@ PixelOutput ps_main(PixelInput input)
     // Blended pipelines mask the pick target, so only opaque and alpha-tested surfaces are pickable.
     PixelOutput output;
     output.color = shade(input);
+    if ((materials[material_index].flags & MATERIAL_CLOUD_SHADOW) != 0u)
+    {
+        output.color.rgb *= cloud_shadow_color(input.world_position);
+    }
     // Fog, never on backgrounds; additive surfaces fade instead of taking the fog's color.
     if ((input.instance_flags & INSTANCE_BACKGROUND) == 0u)
     {
