@@ -180,7 +180,8 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
         }
         // The shield flash: the model's shield mesh around it, grown by the step's scale (about the
         // model's origin), drawn in its rest pose without an entity.
-        const auto hit = found->shield_mesh ? shield_hits_.find(instance.key) : shield_hits_.end();
+        // Only a mesh presentation knows (a stale index would draw an unrelated model).
+        const auto hit = found->shield_mesh && *found->shield_mesh < mesh_names_.size() ? shield_hits_.find(instance.key) : shield_hits_.end();
         if (hit == shield_hits_.end() || seconds < hit->second)
         {
             continue;

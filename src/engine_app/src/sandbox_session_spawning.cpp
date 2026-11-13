@@ -112,6 +112,12 @@ void SandboxSession::poll_packages()
     for (auto& added_look : package.looks)
     {
         added_look.mesh += *added;
+        // The shield flash is a package mesh too (it once kept its package index and flashed
+        // whatever map mesh had that number).
+        if (added_look.shield_mesh)
+        {
+            *added_look.shield_mesh += *added;
+        }
     }
     for (auto& [key, visual] : package.projectile_visuals)
     {
