@@ -25,6 +25,9 @@ PostInput fullscreen_vs(const uint vertex : SV_VertexID)
     return output;
 }
 
+// Backgrounds are drawn at 0.999999 of the far plane (sandbox.hlsl), the clear depth is 1.
+static const float BLOOM_SKY_DEPTH = 0.99999f;
+
 // The part of `color` above the threshold, with a soft knee so bright edges fade in rather than pop
 // (a quadratic ramp over [threshold - knee, threshold + knee], linear above).
 float3 bright_part(const float3 color)
@@ -55,7 +58,17 @@ float4 bloom_extract_ps(PostInput input) : SV_TARGET
         [unroll] for (int x = 0; x < 4; ++x)
         {
             const float2 offset = (float2(x, y) - 1.5f) * texel;
-            const float3 part = bright_part(source.SampleLevel(clamp_sampler, input.uv + offset, 0.0f).rgb);
+            // The sky (backgrounds, pinned at the far plane) is a backdrop, not a light, and fog
+            // dims what lies in it: a pale dome or fog over the threshold would haze the whole
+            // frame (engine choices).
+            const float2 uv = input.uv + offset;
+            const float depth = scene_textures[material_index].Load(int3(uv * float2(width, height), 0)).r;
+            float3 part = 0.0f;
+            if (depth < BLOOM_SKY_DEPTH)
+            {
+                const float4 world = mul(float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, depth, 1.0f), inverse_view_projection);
+                part = bright_part(source.SampleLevel(clamp_sampler, uv, 0.0f).rgb) * (1.0f - fog_amount(world.xyz / world.w));
+            }
             sum += part;
             brightest = max(brightest, part);
         }

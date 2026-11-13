@@ -90,6 +90,9 @@ struct SandboxOptions
     VisualHeatMode heat{VisualHeatMode::legacy};
     // Soft particles (--soft-particles, enhanced).
     bool soft_particles{false};
+    // Sky ambient and sky visibility (--sky-ambient, --sky-visibility; enhanced).
+    bool sky_ambient{false};
+    bool sky_visibility{false};
     // Detail-level selection (--lod) and the mesh-detail setting (--mesh-detail, 0..1).
     VisualLodPolicy lod_policy{VisualLodPolicy::hybrid};
     float mesh_detail{1.0F};

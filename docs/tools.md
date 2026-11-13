@@ -38,6 +38,7 @@ EAWEngine.exe sandbox --game foc --model DATA/ART/MODELS/EI_DARKTROOPER_ONE.ALO
 | `--water <mode>` | The map's water: `legacy` (the surface blended at its material's opacity, the default) or `enhanced` (color and opacity from the depth beneath, soft shores, two normal layers, Fresnel, sun glint; docs/water-research.md). Also in the Graphics panel. |
 | `--heat <mode>` | Heat distortion: `legacy` (the default) or `enhanced` (signed 16-bit accumulation, shift sized in world units, shimmer, foreground rejection, faded edges, TAA reactive weight; docs/heat-research.md). Also in the Graphics panel. |
 | `--soft-particles` | Soft particles (enhanced, off by default): depth-tested particles fade out over 20 world units as the scene behind them comes near, instead of cutting a hard line into the ground. Also in the Graphics panel. |
+| `--sky-ambient`, `--sky-visibility` | Enhanced sky lighting (off by default): the ambient term from the captured sky, and terrain and units losing sky light under slopes and cliffs (docs/sky-research.md). Also in the Graphics panel. |
 | `--fog <mode>` | The map environment's fog: `legacy` (the original's linear fog, the default; `on`), `enhanced` (exponential height fog brightening toward the sun), or `off`. |
 | `--shadows <on\|off>` | Key-light shadows (cascaded shadow maps, on by default). |
 | `--aa <mode>`, `--no-aa` | Anti-aliasing: `fxaa` (an edge pass over the finished frame, the default), `taa` (temporal), `hybrid` (TAA, then the edge pass over its result), or `off` (`--no-aa`). |

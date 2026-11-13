@@ -138,7 +138,8 @@ rendering rows join item 2).
    Reordered by the owner on 2026-11-13: the job system and an entity-component design join M2 as
    general engine systems, and the battle issues the owner found come first where they need no
    rework. In this order:
-   a. Visual fixes: the line across planets (done 2026-11-13: bone billboards), skydomes too bright for the lighting they feed
+   a. Visual fixes: the line across planets (done 2026-11-13: bone billboards), skydomes too bright (done 2026-11-13: bloom
+      ignores the sky and fog, the sky ambient is balanced upward) for the lighting they feed
       (the sky capture, sky ambient, horizon fog), water that tiles visibly.
    b. Bugs that need no rework: walker animation state changes (start from rest, turn, and stop
       play wrongly and slowly); the T4-B's two weapons (missile launcher and laser cannons, with

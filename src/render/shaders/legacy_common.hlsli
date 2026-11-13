@@ -461,10 +461,14 @@ float3 sky_fill(const float3 normal, const float3 legacy_fill)
     {
         return legacy_fill;
     }
-    const float3 average_sky = sky_light[0].rgb * 0.282095f;
-    const float3 average_fill = ambient.rgb + 0.5f * (fill_diffuse[0].rgb + fill_diffuse[1].rgb);
+    // Balanced where most of the scene faces, straight up: upward surfaces keep the legacy fill's
+    // brightness and the sky only reshapes the light on slopes and sides (balancing the average
+    // instead brightened the ground by a tenth under bright domes).
+    const float3 up = float3(0.0f, 0.0f, 1.0f);
+    const float3 upward_sky = sky_irradiance(up);
+    const float3 upward_fill = ambient.rgb + saturate(dot(up, fill_direction[0].xyz)) * fill_diffuse[0].rgb + saturate(dot(up, fill_direction[1].xyz)) * fill_diffuse[1].rgb;
     const float3 luminance = float3(0.2126f, 0.7152f, 0.0722f);
-    const float scale = dot(average_fill, luminance) / max(dot(average_sky, luminance), 1.0e-4f);
+    const float scale = dot(upward_fill, luminance) / max(dot(upward_sky, luminance), 1.0e-4f);
     return lerp(legacy_fill, sky_irradiance(normal) * scale, SKY_AMBIENT_SHARE);
 }
 

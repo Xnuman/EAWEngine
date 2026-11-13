@@ -51,6 +51,9 @@ void test_sandbox_options()
             "heat must be legacy unless --heat enhanced");
     require(!expect_ok(parse({}), "parsing nothing").soft_particles && expect_ok(parse({"--soft-particles"}), "parsing --soft-particles").soft_particles,
             "soft particles must be off unless --soft-particles");
+    require(!expect_ok(parse({}), "parsing nothing").sky_ambient && expect_ok(parse({"--sky-ambient", "--sky-visibility"}), "parsing the sky switches").sky_ambient &&
+                expect_ok(parse({"--sky-visibility"}), "parsing --sky-visibility").sky_visibility,
+            "the sky's enhanced lighting must be off unless switched on");
     require(!parse({"--spawn", "Tank:1@64"}) && !parse({"--spawn", "Tank:1001"}) && !parse({"--spawn", ":3"}) && !parse({"--vsync", "maybe"}) && !parse({"--width", "0"}) && !parse({"--bogus"}) &&
                 !parse({"--map"}) && !parse({"--frame-latency", "3"}),
             "invalid sandbox options must be rejected");

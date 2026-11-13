@@ -97,6 +97,8 @@ void print_sandbox_usage()
               << "  --water <mode>         The map's water: legacy (default) or enhanced\n"
               << "  --heat <mode>          Heat distortion: legacy (default) or enhanced\n"
               << "  --soft-particles       Fade particles where they meet the scene (enhanced)\n"
+              << "  --sky-ambient          Ambient light from the captured sky (enhanced)\n"
+              << "  --sky-visibility       Terrain and units lose sky light under slopes and cliffs (enhanced)\n"
               << "  --lod <off|distance|screen|hybrid> How meshes pick their detail level (default hybrid; off: full detail)\n"
               << "  --mesh-detail <0..1>   Mesh detail setting: 1 keeps detail farthest (default 1)\n"
               << "  --particles <legacy|enhanced> How particle effects are interpreted (default legacy, as the original)\n"
@@ -439,6 +441,14 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         else if (argument == "--soft-particles")
         {
             options.soft_particles = true;
+        }
+        else if (argument == "--sky-ambient")
+        {
+            options.sky_ambient = true;
+        }
+        else if (argument == "--sky-visibility")
+        {
+            options.sky_visibility = true;
         }
         else if (argument == "--heat")
         {

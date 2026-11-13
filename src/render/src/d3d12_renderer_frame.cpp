@@ -1427,7 +1427,7 @@ bool D3d12Renderer::Impl::render()
             command_list->DrawInstanced(3, 1, 0, 0);
             ++draw_calls;
         };
-        frame_graph.add_pass("bloom extract", {{scene, GraphAccess::shader_read}, {bloom_a, GraphAccess::render_target}},
+        frame_graph.add_pass("bloom extract", {{scene, GraphAccess::shader_read}, {depth, GraphAccess::shader_read}, {bloom_a, GraphAccess::render_target}},
                              [&, pass]
                              {
                                  command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -1438,7 +1438,8 @@ bool D3d12Renderer::Impl::render()
                                  const D3D12_RECT bloom_scissor{0, 0, static_cast<LONG>(bloom_width), static_cast<LONG>(bloom_height)};
                                  command_list->RSSetViewports(1, &bloom_viewport);
                                  command_list->RSSetScissorRects(1, &bloom_scissor);
-                                 pass(bloom_extract_pipeline.Get(), post_rtv(1), post_slots[0], 0U);
+                                 // The depth tells the sky apart.
+                                 pass(bloom_extract_pipeline.Get(), post_rtv(1), post_slots[0], depth_slot);
                              });
         for (int round = 0; round < 2; ++round)
         {
