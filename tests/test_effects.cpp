@@ -8,6 +8,7 @@
 #include "battle/battle_log.hpp"
 #include "presentation/attached_effects.hpp"
 #include "presentation/battle_effects.hpp"
+#include "presentation/debris.hpp"
 #include "presentation/map_weather.hpp"
 #include "presentation/particle_effects.hpp"
 #include "presentation/projectile_visuals.hpp"
@@ -947,6 +948,32 @@ void test_weather()
             "a lightning flash must brighten the lights, and no flash leave them");
 }
 
+// Debris: a piece breaks off a unit turned a quarter left, drifts along the unit's own axes (its
+// +X is the world's +Y), is drawn without an entity, and explodes when its life ends.
+void test_debris()
+{
+    eaw::DebrisTable types;
+    types[42] = {.mesh = 3, .velocity = {10.0F, 0.0F, 0.0F}, .spin = {}, .min_seconds = 2.0F, .max_seconds = 2.0F, .trail_effect = 0, .death_effect = 77};
+    eaw::BattleDebris debris;
+    debris.add_types(types);
+    eaw::ParticleWorld particles;
+    const eaw::ParticleEffectObjectTable none;
+    auto unit = eaw::Matrix4::identity();
+    unit.values = {0.0F, 1.0F, 0.0F, 0.0F, -1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 100.0F, 0.0F, 0.0F, 1.0F};
+    debris.break_off(42, unit, {100.0F, 5.0F, 0.0F}, particles, none, 1);
+    debris.break_off(7, unit, {}, particles, none, 2);
+    std::vector<eaw::BattleDebris::Ended> ended;
+    debris.update(1.0F, particles, ended);
+    std::vector<eaw::VisualInstance> instances;
+    std::vector<eaw::EntityId> entities;
+    debris.append(instances, entities);
+    require(debris.size() == 1 && instances.size() == 1 && instances[0].mesh == 3U && !entities[0].valid() && std::fabs(instances[0].transform.values[13] - 10.0F) < 1.0e-4F &&
+                std::fabs(instances[0].transform.values[12] - 100.0F) < 1.0e-4F && ended.empty(),
+            "a known piece must break off and drift along its unit's axes, an unknown one not at all");
+    debris.update(1.5F, particles, ended);
+    require(debris.size() == 0 && ended.size() == 1 && ended[0].effect == 77U && std::fabs(ended[0].position.y - 30.0F) < 1.0e-3F, "a piece whose life ends must explode where it drifted");
+}
+
 const ModuleRegistrar registrar("effects", {
                                                {"test_particle_tracks", &test_particle_tracks},
                                                {"test_particle_world", &test_particle_world},
@@ -960,6 +987,7 @@ const ModuleRegistrar registrar("effects", {
                                                {"test_footprints", &test_footprints},
                                                {"test_trails", &test_trails},
                                                {"test_weather", &test_weather},
+                                               {"test_debris", &test_debris},
                                            });
 
 } // namespace

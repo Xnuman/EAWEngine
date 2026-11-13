@@ -15,6 +15,7 @@ set(EAW_SCENE_SOURCES
     ${SOURCES_DIR}/scene_materials.cpp
     ${SOURCES_DIR}/scene_models.cpp
     ${SOURCES_DIR}/scene_particles.cpp
+    ${SOURCES_DIR}/scene_debris.cpp
     ${SOURCES_DIR}/scene_projectiles.cpp
     ${SOURCES_DIR}/scene_terrain.cpp
     ${SOURCES_DIR}/type_looks.cpp

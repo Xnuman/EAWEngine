@@ -13,6 +13,7 @@
 #include "assets/terrain_decals.hpp"
 #include "simulation/simulation.hpp"
 #include "presentation/attached_effects.hpp"
+#include "presentation/debris.hpp"
 #include "presentation/particle_effects.hpp"
 #include "presentation/projectile_visuals.hpp"
 #include "presentation/unit_animation.hpp"
@@ -63,6 +64,8 @@ struct BattleEffectContent
     std::shared_ptr<const FootprintSource> footprints;
     // The trails its unit types lay on land, or null.
     const TrackLayerTable* tracks{};
+    // The debris its destroyed hardpoints break off, or null.
+    const DebrisTable* debris{};
 };
 
 class BattleEffects
@@ -98,6 +101,15 @@ public:
     // On land, an object with a scorch mark leaves it on the ground below when it plays near enough to
     // the ground (an explosion high in the air leaves none).
     void play_object(std::uint32_t key, const Vector3& position);
+
+    // Breaks a debris piece of `type` off a unit drawn at `transform`, at its hardpoint at `pivot`
+    // (BattleDebris); unknown types are ignored.
+    void break_off(std::uint32_t type, const Matrix4& transform, const Vector3& pivot);
+    // Appends the debris pieces as drawn instances without entities.
+    void append_debris(std::vector<VisualInstance>& instances, std::vector<EntityId>& entities) const
+    {
+        debris_.append(instances, entities);
+    }
 
     // Lays the footprints of the surface events this frame's `cues` passed (UnitAnimator::cues), at
     // the event's bone when the animator finds it (else the unit), turned with the unit.
@@ -153,6 +165,8 @@ public:
 private:
     ParticleWorld particles_;
     AttachedEffects attached_;
+    BattleDebris debris_;
+    std::vector<BattleDebris::Ended> ended_debris_;
     // Model projectiles' proxies, keyed by shot serial (apart from units, so keys never collide).
     AttachedEffects projectile_attached_;
     std::vector<EntityId> projectile_keys_;

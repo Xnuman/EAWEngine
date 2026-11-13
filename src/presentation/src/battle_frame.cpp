@@ -38,6 +38,7 @@ void present_tick(const BattleRuntime& runtime, BattlePresenters& presenters, co
             if (const auto bones = presenters.presentation.hardpoint_bones(*owner, fallen.hardpoint))
             {
                 presenters.animator->destroy_hardpoint(fallen.entity, bones->mesh, bones->bones);
+                presenters.effects.break_off(bones->bones.breakoff, bones->transform, fallen.position);
             }
         }
     }
@@ -62,6 +63,9 @@ void build_battle_frame(const BattleRuntime& runtime, const SimSnapshot& previou
     const auto decorations = presenters.presentation.decoration_snapshots();
     entities.insert(entities.end(), decorations.begin(), decorations.end());
     presenters.presentation.build(entities, selected, frame.instances, frame.entities, &frame.animations, world_seconds);
+    // Debris pieces, drawn without entities and at rest pose.
+    frame.entities.resize(frame.instances.size());
+    presenters.effects.append_debris(frame.instances, frame.entities);
     // Model projectiles follow the entities, without an entity (never picked) and at rest pose.
     const auto first_projectile = frame.instances.size();
     frame.projectile_serials.clear();

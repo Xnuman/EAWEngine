@@ -32,6 +32,7 @@ BattleEffects::BattleEffects(const ParticleDrawOrder draw_order)
 
 void BattleEffects::reset(const BattleEffectContent& content)
 {
+    debris_.clear(particles_);
     attached_.clear(particles_);
     projectile_attached_.clear(particles_);
     projectile_effects_.clear();
@@ -58,6 +59,10 @@ void BattleEffects::add(const BattleEffectContent& content)
 
 void BattleEffects::take(const BattleEffectContent& content)
 {
+    if (content.debris != nullptr)
+    {
+        debris_.add_types(*content.debris);
+    }
     if (content.projectile_visuals != nullptr)
     {
         projectile_visuals_.insert(content.projectile_visuals->begin(), content.projectile_visuals->end());
@@ -168,8 +173,20 @@ void BattleEffects::follow_projectiles(const std::span<const VisualInstance> ins
     }
 }
 
+void BattleEffects::break_off(const std::uint32_t type, const Matrix4& transform, const Vector3& pivot)
+{
+    debris_.break_off(type, transform, pivot, particles_, effect_objects_, seed_++);
+}
+
 void BattleEffects::update(const float seconds)
 {
+    // Debris drifts; a piece whose life ends explodes.
+    ended_debris_.clear();
+    debris_.update(seconds, particles_, ended_debris_);
+    for (const auto& ended : ended_debris_)
+    {
+        play_object(ended.effect, ended.position);
+    }
     // Marks age; faded ones go.
     for (auto& mark : decals_)
     {

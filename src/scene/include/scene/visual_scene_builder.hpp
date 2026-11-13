@@ -9,6 +9,7 @@
 #include "battle/battle_map.hpp"
 #include "battle/object_types.hpp"
 #include "presentation/battle_effects.hpp"
+#include "presentation/debris.hpp"
 #include "presentation/entity_look.hpp"
 #include "presentation/map_weather.hpp"
 #include "presentation/particle_effects.hpp"
@@ -87,6 +88,8 @@ struct VisualMapAsset
     std::shared_ptr<const WeatherSource> weather;
     // The Particle objects shot impacts and deaths name, as in SpawnablePackage.
     ParticleEffectObjectTable effect_objects;
+    // The debris destroyed hardpoints break off.
+    DebrisTable debris;
 };
 
 // Builders read through `reader` (pass a RecordingAssetReader to collect the scene's file
@@ -137,6 +140,7 @@ struct SpawnablePackage
     // The XML Particle objects the types' shot impacts and deaths name (effects index
     // particle_textures).
     ParticleEffectObjectTable effect_objects;
+    DebrisTable debris;
 };
 // Builds a type for a land or space map through the same cached XML catalog, movement classes, and
 // combat data as build_visual_map (an error when the type has no model for that context).

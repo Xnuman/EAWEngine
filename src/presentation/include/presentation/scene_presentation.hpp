@@ -103,6 +103,8 @@ public:
     {
         std::uint32_t mesh{};
         HardpointLook bones;
+        // Where the entity is drawn (its instance transform, without flight bank).
+        Matrix4 transform{Matrix4::identity()};
     };
     [[nodiscard]] std::optional<HardpointBones> hardpoint_bones(const EntitySnapshot& entity, std::uint32_t hardpoint) const;
 

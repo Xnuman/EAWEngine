@@ -56,6 +56,8 @@ struct HardpointLook
     std::int32_t decal_bone{-1};
     std::int32_t attachment_bone{-1};
     std::int32_t damage_bone{-1};
+    // The debris it breaks off (DebrisTable key), or 0.
+    std::uint32_t breakoff{};
 };
 
 struct MapEntityLook

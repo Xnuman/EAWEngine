@@ -52,6 +52,9 @@ struct HardpointProfile
     // Presentation only: the bone its XML Model_To_Attach model hangs on (Attachment_Bone; the
     // attached model goes with the hardpoint), or -1 without an attached model.
     std::int32_t attachment_bone{-1};
+    // Presentation only: the prop it breaks off when destroyed (CRC-32 of XML Death_Breakoff_Prop),
+    // or 0.
+    std::uint32_t breakoff_prop{};
     // Presentation only: the sound of its destruction (CRC-32 of its XML Death_Explosion_SFXEvent,
     // as game_object_name_crc), or 0.
     std::uint32_t death_sound{};

@@ -45,7 +45,7 @@ std::vector<HardpointLook> hardpoint_looks(const CombatProfile& combat)
     looks.reserve(combat.hardpoints.size());
     for (const auto& hardpoint : combat.hardpoints)
     {
-        looks.push_back({hardpoint.decal_bone, hardpoint.attachment_bone, hardpoint.damage_bone});
+        looks.push_back({hardpoint.decal_bone, hardpoint.attachment_bone, hardpoint.damage_bone, hardpoint.breakoff_prop});
     }
     return looks;
 }
@@ -331,6 +331,17 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         }
         load_projectile_visuals(builder, catalog, keys, asset.projectile_visuals, asset.projectile_atlas);
         load_projectile_models(builder, catalog, battle.land, meshes, asset.projectile_visuals);
+        // The debris destroyed hardpoints break off (their models join before the rigs).
+        std::vector<const CombatProfile*> combats;
+        for (const auto& entity : battle.entities)
+        {
+            combats.push_back(&entity.spawn.combat);
+        }
+        for (const auto& type : battle.spawnable)
+        {
+            combats.push_back(&type.combat);
+        }
+        load_debris_types(builder, catalog, combats, battle.land, meshes, asset.debris);
     }
     build_map_rigs(builder, asset.rigs, asset.rest_palette);
     if (options.textures)
@@ -341,6 +352,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         }
         std::vector<std::uint32_t> keys;
         collect_impact_effect_keys(asset.projectile_visuals, keys);
+        collect_debris_effect_keys(asset.debris, keys);
         for (const auto& entity : battle.entities)
         {
             collect_death_effect_keys(entity.spawn.combat, keys);
@@ -471,12 +483,19 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
         }
         load_projectile_visuals(builder, catalog_entry->catalog, keys, package.projectile_visuals, package.projectile_atlas);
         load_projectile_models(builder, catalog_entry->catalog, land, meshes, package.projectile_visuals);
+        std::vector<const CombatProfile*> combats;
+        for (const auto& type : package.types)
+        {
+            combats.push_back(&type.combat);
+        }
+        load_debris_types(builder, catalog_entry->catalog, combats, land, meshes, package.debris);
     }
     build_map_rigs(builder, package.rigs, package.rest_palette);
     if (options.textures)
     {
         std::vector<std::uint32_t> keys;
         collect_impact_effect_keys(package.projectile_visuals, keys);
+        collect_debris_effect_keys(package.debris, keys);
         for (const auto& type : package.types)
         {
             collect_death_effect_keys(type.combat, keys);

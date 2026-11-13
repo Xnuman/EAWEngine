@@ -173,7 +173,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         audio.emplace(vfs, &asset_cache, *audio_device, options.language, visual_map.battle.land);
         animator.emplace(visual_map.rigs, visual_map.rest_palette);
         effects.reset({visual_map.rigs, &visual_map.projectile_visuals, placed_atlas(visual_map.projectile_atlas, placed), &visual_map.effect_objects, placed_atlas(visual_map.decal_atlas, placed),
-                       visual_map.footprints, &placed_tracks(visual_map.track_layers, placed)});
+                       visual_map.footprints, &placed_tracks(visual_map.track_layers, placed), &visual_map.debris});
         shown_effects = visual_map.effects;
         // The weather's effect, pointed at the renderer's textures like the others.
         auto weather_source = visual_map.weather;
@@ -229,6 +229,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
             }
             std::cout << "Projectile looks: " << bolts << " bolts, " << models << " models, " << particle_models << " particle systems, "
                       << effects.projectile_visuals().size() - bolts - models - particle_models << " not drawn\n";
+            std::cout << "Debris types (hardpoint breakoff props): " << visual_map.debris.size() << '\n';
         }
         spawnable = visual_map.battle.spawnable;
         terrain_heights = visual_map.battle.ground;

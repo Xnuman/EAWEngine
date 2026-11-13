@@ -278,7 +278,8 @@ std::optional<ScenePresentation::HardpointBones> ScenePresentation::hardpoint_bo
     {
         return std::nullopt;
     }
-    return HardpointBones{found->instance.mesh, found->hardpoints[hardpoint]};
+    return HardpointBones{found->instance.mesh, found->hardpoints[hardpoint],
+                          pose_transform(found->instance.transform, found->base_heading, entity.position, entity.heading, entity.pitch, entity.roll)};
 }
 
 std::optional<ScenePresentation::Corpse> ScenePresentation::corpse_instance(const DeathSnapshot& death)

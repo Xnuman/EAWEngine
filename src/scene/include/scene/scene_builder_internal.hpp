@@ -143,6 +143,11 @@ void load_projectile_visuals(SceneBuilder& builder, const GameObjectCatalog& cat
 // scene once per model (`meshes` deduplicates, as for types), or the particle system it names, and
 // their Scale_Factor. Call before the rigs are built, so model proxies (trails) get attachments.
 void load_projectile_models(SceneBuilder& builder, const GameObjectCatalog& catalog, bool land, std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes, ProjectileVisualTable& table);
+// scene_debris.cpp: the debris props `combats`' hardpoints break off (Death_Breakoff_Prop), their
+// models joining the scene's meshes by `meshes`, and the Particle objects they play.
+void load_debris_types(SceneBuilder& builder, const GameObjectCatalog& catalog, std::span<const CombatProfile* const> combats, bool land,
+                       std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes, DebrisTable& table);
+void collect_debris_effect_keys(const DebrisTable& table, std::vector<std::uint32_t>& keys);
 // Resolves XML Particle objects (by name CRC) to the effect their land or space model names and their
 // Scale_Factor; undefined objects and unloadable effects stay in the table with no effect.
 // On land, an object's scorch mark is resolved through `database`'s SurfaceFX and TerrainDecalFX, and

@@ -126,6 +126,10 @@ void SandboxSession::poll_packages()
             *visual.mesh += *added;
         }
     }
+    for (auto& [key, piece] : package.debris)
+    {
+        piece.mesh += *added;
+    }
     presentation->add_meshes(meshes);
     presentation->add_spawnable(package.looks);
     {
@@ -136,7 +140,8 @@ void SandboxSession::poll_packages()
                      &package.effect_objects,
                      placed_atlas(package.decal_atlas, placed),
                      {},
-                     &placed_tracks(package.track_layers, placed)});
+                     &placed_tracks(package.track_layers, placed),
+                     &package.debris});
     }
     animator->add_rigs(package.rigs, package.rest_palette);
     (void)runtime->battle().add_spawnable(package.types);

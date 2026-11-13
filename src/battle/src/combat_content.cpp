@@ -694,6 +694,10 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         {
             part.attachment_bone = static_cast<std::int32_t>(attachment->index);
         }
+        if (const auto prop = bone_name("Death_Breakoff_Prop"); !prop.empty())
+        {
+            part.breakoff_prop = game_object_name_crc(prop);
+        }
         part.death_sound = sound_of(point, "Death_Explosion_SFXEvent", 0U);
         if (const auto* explosions = point.node("Death_Explosion_Particles"))
         {
