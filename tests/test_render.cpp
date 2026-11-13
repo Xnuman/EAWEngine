@@ -1,5 +1,6 @@
 #include "test_support.hpp"
 
+#include "render/frame_graph.hpp"
 #include "render/lod_selection.hpp"
 
 #include <cmath>
@@ -125,7 +126,51 @@ void test_lod_tracking()
     require(tracker.size() == 0, "a key not seen in a pass must be forgotten");
 }
 
+// The frame graph: passes run in order, each after the transitions its uses need (from the state
+// after the last use, or the initial one), batched per pass; resources return to their final
+// states after the last pass; an unchanged access needs no transition.
+void test_frame_graph()
+{
+    eaw::FrameGraph graph;
+    const auto back = graph.import_resource("back buffer", eaw::GraphAccess::present, eaw::GraphAccess::present);
+    const auto scene = graph.import_resource("scene", eaw::GraphAccess::render_target, eaw::GraphAccess::render_target);
+    const auto bloom = graph.import_resource("bloom", eaw::GraphAccess::render_target, eaw::GraphAccess::render_target);
+    std::vector<std::string> log;
+    const auto record = [&](const char* name)
+    {
+        return [&log, name]
+        {
+            log.emplace_back(name);
+        };
+    };
+    graph.add_pass("draw", {{scene, eaw::GraphAccess::render_target}}, record("draw"));
+    graph.add_pass("extract", {{scene, eaw::GraphAccess::shader_read}, {bloom, eaw::GraphAccess::render_target}}, record("extract"));
+    graph.add_pass("composite", {{scene, eaw::GraphAccess::shader_read}, {bloom, eaw::GraphAccess::shader_read}, {back, eaw::GraphAccess::render_target}}, record("composite"));
+    graph.add_pass("capture", {{back, eaw::GraphAccess::copy_source}}, record("capture"));
+    const auto transition = [&](const eaw::GraphTransition& value)
+    {
+        return graph.resource_name(value.resource) + ": " + eaw::to_string(value.before) + " -> " + eaw::to_string(value.after);
+    };
+    graph.execute(
+        [&](const std::span<const eaw::GraphTransition> batch)
+        {
+            std::string line;
+            for (const auto& value : batch)
+            {
+                line += (line.empty() ? "" : ", ") + transition(value);
+            }
+            log.push_back(line);
+        });
+    const std::vector<std::string> expected{
+        "draw",      "scene: render target -> shader read",       "extract", "bloom: render target -> shader read, back buffer: present -> render target",
+        "composite", "back buffer: render target -> copy source", "capture", "back buffer: copy source -> present, scene: shader read -> render target, bloom: shader read -> render target"};
+    require(log == expected, "the frame graph must place each pass's transitions before it and return resources to their final states");
+    graph.clear();
+    require(graph.pass_count() == 0, "a cleared graph must have no passes");
+}
+
 const ModuleRegistrar registrar("render", {
+                                              {"test_frame_graph", &test_frame_graph},
                                               {"test_gpu_resource_lifetime", &test_gpu_resource_lifetime},
                                               {"test_lod_selection", &test_lod_selection},
                                               {"test_lod_tracking", &test_lod_tracking},

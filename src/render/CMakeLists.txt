@@ -35,11 +35,13 @@ target_link_libraries(eaw_render_contract INTERFACE eaw_math)
 add_library(eaw_render_core STATIC)
 
 set(EAW_RENDER_CORE_HEADERS
+    ${HEADERS_DIR}/frame_graph.hpp
     ${HEADERS_DIR}/gpu_resource_lifetime.hpp
     ${HEADERS_DIR}/lod_selection.hpp
 )
 
 set(EAW_RENDER_CORE_SOURCES
+    ${SOURCES_DIR}/frame_graph.cpp
     ${SOURCES_DIR}/lod_selection.cpp
 )
 

@@ -131,7 +131,13 @@ rendering rows join item 2).
    (owner's request, 2026-11-11): a LOD cross-fade driven by the selection's position within a
    border band around each level boundary instead of by time, so the blend follows the camera and
    holds while it stands still; compare it with the current timed fade (`VisualLodTracker`).
-4. A thin rendering hardware interface extracted from the Direct3D 12 backend, then Vulkan.
+4. A thin rendering hardware interface extracted from the Direct3D 12 backend, then Vulkan. Done
+   toward it (2026-11-13): the contract split by subject, `eaw_render_core` (detail levels,
+   resource lifetime, the frame graph's barrier planning, no graphics API), and the frame graph in
+   the D3D12 backend. With it: generation-checked mesh and texture handles in the contract (the
+   handle types exist in `gpu_resource_lifetime`; deferred by the owner until a second backend or
+   a stale-index bug needs them), and transient targets with memory aliasing once shadows or HDR
+   add passes.
 5. The physically based material path, with a documented conversion from the legacy profiles, once
    legacy mode is stable (also an engine extension for new content).
 

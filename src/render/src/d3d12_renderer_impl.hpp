@@ -8,6 +8,7 @@
 #include "d3d12_support.hpp"
 
 #include "render/d3d12_renderer.hpp"
+#include "render/frame_graph.hpp"
 #include "render/lod_selection.hpp"
 
 #include <optional>
@@ -400,6 +401,11 @@ struct D3d12Renderer::Impl
     // resource pointers: retire_uploaded drops a retired resource's transition, so a signal between
     // the upload and that render (a resize flush, wait_idle) cannot free a resource a barrier names.
     std::vector<D3D12_RESOURCE_BARRIER> pending_transitions;
+    // The frame's passes, rebuilt each frame (storage kept): the graph, its resources by graph id,
+    // and the barriers of one batch.
+    FrameGraph frame_graph;
+    std::vector<ID3D12Resource*> graph_resources;
+    std::vector<D3D12_RESOURCE_BARRIER> graph_barriers;
 
     // Construction only records the parameters; initialize() creates the device and resources.
     Impl(void* native_window, const std::uint32_t initial_width, const std::uint32_t initial_height, const D3d12RendererOptions& renderer_options);

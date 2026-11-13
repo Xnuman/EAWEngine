@@ -3,6 +3,27 @@
 #include "d3d12_renderer_impl.hpp"
 
 namespace eaw {
+namespace {
+
+D3D12_RESOURCE_STATES d3d12_state(const GraphAccess access) noexcept
+{
+    switch (access)
+    {
+    case GraphAccess::render_target:
+        return D3D12_RESOURCE_STATE_RENDER_TARGET;
+    case GraphAccess::depth_write:
+        return D3D12_RESOURCE_STATE_DEPTH_WRITE;
+    case GraphAccess::shader_read:
+        return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    case GraphAccess::copy_source:
+        return D3D12_RESOURCE_STATE_COPY_SOURCE;
+    case GraphAccess::present:
+        return D3D12_RESOURCE_STATE_PRESENT;
+    }
+    return D3D12_RESOURCE_STATE_COMMON;
+}
+
+} // namespace
 
 void D3d12Renderer::Impl::collect_pick(FrameContext& frame)
 {
@@ -96,8 +117,7 @@ void D3d12Renderer::Impl::record_capture(FrameContext& frame)
     check_device_hresult(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &buffer, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&frame.capture_readback)), device,
                          "CreateCommittedResource(capture readback)");
     set_name(frame.capture_readback.Get(), L"EAWEngine frame capture readback");
-    auto to_copy = transition_barrier(frame.back_buffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
-    command_list->ResourceBarrier(1, &to_copy);
+    // The back buffer is in COPY_SOURCE (the frame graph's capture pass).
     D3D12_TEXTURE_COPY_LOCATION source{};
     source.pResource = frame.back_buffer.Get();
     source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
@@ -106,8 +126,6 @@ void D3d12Renderer::Impl::record_capture(FrameContext& frame)
     destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
     destination.PlacedFootprint = footprint;
     command_list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
-    auto to_target = transition_barrier(frame.back_buffer.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    command_list->ResourceBarrier(1, &to_target);
     frame.capture = FrameContext::CaptureCopy{static_cast<std::uint32_t>(description.Width), description.Height, footprint.Footprint.RowPitch, total_bytes};
 }
 
@@ -530,9 +548,6 @@ bool D3d12Renderer::Impl::render()
         pending_transitions.clear();
     }
 
-    auto to_render_target = transition_barrier(frame.back_buffer.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    command_list->ResourceBarrier(1, &to_render_target);
-
     D3D12_VIEWPORT viewport{};
     viewport.Width = static_cast<float>(width);
     viewport.Height = static_cast<float>(height);
@@ -547,133 +562,148 @@ bool D3d12Renderer::Impl::render()
     // With bloom the scene renders into its own target, and the composite fills the back buffer.
     const bool bloom = options.bloom;
     const auto scene_target = bloom ? post_rtv(0) : render_target;
-    const std::array targets{scene_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};
-    command_list->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), FALSE, &depth_target);
-    constexpr std::array clear_color{0.018F, 0.031F, 0.043F, 1.0F};
-    constexpr std::array clear_pick{0.0F, 0.0F, 0.0F, 0.0F};
-    command_list->ClearRenderTargetView(scene_target, clear_color.data(), 0, nullptr);
-    command_list->ClearRenderTargetView(targets[1], clear_pick.data(), 0, nullptr);
-    command_list->ClearDepthStencilView(depth_target, D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
 
-    ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
-    command_list->SetDescriptorHeaps(1, descriptor_heaps);
-    command_list->SetGraphicsRootSignature(root_signature.Get());
-    // Root parameters (legacy_common.hlsli): 0 frame CBV, 1 texture table, 2 bones, 3 instances,
-    // 4 materials, 5 draw constants (first instance, material), 6 texture residency.
-    command_list->SetGraphicsRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
-    command_list->SetGraphicsRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
-    command_list->SetGraphicsRootShaderResourceView(2, frame.bone_buffer->GetGPUVirtualAddress());
-    command_list->SetGraphicsRootShaderResourceView(3, (dynamic ? frame.instance_buffer : scene_loaded ? scene_instance_buffer : identity_instance_buffer)->GetGPUVirtualAddress());
-    command_list->SetGraphicsRootShaderResourceView(4, (scene_loaded ? scene_material_buffer : identity_material_buffer)->GetGPUVirtualAddress());
-    command_list->SetGraphicsRootShaderResourceView(6, frame.residency_buffer->GetGPUVirtualAddress());
-    command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    // The frame's passes and how each uses its resources (render/frame_graph.hpp); the graph places
+    // the barriers. The depth buffer stays in DEPTH_WRITE throughout and is not tracked.
+    frame_graph.clear();
+    graph_resources.clear();
+    const auto import_resource = [&](ID3D12Resource* resource, const char* name, const GraphAccess initial, const GraphAccess final)
+    {
+        graph_resources.push_back(resource);
+        return frame_graph.import_resource(name, initial, final);
+    };
+    const auto back_buffer = import_resource(frame.back_buffer.Get(), "back buffer", GraphAccess::present, GraphAccess::present);
+    const auto pick = import_resource(pick_target.Get(), "pick target", GraphAccess::render_target, GraphAccess::render_target);
+    const auto scene = bloom ? import_resource(scene_color.Get(), "scene color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
 
-    if (!scene_loaded)
-    {
-        command_list->SetPipelineState(opaque_pipeline.Get());
-        const std::array<std::uint32_t, 2> draw_constants{0U, 0U};
-        command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
-        command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view);
-        command_list->DrawInstanced(3, 1, 0, 0);
-        ++draw_calls;
-        ++triangles;
-        ++instances_drawn;
-    }
-    else
-    {
-        bool terrain_drawn = terrain_vertex_count == 0;
-        const auto draw_terrain = [&]
+    frame_graph.add_pass(
+        "scene", {{scene, GraphAccess::render_target}, {pick, GraphAccess::render_target}},
+        [&]
         {
-            command_list->SetPipelineState(terrain_pipeline.Get());
-            const std::array<std::uint32_t, 2> terrain_constants{0U, terrain_first_material};
-            command_list->SetGraphicsRoot32BitConstants(5, 2, terrain_constants.data(), 0);
-            command_list->IASetVertexBuffers(0, 1, &terrain_vertex_view);
-            command_list->DrawInstanced(terrain_vertex_count, 1, 0, 0);
-            ++draw_calls;
-            triangles += terrain_vertex_count / 3U;
-            terrain_drawn = true;
-        };
-        // Geometry blocks: 0 is the scene's, others came from add_meshes.
-        std::uint32_t bound_block = 0;
-        const auto bind_block = [&](const std::uint32_t block)
-        {
-            const auto& vertex_view = block == 0 ? scene_vertex_view : added_blocks[block - 1U].vertex_view;
-            const auto& index_view = block == 0 ? scene_index_view : added_blocks[block - 1U].index_view;
-            command_list->IASetVertexBuffers(0, 1, &vertex_view);
-            command_list->IASetIndexBuffer(&index_view);
-            bound_block = block;
-        };
-        bind_block(0);
-        for (const auto& draw : dynamic ? dynamic_draws : scene_draws)
-        {
-            if (!terrain_drawn && !draw.background)
-            {
-                draw_terrain();
-                bind_block(bound_block);
-            }
-            if (draw.block != bound_block)
-            {
-                bind_block(draw.block);
-            }
-            ID3D12PipelineState* pipeline = draw.background ? background_opaque_pipeline.Get() : opaque_pipeline.Get();
-            if (draw.blend == VisualBlendMode::alpha_blend)
-            {
-                pipeline = draw.background ? background_alpha_pipeline.Get() : alpha_pipeline.Get();
-            }
-            else if (draw.blend == VisualBlendMode::additive)
-            {
-                pipeline = draw.background ? background_additive_pipeline.Get() : additive_pipeline.Get();
-            }
-            command_list->SetPipelineState(pipeline);
-            const std::array<std::uint32_t, 2> draw_constants{draw.first_instance, draw.material};
-            command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
-            command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
-            ++draw_calls;
-            triangles += static_cast<std::uint64_t>(draw.geometry.index_count / 3U) * draw.instance_count;
-            instances_drawn += draw.instance_count;
-        }
-        if (!terrain_drawn)
-        {
-            draw_terrain();
-        }
-    }
+            const std::array targets{scene_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};
+            command_list->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), FALSE, &depth_target);
+            constexpr std::array clear_color{0.018F, 0.031F, 0.043F, 1.0F};
+            constexpr std::array clear_pick{0.0F, 0.0F, 0.0F, 0.0F};
+            command_list->ClearRenderTargetView(scene_target, clear_color.data(), 0, nullptr);
+            command_list->ClearRenderTargetView(targets[1], clear_pick.data(), 0, nullptr);
+            command_list->ClearDepthStencilView(depth_target, D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
 
-    // Particles: runs of one blend and depth mode, in the given (back-to-front) order.
-    if (!gpu_particles.empty())
-    {
-        command_list->SetGraphicsRootShaderResourceView(3, frame.particle_buffer->GetGPUVirtualAddress());
-        std::size_t run_start = 0;
-        const auto pipeline_of = [&](const VisualParticle& particle)
-        {
-            return particle_pipelines[static_cast<std::size_t>(particle.blend)][particle.depth_test ? 0U : 1U].Get();
-        };
-        for (std::size_t index = 1; index <= particles.size(); ++index)
-        {
-            if (index < particles.size() && pipeline_of(particles[index]) == pipeline_of(particles[run_start]))
+            ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
+            command_list->SetDescriptorHeaps(1, descriptor_heaps);
+            command_list->SetGraphicsRootSignature(root_signature.Get());
+            // Root parameters (legacy_common.hlsli): 0 frame CBV, 1 texture table, 2 bones, 3 instances,
+            // 4 materials, 5 draw constants (first instance, material), 6 texture residency.
+            command_list->SetGraphicsRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
+            command_list->SetGraphicsRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
+            command_list->SetGraphicsRootShaderResourceView(2, frame.bone_buffer->GetGPUVirtualAddress());
+            command_list->SetGraphicsRootShaderResourceView(3, (dynamic ? frame.instance_buffer : scene_loaded ? scene_instance_buffer : identity_instance_buffer)->GetGPUVirtualAddress());
+            command_list->SetGraphicsRootShaderResourceView(4, (scene_loaded ? scene_material_buffer : identity_material_buffer)->GetGPUVirtualAddress());
+            command_list->SetGraphicsRootShaderResourceView(6, frame.residency_buffer->GetGPUVirtualAddress());
+            command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+            if (!scene_loaded)
             {
-                continue;
+                command_list->SetPipelineState(opaque_pipeline.Get());
+                const std::array<std::uint32_t, 2> draw_constants{0U, 0U};
+                command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
+                command_list->IASetVertexBuffers(0, 1, &vertex_buffer_view);
+                command_list->DrawInstanced(3, 1, 0, 0);
+                ++draw_calls;
+                ++triangles;
+                ++instances_drawn;
             }
-            command_list->SetPipelineState(pipeline_of(particles[run_start]));
-            const std::array<std::uint32_t, 2> particle_constants{static_cast<std::uint32_t>(run_start), 0U};
-            command_list->SetGraphicsRoot32BitConstants(5, 2, particle_constants.data(), 0);
-            command_list->DrawInstanced(6, static_cast<UINT>(index - run_start), 0, 0);
-            ++draw_calls;
-            triangles += static_cast<std::uint64_t>(index - run_start) * 2U;
-            run_start = index;
-        }
-    }
-    last_particles = gpu_particles.size();
+            else
+            {
+                bool terrain_drawn = terrain_vertex_count == 0;
+                const auto draw_terrain = [&]
+                {
+                    command_list->SetPipelineState(terrain_pipeline.Get());
+                    const std::array<std::uint32_t, 2> terrain_constants{0U, terrain_first_material};
+                    command_list->SetGraphicsRoot32BitConstants(5, 2, terrain_constants.data(), 0);
+                    command_list->IASetVertexBuffers(0, 1, &terrain_vertex_view);
+                    command_list->DrawInstanced(terrain_vertex_count, 1, 0, 0);
+                    ++draw_calls;
+                    triangles += terrain_vertex_count / 3U;
+                    terrain_drawn = true;
+                };
+                // Geometry blocks: 0 is the scene's, others came from add_meshes.
+                std::uint32_t bound_block = 0;
+                const auto bind_block = [&](const std::uint32_t block)
+                {
+                    const auto& vertex_view = block == 0 ? scene_vertex_view : added_blocks[block - 1U].vertex_view;
+                    const auto& index_view = block == 0 ? scene_index_view : added_blocks[block - 1U].index_view;
+                    command_list->IASetVertexBuffers(0, 1, &vertex_view);
+                    command_list->IASetIndexBuffer(&index_view);
+                    bound_block = block;
+                };
+                bind_block(0);
+                for (const auto& draw : dynamic ? dynamic_draws : scene_draws)
+                {
+                    if (!terrain_drawn && !draw.background)
+                    {
+                        draw_terrain();
+                        bind_block(bound_block);
+                    }
+                    if (draw.block != bound_block)
+                    {
+                        bind_block(draw.block);
+                    }
+                    ID3D12PipelineState* pipeline = draw.background ? background_opaque_pipeline.Get() : opaque_pipeline.Get();
+                    if (draw.blend == VisualBlendMode::alpha_blend)
+                    {
+                        pipeline = draw.background ? background_alpha_pipeline.Get() : alpha_pipeline.Get();
+                    }
+                    else if (draw.blend == VisualBlendMode::additive)
+                    {
+                        pipeline = draw.background ? background_additive_pipeline.Get() : additive_pipeline.Get();
+                    }
+                    command_list->SetPipelineState(pipeline);
+                    const std::array<std::uint32_t, 2> draw_constants{draw.first_instance, draw.material};
+                    command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
+                    command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
+                    ++draw_calls;
+                    triangles += static_cast<std::uint64_t>(draw.geometry.index_count / 3U) * draw.instance_count;
+                    instances_drawn += draw.instance_count;
+                }
+                if (!terrain_drawn)
+                {
+                    draw_terrain();
+                }
+            }
+
+            // Particles: runs of one blend and depth mode, in the given (back-to-front) order.
+            if (!gpu_particles.empty())
+            {
+                command_list->SetGraphicsRootShaderResourceView(3, frame.particle_buffer->GetGPUVirtualAddress());
+                std::size_t run_start = 0;
+                const auto pipeline_of = [&](const VisualParticle& particle)
+                {
+                    return particle_pipelines[static_cast<std::size_t>(particle.blend)][particle.depth_test ? 0U : 1U].Get();
+                };
+                for (std::size_t index = 1; index <= particles.size(); ++index)
+                {
+                    if (index < particles.size() && pipeline_of(particles[index]) == pipeline_of(particles[run_start]))
+                    {
+                        continue;
+                    }
+                    command_list->SetPipelineState(pipeline_of(particles[run_start]));
+                    const std::array<std::uint32_t, 2> particle_constants{static_cast<std::uint32_t>(run_start), 0U};
+                    command_list->SetGraphicsRoot32BitConstants(5, 2, particle_constants.data(), 0);
+                    command_list->DrawInstanced(6, static_cast<UINT>(index - run_start), 0, 0);
+                    ++draw_calls;
+                    triangles += static_cast<std::uint64_t>(index - run_start) * 2U;
+                    run_start = index;
+                }
+            }
+            last_particles = gpu_particles.size();
+        });
 
     if (bloom)
     {
         // Bright pass at reduced size, two horizontal-then-vertical blur rounds ping-ponging between
-        // the bloom targets, then scene plus bloom into the back buffer. Every target returns to
-        // RENDER_TARGET by the end of the frame.
-        const auto barrier = [&](ID3D12Resource* resource, const D3D12_RESOURCE_STATES before, const D3D12_RESOURCE_STATES after)
-        {
-            auto transition = transition_barrier(resource, before, after);
-            command_list->ResourceBarrier(1, &transition);
-        };
+        // the bloom targets, then scene plus bloom into the back buffer.
+        const auto bloom_a = import_resource(bloom_targets[0].Get(), "bloom A", GraphAccess::render_target, GraphAccess::render_target);
+        const auto bloom_b = import_resource(bloom_targets[1].Get(), "bloom B", GraphAccess::render_target, GraphAccess::render_target);
         const auto pass = [&](ID3D12PipelineState* pipeline, const D3D12_CPU_DESCRIPTOR_HANDLE target, const std::uint32_t source_slot, const std::uint32_t parameter)
         {
             command_list->OMSetRenderTargets(1, &target, FALSE, nullptr);
@@ -683,91 +713,117 @@ bool D3d12Renderer::Impl::render()
             command_list->DrawInstanced(3, 1, 0, 0);
             ++draw_calls;
         };
-        constexpr auto shader_read = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        constexpr auto target_write = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        D3D12_VIEWPORT bloom_viewport{};
-        bloom_viewport.Width = static_cast<float>(bloom_width);
-        bloom_viewport.Height = static_cast<float>(bloom_height);
-        bloom_viewport.MaxDepth = 1.0F;
-        const D3D12_RECT bloom_scissor{0, 0, static_cast<LONG>(bloom_width), static_cast<LONG>(bloom_height)};
-        command_list->RSSetViewports(1, &bloom_viewport);
-        command_list->RSSetScissorRects(1, &bloom_scissor);
-        barrier(scene_color.Get(), target_write, shader_read);
-        pass(bloom_extract_pipeline.Get(), post_rtv(1), post_slots[0], 0U);
+        frame_graph.add_pass("bloom extract", {{scene, GraphAccess::shader_read}, {bloom_a, GraphAccess::render_target}},
+                             [&, pass]
+                             {
+                                 command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                                 D3D12_VIEWPORT bloom_viewport{};
+                                 bloom_viewport.Width = static_cast<float>(bloom_width);
+                                 bloom_viewport.Height = static_cast<float>(bloom_height);
+                                 bloom_viewport.MaxDepth = 1.0F;
+                                 const D3D12_RECT bloom_scissor{0, 0, static_cast<LONG>(bloom_width), static_cast<LONG>(bloom_height)};
+                                 command_list->RSSetViewports(1, &bloom_viewport);
+                                 command_list->RSSetScissorRects(1, &bloom_scissor);
+                                 pass(bloom_extract_pipeline.Get(), post_rtv(1), post_slots[0], 0U);
+                             });
         for (int round = 0; round < 2; ++round)
         {
-            barrier(bloom_targets[0].Get(), target_write, shader_read);
-            pass(bloom_blur_pipeline.Get(), post_rtv(2), post_slots[1], 0U);
-            barrier(bloom_targets[1].Get(), target_write, shader_read);
-            barrier(bloom_targets[0].Get(), shader_read, target_write);
-            pass(bloom_blur_pipeline.Get(), post_rtv(1), post_slots[2], 1U);
-            barrier(bloom_targets[1].Get(), shader_read, target_write);
+            frame_graph.add_pass("bloom blur across", {{bloom_a, GraphAccess::shader_read}, {bloom_b, GraphAccess::render_target}},
+                                 [&, pass]
+                                 {
+                                     pass(bloom_blur_pipeline.Get(), post_rtv(2), post_slots[1], 0U);
+                                 });
+            frame_graph.add_pass("bloom blur down", {{bloom_b, GraphAccess::shader_read}, {bloom_a, GraphAccess::render_target}},
+                                 [&, pass]
+                                 {
+                                     pass(bloom_blur_pipeline.Get(), post_rtv(1), post_slots[2], 1U);
+                                 });
         }
-        barrier(bloom_targets[0].Get(), target_write, shader_read);
-        command_list->RSSetViewports(1, &viewport);
-        command_list->RSSetScissorRects(1, &scissor);
-        pass(bloom_composite_pipeline.Get(), render_target, post_slots[0], post_slots[1]);
-        barrier(bloom_targets[0].Get(), shader_read, target_write);
-        barrier(scene_color.Get(), shader_read, target_write);
-        // Debug lines and the overlay draw over the composite, with the scene's depth and pick target.
-        const std::array final_targets{render_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};
-        command_list->OMSetRenderTargets(static_cast<UINT>(final_targets.size()), final_targets.data(), FALSE, &depth_target);
+        frame_graph.add_pass("bloom composite", {{scene, GraphAccess::shader_read}, {bloom_a, GraphAccess::shader_read}, {back_buffer, GraphAccess::render_target}},
+                             [&, pass]
+                             {
+                                 command_list->RSSetViewports(1, &viewport);
+                                 command_list->RSSetScissorRects(1, &scissor);
+                                 pass(bloom_composite_pipeline.Get(), render_target, post_slots[0], post_slots[1]);
+                             });
     }
 
     // A requested capture copies the frame as the scene and post-processing left it.
-    record_capture(frame);
+    if (capture_requested)
+    {
+        frame_graph.add_pass("capture", {{back_buffer, GraphAccess::copy_source}},
+                             [&]
+                             {
+                                 record_capture(frame);
+                             });
+    }
 
-    if (debug_line_count != 0)
-    {
-        command_list->SetPipelineState(debug_pipeline.Get());
-        command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
-        D3D12_VERTEX_BUFFER_VIEW debug_view{};
-        debug_view.BufferLocation = frame.debug_vertex_buffer->GetGPUVirtualAddress();
-        debug_view.SizeInBytes = static_cast<UINT>(debug_line_count * 2U * sizeof(DebugVertex));
-        debug_view.StrideInBytes = sizeof(DebugVertex);
-        command_list->IASetVertexBuffers(0, 1, &debug_view);
-        command_list->DrawInstanced(static_cast<UINT>(debug_line_count * 2U), 1, 0, 0);
-        ++draw_calls;
-    }
-    last_draw_calls = draw_calls;
-    last_triangles = triangles;
-    last_instances = instances_drawn;
-    if (draw_overlay)
-    {
-        render_overlay(render_target);
-    }
+    // Debug lines and the overlay draw over the frame, with the scene's depth and pick target.
+    frame_graph.add_pass("debug and overlay", {{back_buffer, GraphAccess::render_target}, {pick, GraphAccess::render_target}},
+                         [&]
+                         {
+                             const std::array final_targets{render_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart()};
+                             command_list->OMSetRenderTargets(static_cast<UINT>(final_targets.size()), final_targets.data(), FALSE, &depth_target);
+                             if (debug_line_count != 0)
+                             {
+                                 command_list->SetPipelineState(debug_pipeline.Get());
+                                 command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+                                 D3D12_VERTEX_BUFFER_VIEW debug_view{};
+                                 debug_view.BufferLocation = frame.debug_vertex_buffer->GetGPUVirtualAddress();
+                                 debug_view.SizeInBytes = static_cast<UINT>(debug_line_count * 2U * sizeof(DebugVertex));
+                                 debug_view.StrideInBytes = sizeof(DebugVertex);
+                                 command_list->IASetVertexBuffers(0, 1, &debug_view);
+                                 command_list->DrawInstanced(static_cast<UINT>(debug_line_count * 2U), 1, 0, 0);
+                                 ++draw_calls;
+                             }
+
+                             if (draw_overlay)
+                             {
+                                 render_overlay(render_target);
+                             }
+                         });
 
     // Requested picks copy one texel each (up to a per-frame limit; the rest wait for the next
     // frame); they are read when this frame's fence completes.
     if (!pending_picks.empty())
     {
-        auto to_copy = transition_barrier(pick_target.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
-        command_list->ResourceBarrier(1, &to_copy);
-        D3D12_TEXTURE_COPY_LOCATION source{};
-        source.pResource = pick_target.Get();
-        source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        while (!pending_picks.empty() && frame.picks.size() < maximum_picks_per_frame)
-        {
-            const auto request = pending_picks.front();
-            pending_picks.pop_front();
-            const auto x = std::min(request.x, width - 1);
-            const auto y = std::min(request.y, height - 1);
-            D3D12_TEXTURE_COPY_LOCATION destination{};
-            destination.pResource = frame.pick_readback.Get();
-            destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-            destination.PlacedFootprint.Offset = frame.picks.size() * D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT;
-            destination.PlacedFootprint.Footprint = {pick_format, 1, 1, 1, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT};
-            const D3D12_BOX texel{x, y, 0, x + 1, y + 1, 1};
-            command_list->CopyTextureRegion(&destination, 0, 0, 0, &source, &texel);
-            frame.picks.push_back({request.id, {x, y}});
-        }
-        auto to_target = transition_barrier(pick_target.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-        command_list->ResourceBarrier(1, &to_target);
+        frame_graph.add_pass("picks", {{pick, GraphAccess::copy_source}},
+                             [&]
+                             {
+                                 D3D12_TEXTURE_COPY_LOCATION source{};
+                                 source.pResource = pick_target.Get();
+                                 source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+                                 while (!pending_picks.empty() && frame.picks.size() < maximum_picks_per_frame)
+                                 {
+                                     const auto request = pending_picks.front();
+                                     pending_picks.pop_front();
+                                     const auto x = std::min(request.x, width - 1);
+                                     const auto y = std::min(request.y, height - 1);
+                                     D3D12_TEXTURE_COPY_LOCATION destination{};
+                                     destination.pResource = frame.pick_readback.Get();
+                                     destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+                                     destination.PlacedFootprint.Offset = frame.picks.size() * D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT;
+                                     destination.PlacedFootprint.Footprint = {pick_format, 1, 1, 1, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT};
+                                     const D3D12_BOX texel{x, y, 0, x + 1, y + 1, 1};
+                                     command_list->CopyTextureRegion(&destination, 0, 0, 0, &source, &texel);
+                                     frame.picks.push_back({request.id, {x, y}});
+                                 }
+                             });
     }
 
-    auto to_present = transition_barrier(frame.back_buffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-    command_list->ResourceBarrier(1, &to_present);
+    frame_graph.execute(
+        [&](const std::span<const GraphTransition> transitions)
+        {
+            graph_barriers.clear();
+            for (const auto& transition : transitions)
+            {
+                graph_barriers.push_back(transition_barrier(graph_resources[transition.resource], d3d12_state(transition.before), d3d12_state(transition.after)));
+            }
+            command_list->ResourceBarrier(static_cast<UINT>(graph_barriers.size()), graph_barriers.data());
+        });
+    last_draw_calls = draw_calls;
+    last_triangles = triangles;
+    last_instances = instances_drawn;
     command_list->EndQuery(timestamp_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, frame_index * 2U + 1U);
     command_list->ResolveQueryData(timestamp_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, frame_index * 2U, 2, frame.timestamp_readback.Get(), 0);
     frame.timestamps_pending = true;
