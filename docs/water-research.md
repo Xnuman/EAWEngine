@@ -55,9 +55,24 @@ rather than an expensive main path.
 7. Units in water: wakes and ripples as particles or decals on the plane (the trail and particle
    systems exist); a richer ripple height field simulated around the camera is common in tutorials,
    with no RTS developer source found. Presentation only, so determinism is untouched.
-8. Screen-space planar reflections only as an enhanced extra for the free camera: Ghost Recon
+8. Screen-space planar reflections, an enhanced extra that matters most for the free camera: Ghost Recon
    Wildlands mirrors depth across the known plane in a compute pass (0.3-0.4 ms at quarter resolution
    on consoles). At 2-6 % Fresnel it is barely visible at RTS pitch.
+
+## The plan (agreed with the owner, 2026-11-13)
+
+Legacy: decode the TED water fields kept raw so far (apparently opacity, tiling, scroll) and replace
+the engine's guesses; match the look against captures of the original. Enhanced, in this order:
+color by depth, refraction from a copy of the opaque scene, shoreline fade and foam (depth and
+slope), two or three scrolling normal layers, sun glint, and reflections. Reflections are
+screen-space, never a second scene render: for the flat water plane, planar screen-space
+reflections (depth mirrored across the known plane in one compute pass, the Ghost Recon Wildlands
+technique) with the sky as the fallback where the screen has nothing; general screen-space
+reflections (a normal and roughness target from the scene pass, a depth pyramid, a half-resolution
+trace denoised by TAA, reading the previous frame's image reprojected by the motion vectors) come
+with the enhanced lighting step, for the physically based materials, and water then uses them.
+Legacy mode has no reflections (no stock material uses the reflective profiles), so they are
+enhanced only. Optional later: caustics under shallow water, wakes from the trail system.
 
 ## With temporal anti-aliasing (forward renderer)
 

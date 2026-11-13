@@ -304,7 +304,13 @@ while Kamino's 7 covers about 60% of the map. Mini 0x1a is an RGB tint, and mini
 map and 0x1e a plain-color fallback; lava and ice store their color texture
 first). Further fields (apparently opacity, tiling, and scroll speed, plus cloud
 texture, scale, and wind) are preserved raw; the engine's water tiling and scroll
-speeds are its own choices until they are measured.
+speeds are its own choices until they are measured. Survey of the 92 water maps
+(`map-audit`, 2026-11-13): 0x17, 0x18, 0x19, and 0x20 are scalars 0..1 whose values fall on
+steps of 1/81 (slider positions, it seems; 0.5 is the untouched value: 0x20 is mostly 0.8-1,
+0x17 varies 0.25-1 most); 0x1b is a second color, white on every map; 0x1f a third texture
+(lava's `w_lava00_bc.tga`, empty on water); 0x21 is 0.001-17 (10 on most maps); 0x22 is 0-0.81
+(0 on most). Their meanings are not established: the editor's labels or captures of the game
+are needed.
 
 Terrain tracks (terrain chunk child 9, chunk 0x100 each; 553 in 31 stock land
 maps) are textured ribbons: rivers, shoreline waves, station lights, beams,

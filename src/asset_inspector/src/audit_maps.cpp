@@ -63,7 +63,7 @@ void add_environment_field(EnvironmentFieldStats& stats, const std::span<const s
 
 void print_environment_fields(const std::string_view label, const std::map<std::uint8_t, EnvironmentFieldStats>& fields)
 {
-    std::cout << "Active environment fields of " << label << " maps:\n";
+    std::cout << label << ":\n";
     for (const auto& [type, stats] : fields)
     {
         std::cout << "  0x" << std::hex << static_cast<unsigned>(type) << std::dec << ": " << stats.count << " x " << (stats.sizes.size() == 1 ? std::to_string(*stats.sizes.begin()) : "mixed")
@@ -300,6 +300,9 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
     std::map<std::uint32_t, std::size_t> active_environments;
     std::map<std::uint8_t, EnvironmentFieldStats> land_fields;
     std::map<std::uint8_t, EnvironmentFieldStats> space_fields;
+    // Terrain-information fields of land maps by liquid type (raw 0x16), to identify the water,
+    // lava, and ice fields not decoded yet.
+    std::map<std::int32_t, std::map<std::uint8_t, EnvironmentFieldStats>> terrain_fields;
     std::vector<std::pair<std::string, std::string>> failures;
     for (const auto& asset : assets)
     {
@@ -341,6 +344,14 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
                 }
             }
         }
+        if (map.type == eaw::TedMapType::land)
+        {
+            auto& fields = terrain_fields[map.water.raw_type];
+            for (const auto& field : map.terrain_info_fields)
+            {
+                add_environment_field(fields[field.type], field.payload);
+            }
+        }
         terrain_layers += map.terrain_layers.size();
         objects += map.object_count;
         positioned_objects += std::ranges::count_if(map.placed_objects,
@@ -374,8 +385,12 @@ void audit_maps(const eaw::VirtualFileSystem& vfs, const std::string_view prefix
         std::cout << ' ' << index << 'x' << count;
     }
     std::cout << '\n';
-    print_environment_fields("land", land_fields);
-    print_environment_fields("space", space_fields);
+    print_environment_fields("Active environment fields of land maps", land_fields);
+    print_environment_fields("Active environment fields of space maps", space_fields);
+    for (const auto& [liquid, fields] : terrain_fields)
+    {
+        print_environment_fields("Terrain-information fields of land maps with liquid type " + std::to_string(liquid), fields);
+    }
     std::cout << "Warnings: " << warnings << '\n' << "Failures: " << failures.size() << '\n';
     for (std::size_t index = 0; index < std::min(limit, failures.size()); ++index)
     {

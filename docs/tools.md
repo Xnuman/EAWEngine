@@ -509,9 +509,11 @@ EAWAssetInspector.exe map-audit Data/Art/Maps --game foc
 how many maps name an environment index outside their environment list, every
 field of the active environments by mini-chunk type for land and space maps
 (count, size, and each 4-byte word's range as a float and as an integer, or a
-few text values: how the fog fields were identified), and
-`inspect` on a TED marks the active environment and both sky-dome names, and
-lists each environment's key and fill lights, specular, and ambient.
+few text values: how the fog fields were identified), the same for the land maps'
+terrain-information fields grouped by liquid type (to identify the water, lava, and ice fields), and
+`inspect` on a TED marks the active environment and both sky-dome names, lists each environment's
+key and fill lights, specular, and ambient, and prints the liquid (type, level, color, textures)
+and every terrain-information field as floats or text.
 
 `map-objects` resolves every placed TED object through its type-name CRC to an
 XML definition, follows `Variant_Of_Existing_Type` inheritance to the
