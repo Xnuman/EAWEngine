@@ -143,7 +143,10 @@ void load_projectile_visuals(SceneBuilder& builder, const GameObjectCatalog& cat
 void load_projectile_models(SceneBuilder& builder, const GameObjectCatalog& catalog, bool land, std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes, ProjectileVisualTable& table);
 // Resolves XML Particle objects (by name CRC) to the effect their land or space model names and their
 // Scale_Factor; undefined objects and unloadable effects stay in the table with no effect.
-void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog, std::span<const std::uint32_t> keys, bool land, ParticleEffectObjectTable& table);
+// On land, an object's scorch mark is resolved through `database`'s SurfaceFX and TerrainDecalFX, and
+// the decal atlas is loaded into builder.particles when any has one (its index in `decal_atlas`).
+void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlAssetDatabase& database, std::span<const std::uint32_t> keys, bool land, ParticleEffectObjectTable& table,
+                         std::uint32_t& decal_atlas);
 
 // Notes the Damage_Particles and Damage_Decal bones of a type's hardpoints for the model at
 // `model_path`.

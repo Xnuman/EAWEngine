@@ -3,6 +3,8 @@
 
 #include "core/string_utils.hpp"
 #include "assets/alo_interpretation.hpp"
+#include "assets/surface_effects.hpp"
+#include "assets/terrain_decals.hpp"
 #include "scene/scene_builder_internal.hpp"
 
 #include <algorithm>
@@ -175,12 +177,22 @@ std::uint32_t particle_library_texture(SceneBuilder& builder, const std::string&
     return index;
 }
 
-void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog, const std::span<const std::uint32_t> keys, const bool land, ParticleEffectObjectTable& table)
+void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlAssetDatabase& database, const std::span<const std::uint32_t> keys, const bool land,
+                         ParticleEffectObjectTable& table, std::uint32_t& decal_atlas)
 {
     if (!builder.textures)
     {
         return;
     }
+    // Scorch marks lie on terrain: only land maps resolve them.
+    std::optional<SurfaceEffectCatalog> surfaces;
+    std::optional<TerrainDecalCatalog> decals;
+    if (land)
+    {
+        surfaces = SurfaceEffectCatalog::build(database);
+        decals = TerrainDecalCatalog::build(database, &builder.scene.warnings);
+    }
+    bool scorched = false;
     for (const auto key : keys)
     {
         if (key == 0 || table.contains(key))
@@ -264,6 +276,20 @@ void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog
                 builder.scene.warnings.push_back(object->name + ": Particle object model " + model + " is a mesh, not a particle system; it plays nothing");
             }
         }
+        if (const auto mark = text("Explosion_Scorch_Mark"); !mark.empty() && surfaces && decals)
+        {
+            const auto* surface = surfaces->find(mark);
+            const auto* decal = surface != nullptr && !surface->decal.empty() ? decals->find(surface->decal) : nullptr;
+            if (decal != nullptr && !decal->cells.empty())
+            {
+                entry.scorch = *decal;
+                scorched = true;
+            }
+            else
+            {
+                builder.scene.warnings.push_back(object->name + ": scorch mark " + mark + " names no usable decal; it leaves none");
+            }
+        }
         if (const auto scale = text("Scale_Factor"); !scale.empty())
         {
             float value{};
@@ -278,6 +304,10 @@ void load_effect_objects(SceneBuilder& builder, const GameObjectCatalog& catalog
             }
         }
         table.emplace(key, std::move(entry));
+    }
+    if (scorched && decal_atlas == invalid_visual_texture)
+    {
+        decal_atlas = particle_library_texture(builder, std::string(decal_atlas_texture), "terrain decals");
     }
 }
 

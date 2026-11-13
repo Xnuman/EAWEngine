@@ -106,6 +106,9 @@ void SandboxSession::step_particles(const std::chrono::steady_clock::time_point 
     // Without a battle there are no shots to place between ticks.
     effects.build_sprites(eye, projectiles, runtime ? runtime->interpolation() : 0.0F, runtime ? static_cast<float>(runtime->tick_seconds()) : 0.0F, frame_particles);
     renderer.set_particles(frame_particles);
+    frame_decals.clear();
+    effects.build_decals(frame_decals);
+    renderer.set_decals(frame_decals);
 }
 
 } // namespace eaw::engine_app

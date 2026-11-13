@@ -314,7 +314,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         {
             keys.push_back(look.death.end_effect);
         }
-        load_effect_objects(builder, catalog, keys, battle.land, asset.effect_objects);
+        load_effect_objects(builder, catalog, *catalog_entry->database, keys, battle.land, asset.effect_objects, asset.decal_atlas);
     }
     asset.particle_textures = std::move(builder.particles.textures);
     if (scene.terrain.vertices.empty() && std::ranges::none_of(scene.instances,
@@ -398,7 +398,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
         {
             keys.push_back(look.death.end_effect);
         }
-        load_effect_objects(builder, catalog_entry->catalog, keys, land, package.effect_objects);
+        load_effect_objects(builder, catalog_entry->catalog, *catalog_entry->database, keys, land, package.effect_objects, package.decal_atlas);
     }
     package.particle_textures = std::move(builder.particles.textures);
     return package;

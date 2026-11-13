@@ -158,7 +158,7 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         audio.reset();
         audio.emplace(vfs, &asset_cache, *audio_device, options.language, visual_map.battle.land);
         animator.emplace(visual_map.rigs, visual_map.rest_palette);
-        effects.reset({visual_map.rigs, &visual_map.projectile_visuals, placed_atlas(visual_map.projectile_atlas, placed), &visual_map.effect_objects});
+        effects.reset({visual_map.rigs, &visual_map.projectile_visuals, placed_atlas(visual_map.projectile_atlas, placed), &visual_map.effect_objects, placed_atlas(visual_map.decal_atlas, placed)});
         shown_effects = visual_map.effects;
         shown_effect_ids.assign(shown_effects.size(), {});
         effect_center = {(bounds.minimum[0] + bounds.maximum[0]) * 0.5F, (bounds.minimum[1] + bounds.maximum[1]) * 0.5F, 0.0F};

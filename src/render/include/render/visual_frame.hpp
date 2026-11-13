@@ -178,4 +178,29 @@ struct VisualDebugLine
     Color color{white};
 };
 
+enum class VisualDecalMode : std::uint8_t
+{
+    // The texture's color blended into the ground's by its alpha.
+    diffuse,
+    // The texture's color is a tangent-space normal bending the ground's by its alpha (a dent).
+    bump,
+    // The texture's color added to the lit ground by its alpha.
+    additive,
+};
+
+// A mark on the terrain, seen from above: a rectangle centered at `center` (world X/Y), reaching
+// `half_size` along its own axes, turned `rotation` radians about +Z, that shows `uv_rect` (u, v,
+// width, height) of `texture` (a renderer texture) with its alpha as the shape, scaled by `opacity`.
+// Decals lie on the terrain only, and take part in its lighting, shadows, and fog.
+struct VisualDecal
+{
+    Vector2 center{};
+    Vector2 half_size{1.0F, 1.0F};
+    float rotation{};
+    std::array<float, 4> uv_rect{0.0F, 0.0F, 1.0F, 1.0F};
+    std::uint32_t texture{invalid_visual_texture};
+    VisualDecalMode mode{VisualDecalMode::diffuse};
+    float opacity{1.0F};
+};
+
 } // namespace eaw

@@ -17,7 +17,7 @@
 
 namespace eaw {
 
-inline constexpr std::string_view decal_atlas_path = "DATA/ART/TEXTURES/D_MASTER_DECAL.DDS";
+inline constexpr std::string_view decal_atlas_texture = "D_MASTER_DECAL.dds";
 inline constexpr std::uint32_t decal_atlas_cells = 4;
 
 enum class TerrainDecalMode : std::uint8_t

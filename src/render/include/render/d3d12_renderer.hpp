@@ -190,6 +190,8 @@ public:
     // the scene and before debug lines, in list order, without depth or pick writes. Textures are
     // indices into the renderer's texture list (see add_textures); out-of-range indices draw white.
     void set_particles(std::span<const VisualParticle> particles);
+    // The terrain's decals for the following frames (copied).
+    void set_decals(std::span<const VisualDecal> decals);
     [[nodiscard]] static std::size_t max_bone_transforms() noexcept;
     // Replaces the instances drawn each frame with this list, until the next call or load_scene
     // (which returns to the scene's own instances). The loaded scene's meshes form the mesh library:

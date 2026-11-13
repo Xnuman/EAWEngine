@@ -26,9 +26,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 168 |
-| `partial` | 30 |
-| `gap` | 194 |
+| `done` | 176 |
+| `partial` | 23 |
+| `gap` | 193 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -425,7 +425,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Projectiles and damage delivery
 
-30 done, 3 partial, 11 gap, 49 needs, 2 n/a.
+31 done, 3 partial, 10 gap, 49 needs, 2 n/a.
 
 ### Firing cadence (on the shooter)
 
@@ -545,7 +545,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Projectile_Ground_Detonation_SurfaceFX` | `gap` |  |
 | `Projectile_Object_Creation_Particle` | `done` |  |
 | `Explosion_Jitter_Factor` | `gap` |  |
-| `Explosion_Scorch_Mark` | `gap` |  |
+| `Explosion_Scorch_Mark` | `done` | through SurfaceFX's default surface to its decal, on land within 40 units of the ground |
 
 ### Custom bolt rendering
 
@@ -1221,7 +1221,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Models, rendering, animation, user interface, and text
 
-18 done, 13 partial, 76 gap, 83 needs, 3 n/a.
+25 done, 6 partial, 76 gap, 83 needs, 3 n/a.
 
 ### Core structure (summary; see the overview chapters)
 
@@ -1465,13 +1465,13 @@ Postponed by the owner (2026-11-13): battles use the engine's own cameras for no
 | `Blob_Intensity` | `gap` |  |
 | `Flare` | `gap` |  |
 | `Category` | `gap` |  |
-| `Render_Mode` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
-| `UV_Slot` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
-| `Slot_Scale` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
-| `Z_Angle` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
-| `Random_Rotate` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
-| `Random_Size_Offset` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
-| `Fadeout_Time` | `partial` | read (`TerrainDecalCatalog`); decals are not drawn yet |
+| `Render_Mode` | `done` | diffuse, bump, and additive, in the terrain shader |
+| `UV_Slot` | `done` | a random cell of those listed |
+| `Slot_Scale` | `done` |  |
+| `Z_Angle` | `done` |  |
+| `Random_Rotate` | `done` |  |
+| `Random_Size_Offset` | `done` |  |
+| `Fadeout_Time` | `done` | then a 2 s fade (an engine choice) |
 
 ### Wind disturbance
 

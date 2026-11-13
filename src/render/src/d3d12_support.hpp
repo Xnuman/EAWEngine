@@ -88,6 +88,12 @@ inline constexpr float shadow_blend_band = 0.1F;
 inline constexpr float shadow_filter_texels = 1.5F;
 // Enhanced fog thins by a factor of e per this many world units of height (an engine choice).
 inline constexpr float fog_height_scale = 400.0F;
+// Terrain decals: the grid that sorts them has this many cells per side over the terrain, and a
+// cell lists at most this many (the most recent beyond it are dropped); engine choices.
+inline constexpr std::uint32_t decal_grid_cells = 64;
+// Particle buffers start with room for this many (an engine choice).
+inline constexpr std::size_t minimum_particle_capacity = 1024;
+inline constexpr std::uint32_t maximum_decals_per_cell = 32;
 
 // Temporary per-frame debug line capacity (an implementation limit, diagnosed through stats).
 inline constexpr std::size_t maximum_debug_lines = 32768;

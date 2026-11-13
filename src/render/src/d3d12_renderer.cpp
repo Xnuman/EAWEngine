@@ -136,6 +136,11 @@ void D3d12Renderer::set_particles(const std::span<const VisualParticle> particle
     impl_->set_particles(particles);
 }
 
+void D3d12Renderer::set_decals(const std::span<const VisualDecal> decals)
+{
+    impl_->set_decals(decals);
+}
+
 Result<std::uint32_t> D3d12Renderer::add_meshes(VisualScene meshes)
 {
     return impl_->add_meshes(std::move(meshes));

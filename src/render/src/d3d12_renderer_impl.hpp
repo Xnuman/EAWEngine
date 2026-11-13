@@ -68,6 +68,14 @@ struct D3d12Renderer::Impl
         ComPtr<ID3D12Resource> particle_buffer;
         std::byte* particle_buffer_mapped{};
         std::size_t particle_capacity{};
+        // Terrain decals and their grid (decal_grid_cells per side over the terrain: each cell's
+        // first index and count, then the indices), always present so the root views are valid.
+        ComPtr<ID3D12Resource> decal_buffer;
+        std::byte* decal_buffer_mapped{};
+        std::size_t decal_capacity{};
+        ComPtr<ID3D12Resource> decal_grid_buffer;
+        std::byte* decal_grid_buffer_mapped{};
+        std::size_t decal_grid_capacity{};
         std::uint64_t fence_value{};
     };
 
@@ -106,7 +114,23 @@ struct D3d12Renderer::Impl
         std::array<float, 4> shadow_parameters{};
         std::array<float, 4> fog_color{};
         std::array<float, 4> fog_range{};
+        // Decal grid: x, y its corner, z, w cells per world unit; and cells per side, decal count.
+        std::array<float, 4> decal_grid{};
+        std::array<std::uint32_t, 4> decal_grid_size{};
     };
+    // Layout of TerrainDecal in terrain.hlsl (64 bytes).
+    struct GpuDecal
+    {
+        Vector2 center{};
+        Vector2 half_size{};
+        Vector2 axis{};
+        float opacity{};
+        std::uint32_t mode{};
+        std::array<float, 4> uv_rect{};
+        std::uint32_t texture{};
+        std::array<std::uint32_t, 3> padding{};
+    };
+    static_assert(sizeof(GpuDecal) == 64, "GpuDecal must match TerrainDecal in terrain.hlsl");
     static_assert(sizeof(FrameConstants) <= frame_constant_bytes);
 
     // Layout of MaterialData in sandbox.hlsl (96 bytes) and its flag bits.
@@ -379,6 +403,13 @@ struct D3d12Renderer::Impl
     std::uint32_t shadow_resolution{};
     Vector3 scene_bounds_minimum{};
     Vector3 scene_bounds_maximum{};
+    // The terrain's extent in X/Y (decals lie on it; empty without terrain).
+    Vector2 terrain_minimum{};
+    Vector2 terrain_maximum{};
+    std::vector<VisualDecal> decals;
+    std::vector<GpuDecal> gpu_decals;
+    std::vector<std::uint32_t> decal_grid;
+    std::uint32_t decal_count{};
     float fog_floor{};
     ShadowCascades frame_cascades;
     ComPtr<ID3D12Resource> terrain_vertex_buffer;
@@ -614,6 +645,15 @@ struct D3d12Renderer::Impl
     void set_debug_lines(const std::span<const VisualDebugLine> lines);
 
     void set_particles(const std::span<const VisualParticle> next);
+    void set_decals(const std::span<const VisualDecal> next)
+    {
+        decals.assign(next.begin(), next.end());
+    }
+    // Writes this frame's decals and their grid over the terrain (write_decals).
+    void write_decals(FrameContext& frame);
+    // Grows a persistently mapped upload buffer of `frame`'s to at least `bytes` (retiring the old
+    // one on the direct timeline).
+    void ensure_upload_buffer(ComPtr<ID3D12Resource>& buffer, std::byte*& mapped, std::size_t& capacity, std::size_t bytes, const wchar_t* name);
 
     // Writes the particles into this frame context's buffer, growing it when needed (the outgrown
     // buffer retires on the direct timeline).

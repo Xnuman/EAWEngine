@@ -127,6 +127,7 @@ struct SandboxSession
     // the --effect effects, which play at the map center and restart when they end.
     eaw::BattleEffects effects{eaw::particle_interpretation(options.particle_fidelity).draw_order};
     std::vector<eaw::VisualParticle> frame_particles;
+    std::vector<eaw::VisualDecal> frame_decals;
     std::vector<std::shared_ptr<const eaw::ParticleEffect>> shown_effects;
     std::vector<eaw::ParticleInstanceId> shown_effect_ids;
     Vector3 effect_center{};

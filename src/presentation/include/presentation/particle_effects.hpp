@@ -9,6 +9,7 @@
 #include "formats/alo_particle_system.hpp"
 #include "render/visual_frame.hpp"
 #include "assets/particle_rules.hpp"
+#include "assets/terrain_decals.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -36,6 +37,9 @@ struct ParticleEffectObject
 {
     std::shared_ptr<const ParticleEffect> effect;
     float scale{1.0F};
+    // The mark it leaves on the ground where it plays on land (XML Explosion_Scorch_Mark, a SurfaceFX
+    // whose default surface names a TerrainDecalFX decal); none without one.
+    std::optional<TerrainDecal> scorch;
 };
 
 // Particle objects by the CRC-32 of their name (game_object_name_crc).

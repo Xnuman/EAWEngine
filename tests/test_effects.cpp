@@ -507,7 +507,7 @@ void test_effect_objects()
         std::ofstream file(root / "Data" / "XML" / "Particles.xml", std::ios::binary);
         file << "<Particles>"
                 "<Particle Name=\"Boom\"><Space_Model_Name>p_test.alo</Space_Model_Name><Scale_Factor>2</Scale_Factor></Particle>"
-                "<Particle Name=\"Land_Boom\"><Land_Model_Name>p_test.alo</Land_Model_Name></Particle>"
+                "<Particle Name=\"Land_Boom\"><Land_Model_Name>p_test.alo</Land_Model_Name><Explosion_Scorch_Mark>Scorch_Mark</Explosion_Scorch_Mark></Particle>"
                 "<Particle Name=\"Empty\"><Scale_Factor>1</Scale_Factor></Particle>"
                 "<Particle Name=\"Mesh_Boom\"><Space_Model_Name>w_mesh.alo</Space_Model_Name></Particle>"
                 "<Particle Name=\"Bad_Scale\"><Space_Model_Name>p_test.alo</Space_Model_Name><Scale_Factor>-1</Scale_Factor></Particle>"
@@ -522,6 +522,10 @@ void test_effect_objects()
                 "<Projectile Name=\"Dud\"><Projectile_Max_Flight_Distance>0</Projectile_Max_Flight_Distance></Projectile>"
                 "</Projectiles>";
     }
+    write_file(root / "Data" / "XML" / "SurfaceFX.xml",
+               "<SurfaceEffects><SurfaceFX name=\"Scorch_Mark\"><Surface_Settings name=\"default\"><Decal_Name>Scorch</Decal_Name></Surface_Settings></SurfaceFX></SurfaceEffects>");
+    write_file(root / "Data" / "XML" / "TerrainDecalFX.xml",
+               "<TerrainDecals><Decal Name=\"Scorch\"><Render_Mode>DIFFUSE_ALPHA</Render_Mode><Scale>10, 10</Scale><UV_Slot>0,3</UV_Slot></Decal></TerrainDecals>");
     eaw::VirtualFileSystem vfs;
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
     const auto database = eaw::XmlAssetDatabase::build(vfs);
@@ -534,7 +538,8 @@ void test_effect_objects()
     };
     const std::vector<std::uint32_t> keys{key("Boom"), key("Land_Boom"), key("Empty"), key("Mesh_Boom"), key("Bad_Scale"), key("Mine_Blast"), key("Dud"), key("Undefined"), 0U};
     eaw::ParticleEffectObjectTable table;
-    eaw::scene_build::load_effect_objects(builder, catalog, keys, false, table);
+    std::uint32_t decal_atlas = eaw::invalid_visual_texture;
+    eaw::scene_build::load_effect_objects(builder, catalog, database, keys, false, table, decal_atlas);
     const auto warned = [&](const std::string_view text)
     {
         return std::ranges::count_if(scene.warnings,
@@ -554,7 +559,55 @@ void test_effect_objects()
     require(!table.at(key("Dud")).effect && warned("Dud: projectile named as an explosion has no detonation") == 1, "a projectile without a detonation particle must be reported");
     require(table.at(key("Bad_Scale")).effect && table.at(key("Bad_Scale")).scale == 1.0F && warned("Bad_Scale: Scale_Factor '-1'") == 1, "a bad Scale_Factor must be reported");
     require(!table.at(key("Undefined")).effect && warned("is not defined") == 1, "an undefined effect object must be reported");
+    require(!table.at(key("Land_Boom")).scorch && decal_atlas == eaw::invalid_visual_texture, "a space map must resolve no scorch marks");
+    // On land the scorch mark resolves through SurfaceFX to its decal, and the atlas is asked for.
+    eaw::ParticleEffectObjectTable land_table;
+    eaw::scene_build::load_effect_objects(builder, catalog, database, std::vector<std::uint32_t>{key("Land_Boom")}, true, land_table, decal_atlas);
+    const auto& scorched = land_table.at(key("Land_Boom"));
+    require(scorched.scorch && scorched.scorch->name == "Scorch" && scorched.scorch->width == 10.0F && scorched.scorch->cells.size() == 1,
+            "a land explosion must carry the decal its scorch mark names");
     std::filesystem::remove_all(root, ignored);
+}
+
+// Scorch marks: an explosion with one leaves it on the ground below when it plays near the ground
+// on land (not high in the air, not without a ground), at the decal's size and cell, and it fades
+// out after its fade time and goes.
+void test_scorch_marks()
+{
+    auto burst = make_test_emitter();
+    burst.lifetime = 1.0F;
+    eaw::ParticleEffectObjectTable objects;
+    eaw::TerrainDecal scorch;
+    scorch.name = "Scorch";
+    scorch.width = 10.0F;
+    scorch.height = 20.0F;
+    scorch.intensity = 0.5F;
+    scorch.fade_seconds = 5.0F;
+    scorch.cells = {{1U, 3U}};
+    objects.emplace(7U, eaw::ParticleEffectObject{make_test_effect({burst}), 1.0F, scorch});
+    eaw::BattleEffects effects;
+    effects.reset({{}, nullptr, eaw::invalid_visual_texture, &objects, 3U});
+    std::vector<eaw::VisualDecal> decals;
+    effects.play_object(7U, {0.0F, 0.0F, 0.0F});
+    require(effects.decal_count() == 0, "without a ground there must be no scorch");
+    effects.set_ground(
+        [](float, float)
+        {
+            return std::optional<float>(10.0F);
+        });
+    effects.play_object(7U, {100.0F, 50.0F, 500.0F});
+    require(effects.decal_count() == 0, "an explosion high in the air must leave no scorch");
+    effects.play_object(7U, {100.0F, 50.0F, 12.0F});
+    effects.build_decals(decals);
+    require(decals.size() == 1 && decals[0].center == eaw::Vector2{100.0F, 50.0F} && decals[0].half_size == eaw::Vector2{5.0F, 10.0F} && decals[0].texture == 3U && decals[0].uv_rect[0] == 0.25F &&
+                decals[0].uv_rect[1] == 0.75F && decals[0].uv_rect[2] == 0.25F && decals[0].opacity == 0.5F && decals[0].mode == eaw::VisualDecalMode::diffuse,
+            "a scorch must lie where the explosion played, at its decal's size, cell, and opacity");
+    effects.update(6.0F);
+    decals.clear();
+    effects.build_decals(decals);
+    require(decals.size() == 1 && decals[0].opacity > 0.0F && decals[0].opacity < 0.5F, "a scorch must fade once its fade time has passed");
+    effects.update(2.0F);
+    require(effects.decal_count() == 0, "a faded scorch must go");
 }
 
 void test_projectile_sprites()
@@ -697,6 +750,7 @@ const ModuleRegistrar registrar("effects", {
                                                {"test_projectile_models", &test_projectile_models},
                                                {"test_attached_effect_scale", &test_attached_effect_scale},
                                                {"test_terrain_decals", &test_terrain_decals},
+                                               {"test_scorch_marks", &test_scorch_marks},
                                            });
 
 } // namespace

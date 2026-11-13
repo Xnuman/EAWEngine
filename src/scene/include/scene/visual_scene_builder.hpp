@@ -75,6 +75,8 @@ struct VisualMapAsset
     // How shots look, as in SpawnablePackage.
     ProjectileVisualTable projectile_visuals;
     std::uint32_t projectile_atlas{invalid_visual_texture};
+    // The terrain decal atlas (scorch marks), when an effect object leaves one; as projectile_atlas.
+    std::uint32_t decal_atlas{invalid_visual_texture};
     // The Particle objects shot impacts and deaths name, as in SpawnablePackage.
     ParticleEffectObjectTable effect_objects;
 };
@@ -120,6 +122,8 @@ struct SpawnablePackage
     // invalid_visual_texture).
     ProjectileVisualTable projectile_visuals;
     std::uint32_t projectile_atlas{invalid_visual_texture};
+    // The terrain decal atlas (scorch marks), when an effect object leaves one; as projectile_atlas.
+    std::uint32_t decal_atlas{invalid_visual_texture};
     // The XML Particle objects the types' shot impacts and deaths name (effects index
     // particle_textures).
     ParticleEffectObjectTable effect_objects;

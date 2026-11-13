@@ -210,25 +210,98 @@ void D3d12Renderer::Impl::write_particles(FrameContext& frame)
     {
         return;
     }
-    if (gpu_particles.size() > frame.particle_capacity)
-    {
-        if (frame.particle_buffer)
-        {
-            frame.particle_buffer->Unmap(0, nullptr);
-            frame.particle_buffer_mapped = nullptr;
-            retired_resources.push({std::move(frame.particle_buffer)}, direct_queue.next_value());
-        }
-        const auto capacity = std::max<std::size_t>({gpu_particles.size(), frame.particle_capacity * 2U, 1024U});
-        const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
-        const auto description = buffer_description(static_cast<std::uint64_t>(capacity) * sizeof(GpuParticle));
-        check_device_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&frame.particle_buffer)),
-                             device, "CreateCommittedResource(frame particles)");
-        set_name(frame.particle_buffer.Get(), L"EAWEngine frame particles");
-        const D3D12_RANGE no_read{0, 0};
-        check_device_hresult(frame.particle_buffer->Map(0, &no_read, reinterpret_cast<void**>(&frame.particle_buffer_mapped)), frame.particle_buffer, "Map(frame particles)");
-        frame.particle_capacity = capacity;
-    }
+    ensure_upload_buffer(frame.particle_buffer, frame.particle_buffer_mapped, frame.particle_capacity, std::max<std::size_t>(gpu_particles.size(), minimum_particle_capacity) * sizeof(GpuParticle),
+                         L"EAWEngine frame particles");
     std::memcpy(frame.particle_buffer_mapped, gpu_particles.data(), gpu_particles.size() * sizeof(GpuParticle));
+}
+
+void D3d12Renderer::Impl::ensure_upload_buffer(ComPtr<ID3D12Resource>& buffer, std::byte*& mapped, std::size_t& capacity, const std::size_t bytes, const wchar_t* name)
+{
+    if (buffer && capacity >= bytes)
+    {
+        return;
+    }
+    if (buffer)
+    {
+        buffer->Unmap(0, nullptr);
+        mapped = nullptr;
+        retired_resources.push({std::move(buffer)}, direct_queue.next_value());
+    }
+    const auto size = std::max(bytes, capacity * 2U);
+    const auto upload_heap = heap_properties(D3D12_HEAP_TYPE_UPLOAD);
+    const auto description = buffer_description(static_cast<std::uint64_t>(size));
+    check_device_hresult(device->CreateCommittedResource(&upload_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&buffer)), device,
+                         "CreateCommittedResource(frame upload buffer)");
+    set_name(buffer.Get(), name);
+    const D3D12_RANGE no_read{0, 0};
+    check_device_hresult(buffer->Map(0, &no_read, reinterpret_cast<void**>(&mapped)), buffer, "Map(frame upload buffer)");
+    capacity = size;
+}
+
+void D3d12Renderer::Impl::write_decals(FrameContext& frame)
+{
+    // Each decal into the grid cells its turned rectangle's bounds touch; a cell keeps at most
+    // maximum_decals_per_cell (the earliest listed).
+    gpu_decals.clear();
+    decal_grid.assign(static_cast<std::size_t>(decal_grid_cells) * decal_grid_cells * 2U, 0U);
+    const auto extent = terrain_maximum - terrain_minimum;
+    const bool grid = extent.x > 0.0F && extent.y > 0.0F;
+    const Vector2 cells_per_unit = grid ? Vector2{static_cast<float>(decal_grid_cells) / extent.x, static_cast<float>(decal_grid_cells) / extent.y} : Vector2{};
+    std::vector<std::vector<std::uint32_t>> members(grid ? static_cast<std::size_t>(decal_grid_cells) * decal_grid_cells : 0U);
+    for (const auto& decal : grid ? std::span<const VisualDecal>(decals) : std::span<const VisualDecal>{})
+    {
+        if (decal.texture >= scene_textures.size() || !(decal.opacity > 0.0F) || !std::isfinite(decal.center.x) || !std::isfinite(decal.center.y))
+        {
+            continue;
+        }
+        const Vector2 axis{std::cos(decal.rotation), std::sin(decal.rotation)};
+        const auto index = static_cast<std::uint32_t>(gpu_decals.size());
+        gpu_decals.push_back({decal.center,
+                              decal.half_size,
+                              axis,
+                              std::min(decal.opacity, 1.0F),
+                              static_cast<std::uint32_t>(decal.mode),
+                              decal.uv_rect,
+                              static_cast<std::uint32_t>(fallback_texture_count + decal.texture),
+                              {}});
+        const float reach_x = std::fabs(axis.x) * decal.half_size.x + std::fabs(axis.y) * decal.half_size.y;
+        const float reach_y = std::fabs(axis.y) * decal.half_size.x + std::fabs(axis.x) * decal.half_size.y;
+        const auto cell = [&](const float value, const float minimum, const float per_unit)
+        {
+            return static_cast<std::int64_t>(std::floor((value - minimum) * per_unit));
+        };
+        const auto last = static_cast<std::int64_t>(decal_grid_cells) - 1;
+        const auto x0 = std::clamp<std::int64_t>(cell(decal.center.x - reach_x, terrain_minimum.x, cells_per_unit.x), 0, last);
+        const auto x1 = std::clamp<std::int64_t>(cell(decal.center.x + reach_x, terrain_minimum.x, cells_per_unit.x), 0, last);
+        const auto y0 = std::clamp<std::int64_t>(cell(decal.center.y - reach_y, terrain_minimum.y, cells_per_unit.y), 0, last);
+        const auto y1 = std::clamp<std::int64_t>(cell(decal.center.y + reach_y, terrain_minimum.y, cells_per_unit.y), 0, last);
+        for (auto y = y0; y <= y1; ++y)
+        {
+            for (auto x = x0; x <= x1; ++x)
+            {
+                auto& list = members[static_cast<std::size_t>(y * decal_grid_cells + x)];
+                if (list.size() < maximum_decals_per_cell)
+                {
+                    list.push_back(index);
+                }
+            }
+        }
+    }
+    for (std::size_t index = 0; index < members.size(); ++index)
+    {
+        decal_grid[index * 2U] = static_cast<std::uint32_t>(decal_grid.size());
+        decal_grid[index * 2U + 1U] = static_cast<std::uint32_t>(members[index].size());
+        decal_grid.insert(decal_grid.end(), members[index].begin(), members[index].end());
+    }
+    decal_count = static_cast<std::uint32_t>(gpu_decals.size());
+    if (gpu_decals.empty())
+    {
+        gpu_decals.emplace_back();
+    }
+    ensure_upload_buffer(frame.decal_buffer, frame.decal_buffer_mapped, frame.decal_capacity, gpu_decals.size() * sizeof(GpuDecal), L"EAWEngine frame decals");
+    std::memcpy(frame.decal_buffer_mapped, gpu_decals.data(), gpu_decals.size() * sizeof(GpuDecal));
+    ensure_upload_buffer(frame.decal_grid_buffer, frame.decal_grid_buffer_mapped, frame.decal_grid_capacity, decal_grid.size() * sizeof(std::uint32_t), L"EAWEngine frame decal grid");
+    std::memcpy(frame.decal_grid_buffer_mapped, decal_grid.data(), decal_grid.size() * sizeof(std::uint32_t));
 }
 
 void D3d12Renderer::Impl::set_instances(const std::span<const VisualInstance> instances)
@@ -644,6 +717,7 @@ bool D3d12Renderer::Impl::render()
     // This context's fence has completed (waited above), so any picks it still holds are ready;
     // collect them before recording new picks into the same readback slots.
     write_particles(frame);
+    write_decals(frame);
     collect_pick(frame);
     collect_timestamps(frame);
     if (frame_number % 30U == 0)
@@ -755,6 +829,14 @@ bool D3d12Renderer::Impl::render()
         constants.fog_color = {lighting.fog.color.r, lighting.fog.color.g, lighting.fog.color.b, options.fog == VisualFogMode::enhanced ? 2.0F : 1.0F};
         constants.fog_range = {lighting.fog.start, lighting.fog.end, fog_floor, 1.0F / fog_height_scale};
     }
+    {
+        const auto extent = terrain_maximum - terrain_minimum;
+        if (extent.x > 0.0F && extent.y > 0.0F)
+        {
+            constants.decal_grid = {terrain_minimum.x, terrain_minimum.y, static_cast<float>(decal_grid_cells) / extent.x, static_cast<float>(decal_grid_cells) / extent.y};
+        }
+        constants.decal_grid_size = {decal_grid_cells, decal_grid_cells, decal_count, 0U};
+    }
     std::memcpy(frame.constant_buffer_mapped, &constants, sizeof(constants));
 
     check_device_hresult(frame.allocator->Reset(), frame.allocator, "ID3D12CommandAllocator::Reset");
@@ -849,6 +931,9 @@ bool D3d12Renderer::Impl::render()
             command_list->SetGraphicsRootShaderResourceView(3, (dynamic ? frame.instance_buffer : scene_loaded ? scene_instance_buffer : identity_instance_buffer)->GetGPUVirtualAddress());
             command_list->SetGraphicsRootShaderResourceView(4, (scene_loaded ? scene_material_buffer : identity_material_buffer)->GetGPUVirtualAddress());
             command_list->SetGraphicsRootShaderResourceView(6, frame.residency_buffer->GetGPUVirtualAddress());
+            // 7 terrain decals, 8 their grid.
+            command_list->SetGraphicsRootShaderResourceView(7, frame.decal_buffer->GetGPUVirtualAddress());
+            command_list->SetGraphicsRootShaderResourceView(8, frame.decal_grid_buffer->GetGPUVirtualAddress());
             command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
             if (!scene_loaded)

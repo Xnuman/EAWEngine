@@ -14,6 +14,8 @@
     "SRV(t3), " \
     "RootConstants(num32BitConstants = 3, b1), " \
     "SRV(t4, visibility = SHADER_VISIBILITY_PIXEL), " \
+    "SRV(t5, visibility = SHADER_VISIBILITY_PIXEL), " \
+    "SRV(t6, visibility = SHADER_VISIBILITY_PIXEL), " \
     "StaticSampler(s0, filter = FILTER_ANISOTROPIC, maxAnisotropy = 8, addressU = TEXTURE_ADDRESS_WRAP, addressV = TEXTURE_ADDRESS_WRAP, " \
     "addressW = TEXTURE_ADDRESS_WRAP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK, " \
     "visibility = SHADER_VISIBILITY_PIXEL), " \
@@ -72,6 +74,8 @@ cbuffer FrameConstants : register(b0)
     float4 shadow_parameters; // x cascade count (0: no shadows), y normal offset in texels, z blend band share, w filter radius in UV
     float4 fog_color; // rgb the map's fog color, w the mode (0 off, 1 legacy, 2 enhanced)
     float4 fog_range; // x start, y end (distance), z the height enhanced fog is densest at, w its falloff per unit of height
+    float4 decal_grid;     // xy the terrain decal grid's corner, zw its cells per world unit
+    uint4 decal_grid_size; // x, y cells per side, z the decal count
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
@@ -119,6 +123,12 @@ StructuredBuffer<MaterialData> materials : register(t3);
 StructuredBuffer<uint> texture_residency : register(t4);
 SamplerState surface_sampler : register(s0);
 SamplerComparisonState shadow_sampler : register(s2);
+
+// A texture's top level (sampling inside branches, where derivatives are not defined).
+float4 sample_texture_top(const uint texture, const float2 uv)
+{
+    return scene_textures[NonUniformResourceIndex(texture_residency[texture])].SampleLevel(surface_sampler, uv, 0.0f);
+}
 
 float4 sample_texture(const uint texture, const float2 uv)
 {

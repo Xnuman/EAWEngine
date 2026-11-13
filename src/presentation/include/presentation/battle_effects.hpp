@@ -5,6 +5,7 @@
 // deaths name, and shots in flight drawn as bolts. Presentation only: nothing here feeds the
 // simulation, and it needs no graphics API (textures are renderer indices the caller registered).
 
+#include "core/random.hpp"
 #include "render/visual_frame.hpp"
 #include "render/visual_texture.hpp"
 #include "simulation/simulation.hpp"
@@ -29,6 +30,8 @@ struct BattleEffectContent
     const ProjectileVisualTable* projectile_visuals{};
     std::uint32_t atlas{invalid_visual_texture};
     const ParticleEffectObjectTable* effect_objects{};
+    // The terrain decal atlas's renderer texture (scorch marks), or invalid_visual_texture.
+    std::uint32_t decal_atlas{invalid_visual_texture};
 };
 
 class BattleEffects
@@ -61,7 +64,16 @@ public:
 
     // Plays a Particle object once at `position`, upright (the effect's own axes: an engine choice
     // until the original's orientation of impacts and explosions is known). Unknown keys are ignored.
+    // On land, an object with a scorch mark leaves it on the ground below when it plays near enough to
+    // the ground (an explosion high in the air leaves none).
     void play_object(std::uint32_t key, const Vector3& position);
+
+    // Appends this frame's marks on the terrain (scorches), faded as they age.
+    void build_decals(std::vector<VisualDecal>& decals) const;
+    [[nodiscard]] std::size_t decal_count() const noexcept
+    {
+        return decals_.size();
+    }
 
     // The particle world, for effects the caller plays itself (sandbox --effect).
     [[nodiscard]] ParticleWorld& particles() noexcept
@@ -111,6 +123,20 @@ private:
     ParticleEffectObjectTable effect_objects_;
     // Seeds of one-shot effects, in play order (presentation only, so not simulation state).
     std::uint64_t seed_{1};
+    // Marks on the terrain: each its decal, where it lies, its turn and size, and its age.
+    struct LiveDecal
+    {
+        const TerrainDecal* decal{};
+        Vector2 center{};
+        float rotation{};
+        float scale{1.0F};
+        TerrainDecalCell cell{};
+        float age{};
+    };
+    std::vector<LiveDecal> decals_;
+    std::uint32_t decal_atlas_{invalid_visual_texture};
+    ParticleGroundHeight ground_;
+    Pcg32 decal_random_{1};
 
     void take(const BattleEffectContent& content);
 };

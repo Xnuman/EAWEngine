@@ -1,9 +1,20 @@
 #include "presentation/battle_effects.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace eaw {
+namespace {
+
+// Terrain marks (engine choices): a mark that is not permanent fades out over this many seconds
+// once its Fadeout_Time has passed; at most this many lie at once (the oldest go first); and an
+// explosion leaves one only within this height of the ground.
+constexpr float decal_fade_seconds = 2.0F;
+constexpr std::size_t maximum_decals = 2048;
+constexpr float scorch_ground_reach = 40.0F;
+
+} // namespace
 
 BattleEffects::BattleEffects(const ParticleDrawOrder draw_order)
 {
@@ -19,6 +30,8 @@ void BattleEffects::reset(const BattleEffectContent& content)
     projectile_visuals_.clear();
     atlas_ = invalid_visual_texture;
     effect_objects_.clear();
+    decals_.clear();
+    decal_atlas_ = invalid_visual_texture;
     attached_.set_rigs(content.rigs);
     projectile_attached_.set_rigs(content.rigs);
     take(content);
@@ -45,10 +58,15 @@ void BattleEffects::take(const BattleEffectContent& content)
     {
         effect_objects_.insert(content.effect_objects->begin(), content.effect_objects->end());
     }
+    if (decal_atlas_ == invalid_visual_texture)
+    {
+        decal_atlas_ = content.decal_atlas;
+    }
 }
 
 void BattleEffects::set_ground(ParticleGroundHeight ground)
 {
+    ground_ = ground;
     particles_.set_ground(std::move(ground));
 }
 
@@ -131,6 +149,16 @@ void BattleEffects::follow_projectiles(const std::span<const VisualInstance> ins
 
 void BattleEffects::update(const float seconds)
 {
+    // Marks age; faded ones go.
+    for (auto& mark : decals_)
+    {
+        mark.age += seconds;
+    }
+    std::erase_if(decals_,
+                  [](const LiveDecal& mark)
+                  {
+                      return !mark.decal->permanent && mark.age > mark.decal->fade_seconds + decal_fade_seconds;
+                  });
     particles_.update(seconds);
 }
 
@@ -155,6 +183,51 @@ void BattleEffects::play_object(const std::uint32_t key, const Vector3& position
     auto transform = Matrix4::identity();
     set_translation(transform, position);
     (void)particles_.play(found->second.effect, transform, seed_++, {}, found->second.scale);
+    // Its scorch mark, on the ground below when it played near it.
+    const auto& scorch = found->second.scorch;
+    if (!scorch || decal_atlas_ == invalid_visual_texture || !ground_)
+    {
+        return;
+    }
+    if (const auto ground = ground_(position.x, position.y); !ground || std::fabs(position.z - *ground) > scorch_ground_reach)
+    {
+        return;
+    }
+    LiveDecal mark;
+    mark.decal = &*scorch;
+    mark.center = {position.x, position.y};
+    mark.rotation = scorch->random_rotate ? decal_random_.range(0.0F, 6.2831853F) : scorch->angle;
+    mark.scale = 1.0F + decal_random_.range(-scorch->size_variation, scorch->size_variation);
+    mark.cell = scorch->cells[decal_random_.next() % scorch->cells.size()];
+    if (decals_.size() >= maximum_decals)
+    {
+        decals_.erase(decals_.begin());
+    }
+    decals_.push_back(mark);
+}
+
+void BattleEffects::build_decals(std::vector<VisualDecal>& decals) const
+{
+    constexpr float cell = 1.0F / static_cast<float>(decal_atlas_cells);
+    for (const auto& mark : decals_)
+    {
+        const auto& decal = *mark.decal;
+        float opacity = decal.intensity;
+        if (!decal.permanent && mark.age > decal.fade_seconds)
+        {
+            opacity *= std::max(0.0F, 1.0F - (mark.age - decal.fade_seconds) / decal_fade_seconds);
+        }
+        const float span = static_cast<float>(decal.cell_span) * cell;
+        decals.push_back({mark.center,
+                          {decal.width * 0.5F * mark.scale, decal.height * 0.5F * mark.scale},
+                          mark.rotation,
+                          {static_cast<float>(mark.cell.column) * cell, static_cast<float>(mark.cell.row) * cell, span, span},
+                          decal_atlas_,
+                          decal.mode == TerrainDecalMode::bump_alpha ? VisualDecalMode::bump
+                          : decal.mode == TerrainDecalMode::additive ? VisualDecalMode::additive
+                                                                     : VisualDecalMode::diffuse,
+                          opacity});
+    }
 }
 
 std::size_t BattleEffects::playable_effect_objects() const noexcept
