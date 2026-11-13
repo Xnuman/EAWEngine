@@ -17,6 +17,7 @@ set(EAW_ASSET_INSPECTOR_SOURCES
     ${SOURCES_DIR}/audit_textures.cpp
     ${SOURCES_DIR}/audit_xml.cpp
     ${SOURCES_DIR}/extract_assets.cpp
+    ${SOURCES_DIR}/gait.cpp
     ${SOURCES_DIR}/inspect_asset.cpp
     ${SOURCES_DIR}/inspector_common.cpp
     ${SOURCES_DIR}/inspector_options.cpp

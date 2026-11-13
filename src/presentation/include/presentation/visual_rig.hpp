@@ -60,10 +60,10 @@ struct ClipName
 
 // How a type's clips play (presentation only). The move and walk clips play at their own rate when
 // the unit goes at a reference speed, given as a fraction of its top speed: XML
-// Movement_Animation_Speed and Walk_Animation_Speed are those speeds in Max_Speed's units (inferred
-// from the corpus: Movement_Animation_Speed equals Max_Speed on most stock units, 0.1366 against 0.5
-// on the AT-AT; Walk_Animation_Speed is about 0.4 of it), so playback scales by speed over
-// reference. The idle clip plays at Idle_Anim_00_Rate_Mod times its rate (props: 8 spins the huge
+// Movement_Animation_Speed and Walk_Animation_Speed are those speeds in Max_Speed's units (measured:
+// the move clip's planted feet move over the ground at Movement_Animation_Speed, the AT-AT's at
+// 0.137 per frame against its 0.1366, the scaled stormtrooper's and Bantha's alike; EAWAssetInspector
+// gait; Walk_Animation_Speed is about 0.4 of it), so playback scales by speed over reference. The idle clip plays at Idle_Anim_00_Rate_Mod times its rate (props: 8 spins the huge
 // asteroid masses); a type without a move or walk clip keeps its idle clip while moving when
 // Allow_Idle_When_Moving (birds) instead of standing in its rest pose.
 struct AnimationProfile
@@ -81,6 +81,10 @@ struct AnimationProfile
     // and stopping a walk (XML Walk_Transition).
     bool pre_turn{};
     bool walk_transition{};
+    // The turn rate (radians per second) at which the turn clips play at their own rate (XML
+    // Rotation_Animation_Speed in degrees per frame, read like Movement_Animation_Speed by analogy;
+    // 0: they play at their own rate). Walk transitions play at the move clip's rate at top speed.
+    float turn_reference{};
     // A turret (XML Turret_Bone_Name, Barrel_Bone_Name: the bones' names as game_object_name_crc, 0
     // none): the turret bone's subtree yaws about the model's up axis to the simulation's turret
     // direction (EntitySnapshot::turret_yaw, which also decides when it fires), and the barrel's

@@ -335,6 +335,52 @@ void test_unit_animation()
         both[0].speed = both[1].speed = 10.0F;
         starters.animate(both, both_ids, both_instances, 1.1, 1U << 20U, walker_palette, starting);
         require(both_instances[0].bone_offset != both_instances[1].bone_offset, "a walker starting to move must play its start clip");
+
+        // Walk transitions play at the move clip's rate at top speed: with a reference of a quarter
+        // of its top speed (the AT-AT's Movement_Animation_Speed against its Max_Speed is 0.27),
+        // the 1 s MOVESTART is over after 0.25 s and the walker then shows the same pose as its twin
+        // without transitions; at its own rate (a reference of its top speed) it is still playing.
+        // MOVESTART gets its own clip (the test clip raised 5 units), so its poses differ from MOVE's.
+        auto raised = *animation;
+        for (auto& track : raised.tracks)
+        {
+            for (auto& key : track.keys)
+            {
+                key.translation.z += 5.0F;
+            }
+        }
+        auto start_rig = walker_rig;
+        start_rig.clips[3].animation = std::make_shared<const eaw::Animation>(std::move(raised));
+        const std::array<eaw::VisualRig, 1> start_rigs{start_rig};
+        const auto pose_after = [&](const bool transition, const double after, const float reference)
+        {
+            eaw::UnitAnimator walker(start_rigs, walker_rest);
+            std::vector<eaw::EntitySnapshot> one(1);
+            one[0].id = {7, 1};
+            one[0].max_speed = 10.0F;
+            std::vector<eaw::EntityId> one_id{one[0].id};
+            std::vector<eaw::VisualInstance> shown(1);
+            std::vector<eaw::Matrix4> palette;
+            const std::array<eaw::AnimationProfile, 1> profile{eaw::AnimationProfile{.move_reference = reference, .walk_transition = transition}};
+            walker.animate(one, one_id, shown, 1.0, 1U << 20U, palette, profile);
+            one[0].moving = true;
+            one[0].speed = 10.0F;
+            for (double at = 1.05; at < 1.0 + after + 1.0e-9; at += 0.05)
+            {
+                walker.animate(one, one_id, shown, at, 1U << 20U, palette, profile);
+            }
+            return std::vector<eaw::Matrix4>(palette.begin() + shown[0].bone_offset, palette.begin() + shown[0].bone_offset + 2);
+        };
+        const auto same = [](const std::vector<eaw::Matrix4>& a, const std::vector<eaw::Matrix4>& b)
+        {
+            return std::ranges::equal(a, b,
+                                      [](const eaw::Matrix4& x, const eaw::Matrix4& y)
+                                      {
+                                          return std::ranges::equal(x.values, y.values);
+                                      });
+        };
+        require(same(pose_after(true, 0.5, 0.25F), pose_after(false, 0.5, 0.25F)) && !same(pose_after(true, 0.5, 1.0F), pose_after(false, 0.5, 1.0F)),
+                "a walk transition must play at the move clip's rate at top speed");
     }
 
     // A flyer with only an idle clip (a bird): moving, it stands in its rest pose unless its type

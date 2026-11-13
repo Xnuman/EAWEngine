@@ -39,6 +39,10 @@ constexpr float barrel_pitch_step = pi / 64.0F;
 // moves slower than turn_in_place_speed_fraction of its top speed (engine choices).
 constexpr float turn_in_place_rate = 0.15F;
 constexpr float turn_in_place_speed_fraction = 0.1F;
+// Bounds of a transition's playback rate (engine choices; the stock AT-AT walks at 3.7x, the
+// Bantha at 5x).
+constexpr float minimum_transition_playback = 0.25F;
+constexpr float maximum_transition_playback = 6.0F;
 // Frames longer than this (a stall, a hidden window) count as this long.
 constexpr double longest_frame_seconds = 0.25;
 // Sampled poses kept across frames (matrices); beyond it the cache starts over.
@@ -637,36 +641,49 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             // Moving by the shown speed, not the order: a walker turning in place before it sets off has
             // not started walking yet, and MOVESTART belongs to when it does.
             const bool moving = !slow;
-            const auto start_transition = [&](const std::int32_t clip)
+            // Walk transitions play at the move clip's rate at top speed (the type's reference speed
+            // against its top speed), turns at the turn rate against the type's turn reference.
+            const auto walk_playback = std::clamp(1.0F / std::max(profile.move_reference, 1.0e-3F), minimum_transition_playback, maximum_transition_playback);
+            const auto turn_playback = profile.turn_reference > 0.0F ? std::clamp(std::fabs(rate) / profile.turn_reference, minimum_transition_playback, maximum_transition_playback) : 1.0F;
+            if (turning != 0)
+            {
+                state.turn_playback = turn_playback;
+            }
+            const auto start_transition = [&](const std::int32_t clip, const float playback)
             {
                 if (clip >= 0)
                 {
                     state.transition = clip;
                     state.transition_start = seconds;
+                    state.transition_playback = playback;
                 }
             };
             if (state.frame_seen)
             {
                 if (profile.walk_transition && moving && !state.was_moving)
                 {
-                    start_transition(find_clip(instance.mesh, AnimationRole::move_start, 0));
+                    start_transition(find_clip(instance.mesh, AnimationRole::move_start, 0), walk_playback);
                 }
                 else if (profile.walk_transition && !moving && state.was_moving)
                 {
-                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(std::clamp(state.stride_phase * 4.0, 0.0, 3.0))));
+                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(std::clamp(state.stride_phase * 4.0, 0.0, 3.0))), walk_playback);
                 }
                 else if (profile.pre_turn && turning != 0 && state.turning == 0)
                 {
-                    start_transition(find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left_begin : AnimationRole::turn_right_begin, 0));
+                    start_transition(find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left_begin : AnimationRole::turn_right_begin, 0), state.turn_playback);
                 }
                 else if (profile.pre_turn && turning == 0 && state.turning != 0)
                 {
-                    start_transition(find_clip(instance.mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0));
+                    start_transition(find_clip(instance.mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0), state.turn_playback);
                 }
             }
             if (turning != 0 && turning != state.turning)
             {
-                state.turn_start = seconds;
+                state.turn_time = 0.0;
+            }
+            else if (turning != 0)
+            {
+                state.turn_time += dt * static_cast<double>(state.turn_playback);
             }
             state.turning = turning;
             state.was_moving = moving;
@@ -674,7 +691,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             state.frame_seen = true;
             if (state.transition >= 0)
             {
-                const auto elapsed = seconds - state.transition_start;
+                const auto elapsed = (seconds - state.transition_start) * static_cast<double>(state.transition_playback);
                 const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.transition)].animation));
                 if (elapsed < duration)
                 {
@@ -692,7 +709,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 if (loop >= 0)
                 {
                     override_clip = loop;
-                    override_time = seconds - state.turn_start;
+                    override_time = state.turn_time;
                 }
             }
         }

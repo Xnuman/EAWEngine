@@ -96,6 +96,11 @@ eaw::Result<int> run(const Options& options)
         audit_maps(vfs, options.prefix, options.limit);
         return 0;
     }
+    if (options.command == "gait")
+    {
+        const auto status = gait(vfs, options.operand);
+        return status ? 0 : report_error(status.error());
+    }
     if (options.command == "texture-png")
     {
         std::vector<std::filesystem::path> read_only_roots{profile->root};

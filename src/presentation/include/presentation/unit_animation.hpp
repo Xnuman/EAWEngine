@@ -219,9 +219,13 @@ private:
         float last_heading{};
         bool was_moving{};
         int turning{};
-        double turn_start{};
+        // Where the turn loop is (seconds of its clip) and the rate it plays at.
+        double turn_time{};
+        float turn_playback{1.0F};
         std::int32_t transition{-1};
         double transition_start{};
+        // The rate the one-shot transition plays at.
+        float transition_playback{1.0F};
         bool frame_seen{};
     };
 

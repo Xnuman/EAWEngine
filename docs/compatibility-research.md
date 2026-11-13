@@ -1074,6 +1074,21 @@ particle-audit`.
   rate proportional to the intensity. The cube size and distance, fade-out distance, and fog plane are unused.
 - **Not drawn yet:** heat distortion (170) is drawn since 2026-11-13 and weather (5) since the same
   day; wind is ignored; freeze time is kept but unused.
+- **Animation speeds** (2026-11-13). `EAWAssetInspector gait` follows the bones of a walk clip that
+  reach its lowest point while they are down: a planted foot moves backward at the body's ground
+  speed. The AT-AT's MOVE (160 frames) moves its toes and foot-puff bones at 0.136-0.152 units per
+  30 Hz frame against Movement_Animation_Speed 0.1366; the stormtrooper's feet at 0.52-0.62, 0.78-0.93
+  with its Scale_Factor 1.5, against 0.8; the Bantha's at 0.046, 0.069 scaled, against 0.07. So
+  Movement_Animation_Speed is the ground speed (Max_Speed's unit) at which the move clip plays at
+  its own rate. 120 stock types give both; Max_Speed over it runs from 0.51 (Vornskr) to 5 (Bantha),
+  33 within 10 % of 1, 23 above 1.5 (the AT-AT 3.66). Turn clips do not turn the line between their
+  planted feet measurably (under 0.3 degrees per frame, both signs), so Rotation_Animation_Speed
+  (the AT-AT 0.5 against Stopped_Rate_Of_Turn 1) is read by analogy only, as the turn rate at which
+  turn clips play at their own rate. The corpus fits that reading as Movement_Animation_Speed's
+  fits Max_Speed: of the types whose models have turn clips, most give it equal to Max_Rate_Of_Turn
+  (infantry 20 and 20, the Night Sister and Rancor 1.5 and 1.5, the Twi'lek 12 and 12), and the
+  walkers well below their turn rates (the AT-ST 2.2 against 7.5, the SPMAT 1.0 against 3.1, the
+  AT-AA 1.25 against 3.5, the AT-AT 0.5 against 1), so their slow-stepping turn clips speed up. The AT-AT also has TURN*_HALF and TURN*_QUARTER clips, unused.
 - **Bone billboards** (2026-11-13). An ALO bone carries a billboard mode that turns the meshes on
   it. The MIT-licensed alo-viewer names the values 0 none, 1 parallel, 2 face, 3 about Z toward the
   view, 4 about Z toward the light, 5 about Z toward the wind, 6 sun glow, 7 sun, treats billboarded

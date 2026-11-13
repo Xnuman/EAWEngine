@@ -99,6 +99,9 @@ std::vector<std::string> localization_references(const std::string& xml);
 
 eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& path, std::size_t limit);
 
+// The ground speed at which a walk clip plays without its feet sliding (gait.cpp).
+eaw::Status gait(const eaw::VirtualFileSystem& vfs, const std::string& clip_path);
+
 void audit_texture_references(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit);
 
 void audit_lua(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit);

@@ -374,6 +374,10 @@ EAWAssetInspector.exe inspect Data/Text/MasterTextFile_English.dat
 # extent in the mesh's own space, materials
 EAWAssetInspector.exe inspect Data/Art/Models/Some_Unit.alo
 
+# The ground speed at which a walk clip plays without its feet sliding (its planted bones' speed),
+# and how fast a turn clip turns the body; the model is found from the clip's name
+EAWAssetInspector.exe gait Data/Art/Models/EV_AT-AT_MOVE_00.ala
+
 # A particle system: each emitter's texture, blend, rate, kind, gravity (weather emitters also
 # their cube size, fade-out, and distance, speed, and spawn cube), and tracks
 EAWAssetInspector.exe inspect Data/Art/Models/p_rain_med00.alo

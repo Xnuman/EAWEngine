@@ -143,7 +143,7 @@ rendering rows join item 2).
       (the sky capture, sky ambient, horizon fog), water that tiles visibly (done 2026-11-13: a broad
       anti-tiling layer in both modes; the TED repeat fields remain to be read).
    b. Bugs that need no rework: walker animation state changes (start from rest, turn, and stop
-      play wrongly and slowly); the T4-B's two weapons (missile launcher and laser cannons, with
+      play wrongly and slowly; done 2026-11-13: transitions play at the walk's and turn's rates); the T4-B's two weapons (missile launcher and laser cannons, with
       different ranges): their gun animations play out of range and loop instead of following the
       actual shots; walkers do not crush enemy infantry; destroyed space hardpoints are not
       replaced by their destroyed versions.
