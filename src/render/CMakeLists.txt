@@ -1,4 +1,6 @@
 # eaw_render_contract: the render contract, engine-native visual data (header only, portable).
+# eaw_render_core: rendering rules without a graphics API (detail-level selection, GPU resource
+# lifetime), shared by backends and testable without a device (portable).
 # eaw_render_d3d12: the Direct3D 12 backend (Windows).
 
 set(HEADERS_DIR "include/render")
@@ -30,6 +32,31 @@ target_sources(eaw_render_contract
 
 target_link_libraries(eaw_render_contract INTERFACE eaw_math)
 
+add_library(eaw_render_core STATIC)
+
+set(EAW_RENDER_CORE_HEADERS
+    ${HEADERS_DIR}/gpu_resource_lifetime.hpp
+    ${HEADERS_DIR}/lod_selection.hpp
+)
+
+set(EAW_RENDER_CORE_SOURCES
+    ${SOURCES_DIR}/lod_selection.cpp
+)
+
+source_group("" FILES ${EAW_RENDER_CORE_HEADERS} ${EAW_RENDER_CORE_SOURCES})
+
+target_sources(eaw_render_core
+  PUBLIC
+    FILE_SET "eaw_render_core_headers"
+      TYPE HEADERS
+      BASE_DIRS "include/"
+      FILES ${EAW_RENDER_CORE_HEADERS}
+  PRIVATE
+    ${EAW_RENDER_CORE_SOURCES}
+)
+
+target_link_libraries(eaw_render_core PUBLIC eaw_core eaw_render_contract)
+
 if(NOT WIN32)
     return()
 endif()
@@ -38,7 +65,6 @@ add_library(eaw_render_d3d12 STATIC)
 
 set(EAW_RENDER_D3D12_HEADERS
     ${HEADERS_DIR}/d3d12_renderer.hpp
-    ${HEADERS_DIR}/gpu_resource_lifetime.hpp
 )
 
 set(EAW_RENDER_D3D12_SOURCES
@@ -77,7 +103,7 @@ target_sources(eaw_render_d3d12
     ${EAW_RENDER_D3D12_SHADERS}
 )
 
-target_link_libraries(eaw_render_d3d12 PUBLIC eaw_core eaw_formats eaw_render_contract PRIVATE d3d12 dxgi eaw_imgui)
+target_link_libraries(eaw_render_d3d12 PUBLIC eaw_core eaw_formats eaw_render_contract PRIVATE eaw_render_core d3d12 dxgi eaw_imgui)
 
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/terrain.hlsl terrain_vs vs_6_0 g_eaw_terrain_vs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/terrain.hlsl terrain_ps ps_6_0 g_eaw_terrain_ps)

@@ -8,6 +8,7 @@
 #include "d3d12_support.hpp"
 
 #include "render/d3d12_renderer.hpp"
+#include "render/lod_selection.hpp"
 
 #include <optional>
 #include <vector>

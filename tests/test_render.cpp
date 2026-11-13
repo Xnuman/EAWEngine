@@ -1,6 +1,6 @@
 #include "test_support.hpp"
 
-#include "render/visual_lod.hpp"
+#include "render/lod_selection.hpp"
 
 #include <cmath>
 

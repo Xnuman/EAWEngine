@@ -51,6 +51,7 @@ Dependencies point inward: a lower layer never includes or links a higher one.
 | | `eaw_control` | Camera controllers and math, RTS selection and picking, the terrain height field. | simulation, render contract |
 | | `eaw_sandbox` | The sandbox's testable parts and the headless battle command. | battle, presentation, scene, control |
 | Presentation | `eaw_render_contract` | Engine-native visual data, one header per subject (`visual_vertex`, `visual_texture`, `visual_material`, `visual_mesh`, `visual_camera`, `visual_frame`, the `visual_scene` aggregate), header only. | math |
+| Presentation | `eaw_render_core` | Rendering rules without a graphics API: detail-level selection (`lod_selection`) and GPU resource lifetime (handles, deferred descriptor frees, fence retirement), shared by backends and tested without a device. | core, render contract |
 | | `eaw_render_d3d12` | The Direct3D 12 backend. | core, render contract, formats (RGBA images for captures) |
 | | `eaw_platform` | Win32 window, raw input, crash handlers, log sinks. | core |
 | | `eaw_audio` | The engine-native `Sound` (16-bit PCM), the `AudioDevice` interface, spatial gains, the null device. | core, math |
@@ -486,8 +487,9 @@ The file-level split of each module.
   terrain vertices, all the asset layer needs), `visual_texture`, `visual_material`, `visual_mesh`
   (draws, damage states, detail levels, terrain), `visual_camera` (all control needs), `visual_frame`
   (instances, lights, particles, debug lines), and `visual_scene` (the whole scene), with `color` and
-  `visual_lod`. The D3D12 backend's public interface is
-  `d3d12_renderer.hpp` with `gpu_resource_lifetime.hpp`; the implementation class in
+  `visual_lod` (the detail-level strategy and settings). `eaw_render_core` holds `lod_selection`
+  (levels, hysteresis, cross-fades) and `gpu_resource_lifetime`. The D3D12 backend's public
+  interface is `d3d12_renderer.hpp`; the implementation class in
   `d3d12_renderer_impl.hpp` is defined by subject in `d3d12_renderer_device.cpp` (startup, swap
   chain, buffers, waits, retirement), `_pipelines.cpp` (pipeline states and cache),
   `_resources.cpp` (uploads, scenes, texture streaming), `_frame.cpp` (per-frame state and
