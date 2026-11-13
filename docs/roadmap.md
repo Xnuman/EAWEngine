@@ -109,8 +109,11 @@ rendering rows join item 2).
    reflections join the enhanced lighting step, and water then moves onto them; done 2026-11-13:
    water drawn again (scenery), its own pass, enhanced depth color, shore fade, two normal layers,
    Fresnel toward a sky color, glint, refraction, foam, planar screen-space reflections; next:
-   the TED water fields (the owner is reading the editor's labels), a sky to reflect where the
-   screen has nothing, look tuning), skydomes and nebulae (`Skydome` 19, `Nebula` 15),
+   the TED water fields 0x17-0x22 (the owner will read their labels and Mon Calamari 02's values in
+   the map editor), a sky to reflect where the screen has nothing, and live tuning: the enhanced
+   water's constants (clarity, shore fade, foam depth and strength, refraction and reflection
+   distortion, glint) as sliders in a Water section of the Graphics panel, so the owner can tune
+   them by eye and the chosen values become the defaults), skydomes and nebulae (`Skydome` 19, `Nebula` 15),
    occluded units (chosen by the engine, not by materials), heat distortion (`MeshHeat` 3, plus
    heat particles), reflections (`MeshAdditiveReflection` 3; no stock material uses the reflective
    profiles); then weather and soft particles, look tuning.
