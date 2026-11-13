@@ -472,10 +472,10 @@ The file-level split of each module.
     types are drawn), `damage_states` (a land model's `_ALT` state by health), `battle_frame` (a running
     battle's tick events and frames),
     `scene_presentation`, `unit_animation`, `particle_effects` (`ParticleWorld`), `attached_effects`,
-    `battle_effects`, `map_weather`, `battle_audio`, `projectile_visuals`, and `debug_draw`;
+    `battle_effects`, `debris`, `map_weather`, `battle_audio`, `projectile_visuals`, and `debug_draw`;
   - `src/scene` (`eaw_scene`), behind `visual_scene_builder.hpp` and sharing `scene_builder_internal.hpp`:
     `scene_materials` (textures, materials, lighting), `scene_models` (models and rigs),
-    `scene_particles` (particle effects and effect objects), `scene_projectiles`, `scene_terrain`
+    `scene_particles` (particle effects and effect objects), `scene_projectiles`, `scene_debris` (hardpoint breakoff props), `scene_terrain`
     (terrain, liquids, tracks), `type_looks` (what XML types say about their look), and
     `visual_map_builder` (maps and runtime-spawnable packages);
   - `src/control` (`eaw_control`): `camera_controller`, `camera_math`, `rts_control`, `terrain_height`;
