@@ -135,8 +135,38 @@ rendering rows join item 2).
    the terrain and to units standing on it; done 2026-11-13), then bounced light once lighting is
    linear (HDR). Open: objects do not occlude the sky yet (buildings, cliffs as models; a
    screen-space or per-object term later).
+   Reordered by the owner on 2026-11-13: the job system and an entity-component design join M2 as
+   general engine systems, and the battle issues the owner found come first where they need no
+   rework. In this order:
+   a. Visual fixes: the line across planets, skydomes too bright for the lighting they feed
+      (the sky capture, sky ambient, horizon fog), water that tiles visibly.
+   b. Bugs that need no rework: walker animation state changes (start from rest, turn, and stop
+      play wrongly and slowly); the T4-B's two weapons (missile launcher and laser cannons, with
+      different ranges): their gun animations play out of range and loop instead of following the
+      actual shots; walkers do not crush enemy infantry; destroyed space hardpoints are not
+      replaced by their destroyed versions.
+   c. Research and one design document for an entity-component system (modern engines' ECS,
+      data-driven composition, archetypes) and the job system: entities as ids, components in
+      their own storage, systems over component sets with declared reads and writes, XML types as
+      component recipes through a tag-to-component registry, deterministic iteration, and a
+      hash-neutral migration path. Modder-defined component tags only get room in the design,
+      not a design of their own yet. The owner reviews it before code.
+   d. The job system: generic tasks, dependencies, and parallel loops; component systems become
+      its client.
+   e. The simulation's migration to entities and components, step by step with an unchanged
+      battle hash, folding in the deferred determinism work (stable-id order, keyed random draws,
+      a full-state hash).
+   f. Real squads: a squad is one commandable unit made of its soldiers (no single soldier of it
+      can be ordered).
+   g. Pathfinding, group movement, and collisions reworked on squads and components, after
+      research: each unit plans to its own destination slot instead of the group gathering at one
+      point first; routes spread by congestion so groups do not queue single-file; blocked units
+      plan again instead of bumping; pushing follows mass or priority (an infantry squad cannot
+      move an AT-AT); walls and placed obstacles are hard limits.
+   h. Enhanced water as an ocean on maps such as Kamino: waves (a tessellated surface displaced by
+      wave functions), foam on crests.
    This closes M2.
-3. The job system (Simulation stage 4's base), then input bindings (Platform and input stage 2).
+3. Input bindings (Platform and input stage 2).
 4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).
 5. Scripting stage 1's remaining calls as their systems arrive; then M4: the player layer
    (Simulation stage 2; `Spawn_Unit`, `Find_Player`, and `Find_Nearest` follow it), the HUD, the
