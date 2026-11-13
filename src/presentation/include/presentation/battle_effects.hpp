@@ -8,18 +8,31 @@
 #include "core/random.hpp"
 #include "render/visual_frame.hpp"
 #include "render/visual_texture.hpp"
+#include "assets/surface_effects.hpp"
+#include "assets/terrain_decals.hpp"
 #include "simulation/simulation.hpp"
 #include "presentation/attached_effects.hpp"
 #include "presentation/particle_effects.hpp"
 #include "presentation/projectile_visuals.hpp"
+#include "presentation/unit_animation.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <unordered_map>
 #include <vector>
 
 namespace eaw {
+
+// What lays footprints on a land map: the animation events (their surface triggers fire as feet
+// plant), and the surface effects and decals the triggers resolve through (the default surface).
+struct FootprintSource
+{
+    std::shared_ptr<const AnimationEventTable> events;
+    SurfaceEffectCatalog surfaces;
+    TerrainDecalCatalog decals;
+};
 
 // What a map or a spawn package brings: rigs parallel to its meshes, how its shots look (`atlas` is
 // the bolt atlas's renderer texture, or invalid_visual_texture), and its Particle objects. Effect
@@ -30,8 +43,10 @@ struct BattleEffectContent
     const ProjectileVisualTable* projectile_visuals{};
     std::uint32_t atlas{invalid_visual_texture};
     const ParticleEffectObjectTable* effect_objects{};
-    // The terrain decal atlas's renderer texture (scorch marks), or invalid_visual_texture.
+    // The terrain decal atlas's renderer texture (scorch marks, footprints), or invalid_visual_texture.
     std::uint32_t decal_atlas{invalid_visual_texture};
+    // A land map's footprints (shared with the map), or null.
+    std::shared_ptr<const FootprintSource> footprints;
 };
 
 class BattleEffects
@@ -68,7 +83,11 @@ public:
     // the ground (an explosion high in the air leaves none).
     void play_object(std::uint32_t key, const Vector3& position);
 
-    // Appends this frame's marks on the terrain (scorches), faded as they age.
+    // Lays the footprints of the surface events this frame's `cues` passed (UnitAnimator::cues), at
+    // the event's bone when the animator finds it (else the unit), turned with the unit.
+    void leave_footprints(std::span<const AnimationCue> cues, std::span<const VisualInstance> instances, std::span<const Matrix4> palette, const UnitAnimator& animator);
+
+    // Appends this frame's marks on the terrain (scorches, footprints), faded as they age.
     void build_decals(std::vector<VisualDecal>& decals) const;
     [[nodiscard]] std::size_t decal_count() const noexcept
     {
@@ -134,6 +153,7 @@ private:
         float age{};
     };
     std::vector<LiveDecal> decals_;
+    std::shared_ptr<const FootprintSource> footprints_;
     std::uint32_t decal_atlas_{invalid_visual_texture};
     ParticleGroundHeight ground_;
     Pcg32 decal_random_{1};

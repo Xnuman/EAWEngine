@@ -300,24 +300,18 @@ bool BattleAudio::play_event(const std::string_view name, const std::optional<Ve
 
 void BattleAudio::play_animation_cues(const std::span<const AnimationCue> cues)
 {
-    for (const auto& cue : cues)
-    {
-        for (const auto& event : animation_events_.find(cue.clip))
-        {
-            if (event.frame <= cue.from_frame || event.frame > cue.to_frame)
-            {
-                continue;
-            }
-            if (event.kind == AnimationEventKind::sound)
-            {
-                stats_.from_animations += play_event(event.name, cue.position) ? 1U : 0U;
-            }
-            else if (const auto* surface = surface_effects_.find(event.name); surface != nullptr && !surface->sound.empty())
-            {
-                stats_.from_animations += play_event(surface->sound, cue.position) ? 1U : 0U;
-            }
-        }
-    }
+    visit_cue_events(animation_events_, cues,
+                     [&](const AnimationCue& cue, const AnimationEvent& event)
+                     {
+                         if (event.kind == AnimationEventKind::sound)
+                         {
+                             stats_.from_animations += play_event(event.name, cue.position) ? 1U : 0U;
+                         }
+                         else if (const auto* surface = surface_effects_.find(event.name); surface != nullptr && !surface->sound.empty())
+                         {
+                             stats_.from_animations += play_event(surface->sound, cue.position) ? 1U : 0U;
+                         }
+                     });
 }
 
 bool BattleAudio::play_response(const std::string_view type_name, const UnitResponse response)

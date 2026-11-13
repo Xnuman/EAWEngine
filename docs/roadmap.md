@@ -97,8 +97,8 @@ rendering rows join item 2).
    original's, so it starts the enhanced lighting profile with the physically based path),
    shadows, fog (done 2026-11-13: legacy and enhanced height fog, particles included; volumetric fog
    for light shafts and smoke later, the owner agreeing), decals (map and runtime; terrain decals in
-   the terrain shader and scorch marks done 2026-11-13, footprints next, the one map with placed
-   decals later; screen-space decals if the renderer becomes deferred), special materials (shields, planets, nebula, heat
+   the terrain shader, scorch marks, and footprints done 2026-11-13; vehicle tracks (DynamicTrackFX
+   ribbons) and the one map with placed decals later; screen-space decals if the renderer becomes deferred), special materials (shields, planets, nebula, heat
    distortion, wind bend, occluded units, reflections), weather and soft particles, look tuning.
    This closes M2.
 3. The job system (Simulation stage 4's base), then input bindings (Platform and input stage 2).
@@ -378,7 +378,8 @@ waiting for it, oldest first:
 - the debug overlay's own texture uploads (the F1 panels);
 - turret motor loops; wreck end explosions and the longer wrecks of AT-AA and the Dark Troopers;
 - idles: random variants one after another, lone idles pausing 2-4 s;
-- scorch marks on the ground after explosions (size, darkness, how long they stay);
+- scorch marks after explosions and walkers' footprints (size, darkness, orientation, how long they
+  stay);
 - edge anti-aliasing on by default (`--no-aa` to compare), temporal anti-aliasing (`--aa taa`), and both (`--aa hybrid`):
   ghosting behind particles and blended parts, softness against FXAA, the hybrid mode;
 - transparent model parts drawn back to front (canopies, glass, glows on models);

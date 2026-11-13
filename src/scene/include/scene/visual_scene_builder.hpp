@@ -8,6 +8,7 @@
 #include "simulation/simulation.hpp"
 #include "battle/battle_map.hpp"
 #include "battle/object_types.hpp"
+#include "presentation/battle_effects.hpp"
 #include "presentation/entity_look.hpp"
 #include "presentation/particle_effects.hpp"
 #include "presentation/projectile_visuals.hpp"
@@ -77,6 +78,8 @@ struct VisualMapAsset
     std::uint32_t projectile_atlas{invalid_visual_texture};
     // The terrain decal atlas (scorch marks), when an effect object leaves one; as projectile_atlas.
     std::uint32_t decal_atlas{invalid_visual_texture};
+    // On land: what lays footprints (shared with battle effects); null in space or without textures.
+    std::shared_ptr<const FootprintSource> footprints;
     // The Particle objects shot impacts and deaths name, as in SpawnablePackage.
     ParticleEffectObjectTable effect_objects;
 };

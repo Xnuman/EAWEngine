@@ -2,9 +2,11 @@
 
 #include "math/matrix.hpp"
 #include "math/scalar.hpp"
+#include "core/string_utils.hpp"
 #include "assets/animation.hpp"
 #include "assets/game_object_catalog.hpp"
 #include "assets/pose.hpp"
+#include "assets/skeleton.hpp"
 #include "presentation/scene_presentation.hpp"
 
 #include <algorithm>
@@ -342,18 +344,47 @@ void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id,
     corpses_.push_back({instance, clip, seconds, lifetime, -1.0, style.end_effect});
 }
 
-void UnitAnimator::add_cue(const EntityId entity, const Vector3& position, const VisualClip& clip, const double from, const double to, const double loop_frames)
+void UnitAnimator::add_cue(const EntityId entity, const Vector3& position, const VisualClip& clip, const double from, const double to, const double loop_frames, const std::size_t instance)
 {
+    const auto index = static_cast<std::uint32_t>(instance);
     if (to > from)
     {
-        cues_.push_back({entity, position, clip.path, from, to});
+        cues_.push_back({entity, position, clip.path, from, to, index});
     }
     else if (to < from && loop_frames > 0.0)
     {
         // The loop wrapped: to its end, then from its start.
-        cues_.push_back({entity, position, clip.path, from, loop_frames});
-        cues_.push_back({entity, position, clip.path, -1.0, to});
+        cues_.push_back({entity, position, clip.path, from, loop_frames, index});
+        cues_.push_back({entity, position, clip.path, -1.0, to, index});
     }
+}
+
+std::optional<Vector3> UnitAnimator::bone_position(const AnimationCue& cue, const std::string_view bone, const std::span<const VisualInstance> instances, const std::span<const Matrix4> palette) const
+{
+    if (cue.instance >= instances.size())
+    {
+        return std::nullopt;
+    }
+    const auto& instance = instances[cue.instance];
+    if (instance.mesh >= rigs_.size() || !rigs_[instance.mesh].skeleton)
+    {
+        return std::nullopt;
+    }
+    const auto& skeleton = *rigs_[instance.mesh].skeleton;
+    for (std::size_t index = 0; index < skeleton.bones.size(); ++index)
+    {
+        if (!ascii_equal_ignoring_case(skeleton.bones[index].name, bone))
+        {
+            continue;
+        }
+        // The bone's model-space pose: its bind pose through its skinning matrix (as attached
+        // effects place theirs); its rest pose when the palette does not reach it.
+        const auto bind = skeleton_bind_pose(skeleton);
+        const auto skin = static_cast<std::size_t>(instance.bone_offset) + index;
+        const auto model = skin < palette.size() ? bind[index] * palette[skin] : bind[index];
+        return transform_point(translation(model), instance.transform);
+    }
+    return std::nullopt;
 }
 
 const std::vector<AnimationCue>& UnitAnimator::cues() const noexcept
@@ -559,7 +590,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 const auto frame = time * static_cast<double>(visual_clip.animation->frames_per_second);
                 if (clip == state.cue_clip)
                 {
-                    add_cue(entity.id, position, visual_clip, state.cue_frame, frame, static_cast<double>(visual_clip.animation->loop_frame_count));
+                    add_cue(entity.id, position, visual_clip, state.cue_frame, frame, static_cast<double>(visual_clip.animation->loop_frame_count), index);
                 }
                 state.cue_clip = clip;
                 state.cue_frame = frame;
@@ -575,7 +606,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             const auto frame = fire_time * static_cast<double>(visual_clip.animation->frames_per_second);
             // A new shot restarts ATTACK: its events from the first frame on.
             const auto from = new_shot ? -1.0 : state.fire_cue_frame;
-            add_cue(entity.id, position, visual_clip, from, frame, 0.0);
+            add_cue(entity.id, position, visual_clip, from, frame, 0.0, index);
             state.fire_cue_frame = frame;
         }
         else
@@ -756,7 +787,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         const auto duration = static_cast<double>(animation_duration(*die_clip.animation));
         const auto time = std::clamp(seconds - corpse.died, 0.0, duration * 0.9999);
         const auto cue_frame = time * static_cast<double>(die_clip.animation->frames_per_second);
-        add_cue({}, translation(corpse.instance.transform), die_clip, corpse.cue_frame, cue_frame, 0.0);
+        add_cue({}, translation(corpse.instance.transform), die_clip, corpse.cue_frame, cue_frame, 0.0, instances.size());
         corpse.cue_frame = cue_frame;
         PoseKey key{corpse.instance.mesh, {}};
         key.layers[0] = {corpse.clip, slot_of(corpse.instance.mesh, corpse.clip, time), 8U};

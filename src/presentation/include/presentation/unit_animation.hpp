@@ -29,6 +29,7 @@
 // deaths, and crouching are not modeled yet.
 
 #include "render/visual_frame.hpp"
+#include "assets/animation_events.hpp"
 #include "simulation/simulation.hpp"
 #include "battle/object_types.hpp"
 #include "presentation/entity_look.hpp"
@@ -37,6 +38,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -73,7 +75,26 @@ struct AnimationCue
     std::string_view clip;
     double from_frame{};
     double to_frame{};
+    // The instance that played it, as an index into the instances animate() filled (bone positions
+    // come from it and the palette; none for cues made elsewhere).
+    std::uint32_t instance{std::numeric_limits<std::uint32_t>::max()};
 };
+
+// Visits every event of `table` that a cue passes (its frame in (from, to]), in cue order:
+// `visit(cue, event)`.
+template <class Visit> void visit_cue_events(const AnimationEventTable& table, const std::span<const AnimationCue> cues, Visit&& visit)
+{
+    for (const auto& cue : cues)
+    {
+        for (const auto& event : table.find(cue.clip))
+        {
+            if (event.frame > cue.from_frame && event.frame <= cue.to_frame)
+            {
+                visit(cue, event);
+            }
+        }
+    }
+}
 
 // The least weight of the pose a locomotion clip needs to report its events (an engine choice: a
 // clip blending out does not step).
@@ -118,6 +139,10 @@ public:
     [[nodiscard]] const Stats& stats() const noexcept;
     // What the last animate() played (valid until the next one).
     [[nodiscard]] const std::vector<AnimationCue>& cues() const noexcept;
+    // Where a bone of the instance that played `cue` is in the world, from the instances and the
+    // palette animate() filled; none when the cue names no instance or its mesh has no such bone
+    // (names compared ignoring case).
+    [[nodiscard]] std::optional<Vector3> bone_position(const AnimationCue& cue, std::string_view bone, std::span<const VisualInstance> instances, std::span<const Matrix4> palette) const;
     // A wreck that went in the last animate() with an effect to play there (DeathStyle::end_effect).
     struct EndedCorpse
     {
@@ -208,7 +233,7 @@ private:
         std::uint32_t end_effect{};
     };
     // Reports the frames a clip passed from `from` to `to` (a loop of `loop_frames` wraps).
-    void add_cue(EntityId entity, const Vector3& position, const VisualClip& clip, double from, double to, double loop_frames);
+    void add_cue(EntityId entity, const Vector3& position, const VisualClip& clip, double from, double to, double loop_frames, std::size_t instance);
     // A variant of `role` for `id` (`salt` 0 for its first choice, another for later ones).
     [[nodiscard]] std::int32_t choose_clip(std::uint32_t mesh, AnimationRole role, EntityId id, std::uint64_t salt = 0) const;
     // The clip of `mesh` with `role` and `variant`, or -1.

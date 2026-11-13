@@ -32,6 +32,7 @@ void BattleEffects::reset(const BattleEffectContent& content)
     effect_objects_.clear();
     decals_.clear();
     decal_atlas_ = invalid_visual_texture;
+    footprints_.reset();
     attached_.set_rigs(content.rigs);
     projectile_attached_.set_rigs(content.rigs);
     take(content);
@@ -61,6 +62,10 @@ void BattleEffects::take(const BattleEffectContent& content)
     if (decal_atlas_ == invalid_visual_texture)
     {
         decal_atlas_ = content.decal_atlas;
+    }
+    if (!footprints_)
+    {
+        footprints_ = content.footprints;
     }
 }
 
@@ -204,6 +209,49 @@ void BattleEffects::play_object(const std::uint32_t key, const Vector3& position
         decals_.erase(decals_.begin());
     }
     decals_.push_back(mark);
+}
+
+void BattleEffects::leave_footprints(const std::span<const AnimationCue> cues, const std::span<const VisualInstance> instances, const std::span<const Matrix4> palette, const UnitAnimator& animator)
+{
+    if (!footprints_ || !footprints_->events || decal_atlas_ == invalid_visual_texture)
+    {
+        return;
+    }
+    const auto& source = *footprints_;
+    visit_cue_events(*source.events, cues,
+                     [&](const AnimationCue& cue, const AnimationEvent& event)
+                     {
+                         if (event.kind != AnimationEventKind::surface)
+                         {
+                             return;
+                         }
+                         const auto* surface = source.surfaces.find(event.name);
+                         const auto* decal = surface != nullptr && !surface->decal.empty() ? source.decals.find(surface->decal) : nullptr;
+                         if (decal == nullptr || decal->cells.empty())
+                         {
+                             return;
+                         }
+                         const auto position = animator.bone_position(cue, event.bone, instances, palette).value_or(cue.position);
+                         // Turned with the unit: its model faces -Y, so the mark's +Y points along
+                         // the unit's facing (an engine choice until compared with the original).
+                         float facing = 0.0F;
+                         if (cue.instance < instances.size())
+                         {
+                             const auto& m = instances[cue.instance].transform;
+                             facing = std::atan2(-m(1, 1), -m(1, 0)) - 1.5707964F;
+                         }
+                         LiveDecal mark;
+                         mark.decal = decal;
+                         mark.center = {position.x, position.y};
+                         mark.rotation = facing + (decal->random_rotate ? decal_random_.range(0.0F, 6.2831853F) : decal->angle);
+                         mark.scale = 1.0F + decal_random_.range(-decal->size_variation, decal->size_variation);
+                         mark.cell = decal->cells[decal_random_.next() % decal->cells.size()];
+                         if (decals_.size() >= maximum_decals)
+                         {
+                             decals_.erase(decals_.begin());
+                         }
+                         decals_.push_back(mark);
+                     });
 }
 
 void BattleEffects::build_decals(std::vector<VisualDecal>& decals) const

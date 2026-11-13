@@ -1,6 +1,9 @@
 #include "core/string_utils.hpp"
+#include "assets/animation_events.hpp"
 #include "assets/map_object_layout.hpp"
 #include "assets/spawn_catalog.hpp"
+#include "assets/surface_effects.hpp"
+#include "assets/terrain_decals.hpp"
 #include "scene/scene_builder_internal.hpp"
 
 #include <algorithm>
@@ -315,6 +318,19 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             keys.push_back(look.death.end_effect);
         }
         load_effect_objects(builder, catalog, *catalog_entry->database, keys, battle.land, asset.effect_objects, asset.decal_atlas);
+        // Footprints on land: the animation events and what their surface triggers leave.
+        if (battle.land)
+        {
+            auto footprints = std::make_shared<FootprintSource>();
+            footprints->events = std::make_shared<const AnimationEventTable>(load_animation_events(vfs, &scene.warnings));
+            footprints->surfaces = SurfaceEffectCatalog::build(*catalog_entry->database);
+            footprints->decals = TerrainDecalCatalog::build(*catalog_entry->database);
+            asset.footprints = std::move(footprints);
+            if (asset.decal_atlas == invalid_visual_texture)
+            {
+                asset.decal_atlas = particle_library_texture(builder, std::string(decal_atlas_texture), "terrain decals");
+            }
+        }
     }
     asset.particle_textures = std::move(builder.particles.textures);
     if (scene.terrain.vertices.empty() && std::ranges::none_of(scene.instances,

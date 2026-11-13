@@ -741,6 +741,57 @@ void test_terrain_decals()
     std::filesystem::remove_all(root, ignored);
 }
 
+// Footprints: a surface event a cue passes leaves its trigger's decal (through the default
+// surface) at the event's bone, from the instance and palette the animator filled, turned with the
+// unit (its model faces -Y, so an unturned unit's mark is turned half a turn); events the cue does
+// not pass leave none.
+void test_footprints()
+{
+    const auto root = std::filesystem::temp_directory_path() / "eawengine-footprints-test";
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    write_file(root / "Data" / "XML" / "SurfaceFX.xml",
+               "<SurfaceEffects><SurfaceFX name=\"Foot_Plant\"><Surface_Settings name=\"default\"><Decal_Name>Foot</Decal_Name></Surface_Settings></SurfaceFX></SurfaceEffects>");
+    write_file(root / "Data" / "XML" / "TerrainDecalFX.xml",
+               "<TerrainDecals><Decal Name=\"Foot\"><Render_Mode>DECAL_BUMP_ALPHA</Render_Mode><Scale>10, 20</Scale><UV_Slot>2,0</UV_Slot></Decal></TerrainDecals>");
+    eaw::VirtualFileSystem vfs;
+    vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
+    const auto database = eaw::XmlAssetDatabase::build(vfs);
+    auto source = std::make_shared<eaw::FootprintSource>();
+    eaw::AnimationSfxMapData rows;
+    rows.rows = {{{"SURFACE", "anim_walk_00", "500", "FOOT_PLANT", "root"}, 1}};
+    source->events = std::make_shared<const eaw::AnimationEventTable>(eaw::AnimationEventTable::build(rows));
+    source->surfaces = eaw::SurfaceEffectCatalog::build(database);
+    source->decals = eaw::TerrainDecalCatalog::build(database);
+
+    eaw::VisualRig rig;
+    rig.skeleton = std::make_shared<eaw::Skeleton>(eaw::load_skeleton(expect_ok(eaw::read_alo<eaw::AloModelData>(make_test_alo()), "test model")));
+    rig.palette_size = 1;
+    const std::vector<eaw::VisualRig> rigs{rig};
+    const std::vector<eaw::Matrix4> rest{eaw::Matrix4::identity()};
+    const eaw::UnitAnimator animator(rigs, rest);
+    eaw::VisualInstance walker{0};
+    eaw::set_translation(walker.transform, {100.0F, 50.0F, 10.0F});
+    const std::vector<eaw::VisualInstance> instances{walker};
+    auto foot = eaw::Matrix4::identity();
+    eaw::set_translation(foot, {5.0F, 0.0F, 0.0F});
+    const std::vector<eaw::Matrix4> palette{foot};
+
+    eaw::BattleEffects effects;
+    effects.reset({{}, nullptr, eaw::invalid_visual_texture, nullptr, 3U, source});
+    const std::vector<eaw::AnimationCue> early{{{}, {100.0F, 50.0F, 10.0F}, "anim_walk_00", 0.0, 4.0, 0U}};
+    effects.leave_footprints(early, instances, palette, animator);
+    require(effects.decal_count() == 0, "a cue that does not pass the foot plant must leave no footprint");
+    const std::vector<eaw::AnimationCue> step{{{}, {100.0F, 50.0F, 10.0F}, "anim_walk_00", 4.0, 6.0, 0U}};
+    effects.leave_footprints(step, instances, palette, animator);
+    std::vector<eaw::VisualDecal> decals;
+    effects.build_decals(decals);
+    require(decals.size() == 1 && std::fabs(decals[0].center.x - 105.0F) < 1.0e-4F && std::fabs(decals[0].center.y - 50.0F) < 1.0e-4F && decals[0].mode == eaw::VisualDecalMode::bump &&
+                decals[0].half_size == eaw::Vector2{5.0F, 10.0F} && std::fabs(std::fabs(decals[0].rotation) - 3.14159265F) < 1.0e-4F && decals[0].uv_rect[0] == 0.5F,
+            "a foot plant must leave its decal at the foot bone, turned with the unit");
+    std::filesystem::remove_all(root, ignored);
+}
+
 const ModuleRegistrar registrar("effects", {
                                                {"test_particle_tracks", &test_particle_tracks},
                                                {"test_particle_world", &test_particle_world},
@@ -751,6 +802,7 @@ const ModuleRegistrar registrar("effects", {
                                                {"test_attached_effect_scale", &test_attached_effect_scale},
                                                {"test_terrain_decals", &test_terrain_decals},
                                                {"test_scorch_marks", &test_scorch_marks},
+                                               {"test_footprints", &test_footprints},
                                            });
 
 } // namespace
