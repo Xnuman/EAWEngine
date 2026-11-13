@@ -108,7 +108,7 @@ rendering rows join item 2).
    sun glint, planar screen-space reflections with a sky fallback; general screen-space
    reflections join the enhanced lighting step, and water then moves onto them; done 2026-11-13:
    water drawn again (scenery), its own pass, enhanced depth color, shore fade, two normal layers,
-   Fresnel toward a sky color, glint, refraction; next: the TED water fields, foam, planar
+   Fresnel toward a sky color, glint, refraction, foam; next: the TED water fields, planar
    reflections), skydomes and nebulae (`Skydome` 19, `Nebula` 15),
    occluded units (chosen by the engine, not by materials), heat distortion (`MeshHeat` 3, plus
    heat particles), reflections (`MeshAdditiveReflection` 3; no stock material uses the reflective

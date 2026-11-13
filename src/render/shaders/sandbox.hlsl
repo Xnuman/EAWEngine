@@ -335,6 +335,14 @@ static const float WATER_GLINT_STRENGTH = 1.5f;
 static const float WATER_BASE_REFLECTANCE = 0.02f; // water's reflectance looking straight down
 static const float WATER_REFRACTION = 0.02f;       // screen share the bent normal shifts what lies beneath
 static const float WATER_REFRACTION_DEPTH = 4.0f;  // depth (units) over which refraction grows to full
+// Foam: along the shore within this depth, broken up by the normal layers, stronger where the bottom
+// is steep (breakers) than over flat shallows (the 0 A.D. developers' finding), with lines rolling in
+// toward the shore.
+static const float WATER_FOAM_DEPTH = 6.0f;
+static const float WATER_FOAM_FLAT_SHARE = 0.35f;   // foam over a flat bottom, against a steep one's 1
+static const float WATER_FOAM_LINE_SPACING = 2.5f;  // depth (units) between rolling lines
+static const float WATER_FOAM_LINE_SPEED = 1.2f;    // their travel (units of depth per second)
+static const float3 WATER_FOAM_COLOR = float3(0.9f, 0.92f, 0.95f);
 
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 PixelOutput water_ps(PixelInput input)
@@ -378,6 +386,18 @@ PixelOutput water_ps(PixelInput input)
     const float lit = dot(surface_normal, light) > 0.0f ? key_light_visibility(input.world_position, surface_normal, input.position.xy) : 0.0f;
     const float3 glint = key_specular.rgb * material.specular.rgb * pow(saturate(dot(normal, half_vector)), WATER_GLINT_POWER) * WATER_GLINT_STRENGTH * lit;
 
+    // Foam, from the depth beneath and the bottom's slope (from the beneath position's screen
+    // derivatives).
+    const float3 bottom_normal = safe_normalize(cross(ddx(beneath), ddy(beneath)), float3(0.0f, 0.0f, 1.0f));
+    const float steepness = saturate(1.0f - abs(bottom_normal.z));
+    const float shallow = saturate(1.0f - below / WATER_FOAM_DEPTH);
+    const float rolling = pow(saturate(sin((below / WATER_FOAM_LINE_SPACING + time * WATER_FOAM_LINE_SPEED / WATER_FOAM_LINE_SPACING) * 6.2831853f) * 0.5f + 0.5f), 4.0f);
+    const float breakup = saturate((first.x + second.y) * 1.5f + 0.5f);
+    const float foam = bottomless ? 0.0f
+                                  : saturate(shallow * shallow * (WATER_FOAM_FLAT_SHARE + (1.0f - WATER_FOAM_FLAT_SHARE) * steepness) * (0.6f + rolling) * breakup * 1.5f);
+    const float3 foam_lit = legacy_lit_color(WATER_FOAM_COLOR, surface_normal, input.world_position, 0.0f, float3(1.0f, 1.0f, 1.0f), float3(0.0f, 0.0f, 0.0f), float3(0.0f, 0.0f, 0.0f),
+                                             float3(1.0f, 1.0f, 1.0f), input.position.xy, true);
+
     PixelOutput output;
     const float shore = saturate(below / WATER_SHORE_FADE);
     const float transmittance = exp(-path / WATER_CLARITY);
@@ -395,12 +415,12 @@ PixelOutput water_ps(PixelInput input)
         const bool above = shifted_depth < 1.0f && shifted_h.z / shifted_h.w > input.world_position.z;
         const float3 seen = refraction.Load(int3(above ? int2(input.position.xy) : shifted_pixel, 0)).rgb;
         const float3 water = lerp(seen, body, 1.0f - transmittance);
-        output.color = float4(apply_fog(lerp(water, sky, fresnel) + glint, input.world_position), shore);
+        output.color = float4(apply_fog(lerp(lerp(water, sky, fresnel) + glint, foam_lit, foam), input.world_position), shore);
     }
     else
     {
-        const float alpha = max(1.0f - transmittance, fresnel) * shore;
-        output.color = float4(apply_fog(lerp(body, sky, fresnel) + glint, input.world_position), alpha);
+        const float alpha = max(max(1.0f - transmittance, fresnel) * shore, foam);
+        output.color = float4(apply_fog(lerp(lerp(body, sky, fresnel) + glint, foam_lit, foam), input.world_position), alpha);
     }
     output.pick = uint2(0u, 0u);
     output.motion = float2(MOTION_UNKNOWN, MOTION_UNKNOWN);
