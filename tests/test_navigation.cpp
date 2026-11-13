@@ -858,7 +858,10 @@ void test_crushing()
     hostility.set(1, 2, true);
     eaw::CombatProfile alive;
     alive.health = 10.0F;
-    const auto run = [&](const eaw::Crusher kind, const eaw::CrushProfile victim_crush, const std::uint32_t victim_owner)
+    // `victim_radius`: a victim with a body (that takes part in separation) and legs (it could make
+    // way, but stands idle); `speed` the crusher's (the AT-AT's 15 per second moves half a unit a
+    // tick here).
+    const auto run = [&](const eaw::Crusher kind, const eaw::CrushProfile victim_crush, const std::uint32_t victim_owner, const float victim_radius = 0.0F, const float speed = 50.0F)
     {
         eaw::SimulationWorld world(0.1);
         world.set_ground(ground);
@@ -866,15 +869,23 @@ void test_crushing()
         const auto tank = world.spawn({.type_name = "Tank",
                                        .owner = 1,
                                        .position = {50.0F, 100.0F, 0.0F},
-                                       .max_speed = 50.0F,
+                                       .max_speed = speed,
                                        .follows_ground = true,
                                        .passable_types = eaw::passability::clear,
                                        .radius = 10.0F,
                                        .crush = {.crusher = kind}});
-        const auto victim = world.spawn({.type_name = "Victim", .owner = victim_owner, .position = {150.0F, 100.0F, 0.0F}, .follows_ground = true, .combat = alive, .crush = victim_crush});
+        const auto victim = world.spawn({.type_name = "Victim",
+                                         .owner = victim_owner,
+                                         .position = {150.0F, 100.0F, 0.0F},
+                                         .max_speed = victim_radius > 0.0F ? 20.0F : 0.0F,
+                                         .follows_ground = true,
+                                         .passable_types = eaw::passability::clear,
+                                         .combat = alive,
+                                         .radius = victim_radius,
+                                         .crush = victim_crush});
         require(tank && victim, "test spawns must succeed");
         world.submit({.kind = eaw::SimCommandKind::move, .entities = {*tank}, .target = {250.0F, 100.0F, 0.0F}});
-        for (int tick = 0; tick < 60; ++tick)
+        for (int tick = 0; tick < 600; ++tick)
         {
             world.step();
             // A crushed death is reported as one (for its crushed clip).
@@ -891,6 +902,9 @@ void test_crushing()
     require(run(eaw::Crusher::crusher, infantry, 1) == 0 && run(eaw::Crusher::none, infantry, 2) == 0 && run(eaw::Crusher::crusher, {}, 2) == 0,
             "friends, non-crushers, and unsquashable entities must not be crushed");
     require(run(eaw::Crusher::crusher, vehicle, 2) == 0 && run(eaw::Crusher::supercrusher, vehicle, 2) == 1, "only a supercrusher must crush vehicles and walls");
+    // Standing infantry with a body does not hold a crusher back (the owner's report), fast or slow.
+    require(run(eaw::Crusher::crusher, infantry, 2, 3.0F) == 1 && run(eaw::Crusher::supercrusher, infantry, 2, 3.0F, 5.0F) == 1,
+            "a crusher must walk over standing hostile infantry instead of being held back");
 }
 
 const ModuleRegistrar registrar("navigation", {

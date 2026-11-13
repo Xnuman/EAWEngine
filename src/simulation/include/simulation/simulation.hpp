@@ -668,6 +668,9 @@ private:
     void run_separation();
     // Crushing (simulation_locomotion.cpp): after movement, before separation pushes the victims out.
     void run_crushing();
+    // Whether `crusher` crushes `victim` by walking over it: a crusher, a living hostile victim
+    // squashable by its kind.
+    [[nodiscard]] bool can_crush(std::size_t crusher, std::size_t victim) const;
     // Navigation (simulation_navigation.cpp): local avoidance of space ships (detours_).
     void plan_space_avoidance();
     // A space ship's step without the part that would take it deeper into a ship it touches (both

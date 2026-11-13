@@ -288,6 +288,15 @@ float SimulationWorld::settle_distance(const std::size_t index) const noexcept
 // way); idle units yield more than moving ones, so a moving unit shoulders through instead of
 // stopping. A push never moves a unit onto a cell its class may not enter, and it is limited per
 // tick so packed groups spread out over a few ticks instead of jumping.
+bool SimulationWorld::can_crush(const std::size_t crusher, const std::size_t victim) const
+{
+    const auto kind = crushes_[crusher].crusher;
+    const auto& squash = crushes_[victim];
+    const bool may = squash.squashable || (kind == Crusher::supercrusher && squash.squashable_by_supercrusher);
+    const auto& combat = combat_[victim];
+    return kind != Crusher::none && victim != crusher && may && combat.profile.health > 0.0F && combat.health > 0.0F && hostility_.hostile(owners_[crusher], owners_[victim]);
+}
+
 void SimulationWorld::run_crushing()
 {
     if (!ground_.valid())
@@ -306,14 +315,11 @@ void SimulationWorld::run_crushing()
         }
         for (std::size_t victim = 0; victim < ids_.size(); ++victim)
         {
-            const auto& squash = crushes_[victim];
-            const bool may = squash.squashable || (kind == Crusher::supercrusher && squash.squashable_by_supercrusher);
-            const auto& combat = combat_[victim];
-            if (victim == crusher || !may || combat.profile.health <= 0.0F || combat.health <= 0.0F || !hostility_.hostile(owners_[crusher], owners_[victim]))
+            if (!can_crush(crusher, victim))
             {
                 continue;
             }
-            if (std::hypot(positions_[victim].x - at.x, positions_[victim].y - at.y) < radii_[crusher] && wound(victim, combat.health) > 0.0F)
+            if (std::hypot(positions_[victim].x - at.x, positions_[victim].y - at.y) < radii_[crusher] && wound(victim, combat_[victim].health) > 0.0F)
             {
                 ++crushed_;
                 combat_[victim].crushed = true;
@@ -393,6 +399,14 @@ void SimulationWorld::run_separation()
             }
             const bool flying = flyer(index);
             if (flying != flyer(other) || (flying && owners_[index] != owners_[other]))
+            {
+                continue;
+            }
+            // A crusher and what it can crush do not push each other: a walker walks over standing
+            // infantry (and crushes it) instead of being held back by it, the owner's report; pushing
+            // the infantry aside instead would keep a slow walker from ever reaching it. Infantry may
+            // stand at a still walker's feet, out of its guns' reach, as in the original.
+            if (!flying && (can_crush(index, other) || can_crush(other, index)))
             {
                 continue;
             }
