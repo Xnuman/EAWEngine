@@ -12,13 +12,16 @@
     "SRV(t1, visibility = SHADER_VISIBILITY_VERTEX), " \
     "SRV(t2, visibility = SHADER_VISIBILITY_VERTEX), " \
     "SRV(t3), " \
-    "RootConstants(num32BitConstants = 2, b1), " \
+    "RootConstants(num32BitConstants = 3, b1), " \
     "SRV(t4, visibility = SHADER_VISIBILITY_PIXEL), " \
     "StaticSampler(s0, filter = FILTER_ANISOTROPIC, maxAnisotropy = 8, addressU = TEXTURE_ADDRESS_WRAP, addressV = TEXTURE_ADDRESS_WRAP, " \
     "addressW = TEXTURE_ADDRESS_WRAP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK, " \
     "visibility = SHADER_VISIBILITY_PIXEL), " \
     "StaticSampler(s1, filter = FILTER_MIN_MAG_MIP_LINEAR, addressU = TEXTURE_ADDRESS_CLAMP, addressV = TEXTURE_ADDRESS_CLAMP, " \
     "addressW = TEXTURE_ADDRESS_CLAMP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK, " \
+    "visibility = SHADER_VISIBILITY_PIXEL), " \
+    "StaticSampler(s2, filter = FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, addressU = TEXTURE_ADDRESS_BORDER, addressV = TEXTURE_ADDRESS_BORDER, " \
+    "addressW = TEXTURE_ADDRESS_BORDER, comparisonFunc = COMPARISON_LESS_EQUAL, borderColor = STATIC_BORDER_COLOR_OPAQUE_WHITE, " \
     "visibility = SHADER_VISIBILITY_PIXEL)"
 
 // Material flags (keep in sync with d3d12_renderer.cpp).
@@ -58,6 +61,14 @@ cbuffer FrameConstants : register(b0)
     float4x4 inverse_view_projection;
     float4x4 previous_view_projection; // the last frame's camera (the current one in the first frame)
     float4 taa_parameters; // xy jitter (NDC), z history valid (1) or not (0), w weight of the new frame
+    // Key-light shadows (render/shadow_cascades.hpp): each cascade's world-to-clip matrix, the far
+    // end of its slice along the view, its texel's world size, and its map's texture slot.
+    float4x4 shadow_view_projection[4];
+    float4 shadow_splits;
+    float4 shadow_texels;
+    float4 camera_forward; // xyz the view direction
+    uint4 shadow_slots;
+    float4 shadow_parameters; // x cascade count (0: no shadows), y normal offset in texels, z blend band share, w filter radius in UV
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
@@ -79,6 +90,8 @@ cbuffer DrawConstants : register(b1)
 {
     uint instance_base;
     uint material_index;
+    // The shadow cascade a shadow pass draws into.
+    uint pass_index;
 };
 
 struct MaterialData
@@ -102,6 +115,7 @@ StructuredBuffer<MaterialData> materials : register(t3);
 // stream in (or fall back) without rewriting descriptors or materials.
 StructuredBuffer<uint> texture_residency : register(t4);
 SamplerState surface_sampler : register(s0);
+SamplerComparisonState shadow_sampler : register(s2);
 
 float4 sample_texture(const uint texture, const float2 uv)
 {
@@ -114,17 +128,97 @@ float3 safe_normalize(const float3 value, const float3 fallback)
     return length_squared > 1.0e-12f ? value * rsqrt(length_squared) : fallback;
 }
 
+// Shadow filtering: taps of a Poisson disk (unit radius), turned per pixel and frame by a noise
+// angle so that temporal anti-aliasing averages the pattern away (engine choices).
+static const uint SHADOW_TAPS = 12;
+static const float2 shadow_disk[SHADOW_TAPS] = {float2(-0.326f, -0.406f), float2(-0.840f, -0.074f), float2(-0.696f, 0.457f), float2(-0.203f, 0.621f),
+                                                float2(0.962f, -0.195f), float2(0.473f, -0.480f), float2(0.519f, 0.767f), float2(0.185f, -0.893f),
+                                                float2(0.507f, 0.064f), float2(0.896f, 0.412f), float2(-0.322f, -0.933f), float2(-0.792f, -0.598f)};
+
+// Interleaved gradient noise in 0..1, moved every frame by the scene clock.
+float shadow_noise(const float2 pixel)
+{
+    const float2 moved = pixel + 5.588238f * floor(frac(camera_position_time.w * 7.0f) * 64.0f);
+    return frac(52.9829189f * frac(dot(moved, float2(0.06711056f, 0.00583715f))));
+}
+
+// How much of the key light reaches `world` through one cascade (1 outside it).
+float cascade_visibility(const uint cascade, const float3 world, const float3 normal, const float angle)
+{
+    // Pushed out along the normal by a few texels of this cascade, against self-shadowing acne.
+    const float3 offset = world + normal * shadow_texels[cascade] * shadow_parameters.y;
+    const float4 clip = mul(float4(offset, 1.0f), shadow_view_projection[cascade]);
+    const float2 uv = float2(clip.x * 0.5f + 0.5f, 0.5f - clip.y * 0.5f);
+    if (any(uv < 0.0f) || any(uv > 1.0f) || clip.z > 1.0f)
+    {
+        return 1.0f;
+    }
+    Texture2D map = scene_textures[NonUniformResourceIndex(shadow_slots[cascade])];
+    float s;
+    float c;
+    sincos(angle, s, c);
+    float lit = 0.0f;
+    [unroll]
+    for (uint tap = 0; tap < SHADOW_TAPS; ++tap)
+    {
+        const float2 d = shadow_disk[tap];
+        const float2 turned = float2(d.x * c - d.y * s, d.x * s + d.y * c) * shadow_parameters.w;
+        lit += map.SampleCmpLevelZero(shadow_sampler, uv + turned, clip.z);
+    }
+    return lit / SHADOW_TAPS;
+}
+
+// How much of the key light reaches a surface: from the cascade its view depth falls in, dithered
+// into the next cascade over the last share of each slice, and fading out at the far end.
+float key_light_visibility(const float3 world, const float3 normal, const float2 pixel)
+{
+    const uint count = (uint)shadow_parameters.x;
+    if (count == 0u)
+    {
+        return 1.0f;
+    }
+    const float depth = dot(world - camera_position_time.xyz, camera_forward.xyz);
+    uint cascade = count;
+    for (uint index = 0; index < count; ++index)
+    {
+        if (depth <= shadow_splits[index])
+        {
+            cascade = index;
+            break;
+        }
+    }
+    if (cascade >= count)
+    {
+        return 1.0f;
+    }
+    const float noise = shadow_noise(pixel);
+    const float angle = noise * 6.2831853f;
+    const float start = cascade == 0u ? 0.0f : shadow_splits[cascade - 1u];
+    const float band = max((shadow_splits[cascade] - start) * shadow_parameters.z, 1.0e-3f);
+    const float into = (shadow_splits[cascade] - depth) / band;
+    if (into < 1.0f && cascade + 1u < count && noise > into)
+    {
+        return cascade_visibility(cascade + 1u, world, normal, angle);
+    }
+    const float visibility = cascade_visibility(cascade, world, normal, angle);
+    return cascade + 1u == count ? lerp(1.0f, visibility, saturate(into)) : visibility;
+}
+
 // Legacy-mode surface lighting shared by meshes and terrain: ambient plus two diffuse fill lights
-// and a key light, the 2x diffuse convention, and an exponent-16 highlight scaled by gloss.
+// and a key light, the 2x diffuse convention, and an exponent-16 highlight scaled by gloss. Shadows
+// take away the key light only (diffuse and highlight), as the original's shadow volumes did.
 float3 legacy_lit_color(const float3 albedo, const float3 normal, const float3 world_position, const float gloss, const float3 diffuse, const float3 specular,
-                        const float3 emissive, const float3 tint)
+                        const float3 emissive, const float3 tint, const float2 pixel)
 {
     const float3 view = safe_normalize(camera_position_time.xyz - world_position, float3(0.0f, 0.0f, 1.0f));
     const float3 light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
     const float3 half_vector = safe_normalize(light + view, normal);
     const float3 fill = ambient.rgb + saturate(dot(normal, fill_direction[0].xyz)) * fill_diffuse[0].rgb + saturate(dot(normal, fill_direction[1].xyz)) * fill_diffuse[1].rgb;
-    const float3 diffuse_light = diffuse * (fill + saturate(dot(normal, light)) * key_diffuse.rgb) + emissive;
-    const float3 highlight = specular * key_specular.rgb * pow(saturate(dot(normal, half_vector)), 16.0f) * gloss;
+    const float facing = saturate(dot(normal, light));
+    // Surfaces facing away get no key light anyway; their highlight stays as it was without shadows.
+    const float key = facing > 0.0f ? key_light_visibility(world_position, normal, pixel) : 1.0f;
+    const float3 diffuse_light = diffuse * (fill + facing * key * key_diffuse.rgb) + emissive;
+    const float3 highlight = specular * key_specular.rgb * pow(saturate(dot(normal, half_vector)), 16.0f) * gloss * key;
     // Legacy 2x diffuse convention: lighting near 0.5 reproduces the texture color.
     return albedo * diffuse_light * 2.0f * tint + highlight;
 }

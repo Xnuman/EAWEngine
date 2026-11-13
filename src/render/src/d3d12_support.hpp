@@ -64,7 +64,7 @@ inline constexpr std::uint32_t flat_normal_texture_slot = 2;
 inline constexpr std::uint32_t fallback_texture_count = 3;
 
 // Per-frame constant buffers are 256-byte aligned, as D3D12 requires for CBVs.
-inline constexpr std::uint64_t frame_constant_bytes = 512;
+inline constexpr std::uint64_t frame_constant_bytes = 1024;
 // Bloom works at a quarter of the screen resolution in a small floating-point format.
 inline constexpr DXGI_FORMAT bloom_format = DXGI_FORMAT_R11G11B10_FLOAT;
 inline constexpr std::uint32_t bloom_downscale = 4;
@@ -77,6 +77,15 @@ inline constexpr DXGI_FORMAT pick_format = DXGI_FORMAT_R32G32_UINT;
 inline constexpr DXGI_FORMAT motion_format = DXGI_FORMAT_R16G16_FLOAT;
 // Where nothing wrote motion (MOTION_UNKNOWN in legacy_common.hlsli).
 inline constexpr float motion_unknown = 1000.0F;
+// Shadow maps: texels per side allowed (the option is clamped), the slope-scaled depth bias of
+// casters, and, for receivers, the normal offset (in texels), the share of each slice blended into
+// the next, and the filter radius (in texels); engine choices.
+inline constexpr std::uint32_t minimum_shadow_resolution = 256;
+inline constexpr std::uint32_t maximum_shadow_resolution = 8192;
+inline constexpr float shadow_slope_bias = 1.5F;
+inline constexpr float shadow_normal_offset_texels = 1.5F;
+inline constexpr float shadow_blend_band = 0.1F;
+inline constexpr float shadow_filter_texels = 1.5F;
 
 // Temporary per-frame debug line capacity (an implementation limit, diagnosed through stats).
 inline constexpr std::size_t maximum_debug_lines = 32768;

@@ -575,6 +575,8 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
     terrain_vertex_count = static_cast<std::uint32_t>(terrain.vertices.size());
     terrain_first_material = terrain.first_material;
     scene_loaded = true;
+    scene_bounds_minimum = scene.bounds_minimum;
+    scene_bounds_maximum = scene.bounds_maximum;
     if (terrain_vertex_buffer)
     {
         terrain_vertex_view.BufferLocation = terrain_vertex_buffer->GetGPUVirtualAddress();

@@ -72,6 +72,29 @@ struct PixelOutput
     float2 motion : SV_TARGET2;
 };
 
+// A vertex's position skinned by the palette at `bone_offset` (its own position without weights).
+float4 skinned_position(const VertexInput input, const uint bone_offset)
+{
+    float4 position = 0.0f;
+    float total_weight = 0.0f;
+    [unroll]
+    for (uint influence = 0; influence < 4; ++influence)
+    {
+        const float weight = input.bone_weights[influence];
+        if (weight <= 0.0f)
+        {
+            continue;
+        }
+        position += mul(float4(input.position, 1.0f), bones[input.bone_indices[influence] + bone_offset].transform) * weight;
+        total_weight += weight;
+    }
+    if (total_weight <= 0.000001f)
+    {
+        return float4(input.position, 1.0f);
+    }
+    return abs(total_weight - 1.0f) > 0.0001f ? position / total_weight : position;
+}
+
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 PixelInput vs_main(VertexInput input)
 {
@@ -114,27 +137,7 @@ PixelInput vs_main(VertexInput input)
     }
 
     // Last frame's skinned position, from last frame's palette.
-    float4 previous = 0.0f;
-    float previous_weight = 0.0f;
-    [unroll]
-    for (uint before = 0; before < 4; ++before)
-    {
-        const float weight = input.bone_weights[before];
-        if (weight <= 0.0f)
-        {
-            continue;
-        }
-        previous += mul(float4(input.position, 1.0f), bones[input.bone_indices[before] + instance.previous_bone_offset].transform) * weight;
-        previous_weight += weight;
-    }
-    if (previous_weight <= 0.000001f)
-    {
-        previous = float4(input.position, 1.0f);
-    }
-    else if (abs(previous_weight - 1.0f) > 0.0001f)
-    {
-        previous /= previous_weight;
-    }
+    const float4 previous = skinned_position(input, instance.previous_bone_offset);
 
     PixelInput output;
     if ((instance.flags & INSTANCE_BACKGROUND) != 0u)
@@ -230,7 +233,7 @@ float4 shade(PixelInput input)
     {
         gloss = sample_texture(material.gloss_texture, uv).r;
     }
-    float3 color = legacy_lit_color(albedo, normal, input.world_position, gloss, material.diffuse.rgb, material.specular.rgb, material.emissive.rgb, tint.rgb);
+    float3 color = legacy_lit_color(albedo, normal, input.world_position, gloss, material.diffuse.rgb, material.specular.rgb, material.emissive.rgb, tint.rgb, input.position.xy);
     if ((material.flags & MATERIAL_EMISSIVE_MASK) != 0u)
     {
         color += material.specular.rgb * base.a;
@@ -263,4 +266,30 @@ PixelOutput ps_main(PixelInput input)
     output.pick = uint2(input.pick_id, asuint(input.position.z));
     output.motion = (input.current_clip.xy / input.current_clip.w - input.previous_clip.xy / input.previous_clip.w) * float2(0.5f, -0.5f);
     return output;
+}
+
+// Shadow casting: a model into the cascade `pass_index` (depth only); alpha-tested surfaces cut
+// their holes with the same test as when drawn.
+struct ShadowPixelInput
+{
+    float4 position : SV_POSITION;
+    float2 uv : TEXCOORD0;
+};
+
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+ShadowPixelInput shadow_vs(VertexInput input)
+{
+    const InstanceData instance = instances[instance_base + input.instance_id];
+    ShadowPixelInput output;
+    output.position = mul(mul(skinned_position(input, instance.bone_offset), instance.transform), shadow_view_projection[pass_index]);
+    output.uv = input.uv;
+    return output;
+}
+
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+void shadow_ps(ShadowPixelInput input)
+{
+    const MaterialData material = materials[material_index];
+    const float2 uv = input.uv * material.specular.w + material.uv_scroll * camera_position_time.w;
+    clip(sample_texture(material.base_texture, uv).a - material.alpha_cutoff);
 }

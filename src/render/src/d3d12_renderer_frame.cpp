@@ -492,6 +492,72 @@ void D3d12Renderer::Impl::set_camera(const VisualCamera& next)
     camera = next;
 }
 
+void D3d12Renderer::Impl::record_shadow_cascades(FrameContext& frame, const bool dynamic)
+{
+    ID3D12DescriptorHeap* descriptor_heaps[]{shader_heap.Get()};
+    command_list->SetDescriptorHeaps(1, descriptor_heaps);
+    command_list->SetGraphicsRootSignature(root_signature.Get());
+    command_list->SetGraphicsRootConstantBufferView(0, frame.constant_buffer->GetGPUVirtualAddress());
+    command_list->SetGraphicsRootDescriptorTable(1, shader_heap->GetGPUDescriptorHandleForHeapStart());
+    command_list->SetGraphicsRootShaderResourceView(2, frame.bone_buffer->GetGPUVirtualAddress());
+    command_list->SetGraphicsRootShaderResourceView(3, (dynamic ? frame.instance_buffer : scene_instance_buffer)->GetGPUVirtualAddress());
+    command_list->SetGraphicsRootShaderResourceView(4, scene_material_buffer->GetGPUVirtualAddress());
+    command_list->SetGraphicsRootShaderResourceView(6, frame.residency_buffer->GetGPUVirtualAddress());
+    command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    D3D12_VIEWPORT viewport{};
+    viewport.Width = static_cast<float>(shadow_resolution);
+    viewport.Height = static_cast<float>(shadow_resolution);
+    viewport.MaxDepth = 1.0F;
+    const D3D12_RECT scissor{0, 0, static_cast<LONG>(shadow_resolution), static_cast<LONG>(shadow_resolution)};
+    command_list->RSSetViewports(1, &viewport);
+    command_list->RSSetScissorRects(1, &scissor);
+    // shortcut: every caster is drawn into every cascade; cull per cascade when shadow draws cost too much.
+    const auto& draws = dynamic ? dynamic_draws : scene_draws;
+    for (std::uint32_t cascade = 0; cascade < frame_cascades.count; ++cascade)
+    {
+        auto target = shadow_dsv_heap->GetCPUDescriptorHandleForHeapStart();
+        target.ptr += static_cast<SIZE_T>(cascade) * shadow_dsv_increment;
+        command_list->OMSetRenderTargets(0, nullptr, FALSE, &target);
+        command_list->ClearDepthStencilView(target, D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
+        command_list->SetGraphicsRoot32BitConstant(5, cascade, 2);
+        if (terrain_vertex_count != 0)
+        {
+            command_list->SetPipelineState(terrain_shadow_pipeline.Get());
+            const std::array<std::uint32_t, 2> terrain_constants{0U, terrain_first_material};
+            command_list->SetGraphicsRoot32BitConstants(5, 2, terrain_constants.data(), 0);
+            command_list->IASetVertexBuffers(0, 1, &terrain_vertex_view);
+            command_list->DrawInstanced(terrain_vertex_count, 1, 0, 0);
+        }
+        std::uint32_t bound_block = std::numeric_limits<std::uint32_t>::max();
+        ID3D12PipelineState* bound_pipeline = nullptr;
+        for (const auto& draw : draws)
+        {
+            // Every opaque and alpha-tested model casts; backgrounds and blended parts do not.
+            if (draw.background || (draw.blend != VisualBlendMode::opaque && draw.blend != VisualBlendMode::alpha_test))
+            {
+                continue;
+            }
+            auto* pipeline = draw.blend == VisualBlendMode::alpha_test ? shadow_alpha_test_pipeline.Get() : shadow_pipeline.Get();
+            if (pipeline != bound_pipeline)
+            {
+                command_list->SetPipelineState(pipeline);
+                bound_pipeline = pipeline;
+            }
+            if (draw.block != bound_block)
+            {
+                const auto& vertex_view = draw.block == 0 ? scene_vertex_view : added_blocks[draw.block - 1U].vertex_view;
+                const auto& index_view = draw.block == 0 ? scene_index_view : added_blocks[draw.block - 1U].index_view;
+                command_list->IASetVertexBuffers(0, 1, &vertex_view);
+                command_list->IASetIndexBuffer(&index_view);
+                bound_block = draw.block;
+            }
+            const std::array<std::uint32_t, 2> draw_constants{draw.first_instance, draw.material};
+            command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
+            command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
+        }
+    }
+}
+
 DirectX::XMMATRIX D3d12Renderer::Impl::camera_view_projection() const
 {
     using namespace DirectX;
@@ -650,6 +716,36 @@ bool D3d12Renderer::Impl::render()
         constants.camera_up = view_up;
     }
     constants.post_parameters = {options.bloom_threshold, options.bloom_strength, 0.15F, 0.0F};
+    {
+        // Key-light shadows for this view (none before a scene is loaded).
+        frame_cascades = {};
+        if (shadow_resolution != 0 && scene_loaded)
+        {
+            ShadowCascadeSettings settings;
+            settings.cascade_count = options.shadow_cascades;
+            settings.resolution = shadow_resolution;
+            frame_cascades =
+                compute_shadow_cascades(camera, static_cast<float>(width) / static_cast<float>(std::max(height, 1U)), lighting.key.direction, scene_bounds_minimum, scene_bounds_maximum, settings);
+        }
+        for (std::uint32_t index = 0; index < frame_cascades.count; ++index)
+        {
+            const auto& cascade = frame_cascades.cascades[index];
+            // Transposed, as every matrix in the constants.
+            for (std::size_t row = 0; row < 4; ++row)
+            {
+                for (std::size_t column = 0; column < 4; ++column)
+                {
+                    constants.shadow_view_projection[index].m[row][column] = cascade.view_projection(column, row);
+                }
+            }
+            constants.shadow_splits[index] = cascade.split_distance;
+            constants.shadow_texels[index] = cascade.texel_size;
+            constants.shadow_slots[index] = shadow_slots[index];
+        }
+        constants.camera_forward = unit(camera.target - camera.eye);
+        constants.shadow_parameters = {static_cast<float>(frame_cascades.count), shadow_normal_offset_texels, shadow_blend_band,
+                                       shadow_resolution != 0 ? shadow_filter_texels / static_cast<float>(shadow_resolution) : 0.0F};
+    }
     std::memcpy(frame.constant_buffer_mapped, &constants, sizeof(constants));
 
     check_device_hresult(frame.allocator->Reset(), frame.allocator, "ID3D12CommandAllocator::Reset");
@@ -699,11 +795,31 @@ bool D3d12Renderer::Impl::render()
     const auto scene = bloom || anti_aliasing ? import_resource(scene_color.Get(), "scene color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
     const auto composite = bloom && anti_aliasing ? import_resource(post_color.Get(), "post color", GraphAccess::render_target, GraphAccess::render_target) : back_buffer;
 
+    // Key-light shadows: every cascade's map, drawn before the scene samples them.
+    std::vector<FrameGraph::Use> scene_uses{{scene, GraphAccess::render_target}, {pick, GraphAccess::render_target}, {motion, GraphAccess::render_target}, {depth, GraphAccess::depth_write}};
+    if (frame_cascades.count > 0)
+    {
+        std::vector<FrameGraph::Use> shadow_writes;
+        for (std::uint32_t index = 0; index < frame_cascades.count; ++index)
+        {
+            const auto map = import_resource(shadow_maps[index].Get(), "shadow cascade", GraphAccess::depth_write, GraphAccess::depth_write);
+            shadow_writes.push_back({map, GraphAccess::depth_write});
+            scene_uses.push_back({map, GraphAccess::shader_read});
+        }
+        frame_graph.add_pass("shadow cascades", std::move(shadow_writes),
+                             [&]
+                             {
+                                 record_shadow_cascades(frame, dynamic);
+                             });
+    }
+
     frame_graph.add_pass(
-        "scene", {{scene, GraphAccess::render_target}, {pick, GraphAccess::render_target}, {motion, GraphAccess::render_target}, {depth, GraphAccess::depth_write}},
+        "scene", std::move(scene_uses),
         [&]
         {
             const std::array targets{scene_target, pick_rtv_heap->GetCPUDescriptorHandleForHeapStart(), post_rtv(6)};
+            command_list->RSSetViewports(1, &viewport);
+            command_list->RSSetScissorRects(1, &scissor);
             command_list->OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), FALSE, &depth_target);
             constexpr std::array clear_color{0.018F, 0.031F, 0.043F, 1.0F};
             constexpr std::array clear_pick{0.0F, 0.0F, 0.0F, 0.0F};

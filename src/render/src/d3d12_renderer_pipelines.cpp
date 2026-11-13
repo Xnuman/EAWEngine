@@ -22,7 +22,11 @@
 #include "g_eaw_post_vs.h"
 #include "g_eaw_sandbox_ps.h"
 #include "g_eaw_sandbox_vs.h"
+#include "g_eaw_shadow_ps.h"
+#include "g_eaw_shadow_vs.h"
 #include "g_eaw_terrain_ps.h"
+#include "g_eaw_terrain_shadow_ps.h"
+#include "g_eaw_terrain_shadow_vs.h"
 #include "g_eaw_terrain_vs.h"
 
 namespace eaw {
@@ -239,6 +243,24 @@ void D3d12Renderer::Impl::create_pipeline()
     description.SampleDesc.Count = 1;
     create_pipeline_state(L"opaque", description, opaque_pipeline);
 
+    // Shadow casters: depth only, biased by slope; alpha-tested ones cut their holes.
+    const auto shadow_variant = [&](D3D12_GRAPHICS_PIPELINE_STATE_DESC variant)
+    {
+        variant.NumRenderTargets = 0;
+        for (auto& format : variant.RTVFormats)
+        {
+            format = DXGI_FORMAT_UNKNOWN;
+        }
+        variant.PS = {};
+        variant.RasterizerState.SlopeScaledDepthBias = shadow_slope_bias;
+        return variant;
+    };
+    auto shadow = shadow_variant(description);
+    shadow.VS = {g_eaw_shadow_vs, sizeof(g_eaw_shadow_vs)};
+    create_pipeline_state(L"shadow", shadow, shadow_pipeline);
+    shadow.PS = {g_eaw_shadow_ps, sizeof(g_eaw_shadow_ps)};
+    create_pipeline_state(L"shadow alpha test", shadow, shadow_alpha_test_pipeline);
+
     description.BlendState.RenderTarget[0].BlendEnable = TRUE;
     description.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
     description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
@@ -279,6 +301,10 @@ void D3d12Renderer::Impl::create_pipeline()
     description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
     description.BlendState.RenderTarget[1].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
     create_pipeline_state(L"terrain", description, terrain_pipeline);
+    auto terrain_shadow = shadow_variant(description);
+    terrain_shadow.VS = {g_eaw_terrain_shadow_vs, sizeof(g_eaw_terrain_shadow_vs)};
+    terrain_shadow.PS = {g_eaw_terrain_shadow_ps, sizeof(g_eaw_terrain_shadow_ps)};
+    create_pipeline_state(L"terrain shadow", terrain_shadow, terrain_shadow_pipeline);
 
     // Debug lines: alpha-blended over the scene, depth-tested without depth or pick writes.
     constexpr std::array<D3D12_INPUT_ELEMENT_DESC, 2> debug_layout{{

@@ -39,12 +39,10 @@ TerrainPixelInput terrain_vs(TerrainVertexInput input)
     return output;
 }
 
-float4 shade_terrain(TerrainPixelInput input)
+// The corner layers' blend weights, by coverage; discards pixels less than half covered (holes in
+// the terrain, such as crater openings under placed models).
+float3 covered_layer_weights(const TerrainPixelInput input)
 {
-    const float3 surface_normal = safe_normalize(input.normal, float3(0.0f, 0.0f, 1.0f));
-    // Planar projection: texture U follows world +X and V follows world +Y on the surface.
-    const float3 tangent = safe_normalize(float3(1.0f, 0.0f, 0.0f) - surface_normal * surface_normal.x, float3(1.0f, 0.0f, 0.0f));
-    const float3 binormal = cross(surface_normal, tangent);
     float3 weights = input.barycentric / max(input.barycentric.x + input.barycentric.y + input.barycentric.z, 1.0e-6f);
     [unroll]
     for (uint layer_corner = 0; layer_corner < 3; ++layer_corner)
@@ -56,7 +54,35 @@ float4 shade_terrain(TerrainPixelInput input)
     {
         discard;
     }
-    weights /= coverage;
+    return weights / coverage;
+}
+
+// The terrain into a shadow cascade (depth only); holes cast nothing, as they draw nothing.
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+TerrainPixelInput terrain_shadow_vs(TerrainVertexInput input)
+{
+    TerrainPixelInput output;
+    output.position = mul(float4(input.position, 1.0f), shadow_view_projection[pass_index]);
+    output.world_position = input.position;
+    output.normal = input.normal;
+    output.layers = input.layers;
+    output.barycentric = input.barycentric;
+    return output;
+}
+
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+void terrain_shadow_ps(TerrainPixelInput input)
+{
+    (void)covered_layer_weights(input);
+}
+
+float4 shade_terrain(TerrainPixelInput input)
+{
+    const float3 surface_normal = safe_normalize(input.normal, float3(0.0f, 0.0f, 1.0f));
+    // Planar projection: texture U follows world +X and V follows world +Y on the surface.
+    const float3 tangent = safe_normalize(float3(1.0f, 0.0f, 0.0f) - surface_normal * surface_normal.x, float3(1.0f, 0.0f, 0.0f));
+    const float3 binormal = cross(surface_normal, tangent);
+    const float3 weights = covered_layer_weights(input);
 
     float3 albedo = 0.0f;
     float3 tangent_normal = 0.0f;
@@ -82,7 +108,7 @@ float4 shade_terrain(TerrainPixelInput input)
         specular += layer.specular.rgb * weight;
     }
     const float3 normal = safe_normalize(tangent_normal.x * tangent + tangent_normal.y * binormal + tangent_normal.z * surface_normal, surface_normal);
-    return float4(legacy_lit_color(albedo, normal, input.world_position, gloss, diffuse, specular, float3(0.0f, 0.0f, 0.0f), float3(1.0f, 1.0f, 1.0f)), 1.0f);
+    return float4(legacy_lit_color(albedo, normal, input.world_position, gloss, diffuse, specular, float3(0.0f, 0.0f, 0.0f), float3(1.0f, 1.0f, 1.0f), input.position.xy), 1.0f);
 }
 
 struct TerrainPixelOutput

@@ -95,6 +95,7 @@ Status D3d12Renderer::Impl::initialize()
     create_pipeline();
     save_pipeline_cache();
     create_post_targets();
+    create_shadow_maps();
     create_initial_assets();
     create_statistics_queries();
     return create_overlay();
@@ -329,6 +330,59 @@ void D3d12Renderer::Impl::create_post_targets()
     auto depth_handle = shader_heap->GetCPUDescriptorHandleForHeapStart();
     depth_handle.ptr += static_cast<SIZE_T>(depth_slot) * increment;
     device->CreateShaderResourceView(depth_buffer.Get(), &depth_view, depth_handle);
+}
+
+void D3d12Renderer::Impl::create_shadow_maps()
+{
+    if (!options.shadows)
+    {
+        return;
+    }
+    shadow_resolution = std::clamp(options.shadow_resolution, minimum_shadow_resolution, maximum_shadow_resolution);
+    D3D12_DESCRIPTOR_HEAP_DESC heap{};
+    heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    heap.NumDescriptors = static_cast<UINT>(shadow_maps.size());
+    check_device_hresult(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&shadow_dsv_heap)), device, "CreateDescriptorHeap(shadow DSV)");
+    set_name(shadow_dsv_heap.Get(), L"EAWEngine shadow DSV heap");
+    shadow_dsv_increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    const auto default_heap = heap_properties(D3D12_HEAP_TYPE_DEFAULT);
+    const auto increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    for (std::size_t index = 0; index < shadow_maps.size(); ++index)
+    {
+        D3D12_RESOURCE_DESC description{};
+        description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        description.Width = shadow_resolution;
+        description.Height = shadow_resolution;
+        description.DepthOrArraySize = 1;
+        description.MipLevels = 1;
+        description.Format = DXGI_FORMAT_R32_TYPELESS;
+        description.SampleDesc.Count = 1;
+        description.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        D3D12_CLEAR_VALUE clear{};
+        clear.Format = DXGI_FORMAT_D32_FLOAT;
+        clear.DepthStencil.Depth = 1.0F;
+        check_device_hresult(device->CreateCommittedResource(&default_heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_DEPTH_WRITE, &clear, IID_PPV_ARGS(&shadow_maps[index])), device,
+                             "CreateCommittedResource(shadow map)");
+        set_name(shadow_maps[index].Get(), L"EAWEngine shadow cascade");
+        D3D12_DEPTH_STENCIL_VIEW_DESC depth_view{};
+        depth_view.Format = DXGI_FORMAT_D32_FLOAT;
+        depth_view.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        auto dsv = shadow_dsv_heap->GetCPUDescriptorHandleForHeapStart();
+        dsv.ptr += index * shadow_dsv_increment;
+        device->CreateDepthStencilView(shadow_maps[index].Get(), &depth_view, dsv);
+        // Startup: these slots are never released.
+        const auto allocated = texture_slots.allocate();
+        EAW_ASSERT_MSG(allocated.has_value(), "the D3D12 texture table has no slot for a shadow map");
+        shadow_slots[index] = *allocated;
+        D3D12_SHADER_RESOURCE_VIEW_DESC view{};
+        view.Format = DXGI_FORMAT_R32_FLOAT;
+        view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        view.Texture2D.MipLevels = 1;
+        auto handle = shader_heap->GetCPUDescriptorHandleForHeapStart();
+        handle.ptr += static_cast<SIZE_T>(shadow_slots[index]) * increment;
+        device->CreateShaderResourceView(shadow_maps[index].Get(), &view, handle);
+    }
 }
 
 void D3d12Renderer::Impl::create_constant_buffers()

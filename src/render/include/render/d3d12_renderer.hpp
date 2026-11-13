@@ -39,6 +39,11 @@ struct D3d12RendererOptions
     // Anti-aliasing: an edge pass in the manner of FXAA over the finished frame, temporal (jittered
     // frames blended with the reprojected history), or both; engine choices.
     VisualAntiAliasing anti_aliasing{VisualAntiAliasing::fxaa};
+    // Key-light shadows: cascaded shadow maps (render/shadow_cascades.hpp), every model and the
+    // terrain casting; the cascade count (1-4) and each map's texels per side (engine choices).
+    bool shadows{true};
+    std::uint32_t shadow_cascades{3};
+    std::uint32_t shadow_resolution{2048};
     // Detail levels of meshes that have them (eaw/visual_lod.hpp); set_lod_settings changes them.
     VisualLodSettings lod;
     // Where the overlay's panels keep their positions and sizes between runs (a Dear ImGui settings

@@ -10,6 +10,7 @@
 #include "render/d3d12_renderer.hpp"
 #include "render/frame_graph.hpp"
 #include "render/lod_selection.hpp"
+#include "render/shadow_cascades.hpp"
 
 #include <optional>
 #include <vector>
@@ -97,6 +98,12 @@ struct D3d12Renderer::Impl
         DirectX::XMFLOAT4X4 inverse_view_projection;
         DirectX::XMFLOAT4X4 previous_view_projection;
         std::array<float, 4> taa_parameters{};
+        std::array<DirectX::XMFLOAT4X4, maximum_shadow_cascades> shadow_view_projection;
+        std::array<float, 4> shadow_splits{};
+        std::array<float, 4> shadow_texels{};
+        std::array<float, 4> camera_forward{};
+        std::array<std::uint32_t, 4> shadow_slots{};
+        std::array<float, 4> shadow_parameters{};
     };
     static_assert(sizeof(FrameConstants) <= frame_constant_bytes);
 
@@ -286,6 +293,10 @@ struct D3d12Renderer::Impl
     DirectX::XMFLOAT4X4 previous_camera{};
     // Creates (or, after a resize, recreates) the post-processing targets and their views.
     void create_post_targets();
+    // The shadow cascades' maps (with options.shadows), once at startup.
+    void create_shadow_maps();
+    // Records the shadow pass: every cascade's map from the casters of this frame's draws.
+    void record_shadow_cascades(FrameContext& frame, bool dynamic);
     [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE post_rtv(std::size_t index) const;
 
     // Structured-buffer layout of ParticleData in particle.hlsl (80 bytes).
@@ -351,6 +362,20 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12PipelineState> additive_pipeline;
     ComPtr<ID3D12PipelineState> background_opaque_pipeline;
     ComPtr<ID3D12PipelineState> terrain_pipeline;
+    // Shadow casting (depth only): models, alpha-tested models, and the terrain.
+    ComPtr<ID3D12PipelineState> shadow_pipeline;
+    ComPtr<ID3D12PipelineState> shadow_alpha_test_pipeline;
+    ComPtr<ID3D12PipelineState> terrain_shadow_pipeline;
+    // The cascades' depth maps (typeless, read through float views at shadow_slots), their DSVs,
+    // the loaded scene's bounds (the cascades' depth range), and this frame's cascades.
+    std::array<ComPtr<ID3D12Resource>, maximum_shadow_cascades> shadow_maps;
+    std::array<std::uint32_t, maximum_shadow_cascades> shadow_slots{};
+    ComPtr<ID3D12DescriptorHeap> shadow_dsv_heap;
+    std::uint32_t shadow_dsv_increment{};
+    std::uint32_t shadow_resolution{};
+    Vector3 scene_bounds_minimum{};
+    Vector3 scene_bounds_maximum{};
+    ShadowCascades frame_cascades;
     ComPtr<ID3D12Resource> terrain_vertex_buffer;
     D3D12_VERTEX_BUFFER_VIEW terrain_vertex_view{};
     std::uint32_t terrain_vertex_count{};

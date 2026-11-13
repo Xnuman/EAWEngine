@@ -126,8 +126,8 @@ rendering rows join item 2).
    volumes, an implementation artifact; the engine uses stable cascaded shadow maps from each map's
    key light, land and space alike, and every model casts: the owner's choice of 2026-11-13 over
    the original's per-model shadow meshes, for quality; skies, backdrops, markers, blended parts,
-   and particles do not; in progress: cascade math done 2026-11-13, the shadow pass and receiving
-   next); fog; shield, planet (atmosphere, clouds, city lights),
+   and particles do not; done 2026-11-13: cascades, the shadow pass, and receiving; open: per-cascade
+   culling, cached distant cascades, blob shadows at low detail, PCSS as an enhanced option); fog; shield, planet (atmosphere, clouds, city lights),
    nebula, heat-distortion, wind-bend, and occluded-unit materials; cube reflections (no stock
    material uses them); weather and soft particles.
 2. Modern presentation without an original counterpart, chosen freely: anti-aliasing, HDR with
@@ -375,6 +375,8 @@ waiting for it, oldest first:
 - edge anti-aliasing on by default (`--no-aa` to compare), temporal anti-aliasing (`--aa taa`), and both (`--aa hybrid`):
   ghosting behind particles and blended parts, softness against FXAA, the hybrid mode;
 - transparent model parts drawn back to front (canopies, glass, glows on models);
+- key-light shadows (on by default, `--shadows off` to compare): their darkness, softness, and
+  reach; whether planets should receive them (the Kuat ring station casts a band across its planet);
 - damage states on land: damaged meshes and their `_ALT` effects by health, the state sounds, and
   rubble that stays (structures without a death animation keep their last state for good).
 
