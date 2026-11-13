@@ -25,6 +25,8 @@ static const uint SHAPE_KITE = 2u;
 static const uint SHAPE_BEAM = 3u;
 static const uint SHAPE_TEARDROP = 4u;
 static const uint FLAG_MONOCHROME = 1u;
+// Added to the frame (additive blends): fog fades it rather than tinting it.
+static const uint FLAG_ADDITIVE = 2u;
 static const uint NO_TEXTURE = 0xFFFFFFFFu;
 
 // Bound to the instance slot (root parameter 3) while particles draw.
@@ -40,6 +42,8 @@ struct ParticlePixelInput
     // The quad corner (x across, y along), for shapes drawn procedurally.
     float2 local : LOCAL;
     nointerpolation uint shape : SHAPE;
+    // Where the pixel lies (fog).
+    float3 world : POSITION1;
 };
 
 struct ParticlePixelOutput
@@ -101,6 +105,7 @@ ParticlePixelInput particle_vs(const uint vertex : SV_VertexID, const uint insta
         kite.flags = particle.flags;
         kite.local = corner;
         kite.shape = particle.shape;
+        kite.world = kite_world;
         return kite;
     }
     else
@@ -127,6 +132,7 @@ ParticlePixelInput particle_vs(const uint vertex : SV_VertexID, const uint insta
     output.flags = particle.flags;
     output.local = corner;
     output.shape = particle.shape;
+    output.world = world;
     return output;
 }
 
@@ -156,6 +162,7 @@ ParticlePixelOutput particle_ps(ParticlePixelInput input)
     {
         ParticlePixelOutput drop;
         drop.color = teardrop(input.local, input.color);
+        drop.color.rgb = fade_added_light(drop.color.rgb, input.world);
         drop.pick = uint2(0u, 0u);
         return drop;
     }
@@ -167,6 +174,7 @@ ParticlePixelOutput particle_ps(ParticlePixelInput input)
     }
     ParticlePixelOutput output;
     output.color = texel * input.color;
+    output.color.rgb = (input.flags & FLAG_ADDITIVE) != 0u ? fade_added_light(output.color.rgb, input.world) : apply_fog(output.color.rgb, input.world);
     output.pick = uint2(0u, 0u);
     return output;
 }
@@ -178,7 +186,8 @@ ParticlePixelOutput particle_modulate_ps(ParticlePixelInput input)
     const float4 texel = input.texture == NO_TEXTURE ? float4(1.0f, 1.0f, 1.0f, 1.0f) : sample_texture(input.texture, input.uv);
     const float4 color = texel * input.color;
     ParticlePixelOutput output;
-    output.color = float4(lerp(float3(1.0f, 1.0f, 1.0f), color.rgb, color.a), 1.0f);
+    // Fog weakens the darkening toward no change (white).
+    output.color = float4(lerp(lerp(float3(1.0f, 1.0f, 1.0f), color.rgb, color.a), float3(1.0f, 1.0f, 1.0f), fog_amount(input.world)), 1.0f);
     output.pick = uint2(0u, 0u);
     return output;
 }

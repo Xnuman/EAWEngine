@@ -203,7 +203,8 @@ void D3d12Renderer::Impl::write_particles(FrameContext& frame)
     {
         const auto logical = particle.texture < scene_textures.size() ? static_cast<std::uint32_t>(fallback_texture_count + particle.texture) : invalid_visual_texture;
         gpu_particles.push_back({particle.position, particle.half_size, particle.color, particle.uv_rect, particle.axis, particle.rotation, particle.tail, logical,
-                                 static_cast<std::uint32_t>(particle.shape), particle.monochrome ? 1U : 0U});
+                                 static_cast<std::uint32_t>(particle.shape),
+                                 (particle.monochrome ? 1U : 0U) | (particle.blend == VisualParticleBlend::additive || particle.blend == VisualParticleBlend::additive_alpha ? 2U : 0U)});
     }
     if (gpu_particles.empty())
     {
@@ -747,11 +748,12 @@ bool D3d12Renderer::Impl::render()
         constants.shadow_parameters = {static_cast<float>(frame_cascades.count), shadow_normal_offset_texels, shadow_blend_band,
                                        shadow_resolution != 0 ? shadow_filter_texels / static_cast<float>(shadow_resolution) : 0.0F};
     }
-    // Distance fog: color with w 1 when on, and its start and end view distances.
-    if (options.fog && lighting.fog.enabled)
+    // Fog: its color with the mode in w (0 off, 1 legacy, 2 enhanced), its start and end, and for
+    // enhanced fog the height it is densest at (fog_floor) and how fast it thins upward.
+    if (options.fog != VisualFogMode::off && lighting.fog.enabled)
     {
-        constants.fog_color = {lighting.fog.color.r, lighting.fog.color.g, lighting.fog.color.b, 1.0F};
-        constants.fog_range = {lighting.fog.start, lighting.fog.end, 0.0F, 0.0F};
+        constants.fog_color = {lighting.fog.color.r, lighting.fog.color.g, lighting.fog.color.b, options.fog == VisualFogMode::enhanced ? 2.0F : 1.0F};
+        constants.fog_range = {lighting.fog.start, lighting.fog.end, fog_floor, 1.0F / fog_height_scale};
     }
     std::memcpy(frame.constant_buffer_mapped, &constants, sizeof(constants));
 

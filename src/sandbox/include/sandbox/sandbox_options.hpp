@@ -6,6 +6,7 @@
 #include "vfs/asset_environment.hpp"
 #include "vfs/game_installation.hpp"
 #include "render/visual_anti_aliasing.hpp"
+#include "render/visual_frame.hpp"
 #include "render/visual_lod.hpp"
 #include "assets/particle_rules.hpp"
 
@@ -81,8 +82,8 @@ struct SandboxOptions
     VisualAntiAliasing anti_aliasing{VisualAntiAliasing::fxaa};
     // Key-light shadows (--shadows on|off).
     bool shadows{true};
-    // The map's distance fog (--fog on|off).
-    bool fog{true};
+    // The map's fog (--fog off|legacy|enhanced; on is legacy).
+    VisualFogMode fog{VisualFogMode::legacy};
     // Detail-level selection (--lod) and the mesh-detail setting (--mesh-detail, 0..1).
     VisualLodPolicy lod_policy{VisualLodPolicy::hybrid};
     float mesh_detail{1.0F};

@@ -316,7 +316,7 @@ struct D3d12Renderer::Impl
         // Logical texture id, or invalid_visual_texture for white.
         std::uint32_t texture{};
         std::uint32_t shape{};
-        // Bit 0: monochrome.
+        // Bit 0: monochrome; bit 1: added to the frame (fog fades it rather than tinting it).
         std::uint32_t flags{};
     };
     static_assert(sizeof(GpuParticle) == 80);
@@ -379,6 +379,7 @@ struct D3d12Renderer::Impl
     std::uint32_t shadow_resolution{};
     Vector3 scene_bounds_minimum{};
     Vector3 scene_bounds_maximum{};
+    float fog_floor{};
     ShadowCascades frame_cascades;
     ComPtr<ID3D12Resource> terrain_vertex_buffer;
     D3D12_VERTEX_BUFFER_VIEW terrain_vertex_view{};

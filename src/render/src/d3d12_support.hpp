@@ -86,6 +86,8 @@ inline constexpr float shadow_slope_bias = 1.5F;
 inline constexpr float shadow_normal_offset_texels = 1.5F;
 inline constexpr float shadow_blend_band = 0.1F;
 inline constexpr float shadow_filter_texels = 1.5F;
+// Enhanced fog thins by a factor of e per this many world units of height (an engine choice).
+inline constexpr float fog_height_scale = 400.0F;
 
 // Temporary per-frame debug line capacity (an implementation limit, diagnosed through stats).
 inline constexpr std::size_t maximum_debug_lines = 32768;

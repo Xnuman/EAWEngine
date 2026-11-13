@@ -70,8 +70,8 @@ cbuffer FrameConstants : register(b0)
     float4 camera_forward; // xyz the view direction
     uint4 shadow_slots;
     float4 shadow_parameters; // x cascade count (0: no shadows), y normal offset in texels, z blend band share, w filter radius in UV
-    float4 fog_color; // rgb the map's fog color, w 1 when fog is on
-    float4 fog_range; // x start, y end (view distance)
+    float4 fog_color; // rgb the map's fog color, w the mode (0 off, 1 legacy, 2 enhanced)
+    float4 fog_range; // x start, y end (distance), z the height enhanced fog is densest at, w its falloff per unit of height
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
@@ -131,15 +131,94 @@ float3 safe_normalize(const float3 value, const float3 fallback)
     return length_squared > 1.0e-12f ? value * rsqrt(length_squared) : fallback;
 }
 
-// Distance fog: linear in view distance from start to end (the legacy shaders' model).
+// Enhanced fog (engine choices): its density at the floor makes level fog nearly opaque (95 %) at
+// the map's end distance, and the part toward the key light glows with the light's color.
+static const float FOG_DENSITY_AT_END = 3.0f;
+static const float FOG_SUN_GLOW = 0.5f;
+static const float FOG_SUN_EXPONENT = 8.0f;
+
+// The fog a ray meets, in lengths of floor-density fog: density is constant below the floor (so
+// deep pits fill but do not turn opaque without end) and thins by e per fog_range.w^-1 of height
+// above it. The ray starts `height` above the floor, rises `rise` per unit, and runs `travel`.
+float height_fog_length(const float height, const float rise, const float travel)
+{
+    const float falloff = fog_range.w;
+    float below_length = 0.0f;
+    float above_start = height;
+    float above_length = travel;
+    if (height < 0.0f)
+    {
+        // Starts below: below until it climbs out (if it does within the travel).
+        const float climbs_out = rise > 1.0e-6f ? -height / rise : travel;
+        below_length = min(climbs_out, travel);
+        above_start = 0.0f;
+        above_length = travel - below_length;
+    }
+    else if (rise < -1.0e-6f)
+    {
+        // Starts above and descends: above until it reaches the floor, below after.
+        const float down = height / -rise;
+        above_length = min(down, travel);
+        below_length = travel - above_length;
+    }
+    const float climb = falloff * rise * above_length;
+    const float along = abs(climb) > 1.0e-4f ? (1.0f - exp(-climb)) / (falloff * rise) : above_length;
+    // Above the floor: the closed form of the exponential, linear when level.
+    return below_length + exp(-falloff * above_start) * along;
+}
+
+// How much fog lies between the camera and `world`, 0..1. Legacy: linear in view distance from
+// start to end (the legacy shaders' model). Enhanced: exponential height fog, its density falling
+// off with height above the floor, integrated in closed form along the ray beyond the start.
+float fog_amount(const float3 world)
+{
+    const uint mode = (uint)fog_color.w;
+    if (mode == 0u)
+    {
+        return 0.0f;
+    }
+    const float3 offset = world - camera_position_time.xyz;
+    if (mode == 1u)
+    {
+        const float distance = dot(offset, camera_forward.xyz);
+        return saturate((distance - fog_range.x) / max(fog_range.y - fog_range.x, 1.0e-3f));
+    }
+    const float total = length(offset);
+    const float travel = total - fog_range.x;
+    if (travel <= 0.0f)
+    {
+        return 0.0f;
+    }
+    const float3 direction = offset / max(total, 1.0e-3f);
+    const float density = FOG_DENSITY_AT_END / max(fog_range.y - fog_range.x, 1.0f);
+    // The ray from the start point: its height above the floor at the start and its rise per unit.
+    const float height = camera_position_time.z + direction.z * fog_range.x - fog_range.z;
+    return 1.0f - exp(-density * height_fog_length(height, direction.z, travel));
+}
+
+// The fog's color toward `world`: enhanced fog brightens toward the key light.
+float3 fog_tint(const float3 world)
+{
+    if ((uint)fog_color.w != 2u)
+    {
+        return fog_color.rgb;
+    }
+    const float3 direction = safe_normalize(world - camera_position_time.xyz, camera_forward.xyz);
+    const float toward = saturate(dot(direction, safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f))));
+    return fog_color.rgb + key_diffuse.rgb * pow(toward, FOG_SUN_EXPONENT) * FOG_SUN_GLOW;
+}
+
+// A surface seen through the fog.
 float3 apply_fog(const float3 color, const float3 world)
 {
-    if (fog_color.w <= 0.0f)
-    {
-        return color;
-    }
-    const float distance = dot(world - camera_position_time.xyz, camera_forward.xyz);
-    return lerp(color, fog_color.rgb, saturate((distance - fog_range.x) / max(fog_range.y - fog_range.x, 1.0e-3f)));
+    return lerp(color, fog_tint(world), fog_amount(world));
+}
+
+// Light added to the frame (additive surfaces and particles): legacy fog leaves it alone, as the
+// legacy shaders do; enhanced fog lets less of it through.
+float3 fade_added_light(const float3 color, const float3 world)
+{
+    return (uint)fog_color.w == 2u ? color * (1.0f - fog_amount(world)) : color;
 }
 
 // Shadow filtering: taps of a Poisson disk (unit radius), turned per pixel and frame by a noise

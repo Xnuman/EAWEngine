@@ -93,7 +93,7 @@ void print_sandbox_usage()
               << "  --aa <mode>            Anti-aliasing: off, fxaa (default), taa, or hybrid\n"
               << "  --no-aa                Disable anti-aliasing (--aa off)\n"
               << "  --shadows <on|off>     Key-light shadows (default on)\n"
-              << "  --fog <on|off>         The map's distance fog (default on)\n"
+              << "  --fog <mode>           The map's fog: off, legacy (default; on), or enhanced\n"
               << "  --lod <off|distance|screen|hybrid> How meshes pick their detail level (default hybrid; off: full detail)\n"
               << "  --mesh-detail <0..1>   Mesh detail setting: 1 keeps detail farthest (default 1)\n"
               << "  --particles <legacy|enhanced> How particle effects are interpreted (default legacy, as the original)\n"
@@ -422,11 +422,12 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         else if (argument == "--fog")
         {
             EAW_TRY_ASSIGN(const auto value, require_value(argc, argv, index, argument));
-            if (value != "on" && value != "off")
+            const auto mode = visual_fog_mode(value);
+            if (!mode)
             {
-                return make_error("--fog must be on or off");
+                return make_error("--fog must be off, legacy, or enhanced");
             }
-            options.fog = value == "on";
+            options.fog = *mode;
         }
         else if (argument == "--shadows")
         {

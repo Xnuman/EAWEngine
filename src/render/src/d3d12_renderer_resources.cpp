@@ -578,6 +578,9 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
     scene_loaded = true;
     scene_bounds_minimum = scene.bounds_minimum;
     scene_bounds_maximum = scene.bounds_maximum;
+    // Enhanced fog is densest at the terrain's lowest point (the scene's on maps without terrain,
+    // whose bounds can reach far below the ground).
+    fog_floor = terrain.vertices.empty() ? scene.bounds_minimum.z : terrain.bounds_minimum.z;
     if (terrain_vertex_buffer)
     {
         terrain_vertex_view.BufferLocation = terrain_vertex_buffer->GetGPUVirtualAddress();

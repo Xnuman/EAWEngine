@@ -42,8 +42,8 @@ struct D3d12RendererOptions
     // Key-light shadows: cascaded shadow maps (render/shadow_cascades.hpp), every model and the
     // terrain casting; the cascade count (1-4) and each map's texels per side (engine choices).
     bool shadows{true};
-    // The map environment's distance fog (VisualLightRig::fog), when it has one.
-    bool fog{true};
+    // How the map environment's fog is drawn (VisualLightRig::fog), when it has one.
+    VisualFogMode fog{VisualFogMode::legacy};
     std::uint32_t shadow_cascades{3};
     std::uint32_t shadow_resolution{2048};
     // Detail levels of meshes that have them (eaw/visual_lod.hpp); set_lod_settings changes them.

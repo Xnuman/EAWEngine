@@ -9,6 +9,8 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
+#include <string_view>
 
 namespace eaw {
 
@@ -46,6 +48,47 @@ struct VisualDirectionalLight
     Vector3 direction{0.0F, 0.0F, 1.0F};
     ColorRgb color{};
 };
+
+// How the renderer draws the map's fog: not at all; as the original (linear in view distance, the
+// legacy profile); or as exponential height fog along each view ray, thickest low down, brighter
+// toward the key light, from the same color and range (enhanced; engine choices).
+enum class VisualFogMode : std::uint8_t
+{
+    off,
+    legacy,
+    enhanced,
+};
+
+[[nodiscard]] constexpr std::string_view to_string(const VisualFogMode mode) noexcept
+{
+    switch (mode)
+    {
+    case VisualFogMode::off:
+        return "off";
+    case VisualFogMode::legacy:
+        return "legacy";
+    case VisualFogMode::enhanced:
+        return "enhanced";
+    }
+    return "off";
+}
+
+// A mode by name; "on" is the legacy mode.
+[[nodiscard]] constexpr std::optional<VisualFogMode> visual_fog_mode(const std::string_view name) noexcept
+{
+    if (name == "on")
+    {
+        return VisualFogMode::legacy;
+    }
+    for (const auto mode : {VisualFogMode::off, VisualFogMode::legacy, VisualFogMode::enhanced})
+    {
+        if (name == to_string(mode))
+        {
+            return mode;
+        }
+    }
+    return std::nullopt;
+}
 
 // Distance fog of the map environment: surfaces blend toward `color` linearly with view distance,
 // from none at `start` to all at `end`. Additive surfaces and backgrounds are not fogged (as in the

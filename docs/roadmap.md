@@ -95,7 +95,8 @@ rendering rows join item 2).
    reproject by camera motion); HDR postponed by the owner (2026-11-13) to the later
    visual enhancement: it needs linear lighting, since the shading works in display space like the
    original's, so it starts the enhanced lighting profile with the physically based path),
-   shadows, fog (done 2026-11-13; particles not fogged yet), decals (map and runtime), special materials (shields, planets, nebula, heat
+   shadows, fog (done 2026-11-13: legacy and enhanced height fog, particles included; volumetric fog
+   for light shafts and smoke later, the owner agreeing), decals (map and runtime), special materials (shields, planets, nebula, heat
    distortion, wind bend, occluded units, reflections), weather and soft particles, look tuning.
    This closes M2.
 3. The job system (Simulation stage 4's base), then input bindings (Platform and input stage 2).
@@ -375,7 +376,7 @@ waiting for it, oldest first:
 - edge anti-aliasing on by default (`--no-aa` to compare), temporal anti-aliasing (`--aa taa`), and both (`--aa hybrid`):
   ghosting behind particles and blended parts, softness against FXAA, the hybrid mode;
 - transparent model parts drawn back to front (canopies, glass, glows on models);
-- distance fog from the map environments (`--fog off` to compare); its ranges suit the original's
+- distance fog from the map environments (`--fog off` to compare, `--fog enhanced` for height fog); its ranges suit the original's
   closer camera, so zoomed far out distant ground fades (cap the zoom, or scale the fog to it?);
 - key-light shadows (on by default, `--shadows off` to compare): their darkness, softness, and
   reach (backdrops such as planets receive none, owner 2026-11-13);
