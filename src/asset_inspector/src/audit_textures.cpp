@@ -1,4 +1,4 @@
-// `texture-audit`: texture references of models and materials across the layered VFS.
+﻿// `texture-audit`: texture references of models and materials across the layered VFS.
 
 #include "assets/alo_interpretation.hpp"
 #include "asset_inspector/inspector.hpp"
@@ -60,6 +60,8 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
     std::map<std::uint32_t, std::size_t> densest_lod;
     std::map<std::uint32_t, std::size_t> sparsest_lod;
     std::size_t alternate_bones_without_meshes = 0;
+    // Meshes by their bone's billboard mode, with an example model and mesh.
+    std::map<std::uint32_t, std::pair<std::size_t, std::string>> billboard_meshes;
     for (const auto& asset : model_assets)
     {
         if (extension_of(asset.virtual_path) != ".alo")
@@ -100,6 +102,16 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
         for (const auto& bone : model.bones)
         {
             alternate_bones_without_meshes += eaw::alo_name_variant(bone.name).kind == eaw::AloVariantKind::alternate ? 1U : 0U;
+        }
+        for (const auto& mesh : model.meshes)
+        {
+            const auto bone = mesh.attached_bone.value_or(0U);
+            const auto mode = bone < model.bones.size() ? model.bones[bone].billboard : 0U;
+            auto& entry = billboard_meshes[mode];
+            if (entry.first++ == 0)
+            {
+                entry.second = asset.virtual_path + " " + mesh.name;
+            }
         }
         models_with_alternates += has_alternate ? 1U : 0U;
         models_with_lods += has_lod ? 1U : 0U;
@@ -308,6 +320,11 @@ void audit_texture_references(const eaw::VirtualFileSystem& vfs, const std::stri
         std::cout << ' ' << index << 'x' << count;
     }
     std::cout << "\nBones with _ALT<n> names (meshes and particle emitters): " << alternate_bones_without_meshes << '\n';
+    std::cout << "Meshes by their bone's billboard mode:\n";
+    for (const auto& [mode, entry] : billboard_meshes)
+    {
+        std::cout << "  billboard " << mode << ": " << entry.first << "  (e.g. " << entry.second << ")\n";
+    }
     std::cout << "Numeric parameter usage (count, per-component min..max):\n";
     for (const auto& [name, usage] : numeric_parameters)
     {

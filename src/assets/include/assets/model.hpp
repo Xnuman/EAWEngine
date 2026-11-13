@@ -1,10 +1,11 @@
-#pragma once
+﻿#pragma once
 
 // A model as the engine uses it, whatever file it came from: its skeleton, meshes with interpreted
 // materials, and the attachment points (proxies) effects hang on. Placing it in a scene (bind-pose
 // placement of rigid meshes, hardpoint hosts, palette layout, texture registration) is the scene
 // builder's job.
 
+#include "render/visual_material.hpp"
 #include "render/visual_vertex.hpp"
 #include "assets/legacy_material.hpp"
 #include "assets/skeleton.hpp"
@@ -39,6 +40,8 @@ struct ModelMesh
     std::optional<std::uint32_t> damage_state;
     std::optional<std::uint32_t> detail_level;
     std::vector<ModelSubmesh> submeshes;
+    // How the mesh turns as its bone's billboard mode says (none: fixed).
+    VisualBillboard billboard{VisualBillboard::none};
 };
 
 // A named attachment point on a bone, as effects use it.

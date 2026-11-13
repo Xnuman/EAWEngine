@@ -108,6 +108,23 @@ struct VisualNebula
 
 // Engine-native surface description consumed by the legacy-mode shading path. Colors are linear
 // multipliers in the 0..1 range authored by the original materials.
+// How a billboard turns (the legacy bone billboard modes; docs/compatibility-research.md, "Bone
+// billboards"). The mesh's x axis goes right, its z axis up, and its y axis away from the viewer.
+enum class VisualBillboard : std::uint8_t
+{
+    none,
+    // Facing the camera (legacy parallel and face).
+    face,
+    // About the world's vertical axis: toward the camera, away from the light, along the wind.
+    z_view,
+    z_light,
+    z_wind,
+    // Facing the camera, the bone's offset from the model turned toward the light (legacy sun glow
+    // and sun).
+    sun_glow,
+    sun,
+};
+
 struct VisualMaterial
 {
     std::string name;
@@ -152,6 +169,11 @@ struct VisualMaterial
     Color grass_diffuse_alt{white};
     // Takes the environment's cloud shadows (VisualCloudShadow), as the legacy terrain meshes do.
     bool cloud_shadow{};
+    // A billboard: the draw's vertices are relative to its bone (authored facing -Y), and the
+    // renderer turns them about the bone's current position (`billboard_anchor`, the bone's bind
+    // position in the model) as VisualBillboard says.
+    VisualBillboard billboard{VisualBillboard::none};
+    Vector3 billboard_anchor{};
 };
 
 } // namespace eaw

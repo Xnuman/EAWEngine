@@ -188,8 +188,11 @@ struct D3d12Renderer::Impl
         float bend_scale{};
         // Grass: its second color (VisualMaterial::grass_diffuse_alt).
         Color grass_diffuse_alt{white};
+        // Billboards: VisualBillboard and the bone's bind position.
+        std::uint32_t billboard{};
+        std::array<float, 3> billboard_anchor{};
     };
-    static_assert(sizeof(GpuMaterial) == 160);
+    static_assert(sizeof(GpuMaterial) == 176);
     static constexpr std::uint32_t material_clouds = 1U << 5U;
     static constexpr std::uint32_t material_grass = 1U << 6U;
     static constexpr std::uint32_t material_cloud_shadow = 1U << 7U;

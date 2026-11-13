@@ -962,6 +962,7 @@ auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size
     if (!is_finite(material.tint) || !is_finite(material.diffuse) || !is_finite(material.specular) || !is_finite(material.emissive) || !finite(material.uv_scroll) ||
         !std::isfinite(material.alpha_test_threshold) || !std::isfinite(material.uv_scale) || !is_finite(material.planet.atmosphere) || !is_finite(material.planet.city_color) ||
         !std::isfinite(material.planet.atmosphere_power) || !std::isfinite(material.planet.cloud_scroll) || !std::isfinite(material.bend_scale) || !is_finite(material.grass_diffuse_alt) ||
+        !is_finite(material.billboard_anchor) ||
         !finite(std::array{material.shield.base_uv_scale, material.shield.distortion_uv_scale, material.shield.wave_uv_scale, material.shield.base_scroll, material.shield.distortion_scroll,
                            material.shield.wave_scroll, material.shield.edge_brightness}) ||
         !finite(std::array{material.sky.cloud_scale, material.sky.cloud_scroll, material.nebula.distortion_scale, material.nebula.spatial_frequency, material.nebula.time_frequency}))
@@ -981,6 +982,8 @@ auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size
     result.lighting = static_cast<std::uint32_t>(material.lighting);
     result.bend_scale = material.bend_scale;
     result.grass_diffuse_alt = material.grass_diffuse_alt;
+    result.billboard = static_cast<std::uint32_t>(material.billboard);
+    result.billboard_anchor = {material.billboard_anchor.x, material.billboard_anchor.y, material.billboard_anchor.z};
     result.flags = (material.blend == VisualBlendMode::alpha_test ? material_alpha_test : 0U) | (material.blend == VisualBlendMode::alpha_blend ? material_alpha_blend : 0U) |
                    (material.blend == VisualBlendMode::additive ? material_additive : 0U) | (material.team_color_mask ? material_team_color : 0U) |
                    (material.emissive_mask ? material_emissive_mask : 0U) | (static_cast<std::uint32_t>(material.gloss) << material_gloss_shift);

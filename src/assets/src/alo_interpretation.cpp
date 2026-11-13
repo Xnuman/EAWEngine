@@ -89,4 +89,26 @@ std::vector<bool> alo_mesh_visibility(const AloModelData& model, const AloMeshSe
     return visible;
 }
 
+VisualBillboard alo_billboard(const std::uint32_t mode) noexcept
+{
+    switch (mode)
+    {
+    case 1:
+    case 2:
+        return VisualBillboard::face;
+    case 3:
+        return VisualBillboard::z_view;
+    case 4:
+        return VisualBillboard::z_light;
+    case 5:
+        return VisualBillboard::z_wind;
+    case 6:
+        return VisualBillboard::sun_glow;
+    case 7:
+        return VisualBillboard::sun;
+    default:
+        return VisualBillboard::none;
+    }
+}
+
 } // namespace eaw

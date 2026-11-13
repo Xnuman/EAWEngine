@@ -153,6 +153,8 @@ struct MaterialData
     float cloud_scroll;
     float bend_scale; // wind bend (trees), 0 none
     float4 grass_diffuse_alt;
+    uint billboard;          // VisualBillboard (render/visual_material.hpp)
+    float3 billboard_anchor; // the bone's bind position in the model
 };
 
 // Wind bend (the Tree material): a vertex sways by its height above the model's origin, squared.

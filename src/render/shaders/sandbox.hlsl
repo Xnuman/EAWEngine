@@ -127,6 +127,57 @@ float4 skinned_position(const VertexInput input, const uint bone_offset)
     return abs(total_weight - 1.0f) > 0.0001f ? position / total_weight : position;
 }
 
+// Billboards (VisualBillboard; docs/compatibility-research.md, "Bone billboards"): the vertex is
+// relative to its bone, authored facing -Y; its x axis goes right, its z axis up, and its y axis away
+// from the viewer, about the bone's current position. Sun glows and suns sit at the bone's offset
+// from the model turned toward the light (its x axis onto the light). Backgrounds work relative to
+// the camera, as their directions do.
+static const uint BILLBOARD_FACE = 1u;
+static const uint BILLBOARD_Z_VIEW = 2u;
+static const uint BILLBOARD_Z_LIGHT = 3u;
+static const uint BILLBOARD_Z_WIND = 4u;
+static const uint BILLBOARD_SUN_GLOW = 5u;
+
+float3 billboard_vertex(const float3 local, const MaterialData material, const InstanceData instance, const uint bone, const bool background)
+{
+    const row_major float4x4 placement = instance.transform;
+    const float scale = length(placement[0].xyz);
+    const float3 eye = background ? float3(0.0f, 0.0f, 0.0f) : camera_position_time.xyz;
+    const float3 light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
+    float3 center;
+    if (material.billboard >= BILLBOARD_SUN_GLOW)
+    {
+        const float3 side = safe_normalize(float3(-light.y, light.x, 0.0f), float3(0.0f, 1.0f, 0.0f));
+        const float3 above = cross(light, side);
+        const float3 anchor = material.billboard_anchor;
+        const float3 origin = background ? float3(0.0f, 0.0f, 0.0f) : placement[3].xyz;
+        center = origin + (anchor.x * light + anchor.y * side + anchor.z * above) * scale;
+    }
+    else
+    {
+        const float3 model = mul(float4(material.billboard_anchor, 1.0f), bones[bone + instance.bone_offset].transform).xyz;
+        center = mul(float4(model, background ? 0.0f : 1.0f), placement).xyz;
+    }
+    float3 x_axis;
+    float3 y_axis;
+    float3 z_axis;
+    if (material.billboard >= BILLBOARD_Z_VIEW && material.billboard <= BILLBOARD_Z_WIND)
+    {
+        const float2 toward = material.billboard == BILLBOARD_Z_VIEW ? center.xy - eye.xy : material.billboard == BILLBOARD_Z_LIGHT ? -light.xy : wind_bend.xy;
+        const float2 along = dot(toward, toward) > 1.0e-8f ? normalize(toward) : float2(0.0f, 1.0f);
+        y_axis = float3(along, 0.0f);
+        x_axis = float3(along.y, -along.x, 0.0f);
+        z_axis = float3(0.0f, 0.0f, 1.0f);
+    }
+    else
+    {
+        y_axis = safe_normalize(camera_forward.xyz, float3(0.0f, 1.0f, 0.0f));
+        x_axis = safe_normalize(cross(y_axis, float3(0.0f, 0.0f, 1.0f)), float3(1.0f, 0.0f, 0.0f));
+        z_axis = cross(x_axis, y_axis);
+    }
+    return center + (local.x * x_axis + local.y * y_axis + local.z * z_axis) * scale;
+}
+
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 PixelInput vs_main(VertexInput input)
 {
@@ -187,7 +238,8 @@ PixelInput vs_main(VertexInput input)
     {
         // Backgrounds follow the camera: transforming a direction (w = 0) drops the view
         // translation, and the depth is pinned just inside the far plane.
-        const float3 direction = mul(float4(position.xyz, 0.0f), instance.transform).xyz;
+        const float3 direction = vertex_material.billboard != 0u ? billboard_vertex(input.position, vertex_material, instance, input.bone_indices[0], true)
+                                                                  : mul(float4(position.xyz, 0.0f), instance.transform).xyz;
         // The sky capture draws backgrounds into its cube faces.
         const float4x4 projection = pass_index >= SKY_FACE_PASS ? sky_face_view_projection[pass_index - SKY_FACE_PASS] : view_projection;
         output.position = mul(float4(direction, 0.0f), projection);
@@ -205,6 +257,12 @@ PixelInput vs_main(VertexInput input)
         world.xyz += wind_offset(wind_bend, position.z, bend_scale);
         float4 previous_world = mul(previous, instance.previous_transform);
         previous_world.xyz += wind_offset(previous_wind_bend, previous.z, bend_scale);
+        if (material.billboard != 0u)
+        {
+            // Billboards turn with the camera: their motion is left to the depth reprojection.
+            world = float4(billboard_vertex(input.position, material, instance, input.bone_indices[0], false), 1.0f);
+            previous_world = world;
+        }
         if ((material.flags & MATERIAL_GRASS) != 0u)
         {
             // Motion vectors of waving grass are left to the depth reprojection (grass is blended).

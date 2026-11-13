@@ -206,9 +206,18 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
                 {
                     attachment = &source_bind[*mesh.attached_bone];
                 }
+                // A billboard keeps its vertices relative to its bone; the renderer turns them about
+                // the bone's position (attached models' billboards stay fixed).
+                const bool billboard = mesh.billboard != VisualBillboard::none && attachment != nullptr && host == nullptr;
+                if (billboard)
+                {
+                    visual_material.billboard = mesh.billboard;
+                    visual_material.billboard_anchor = {attachment->values[12], attachment->values[13], attachment->values[14]};
+                    attachment = nullptr;
+                }
                 for (const auto& vertex : submesh.vertices)
                 {
-                    auto position = drawn_vertex_position(vertex.position, mesh, submesh, source_bind);
+                    auto position = billboard ? vertex.position : drawn_vertex_position(vertex.position, mesh, submesh, source_bind);
                     auto normal = attachment != nullptr ? transform_normal(vertex.normal, *attachment) : vertex.normal;
                     auto tangent = attachment != nullptr ? transform_normal(vertex.tangent, *attachment) : vertex.tangent;
                     auto binormal = attachment != nullptr ? transform_normal(vertex.binormal, *attachment) : vertex.binormal;

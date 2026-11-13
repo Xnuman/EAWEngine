@@ -175,6 +175,10 @@ eaw::Status inspect_alo(const std::span<const std::byte> bytes, const std::size_
     {
         const auto& bone = model.bones[index];
         std::cout << "  [" << index << "] " << bone.name << " parent=" << bone.parent << ' ' << (bone.visible ? "visible" : "hidden");
+        if (bone.billboard != 0)
+        {
+            std::cout << " billboard " << bone.billboard;
+        }
         if (index < pose.size())
         {
             const auto& m = pose[index].values;

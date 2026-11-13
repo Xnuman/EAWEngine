@@ -5,6 +5,7 @@
 // the file's facts mean, kept apart from decoding.
 
 #include "formats/alo_model.hpp"
+#include "render/visual_material.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -30,6 +31,10 @@ struct AloNameVariant
 };
 
 [[nodiscard]] AloNameVariant alo_name_variant(std::string_view name) noexcept;
+// A bone's billboard mode as the engine's: 0 none, 1 parallel and 2 face (facing the camera), 3 about
+// Z toward the camera, 4 toward the light, 5 along the wind, 6 sun glow, 7 sun (the names and order
+// of the MIT-licensed alo-viewer; unknown values draw fixed).
+[[nodiscard]] VisualBillboard alo_billboard(std::uint32_t mode) noexcept;
 
 // A mesh's variant: from its name, or from its attached bone when the mesh name carries none.
 [[nodiscard]] AloNameVariant alo_mesh_variant(const AloModelData& model, const AloMesh& mesh) noexcept;

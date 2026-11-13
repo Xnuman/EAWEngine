@@ -1074,6 +1074,21 @@ particle-audit`.
   rate proportional to the intensity. The cube size and distance, fade-out distance, and fog plane are unused.
 - **Not drawn yet:** heat distortion (170) is drawn since 2026-11-13 and weather (5) since the same
   day; wind is ignored; freeze time is kept but unused.
+- **Bone billboards** (2026-11-13). An ALO bone carries a billboard mode that turns the meshes on
+  it. The MIT-licensed alo-viewer names the values 0 none, 1 parallel, 2 face, 3 about Z toward the
+  view, 4 about Z toward the light, 5 about Z toward the wind, 6 sun glow, 7 sun, treats billboarded
+  meshes as authored facing -Y, turns 1 and 2 with the camera, 3-5 about the vertical axis, and
+  places 6 and 7 at the bone's offset from the model turned toward the sun, facing the camera.
+  `texture-audit` counts stock meshes by mode: 0 9,013, 1 10 (`W_PLANET_FLEET` glows), 2 1 (a test
+  model), 4 97 (the `SHADOW` cards under trees), 5 3 (flags), 6 109 (every planet's glow disc), 7 17
+  (the suns of sky domes). Until then the engine drew them fixed: a planet's glow, a flat disc as
+  wide as 1.4 planets through its center, showed as a bright band across the globe (the owner's
+  report). The engine now follows alo-viewer's reading, except that its turns replace the whole
+  orientation in world axes rather than applying the camera's rotation in the model's own space
+  (which only agrees for unrotated models), and that "toward the light" uses the environment's key
+  light. Whether mode 4 points the card toward or away from the light, and mode 5 with or against the
+  wind, is alo-viewer's convention, unchecked against the game. Billboards on attached models
+  (hardpoints) stay fixed.
 - **Proxies.** Model proxies name their effect without directory or
   extension (`pe_Z95engines` is `Data/Art/Models/pe_Z95engines.alo`). The
   stock station and capital-ship models also carry proxies tagged like meshes:
