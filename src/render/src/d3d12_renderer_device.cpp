@@ -334,7 +334,7 @@ void D3d12Renderer::Impl::create_post_targets()
 
 void D3d12Renderer::Impl::create_shadow_maps()
 {
-    if (!options.shadows)
+    if (!options.graphics.shadows)
     {
         return;
     }

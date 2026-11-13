@@ -321,7 +321,7 @@ struct D3d12Renderer::Impl
     DirectX::XMFLOAT4X4 previous_camera{};
     // Creates (or, after a resize, recreates) the post-processing targets and their views.
     void create_post_targets();
-    // The shadow cascades' maps (with options.shadows), once at startup.
+    // The shadow cascades' maps (created once, the first time shadows are on).
     void create_shadow_maps();
     // Records the shadow pass: every cascade's map from the casters of this frame's draws.
     void record_shadow_cascades(FrameContext& frame, bool dynamic);

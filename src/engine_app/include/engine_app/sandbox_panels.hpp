@@ -4,12 +4,13 @@
 // frame (D3d12Renderer::set_overlay_ui): a bar pinned to the top of the window (F1 shows or hides
 // it) with menus that show or hide the panels and the view toggles; the statistics panel
 // (graphics numbers, sandbox_overlay); the spawn panel (what to spawn, filtered by category and
-// faction, how many, for which owner); the sound panel (volumes); and the camera panel (fixed,
-// debug, or free camera). Every panel first opens in its own place below the bar, so none covers
+// faction, how many, for which owner); the sound panel (volumes); the camera panel (fixed,
+// debug, or free camera); and the graphics panel (the renderer's switchable features). Every panel first opens in its own place below the bar, so none covers
 // another; afterwards it can be moved and resized, and the renderer's settings file keeps where.
 // Panel state is plain data owned by the sandbox; button presses come back as actions it applies
 // in its next frame.
 
+#include "render/d3d12_renderer.hpp"
 #include "assets/spawn_catalog.hpp"
 
 #include <array>
@@ -40,6 +41,7 @@ struct SandboxPanels
     bool spawn{};
     bool sound{};
     bool camera{};
+    bool graphics{};
     // Spawn panel: the search text (case-insensitive substring of type names), and the chosen
     // category and faction filters (0: all).
     std::array<char, 96> filter{};
@@ -88,6 +90,15 @@ struct CameraPanelView
     float* fly_speed{};
 };
 
+// What the graphics panel edits: the renderer's switchable features, its detail-level settings,
+// and whether terrain decals (scorches, footprints, trails) are handed to it.
+struct GraphicsPanelView
+{
+    eaw::D3d12GraphicsSettings* graphics{};
+    eaw::VisualLodSettings* lod{};
+    bool* decals{};
+};
+
 // The category a spawnable XML element type is listed under (Infantry, Vehicles, Heroes,
 // Structures, Space units, Props, Other).
 [[nodiscard]] std::string_view spawn_category(std::string_view kind) noexcept;
@@ -100,5 +111,7 @@ void draw_statistics_panel(SandboxPanels& panels, std::span<const std::string> l
 [[nodiscard]] bool draw_sound_panel(SandboxPanels& panels, const SoundPanelView& view);
 // True when the mode changed.
 [[nodiscard]] bool draw_camera_panel(SandboxPanels& panels, const CameraPanelView& view);
+// True when a setting changed.
+[[nodiscard]] bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view);
 
 } // namespace eaw::engine_app

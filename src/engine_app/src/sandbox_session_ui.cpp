@@ -60,10 +60,16 @@ void SandboxSession::draw_panels()
                         std::to_string(stats.skipped) + " skipped, " + std::to_string(stats.missing) + " missing";
     }
     volumes_changed = draw_sound_panel(panels, sound) || volumes_changed;
+    graphics_changed = draw_graphics_panel(panels, {&graphics_settings, &lod_settings, &show_decals}) || graphics_changed;
 }
 
 void SandboxSession::apply_panel_actions()
 {
+    if (std::exchange(graphics_changed, false))
+    {
+        renderer.set_graphics_settings(graphics_settings);
+        renderer.set_lod_settings(lod_settings);
+    }
     if (std::exchange(volumes_changed, false))
     {
         audio_device->set_master_volume(master_volume);

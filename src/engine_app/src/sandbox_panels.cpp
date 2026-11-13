@@ -1,6 +1,7 @@
 #include "engine_app/sandbox_panels.hpp"
 
 #include "core/string_utils.hpp"
+#include "render/shadow_cascades.hpp"
 
 #include <imgui.h>
 
@@ -116,6 +117,7 @@ void draw_sandbox_bar(SandboxPanels& panels, bool& show_bounds, bool& show_passa
         ImGui::MenuItem("Spawn", nullptr, &panels.spawn);
         ImGui::MenuItem("Sound", nullptr, &panels.sound);
         ImGui::MenuItem("Camera", nullptr, &panels.camera);
+        ImGui::MenuItem("Graphics", nullptr, &panels.graphics);
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("View"))
@@ -180,6 +182,65 @@ bool draw_camera_panel(SandboxPanels& panels, const CameraPanelView& view)
         ImGui::TextDisabled(*view.mode == SandboxCameraMode::free    ? "Right-drag look | WASD move | Q/E down/up | Shift fast | C next mode"
                             : *view.mode == SandboxCameraMode::debug ? "Drag rotate | right-drag pan | WASD pan | C next mode"
                                                                      : "WASD pan | wheel zoom | C next mode");
+    }
+    ImGui::End();
+    return changed;
+}
+
+bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view)
+{
+    if (!panels.graphics || view.graphics == nullptr || view.lod == nullptr || view.decals == nullptr)
+    {
+        return false;
+    }
+    first_place(panel_margin, spawn_height + panel_margin, spawn_width, 0.0F);
+    ImGui::SetNextWindowBgAlpha(0.85F);
+    bool changed = false;
+    if (ImGui::Begin("Graphics", &panels.graphics, ImGuiWindowFlags_NoCollapse))
+    {
+        auto& graphics = *view.graphics;
+        changed |= ImGui::Checkbox("V-sync", &graphics.vsync);
+        static constexpr std::array<const char*, 4> anti_aliasing{"Off", "FXAA", "TAA", "TAA + FXAA"};
+        auto mode = static_cast<int>(graphics.anti_aliasing);
+        if (ImGui::Combo("Anti-aliasing", &mode, anti_aliasing.data(), static_cast<int>(anti_aliasing.size())))
+        {
+            graphics.anti_aliasing = static_cast<eaw::VisualAntiAliasing>(mode);
+            changed = true;
+        }
+        changed |= ImGui::Checkbox("Bloom", &graphics.bloom);
+        ImGui::BeginDisabled(!graphics.bloom);
+        changed |= ImGui::SliderFloat("Bloom threshold", &graphics.bloom_threshold, 0.0F, 1.0F, "%.2f");
+        changed |= ImGui::SliderFloat("Bloom strength", &graphics.bloom_strength, 0.0F, 2.0F, "%.2f");
+        ImGui::EndDisabled();
+        changed |= ImGui::Checkbox("Shadows", &graphics.shadows);
+        ImGui::BeginDisabled(!graphics.shadows);
+        auto cascades = static_cast<int>(graphics.shadow_cascades);
+        if (ImGui::SliderInt("Cascades", &cascades, 1, static_cast<int>(eaw::maximum_shadow_cascades)))
+        {
+            graphics.shadow_cascades = static_cast<std::uint32_t>(cascades);
+            changed = true;
+        }
+        ImGui::EndDisabled();
+        auto fog = static_cast<int>(graphics.fog);
+        ImGui::TextUnformatted("Fog");
+        ImGui::SameLine();
+        changed |= ImGui::RadioButton("Off##fog", &fog, static_cast<int>(eaw::VisualFogMode::off));
+        ImGui::SameLine();
+        changed |= ImGui::RadioButton("Legacy##fog", &fog, static_cast<int>(eaw::VisualFogMode::legacy));
+        ImGui::SameLine();
+        changed |= ImGui::RadioButton("Enhanced##fog", &fog, static_cast<int>(eaw::VisualFogMode::enhanced));
+        graphics.fog = static_cast<eaw::VisualFogMode>(fog);
+        changed |= ImGui::Checkbox("Terrain decals", view.decals);
+        ImGui::Separator();
+        static constexpr std::array<const char*, 4> policies{"Off (full detail)", "Distance", "Screen size", "Hybrid"};
+        auto policy = static_cast<int>(view.lod->policy);
+        if (ImGui::Combo("Detail levels", &policy, policies.data(), static_cast<int>(policies.size())))
+        {
+            view.lod->policy = static_cast<eaw::VisualLodPolicy>(policy);
+            changed = true;
+        }
+        changed |= ImGui::SliderFloat("Mesh detail", &view.lod->mesh_detail, 0.0F, 1.0F, "%.2f");
+        ImGui::TextDisabled("Shadow resolution and particle fidelity are set at start.");
     }
     ImGui::End();
     return changed;

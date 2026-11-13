@@ -343,17 +343,17 @@ int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const Gam
     auto window = std::move(created_window).value();
 
     eaw::D3d12RendererOptions renderer_options;
-    renderer_options.vsync = options.vsync;
+    renderer_options.graphics.vsync = options.vsync;
     renderer_options.use_warp = options.use_warp;
     renderer_options.gpu_validation = options.gpu_validation;
     renderer_options.maximum_frame_latency = options.frame_latency;
     renderer_options.pipeline_cache_directory = options.pipeline_cache;
     renderer_options.texture_upload_budget_bytes = options.upload_budget_mib * 1024ULL * 1024ULL;
-    renderer_options.bloom = options.bloom_strength > 0.0F;
-    renderer_options.bloom_strength = options.bloom_strength;
-    renderer_options.anti_aliasing = options.anti_aliasing;
-    renderer_options.shadows = options.shadows;
-    renderer_options.fog = options.fog;
+    renderer_options.graphics.bloom = options.bloom_strength > 0.0F;
+    renderer_options.graphics.bloom_strength = options.bloom_strength;
+    renderer_options.graphics.anti_aliasing = options.anti_aliasing;
+    renderer_options.graphics.shadows = options.shadows;
+    renderer_options.graphics.fog = options.fog;
     renderer_options.overlay_settings_file = eaw::executable_directory() / "sandbox_imgui.ini";
     renderer_options.lod.policy = options.lod_policy;
     renderer_options.lod.mesh_detail = options.mesh_detail;

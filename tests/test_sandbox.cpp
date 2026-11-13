@@ -52,8 +52,8 @@ void test_sandbox_options()
     const auto free = expect_ok(parse({"--panel", "camera", "--free-camera", "1", "2", "3", "4", "5", "6"}), "parsing the camera options");
     require(free.panels.camera && free.free_camera && (*free.free_camera)[5] == 6.0F && !parse({"--free-camera", "1", "1", "1", "1", "1", "1"}) && !parse({"--free-camera", "1", "2"}),
             "the free camera start and the camera panel must be read, and an eye on its target refused");
-    const auto opened = expect_ok(parse({"--panel", "spawn", "--panel", "menu"}), "parsing --panel");
-    require(opened.panels.spawn && opened.panels.menu && !opened.panels.statistics && !parse({"--panel", "bogus"}), "--panel must open the named panels and reject others");
+    const auto opened = expect_ok(parse({"--panel", "spawn", "--panel", "menu", "--panel", "graphics"}), "parsing --panel");
+    require(opened.panels.spawn && opened.panels.menu && opened.panels.graphics && !opened.panels.statistics && !parse({"--panel", "bogus"}), "--panel must open the named panels and reject others");
     const auto sound = expect_ok(parse({"--panel", "sound", "--volume", "0.5", "--audio", "none", "--language", "German"}), "parsing audio options");
     require(sound.panels.sound && sound.volume == 0.5F && sound.audio == "none" && sound.language == "German" && expect_ok(parse({}), "parsing nothing").volume == eaw::default_sandbox_volume &&
                 expect_ok(parse({"--no-audio"}), "parsing --no-audio").audio == "none" && !parse({"--volume", "2"}) && !parse({"--volume", "x"}),

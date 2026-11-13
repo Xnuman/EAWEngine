@@ -197,7 +197,14 @@ struct SandboxSession
     bool reload_check_reported = false;
     std::int64_t click_travel = 0;
     // Dev panels under the bar (F1 hides it); statistics starts as --overlay says.
-    SandboxPanels panels{.statistics = options.overlay || options.panels.statistics, .spawn = options.panels.spawn, .sound = options.panels.sound, .camera = options.panels.camera};
+    SandboxPanels panels{
+        .statistics = options.overlay || options.panels.statistics, .spawn = options.panels.spawn, .sound = options.panels.sound, .camera = options.panels.camera, .graphics = options.panels.graphics};
+    // The graphics panel's settings, handed to the renderer before the next frame when changed
+    // (the panel is drawn inside a frame); terrain decals off hands the renderer none.
+    eaw::D3d12GraphicsSettings graphics_settings = renderer.graphics_settings();
+    eaw::VisualLodSettings lod_settings = renderer.lod_settings();
+    bool show_decals = true;
+    bool graphics_changed = false;
     bool statistics_shown = false;
     std::vector<std::string> statistics_lines;
     // How many units N and the spawn panel spawn, and the panel's last button presses.

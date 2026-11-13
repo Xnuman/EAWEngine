@@ -228,9 +228,13 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
             {
                 options.panels.camera = true;
             }
+            else if (value == "graphics")
+            {
+                options.panels.graphics = true;
+            }
             else
             {
-                return make_error("--panel must be menu, statistics, spawn, sound, or camera");
+                return make_error("--panel must be menu, statistics, spawn, sound, camera, or graphics");
             }
         }
         else if (argument == "--no-overlay")

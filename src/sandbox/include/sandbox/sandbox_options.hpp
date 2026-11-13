@@ -99,7 +99,7 @@ struct SandboxOptions
     bool show_passability{};
     // The statistics panel starts hidden; the F1 menu shows it.
     bool overlay{};
-    // --panel menu|statistics|spawn (repeatable): dev panels open at start.
+    // --panel menu|statistics|spawn|sound|camera|graphics (repeatable): dev panels open at start.
     struct OpenPanels
     {
         // Accepted for older scenarios: the bar now starts shown.
@@ -108,6 +108,7 @@ struct SandboxOptions
         bool spawn{};
         bool sound{};
         bool camera{};
+        bool graphics{};
     };
     OpenPanels panels;
     // Mouse movement and keys through raw input (--no-raw-input uses window messages).

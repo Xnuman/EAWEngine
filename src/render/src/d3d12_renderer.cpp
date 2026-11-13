@@ -171,6 +171,26 @@ void D3d12Renderer::set_lod_settings(const VisualLodSettings& settings)
     impl_->lod_settings = settings;
 }
 
+void D3d12Renderer::set_graphics_settings(const D3d12GraphicsSettings& settings)
+{
+    impl_->options.graphics = settings;
+    // Called between frames, so nothing in flight uses the maps being created.
+    if (settings.shadows && impl_->shadow_resolution == 0)
+    {
+        impl_->create_shadow_maps();
+    }
+}
+
+const VisualLodSettings& D3d12Renderer::lod_settings() const noexcept
+{
+    return impl_->lod_settings;
+}
+
+const D3d12GraphicsSettings& D3d12Renderer::graphics_settings() const noexcept
+{
+    return impl_->options.graphics;
+}
+
 const std::string& D3d12Renderer::adapter_name() const
 {
     return impl_->adapter_name;
@@ -206,7 +226,7 @@ D3d12RendererStats D3d12Renderer::stats() const
         .texture_slot_capacity = impl_->texture_slots.capacity(),
         .width = impl_->width,
         .height = impl_->height,
-        .tearing = !impl_->options.vsync && impl_->tearing_supported,
+        .tearing = !impl_->options.graphics.vsync && impl_->tearing_supported,
     };
 }
 

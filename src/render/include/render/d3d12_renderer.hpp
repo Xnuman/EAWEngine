@@ -18,18 +18,10 @@
 
 namespace eaw {
 
-struct D3d12RendererOptions
+// The rendering features that may change from frame to frame (D3d12Renderer::set_graphics_settings).
+struct D3d12GraphicsSettings
 {
     bool vsync{true};
-    bool use_warp{};
-    bool gpu_validation{};
-    std::uint32_t maximum_frame_latency{2};
-    // When set, compiled pipeline states are cached in this directory (d3d12_pipelines.bin).
-    // Empty disables the cache; nothing is written anywhere else.
-    std::filesystem::path pipeline_cache_directory;
-    // Texture bytes uploaded per frame while a scene streams in; at least one texture is always
-    // uploaded. Zero uploads every queued texture in the first frame.
-    std::uint64_t texture_upload_budget_bytes{64ULL * 1024ULL * 1024ULL};
     // Bloom: bright parts of the frame (brightest channel above `bloom_threshold`, 0..1) blurred
     // at quarter resolution and added back scaled by `bloom_strength`. An engine choice standing in
     // for the original's glow option; the values are tuned by eye against the original.
@@ -40,11 +32,26 @@ struct D3d12RendererOptions
     // frames blended with the reprojected history), or both; engine choices.
     VisualAntiAliasing anti_aliasing{VisualAntiAliasing::fxaa};
     // Key-light shadows: cascaded shadow maps (render/shadow_cascades.hpp), every model and the
-    // terrain casting; the cascade count (1-4) and each map's texels per side (engine choices).
+    // terrain casting, in `shadow_cascades` cascades (1-4; an engine choice).
     bool shadows{true};
+    std::uint32_t shadow_cascades{3};
     // How the map environment's fog is drawn (VisualLightRig::fog), when it has one.
     VisualFogMode fog{VisualFogMode::legacy};
-    std::uint32_t shadow_cascades{3};
+};
+
+struct D3d12RendererOptions
+{
+    D3d12GraphicsSettings graphics;
+    bool use_warp{};
+    bool gpu_validation{};
+    std::uint32_t maximum_frame_latency{2};
+    // When set, compiled pipeline states are cached in this directory (d3d12_pipelines.bin).
+    // Empty disables the cache; nothing is written anywhere else.
+    std::filesystem::path pipeline_cache_directory;
+    // Texture bytes uploaded per frame while a scene streams in; at least one texture is always
+    // uploaded. Zero uploads every queued texture in the first frame.
+    std::uint64_t texture_upload_budget_bytes{64ULL * 1024ULL * 1024ULL};
+    // Each shadow map's texels per side (an engine choice); fixed for the renderer's life.
     std::uint32_t shadow_resolution{2048};
     // Detail levels of meshes that have them (eaw/visual_lod.hpp); set_lod_settings changes them.
     VisualLodSettings lod;
@@ -206,6 +213,11 @@ public:
     void set_scene_time(float seconds);
     // Detail-level selection from the next frame on (invalid values fall back to the defaults).
     void set_lod_settings(const VisualLodSettings& settings);
+    [[nodiscard]] const VisualLodSettings& lod_settings() const noexcept;
+    // The switchable features from the next frame on; the shadow maps are created the first time
+    // shadows are on.
+    void set_graphics_settings(const D3d12GraphicsSettings& settings);
+    [[nodiscard]] const D3d12GraphicsSettings& graphics_settings() const noexcept;
     // Asks which surface is visible at client pixel (x, y) in the next rendered frame and returns
     // the request id. Answers arrive through take_pick() in request order once their frame has
     // finished on the GPU (usually one or two frames later); the CPU never waits, and no request

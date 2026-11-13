@@ -746,7 +746,7 @@ bool D3d12Renderer::Impl::render()
         // Under temporal anti-aliasing the scene is drawn a sub-pixel off each frame (a translation
         // in clip space); the resolve reprojects with the unjittered matrices.
         using namespace DirectX;
-        const bool taa = options.anti_aliasing == VisualAntiAliasing::taa || options.anti_aliasing == VisualAntiAliasing::hybrid;
+        const bool taa = options.graphics.anti_aliasing == VisualAntiAliasing::taa || options.graphics.anti_aliasing == VisualAntiAliasing::hybrid;
         const auto unjittered = camera_view_projection();
         std::array<float, 2> jitter{};
         if (taa)
@@ -791,14 +791,14 @@ bool D3d12Renderer::Impl::render()
         constants.camera_right = right;
         constants.camera_up = view_up;
     }
-    constants.post_parameters = {options.bloom_threshold, options.bloom_strength, 0.15F, 0.0F};
+    constants.post_parameters = {options.graphics.bloom_threshold, options.graphics.bloom_strength, 0.15F, 0.0F};
     {
         // Key-light shadows for this view (none before a scene is loaded).
         frame_cascades = {};
-        if (shadow_resolution != 0 && scene_loaded)
+        if (options.graphics.shadows && shadow_resolution != 0 && scene_loaded)
         {
             ShadowCascadeSettings settings;
-            settings.cascade_count = options.shadow_cascades;
+            settings.cascade_count = options.graphics.shadow_cascades;
             settings.resolution = shadow_resolution;
             frame_cascades =
                 compute_shadow_cascades(camera, static_cast<float>(width) / static_cast<float>(std::max(height, 1U)), lighting.key.direction, scene_bounds_minimum, scene_bounds_maximum, settings);
@@ -824,9 +824,9 @@ bool D3d12Renderer::Impl::render()
     }
     // Fog: its color with the mode in w (0 off, 1 legacy, 2 enhanced), its start and end, and for
     // enhanced fog the height it is densest at (fog_floor) and how fast it thins upward.
-    if (options.fog != VisualFogMode::off && lighting.fog.enabled)
+    if (options.graphics.fog != VisualFogMode::off && lighting.fog.enabled)
     {
-        constants.fog_color = {lighting.fog.color.r, lighting.fog.color.g, lighting.fog.color.b, options.fog == VisualFogMode::enhanced ? 2.0F : 1.0F};
+        constants.fog_color = {lighting.fog.color.r, lighting.fog.color.g, lighting.fog.color.b, options.graphics.fog == VisualFogMode::enhanced ? 2.0F : 1.0F};
         constants.fog_range = {lighting.fog.start, lighting.fog.end, fog_floor, 1.0F / fog_height_scale};
     }
     {
@@ -863,10 +863,10 @@ bool D3d12Renderer::Impl::render()
     // With bloom or anti-aliasing the scene renders into its own target; the composite goes to
     // post_color when anti-aliasing follows, else to the back buffer, and anti-aliasing fills the
     // back buffer from the composite (or from the scene without bloom).
-    const bool bloom = options.bloom;
-    const bool anti_aliasing = options.anti_aliasing != VisualAntiAliasing::off;
-    const bool temporal = options.anti_aliasing == VisualAntiAliasing::taa || options.anti_aliasing == VisualAntiAliasing::hybrid;
-    const bool hybrid = options.anti_aliasing == VisualAntiAliasing::hybrid;
+    const bool bloom = options.graphics.bloom;
+    const bool anti_aliasing = options.graphics.anti_aliasing != VisualAntiAliasing::off;
+    const bool temporal = options.graphics.anti_aliasing == VisualAntiAliasing::taa || options.graphics.anti_aliasing == VisualAntiAliasing::hybrid;
+    const bool hybrid = options.graphics.anti_aliasing == VisualAntiAliasing::hybrid;
     const auto scene_target = bloom || anti_aliasing ? post_rtv(0) : render_target;
     const auto composite_target = anti_aliasing ? post_rtv(3) : render_target;
 
@@ -1236,8 +1236,8 @@ bool D3d12Renderer::Impl::render()
     ID3D12CommandList* lists[]{command_list.Get()};
     direct_queue.execute(lists, 1);
 
-    const UINT sync_interval = options.vsync ? 1U : 0U;
-    const UINT present_flags = !options.vsync && tearing_supported ? DXGI_PRESENT_ALLOW_TEARING : 0U;
+    const UINT sync_interval = options.graphics.vsync ? 1U : 0U;
+    const UINT present_flags = !options.graphics.vsync && tearing_supported ? DXGI_PRESENT_ALLOW_TEARING : 0U;
     const auto present_result = swap_chain->Present(sync_interval, present_flags);
     check_device_hresult(present_result, device, "IDXGISwapChain::Present");
     frame.fence_value = direct_queue.signal();
