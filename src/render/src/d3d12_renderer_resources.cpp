@@ -947,7 +947,8 @@ auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size
         !std::isfinite(material.alpha_test_threshold) || !std::isfinite(material.uv_scale) || !is_finite(material.planet.atmosphere) || !is_finite(material.planet.city_color) ||
         !std::isfinite(material.planet.atmosphere_power) || !std::isfinite(material.planet.cloud_scroll) || !std::isfinite(material.bend_scale) || !is_finite(material.grass_diffuse_alt) ||
         !finite(std::array{material.shield.base_uv_scale, material.shield.distortion_uv_scale, material.shield.wave_uv_scale, material.shield.base_scroll, material.shield.distortion_scroll,
-                           material.shield.wave_scroll, material.shield.edge_brightness}))
+                           material.shield.wave_scroll, material.shield.edge_brightness}) ||
+        !finite(std::array{material.sky.cloud_scale, material.sky.cloud_scroll, material.nebula.distortion_scale, material.nebula.spatial_frequency, material.nebula.time_frequency}))
     {
         return make_error("visual material " + std::to_string(index) + " (" + material.name + ") has non-finite parameters");
     }
@@ -968,6 +969,16 @@ auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size
                    (material.blend == VisualBlendMode::additive ? material_additive : 0U) | (material.team_color_mask ? material_team_color : 0U) |
                    (material.emissive_mask ? material_emissive_mask : 0U) | (static_cast<std::uint32_t>(material.gloss) << material_gloss_shift);
     result.flags |= material.grass ? material_grass : 0U;
+    if (material.lighting == VisualLightingModel::sky)
+    {
+        result.layer_a = {material.sky.cloud_scale, material.sky.cloud_scroll, 0.0F, 0.0F};
+        EAW_TRY_ASSIGN(result.layer_texture_a, slot(material.sky.cloud_texture, white_texture_slot, "sky cloud"));
+        result.flags |= material.sky.cloud_texture != invalid_visual_texture ? material_clouds : 0U;
+    }
+    if (material.lighting == VisualLightingModel::nebula)
+    {
+        result.layer_a = {material.nebula.distortion_scale, material.nebula.spatial_frequency, material.nebula.time_frequency, 0.0F};
+    }
     if (material.lighting == VisualLightingModel::shield)
     {
         const auto& shield = material.shield;

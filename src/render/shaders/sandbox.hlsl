@@ -168,6 +168,16 @@ PixelInput vs_main(VertexInput input)
         binormal /= total_weight;
     }
 
+    // Nebula (the legacy Nebula shader): the vertex wobbles in its model's space by a wave of its
+    // world position and time; the brightness follows below.
+    const MaterialData vertex_material = materials[material_index];
+    if (vertex_material.lighting == LIGHTING_NEBULA)
+    {
+        const float3 placed = mul(float4(position.xyz, 1.0f), instance.transform).xyz;
+        const float3 phase = vertex_material.layer_a.y * placed + vertex_material.layer_a.z * camera_position_time.w;
+        position.xyz += vertex_material.layer_a.x * sin(6.28f * frac(phase));
+    }
+
     // Last frame's skinned position, from last frame's palette.
     const float4 previous = skinned_position(input, instance.previous_bone_offset);
     float3 grass_tint = float3(1.0f, 1.0f, 1.0f);
@@ -217,10 +227,19 @@ PixelInput vs_main(VertexInput input)
     output.tint = instance.tint;
     output.team_color = instance.team_color;
     // Shields soften toward vertical edges: the vertex color times saturate(object normal z + edge
-    // brightness).
-    const MaterialData vertex_material = materials[material_index];
-    const float shield_edge = vertex_material.lighting == LIGHTING_SHIELD ? saturate(normal.z + vertex_material.layer_a.w) : 1.0f;
-    output.vertex_color = float4(input.color.rgb * grass_tint * shield_edge, input.color.a);
+    // brightness). Nebulae brighten steeply where their surface faces along the view (or away:
+    // the power is even): 2 x (view-space normal z)^8 + 0.1.
+    float vertex_scale = 1.0f;
+    if (vertex_material.lighting == LIGHTING_SHIELD)
+    {
+        vertex_scale = saturate(normal.z + vertex_material.layer_a.w);
+    }
+    else if (vertex_material.lighting == LIGHTING_NEBULA)
+    {
+        const float facing = dot(safe_normalize(output.normal, float3(0.0f, 0.0f, 1.0f)), camera_forward.xyz);
+        vertex_scale = pow(facing, 8.0f) * 2.0f + 0.1f;
+    }
+    output.vertex_color = float4(input.color.rgb * grass_tint * vertex_scale, input.color.a);
     output.pick_id = instance.pick_id;
     output.instance_flags = instance.flags;
     output.fade = instance.fade;
@@ -302,7 +321,24 @@ float4 shade(PixelInput input)
         return float4(shade_shield(input, material, tint.rgb), 1.0f);
     }
 
-    if (material.lighting == LIGHTING_UNLIT)
+    if (material.lighting == LIGHTING_SKY)
+    {
+        // The sky dome (the legacy Skydome shader): clouds over the base by cloud alpha x vertex
+        // alpha (cloud coordinates scroll, then scale), lit by every light through the turned-around
+        // normal, times the vertex color, plus Emissive; never shadowed.
+        float3 surface = base.rgb;
+        if ((material.flags & MATERIAL_CLOUDS) != 0u)
+        {
+            const float4 cloud = sample_texture(material.layer_texture_a, (input.uv + float2(material.layer_a.y * camera_position_time.w, 0.0f)) * material.layer_a.x);
+            surface = lerp(surface, cloud.rgb, cloud.a * input.vertex_color.a);
+        }
+        const float3 inward = -safe_normalize(input.normal, float3(0.0f, 0.0f, 1.0f));
+        const float3 lit = legacy_lit_color(surface, inward, input.world_position, 0.0f, input.vertex_color.rgb, float3(0.0f, 0.0f, 0.0f), material.emissive.rgb,
+                                            (material.tint * input.tint).rgb, input.position.xy, false);
+        return float4(lit, 1.0f);
+    }
+
+    if (material.lighting == LIGHTING_UNLIT || material.lighting == LIGHTING_NEBULA)
     {
         const float3 color = base.rgb * material.diffuse.rgb * tint.rgb;
         if ((material.flags & MATERIAL_ADDITIVE) != 0u)

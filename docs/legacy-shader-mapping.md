@@ -207,4 +207,5 @@ It reproduces the documented behavior, not the original code:
 | Wind bend (`Tree`) | Implemented (2026-11-13): BendScale x the engine's bend offset x height squared, in the scene and shadow vertex shaders; the offset's animation is an engine choice (`render/wind_bend.hpp`). |
 | Grass (`Grass`) | Implemented (2026-11-13): billboarding about the clump center (computed by the model loader per billboard: the stock files leave the second UV set empty), the wave and its color swing as the legacy shader shapes them, up-facing lighting; the sway's reach is scaled by an engine choice; the distance fade is not done. |
 | Shield layers (`MeshShield`) | Implemented (2026-11-13) as `VisualLightingModel::shield`, the legacy layer pairing kept; the hidden ship shield meshes flash on shield hits (scale steps from GameConstants). |
+| Sky domes (`Skydome`) and nebulae (`Nebula`) | Implemented (2026-11-13): the dome lit from inside with its cloud layer; the nebula wobble and view-facing brightness. |
 | Cube reflection (no stock material uses the reflective profiles), nebula wobble, wind bend, heat, occluded silhouettes, shadow volumes, fog, fog of war | Not yet. |

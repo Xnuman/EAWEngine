@@ -33,6 +33,13 @@ enum class VisualLightingModel
     // A shield (VisualMaterial::shield): a distorted, scrolling energy layer times a wave layer,
     // softened toward vertical edges, unlit (drawn additive).
     shield,
+    // A sky dome (VisualMaterial::sky): lit by every map light from inside (its normals turned
+    // around), times the vertex color, with a scrolling cloud layer over the base by cloud alpha x
+    // vertex alpha.
+    sky,
+    // A nebula (VisualMaterial::nebula): unlit and additive like `unlit`, its vertices wobbling and
+    // its brightness rising steeply where its surface faces along the view.
+    nebula,
 };
 
 // Which texture channel scales the key-light highlight.
@@ -79,6 +86,26 @@ struct VisualShield
     float edge_brightness{0.5F};
 };
 
+// The sky dome's clouds (VisualLightingModel::sky; docs/legacy-shader-mapping.md): the cloud texture
+// (alpha is coverage), scrolling along U at `cloud_scroll` per second before its coordinates are
+// scaled by `cloud_scale`. The defaults are the legacy parameters' defaults.
+struct VisualSky
+{
+    std::uint32_t cloud_texture{invalid_visual_texture};
+    float cloud_scale{0.0025F};
+    float cloud_scroll{0.0025F};
+};
+
+// The nebula's wobble (VisualLightingModel::nebula): each vertex moves by `distortion_scale` x
+// sin(2 pi frac(`spatial_frequency` x its world coordinate + `time_frequency` x time)) per axis.
+// The defaults are the legacy parameters' defaults.
+struct VisualNebula
+{
+    float distortion_scale{25.0F};
+    float spatial_frequency{0.002F};
+    float time_frequency{0.05F};
+};
+
 // Engine-native surface description consumed by the legacy-mode shading path. Colors are linear
 // multipliers in the 0..1 range authored by the original materials.
 struct VisualMaterial
@@ -109,6 +136,9 @@ struct VisualMaterial
     VisualPlanet planet;
     // Read only with VisualLightingModel::shield.
     VisualShield shield;
+    // Read only with VisualLightingModel::sky and ::nebula.
+    VisualSky sky;
+    VisualNebula nebula;
     // The map's water surface: drawn after the opaque surfaces and before the transparent ones,
     // where enhanced water reads the depth of what lies beneath it.
     bool water{};

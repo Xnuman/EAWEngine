@@ -359,6 +359,32 @@ VisualMaterial make_visual_material(SceneBuilder& builder, const LegacyMaterial&
         }
     }
 
+    if (features.lighting == LegacyLightingModel::sky_dome)
+    {
+        result.lighting = VisualLightingModel::sky;
+        read_color(material, "Emissive", result.emissive);
+        if (const auto* cloud = texture_binding(material, LegacyTextureSemantic::cloud))
+        {
+            result.sky.cloud_texture = scene_texture(builder, cloud->reference);
+        }
+        std::array<float, 1> scale{result.sky.cloud_scale};
+        read_color(material, "CloudScale", scale);
+        result.sky.cloud_scale = scale[0];
+        std::array<float, 1> scroll{result.sky.cloud_scroll};
+        read_color(material, "CloudScrollRate", scroll);
+        result.sky.cloud_scroll = scroll[0];
+    }
+    if (features.vertex_animation == LegacyVertexAnimation::nebula_wobble)
+    {
+        result.lighting = VisualLightingModel::nebula;
+        auto& nebula = result.nebula;
+        for (const auto& [name, target] : {std::pair<std::string_view, float*>{"DistortionScale", &nebula.distortion_scale}, {"SFreq", &nebula.spatial_frequency}, {"TFreq", &nebula.time_frequency}})
+        {
+            std::array<float, 1> value{*target};
+            read_color(material, name, value);
+            *target = value[0];
+        }
+    }
     if (features.uv_animation == LegacyUvAnimation::shield_layers)
     {
         result.lighting = VisualLightingModel::shield;
