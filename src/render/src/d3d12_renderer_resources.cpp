@@ -945,7 +945,9 @@ auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size
     };
     if (!is_finite(material.tint) || !is_finite(material.diffuse) || !is_finite(material.specular) || !is_finite(material.emissive) || !finite(material.uv_scroll) ||
         !std::isfinite(material.alpha_test_threshold) || !std::isfinite(material.uv_scale) || !is_finite(material.planet.atmosphere) || !is_finite(material.planet.city_color) ||
-        !std::isfinite(material.planet.atmosphere_power) || !std::isfinite(material.planet.cloud_scroll) || !std::isfinite(material.bend_scale) || !is_finite(material.grass_diffuse_alt))
+        !std::isfinite(material.planet.atmosphere_power) || !std::isfinite(material.planet.cloud_scroll) || !std::isfinite(material.bend_scale) || !is_finite(material.grass_diffuse_alt) ||
+        !finite(std::array{material.shield.base_uv_scale, material.shield.distortion_uv_scale, material.shield.wave_uv_scale, material.shield.base_scroll, material.shield.distortion_scroll,
+                           material.shield.wave_scroll, material.shield.edge_brightness}))
     {
         return make_error("visual material " + std::to_string(index) + " (" + material.name + ") has non-finite parameters");
     }
@@ -966,15 +968,23 @@ auto D3d12Renderer::Impl::gpu_material(const VisualScene& scene, const std::size
                    (material.blend == VisualBlendMode::additive ? material_additive : 0U) | (material.team_color_mask ? material_team_color : 0U) |
                    (material.emissive_mask ? material_emissive_mask : 0U) | (static_cast<std::uint32_t>(material.gloss) << material_gloss_shift);
     result.flags |= material.grass ? material_grass : 0U;
+    if (material.lighting == VisualLightingModel::shield)
+    {
+        const auto& shield = material.shield;
+        result.layer_a = {shield.base_uv_scale, shield.distortion_uv_scale, shield.wave_uv_scale, shield.edge_brightness};
+        result.layer_b = {shield.base_scroll, shield.distortion_scroll, shield.wave_scroll, 0.0F};
+        EAW_TRY_ASSIGN(result.layer_texture_a, slot(shield.wave_texture, white_texture_slot, "shield wave"));
+        EAW_TRY_ASSIGN(result.layer_texture_b, slot(shield.distortion_texture, flat_normal_texture_slot, "shield distortion"));
+    }
     if (material.lighting == VisualLightingModel::planet)
     {
         const auto& planet = material.planet;
-        result.atmosphere = {planet.atmosphere.r, planet.atmosphere.g, planet.atmosphere.b, planet.atmosphere.a};
-        result.city_color_power = {planet.city_color.r, planet.city_color.g, planet.city_color.b, planet.atmosphere_power};
+        result.layer_a = {planet.atmosphere.r, planet.atmosphere.g, planet.atmosphere.b, planet.atmosphere.a};
+        result.layer_b = {planet.city_color.r, planet.city_color.g, planet.city_color.b, planet.atmosphere_power};
         result.cloud_scroll = planet.cloud_scroll;
-        EAW_TRY_ASSIGN(result.cloud_texture, slot(planet.cloud_texture, white_texture_slot, "cloud"));
+        EAW_TRY_ASSIGN(result.layer_texture_a, slot(planet.cloud_texture, white_texture_slot, "cloud"));
         result.flags |= planet.cloud_texture != invalid_visual_texture ? material_clouds : 0U;
-        EAW_TRY_ASSIGN(result.cloud_normal_texture, slot(planet.cloud_normal_texture, flat_normal_texture_slot, "cloud normal"));
+        EAW_TRY_ASSIGN(result.layer_texture_b, slot(planet.cloud_normal_texture, flat_normal_texture_slot, "cloud normal"));
     }
     return result;
 }

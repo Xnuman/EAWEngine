@@ -216,7 +216,11 @@ PixelInput vs_main(VertexInput input)
     output.uv = input.uv;
     output.tint = instance.tint;
     output.team_color = instance.team_color;
-    output.vertex_color = float4(input.color.rgb * grass_tint, input.color.a);
+    // Shields soften toward vertical edges: the vertex color times saturate(object normal z + edge
+    // brightness).
+    const MaterialData vertex_material = materials[material_index];
+    const float shield_edge = vertex_material.lighting == LIGHTING_SHIELD ? saturate(normal.z + vertex_material.layer_a.w) : 1.0f;
+    output.vertex_color = float4(input.color.rgb * grass_tint * shield_edge, input.color.a);
     output.pick_id = instance.pick_id;
     output.instance_flags = instance.flags;
     output.fade = instance.fade;
@@ -242,8 +246,8 @@ float3 shade_planet(const PixelInput input, const MaterialData material, const f
     if ((material.flags & MATERIAL_CLOUDS) != 0u)
     {
         const float2 cloud_uv = uv + float2(material.cloud_scroll * camera_position_time.w, 0.0f);
-        cloud = sample_texture(material.cloud_texture, cloud_uv);
-        const float3 bent = sample_texture(material.cloud_normal_texture, cloud_uv).xyz * 2.0f - 1.0f;
+        cloud = sample_texture(material.layer_texture_a, cloud_uv);
+        const float3 bent = sample_texture(material.layer_texture_b, cloud_uv).xyz * 2.0f - 1.0f;
         const float3 cloud_normal = safe_normalize(bent.x * tangent + bent.y * binormal + bent.z * sphere_normal, sphere_normal);
         cloud.rgb = (cloud.rgb * saturate(dot(cloud_normal, light)) * key_diffuse.rgb + fill_light) * 2.0f;
     }
@@ -251,15 +255,35 @@ float3 shade_planet(const PixelInput input, const MaterialData material, const f
     const float4 normal_sample = sample_texture(material.normal_texture, uv);
     const float3 bent = normal_sample.xyz * 2.0f - 1.0f;
     const float3 normal = safe_normalize(bent.x * tangent + bent.y * binormal + bent.z * sphere_normal, sphere_normal);
-    const float rim = pow(saturate(1.0f - dot(sphere_normal, view)), material.city_color_power.w) * 2.0f * material.atmosphere.a;
-    const float3 surface = base.rgb + material.atmosphere.rgb * rim;
+    const float rim = pow(saturate(1.0f - dot(sphere_normal, view)), material.layer_b.w) * 2.0f * material.layer_a.a;
+    const float3 surface = base.rgb + material.layer_a.rgb * rim;
     const float3 half_vector = safe_normalize(light + view, normal);
     float3 color = surface * (saturate(dot(normal, light)) * material.diffuse.rgb * key_diffuse.rgb + fill_light) * 2.0f;
     // City lights switch on sharply past the terminator (a 32x steep ramp of the sphere's N.L).
     const float night = saturate(-32.0f * dot(sphere_normal, light));
-    color += base.a * night * (1.0f - cloud.a) * material.city_color_power.rgb;
+    color += base.a * night * (1.0f - cloud.a) * material.layer_b.rgb;
     color += key_specular.rgb * material.specular.rgb * pow(saturate(dot(normal, half_vector)), 16.0f) * normal_sample.a;
     return lerp(color, cloud.rgb, cloud.a);
+}
+
+// A shield (docs/legacy-shader-mapping.md, MeshShield): an energy texture whose coordinates a
+// distortion texture shifts (a quarter of its value), times a wave texture, each layer scaled and
+// scrolling along V at its own rate, times the vertex color (softened toward vertical edges in the
+// vertex shader) and the material color; added to the frame, unlit. As in the legacy shader the
+// distortion layer takes the scale and scroll named for the wave and the other way round (the
+// observed pairing; VisualShield names the layers by what they do).
+static const float SHIELD_DISTORTION_SHIFT = 0.25f;
+
+float3 shade_shield(const PixelInput input, const MaterialData material, const float3 tint)
+{
+    const float time = camera_position_time.w;
+    const float2 base_uv = input.uv * material.layer_a.x + float2(0.0f, time * material.layer_b.x);
+    const float2 distortion_uv = input.uv * material.layer_a.y + float2(0.0f, time * material.layer_b.y);
+    const float2 wave_uv = input.uv * material.layer_a.z + float2(0.0f, time * material.layer_b.z);
+    const float2 shift = sample_texture(material.layer_texture_b, distortion_uv).xy * SHIELD_DISTORTION_SHIFT;
+    const float3 energy = sample_texture(material.base_texture, base_uv + shift).rgb;
+    const float3 wave = sample_texture(material.layer_texture_a, wave_uv).rgb;
+    return energy * wave * tint * material.diffuse.rgb;
 }
 
 float4 shade(PixelInput input)
@@ -271,6 +295,11 @@ float4 shade(PixelInput input)
     if ((material.flags & MATERIAL_ALPHA_TEST) != 0u)
     {
         clip(base.a - material.alpha_cutoff);
+    }
+
+    if (material.lighting == LIGHTING_SHIELD)
+    {
+        return float4(shade_shield(input, material, tint.rgb), 1.0f);
     }
 
     if (material.lighting == LIGHTING_UNLIT)

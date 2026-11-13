@@ -157,12 +157,14 @@ struct D3d12Renderer::Impl
         std::uint32_t normal_texture{flat_normal_texture_slot};
         std::uint32_t gloss_texture{white_texture_slot};
         std::uint32_t lighting{};
-        // Planets (VisualPlanet): atmosphere rgb and strength; city light rgb and the atmosphere
-        // power; the cloud layers and their scroll.
-        std::array<float, 4> atmosphere{};
-        std::array<float, 4> city_color_power{};
-        std::uint32_t cloud_texture{white_texture_slot};
-        std::uint32_t cloud_normal_texture{flat_normal_texture_slot};
+        // Extra layers, read by the lighting model. Planets (VisualPlanet): a the atmosphere rgb
+        // and strength, b the city light rgb and atmosphere power, texture a the clouds, b their
+        // normal map. Shields (VisualShield): a the base, distortion, and wave UV scales and the edge
+        // brightness, b their scroll rates, texture a the wave, b the distortion.
+        std::array<float, 4> layer_a{};
+        std::array<float, 4> layer_b{};
+        std::uint32_t layer_texture_a{white_texture_slot};
+        std::uint32_t layer_texture_b{flat_normal_texture_slot};
         float cloud_scroll{};
         float bend_scale{};
         // Grass: its second color (VisualMaterial::grass_diffuse_alt).

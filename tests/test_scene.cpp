@@ -441,7 +441,29 @@ void test_visual_material_planet()
             "a planet material must keep its atmosphere and cloud scroll, with the legacy defaults for the rest");
 }
 
+// A shield material keeps its layers, its distortion layer taking the wave's scale and scroll and
+// the other way round (as the legacy shader pairs them), defaults where a parameter is missing.
+void test_visual_material_shield()
+{
+    eaw::LegacyMaterial material;
+    material.family = eaw::LegacyMaterialFamily::shield;
+    material.blend = eaw::LegacyBlendMode::additive;
+    material.features.uv_animation = eaw::LegacyUvAnimation::shield_layers;
+    material.parameters.push_back({.name = "Color", .type = eaw::AloShaderParameterType::vector4, .value = "0.5 0.6 1 1", .values = {0.5F, 0.6F, 1.0F, 1.0F}});
+    material.parameters.push_back({.name = "WaveUVScale", .type = eaw::AloShaderParameterType::scalar, .value = "3", .values = {3.0F}});
+    material.parameters.push_back({.name = "DistortUVScrollRate", .type = eaw::AloShaderParameterType::scalar, .value = "-0.5", .values = {-0.5F}});
+    eaw::VirtualFileSystem vfs;
+    eaw::VisualScene scene;
+    eaw::scene_build::SceneBuilder builder{vfs, scene};
+    builder.textures = false;
+    const auto visual = eaw::scene_build::make_visual_material(builder, material);
+    require(visual.lighting == eaw::VisualLightingModel::shield && visual.blend == eaw::VisualBlendMode::additive && visual.diffuse == eaw::Color{0.5F, 0.6F, 1.0F, 1.0F} &&
+                visual.shield.distortion_uv_scale == 3.0F && visual.shield.wave_scroll == -0.5F && visual.shield.base_uv_scale == 20.0F && visual.shield.edge_brightness == 0.5F,
+            "a shield material must keep its layers in the legacy shader's pairing");
+}
+
 const ModuleRegistrar registrar("scene", {
+                                             {"test_visual_material_shield", &test_visual_material_shield},
                                              {"test_visual_material_planet", &test_visual_material_planet},
                                              {"test_mesh_states_and_levels", &test_mesh_states_and_levels},
                                              {"test_asset_cache_dependencies", &test_asset_cache_dependencies},

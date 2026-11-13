@@ -42,6 +42,7 @@ static const uint LIGHTING_UNLIT = 0u;
 static const uint LIGHTING_LIT = 1u;
 static const uint LIGHTING_NORMAL_MAPPED = 2u;
 static const uint LIGHTING_PLANET = 3u;
+static const uint LIGHTING_SHIELD = 4u;
 static const uint MATERIAL_CLOUDS = 1u << 5;
 static const uint MATERIAL_GRASS = 1u << 6;
 static const uint INSTANCE_BACKGROUND = 1u;
@@ -123,10 +124,14 @@ struct MaterialData
     uint normal_texture;
     uint gloss_texture;
     uint lighting;
-    float4 atmosphere;       // rgb color, a strength (planets)
-    float4 city_color_power; // rgb city lights, w atmosphere power
-    uint cloud_texture;
-    uint cloud_normal_texture;
+    // Extra layers by lighting model (d3d12_renderer_impl.hpp, GpuMaterial). Planets: layer_a the
+    // atmosphere rgb and strength, layer_b the city lights rgb and atmosphere power, textures the
+    // clouds and their normal map. Shields: layer_a the base, distortion, and wave UV scales and the
+    // edge brightness, layer_b their scroll rates, textures the wave and the distortion.
+    float4 layer_a;
+    float4 layer_b;
+    uint layer_texture_a;
+    uint layer_texture_b;
     float cloud_scroll;
     float bend_scale; // wind bend (trees), 0 none
     float4 grass_diffuse_alt;

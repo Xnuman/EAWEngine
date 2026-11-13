@@ -359,6 +359,34 @@ VisualMaterial make_visual_material(SceneBuilder& builder, const LegacyMaterial&
         }
     }
 
+    if (features.uv_animation == LegacyUvAnimation::shield_layers)
+    {
+        result.lighting = VisualLightingModel::shield;
+        auto& shield = result.shield;
+        if (const auto* wave = texture_binding(material, LegacyTextureSemantic::modulation))
+        {
+            shield.wave_texture = scene_texture(builder, wave->reference);
+        }
+        if (const auto* distortion = texture_binding(material, LegacyTextureSemantic::distortion))
+        {
+            shield.distortion_texture = scene_texture(builder, distortion->reference);
+        }
+        const auto scalar = [&](const std::string_view name, float& target)
+        {
+            std::array<float, 1> value{target};
+            read_color(material, name, value);
+            target = value[0];
+        };
+        scalar("BaseUVScale", shield.base_uv_scale);
+        scalar("BaseUVScrollRate", shield.base_scroll);
+        // The legacy shader samples the distortion with the wave's scale and scroll and the wave
+        // with the distortion's (the observed pairing).
+        scalar("WaveUVScale", shield.distortion_uv_scale);
+        scalar("WaveUVScrollRate", shield.distortion_scroll);
+        scalar("DistortUVScale", shield.wave_uv_scale);
+        scalar("DistortUVScrollRate", shield.wave_scroll);
+        scalar("EdgeBrightness", shield.edge_brightness);
+    }
     if (features.vertex_animation == LegacyVertexAnimation::grass_wind)
     {
         // The Grass material's BendScale and second color (1 and white when absent, its defaults).

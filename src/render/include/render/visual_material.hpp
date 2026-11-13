@@ -30,6 +30,9 @@ enum class VisualLightingModel
     // A planet (VisualMaterial::planet): normal-mapped surface with an atmosphere rim, a scrolling
     // cloud layer lit by its own normal map, and city lights on the night side.
     planet,
+    // A shield (VisualMaterial::shield): a distorted, scrolling energy layer times a wave layer,
+    // softened toward vertical edges, unlit (drawn additive).
+    shield,
 };
 
 // Which texture channel scales the key-light highlight.
@@ -54,6 +57,26 @@ struct VisualPlanet
     float atmosphere_power{4.5F};
     ColorRgb city_color{1.0F, 1.0F, 1.0F};
     float cloud_scroll{0.0025F};
+};
+
+// The shield layers (VisualLightingModel::shield; docs/legacy-shader-mapping.md): the base texture
+// is the energy layer, shifted by `distortion_texture`; `wave_texture` multiplies it; each layer
+// repeats `*_uv_scale` times and scrolls along V at `*_scroll` per second; `edge_brightness` softens
+// the vertex color toward vertical edges (saturate(object normal z + edge brightness)). Named by
+// what each layer does: the legacy parameters for the distortion layer are WaveUVScale and
+// WaveUVScrollRate, and for the wave layer DistortUVScale and DistortUVScrollRate. The defaults are
+// the legacy parameters' defaults.
+struct VisualShield
+{
+    std::uint32_t wave_texture{invalid_visual_texture};
+    std::uint32_t distortion_texture{invalid_visual_texture};
+    float base_uv_scale{20.0F};
+    float distortion_uv_scale{1.0F};
+    float wave_uv_scale{1.0F};
+    float base_scroll{1.0F};
+    float distortion_scroll{1.0F};
+    float wave_scroll{1.0F};
+    float edge_brightness{0.5F};
 };
 
 // Engine-native surface description consumed by the legacy-mode shading path. Colors are linear
@@ -84,6 +107,8 @@ struct VisualMaterial
     float alpha_test_threshold{0.5F};
     // Read only with VisualLightingModel::planet.
     VisualPlanet planet;
+    // Read only with VisualLightingModel::shield.
+    VisualShield shield;
     // The map's water surface: drawn after the opaque surfaces and before the transparent ones,
     // where enhanced water reads the depth of what lies beneath it.
     bool water{};
