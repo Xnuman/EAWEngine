@@ -883,6 +883,11 @@ bool D3d12Renderer::Impl::render()
     }
     const bool has_sky = scene_loaded && std::ranges::any_of(dynamic ? dynamic_draws : scene_draws, &GpuDraw::background);
     constants.sky_parameters = {post_slots[8], has_sky ? 1U : 0U, has_sky && options.graphics.sky_ambient ? 1U : 0U, sky_face_size};
+    if (options.graphics.sky_visibility && sky_visibility_texture && *sky_visibility_texture < scene_textures.size())
+    {
+        constants.sky_visibility_map = sky_visibility_map;
+        constants.sky_visibility_parameters = {static_cast<std::uint32_t>(fallback_texture_count + *sky_visibility_texture), 1U, 0U, 0U};
+    }
     const auto wind_direction = normalize_or(lighting.wind.direction, Vector3{1.0F, 0.0F, 0.0F});
     constants.grass_wind = {wind_direction.x, wind_direction.y, 0.0F, std::isfinite(lighting.wind.speed) ? std::max(lighting.wind.speed, 0.0F) : 0.0F};
     if (options.graphics.fog != VisualFogMode::off && lighting.fog.enabled)

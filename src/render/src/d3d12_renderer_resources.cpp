@@ -548,6 +548,22 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
     }
     last_reused_textures = 0;
     pending_texture_count = 0;
+    // The terrain's sky visibility: one texel per height sample, texel centers on the samples (read
+    // before the texture data moves into the streaming queue below).
+    sky_visibility_texture.reset();
+    if (terrain.sky_visibility_texture < scene.textures.size() && !scene.textures[terrain.sky_visibility_texture].mips.empty())
+    {
+        const auto& mip = scene.textures[terrain.sky_visibility_texture].mips.front();
+        const Vector2 extent{terrain.bounds_maximum.x - terrain.bounds_minimum.x, terrain.bounds_maximum.y - terrain.bounds_minimum.y};
+        if (mip.width > 1 && mip.height > 1 && extent.x > 0.0F && extent.y > 0.0F)
+        {
+            const auto scale_x = static_cast<float>(mip.width - 1U) / (static_cast<float>(mip.width) * extent.x);
+            const auto scale_y = static_cast<float>(mip.height - 1U) / (static_cast<float>(mip.height) * extent.y);
+            sky_visibility_map = {scale_x, scale_y, 0.5F / static_cast<float>(mip.width) - terrain.bounds_minimum.x * scale_x,
+                                  0.5F / static_cast<float>(mip.height) - terrain.bounds_minimum.y * scale_y};
+            sky_visibility_texture = terrain.sky_visibility_texture;
+        }
+    }
     // Validation is complete, so the CPU texture data moves into the streaming queue.
     for (std::size_t index = 0; index < new_textures.size(); ++index)
     {

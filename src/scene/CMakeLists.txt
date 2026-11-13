@@ -33,4 +33,4 @@ target_sources(eaw_scene
     ${EAW_SCENE_SOURCES}
 )
 
-target_link_libraries(eaw_scene PUBLIC eaw_battle eaw_presentation eaw_render_contract)
+target_link_libraries(eaw_scene PUBLIC eaw_battle eaw_presentation eaw_render_contract PRIVATE eaw_render_core)

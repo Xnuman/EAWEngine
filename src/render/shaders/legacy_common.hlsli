@@ -97,6 +97,8 @@ cbuffer FrameConstants : register(b0)
     // face size.
     float4x4 sky_face_view_projection[6];
     uint4 sky_parameters;
+    float4 sky_visibility_map;        // world X, Y to the sky visibility texture: scale xy, offset zw
+    uint4 sky_visibility_parameters;  // x its logical id, y on
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
@@ -466,8 +468,13 @@ float3 legacy_lit_color(const float3 albedo, const float3 normal, const float3 w
     const float3 light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
     const float3 half_vector = safe_normalize(light + view, normal);
     const float3 legacy_fill = ambient.rgb + saturate(dot(normal, fill_direction[0].xyz)) * fill_diffuse[0].rgb + saturate(dot(normal, fill_direction[1].xyz)) * fill_diffuse[1].rgb;
-    // The sky's light shapes the fill of the world's surfaces (never the backgrounds it was captured from).
-    const float3 fill = receives_shadows ? sky_fill(normal, legacy_fill) : legacy_fill;
+    // The sky's light shapes the fill of the world's surfaces (never the backgrounds it was captured
+    // from), dimmed by how much sky the terrain there sees.
+    float3 fill = receives_shadows ? sky_fill(normal, legacy_fill) : legacy_fill;
+    if (receives_shadows && sky_visibility_parameters.y != 0u)
+    {
+        fill *= sample_texture_top(sky_visibility_parameters.x, world_position.xy * sky_visibility_map.xy + sky_visibility_map.zw).r;
+    }
     const float facing = saturate(dot(normal, light));
     // Surfaces facing away get no key light anyway; their highlight stays as it was without shadows.
     const float key = facing > 0.0f && receives_shadows ? key_light_visibility(world_position, normal, pixel) : 1.0f;

@@ -3,6 +3,7 @@
 #include "render/frame_graph.hpp"
 #include "render/lod_selection.hpp"
 #include "render/shadow_cascades.hpp"
+#include "render/sky_visibility.hpp"
 #include "render/wind_bend.hpp"
 
 #include <cmath>
@@ -258,6 +259,31 @@ void test_wind_bend()
             "a strong wind must sway between the gust's low and the full offset");
 }
 
+// Sky visibility: open ground sees the whole sky; the floor of a pit sees less, its rim more than
+// its floor; a peak sees it all.
+void test_sky_visibility()
+{
+    constexpr std::uint32_t size = 41;
+    std::vector<float> flat(size * size, 0.0F);
+    const auto open = eaw::compute_sky_visibility(flat, size, size, 20.0F);
+    require(open.size() == flat.size() && open[20 * size + 20] == 1.0F, "flat ground must see the whole sky");
+    auto pit = flat;
+    for (std::uint32_t y = 0; y < size; ++y)
+    {
+        for (std::uint32_t x = 0; x < size; ++x)
+        {
+            const auto distance = std::hypot(static_cast<float>(x) - 20.0F, static_cast<float>(y) - 20.0F);
+            pit[y * size + x] = distance < 10.0F ? -200.0F : 0.0F;
+        }
+    }
+    const auto in_pit = eaw::compute_sky_visibility(pit, size, size, 20.0F);
+    require(in_pit[20 * size + 20] < 0.8F && in_pit[20 * size + 20] > 0.0F && in_pit[20 * size + 35] == 1.0F, "a pit's floor must see less sky than the ground around it");
+    auto peak = flat;
+    peak[20 * size + 20] = 300.0F;
+    require(eaw::compute_sky_visibility(peak, size, size, 20.0F)[20 * size + 20] == 1.0F && eaw::compute_sky_visibility(flat, 1, 1, 20.0F).empty(),
+            "a peak must see the whole sky, and a degenerate grid nothing");
+}
+
 const ModuleRegistrar registrar("render", {
                                               {"test_frame_graph", &test_frame_graph},
                                               {"test_gpu_resource_lifetime", &test_gpu_resource_lifetime},
@@ -265,6 +291,7 @@ const ModuleRegistrar registrar("render", {
                                               {"test_lod_tracking", &test_lod_tracking},
                                               {"test_shadow_cascades", &test_shadow_cascades},
                                               {"test_wind_bend", &test_wind_bend},
+                                              {"test_sky_visibility", &test_sky_visibility},
                                           });
 
 } // namespace

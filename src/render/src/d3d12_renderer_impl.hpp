@@ -136,6 +136,10 @@ struct D3d12Renderer::Impl
         // ambient takes the sky's light, and the face size.
         std::array<DirectX::XMFLOAT4X4, 6> sky_face_view_projection;
         std::array<std::uint32_t, 4> sky_parameters{};
+        // Sky visibility: world X, Y to texture coordinates (scale x, y, offset x, y); the texture's
+        // logical id and whether it is on.
+        std::array<float, 4> sky_visibility_map{};
+        std::array<std::uint32_t, 4> sky_visibility_parameters{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal
@@ -445,6 +449,9 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12Resource> water_reflection_sources;
     // The loaded scene's water plane height (from its water mesh), if it has one.
     std::optional<float> water_level;
+    // The loaded terrain's sky visibility texture and its world-to-texture mapping, if any.
+    std::optional<std::uint32_t> sky_visibility_texture;
+    std::array<float, 4> sky_visibility_map{};
     // Last frame's wind bend (motion vectors of swaying trees); none before the first frame.
     std::optional<std::array<float, 4>> previous_wind_bend;
     ComPtr<ID3D12PipelineState> additive_pipeline;

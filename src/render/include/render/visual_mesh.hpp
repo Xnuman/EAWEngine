@@ -3,6 +3,7 @@
 // Geometry ranges: terrain, draws, and meshes with their damage states and detail levels.
 
 #include "math/vector.hpp"
+#include "render/visual_texture.hpp"
 #include "render/visual_vertex.hpp"
 
 #include <cstdint>
@@ -19,6 +20,9 @@ struct VisualTerrain
     std::uint32_t layer_count{};
     Vector3 bounds_minimum{};
     Vector3 bounds_maximum{};
+    // How much sky each height sample sees (render/sky_visibility.hpp): a scene texture of one texel
+    // per sample over the terrain's bounds, or none.
+    std::uint32_t sky_visibility_texture{invalid_visual_texture};
 };
 
 struct VisualDraw

@@ -128,7 +128,9 @@ rendering rows join item 2).
    irradiance (the captured sky projected to spherical harmonics, the ambient term; done 2026-11-13
    as the enhanced sky ambient), then sky
    visibility (how much sky each terrain point sees, from the heightfield once at load, applied to
-   the terrain and to units standing on it), then bounced light once lighting is linear (HDR).
+   the terrain and to units standing on it; done 2026-11-13), then bounced light once lighting is
+   linear (HDR). Open: objects do not occlude the sky yet (buildings, cliffs as models; a
+   screen-space or per-object term later).
    This closes M2.
 3. The job system (Simulation stage 4's base), then input bindings (Platform and input stage 2).
 4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).

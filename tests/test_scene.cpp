@@ -220,7 +220,16 @@ void test_visual_terrain()
                     "a texture served from the cache must keep its identity");
         }
         const auto uncached = expect_ok(eaw::build_visual_map(vfs, "Data/Art/Maps/TEST.TED"), "uncached map build");
-        require(uncached.scene.textures.front().identity != first.scene.textures.front().identity, "a fresh decode must get a new identity");
+        // Decoded textures only: computed ones (the terrain's sky visibility) are named by their texels.
+        const auto decoded = [](const eaw::VisualScene& scene)
+        {
+            return std::ranges::find_if(scene.textures,
+                                        [](const eaw::VisualTexture& texture)
+                                        {
+                                            return texture.name != "terrain sky visibility";
+                                        });
+        };
+        require(decoded(uncached.scene) != uncached.scene.textures.end() && decoded(uncached.scene)->identity != decoded(first.scene)->identity, "a fresh decode must get a new identity");
     }
     const auto& terrain = asset.scene.terrain;
     require(asset.battle.land && terrain.layer_count == 3 && terrain.vertices.size() == 12 && terrain.first_material + 3 <= asset.scene.materials.size(), "terrain mesh structure is wrong");

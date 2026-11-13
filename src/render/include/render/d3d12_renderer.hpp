@@ -44,6 +44,9 @@ struct D3d12GraphicsSettings
     // Enhanced: the ambient takes the captured sky's light (its color and direction, at the map's own
     // ambient brightness; docs/sky-research.md).
     bool sky_ambient{false};
+    // Enhanced: the fill light of the world dims by how much sky the terrain under it sees
+    // (VisualTerrain::sky_visibility_texture).
+    bool sky_visibility{false};
 };
 
 struct D3d12RendererOptions

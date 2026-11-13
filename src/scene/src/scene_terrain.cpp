@@ -1,4 +1,6 @@
+#include "core/checksum.hpp"
 #include "formats/dds_texture.hpp"
+#include "render/sky_visibility.hpp"
 #include "scene/scene_builder_internal.hpp"
 
 #include <algorithm>
@@ -153,6 +155,38 @@ void append_terrain(SceneBuilder& builder, const TedMapData& map)
     if (invalid_layers != 0)
     {
         scene.warnings.push_back(std::to_string(invalid_layers) + " terrain vertex references to layers outside the map's " + std::to_string(terrain.layer_count) + " layers were drawn with layer 0");
+    }
+    // How much sky each height sample sees, as a texture over the terrain (enhanced lighting reads
+    // it; headless builds skip it).
+    if (builder.textures && !terrain.vertices.empty())
+    {
+        std::vector<float> heights(samples);
+        for (std::size_t index = 0; index < samples; ++index)
+        {
+            heights[index] = static_cast<float>(map.elevation_map[index]) / terrain_elevation_scale;
+        }
+        const auto visibility = compute_sky_visibility(heights, width, height, terrain_sample_spacing);
+        if (!visibility.empty())
+        {
+            VisualTexture texture;
+            texture.name = "terrain sky visibility";
+            texture.format = VisualTextureFormat::r8_unorm;
+            VisualTextureMip mip;
+            mip.width = width;
+            mip.height = height;
+            mip.row_pitch = width;
+            mip.slice_pitch = samples;
+            mip.data.resize(samples);
+            for (std::size_t index = 0; index < samples; ++index)
+            {
+                mip.data[index] = static_cast<std::byte>(std::lround(std::clamp(visibility[index], 0.0F, 1.0F) * 255.0F));
+            }
+            // Identified by its texels, so a rebuilt map keeps the uploaded texture.
+            texture.identity = "terrain sky visibility " + std::to_string(width) + "x" + std::to_string(height) + " " + std::to_string(crc32(mip.data));
+            texture.mips.push_back(std::move(mip));
+            terrain.sky_visibility_texture = static_cast<std::uint32_t>(scene.textures.size());
+            scene.textures.push_back(std::move(texture));
+        }
     }
 }
 
