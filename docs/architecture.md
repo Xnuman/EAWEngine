@@ -51,8 +51,8 @@ Dependencies point inward: a lower layer never includes or links a higher one.
 | | `eaw_control` | Camera controllers and math, RTS selection and picking, the terrain height field. | simulation, render contract |
 | | `eaw_sandbox` | The sandbox's testable parts and the headless battle command. | battle, presentation, scene, control |
 | Presentation | `eaw_render_contract` | Engine-native visual data, one header per subject (`visual_vertex`, `visual_texture`, `visual_material`, `visual_mesh`, `visual_camera`, `visual_frame`, the `visual_scene` aggregate), header only. | math |
-| Presentation | `eaw_render_core` | Rendering rules without a graphics API: detail-level selection (`lod_selection`) and GPU resource lifetime (handles, deferred descriptor frees, fence retirement), shared by backends and tested without a device. | core, render contract |
-| | `eaw_render_d3d12` | The Direct3D 12 backend. | core, render contract, formats (RGBA images for captures) |
+| | `eaw_render_core` | Rendering rules without a graphics API: detail-level selection (`lod_selection`) and GPU resource lifetime (handles, deferred descriptor frees, fence retirement), shared by backends and tested without a device. | core, render contract |
+| | `eaw_render_d3d12` | The Direct3D 12 backend. | core, render contract, render core, formats (RGBA images for captures) |
 | | `eaw_platform` | Win32 window, raw input, crash handlers, log sinks. | core |
 | | `eaw_audio` | The engine-native `Sound` (16-bit PCM), the `AudioDevice` interface, spatial gains, the null device. | core, math |
 | | `eaw_audio_devices` | The backends: XAudio2 (default), FMOD (only with `EAW_AUDIO_FMOD` and a local SDK). | audio, XAudio2, FMOD |
