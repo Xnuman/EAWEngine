@@ -90,6 +90,11 @@ struct VisualMaterial
     // Wind bend (the Tree material's BendScale; render/wind_bend.hpp): vertices sway with the wind
     // by their height above the model's origin, squared; 0 holds still.
     float bend_scale{};
+    // Grass (the Grass material): each vertex turns about its clump's center (the second UV set)
+    // to face the camera, the clump's top waves with the wind (scaled by bend_scale), and its color
+    // swings between `diffuse` and `grass_diffuse_alt` with the wave.
+    bool grass{};
+    Color grass_diffuse_alt{white};
 };
 
 } // namespace eaw

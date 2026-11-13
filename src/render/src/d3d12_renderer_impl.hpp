@@ -125,6 +125,8 @@ struct D3d12Renderer::Impl
         // Wind bend (render/wind_bend.hpp) now and last frame: xyz the offset, w 1 / height^2.
         std::array<float, 4> wind_bend{};
         std::array<float, 4> previous_wind_bend{};
+        // Grass wind: xyz the direction, w the speed (VisualWind).
+        std::array<float, 4> grass_wind{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal
@@ -163,9 +165,12 @@ struct D3d12Renderer::Impl
         std::uint32_t cloud_normal_texture{flat_normal_texture_slot};
         float cloud_scroll{};
         float bend_scale{};
+        // Grass: its second color (VisualMaterial::grass_diffuse_alt).
+        Color grass_diffuse_alt{white};
     };
-    static_assert(sizeof(GpuMaterial) == 144);
+    static_assert(sizeof(GpuMaterial) == 160);
     static constexpr std::uint32_t material_clouds = 1U << 5U;
+    static constexpr std::uint32_t material_grass = 1U << 6U;
     static constexpr std::uint32_t material_alpha_test = 1U << 0U;
     static constexpr std::uint32_t material_alpha_blend = 1U << 1U;
     static constexpr std::uint32_t material_additive = 1U << 2U;
@@ -607,7 +612,7 @@ struct D3d12Renderer::Impl
     // payload (ID3D12PipelineLibrary::Serialize output). Any mismatch or driver rejection discards
     // the cache; failures never stop rendering.
     static constexpr std::array<char, 8> pipeline_cache_magic{'E', 'A', 'W', 'P', 'S', 'O', '0', '1'};
-    static constexpr std::uint64_t pipeline_layout_version = 4;
+    static constexpr std::uint64_t pipeline_layout_version = 5;
     static constexpr std::uint64_t maximum_pipeline_cache_bytes = 256ULL * 1024ULL * 1024ULL;
 
     static std::uint64_t fnv1a(std::uint64_t hash, const std::span<const std::byte> bytes) noexcept;

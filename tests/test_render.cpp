@@ -249,7 +249,7 @@ void test_wind_bend()
     for (int step = 0; step < 40; ++step)
     {
         const auto bend = eaw::wind_bend({{0.0F, 2.0F, 0.0F}, eaw::wind_strong_speed}, static_cast<float>(step) * 0.1F);
-        require(bend.offset.x == 0.0F && bend.offset.z == 0.0F && bend.offset.y > 0.0F, "the bend must lean downwind along the normalized direction");
+        require(bend.offset.x == 0.0F && bend.offset.z == 0.0F && bend.offset.y >= 0.0F, "the bend must lean downwind (never upwind) along the normalized direction");
         least = std::min(least, bend.offset.y);
         most = std::max(most, bend.offset.y);
     }

@@ -22,6 +22,8 @@ struct VisualVertex
     Vector3 binormal{0.0F, 1.0F, 0.0F};
     // Linear RGBA multiplier (authored vertex colors, or opacity fades along track ribbons).
     Color color{white};
+    // The second texture-coordinate set (ALO TEXCOORD1): grass clumps keep their centers here.
+    Vector2 texture_coordinates_1{};
 };
 
 // One terrain vertex. Terrain is drawn as independent triangles: each vertex repeats its

@@ -844,6 +844,8 @@ bool D3d12Renderer::Impl::render()
     constants.wind_bend = {bend.offset.x, bend.offset.y, bend.offset.z, bend.inverse_height_squared};
     constants.previous_wind_bend = previous_wind_bend.value_or(constants.wind_bend);
     previous_wind_bend = constants.wind_bend;
+    const auto wind_direction = normalize_or(lighting.wind.direction, Vector3{1.0F, 0.0F, 0.0F});
+    constants.grass_wind = {wind_direction.x, wind_direction.y, 0.0F, std::isfinite(lighting.wind.speed) ? std::max(lighting.wind.speed, 0.0F) : 0.0F};
     if (options.graphics.fog != VisualFogMode::off && lighting.fog.enabled)
     {
         constants.fog_color = {lighting.fog.color.r, lighting.fog.color.g, lighting.fog.color.b, options.graphics.fog == VisualFogMode::enhanced ? 2.0F : 1.0F};

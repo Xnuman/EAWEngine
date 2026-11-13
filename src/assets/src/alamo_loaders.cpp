@@ -58,6 +58,7 @@ Model load_model(const AloModelData& data)
                 out.position = vertex.position;
                 out.normal = vertex.normal;
                 out.texture_coordinates = vertex.texture_coordinates[0];
+                out.texture_coordinates_1 = vertex.texture_coordinates[1];
                 out.tangent = vertex.tangent;
                 out.binormal = vertex.binormal;
                 out.bone_indices = {};

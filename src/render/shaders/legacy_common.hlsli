@@ -43,6 +43,7 @@ static const uint LIGHTING_LIT = 1u;
 static const uint LIGHTING_NORMAL_MAPPED = 2u;
 static const uint LIGHTING_PLANET = 3u;
 static const uint MATERIAL_CLOUDS = 1u << 5;
+static const uint MATERIAL_GRASS = 1u << 6;
 static const uint INSTANCE_BACKGROUND = 1u;
 static const uint INSTANCE_HIGHLIGHTED = 2u;
 static const uint INSTANCE_NO_SHADOWS = 4u;
@@ -83,6 +84,7 @@ cbuffer FrameConstants : register(b0)
     float4 water_plane;     // x the water plane's height, y planar reflections on (1)
     float4 wind_bend;          // xyz the wind's bend offset, w 1 / height^2 (render/wind_bend.hpp)
     float4 previous_wind_bend; // the same last frame
+    float4 grass_wind;         // xyz the wind's direction, w its speed (1-10)
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and
@@ -127,6 +129,7 @@ struct MaterialData
     uint cloud_normal_texture;
     float cloud_scroll;
     float bend_scale; // wind bend (trees), 0 none
+    float4 grass_diffuse_alt;
 };
 
 // Wind bend (the Tree material): a vertex sways by its height above the model's origin, squared.

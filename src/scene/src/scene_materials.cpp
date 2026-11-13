@@ -359,6 +359,15 @@ VisualMaterial make_visual_material(SceneBuilder& builder, const LegacyMaterial&
         }
     }
 
+    if (features.vertex_animation == LegacyVertexAnimation::grass_wind)
+    {
+        // The Grass material's BendScale and second color (1 and white when absent, its defaults).
+        result.grass = true;
+        std::array<float, 1> bend{1.0F};
+        read_color(material, "BendScale", bend);
+        result.bend_scale = bend[0];
+        read_color(material, "Diffuse1", result.grass_diffuse_alt);
+    }
     if (features.vertex_animation == LegacyVertexAnimation::wind_bend)
     {
         // The Tree material's BendScale (1 when absent, its default).

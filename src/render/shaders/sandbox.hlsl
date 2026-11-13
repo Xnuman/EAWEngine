@@ -42,8 +42,40 @@ struct VertexInput
     float3 tangent : TANGENT;
     float3 binormal : BINORMAL;
     float4 color : COLOR;
+    float2 uv1 : TEXCOORD1;
     uint instance_id : SV_InstanceID;
 };
+
+// Grass (the Grass material; docs/legacy-shader-mapping.md): each vertex turns about its clump's
+// center to face the camera around the model's up axis, and the clump's top (texture V 0) waves
+// with the wind: faster and further in a stronger wind (10 is strong), phase-shifted across the
+// map. The shape of the wave follows the legacy shader; how far its wind vector reached is not
+// known, so GRASS_SWAY_SCALE (an engine choice) scales the sway to a few units. `wave` returns the
+// 0..1 phase the color swings with.
+static const float GRASS_STRONG_WIND = 10.0f;
+static const float GRASS_MIN_TIME_SCALE = 0.125f;
+static const float GRASS_MAX_TIME_SCALE = 1.0f;
+static const float GRASS_SPATIAL_WAVELENGTH = 1.0f / 20.0f;
+static const float GRASS_BEND_MIN = 10.0f;
+static const float GRASS_BEND_MAX = 20.5f;
+static const float GRASS_BEND_BIAS = 10.0f;
+static const float GRASS_SWAY_SCALE = 0.15f;
+
+float3 grass_position(const float3 position, const float2 clump_center, const float2 uv, const float4x4 transform, const float bend_scale, out float wave)
+{
+    // The camera's forward direction in the model's frame (its rows are the model's axes in the world).
+    const float3 forward = float3(dot(transform[0].xyz, camera_forward.xyz), dot(transform[1].xyz, camera_forward.xyz), 0.0f);
+    const float2 across = safe_normalize(float3(-forward.y, forward.x, 0.0f), float3(1.0f, 0.0f, 0.0f)).xy;
+    const float2 offset = position.xy - clump_center;
+    const float2 turned = clump_center + float2(offset.x * across.x - offset.y * across.y, offset.x * across.y + offset.y * across.x);
+    const float strength = bend_scale * grass_wind.w / GRASS_STRONG_WIND;
+    const float time_scale = GRASS_MIN_TIME_SCALE + (GRASS_MAX_TIME_SCALE - GRASS_MIN_TIME_SCALE) * strength;
+    wave = 0.5f + 0.5f * sin(6.2831853f * frac(time_scale * camera_position_time.w + GRASS_SPATIAL_WAVELENGTH * (position.x + position.y)));
+    const float bend = GRASS_BEND_BIAS * strength + (GRASS_BEND_MIN + (GRASS_BEND_MAX - GRASS_BEND_MIN) * strength) * wave;
+    float3 world = mul(float4(turned, position.z, 1.0f), transform).xyz;
+    world += (1.0f - uv.y) * bend * GRASS_SWAY_SCALE * grass_wind.xyz;
+    return world;
+}
 
 struct PixelInput
 {
@@ -138,6 +170,7 @@ PixelInput vs_main(VertexInput input)
 
     // Last frame's skinned position, from last frame's palette.
     const float4 previous = skinned_position(input, instance.previous_bone_offset);
+    float3 grass_tint = float3(1.0f, 1.0f, 1.0f);
 
     PixelInput output;
     if ((instance.flags & INSTANCE_BACKGROUND) != 0u)
@@ -154,11 +187,24 @@ PixelInput vs_main(VertexInput input)
     }
     else
     {
-        const float bend_scale = materials[material_index].bend_scale;
+        const MaterialData material = materials[material_index];
+        const float bend_scale = material.bend_scale;
         float4 world = mul(position, instance.transform);
         world.xyz += wind_offset(wind_bend, position.z, bend_scale);
         float4 previous_world = mul(previous, instance.previous_transform);
         previous_world.xyz += wind_offset(previous_wind_bend, previous.z, bend_scale);
+        if ((material.flags & MATERIAL_GRASS) != 0u)
+        {
+            // Motion vectors of waving grass are left to the depth reprojection (grass is blended).
+            float wave = 0.0f;
+            world.xyz = grass_position(position.xyz, input.uv1, input.uv, instance.transform, bend_scale, wave);
+            previous_world = world;
+            // The color swings between the two diffuse colors; the pixel shader multiplies by the
+            // first, so the vertex color carries their ratio.
+            grass_tint = lerp(float3(1.0f, 1.0f, 1.0f), material.grass_diffuse_alt.rgb / max(material.diffuse.rgb, 1.0e-3f), wave);
+            // Grass is lit as if facing straight up from its model.
+            normal = float3(0.0f, 0.0f, 1.0f);
+        }
         output.position = mul(world, view_projection);
         output.world_position = world.xyz;
         output.current_clip = mul(world, unjittered_view_projection);
@@ -170,7 +216,7 @@ PixelInput vs_main(VertexInput input)
     output.uv = input.uv;
     output.tint = instance.tint;
     output.team_color = instance.team_color;
-    output.vertex_color = input.color;
+    output.vertex_color = float4(input.color.rgb * grass_tint, input.color.a);
     output.pick_id = instance.pick_id;
     output.instance_flags = instance.flags;
     output.fade = instance.fade;
