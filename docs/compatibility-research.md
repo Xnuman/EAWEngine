@@ -1078,8 +1078,12 @@ particle-audit`.
   which no stock unit lists. Units opt in by `SurfaceFX_Name` (stock: `Generic_Footprint` on
   infantry, `Generic_Track` on the T4-B, Juggernaut, and Pulse Tank in FoC, `Generic_Track_Half` on
   the MPTL and TIE Crawler); the
-  SurfaceFX names the track and the tread bones. That a trail repeats its texture one width per
-  repeat along its length is a reading of the textures' square layout, not observed. Map-placed decals occur in one stock
+  SurfaceFX names the track and the tread bones. The footprint texture is one stride: a left and a
+  right print, offset along V. The engine draws the whole texture over each segment (a ribbon's
+  natural mapping); with `segment_length` 6 a stride is 6 units (a trooper is about 14 units tall,
+  so about 77 cm), where one repeat per width (3 units) ran the prints together. The `_Concrete`
+  variants' `segment_length` 1 would squash them, but those are at opacity 0.1. A reading, not
+  observed. Map-placed decals occur in one stock
   map only, without texture names.
 - **Hardpoint scorch meshes.** `Damage_Decal` names a bone (`HP_*_BLAST`,
   245 stock uses) that carries a small alpha-blended mesh of its own: the Star

@@ -795,7 +795,7 @@ void test_footprints()
 
 // Dynamic tracks: fields as written (C-style "f" suffixes included), a track without a texture
 // reported and left out. Trails: a moving unit lays a segment each time it has moved a segment's
-// length, its texture repeating along the trail one width per repeat, and a trail whose unit
+// length, the whole texture over each segment, and a trail whose unit
 // stands still fades and goes.
 void test_trails()
 {
@@ -850,9 +850,9 @@ void test_trails()
     std::vector<eaw::VisualDecal> decals;
     effects.build_decals(decals);
     require(effects.trail_count() == 1 && decals.size() == 2 && decals[0].center == eaw::Vector2{6.0F, 0.0F} && decals[1].center == eaw::Vector2{18.0F, 0.0F} &&
-                decals[0].half_size == eaw::Vector2{2.0F, 6.0F} && std::fabs(decals[0].rotation + 1.5707964F) < 1.0e-5F && decals[1].uv_rect[1] == 3.0F && decals[1].texture == 3U &&
-                decals[0].opacity == 1.0F,
-            "a moving unit must lay a segment per segment length, its texture running along the trail");
+                decals[0].half_size == eaw::Vector2{2.0F, 6.0F} && std::fabs(decals[0].rotation + 1.5707964F) < 1.0e-5F && decals[1].uv_rect[1] == 0.0F && decals[1].uv_rect[3] == 1.0F &&
+                decals[1].texture == 3U && decals[0].opacity == 1.0F,
+            "a moving unit must lay a segment per segment length, the texture once over each");
     drive(24.0F, 30.0);
     require(effects.trail_count() == 0, "a trail whose unit stood still past its fade must go");
 }

@@ -360,8 +360,9 @@ void BattleEffects::build_decals(std::vector<VisualDecal>& decals) const
                                                                      : VisualDecalMode::diffuse,
                           opacity});
     }
-    // Trail segments: a rectangle from each point to the next, its texture running along the
-    // trail one width per repeat, fading from the fade begin to the fade end behind the head (and
+    // Trail segments: a rectangle from each point to the next, the whole texture over each segment
+    // (the footprint texture holds one left-right stride, which a segment length of 6 spaces like
+    // steps; one width per repeat ran the prints together; a reading, not observed), fading from the fade begin to the fade end behind the head (and
     // further as time passes since the head last moved).
     for (const auto& [key, trail] : trails_)
     {
@@ -389,13 +390,7 @@ void BattleEffects::build_decals(std::vector<VisualDecal>& decals) const
             {
                 continue;
             }
-            decals.push_back({(from + to) * 0.5F,
-                              {track.width * 0.5F, span * 0.5F},
-                              std::atan2(along.y, along.x) - 1.5707964F,
-                              {0.0F, trail.distances[point - 1] / track.width, 1.0F, span / track.width},
-                              layer.texture,
-                              mode,
-                              track.opacity * fade});
+            decals.push_back({(from + to) * 0.5F, {track.width * 0.5F, span * 0.5F}, std::atan2(along.y, along.x) - 1.5707964F, {0.0F, 0.0F, 1.0F, 1.0F}, layer.texture, mode, track.opacity * fade});
         }
     }
 }
