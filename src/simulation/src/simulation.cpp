@@ -189,6 +189,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     locomotor_.drive_speeds.push_back(0.0F);
     route_.loiter_points.emplace_back();
     route_.remaining.push_back(0.0F);
+    route_.detours.emplace_back();
     combat_.stances.push_back(spawn.stance);
     combat_.aims_with_body.push_back(spawn.aims_with_body ? 1U : 0U);
     placement_.pitches.push_back(0.0F);
@@ -596,9 +597,9 @@ std::vector<Vector3> SimulationWorld::route(const EntityId id) const
     {
         return points;
     }
-    if (*dense < detours_.size() && detours_[*dense])
+    if (*dense < route_.detours.size() && route_.detours[*dense])
     {
-        points.push_back(*detours_[*dense]);
+        points.push_back(*route_.detours[*dense]);
     }
     points.insert(points.end(), route_.paths[*dense].rbegin(), route_.paths[*dense].rend());
     points.push_back(*route_.move_targets[*dense]);

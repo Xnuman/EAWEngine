@@ -28,10 +28,10 @@ const std::array<SimulationWorld::SystemEntry, 7> SimulationWorld::schedule_{{
     {"navigation", TickPhase::navigation, &SimulationWorld::run_navigation,
      access_to({SimData::combat, SimData::flight, SimData::ground, SimData::ground_mover, SimData::group, SimData::identity, SimData::locomotor, SimData::path_queue, SimData::placement,
                 SimData::route, SimData::slots}),
-     access_to({SimData::route, SimData::path_queue, SimData::group, SimData::locomotor})},
+     access_to({SimData::route, SimData::path_queue, SimData::group, SimData::locomotor, SimData::avoidance})},
     {"movement", TickPhase::movement, &SimulationWorld::run_movement,
      access_to({SimData::combat, SimData::flight, SimData::flight_maneuvers, SimData::ground, SimData::ground_mover, SimData::group, SimData::identity, SimData::locomotor, SimData::path_queue,
-                SimData::placement, SimData::route, SimData::steering, SimData::turn_clips, SimData::walk_clips}),
+                SimData::placement, SimData::route, SimData::steering, SimData::turn_clips, SimData::walk_clips, SimData::avoidance}),
      access_to({SimData::placement, SimData::locomotor, SimData::route, SimData::path_queue, SimData::group, SimData::flight_maneuvers, SimData::turn_clips, SimData::walk_clips})},
     // Contact's access is its view's type (ContactSystem::View).
     {"contact", TickPhase::contact, &SimulationWorld::run_contact, reads_of<ContactSystem::View>(), writes_of<ContactSystem::View>(), true},
@@ -46,7 +46,7 @@ std::string_view SimulationWorld::sim_data_name(const SimData data) noexcept
 {
     static constexpr std::array<std::string_view, sim_data_count> names{
         "identity",         "placement",  "motion", "locomotor", "ground_mover", "route",       "flight", "combat",        "orders",   "steering", "formation", "group",    "turn_clips", "walk_clips",
-        "flight_maneuvers", "footprints", "crush",  "ground",    "path_queue",   "projectiles", "events", "combat_random", "snapshot", "clock",    "slots",     "commands", "rules"};
+        "flight_maneuvers", "footprints", "crush",  "ground",    "path_queue",   "projectiles", "events", "combat_random", "snapshot", "clock",    "slots",     "commands", "rules",      "avoidance"};
     static_assert(!names.back().empty(), "every kind of simulation data needs its name");
     return names[static_cast<std::size_t>(data)];
 }

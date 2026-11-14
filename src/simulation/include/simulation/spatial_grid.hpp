@@ -23,6 +23,7 @@ public:
     void query(Vector3 center, float radius, std::vector<std::uint32_t>& out) const;
 
     [[nodiscard]] std::size_t size() const noexcept;
+    bool operator==(const SpatialGrid&) const = default;
 
 private:
     float cell_size_{1.0F};

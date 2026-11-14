@@ -835,7 +835,7 @@ private:
     // until within settle_distance of it.
     [[nodiscard]] bool moves_along_heading(std::size_t index) const noexcept;
     [[nodiscard]] float settle_distance(std::size_t index) const noexcept;
-    // Navigation (simulation_navigation.cpp): local avoidance of space ships (detours_).
+    // Navigation (simulation_navigation.cpp): local avoidance of space ships (RouteColumns::detours).
     void plan_space_avoidance();
     // A space ship's step without the part that would take it deeper into a ship it touches (both
     // radii), so ships slide along each other instead of overlapping; other steps unchanged.
@@ -937,6 +937,8 @@ private:
         commands,
         // The damage table and hostility (set up by the battle, read by the systems).
         rules,
+        // Space avoidance's grid and largest ship radius (navigation builds them, movement reads them).
+        avoidance,
         count,
     };
     static constexpr std::size_t sim_data_count = static_cast<std::size_t>(SimData::count);
@@ -1047,6 +1049,9 @@ private:
         // The route left to the move target this tick (measured by navigation and again by separation;
         // 0 without a target).
         std::vector<float> remaining;
+        // Space ships: the point steered at this tick to pass a unit in the way (navigation's local
+        // avoidance); recomputed every tick from the state, so not hashed.
+        std::vector<std::optional<Vector3>> detours;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(move_targets);
@@ -1054,6 +1059,7 @@ private:
             visit(pending);
             visit(loiter_points);
             visit(remaining);
+            visit(detours);
         }
     };
     // Flight's columns that every entity has until step 7 of the migration: the hash covers them for
@@ -1350,6 +1356,7 @@ private:
         visit(SimData::slots, slots_);
         visit(SimData::commands, pending_);
         visit(SimData::rules, rules_);
+        visit(SimData::avoidance, avoidance_);
     }
     // Runs one system of the schedule (in DebugValidation builds, with its write check).
     void run_system(const SystemEntry& system);
@@ -1391,9 +1398,6 @@ private:
     std::uint64_t path_searches_{};
     std::uint64_t partial_paths_{};
     std::uint64_t path_expansions_{};
-    // Space ships: the point steered at this tick to pass a unit in the way (navigation's local
-    // avoidance); recomputed every tick from the state, so not hashed.
-    std::vector<std::optional<Vector3>> detours_;
     // A queued route request: one entity, or the ground members of a formation move that share a
     // movement class (planned on one shared path to `group_target`).
     struct PathRequest
@@ -1466,7 +1470,18 @@ private:
         DamageTable damage_table;
         Hostility hostility;
     };
+    // The tick's space avoidance: the grid of positions navigation planned with, and the largest ship
+    // radius of its plan (0 when no ship steers; keep_apart then has nothing to do). Movement keeps
+    // ships apart against this grid, built before anything moved.
+    struct SpaceAvoidance
+    {
+        bool operator==(const SpaceAvoidance&) const = default;
+        static constexpr SimData data = SimData::avoidance;
+        SpatialGrid grid;
+        float largest_ship_radius{};
+    };
     GroundState ground_;
+    SpaceAvoidance avoidance_;
     PathQueue path_queue_;
     ProjectileState projectiles_;
     TickEvents events_;
@@ -1514,6 +1529,16 @@ private:
         EAW_ASSERT_MSG(found != nullptr, std::string("no world object of type ") + typeid(T).name());
         return *found;
     }
+    // The world's object of a type, for code with full access (the systems still written as member
+    // functions) calling helpers written for views (they ask their data for get<T>()).
+    template <class T> [[nodiscard]] T& get() noexcept
+    {
+        return object_of<T>();
+    }
+    template <class T> [[nodiscard]] const T& get() const noexcept
+    {
+        return const_cast<SimulationWorld*>(this)->object_of<T>();
+    }
     template <class View> [[nodiscard]] View view_of() noexcept
     {
         return [this]<class... Accesses>(std::tuple<Accesses...>*)
@@ -1559,10 +1584,8 @@ private:
     Pcg32 combat_random_{combat_random_seed};
     SpatialGrid grid_;
     std::vector<std::uint32_t> query_;
-    // Space avoidance's scratch: a ship's neighbours, and the largest ship radius of the tick's
-    // plan (0 when no ship steers; keep_apart then has nothing to do).
+    // Space avoidance's scratch: a ship's neighbours.
     std::vector<std::uint32_t> neighbours_;
-    float largest_ship_radius_{};
     std::uint64_t shots_fired_{};
     std::uint64_t hits_{};
     std::uint64_t kills_{};

@@ -79,7 +79,7 @@ void SimulationWorld::run_movement()
             move_over_ground(index, dt);
             continue;
         }
-        if (index < detours_.size() && detours_[index])
+        if (index < route_.detours.size() && route_.detours[index])
         {
             // Around a unit in the way: steer at the detour point; arrival still counts at the target.
             if (std::hypot(target->x - position.x, target->y - position.y) <= std::max(travel_speed(index) * dt, arrival_distance))
@@ -88,7 +88,7 @@ void SimulationWorld::run_movement()
                 target.reset();
                 continue;
             }
-            const auto& detour = *detours_[index];
+            const auto& detour = *route_.detours[index];
             const Vector3 aside{detour.x - position.x, detour.y - position.y, detour.z - position.z};
             const auto length = std::sqrt(aside.x * aside.x + aside.y * aside.y + aside.z * aside.z);
             const auto factor = aside.x != 0.0F || aside.y != 0.0F ? steer(index, std::atan2(aside.y, aside.x), dt) : 1.0F;

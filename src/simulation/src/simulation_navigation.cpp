@@ -265,8 +265,8 @@ void SimulationWorld::plan_shared_member(const PathRequest& request, const std::
 
 void SimulationWorld::plan_space_avoidance()
 {
-    detours_.assign(identity_.ids.size(), std::nullopt);
-    largest_ship_radius_ = 0.0F;
+    route_.detours.assign(identity_.ids.size(), std::nullopt);
+    avoidance_.largest_ship_radius = 0.0F;
     if (ground_.map.valid())
     {
         return;
@@ -293,7 +293,7 @@ void SimulationWorld::plan_space_avoidance()
     {
         return;
     }
-    largest_ship_radius_ = largest_radius;
+    avoidance_.largest_ship_radius = largest_radius;
     // How fast a ship makes way on a course: a ship that turns slows by the cosine of how far its
     // heading is off the course, as locomotion moves it (steer).
     const auto way = [&](const std::size_t index, const float course)
@@ -325,7 +325,7 @@ void SimulationWorld::plan_space_avoidance()
     {
         velocities[index] = ship(index) ? velocity(index) : Vector2{};
     }
-    grid_.build(placement_.positions, grid_cell_size);
+    avoidance_.grid.build(placement_.positions, grid_cell_size);
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         if (!steering(index))
@@ -337,7 +337,7 @@ void SimulationWorld::plan_space_avoidance()
         const float speed = travel_speed(index);
         const float horizon = std::max(avoid_lookahead_seconds, radius * avoid_min_lookahead_radii / std::max(speed, 1.0e-3F));
         query_.clear();
-        grid_.query(here, speed * horizon * 2.0F + radius + largest_radius, query_);
+        avoidance_.grid.query(here, speed * horizon * 2.0F + radius + largest_radius, query_);
         // The ships this one keeps clear of: at its height, not much smaller.
         neighbours_.clear();
         for (const auto other : query_)
@@ -505,20 +505,20 @@ void SimulationWorld::plan_space_avoidance()
         // distance), on the way to the target's height.
         const float ahead = std::min(distance, speed * horizon);
         const float height = here.z + (target.z - here.z) * std::min(1.0F, ahead / distance);
-        detours_[index] = Vector3{here.x + std::cos(best_angle) * ahead, here.y + std::sin(best_angle) * ahead, height};
+        route_.detours[index] = Vector3{here.x + std::cos(best_angle) * ahead, here.y + std::sin(best_angle) * ahead, height};
     }
 }
 
 Vector3 SimulationWorld::keep_apart(const std::size_t index, Vector3 step)
 {
     const float radius = placement_.radii[index];
-    if (largest_ship_radius_ <= 0.0F || radius <= 0.0F || flight_.min_speeds[index] > 0.0F || ground_.map.valid())
+    if (avoidance_.largest_ship_radius <= 0.0F || radius <= 0.0F || flight_.min_speeds[index] > 0.0F || ground_.map.valid())
     {
         return step;
     }
     const auto& here = placement_.positions[index];
     query_.clear();
-    grid_.query(here, radius + largest_ship_radius_ + std::hypot(step.x, step.y), query_);
+    avoidance_.grid.query(here, radius + avoidance_.largest_ship_radius + std::hypot(step.x, step.y), query_);
     // Whether a step ends inside a ship it moves toward (deeper than it was).
     const auto deeper = [&](const std::uint32_t other, const Vector3& candidate, float& to_x, float& to_y, float& apart)
     {

@@ -562,7 +562,8 @@ Agreed by the owner on 2026-11-15:
 8. **Where it lives:** this document; the rules of 6.9 and 7.2 in AGENTS.md; the steps of section 8
    in the roadmap. `/GT` (fiber-safe thread-local storage) in the global compile options.
 9. **Component layout** (2026-11-15, at migration step 2): a component is a group of columns, one
-   array per field, not an array of structs (section 6.2).
+   array per field, not an array of structs (section 6.2). The owner, 2026-11-15: kept for now; the more usual
+   struct-per-entity style may replace it later.
 
 ## 10. What this design deliberately leaves out
 
