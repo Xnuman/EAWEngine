@@ -18,7 +18,7 @@ namespace eaw {
 // them. Until migration
 // step 6 queues structural changes for the barrier, the systems that spawn or remove entities
 // (commands, and combat's removal of the dead) write the whole entity table.
-const std::array<SimulationWorld::SystemEntry, 9> SimulationWorld::schedule_{{
+const std::array<SimulationWorld::SystemEntry, 7> SimulationWorld::schedule_{{
     {"commands", TickPhase::commands, &SimulationWorld::run_commands, all_data, all_data},
     {"behavior", TickPhase::behavior, &SimulationWorld::run_behavior,
      access_to({SimData::clock, SimData::combat, SimData::flight, SimData::flight_maneuvers, SimData::ground, SimData::ground_mover, SimData::group, SimData::identity, SimData::locomotor,
@@ -33,14 +33,8 @@ const std::array<SimulationWorld::SystemEntry, 9> SimulationWorld::schedule_{{
      access_to({SimData::combat, SimData::flight, SimData::flight_maneuvers, SimData::ground, SimData::ground_mover, SimData::group, SimData::identity, SimData::locomotor, SimData::path_queue,
                 SimData::placement, SimData::route, SimData::steering, SimData::turn_clips, SimData::walk_clips}),
      access_to({SimData::placement, SimData::locomotor, SimData::route, SimData::path_queue, SimData::group, SimData::flight_maneuvers, SimData::turn_clips, SimData::walk_clips})},
-    // Crushing wounds what it runs over.
-    {"crushing", TickPhase::crushing, &SimulationWorld::run_crushing,
-     access_to({SimData::combat, SimData::crush, SimData::ground, SimData::ground_mover, SimData::identity, SimData::placement, SimData::motion, SimData::rules}), access_to({SimData::combat})},
-    {"separation", TickPhase::separation, &SimulationWorld::run_separation,
-     access_to({SimData::combat, SimData::crush, SimData::flight, SimData::ground, SimData::ground_mover, SimData::identity, SimData::locomotor, SimData::placement, SimData::route, SimData::rules}),
-     // The remaining routes, measured again after movement.
-     access_to({SimData::placement, SimData::route})},
-    {"motion", TickPhase::separation, &SimulationWorld::run_motion, access_to({SimData::placement, SimData::motion}), access_to({SimData::motion})},
+    // Contact's access is its view's type (ContactSystem::View).
+    {"contact", TickPhase::contact, &SimulationWorld::run_contact, reads_of<ContactSystem::View>(), writes_of<ContactSystem::View>(), true},
     {"combat", TickPhase::combat, &SimulationWorld::run_combat, all_data, all_data},
     {"publish", TickPhase::publish, &SimulationWorld::run_publish,
      access_to({SimData::clock, SimData::combat, SimData::events, SimData::flight_maneuvers, SimData::ground_mover, SimData::identity, SimData::locomotor, SimData::motion, SimData::orders,
@@ -65,7 +59,7 @@ void SimulationWorld::run_system(const SystemEntry& system)
     for_each_data(
         [&](const SimData data, const auto& object)
         {
-            if ((system.writes & access_to({data})) != 0 || data == SimData::ground)
+            if (system.typed || (system.writes & access_to({data})) != 0 || data == SimData::ground)
             {
                 return;
             }

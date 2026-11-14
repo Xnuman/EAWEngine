@@ -25,6 +25,8 @@ namespace eaw {
 template <class Columns> class ComponentPool final
 {
 public:
+    using ColumnsType = Columns;
+
     // The member's packed row, or nothing when the entity of `slot` lacks the component.
     [[nodiscard]] std::optional<std::size_t> find(const std::uint32_t slot) const noexcept
     {

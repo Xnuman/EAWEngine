@@ -630,7 +630,7 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
         const bool at_part = hardpoint >= 0 && combat.profile.hardpoints[part_index].health > 0.0F && combat.hardpoint_health[part_index] > 0.0F;
         if (!at_part)
         {
-            (void)wound(victim, damage * modifier);
+            (void)wound(combat_.states[victim], damage * modifier);
             return kind;
         }
         if (combat.invulnerable || combat.profile.immune)
@@ -650,14 +650,13 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
         // The hull follows its parts, and falls with the last of them.
         const auto followed = combat.profile.health * hull_share_of_parts(victim);
         const auto lost = combat.profile.dies_with_hardpoints && parts_all_destroyed(victim) ? combat.health : std::max(combat.health - followed, 0.0F);
-        (void)wound(victim, lost);
+        (void)wound(combat_.states[victim], lost);
     }
     return kind;
 }
 
-float SimulationWorld::wound(const std::size_t index, const float damage)
+float SimulationWorld::wound(CombatState& combat, const float damage)
 {
-    auto& combat = combat_.states[index];
     if (combat.invulnerable || combat.profile.immune || damage <= 0.0F)
     {
         return 0.0F;

@@ -671,21 +671,21 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     }
 }
 
-void SimulationWorld::measure_remaining_routes()
+void SimulationWorld::measure_remaining_routes(RouteColumns& route, const PlacementColumns& placement)
 {
-    route_.remaining.assign(identity_.ids.size(), 0.0F);
-    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
+    route.remaining.assign(route.move_targets.size(), 0.0F);
+    for (std::size_t index = 0; index < route.move_targets.size(); ++index)
     {
-        if (const auto& target = route_.move_targets[index])
+        if (const auto& target = route.move_targets[index])
         {
-            auto from = placement_.positions[index];
+            auto from = placement.positions[index];
             float length = 0.0F;
-            for (auto waypoint = route_.paths[index].rbegin(); waypoint != route_.paths[index].rend(); ++waypoint)
+            for (auto waypoint = route.paths[index].rbegin(); waypoint != route.paths[index].rend(); ++waypoint)
             {
                 length += std::hypot(waypoint->x - from.x, waypoint->y - from.y);
                 from = *waypoint;
             }
-            route_.remaining[index] = length + std::hypot(target->x - from.x, target->y - from.y);
+            route.remaining[index] = length + std::hypot(target->x - from.x, target->y - from.y);
         }
     }
 }

@@ -519,6 +519,20 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    map). The first declarations, read from the code, missed 15 writes, all found by the check's
    first runs. Commands and combat write everything until step 6 moves spawns and removals to the
    barrier. Not yet: queries, and systems as functions over a context.
+
+   Typed views (2026-11-15, Singe's access modifiers adapted to column groups,
+   `simulation/system_view.hpp`): a system declares its access as the type of its view,
+   `SystemView<Read<GroundState>, Write<CombatColumns>, ...>`, and reaches the data only through
+   `view.get<T>()`: a const reference for a Read, a mutable one for a Write, a compile error for
+   anything undeclared or for a write through a Read. The schedule entry takes its masks from the
+   view's type, so the declaration cannot drift from the code, and the copy check skips such
+   systems. Systems keep their dense-index loops over the columns; their own scratch and counters
+   are members of the system object. The first one is contact (crushing, separation, and the
+   measured speeds, one system for the design's contact phase, so the table has seven systems:
+   commands, behavior, navigation, movement, contact, combat, publish). The other systems follow
+   one at a time, each with unchanged hashes. Queries as a separate helper were tried and dropped:
+   the loops already walk the dense order and look pools up by slot, and sorting a pool's members
+   cost more than it saved (crushing, 0.006 to 0.025 ms a tick).
 5. **Recipes.** Readers per component; one construction path for spawns and placed objects;
    `EntitySpawn` reduced to a recipe plus per-instance values.
 6. **Command buffers and event queues.** Structural changes and damage through the barrier, in the

@@ -18,6 +18,7 @@
 #include "simulation/pathfinding.hpp"
 #include "simulation/simulation_types.hpp"
 #include "simulation/spatial_grid.hpp"
+#include "simulation/system_view.hpp"
 
 #include <array>
 #include <cstddef>
@@ -28,6 +29,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <typeinfo>
 #include <vector>
 
 namespace eaw {
@@ -165,15 +167,14 @@ enum class TickPhase : std::uint8_t
     behavior,
     navigation,
     movement,
-    crushing,
-    separation,
+    contact,
     combat,
     publish,
     count,
 };
 
 inline constexpr std::size_t tick_phase_count = static_cast<std::size_t>(TickPhase::count);
-inline constexpr std::array<std::string_view, tick_phase_count> tick_phase_names{"commands", "behavior", "navigation", "movement", "crushing", "separation", "combat", "publish"};
+inline constexpr std::array<std::string_view, tick_phase_count> tick_phase_names{"commands", "behavior", "navigation", "movement", "contact", "combat", "publish"};
 static_assert(!tick_phase_names.back().empty(), "every layer needs its name");
 using TickPhaseTimes = std::array<double, tick_phase_count>;
 
@@ -762,7 +763,7 @@ private:
     void disengage(std::size_t index);
     // Hull damage after shields and armor, under the scripted conditions (invulnerable: none; cannot
     // be killed: not below the floor); returns what the hull took.
-    float wound(std::size_t index, float damage);
+    static float wound(CombatState& combat, float damage);
     void teleport(std::size_t index, const Vector3& point, std::optional<float> heading);
     // Flyers: steer at the target (attack runs, or dogfights against flyers), the destination, or
     // the point they circle; reverse through a half-loop when that point is far behind.
@@ -787,8 +788,6 @@ private:
     void apply_formation_move(const SimCommand& command);
     // Attack-move and guard commands: their standing orders, and the first move.
     void apply_standing_order(const SimCommand& command);
-    // Remaining route length of every moving entity (zero for the rest).
-    void measure_remaining_routes();
     // Marks group members that are ahead of their group to wait this tick, and releases members
     // that stopped making progress.
     void update_group_cohesion();
@@ -836,12 +835,6 @@ private:
     // until within settle_distance of it.
     [[nodiscard]] bool moves_along_heading(std::size_t index) const noexcept;
     [[nodiscard]] float settle_distance(std::size_t index) const noexcept;
-    void run_separation();
-    // Crushing (simulation_locomotion.cpp): after movement, before separation pushes the victims out.
-    void run_crushing();
-    // Whether `crusher` crushes `victim` by walking over it: a crusher, a living hostile victim
-    // squashable by its kind.
-    [[nodiscard]] bool can_crush(std::size_t crusher, std::size_t victim) const;
     // Navigation (simulation_navigation.cpp): local avoidance of space ships (detours_).
     void plan_space_avoidance();
     // A space ship's step without the part that would take it deeper into a ship it touches (both
@@ -1084,6 +1077,7 @@ private:
     struct FlightManeuverColumns
     {
         bool operator==(const FlightManeuverColumns&) const = default;
+        static constexpr SimData data = SimData::flight_maneuvers;
         std::vector<float> yaw_rates;
         std::vector<std::uint8_t> looping;
         std::vector<float> rolls;
@@ -1155,6 +1149,7 @@ private:
     struct TurnClipColumns
     {
         bool operator==(const TurnClipColumns&) const = default;
+        static constexpr SimData data = SimData::turn_clips;
         std::vector<TurnPlan> plans;
         template <class Visit> void for_each_column(Visit&& visit)
         {
@@ -1186,6 +1181,7 @@ private:
     struct WalkClipColumns
     {
         bool operator==(const WalkClipColumns&) const = default;
+        static constexpr SimData data = SimData::walk_clips;
         std::vector<WalkPlan> plans;
         template <class Visit> void for_each_column(Visit&& visit)
         {
@@ -1241,6 +1237,7 @@ private:
     struct FootprintColumns
     {
         bool operator==(const FootprintColumns&) const = default;
+        static constexpr SimData data = SimData::footprints;
         std::vector<GroundFootprint> shapes;
         std::vector<std::uint8_t> stamped;
         template <class Visit> void for_each_column(Visit&& visit)
@@ -1254,6 +1251,7 @@ private:
     struct CrushColumns
     {
         bool operator==(const CrushColumns&) const = default;
+        static constexpr SimData data = SimData::crush;
         std::vector<CrushProfile> profiles;
         template <class Visit> void for_each_column(Visit&& visit)
         {
@@ -1323,8 +1321,10 @@ private:
         void (SimulationWorld::*run)();
         SimAccess reads;
         SimAccess writes;
+        // Written over a typed view: its access is its view's type, so the copy check skips it.
+        bool typed{};
     };
-    static const std::array<SystemEntry, 9> schedule_;
+    static const std::array<SystemEntry, 7> schedule_;
     [[nodiscard]] static std::string_view sim_data_name(SimData data) noexcept;
     // Every kind of data with its objects (some kinds have several): the entity table's groups
     // (for_each_group), the pools, and the resources.
@@ -1340,9 +1340,9 @@ private:
         visit(SimData::flight_maneuvers, flight_maneuvers_);
         visit(SimData::footprints, footprint_);
         visit(SimData::crush, crush_);
-        visit(SimData::ground, ground_.map);
-        visit(SimData::path_queue, path_queue_.requests);
-        visit(SimData::projectiles, projectiles_.flying);
+        visit(SimData::ground, ground_);
+        visit(SimData::path_queue, path_queue_);
+        visit(SimData::projectiles, projectiles_);
         visit(SimData::events, events_);
         visit(SimData::combat_random, combat_random_);
         visit(SimData::snapshot, snapshot_);
@@ -1356,8 +1356,9 @@ private:
     // The systems step() ran inline before: the tick's commands and its event lists, the speeds
     // movement and separation produced, and the tick counter with the snapshot.
     void run_commands();
-    void run_motion();
     void run_publish();
+    // The contact system's run on its view (ContactSystem).
+    void run_contact();
     // Optional components in pools (component_pool.hpp), given at spawn: turns in place played as
     // clips to entities whose profile has them (MovementProfile::turn_begin_seconds), walks played as
     // clips to those that walk or raise a leg as clips (walk_stop_parts, walk_raise_seconds),
@@ -1370,6 +1371,9 @@ private:
     ComponentPool<CrushColumns> crush_;
     // The entity's crush profile: the default one when it has none.
     [[nodiscard]] const CrushProfile& crush_profile_of(std::size_t index) const noexcept;
+    [[nodiscard]] static const CrushProfile& crush_profile_in(const ComponentPool<CrushColumns>& pool, std::uint32_t slot) noexcept;
+    // Remaining route length of every moving entity (zero for the rest), into route.remaining.
+    static void measure_remaining_routes(RouteColumns& route, const PlacementColumns& placement);
     // The slot of the entity at dense `index`: the key of its pooled components.
     [[nodiscard]] std::uint32_t slot_of(const std::size_t index) const noexcept
     {
@@ -1387,7 +1391,6 @@ private:
     std::uint64_t path_searches_{};
     std::uint64_t partial_paths_{};
     std::uint64_t path_expansions_{};
-    std::vector<Vector3> separation_push_;
     // Space ships: the point steered at this tick to pass a unit in the way (navigation's local
     // avoidance); recomputed every tick from the state, so not hashed.
     std::vector<std::optional<Vector3>> detours_;
@@ -1469,13 +1472,89 @@ private:
     TickEvents events_;
     SlotTable slots_;
     Rules rules_;
+
+    // Typed system views (system_view.hpp): the kind of data a type is (a pool's is its columns'),
+    // the masks a view's type declares, the world's one object of a type, and a view of them.
+    template <class T> [[nodiscard]] static constexpr SimData data_of() noexcept
+    {
+        if constexpr (requires { typename T::ColumnsType; })
+        {
+            return T::ColumnsType::data;
+        }
+        else
+        {
+            return T::data;
+        }
+    }
+    template <class View> [[nodiscard]] static constexpr SimAccess reads_of() noexcept
+    {
+        return []<class... Accesses>(std::tuple<Accesses...>*)
+        {
+            return (SimAccess{0} | ... | access_to({data_of<typename Accesses::Type>()}));
+        }(static_cast<typename View::AccessList*>(nullptr));
+    }
+    template <class View> [[nodiscard]] static constexpr SimAccess writes_of() noexcept
+    {
+        return []<class... Accesses>(std::tuple<Accesses...>*)
+        {
+            return (SimAccess{0} | ... | (Accesses::writes ? access_to({data_of<typename Accesses::Type>()}) : SimAccess{0}));
+        }(static_cast<typename View::AccessList*>(nullptr));
+    }
+    template <class T> [[nodiscard]] T& object_of() noexcept
+    {
+        T* found = nullptr;
+        for_each_data(
+            [&](SimData, auto& object)
+            {
+                if constexpr (std::is_same_v<std::remove_cvref_t<decltype(object)>, T>)
+                {
+                    found = &object;
+                }
+            });
+        EAW_ASSERT_MSG(found != nullptr, std::string("no world object of type ") + typeid(T).name());
+        return *found;
+    }
+    template <class View> [[nodiscard]] View view_of() noexcept
+    {
+        return [this]<class... Accesses>(std::tuple<Accesses...>*)
+        {
+            return View{&object_of<typename Accesses::Type>()...};
+        }(static_cast<typename View::AccessList*>(nullptr));
+    }
+
+    // Contact (simulation_contact.cpp; docs/ecs-design.md, 6.3, phase 5): crushing, separation, and
+    // the tick's measured speeds, after movement. Its scratch and counters are its own.
+    class ContactSystem
+    {
+    public:
+        using View = SystemView<Read<GroundState>, Read<IdentityColumns>, Write<PlacementColumns>, Write<MotionColumns>, Read<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>,
+                                Read<FlightColumns>, Write<CombatColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>>;
+        void run(const View& view, float dt);
+        // Entities crushed so far, and the pairs separation pushed apart in the last tick.
+        std::uint64_t crushed{};
+        std::size_t separated_pairs{};
+
+    private:
+        // Crushing: after movement, before separation pushes the victims out.
+        void crush(const View& view);
+        void separate(const View& view, float dt);
+        // Speed of the last tick from where movement and contact left each entity.
+        static void measure_speeds(const View& view, float dt);
+        // Whether `crusher` crushes `victim` by walking over it: a crusher, a living hostile victim
+        // squashable by its kind.
+        [[nodiscard]] static bool can_crush(const View& view, std::size_t crusher, std::size_t victim);
+        [[nodiscard]] static const CrushProfile& crush_profile_of(const View& view, std::size_t index) noexcept;
+        std::vector<Vector3> pushes_;
+        SpatialGrid grid_;
+        std::vector<std::uint32_t> query_;
+    };
+    ContactSystem contact_;
     // Short legs onto and off a shared path search at most this many nodes.
     GridPathfinder local_pathfinder_{4096};
     std::uint64_t shared_routes_{};
     std::uint32_t next_group_id_{1};
     std::size_t waiting_members_{};
     std::uint64_t released_members_{};
-    std::size_t separated_pairs_{};
     // Where shots stray (WeaponProfile::inaccuracy); part of the state.
     Pcg32 combat_random_{combat_random_seed};
     SpatialGrid grid_;
@@ -1488,7 +1567,6 @@ private:
     std::uint64_t hits_{};
     std::uint64_t kills_{};
     std::uint64_t hardpoints_destroyed_{};
-    std::uint64_t crushed_{};
     std::vector<SimCommand> pending_;
     SimSnapshot snapshot_;
     std::uint64_t commands_applied_{};

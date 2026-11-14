@@ -80,7 +80,7 @@ void SimulationWorld::apply(const SimCommand& command)
             // combat layer's, as for shots.
             if (combat_.states[*dense].profile.health > 0.0F && std::isfinite(command.amount))
             {
-                (void)wound(*dense, command.amount);
+                (void)wound(combat_.states[*dense], command.amount);
             }
             break;
         case SimCommandKind::teleport:

@@ -15,6 +15,7 @@ set(EAW_SIMULATION_HEADERS
     ${HEADERS_DIR}/simulation.hpp
     ${HEADERS_DIR}/simulation_types.hpp
     ${HEADERS_DIR}/spatial_grid.hpp
+    ${HEADERS_DIR}/system_view.hpp
 )
 
 set(EAW_SIMULATION_SOURCES
@@ -25,6 +26,7 @@ set(EAW_SIMULATION_SOURCES
     ${SOURCES_DIR}/simulation.cpp
     ${SOURCES_DIR}/simulation_behavior.cpp
     ${SOURCES_DIR}/simulation_combat.cpp
+    ${SOURCES_DIR}/simulation_contact.cpp
     ${SOURCES_DIR}/simulation_internal.hpp
     ${SOURCES_DIR}/simulation_locomotion.cpp
     ${SOURCES_DIR}/simulation_navigation.cpp

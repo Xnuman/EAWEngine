@@ -266,20 +266,6 @@ void SimulationWorld::run_commands()
     events_.spins.clear();
 }
 
-void SimulationWorld::run_motion()
-{
-    // Movement and separation are the only systems that move entities, and entities are only added
-    // (commands) before and removed (combat) after them, so dense indices line up here.
-    const auto dt = static_cast<float>(tick_seconds_);
-    for (std::size_t index = 0; index < placement_.positions.size(); ++index)
-    {
-        const auto& from = motion_.starts[index];
-        const auto& to = placement_.positions[index];
-        const auto moved = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y) + (to.z - from.z) * (to.z - from.z));
-        motion_.speeds[index] = dt > 0.0F && std::isfinite(moved) ? moved / dt : 0.0F;
-    }
-}
-
 void SimulationWorld::run_publish()
 {
     ++tick_;
@@ -318,9 +304,9 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .hits = hits_,
             .kills = kills_,
             .hardpoints_destroyed = hardpoints_destroyed_,
-            .crushed = crushed_,
+            .crushed = contact_.crushed,
             .projectiles = projectiles_.flying.size(),
-            .separated_pairs = separated_pairs_,
+            .separated_pairs = contact_.separated_pairs,
             .waiting_members = waiting_members_,
             .released_members = released_members_,
             .rejected_spawns = rejected_spawns_,
@@ -536,11 +522,21 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
     hasher.add(combat_random_.state());
 }
 
-const CrushProfile& SimulationWorld::crush_profile_of(const std::size_t index) const noexcept
+const CrushProfile& SimulationWorld::crush_profile_in(const ComponentPool<CrushColumns>& pool, const std::uint32_t slot) noexcept
 {
     static constexpr CrushProfile none{};
-    const auto* profile = crush_.find(slot_of(index), &CrushColumns::profiles);
+    const auto* profile = pool.find(slot, &CrushColumns::profiles);
     return profile != nullptr ? *profile : none;
+}
+
+const CrushProfile& SimulationWorld::crush_profile_of(const std::size_t index) const noexcept
+{
+    return crush_profile_in(crush_, slot_of(index));
+}
+
+void SimulationWorld::run_contact()
+{
+    contact_.run(view_of<ContactSystem::View>(), static_cast<float>(tick_seconds_));
 }
 
 bool SimulationWorld::turning_as_clips(const std::size_t index) const noexcept
