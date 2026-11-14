@@ -55,9 +55,9 @@ void SimulationWorld::apply(const SimCommand& command)
         }
         if (command.kind == SimCommandKind::move || command.kind == SimCommandKind::stop || command.kind == SimCommandKind::attack)
         {
-            command_serials_[*dense] = command.serial;
-            standing_orders_[*dense].kind = StandingOrder::none;
-            standing_orders_[*dense].engaging = false;
+            orders_.command_serials[*dense] = command.serial;
+            orders_.standing[*dense].kind = StandingOrder::none;
+            orders_.standing[*dense].engaging = false;
         }
         switch (command.kind)
         {
@@ -67,18 +67,18 @@ void SimulationWorld::apply(const SimCommand& command)
         case SimCommandKind::guard:
             break;
         case SimCommandKind::set_invulnerable:
-            combat_[*dense].invulnerable = command.flag;
+            combat_.states[*dense].invulnerable = command.flag;
             break;
         case SimCommandKind::set_cannot_be_killed:
-            combat_[*dense].cannot_be_killed = command.flag;
+            combat_.states[*dense].cannot_be_killed = command.flag;
             break;
         case SimCommandKind::suspend_locomotor:
-            locomotor_suspended_[*dense] = command.flag ? 1U : 0U;
+            locomotor_.suspended[*dense] = command.flag ? 1U : 0U;
             break;
         case SimCommandKind::damage:
             // Damage only entities that can die (structures without health stay); removal is the
             // combat layer's, as for shots.
-            if (combat_[*dense].profile.health > 0.0F && std::isfinite(command.amount))
+            if (combat_.states[*dense].profile.health > 0.0F && std::isfinite(command.amount))
             {
                 (void)wound(*dense, command.amount);
             }
@@ -92,48 +92,48 @@ void SimulationWorld::apply(const SimCommand& command)
             teleport(*dense, command.target, command.heading);
             break;
         case SimCommandKind::move:
-            combat_[*dense].target = {};
-            combat_[*dense].ordered = false;
-            speed_limits_[*dense] = 0.0F;
-            group_ids_[*dense] = 0;
-            if (max_speeds_[*dense] > 0.0F)
+            combat_.states[*dense].target = {};
+            combat_.states[*dense].ordered = false;
+            locomotor_.speed_limits[*dense] = 0.0F;
+            group_.ids[*dense] = 0;
+            if (locomotor_.max_speeds[*dense] > 0.0F)
             {
                 plan_move(*dense, command.target);
             }
             break;
         case SimCommandKind::stop:
-            speed_limits_[*dense] = 0.0F;
-            group_ids_[*dense] = 0;
-            move_targets_[*dense].reset();
-            paths_[*dense].clear();
-            combat_[*dense].target = {};
-            combat_[*dense].ordered = false;
+            locomotor_.speed_limits[*dense] = 0.0F;
+            group_.ids[*dense] = 0;
+            route_.move_targets[*dense].reset();
+            route_.paths[*dense].clear();
+            combat_.states[*dense].target = {};
+            combat_.states[*dense].ordered = false;
             // A ground unit that brakes (MovementProfile::deceleration) coasts to a stop straight ahead
             // over its braking distance instead of halting at once (a walk played as clips walks on to
             // its stride's next part and plays its stop there: walk_straight).
-            if (const auto speed = drive_speeds_[*dense];
-                follows_ground_[*dense] != 0 && movements_[*dense].deceleration > 0.0F && movements_[*dense].walk_stop_parts == 0 && speed > 0.0F && max_speeds_[*dense] > 0.0F)
+            if (const auto speed = locomotor_.drive_speeds[*dense]; ground_mover_.follows_ground[*dense] != 0 && locomotor_.movements[*dense].deceleration > 0.0F &&
+                                                                    locomotor_.movements[*dense].walk_stop_parts == 0 && speed > 0.0F && locomotor_.max_speeds[*dense] > 0.0F)
             {
-                const auto distance = speed * speed / (2.0F * movements_[*dense].deceleration);
-                const auto& here = positions_[*dense];
-                plan_move(*dense, {here.x + std::cos(headings_[*dense]) * distance, here.y + std::sin(headings_[*dense]) * distance, here.z});
+                const auto distance = speed * speed / (2.0F * locomotor_.movements[*dense].deceleration);
+                const auto& here = placement_.positions[*dense];
+                plan_move(*dense, {here.x + std::cos(placement_.headings[*dense]) * distance, here.y + std::sin(placement_.headings[*dense]) * distance, here.z});
             }
             break;
         case SimCommandKind::attack:
         {
             const auto victim = dense_index(command.target_entity);
-            auto& combat = combat_[*dense];
+            auto& combat = combat_.states[*dense];
             if (!victim || !damageable(*victim))
             {
                 ++stale_references_;
                 break;
             }
-            if (!combat.profile.weapons.empty() && *victim != *dense && hostility_.hostile(owners_[*dense], owners_[*victim]))
+            if (!combat.profile.weapons.empty() && *victim != *dense && hostility_.hostile(identity_.owners[*dense], identity_.owners[*victim]))
             {
                 combat.target = command.target_entity;
                 combat.ordered = true;
-                speed_limits_[*dense] = 0.0F;
-                group_ids_[*dense] = 0;
+                locomotor_.speed_limits[*dense] = 0.0F;
+                group_.ids[*dense] = 0;
                 combat.chase_timer = 0;
             }
             break;
@@ -147,10 +147,10 @@ void SimulationWorld::apply(const SimCommand& command)
                 ++stale_references_;
                 break;
             }
-            stances_[*dense] = command.stance;
-            if (command.stance == Stance::hold_fire && !combat_[*dense].ordered)
+            combat_.stances[*dense] = command.stance;
+            if (command.stance == Stance::hold_fire && !combat_.states[*dense].ordered)
             {
-                combat_[*dense].target = {};
+                combat_.states[*dense].target = {};
             }
             break;
         }
@@ -166,49 +166,50 @@ void SimulationWorld::run_behavior()
     // Standing orders scan with the spatial grid; built here only in ticks where one scans (the
     // grid of the last tick's combat names entities by dense indices that spawns and removals since
     // then have shifted).
-    const bool scans = std::ranges::any_of(standing_orders_,
+    const bool scans = std::ranges::any_of(orders_.standing,
                                            [](const StandingOrderState& order)
                                            {
                                                return order.kind != StandingOrder::none && !order.engaging && order.scan_timer == 0;
                                            });
     if (scans)
     {
-        grid_.build(positions_, grid_cell_size);
+        grid_.build(placement_.positions, grid_cell_size);
     }
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
-        intents_[index] = {};
+        steering_.intents[index] = {};
         run_standing_order(index);
-        if (min_speeds_[index] > 0.0F)
+        if (flight_.min_speeds[index] > 0.0F)
         {
             plan_flight(index, dt);
         }
         else
         {
-            if (combat_[index].ordered)
+            if (combat_.states[index].ordered)
             {
                 pursue_ordered_target(index);
             }
             // Standing body-aimers turn to face their target (ordered or picked on their own), and so
             // do units whose limited turret cannot reach it (unless their turret does not turn them).
-            if (!move_targets_[index])
+            if (!route_.move_targets[index])
             {
                 if (const auto victim = attack_victim(index))
                 {
-                    const auto& turret = combat_[index].profile.turret;
-                    const auto& to = positions_[*victim];
-                    const bool beyond_turret = turret && turret->turns_body && turret->yaw_limit < pi &&
-                                               std::fabs(wrap_angle(std::atan2(to.y - positions_[index].y, to.x - positions_[index].x) - headings_[index])) > turret->yaw_limit;
-                    if (aims_with_body_[index] != 0 || beyond_turret)
+                    const auto& turret = combat_.states[index].profile.turret;
+                    const auto& to = placement_.positions[*victim];
+                    const bool beyond_turret =
+                        turret && turret->turns_body && turret->yaw_limit < pi &&
+                        std::fabs(wrap_angle(std::atan2(to.y - placement_.positions[index].y, to.x - placement_.positions[index].x) - placement_.headings[index])) > turret->yaw_limit;
+                    if (combat_.aims_with_body[index] != 0 || beyond_turret)
                     {
-                        intents_[index].point = to;
+                        steering_.intents[index].point = to;
                     }
-                    else if (combat_[index].ordered && follows_ground_[index] == 0 && !ground_.valid())
+                    else if (combat_.states[index].ordered && ground_mover_.follows_ground[index] == 0 && !ground_.valid())
                     {
                         // An ordered space ship turns in place toward its target's nearest live
                         // hardpoint; an idle one keeps its heading (recorded in the FoC debug build:
                         // EaW-Revised S-22 to S-27, docs/compatibility-research.md).
-                        intents_[index].point = aim_point(*victim, aim_hardpoint(*victim, positions_[index]));
+                        steering_.intents[index].point = aim_point(*victim, aim_hardpoint(*victim, placement_.positions[index]));
                     }
                 }
             }
@@ -235,9 +236,9 @@ void SimulationWorld::apply_standing_order(const SimCommand& command)
             ++stale_references_;
             continue;
         }
-        auto& order = standing_orders_[*dense];
-        auto& combat = combat_[*dense];
-        command_serials_[*dense] = command.serial;
+        auto& order = orders_.standing[*dense];
+        auto& combat = combat_.states[*dense];
+        orders_.command_serials[*dense] = command.serial;
         combat.target = {};
         combat.ordered = false;
         order.kind = attack_move ? StandingOrder::attack_move : StandingOrder::guard;
@@ -248,19 +249,19 @@ void SimulationWorld::apply_standing_order(const SimCommand& command)
         {
             // The member's formation slot, where the formation move sent it (immobile members keep
             // the ordered point).
-            if (move_targets_[*dense])
+            if (route_.move_targets[*dense])
             {
-                order.point = *move_targets_[*dense];
+                order.point = *route_.move_targets[*dense];
             }
             continue;
         }
-        speed_limits_[*dense] = 0.0F;
-        group_ids_[*dense] = 0;
+        locomotor_.speed_limits[*dense] = 0.0F;
+        group_.ids[*dense] = 0;
         if (const auto anchor = command.target_entity.valid() ? dense_index(command.target_entity) : std::optional<std::size_t>(); anchor)
         {
-            order.point = positions_[*anchor];
+            order.point = placement_.positions[*anchor];
         }
-        if (max_speeds_[*dense] > 0.0F)
+        if (locomotor_.max_speeds[*dense] > 0.0F)
         {
             plan_move(*dense, order.point);
         }
@@ -272,39 +273,39 @@ void SimulationWorld::teleport(const std::size_t index, const Vector3& point, co
     // A placed obstacle's footprint moves with it.
     stamp_footprint(index, false);
     auto position = point;
-    if (follows_ground_[index] != 0 && ground_.valid())
+    if (ground_mover_.follows_ground[index] != 0 && ground_.valid())
     {
         position.z = ground_.surface_height(position.x, position.y);
     }
-    if (auto& footprint = footprints_[index])
+    if (auto& footprint = footprint_.shapes[index])
     {
         // The footprint keeps its place relative to the entity: its offset turns with the heading.
-        const float turn = heading ? *heading - headings_[index] : 0.0F;
-        const float offset_x = footprint->center.x - positions_[index].x;
-        const float offset_y = footprint->center.y - positions_[index].y;
+        const float turn = heading ? *heading - placement_.headings[index] : 0.0F;
+        const float offset_x = footprint->center.x - placement_.positions[index].x;
+        const float offset_y = footprint->center.y - placement_.positions[index].y;
         footprint->center.x = position.x + offset_x * std::cos(turn) - offset_y * std::sin(turn);
         footprint->center.y = position.y + offset_x * std::sin(turn) + offset_y * std::cos(turn);
         footprint->heading += turn;
     }
-    positions_[index] = position;
+    placement_.positions[index] = position;
     if (heading)
     {
-        headings_[index] = *heading;
+        placement_.headings[index] = *heading;
     }
-    move_targets_[index].reset();
-    paths_[index].clear();
-    path_pending_[index] = 0;
-    speed_limits_[index] = 0.0F;
-    group_ids_[index] = 0;
-    loiter_points_[index].reset();
+    route_.move_targets[index].reset();
+    route_.paths[index].clear();
+    route_.pending[index] = 0;
+    locomotor_.speed_limits[index] = 0.0F;
+    group_.ids[index] = 0;
+    route_.loiter_points[index].reset();
     stamp_footprint(index, true);
 }
 
 void SimulationWorld::disengage(const std::size_t index)
 {
-    combat_[index].target = {};
-    combat_[index].ordered = false;
-    standing_orders_[index].engaging = false;
+    combat_.states[index].target = {};
+    combat_.states[index].ordered = false;
+    orders_.standing[index].engaging = false;
 }
 
 // Attack-move and guard (engine semantics; the original's are unmeasured). Both scan for hostiles
@@ -314,7 +315,7 @@ void SimulationWorld::disengage(const std::size_t index)
 // attack-move ends once it arrives with no engagement; a guard ends when its object dies.
 void SimulationWorld::run_standing_order(const std::size_t index)
 {
-    auto& order = standing_orders_[index];
+    auto& order = orders_.standing[index];
     if (order.kind == StandingOrder::none)
     {
         return;
@@ -323,7 +324,7 @@ void SimulationWorld::run_standing_order(const std::size_t index)
     {
         if (const auto followed = dense_index(order.entity))
         {
-            order.point = positions_[*followed];
+            order.point = placement_.positions[*followed];
         }
         else
         {
@@ -336,23 +337,23 @@ void SimulationWorld::run_standing_order(const std::size_t index)
             return;
         }
     }
-    auto& combat = combat_[index];
+    auto& combat = combat_.states[index];
     const float range = combat.profile.range();
     const bool guard = order.kind == StandingOrder::guard;
     const float guard_radius = std::max(range, minimum_guard_radius);
-    const bool mobile = max_speeds_[index] > 0.0F;
+    const bool mobile = locomotor_.max_speeds[index] > 0.0F;
     if (order.engaging)
     {
         const auto victim = combat.ordered ? attack_victim(index) : std::nullopt;
         const auto& leash_center = guard ? order.point : order.engage_origin;
         const float leash = guard && combat.profile.guard_chase_range > 0.0F ? combat.profile.guard_chase_range : std::max(range * leash_range_factor, guard ? guard_radius : 0.0F);
-        if (victim && distance_xy(positions_[*victim], leash_center) <= leash)
+        if (victim && distance_xy(placement_.positions[*victim], leash_center) <= leash)
         {
             return;
         }
         disengage(index);
         // Resume: back on the way, or back to the anchor when out of the guard's reach.
-        if (mobile && (!guard || distance_xy(positions_[index], order.point) > guard_radius * 0.5F))
+        if (mobile && (!guard || distance_xy(placement_.positions[index], order.point) > guard_radius * 0.5F))
         {
             plan_move(index, order.point);
         }
@@ -367,7 +368,7 @@ void SimulationWorld::run_standing_order(const std::size_t index)
         else
         {
             order.scan_timer = retarget_interval;
-            const auto& center = guard ? order.point : positions_[index];
+            const auto& center = guard ? order.point : placement_.positions[index];
             const float response = combat.profile.attack_move_response_range;
             const float reach = guard ? guard_radius : (response > 0.0F ? response : range * acquire_range_factor);
             const auto best = choose_target(index, center, reach,
@@ -377,13 +378,13 @@ void SimulationWorld::run_standing_order(const std::size_t index)
                                             });
             if (best)
             {
-                combat.target = ids_[*best];
+                combat.target = identity_.ids[*best];
                 combat.ordered = true;
                 combat.chase_timer = 0;
-                speed_limits_[index] = 0.0F;
-                group_ids_[index] = 0;
+                locomotor_.speed_limits[index] = 0.0F;
+                group_.ids[index] = 0;
                 order.engaging = true;
-                order.engage_origin = positions_[index];
+                order.engage_origin = placement_.positions[index];
                 return;
             }
         }
@@ -395,20 +396,21 @@ void SimulationWorld::run_standing_order(const std::size_t index)
     if (guard)
     {
         // Back toward the anchor once out of its reach; a moving anchor is followed.
-        if (distance_xy(positions_[index], order.point) > guard_radius * 0.5F && (!move_targets_[index] || distance_xy(*move_targets_[index], order.point) > follow_tolerance) && order.scan_timer == 0)
+        if (distance_xy(placement_.positions[index], order.point) > guard_radius * 0.5F && (!route_.move_targets[index] || distance_xy(*route_.move_targets[index], order.point) > follow_tolerance) &&
+            order.scan_timer == 0)
         {
             plan_move(index, order.point);
         }
         return;
     }
-    if (order.entity.valid() && (!move_targets_[index] || distance_xy(*move_targets_[index], order.point) > follow_tolerance) && order.scan_timer == 0)
+    if (order.entity.valid() && (!route_.move_targets[index] || distance_xy(*route_.move_targets[index], order.point) > follow_tolerance) && order.scan_timer == 0)
     {
         plan_move(index, order.point);
         return;
     }
     // Arrived with nothing to fight (at the point, or within reach of the object): the attack-move
     // is done.
-    if (!move_targets_[index] && path_pending_[index] == 0 && (!order.entity.valid() || distance_xy(positions_[index], order.point) <= std::max(follow_tolerance, range)))
+    if (!route_.move_targets[index] && route_.pending[index] == 0 && (!order.entity.valid() || distance_xy(placement_.positions[index], order.point) <= std::max(follow_tolerance, range)))
     {
         order.kind = StandingOrder::none;
     }
@@ -416,13 +418,13 @@ void SimulationWorld::run_standing_order(const std::size_t index)
 
 std::optional<std::size_t> SimulationWorld::attack_victim(const std::size_t index) const noexcept
 {
-    const auto& combat = combat_[index];
+    const auto& combat = combat_.states[index];
     if (!combat.target.valid())
     {
         return std::nullopt;
     }
     const auto victim = dense_index(combat.target);
-    if (!victim || !damageable(*victim) || !hostility_.hostile(owners_[index], owners_[*victim]))
+    if (!victim || !damageable(*victim) || !hostility_.hostile(identity_.owners[index], identity_.owners[*victim]))
     {
         return std::nullopt;
     }
@@ -433,26 +435,27 @@ std::optional<std::size_t> SimulationWorld::attack_victim(const std::size_t inde
 // replans every chase_interval ticks while the target moves.
 void SimulationWorld::pursue_ordered_target(const std::size_t index)
 {
-    auto& combat = combat_[index];
+    auto& combat = combat_.states[index];
     const auto victim = attack_victim(index);
     if (!victim)
     {
         // Combat drops the order this tick.
         return;
     }
-    if (distance_xy(positions_[index], positions_[*victim]) > combat.profile.range())
+    if (distance_xy(placement_.positions[index], placement_.positions[*victim]) > combat.profile.range())
     {
-        if (max_speeds_[index] > 0.0F && (combat.chase_timer == 0 || !move_targets_[index]))
+        if (locomotor_.max_speeds[index] > 0.0F && (combat.chase_timer == 0 || !route_.move_targets[index]))
         {
             // Flyers keep their altitude; ground units take theirs from the surface anyway.
-            plan_move(index, {positions_[*victim].x, positions_[*victim].y, follows_ground_[index] != 0 ? positions_[*victim].z : positions_[index].z});
+            plan_move(index,
+                      {placement_.positions[*victim].x, placement_.positions[*victim].y, ground_mover_.follows_ground[index] != 0 ? placement_.positions[*victim].z : placement_.positions[index].z});
             combat.chase_timer = chase_interval;
         }
     }
-    else if (move_targets_[index])
+    else if (route_.move_targets[index])
     {
-        move_targets_[index].reset();
-        paths_[index].clear();
+        route_.move_targets[index].reset();
+        route_.paths[index].clear();
     }
     if (combat.chase_timer > 0)
     {
@@ -475,65 +478,65 @@ void SimulationWorld::pursue_ordered_target(const std::size_t index)
 // engine choices.
 void SimulationWorld::plan_flight(const std::size_t index, const float dt)
 {
-    const auto& position = positions_[index];
-    auto& intent = intents_[index];
-    if (looping_[index] != 0)
+    const auto& position = placement_.positions[index];
+    auto& intent = steering_.intents[index];
+    if (flight_.looping[index] != 0)
     {
         intent.loop = true;
         return;
     }
-    const auto& combat = combat_[index];
-    const auto plane = cruise_heights_[index];
+    const auto& combat = combat_.states[index];
+    const auto plane = flight_.cruise_heights[index];
     const auto choose = [&]
     {
-        if (combat.ordered || stances_[index] == Stance::aggressive)
+        if (combat.ordered || combat_.stances[index] == Stance::aggressive)
         {
             if (const auto victim = attack_victim(index))
             {
-                const auto& there = positions_[*victim];
-                if (min_speeds_[*victim] > 0.0F)
+                const auto& there = placement_.positions[*victim];
+                if (flight_.min_speeds[*victim] > 0.0F)
                 {
                     // Each flyer weaves on its own phase (from its slot), so a fight spreads vertically.
                     const auto seconds = static_cast<float>(static_cast<double>(tick_) * tick_seconds_);
-                    const auto phase = static_cast<float>(ids_[index].index % 16U) * (pi / 8.0F);
+                    const auto phase = static_cast<float>(identity_.ids[index].index % 16U) * (pi / 8.0F);
                     const auto weave = dogfight_weave * std::sin(seconds * (two_pi / dogfight_weave_seconds) + phase);
                     intent.point = Vector3{there.x, there.y, std::clamp(there.z + weave, plane - dogfight_band, plane + dogfight_band)};
                     return;
                 }
-                const auto pass = std::max(combat.profile.range() / 3.0F, (radii_[index] + radii_[*victim]) * 2.0F);
+                const auto pass = std::max(combat.profile.range() / 3.0F, (placement_.radii[index] + placement_.radii[*victim]) * 2.0F);
                 intent.point = Vector3{there.x, there.y, plane};
                 intent.hold_heading = distance_xy(position, there) < pass;
                 return;
             }
         }
-        auto& target = move_targets_[index];
+        auto& target = route_.move_targets[index];
         if (target)
         {
             intent.point = Vector3{target->x, target->y, plane};
             if (distance_xy(position, *target) <= travel_speed(index) * dt * 3.0F)
             {
-                loiter_points_[index] = *target;
+                route_.loiter_points[index] = *target;
                 target.reset();
-                speed_limits_[index] = 0.0F;
-                group_ids_[index] = 0;
+                locomotor_.speed_limits[index] = 0.0F;
+                group_.ids[index] = 0;
             }
             return;
         }
-        if (!loiter_points_[index])
+        if (!route_.loiter_points[index])
         {
-            loiter_points_[index] = position;
+            route_.loiter_points[index] = position;
         }
-        intent.point = Vector3{loiter_points_[index]->x, loiter_points_[index]->y, plane};
+        intent.point = Vector3{route_.loiter_points[index]->x, route_.loiter_points[index]->y, plane};
     };
     choose();
-    if (intent.hold_heading || !intent.point || turn_rates_[index] <= 0.0F)
+    if (intent.hold_heading || !intent.point || locomotor_.turn_rates[index] <= 0.0F)
     {
         return;
     }
     const auto dx = intent.point->x - position.x;
     const auto dy = intent.point->y - position.y;
-    const auto turn_circle = travel_speed(index) / turn_rates_[index];
-    if (std::hypot(dx, dy) > 4.0F * turn_circle && std::fabs(wrap_angle(std::atan2(dy, dx) - headings_[index])) > flight_reversal_angle)
+    const auto turn_circle = travel_speed(index) / locomotor_.turn_rates[index];
+    if (std::hypot(dx, dy) > 4.0F * turn_circle && std::fabs(wrap_angle(std::atan2(dy, dx) - placement_.headings[index])) > flight_reversal_angle)
     {
         intent.loop = true;
     }

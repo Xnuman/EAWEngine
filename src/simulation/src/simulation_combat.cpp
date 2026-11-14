@@ -34,7 +34,7 @@ std::uint32_t SimulationWorld::ticks_for(const float seconds) const noexcept
 
 bool SimulationWorld::damageable(const std::size_t index) const noexcept
 {
-    return combat_[index].profile.health > 0.0F && combat_[index].health > 0.0F;
+    return combat_.states[index].profile.health > 0.0F && combat_.states[index].health > 0.0F;
 }
 
 // Shields refresh in steps: Shield_Refresh_Rate points once every refresh interval, each unit on a
@@ -44,10 +44,10 @@ bool SimulationWorld::damageable(const std::size_t index) const noexcept
 // choice), and keeps the refresh a function of the tick, so it adds no state to hash.
 bool SimulationWorld::shield_refresh_due(const std::size_t index) const noexcept
 {
-    const auto interval = static_cast<std::uint64_t>(std::max(1.0, std::round(static_cast<double>(combat_[index].profile.shield_refresh_seconds) / tick_seconds_)));
+    const auto interval = static_cast<std::uint64_t>(std::max(1.0, std::round(static_cast<double>(combat_.states[index].profile.shield_refresh_seconds) / tick_seconds_)));
     // A multiplicative hash (Knuth's) of the id spreads consecutive ids over the interval.
     constexpr std::uint64_t phase_multiplier = 2654435761U;
-    const auto phase = (static_cast<std::uint64_t>(ids_[index].index) * phase_multiplier) % interval;
+    const auto phase = (static_cast<std::uint64_t>(identity_.ids[index].index) * phase_multiplier) % interval;
     return (tick_ + phase) % interval == 0;
 }
 
@@ -57,20 +57,20 @@ bool SimulationWorld::shield_refresh_due(const std::size_t index) const noexcept
 void SimulationWorld::run_combat()
 {
     const auto dt = static_cast<float>(tick_seconds_);
-    grid_.build(positions_, grid_cell_size);
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    grid_.build(placement_.positions, grid_cell_size);
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
-        auto& combat = combat_[index];
+        auto& combat = combat_.states[index];
         if (combat.shield < combat.profile.shield && combat.health > 0.0F && combat.profile.shield_refresh > 0.0F && keeps(index, HardpointProfile::Kind::shield_generator) &&
             shield_refresh_due(index))
         {
             combat.shield = std::min(combat.profile.shield, combat.shield + combat.profile.shield_refresh);
         }
     }
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         // A spinning (dying) entity no longer fights.
-        if (!combat_[index].profile.weapons.empty() && combat_[index].health > 0.0F)
+        if (!combat_.states[index].profile.weapons.empty() && combat_.states[index].health > 0.0F)
         {
             update_target(index);
             aim_turret(index, dt);
@@ -83,7 +83,7 @@ void SimulationWorld::run_combat()
 
 void SimulationWorld::aim_turret(const std::size_t index, const float dt)
 {
-    auto& combat = combat_[index];
+    auto& combat = combat_.states[index];
     if (!combat.profile.turret)
     {
         return;
@@ -92,8 +92,8 @@ void SimulationWorld::aim_turret(const std::size_t index, const float dt)
     float wanted = 0.0F;
     if (const auto victim = turret_victim(index))
     {
-        const auto& to = positions_[*victim];
-        wanted = std::clamp(wrap_angle(std::atan2(to.y - positions_[index].y, to.x - positions_[index].x) - headings_[index]), -turret.yaw_limit, turret.yaw_limit);
+        const auto& to = placement_.positions[*victim];
+        wanted = std::clamp(wrap_angle(std::atan2(to.y - placement_.positions[index].y, to.x - placement_.positions[index].x) - placement_.headings[index]), -turret.yaw_limit, turret.yaw_limit);
     }
     const auto step = turret.rate > 0.0F ? turret.rate * dt : pi;
     combat.turret_yaw = wrap_angle(combat.turret_yaw + std::clamp(wrap_angle(wanted - combat.turret_yaw), -step, step));
@@ -101,7 +101,7 @@ void SimulationWorld::aim_turret(const std::size_t index, const float dt)
 
 std::optional<std::size_t> SimulationWorld::turret_victim(const std::size_t index)
 {
-    const auto& combat = combat_[index];
+    const auto& combat = combat_.states[index];
     const auto target = attack_victim(index);
     for (std::size_t slot = 0; slot < combat.profile.weapons.size(); ++slot)
     {
@@ -123,11 +123,11 @@ std::optional<std::size_t> SimulationWorld::turret_victim(const std::size_t inde
         {
             return target;
         }
-        if ((combat.ordered && target) || stances_[index] == Stance::hold_fire)
+        if ((combat.ordered && target) || combat_.stances[index] == Stance::hold_fire)
         {
             return target;
         }
-        if (const auto nearest = choose_target(index, positions_[index], weapon.range,
+        if (const auto nearest = choose_target(index, placement_.positions[index], weapon.range,
                                                [&](const std::size_t candidate)
                                                {
                                                    return in_reach(index, weapon, candidate);
@@ -142,18 +142,18 @@ std::optional<std::size_t> SimulationWorld::turret_victim(const std::size_t inde
 
 bool SimulationWorld::in_reach(const std::size_t index, const WeaponProfile& weapon, const std::size_t victim) const noexcept
 {
-    const auto distance = distance_xy(positions_[index], positions_[victim]);
-    return distance <= weapon.range && distance >= weapon.min_range && (weapon.excluded_categories & combat_[victim].profile.categories) == 0;
+    const auto distance = distance_xy(placement_.positions[index], placement_.positions[victim]);
+    return distance <= weapon.range && distance >= weapon.min_range && (weapon.excluded_categories & combat_.states[victim].profile.categories) == 0;
 }
 
 LocalPoint SimulationWorld::weapon_mount(const std::size_t index, const WeaponProfile& weapon, const LocalPoint& mount) const noexcept
 {
-    const auto& turret = combat_[index].profile.turret;
+    const auto& turret = combat_.states[index].profile.turret;
     if (!weapon.on_turret || !turret)
     {
         return mount;
     }
-    const auto yaw = combat_[index].turret_yaw;
+    const auto yaw = combat_.states[index].turret_yaw;
     const auto c = std::cos(yaw);
     const auto s = std::sin(yaw);
     const auto forward = mount.forward - turret->pivot.forward;
@@ -163,27 +163,27 @@ LocalPoint SimulationWorld::weapon_mount(const std::size_t index, const WeaponPr
 
 bool SimulationWorld::turret_aimed(const std::size_t index, const std::size_t victim) const noexcept
 {
-    const auto& combat = combat_[index];
+    const auto& combat = combat_.states[index];
     if (!combat.profile.turret)
     {
         return true;
     }
-    const auto& to = positions_[victim];
-    const auto bearing = std::atan2(to.y - positions_[index].y, to.x - positions_[index].x);
-    return std::fabs(wrap_angle(bearing - (headings_[index] + combat.turret_yaw))) <= turret_aim_tolerance;
+    const auto& to = placement_.positions[victim];
+    const auto bearing = std::atan2(to.y - placement_.positions[index].y, to.x - placement_.positions[index].x);
+    return std::fabs(wrap_angle(bearing - (placement_.headings[index] + combat.turret_yaw))) <= turret_aim_tolerance;
 }
 
 void SimulationWorld::update_target(const std::size_t index)
 {
-    auto& combat = combat_[index];
+    auto& combat = combat_.states[index];
     const auto range = combat.profile.range();
     if (combat.target.valid())
     {
         const auto victim = dense_index(combat.target);
-        bool keep = victim && damageable(*victim) && combat_[*victim].profile.targetable && hostility_.hostile(owners_[index], owners_[*victim]);
+        bool keep = victim && damageable(*victim) && combat_.states[*victim].profile.targetable && hostility_.hostile(identity_.owners[index], identity_.owners[*victim]);
         if (keep && !combat.ordered)
         {
-            keep = distance_xy(positions_[index], positions_[*victim]) <= range;
+            keep = distance_xy(placement_.positions[index], placement_.positions[*victim]) <= range;
         }
         if (!keep)
         {
@@ -194,19 +194,19 @@ void SimulationWorld::update_target(const std::size_t index)
         else if (!combat.ordered && combat.profile.stickiness_seconds > 0.0F && ++combat.target_ticks >= ticks_for(combat.profile.stickiness_seconds))
         {
             combat.target_ticks = 0;
-            if (const auto best = choose_target(index, positions_[index], range,
+            if (const auto best = choose_target(index, placement_.positions[index], range,
                                                 [&](const std::size_t candidate)
                                                 {
                                                     return engages(index, candidate);
                                                 }))
             {
-                combat.target = ids_[*best];
+                combat.target = identity_.ids[*best];
             }
         }
     }
     // Ordered targets are kept (behavior chases them); automatic ones are searched every few ticks
     // unless the stance forbids picking targets.
-    if (combat.target.valid() || stances_[index] == Stance::hold_fire)
+    if (combat.target.valid() || combat_.stances[index] == Stance::hold_fire)
     {
         return;
     }
@@ -216,14 +216,14 @@ void SimulationWorld::update_target(const std::size_t index)
         return;
     }
     combat.retarget_timer = retarget_interval;
-    const auto best = choose_target(index, positions_[index], range,
+    const auto best = choose_target(index, placement_.positions[index], range,
                                     [&](const std::size_t candidate)
                                     {
                                         return engages(index, candidate);
                                     });
     if (best)
     {
-        combat.target = ids_[*best];
+        combat.target = identity_.ids[*best];
         combat.target_ticks = 0;
     }
 }
@@ -234,7 +234,7 @@ void SimulationWorld::update_target(const std::size_t index)
 // shots are spent.
 void SimulationWorld::run_weapon(const std::size_t index)
 {
-    auto& combat = combat_[index];
+    auto& combat = combat_.states[index];
     const auto entity_target = combat.target.valid() ? dense_index(combat.target) : std::nullopt;
     for (std::size_t slot = 0; slot < combat.profile.weapons.size(); ++slot)
     {
@@ -254,7 +254,7 @@ void SimulationWorld::run_weapon(const std::size_t index)
             --state.pulse_timer;
         }
         // Body-aimers hold fire while moving (a burst resumes once they stand again).
-        if (aims_with_body_[index] != 0 && move_targets_[index])
+        if (combat_.aims_with_body[index] != 0 && route_.move_targets[index])
         {
             continue;
         }
@@ -272,11 +272,11 @@ void SimulationWorld::run_weapon(const std::size_t index)
                 {
                     return false;
                 }
-                if (aims_with_body_[index] != 0)
+                if (combat_.aims_with_body[index] != 0)
                 {
-                    const auto& to = positions_[victim];
-                    const auto bearing = std::atan2(to.y - positions_[index].y, to.x - positions_[index].x);
-                    if (std::fabs(wrap_angle(bearing - headings_[index])) > body_aim_tolerance)
+                    const auto& to = placement_.positions[victim];
+                    const auto bearing = std::atan2(to.y - placement_.positions[index].y, to.x - placement_.positions[index].x);
+                    if (std::fabs(wrap_angle(bearing - placement_.headings[index])) > body_aim_tolerance)
                     {
                         return false;
                     }
@@ -285,18 +285,18 @@ void SimulationWorld::run_weapon(const std::size_t index)
                 {
                     return true;
                 }
-                const auto& to = positions_[victim];
+                const auto& to = placement_.positions[victim];
                 const auto bearing = std::atan2(to.y - mount.y, to.x - mount.x);
-                return std::fabs(wrap_angle(bearing - (headings_[index] + cone_direction))) <= weapon.cone_half_angle;
+                return std::fabs(wrap_angle(bearing - (placement_.headings[index] + cone_direction))) <= weapon.cone_half_angle;
             };
             std::optional<std::size_t> victim;
             if (entity_target && covers(*entity_target))
             {
                 victim = entity_target;
             }
-            else if ((!combat.ordered || !entity_target) && stances_[index] != Stance::hold_fire)
+            else if ((!combat.ordered || !entity_target) && combat_.stances[index] != Stance::hold_fire)
             {
-                victim = choose_target(index, positions_[index], weapon.range, covers);
+                victim = choose_target(index, placement_.positions[index], weapon.range, covers);
             }
             if (!victim)
             {
@@ -307,7 +307,7 @@ void SimulationWorld::run_weapon(const std::size_t index)
             {
                 continue;
             }
-            state.target = ids_[*victim];
+            state.target = identity_.ids[*victim];
             state.pulses_left = std::max(1U, weapon.pulse_count);
             state.pulse_timer = ticks_for(weapon.appearance_delay_seconds);
             state.cooldown = std::max(1U, ticks_for(weapon.recharge_seconds));
@@ -319,11 +319,11 @@ void SimulationWorld::run_weapon(const std::size_t index)
             state.pulses_left = 0;
             continue;
         }
-        if (aims_with_body_[index] != 0)
+        if (combat_.aims_with_body[index] != 0)
         {
-            const auto& to = positions_[*victim];
-            const auto bearing = std::atan2(to.y - positions_[index].y, to.x - positions_[index].x);
-            if (std::fabs(wrap_angle(bearing - headings_[index])) > body_aim_tolerance)
+            const auto& to = placement_.positions[*victim];
+            const auto bearing = std::atan2(to.y - placement_.positions[index].y, to.x - placement_.positions[index].x);
+            if (std::fabs(wrap_angle(bearing - placement_.headings[index])) > body_aim_tolerance)
             {
                 // Turned away mid-burst: the rest of the burst waits until it faces the victim again.
                 continue;
@@ -349,18 +349,18 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
 {
     ++shots_fired_;
     // The tick being run: the snapshot published at its end carries it as its tick.
-    last_shot_ticks_[shooter] = tick_ + 1U;
+    combat_.last_shot_ticks[shooter] = tick_ + 1U;
     const auto origin = world_point(shooter, mount);
-    shots_.push_back({ids_[shooter], origin, weapon.fire_sound, weapon.launch_effect});
+    shots_.push_back({identity_.ids[shooter], origin, weapon.fire_sound, weapon.launch_effect});
     auto hardpoint = aim_hardpoint(victim, origin);
     if (weapon.random_hardpoints && hardpoint >= 0)
     {
         // Any intact, targetable part, drawn from the combat stream.
         std::vector<std::int32_t> parts;
-        const auto& hardpoints = combat_[victim].profile.hardpoints;
+        const auto& hardpoints = combat_.states[victim].profile.hardpoints;
         for (std::size_t part = 0; part < hardpoints.size(); ++part)
         {
-            if (hardpoints[part].targetable && hardpoints[part].health > 0.0F && combat_[victim].hardpoint_health[part] > 0.0F)
+            if (hardpoints[part].targetable && hardpoints[part].health > 0.0F && combat_.states[victim].hardpoint_health[part] > 0.0F)
             {
                 parts.push_back(static_cast<std::int32_t>(part));
             }
@@ -379,27 +379,27 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
         {
             ++hits_;
             kind = apply_damage(victim, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, hardpoint);
-            struck = ids_[victim];
+            struck = identity_.ids[victim];
         }
-        else if (const auto other = stray_victim(point, owners_[shooter], victim))
+        else if (const auto other = stray_victim(point, identity_.owners[shooter], victim))
         {
             ++hits_;
             kind = apply_damage(*other, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, -1);
-            struck = ids_[*other];
+            struck = identity_.ids[*other];
         }
         const Vector3 delta{point.x - origin.x, point.y - origin.y, point.z - origin.z};
         const auto length = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto direction = length > 0.0F ? Vector3{delta.x / length, delta.y / length, delta.z / length} : Vector3{};
         impacts_.push_back({point, direction, weapon.projectile_visual, kind, struck});
-        area_blast(point, owners_[shooter], weapon.blast, weapon.damage_type, weapon.damages_shield, weapon.damages_health);
+        area_blast(point, identity_.owners[shooter], weapon.blast, weapon.damage_type, weapon.damages_shield, weapon.damages_health);
         return;
     }
     Projectile projectile;
     projectile.position = origin;
     projectile.aim = aim_point(victim, hardpoint);
-    projectile.target = ids_[victim];
+    projectile.target = identity_.ids[victim];
     projectile.target_hardpoint = hardpoint;
-    projectile.owner = owners_[shooter];
+    projectile.owner = identity_.owners[shooter];
     projectile.damage = weapon.damage;
     projectile.damage_type = weapon.damage_type;
     projectile.damages_shield = weapon.damages_shield;
@@ -419,7 +419,7 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
 
 Vector3 SimulationWorld::stray(const WeaponProfile& weapon, const std::size_t victim)
 {
-    const auto categories = combat_[victim].profile.categories;
+    const auto categories = combat_.states[victim].profile.categories;
     for (const auto& entry : weapon.inaccuracy)
     {
         if (entry.categories != all_categories && (entry.categories & categories) == 0)
@@ -447,8 +447,8 @@ bool SimulationWorld::strays_off(const std::size_t victim, const Vector3& stray)
 
 bool SimulationWorld::engages(const std::size_t index, const std::size_t candidate) const noexcept
 {
-    const auto& weapons = combat_[index].profile.weapons;
-    const auto categories = combat_[candidate].profile.categories;
+    const auto& weapons = combat_.states[index].profile.weapons;
+    const auto categories = combat_.states[candidate].profile.categories;
     return weapons.empty() || std::ranges::any_of(weapons,
                                                   [&](const WeaponProfile& weapon)
                                                   {
@@ -459,10 +459,10 @@ bool SimulationWorld::engages(const std::size_t index, const std::size_t candida
 float SimulationWorld::target_size(const std::size_t index) const noexcept
 {
     // The separation footprint, else the obstacle footprint.
-    auto size = radii_[index];
-    if (size <= 0.0F && footprints_[index])
+    auto size = placement_.radii[index];
+    if (size <= 0.0F && footprint_.shapes[index])
     {
-        size = std::max(footprints_[index]->half_length, footprints_[index]->half_width);
+        size = std::max(footprint_.shapes[index]->half_length, footprint_.shapes[index]->half_width);
     }
     return size;
 }
@@ -472,14 +472,14 @@ std::optional<std::size_t> SimulationWorld::stray_victim(const Vector3& point, c
     // shortcut: a scan over every entity per stray shot; use the spatial grid when battles get big.
     std::optional<std::size_t> best;
     float best_distance = 0.0F;
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
-        if (index == target || !combat_[index].profile.collidable || !damageable(index) || !hostility_.hostile(owner, owners_[index]))
+        if (index == target || !combat_.states[index].profile.collidable || !damageable(index) || !hostility_.hostile(owner, identity_.owners[index]))
         {
             continue;
         }
         const auto size = target_size(index);
-        const auto distance = std::hypot(point.x - positions_[index].x, point.y - positions_[index].y);
+        const auto distance = std::hypot(point.x - placement_.positions[index].x, point.y - placement_.positions[index].y);
         if (size > 0.0F && distance <= size && (!best || distance < best_distance))
         {
             best = index;
@@ -491,23 +491,23 @@ std::optional<std::size_t> SimulationWorld::stray_victim(const Vector3& point, c
 
 Vector3 SimulationWorld::world_point(const std::size_t index, const LocalPoint& point) const noexcept
 {
-    const auto heading = headings_[index];
+    const auto heading = placement_.headings[index];
     const auto cos_heading = std::cos(heading);
     const auto sin_heading = std::sin(heading);
-    const auto& position = positions_[index];
+    const auto& position = placement_.positions[index];
     return {position.x + point.forward * cos_heading - point.left * sin_heading, position.y + point.forward * sin_heading + point.left * cos_heading, position.z + point.up};
 }
 
 bool SimulationWorld::hardpoint_alive(const std::size_t index, const std::size_t hardpoint) const noexcept
 {
-    const auto& combat = combat_[index];
+    const auto& combat = combat_.states[index];
     return combat.profile.hardpoints[hardpoint].health <= 0.0F || combat.hardpoint_health[hardpoint] > 0.0F;
 }
 
 bool SimulationWorld::keeps(const std::size_t index, const HardpointProfile::Kind kind) const noexcept
 {
     bool any = false;
-    const auto& hardpoints = combat_[index].profile.hardpoints;
+    const auto& hardpoints = combat_.states[index].profile.hardpoints;
     for (std::size_t hardpoint = 0; hardpoint < hardpoints.size(); ++hardpoint)
     {
         if (hardpoints[hardpoint].kind == kind)
@@ -526,11 +526,11 @@ std::int32_t SimulationWorld::aim_hardpoint(const std::size_t victim, const Vect
 {
     std::int32_t best = -1;
     float best_distance = 0.0F;
-    const auto& hardpoints = combat_[victim].profile.hardpoints;
+    const auto& hardpoints = combat_.states[victim].profile.hardpoints;
     for (std::size_t hardpoint = 0; hardpoint < hardpoints.size(); ++hardpoint)
     {
         // Indestructible parts are not aimed at; destroyed ones no longer are.
-        if (!hardpoints[hardpoint].targetable || hardpoints[hardpoint].health <= 0.0F || combat_[victim].hardpoint_health[hardpoint] <= 0.0F)
+        if (!hardpoints[hardpoint].targetable || hardpoints[hardpoint].health <= 0.0F || combat_.states[victim].hardpoint_health[hardpoint] <= 0.0F)
         {
             continue;
         }
@@ -549,10 +549,10 @@ Vector3 SimulationWorld::aim_point(const std::size_t victim, const std::int32_t 
 {
     if (hardpoint >= 0)
     {
-        return world_point(victim, combat_[victim].profile.hardpoints[static_cast<std::size_t>(hardpoint)].offset);
+        return world_point(victim, combat_.states[victim].profile.hardpoints[static_cast<std::size_t>(hardpoint)].offset);
     }
-    const auto& to = positions_[victim];
-    return {to.x, to.y, to.z + combat_[victim].profile.aim_height};
+    const auto& to = placement_.positions[victim];
+    return {to.x, to.y, to.z + combat_.states[victim].profile.aim_height};
 }
 
 // The hull of an entity with destroyable parts follows them: max health x min(1, S/T + 0.2), where
@@ -564,7 +564,7 @@ constexpr float hull_floor_share = 0.2F;
 
 float SimulationWorld::hull_share_of_parts(const std::size_t index) const noexcept
 {
-    const auto& combat = combat_[index];
+    const auto& combat = combat_.states[index];
     float total = 0.0F;
     float remaining = 0.0F;
     for (std::size_t hardpoint = 0; hardpoint < combat.profile.hardpoints.size(); ++hardpoint)
@@ -580,7 +580,7 @@ float SimulationWorld::hull_share_of_parts(const std::size_t index) const noexce
 
 bool SimulationWorld::parts_all_destroyed(const std::size_t index) const noexcept
 {
-    const auto& combat = combat_[index];
+    const auto& combat = combat_.states[index];
     bool any = false;
     for (std::size_t hardpoint = 0; hardpoint < combat.profile.hardpoints.size(); ++hardpoint)
     {
@@ -605,7 +605,7 @@ bool SimulationWorld::parts_all_destroyed(const std::size_t index) const noexcep
 // (blasts, unaimed shots) reaches the hull directly, an engine choice: that case is not observed.
 ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage, const std::uint16_t damage_type, const bool damages_shield, const bool damages_health, const std::int32_t hardpoint)
 {
-    auto& combat = combat_[victim];
+    auto& combat = combat_.states[victim];
     if (damages_shield && combat.shield > 0.0F)
     {
         const auto modifier = damage_table_.modifier(damage_type, combat.profile.shield_armor_type);
@@ -644,7 +644,8 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
             part = 0.0F;
             ++hardpoints_destroyed_;
             const auto& profile = combat.profile.hardpoints[part_index];
-            hardpoint_deaths_.push_back({ids_[victim], static_cast<std::uint32_t>(part_index), world_point(victim, profile.offset), profile.death_sound, profile.death_effect, profile.type_key});
+            hardpoint_deaths_.push_back(
+                {identity_.ids[victim], static_cast<std::uint32_t>(part_index), world_point(victim, profile.offset), profile.death_sound, profile.death_effect, profile.type_key});
         }
         // The hull follows its parts, and falls with the last of them.
         const auto followed = combat.profile.health * hull_share_of_parts(victim);
@@ -656,7 +657,7 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
 
 float SimulationWorld::wound(const std::size_t index, const float damage)
 {
-    auto& combat = combat_[index];
+    auto& combat = combat_.states[index];
     if (combat.invulnerable || combat.profile.immune || damage <= 0.0F)
     {
         return 0.0F;
@@ -687,12 +688,12 @@ void SimulationWorld::run_projectiles()
             // index, the last one the scan meets; storage order, so the simulation rewrite settles
             // it, proposal F of the 2026-11 review; changing it changes the hash).
             float best = projectile.scan_range;
-            for (std::size_t other = 0; other < ids_.size(); ++other)
+            for (std::size_t other = 0; other < identity_.ids.size(); ++other)
             {
-                const auto& at = positions_[other];
+                const auto& at = placement_.positions[other];
                 const auto distance = std::sqrt((at.x - projectile.position.x) * (at.x - projectile.position.x) + (at.y - projectile.position.y) * (at.y - projectile.position.y) +
                                                 (at.z - projectile.position.z) * (at.z - projectile.position.z));
-                if (damageable(other) && combat_[other].profile.targetable && hostility_.hostile(projectile.owner, owners_[other]) && distance <= best)
+                if (damageable(other) && combat_.states[other].profile.targetable && hostility_.hostile(projectile.owner, identity_.owners[other]) && distance <= best)
                 {
                     victim = other;
                     best = distance;
@@ -700,7 +701,7 @@ void SimulationWorld::run_projectiles()
             }
             if (victim)
             {
-                projectile.target = ids_[*victim];
+                projectile.target = identity_.ids[*victim];
                 projectile.target_hardpoint = -1;
                 projectile.stray = {};
                 projectile.misses = false;
@@ -725,13 +726,13 @@ void SimulationWorld::run_projectiles()
             {
                 ++hits_;
                 const auto kind = apply_damage(*victim, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, projectile.target_hardpoint);
-                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind, ids_[*victim]});
+                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind, identity_.ids[*victim]});
             }
-            else if (const auto other = projectile.misses ? stray_victim(projectile.aim, projectile.owner, victim.value_or(ids_.size())) : std::nullopt)
+            else if (const auto other = projectile.misses ? stray_victim(projectile.aim, projectile.owner, victim.value_or(identity_.ids.size())) : std::nullopt)
             {
                 ++hits_;
                 const auto kind = apply_damage(*other, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, -1);
-                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind, ids_[*other]});
+                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind, identity_.ids[*other]});
             }
             else
             {
@@ -763,14 +764,14 @@ void SimulationWorld::area_blast(const Vector3& point, const std::uint32_t owner
         return;
     }
     // shortcut: a scan over every entity per blast; use the spatial grid when battles get big.
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
-        const bool friendly = owners_[index] == owner;
-        if (!damageable(index) || (!hostility_.hostile(owner, owners_[index]) && !(friendly && blast.friendly_damage > 0.0F)))
+        const bool friendly = identity_.owners[index] == owner;
+        if (!damageable(index) || (!hostility_.hostile(owner, identity_.owners[index]) && !(friendly && blast.friendly_damage > 0.0F)))
         {
             continue;
         }
-        const auto& at = positions_[index];
+        const auto& at = placement_.positions[index];
         const auto distance = std::max(0.0F, std::sqrt((at.x - point.x) * (at.x - point.x) + (at.y - point.y) * (at.y - point.y) + (at.z - point.z) * (at.z - point.z)) - target_size(index));
         if (distance > blast.range)
         {
@@ -789,9 +790,9 @@ void SimulationWorld::area_blast(const Vector3& point, const std::uint32_t owner
 void SimulationWorld::remove_dead()
 {
     // Back to front: swap-removal only moves already-visited entities.
-    for (auto index = ids_.size(); index-- > 0;)
+    for (auto index = identity_.ids.size(); index-- > 0;)
     {
-        auto& combat = combat_[index];
+        auto& combat = combat_.states[index];
         if (combat.profile.health > 0.0F && combat.health <= 0.0F)
         {
             // Spinning away: out of control until the spin ends.
@@ -800,12 +801,12 @@ void SimulationWorld::remove_dead()
                 combat.spin_ticks = std::max(1U, ticks_for(combat.profile.spin_seconds));
                 combat.target = {};
                 combat.ordered = false;
-                move_targets_[index].reset();
-                paths_[index].clear();
-                speed_limits_[index] = 0.0F;
-                group_ids_[index] = 0;
-                standing_orders_[index].kind = StandingOrder::none;
-                spins_.push_back({ids_[index], positions_[index]});
+                route_.move_targets[index].reset();
+                route_.paths[index].clear();
+                locomotor_.speed_limits[index] = 0.0F;
+                group_.ids[index] = 0;
+                orders_.standing[index].kind = StandingOrder::none;
+                spins_.push_back({identity_.ids[index], placement_.positions[index]});
                 continue;
             }
             if (combat.spin_ticks > 1U)
@@ -814,14 +815,14 @@ void SimulationWorld::remove_dead()
                 continue;
             }
             const bool spun = combat.spin_ticks != 0;
-            deaths_.push_back({ids_[index], positions_[index], headings_[index], pitches_[index], visuals_[index], owners_[index],
+            deaths_.push_back({identity_.ids[index], placement_.positions[index], placement_.headings[index], placement_.pitches[index], identity_.visuals[index], identity_.owners[index],
                                spun && combat.profile.spin_effect != 0 ? combat.profile.spin_effect : combat.profile.death_effect, combat.profile.type_key, combat.crushed});
-            const auto position = positions_[index];
-            const auto owner = owners_[index];
-            const auto profile_blast = combat_[index].profile.death_blast;
-            const auto blast_type = combat_[index].profile.death_blast_damage_type;
-            const auto blast_shield = combat_[index].profile.death_blast_damages_shield;
-            const auto blast_health = combat_[index].profile.death_blast_damages_health;
+            const auto position = placement_.positions[index];
+            const auto owner = identity_.owners[index];
+            const auto profile_blast = combat_.states[index].profile.death_blast;
+            const auto blast_type = combat_.states[index].profile.death_blast_damage_type;
+            const auto blast_shield = combat_.states[index].profile.death_blast_damages_shield;
+            const auto blast_health = combat_.states[index].profile.death_blast_damages_health;
             destroy(index);
             ++kills_;
             // Entities it kills die in this pass when they come later in it, else the next tick.

@@ -17,38 +17,38 @@ void SimulationWorld::plan_move(const std::size_t index, const Vector3& target)
 {
     // A walk played as clips given a new destination (not a route planned again to the same one)
     // looks at its first way to it before it turns (steer).
-    if (auto& walk = walk_plans_[index]; (walk.clip == WalkClip::starting || walk.clip == WalkClip::moving) &&
-                                         (!move_targets_[index] || std::hypot(move_targets_[index]->x - target.x, move_targets_[index]->y - target.y) > arrival_distance))
+    if (auto& walk = walk_clips_.plans[index]; (walk.clip == WalkClip::starting || walk.clip == WalkClip::moving) &&
+                                               (!route_.move_targets[index] || std::hypot(route_.move_targets[index]->x - target.x, route_.move_targets[index]->y - target.y) > arrival_distance))
     {
         walk.new_way = true;
     }
-    loiter_points_[index].reset();
-    paths_[index].clear();
-    path_pending_[index] = 0;
-    if (follows_ground_[index] == 0 || passable_types_[index] == 0 || ground_.passability.size() != ground_.heights.size() || !ground_.valid())
+    route_.loiter_points[index].reset();
+    route_.paths[index].clear();
+    route_.pending[index] = 0;
+    if (ground_mover_.follows_ground[index] == 0 || ground_mover_.passable_types[index] == 0 || ground_.passability.size() != ground_.heights.size() || !ground_.valid())
     {
-        move_targets_[index] = target;
+        route_.move_targets[index] = target;
         return;
     }
     // The unit holds still (its target set, so it counts as moving) until the queue plans it.
-    move_targets_[index] = target;
+    route_.move_targets[index] = target;
     const auto serial = next_path_serial_++;
     if (next_path_serial_ == 0)
     {
         next_path_serial_ = 1;
     }
-    path_pending_[index] = serial;
-    path_queue_.push_back({{ids_[index]}, {target}, {serial}, target});
+    route_.pending[index] = serial;
+    path_queue_.push_back({{identity_.ids[index]}, {target}, {serial}, target});
 }
 
 void SimulationWorld::plan_route_now(const std::size_t index, const Vector3& target)
 {
-    const auto& position = positions_[index];
-    const auto planned = pathfinder_.find(ground_, {position.x, position.y}, {target.x, target.y}, passable_types_[index]);
+    const auto& position = placement_.positions[index];
+    const auto planned = pathfinder_.find(ground_, {position.x, position.y}, {target.x, target.y}, ground_mover_.passable_types[index]);
     if (planned.status == PathStatus::unavailable)
     {
-        paths_[index].clear();
-        move_targets_[index] = target;
+        route_.paths[index].clear();
+        route_.move_targets[index] = target;
         return;
     }
     ++path_searches_;
@@ -62,15 +62,15 @@ void SimulationWorld::plan_route_now(const std::size_t index, const Vector3& tar
 
 void SimulationWorld::set_route(const std::size_t index, const std::vector<PathPoint>& waypoints, const float height)
 {
-    auto& path = paths_[index];
+    auto& path = route_.paths[index];
     path.clear();
     if (waypoints.empty())
     {
-        move_targets_[index].reset();
+        route_.move_targets[index].reset();
         return;
     }
     const auto destination = waypoints.back();
-    move_targets_[index] = Vector3{destination.x, destination.y, height};
+    route_.move_targets[index] = Vector3{destination.x, destination.y, height};
     for (auto waypoint = waypoints.rbegin() + 1; waypoint != waypoints.rend(); ++waypoint)
     {
         path.push_back({waypoint->x, waypoint->y, 0.0F});
@@ -91,9 +91,9 @@ void SimulationWorld::process_path_queue()
         bool finished = true;
         if (request.members.size() == 1)
         {
-            if (const auto dense = dense_index(request.members.front()); dense && path_pending_[*dense] == request.serials.front())
+            if (const auto dense = dense_index(request.members.front()); dense && route_.pending[*dense] == request.serials.front())
             {
-                path_pending_[*dense] = 0;
+                route_.pending[*dense] = 0;
                 plan_route_now(*dense, request.goals.front());
             }
         }
@@ -122,7 +122,7 @@ bool SimulationWorld::plan_shared_route(PathRequest& request, std::uint64_t spen
     const auto live = [&](const std::size_t member) -> std::optional<std::size_t>
     {
         const auto dense = dense_index(request.members[member]);
-        if (dense && path_pending_[*dense] == request.serials[member])
+        if (dense && route_.pending[*dense] == request.serials[member])
         {
             return dense;
         }
@@ -145,8 +145,8 @@ bool SimulationWorld::plan_shared_route(PathRequest& request, std::uint64_t spen
         {
             if (const auto dense = live(member))
             {
-                cx += positions_[*dense].x;
-                cy += positions_[*dense].y;
+                cx += placement_.positions[*dense].x;
+                cy += placement_.positions[*dense].y;
                 ++count;
             }
         }
@@ -164,14 +164,14 @@ bool SimulationWorld::plan_shared_route(PathRequest& request, std::uint64_t spen
             {
                 continue;
             }
-            const auto distance = std::hypot(static_cast<double>(positions_[*dense].x) - cx, static_cast<double>(positions_[*dense].y) - cy);
-            if (!commander || distance < std::hypot(static_cast<double>(positions_[*commander].x) - cx, static_cast<double>(positions_[*commander].y) - cy))
+            const auto distance = std::hypot(static_cast<double>(placement_.positions[*dense].x) - cx, static_cast<double>(placement_.positions[*dense].y) - cy);
+            if (!commander || distance < std::hypot(static_cast<double>(placement_.positions[*commander].x) - cx, static_cast<double>(placement_.positions[*commander].y) - cy))
             {
                 commander = dense;
             }
         }
-        request.mask = passable_types_[*commander];
-        request.shared_start = {positions_[*commander].x, positions_[*commander].y};
+        request.mask = ground_mover_.passable_types[*commander];
+        request.shared_start = {placement_.positions[*commander].x, placement_.positions[*commander].y};
         const auto shared = pathfinder_.find(ground_, request.shared_start, {request.group_target.x, request.group_target.y}, request.mask);
         ++path_searches_;
         path_expansions_ += shared.expanded;
@@ -197,7 +197,7 @@ bool SimulationWorld::plan_shared_route(PathRequest& request, std::uint64_t spen
         {
             continue;
         }
-        path_pending_[*dense] = 0;
+        route_.pending[*dense] = 0;
         plan_shared_member(request, *dense, request.goals[request.next_member]);
         planned_any = true;
     }
@@ -213,7 +213,7 @@ void SimulationWorld::plan_shared_member(const PathRequest& request, const std::
     }
     const auto& shared_end = request.shared_waypoints.back();
 
-    const PathPoint position{positions_[index].x, positions_[index].y};
+    const PathPoint position{placement_.positions[index].x, placement_.positions[index].y};
     std::vector<PathPoint> route;
     // Onto the shared path: straight to its first waypoint, or a short search to the commander.
     if (!ground_line_passable(ground_, position, request.shared_waypoints.front(), request.mask))
@@ -264,7 +264,7 @@ void SimulationWorld::plan_shared_member(const PathRequest& request, const std::
 
 void SimulationWorld::plan_space_avoidance()
 {
-    detours_.assign(ids_.size(), std::nullopt);
+    detours_.assign(identity_.ids.size(), std::nullopt);
     largest_ship_radius_ = 0.0F;
     if (ground_.valid())
     {
@@ -272,19 +272,19 @@ void SimulationWorld::plan_space_avoidance()
     }
     const auto ship = [&](const std::size_t index)
     {
-        return radii_[index] > 0.0F && min_speeds_[index] <= 0.0F;
+        return placement_.radii[index] > 0.0F && flight_.min_speeds[index] <= 0.0F;
     };
     const auto steering = [&](const std::size_t index)
     {
-        return ship(index) && move_targets_[index] && group_waiting_[index] == 0 && path_pending_[index] == 0 && max_speeds_[index] > 0.0F && locomotor_suspended_[index] == 0;
+        return ship(index) && route_.move_targets[index] && group_.waiting[index] == 0 && route_.pending[index] == 0 && locomotor_.max_speeds[index] > 0.0F && locomotor_.suspended[index] == 0;
     };
     float largest_radius = 0.0F;
     bool any = false;
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         if (ship(index))
         {
-            largest_radius = std::max(largest_radius, radii_[index]);
+            largest_radius = std::max(largest_radius, placement_.radii[index]);
             any = any || steering(index);
         }
     }
@@ -297,7 +297,7 @@ void SimulationWorld::plan_space_avoidance()
     // heading is off the course, as locomotion moves it (steer).
     const auto way = [&](const std::size_t index, const float course)
     {
-        return turn_rates_[index] > 0.0F ? std::max(0.0F, std::cos(wrap_angle(course - headings_[index]))) : 1.0F;
+        return locomotor_.turn_rates[index] > 0.0F ? std::max(0.0F, std::cos(wrap_angle(course - placement_.headings[index]))) : 1.0F;
     };
     // Where a ship goes in the plane, as the others see it: toward its target at its travel speed,
     // slowed while it turns; still when it has no target or is held. From state alone, so the plans
@@ -308,9 +308,9 @@ void SimulationWorld::plan_space_avoidance()
         {
             return {};
         }
-        const auto& toward = *move_targets_[index];
-        const float x = toward.x - positions_[index].x;
-        const float y = toward.y - positions_[index].y;
+        const auto& toward = *route_.move_targets[index];
+        const float x = toward.x - placement_.positions[index].x;
+        const float y = toward.y - placement_.positions[index].y;
         const float length = std::hypot(x, y);
         if (length <= arrival_distance)
         {
@@ -319,20 +319,20 @@ void SimulationWorld::plan_space_avoidance()
         const float speed = travel_speed(index) * way(index, std::atan2(y, x));
         return {x / length * speed, y / length * speed};
     };
-    std::vector<Vector2> velocities(ids_.size());
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    std::vector<Vector2> velocities(identity_.ids.size());
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         velocities[index] = ship(index) ? velocity(index) : Vector2{};
     }
-    grid_.build(positions_, grid_cell_size);
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    grid_.build(placement_.positions, grid_cell_size);
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         if (!steering(index))
         {
             continue;
         }
-        const auto& here = positions_[index];
-        const float radius = radii_[index];
+        const auto& here = placement_.positions[index];
+        const float radius = placement_.radii[index];
         const float speed = travel_speed(index);
         const float horizon = std::max(avoid_lookahead_seconds, radius * avoid_min_lookahead_radii / std::max(speed, 1.0e-3F));
         query_.clear();
@@ -341,7 +341,7 @@ void SimulationWorld::plan_space_avoidance()
         neighbours_.clear();
         for (const auto other : query_)
         {
-            if (other != index && ship(other) && radii_[other] >= radius * avoid_small_fraction && std::abs(positions_[other].z - here.z) <= radius + radii_[other])
+            if (other != index && ship(other) && placement_.radii[other] >= radius * avoid_small_fraction && std::abs(placement_.positions[other].z - here.z) <= radius + placement_.radii[other])
             {
                 neighbours_.push_back(other);
             }
@@ -352,27 +352,28 @@ void SimulationWorld::plan_space_avoidance()
         }
         const auto clearance = [&](const std::size_t other)
         {
-            return radius + radii_[other] + radius * avoid_margin_fraction;
+            return radius + placement_.radii[other] + radius * avoid_margin_fraction;
         };
 
         // Where a neighbour will be: a still ship where it is; a moving one at its target when this
         // ship yields to it (a lower entity id goes first).
         const auto yields_to = [&](const std::size_t other)
         {
-            return ids_[other].index != ids_[index].index ? ids_[other].index < ids_[index].index : ids_[other].generation < ids_[index].generation;
+            return identity_.ids[other].index != identity_.ids[index].index ? identity_.ids[other].index < identity_.ids[index].index
+                                                                            : identity_.ids[other].generation < identity_.ids[index].generation;
         };
         const auto resting_place = [&](const std::size_t other) -> std::optional<Vector3>
         {
             if (!steering(other))
             {
-                return positions_[other];
+                return placement_.positions[other];
             }
-            return yields_to(other) ? std::optional<Vector3>(*move_targets_[other]) : std::nullopt;
+            return yields_to(other) ? std::optional<Vector3>(*route_.move_targets[other]) : std::nullopt;
         };
         // A destination inside the clearance of such a place moves to the nearest free point of
         // that clearance circle, starting on this ship's side, so ships sent to one point stop side
         // by side.
-        auto& target = *move_targets_[index];
+        auto& target = *route_.move_targets[index];
         for (const auto other : neighbours_)
         {
             const auto taken = resting_place(other);
@@ -424,11 +425,11 @@ void SimulationWorld::plan_space_avoidance()
             Outlook result{limit, 0.0F};
             for (const auto other : neighbours_)
             {
-                const float px = positions_[other].x - here.x;
-                const float py = positions_[other].y - here.y;
+                const float px = placement_.positions[other].x - here.x;
+                const float py = placement_.positions[other].y - here.y;
                 const float wx = velocities[other].x - course.x;
                 const float wy = velocities[other].y - course.y;
-                const float reach = margin ? clearance(other) : radius + radii_[other];
+                const float reach = margin ? clearance(other) : radius + placement_.radii[other];
                 const float c = px * px + py * py - reach * reach;
                 const float b = px * wx + py * wy;
                 if (c < 0.0F)
@@ -462,7 +463,7 @@ void SimulationWorld::plan_space_avoidance()
         // At each angle off the straight course, the side the ship is already turned toward comes
         // first, so a ship going around a blockage keeps going around it instead of swinging back
         // and forth; a ship facing its course takes the right first.
-        const float first_side = wrap_angle(headings_[index] - straight) > 0.0F ? 1.0F : -1.0F;
+        const float first_side = wrap_angle(placement_.headings[index] - straight) > 0.0F ? 1.0F : -1.0F;
         const auto course_angle = [&](const std::uint32_t step)
         {
             const auto turn = static_cast<float>((step + 1U) / 2U) * (step % 2U == 1U ? first_side : -first_side);
@@ -509,23 +510,24 @@ void SimulationWorld::plan_space_avoidance()
 
 Vector3 SimulationWorld::keep_apart(const std::size_t index, Vector3 step)
 {
-    const float radius = radii_[index];
-    if (largest_ship_radius_ <= 0.0F || radius <= 0.0F || min_speeds_[index] > 0.0F || ground_.valid())
+    const float radius = placement_.radii[index];
+    if (largest_ship_radius_ <= 0.0F || radius <= 0.0F || flight_.min_speeds[index] > 0.0F || ground_.valid())
     {
         return step;
     }
-    const auto& here = positions_[index];
+    const auto& here = placement_.positions[index];
     query_.clear();
     grid_.query(here, radius + largest_ship_radius_ + std::hypot(step.x, step.y), query_);
     // Whether a step ends inside a ship it moves toward (deeper than it was).
     const auto deeper = [&](const std::uint32_t other, const Vector3& candidate, float& to_x, float& to_y, float& apart)
     {
-        const auto& there = positions_[other];
-        if (other == index || radii_[other] <= 0.0F || min_speeds_[other] > 0.0F || radii_[other] < radius * avoid_small_fraction || std::abs(there.z - here.z) > radius + radii_[other])
+        const auto& there = placement_.positions[other];
+        if (other == index || placement_.radii[other] <= 0.0F || flight_.min_speeds[other] > 0.0F || placement_.radii[other] < radius * avoid_small_fraction ||
+            std::abs(there.z - here.z) > radius + placement_.radii[other])
         {
             return false;
         }
-        if (std::hypot(here.x + candidate.x - there.x, here.y + candidate.y - there.y) >= radius + radii_[other])
+        if (std::hypot(here.x + candidate.x - there.x, here.y + candidate.y - there.y) >= radius + placement_.radii[other])
         {
             return false;
         }
@@ -577,34 +579,34 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
             ++stale_references_;
             continue;
         }
-        if (max_speeds_[*dense] <= 0.0F || std::ranges::find(movers, *dense) != movers.end() || std::ranges::find(solos, *dense) != solos.end())
+        if (locomotor_.max_speeds[*dense] <= 0.0F || std::ranges::find(movers, *dense) != movers.end() || std::ranges::find(solos, *dense) != solos.end())
         {
             continue;
         }
-        command_serials_[*dense] = command.serial;
-        standing_orders_[*dense].kind = StandingOrder::none;
-        standing_orders_[*dense].engaging = false;
-        if (formation_solos_[*dense] != 0)
+        orders_.command_serials[*dense] = command.serial;
+        orders_.standing[*dense].kind = StandingOrder::none;
+        orders_.standing[*dense].engaging = false;
+        if (formation_.solos[*dense] != 0)
         {
             solos.push_back(*dense);
             continue;
         }
         movers.push_back(*dense);
         // Ships in space keep slots wide enough for a ship to pass between two that have stopped.
-        const bool ship_in_space = !ground_.valid() && radii_[*dense] > 0.0F && min_speeds_[*dense] <= 0.0F;
-        const auto spacing = ship_in_space ? std::max(formation_spacings_[*dense], space_formation_spacing) : formation_spacings_[*dense];
-        members.push_back({id, positions_[*dense], radii_[*dense], spacing, formation_orders_[*dense], formation_teams_[*dense]});
+        const bool ship_in_space = !ground_.valid() && placement_.radii[*dense] > 0.0F && flight_.min_speeds[*dense] <= 0.0F;
+        const auto spacing = ship_in_space ? std::max(formation_.spacings[*dense], space_formation_spacing) : formation_.spacings[*dense];
+        members.push_back({id, placement_.positions[*dense], placement_.radii[*dense], spacing, formation_.orders[*dense], formation_.teams[*dense]});
     }
     for (const auto index : solos)
     {
-        combat_[index].target = {};
-        combat_[index].ordered = false;
-        speed_limits_[index] = 0.0F;
-        group_ids_[index] = 0;
+        combat_.states[index].target = {};
+        combat_.states[index].ordered = false;
+        locomotor_.speed_limits[index] = 0.0F;
+        group_.ids[index] = 0;
         auto goal = command.target;
-        if (follows_ground_[index] == 0)
+        if (ground_mover_.follows_ground[index] == 0)
         {
-            goal.z = positions_[index].z;
+            goal.z = placement_.positions[index].z;
         }
         plan_move(index, goal);
     }
@@ -618,47 +620,47 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     {
         next_group_id_ = 1;
     }
-    float group_speed = max_speeds_[movers.front()];
+    float group_speed = locomotor_.max_speeds[movers.front()];
     for (const auto index : movers)
     {
-        group_speed = std::min(group_speed, max_speeds_[index]);
+        group_speed = std::min(group_speed, locomotor_.max_speeds[index]);
     }
     // Ground members that search share one request per movement class; the rest plan as usual.
     std::vector<PathRequest> shared;
     for (std::size_t member = 0; member < movers.size(); ++member)
     {
         const auto index = movers[member];
-        combat_[index].target = {};
-        combat_[index].ordered = false;
-        speed_limits_[index] = movers.size() > 1 ? group_speed : 0.0F;
-        group_ids_[index] = group;
-        group_best_remaining_[index] = std::numeric_limits<float>::max();
-        group_stall_ticks_[index] = 0;
+        combat_.states[index].target = {};
+        combat_.states[index].ordered = false;
+        locomotor_.speed_limits[index] = movers.size() > 1 ? group_speed : 0.0F;
+        group_.ids[index] = group;
+        group_.best_remaining[index] = std::numeric_limits<float>::max();
+        group_.stall_ticks[index] = 0;
         auto slot = slots[member].position;
         // Flyers keep their altitude; ground units take theirs from the surface anyway.
-        if (follows_ground_[index] == 0)
+        if (ground_mover_.follows_ground[index] == 0)
         {
-            slot.z = positions_[index].z;
+            slot.z = placement_.positions[index].z;
         }
         plan_move(index, slot);
-        if (path_pending_[index] == 0 || movers.size() < 2)
+        if (route_.pending[index] == 0 || movers.size() < 2)
         {
             continue;
         }
         // Move the member's queued request into its class's shared request.
-        const auto serial = path_pending_[index];
+        const auto serial = route_.pending[index];
         path_queue_.pop_back();
         auto found = std::ranges::find_if(shared,
                                           [&](const PathRequest& request)
                                           {
-                                              return passable_types_[*dense_index(request.members.front())] == passable_types_[index];
+                                              return ground_mover_.passable_types[*dense_index(request.members.front())] == ground_mover_.passable_types[index];
                                           });
         if (found == shared.end())
         {
             shared.push_back({{}, {}, {}, command.target});
             found = shared.end() - 1;
         }
-        found->members.push_back(ids_[index]);
+        found->members.push_back(identity_.ids[index]);
         found->goals.push_back(slot);
         found->serials.push_back(serial);
     }
@@ -670,14 +672,14 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
 
 void SimulationWorld::measure_remaining_routes()
 {
-    remaining_route_.assign(ids_.size(), 0.0F);
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    remaining_route_.assign(identity_.ids.size(), 0.0F);
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
-        if (const auto& target = move_targets_[index])
+        if (const auto& target = route_.move_targets[index])
         {
-            auto from = positions_[index];
+            auto from = placement_.positions[index];
             float length = 0.0F;
-            for (auto waypoint = paths_[index].rbegin(); waypoint != paths_[index].rend(); ++waypoint)
+            for (auto waypoint = route_.paths[index].rbegin(); waypoint != route_.paths[index].rend(); ++waypoint)
             {
                 length += std::hypot(waypoint->x - from.x, waypoint->y - from.y);
                 from = *waypoint;
@@ -694,7 +696,7 @@ void SimulationWorld::measure_remaining_routes()
 void SimulationWorld::update_group_cohesion()
 {
     waiting_members_ = 0;
-    group_waiting_.assign(ids_.size(), 0);
+    group_.waiting.assign(identity_.ids.size(), 0);
     // Furthest remaining route and largest footprint per group, in first-seen order.
     struct GroupState
     {
@@ -703,44 +705,44 @@ void SimulationWorld::update_group_cohesion()
         float largest_radius{};
     };
     std::vector<GroupState> groups;
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
-        if (group_ids_[index] == 0 || !move_targets_[index])
+        if (group_.ids[index] == 0 || !route_.move_targets[index])
         {
             continue;
         }
-        auto found = std::ranges::find(groups, group_ids_[index], &GroupState::id);
+        auto found = std::ranges::find(groups, group_.ids[index], &GroupState::id);
         if (found == groups.end())
         {
-            groups.push_back({group_ids_[index], 0.0F, 0.0F});
+            groups.push_back({group_.ids[index], 0.0F, 0.0F});
             found = groups.end() - 1;
         }
         found->furthest = std::max(found->furthest, remaining_route_[index]);
-        found->largest_radius = std::max(found->largest_radius, radii_[index]);
+        found->largest_radius = std::max(found->largest_radius, placement_.radii[index]);
     }
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
-        if (group_ids_[index] == 0 || !move_targets_[index])
+        if (group_.ids[index] == 0 || !route_.move_targets[index])
         {
             continue;
         }
-        const auto& group = *std::ranges::find(groups, group_ids_[index], &GroupState::id);
+        const auto& group = *std::ranges::find(groups, group_.ids[index], &GroupState::id);
         const auto slack = cohesion_slack + 4.0F * group.largest_radius;
         if (remaining_route_[index] + slack < group.furthest)
         {
-            group_waiting_[index] = 1;
+            group_.waiting[index] = 1;
             ++waiting_members_;
             continue;
         }
         // Progress is measured against the best remaining route reached so far.
-        if (remaining_route_[index] + 0.5F < group_best_remaining_[index])
+        if (remaining_route_[index] + 0.5F < group_.best_remaining[index])
         {
-            group_best_remaining_[index] = remaining_route_[index];
-            group_stall_ticks_[index] = 0;
+            group_.best_remaining[index] = remaining_route_[index];
+            group_.stall_ticks[index] = 0;
         }
-        else if (++group_stall_ticks_[index] >= cohesion_stall_ticks)
+        else if (++group_.stall_ticks[index] >= cohesion_stall_ticks)
         {
-            group_ids_[index] = 0;
+            group_.ids[index] = 0;
             ++released_members_;
         }
     }

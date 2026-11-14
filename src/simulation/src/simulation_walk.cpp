@@ -31,16 +31,16 @@ namespace {
 
 float SimulationWorld::move_speed(const std::size_t index, const float facing, const float distance, const float dt) noexcept
 {
-    return movements_[index].walk_stop_parts > 0 ? walk_speed(index, facing, distance, dt) : drive(index, wanted_speed(index, facing, distance), dt);
+    return locomotor_.movements[index].walk_stop_parts > 0 ? walk_speed(index, facing, distance, dt) : drive(index, wanted_speed(index, facing, distance), dt);
 }
 
 float SimulationWorld::walk_speed(const std::size_t index, const float facing, const float distance, const float dt) noexcept
 {
-    const auto& movement = movements_[index];
-    auto& walk = walk_plans_[index];
-    auto& speed = drive_speeds_[index];
+    const auto& movement = locomotor_.movements[index];
+    auto& walk = walk_clips_.plans[index];
+    auto& speed = locomotor_.drive_speeds[index];
     const auto travel = travel_speed(index);
-    const auto stride = max_speeds_[index] * movement.walk_stride_seconds;
+    const auto stride = locomotor_.max_speeds[index] * movement.walk_stride_seconds;
     const auto parts = static_cast<float>(movement.walk_stop_parts);
     // Begins the stop at the stride's part `boundary` (1..parts; 0 as MOVESTART ends), `over`
     // seconds before this tick ends, when stopping there lands closer to the destination than a part
@@ -56,9 +56,9 @@ float SimulationWorld::walk_speed(const std::size_t index, const float facing, c
         walk.phase = static_cast<float>(walk.part) / parts;
         walk.elapsed = over;
         walk.from_speed = speed;
-        walk.ends_move = !walk.turn_back && distance > 0.0F && move_targets_[index].has_value();
+        walk.ends_move = !walk.turn_back && distance > 0.0F && route_.move_targets[index].has_value();
         walk.turn_back = false;
-        walk.destination = move_targets_[index].value_or(Vector3{});
+        walk.destination = route_.move_targets[index].value_or(Vector3{});
     };
     switch (walk.clip)
     {
@@ -127,26 +127,26 @@ float SimulationWorld::walk_speed(const std::size_t index, const float facing, c
 
 bool SimulationWorld::wants_turn_in_place(const std::size_t index) const noexcept
 {
-    const auto& point = intents_[index].point;
-    if (!point || move_targets_[index])
+    const auto& point = steering_.intents[index].point;
+    if (!point || route_.move_targets[index])
     {
         return false;
     }
-    const auto dx = point->x - positions_[index].x;
-    const auto dy = point->y - positions_[index].y;
-    return (dx != 0.0F || dy != 0.0F) && std::fabs(wrap_angle(std::atan2(dy, dx) - headings_[index])) > movements_[index].turn_in_place_angle;
+    const auto dx = point->x - placement_.positions[index].x;
+    const auto dy = point->y - placement_.positions[index].y;
+    return (dx != 0.0F || dy != 0.0F) && std::fabs(wrap_angle(std::atan2(dy, dx) - placement_.headings[index])) > locomotor_.movements[index].turn_in_place_angle;
 }
 
 bool SimulationWorld::walk_straight(const std::size_t index, const float dt)
 {
-    const auto& movement = movements_[index];
-    auto& walk = walk_plans_[index];
+    const auto& movement = locomotor_.movements[index];
+    auto& walk = walk_clips_.plans[index];
     // A raised leg goes up or down while nothing else moves.
     if (walk.clip == WalkClip::raising || walk.clip == WalkClip::lowering)
     {
         const bool raising = walk.clip == WalkClip::raising;
         walk.elapsed += dt;
-        drive_speeds_[index] = 0.0F;
+        locomotor_.drive_speeds[index] = 0.0F;
         if (walk.elapsed >= (raising ? movement.walk_raise_seconds : movement.walk_lower_seconds))
         {
             walk = {};
@@ -155,16 +155,16 @@ bool SimulationWorld::walk_straight(const std::size_t index, const float dt)
         return true;
     }
     // Standing with it raised and nothing to do (no destination, no turn about to begin), it lowers it.
-    if (walk.clip == WalkClip::raised && !move_targets_[index] && !turn_plans_[index].active && !wants_turn_in_place(index))
+    if (walk.clip == WalkClip::raised && !route_.move_targets[index] && !turn_clips_.plans[index].active && !wants_turn_in_place(index))
     {
         walk = {};
         walk.clip = WalkClip::lowering;
-        drive_speeds_[index] = 0.0F;
+        locomotor_.drive_speeds[index] = 0.0F;
         return true;
     }
     const bool walking = walk.clip == WalkClip::starting || walk.clip == WalkClip::moving;
-    const bool destination = move_targets_[index].has_value() && group_waiting_[index] == 0;
-    if (walk.clip != WalkClip::stopping && (!walking || (destination && path_pending_[index] == 0)))
+    const bool destination = route_.move_targets[index].has_value() && group_.waiting[index] == 0;
+    if (walk.clip != WalkClip::stopping && (!walking || (destination && route_.pending[index] == 0)))
     {
         return false;
     }
@@ -181,21 +181,21 @@ bool SimulationWorld::walk_straight(const std::size_t index, const float dt)
         walk.elapsed += dt;
         const auto after = std::min(walk.elapsed / seconds, 1.0F);
         step = covered(after) - covered(before);
-        drive_speeds_[index] = walk.from_speed * (1.0F - after);
-        arriving_[index] = 1;
+        locomotor_.drive_speeds[index] = walk.from_speed * (1.0F - after);
+        locomotor_.arriving[index] = 1;
         if (walk.elapsed >= seconds)
         {
             // The stop that ends its move ends the order, unless a newer one came meanwhile (it
             // goes on from rest, its MOVESTART starting where MOVE_END ended).
-            if (const auto& target = move_targets_[index]; walk.ends_move && target && target->x == walk.destination.x && target->y == walk.destination.y && target->z == walk.destination.z)
+            if (const auto& target = route_.move_targets[index]; walk.ends_move && target && target->x == walk.destination.x && target->y == walk.destination.y && target->z == walk.destination.z)
             {
-                move_targets_[index].reset();
-                paths_[index].clear();
+                route_.move_targets[index].reset();
+                route_.paths[index].clear();
             }
             walk = {};
             // MOVE_END ends with a raised leg still up.
             walk.clip = movement.walk_raise_seconds > 0.0F ? WalkClip::raised : WalkClip::standing;
-            drive_speeds_[index] = 0.0F;
+            locomotor_.drive_speeds[index] = 0.0F;
         }
     }
     else
@@ -205,14 +205,14 @@ bool SimulationWorld::walk_straight(const std::size_t index, const float dt)
         const auto ahead = destination ? std::numeric_limits<float>::max() : 0.0F;
         step = walk_speed(index, 1.0F, ahead, dt) * dt;
     }
-    const auto heading = headings_[index];
+    const auto heading = placement_.headings[index];
     const auto moved = keep_apart(index, {std::cos(heading) * step, std::sin(heading) * step, 0.0F});
-    auto& position = positions_[index];
+    auto& position = placement_.positions[index];
     Vector3 next{position.x + moved.x, position.y + moved.y, position.z};
-    if (follows_ground_[index] != 0 && ground_.valid())
+    if (ground_mover_.follows_ground[index] != 0 && ground_.valid())
     {
         // Ground it may not enter holds it where it is while the clip plays on.
-        if (const auto allowed = passable_types_[index]; allowed != 0)
+        if (const auto allowed = ground_mover_.passable_types[index]; allowed != 0)
         {
             if (const auto there = ground_.passability_at(next.x, next.y); there && (*there & allowed) == 0)
             {
@@ -227,8 +227,8 @@ bool SimulationWorld::walk_straight(const std::size_t index, const float dt)
 
 bool SimulationWorld::turn_as_clips(const std::size_t index, const float difference, const float dt)
 {
-    const auto& movement = movements_[index];
-    auto& plan = turn_plans_[index];
+    const auto& movement = locomotor_.movements[index];
+    auto& plan = turn_clips_.plans[index];
     if (!(movement.turn_begin_seconds[0] > 0.0F) || !(movement.stopped_turn_rate > 0.0F))
     {
         return false;
@@ -242,12 +242,12 @@ bool SimulationWorld::turn_as_clips(const std::size_t index, const float differe
     if (!plan.active)
     {
         // A turn in place begins from rest, past the angle that needs one (Close_Enough_Angle_For_Move_Start).
-        if (!(movement.turn_in_place_angle > 0.0F) || drive_speeds_[index] > 0.0F || std::fabs(difference) <= movement.turn_in_place_angle)
+        if (!(movement.turn_in_place_angle > 0.0F) || locomotor_.drive_speeds[index] > 0.0F || std::fabs(difference) <= movement.turn_in_place_angle)
         {
             return false;
         }
         // A raised leg goes up before the turn: the walker raises it, then turns.
-        if (auto& walk = walk_plans_[index]; movement.walk_raise_seconds > 0.0F && walk.clip != WalkClip::raised)
+        if (auto& walk = walk_clips_.plans[index]; movement.walk_raise_seconds > 0.0F && walk.clip != WalkClip::raised)
         {
             if (walk.clip == WalkClip::standing)
             {
@@ -259,7 +259,7 @@ bool SimulationWorld::turn_as_clips(const std::size_t index, const float differe
         plan = {};
         plan.active = true;
         plan.way = difference > 0.0F ? 1.0F : -1.0F;
-        plan.start = headings_[index];
+        plan.start = placement_.headings[index];
         plan.angle = std::fabs(difference);
         const auto side = plan.way > 0.0F ? 0U : 1U;
         const auto loop = movement.turn_loop_seconds[side];
@@ -292,7 +292,7 @@ bool SimulationWorld::turn_as_clips(const std::size_t index, const float differe
     }
     const auto length = total();
     plan.elapsed = std::min(plan.elapsed + dt, length);
-    auto& heading = headings_[index];
+    auto& heading = placement_.headings[index];
     heading = wrap_angle(plan.start + plan.way * std::min(turn_point(index, plan.elapsed).turned, plan.angle));
     if (plan.elapsed >= length)
     {
@@ -304,8 +304,8 @@ bool SimulationWorld::turn_as_clips(const std::size_t index, const float differe
 
 SimulationWorld::TurnPoint SimulationWorld::turn_point(const std::size_t index, const float time) const noexcept
 {
-    const auto& movement = movements_[index];
-    const auto& plan = turn_plans_[index];
+    const auto& movement = locomotor_.movements[index];
+    const auto& plan = turn_clips_.plans[index];
     const auto side = plan.way > 0.0F ? 0U : 1U;
     const auto begin = std::max(movement.turn_begin_seconds[side], 1.0e-6F);
     const auto end = std::max(movement.turn_end_seconds[side], 1.0e-6F);

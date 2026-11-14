@@ -161,7 +161,7 @@ namespace eaw {
 
 template <typename Accepts> std::optional<std::size_t> SimulationWorld::choose_target(const std::size_t index, const Vector3& center, const float reach, const Accepts& accepts)
 {
-    const auto& priorities = combat_[index].profile.targeting;
+    const auto& priorities = combat_.states[index].profile.targeting;
     query_.clear();
     grid_.query(center, reach, query_);
     std::optional<std::size_t> best;
@@ -169,18 +169,20 @@ template <typename Accepts> std::optional<std::size_t> SimulationWorld::choose_t
     float best_distance = 0.0F;
     for (const auto candidate : query_)
     {
-        if (candidate == index || !damageable(candidate) || !combat_[candidate].profile.targetable || !hostility_.hostile(owners_[index], owners_[candidate]) || !accepts(candidate))
+        if (candidate == index || !damageable(candidate) || !combat_.states[candidate].profile.targetable || !hostility_.hostile(identity_.owners[index], identity_.owners[candidate]) ||
+            !accepts(candidate))
         {
             continue;
         }
-        const auto& profile = combat_[candidate].profile;
+        const auto& profile = combat_.states[candidate].profile;
         const auto rank = priorities.rank(profile.categories, profile.properties, profile.type_key);
-        const auto distance = simulation_detail::distance_xy(center, positions_[candidate]);
+        const auto distance = simulation_detail::distance_xy(center, placement_.positions[candidate]);
         if (rank < 0.0F || distance > reach)
         {
             continue;
         }
-        const auto lower = best && (ids_[candidate].index != ids_[*best].index ? ids_[candidate].index < ids_[*best].index : ids_[candidate].generation < ids_[*best].generation);
+        const auto lower = best && (identity_.ids[candidate].index != identity_.ids[*best].index ? identity_.ids[candidate].index < identity_.ids[*best].index
+                                                                                                 : identity_.ids[candidate].generation < identity_.ids[*best].generation);
         if (!best || rank < best_rank || (rank == best_rank && (distance < best_distance || (distance == best_distance && lower))))
         {
             best = candidate;

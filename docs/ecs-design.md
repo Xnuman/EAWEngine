@@ -78,7 +78,8 @@ From AGENTS.md, the roadmap, and what the simulation does today:
 
 ## 3. What we have, sorted into candidate components
 
-Today's per-entity arrays, by subject (every entity has all of them now):
+The per-entity arrays before migration step 2, by subject (every entity has all of them; step 2
+grouped them into column groups, section 6.2, under the same field names):
 
 | Candidate component | Arrays today | Who needs it |
 | --- | --- | --- |
@@ -251,9 +252,12 @@ Recommendation: **B**. Reasons:
 
 ### 6.2 Components
 
-- Plain structs: no virtual functions, no ownership of other entities' data, default-constructible,
-  trivially copyable where possible (vectors allowed where a component holds a list: a route, a
-  squad's members).
+- A component is a group of columns, one array per field (the owner's decision, 2026-11-15:
+  hot loops stream single fields, and the broad-phase grid takes the positions as one span), not
+  an array of structs: `PlacementColumns` holds `positions`, `headings`, `pitches`, and `radii`.
+  Its elements are plain data: no virtual functions, no ownership of other entities' data,
+  default-constructible, trivially copyable where possible (vectors allowed where a component holds
+  a list: a route, a squad's members).
 - **Core** (every simulated entity, in the dense table): Identity (type, owner, selectable, visual
   key), Placement (position, heading, pitch, radius), Motion (speed in the last tick).
 - **Pooled** (only where present): Locomotor, GroundMover, Route, Flight, WalkClips, TurnClips,
@@ -472,9 +476,15 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    `ChunkOutputs` across 1, 2, and 8 threads; Status propagation; preallocation limits). First
    client: presentation's pose sampling (not hash-relevant), then the background lane replacing
    `std::async`.
-2. **Components as structs inside the one table.** Group the 67 arrays into the component structs
-   of section 6.2, still one dense table; spawn, remove, and hash generated per component.
-   Mechanical; the hash function keeps its interleaved order.
+2. **Components as column groups inside the one table.** Group the arrays into the components of
+   section 6.2, still one dense table; spawn, remove, and hash generated per component.
+   Mechanical; the hash function keeps its interleaved order. Done 2026-11-15: 48 columns in 16
+   groups (`SimulationWorld::IdentityColumns` and the rest), with today's memory layout. Removal
+   goes through `for_each_column`; spawn still sets each column's value itself, and a size check
+   after it needs every column to have grown by one; the constructor checks that the lists name
+   every column and group (`check_entity_table`). The hash stays field by field in its interleaved
+   order until step 7 makes it per component. The per-tick scratch arrays (start positions,
+   separation pushes, detours, remaining routes) stay outside the table.
 3. **The registry and pools.** Move optional components into pools one at a time, smallest first:
    WalkClips and TurnClips, then Flight, Footprint, Crush, FormationMember and GroupMember, then
    Combat. Until step 7 the hash visits every entity in today's order and hashes an absent
@@ -509,6 +519,8 @@ Agreed by the owner on 2026-11-15:
 7. **Singe:** its ideas (access modifiers, phases), not its code.
 8. **Where it lives:** this document; the rules of 6.9 and 7.2 in AGENTS.md; the steps of section 8
    in the roadmap. `/GT` (fiber-safe thread-local storage) in the global compile options.
+9. **Component layout** (2026-11-15, at migration step 2): a component is a group of columns, one
+   array per field, not an array of structs (section 6.2).
 
 ## 10. What this design deliberately leaves out
 

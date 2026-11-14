@@ -56,6 +56,32 @@ std::uint64_t FixedStepClock::dropped_ticks() const noexcept
 SimulationWorld::SimulationWorld(const double tick_seconds) : tick_seconds_(tick_seconds)
 {
     EAW_ASSERT_MSG(tick_seconds > 0.0 && std::isfinite(tick_seconds), "simulation tick length must be positive");
+    check_entity_table();
+}
+
+void SimulationWorld::check_entity_table()
+{
+    // Every column is a std::vector, all of one size whatever their element type,
+    // so a group is exactly its columns, and the groups, declared one after
+    // another, span exactly the bytes from identity_ to the end of crush_.
+    constexpr auto column_bytes = sizeof(std::vector<std::uint8_t>);
+    std::size_t group_bytes = 0;
+    for_each_group(
+        [&](auto& group)
+        {
+            std::size_t columns = 0;
+            group.for_each_column(
+                [&](auto& column)
+                {
+                    static_assert(sizeof(column) == column_bytes, "an entity column must be a std::vector");
+                    ++columns;
+                });
+            EAW_ASSERT_MSG(columns * column_bytes == sizeof(group), "a component group's for_each_column must list every column");
+            group_bytes += sizeof(group);
+        });
+    const auto first = reinterpret_cast<std::uintptr_t>(&identity_);
+    const auto end = reinterpret_cast<std::uintptr_t>(&crush_) + sizeof(crush_);
+    EAW_ASSERT_MSG(end - first == group_bytes, "for_each_group must list every component group of the entity table");
 }
 
 Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
@@ -98,7 +124,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite combat value");
     }
-    if (ids_.size() >= no_dense)
+    if (identity_.ids.size() >= no_dense)
     {
         return make_error("simulation entity storage is full");
     }
@@ -115,64 +141,69 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
         slot_dense_.push_back(no_dense);
     }
     const EntityId id{slot, generations_[slot]};
-    slot_dense_[slot] = static_cast<std::uint32_t>(ids_.size());
-    ids_.push_back(id);
-    positions_.push_back(spawn.position);
-    headings_.push_back(wrap_angle(spawn.heading));
-    max_speeds_.push_back(spawn.max_speed);
-    move_targets_.emplace_back();
-    owners_.push_back(spawn.owner);
-    visuals_.push_back(spawn.visual);
-    selectable_.push_back(spawn.selectable ? 1U : 0U);
-    type_names_.push_back(spawn.type_name);
-    follows_ground_.push_back(spawn.follows_ground ? 1U : 0U);
-    passable_types_.push_back(spawn.passable_types);
-    paths_.emplace_back();
-    combat_.push_back({.profile = spawn.combat, .health = spawn.combat.health, .shield = spawn.combat.shield});
-    combat_.back().weapons.resize(spawn.combat.weapons.size());
+    slot_dense_[slot] = static_cast<std::uint32_t>(identity_.ids.size());
+    identity_.ids.push_back(id);
+    placement_.positions.push_back(spawn.position);
+    placement_.headings.push_back(wrap_angle(spawn.heading));
+    locomotor_.max_speeds.push_back(spawn.max_speed);
+    route_.move_targets.emplace_back();
+    identity_.owners.push_back(spawn.owner);
+    identity_.visuals.push_back(spawn.visual);
+    identity_.selectable.push_back(spawn.selectable ? 1U : 0U);
+    identity_.type_names.push_back(spawn.type_name);
+    ground_mover_.follows_ground.push_back(spawn.follows_ground ? 1U : 0U);
+    ground_mover_.passable_types.push_back(spawn.passable_types);
+    route_.paths.emplace_back();
+    combat_.states.push_back({.profile = spawn.combat, .health = spawn.combat.health, .shield = spawn.combat.shield});
+    combat_.states.back().weapons.resize(spawn.combat.weapons.size());
     for (const auto& hardpoint : spawn.combat.hardpoints)
     {
-        combat_.back().hardpoint_health.push_back(hardpoint.health);
+        combat_.states.back().hardpoint_health.push_back(hardpoint.health);
     }
-    radii_.push_back(spawn.radius);
-    turn_rates_.push_back(spawn.turn_rate);
-    min_speeds_.push_back(std::min(spawn.min_speed, spawn.max_speed));
-    movements_.push_back(spawn.movement);
-    drive_speeds_.push_back(0.0F);
-    loiter_points_.emplace_back();
-    stances_.push_back(spawn.stance);
-    aims_with_body_.push_back(spawn.aims_with_body ? 1U : 0U);
-    pitches_.push_back(0.0F);
-    cruise_heights_.push_back(spawn.position.z);
-    yaw_rates_.push_back(0.0F);
-    speeds_.push_back(0.0F);
-    last_shot_ticks_.push_back(0);
-    command_serials_.push_back(0);
-    standing_orders_.push_back({.scan_timer = slot % retarget_interval});
-    locomotor_suspended_.push_back(0);
-    looping_.push_back(0);
-    arriving_.push_back(0);
-    turn_plans_.emplace_back();
-    walk_plans_.emplace_back();
-    rolls_.push_back(0.0F);
-    intents_.emplace_back();
-    formation_orders_.push_back(spawn.formation_order);
-    formation_spacings_.push_back(spawn.formation_spacing);
-    formation_solos_.push_back(spawn.formation_solo ? 1U : 0U);
-    formation_teams_.push_back(spawn.formation_team);
-    crushes_.push_back(spawn.crush);
-    speed_limits_.push_back(0.0F);
-    group_ids_.push_back(0);
-    group_best_remaining_.push_back(0.0F);
-    group_stall_ticks_.push_back(0);
-    group_waiting_.push_back(0);
-    footprints_.push_back(spawn.footprint);
-    path_pending_.push_back(0);
-    footprint_stamped_.push_back(0);
-    stamp_footprint(ids_.size() - 1U, true);
+    placement_.radii.push_back(spawn.radius);
+    locomotor_.turn_rates.push_back(spawn.turn_rate);
+    flight_.min_speeds.push_back(std::min(spawn.min_speed, spawn.max_speed));
+    locomotor_.movements.push_back(spawn.movement);
+    locomotor_.drive_speeds.push_back(0.0F);
+    route_.loiter_points.emplace_back();
+    combat_.stances.push_back(spawn.stance);
+    combat_.aims_with_body.push_back(spawn.aims_with_body ? 1U : 0U);
+    placement_.pitches.push_back(0.0F);
+    flight_.cruise_heights.push_back(spawn.position.z);
+    flight_.yaw_rates.push_back(0.0F);
+    motion_.speeds.push_back(0.0F);
+    combat_.last_shot_ticks.push_back(0);
+    orders_.command_serials.push_back(0);
+    orders_.standing.push_back({.scan_timer = slot % retarget_interval});
+    locomotor_.suspended.push_back(0);
+    flight_.looping.push_back(0);
+    locomotor_.arriving.push_back(0);
+    turn_clips_.plans.emplace_back();
+    walk_clips_.plans.emplace_back();
+    flight_.rolls.push_back(0.0F);
+    steering_.intents.emplace_back();
+    formation_.orders.push_back(spawn.formation_order);
+    formation_.spacings.push_back(spawn.formation_spacing);
+    formation_.solos.push_back(spawn.formation_solo ? 1U : 0U);
+    formation_.teams.push_back(spawn.formation_team);
+    crush_.profiles.push_back(spawn.crush);
+    locomotor_.speed_limits.push_back(0.0F);
+    group_.ids.push_back(0);
+    group_.best_remaining.push_back(0.0F);
+    group_.stall_ticks.push_back(0);
+    group_.waiting.push_back(0);
+    footprint_.shapes.push_back(spawn.footprint);
+    route_.pending.push_back(0);
+    footprint_.stamped.push_back(0);
+    for_each_column(
+        [&](const auto& column)
+        {
+            EAW_ASSERT_MSG(column.size() == identity_.ids.size(), "every entity column needs one entry per entity (a column missing from spawn or for_each_column)");
+        });
+    stamp_footprint(identity_.ids.size() - 1U, true);
     if (spawn.follows_ground && ground_.valid())
     {
-        positions_.back().z = ground_.surface_height(spawn.position.x, spawn.position.y);
+        placement_.positions.back().z = ground_.surface_height(spawn.position.x, spawn.position.y);
     }
     return id;
 }
@@ -204,7 +235,7 @@ void SimulationWorld::step()
     {
         apply(command);
     }
-    tick_start_positions_ = positions_;
+    tick_start_positions_ = placement_.positions;
     deaths_.clear();
     impacts_.clear();
     shots_.clear();
@@ -223,12 +254,12 @@ void SimulationWorld::step()
     // Movement and separation are the only systems that move entities, and entities are only added
     // (commands) before and removed (combat) after them, so dense indices line up here.
     const auto dt = static_cast<float>(tick_seconds_);
-    for (std::size_t index = 0; index < positions_.size(); ++index)
+    for (std::size_t index = 0; index < placement_.positions.size(); ++index)
     {
         const auto& from = tick_start_positions_[index];
-        const auto& to = positions_[index];
+        const auto& to = placement_.positions[index];
         const auto moved = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y) + (to.z - from.z) * (to.z - from.z));
-        speeds_[index] = dt > 0.0F && std::isfinite(moved) ? moved / dt : 0.0F;
+        motion_.speeds[index] = dt > 0.0F && std::isfinite(moved) ? moved / dt : 0.0F;
     }
     timed(TickPhase::separation);
     run_combat();
@@ -241,7 +272,7 @@ void SimulationWorld::step()
 std::string_view SimulationWorld::type_name(const EntityId id) const noexcept
 {
     const auto dense = dense_index(id);
-    return dense ? std::string_view(type_names_[*dense]) : std::string_view{};
+    return dense ? std::string_view(identity_.type_names[*dense]) : std::string_view{};
 }
 
 bool SimulationWorld::alive(const EntityId id) const noexcept
@@ -257,7 +288,7 @@ const SimSnapshot& SimulationWorld::snapshot() const noexcept
 SimulationWorld::Stats SimulationWorld::stats() const noexcept
 {
     return {.tick = tick_,
-            .entities = ids_.size(),
+            .entities = identity_.ids.size(),
             .commands_applied = commands_applied_,
             .stale_references = stale_references_,
             .blocked_moves = blocked_moves_,
@@ -298,34 +329,34 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
 {
     // The tick goes into the total only: each subject hash says whether that part of the state agrees.
     hasher.total = hash_value(hasher.total, tick_);
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         hasher.subject = StateSubject::bodies;
-        hasher.add(ids_[index]);
-        hasher.add(positions_[index]);
-        hasher.add(headings_[index]);
-        hasher.add(max_speeds_[index]);
-        const auto& target = move_targets_[index];
+        hasher.add(identity_.ids[index]);
+        hasher.add(placement_.positions[index]);
+        hasher.add(placement_.headings[index]);
+        hasher.add(locomotor_.max_speeds[index]);
+        const auto& target = route_.move_targets[index];
         hasher.add(target.has_value());
         if (target)
         {
             hasher.add(*target);
         }
-        hasher.add(owners_[index]);
+        hasher.add(identity_.owners[index]);
         // Visual keys are presentation data the simulation never reads (a mesh index on maps), so
         // they stay out of the hash: the same battle hashes alike however its scene was built.
-        hasher.add(selectable_[index]);
-        hasher.add(follows_ground_[index]);
-        hasher.add(passable_types_[index]);
+        hasher.add(identity_.selectable[index]);
+        hasher.add(ground_mover_.follows_ground[index]);
+        hasher.add(ground_mover_.passable_types[index]);
         hasher.subject = StateSubject::routes;
-        hasher.add(paths_[index].size());
-        for (const auto& waypoint : paths_[index])
+        hasher.add(route_.paths[index].size());
+        for (const auto& waypoint : route_.paths[index])
         {
             hasher.add(waypoint);
         }
         hasher.subject = StateSubject::combat;
         // Field by field: the combat records have padding, whose bytes are unspecified.
-        const auto& combat = combat_[index];
+        const auto& combat = combat_.states[index];
         hasher.add(combat.health);
         hasher.add(combat.shield);
         hasher.add(combat.target);
@@ -348,10 +379,10 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(combat.turret_yaw);
         hasher.add(combat.chase_timer);
         hasher.subject = StateSubject::bodies;
-        hasher.add(radii_[index]);
-        hasher.add(turn_rates_[index]);
-        hasher.add(min_speeds_[index]);
-        const auto& movement = movements_[index];
+        hasher.add(placement_.radii[index]);
+        hasher.add(locomotor_.turn_rates[index]);
+        hasher.add(flight_.min_speeds[index]);
+        const auto& movement = locomotor_.movements[index];
         hasher.add(movement.acceleration);
         hasher.add(movement.deceleration);
         hasher.add(movement.turn_speed_fraction);
@@ -370,7 +401,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
                 hasher.add(movement.turn_half_seconds[side]);
                 hasher.add(movement.turn_quarter_seconds[side]);
             }
-            const auto& plan = turn_plans_[index];
+            const auto& plan = turn_clips_.plans[index];
             hasher.add(static_cast<std::uint8_t>(plan.active ? 1U : 0U));
             hasher.add(plan.elapsed);
             hasher.add(plan.start);
@@ -391,7 +422,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(movement.walk_stop_parts);
             hasher.add(movement.walk_raise_seconds);
             hasher.add(movement.walk_lower_seconds);
-            const auto& walk = walk_plans_[index];
+            const auto& walk = walk_clips_.plans[index];
             hasher.add(walk.clip);
             hasher.add(walk.part);
             hasher.add(walk.elapsed);
@@ -406,41 +437,41 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(static_cast<std::uint8_t>(walk.new_way ? 1U : 0U));
         }
         hasher.subject = StateSubject::bodies;
-        hasher.add(drive_speeds_[index]);
+        hasher.add(locomotor_.drive_speeds[index]);
         hasher.subject = StateSubject::combat;
-        hasher.add(stances_[index]);
+        hasher.add(combat_.stances[index]);
         hasher.subject = StateSubject::bodies;
-        hasher.add(aims_with_body_[index]);
-        hasher.add_bytes(type_names_[index].data(), type_names_[index].size());
+        hasher.add(combat_.aims_with_body[index]);
+        hasher.add_bytes(identity_.type_names[index].data(), identity_.type_names[index].size());
         hasher.subject = StateSubject::flight;
-        hasher.add(pitches_[index]);
-        hasher.add(cruise_heights_[index]);
-        hasher.add(looping_[index]);
-        hasher.add(rolls_[index]);
-        hasher.add(loiter_points_[index].has_value());
-        if (loiter_points_[index])
+        hasher.add(placement_.pitches[index]);
+        hasher.add(flight_.cruise_heights[index]);
+        hasher.add(flight_.looping[index]);
+        hasher.add(flight_.rolls[index]);
+        hasher.add(route_.loiter_points[index].has_value());
+        if (route_.loiter_points[index])
         {
-            hasher.add(*loiter_points_[index]);
+            hasher.add(*route_.loiter_points[index]);
         }
         hasher.subject = StateSubject::formations;
-        hasher.add(formation_orders_[index]);
-        hasher.add(formation_spacings_[index]);
-        hasher.add(formation_solos_[index]);
-        hasher.add(formation_teams_[index].id);
-        hasher.add(static_cast<std::uint8_t>(formation_teams_[index].arrangement));
-        hasher.add(formation_teams_[index].spacing);
-        hasher.add(formation_teams_[index].raggedness);
+        hasher.add(formation_.orders[index]);
+        hasher.add(formation_.spacings[index]);
+        hasher.add(formation_.solos[index]);
+        hasher.add(formation_.teams[index].id);
+        hasher.add(static_cast<std::uint8_t>(formation_.teams[index].arrangement));
+        hasher.add(formation_.teams[index].spacing);
+        hasher.add(formation_.teams[index].raggedness);
         hasher.subject = StateSubject::bodies;
-        hasher.add(static_cast<std::uint8_t>(crushes_[index].crusher));
-        hasher.add(static_cast<std::uint8_t>((crushes_[index].squashable ? 1U : 0U) | (crushes_[index].squashable_by_supercrusher ? 2U : 0U)));
-        hasher.add(speed_limits_[index]);
+        hasher.add(static_cast<std::uint8_t>(crush_.profiles[index].crusher));
+        hasher.add(static_cast<std::uint8_t>((crush_.profiles[index].squashable ? 1U : 0U) | (crush_.profiles[index].squashable_by_supercrusher ? 2U : 0U)));
+        hasher.add(locomotor_.speed_limits[index]);
         hasher.subject = StateSubject::routes;
-        hasher.add(group_ids_[index]);
-        hasher.add(group_best_remaining_[index]);
-        hasher.add(group_stall_ticks_[index]);
-        hasher.add(path_pending_[index]);
+        hasher.add(group_.ids[index]);
+        hasher.add(group_.best_remaining[index]);
+        hasher.add(group_.stall_ticks[index]);
+        hasher.add(route_.pending[index]);
         hasher.subject = StateSubject::orders;
-        const auto& order = standing_orders_[index];
+        const auto& order = orders_.standing[index];
         hasher.add(order.kind);
         hasher.add(order.point);
         hasher.add(order.entity);
@@ -451,7 +482,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(combat.invulnerable);
         hasher.add(combat.cannot_be_killed);
         hasher.subject = StateSubject::bodies;
-        hasher.add(locomotor_suspended_[index]);
+        hasher.add(locomotor_.suspended[index]);
     }
     hasher.subject = StateSubject::routes;
     for (const auto& request : path_queue_)
@@ -496,109 +527,23 @@ std::optional<std::size_t> SimulationWorld::dense_index(const EntityId id) const
 void SimulationWorld::destroy(const std::size_t dense)
 {
     stamp_footprint(dense, false);
-    const auto slot = ids_[dense].index;
-    const auto last = ids_.size() - 1U;
+    const auto slot = identity_.ids[dense].index;
+    const auto last = identity_.ids.size() - 1U;
     if (dense != last)
     {
         // Swap-remove keeps storage dense; the order change depends only on the command history.
-        ids_[dense] = ids_[last];
-        positions_[dense] = positions_[last];
-        headings_[dense] = headings_[last];
-        max_speeds_[dense] = max_speeds_[last];
-        move_targets_[dense] = move_targets_[last];
-        owners_[dense] = owners_[last];
-        visuals_[dense] = visuals_[last];
-        selectable_[dense] = selectable_[last];
-        type_names_[dense] = std::move(type_names_[last]);
-        follows_ground_[dense] = follows_ground_[last];
-        passable_types_[dense] = passable_types_[last];
-        paths_[dense] = std::move(paths_[last]);
-        combat_[dense] = combat_[last];
-        radii_[dense] = radii_[last];
-        turn_rates_[dense] = turn_rates_[last];
-        min_speeds_[dense] = min_speeds_[last];
-        movements_[dense] = movements_[last];
-        drive_speeds_[dense] = drive_speeds_[last];
-        loiter_points_[dense] = loiter_points_[last];
-        stances_[dense] = stances_[last];
-        aims_with_body_[dense] = aims_with_body_[last];
-        pitches_[dense] = pitches_[last];
-        cruise_heights_[dense] = cruise_heights_[last];
-        yaw_rates_[dense] = yaw_rates_[last];
-        speeds_[dense] = speeds_[last];
-        last_shot_ticks_[dense] = last_shot_ticks_[last];
-        command_serials_[dense] = command_serials_[last];
-        standing_orders_[dense] = standing_orders_[last];
-        locomotor_suspended_[dense] = locomotor_suspended_[last];
-        looping_[dense] = looping_[last];
-        arriving_[dense] = arriving_[last];
-        turn_plans_[dense] = turn_plans_[last];
-        walk_plans_[dense] = walk_plans_[last];
-        rolls_[dense] = rolls_[last];
-        intents_[dense] = intents_[last];
-        formation_orders_[dense] = formation_orders_[last];
-        formation_spacings_[dense] = formation_spacings_[last];
-        formation_solos_[dense] = formation_solos_[last];
-        formation_teams_[dense] = formation_teams_[last];
-        crushes_[dense] = crushes_[last];
-        speed_limits_[dense] = speed_limits_[last];
-        group_ids_[dense] = group_ids_[last];
-        group_best_remaining_[dense] = group_best_remaining_[last];
-        group_stall_ticks_[dense] = group_stall_ticks_[last];
-        group_waiting_[dense] = group_waiting_[last];
-        footprints_[dense] = footprints_[last];
-        path_pending_[dense] = path_pending_[last];
-        footprint_stamped_[dense] = footprint_stamped_[last];
-        slot_dense_[ids_[dense].index] = static_cast<std::uint32_t>(dense);
+        for_each_column(
+            [&](auto& column)
+            {
+                column[dense] = std::move(column[last]);
+            });
+        slot_dense_[identity_.ids[dense].index] = static_cast<std::uint32_t>(dense);
     }
-    ids_.pop_back();
-    positions_.pop_back();
-    headings_.pop_back();
-    max_speeds_.pop_back();
-    move_targets_.pop_back();
-    owners_.pop_back();
-    visuals_.pop_back();
-    selectable_.pop_back();
-    type_names_.pop_back();
-    follows_ground_.pop_back();
-    passable_types_.pop_back();
-    paths_.pop_back();
-    combat_.pop_back();
-    radii_.pop_back();
-    turn_rates_.pop_back();
-    min_speeds_.pop_back();
-    movements_.pop_back();
-    drive_speeds_.pop_back();
-    loiter_points_.pop_back();
-    stances_.pop_back();
-    aims_with_body_.pop_back();
-    pitches_.pop_back();
-    cruise_heights_.pop_back();
-    yaw_rates_.pop_back();
-    speeds_.pop_back();
-    last_shot_ticks_.pop_back();
-    command_serials_.pop_back();
-    standing_orders_.pop_back();
-    locomotor_suspended_.pop_back();
-    looping_.pop_back();
-    arriving_.pop_back();
-    turn_plans_.pop_back();
-    walk_plans_.pop_back();
-    rolls_.pop_back();
-    intents_.pop_back();
-    formation_orders_.pop_back();
-    formation_spacings_.pop_back();
-    formation_solos_.pop_back();
-    formation_teams_.pop_back();
-    crushes_.pop_back();
-    speed_limits_.pop_back();
-    group_ids_.pop_back();
-    group_best_remaining_.pop_back();
-    group_stall_ticks_.pop_back();
-    group_waiting_.pop_back();
-    footprints_.pop_back();
-    path_pending_.pop_back();
-    footprint_stamped_.pop_back();
+    for_each_column(
+        [](auto& column)
+        {
+            column.pop_back();
+        });
     slot_dense_[slot] = no_dense;
     // A slot whose generation would wrap is retired instead of reused.
     if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
@@ -612,7 +557,7 @@ std::vector<Vector3> SimulationWorld::route(const EntityId id) const
 {
     std::vector<Vector3> points;
     const auto dense = dense_index(id);
-    if (!dense || !move_targets_[*dense])
+    if (!dense || !route_.move_targets[*dense])
     {
         return points;
     }
@@ -620,8 +565,8 @@ std::vector<Vector3> SimulationWorld::route(const EntityId id) const
     {
         points.push_back(*detours_[*dense]);
     }
-    points.insert(points.end(), paths_[*dense].rbegin(), paths_[*dense].rend());
-    points.push_back(*move_targets_[*dense]);
+    points.insert(points.end(), route_.paths[*dense].rbegin(), route_.paths[*dense].rend());
+    points.push_back(*route_.move_targets[*dense]);
     return points;
 }
 
@@ -631,8 +576,8 @@ void SimulationWorld::set_ground(GroundMap ground)
     local_pathfinder_.reset();
     ground_passability_ = ground_.passability;
     footprint_cover_.assign(ground_passability_.size(), 0);
-    std::ranges::fill(footprint_stamped_, std::uint8_t{0});
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    std::ranges::fill(footprint_.stamped, std::uint8_t{0});
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         stamp_footprint(index, true);
     }
@@ -644,8 +589,8 @@ void SimulationWorld::set_ground(GroundMap ground)
 // region labels are dropped, so paths see the change.
 void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
 {
-    const auto& footprint = footprints_[index];
-    if (!footprint || !ground_.valid() || ground_.passability.size() != ground_.heights.size() || footprint_cover_.size() != ground_.passability.size() || (footprint_stamped_[index] != 0) == add)
+    const auto& footprint = footprint_.shapes[index];
+    if (!footprint || !ground_.valid() || ground_.passability.size() != ground_.heights.size() || footprint_cover_.size() != ground_.passability.size() || (footprint_.stamped[index] != 0) == add)
     {
         return;
     }
@@ -681,7 +626,7 @@ void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
             }
         }
     }
-    footprint_stamped_[index] = add ? 1U : 0U;
+    footprint_.stamped[index] = add ? 1U : 0U;
     pathfinder_.reset();
     local_pathfinder_.reset();
 }
@@ -695,10 +640,10 @@ void SimulationWorld::publish()
 {
     snapshot_.tick = tick_;
     snapshot_.entities.clear();
-    snapshot_.entities.reserve(ids_.size());
-    for (std::size_t index = 0; index < ids_.size(); ++index)
+    snapshot_.entities.reserve(identity_.ids.size());
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
-        const auto& combat = combat_[index];
+        const auto& combat = combat_.states[index];
         std::uint32_t destroyable = 0;
         std::uint32_t destroyed = 0;
         for (std::size_t hardpoint = 0; hardpoint < combat.profile.hardpoints.size(); ++hardpoint)
@@ -709,34 +654,34 @@ void SimulationWorld::publish()
                 destroyed += combat.hardpoint_health[hardpoint] <= 0.0F ? 1U : 0U;
             }
         }
-        snapshot_.entities.push_back({ids_[index],
-                                      positions_[index],
-                                      headings_[index],
-                                      visuals_[index],
-                                      owners_[index],
-                                      move_targets_[index].has_value(),
-                                      selectable_[index] != 0,
-                                      max_speeds_[index],
-                                      follows_ground_[index] != 0,
+        snapshot_.entities.push_back({identity_.ids[index],
+                                      placement_.positions[index],
+                                      placement_.headings[index],
+                                      identity_.visuals[index],
+                                      identity_.owners[index],
+                                      route_.move_targets[index].has_value(),
+                                      identity_.selectable[index] != 0,
+                                      locomotor_.max_speeds[index],
+                                      ground_mover_.follows_ground[index] != 0,
                                       combat.health,
                                       combat.profile.health,
                                       combat.shield,
                                       combat.profile.shield,
                                       combat.target,
-                                      radii_[index],
+                                      placement_.radii[index],
                                       destroyable,
                                       destroyed,
-                                      pitches_[index],
-                                      yaw_rates_[index],
-                                      speeds_[index],
-                                      rolls_[index],
+                                      placement_.pitches[index],
+                                      flight_.yaw_rates[index],
+                                      motion_.speeds[index],
+                                      flight_.rolls[index],
                                       combat.turret_yaw,
-                                      last_shot_ticks_[index],
-                                      command_serials_[index],
-                                      standing_orders_[index].kind,
-                                      arriving_[index] != 0});
-        snapshot_.entities.back().turns_as_clips = movements_[index].turn_begin_seconds[0] > 0.0F && movements_[index].stopped_turn_rate > 0.0F;
-        if (const auto& plan = turn_plans_[index]; plan.active)
+                                      combat_.last_shot_ticks[index],
+                                      orders_.command_serials[index],
+                                      orders_.standing[index].kind,
+                                      locomotor_.arriving[index] != 0});
+        snapshot_.entities.back().turns_as_clips = locomotor_.movements[index].turn_begin_seconds[0] > 0.0F && locomotor_.movements[index].stopped_turn_rate > 0.0F;
+        if (const auto& plan = turn_clips_.plans[index]; plan.active)
         {
             const auto point = turn_point(index, plan.elapsed);
             auto& entity = snapshot_.entities.back();
@@ -744,9 +689,9 @@ void SimulationWorld::publish()
             entity.turn_left = plan.way > 0.0F;
             entity.turn_progress = point.progress;
         }
-        if (const auto& movement = movements_[index]; movement.walk_stop_parts > 0)
+        if (const auto& movement = locomotor_.movements[index]; movement.walk_stop_parts > 0)
         {
-            const auto& walk = walk_plans_[index];
+            const auto& walk = walk_clips_.plans[index];
             auto& entity = snapshot_.entities.back();
             entity.walk_clip = walk.clip;
             entity.walk_part = walk.part;

@@ -890,41 +890,136 @@ private:
     std::vector<std::uint32_t> generations_;
     std::vector<std::uint32_t> slot_dense_;
     std::vector<std::uint32_t> free_slots_;
-    // Dense structure-of-arrays components.
-    std::vector<EntityId> ids_;
-    std::vector<Vector3> positions_;
-    std::vector<float> headings_;
-    std::vector<float> max_speeds_;
-    std::vector<std::optional<Vector3>> move_targets_;
-    std::vector<std::uint32_t> owners_;
-    std::vector<std::uint32_t> visuals_;
-    std::vector<std::uint8_t> selectable_;
-    std::vector<std::string> type_names_;
-    std::vector<std::uint8_t> follows_ground_;
-    GroundMap ground_;
-    std::vector<std::uint32_t> passable_types_;
-    // Waypoints before the move target, last first (back() is the next one to reach).
-    std::vector<std::vector<Vector3>> paths_;
-    GridPathfinder pathfinder_;
-    std::uint64_t blocked_moves_{};
-    std::uint64_t path_searches_{};
-    std::uint64_t partial_paths_{};
-    std::uint64_t path_expansions_{};
-    std::vector<CombatState> combat_;
-    std::vector<float> radii_;
-    std::vector<float> turn_rates_;
-    std::vector<float> min_speeds_;
-    // Where an idle flyer circles (set when it arrives or first idles).
-    std::vector<std::optional<Vector3>> loiter_points_;
-    // Flyers: current pitch, the height of the plane they cruise in (their spawn height), and the
-    // heading change of the last tick per second.
-    std::vector<float> pitches_;
-    std::vector<float> cruise_heights_;
-    std::vector<float> yaw_rates_;
-    // Speed of the last tick (EntitySnapshot::speed), and positions before the tick's movement.
-    std::vector<float> speeds_;
-    std::vector<std::uint64_t> last_shot_ticks_;
-    std::vector<std::uint64_t> command_serials_;
+    // The dense entity table (docs/ecs-design.md, 6.2 and migration step 2): one column per field,
+    // grouped by component, every column one entry per entity in dense order. Each group lists its
+    // columns once more in for_each_column, and the table its groups in for_each_group; removal and
+    // spawn's size check go through them (spawn sets the values itself). A group holds columns only,
+    // so the constructor checks both lists against the sizes of what they list (check_entity_table).
+    struct IdentityColumns
+    {
+        std::vector<EntityId> ids;
+        std::vector<std::string> type_names;
+        std::vector<std::uint32_t> owners;
+        std::vector<std::uint32_t> visuals;
+        std::vector<std::uint8_t> selectable;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(ids);
+            visit(type_names);
+            visit(owners);
+            visit(visuals);
+            visit(selectable);
+        }
+    };
+    struct PlacementColumns
+    {
+        std::vector<Vector3> positions;
+        std::vector<float> headings;
+        // Flyers' current pitch (0 for everything else).
+        std::vector<float> pitches;
+        std::vector<float> radii;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(positions);
+            visit(headings);
+            visit(pitches);
+            visit(radii);
+        }
+    };
+    struct MotionColumns
+    {
+        // Speed of the last tick (EntitySnapshot::speed).
+        std::vector<float> speeds;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(speeds);
+        }
+    };
+    struct LocomotorColumns
+    {
+        std::vector<float> max_speeds;
+        std::vector<float> turn_rates;
+        std::vector<MovementProfile> movements;
+        // The locomotor's own speed, which accelerates and brakes (MotionColumns::speeds is the
+        // measured one).
+        std::vector<float> drive_speeds;
+        // Group speed of a formation move until the entity arrives; zero when none.
+        std::vector<float> speed_limits;
+        // Suspend_Locomotor: the entity neither moves nor turns (hashed).
+        std::vector<std::uint8_t> suspended;
+        // Braking for its destination this tick (EntitySnapshot::arriving); not hashed.
+        std::vector<std::uint8_t> arriving;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(max_speeds);
+            visit(turn_rates);
+            visit(movements);
+            visit(drive_speeds);
+            visit(speed_limits);
+            visit(suspended);
+            visit(arriving);
+        }
+    };
+    struct GroundMoverColumns
+    {
+        std::vector<std::uint8_t> follows_ground;
+        std::vector<std::uint32_t> passable_types;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(follows_ground);
+            visit(passable_types);
+        }
+    };
+    struct RouteColumns
+    {
+        std::vector<std::optional<Vector3>> move_targets;
+        // Waypoints before the move target, last first (back() is the next one to reach).
+        std::vector<std::vector<Vector3>> paths;
+        // Serial of the entity's queued request (zero when none); a newer request supersedes it.
+        std::vector<std::uint32_t> pending;
+        // Where an idle flyer circles (set when it arrives or first idles).
+        std::vector<std::optional<Vector3>> loiter_points;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(move_targets);
+            visit(paths);
+            visit(pending);
+            visit(loiter_points);
+        }
+    };
+    struct FlightColumns
+    {
+        std::vector<float> min_speeds;
+        // The height of the plane they cruise in (their spawn height), and the heading change of the
+        // last tick per second.
+        std::vector<float> cruise_heights;
+        std::vector<float> yaw_rates;
+        // Inside a half-loop, and the roll they unwind after one.
+        std::vector<std::uint8_t> looping;
+        std::vector<float> rolls;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(min_speeds);
+            visit(cruise_heights);
+            visit(yaw_rates);
+            visit(looping);
+            visit(rolls);
+        }
+    };
+    struct CombatColumns
+    {
+        std::vector<CombatState> states;
+        std::vector<std::uint64_t> last_shot_ticks;
+        std::vector<std::uint8_t> aims_with_body;
+        std::vector<Stance> stances;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(states);
+            visit(last_shot_ticks);
+            visit(aims_with_body);
+            visit(stances);
+        }
+    };
     // Standing orders (gameplay state, hashed): the kind, the destination or anchor point and object
     // (invalid: the point), whether the current target came from the order and where that chase
     // began, and the ticks to the next scan for hostiles (staggered by entity index).
@@ -937,14 +1032,16 @@ private:
         Vector3 engage_origin;
         std::uint32_t scan_timer{};
     };
-    std::vector<StandingOrderState> standing_orders_;
-    // Suspend_Locomotor: the entity neither moves nor turns (hashed).
-    std::vector<std::uint8_t> locomotor_suspended_;
-    std::vector<Vector3> tick_start_positions_;
-    // Flyers inside a half-loop, and the roll they unwind after one.
-    std::vector<std::uint8_t> looping_;
-    // Braking for its destination this tick (EntitySnapshot::arriving); not hashed.
-    std::vector<std::uint8_t> arriving_;
+    struct OrderColumns
+    {
+        std::vector<std::uint64_t> command_serials;
+        std::vector<StandingOrderState> standing;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(command_serials);
+            visit(standing);
+        }
+    };
     // A turn in place played as clips (MovementProfile::turn_begin_seconds): under way, seconds into
     // it, the heading it started from, its angle, its way (+1 counter-clockwise, left), the scale of
     // the clips' nominal rates that ends it exactly on the way, and its cycles (loops, HALF, and
@@ -961,7 +1058,14 @@ private:
         std::uint32_t halves{};
         std::uint32_t quarters{};
     };
-    std::vector<TurnPlan> turn_plans_;
+    struct TurnClipColumns
+    {
+        std::vector<TurnPlan> plans;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(plans);
+        }
+    };
     // A walk played as clips (MovementProfile::walk_stop_parts): its clip, the stop's part, seconds
     // into the clip, the stride phase (0..1), the speed its stop brakes from, the share of the travel
     // speed a walk too short for its clips keeps, and whether its stop ends the move to `destination`
@@ -983,25 +1087,131 @@ private:
         // stride's next part, and turns in place from there.
         bool turn_back{};
     };
-    std::vector<WalkPlan> walk_plans_;
+    struct WalkClipColumns
+    {
+        std::vector<WalkPlan> plans;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(plans);
+        }
+    };
+    struct SteeringColumns
+    {
+        // Rebuilt by the behavior layer every tick before movement.
+        std::vector<SteeringIntent> intents;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(intents);
+        }
+    };
+    struct FormationColumns
+    {
+        std::vector<std::uint32_t> orders;
+        std::vector<float> spacings;
+        std::vector<std::uint8_t> solos;
+        std::vector<FormationTeam> teams;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(orders);
+            visit(spacings);
+            visit(solos);
+            visit(teams);
+        }
+    };
+    struct GroupColumns
+    {
+        // Formation group of a member (zero when none), the remaining route it last made progress at,
+        // ticks since then, and whether it waits this tick.
+        std::vector<std::uint32_t> ids;
+        std::vector<float> best_remaining;
+        std::vector<std::uint32_t> stall_ticks;
+        std::vector<std::uint8_t> waiting;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(ids);
+            visit(best_remaining);
+            visit(stall_ticks);
+            visit(waiting);
+        }
+    };
+    struct FootprintColumns
+    {
+        std::vector<std::optional<GroundFootprint>> shapes;
+        std::vector<std::uint8_t> stamped;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(shapes);
+            visit(stamped);
+        }
+    };
+    struct CrushColumns
+    {
+        std::vector<CrushProfile> profiles;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(profiles);
+        }
+    };
+    IdentityColumns identity_;
+    PlacementColumns placement_;
+    MotionColumns motion_;
+    LocomotorColumns locomotor_;
+    GroundMoverColumns ground_mover_;
+    RouteColumns route_;
+    FlightColumns flight_;
+    CombatColumns combat_;
+    OrderColumns orders_;
+    TurnClipColumns turn_clips_;
+    WalkClipColumns walk_clips_;
+    SteeringColumns steering_;
+    FormationColumns formation_;
+    GroupColumns group_;
+    FootprintColumns footprint_;
+    CrushColumns crush_;
+    // Every column of the entity table, component by component.
+    // Every group of the entity table, in declaration order (identity_ first, crush_ last).
+    template <class Visit> void for_each_group(Visit&& visit)
+    {
+        visit(identity_);
+        visit(placement_);
+        visit(motion_);
+        visit(locomotor_);
+        visit(ground_mover_);
+        visit(route_);
+        visit(flight_);
+        visit(combat_);
+        visit(orders_);
+        visit(turn_clips_);
+        visit(walk_clips_);
+        visit(steering_);
+        visit(formation_);
+        visit(group_);
+        visit(footprint_);
+        visit(crush_);
+    }
+    template <class Visit> void for_each_column(Visit&& visit)
+    {
+        for_each_group(
+            [&](auto& group)
+            {
+                group.for_each_column(visit);
+            });
+    }
+    // That for_each_column and for_each_group list every column and group (simulation.cpp).
+    void check_entity_table();
     // Whether a standing walk played as clips is about to turn in place toward the behavior
     // layer's point (so it keeps a raised leg up).
     [[nodiscard]] bool wants_turn_in_place(std::size_t index) const noexcept;
-    std::vector<float> rolls_;
-    std::vector<Stance> stances_;
-    std::vector<std::uint8_t> aims_with_body_;
-    // Rebuilt by the behavior layer every tick before movement.
-    std::vector<SteeringIntent> intents_;
-    std::vector<std::uint32_t> formation_orders_;
-    std::vector<float> formation_spacings_;
-    std::vector<std::uint8_t> formation_solos_;
-    std::vector<FormationTeam> formation_teams_;
-    std::vector<CrushProfile> crushes_;
-    // Group speed of a formation move until the entity arrives; zero when none.
-    std::vector<float> speed_limits_;
-    std::vector<MovementProfile> movements_;
-    // The locomotor's own speed, which accelerates and brakes (speeds_ is the measured one).
-    std::vector<float> drive_speeds_;
+
+    // World state and per-tick scratch (not entity columns: sized per tick or per world).
+    GroundMap ground_;
+    GridPathfinder pathfinder_;
+    std::uint64_t blocked_moves_{};
+    std::uint64_t path_searches_{};
+    std::uint64_t partial_paths_{};
+    std::uint64_t path_expansions_{};
+    // Positions before the tick's movement.
+    std::vector<Vector3> tick_start_positions_;
     std::vector<Vector3> separation_push_;
     // Space ships: the point steered at this tick to pass a unit in the way (navigation's local
     // avoidance); recomputed every tick from the state, so not hashed.
@@ -1023,24 +1233,14 @@ private:
         std::size_t next_member{};
     };
     std::deque<PathRequest> path_queue_;
-    // Serial of the entity's queued request (zero when none); a newer request supersedes it.
-    std::vector<std::uint32_t> path_pending_;
     std::uint32_t next_path_serial_{1};
     // Short legs onto and off a shared path search at most this many nodes.
     GridPathfinder local_pathfinder_{4096};
     std::uint64_t shared_routes_{};
-    std::vector<std::optional<GroundFootprint>> footprints_;
-    std::vector<std::uint8_t> footprint_stamped_;
     // The ground's own passability, and how many footprints cover each cell.
     std::vector<std::uint32_t> ground_passability_;
     std::vector<std::uint16_t> footprint_cover_;
     std::vector<float> remaining_route_;
-    // Formation group of a member (zero when none), the remaining route it last made progress at,
-    // ticks since then, and whether it waits this tick.
-    std::vector<std::uint32_t> group_ids_;
-    std::vector<float> group_best_remaining_;
-    std::vector<std::uint32_t> group_stall_ticks_;
-    std::vector<std::uint8_t> group_waiting_;
     std::uint32_t next_group_id_{1};
     std::size_t waiting_members_{};
     std::uint64_t released_members_{};
