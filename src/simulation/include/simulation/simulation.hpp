@@ -61,6 +61,7 @@ struct CrushProfile
     Crusher crusher{Crusher::none};
     bool squashable{};
     bool squashable_by_supercrusher{};
+    bool operator==(const CrushProfile&) const = default;
 };
 
 // How a unit acts on its own, between and during orders (the behavior layer; orders always apply).

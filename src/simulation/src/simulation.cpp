@@ -150,8 +150,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         walk_clips_.add(slot);
     }
-    // As min_speeds below: a flyer.
-    if (std::min(spawn.min_speed, spawn.max_speed) > 0.0F)
+    // A minimum speed above 0 makes a flyer (FlightColumns::min_speeds).
+    const auto min_speed = std::min(spawn.min_speed, spawn.max_speed);
+    if (min_speed > 0.0F)
     {
         flight_maneuvers_.add(slot);
     }
@@ -159,7 +160,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         footprint_.columns.shapes[footprint_.add(slot)] = *spawn.footprint;
     }
-    if (spawn.crush.crusher != Crusher::none || spawn.crush.squashable || spawn.crush.squashable_by_supercrusher)
+    if (spawn.crush != CrushProfile{})
     {
         crush_.columns.profiles[crush_.add(slot)] = spawn.crush;
     }
@@ -183,7 +184,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     }
     placement_.radii.push_back(spawn.radius);
     locomotor_.turn_rates.push_back(spawn.turn_rate);
-    flight_.min_speeds.push_back(std::min(spawn.min_speed, spawn.max_speed));
+    flight_.min_speeds.push_back(min_speed);
     locomotor_.movements.push_back(spawn.movement);
     locomotor_.drive_speeds.push_back(0.0F);
     route_.loiter_points.emplace_back();
