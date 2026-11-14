@@ -28,7 +28,7 @@ const Hostility& SimulationWorld::hostility() const noexcept
 
 std::uint32_t SimulationWorld::ticks_for(const float seconds) const noexcept
 {
-    const auto ticks = std::lround(static_cast<double>(seconds) / tick_seconds_);
+    const auto ticks = std::lround(static_cast<double>(seconds) / clock_.tick_seconds);
     return static_cast<std::uint32_t>(std::clamp<long>(ticks, 0L, 1L << 30));
 }
 
@@ -44,11 +44,11 @@ bool SimulationWorld::damageable(const std::size_t index) const noexcept
 // choice), and keeps the refresh a function of the tick, so it adds no state to hash.
 bool SimulationWorld::shield_refresh_due(const std::size_t index) const noexcept
 {
-    const auto interval = static_cast<std::uint64_t>(std::max(1.0, std::round(static_cast<double>(combat_.states[index].profile.shield_refresh_seconds) / tick_seconds_)));
+    const auto interval = static_cast<std::uint64_t>(std::max(1.0, std::round(static_cast<double>(combat_.states[index].profile.shield_refresh_seconds) / clock_.tick_seconds)));
     // A multiplicative hash (Knuth's) of the id spreads consecutive ids over the interval.
     constexpr std::uint64_t phase_multiplier = 2654435761U;
     const auto phase = (static_cast<std::uint64_t>(identity_.ids[index].index) * phase_multiplier) % interval;
-    return (tick_ + phase) % interval == 0;
+    return (clock_.tick + phase) % interval == 0;
 }
 
 // Order within a tick: shields recharge, then every armed entity (in dense order) updates its
@@ -56,7 +56,7 @@ bool SimulationWorld::shield_refresh_due(const std::size_t index) const noexcept
 // at the end, so dense indices stay valid throughout.
 void SimulationWorld::run_combat()
 {
-    const auto dt = static_cast<float>(tick_seconds_);
+    const auto dt = static_cast<float>(clock_.tick_seconds);
     grid_.build(placement_.positions, grid_cell_size);
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
@@ -349,7 +349,7 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
 {
     ++shots_fired_;
     // The tick being run: the snapshot published at its end carries it as its tick.
-    combat_.last_shot_ticks[shooter] = tick_ + 1U;
+    combat_.last_shot_ticks[shooter] = clock_.tick + 1U;
     const auto origin = world_point(shooter, mount);
     events_.shots.push_back({identity_.ids[shooter], origin, weapon.fire_sound, weapon.launch_effect});
     auto hardpoint = aim_hardpoint(victim, origin);
@@ -649,7 +649,7 @@ float SimulationWorld::wound(CombatState& combat, const float damage)
 
 void SimulationWorld::run_projectiles()
 {
-    const auto dt = static_cast<float>(tick_seconds_);
+    const auto dt = static_cast<float>(clock_.tick_seconds);
     std::size_t kept = 0;
     for (std::size_t index = 0; index < projectiles_.flying.size(); ++index)
     {

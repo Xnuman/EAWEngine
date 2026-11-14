@@ -53,7 +53,7 @@ std::uint64_t FixedStepClock::dropped_ticks() const noexcept
     return dropped_;
 }
 
-SimulationWorld::SimulationWorld(const double tick_seconds) : tick_seconds_(tick_seconds)
+SimulationWorld::SimulationWorld(const double tick_seconds) : clock_{.tick_seconds = tick_seconds}
 {
     EAW_ASSERT_MSG(tick_seconds > 0.0 && std::isfinite(tick_seconds), "simulation tick length must be positive");
     check_entity_table();
@@ -269,7 +269,7 @@ void SimulationWorld::run_commands()
 
 void SimulationWorld::run_publish()
 {
-    ++tick_;
+    ++clock_.tick;
     publish();
 }
 
@@ -291,7 +291,7 @@ const SimSnapshot& SimulationWorld::snapshot() const noexcept
 
 SimulationWorld::Stats SimulationWorld::stats() const noexcept
 {
-    return {.tick = tick_,
+    return {.tick = clock_.tick,
             .entities = identity_.ids.size(),
             .commands_applied = commands_applied_,
             .stale_references = stale_references_,
@@ -332,7 +332,7 @@ StateHashes SimulationWorld::state_hashes() const noexcept
 void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
 {
     // The tick goes into the total only: each subject hash says whether that part of the state agrees.
-    hasher.total = hash_value(hasher.total, tick_);
+    hasher.total = hash_value(hasher.total, clock_.tick);
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         hasher.subject = StateSubject::bodies;
@@ -542,12 +542,12 @@ void SimulationWorld::run_navigation()
 
 void SimulationWorld::run_movement()
 {
-    movement_.run(view_of<MovementSystem::View>(), static_cast<float>(tick_seconds_));
+    movement_.run(view_of<MovementSystem::View>(), static_cast<float>(clock_.tick_seconds));
 }
 
 void SimulationWorld::run_contact()
 {
-    contact_.run(view_of<ContactSystem::View>(), static_cast<float>(tick_seconds_));
+    contact_.run(view_of<ContactSystem::View>(), static_cast<float>(clock_.tick_seconds));
 }
 
 void SimulationWorld::destroy(const std::size_t dense)
@@ -668,7 +668,7 @@ const GroundMap& SimulationWorld::ground() const noexcept
 
 void SimulationWorld::publish()
 {
-    snapshot_.tick = tick_;
+    snapshot_.tick = clock_.tick;
     snapshot_.entities.clear();
     snapshot_.entities.reserve(identity_.ids.size());
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)

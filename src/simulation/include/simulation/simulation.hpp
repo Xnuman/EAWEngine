@@ -843,8 +843,6 @@ private:
     [[nodiscard]] std::uint32_t ticks_for(float seconds) const noexcept;
     void publish();
 
-    double tick_seconds_;
-    std::uint64_t tick_{};
     // What the tick's systems declare access to (the schedule below): the components of the entity
     // table and the pools, and the world's resources.
     enum class SimData : std::uint8_t
@@ -875,7 +873,7 @@ private:
         events,
         combat_random,
         snapshot,
-        // The tick counter.
+        // The tick counter and the tick's length.
         clock,
         // The slot table (generations, dense positions, free slots).
         slots,
@@ -1298,7 +1296,7 @@ private:
         visit(SimData::events, events_);
         visit(SimData::combat_random, combat_random_);
         visit(SimData::snapshot, snapshot_);
-        visit(SimData::clock, tick_);
+        visit(SimData::clock, clock_);
         visit(SimData::slots, slots_);
         visit(SimData::commands, pending_);
         visit(SimData::rules, rules_);
@@ -1357,6 +1355,15 @@ private:
     };
     // The world's resources (docs/ecs-design.md, 6.2): what exists once, each kind of data a struct of
     // its own, so a system names what it uses by type.
+    // The tick counter and the fixed length of a tick in seconds.
+    struct Clock
+    {
+        bool operator==(const Clock&) const = default;
+        static constexpr SimData data = SimData::clock;
+        std::uint64_t tick{};
+        double tick_seconds{};
+    };
+    Clock clock_;
     struct GroundState
     {
         bool operator==(const GroundState&) const = default;

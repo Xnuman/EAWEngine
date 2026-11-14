@@ -162,7 +162,7 @@ void SimulationWorld::apply(const SimCommand& command)
 // and fires; it never moves a unit.
 void SimulationWorld::run_behavior()
 {
-    const auto dt = static_cast<float>(tick_seconds_);
+    const auto dt = static_cast<float>(clock_.tick_seconds);
     // Standing orders scan with the spatial grid; built here only in ticks where one scans (the
     // grid of the last tick's combat names entities by dense indices that spawns and removals since
     // then have shifted).
@@ -497,7 +497,7 @@ void SimulationWorld::plan_flight(const std::size_t index, const float dt)
                 if (flight_.min_speeds[*victim] > 0.0F)
                 {
                     // Each flyer weaves on its own phase (from its slot), so a fight spreads vertically.
-                    const auto seconds = static_cast<float>(static_cast<double>(tick_) * tick_seconds_);
+                    const auto seconds = static_cast<float>(static_cast<double>(clock_.tick) * clock_.tick_seconds);
                     const auto phase = static_cast<float>(identity_.ids[index].index % 16U) * (pi / 8.0F);
                     const auto weave = dogfight_weave * std::sin(seconds * (two_pi / dogfight_weave_seconds) + phase);
                     intent.point = Vector3{there.x, there.y, std::clamp(there.z + weave, plane - dogfight_band, plane + dogfight_band)};
