@@ -60,6 +60,10 @@ IncludeCategories:
   - Regex: '^"core/'
     Priority: 2
     SortPriority: 3
+  # jobs shares core's place and sorts after it by name.
+  - Regex: '^"jobs/'
+    Priority: 2
+    SortPriority: 3
   - Regex: '^"vfs/'
     Priority: 2
     SortPriority: 4

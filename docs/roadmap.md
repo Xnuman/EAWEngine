@@ -170,9 +170,9 @@ rendering rows join item 2).
       recipes from XML, an explicit phase schedule with declared access, fibers for jobs), the
       research in [ecs-research.md](ecs-research.md).
    d. The job system (ecs-design.md section 7): `eaw_jobs` on fibers without OS mutexes,
-      counters, deterministic `parallel_for` and chunk outputs, tests across worker counts; then
-      its first clients (presentation's pose sampling, a background lane in place of the
-      sandbox's `std::async` calls).
+      counters, deterministic `parallel_for` and chunk outputs, tests across worker counts (done
+      2026-11-15); then its first clients (presentation's pose sampling, a background lane in
+      place of the sandbox's `std::async` calls) and profiling hooks.
    e. The simulation's migration to entities and components (ecs-design.md section 8): per-system
       timings and sub-hashes; components as structs in the one table; the registry and pools;
       systems with declared access; recipes; command buffers and event queues; the one declared

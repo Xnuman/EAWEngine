@@ -9,6 +9,7 @@ set(EAW_TEST_MODULES
     formats
     foundation
     image_compare
+    jobs
     launcher
     localization
     math
@@ -35,7 +36,7 @@ endforeach()
 source_group("" FILES ${EAW_TEST_SOURCES})
 
 add_executable(EAWEngineTests ${EAW_TEST_SOURCES})
-target_link_libraries(EAWEngineTests PRIVATE eaw_assets eaw_battle eaw_control eaw_image_compare eaw_launcher eaw_localization eaw_math eaw_presentation eaw_render_core eaw_sandbox eaw_scene eaw_script)
+target_link_libraries(EAWEngineTests PRIVATE eaw_assets eaw_battle eaw_control eaw_image_compare eaw_jobs eaw_launcher eaw_localization eaw_math eaw_presentation eaw_render_core eaw_sandbox eaw_scene eaw_script)
 
 # EAWEngineTests runs every module when given none.
 foreach(test_module IN LISTS EAW_TEST_MODULES)

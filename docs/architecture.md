@@ -418,6 +418,9 @@ The file-level split of each module.
   and `scalar` (angle constants and conversions).
 - `src/core` (`eaw_core`), by category: `error_handling` (`status`, `fatal_error`), `log`,
   `string_utils`, `file_io`, `checksum`, `byte_order`, and `random` (`Pcg32`).
+- `src/jobs` (`eaw_jobs`): `job_system` (fibers, counters, workers, the scheduling loop, idle sleep
+  on an atomic), `parallel` (`parallel_for`, `chunk_count`), and the private `mpmc_queue` (Vyukov's
+  bounded lock-free queue); see [ecs-design.md](ecs-design.md), section 7.
 - `src/vfs` (`eaw_vfs`), by category: `file_system` (`virtual_file_system`: readers, mounts, and
   layering), `archive` (`meg_archive`, `asset_path`), and `installation` (`game_installation`, with
   its own minimal `megafiles.xml` reader so the VFS does not depend on the formats; and
