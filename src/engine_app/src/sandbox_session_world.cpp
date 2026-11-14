@@ -51,7 +51,7 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
 {
     if (world && presentation)
     {
-        eaw::BattlePresenters presenters{*presentation, animator ? &*animator : nullptr, effects, audio ? &*audio : nullptr};
+        eaw::BattlePresenters presenters{*presentation, animator ? &*animator : nullptr, effects, audio ? &*audio : nullptr, &jobs};
         const auto ticks = world_paused ? 0U : runtime->ticks_due(std::chrono::duration<double>(now - simulation_tick).count());
         simulation_tick = now;
         const auto world_seconds = std::chrono::duration<double>(world_now(now) - map_animation_start).count();

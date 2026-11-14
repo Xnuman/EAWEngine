@@ -18,8 +18,9 @@
 
 namespace eaw::engine_app {
 
-SandboxSession::SandboxSession(const eaw::SandboxOptions& session_options, eaw::VirtualFileSystem& session_vfs, eaw::PlatformWindow& session_window, eaw::D3d12Renderer& session_renderer)
-    : options(session_options), vfs(session_vfs), window(session_window), renderer(session_renderer)
+SandboxSession::SandboxSession(const eaw::SandboxOptions& session_options, eaw::VirtualFileSystem& session_vfs, eaw::PlatformWindow& session_window, eaw::D3d12Renderer& session_renderer,
+                               eaw::JobSystem& session_jobs)
+    : options(session_options), vfs(session_vfs), window(session_window), renderer(session_renderer), jobs(session_jobs)
 {
     watchdog.set_threshold(options.use_warp || options.gpu_validation ? std::chrono::seconds(60) : std::chrono::seconds(5));
     if (options.fixed_frame_time || options.capture)
@@ -369,7 +370,15 @@ int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const Gam
         return 1;
     }
     auto& renderer = **created_renderer;
-    SandboxSession session(options, vfs, window, renderer);
+    // The frame thread's job system (it becomes a fiber; its own fiber always resumes on it).
+    auto created_jobs = eaw::JobSystem::create();
+    if (!created_jobs)
+    {
+        std::cerr << "error: " << created_jobs.error().message << '\n';
+        return 1;
+    }
+    std::cout << "Job workers: " << (*created_jobs)->worker_count() << '\n';
+    SandboxSession session(options, vfs, window, renderer, **created_jobs);
     while (!window.close_requested())
     {
         if (!session.frame())

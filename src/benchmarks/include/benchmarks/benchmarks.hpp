@@ -31,9 +31,10 @@ struct Suite
     Workload (*prepare)();
 };
 
-// Every suite, in the order they run (bench_jobs.cpp, bench_paths.cpp).
+// Every suite, in the order they run (bench_jobs.cpp, bench_paths.cpp, bench_poses.cpp).
 [[nodiscard]] std::span<const Suite> job_suites();
 [[nodiscard]] std::span<const Suite> path_suites();
+[[nodiscard]] std::span<const Suite> pose_suites();
 
 // Folds bytes into a fingerprint (CRC-32 pieces, so equal outputs give equal fingerprints).
 [[nodiscard]] std::uint64_t fingerprint(std::uint64_t fingerprint, const void* data, std::size_t bytes) noexcept;

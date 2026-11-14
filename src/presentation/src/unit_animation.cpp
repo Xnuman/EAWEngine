@@ -6,6 +6,7 @@
 #include "math/quaternion.hpp"
 #include "math/scalar.hpp"
 #include "core/string_utils.hpp"
+#include "jobs/parallel.hpp"
 #include "assets/animation.hpp"
 #include "assets/game_object_catalog.hpp"
 #include "assets/pose.hpp"
@@ -317,20 +318,52 @@ std::optional<std::uint32_t> UnitAnimator::place(const PoseKey& key, const std::
         ++stats_.over_budget;
         return std::nullopt;
     }
-    auto cached = pose_cache_.find(key);
-    if (cached == pose_cache_.end())
+    const auto offset = static_cast<std::uint32_t>(palette.size());
+    if (const auto cached = pose_cache_.find(key); cached != pose_cache_.end())
     {
-        std::vector<Matrix4> pose;
-        pose.reserve(rig.palette_size);
-        sample(key, pose);
-        cached_entries_ += pose.size();
-        cached = pose_cache_.emplace(key, std::move(pose)).first;
+        palette.insert(palette.end(), cached->second.begin(), cached->second.end());
+    }
+    else
+    {
+        // Sampled at the end of animate(), with the frame's other new poses (sample_pending); a pose
+        // always fills its rig's palette_size entries (append_rig_local_palette).
+        palette.resize(palette.size() + rig.palette_size, Matrix4::identity());
+        pending_.push_back({key, offset});
         ++stats_.sampled;
     }
-    const auto offset = static_cast<std::uint32_t>(palette.size());
-    palette.insert(palette.end(), cached->second.begin(), cached->second.end());
     frame_offsets_.emplace(key, offset);
     return offset;
+}
+
+void UnitAnimator::sample_pending(std::vector<Matrix4>& palette, JobSystem* jobs)
+{
+    // sample() only reads the rigs and masks, so the poses are sampled side by side, each into its
+    // own output, and placed and cached afterwards in the order they were asked for.
+    sampled_.resize(pending_.size());
+    const auto sample_range = [this](const std::size_t begin, const std::size_t end, std::size_t)
+    {
+        for (std::size_t index = begin; index < end; ++index)
+        {
+            sampled_[index].clear();
+            sample(pending_[index].key, sampled_[index]);
+        }
+    };
+    if (jobs != nullptr && pending_.size() > pose_sample_grain)
+    {
+        parallel_for(*jobs, pending_.size(), pose_sample_grain, sample_range, JobPriority::frame);
+    }
+    else
+    {
+        sample_range(0, pending_.size(), 0);
+    }
+    for (std::size_t index = 0; index < pending_.size(); ++index)
+    {
+        auto& pose = sampled_[index];
+        std::ranges::copy(pose, palette.begin() + pending_[index].offset);
+        cached_entries_ += pose.size();
+        pose_cache_.emplace(pending_[index].key, std::move(pose));
+    }
+    pending_.clear();
 }
 
 void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id, const double seconds, const DeathStyle& style, const bool crushed)
@@ -517,7 +550,7 @@ const std::vector<UnitAnimator::EndedCorpse>& UnitAnimator::ended_corpses() cons
 }
 
 void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, const double seconds, const std::size_t max_palette,
-                           std::vector<Matrix4>& palette, const std::span<const AnimationProfile> animations)
+                           std::vector<Matrix4>& palette, const std::span<const AnimationProfile> animations, JobSystem* jobs)
 {
     EAW_ASSERT_MSG(entities.size() == instances.size(), "unit animation needs one entity slot per instance");
     ++frame_;
@@ -659,6 +692,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                   {
                       return entry.second.frame != frame_;
                   });
+    sample_pending(palette, jobs);
     stats_.poses = frame_offsets_.size();
     stats_.palette_entries = palette.size();
 }

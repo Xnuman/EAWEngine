@@ -45,6 +45,10 @@ inline constexpr float turn_in_place_speed_fraction = 0.1F;
 inline constexpr double longest_frame_seconds = 0.25;
 // Sampled poses kept across frames (matrices); beyond it the cache starts over.
 inline constexpr std::size_t pose_cache_limit = 4U * 1024U * 1024U;
+// New poses per sampling job (an engine choice: a pose of a few dozen bones and up to four clips
+// takes tens of microseconds, so a job carries well over its scheduling cost; fewer new poses than
+// this in a frame are sampled on the calling thread).
+inline constexpr std::size_t pose_sample_grain = 4;
 
 // The most idles one frame moves past (a first sight starts up to a minute in), and the salt that
 // spreads an entity's successive idle choices.

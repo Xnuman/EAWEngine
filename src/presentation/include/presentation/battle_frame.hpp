@@ -29,6 +29,8 @@ struct BattlePresenters
     UnitAnimator* animator{};
     BattleEffects& effects;
     BattleAudio* audio{};
+    // Frame work runs on it when given (pose sampling); otherwise on the calling thread.
+    JobSystem* jobs{};
 };
 
 // A frame of a battle: drawn instances (backgrounds, entities, then shots drawn as models), the

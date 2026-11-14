@@ -50,7 +50,7 @@ target_sources(EAWEngine
     ${EAW_ENGINE_APP_SOURCES}
 )
 
-target_link_libraries(EAWEngine PRIVATE eaw_assets eaw_audio_devices eaw_battle eaw_image_compare eaw_control eaw_presentation eaw_sandbox eaw_scene eaw_script)
+target_link_libraries(EAWEngine PRIVATE eaw_assets eaw_audio_devices eaw_battle eaw_image_compare eaw_control eaw_jobs eaw_presentation eaw_sandbox eaw_scene eaw_script)
 if(WIN32)
     target_link_libraries(EAWEngine PRIVATE eaw_platform eaw_render_d3d12 eaw_imgui)
 endif()

@@ -5,6 +5,7 @@
 // sandbox_session_*.cpp files named below.
 
 #include "core/log.hpp"
+#include "jobs/job_system.hpp"
 #include "audio/audio_device.hpp"
 #include "render/d3d12_renderer.hpp"
 #include "assets/asset_cache.hpp"
@@ -62,6 +63,8 @@ struct SandboxSession
     eaw::VirtualFileSystem& vfs;
     eaw::PlatformWindow& window;
     eaw::D3d12Renderer& renderer;
+    // Created by the executable (sandbox_app.cpp) on the frame thread.
+    eaw::JobSystem& jobs;
 
     std::optional<eaw::VisualModelAsset> visual_model;
     std::optional<eaw::Animation> visual_animation;
@@ -237,7 +240,8 @@ struct SandboxSession
     SandboxSession& operator=(const SandboxSession&) = delete;
 
     // Session lifetime and the frame loop (sandbox_app.cpp).
-    SandboxSession(const eaw::SandboxOptions& session_options, eaw::VirtualFileSystem& session_vfs, eaw::PlatformWindow& session_window, eaw::D3d12Renderer& session_renderer);
+    SandboxSession(const eaw::SandboxOptions& session_options, eaw::VirtualFileSystem& session_vfs, eaw::PlatformWindow& session_window, eaw::D3d12Renderer& session_renderer,
+                   eaw::JobSystem& session_jobs);
     std::string describe_instance(const std::size_t index) const;
     ~SandboxSession();
     // Renders, runs the --reload-every test, reports streaming, and applies --frame-limit.

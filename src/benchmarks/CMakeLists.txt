@@ -13,6 +13,7 @@ set(EAW_BENCHMARKS_HEADERS
 set(EAW_BENCHMARKS_SOURCES
     ${SOURCES_DIR}/bench_jobs.cpp
     ${SOURCES_DIR}/bench_paths.cpp
+    ${SOURCES_DIR}/bench_poses.cpp
     ${SOURCES_DIR}/main.cpp
 )
 
@@ -28,4 +29,4 @@ target_sources(EAWBenchmarks
     ${EAW_BENCHMARKS_SOURCES}
 )
 
-target_link_libraries(EAWBenchmarks PRIVATE eaw_jobs eaw_simulation)
+target_link_libraries(EAWBenchmarks PRIVATE eaw_jobs eaw_presentation eaw_simulation)

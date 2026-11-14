@@ -287,7 +287,8 @@ EAWBenchmarks.exe paths --workers 0,3,7 --repeat 9 --output D:\eaw-bench\paths.t
 Suites: `jobs-tiny` (200,000 one-number jobs: the scheduling cost of a job), `jobs-math` (2,000,000
 items of float math in chunks: scaling), `jobs-nested` (jobs waiting on their own jobs: parking and
 resuming fibers), and `paths` (384 A* searches on a synthetic 512 by 512 ground, the route searches
-the simulation will run on the job system first). `scripts/benchmark.ps1` runs it and, with
+the simulation will run on the job system first), and `poses` (one frame of `UnitAnimator::animate`
+with 256 new 40-bone poses and an empty pose cache: presentation's pose sampling). `scripts/benchmark.ps1` runs it and, with
 `-Reference`, prints each configuration's median against an earlier run's. The first run
 (2026-11-15, 8 hardware threads): float math 6.6 times faster with 7 workers, path searches 5.2
 times; a job costs about 43 ns on one thread and 90-110 ns with workers sharing one queue, so a job

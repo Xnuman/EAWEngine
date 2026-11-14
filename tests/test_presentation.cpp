@@ -1,6 +1,7 @@
 // Presentation of a running battle: posing entities, unit animation, cameras, picking, and debug drawing.
 #include "test_support.hpp"
 
+#include "jobs/job_system.hpp"
 #include "formats/alo_model_helpers.hpp"
 #include "battle/battle.hpp"
 #include "battle/battle_log.hpp"
@@ -247,6 +248,22 @@ void test_unit_animation()
                                     return instance.bone_offset >= rest.size() && instance.bone_offset + 2U <= palette.size();
                                 }),
             "animated units must point at a pose in the palette");
+    {
+        // Sampled on the job system, the frame is the same: palette and offsets.
+        auto jobs = expect_ok(eaw::JobSystem::create({.workers = 2}), "creating a job system");
+        eaw::UnitAnimator parallel(rigs, rest);
+        auto parallel_entities = std::vector<eaw::EntityId>(entities.begin(), entities.begin() + 103);
+        auto parallel_instances = std::vector<eaw::VisualInstance>(instances.begin(), instances.begin() + 103);
+        std::vector<eaw::Matrix4> parallel_palette;
+        parallel.animate(snapshot, parallel_entities, parallel_instances, 0.25, 1U << 20U, parallel_palette, {}, jobs.get());
+        require(parallel.stats().sampled == stats.sampled && parallel_palette == palette &&
+                    std::ranges::equal(parallel_instances, std::span(instances).first(103),
+                                       [](const eaw::VisualInstance& left, const eaw::VisualInstance& right)
+                                       {
+                                           return left.bone_offset == right.bone_offset;
+                                       }),
+                "poses sampled on the job system must fill the same palette");
+    }
     animator.animate(snapshot, entities, instances, 0.25, 1U << 20U, palette);
     require(animator.stats().sampled == 0 && animator.stats().poses == stats.poses, "the same poses must come from the cache");
     // A palette with room for nothing beyond the rest pose leaves everyone at rest.

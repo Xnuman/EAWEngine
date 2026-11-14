@@ -188,6 +188,10 @@ int run(const Options& options)
     {
         all.push_back(suite);
     }
+    for (const auto& suite : pose_suites())
+    {
+        all.push_back(suite);
+    }
     if (options.list)
     {
         for (const auto& suite : all)

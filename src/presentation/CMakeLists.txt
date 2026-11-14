@@ -57,4 +57,4 @@ target_sources(eaw_presentation
     ${EAW_PRESENTATION_SOURCES}
 )
 
-target_link_libraries(eaw_presentation PUBLIC eaw_audio eaw_battle eaw_render_contract)
+target_link_libraries(eaw_presentation PUBLIC eaw_audio eaw_battle eaw_render_contract PRIVATE eaw_jobs)

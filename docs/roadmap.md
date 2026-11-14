@@ -171,8 +171,9 @@ rendering rows join item 2).
       research in [ecs-research.md](ecs-research.md).
    d. The job system (ecs-design.md section 7): `eaw_jobs` on fibers without OS mutexes,
       counters, deterministic `parallel_for` and chunk outputs, tests across worker counts (done
-      2026-11-15); then its first clients (presentation's pose sampling, a background lane in
-      place of the sandbox's `std::async` calls) and profiling hooks.
+      2026-11-15); then its first clients (presentation's pose sampling, done 2026-11-15; a
+      background lane in place of the sandbox's `std::async` calls, once content builds are split
+      into short jobs) and profiling hooks.
    e. The simulation's migration to entities and components (ecs-design.md section 8): per-system
       timings and sub-hashes (done 2026-11-15: per tick layer, and `--hash-trace` by state subject); components as structs in the one table; the registry and pools;
       systems with declared access; recipes; command buffers and event queues; the one declared

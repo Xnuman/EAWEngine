@@ -48,6 +48,8 @@
 
 namespace eaw {
 
+class JobSystem;
+
 // The role an entity's snapshot asks for, before falling back to the clips its mesh has: attack
 // for a unit with a target that is not moving, move for a moving one, idle otherwise.
 [[nodiscard]] AnimationRole wanted_animation_role(const EntitySnapshot& entity) noexcept;
@@ -130,7 +132,7 @@ public:
     // `max_palette` entries. `seconds` is presentation time and should not go backwards (a step back
     // counts as no time passing).
     void animate(std::span<const EntitySnapshot> snapshot, std::vector<EntityId>& entities, std::vector<VisualInstance>& instances, double seconds, std::size_t max_palette,
-                 std::vector<Matrix4>& palette, std::span<const AnimationProfile> animations = {});
+                 std::vector<Matrix4>& palette, std::span<const AnimationProfile> animations = {}, JobSystem* jobs = nullptr);
     // Shows that `entity`'s hardpoint on `mesh` is destroyed: its scorch meshes and damage effects
     // (`decal_bone`, `damage_bone`, and below) appear and its attached model (bound to
     // `attachment_bone` alone; the scorch and damage bones often hang below it) goes; -1 for none.
@@ -267,6 +269,14 @@ private:
     [[nodiscard]] std::uint32_t slot_of(std::uint32_t mesh, std::int32_t clip, double seconds) const;
     [[nodiscard]] std::uint32_t slot_count(std::uint32_t mesh, std::int32_t clip) const;
     void sample(const PoseKey& key, std::vector<Matrix4>& out) const;
+    // Samples the poses place() reserved this frame into their palette ranges and the cache (on the
+    // job system when given one).
+    void sample_pending(std::vector<Matrix4>& palette, JobSystem* jobs);
+    struct PendingPose
+    {
+        PoseKey key;
+        std::uint32_t offset{};
+    };
 
     // One entity's frame as the stages of animate() see it.
     struct EntityFrame
@@ -334,6 +344,9 @@ private:
     std::size_t cached_entries_{};
     // This frame's palette offset of each pose.
     std::unordered_map<PoseKey, std::uint32_t, PoseKeyHash> frame_offsets_;
+    // This frame's poses to sample, and one output per pose for sample_pending.
+    std::vector<PendingPose> pending_;
+    std::vector<std::vector<Matrix4>> sampled_;
     std::unordered_map<std::uint64_t, std::size_t> snapshot_index_;
     // Bone indices by mesh and name key (bone_of).
     std::unordered_map<std::uint64_t, std::int32_t> bones_;
