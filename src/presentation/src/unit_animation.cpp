@@ -43,8 +43,9 @@ constexpr float turn_in_place_speed_fraction = 0.1F;
 // Bantha at 5x).
 constexpr float minimum_transition_playback = 0.25F;
 // Transitions fade in from the pose before them and out into the one after them over this long
-// (engine choice).
-constexpr double transition_fade_seconds = 0.25;
+// (engine choice); 0 cuts straight from one clip to the next (the owner's test, 2026-11-14: the 0.25 s
+// fades looked clanky).
+constexpr double transition_fade_seconds = 0.0;
 constexpr float maximum_transition_playback = 6.0F;
 // Frames longer than this (a stall, a hidden window) count as this long.
 constexpr double longest_frame_seconds = 0.25;
@@ -776,7 +777,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 {
                     override_clip = state.transition;
                     override_time = elapsed;
-                    override_weight = static_cast<float>(std::clamp((seconds - state.transition_start) / transition_fade_seconds, 0.0, 1.0));
+                    override_weight = transition_fade_seconds > 0.0 ? static_cast<float>(std::clamp((seconds - state.transition_start) / std::max(transition_fade_seconds, 1.0e-9), 0.0, 1.0)) : 1.0F;
                     // MOVE goes on from where MOVESTART ends: its first frame.
                     if (state.transition_starts_walk)
                     {
@@ -788,6 +789,8 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                     state.fading = state.transition;
                     state.fading_since = state.transition_start + duration / static_cast<double>(state.transition_playback);
                     state.transition = -1;
+                    // IDLE goes on from its first frame where a transition (MOVE_END) leaves it.
+                    state.idle_start = state.fading_since;
                 }
             }
             // An ended transition holds its last frame while the next pose fades in.
@@ -799,7 +802,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                     const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.fading)].animation));
                     override_clip = state.fading;
                     override_time = duration * 0.9999;
-                    override_weight = static_cast<float>(1.0 - std::clamp(since / transition_fade_seconds, 0.0, 1.0));
+                    override_weight = static_cast<float>(1.0 - std::clamp(since / std::max(transition_fade_seconds, 1.0e-9), 0.0, 1.0));
                 }
                 else
                 {
