@@ -490,10 +490,6 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
             movement.turn_end_seconds = end;
             movement.turn_half_seconds = half;
             movement.turn_quarter_seconds = quarter;
-            if (catalog.field(definition, "Close_Enough_Angle_For_Move_Start").field == nullptr)
-            {
-                movement.turn_in_place_angle = walker_turn_in_place_angle;
-            }
         }
     }
 }
