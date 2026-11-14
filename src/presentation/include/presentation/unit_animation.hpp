@@ -254,10 +254,11 @@ private:
         double fading_since{};
         // A walker that stopped walks its stride on to the next quarter, where the MOVE_END clip of
         // that quarter starts (the clips meet MOVE exactly there: clip-joins): whether it is under
-        // way, its stride phase, and the quarter it walks to (1..4, 4 the stride's end).
+        // way, its stride phase, the part of the stride it walks to (1..parts, parts the stride's end), and how many parts its stride has (one per MOVE_END clip).
         bool stopping{};
         double stop_phase{};
-        int stop_quarter{};
+        int stop_part{};
+        int stop_parts{4};
         // The stop of this walk has begun (once braking for the destination starts, or the walker is
         // all but still), so it does not begin again before the next start.
         bool stop_begun{};

@@ -783,7 +783,15 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                     // walk on to the next quarter and stop there.
                     state.stopping = true;
                     state.stop_phase = state.stride_phase;
-                    state.stop_quarter = std::clamp(static_cast<int>(std::floor(state.stride_phase * 4.0)) + 1, 1, 4);
+                    // The stride splits into as many parts as the mesh has MOVE_END clips (four on the
+                    // AT-AT, three on the AT-ST and pod walkers): MOVE_END n starts at part n - 1.
+                    state.stop_parts = 0;
+                    while (state.stop_parts < 4 && find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(state.stop_parts)) >= 0)
+                    {
+                        ++state.stop_parts;
+                    }
+                    state.stop_parts = std::max(state.stop_parts, 1);
+                    state.stop_part = std::clamp(static_cast<int>(std::floor(state.stride_phase * static_cast<double>(state.stop_parts))) + 1, 1, state.stop_parts);
                     // Braking from below top speed takes less long: the stop clip plays faster to match.
                     state.stop_braking = entity.arriving;
                 }
@@ -818,19 +826,19 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 // Braking began while MOVESTART still plays (a short walk): MOVESTART ends where MOVE
                 // starts, which is where MOVE_ENDONE starts, so the stop follows it at once.
                 state.stop_phase = 0.0;
-                state.stop_quarter = 0;
+                state.stop_part = 0;
             }
             else if (state.stopping)
             {
                 // The stride goes on at the move clip's rate at top speed until it reaches the quarter.
                 const auto move_duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.move)].animation));
-                const auto target = static_cast<double>(state.stop_quarter) / 4.0;
+                const auto target = static_cast<double>(state.stop_part) / static_cast<double>(state.stop_parts);
                 state.stop_phase += move_duration > 0.0 ? dt * static_cast<double>(walk_playback) / move_duration : 1.0;
                 if (state.stop_phase >= target)
                 {
                     state.stopping = false;
                     state.stride_phase = std::fmod(target, 1.0);
-                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(state.stop_quarter % 4)),
+                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(state.stop_part % state.stop_parts)),
                                      // Braking from below top speed takes less long: measured as END starts (after the
                                      // walk-on to the quarter), END plays faster to end with it.
                                      state.stop_braking && entity.speed > 0.0F ? walk_playback * std::clamp(entity.max_speed / entity.speed, 1.0F, 4.0F) : walk_playback);

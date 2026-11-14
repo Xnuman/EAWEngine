@@ -76,6 +76,12 @@ eaw::Status clip_joins(const eaw::VirtualFileSystem& vfs, const std::string& mod
         std::size_t worst_bone = 0;
         for (std::size_t bone = 0; bone < a.size() && bone < b.size(); ++bone)
         {
+            // Proxies (effect attachment points, P_*) are not always keyed alike in every clip; the
+            // body's bones decide whether a join shows.
+            if (bone < skeleton.bones.size() && (skeleton.bones[bone].name.starts_with("P_") || skeleton.bones[bone].name.starts_with("p_")))
+            {
+                continue;
+            }
             const auto gap = eaw::length(a[bone] - b[bone]);
             if (gap > worst)
             {
@@ -106,15 +112,23 @@ eaw::Status clip_joins(const eaw::VirtualFileSystem& vfs, const std::string& mod
     join(move, -1.0, move, "MOVE end -> MOVE start (loop)");
     if (move)
     {
-        const auto frames = static_cast<double>(std::max<std::uint32_t>(move->animation.loop_frame_count, 1U));
-        for (std::size_t quarter = 0; quarter < ends.size(); ++quarter)
+        // The stride is split by the number of MOVE_END clips the model has (four on the AT-AT, three
+        // on the AT-ST and pod walkers).
+        std::size_t count = 0;
+        while (count < ends.size() && load(ends[count]))
         {
-            const auto end = load(ends[quarter]);
-            for (std::size_t at = 0; at < 4; ++at)
+            ++count;
+        }
+        const auto frames = static_cast<double>(std::max<std::uint32_t>(move->animation.loop_frame_count, 1U));
+        for (std::size_t part = 0; part < count; ++part)
+        {
+            const auto end = load(ends[part]);
+            for (std::size_t at = 0; at < count; ++at)
             {
-                join(move, frames * static_cast<double>(at) / 4.0, end, std::string("MOVE at ") + std::to_string(at) + "/4 -> " + ends[quarter] + " start");
+                join(move, frames * static_cast<double>(at) / static_cast<double>(count), end,
+                     std::string("MOVE at ") + std::to_string(at) + "/" + std::to_string(count) + " -> " + ends[part] + " start");
             }
-            join(end, -1.0, idle, std::string(ends[quarter]) + " end -> IDLE start");
+            join(end, -1.0, idle, std::string(ends[part]) + " end -> IDLE start");
         }
     }
     for (const auto* side : {"L", "R"})
