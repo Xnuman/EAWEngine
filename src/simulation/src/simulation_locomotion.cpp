@@ -19,14 +19,18 @@ float SimulationWorld::travel_speed(const std::size_t index) const noexcept
     return limit > 0.0F ? std::min(own, limit) : own;
 }
 
-void SimulationWorld::run_movement()
+void SimulationWorld::run_navigation()
 {
-    const auto dt = static_cast<float>(tick_seconds_);
     std::ranges::fill(arriving_, std::uint8_t{0});
     process_path_queue();
     measure_remaining_routes();
     update_group_cohesion();
     plan_space_avoidance();
+}
+
+void SimulationWorld::run_movement()
+{
+    const auto dt = static_cast<float>(tick_seconds_);
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
         // A suspended locomotor holds the entity where it is; its orders wait.
@@ -375,7 +379,6 @@ void SimulationWorld::run_separation()
     {
         return flyer(index) || (radii_[index] > 0.0F && min_speeds_[index] <= 0.0F && land && follows_ground_[index] != 0);
     };
-    grid_.build(positions_, grid_cell_size);
     separation_push_.assign(ids_.size(), Vector3{});
     float largest_radius = 0.0F;
     for (std::size_t index = 0; index < ids_.size(); ++index)
@@ -385,6 +388,7 @@ void SimulationWorld::run_separation()
             largest_radius = std::max(largest_radius, radii_[index]);
         }
     }
+    grid_.build(positions_, std::clamp(2.0F * largest_radius, separation_min_cell_size, grid_cell_size));
     // Remaining route length of every moving unit: of two moving units, the one further along
     // (less route left) has priority and yields much less, so units queue through a narrow
     // passage instead of shoving each other back and forth (Age of Empires II's priority rule).
@@ -420,14 +424,29 @@ void SimulationWorld::run_separation()
         }
         query_.clear();
         grid_.query(positions_[index], radii_[index] + largest_radius, query_);
+        // Each pair once, from its lower dense index, and only units that touch: whether they do comes
+        // from positions and footprints alone (most neighbours a query finds do not), before anything
+        // else about the other unit is read (separation is memory-bound: a crowd of 2,500 makes about
+        // 125,000 candidate pairs a tick). The few left go in index order, so the pushes add up the
+        // same whatever the grid's cells.
+        const bool flying = flyer(index);
+        const auto& here = positions_[index];
+        const auto own_radius = radii_[index];
+        std::erase_if(query_,
+                      [&](const std::uint32_t other)
+                      {
+                          const auto reach = own_radius + radii_[other];
+                          const auto gap_x = positions_[other].x - here.x;
+                          const auto gap_y = positions_[other].y - here.y;
+                          return other <= index || gap_x * gap_x + gap_y * gap_y >= reach * reach;
+                      });
+        std::ranges::sort(query_);
         for (const auto other : query_)
         {
-            // Each pair once, from its lower dense index.
-            if (other <= index || !takes_part(other))
+            if (!takes_part(other))
             {
                 continue;
             }
-            const bool flying = flyer(index);
             if (flying != flyer(other) || (flying && owners_[index] != owners_[other]))
             {
                 continue;

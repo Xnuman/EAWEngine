@@ -3,6 +3,7 @@
 #include "simulation_internal.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <unordered_map>
@@ -186,6 +187,16 @@ void SimulationWorld::step()
     // Commands first, in submission order, so the tick sees a consistent intent. Then the layers in
     // order: behavior (what each unit wants from its order, stance, and target), movement
     // (navigation and locomotors carry it out), separation, and combat (targeting, weapons, damage).
+    // Each layer is timed (Stats::phase_seconds); the times never reach the simulation's state.
+    auto mark = std::chrono::steady_clock::now();
+    const auto timed = [&](double TickPhaseTimes::* phase)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        const auto seconds = std::chrono::duration<double>(now - mark).count();
+        phase_seconds_.*phase += seconds;
+        slowest_phase_seconds_.*phase = std::max(slowest_phase_seconds_.*phase, seconds);
+        mark = now;
+    };
     auto commands = std::move(pending_);
     pending_.clear();
     for (const auto& command : commands)
@@ -198,10 +209,17 @@ void SimulationWorld::step()
     shots_.clear();
     hardpoint_deaths_.clear();
     spins_.clear();
+    timed(&TickPhaseTimes::commands);
     run_behavior();
+    timed(&TickPhaseTimes::behavior);
+    run_navigation();
+    timed(&TickPhaseTimes::navigation);
     run_movement();
+    timed(&TickPhaseTimes::movement);
     run_crushing();
+    timed(&TickPhaseTimes::crushing);
     run_separation();
+    timed(&TickPhaseTimes::separation);
     // Movement and separation are the only systems that move entities, and entities are only added
     // (commands) before and removed (combat) after them, so dense indices line up here.
     const auto dt = static_cast<float>(tick_seconds_);
@@ -213,8 +231,10 @@ void SimulationWorld::step()
         speeds_[index] = dt > 0.0F && std::isfinite(moved) ? moved / dt : 0.0F;
     }
     run_combat();
+    timed(&TickPhaseTimes::combat);
     ++tick_;
     publish();
+    timed(&TickPhaseTimes::publish);
 }
 
 std::string_view SimulationWorld::type_name(const EntityId id) const noexcept
@@ -254,7 +274,9 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .separated_pairs = separated_pairs_,
             .waiting_members = waiting_members_,
             .released_members = released_members_,
-            .rejected_spawns = rejected_spawns_};
+            .rejected_spawns = rejected_spawns_,
+            .phase_seconds = phase_seconds_,
+            .slowest_phase_seconds = slowest_phase_seconds_};
 }
 
 std::uint64_t SimulationWorld::state_hash() const noexcept

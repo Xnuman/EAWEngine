@@ -21,6 +21,10 @@ inline constexpr std::uint32_t no_dense = std::numeric_limits<std::uint32_t>::ma
 inline constexpr float arrival_distance = 0.01F;
 // Broad-phase cell size in world units (a little above typical weapon ranges).
 inline constexpr float grid_cell_size = 256.0F;
+// Separation's grid cells: twice the largest footprint taking part (a query then visits a few cells
+// of near neighbours instead of every unit within 256 units: 74% of a 3,300-unit tick went there),
+// within these bounds. Engine choices; the pairs found are the same at any cell size.
+inline constexpr float separation_min_cell_size = 16.0F;
 // Ticks between automatic target searches of an idle weapon, and between replans of an ordered
 // chase whose target is out of range. Engine choices, not measured from the original.
 inline constexpr std::uint32_t retarget_interval = 10;

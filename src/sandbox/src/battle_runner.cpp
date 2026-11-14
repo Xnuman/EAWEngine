@@ -14,6 +14,7 @@
 #include <iostream>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace eaw {
@@ -164,6 +165,22 @@ void print_run(const BattleRun& run, const std::uint64_t ticks_run)
               << " crushed, " << stats.projectiles << " in flight\n"
               << "Paths: " << stats.path_searches << " planned, " << stats.partial_paths << " partial, " << stats.shared_routes << " shared, " << stats.path_expansions << " nodes expanded, "
               << stats.blocked_moves << " blocked moves\n";
+    // Each tick layer: average milliseconds per tick, and the slowest tick's.
+    const auto per_tick = [&](const double total)
+    {
+        return format_fixed(ticks_run > 0 ? total * 1000.0 / static_cast<double>(ticks_run) : 0.0, 3);
+    };
+    const auto& total = stats.phase_seconds;
+    const auto& slowest = stats.slowest_phase_seconds;
+    std::cout << "Layers, ms per tick (average / slowest):";
+    for (const auto& [name, average, worst] :
+         {std::tuple{"commands", total.commands, slowest.commands}, std::tuple{"behavior", total.behavior, slowest.behavior}, std::tuple{"navigation", total.navigation, slowest.navigation},
+          std::tuple{"movement", total.movement, slowest.movement}, std::tuple{"crushing", total.crushing, slowest.crushing}, std::tuple{"separation", total.separation, slowest.separation},
+          std::tuple{"combat", total.combat, slowest.combat}, std::tuple{"publish", total.publish, slowest.publish}})
+    {
+        std::cout << ' ' << name << ' ' << per_tick(average) << '/' << format_fixed(worst * 1000.0, 2);
+    }
+    std::cout << '\n';
     if (run.scripts)
     {
         const auto& scripts = *run.scripts;

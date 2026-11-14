@@ -127,6 +127,19 @@ struct MovementProfile
 // The most MOVE_END clips a walk played as clips stops by (MOVE_ENDONE..MOVE_ENDFOUR, the stock names).
 inline constexpr std::uint32_t max_walk_stop_parts = 4;
 
+// Seconds per tick layer (SimulationWorld::step's order; Stats::phase_seconds).
+struct TickPhaseTimes
+{
+    double commands{};
+    double behavior{};
+    double navigation{};
+    double movement{};
+    double crushing{};
+    double separation{};
+    double combat{};
+    double publish{};
+};
+
 // Which turn clip a turn in place played as clips (MovementProfile::turn_begin_seconds) is in.
 enum class TurnClip : std::uint8_t
 {
@@ -557,6 +570,10 @@ public:
         std::uint64_t released_members{};
         // Entities of spawn commands the world rejected (invalid data or full storage).
         std::uint64_t rejected_spawns{};
+        // Wall-clock seconds each tick layer took, over all ticks so far and in its slowest tick
+        // (measurements, not simulation state: never hashed, never read by the simulation).
+        TickPhaseTimes phase_seconds;
+        TickPhaseTimes slowest_phase_seconds;
     };
 
     explicit SimulationWorld(double tick_seconds = 1.0 / 30.0);
@@ -698,6 +715,9 @@ private:
     // the point they circle; reverse through a half-loop when that point is far behind.
     void plan_flight(std::size_t index, float dt);
     void destroy(std::size_t dense);
+    // Route requests under the search budget, remaining routes, group cohesion, and space
+    // avoidance, before movement (simulation_locomotion.cpp).
+    void run_navigation();
     void run_movement();
     // Requests a route to `target` (queued for the search budget when it needs a search).
     void plan_move(std::size_t index, const Vector3& target);
@@ -1020,6 +1040,8 @@ private:
     std::uint64_t commands_applied_{};
     std::uint64_t stale_references_{};
     std::uint64_t rejected_spawns_{};
+    TickPhaseTimes phase_seconds_;
+    TickPhaseTimes slowest_phase_seconds_;
 };
 
 // Presentation helper: blends two consecutive snapshots by `alpha` (0 = previous, 1 = current).

@@ -161,7 +161,9 @@ shell is `eaw_imgui_app` (`src/imgui_app`), shared with EAWTools.
 ## Headless battles
 
 `EAWEngine battle` runs a battle on a map without a window, as fast as it can,
-and prints the state hash, tick timing, and combat and path statistics. It is
+and prints the state hash, tick timing (per tick layer too: average and slowest milliseconds of
+commands, behavior, navigation, movement, crushing, separation, combat, and publishing), and
+combat and path statistics. It is
 the determinism check and the simulation benchmark.
 
 ```powershell

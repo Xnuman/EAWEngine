@@ -27,13 +27,15 @@ Measured on 2026-11-14 (Release, Utapau, headless `battle`):
 
 | Battle | Entities at the end | Average tick | Slowest tick |
 | --- | --- | --- | --- |
-| 20 + 20 infantry squads, 20 T2-B, 10 AT-ST | 1,189 | 0.70 ms | 8.6 ms (tick 2: the route searches of the first orders) |
-| 80 + 80 squads, 60 T2-B, 40 AT-ST | 3,296 | 4.66 ms | 51.5 ms (tick 2, the same) |
+| 20 + 20 infantry squads, 20 T2-B, 10 AT-ST | 1,189 | 0.70 ms | 8.6 ms (tick 2) |
+| 80 + 80 squads, 60 T2-B, 40 AT-ST | 3,296 | 4.66 ms | 51.5 ms (tick 2: combat 38 ms, route searches 8 ms) |
 
 A 30 Hz tick has 33 ms. Speed is not the main reason to change now, but two numbers matter: at 2.7
 times the entities the average tick took 6.6 times as long (something grows faster than linearly;
-nothing in the engine can say what, because it has no per-system timings), and the first orders'
-route searches already miss a frame at 3,300 entities. The structural reasons:
+nothing in the engine could say what, because it had no per-system timings), and the opening tick
+already misses a frame at 3,300 entities. The per-layer timings added since (2026-11-15) answered
+both: separation took 3.4 of the 4.5 ms of an average tick (now 1.9 of 3.05, its candidates
+filtered before they are sorted), and the opening tick is mostly combat, not the route searches. The structural reasons:
 
 1. **One table for everything.** `SimulationWorld` keeps 67 per-entity arrays (plus world-level and
    per-tick buffers). Every entity has every field: a building has a walk plan, a turn plan, a
@@ -441,7 +443,7 @@ systems run in parallel.
 
 ### 7.5 First uses, by measured need
 
-1. **Route searches** (the 51 ms tick at 3,300 entities): up to K requests searched at once on the
+1. **Route searches** (8 ms of the 51 ms opening tick at 3,300 entities; the rest is combat): up to K requests searched at once on the
    immutable ground (each with its own budget share), results applied in request order in the same
    tick.
 2. **Separation and contact**: read-only neighbor queries; pushes per chunk, summed in chunk order.
