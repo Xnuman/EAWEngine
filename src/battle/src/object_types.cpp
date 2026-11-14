@@ -380,17 +380,21 @@ float turn_clip_playback(const float turn_rate, const float turn_reference) noex
 void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatalog& catalog, const XmlDefinition& definition, const ResourceManager& resources, const std::string_view model_path,
                                 const float max_speed)
 {
-    if (!TypeFields(catalog, definition).flag("Locomotor_Has_Animation_Priority", false) || !(max_speed > 0.0F))
+    // Walks played as clips for Walk_Transition, turns for Has_Pre_Turn_Anim, both for
+    // Locomotor_Has_Animation_Priority (the owner's decision, 2026-11-14: every walker with transition
+    // clips is played as the AT-AT is, whether its locomotor or its animation has priority).
+    const TypeFields fields(catalog, definition);
+    const bool priority = fields.flag("Locomotor_Has_Animation_Priority", false);
+    const bool walks = priority || fields.flag("Walk_Transition", false);
+    const bool turns = priority || fields.flag("Has_Pre_Turn_Anim", false);
+    if ((!walks && !turns) || !(max_speed > 0.0F))
     {
         return;
     }
+    // The clips play at the move clip's rate at top speed; at their own rate without the reference.
     const auto top = type_float_field(catalog, definition, "Max_Speed");
     const auto reference = type_float_field(catalog, definition, "Movement_Animation_Speed");
-    if (!(top > 0.0F) || !(reference > 0.0F))
-    {
-        return;
-    }
-    const auto playback = walk_clip_playback(reference / top);
+    const auto playback = top > 0.0F && reference > 0.0F ? walk_clip_playback(reference / top) : 1.0F;
     const auto stem = ascii_upper(model_path.substr(0, model_path.rfind('.')));
     // A clip's length in seconds at `rate`; zero when the model has no such clip. The walk and turn
     // plans use each role's first variant (presentation plays those for them).
@@ -408,7 +412,7 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
     {
         return clip_seconds(role, variant, playback);
     };
-    if (movement.acceleration <= 0.0F)
+    if (walks && movement.acceleration <= 0.0F)
     {
         if (const auto start = seconds(AnimationRole::move_start); start > 0.0F)
         {
@@ -427,7 +431,7 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
         ++parts;
     }
     if (const auto start = seconds(AnimationRole::move_start), stride = seconds(AnimationRole::move), stop = seconds(AnimationRole::move_end);
-        parts > 0 && start > 0.0F && stride > 0.0F && stop > 0.0F)
+        walks && parts > 0 && start > 0.0F && stride > 0.0F && stop > 0.0F)
     {
         movement.walk_start_seconds = start;
         movement.walk_stride_seconds = stride;
@@ -437,9 +441,10 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
     // Turning in place, at the stopped turn rate, its clips at their turn playback.
     const auto turn_rate = movement.stopped_turn_rate;
     const auto rotation = type_float_field(catalog, definition, "Rotation_Animation_Speed");
-    if (turn_rate > 0.0F && rotation > 0.0F)
+    if (turns && turn_rate > 0.0F)
     {
-        const auto turn_playback = turn_clip_playback(turn_rate, legacy_units::degrees_per_frame(rotation));
+        // At the turn rate against Rotation_Animation_Speed; at their own rate without it.
+        const auto turn_playback = rotation > 0.0F ? turn_clip_playback(turn_rate, legacy_units::degrees_per_frame(rotation)) : 1.0F;
         // Left [0] and right [1]: BEGIN, the loop, END, and the HALF and QUARTER cycles.
         static constexpr std::array<std::array<AnimationRole, 5>, 2> sides{{
             {AnimationRole::turn_left_begin, AnimationRole::turn_left, AnimationRole::turn_left_end, AnimationRole::turn_left_half, AnimationRole::turn_left_quarter},

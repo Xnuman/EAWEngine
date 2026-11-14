@@ -40,18 +40,12 @@ struct AnimationProfile
     // and choice, 2026-11-13; engine choices until observed).
     bool loop_first_idle{};
     bool idle_when_moving{};
-    // Transition clips: before and after turning in place (XML Has_Pre_Turn_Anim) and when starting
-    // and stopping a walk (XML Walk_Transition).
-    bool pre_turn{};
-    bool walk_transition{};
-    // The turn rate (radians per second) at which the turn clips play at their own rate (XML
-    // Rotation_Animation_Speed in degrees per frame, read like Movement_Animation_Speed by analogy;
-    // 0: they play at their own rate). Walk transitions play at the move clip's rate at top speed.
+    // The turn rate (radians per second) at which the turn loop of a unit whose turns are not planned
+    // plays at its own rate (XML Rotation_Animation_Speed in degrees per frame, read like
+    // Movement_Animation_Speed by analogy; 0: it plays at its own rate). Walkers with transition clips
+    // (XML Walk_Transition, Has_Pre_Turn_Anim, Locomotor_Has_Animation_Priority) have their walks and
+    // turns planned by the simulation instead (EntitySnapshot::walk_clip, turn_clip).
     float turn_reference{};
-    // XML Locomotor_Has_Animation_Priority: the simulation plays the walker's walks and turns in place
-    // as clips (battle's apply_animation_locomotion), and its transitions show the simulation's clip
-    // and progress (EntitySnapshot::walk_clip, turn_clip).
-    bool animation_led{};
     // XML Attack_Animation_Is_Overlay: ATTACK and ATTACKIDLE play over the locomotion on the bones
     // they animate only (the AT-AT's guns), instead of taking the whole body.
     bool attack_overlay{};

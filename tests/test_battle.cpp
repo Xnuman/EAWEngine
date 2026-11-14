@@ -124,6 +124,8 @@ void test_combat_content()
                 "<GroundVehicle Name=\"Lumberer\"><Locomotor_Has_Animation_Priority>yes</Locomotor_Has_Animation_Priority><Max_Speed>0.5</Max_Speed>"
                 "<Movement_Animation_Speed>0.125</Movement_Animation_Speed></GroundVehicle>"
                 "<GroundVehicle Name=\"Plain_Lumberer\"><Max_Speed>0.5</Max_Speed><Movement_Animation_Speed>0.125</Movement_Animation_Speed></GroundVehicle>"
+                "<GroundVehicle Name=\"Stepping_Lumberer\"><Walk_Transition>Yes</Walk_Transition><Max_Speed>0.5</Max_Speed>"
+                "<Movement_Animation_Speed>0.125</Movement_Animation_Speed></GroundVehicle>"
                 "</Units>";
     }
     {
@@ -131,7 +133,7 @@ void test_combat_content()
         const auto models = root / "Data" / "Art" / "Models";
         std::filesystem::create_directories(models);
         const auto clip = make_test_ala();
-        for (const auto* name : {"LUMBERER_MOVESTART_00.ALA", "LUMBERER_MOVE_ENDONE_00.ALA"})
+        for (const auto* name : {"LUMBERER_MOVESTART_00.ALA", "LUMBERER_MOVE_00.ALA", "LUMBERER_MOVE_ENDONE_00.ALA"})
         {
             std::ofstream file(models / name, std::ios::binary);
             file.write(reinterpret_cast<const char*>(clip.data()), static_cast<std::streamsize>(clip.size()));
@@ -166,6 +168,12 @@ void test_combat_content()
         require(std::fabs(lumbering.acceleration - 80.0F) < 0.01F && std::fabs(lumbering.deceleration - 80.0F) < 0.01F && led("Plain_Lumberer", "DATA/ART/MODELS/LUMBERER.ALO").acceleration == 0.0F &&
                     led("Lumberer", "DATA/ART/MODELS/NO_CLIPS.ALO").acceleration == 0.0F,
                 "an animation-led walker must speed up and brake over its start and stop clips' playing time");
+        // Walk_Transition without the priority walks as clips too (the owner's decision); a type
+        // with neither keeps its locomotor.
+        const auto stepping = led("Stepping_Lumberer", "DATA/ART/MODELS/LUMBERER.ALO");
+        require(stepping.walk_stop_parts == 1U && std::fabs(stepping.walk_start_seconds - 0.25F) < 1e-4F && std::fabs(stepping.walk_stride_seconds - 0.25F) < 1e-4F &&
+                    lumbering.walk_stop_parts == 1U && led("Plain_Lumberer", "DATA/ART/MODELS/LUMBERER.ALO").walk_stop_parts == 0U,
+                "a walker with walk transitions must walk as its clips");
     }
     const auto laser = content.type_ids.at("damage_laser");
     const auto tank_armor = content.type_ids.at("armor_tank");
@@ -301,7 +309,7 @@ void test_combat_content()
         const auto gunner = eaw::scene_build::type_animation_profile(catalog, *definition("Gunner"));
         require(gunner.turret_bone == eaw::game_object_name_crc("TURRET_00") && gunner.barrel_bone == eaw::game_object_name_crc("MuzzleA_00") &&
                     std::fabs(gunner.turret_rate - eaw::legacy_units::degrees_per_frame(4.0F)) < 1e-5F && gunner.turret_pitch_limit == eaw::AnimationProfile{}.turret_pitch_limit &&
-                    plain.turret_bone == 0 && gunner.walk_transition && gunner.pre_turn && !plain.walk_transition,
+                    plain.turret_bone == 0,
                 "a type's turret bones, rate, and arcs must be read");
     }
     require(std::fabs(eaw::scene_build::type_bank_limit(catalog, *definition("Banker")) - 0.6981317F) < 1.0e-5F &&

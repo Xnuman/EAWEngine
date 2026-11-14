@@ -674,6 +674,7 @@ void SimulationWorld::publish()
                                       command_serials_[index],
                                       standing_orders_[index].kind,
                                       arriving_[index] != 0});
+        snapshot_.entities.back().turns_as_clips = movements_[index].turn_begin_seconds[0] > 0.0F && movements_[index].stopped_turn_rate > 0.0F;
         if (const auto& plan = turn_plans_[index]; plan.active)
         {
             const auto point = turn_point(index, plan.elapsed);

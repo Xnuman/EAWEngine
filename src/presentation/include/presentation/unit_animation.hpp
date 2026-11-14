@@ -232,44 +232,14 @@ private:
         // A turret's current aim relative to the unit's facing (radians).
         float turret_yaw{};
         float barrel_pitch{};
-        // Transitions: the heading and motion seen last frame, the turn in place under way (-1 right,
-        // 1 left, 0 none) and since when, and the one-shot clip playing (-1 none) and since when.
+        // Turns of units whose turns are not planned: the heading seen last frame, the turn in place
+        // under way (-1 right, 1 left, 0 none), and where its loop is (seconds of the clip).
         float last_heading{};
-        bool was_moving{};
         int turning{};
-        // Where the turn loop is (seconds of its clip; it starts from its first frame when it first
-        // shows, after BEGIN) and the rate it plays at.
         double turn_time{};
-        bool turn_looping{};
-        float turn_playback{1.0F};
-        std::int32_t transition{-1};
-        double transition_start{};
-        // The rate the one-shot transition plays at, and whether it starts a walk (MOVESTART: the
-        // stride waits at its start until it ends).
-        float transition_playback{1.0F};
-        bool transition_starts_walk{};
-        // A transition that ended, held at its last frame while it fades out (-1 none), and when it
-        // ended.
-        std::int32_t fading{-1};
-        double fading_since{};
-        // A walker that stopped walks its stride on to the next quarter, where the MOVE_END clip of
-        // that quarter starts (the clips meet MOVE exactly there: clip-joins): whether it is under
-        // way, its stride phase, the part of the stride it walks to (1..parts, parts the stride's end), and how many parts its stride has (one per MOVE_END clip).
-        bool stopping{};
-        double stop_phase{};
-        int stop_part{};
-        int stop_parts{4};
-        // The walk clip the simulation showed last (EntitySnapshot::walk_clip).
+        // The walk and turn clips the simulation showed last (EntitySnapshot::walk_clip, turn_clip).
         WalkClip walk_clip{WalkClip::unplanned};
-        // The stop of this walk has begun (once braking for the destination starts, or the walker is
-        // all but still), so it does not begin again before the next start.
-        bool stop_begun{};
-        // The stop began with braking for the destination: its END plays faster when the walker is
-        // below top speed as END starts (it brakes for less long).
-        bool stop_braking{};
-        // The turn clip the simulation showed last (EntitySnapshot::turn_clip).
         TurnClip turn_clip{TurnClip::none};
-        bool frame_seen{};
     };
 
     struct Corpse

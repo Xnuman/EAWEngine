@@ -154,7 +154,8 @@ rendering rows join item 2).
       2026-11-14: `assets/clip_names`); (2) which stock types still take the presentation's old
       start and stop, then remove it or plan them (surveyed 2026-11-14: 24 types without
       animation priority, the Rancor, SPMAT, AT-AA, Night Sister, speeder bike, Juggernaut,
-      Tauntaun, and ground beetle; the path stays for them unless the owner decides otherwise); (3) `UnitAnimator::animate` split into stages
+      Tauntaun, and ground beetle; done 2026-11-14 by the owner's decision: they are planned as
+      the AT-AT is, and the old path is gone); (3) `UnitAnimator::animate` split into stages
       in files of their own, behavior unchanged (done 2026-11-14: five stages, every pose key the
       same frame for frame in two traced scenes); (4) turns report their clip and progress like
       walks, composed of loop, HALF, and QUARTER cycles (done 2026-11-14). MovementProfile's optional modes and the
@@ -176,7 +177,10 @@ rendering rows join item 2).
       research: each unit plans to its own destination slot instead of the group gathering at one
       point first; routes spread by congestion so groups do not queue single-file; blocked units
       plan again instead of bumping; pushing follows mass or priority (an infantry squad cannot
-      move an AT-AT); walls and placed obstacles are hard limits.
+      move an AT-AT); walls and placed obstacles are hard limits. Seen 2026-11-14: cohesion
+      waits for members thousands of units away (the sandbox's `--auto-move` groups every
+      mobile unit of an owner), and a walker's turn in place played as clips (3 s) counts as a
+      stall that releases it from its group.
    h. Enhanced water as an ocean on maps such as Kamino: waves (a tessellated surface displaced by
       wave functions), foam on crests.
    This closes M2.
@@ -349,9 +353,6 @@ Not a stage plan: leftovers are fixed while features touch the code around them,
 periodic whole-project reviews add to this list or turn it into a plan of steps (AGENTS.md, "Code
 health"). Remove an entry when it is fixed. Known leftovers after the reorganization of 2026-11:
 
-- `UnitAnimator::EntityState`, about 40 fields shared by every stage of unit animation; the
-  transitions' flags of the presentation's old start, stop, and turns (`stop_begun`, `stopping`,
-  `turn_looping`, `fading`, ...) go with the walker locomotion cleanup's step 2;
 - two bounds for clip playback: `walk_clip_playback`'s 0.25-6 (battle) and the animator's 0.5-1.5
   for speed-scaled playback (presentation), one idea in two places;
 - two rules for a definition's repeated field: `definition_field` (`xml_asset_database`, used by

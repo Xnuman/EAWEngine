@@ -114,9 +114,9 @@ Systems that `needs` rows wait for, by tag count:
 | `MinSecondaryTurnROTCoefficient` | `gap` |  |
 | `MaxSecondaryTurnROTCoefficient` | `gap` |  |
 | `SecondaryTurnLookaheadDistance` | `gap` |  |
-| `Has_Pre_Turn_Anim` | `done` | TURNx_BEGIN before, TURNx_END after turning in place |
-| `Walk_Transition` | `done` | MOVESTART and MOVE_END by stride quarter |
-| `Locomotor_Has_Animation_Priority` | `done` | the walker speeds up over MOVESTART and brakes over MOVE_ENDONE at their playing rate (the clips carry the acceleration: `gait`; 2026-11-14), and presentation starts the stop as braking begins; an engine reading of the name |
+| `Has_Pre_Turn_Anim` | `done` | turns in place played as clips: BEGIN, whole loop, HALF, and QUARTER cycles, END (the simulation plans them; 2026-11-14) |
+| `Walk_Transition` | `done` | walks played as clips: MOVESTART, MOVE strides, a MOVE_END clip by the stride's part (the simulation plans them; 2026-11-14) |
+| `Locomotor_Has_Animation_Priority` | `done` | both of the above; since the owner's decision of 2026-11-14 every walker with transition clips is played the same way, so the field no longer changes the outcome (what it means in the original is not observed) |
 | `Should_Cause_Limited_Turrets_To_Turn` | `done` | no: the hull does not turn to a target beyond the arc |
 | `Movement_Directions_Count` | `gap` |  |
 

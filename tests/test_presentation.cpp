@@ -326,115 +326,52 @@ void test_unit_animation()
             walkers.animate(both, both_ids, both_instances, 0.25 * frame, 1U << 20U, walker_palette);
         }
         require(both_instances[0].bone_offset != both_instances[1].bone_offset, "a unit turning on the spot must play its turn clip");
-        // Starting to walk with Walk_Transition plays MOVESTART first: unlike its twin without it.
-        eaw::UnitAnimator starters(walker_rigs, walker_rest);
-        both[0].heading = 0.0F;
-        const std::array<eaw::AnimationProfile, 2> starting{eaw::AnimationProfile{.walk_transition = true}, eaw::AnimationProfile{}};
-        starters.animate(both, both_ids, both_instances, 1.0, 1U << 20U, walker_palette, starting);
-        both[0].moving = both[1].moving = true;
-        both[0].speed = both[1].speed = 10.0F;
-        starters.animate(both, both_ids, both_instances, 1.1, 1U << 20U, walker_palette, starting);
-        require(both_instances[0].bone_offset != both_instances[1].bone_offset, "a walker starting to move must play its start clip");
-
-        // Walk transitions play at the move clip's rate at top speed: with a reference of a quarter
-        // of its top speed (the AT-AT's Movement_Animation_Speed against its Max_Speed is 0.27), the
-        // 1 s MOVESTART is over after 0.25 s (and its 0.25 s fade out after 0.5 s); at its own rate (a
-        // reference of its top speed) it is still playing at 0.5 s. MOVESTART gets its own clip (the
-        // test clip raised 5 units), so its bone stands 5 higher than MOVE's.
-        auto raised = *animation;
-        for (auto& track : raised.tracks)
+        // A walk or turn played as clips shows the simulation's clip at its progress (each clip below is
+        // the test clip raised: MOVESTART by 5, MOVE_END part n by 10 x (n + 1), TURNL_END by 7): the
+        // bone's height tells which clip shows, and its place in the clip how far in.
+        const auto raised = [&](const float lift)
         {
-            for (auto& key : track.keys)
-            {
-                key.translation.z += 5.0F;
-            }
-        }
-        auto start_rig = walker_rig;
-        start_rig.clips[3].animation = std::make_shared<const eaw::Animation>(std::move(raised));
-        const std::array<eaw::VisualRig, 1> start_rigs{start_rig};
-        // The height of the walker's bone `after` seconds into its walk.
-        const auto height_after = [&](const double after, const float reference)
-        {
-            eaw::UnitAnimator walker(start_rigs, walker_rest);
-            std::vector<eaw::EntitySnapshot> one(1);
-            one[0].id = {7, 1};
-            one[0].max_speed = 10.0F;
-            std::vector<eaw::EntityId> one_id{one[0].id};
-            std::vector<eaw::VisualInstance> shown(1);
-            std::vector<eaw::Matrix4> palette;
-            const std::array<eaw::AnimationProfile, 1> profile{eaw::AnimationProfile{.move_reference = reference, .walk_transition = true}};
-            walker.animate(one, one_id, shown, 1.0, 1U << 20U, palette, profile);
-            one[0].moving = true;
-            one[0].speed = 10.0F;
-            for (double at = 1.05; at < 1.0 + after + 1.0e-9; at += 0.05)
-            {
-                walker.animate(one, one_id, shown, at, 1U << 20U, palette, profile);
-            }
-            return palette[shown[0].bone_offset].values[14];
-        };
-        require(height_after(0.5, 1.0F) - height_after(1.0, 0.25F) > 4.0F, "a walk transition must play at the move clip's rate at top speed");
-
-        // Stopping: MOVE_END clips start where MOVE is at a quarter of its stride (clip-joins), so a
-        // walker that stops walks on to the next quarter first. Each MOVE_END is the test clip raised
-        // 10 x (its quarter + 1): none plays on the stop's frame, one within a quarter stride (MOVE is
-        // 1 s at 1x here).
-        auto stop_rig = walker_rig;
-        stop_rig.clips.resize(3);
-        for (std::uint32_t quarter = 0; quarter < 4; ++quarter)
-        {
-            auto lifted = *animation;
-            for (auto& track : lifted.tracks)
+            auto copy = *animation;
+            for (auto& track : copy.tracks)
             {
                 for (auto& key : track.keys)
                 {
-                    key.translation.z += 10.0F * static_cast<float>(quarter + 1U);
+                    key.translation.z += lift;
                 }
             }
-            stop_rig.clips.push_back({eaw::AnimationRole::move_end, quarter, "MOVE_END", std::make_shared<const eaw::Animation>(std::move(lifted))});
-        }
-        const std::array<eaw::VisualRig, 1> stop_rigs{stop_rig};
-        eaw::UnitAnimator stopper(stop_rigs, walker_rest);
-        std::vector<eaw::EntitySnapshot> walker(1);
-        walker[0].id = {8, 1};
-        walker[0].max_speed = 10.0F;
-        walker[0].moving = true;
-        walker[0].speed = 10.0F;
-        std::vector<eaw::EntityId> walker_id{walker[0].id};
-        std::vector<eaw::VisualInstance> walker_shown(1);
-        std::vector<eaw::Matrix4> stop_palette;
-        const std::array<eaw::AnimationProfile, 1> stop_profile{eaw::AnimationProfile{.walk_transition = true}};
-        double at = 1.0;
-        for (; at < 2.0; at += 0.05)
-        {
-            stopper.animate(walker, walker_id, walker_shown, at, 1U << 20U, stop_palette, stop_profile);
-        }
-        walker[0].moving = false;
-        walker[0].speed = 0.0F;
-        const auto lift = [&]
-        {
-            stopper.animate(walker, walker_id, walker_shown, at, 1U << 20U, stop_palette, stop_profile);
-            at += 0.05;
-            return stop_palette[walker_shown[0].bone_offset].values[14];
+            return std::make_shared<const eaw::Animation>(std::move(copy));
         };
-        // The shown speed decays over about 0.15 s before the walker counts as stopped.
-        float first_lift = 0.0F;
-        int frames_until_end = 0;
-        bool stopped = false;
-        for (int frame = 0; frame < 40; ++frame)
+        auto planned_rig = walker_rig;
+        planned_rig.clips[3].animation = raised(5.0F);
+        for (std::uint32_t part = 0; part < 4; ++part)
         {
-            const auto z = lift();
-            if (!stopped && z < 5.0F)
-            {
-                first_lift = z;
-            }
-            if (z > 5.0F)
-            {
-                stopped = true;
-                break;
-            }
-            ++frames_until_end;
+            planned_rig.clips.push_back({eaw::AnimationRole::move_end, part, "MOVE_END", raised(10.0F * static_cast<float>(part + 1U))});
         }
-        require(stopped && first_lift < 5.0F && frames_until_end <= 15, "a stopping walker must walk on to its stride's next quarter, then play that quarter's MOVE_END");
+        planned_rig.clips.push_back({eaw::AnimationRole::turn_left_end, 0, "TURNL_END_00", raised(7.0F)});
+        const std::array<eaw::VisualRig, 1> planned_rigs{planned_rig};
+        const auto shown_height = [&](const eaw::WalkClip walk, const std::uint32_t part, const eaw::TurnClip turn)
+        {
+            eaw::UnitAnimator animator(planned_rigs, walker_rest);
+            std::vector<eaw::EntitySnapshot> one(1);
+            one[0].id = {9, 1};
+            one[0].max_speed = 10.0F;
+            one[0].walk_clip = walk;
+            one[0].walk_part = part;
+            one[0].walk_progress = 0.5F;
+            one[0].turn_clip = turn;
+            one[0].turn_left = true;
+            one[0].turn_progress = 0.5F;
+            one[0].turns_as_clips = true;
+            std::vector<eaw::EntityId> one_id{one[0].id};
+            std::vector<eaw::VisualInstance> shown(1);
+            std::vector<eaw::Matrix4> palette;
+            animator.animate(one, one_id, shown, 1.0, 1U << 20U, palette);
+            return palette[shown[0].bone_offset].values[14];
+        };
+        const auto at_rest = shown_height(eaw::WalkClip::standing, 0, eaw::TurnClip::none);
+        require(shown_height(eaw::WalkClip::starting, 0, eaw::TurnClip::none) - at_rest > 4.9F && shown_height(eaw::WalkClip::stopping, 2, eaw::TurnClip::none) - at_rest > 29.9F &&
+                    shown_height(eaw::WalkClip::stopping, 2, eaw::TurnClip::none) - at_rest < 30.1F && std::fabs(shown_height(eaw::WalkClip::standing, 0, eaw::TurnClip::end) - at_rest - 7.0F) < 0.1F,
+                "a walk or turn played as clips must show the simulation's clip");
     }
 
     // Destroyed hardpoints on a clipless ship: its scorch bone (hidden while intact) appears and it

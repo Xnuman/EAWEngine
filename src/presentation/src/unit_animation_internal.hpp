@@ -41,12 +41,6 @@ inline constexpr float barrel_pitch_step = pi / 64.0F;
 // moves slower than turn_in_place_speed_fraction of its top speed (engine choices).
 inline constexpr float turn_in_place_rate = 0.15F;
 inline constexpr float turn_in_place_speed_fraction = 0.1F;
-// A walker with walk transitions counts as moving past this share of its top speed (engine choice).
-inline constexpr float walk_start_speed_fraction = 0.02F;
-// Transitions fade in from the pose before them and out into the one after them over this long
-// (engine choice); 0 cuts straight from one clip to the next (the owner's test, 2026-11-14: the 0.25 s
-// fades looked clanky).
-inline constexpr double transition_fade_seconds = 0.0;
 // Frames longer than this (a stall, a hidden window) count as this long.
 inline constexpr double longest_frame_seconds = 0.25;
 // Sampled poses kept across frames (matrices); beyond it the cache starts over.

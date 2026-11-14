@@ -60,14 +60,11 @@ AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const 
     {
         return TypeFields(catalog, definition).flag(field, false);
     };
-    profile.pre_turn = flag("Has_Pre_Turn_Anim");
     if (const auto rotation = type_float_field(catalog, definition, "Rotation_Animation_Speed"); rotation > 0.0F && std::isfinite(rotation))
     {
         profile.turn_reference = legacy_units::degrees_per_frame(rotation);
     }
-    profile.animation_led = flag("Locomotor_Has_Animation_Priority");
     profile.attack_overlay = flag("Attack_Animation_Is_Overlay");
-    profile.walk_transition = flag("Walk_Transition");
     const auto bone = [&](const std::string_view field)
     {
         const auto* node = catalog.field(definition, field).field;

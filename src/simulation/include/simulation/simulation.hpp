@@ -365,6 +365,8 @@ struct EntitySnapshot
     TurnClip turn_clip{TurnClip::none};
     bool turn_left{};
     float turn_progress{};
+    // Its turns in place are played as clips at all (presentation leaves its turns to turn_clip).
+    bool turns_as_clips{};
     // A walk played as clips: the clip, the MOVE_END clip a stop plays (0 for MOVE_ENDONE), and how far
     // into the clip it is (0..1; the stride phase while moving).
     WalkClip walk_clip{WalkClip::unplanned};
