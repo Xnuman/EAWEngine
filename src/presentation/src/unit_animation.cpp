@@ -181,17 +181,35 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
         if (key.overlay && index >= 2 && !pose.empty() && layer.clip >= 0)
         {
             // An overlay adds what its clip does to the pose below it: each bone the clip moves turns,
-            // shifts, and scales by its change since the clip's first frame, at the layer's weight (an
-            // engine reading of Attack_Animation_Is_Overlay: the AT-AT's and AT-ST's attacks move
-            // their barrels only, the pod walker's recoils its whole body, which must not undo its
-            // walk).
+            // shifts, and scales by its change since the clip's first frame, at the layer's weight,
+            // except the bones a moving clip below moves (a walk, turn, or leg clip: anything but an
+            // idle). An engine reading of Attack_Animation_Is_Overlay: the AT-AT's and AT-ST's attacks
+            // move their barrels only; the pod walker's recoils its body with its planted legs
+            // counter-turning, which bent its raised walking leg down with every shot, so walking it
+            // keeps only the recoil of the bones its walk leaves alone (its guns).
+            std::vector<bool> walked(pose.size(), false);
+            for (std::size_t below = 0; below < 2; ++below)
+            {
+                const auto& under = key.layers[below];
+                if (under.clip < 0 || under.eighths == 0 || rig.clips[static_cast<std::size_t>(under.clip)].role == AnimationRole::idle)
+                {
+                    continue;
+                }
+                for (const auto& track : rig.clips[static_cast<std::size_t>(under.clip)].animation->tracks)
+                {
+                    if (track.animated && track.bone < walked.size())
+                    {
+                        walked[track.bone] = true;
+                    }
+                }
+            }
             const auto& animation = *rig.clips[static_cast<std::size_t>(layer.clip)].animation;
             const auto first = sample_local_pose(animation, *rig.skeleton, 0.0F);
             const auto amount = std::min(weight / 8.0F, 1.0F);
             for (const auto& track : animation.tracks)
             {
                 const auto bone = static_cast<std::size_t>(track.bone);
-                if (!track.animated || bone >= pose.size() || bone >= layer_pose.size() || bone >= first.size())
+                if (!track.animated || bone >= pose.size() || bone >= layer_pose.size() || bone >= first.size() || walked[bone])
                 {
                     continue;
                 }

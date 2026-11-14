@@ -580,7 +580,7 @@ void test_unit_animation()
         // An overlay attack (Attack_Animation_Is_Overlay) adds what its clip does since its first
         // frame: an ATTACK held 5 units up throughout moves nothing, one that starts 20 up and rises over
         // its playing time lifts the bone by its rise so far (not to its own height) over the pose below it.
-        const auto overlay_height = [&](const bool rising, const bool fired)
+        const auto overlay_height = [&](const bool rising, const bool fired, const bool walking = false)
         {
             auto attack = *animation;
             for (auto& track : attack.tracks)
@@ -594,12 +594,26 @@ void test_unit_animation()
             }
             auto overlay_rig = rig;
             overlay_rig.clips[2].animation = std::make_shared<const eaw::Animation>(std::move(attack));
+            // A walk that moves the bone itself (it rises 3 units over its stride).
+            auto stride = *animation;
+            for (auto& track : stride.tracks)
+            {
+                const auto keys = std::max<std::size_t>(track.keys.size(), 2U) - 1U;
+                for (std::size_t key = 0; key < track.keys.size(); ++key)
+                {
+                    track.keys[key].translation.z += 3.0F * static_cast<float>(key) / static_cast<float>(keys);
+                }
+                track.animated = true;
+            }
+            overlay_rig.clips[1].animation = std::make_shared<const eaw::Animation>(std::move(stride));
             const std::array<eaw::VisualRig, 1> overlay_rigs{overlay_rig};
             const std::array<eaw::AnimationProfile, 1> overlay_profile{eaw::AnimationProfile{.attack_overlay = true}};
             eaw::UnitAnimator gunner(overlay_rigs, rest);
             std::vector<eaw::EntitySnapshot> tank(1);
             tank[0].id = {3, 1};
             tank[0].max_speed = 10.0F;
+            tank[0].moving = walking;
+            tank[0].speed = walking ? 10.0F : 0.0F;
             std::vector<eaw::EntityId> tank_id{tank[0].id};
             std::vector<eaw::VisualInstance> shown(1);
             std::vector<eaw::Matrix4> tank_palette;
@@ -612,6 +626,9 @@ void test_unit_animation()
         const auto still_height = overlay_height(false, false);
         require(std::fabs(overlay_height(false, true) - still_height) < 1.0e-4F && overlay_height(true, true) - still_height > 0.5F && overlay_height(true, true) - still_height < 10.0F,
                 "an overlay attack must add only what its clip moves since its first frame");
+        // Walking, the walk keeps the bones it moves: firing does not lift the bone (the pod walker's
+        // raised leg).
+        require(std::fabs(overlay_height(true, true, true) - overlay_height(true, false, true)) < 1.0e-4F, "an overlay attack must leave the bones a walk moves to the walk");
     }
 
     // Corpses: a mesh with a DIE clip keeps its dead for the clip plus 4 s, drawn after the living

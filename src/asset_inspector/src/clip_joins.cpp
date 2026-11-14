@@ -120,6 +120,23 @@ eaw::Status clip_joins(const eaw::VirtualFileSystem& vfs, const std::string& mod
     join(load("MOVE_ENDONE_00"), -1.0, drop, "MOVE_ENDONE_00 end -> IDLE_LEGDROP start");
     join(load("TURNL_END_00"), -1.0, drop, "TURNL_END end -> IDLE_LEGDROP start");
     join(drop, -1.0, idle, "IDLE_LEGDROP end -> IDLE start");
+    // A second idle may stand with the leg raised: whether it meets the raised clips.
+    const auto idle_raised = load("IDLE_01");
+    join(lift, -1.0, idle_raised, "IDLE_LEGLIFT end -> IDLE_01 start");
+    join(idle_raised, -1.0, idle_raised, "IDLE_01 end -> IDLE_01 start (loop)");
+    join(idle_raised, 0.0, start, "IDLE_01 start -> MOVESTART start");
+    join(idle_raised, 0.0, drop, "IDLE_01 start -> IDLE_LEGDROP start");
+    join(load("MOVE_ENDONE_00"), -1.0, idle_raised, "MOVE_ENDONE_00 end -> IDLE_01 start");
+    join(idle, 0.0, idle_raised, "IDLE start -> IDLE_01 start");
+    // How far an attack strays from its first frame (an overlay adds that to the pose below).
+    if (const auto attack = load("ATTACK_00"))
+    {
+        const auto frames = static_cast<double>(std::max<std::uint32_t>(attack->animation.loop_frame_count, 1U));
+        for (std::size_t at = 1; at < 4; ++at)
+        {
+            join(attack, frames * static_cast<double>(at) / 4.0, attack, std::string("ATTACK at ") + std::to_string(at) + "/4 vs its start");
+        }
+    }
     join(move, -1.0, move, "MOVE end -> MOVE start (loop)");
     if (move)
     {
