@@ -299,6 +299,61 @@ private:
     [[nodiscard]] std::uint32_t slot_count(std::uint32_t mesh, std::int32_t clip) const;
     void sample(const PoseKey& key, std::vector<Matrix4>& out) const;
 
+    // One entity's frame as the stages of animate() see it.
+    struct EntityFrame
+    {
+        const EntitySnapshot& entity;
+        const AnimationProfile& profile;
+        EntityState& state;
+        std::uint32_t mesh{};
+        std::uint64_t key{};
+        AnimationRole wanted{};
+        double seconds{};
+        double dt{};
+        // The instance's index and place (for animation cues).
+        std::size_t index{};
+        Vector3 position;
+    };
+    // The locomotion by speed: the blend between two roles and their clips.
+    struct LocomotionPose
+    {
+        LocomotionBlend blend;
+        std::int32_t lower{-1};
+        std::int32_t upper{-1};
+    };
+    // Aiming and firing: ATTACKIDLE's clip, ATTACK's weight and time, whether a new shot restarted
+    // it, both in eighths of the pose, and the share of the pose the locomotion keeps.
+    struct AttackPose
+    {
+        std::int32_t aim_clip{-1};
+        float fire{};
+        double fire_time{};
+        bool new_shot{};
+        std::uint32_t fire_eighths{};
+        std::uint32_t aim_eighths{};
+        float locomotion{1.0F};
+    };
+    // A clip that takes the locomotion's place (a transition, a turn loop, a walk played as clips;
+    // -1 none), where it is, and how much of the locomotion it takes.
+    struct ClipOverride
+    {
+        std::int32_t clip{-1};
+        double time{};
+        float weight{1.0F};
+    };
+    // The stages of animate() for one entity, in their order (each reads what the ones before it
+    // wrote): its state, first seen or carried on, with this frame's step `dt`
+    // (unit_animation_locomotion.cpp); the locomotion; aiming and firing (unit_animation_attack.cpp);
+    // the frame's animation cues; transitions (unit_animation_transitions.cpp); and the pose key with
+    // its turret (unit_animation_pose.cpp).
+    EntityState& prepare_state(const EntitySnapshot& entity, const AnimationProfile& profile, std::uint32_t mesh, std::uint64_t key, AnimationRole wanted, double seconds, double& dt);
+    LocomotionPose animate_locomotion(const EntityFrame& frame);
+    AttackPose animate_attack(const EntityFrame& frame);
+    void add_frame_cues(const EntityFrame& current, const LocomotionPose& locomotion_pose, const AttackPose& attack);
+    ClipOverride animate_transitions(const EntityFrame& frame);
+    PoseKey compose_pose(const EntityFrame& frame, const LocomotionPose& locomotion_pose, const AttackPose& attack, const ClipOverride& replaced, std::uint64_t mask);
+    void aim_turret(const EntityFrame& frame, std::span<const EntitySnapshot> snapshot, PoseKey& pose_key);
+
     std::vector<VisualRig> rigs_;
     std::vector<Matrix4> rest_palette_;
     std::unordered_map<std::uint64_t, EntityState> states_;

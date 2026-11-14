@@ -473,7 +473,12 @@ The file-level split of each module.
   - `src/presentation` (`eaw_presentation`): `visual_rig` (rigs, clips, palettes), `entity_look` (how entities and spawnable
     types are drawn), `damage_states` (a land model's `_ALT` state by health), `battle_frame` (a running
     battle's tick events and frames),
-    `scene_presentation`, `unit_animation`, `particle_effects` (`ParticleWorld`), `attached_effects`,
+    `scene_presentation`, `unit_animation` (the animator, its pose cache, cues, and corpses, with one
+    file per stage of an entity's frame, in order: `unit_animation_locomotion` (state, idles, the
+    speed blend, the stride), `unit_animation_attack` (aiming and firing),
+    `unit_animation_transitions` (walkers' turns, starts, stops, and walks played as clips), and
+    `unit_animation_pose` (the pose key and the turret), sharing `unit_animation_internal.hpp`),
+    `particle_effects` (`ParticleWorld`), `attached_effects`,
     `battle_effects`, `debris`, `map_weather`, `battle_audio`, `projectile_visuals`, and `debug_draw`;
   - `src/scene` (`eaw_scene`), behind `visual_scene_builder.hpp` and sharing `scene_builder_internal.hpp`:
     `scene_materials` (textures, materials, lighting), `scene_models` (models and rigs),

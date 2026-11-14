@@ -37,6 +37,11 @@ set(EAW_PRESENTATION_SOURCES
     ${SOURCES_DIR}/projectile_visuals.cpp
     ${SOURCES_DIR}/scene_presentation.cpp
     ${SOURCES_DIR}/unit_animation.cpp
+    ${SOURCES_DIR}/unit_animation_attack.cpp
+    ${SOURCES_DIR}/unit_animation_internal.hpp
+    ${SOURCES_DIR}/unit_animation_locomotion.cpp
+    ${SOURCES_DIR}/unit_animation_pose.cpp
+    ${SOURCES_DIR}/unit_animation_transitions.cpp
     ${SOURCES_DIR}/visual_rig.cpp
 )
 

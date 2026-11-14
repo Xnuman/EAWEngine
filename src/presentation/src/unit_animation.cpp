@@ -1,5 +1,7 @@
 #include "presentation/unit_animation.hpp"
 
+#include "unit_animation_internal.hpp"
+
 #include "math/matrix.hpp"
 #include "math/scalar.hpp"
 #include "core/string_utils.hpp"
@@ -14,72 +16,8 @@
 #include <limits>
 
 namespace eaw {
-namespace {
 
-// Engine choices (see unit_animation.hpp).
-constexpr float minimum_slots_per_second = 30.0F;
-constexpr float speed_smoothing_seconds = 0.15F;
-constexpr float attack_fade_seconds = 0.2F;
-constexpr double shot_fade_seconds = 0.15;
-constexpr float walk_speed_fraction = 0.4F;
-constexpr float move_without_walk_fraction = 0.25F;
-constexpr float minimum_playback_rate = 0.5F;
-constexpr float maximum_playback_rate = 1.5F;
-// Layer clip values: no layer, and the mesh's rest pose (for meshes without an IDLE clip).
-constexpr std::int32_t no_clip = -1;
-constexpr std::int32_t rest_clip = -2;
-// Corpses hold their last frame this long after their DIE clip ends, and at most this many are kept.
-constexpr double corpse_linger_seconds = 4.0;
-constexpr std::size_t maximum_corpses = 4096;
-// Turret aims are quantized so that units aiming alike share poses: 128 steps of yaw around the
-// circle, 64 of pitch over a half turn (engine choices: under 3 degrees each).
-constexpr float turret_yaw_step = two_pi / 128.0F;
-constexpr float barrel_pitch_step = pi / 64.0F;
-// A unit turns in place when its heading changes faster than this (radians per second) while it
-// moves slower than turn_in_place_speed_fraction of its top speed (engine choices).
-constexpr float turn_in_place_rate = 0.15F;
-constexpr float turn_in_place_speed_fraction = 0.1F;
-// A walker with walk transitions counts as moving past this share of its top speed (engine choice).
-constexpr float walk_start_speed_fraction = 0.02F;
-// Transitions fade in from the pose before them and out into the one after them over this long
-// (engine choice); 0 cuts straight from one clip to the next (the owner's test, 2026-11-14: the 0.25 s
-// fades looked clanky).
-constexpr double transition_fade_seconds = 0.0;
-// Frames longer than this (a stall, a hidden window) count as this long.
-constexpr double longest_frame_seconds = 0.25;
-// Sampled poses kept across frames (matrices); beyond it the cache starts over.
-constexpr std::size_t pose_cache_limit = 4U * 1024U * 1024U;
-
-// The most idles one frame moves past (a first sight starts up to a minute in), and the salt that
-// spreads an entity's successive idle choices.
-constexpr std::size_t maximum_idle_switches = 256;
-constexpr std::uint64_t idle_variant_salt = 0x9e3779b97f4a7c15ULL;
-// A unit with a single IDLE clip that does not loop it waits this long before playing it again
-// (seconds, random in between; the owner's choice, 2026-11-13, until the original is observed).
-constexpr double single_idle_pause_min_seconds = 2.0;
-constexpr double single_idle_pause_max_seconds = 4.0;
-
-std::uint64_t mix(std::uint64_t value) noexcept
-{
-    // SplitMix64 finalizer: a stable per-entity hash for variants and phases.
-    value += 0x9e3779b97f4a7c15ULL;
-    value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
-    value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
-    return value ^ (value >> 31U);
-}
-
-// A fraction 0..1 of an entity's hash, for phases.
-double unit_fraction(const std::uint64_t key, const std::uint64_t salt) noexcept
-{
-    return static_cast<double>(mix(key ^ salt) % 10000U) / 10000.0;
-}
-
-std::uint32_t eighths(const float weight) noexcept
-{
-    return static_cast<std::uint32_t>(std::lround(std::clamp(weight, 0.0F, 1.0F) * 8.0F));
-}
-
-} // namespace
+using namespace unit_animation_detail;
 
 AnimationRole wanted_animation_role(const EntitySnapshot& entity) noexcept
 {
@@ -428,6 +366,64 @@ void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id,
     corpses_.push_back({instance, clip, seconds, lifetime, -1.0, style.end_effect});
 }
 
+void UnitAnimator::add_frame_cues(const EntityFrame& current, const LocomotionPose& locomotion_pose, const AttackPose& attack)
+{
+    const auto& entity = current.entity;
+    const auto& profile = current.profile;
+    auto& state = current.state;
+    const auto mesh = current.mesh;
+    const auto seconds = current.seconds;
+    const auto index = current.index;
+    const auto& position = current.position;
+    const auto& blend = locomotion_pose.blend;
+    const auto lower = locomotion_pose.lower;
+    const auto upper = locomotion_pose.upper;
+    const auto locomotion = attack.locomotion;
+    const auto fire_eighths = attack.fire_eighths;
+    const auto fire_time = attack.fire_time;
+    const auto new_shot = attack.new_shot;
+    // Events placed in the clips: the locomotion clip shown most, and ATTACK while it plays.
+    {
+        const auto lower_weight = locomotion * (1.0F - blend.blend);
+        const auto upper_weight = upper == lower ? locomotion : locomotion * blend.blend;
+        const bool upper_leads = upper != lower && upper_weight > lower_weight;
+        const auto clip = upper_leads ? upper : lower;
+        const auto role = upper_leads ? blend.upper : blend.lower;
+        const auto weight = upper == lower ? locomotion : std::max(lower_weight, upper_weight);
+        if (clip >= 0 && weight >= animation_cue_minimum_weight)
+        {
+            const auto& visual_clip = rigs_[mesh].clips[static_cast<std::size_t>(clip)];
+            const auto duration = static_cast<double>(animation_duration(*visual_clip.animation));
+            const auto time =
+                role == AnimationRole::idle ? std::fmod(std::max(seconds - state.idle_start, 0.0) * static_cast<double>(profile.idle_rate), std::max(duration, 1.0e-6)) : state.stride_phase * duration;
+            const auto frame = time * static_cast<double>(visual_clip.animation->frames_per_second);
+            if (clip == state.cue_clip)
+            {
+                add_cue(entity.id, position, visual_clip, state.cue_frame, frame, static_cast<double>(visual_clip.animation->loop_frame_count), index);
+            }
+            state.cue_clip = clip;
+            state.cue_frame = frame;
+        }
+        else
+        {
+            state.cue_clip = no_clip;
+        }
+    }
+    if (fire_eighths > 0)
+    {
+        const auto& visual_clip = rigs_[mesh].clips[static_cast<std::size_t>(state.attack)];
+        const auto frame = fire_time * static_cast<double>(visual_clip.animation->frames_per_second);
+        // A new shot restarts ATTACK: its events from the first frame on.
+        const auto from = new_shot ? -1.0 : state.fire_cue_frame;
+        add_cue(entity.id, position, visual_clip, from, frame, 0.0, index);
+        state.fire_cue_frame = frame;
+    }
+    else
+    {
+        state.fire_cue_frame = -1.0;
+    }
+}
+
 void UnitAnimator::add_cue(const EntityId entity, const Vector3& position, const VisualClip& clip, const double from, const double to, const double loop_frames, const std::size_t instance)
 {
     const auto index = static_cast<std::uint32_t>(instance);
@@ -547,463 +543,20 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         const auto key = entity_key(entity.id);
         const auto wanted = wanted_animation_role(entity);
         const auto profile = index < animations.size() ? animations[index] : AnimationProfile{};
-        auto& state = states_[key];
-        if (state.frame == 0 || state.mesh != instance.mesh)
-        {
-            state = {};
-            state.mesh = instance.mesh;
-            state.idle = choose_clip(instance.mesh, AnimationRole::idle, entity.id);
-            if (const auto first = find_clip(instance.mesh, AnimationRole::idle, 0U); profile.loop_first_idle && first >= 0)
-            {
-                state.idle = first;
-            }
-            state.walk = choose_clip(instance.mesh, AnimationRole::walk_move, entity.id);
-            state.move = choose_clip(instance.mesh, AnimationRole::move, entity.id);
-            state.attack = choose_clip(instance.mesh, AnimationRole::attack, entity.id);
-            state.attack_idle = choose_clip(instance.mesh, AnimationRole::attack_idle, entity.id);
-            state.last_shot = entity.last_shot_tick;
-            state.display_speed = std::isfinite(entity.speed) ? entity.speed : 0.0F;
-            state.idle_start = seconds - unit_fraction(key, 0x1d1eULL) * 60.0;
-            state.stride_phase = unit_fraction(key, 0x57e9ULL);
-            state.attack_weight = wanted == AnimationRole::attack && state.attack_idle >= 0 ? 1.0F : 0.0F;
-            state.last_seconds = seconds;
-        }
-        const auto dt = std::clamp(seconds - state.last_seconds, 0.0, longest_frame_seconds);
-        state.last_seconds = seconds;
-        // An idle that ended is followed by a random IDLE variant (AnimationProfile::loop_first_idle);
-        // a unit seen for the first time may be several idles in.
-        for (std::size_t played = 0; state.idle >= 0 && !profile.loop_first_idle && played < maximum_idle_switches; ++played)
-        {
-            const auto length = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.idle)].animation)) / static_cast<double>(profile.idle_rate);
-            if (length <= 0.0 || seconds - state.idle_start < length)
-            {
-                break;
-            }
-            state.idle_start += length;
-            state.idle = choose_clip(instance.mesh, AnimationRole::idle, entity.id, ++state.idle_plays * idle_variant_salt);
-            if (std::ranges::count(rigs_[instance.mesh].clips, AnimationRole::idle, &VisualClip::role) == 1)
-            {
-                // The lone idle starts again after a pause, holding its first frame until then.
-                const auto pause = unit_fraction(key, state.idle_plays * idle_variant_salt);
-                state.idle_start += single_idle_pause_min_seconds + pause * (single_idle_pause_max_seconds - single_idle_pause_min_seconds);
-            }
-        }
-        state.frame = frame_;
-        const auto target_speed = std::isfinite(entity.speed) ? std::max(entity.speed, 0.0F) : 0.0F;
-        state.display_speed += (target_speed - state.display_speed) * std::min(1.0F, static_cast<float>(dt) / speed_smoothing_seconds);
-        // A walk played as clips shapes its speed by its clips: standing is IDLE the moment its stop ends.
-        if (entity.walk_clip == WalkClip::standing)
-        {
-            state.display_speed = 0.0F;
-        }
-
-        // Locomotion: two neighbouring clips by speed, falling back to whatever the mesh has.
-        const auto blend = locomotion_blend(state.display_speed, entity.max_speed, state.walk >= 0);
-        const auto clip_of = [&](const AnimationRole role)
-        {
-            switch (role)
-            {
-            case AnimationRole::walk_move:
-                return state.walk;
-            case AnimationRole::move:
-                if (state.move < 0 && state.walk < 0 && profile.idle_when_moving)
-                {
-                    return state.idle >= 0 ? state.idle : rest_clip;
-                }
-                return state.move >= 0 ? state.move : state.walk;
-            default:
-                return state.idle >= 0 ? state.idle : rest_clip;
-            }
-        };
-        const auto lower = clip_of(blend.lower);
-        const auto upper = clip_of(blend.upper);
-        // The stride phase advances at the blended rate of the moving clips, each sped up or slowed
-        // down by how fast the unit goes against the speed the clip stands for: the engine's
-        // reference (top speed, or its walk speed) within the playback bounds, rescaled to the
-        // type's own reference speed when its XML gives one (AnimationProfile).
-        if (entity.max_speed > 0.0F)
-        {
-            double rate = 0.0;
-            const auto stride_rate = [&](const AnimationRole role, const std::int32_t clip, const float weight)
-            {
-                if (clip < 0 || weight <= 0.0F || role == AnimationRole::idle)
-                {
-                    return;
-                }
-                const bool walking = role == AnimationRole::walk_move;
-                const auto engine_reference = walking ? walk_speed_fraction : 1.0F;
-                const auto type_reference = walking ? (profile.walk_reference > 0.0F ? profile.walk_reference : walk_speed_fraction) : profile.move_reference;
-                const auto playback = std::clamp(state.display_speed / (entity.max_speed * engine_reference), minimum_playback_rate, maximum_playback_rate) * engine_reference / type_reference;
-                rate += static_cast<double>(weight * playback) / static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
-            };
-            stride_rate(blend.lower, lower, 1.0F - blend.blend);
-            stride_rate(blend.upper, upper, blend.blend);
-            state.stride_phase = std::fmod(state.stride_phase + rate * dt, 1.0);
-        }
-
-        // Aiming (ATTACKIDLE) fades in while standing with a target, and out otherwise. A mesh without
-        // it shows no aiming pose: its ATTACK belongs to the shots (the T4-B's gun recoil looped
-        // while it had a target, in range or not; the owner's report).
-        const auto aim_clip = state.attack_idle;
-        const auto attack_target = wanted == AnimationRole::attack && aim_clip >= 0 ? 1.0F : 0.0F;
-        const auto fade = static_cast<float>(dt) / attack_fade_seconds;
-        state.attack_weight = attack_target > state.attack_weight ? std::min(attack_target, state.attack_weight + fade) : std::max(attack_target, state.attack_weight - fade);
-        state.attack_time = state.attack_weight > 0.0F ? state.attack_time + dt : 0.0;
-        // Each new shot restarts ATTACK.
-        const bool new_shot = entity.last_shot_tick > state.last_shot;
-        if (new_shot)
-        {
-            state.last_shot = entity.last_shot_tick;
-            state.since_shot = 0.0;
-        }
-        else
-        {
-            state.since_shot += dt;
-        }
-        float fire = 0.0F;
-        double fire_time = 0.0;
-        if (state.attack >= 0)
-        {
-            const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.attack)].animation));
-            fire = state.since_shot < duration ? 1.0F : static_cast<float>(std::clamp(1.0 - (state.since_shot - duration) / shot_fade_seconds, 0.0, 1.0));
-            fire_time = std::min(state.since_shot, duration * 0.9999);
-        }
-
-        const auto layer = [&](const std::int32_t clip, const AnimationRole role, const float weight) -> Layer
-        {
-            const auto amount = eighths(weight);
-            if (clip == no_clip || amount == 0)
-            {
-                return {};
-            }
-            if (clip == rest_clip)
-            {
-                return {rest_clip, 0, amount};
-            }
-            const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
-            const auto time = role == AnimationRole::idle ? (seconds - state.idle_start) * static_cast<double>(profile.idle_rate) : state.stride_phase * duration;
-            return {clip, slot_of(instance.mesh, clip, time), amount};
-        };
-        const auto fire_eighths = eighths(fire);
-        const auto aim_eighths = std::min(eighths(state.attack_weight * (1.0F - fire)), 8U - fire_eighths);
-        // An overlay attack leaves the locomotion its whole weight.
-        const auto locomotion = profile.attack_overlay ? 1.0F : static_cast<float>(8U - fire_eighths - aim_eighths) / 8.0F;
-
-        // Events placed in the clips: the locomotion clip shown most, and ATTACK while it plays.
-        const auto position = translation(instance.transform);
-        {
-            const auto lower_weight = locomotion * (1.0F - blend.blend);
-            const auto upper_weight = upper == lower ? locomotion : locomotion * blend.blend;
-            const bool upper_leads = upper != lower && upper_weight > lower_weight;
-            const auto clip = upper_leads ? upper : lower;
-            const auto role = upper_leads ? blend.upper : blend.lower;
-            const auto weight = upper == lower ? locomotion : std::max(lower_weight, upper_weight);
-            if (clip >= 0 && weight >= animation_cue_minimum_weight)
-            {
-                const auto& visual_clip = rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)];
-                const auto duration = static_cast<double>(animation_duration(*visual_clip.animation));
-                const auto time = role == AnimationRole::idle ? std::fmod(std::max(seconds - state.idle_start, 0.0) * static_cast<double>(profile.idle_rate), std::max(duration, 1.0e-6))
-                                                              : state.stride_phase * duration;
-                const auto frame = time * static_cast<double>(visual_clip.animation->frames_per_second);
-                if (clip == state.cue_clip)
-                {
-                    add_cue(entity.id, position, visual_clip, state.cue_frame, frame, static_cast<double>(visual_clip.animation->loop_frame_count), index);
-                }
-                state.cue_clip = clip;
-                state.cue_frame = frame;
-            }
-            else
-            {
-                state.cue_clip = no_clip;
-            }
-        }
-        if (fire_eighths > 0)
-        {
-            const auto& visual_clip = rigs_[instance.mesh].clips[static_cast<std::size_t>(state.attack)];
-            const auto frame = fire_time * static_cast<double>(visual_clip.animation->frames_per_second);
-            // A new shot restarts ATTACK: its events from the first frame on.
-            const auto from = new_shot ? -1.0 : state.fire_cue_frame;
-            add_cue(entity.id, position, visual_clip, from, frame, 0.0, index);
-            state.fire_cue_frame = frame;
-        }
-        else
-        {
-            state.fire_cue_frame = -1.0;
-        }
-        // Walkers' transitions: turning in place plays the turn loop (after its BEGIN clip, and its END
-        // clip once the turn stops, with Has_Pre_Turn_Anim); starting and stopping a walk play
-        // MOVESTART and the MOVE_END clip of the stride's quarter (Walk_Transition). A one-shot
-        // transition replaces locomotion until it ends.
-        std::int32_t override_clip = -1;
-        double override_time = 0.0;
-        // How much of the locomotion the override takes (transitions fade in and out).
-        float override_weight = 1.0F;
-        {
-            const auto rate = dt > 0.0 ? std::remainder(entity.heading - state.last_heading, two_pi) / static_cast<float>(dt) : 0.0F;
-            // A walker with walk transitions moves once its actual speed is past a sliver of its top
-            // speed (it speeds up over MOVESTART: battle's apply_animation_locomotion), so its start
-            // plays from its first step and its turn toward the way is not taken for a turn in place;
-            // other units go by the shown speed.
-            const bool slow = profile.walk_transition ? entity.speed < entity.max_speed * walk_start_speed_fraction : state.display_speed < entity.max_speed * turn_in_place_speed_fraction;
-            // An animation-led walker turns in place while the simulation says so, the way its heading
-            // goes (holding the last way while the turn has not wound up yet).
-            const int sensed = std::fabs(rate) > 1.0e-4F ? (rate > 0.0F ? 1 : -1) : state.turning;
-            const int turning =
-                profile.animation_led ? (entity.turning_in_place ? (state.turning != 0 ? state.turning : sensed) : 0) : (slow && std::fabs(rate) > turn_in_place_rate ? (rate > 0.0F ? 1 : -1) : 0);
-            // Moving by the shown speed, not the order: a walker turning in place before it sets off has
-            // not started walking yet, and MOVESTART belongs to when it does.
-            const bool moving = !slow;
-            // Walk transitions play at the move clip's rate at top speed (the type's reference speed
-            // against its top speed), turns at the turn rate against the type's turn reference.
-            const auto walk_playback = walk_clip_playback(profile.move_reference);
-            const auto turn_playback = turn_clip_playback(profile.animation_led ? profile.in_place_turn_rate : rate, profile.turn_reference);
-            if (turning != 0)
-            {
-                state.turn_playback = turn_playback;
-            }
-            const auto start_transition = [&](const std::int32_t clip, const float playback, const bool starts_walk = false)
-            {
-                if (clip >= 0)
-                {
-                    state.transition = clip;
-                    state.transition_start = seconds;
-                    state.transition_playback = playback;
-                    state.transition_starts_walk = starts_walk;
-                    state.fading = -1;
-                }
-            };
-            // A walk played as clips shows the simulation's clip (EntitySnapshot::walk_clip); the
-            // start and stop below are for the other walkers.
-            const bool planned = entity.walk_clip != WalkClip::unplanned;
-            if (state.frame_seen)
-            {
-                if (!planned && profile.walk_transition && moving && !state.was_moving)
-                {
-                    state.stop_begun = false;
-                    start_transition(find_clip(instance.mesh, AnimationRole::move_start, 0), walk_playback, true);
-                }
-                else if (!planned && profile.walk_transition && !state.stop_begun && state.move >= 0 && ((entity.arriving && moving) || (!moving && state.was_moving)))
-                {
-                    // An animation-led walker brakes over its MOVE_END clip (battle's
-                    // apply_animation_locomotion): its stop begins as braking for the destination does.
-                    state.stop_begun = true;
-                    // MOVE_ENDONE starts where MOVE is at 0/4 of its stride, ENDTWO at 1/4, and so on:
-                    // walk on to the next quarter and stop there.
-                    state.stopping = true;
-                    state.stop_phase = state.stride_phase;
-                    // The stride splits into as many parts as the mesh has MOVE_END clips (four on the
-                    // AT-AT, three on the AT-ST and pod walkers): MOVE_END n starts at part n - 1.
-                    state.stop_parts = 0;
-                    while (state.stop_parts < 4 && find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(state.stop_parts)) >= 0)
-                    {
-                        ++state.stop_parts;
-                    }
-                    state.stop_parts = std::max(state.stop_parts, 1);
-                    state.stop_part = std::clamp(static_cast<int>(std::floor(state.stride_phase * static_cast<double>(state.stop_parts))) + 1, 1, state.stop_parts);
-                    // Braking from below top speed takes less long: the stop clip plays faster to match.
-                    state.stop_braking = entity.arriving;
-                }
-                else if (profile.animation_led && profile.pre_turn && entity.turn_arriving && state.turning != 0 && !state.turn_end_begun)
-                {
-                    // The turn in place brakes over its END clip: it starts as the braking does.
-                    // The simulation plays the turn as whole clips (BEGIN, loops, END), so END starts at a
-                    // loop's end and lasts its playing time.
-                    state.turn_end_begun = true;
-                    start_transition(find_clip(instance.mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0), state.turn_playback);
-                }
-                else if (profile.pre_turn && turning != 0 && state.turning == 0)
-                {
-                    state.turn_end_begun = false;
-                    start_transition(find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left_begin : AnimationRole::turn_right_begin, 0), state.turn_playback);
-                }
-                else if (profile.pre_turn && turning == 0 && state.turning != 0 && !state.turn_end_begun)
-                {
-                    start_transition(find_clip(instance.mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0), state.turn_playback);
-                }
-            }
-            // A stop under way ends when the walker moves on without braking (a new order) or another
-            // transition than its start begins.
-            const bool starting = state.transition >= 0 && state.transition_starts_walk;
-            if (state.stopping && ((moving && !entity.arriving) || (state.transition >= 0 && !starting)))
-            {
-                state.stopping = false;
-                state.stop_begun = state.transition >= 0;
-            }
-            if (state.stopping && starting)
-            {
-                // Braking began while MOVESTART still plays (a short walk): MOVESTART ends where MOVE
-                // starts, which is where MOVE_ENDONE starts, so the stop follows it at once.
-                state.stop_phase = 0.0;
-                state.stop_part = 0;
-            }
-            else if (state.stopping)
-            {
-                // The stride goes on at the move clip's rate at top speed until it reaches the quarter.
-                const auto move_duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.move)].animation));
-                const auto target = static_cast<double>(state.stop_part) / static_cast<double>(state.stop_parts);
-                state.stop_phase += move_duration > 0.0 ? dt * static_cast<double>(walk_playback) / move_duration : 1.0;
-                if (state.stop_phase >= target)
-                {
-                    state.stopping = false;
-                    state.stride_phase = std::fmod(target, 1.0);
-                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(state.stop_part % state.stop_parts)),
-                                     // Braking from below top speed takes less long: measured as END starts (after the
-                                     // walk-on to the quarter), END plays faster to end with it.
-                                     state.stop_braking && entity.speed > 0.0F ? walk_playback * std::clamp(entity.max_speed / entity.speed, 1.0F, 4.0F) : walk_playback);
-                }
-                else
-                {
-                    override_clip = state.move;
-                    override_time = state.stop_phase * move_duration;
-                    override_weight = 1.0F;
-                }
-            }
-            state.turning = turning;
-            state.was_moving = moving;
-            state.last_heading = entity.heading;
-            state.frame_seen = true;
-            if (state.transition >= 0)
-            {
-                const auto elapsed = (seconds - state.transition_start) * static_cast<double>(state.transition_playback);
-                const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.transition)].animation));
-                if (elapsed < duration)
-                {
-                    override_clip = state.transition;
-                    override_time = elapsed;
-                    override_weight = transition_fade_seconds > 0.0 ? static_cast<float>(std::clamp((seconds - state.transition_start) / std::max(transition_fade_seconds, 1.0e-9), 0.0, 1.0)) : 1.0F;
-                    // MOVE goes on from where MOVESTART ends: its first frame.
-                    if (state.transition_starts_walk)
-                    {
-                        state.stride_phase = 0.0;
-                    }
-                }
-                else
-                {
-                    state.fading = state.transition;
-                    state.fading_since = state.transition_start + duration / static_cast<double>(state.transition_playback);
-                    state.transition = -1;
-                    // IDLE goes on from its first frame where a transition (MOVE_END) leaves it.
-                    state.idle_start = state.fading_since;
-                }
-            }
-            if (planned)
-            {
-                // The first variants: the simulation timed the walk by them (battle's
-                // apply_animation_locomotion), and their joins are the measured ones.
-                const auto move = find_clip(instance.mesh, AnimationRole::move, 0);
-                const auto clip = entity.walk_clip == WalkClip::starting   ? find_clip(instance.mesh, AnimationRole::move_start, 0)
-                                  : entity.walk_clip == WalkClip::moving   ? (move >= 0 ? move : state.move)
-                                  : entity.walk_clip == WalkClip::stopping ? find_clip(instance.mesh, AnimationRole::move_end, entity.walk_part)
-                                                                           : no_clip;
-                if (clip >= 0)
-                {
-                    override_clip = clip;
-                    override_time = static_cast<double>(entity.walk_progress) * static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
-                    override_weight = 1.0F;
-                    state.transition = -1;
-                    state.fading = -1;
-                    if (entity.walk_clip == WalkClip::moving)
-                    {
-                        state.stride_phase = entity.walk_progress;
-                    }
-                }
-                // MOVE_END ends in IDLE_00's first frame: IDLE_00 goes on from there.
-                if (entity.walk_clip == WalkClip::standing && state.walk_clip == WalkClip::stopping)
-                {
-                    state.idle_start = seconds;
-                    if (const auto first = find_clip(instance.mesh, AnimationRole::idle, 0); first >= 0)
-                    {
-                        state.idle = first;
-                    }
-                }
-                state.walk_clip = entity.walk_clip;
-            }
-            // An ended transition holds its last frame while the next pose fades in.
-            if (override_clip < 0 && state.fading >= 0)
-            {
-                const auto since = seconds - state.fading_since;
-                if (since < transition_fade_seconds && turning == 0)
-                {
-                    const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.fading)].animation));
-                    override_clip = state.fading;
-                    override_time = duration * 0.9999;
-                    override_weight = static_cast<float>(1.0 - std::clamp(since / std::max(transition_fade_seconds, 1.0e-9), 0.0, 1.0));
-                }
-                else
-                {
-                    state.fading = -1;
-                }
-            }
-            if (override_clip < 0 && turning != 0 && !state.stopping && !state.turn_end_begun)
-            {
-                const auto loop = find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left : AnimationRole::turn_right, 0);
-                if (loop >= 0)
-                {
-                    // TURN_BEGIN ends where the loop starts: the loop goes on from its first frame.
-                    state.turn_time = state.turn_looping ? state.turn_time + dt * static_cast<double>(state.turn_playback) : 0.0;
-                    override_clip = loop;
-                    override_time = state.turn_time;
-                    override_weight = 1.0F;
-                }
-            }
-            state.turn_looping = override_clip >= 0 && override_clip == find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left : AnimationRole::turn_right, 0) && turning != 0;
-        }
-        PoseKey pose_key{instance.mesh, {}};
-        pose_key.mask = mask;
-        pose_key.overlay = profile.attack_overlay;
-        pose_key.layers[0] = layer(lower, blend.lower, locomotion * (1.0F - blend.blend));
-        pose_key.layers[1] = upper == lower ? Layer{} : layer(upper, blend.upper, locomotion * blend.blend);
-        if (upper == lower)
-        {
-            pose_key.layers[0] = layer(lower, blend.lower, locomotion);
-        }
-        if (override_clip >= 0)
-        {
-            // While it fades, the override shares the locomotion with the clip that leads it.
-            const auto override_eighths = eighths(locomotion * override_weight);
-            const auto rest = eighths(locomotion) > override_eighths ? eighths(locomotion) - override_eighths : 0U;
-            const bool upper_leads = upper != lower && blend.blend > 0.5F;
-            const auto leading = upper_leads ? upper : lower;
-            pose_key.layers[0] = rest > 0U ? layer(leading, upper_leads ? blend.upper : blend.lower, static_cast<float>(rest) / 8.0F) : Layer{};
-            pose_key.layers[1] = {override_clip, slot_of(instance.mesh, override_clip, override_time), override_eighths};
-        }
-        if (aim_eighths > 0)
-        {
-            pose_key.layers[2] = {aim_clip, slot_of(instance.mesh, aim_clip, state.attack_time), aim_eighths};
-        }
-        if (fire_eighths > 0)
-        {
-            pose_key.layers[3] = {state.attack, slot_of(instance.mesh, state.attack, fire_time), fire_eighths};
-        }
+        double dt = 0.0;
+        auto& state = prepare_state(entity, profile, instance.mesh, key, wanted, seconds, dt);
+        const EntityFrame frame{entity, profile, state, instance.mesh, key, wanted, seconds, dt, index, translation(instance.transform)};
+        const auto locomotion_pose = animate_locomotion(frame);
+        const auto attack = animate_attack(frame);
+        add_frame_cues(frame, locomotion_pose, attack);
+        const auto replaced = animate_transitions(frame);
+        auto pose_key = compose_pose(frame, locomotion_pose, attack, replaced, mask);
         const auto layers = std::ranges::count_if(pose_key.layers,
                                                   [](const Layer& value)
                                                   {
                                                       return value.clip != no_clip;
                                                   });
-        // A turret turns toward the unit's target at its rate, and back to rest without one.
-        if (profile.turret_bone != 0)
-        {
-            pose_key.turret = bone_of(instance.mesh, profile.turret_bone);
-            pose_key.barrel = bone_of(instance.mesh, profile.barrel_bone);
-        }
-        if (pose_key.turret >= 0)
-        {
-            float want_pitch = 0.0F;
-            if (const auto aimed = entity.target.valid() ? snapshot_index_.find(entity_key(entity.target)) : snapshot_index_.end(); aimed != snapshot_index_.end())
-            {
-                const auto& to = snapshot[aimed->second].position;
-                const auto dx = to.x - entity.position.x;
-                const auto dy = to.y - entity.position.y;
-                want_pitch = std::atan2(to.z - entity.position.z, std::max(std::hypot(dx, dy), 1.0F));
-            }
-            want_pitch = std::clamp(want_pitch, -profile.turret_pitch_limit, profile.turret_pitch_limit);
-            const auto turn = profile.turret_rate * static_cast<float>(dt);
-            // The simulation's turret direction: what is drawn is what fires.
-            state.turret_yaw = entity.turret_yaw;
-            state.barrel_pitch += std::clamp(want_pitch - state.barrel_pitch, -turn, turn);
-            pose_key.yaw = static_cast<std::int16_t>(std::lround(state.turret_yaw / turret_yaw_step));
-            pose_key.pitch = pose_key.barrel >= 0 ? static_cast<std::int16_t>(std::lround(state.barrel_pitch / barrel_pitch_step)) : std::int16_t{0};
-        }
+        aim_turret(frame, snapshot, pose_key);
         const bool aimed = pose_key.yaw != 0 || pose_key.pitch != 0;
         if (!aimed)
         {
