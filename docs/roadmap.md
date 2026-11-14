@@ -188,7 +188,13 @@ rendering rows join item 2).
       move an AT-AT); walls and placed obstacles are hard limits. Seen 2026-11-14: cohesion
       waits for members thousands of units away (the sandbox's `--auto-move` groups every
       mobile unit of an owner), and a walker's turn in place played as clips (3 s) counts as a
-      stall that releases it from its group.
+      stall that releases it from its group. Target searches belong to the same rework (measured
+      2026-11-15, 3,300 entities on Utapau; postponed by the owner until then): every entity's
+      combat retarget timer starts at 0, so all of them search on the first tick (5,062 searches,
+      2.5 million candidates, 38-47 ms) and again together ten ticks later (18 ms); weapons whose
+      unit's target is beyond their range search every tick with no timer (about 200 searches,
+      3.5 ms a tick while the armies close). Reordering the candidate tests gained only 8%; the
+      cost is the number of searches and candidates, not their reads.
    h. Enhanced water as an ocean on maps such as Kamino: waves (a tessellated surface displaced by
       wave functions), foam on crests.
    This closes M2.

@@ -447,7 +447,9 @@ systems run in parallel.
    immutable ground (each with its own budget share), results applied in request order in the same
    tick.
 2. **Separation and contact**: read-only neighbor queries; pushes per chunk, summed in chunk order.
-3. **Combat target searches**: read-only over the broad-phase grid; results per chunk.
+3. **Combat target searches**: read-only over the broad-phase grid; results per chunk. Fewer
+   searches come first (the roadmap's work order 2g: the opening tick's 38-47 ms is every entity
+   searching at once).
 4. **Presentation**: pose sampling on a cache miss, particles per system, frame building.
 5. Measured before and after each (Factorio found shared writes make parallel updates slower).
 
