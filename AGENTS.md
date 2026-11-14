@@ -68,11 +68,12 @@ Every library and executable has its own directory and `CMakeLists.txt`.
 | `src/imgui_app` | `eaw_imgui_app` | Shared Win32 + Direct3D 11 + Dear ImGui shell and file dialogs of the desktop tools. |
 | `src/tools_gui` | `EAWTools` | Dear ImGui asset workbench; presents core data, never duplicates parsers. Its D3D11 preview is not the production renderer. |
 | `src/asset_inspector`, `src/dat_editor` | `EAWAssetInspector`, `EAWDatEditor` | Command-line tools on the core, format, and VFS libraries. |
+| `src/benchmarks` | `EAWBenchmarks` | Workloads timed serially and on the job system, with outputs checked against the serial run ([docs/tools.md](docs/tools.md#benchmarks)). |
 | `tests` | `EAWEngineTests` | Decoder, VFS, compatibility, and runtime-contract tests, one module per `test_<module>.cpp` (listed in `EAW_TEST_MODULES`, one ctest entry each); `EAWEngineTests <module or test>...` runs a subset. |
 | `third_party/imgui` | `eaw_imgui` | Pinned Dear ImGui. |
 | `third_party/lua` | `eaw_lua` | Lua 5.0.3 (MIT), pinned by archive hash, built as C with only base, string, table, and math, and with the sandbox's memory cap and pattern-matching step limit (`eaw_lua_config.h`, a checked configure-time copy of `lstrlib.c`). |
 | `docs` | | Architecture, status, roadmap, evidence, tools. |
-| `scripts` | | PowerShell scripts for repeated checks (`check-battle.ps1`, `check-captures.ps1`); `build.ps1` stays at the root. |
+| `scripts` | | PowerShell scripts for repeated checks (`check-battle.ps1`, `check-captures.ps1`, `benchmark.ps1`); `build.ps1` stays at the root. |
 | `build` | | Generated output; never edit generated project files. |
 
 Dependencies point inward: platform, renderer, and adapters depend on stable engine-native contracts; core data code never reaches outward into a renderer or GUI. If a tool needs a capability, add it to a reusable library instead of scraping another executable's output or spawning a subprocess. When ownership of a change crosses layers, fix the contract instead of adding a shortcut. The file-level split of the larger modules is in [docs/architecture.md](docs/architecture.md#source-files-by-subject).

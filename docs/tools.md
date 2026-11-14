@@ -244,6 +244,10 @@ repository from their own location and use the built executables):
 
 # Recount docs/xml-tag-status.md after changing rows (rewrites its summary and family counts)
 .\scripts\update-tag-status.ps1
+
+# Benchmarks (EAWBenchmarks) compared with an earlier run (keep the result files outside the repository)
+.\scripts\benchmark.ps1 -Output D:\eaw-bench\before.tsv
+.\scripts\benchmark.ps1 -Output D:\eaw-bench\after.tsv -Reference D:\eaw-bench\before.tsv
 ```
 
 `check-battle.ps1` holds the expected hash as its default; a change that alters the simulation on
@@ -255,6 +259,29 @@ its references are per machine and never compared with WARP ones). `-ExtraArgume
 options to every scene, so a change behind an option can be checked with the option off against
 the earlier references (`-ExtraArguments '--no-aa'`; several options in one space-separated string,
 `'--aa taa'`).
+
+## Benchmarks
+
+`EAWBenchmarks` times workloads serially (the way the engine runs them without the job system) and
+on the job system with several worker counts, and fingerprints each run's output: a job-system run
+whose output differs from the serial run's fails the benchmark, whatever its speed. Timings are only
+representative in Release, and a busy machine moves them by 10% or more, so compare medians of
+seven runs or more.
+
+```powershell
+EAWBenchmarks.exe --list                    # the suites
+EAWBenchmarks.exe                           # every suite; worker counts 0, 1, 2, 4, and all
+EAWBenchmarks.exe paths --workers 0,3,7 --repeat 9 --output D:\eaw-bench\paths.tsv
+```
+
+Suites: `jobs-tiny` (200,000 one-number jobs: the scheduling cost of a job), `jobs-math` (2,000,000
+items of float math in chunks: scaling), `jobs-nested` (jobs waiting on their own jobs: parking and
+resuming fibers), and `paths` (384 A* searches on a synthetic 512 by 512 ground, the route searches
+the simulation will run on the job system first). `scripts/benchmark.ps1` runs it and, with
+`-Reference`, prints each configuration's median against an earlier run's. The first run
+(2026-11-15, 8 hardware threads): float math 6.6 times faster with 7 workers, path searches 5.2
+times; a job costs about 43 ns on one thread and 90-110 ns with workers sharing one queue, so a job
+should carry several microseconds of work.
 
 ## Captures and image regression
 

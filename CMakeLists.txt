@@ -149,6 +149,7 @@ if(EAW_BUILD_GUI AND WIN32)
     add_subdirectory(src/tools_gui)
 endif()
 add_subdirectory(src/asset_inspector)
+add_subdirectory(src/benchmarks)
 add_subdirectory(src/dat_editor)
 
 if(EAW_BUILD_TESTS)
