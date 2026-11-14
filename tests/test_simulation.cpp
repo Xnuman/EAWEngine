@@ -1,6 +1,7 @@
 // The simulation core: ids, components, commands, ticks, and what snapshots report.
 #include "test_support.hpp"
 
+#include "simulation/component_pool.hpp"
 #include "simulation/formation.hpp"
 
 namespace {
@@ -165,10 +166,48 @@ void test_death_snapshots()
     require(gun_snapshot.last_shot_tick > 0 && gun_snapshot.last_shot_tick < world.snapshot().tick, "a shooter must report the tick of its last shot");
 }
 
+// Two columns of a test component.
+struct PoolTestColumns
+{
+    std::vector<float> values;
+    std::vector<std::uint32_t> counts;
+    template <class Visit> void for_each_column(Visit&& visit)
+    {
+        visit(values);
+        visit(counts);
+    }
+};
+
+// A component pool: rows by slot, defaults on add, the last row filling a removed one's place
+// with its data intact, and a slot that can join again after leaving.
+void test_component_pool()
+{
+    eaw::ComponentPool<PoolTestColumns> pool;
+    for (const std::uint32_t slot : {7U, 2U, 40U})
+    {
+        const auto row = pool.add(slot);
+        require(pool.columns.values[row] == 0.0F && pool.columns.counts[row] == 0U, "a new member must start from the columns' defaults");
+        pool.columns.values[row] = static_cast<float>(slot);
+        pool.columns.counts[row] = slot * 10U;
+    }
+    require(pool.size() == 3 && !pool.find(3) && !pool.find(1000) && pool.find(2) == std::optional<std::size_t>{1}, "find must return a member's row and nothing for others");
+    pool.remove(7);
+    pool.remove(5);
+    const auto moved = pool.find(40);
+    require(pool.size() == 2 && !pool.find(7) && moved == std::optional<std::size_t>{0} && pool.columns.values[*moved] == 40.0F && pool.columns.counts[*moved] == 400U && pool.slots()[0] == 40U &&
+                pool.slots()[1] == 2U,
+            "removal must move the last row into the gap with its data and ignore non-members");
+    require(pool.find(7, &PoolTestColumns::values) == nullptr && *pool.find(40, &PoolTestColumns::values) == 40.0F && pool.get(2, &PoolTestColumns::counts) == 20U,
+            "a column's value must be found by slot, and nothing for a non-member");
+    const auto again = pool.add(7);
+    require(again == 2 && pool.columns.values[again] == 0.0F && pool.slots()[again] == 7U, "a slot that left must be able to join again, from the defaults");
+}
+
 const ModuleRegistrar registrar("simulation", {
                                                   {"test_simulation_core", &test_simulation_core},
                                                   {"test_snapshot_speed", &test_snapshot_speed},
                                                   {"test_death_snapshots", &test_death_snapshots},
+                                                  {"test_component_pool", &test_component_pool},
                                               });
 
 } // namespace

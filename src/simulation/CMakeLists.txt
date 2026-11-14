@@ -8,6 +8,7 @@ set(SOURCES_DIR "src")
 
 set(EAW_SIMULATION_HEADERS
     ${HEADERS_DIR}/combat.hpp
+    ${HEADERS_DIR}/component_pool.hpp
     ${HEADERS_DIR}/formation.hpp
     ${HEADERS_DIR}/ground_map.hpp
     ${HEADERS_DIR}/pathfinding.hpp

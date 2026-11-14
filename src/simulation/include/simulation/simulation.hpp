@@ -12,6 +12,7 @@
 #include "core/random.hpp"
 #include "core/status.hpp"
 #include "simulation/combat.hpp"
+#include "simulation/component_pool.hpp"
 #include "simulation/formation.hpp"
 #include "simulation/ground_map.hpp"
 #include "simulation/pathfinding.hpp"
@@ -1161,8 +1162,6 @@ private:
     FlightColumns flight_;
     CombatColumns combat_;
     OrderColumns orders_;
-    TurnClipColumns turn_clips_;
-    WalkClipColumns walk_clips_;
     SteeringColumns steering_;
     FormationColumns formation_;
     GroupColumns group_;
@@ -1181,8 +1180,6 @@ private:
         visit(flight_);
         visit(combat_);
         visit(orders_);
-        visit(turn_clips_);
-        visit(walk_clips_);
         visit(steering_);
         visit(formation_);
         visit(group_);
@@ -1199,6 +1196,18 @@ private:
     }
     // That for_each_column and for_each_group list every column and group (simulation.cpp).
     void check_entity_table();
+    // Optional components in pools (component_pool.hpp), given at spawn: turns in place played as
+    // clips to entities whose profile has them (MovementProfile::turn_begin_seconds), walks played as
+    // clips to those that walk or raise a leg as clips (walk_stop_parts, walk_raise_seconds).
+    ComponentPool<TurnClipColumns> turn_clips_;
+    ComponentPool<WalkClipColumns> walk_clips_;
+    // The slot of the entity at dense `index`: the key of its pooled components.
+    [[nodiscard]] std::uint32_t slot_of(const std::size_t index) const noexcept
+    {
+        return identity_.ids[index].index;
+    }
+    // A turn in place played as clips is under way.
+    [[nodiscard]] bool turning_as_clips(std::size_t index) const noexcept;
     // Whether a standing walk played as clips is about to turn in place toward the behavior
     // layer's point (so it keeps a raised leg up).
     [[nodiscard]] bool wants_turn_in_place(std::size_t index) const noexcept;

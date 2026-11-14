@@ -227,12 +227,13 @@ float SimulationWorld::steer(const std::size_t index, const float desired, const
     // heading, stops at its stride's next part, and turns in place with its clips (walk_speed); a
     // route's corners it turns while it walks (the owner's recording of the original: an AT-AT swings
     // 90 degrees and back while walking).
-    if (auto& walk = walk_clips_.plans[index]; walk.new_way && walk.clip == WalkClip::moving)
+    auto* walk = walk_clips_.find(slot_of(index), &WalkClipColumns::plans);
+    if (walk != nullptr && walk->new_way && walk->clip == WalkClip::moving)
     {
-        walk.new_way = false;
-        walk.turn_back = movement.turn_begin_seconds[0] > 0.0F && movement.turn_in_place_angle > 0.0F && std::fabs(difference) > movement.turn_in_place_angle;
+        walk->new_way = false;
+        walk->turn_back = movement.turn_begin_seconds[0] > 0.0F && movement.turn_in_place_angle > 0.0F && std::fabs(difference) > movement.turn_in_place_angle;
     }
-    if (walk_clips_.plans[index].turn_back)
+    if (walk != nullptr && walk->turn_back)
     {
         return std::max(0.0F, std::cos(difference));
     }
@@ -263,7 +264,7 @@ float SimulationWorld::wanted_speed(const std::size_t index, const float facing,
     auto factor = facing;
     // Turning in place is for starting from rest (Close_Enough_Angle_For_Move_Start); a unit on the
     // move turns while it walks (the owner's recording: the AT-AT swings 90 degrees mid-walk).
-    if (turn_clips_.plans[index].active || (movement.turn_in_place_angle > 0.0F && locomotor_.drive_speeds[index] <= 0.0F && facing < std::cos(movement.turn_in_place_angle)))
+    if (turning_as_clips(index) || (movement.turn_in_place_angle > 0.0F && locomotor_.drive_speeds[index] <= 0.0F && facing < std::cos(movement.turn_in_place_angle)))
     {
         factor = 0.0F;
     }

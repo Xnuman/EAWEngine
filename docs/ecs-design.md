@@ -488,7 +488,14 @@ captures, except step 7, which changes the hash's layout once, on purpose.
 3. **The registry and pools.** Move optional components into pools one at a time, smallest first:
    WalkClips and TurnClips, then Flight, Footprint, Crush, FormationMember and GroupMember, then
    Combat. Until step 7 the hash visits every entity in today's order and hashes an absent
-   component's default values where they used to be, so the hash is unchanged.
+   component's default values where they used to be, so the hash is unchanged. Under way
+   (2026-11-15): `ComponentPool<Columns>` (`simulation/component_pool.hpp`: a column group packed
+   for its members, a sparse row index by slot, swap-removal within the pool; `find` and `get` by
+   slot and column) holds WalkClips and TurnClips. An entity gets them at spawn from its movement
+   profile (turn clips with `turn_begin_seconds`; walk clips with `walk_stop_parts` or
+   `walk_raise_seconds`); the hash already hashed these plans only for such entities, so it needed
+   no defaults. The registry (run-time component ids, names, hash and snapshot hooks) is not built
+   yet: nothing reads it before recipes (step 5).
 4. **Systems with declared access.** Turn the `run_*` member functions into systems over queries,
    in the schedule of section 6.3, with Debug access checks.
 5. **Recipes.** Readers per component; one construction path for spawns and placed objects;

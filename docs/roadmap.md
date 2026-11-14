@@ -175,7 +175,8 @@ rendering rows join item 2).
       background lane in place of the sandbox's `std::async` calls, once content builds are split
       into short jobs) and profiling hooks.
    e. The simulation's migration to entities and components (ecs-design.md section 8): per-system
-      timings and sub-hashes (done 2026-11-15: per tick layer, and `--hash-trace` by state subject); components as column groups in the one table (done 2026-11-15); the registry and pools;
+      timings and sub-hashes (done 2026-11-15: per tick layer, and `--hash-trace` by state subject); components as column groups in the one table (done 2026-11-15); the registry and pools (pools
+      under way: walk and turn clips, 2026-11-15);
       systems with declared access; recipes; command buffers and event queues; the one declared
       hash change (spawn order, per-component hashing); parallel systems (route searches first),
       each step with an unchanged battle hash except the declared one, folding in the deferred

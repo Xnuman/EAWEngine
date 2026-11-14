@@ -142,6 +142,14 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     }
     const EntityId id{slot, generations_[slot]};
     slot_dense_[slot] = static_cast<std::uint32_t>(identity_.ids.size());
+    if (spawn.movement.turn_begin_seconds[0] > 0.0F)
+    {
+        turn_clips_.add(slot);
+    }
+    if (spawn.movement.walk_stop_parts > 0 || spawn.movement.walk_raise_seconds > 0.0F)
+    {
+        walk_clips_.add(slot);
+    }
     identity_.ids.push_back(id);
     placement_.positions.push_back(spawn.position);
     placement_.headings.push_back(wrap_angle(spawn.heading));
@@ -178,8 +186,6 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     locomotor_.suspended.push_back(0);
     flight_.looping.push_back(0);
     locomotor_.arriving.push_back(0);
-    turn_clips_.plans.emplace_back();
-    walk_clips_.plans.emplace_back();
     flight_.rolls.push_back(0.0F);
     steering_.intents.emplace_back();
     formation_.orders.push_back(spawn.formation_order);
@@ -401,7 +407,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
                 hasher.add(movement.turn_half_seconds[side]);
                 hasher.add(movement.turn_quarter_seconds[side]);
             }
-            const auto& plan = turn_clips_.plans[index];
+            const auto& plan = turn_clips_.get(slot_of(index), &TurnClipColumns::plans);
             hasher.add(static_cast<std::uint8_t>(plan.active ? 1U : 0U));
             hasher.add(plan.elapsed);
             hasher.add(plan.start);
@@ -422,7 +428,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(movement.walk_stop_parts);
             hasher.add(movement.walk_raise_seconds);
             hasher.add(movement.walk_lower_seconds);
-            const auto& walk = walk_clips_.plans[index];
+            const auto& walk = walk_clips_.get(slot_of(index), &WalkClipColumns::plans);
             hasher.add(walk.clip);
             hasher.add(walk.part);
             hasher.add(walk.elapsed);
@@ -515,6 +521,12 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
     hasher.add(combat_random_.state());
 }
 
+bool SimulationWorld::turning_as_clips(const std::size_t index) const noexcept
+{
+    const auto* plan = turn_clips_.find(slot_of(index), &TurnClipColumns::plans);
+    return plan != nullptr && plan->active;
+}
+
 std::optional<std::size_t> SimulationWorld::dense_index(const EntityId id) const noexcept
 {
     if (!id.valid() || id.index >= generations_.size() || generations_[id.index] != id.generation || slot_dense_[id.index] == no_dense)
@@ -545,6 +557,8 @@ void SimulationWorld::destroy(const std::size_t dense)
             column.pop_back();
         });
     slot_dense_[slot] = no_dense;
+    turn_clips_.remove(slot);
+    walk_clips_.remove(slot);
     // A slot whose generation would wrap is retired instead of reused.
     if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
     {
@@ -681,8 +695,9 @@ void SimulationWorld::publish()
                                       orders_.standing[index].kind,
                                       locomotor_.arriving[index] != 0});
         snapshot_.entities.back().turns_as_clips = locomotor_.movements[index].turn_begin_seconds[0] > 0.0F && locomotor_.movements[index].stopped_turn_rate > 0.0F;
-        if (const auto& plan = turn_clips_.plans[index]; plan.active)
+        if (turning_as_clips(index))
         {
+            const auto& plan = turn_clips_.get(slot_of(index), &TurnClipColumns::plans);
             const auto point = turn_point(index, plan.elapsed);
             auto& entity = snapshot_.entities.back();
             entity.turn_clip = point.clip;
@@ -691,7 +706,7 @@ void SimulationWorld::publish()
         }
         if (const auto& movement = locomotor_.movements[index]; movement.walk_stop_parts > 0)
         {
-            const auto& walk = walk_clips_.plans[index];
+            const auto& walk = walk_clips_.get(slot_of(index), &WalkClipColumns::plans);
             auto& entity = snapshot_.entities.back();
             entity.walk_clip = walk.clip;
             entity.walk_part = walk.part;

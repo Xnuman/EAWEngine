@@ -17,10 +17,11 @@ void SimulationWorld::plan_move(const std::size_t index, const Vector3& target)
 {
     // A walk played as clips given a new destination (not a route planned again to the same one)
     // looks at its first way to it before it turns (steer).
-    if (auto& walk = walk_clips_.plans[index]; (walk.clip == WalkClip::starting || walk.clip == WalkClip::moving) &&
-                                               (!route_.move_targets[index] || std::hypot(route_.move_targets[index]->x - target.x, route_.move_targets[index]->y - target.y) > arrival_distance))
+    if (auto* walk = walk_clips_.find(slot_of(index), &WalkClipColumns::plans);
+        walk != nullptr && (walk->clip == WalkClip::starting || walk->clip == WalkClip::moving) &&
+        (!route_.move_targets[index] || std::hypot(route_.move_targets[index]->x - target.x, route_.move_targets[index]->y - target.y) > arrival_distance))
     {
-        walk.new_way = true;
+        walk->new_way = true;
     }
     route_.loiter_points[index].reset();
     route_.paths[index].clear();
