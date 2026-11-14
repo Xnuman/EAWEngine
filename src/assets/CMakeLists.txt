@@ -50,10 +50,12 @@ set(EAW_ASSETS_MODEL
 set(EAW_ASSETS_ANIMATION
     ${HEADERS_DIR}/animation.hpp
     ${HEADERS_DIR}/animation_events.hpp
+    ${HEADERS_DIR}/clip_names.hpp
     ${HEADERS_DIR}/pose.hpp
     ${HEADERS_DIR}/skeleton.hpp
     ${SOURCES_DIR}/animation.cpp
     ${SOURCES_DIR}/animation_events.cpp
+    ${SOURCES_DIR}/clip_names.cpp
     ${SOURCES_DIR}/pose.cpp
     ${SOURCES_DIR}/skeleton.cpp
 )

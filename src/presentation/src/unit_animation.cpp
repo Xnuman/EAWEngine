@@ -888,8 +888,11 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             }
             if (planned)
             {
+                // The first variants: the simulation timed the walk by them (battle's
+                // apply_animation_locomotion), and their joins are the measured ones.
+                const auto move = find_clip(instance.mesh, AnimationRole::move, 0);
                 const auto clip = entity.walk_clip == WalkClip::starting   ? find_clip(instance.mesh, AnimationRole::move_start, 0)
-                                  : entity.walk_clip == WalkClip::moving   ? state.move
+                                  : entity.walk_clip == WalkClip::moving   ? (move >= 0 ? move : state.move)
                                   : entity.walk_clip == WalkClip::stopping ? find_clip(instance.mesh, AnimationRole::move_end, entity.walk_part)
                                                                            : no_clip;
                 if (clip >= 0)
@@ -904,10 +907,14 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                         state.stride_phase = entity.walk_progress;
                     }
                 }
-                // MOVE_END ends in IDLE's first frame: IDLE goes on from there.
+                // MOVE_END ends in IDLE_00's first frame: IDLE_00 goes on from there.
                 if (entity.walk_clip == WalkClip::standing && state.walk_clip == WalkClip::stopping)
                 {
                     state.idle_start = seconds;
+                    if (const auto first = find_clip(instance.mesh, AnimationRole::idle, 0); first >= 0)
+                    {
+                        state.idle = first;
+                    }
                 }
                 state.walk_clip = entity.walk_clip;
             }

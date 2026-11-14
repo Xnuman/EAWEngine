@@ -149,6 +149,13 @@ rendering rows join item 2).
       ROCKET_ATTACK unit ability, not implemented yet, with the other unit abilities); walkers do not crush enemy infantry (done 2026-11-13: crushers and what they crush do not push each other); destroyed space hardpoints are not
       replaced by their destroyed versions (done 2026-11-13/14: scorch marks and damage effects appear, attached models go, and Death_Breakoff_Prop debris breaks off). Shield hits play
       only the absorb particle; the shield mesh flash waits for the shield abilities (2026-11-14).
+      Walker locomotion cleanup before the ECS (the owner's review, 2026-11-14), one commit each:
+      (1) the clip naming in one place and planned walks on their clips' first variants (done
+      2026-11-14: `assets/clip_names`); (2) which stock types still take the presentation's old
+      start and stop, then remove it or plan them; (3) `UnitAnimator::animate` split into stages
+      in files of their own, behavior unchanged; (4) turns report their clip and progress like
+      walks, composed of loop, HALF, and QUARTER cycles. MovementProfile's optional modes and the
+      simulation's parallel storage go to the ECS design (c) instead.
    c. Research and one design document for an entity-component system (modern engines' ECS,
       data-driven composition, archetypes) and the job system: entities as ids, components in
       their own storage, systems over component sets with declared reads and writes, XML types as
@@ -339,6 +346,11 @@ Not a stage plan: leftovers are fixed while features touch the code around them,
 periodic whole-project reviews add to this list or turn it into a plan of steps (AGENTS.md, "Code
 health"). Remove an entry when it is fixed. Known leftovers after the reorganization of 2026-11:
 
+- `UnitAnimator::animate` (`unit_animation.cpp`), one function of about 580 lines over a state of
+  about 42 fields: role choice, the speed blend, the stride, aiming and firing, cues, walker
+  transitions, turns, turrets, and the pose key (work order 2b, step 3);
+- two bounds for clip playback: `walk_clip_playback`'s 0.25-6 (battle) and the animator's 0.5-1.5
+  for speed-scaled playback (presentation), one idea in two places;
 - two rules for a definition's repeated field: `definition_field` (`xml_asset_database`, used by
   game objects and decals) takes the last occurrence, `sound_events`' private `field_of` the first;
   merge once the sound events' rule is checked against the data;

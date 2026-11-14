@@ -3,6 +3,7 @@
 #include "math/scalar.hpp"
 #include "math/transform.hpp"
 #include "core/string_utils.hpp"
+#include "assets/clip_names.hpp"
 #include "assets/legacy_units.hpp"
 #include "assets/map_object_layout.hpp"
 #include "assets/skeleton.hpp"
@@ -391,31 +392,42 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
     }
     const auto playback = walk_clip_playback(reference / top);
     const auto stem = ascii_upper(model_path.substr(0, model_path.rfind('.')));
-    const auto seconds = [&](const std::string_view clip) -> float
+    // A clip's length in seconds at `rate`; zero when the model has no such clip. The walk and turn
+    // plans use each role's first variant (presentation plays those for them).
+    const auto clip_seconds = [&](const AnimationRole role, const std::uint32_t variant, const float rate) -> float
     {
-        const auto animation = resources.get<Animation>(stem + "_" + std::string(clip) + ".ALA");
-        return animation->ok() ? animation_duration(animation->value()) / playback : 0.0F;
+        const auto file = clip_file_stem(stem, role, variant);
+        if (file.empty())
+        {
+            return 0.0F;
+        }
+        const auto animation = resources.get<Animation>(file + ".ALA");
+        return animation->ok() ? animation_duration(animation->value()) / rate : 0.0F;
+    };
+    const auto seconds = [&](const AnimationRole role, const std::uint32_t variant = 0)
+    {
+        return clip_seconds(role, variant, playback);
     };
     if (movement.acceleration <= 0.0F)
     {
-        if (const auto start = seconds("MOVESTART_00"); start > 0.0F)
+        if (const auto start = seconds(AnimationRole::move_start); start > 0.0F)
         {
             movement.acceleration = max_speed / start;
         }
-        if (const auto stop = seconds("MOVE_ENDONE_00"); stop > 0.0F)
+        if (const auto stop = seconds(AnimationRole::move_end); stop > 0.0F)
         {
             movement.deceleration = max_speed / stop;
         }
     }
-    // The walk as clips: MOVESTART, the MOVE stride, and the MOVE_END clips by the stock names (every
-    // stock walker's MOVE_END clips are as long as each other).
-    static constexpr std::array<const char*, max_walk_stop_parts> stops{"MOVE_ENDONE_00", "MOVE_ENDTWO_00", "MOVE_ENDTHREE_00", "MOVE_ENDFOUR_00"};
+    // The walk as clips: MOVESTART, the MOVE stride, and the MOVE_END clips (every stock walker's
+    // MOVE_END clips are as long as each other).
     std::uint32_t parts = 0;
-    while (parts < stops.size() && seconds(stops[parts]) > 0.0F)
+    while (parts < max_walk_stop_parts && seconds(AnimationRole::move_end, parts) > 0.0F)
     {
         ++parts;
     }
-    if (const auto start = seconds("MOVESTART_00"), stride = seconds("MOVE_00"), stop = seconds(stops[0]); parts > 0 && start > 0.0F && stride > 0.0F && stop > 0.0F)
+    if (const auto start = seconds(AnimationRole::move_start), stride = seconds(AnimationRole::move), stop = seconds(AnimationRole::move_end);
+        parts > 0 && start > 0.0F && stride > 0.0F && stop > 0.0F)
     {
         movement.walk_start_seconds = start;
         movement.walk_stride_seconds = stride;
@@ -428,21 +440,19 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
     if (turn_rate > 0.0F && rotation > 0.0F)
     {
         const auto turn_playback = turn_clip_playback(turn_rate, legacy_units::degrees_per_frame(rotation));
-        const auto turn_seconds = [&](const std::string_view clip) -> float
-        {
-            const auto animation = resources.get<Animation>(stem + "_" + std::string(clip) + ".ALA");
-            return animation->ok() ? animation_duration(animation->value()) / turn_playback : 0.0F;
-        };
-        static constexpr std::array<const char*, 2> sides{"L", "R"};
+        // Left [0] and right [1]: BEGIN, the loop, and END.
+        static constexpr std::array<std::array<AnimationRole, 3>, 2> sides{{
+            {AnimationRole::turn_left_begin, AnimationRole::turn_left, AnimationRole::turn_left_end},
+            {AnimationRole::turn_right_begin, AnimationRole::turn_right, AnimationRole::turn_right_end},
+        }};
         std::array<float, 2> begin{};
         std::array<float, 2> loop{};
         std::array<float, 2> end{};
         for (std::size_t side = 0; side < sides.size(); ++side)
         {
-            const std::string turn = std::string("TURN") + sides[side];
-            begin[side] = turn_seconds(turn + "_BEGIN_00");
-            loop[side] = turn_seconds(turn + "_00");
-            end[side] = turn_seconds(turn + "_END_00");
+            begin[side] = clip_seconds(sides[side][0], 0, turn_playback);
+            loop[side] = clip_seconds(sides[side][1], 0, turn_playback);
+            end[side] = clip_seconds(sides[side][2], 0, turn_playback);
         }
         if (std::ranges::all_of(begin,
                                 [](const float value)

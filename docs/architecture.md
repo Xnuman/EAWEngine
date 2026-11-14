@@ -436,7 +436,8 @@ The file-level split of each module.
   one rule for scene building and the footprints gameplay measures), `legacy_material`,
   and `alo_interpretation` with the `_ALT<n>`/`_LOD<n>` rules and default mesh visibility),
   `animation` (`skeleton`, `animation`, and `pose`: sampling, blending, composition, retargeting by
-  bone name; `animation_events`: sounds and surface triggers at frames of animations), `particle` (`particle_rules`: `ParticleEffect`, the fidelity profiles, and
+  bone name; `animation_events`: sounds and surface triggers at frames of animations; `clip_names`:
+  the clip roles and the stock clip naming, both ways, for scene, battle, and presentation), `particle` (`particle_rules`: `ParticleEffect`, the fidelity profiles, and
   `load_particle_effect`), `loaders` (`alamo_loaders`: `load_model`, `load_skeleton`,
   `load_animation`), `audio` (`sound_events`: the catalog and sample resolution; `sound_loaders`:
   format recognition and conversion to `Sound`), and `resources` (`asset_cache`, `resource_manager`,

@@ -6,6 +6,7 @@
 #include "math/matrix.hpp"
 #include "math/vector.hpp"
 #include "assets/animation.hpp"
+#include "assets/clip_names.hpp"
 #include "assets/pose.hpp"
 #include "assets/skeleton.hpp"
 #include "presentation/particle_effects.hpp"
@@ -16,47 +17,9 @@
 #include <optional>
 #include <span>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace eaw {
-
-// What a unit is doing, as far as choosing its animation goes. Clips are found by the stock naming
-// convention <MODEL>_<ROLE>_<NN>.ALA beside the model (IDLE 539 stock files, MOVE 158, WALKMOVE 53,
-// ATTACK 160, ATTACKIDLE 108, DIE 301); NN numbers variants. Other roles (TURNL, CROUCHIDLE,
-// FW_DIE, ...) are not used yet.
-enum class AnimationRole : std::uint8_t
-{
-    idle,
-    move,
-    walk_move,
-    attack,
-    attack_idle,
-    die,
-    // A death by being run over (CRUSHED_nn clips; a Damage_Crush death clone's
-    // Specific_Death_Anim_Type Crushed).
-    crushed,
-    // Walkers' transitions: turning in place to the left and right (TURNL_nn, TURNR_nn loops), the
-    // clips before and after such a turn (TURNL_BEGIN, TURNL_END, ...), starting to walk
-    // (MOVESTART), and stopping (MOVE_ENDONE..MOVE_ENDFOUR: variants 0..3, by the stride's quarter).
-    turn_left,
-    turn_right,
-    turn_left_begin,
-    turn_left_end,
-    turn_right_begin,
-    turn_right_end,
-    move_start,
-    move_end,
-};
-
-// The role a clip file name (without directory and extension) plays for `model_stem`, and its
-// variant number; nullopt for other files and roles. Case-insensitive.
-struct ClipName
-{
-    AnimationRole role{};
-    std::uint32_t variant{};
-};
-[[nodiscard]] std::optional<ClipName> parse_clip_name(std::string_view file_stem, std::string_view model_stem);
 
 // How a type's clips play (presentation only). The move and walk clips play at their own rate when
 // the unit goes at a reference speed, given as a fraction of its top speed: XML

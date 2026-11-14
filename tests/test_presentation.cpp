@@ -767,6 +767,22 @@ void test_unit_animation()
     require(eaw::parse_clip_name("EI_TROOPER_DIE_01", "EI_TROOPER") && eaw::parse_clip_name("EI_TROOPER_DIE_01", "EI_TROOPER")->role == eaw::AnimationRole::die &&
                 !eaw::parse_clip_name("EI_TROOPER_FW_DIE_00", "EI_TROOPER"),
             "DIE clips must be recognized, directional deaths not yet");
+    // The clip names both ways: every role and variant reads back as itself.
+    for (const auto role : {eaw::AnimationRole::idle, eaw::AnimationRole::move, eaw::AnimationRole::walk_move, eaw::AnimationRole::attack, eaw::AnimationRole::attack_idle, eaw::AnimationRole::die,
+                            eaw::AnimationRole::crushed, eaw::AnimationRole::turn_left, eaw::AnimationRole::turn_right, eaw::AnimationRole::turn_left_begin, eaw::AnimationRole::turn_left_end,
+                            eaw::AnimationRole::turn_right_begin, eaw::AnimationRole::turn_right_end, eaw::AnimationRole::move_start, eaw::AnimationRole::move_end})
+    {
+        for (const std::uint32_t variant : {0U, 3U})
+        {
+            const auto stem = eaw::clip_file_stem("EV_AT-AT", role, variant);
+            const auto name = eaw::parse_clip_name(stem, "EV_AT-AT");
+            require(name && name->role == role && name->variant == variant, "a clip file stem must read back as its role and variant: " + stem);
+        }
+    }
+    require(eaw::clip_file_stem("EV_AT-AT", eaw::AnimationRole::move_end, 1U) == "EV_AT-AT_MOVE_ENDTWO_00" &&
+                eaw::clip_file_stem("ev_at-at", eaw::AnimationRole::turn_left_begin, 0U) == "EV_AT-AT_TURNL_BEGIN_00" &&
+                eaw::clip_file_stem("EI_TROOPER", eaw::AnimationRole::die, 12U) == "EI_TROOPER_DIE_12" && eaw::clip_file_stem("EV_AT-AT", eaw::AnimationRole::move_end, 4U).empty(),
+            "clip file stems must follow the stock naming");
 }
 
 void test_model_forward_axis()

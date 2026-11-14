@@ -2,14 +2,11 @@
 
 #include "math/quaternion.hpp"
 #include "math/transform.hpp"
-#include "core/string_utils.hpp"
 #include "assets/pose.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 #include <span>
-#include <system_error>
 
 namespace eaw {
 
@@ -115,63 +112,6 @@ void append_rig_local_palette(const VisualRig& rig, const std::span<const LocalB
         }
         out.resize(first + rig.palette_size, Matrix4::identity());
     }
-}
-
-std::optional<ClipName> parse_clip_name(const std::string_view file_stem, const std::string_view model_stem)
-{
-    const auto file = ascii_lower(std::string(file_stem));
-    const auto prefix = ascii_lower(std::string(model_stem)) + "_";
-    if (!file.starts_with(prefix))
-    {
-        return std::nullopt;
-    }
-    const auto rest = std::string_view(file).substr(prefix.size());
-    const auto underscore = rest.rfind('_');
-    if (underscore == std::string_view::npos || underscore + 1U >= rest.size())
-    {
-        return std::nullopt;
-    }
-    const auto digits = rest.substr(underscore + 1U);
-    std::uint32_t variant{};
-    const auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), variant);
-    if (error != std::errc{} || end != digits.data() + digits.size())
-    {
-        return std::nullopt;
-    }
-    // Stopping clips carry their foot in the name, not the number.
-    static constexpr std::array<std::string_view, 4> endings{"move_endone", "move_endtwo", "move_endthree", "move_endfour"};
-    for (std::size_t index = 0; index < endings.size(); ++index)
-    {
-        if (rest.substr(0, underscore) == endings[index])
-        {
-            return ClipName{AnimationRole::move_end, static_cast<std::uint32_t>(index)};
-        }
-    }
-    static constexpr std::array<std::pair<std::string_view, AnimationRole>, 14> roles{{
-        {"idle", AnimationRole::idle},
-        {"move", AnimationRole::move},
-        {"walkmove", AnimationRole::walk_move},
-        {"attack", AnimationRole::attack},
-        {"attackidle", AnimationRole::attack_idle},
-        {"die", AnimationRole::die},
-        {"crushed", AnimationRole::crushed},
-        {"turnl", AnimationRole::turn_left},
-        {"turnr", AnimationRole::turn_right},
-        {"turnl_begin", AnimationRole::turn_left_begin},
-        {"turnl_end", AnimationRole::turn_left_end},
-        {"turnr_begin", AnimationRole::turn_right_begin},
-        {"turnr_end", AnimationRole::turn_right_end},
-        {"movestart", AnimationRole::move_start},
-    }};
-    const auto role = rest.substr(0, underscore);
-    for (const auto& [name, value] : roles)
-    {
-        if (role == name)
-        {
-            return ClipName{value, variant};
-        }
-    }
-    return std::nullopt;
 }
 
 } // namespace eaw
