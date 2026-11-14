@@ -13,7 +13,7 @@ namespace {
 
 // Stopping clips carry their variant in the name, not the number.
 constexpr std::array<std::string_view, 4> stop_names{"move_endone", "move_endtwo", "move_endthree", "move_endfour"};
-constexpr std::array<std::pair<std::string_view, AnimationRole>, 18> role_names{{
+constexpr std::array<std::pair<std::string_view, AnimationRole>, 20> role_names{{
     {"idle", AnimationRole::idle},
     {"move", AnimationRole::move},
     {"walkmove", AnimationRole::walk_move},
@@ -32,6 +32,8 @@ constexpr std::array<std::pair<std::string_view, AnimationRole>, 18> role_names{
     {"turnl_quarter", AnimationRole::turn_left_quarter},
     {"turnr_half", AnimationRole::turn_right_half},
     {"turnr_quarter", AnimationRole::turn_right_quarter},
+    {"idle_leglift", AnimationRole::idle_leg_lift},
+    {"idle_legdrop", AnimationRole::idle_leg_drop},
 }};
 
 } // namespace

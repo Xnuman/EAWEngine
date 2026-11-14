@@ -41,20 +41,24 @@ UnitAnimator::ClipOverride UnitAnimator::animate_transitions(const EntityFrame& 
     if (entity.walk_clip != WalkClip::unplanned)
     {
         const auto move = find_clip(mesh, AnimationRole::move, 0);
-        const auto clip = entity.walk_clip == WalkClip::starting   ? find_clip(mesh, AnimationRole::move_start, 0)
-                          : entity.walk_clip == WalkClip::moving   ? (move >= 0 ? move : state.move)
-                          : entity.walk_clip == WalkClip::stopping ? find_clip(mesh, AnimationRole::move_end, entity.walk_part)
-                                                                   : no_clip;
+        // A raised leg shows IDLE_LEGLIFT going up (its last frame while it stays up) and IDLE_LEGDROP.
+        const auto clip = entity.walk_clip == WalkClip::starting                                          ? find_clip(mesh, AnimationRole::move_start, 0)
+                          : entity.walk_clip == WalkClip::moving                                          ? (move >= 0 ? move : state.move)
+                          : entity.walk_clip == WalkClip::stopping                                        ? find_clip(mesh, AnimationRole::move_end, entity.walk_part)
+                          : entity.walk_clip == WalkClip::raising || entity.walk_clip == WalkClip::raised ? find_clip(mesh, AnimationRole::idle_leg_lift, 0)
+                          : entity.walk_clip == WalkClip::lowering                                        ? find_clip(mesh, AnimationRole::idle_leg_drop, 0)
+                                                                                                          : no_clip;
         if (clip >= 0)
         {
-            replaced = {clip, clip_time(clip, entity.walk_progress), 1.0F};
+            // The last frame of a held clip is sampled just before its end.
+            replaced = {clip, clip_time(clip, std::min(entity.walk_progress, 0.9999F)), 1.0F};
             if (entity.walk_clip == WalkClip::moving)
             {
                 state.stride_phase = entity.walk_progress;
             }
         }
-        // MOVE_END ends in IDLE_00's first frame: IDLE_00 goes on from there.
-        if (entity.walk_clip == WalkClip::standing && state.walk_clip == WalkClip::stopping)
+        // MOVE_END and IDLE_LEGDROP end in IDLE_00's first frame: IDLE_00 goes on from there.
+        if (entity.walk_clip == WalkClip::standing && (state.walk_clip == WalkClip::stopping || state.walk_clip == WalkClip::lowering))
         {
             state.idle_start = seconds;
             if (const auto first = find_clip(mesh, AnimationRole::idle, 0); first >= 0)

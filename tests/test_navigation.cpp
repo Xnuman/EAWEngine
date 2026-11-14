@@ -1116,6 +1116,73 @@ void test_walk_as_clips()
         require(trace.stopping_ticks >= 10 && std::fabs(entity.position.x - 56.0F) < 1.5F && !entity.moving,
                 "a walk as clips too short for its clips must still play them and end near its destination");
     }
+    // A walker with turn clips and a raised leg (BEGIN, loop, END of 0.5, 1, 0.5 s; the leg 1 s up
+    // and 1 s down).
+    const auto kit_walker = [&](Walk& walk)
+    {
+        walk.world.set_ground(ground);
+        const auto unit = walk.world.spawn({.type_name = "Kit_Walker",
+                                            .position = {150.0F, 100.0F, 0.0F},
+                                            .max_speed = 10.0F,
+                                            .follows_ground = true,
+                                            .passable_types = eaw::passability::clear,
+                                            .radius = 2.0F,
+                                            .turn_rate = 3.0F,
+                                            .movement = {.acceleration = 10.0F,
+                                                         .deceleration = 10.0F,
+                                                         .turn_speed_fraction = 0.1F,
+                                                         .stopped_turn_rate = 1.0F,
+                                                         .turn_in_place_angle = 0.5236F,
+                                                         .turn_begin_seconds = {0.5F, 0.5F},
+                                                         .turn_loop_seconds = {1.0F, 1.0F},
+                                                         .turn_end_seconds = {0.5F, 0.5F},
+                                                         .walk_start_seconds = 1.0F,
+                                                         .walk_stride_seconds = 2.0F,
+                                                         .walk_stop_seconds = 1.0F,
+                                                         .walk_stop_parts = 4,
+                                                         .walk_raise_seconds = 1.0F,
+                                                         .walk_lower_seconds = 1.0F}});
+        require(static_cast<bool>(unit), "test spawn must succeed");
+        walk.unit = *unit;
+    };
+    {
+        // A walk from rest raises the leg first and lowers it after the stop; an order behind the
+        // walker mid-walk stops the walk at a stride's part, holding the heading, and the walker
+        // turns in place (its clips) before it walks back.
+        Walk walk;
+        kit_walker(walk);
+        walk.world.submit({.kind = eaw::SimCommandKind::move, .entities = {walk.unit}, .target = {350.0F, 100.0F, 0.0F}});
+        std::vector<eaw::WalkClip> clips;
+        bool turned_in_place = false;
+        bool held = true;
+        bool reversed = false;
+        float heading = 0.0F;
+        for (int tick = 1; tick <= 600; ++tick)
+        {
+            walk.world.step();
+            const auto& entity = walk.world.snapshot().entities[0];
+            if (clips.empty() || clips.back() != entity.walk_clip)
+            {
+                clips.push_back(entity.walk_clip);
+            }
+            if (!reversed && entity.walk_clip == eaw::WalkClip::moving && entity.position.x > 200.0F)
+            {
+                reversed = true;
+                heading = entity.heading;
+                walk.world.submit({.kind = eaw::SimCommandKind::move, .entities = {walk.unit}, .target = {60.0F, 100.0F, 0.0F}});
+            }
+            if (reversed && !turned_in_place && entity.turn_clip == eaw::TurnClip::none && std::fabs(std::remainder(entity.heading - heading, 6.2831853F)) > 0.2F)
+            {
+                held = false;
+            }
+            turned_in_place = turned_in_place || (reversed && entity.turn_clip != eaw::TurnClip::none);
+        }
+        const auto& entity = walk.world.snapshot().entities[0];
+        const std::vector<eaw::WalkClip> expected{eaw::WalkClip::raising,  eaw::WalkClip::raised, eaw::WalkClip::starting, eaw::WalkClip::moving, eaw::WalkClip::stopping, eaw::WalkClip::raised,
+                                                  eaw::WalkClip::starting, eaw::WalkClip::moving, eaw::WalkClip::stopping, eaw::WalkClip::raised, eaw::WalkClip::lowering, eaw::WalkClip::standing};
+        require(reversed && held && turned_in_place && clips == expected && std::fabs(entity.position.x - 60.0F) < 3.5F,
+                "a walker must raise its leg to walk, stop and turn in place for an order behind it, and lower the leg at rest");
+    }
 }
 
 void test_crushing()

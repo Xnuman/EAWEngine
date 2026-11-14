@@ -437,6 +437,12 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
         movement.walk_stride_seconds = stride;
         movement.walk_stop_seconds = stop;
         movement.walk_stop_parts = parts;
+        // A leg the walk keeps raised goes up and down at its clips' own rate (they are standing clips).
+        if (const auto raise = clip_seconds(AnimationRole::idle_leg_lift, 0, 1.0F), lower = clip_seconds(AnimationRole::idle_leg_drop, 0, 1.0F); raise > 0.0F && lower > 0.0F)
+        {
+            movement.walk_raise_seconds = raise;
+            movement.walk_lower_seconds = lower;
+        }
     }
     // Turning in place, at the stopped turn rate, its clips at their turn playback.
     const auto turn_rate = movement.stopped_turn_rate;

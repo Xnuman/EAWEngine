@@ -47,7 +47,7 @@ float SimulationWorld::walk_speed(const std::size_t index, const float facing, c
     // later; `ahead` is the distance to the destination from there.
     const auto stop_if_closest = [&](const std::uint32_t boundary, const float over, const float ahead)
     {
-        if (ahead > stop_distance(speed, movement.walk_stop_seconds) + 0.5F * stride / parts)
+        if (!walk.turn_back && ahead > stop_distance(speed, movement.walk_stop_seconds) + 0.5F * stride / parts)
         {
             return;
         }
@@ -56,18 +56,30 @@ float SimulationWorld::walk_speed(const std::size_t index, const float facing, c
         walk.phase = static_cast<float>(walk.part) / parts;
         walk.elapsed = over;
         walk.from_speed = speed;
-        walk.ends_move = distance > 0.0F && move_targets_[index].has_value();
+        walk.ends_move = !walk.turn_back && distance > 0.0F && move_targets_[index].has_value();
+        walk.turn_back = false;
         walk.destination = move_targets_[index].value_or(Vector3{});
     };
     switch (walk.clip)
     {
     case WalkClip::stopping:
     case WalkClip::unplanned:
+    case WalkClip::raising:
+    case WalkClip::lowering:
         return speed;
     case WalkClip::standing:
+    case WalkClip::raised:
     {
         if (travel <= 0.0F || wanted_speed(index, facing, distance) <= 0.0F)
         {
+            speed = 0.0F;
+            return 0.0F;
+        }
+        // A raised leg goes up before the walk (walk_straight raises it).
+        if (walk.clip == WalkClip::standing && movement.walk_raise_seconds > 0.0F)
+        {
+            walk = {};
+            walk.clip = WalkClip::raising;
             speed = 0.0F;
             return 0.0F;
         }
@@ -113,10 +125,43 @@ float SimulationWorld::walk_speed(const std::size_t index, const float facing, c
     return speed;
 }
 
+bool SimulationWorld::wants_turn_in_place(const std::size_t index) const noexcept
+{
+    const auto& point = intents_[index].point;
+    if (!point || move_targets_[index])
+    {
+        return false;
+    }
+    const auto dx = point->x - positions_[index].x;
+    const auto dy = point->y - positions_[index].y;
+    return (dx != 0.0F || dy != 0.0F) && std::fabs(wrap_angle(std::atan2(dy, dx) - headings_[index])) > movements_[index].turn_in_place_angle;
+}
+
 bool SimulationWorld::walk_straight(const std::size_t index, const float dt)
 {
     const auto& movement = movements_[index];
     auto& walk = walk_plans_[index];
+    // A raised leg goes up or down while nothing else moves.
+    if (walk.clip == WalkClip::raising || walk.clip == WalkClip::lowering)
+    {
+        const bool raising = walk.clip == WalkClip::raising;
+        walk.elapsed += dt;
+        drive_speeds_[index] = 0.0F;
+        if (walk.elapsed >= (raising ? movement.walk_raise_seconds : movement.walk_lower_seconds))
+        {
+            walk = {};
+            walk.clip = raising ? WalkClip::raised : WalkClip::standing;
+        }
+        return true;
+    }
+    // Standing with it raised and nothing to do (no destination, no turn about to begin), it lowers it.
+    if (walk.clip == WalkClip::raised && !move_targets_[index] && !turn_plans_[index].active && !wants_turn_in_place(index))
+    {
+        walk = {};
+        walk.clip = WalkClip::lowering;
+        drive_speeds_[index] = 0.0F;
+        return true;
+    }
     const bool walking = walk.clip == WalkClip::starting || walk.clip == WalkClip::moving;
     const bool destination = move_targets_[index].has_value() && group_waiting_[index] == 0;
     if (walk.clip != WalkClip::stopping && (!walking || (destination && path_pending_[index] == 0)))
@@ -148,6 +193,8 @@ bool SimulationWorld::walk_straight(const std::size_t index, const float dt)
                 paths_[index].clear();
             }
             walk = {};
+            // MOVE_END ends with a raised leg still up.
+            walk.clip = movement.walk_raise_seconds > 0.0F ? WalkClip::raised : WalkClip::standing;
             drive_speeds_[index] = 0.0F;
         }
     }
@@ -198,6 +245,16 @@ bool SimulationWorld::turn_as_clips(const std::size_t index, const float differe
         if (!(movement.turn_in_place_angle > 0.0F) || drive_speeds_[index] > 0.0F || std::fabs(difference) <= movement.turn_in_place_angle)
         {
             return false;
+        }
+        // A raised leg goes up before the turn: the walker raises it, then turns.
+        if (auto& walk = walk_plans_[index]; movement.walk_raise_seconds > 0.0F && walk.clip != WalkClip::raised)
+        {
+            if (walk.clip == WalkClip::standing)
+            {
+                walk = {};
+                walk.clip = WalkClip::raising;
+            }
+            return true;
         }
         plan = {};
         plan.active = true;

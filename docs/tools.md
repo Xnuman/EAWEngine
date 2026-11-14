@@ -383,7 +383,8 @@ EAWAssetInspector.exe gait Data/Art/Models/EV_AT-AT_MOVE_00.ala
 EAWAssetInspector.exe type-tags Walk_Transition,Has_Pre_Turn_Anim,Locomotor_Has_Animation_Priority --game foc
 
 # Whether a model's clips meet where the engine joins them (idle, start, walk, the stops by part of
-# the stride, turns with their HALF and QUARTER cycles): the largest bone jump at each join
+# the stride, turns with their HALF and QUARTER cycles, a raised leg's IDLE_LEGLIFT and
+# IDLE_LEGDROP): the largest bone jump at each join
 EAWAssetInspector.exe clip-joins Data/Art/Models/EV_AT-AT.alo
 
 # A particle system: each emitter's texture, blend, rate, kind, gravity (weather emitters also

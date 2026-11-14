@@ -43,6 +43,10 @@ enum class AnimationRole : std::uint8_t
     turn_left_quarter,
     turn_right_half,
     turn_right_quarter,
+    // Raising and lowering a leg the walk and turn clips keep raised (IDLE_LEGLIFT, IDLE_LEGDROP:
+    // the pod walker's middle leg; docs/compatibility-research.md, "The turn kit").
+    idle_leg_lift,
+    idle_leg_drop,
 };
 
 // The role a clip file name (without directory and extension) plays for `model_stem`, and its

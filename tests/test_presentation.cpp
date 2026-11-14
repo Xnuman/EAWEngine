@@ -705,10 +705,27 @@ void test_unit_animation()
                 !eaw::parse_clip_name("EI_TROOPER_FW_DIE_00", "EI_TROOPER"),
             "DIE clips must be recognized, directional deaths not yet");
     // The clip names both ways: every role and variant reads back as itself.
-    for (const auto role : {eaw::AnimationRole::idle, eaw::AnimationRole::move, eaw::AnimationRole::walk_move, eaw::AnimationRole::attack, eaw::AnimationRole::attack_idle, eaw::AnimationRole::die,
-                            eaw::AnimationRole::crushed, eaw::AnimationRole::turn_left, eaw::AnimationRole::turn_right, eaw::AnimationRole::turn_left_begin, eaw::AnimationRole::turn_left_end,
-                            eaw::AnimationRole::turn_right_begin, eaw::AnimationRole::turn_right_end, eaw::AnimationRole::move_start, eaw::AnimationRole::move_end, eaw::AnimationRole::turn_left_half,
-                            eaw::AnimationRole::turn_left_quarter, eaw::AnimationRole::turn_right_half, eaw::AnimationRole::turn_right_quarter})
+    for (const auto role : {eaw::AnimationRole::idle,
+                            eaw::AnimationRole::move,
+                            eaw::AnimationRole::walk_move,
+                            eaw::AnimationRole::attack,
+                            eaw::AnimationRole::attack_idle,
+                            eaw::AnimationRole::die,
+                            eaw::AnimationRole::crushed,
+                            eaw::AnimationRole::turn_left,
+                            eaw::AnimationRole::turn_right,
+                            eaw::AnimationRole::turn_left_begin,
+                            eaw::AnimationRole::turn_left_end,
+                            eaw::AnimationRole::turn_right_begin,
+                            eaw::AnimationRole::turn_right_end,
+                            eaw::AnimationRole::move_start,
+                            eaw::AnimationRole::move_end,
+                            eaw::AnimationRole::turn_left_half,
+                            eaw::AnimationRole::turn_left_quarter,
+                            eaw::AnimationRole::turn_right_half,
+                            eaw::AnimationRole::turn_right_quarter,
+                            eaw::AnimationRole::idle_leg_lift,
+                            eaw::AnimationRole::idle_leg_drop})
     {
         for (const std::uint32_t variant : {0U, 3U})
         {

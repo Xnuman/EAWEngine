@@ -116,6 +116,12 @@ struct MovementProfile
     float walk_stride_seconds{};
     float walk_stop_seconds{};
     std::uint32_t walk_stop_parts{};
+    // A walker that raises a leg to walk and turn (the pod walker's IDLE_LEGLIFT and IDLE_LEGDROP:
+    // its walk and turn clips start and end with its middle leg raised, IDLE with it down): it
+    // raises the leg over walk_raise_seconds before it sets off or turns from standing, and lowers
+    // it over walk_lower_seconds once it stands with nothing to do. Zero: no such leg.
+    float walk_raise_seconds{};
+    float walk_lower_seconds{};
 };
 
 // The most MOVE_END clips a walk played as clips stops by (MOVE_ENDONE..MOVE_ENDFOUR, the stock names).
@@ -141,6 +147,11 @@ enum class WalkClip : std::uint8_t
     starting,
     moving,
     stopping,
+    // A walker that raises a leg to walk and turn (MovementProfile::walk_raise_seconds): raising
+    // it, standing with it raised, and lowering it.
+    raising,
+    raised,
+    lowering,
 };
 
 // Everything needed to create an entity. `type_name` is the XML object type (informational for
@@ -911,8 +922,14 @@ private:
         float scale{1.0F};
         bool ends_move{};
         Vector3 destination;
+        // Its way is more than 90 degrees off: it holds its heading, stops at its stride's next
+        // part, and turns in place from there.
+        bool turn_back{};
     };
     std::vector<WalkPlan> walk_plans_;
+    // Whether a standing walk played as clips is about to turn in place toward the behavior
+    // layer's point (so it keeps a raised leg up).
+    [[nodiscard]] bool wants_turn_in_place(std::size_t index) const noexcept;
     std::vector<float> rolls_;
     std::vector<Stance> stances_;
     std::vector<std::uint8_t> aims_with_body_;

@@ -73,7 +73,8 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
                                                !valid_amount(movement.turn_in_place_rate) || !std::ranges::all_of(movement.turn_begin_seconds, valid_amount) ||
                                                !std::ranges::all_of(movement.turn_loop_seconds, valid_amount) || !std::ranges::all_of(movement.turn_end_seconds, valid_amount) ||
                                                !std::ranges::all_of(movement.turn_half_seconds, valid_amount) || !std::ranges::all_of(movement.turn_quarter_seconds, valid_amount) ||
-                                               !valid_amount(movement.walk_start_seconds) || !valid_amount(movement.walk_stride_seconds) || !valid_amount(movement.walk_stop_seconds))
+                                               !valid_amount(movement.walk_start_seconds) || !valid_amount(movement.walk_stride_seconds) || !valid_amount(movement.walk_stop_seconds) ||
+                                               !valid_amount(movement.walk_raise_seconds) || !valid_amount(movement.walk_lower_seconds))
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite movement value, or a turn speed fraction above 1");
     }
@@ -344,6 +345,8 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
             hash = hash_value(hash, movement.walk_stride_seconds);
             hash = hash_value(hash, movement.walk_stop_seconds);
             hash = hash_value(hash, movement.walk_stop_parts);
+            hash = hash_value(hash, movement.walk_raise_seconds);
+            hash = hash_value(hash, movement.walk_lower_seconds);
             const auto& walk = walk_plans_[index];
             hash = hash_value(hash, walk.clip);
             hash = hash_value(hash, walk.part);
@@ -355,6 +358,7 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
             hash = hash_value(hash, walk.destination.x);
             hash = hash_value(hash, walk.destination.y);
             hash = hash_value(hash, walk.destination.z);
+            hash = hash_value(hash, static_cast<std::uint8_t>(walk.turn_back ? 1U : 0U));
         }
         hash = hash_value(hash, drive_speeds_[index]);
         hash = hash_value(hash, stances_[index]);
@@ -692,6 +696,9 @@ void SimulationWorld::publish()
             entity.walk_progress = walk.clip == WalkClip::starting   ? std::min(walk.elapsed / movement.walk_start_seconds, 1.0F)
                                    : walk.clip == WalkClip::moving   ? walk.phase
                                    : walk.clip == WalkClip::stopping ? std::min(walk.elapsed / movement.walk_stop_seconds, 1.0F)
+                                   : walk.clip == WalkClip::raising  ? std::min(walk.elapsed / std::max(movement.walk_raise_seconds, 1.0e-6F), 1.0F)
+                                   : walk.clip == WalkClip::lowering ? std::min(walk.elapsed / std::max(movement.walk_lower_seconds, 1.0e-6F), 1.0F)
+                                   : walk.clip == WalkClip::raised   ? 1.0F
                                                                      : 0.0F;
         }
     }

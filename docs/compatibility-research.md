@@ -1109,6 +1109,14 @@ particle-audit`.
   24 types play transitions without animation priority: by the tag's name, their locomotor leads
   and the clips play over its motion (inference; how the original shows a Rancor setting off is
   not observed yet).
+- **The pod walker's raised leg** (2026-11-14, `clip-joins`). EV_PODWALKER's walk and turn clips
+  all start and end with its middle leg raised, IDLE with it down: every join between IDLE and
+  them jumps about 13 units on B_Mid_Foot (the constant offset noted below, not an artifact).
+  IDLE_LEGLIFT starts where IDLE does (0.00) and ends where MOVESTART and TURNL_BEGIN start,
+  IDLE_LEGDROP starts where MOVE_ENDONE and TURNL_END end and ends where IDLE starts (0.0002); only
+  a muzzle bone differs, by 4.2 units. Both are 70 frames. So the pod walker raises the leg before
+  it sets off or turns and lowers it when it stands (the engine's reading; when the original
+  lowers it is not observed).
 - **The turn kit** (2026-11-14, `clip-joins` over every stock model with transition clips). Ten
   models carry the same set: TURNL/TURNR loops with _BEGIN, _END, _HALF, and _QUARTER (AT-AT, AT-ST,
   AT-AA, SPMAT, pod walker, Rancor, Wampa, Tauntaun, Hutt, Night Sister); 25 more (infantry,

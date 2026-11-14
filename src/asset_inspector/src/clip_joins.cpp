@@ -109,6 +109,17 @@ eaw::Status clip_joins(const eaw::VirtualFileSystem& vfs, const std::string& mod
         }
     }
     join(start, -1.0, move, "MOVESTART end -> MOVE start");
+    // A leg lifted for walking and turning, dropped for standing (the pod walker's middle leg):
+    // between IDLE and the walk and turn clips.
+    const auto lift = load("IDLE_LEGLIFT_00");
+    const auto drop = load("IDLE_LEGDROP_00");
+    join(idle, -1.0, lift, "IDLE end -> IDLE_LEGLIFT start");
+    join(idle, 0.0, lift, "IDLE start -> IDLE_LEGLIFT start");
+    join(lift, -1.0, start, "IDLE_LEGLIFT end -> MOVESTART start");
+    join(lift, -1.0, load("TURNL_BEGIN_00"), "IDLE_LEGLIFT end -> TURNL_BEGIN start");
+    join(load("MOVE_ENDONE_00"), -1.0, drop, "MOVE_ENDONE_00 end -> IDLE_LEGDROP start");
+    join(load("TURNL_END_00"), -1.0, drop, "TURNL_END end -> IDLE_LEGDROP start");
+    join(drop, -1.0, idle, "IDLE_LEGDROP end -> IDLE start");
     join(move, -1.0, move, "MOVE end -> MOVE start (loop)");
     if (move)
     {
