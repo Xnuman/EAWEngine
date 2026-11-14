@@ -96,6 +96,11 @@ eaw::Result<int> run(const Options& options)
         audit_maps(vfs, options.prefix, options.limit);
         return 0;
     }
+    if (options.command == "clip-joins")
+    {
+        const auto status = clip_joins(vfs, options.operand);
+        return status ? 0 : report_error(status.error());
+    }
     if (options.command == "gait")
     {
         const auto status = gait(vfs, options.operand);

@@ -744,9 +744,13 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 {
                     start_transition(find_clip(instance.mesh, AnimationRole::move_start, 0), walk_playback, true);
                 }
-                else if (profile.walk_transition && !moving && state.was_moving)
+                else if (profile.walk_transition && !moving && state.was_moving && state.move >= 0)
                 {
-                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(std::clamp(state.stride_phase * 4.0, 0.0, 3.0))), walk_playback);
+                    // MOVE_ENDONE starts where MOVE is at 0/4 of its stride, ENDTWO at 1/4, and so on:
+                    // walk on to the next quarter and stop there.
+                    state.stopping = true;
+                    state.stop_phase = state.stride_phase;
+                    state.stop_quarter = std::clamp(static_cast<int>(std::floor(state.stride_phase * 4.0)) + 1, 1, 4);
                 }
                 else if (profile.pre_turn && turning != 0 && state.turning == 0)
                 {
@@ -764,6 +768,29 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             else if (turning != 0)
             {
                 state.turn_time += dt * static_cast<double>(state.turn_playback);
+            }
+            if (state.stopping && (moving || state.transition >= 0))
+            {
+                state.stopping = false;
+            }
+            if (state.stopping)
+            {
+                // The stride goes on at the move clip's rate at top speed until it reaches the quarter.
+                const auto move_duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.move)].animation));
+                const auto target = static_cast<double>(state.stop_quarter) / 4.0;
+                state.stop_phase += move_duration > 0.0 ? dt * static_cast<double>(walk_playback) / move_duration : 1.0;
+                if (state.stop_phase >= target)
+                {
+                    state.stopping = false;
+                    state.stride_phase = std::fmod(target, 1.0);
+                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(state.stop_quarter % 4)), walk_playback);
+                }
+                else
+                {
+                    override_clip = state.move;
+                    override_time = state.stop_phase * move_duration;
+                    override_weight = 1.0F;
+                }
             }
             state.turning = turning;
             state.was_moving = moving;
@@ -809,7 +836,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                     state.fading = -1;
                 }
             }
-            if (override_clip < 0 && turning != 0)
+            if (override_clip < 0 && turning != 0 && !state.stopping)
             {
                 const auto loop = find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left : AnimationRole::turn_right, 0);
                 if (loop >= 0)

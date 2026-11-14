@@ -248,6 +248,12 @@ private:
         // ended.
         std::int32_t fading{-1};
         double fading_since{};
+        // A walker that stopped walks its stride on to the next quarter, where the MOVE_END clip of
+        // that quarter starts (the clips meet MOVE exactly there: clip-joins): whether it is under
+        // way, its stride phase, and the quarter it walks to (1..4, 4 the stride's end).
+        bool stopping{};
+        double stop_phase{};
+        int stop_quarter{};
         bool frame_seen{};
     };
 

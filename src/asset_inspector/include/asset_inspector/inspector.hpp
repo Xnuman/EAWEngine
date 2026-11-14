@@ -101,6 +101,8 @@ eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& 
 
 // The ground speed at which a walk clip plays without its feet sliding (gait.cpp).
 eaw::Status gait(const eaw::VirtualFileSystem& vfs, const std::string& clip_path);
+// Whether a model's clips meet where the engine joins them (clip_joins.cpp).
+eaw::Status clip_joins(const eaw::VirtualFileSystem& vfs, const std::string& model_path);
 
 void audit_texture_references(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit);
 

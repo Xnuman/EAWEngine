@@ -1089,6 +1089,15 @@ particle-audit`.
   (infantry 20 and 20, the Night Sister and Rancor 1.5 and 1.5, the Twi'lek 12 and 12), and the
   walkers well below their turn rates (the AT-ST 2.2 against 7.5, the SPMAT 1.0 against 3.1, the
   AT-AA 1.25 against 3.5, the AT-AT 0.5 against 1), so their slow-stepping turn clips speed up. The AT-AT also has TURN*_HALF and TURN*_QUARTER clips, unused.
+- **Walker clip joins** (2026-11-14). `EAWAssetInspector clip-joins` measures the largest bone jump
+  where one clip ends and the next starts. The AT-AT's clips meet within 0.0003 units at: IDLE's
+  start and MOVESTART's start (and IDLE strays at most 0.5 units mid-loop, on a spark proxy), the end
+  of MOVESTART and the start of MOVE, MOVE's loop, the end of every MOVE_END clip and IDLE's start,
+  and the turns' BEGIN, loop, and END. Each MOVE_END clip starts where MOVE is at one quarter of
+  its stride: ENDONE at 0/4, ENDTWO at 1/4, ENDTHREE at 2/4, ENDFOUR at 3/4 (elsewhere the toes jump
+  10-16 units). The AT-AA and SPMAT follow the same rule. So a walker that stops walks on to the
+  next quarter of its stride before its MOVE_END plays (the original's behavior by this evidence;
+  how it times the walk-on is not known).
 - **Bone billboards** (2026-11-13). An ALO bone carries a billboard mode that turns the meshes on
   it. The MIT-licensed alo-viewer names the values 0 none, 1 parallel, 2 face, 3 about Z toward the
   view, 4 about Z toward the light, 5 about Z toward the wind, 6 sun glow, 7 sun, treats billboarded

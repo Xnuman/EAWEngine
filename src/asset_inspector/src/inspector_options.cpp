@@ -28,6 +28,7 @@ void usage()
               << "  EAWAssetInspector list [prefix] [options]\n"
               << "  EAWAssetInspector inspect <virtual-path> [options]\n"
               << "  EAWAssetInspector gait <clip.ala> [options]\n"
+              << "  EAWAssetInspector clip-joins <model.alo> [options]\n"
               << "  EAWAssetInspector map-audit [prefix] [options]\n"
               << "  EAWAssetInspector map-objects [prefix] [options]\n"
               << "  EAWAssetInspector texture-audit [prefix] [options]\n"
@@ -60,7 +61,8 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
     {
         options.command = argv[index++];
     }
-    if ((options.command == "inspect" || options.command == "gait" || options.command == "localization-refs" || options.command == "texture-png") && index < argc && argv[index][0] != '-')
+    if ((options.command == "inspect" || options.command == "gait" || options.command == "clip-joins" || options.command == "localization-refs" || options.command == "texture-png") && index < argc &&
+        argv[index][0] != '-')
     {
         options.operand = argv[index++];
     }
@@ -140,7 +142,8 @@ eaw::Result<Options> parse_options(const int argc, char** argv)
             return eaw::make_error("unknown option: " + argument);
         }
     }
-    if ((options.command == "inspect" || options.command == "gait" || options.command == "localization-refs" || options.command == "texture-png") && options.operand.empty())
+    if ((options.command == "inspect" || options.command == "gait" || options.command == "clip-joins" || options.command == "localization-refs" || options.command == "texture-png") &&
+        options.operand.empty())
     {
         return eaw::make_error(options.command + " requires a virtual asset path");
     }

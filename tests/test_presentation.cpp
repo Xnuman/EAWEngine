@@ -373,6 +373,68 @@ void test_unit_animation()
             return palette[shown[0].bone_offset].values[14];
         };
         require(height_after(0.5, 1.0F) - height_after(1.0, 0.25F) > 4.0F, "a walk transition must play at the move clip's rate at top speed");
+
+        // Stopping: MOVE_END clips start where MOVE is at a quarter of its stride (clip-joins), so a
+        // walker that stops walks on to the next quarter first. Each MOVE_END is the test clip raised
+        // 10 x (its quarter + 1): none plays on the stop's frame, one within a quarter stride (MOVE is
+        // 1 s at 1x here).
+        auto stop_rig = walker_rig;
+        stop_rig.clips.resize(3);
+        for (std::uint32_t quarter = 0; quarter < 4; ++quarter)
+        {
+            auto lifted = *animation;
+            for (auto& track : lifted.tracks)
+            {
+                for (auto& key : track.keys)
+                {
+                    key.translation.z += 10.0F * static_cast<float>(quarter + 1U);
+                }
+            }
+            stop_rig.clips.push_back({eaw::AnimationRole::move_end, quarter, "MOVE_END", std::make_shared<const eaw::Animation>(std::move(lifted))});
+        }
+        const std::array<eaw::VisualRig, 1> stop_rigs{stop_rig};
+        eaw::UnitAnimator stopper(stop_rigs, walker_rest);
+        std::vector<eaw::EntitySnapshot> walker(1);
+        walker[0].id = {8, 1};
+        walker[0].max_speed = 10.0F;
+        walker[0].moving = true;
+        walker[0].speed = 10.0F;
+        std::vector<eaw::EntityId> walker_id{walker[0].id};
+        std::vector<eaw::VisualInstance> walker_shown(1);
+        std::vector<eaw::Matrix4> stop_palette;
+        const std::array<eaw::AnimationProfile, 1> stop_profile{eaw::AnimationProfile{.walk_transition = true}};
+        double at = 1.0;
+        for (; at < 2.0; at += 0.05)
+        {
+            stopper.animate(walker, walker_id, walker_shown, at, 1U << 20U, stop_palette, stop_profile);
+        }
+        walker[0].moving = false;
+        walker[0].speed = 0.0F;
+        const auto lift = [&]
+        {
+            stopper.animate(walker, walker_id, walker_shown, at, 1U << 20U, stop_palette, stop_profile);
+            at += 0.05;
+            return stop_palette[walker_shown[0].bone_offset].values[14];
+        };
+        // The shown speed decays over about 0.15 s before the walker counts as stopped.
+        float first_lift = 0.0F;
+        int frames_until_end = 0;
+        bool stopped = false;
+        for (int frame = 0; frame < 40; ++frame)
+        {
+            const auto z = lift();
+            if (!stopped && z < 5.0F)
+            {
+                first_lift = z;
+            }
+            if (z > 5.0F)
+            {
+                stopped = true;
+                break;
+            }
+            ++frames_until_end;
+        }
+        require(stopped && first_lift < 5.0F && frames_until_end <= 15, "a stopping walker must walk on to its stride's next quarter, then play that quarter's MOVE_END");
     }
 
     // Destroyed hardpoints on a clipless ship: its scorch bone (hidden while intact) appears and it
