@@ -1122,6 +1122,13 @@ particle-audit`.
   14.4 and 18.5 through MOVESTART, MOVE, MOVE_END, and the turns. Its ATTACK (20 frames) is
   authored standing: B_Body pitches up to 10.5 degrees while B_Mid_Shoulder turns up to 13.7 the
   other way, so the planted foot holds still.
+  A stock asset defect, kept as it is: EV_PODWALKER_MOVESTART_00.ALA swings the middle leg 12 units
+  back (B_Mid_Foot and B_Foot_M from y -2.2 to -14.2, rising to 18.5), while MOVE_00 starts with it
+  centred, so the leg snaps forward as the walk begins (B_Mid_Femur 9.1, B_Mid_Ankle 8.2, the feet
+  12.1 units; every other bone joins exactly). The owner checked the retail game (2026-11-15): it
+  shows the same snap, so it is the content, not the engine. No start clip is missing: every stock
+  model has exactly one MOVESTART_00 (a start always begins from the standing pose), against one
+  MOVE_END clip per part of the stride.
 - **The turn kit** (2026-11-14, `clip-joins` over every stock model with transition clips). Ten
   models carry the same set: TURNL/TURNR loops with _BEGIN, _END, _HALF, and _QUARTER (AT-AT, AT-ST,
   AT-AA, SPMAT, pod walker, Rancor, Wampa, Tauntaun, Hutt, Night Sister); 25 more (infantry,
