@@ -67,13 +67,6 @@ AnimationProfile type_animation_profile(const GameObjectCatalog& catalog, const 
     }
     profile.animation_led = flag("Locomotor_Has_Animation_Priority");
     profile.attack_overlay = flag("Attack_Animation_Is_Overlay");
-    for (const auto* field : {"Stopped_Rate_Of_Turn", "Max_Rate_Of_Turn"})
-    {
-        if (const auto value = type_float_field(catalog, definition, field); value > 0.0F && std::isfinite(value) && profile.in_place_turn_rate <= 0.0F)
-        {
-            profile.in_place_turn_rate = legacy_units::degrees_per_frame(value);
-        }
-    }
     profile.walk_transition = flag("Walk_Transition");
     const auto bone = [&](const std::string_view field)
     {

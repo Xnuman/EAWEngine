@@ -440,19 +440,23 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
     if (turn_rate > 0.0F && rotation > 0.0F)
     {
         const auto turn_playback = turn_clip_playback(turn_rate, legacy_units::degrees_per_frame(rotation));
-        // Left [0] and right [1]: BEGIN, the loop, and END.
-        static constexpr std::array<std::array<AnimationRole, 3>, 2> sides{{
-            {AnimationRole::turn_left_begin, AnimationRole::turn_left, AnimationRole::turn_left_end},
-            {AnimationRole::turn_right_begin, AnimationRole::turn_right, AnimationRole::turn_right_end},
+        // Left [0] and right [1]: BEGIN, the loop, END, and the HALF and QUARTER cycles.
+        static constexpr std::array<std::array<AnimationRole, 5>, 2> sides{{
+            {AnimationRole::turn_left_begin, AnimationRole::turn_left, AnimationRole::turn_left_end, AnimationRole::turn_left_half, AnimationRole::turn_left_quarter},
+            {AnimationRole::turn_right_begin, AnimationRole::turn_right, AnimationRole::turn_right_end, AnimationRole::turn_right_half, AnimationRole::turn_right_quarter},
         }};
         std::array<float, 2> begin{};
         std::array<float, 2> loop{};
         std::array<float, 2> end{};
+        std::array<float, 2> half{};
+        std::array<float, 2> quarter{};
         for (std::size_t side = 0; side < sides.size(); ++side)
         {
             begin[side] = clip_seconds(sides[side][0], 0, turn_playback);
             loop[side] = clip_seconds(sides[side][1], 0, turn_playback);
             end[side] = clip_seconds(sides[side][2], 0, turn_playback);
+            half[side] = clip_seconds(sides[side][3], 0, turn_playback);
+            quarter[side] = clip_seconds(sides[side][4], 0, turn_playback);
         }
         if (std::ranges::all_of(begin,
                                 [](const float value)
@@ -473,6 +477,8 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
             movement.turn_begin_seconds = begin;
             movement.turn_loop_seconds = loop;
             movement.turn_end_seconds = end;
+            movement.turn_half_seconds = half;
+            movement.turn_quarter_seconds = quarter;
         }
     }
 }

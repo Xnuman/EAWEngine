@@ -23,7 +23,6 @@ void SimulationWorld::run_movement()
 {
     const auto dt = static_cast<float>(tick_seconds_);
     std::ranges::fill(arriving_, std::uint8_t{0});
-    std::ranges::fill(turn_arriving_, std::uint8_t{0});
     process_path_queue();
     measure_remaining_routes();
     update_group_cohesion();
@@ -215,59 +214,10 @@ float SimulationWorld::steer(const std::size_t index, const float desired, const
         return 1.0F;
     }
     const auto& movement = movements_[index];
-    // A turn in place played as clips (MovementProfile::turn_begin_seconds): planned when it starts,
-    // then followed by its time.
-    if (auto& plan = turn_plans_[index]; movement.turn_begin_seconds[0] > 0.0F && movement.stopped_turn_rate > 0.0F)
+    // A turn in place played as clips (MovementProfile::turn_begin_seconds) follows its plan.
+    if (turn_as_clips(index, difference, dt))
     {
-        if (!plan.active && movement.turn_in_place_angle > 0.0F && drive_speeds_[index] <= 0.0F && std::fabs(difference) > movement.turn_in_place_angle)
-        {
-            plan = {};
-            plan.active = true;
-            plan.way = difference > 0.0F ? 1.0F : -1.0F;
-            plan.start = heading;
-            plan.angle = std::fabs(difference);
-            const auto side = plan.way > 0.0F ? 0U : 1U;
-            const auto begin = movement.turn_begin_seconds[side];
-            const auto loop = movement.turn_loop_seconds[side];
-            const auto end = movement.turn_end_seconds[side];
-            // The whole loops that come closest to the turn at the stopped rate, and the steady rate
-            // that ends the turn exactly on the way with them.
-            const auto loops = loop > 0.0F ? std::round((plan.angle / movement.stopped_turn_rate - 0.5F * (begin + end)) / loop) : 0.0F;
-            plan.loops = static_cast<std::uint32_t>(std::max(loops, 0.0F));
-            plan.rate = plan.angle / std::max(0.5F * (begin + end) + static_cast<float>(plan.loops) * loop, 1.0e-3F);
-        }
-        if (plan.active)
-        {
-            const auto side = plan.way > 0.0F ? 0U : 1U;
-            const auto begin = movement.turn_begin_seconds[side];
-            const auto steady_end = begin + static_cast<float>(plan.loops) * movement.turn_loop_seconds[side];
-            const auto end = movement.turn_end_seconds[side];
-            plan.elapsed = std::min(plan.elapsed + dt, steady_end + end);
-            const auto time = plan.elapsed;
-            // Linear wind-up and wind-down: the angle turned by `time`.
-            float turned = 0.0F;
-            if (time < begin)
-            {
-                turned = plan.rate * time * time / (2.0F * std::max(begin, 1.0e-6F));
-            }
-            else if (time < steady_end)
-            {
-                turned = plan.rate * (0.5F * begin + (time - begin));
-            }
-            else
-            {
-                const auto into = time - steady_end;
-                turned = plan.rate * (0.5F * begin + (steady_end - begin) + into - into * into / (2.0F * std::max(end, 1.0e-6F)));
-                turn_arriving_[index] = 1;
-            }
-            heading = wrap_angle(plan.start + plan.way * std::min(turned, plan.angle));
-            if (plan.elapsed >= steady_end + end)
-            {
-                heading = wrap_angle(plan.start + plan.way * plan.angle);
-                plan.active = false;
-            }
-            return std::max(0.0F, std::cos(wrap_angle(desired - heading)));
-        }
+        return std::max(0.0F, std::cos(wrap_angle(desired - heading)));
     }
     const bool slow = move_targets_[index] && movement.turn_speed_fraction > 0.0F && drive_speeds_[index] < movement.turn_speed_fraction * travel_speed(index);
     const auto standing = !move_targets_[index] && movement.turn_in_place_rate > 0.0F;

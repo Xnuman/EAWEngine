@@ -95,13 +95,17 @@ struct MovementProfile
     // ships facing their target); zero turns at its turn rate.
     float turn_in_place_rate{};
     // Turns in place played as clips (animation-led walkers; seconds at the clips' playing rate, left
-    // [0] and right [1]): winding up over BEGIN, turning at a steady rate for a whole number of loops,
-    // and winding down over END. The number of loops is the one that comes closest to the turn at
-    // stopped_turn_rate, and the steady rate is adjusted so the turn ends exactly on the way, so each
-    // clip starts where the last one ends. Zero turns in place at a steady rate.
+    // [0] and right [1]): winding up over BEGIN, turning through whole cycles (loops, then at most
+    // one HALF and one QUARTER cycle, standing for a half and a quarter of the loop's angle: an
+    // inference from their names), and winding down over END. The cycles are the ones that come
+    // closest to the turn at stopped_turn_rate, and every rate is scaled so the turn ends exactly
+    // on the way, so each clip starts where the last one ends. Zero turn_begin_seconds turns in
+    // place at a steady rate; zero HALF or QUARTER seconds composes the turn without them.
     std::array<float, 2> turn_begin_seconds{};
     std::array<float, 2> turn_loop_seconds{};
     std::array<float, 2> turn_end_seconds{};
+    std::array<float, 2> turn_half_seconds{};
+    std::array<float, 2> turn_quarter_seconds{};
     // Walks played as clips (animation-led walkers with MOVESTART, MOVE, and MOVE_END clips; seconds
     // at the clips' playing rate at top speed): the walker speeds up over walk_start_seconds, its
     // stride (one MOVE loop) covers top speed times walk_stride_seconds, and it stops only where a
@@ -116,6 +120,17 @@ struct MovementProfile
 
 // The most MOVE_END clips a walk played as clips stops by (MOVE_ENDONE..MOVE_ENDFOUR, the stock names).
 inline constexpr std::uint32_t max_walk_stop_parts = 4;
+
+// Which turn clip a turn in place played as clips (MovementProfile::turn_begin_seconds) is in.
+enum class TurnClip : std::uint8_t
+{
+    none,
+    begin,
+    loop,
+    half,
+    quarter,
+    end,
+};
 
 // Which walk clip a walk played as clips (MovementProfile::walk_stop_parts) is in: unplanned for
 // every other entity.
@@ -345,10 +360,11 @@ struct EntitySnapshot
     // turn, held its speed back); presentation starts a walker's stop clip then. Not part of the
     // state hash.
     bool arriving{};
-    // Turning in place before it moves off as clips (MovementProfile::turn_begin_seconds), and in that
-    // turn's END; presentation plays the turn clips by them.
-    bool turning_in_place{};
-    bool turn_arriving{};
+    // A turn in place played as clips (MovementProfile::turn_begin_seconds): its clip (none between
+    // turns), whether it turns left, and how far into the clip it is (0..1).
+    TurnClip turn_clip{TurnClip::none};
+    bool turn_left{};
+    float turn_progress{};
     // A walk played as clips: the clip, the MOVE_END clip a stop plays (0 for MOVE_ENDONE), and how far
     // into the clip it is (0..1; the stride phase while moving).
     WalkClip walk_clip{WalkClip::unplanned};
@@ -716,6 +732,18 @@ private:
     // Runs a walk played as clips that goes straight ahead this tick (stopping, or walking on to its
     // stop without a destination); false when the entity moves or stands as usual.
     bool walk_straight(std::size_t index, float dt);
+    // A turn in place played as clips (simulation_walk.cpp): plans it when a turn of `difference`
+    // (radians) begins from rest, and advances it by `dt`; false when the entity turns as usual.
+    bool turn_as_clips(std::size_t index, float difference, float dt);
+    // Where a turn played as clips is `time` into it: its clip, the progress through that clip, and
+    // the angle turned (before the way and the scale).
+    struct TurnPoint
+    {
+        TurnClip clip{TurnClip::none};
+        float progress{};
+        float turned{};
+    };
+    [[nodiscard]] TurnPoint turn_point(std::size_t index, float time) const noexcept;
     // Speeds up or slows down toward `wanted` at the profile's rates; returns this tick's speed.
     float drive(std::size_t index, float wanted, float dt) noexcept;
     // Movers that cannot turn while slow move along their heading, not straight at their target,
@@ -851,21 +879,22 @@ private:
     // Braking for its destination this tick (EntitySnapshot::arriving); not hashed.
     std::vector<std::uint8_t> arriving_;
     // A turn in place played as clips (MovementProfile::turn_begin_seconds): under way, seconds into
-    // it, the heading it started from, its steady rate, its angle, its loops, and its way (+1
-    // counter-clockwise, left); hashed for entities with such turns only. turn_arriving_ like
-    // arriving_, not hashed.
+    // it, the heading it started from, its angle, its way (+1 counter-clockwise, left), the scale of
+    // the clips' nominal rates that ends it exactly on the way, and its cycles (loops, HALF, and
+    // QUARTER); hashed for entities with such turns only.
     struct TurnPlan
     {
         bool active{};
         float elapsed{};
         float start{};
-        float rate{};
         float angle{};
-        std::uint32_t loops{};
         float way{};
+        float scale{};
+        std::uint32_t loops{};
+        std::uint32_t halves{};
+        std::uint32_t quarters{};
     };
     std::vector<TurnPlan> turn_plans_;
-    std::vector<std::uint8_t> turn_arriving_;
     // A walk played as clips (MovementProfile::walk_stop_parts): its clip, the stop's part, seconds
     // into the clip, the stride phase (0..1), the speed its stop brakes from, the share of the travel
     // speed a walk too short for its clips keeps, and whether its stop ends the move to `destination`

@@ -72,6 +72,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
                                                movement.turn_speed_fraction > 1.0F || !valid_amount(movement.stopped_turn_rate) || !valid_amount(movement.turn_in_place_angle) ||
                                                !valid_amount(movement.turn_in_place_rate) || !std::ranges::all_of(movement.turn_begin_seconds, valid_amount) ||
                                                !std::ranges::all_of(movement.turn_loop_seconds, valid_amount) || !std::ranges::all_of(movement.turn_end_seconds, valid_amount) ||
+                                               !std::ranges::all_of(movement.turn_half_seconds, valid_amount) || !std::ranges::all_of(movement.turn_quarter_seconds, valid_amount) ||
                                                !valid_amount(movement.walk_start_seconds) || !valid_amount(movement.walk_stride_seconds) || !valid_amount(movement.walk_stop_seconds))
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite movement value, or a turn speed fraction above 1");
@@ -150,7 +151,6 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     looping_.push_back(0);
     arriving_.push_back(0);
     turn_plans_.emplace_back();
-    turn_arriving_.push_back(0);
     walk_plans_.emplace_back();
     rolls_.push_back(0.0F);
     intents_.emplace_back();
@@ -323,15 +323,19 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
                 hash = hash_value(hash, movement.turn_begin_seconds[side]);
                 hash = hash_value(hash, movement.turn_loop_seconds[side]);
                 hash = hash_value(hash, movement.turn_end_seconds[side]);
+                hash = hash_value(hash, movement.turn_half_seconds[side]);
+                hash = hash_value(hash, movement.turn_quarter_seconds[side]);
             }
             const auto& plan = turn_plans_[index];
             hash = hash_value(hash, static_cast<std::uint8_t>(plan.active ? 1U : 0U));
             hash = hash_value(hash, plan.elapsed);
             hash = hash_value(hash, plan.start);
-            hash = hash_value(hash, plan.rate);
             hash = hash_value(hash, plan.angle);
-            hash = hash_value(hash, plan.loops);
             hash = hash_value(hash, plan.way);
+            hash = hash_value(hash, plan.scale);
+            hash = hash_value(hash, plan.loops);
+            hash = hash_value(hash, plan.halves);
+            hash = hash_value(hash, plan.quarters);
         }
         // Only entities that walk as clips.
         if (movement.walk_stop_parts > 0)
@@ -468,7 +472,6 @@ void SimulationWorld::destroy(const std::size_t dense)
         looping_[dense] = looping_[last];
         arriving_[dense] = arriving_[last];
         turn_plans_[dense] = turn_plans_[last];
-        turn_arriving_[dense] = turn_arriving_[last];
         walk_plans_[dense] = walk_plans_[last];
         rolls_[dense] = rolls_[last];
         intents_[dense] = intents_[last];
@@ -519,7 +522,6 @@ void SimulationWorld::destroy(const std::size_t dense)
     looping_.pop_back();
     arriving_.pop_back();
     turn_plans_.pop_back();
-    turn_arriving_.pop_back();
     walk_plans_.pop_back();
     rolls_.pop_back();
     intents_.pop_back();
@@ -671,9 +673,15 @@ void SimulationWorld::publish()
                                       last_shot_ticks_[index],
                                       command_serials_[index],
                                       standing_orders_[index].kind,
-                                      arriving_[index] != 0,
-                                      turn_plans_[index].active,
-                                      turn_arriving_[index] != 0});
+                                      arriving_[index] != 0});
+        if (const auto& plan = turn_plans_[index]; plan.active)
+        {
+            const auto point = turn_point(index, plan.elapsed);
+            auto& entity = snapshot_.entities.back();
+            entity.turn_clip = point.clip;
+            entity.turn_left = plan.way > 0.0F;
+            entity.turn_progress = point.progress;
+        }
         if (const auto& movement = movements_[index]; movement.walk_stop_parts > 0)
         {
             const auto& walk = walk_plans_[index];
@@ -725,6 +733,21 @@ std::vector<EntitySnapshot> interpolate_snapshots(const SimSnapshot& previous, c
             blended.yaw_rate = old.yaw_rate + (entity.yaw_rate - old.yaw_rate) * t;
             blended.speed = old.speed + (entity.speed - old.speed) * t;
             blended.roll = old.roll + wrap_angle(entity.roll - old.roll) * t;
+            // A turn played as clips goes on through its clip, like a walk below.
+            if (old.turn_clip == entity.turn_clip && old.turn_left == entity.turn_left && entity.turn_clip != TurnClip::none)
+            {
+                auto advance = entity.turn_progress - old.turn_progress;
+                // A cycle followed by another of its kind starts again.
+                if (advance < 0.0F)
+                {
+                    advance += 1.0F;
+                }
+                blended.turn_progress = old.turn_progress + advance * t;
+                if (blended.turn_progress >= 1.0F)
+                {
+                    blended.turn_progress -= 1.0F;
+                }
+            }
             // A walk played as clips goes on through its clip; a new clip shows from the tick it begins.
             if (old.walk_clip == entity.walk_clip && old.walk_part == entity.walk_part)
             {

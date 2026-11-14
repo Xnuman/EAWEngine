@@ -48,13 +48,10 @@ struct AnimationProfile
     // Rotation_Animation_Speed in degrees per frame, read like Movement_Animation_Speed by analogy;
     // 0: they play at their own rate). Walk transitions play at the move clip's rate at top speed.
     float turn_reference{};
-    // XML Locomotor_Has_Animation_Priority: the simulation winds the walker's speed and its turns in
-    // place up and down over its clips (battle's apply_animation_locomotion), so its transitions follow
-    // the simulation's flags (EntitySnapshot::arriving, turning_in_place, turn_arriving), and its turn
-    // clips play at the rate for `in_place_turn_rate` (radians per second: XML Stopped_Rate_Of_Turn,
-    // else Max_Rate_Of_Turn).
+    // XML Locomotor_Has_Animation_Priority: the simulation plays the walker's walks and turns in place
+    // as clips (battle's apply_animation_locomotion), and its transitions show the simulation's clip
+    // and progress (EntitySnapshot::walk_clip, turn_clip).
     bool animation_led{};
-    float in_place_turn_rate{};
     // XML Attack_Animation_Is_Overlay: ATTACK and ATTACKIDLE play over the locomotion on the bones
     // they animate only (the AT-AT's guns), instead of taking the whole body.
     bool attack_overlay{};

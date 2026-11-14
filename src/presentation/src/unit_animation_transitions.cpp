@@ -1,6 +1,6 @@
-// Unit animation, the transitions stage: walkers' turns in place (BEGIN, loop, END), their start and
-// stop (MOVESTART, MOVE_END), and walks played as clips (EntitySnapshot::walk_clip), as a clip that
-// replaces the locomotion.
+// Unit animation, the transitions stage: walkers' turns in place (BEGIN, loop, END) and their start and
+// stop (MOVESTART, MOVE_END), and walks and turns played as clips (EntitySnapshot::walk_clip,
+// turn_clip), as a clip that replaces the locomotion.
 
 #include "unit_animation_internal.hpp"
 
@@ -31,18 +31,16 @@ UnitAnimator::ClipOverride UnitAnimator::animate_transitions(const EntityFrame& 
         // plays from its first step and its turn toward the way is not taken for a turn in place;
         // other units go by the shown speed.
         const bool slow = profile.walk_transition ? entity.speed < entity.max_speed * walk_start_speed_fraction : state.display_speed < entity.max_speed * turn_in_place_speed_fraction;
-        // An animation-led walker turns in place while the simulation says so, the way its heading
-        // goes (holding the last way while the turn has not wound up yet).
-        const int sensed = std::fabs(rate) > 1.0e-4F ? (rate > 0.0F ? 1 : -1) : state.turning;
-        const int turning =
-            profile.animation_led ? (entity.turning_in_place ? (state.turning != 0 ? state.turning : sensed) : 0) : (slow && std::fabs(rate) > turn_in_place_rate ? (rate > 0.0F ? 1 : -1) : 0);
+        // Other units turn in place while their heading changes fast as they stand; an animation-led
+        // walker's turns are the simulation's (turn_clip below).
+        const int turning = !profile.animation_led && slow && std::fabs(rate) > turn_in_place_rate ? (rate > 0.0F ? 1 : -1) : 0;
         // Moving by the shown speed, not the order: a walker turning in place before it sets off has
         // not started walking yet, and MOVESTART belongs to when it does.
         const bool moving = !slow;
         // Walk transitions play at the move clip's rate at top speed (the type's reference speed
         // against its top speed), turns at the turn rate against the type's turn reference.
         const auto walk_playback = walk_clip_playback(profile.move_reference);
-        const auto turn_playback = turn_clip_playback(profile.animation_led ? profile.in_place_turn_rate : rate, profile.turn_reference);
+        const auto turn_playback = turn_clip_playback(rate, profile.turn_reference);
         if (turning != 0)
         {
             state.turn_playback = turn_playback;
@@ -89,20 +87,11 @@ UnitAnimator::ClipOverride UnitAnimator::animate_transitions(const EntityFrame& 
                 // Braking from below top speed takes less long: the stop clip plays faster to match.
                 state.stop_braking = entity.arriving;
             }
-            else if (profile.animation_led && profile.pre_turn && entity.turn_arriving && state.turning != 0 && !state.turn_end_begun)
-            {
-                // The turn in place brakes over its END clip: it starts as the braking does.
-                // The simulation plays the turn as whole clips (BEGIN, loops, END), so END starts at a
-                // loop's end and lasts its playing time.
-                state.turn_end_begun = true;
-                start_transition(find_clip(mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0), state.turn_playback);
-            }
             else if (profile.pre_turn && turning != 0 && state.turning == 0)
             {
-                state.turn_end_begun = false;
                 start_transition(find_clip(mesh, turning > 0 ? AnimationRole::turn_left_begin : AnimationRole::turn_right_begin, 0), state.turn_playback);
             }
-            else if (profile.pre_turn && turning == 0 && state.turning != 0 && !state.turn_end_begun)
+            else if (profile.pre_turn && turning == 0 && state.turning != 0)
             {
                 start_transition(find_clip(mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0), state.turn_playback);
             }
@@ -204,6 +193,49 @@ UnitAnimator::ClipOverride UnitAnimator::animate_transitions(const EntityFrame& 
             }
             state.walk_clip = entity.walk_clip;
         }
+        // A turn played as clips shows the simulation's clip, its first variant.
+        if (entity.turn_clip != TurnClip::none)
+        {
+            const auto left = entity.turn_left;
+            AnimationRole role = AnimationRole::turn_left;
+            switch (entity.turn_clip)
+            {
+            case TurnClip::begin:
+                role = left ? AnimationRole::turn_left_begin : AnimationRole::turn_right_begin;
+                break;
+            case TurnClip::half:
+                role = left ? AnimationRole::turn_left_half : AnimationRole::turn_right_half;
+                break;
+            case TurnClip::quarter:
+                role = left ? AnimationRole::turn_left_quarter : AnimationRole::turn_right_quarter;
+                break;
+            case TurnClip::end:
+                role = left ? AnimationRole::turn_left_end : AnimationRole::turn_right_end;
+                break;
+            case TurnClip::none:
+            case TurnClip::loop:
+                role = left ? AnimationRole::turn_left : AnimationRole::turn_right;
+                break;
+            }
+            if (const auto clip = find_clip(mesh, role, 0); clip >= 0)
+            {
+                override_clip = clip;
+                override_time = static_cast<double>(entity.turn_progress) * static_cast<double>(animation_duration(*rigs_[mesh].clips[static_cast<std::size_t>(clip)].animation));
+                override_weight = 1.0F;
+                state.transition = -1;
+                state.fading = -1;
+            }
+        }
+        // A turn's END ends in IDLE_00's first frame: IDLE_00 goes on from there.
+        if (entity.turn_clip == TurnClip::none && state.turn_clip == TurnClip::end)
+        {
+            state.idle_start = seconds;
+            if (const auto first = find_clip(mesh, AnimationRole::idle, 0); first >= 0)
+            {
+                state.idle = first;
+            }
+        }
+        state.turn_clip = entity.turn_clip;
         // An ended transition holds its last frame while the next pose fades in.
         if (override_clip < 0 && state.fading >= 0)
         {
@@ -220,7 +252,7 @@ UnitAnimator::ClipOverride UnitAnimator::animate_transitions(const EntityFrame& 
                 state.fading = -1;
             }
         }
-        if (override_clip < 0 && turning != 0 && !state.stopping && !state.turn_end_begun)
+        if (override_clip < 0 && turning != 0 && !state.stopping)
         {
             const auto loop = find_clip(mesh, turning > 0 ? AnimationRole::turn_left : AnimationRole::turn_right, 0);
             if (loop >= 0)

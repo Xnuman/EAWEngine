@@ -1125,7 +1125,8 @@ particle-audit`.
   these clips to measure the angle each cycle stands for (left and right sides disagree by up to
   four times). Inference, not evidence: by their names, each stands for a half and a quarter of
   the loop's angle, so the original likely composes a turn of a given size from whole cycles,
-  as a coin change (BEGIN, loops, a HALF, a QUARTER, END). Leaving IDLE mid-loop costs 0.1-0.3
+  as a coin change (BEGIN, loops, a HALF, a QUARTER, END). The engine composes its turns so
+  (status.md, "Turns composed of cycles"); how the original picks them is not observed. Leaving IDLE mid-loop costs 0.1-0.3
   units on the walkers and 1.6-3 on the creatures (SPMAT 4, on one bone): the only join in the kit
   not authored to meet.
 - **Bone billboards** (2026-11-13). An ALO bone carries a billboard mode that turns the meshes on

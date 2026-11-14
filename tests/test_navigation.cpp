@@ -915,8 +915,8 @@ void test_braking_stop_and_winding_turns()
     {
         world.step();
         const auto& entity = world.snapshot().entities[0];
-        turning_ticks += entity.turning_in_place ? 1 : 0;
-        if (entity.turn_arriving && first_end_tick < 0)
+        turning_ticks += entity.turn_clip != eaw::TurnClip::none ? 1 : 0;
+        if (entity.turn_clip == eaw::TurnClip::end && first_end_tick < 0)
         {
             first_end_tick = tick;
         }
@@ -927,6 +927,59 @@ void test_braking_stop_and_winding_turns()
     }
     require(turning_ticks == 19 && first_end_tick == 15 && std::fabs(heading_when_moving - 1.5707964F) < 1.0e-3F,
             "a turn in place played as clips must last its clips, end on a loop's boundary, and leave on the way");
+
+    // With HALF (0.5 s) and QUARTER (0.5 s) cycles, a turn toward the first waypoint up and to the
+    // left (125 degrees on this ground, the cell centre) at a stopped rate of 1 per second is 1.69
+    // loops beyond BEGIN and END: one loop, a HALF, and a QUARTER (7 quarters), in that order, 3 s in
+    // all, ending exactly on the way (the walker sets off without turning further).
+    eaw::SimulationWorld composed(0.1);
+    composed.set_ground(ground);
+    const auto kit = composed.spawn({.type_name = "Kit",
+                                     .position = {100.0F, 100.0F, 0.0F},
+                                     .max_speed = 20.0F,
+                                     .follows_ground = true,
+                                     .passable_types = eaw::passability::clear,
+                                     .radius = 2.0F,
+                                     .turn_rate = 1.0F,
+                                     .movement = {.acceleration = 20.0F,
+                                                  .deceleration = 20.0F,
+                                                  .turn_speed_fraction = 0.1F,
+                                                  .stopped_turn_rate = 1.0F,
+                                                  .turn_in_place_angle = 0.5236F,
+                                                  .turn_begin_seconds = {0.5F, 0.5F},
+                                                  .turn_loop_seconds = {1.0F, 1.0F},
+                                                  .turn_end_seconds = {0.5F, 0.5F},
+                                                  .turn_half_seconds = {0.5F, 0.5F},
+                                                  .turn_quarter_seconds = {0.5F, 0.5F}}});
+    require(static_cast<bool>(kit), "test spawn must succeed");
+    composed.submit({.kind = eaw::SimCommandKind::move, .entities = {*kit}, .target = {100.0F - 200.0F * 0.70710678F, 100.0F + 200.0F * 0.70710678F, 0.0F}});
+    std::vector<eaw::TurnClip> clips;
+    int composed_ticks = 0;
+    float leaving = 0.0F;
+    float turned_to = 0.0F;
+    bool left = true;
+    for (int tick = 1; tick <= 60; ++tick)
+    {
+        composed.step();
+        const auto& entity = composed.snapshot().entities[0];
+        if (entity.turn_clip != eaw::TurnClip::none)
+        {
+            ++composed_ticks;
+            left = left && entity.turn_left;
+            turned_to = entity.heading;
+            if (clips.empty() || clips.back() != entity.turn_clip)
+            {
+                clips.push_back(entity.turn_clip);
+            }
+        }
+        if (entity.speed > 0.0F && leaving == 0.0F)
+        {
+            leaving = entity.heading;
+        }
+    }
+    const std::vector<eaw::TurnClip> expected{eaw::TurnClip::begin, eaw::TurnClip::loop, eaw::TurnClip::half, eaw::TurnClip::quarter, eaw::TurnClip::end};
+    require(clips == expected && composed_ticks >= 29 && composed_ticks <= 30 && left && leaving > 2.0F && std::fabs(leaving - turned_to) < 1.0e-5F,
+            "a turn in place must compose its cycles of loops, HALF, and QUARTER and end exactly on the way");
 }
 
 // A walk played as clips (MOVESTART 1 s, a 2 s stride of 20 units at top speed 10, four MOVE_END

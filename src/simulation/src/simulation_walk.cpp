@@ -1,18 +1,23 @@
-// Walks played as clips (MovementProfile::walk_stop_parts): animation-led walkers (XML
-// Locomotor_Has_Animation_Priority) whose start, stride, and stops follow their clips. The stock
-// clips share two poses (docs/compatibility-research.md, "Walker clip joins" and "The turn kit"):
-// MOVESTART ends where MOVE starts, MOVE_END clip n starts at n/parts of the stride, and every
-// MOVE_END ends in IDLE's first frame, where MOVESTART and the turns begin. So a walk starts over
-// MOVESTART's time, stops only at a part of its stride, and brakes over its whole MOVE_END clip
-// before anything else begins.
+// Walks and turns played as clips (MovementProfile::walk_stop_parts, turn_begin_seconds):
+// animation-led walkers (XML Locomotor_Has_Animation_Priority) whose start, stride, stops, and turns
+// in place follow their clips. The stock clips share two poses (docs/compatibility-research.md,
+// "Walker clip joins" and "The turn kit"): MOVESTART ends where MOVE starts, MOVE_END clip n starts
+// at n/parts of the stride, and every MOVE_END and turn END ends in IDLE's first frame, where
+// MOVESTART and the turns begin; a turn's BEGIN ends, and its END starts, where the loop, HALF, and
+// QUARTER cycles start and end. So a walk starts over MOVESTART's time, stops only at a part of its
+// stride, and brakes over its whole MOVE_END clip before anything else begins, and a turn is
+// BEGIN, whole cycles, and END.
 
-#include "simulation/simulation.hpp"
+#include "simulation_internal.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 
 namespace eaw {
+
+using namespace simulation_detail;
 
 namespace {
 
@@ -171,6 +176,134 @@ bool SimulationWorld::walk_straight(const std::size_t index, const float dt)
     }
     position = next;
     return true;
+}
+
+bool SimulationWorld::turn_as_clips(const std::size_t index, const float difference, const float dt)
+{
+    const auto& movement = movements_[index];
+    auto& plan = turn_plans_[index];
+    if (!(movement.turn_begin_seconds[0] > 0.0F) || !(movement.stopped_turn_rate > 0.0F))
+    {
+        return false;
+    }
+    const auto total = [&]
+    {
+        const auto side = plan.way > 0.0F ? 0U : 1U;
+        return movement.turn_begin_seconds[side] + static_cast<float>(plan.loops) * movement.turn_loop_seconds[side] + static_cast<float>(plan.halves) * movement.turn_half_seconds[side] +
+               static_cast<float>(plan.quarters) * movement.turn_quarter_seconds[side] + movement.turn_end_seconds[side];
+    };
+    if (!plan.active)
+    {
+        // A turn in place begins from rest, past the angle that needs one (Close_Enough_Angle_For_Move_Start).
+        if (!(movement.turn_in_place_angle > 0.0F) || drive_speeds_[index] > 0.0F || std::fabs(difference) <= movement.turn_in_place_angle)
+        {
+            return false;
+        }
+        plan = {};
+        plan.active = true;
+        plan.way = difference > 0.0F ? 1.0F : -1.0F;
+        plan.start = headings_[index];
+        plan.angle = std::fabs(difference);
+        const auto side = plan.way > 0.0F ? 0U : 1U;
+        const auto loop = movement.turn_loop_seconds[side];
+        const auto half = movement.turn_half_seconds[side];
+        const auto quarter = movement.turn_quarter_seconds[side];
+        // The cycles that come closest to the turn at the stopped rate, in loops (BEGIN and END turn
+        // half their time's worth): quarters with a QUARTER clip, else halves with a HALF clip, else
+        // whole loops, as few clips as that takes.
+        const auto loops = loop > 0.0F ? std::max((plan.angle / movement.stopped_turn_rate - 0.5F * (movement.turn_begin_seconds[side] + movement.turn_end_seconds[side])) / loop, 0.0F) : 0.0F;
+        if (quarter > 0.0F)
+        {
+            const auto quarters = static_cast<std::uint32_t>(std::lround(loops * 4.0F));
+            plan.loops = quarters / 4U;
+            plan.halves = half > 0.0F ? (quarters % 4U) / 2U : 0U;
+            plan.quarters = half > 0.0F ? quarters % 2U : quarters % 4U;
+        }
+        else if (half > 0.0F)
+        {
+            const auto halves = static_cast<std::uint32_t>(std::lround(loops * 2.0F));
+            plan.loops = halves / 2U;
+            plan.halves = halves % 2U;
+        }
+        else
+        {
+            plan.loops = static_cast<std::uint32_t>(std::lround(loops));
+        }
+        // The scale of the clips' nominal rates that ends the turn exactly on the way.
+        plan.scale = 1.0F;
+        plan.scale = plan.angle / std::max(turn_point(index, total()).turned, 1.0e-6F);
+    }
+    const auto length = total();
+    plan.elapsed = std::min(plan.elapsed + dt, length);
+    auto& heading = headings_[index];
+    heading = wrap_angle(plan.start + plan.way * std::min(turn_point(index, plan.elapsed).turned, plan.angle));
+    if (plan.elapsed >= length)
+    {
+        heading = wrap_angle(plan.start + plan.way * plan.angle);
+        plan.active = false;
+    }
+    return true;
+}
+
+SimulationWorld::TurnPoint SimulationWorld::turn_point(const std::size_t index, const float time) const noexcept
+{
+    const auto& movement = movements_[index];
+    const auto& plan = turn_plans_[index];
+    const auto side = plan.way > 0.0F ? 0U : 1U;
+    const auto begin = std::max(movement.turn_begin_seconds[side], 1.0e-6F);
+    const auto end = std::max(movement.turn_end_seconds[side], 1.0e-6F);
+    const auto loop = movement.turn_loop_seconds[side];
+    const auto half = movement.turn_half_seconds[side];
+    const auto quarter = movement.turn_quarter_seconds[side];
+    // Each cycle turns at its nominal rate: the loop at the stopped rate, HALF and QUARTER through a
+    // half and a quarter of the loop's angle in their own time; all scaled to end on the way.
+    const auto rate = movement.stopped_turn_rate * plan.scale;
+    struct Cycle
+    {
+        TurnClip clip;
+        float seconds;
+        float rate;
+        std::uint32_t count;
+    };
+    const std::array<Cycle, 3> cycles{{
+        {TurnClip::loop, loop, rate, loop > 0.0F ? plan.loops : 0U},
+        {TurnClip::half, half, half > 0.0F ? rate * loop / (2.0F * half) : 0.0F, half > 0.0F ? plan.halves : 0U},
+        {TurnClip::quarter, quarter, quarter > 0.0F ? rate * loop / (4.0F * quarter) : 0.0F, quarter > 0.0F ? plan.quarters : 0U},
+    }};
+    // BEGIN winds up to the first cycle's rate and END down from the last one's (the loop's rate
+    // without cycles), linearly.
+    auto first = rate;
+    auto last = rate;
+    bool any = false;
+    for (const auto& cycle : cycles)
+    {
+        if (cycle.count > 0U)
+        {
+            first = any ? first : cycle.rate;
+            last = cycle.rate;
+            any = true;
+        }
+    }
+    if (time < begin)
+    {
+        return {TurnClip::begin, time / begin, first * time * time / (2.0F * begin)};
+    }
+    auto turned = 0.5F * first * begin;
+    auto at = begin;
+    for (const auto& cycle : cycles)
+    {
+        const auto span = static_cast<float>(cycle.count) * cycle.seconds;
+        if (cycle.count > 0U && time < at + span)
+        {
+            const auto into = time - at;
+            const auto whole = std::floor(into / cycle.seconds);
+            return {cycle.clip, (into - whole * cycle.seconds) / cycle.seconds, turned + cycle.rate * into};
+        }
+        turned += cycle.rate * span;
+        at += span;
+    }
+    const auto into = std::clamp(time - at, 0.0F, end);
+    return {TurnClip::end, into / end, turned + last * (into - into * into / (2.0F * end))};
 }
 
 } // namespace eaw

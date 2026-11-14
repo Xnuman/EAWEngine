@@ -267,9 +267,8 @@ private:
         // The stop began with braking for the destination: its END plays faster when the walker is
         // below top speed as END starts (it brakes for less long).
         bool stop_braking{};
-        // The END clip of this turn in place has begun (the turn is braking), so neither it nor the
-        // turn loop starts again before the next turn.
-        bool turn_end_begun{};
+        // The turn clip the simulation showed last (EntitySnapshot::turn_clip).
+        TurnClip turn_clip{TurnClip::none};
         bool frame_seen{};
     };
 

@@ -157,7 +157,7 @@ rendering rows join item 2).
       Tauntaun, and ground beetle; the path stays for them unless the owner decides otherwise); (3) `UnitAnimator::animate` split into stages
       in files of their own, behavior unchanged (done 2026-11-14: five stages, every pose key the
       same frame for frame in two traced scenes); (4) turns report their clip and progress like
-      walks, composed of loop, HALF, and QUARTER cycles. MovementProfile's optional modes and the
+      walks, composed of loop, HALF, and QUARTER cycles (done 2026-11-14). MovementProfile's optional modes and the
       simulation's parallel storage go to the ECS design (c) instead.
    c. Research and one design document for an entity-component system (modern engines' ECS,
       data-driven composition, archetypes) and the job system: entities as ids, components in
@@ -239,8 +239,8 @@ rendering rows join item 2).
    Open: AT-AT animations are broken (the owner, 2026-11-13: in the sandbox an AT-AT can stay in its
    idle clip while ordered to move); combat presentation and fidelity (hardpoint damage visuals, turret rotation of hardpoint
    turrets (unit turrets done 2026-11-12); walkers' `_QUARTER`/`_HALF` turn clips (cycles between
-   BEGIN and END, compatibility-research.md "The turn kit"; next: compose turns from them as walks
-   are planned by their clips, 2026-11-14),
+   BEGIN and END, compatibility-research.md "The turn kit"; turns are composed of them, done
+   2026-11-14; the angle each stands for is inferred from the names, not measured),
    `Rotation_Animation_Speed`, and `Locomotor_Has_Animation_Priority` (turn-in-place, begin/end,
    start and stop transitions done 2026-11-12)),
    damage-specific death clones and wreck explosions, ground detonations, debris, death-projectile
@@ -349,9 +349,9 @@ Not a stage plan: leftovers are fixed while features touch the code around them,
 periodic whole-project reviews add to this list or turn it into a plan of steps (AGENTS.md, "Code
 health"). Remove an entry when it is fixed. Known leftovers after the reorganization of 2026-11:
 
-- `UnitAnimator::EntityState`, about 42 fields shared by every stage of unit animation; the
-  transitions' flags (`stop_begun`, `turn_end_begun`, `turn_looping`, `fading`, ...) go with the
-  walker locomotion cleanup's step 4 and the old start and stop (step 2);
+- `UnitAnimator::EntityState`, about 40 fields shared by every stage of unit animation; the
+  transitions' flags of the presentation's old start, stop, and turns (`stop_begun`, `stopping`,
+  `turn_looping`, `fading`, ...) go with the walker locomotion cleanup's step 2;
 - two bounds for clip playback: `walk_clip_playback`'s 0.25-6 (battle) and the animator's 0.5-1.5
   for speed-scaled playback (presentation), one idea in two places;
 - two rules for a definition's repeated field: `definition_field` (`xml_asset_database`, used by
