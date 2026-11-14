@@ -121,7 +121,21 @@ void test_combat_content()
                 "<HardPoints>HP_Gun, HP_Shield,\n HP_Gun HP_Missing</HardPoints></SpaceUnit>"
                 "<GroundVehicle Name=\"Broken_Gun\"><Tactical_Health>10</Tactical_Health><Projectile_Types>Proj_Missing</Projectile_Types>"
                 "<Targeting_Max_Attack_Distance>100</Targeting_Max_Attack_Distance></GroundVehicle>"
+                "<GroundVehicle Name=\"Lumberer\"><Locomotor_Has_Animation_Priority>yes</Locomotor_Has_Animation_Priority><Max_Speed>0.5</Max_Speed>"
+                "<Movement_Animation_Speed>0.125</Movement_Animation_Speed></GroundVehicle>"
+                "<GroundVehicle Name=\"Plain_Lumberer\"><Max_Speed>0.5</Max_Speed><Movement_Animation_Speed>0.125</Movement_Animation_Speed></GroundVehicle>"
                 "</Units>";
+    }
+    {
+        // The animation-led walker's start and stop clips (the 1 s test clip).
+        const auto models = root / "Data" / "Art" / "Models";
+        std::filesystem::create_directories(models);
+        const auto clip = make_test_ala();
+        for (const auto* name : {"LUMBERER_MOVESTART_00.ALA", "LUMBERER_MOVE_ENDONE_00.ALA"})
+        {
+            std::ofstream file(models / name, std::ios::binary);
+            file.write(reinterpret_cast<const char*>(clip.data()), static_cast<std::streamsize>(clip.size()));
+        }
     }
     eaw::VirtualFileSystem vfs;
     vfs.mount(std::make_unique<eaw::DirectoryMount>("test", root));
@@ -136,6 +150,23 @@ void test_combat_content()
     require(content.max_speed_multiplier.of(true) == 1.5F && content.max_speed_multiplier.of(false) == 1.0F && content.max_health_multiplier.of(false) == 2.0F &&
                 content.max_health_multiplier.of(true) == 1.0F,
             "the per-mode speed and health multipliers must be read, 1 when absent or invalid");
+    {
+        // Locomotor_Has_Animation_Priority: the 1 s start and stop clips play at 4x (Max_Speed over
+        // Movement_Animation_Speed), so a walker at 20 per second speeds up and brakes at 80; a type
+        // without the field, or without clips, changes speed at once.
+        eaw::AssetCache cache;
+        const eaw::ResourceManager resources(vfs, &cache);
+        const auto led = [&](const std::string_view type, const std::string_view model)
+        {
+            eaw::MovementProfile movement;
+            eaw::apply_animation_locomotion(movement, catalog, *catalog.find(type).front(), resources, model, 20.0F);
+            return movement;
+        };
+        const auto lumbering = led("Lumberer", "DATA/ART/MODELS/LUMBERER.ALO");
+        require(std::fabs(lumbering.acceleration - 80.0F) < 0.01F && std::fabs(lumbering.deceleration - 80.0F) < 0.01F && led("Plain_Lumberer", "DATA/ART/MODELS/LUMBERER.ALO").acceleration == 0.0F &&
+                    led("Lumberer", "DATA/ART/MODELS/NO_CLIPS.ALO").acceleration == 0.0F,
+                "an animation-led walker must speed up and brake over its start and stop clips' playing time");
+    }
     const auto laser = content.type_ids.at("damage_laser");
     const auto tank_armor = content.type_ids.at("armor_tank");
     require(content.damage_table.modifier(laser, tank_armor) == 0.5F && content.damage_table.modifier(laser, content.type_ids.at("shield_tank")) == 2.0F,

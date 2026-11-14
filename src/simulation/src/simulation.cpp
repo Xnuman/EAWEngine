@@ -140,6 +140,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     standing_orders_.push_back({.scan_timer = slot % retarget_interval});
     locomotor_suspended_.push_back(0);
     looping_.push_back(0);
+    arriving_.push_back(0);
     rolls_.push_back(0.0F);
     intents_.emplace_back();
     formation_orders_.push_back(spawn.formation_order);
@@ -417,6 +418,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         standing_orders_[dense] = standing_orders_[last];
         locomotor_suspended_[dense] = locomotor_suspended_[last];
         looping_[dense] = looping_[last];
+        arriving_[dense] = arriving_[last];
         rolls_[dense] = rolls_[last];
         intents_[dense] = intents_[last];
         formation_orders_[dense] = formation_orders_[last];
@@ -464,6 +466,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     standing_orders_.pop_back();
     locomotor_suspended_.pop_back();
     looping_.pop_back();
+    arriving_.pop_back();
     rolls_.pop_back();
     intents_.pop_back();
     formation_orders_.pop_back();
@@ -613,7 +616,8 @@ void SimulationWorld::publish()
                                       combat.turret_yaw,
                                       last_shot_ticks_[index],
                                       command_serials_[index],
-                                      standing_orders_[index].kind});
+                                      standing_orders_[index].kind,
+                                      arriving_[index] != 0});
     }
     snapshot_.deaths = deaths_;
     snapshot_.impacts = impacts_;

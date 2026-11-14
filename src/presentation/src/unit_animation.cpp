@@ -39,14 +39,12 @@ constexpr float barrel_pitch_step = pi / 64.0F;
 // moves slower than turn_in_place_speed_fraction of its top speed (engine choices).
 constexpr float turn_in_place_rate = 0.15F;
 constexpr float turn_in_place_speed_fraction = 0.1F;
-// Bounds of a transition's playback rate (engine choices; the stock AT-AT walks at 3.7x, the
-// Bantha at 5x).
-constexpr float minimum_transition_playback = 0.25F;
+// A walker with walk transitions counts as moving past this share of its top speed (engine choice).
+constexpr float walk_start_speed_fraction = 0.02F;
 // Transitions fade in from the pose before them and out into the one after them over this long
 // (engine choice); 0 cuts straight from one clip to the next (the owner's test, 2026-11-14: the 0.25 s
 // fades looked clanky).
 constexpr double transition_fade_seconds = 0.0;
-constexpr float maximum_transition_playback = 6.0F;
 // Frames longer than this (a stall, a hidden window) count as this long.
 constexpr double longest_frame_seconds = 0.25;
 // Sampled poses kept across frames (matrices); beyond it the cache starts over.
@@ -714,15 +712,19 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         float override_weight = 1.0F;
         {
             const auto rate = dt > 0.0 ? std::remainder(entity.heading - state.last_heading, two_pi) / static_cast<float>(dt) : 0.0F;
-            const bool slow = state.display_speed < entity.max_speed * turn_in_place_speed_fraction;
+            // A walker with walk transitions moves once its actual speed is past a sliver of its top
+            // speed (it speeds up over MOVESTART: battle's apply_animation_locomotion), so its start
+            // plays from its first step and its turn toward the way is not taken for a turn in place;
+            // other units go by the shown speed.
+            const bool slow = profile.walk_transition ? entity.speed < entity.max_speed * walk_start_speed_fraction : state.display_speed < entity.max_speed * turn_in_place_speed_fraction;
             const int turning = slow && std::fabs(rate) > turn_in_place_rate ? (rate > 0.0F ? 1 : -1) : 0;
             // Moving by the shown speed, not the order: a walker turning in place before it sets off has
             // not started walking yet, and MOVESTART belongs to when it does.
             const bool moving = !slow;
             // Walk transitions play at the move clip's rate at top speed (the type's reference speed
             // against its top speed), turns at the turn rate against the type's turn reference.
-            const auto walk_playback = std::clamp(1.0F / std::max(profile.move_reference, 1.0e-3F), minimum_transition_playback, maximum_transition_playback);
-            const auto turn_playback = profile.turn_reference > 0.0F ? std::clamp(std::fabs(rate) / profile.turn_reference, minimum_transition_playback, maximum_transition_playback) : 1.0F;
+            const auto walk_playback = walk_clip_playback(profile.move_reference);
+            const auto turn_playback = profile.turn_reference > 0.0F ? std::clamp(std::fabs(rate) / profile.turn_reference, minimum_walk_clip_playback, maximum_walk_clip_playback) : 1.0F;
             if (turning != 0)
             {
                 state.turn_playback = turn_playback;
@@ -742,10 +744,14 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             {
                 if (profile.walk_transition && moving && !state.was_moving)
                 {
+                    state.stop_begun = false;
                     start_transition(find_clip(instance.mesh, AnimationRole::move_start, 0), walk_playback, true);
                 }
-                else if (profile.walk_transition && !moving && state.was_moving && state.move >= 0)
+                else if (profile.walk_transition && !state.stop_begun && state.move >= 0 && ((entity.arriving && moving) || (!moving && state.was_moving)))
                 {
+                    // An animation-led walker brakes over its MOVE_END clip (battle's
+                    // apply_animation_locomotion): its stop begins as braking for the destination does.
+                    state.stop_begun = true;
                     // MOVE_ENDONE starts where MOVE is at 0/4 of its stride, ENDTWO at 1/4, and so on:
                     // walk on to the next quarter and stop there.
                     state.stopping = true;
@@ -769,11 +775,22 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             {
                 state.turn_time += dt * static_cast<double>(state.turn_playback);
             }
-            if (state.stopping && (moving || state.transition >= 0))
+            // A stop under way ends when the walker moves on without braking (a new order) or another
+            // transition than its start begins.
+            const bool starting = state.transition >= 0 && state.transition_starts_walk;
+            if (state.stopping && ((moving && !entity.arriving) || (state.transition >= 0 && !starting)))
             {
                 state.stopping = false;
+                state.stop_begun = state.transition >= 0;
             }
-            if (state.stopping)
+            if (state.stopping && starting)
+            {
+                // Braking began while MOVESTART still plays (a short walk): MOVESTART ends where MOVE
+                // starts, which is where MOVE_ENDONE starts, so the stop follows it at once.
+                state.stop_phase = 0.0;
+                state.stop_quarter = 0;
+            }
+            else if (state.stopping)
             {
                 // The stride goes on at the move clip's rate at top speed until it reaches the quarter.
                 const auto move_duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(state.move)].animation));

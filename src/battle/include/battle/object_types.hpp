@@ -210,6 +210,23 @@ float type_turn_rate(const GameObjectCatalog& catalog, const XmlDefinition& defi
 // per frame; EaW-Revised's S-10, S-12, S-26; docs/compatibility-research.md). Callers pass the
 // space multiplier on space maps; on land it is not observed, so they pass 1.
 MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, bool land, bool flyer, float mode_multiplier = 1.0F);
+
+// How fast a walker's start and stop clips play: at the move clip's rate at top speed, 1 over
+// `move_reference` (XML Movement_Animation_Speed over Max_Speed), within these bounds (engine
+// choices; the stock AT-AT plays at 3.7x, the Bantha at 5x). Presentation plays the clips at it and
+// the simulation times animation-led walkers by it, so the two agree.
+inline constexpr float minimum_walk_clip_playback = 0.25F;
+inline constexpr float maximum_walk_clip_playback = 6.0F;
+[[nodiscard]] float walk_clip_playback(float move_reference) noexcept;
+
+// XML Locomotor_Has_Animation_Priority (the AT-AT, pod walkers, two droids): the walker's start and
+// stop clips carry its acceleration and braking (their planted feet speed up through MOVESTART and
+// slow down through MOVE_END: EAWAssetInspector gait), so it reaches `max_speed` over MOVESTART's
+// playing time and stops over MOVE_ENDONE's, instead of changing speed at once (an engine reading of
+// the field's name, backed by the clips; linear ramps are an engine choice). An XML acceleration
+// override wins. Clips are read beside `model_path`; a type without them keeps `movement`.
+void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatalog& catalog, const XmlDefinition& definition, const ResourceManager& resources, std::string_view model_path,
+                                float max_speed);
 // An engine choice, not the original's: how far off its way a ground unit stops to turn (the
 // owner's observation that land units do not turn while moving off; GameConstants'
 // CloseEnoughAngleForMoveStart says 180, which would never stop them, so the two disagree).

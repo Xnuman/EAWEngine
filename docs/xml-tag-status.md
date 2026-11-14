@@ -210,6 +210,7 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Movement_Animation_Speed` | `done` | speed (Max_Speed units) at which the move clip plays at 1x; measured with `gait` (compatibility-research.md, "Animation speeds") |
 | `Walk_Animation_Speed` | `done` | as Movement_Animation_Speed, for the walk clip |
+| `Locomotor_Has_Animation_Priority` | `done` | the walker speeds up over MOVESTART and brakes over MOVE_ENDONE at their playing rate (the clips carry the acceleration: `gait`); an engine reading of the name |
 | `Rotation_Animation_Speed` | `done` | turn rate (degrees per frame) at which turn and turn-transition clips play at 1x; by analogy with Movement_Animation_Speed, it equals Max_Rate_Of_Turn on most types with turn clips |
 | `Crouch_Animation_Speed` | `needs abilities` | crouch clips play under Spread Out |
 | `Tread_Scroll_Rate` | `gap` |  |

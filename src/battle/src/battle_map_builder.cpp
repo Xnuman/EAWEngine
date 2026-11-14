@@ -210,6 +210,7 @@ std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::
         spawnable.turn_rate = type_turn_rate(build.catalog, *definition, motion_multiplier);
         spawnable.min_speed = build.land ? 0.0F : type_min_flight_speed(build.catalog, *definition, spawnable.max_speed);
         spawnable.movement = type_movement(build.catalog, *definition, build.land, spawnable.min_speed > 0.0F, motion_multiplier);
+        apply_animation_locomotion(spawnable.movement, build.catalog, *definition, build.resources, *path, spawnable.max_speed);
         if (!build.land)
         {
             spawnable.movement.turn_in_place_rate = build.combat != nullptr ? spawnable.turn_rate / type_turn_in_place_slowdown(build.catalog, *definition, *build.combat) : 0.0F;
@@ -346,6 +347,7 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
                 spawn.turn_rate = type_turn_rate(catalog, *placement.type, motion_multiplier);
                 spawn.min_speed = asset.land ? 0.0F : type_min_flight_speed(catalog, *placement.type, spawn.max_speed);
                 spawn.movement = type_movement(catalog, *placement.type, asset.land, spawn.min_speed > 0.0F, motion_multiplier);
+                apply_animation_locomotion(spawn.movement, catalog, *placement.type, resources, placement.model_path, spawn.max_speed);
                 if (!asset.land)
                 {
                     spawn.movement.turn_in_place_rate = spawn.turn_rate / type_turn_in_place_slowdown(catalog, *placement.type, combat);

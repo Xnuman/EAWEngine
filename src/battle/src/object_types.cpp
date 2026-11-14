@@ -366,6 +366,41 @@ float type_turn_in_place_slowdown(const GameObjectCatalog& catalog, const XmlDef
                                 : 1.0F;
 }
 
+float walk_clip_playback(const float move_reference) noexcept
+{
+    return std::clamp(1.0F / std::max(move_reference, 1.0e-3F), minimum_walk_clip_playback, maximum_walk_clip_playback);
+}
+
+void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatalog& catalog, const XmlDefinition& definition, const ResourceManager& resources, const std::string_view model_path,
+                                const float max_speed)
+{
+    if (!TypeFields(catalog, definition).flag("Locomotor_Has_Animation_Priority", false) || movement.acceleration > 0.0F || !(max_speed > 0.0F))
+    {
+        return;
+    }
+    const auto top = type_float_field(catalog, definition, "Max_Speed");
+    const auto reference = type_float_field(catalog, definition, "Movement_Animation_Speed");
+    if (!(top > 0.0F) || !(reference > 0.0F))
+    {
+        return;
+    }
+    const auto playback = walk_clip_playback(reference / top);
+    const auto stem = ascii_upper(model_path.substr(0, model_path.rfind('.')));
+    const auto seconds = [&](const std::string_view clip) -> float
+    {
+        const auto animation = resources.get<Animation>(stem + "_" + std::string(clip) + ".ALA");
+        return animation->ok() ? animation_duration(animation->value()) / playback : 0.0F;
+    };
+    if (const auto start = seconds("MOVESTART_00"); start > 0.0F)
+    {
+        movement.acceleration = max_speed / start;
+    }
+    if (const auto stop = seconds("MOVE_ENDONE_00"); stop > 0.0F)
+    {
+        movement.deceleration = max_speed / stop;
+    }
+}
+
 MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinition& definition, const bool land, const bool flyer, const float mode_multiplier)
 {
     MovementProfile movement;

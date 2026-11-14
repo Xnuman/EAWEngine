@@ -22,6 +22,7 @@ float SimulationWorld::travel_speed(const std::size_t index) const noexcept
 void SimulationWorld::run_movement()
 {
     const auto dt = static_cast<float>(tick_seconds_);
+    std::ranges::fill(arriving_, std::uint8_t{0});
     process_path_queue();
     measure_remaining_routes();
     update_group_cohesion();
@@ -229,7 +230,7 @@ float SimulationWorld::steer(const std::size_t index, const float desired, const
     return std::max(0.0F, std::cos(difference));
 }
 
-float SimulationWorld::wanted_speed(const std::size_t index, const float facing, const float distance) const noexcept
+float SimulationWorld::wanted_speed(const std::size_t index, const float facing, const float distance) noexcept
 {
     const auto& movement = movements_[index];
     auto factor = facing;
@@ -247,7 +248,12 @@ float SimulationWorld::wanted_speed(const std::size_t index, const float facing,
     if (movement.deceleration > 0.0F)
     {
         // The speed it can still brake from to stop at the destination.
-        wanted = std::min(wanted, std::sqrt(2.0F * movement.deceleration * std::max(distance, 0.0F)));
+        const auto braking = std::sqrt(2.0F * movement.deceleration * std::max(distance, 0.0F));
+        if (braking < wanted)
+        {
+            wanted = braking;
+            arriving_[index] = 1;
+        }
     }
     return wanted;
 }

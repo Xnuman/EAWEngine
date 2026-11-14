@@ -254,6 +254,9 @@ private:
         bool stopping{};
         double stop_phase{};
         int stop_quarter{};
+        // The stop of this walk has begun (once braking for the destination starts, or the walker is
+        // all but still), so it does not begin again before the next start.
+        bool stop_begun{};
         bool frame_seen{};
     };
 

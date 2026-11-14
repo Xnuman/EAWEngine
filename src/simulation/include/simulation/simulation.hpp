@@ -308,6 +308,10 @@ struct EntitySnapshot
     std::uint64_t command_serial{};
     // The standing order the entity follows; none once an attack-move arrived or a guarded object died.
     StandingOrder order{StandingOrder::none};
+    // Braking to stop at its destination in the last tick (its deceleration, not its top speed or a
+    // turn, held its speed back); presentation starts a walker's stop clip then. Not part of the
+    // state hash.
+    bool arriving{};
 };
 
 struct ProjectileSnapshot
@@ -658,7 +662,8 @@ private:
     // The speed a mover wants this tick, `distance` from its destination, after steer returned
     // `facing`: the travel speed shaped by its movement profile (turning in place, keeping speed in
     // a turn, braking ahead of the destination).
-    [[nodiscard]] float wanted_speed(std::size_t index, float facing, float distance) const noexcept;
+    // Also marks the entity arriving_ when braking for its destination holds its speed back.
+    [[nodiscard]] float wanted_speed(std::size_t index, float facing, float distance) noexcept;
     // Speeds up or slows down toward `wanted` at the profile's rates; returns this tick's speed.
     float drive(std::size_t index, float wanted, float dt) noexcept;
     // Movers that cannot turn while slow move along their heading, not straight at their target,
@@ -791,6 +796,8 @@ private:
     std::vector<Vector3> tick_start_positions_;
     // Flyers inside a half-loop, and the roll they unwind after one.
     std::vector<std::uint8_t> looping_;
+    // Braking for its destination this tick (EntitySnapshot::arriving); not hashed.
+    std::vector<std::uint8_t> arriving_;
     std::vector<float> rolls_;
     std::vector<Stance> stances_;
     std::vector<std::uint8_t> aims_with_body_;
