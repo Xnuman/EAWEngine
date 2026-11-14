@@ -279,175 +279,236 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .slowest_phase_seconds = slowest_phase_seconds_};
 }
 
+std::string_view state_subject_name(const StateSubject subject) noexcept
+{
+    switch (subject)
+    {
+    case StateSubject::bodies:
+        return "bodies";
+    case StateSubject::routes:
+        return "routes";
+    case StateSubject::combat:
+        return "combat";
+    case StateSubject::clips:
+        return "clips";
+    case StateSubject::flight:
+        return "flight";
+    case StateSubject::formations:
+        return "formations";
+    case StateSubject::orders:
+        return "orders";
+    case StateSubject::projectiles:
+        return "projectiles";
+    case StateSubject::random:
+        return "random";
+    case StateSubject::count:
+        break;
+    }
+    return "unknown";
+}
+
 std::uint64_t SimulationWorld::state_hash() const noexcept
 {
-    auto hash = hash_value(14695981039346656037ULL, tick_);
+    StateHasher hasher;
+    hash_state(hasher);
+    return hasher.total;
+}
+
+StateHashes SimulationWorld::state_hashes() const noexcept
+{
+    StateHasher hasher;
+    hash_state(hasher);
+    return hasher.parts;
+}
+
+void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
+{
+    // The tick goes into the total only: each subject hash says whether that part of the state agrees.
+    hasher.total = hash_value(hasher.total, tick_);
     for (std::size_t index = 0; index < ids_.size(); ++index)
     {
-        hash = hash_value(hash, ids_[index]);
-        hash = hash_value(hash, positions_[index]);
-        hash = hash_value(hash, headings_[index]);
-        hash = hash_value(hash, max_speeds_[index]);
+        hasher.subject = StateSubject::bodies;
+        hasher.add(ids_[index]);
+        hasher.add(positions_[index]);
+        hasher.add(headings_[index]);
+        hasher.add(max_speeds_[index]);
         const auto& target = move_targets_[index];
-        hash = hash_value(hash, target.has_value());
+        hasher.add(target.has_value());
         if (target)
         {
-            hash = hash_value(hash, *target);
+            hasher.add(*target);
         }
-        hash = hash_value(hash, owners_[index]);
+        hasher.add(owners_[index]);
         // Visual keys are presentation data the simulation never reads (a mesh index on maps), so
         // they stay out of the hash: the same battle hashes alike however its scene was built.
-        hash = hash_value(hash, selectable_[index]);
-        hash = hash_value(hash, follows_ground_[index]);
-        hash = hash_value(hash, passable_types_[index]);
-        hash = hash_value(hash, paths_[index].size());
+        hasher.add(selectable_[index]);
+        hasher.add(follows_ground_[index]);
+        hasher.add(passable_types_[index]);
+        hasher.subject = StateSubject::routes;
+        hasher.add(paths_[index].size());
         for (const auto& waypoint : paths_[index])
         {
-            hash = hash_value(hash, waypoint);
+            hasher.add(waypoint);
         }
+        hasher.subject = StateSubject::combat;
         // Field by field: the combat records have padding, whose bytes are unspecified.
         const auto& combat = combat_[index];
-        hash = hash_value(hash, combat.health);
-        hash = hash_value(hash, combat.shield);
-        hash = hash_value(hash, combat.target);
-        hash = hash_value(hash, combat.ordered);
+        hasher.add(combat.health);
+        hasher.add(combat.shield);
+        hasher.add(combat.target);
+        hasher.add(combat.ordered);
         for (const auto health : combat.hardpoint_health)
         {
-            hash = hash_value(hash, health);
+            hasher.add(health);
         }
         for (const auto& weapon : combat.weapons)
         {
-            hash = hash_value(hash, weapon.cooldown);
-            hash = hash_value(hash, weapon.pulses_left);
-            hash = hash_value(hash, weapon.pulse_timer);
-            hash = hash_value(hash, weapon.target);
-            hash = hash_value(hash, weapon.shots);
+            hasher.add(weapon.cooldown);
+            hasher.add(weapon.pulses_left);
+            hasher.add(weapon.pulse_timer);
+            hasher.add(weapon.target);
+            hasher.add(weapon.shots);
         }
-        hash = hash_value(hash, combat.retarget_timer);
-        hash = hash_value(hash, combat.target_ticks);
-        hash = hash_value(hash, combat.spin_ticks);
-        hash = hash_value(hash, combat.turret_yaw);
-        hash = hash_value(hash, combat.chase_timer);
-        hash = hash_value(hash, radii_[index]);
-        hash = hash_value(hash, turn_rates_[index]);
-        hash = hash_value(hash, min_speeds_[index]);
+        hasher.add(combat.retarget_timer);
+        hasher.add(combat.target_ticks);
+        hasher.add(combat.spin_ticks);
+        hasher.add(combat.turret_yaw);
+        hasher.add(combat.chase_timer);
+        hasher.subject = StateSubject::bodies;
+        hasher.add(radii_[index]);
+        hasher.add(turn_rates_[index]);
+        hasher.add(min_speeds_[index]);
         const auto& movement = movements_[index];
-        hash = hash_value(hash, movement.acceleration);
-        hash = hash_value(hash, movement.deceleration);
-        hash = hash_value(hash, movement.turn_speed_fraction);
-        hash = hash_value(hash, movement.stopped_turn_rate);
-        hash = hash_value(hash, movement.turn_in_place_angle);
-        hash = hash_value(hash, movement.turn_in_place_rate);
+        hasher.add(movement.acceleration);
+        hasher.add(movement.deceleration);
+        hasher.add(movement.turn_speed_fraction);
+        hasher.add(movement.stopped_turn_rate);
+        hasher.add(movement.turn_in_place_angle);
+        hasher.add(movement.turn_in_place_rate);
         // Only entities that wind their turns (so other battles keep their hashes).
         if (movement.turn_begin_seconds[0] > 0.0F)
         {
+            hasher.subject = StateSubject::clips;
             for (std::size_t side = 0; side < 2; ++side)
             {
-                hash = hash_value(hash, movement.turn_begin_seconds[side]);
-                hash = hash_value(hash, movement.turn_loop_seconds[side]);
-                hash = hash_value(hash, movement.turn_end_seconds[side]);
-                hash = hash_value(hash, movement.turn_half_seconds[side]);
-                hash = hash_value(hash, movement.turn_quarter_seconds[side]);
+                hasher.add(movement.turn_begin_seconds[side]);
+                hasher.add(movement.turn_loop_seconds[side]);
+                hasher.add(movement.turn_end_seconds[side]);
+                hasher.add(movement.turn_half_seconds[side]);
+                hasher.add(movement.turn_quarter_seconds[side]);
             }
             const auto& plan = turn_plans_[index];
-            hash = hash_value(hash, static_cast<std::uint8_t>(plan.active ? 1U : 0U));
-            hash = hash_value(hash, plan.elapsed);
-            hash = hash_value(hash, plan.start);
-            hash = hash_value(hash, plan.angle);
-            hash = hash_value(hash, plan.way);
-            hash = hash_value(hash, plan.scale);
-            hash = hash_value(hash, plan.loops);
-            hash = hash_value(hash, plan.halves);
-            hash = hash_value(hash, plan.quarters);
+            hasher.add(static_cast<std::uint8_t>(plan.active ? 1U : 0U));
+            hasher.add(plan.elapsed);
+            hasher.add(plan.start);
+            hasher.add(plan.angle);
+            hasher.add(plan.way);
+            hasher.add(plan.scale);
+            hasher.add(plan.loops);
+            hasher.add(plan.halves);
+            hasher.add(plan.quarters);
         }
         // Only entities that walk as clips.
         if (movement.walk_stop_parts > 0)
         {
-            hash = hash_value(hash, movement.walk_start_seconds);
-            hash = hash_value(hash, movement.walk_stride_seconds);
-            hash = hash_value(hash, movement.walk_stop_seconds);
-            hash = hash_value(hash, movement.walk_stop_parts);
-            hash = hash_value(hash, movement.walk_raise_seconds);
-            hash = hash_value(hash, movement.walk_lower_seconds);
+            hasher.subject = StateSubject::clips;
+            hasher.add(movement.walk_start_seconds);
+            hasher.add(movement.walk_stride_seconds);
+            hasher.add(movement.walk_stop_seconds);
+            hasher.add(movement.walk_stop_parts);
+            hasher.add(movement.walk_raise_seconds);
+            hasher.add(movement.walk_lower_seconds);
             const auto& walk = walk_plans_[index];
-            hash = hash_value(hash, walk.clip);
-            hash = hash_value(hash, walk.part);
-            hash = hash_value(hash, walk.elapsed);
-            hash = hash_value(hash, walk.phase);
-            hash = hash_value(hash, walk.from_speed);
-            hash = hash_value(hash, walk.scale);
-            hash = hash_value(hash, static_cast<std::uint8_t>(walk.ends_move ? 1U : 0U));
-            hash = hash_value(hash, walk.destination.x);
-            hash = hash_value(hash, walk.destination.y);
-            hash = hash_value(hash, walk.destination.z);
-            hash = hash_value(hash, static_cast<std::uint8_t>(walk.turn_back ? 1U : 0U));
-            hash = hash_value(hash, static_cast<std::uint8_t>(walk.new_way ? 1U : 0U));
+            hasher.add(walk.clip);
+            hasher.add(walk.part);
+            hasher.add(walk.elapsed);
+            hasher.add(walk.phase);
+            hasher.add(walk.from_speed);
+            hasher.add(walk.scale);
+            hasher.add(static_cast<std::uint8_t>(walk.ends_move ? 1U : 0U));
+            hasher.add(walk.destination.x);
+            hasher.add(walk.destination.y);
+            hasher.add(walk.destination.z);
+            hasher.add(static_cast<std::uint8_t>(walk.turn_back ? 1U : 0U));
+            hasher.add(static_cast<std::uint8_t>(walk.new_way ? 1U : 0U));
         }
-        hash = hash_value(hash, drive_speeds_[index]);
-        hash = hash_value(hash, stances_[index]);
-        hash = hash_value(hash, aims_with_body_[index]);
-        hash = fnv1a(hash, type_names_[index].data(), type_names_[index].size());
-        hash = hash_value(hash, pitches_[index]);
-        hash = hash_value(hash, cruise_heights_[index]);
-        hash = hash_value(hash, looping_[index]);
-        hash = hash_value(hash, rolls_[index]);
-        hash = hash_value(hash, loiter_points_[index].has_value());
+        hasher.subject = StateSubject::bodies;
+        hasher.add(drive_speeds_[index]);
+        hasher.subject = StateSubject::combat;
+        hasher.add(stances_[index]);
+        hasher.subject = StateSubject::bodies;
+        hasher.add(aims_with_body_[index]);
+        hasher.add_bytes(type_names_[index].data(), type_names_[index].size());
+        hasher.subject = StateSubject::flight;
+        hasher.add(pitches_[index]);
+        hasher.add(cruise_heights_[index]);
+        hasher.add(looping_[index]);
+        hasher.add(rolls_[index]);
+        hasher.add(loiter_points_[index].has_value());
         if (loiter_points_[index])
         {
-            hash = hash_value(hash, *loiter_points_[index]);
+            hasher.add(*loiter_points_[index]);
         }
-        hash = hash_value(hash, formation_orders_[index]);
-        hash = hash_value(hash, formation_spacings_[index]);
-        hash = hash_value(hash, formation_solos_[index]);
-        hash = hash_value(hash, formation_teams_[index].id);
-        hash = hash_value(hash, static_cast<std::uint8_t>(formation_teams_[index].arrangement));
-        hash = hash_value(hash, formation_teams_[index].spacing);
-        hash = hash_value(hash, formation_teams_[index].raggedness);
-        hash = hash_value(hash, static_cast<std::uint8_t>(crushes_[index].crusher));
-        hash = hash_value(hash, static_cast<std::uint8_t>((crushes_[index].squashable ? 1U : 0U) | (crushes_[index].squashable_by_supercrusher ? 2U : 0U)));
-        hash = hash_value(hash, speed_limits_[index]);
-        hash = hash_value(hash, group_ids_[index]);
-        hash = hash_value(hash, group_best_remaining_[index]);
-        hash = hash_value(hash, group_stall_ticks_[index]);
-        hash = hash_value(hash, path_pending_[index]);
+        hasher.subject = StateSubject::formations;
+        hasher.add(formation_orders_[index]);
+        hasher.add(formation_spacings_[index]);
+        hasher.add(formation_solos_[index]);
+        hasher.add(formation_teams_[index].id);
+        hasher.add(static_cast<std::uint8_t>(formation_teams_[index].arrangement));
+        hasher.add(formation_teams_[index].spacing);
+        hasher.add(formation_teams_[index].raggedness);
+        hasher.subject = StateSubject::bodies;
+        hasher.add(static_cast<std::uint8_t>(crushes_[index].crusher));
+        hasher.add(static_cast<std::uint8_t>((crushes_[index].squashable ? 1U : 0U) | (crushes_[index].squashable_by_supercrusher ? 2U : 0U)));
+        hasher.add(speed_limits_[index]);
+        hasher.subject = StateSubject::routes;
+        hasher.add(group_ids_[index]);
+        hasher.add(group_best_remaining_[index]);
+        hasher.add(group_stall_ticks_[index]);
+        hasher.add(path_pending_[index]);
+        hasher.subject = StateSubject::orders;
         const auto& order = standing_orders_[index];
-        hash = hash_value(hash, order.kind);
-        hash = hash_value(hash, order.point);
-        hash = hash_value(hash, order.entity);
-        hash = hash_value(hash, order.engaging);
-        hash = hash_value(hash, order.engage_origin);
-        hash = hash_value(hash, order.scan_timer);
-        hash = hash_value(hash, combat.invulnerable);
-        hash = hash_value(hash, combat.cannot_be_killed);
-        hash = hash_value(hash, locomotor_suspended_[index]);
+        hasher.add(order.kind);
+        hasher.add(order.point);
+        hasher.add(order.entity);
+        hasher.add(order.engaging);
+        hasher.add(order.engage_origin);
+        hasher.add(order.scan_timer);
+        hasher.subject = StateSubject::combat;
+        hasher.add(combat.invulnerable);
+        hasher.add(combat.cannot_be_killed);
+        hasher.subject = StateSubject::bodies;
+        hasher.add(locomotor_suspended_[index]);
     }
+    hasher.subject = StateSubject::routes;
     for (const auto& request : path_queue_)
     {
         for (std::size_t member = 0; member < request.members.size(); ++member)
         {
-            hash = hash_value(hash, request.members[member]);
-            hash = hash_value(hash, request.goals[member]);
-            hash = hash_value(hash, request.serials[member]);
+            hasher.add(request.members[member]);
+            hasher.add(request.goals[member]);
+            hasher.add(request.serials[member]);
         }
-        hash = hash_value(hash, request.group_target);
+        hasher.add(request.group_target);
     }
+    hasher.subject = StateSubject::projectiles;
     for (const auto& projectile : projectiles_)
     {
-        hash = hash_value(hash, projectile.position);
-        hash = hash_value(hash, projectile.aim);
-        hash = hash_value(hash, projectile.target);
-        hash = hash_value(hash, projectile.target_hardpoint);
-        hash = hash_value(hash, projectile.owner);
-        hash = hash_value(hash, projectile.damage);
-        hash = hash_value(hash, projectile.blast.damage);
-        hash = hash_value(hash, projectile.blast.range);
-        hash = hash_value(hash, projectile.lifetime_ticks);
-        hash = hash_value(hash, projectile.flown);
-        hash = hash_value(hash, projectile.stray);
-        hash = hash_value(hash, projectile.misses);
+        hasher.add(projectile.position);
+        hasher.add(projectile.aim);
+        hasher.add(projectile.target);
+        hasher.add(projectile.target_hardpoint);
+        hasher.add(projectile.owner);
+        hasher.add(projectile.damage);
+        hasher.add(projectile.blast.damage);
+        hasher.add(projectile.blast.range);
+        hasher.add(projectile.lifetime_ticks);
+        hasher.add(projectile.flown);
+        hasher.add(projectile.stray);
+        hasher.add(projectile.misses);
     }
-    hash = hash_value(hash, combat_random_.state());
-    return hash;
+    hasher.subject = StateSubject::random;
+    hasher.add(combat_random_.state());
 }
 
 std::optional<std::size_t> SimulationWorld::dense_index(const EntityId id) const noexcept

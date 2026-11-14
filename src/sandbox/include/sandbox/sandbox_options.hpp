@@ -148,14 +148,15 @@ struct SandboxOptions
     std::vector<std::string> effects;
     // Battles: total simulation ticks to run (battle mode; default 3000, or the replayed log's end),
     // a file to write the order log to when the battle ends (battle and sandbox modes), a log to
-    // replay instead of the spawn and auto-move options, and whether to run the battle twice and
-    // compare the state hashes.
+    // replay instead of the spawn and auto-move options, whether to run the battle twice and
+    // compare the state hashes, and whether to compare them by subject after every tick.
     std::optional<std::uint64_t> ticks;
     std::optional<std::filesystem::path> record;
     std::optional<std::filesystem::path> replay;
     // lua-survey: a folder for its api.tsv and scripts.tsv reports.
     std::optional<std::filesystem::path> report;
     bool check_determinism{};
+    bool hash_trace{};
     bool vsync{true};
     bool use_warp{};
     bool gpu_validation{};

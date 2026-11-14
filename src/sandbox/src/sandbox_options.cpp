@@ -128,6 +128,8 @@ void print_sandbox_usage()
               << "  --record <file>    Write the battle's order log when it ends (battle and sandbox)\n"
               << "  --replay <file>    Battle: replay a recorded order log (its map unless --map is given) and check its state hash\n"
               << "  --check-determinism  Battle: run twice and require identical state hashes\n"
+              << "  --hash-trace       Battle, with --check-determinism: hash each subject of the state every tick and name\n"
+              << "                     the first tick and subjects where the runs differ\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
               << "  --gpu-validation   Enable D3D12 GPU-based validation\n"
               << "  --validation-triangle  Skip model loading and show the fallback\n";
@@ -177,6 +179,10 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         else if (argument == "--check-determinism")
         {
             options.check_determinism = true;
+        }
+        else if (argument == "--hash-trace")
+        {
+            options.hash_trace = true;
         }
         else if (argument == "doctor" || argument == "bootstrap")
         {
@@ -630,6 +636,10 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
     if (options.replay && (options.mode != RunMode::battle || !options.spawns.empty() || options.auto_move))
     {
         return make_error("--replay runs in battle mode and takes its orders from the log, not --spawn or --auto-move");
+    }
+    if (options.hash_trace && !options.check_determinism)
+    {
+        return make_error("--hash-trace compares the two runs of --check-determinism");
     }
     return options;
 }

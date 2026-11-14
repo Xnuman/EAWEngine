@@ -60,6 +60,8 @@ void test_sandbox_options()
     const auto battle = expect_ok(parse({"battle", "--map", "DATA/ART/MAPS/X.TED", "--ticks", "500", "--record", "out.log", "--check-determinism", "--auto-move"}), "parsing battle options");
     require(battle.mode == eaw::RunMode::battle && battle.ticks == 500U && battle.record == std::filesystem::path("out.log") && battle.check_determinism && battle.auto_move,
             "battle options must be read");
+    require(expect_ok(parse({"battle", "--map", "X.TED", "--check-determinism", "--hash-trace"}), "parsing --hash-trace").hash_trace && !parse({"battle", "--map", "X.TED", "--hash-trace"}),
+            "--hash-trace must be read and need --check-determinism");
     const auto free = expect_ok(parse({"--panel", "camera", "--free-camera", "1", "2", "3", "4", "5", "6"}), "parsing the camera options");
     require(free.panels.camera && free.free_camera && (*free.free_camera)[5] == 6.0F && !parse({"--free-camera", "1", "1", "1", "1", "1", "1"}) && !parse({"--free-camera", "1", "2"}),
             "the free camera start and the camera panel must be read, and an eye on its target refused");

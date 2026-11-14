@@ -176,7 +176,15 @@ EAWEngine.exe battle --game foc --replay kuat.log
 
 # Every mobile unit of a land map ordered to the center, run twice and compared
 EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --auto-move --ticks 1500 --check-determinism
+
+# The same, and if the runs differ, the first tick and the parts of the state where they do
+EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --auto-move --ticks 1500 --check-determinism --hash-trace
 ```
+
+`--hash-trace` hashes the state by subject after every tick of both runs (bodies, routes, combat,
+clips, flight, formations, orders, projectiles, random: `StateSubject`, the same fields as the state
+hash, whose value it does not change) and, when the runs differ, prints the first tick after which
+they do and the subjects that differ there. It costs about one state hash a tick.
 
 Exit codes: 0 success, 1 a map that cannot be built or an unreadable log, 4 a
 replay whose state hash differs from the recording or a failed determinism

@@ -127,6 +127,31 @@ struct MovementProfile
 // The most MOVE_END clips a walk played as clips stops by (MOVE_ENDONE..MOVE_ENDFOUR, the stock names).
 inline constexpr std::uint32_t max_walk_stop_parts = 4;
 
+// What the state hash covers, by subject: SimulationWorld::state_hashes hashes each apart (the total
+// is unchanged), so a determinism failure can be traced to the part of the state that differs first.
+enum class StateSubject : std::uint8_t
+{
+    bodies,      // ids, owners, footprints, movement profiles, positions, headings, speeds, move targets
+    routes,      // paths, pending and queued route searches, group progress
+    combat,      // health, shields, targets, weapons, turrets, stances
+    clips,       // turns and walks played as clips
+    flight,      // pitch, cruise height, loops, rolls, loiter points
+    formations,  // formation orders, spacing, teams
+    orders,      // standing orders
+    projectiles, // projectiles in flight
+    random,      // the combat random stream
+    count,
+};
+
+inline constexpr std::size_t state_subject_count = static_cast<std::size_t>(StateSubject::count);
+using StateHashes = std::array<std::uint64_t, state_subject_count>;
+
+[[nodiscard]] std::string_view state_subject_name(StateSubject subject) noexcept;
+
+namespace simulation_detail {
+struct StateHasher;
+}
+
 // Seconds per tick layer (SimulationWorld::step's order; Stats::phase_seconds).
 struct TickPhaseTimes
 {
@@ -615,6 +640,8 @@ public:
     // state. Presentation keys (EntitySpawn::visual) and derived outputs (snapshot speed) are left
     // out, so how a scene was built for drawing never changes a battle's hash.
     [[nodiscard]] std::uint64_t state_hash() const noexcept;
+    // The same fields as state_hash, one hash per subject (StateSubject); costs as much as state_hash.
+    [[nodiscard]] StateHashes state_hashes() const noexcept;
 
 private:
     struct CombatState
@@ -843,6 +870,7 @@ private:
     // The target `index` prefers among the damageable hostiles within `reach` of `center` (in the
     // ground plane) that `accepts`: the lowest rank of its targeting priorities, then the nearest,
     // then the lower entity id. Defined in simulation_internal.hpp.
+    void hash_state(simulation_detail::StateHasher& hasher) const noexcept;
     template <typename Accepts> [[nodiscard]] std::optional<std::size_t> choose_target(std::size_t index, const Vector3& center, float reach, const Accepts& accepts);
     void run_projectiles();
     void remove_dead();

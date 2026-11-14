@@ -41,6 +41,8 @@ struct BattleRun
     std::size_t starting_entities{};
     // The script phases (none with --no-scripts).
     std::optional<BattleScriptStats> scripts;
+    // With --hash-trace: the subject hashes after each tick.
+    std::vector<StateHashes> trace;
     bool failed{};
 };
 
@@ -139,6 +141,10 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
             run.slowest_ms = runtime.last_step_milliseconds();
             run.slowest_tick = tick + 1U;
         }
+        if (options.hash_trace)
+        {
+            run.trace.push_back(world.state_hashes());
+        }
     }
     run.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     run.hash = world.state_hash();
@@ -151,6 +157,30 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
     run.log.end_tick = run.stats.tick;
     run.log.end_hash = run.hash;
     return run;
+}
+
+// The first tick after which the two runs' subject hashes differ, and in which subjects.
+void print_first_difference(const std::vector<StateHashes>& first, const std::vector<StateHashes>& second)
+{
+    const auto ticks = std::min(first.size(), second.size());
+    for (std::size_t tick = 0; tick < ticks; ++tick)
+    {
+        if (first[tick] == second[tick])
+        {
+            continue;
+        }
+        std::cout << "Hash trace: the runs first differ after tick " << tick + 1U << " in";
+        for (std::size_t subject = 0; subject < state_subject_count; ++subject)
+        {
+            if (first[tick][subject] != second[tick][subject])
+            {
+                std::cout << ' ' << state_subject_name(static_cast<StateSubject>(subject));
+            }
+        }
+        std::cout << '\n';
+        return;
+    }
+    std::cout << "Hash trace: every subject agrees after each of the " << ticks << " ticks (the runs differ in length or in the tick count only)\n";
 }
 
 void print_run(const BattleRun& run, const std::uint64_t ticks_run)
@@ -277,6 +307,10 @@ int run_battle(const SandboxOptions& options, const VirtualFileSystem& vfs)
         const bool same = !second.failed && second.hash == first.hash;
         std::cout << "Determinism: second run " << (same ? "matches" : "differs (" + hex(second.hash) + ")") << '\n';
         exit_code = same ? exit_code : 4;
+        if (!same && options.hash_trace)
+        {
+            print_first_difference(first.trace, second.trace);
+        }
     }
     if (options.record)
     {

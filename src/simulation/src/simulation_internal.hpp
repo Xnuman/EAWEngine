@@ -115,6 +115,32 @@ template <class T> inline std::uint64_t hash_value(const std::uint64_t hash, con
     return fnv1a(hash, &value, sizeof(value));
 }
 
+// The state hash and its subject hashes in one pass: every field goes into the total, in the order
+// state_hash always used, and into the hash of the current subject.
+struct StateHasher
+{
+    static constexpr std::uint64_t basis = 14695981039346656037ULL;
+
+    std::uint64_t total = basis;
+    StateHashes parts{};
+    StateSubject subject = StateSubject::bodies;
+
+    StateHasher() noexcept
+    {
+        parts.fill(basis);
+    }
+    void add_bytes(const void* data, const std::size_t size) noexcept
+    {
+        total = fnv1a(total, data, size);
+        auto& part = parts[static_cast<std::size_t>(subject)];
+        part = fnv1a(part, data, size);
+    }
+    template <class T> void add(const T& value) noexcept
+    {
+        add_bytes(&value, sizeof(value));
+    }
+};
+
 inline float wrap_angle(float angle) noexcept
 {
     angle = std::fmod(angle, two_pi);

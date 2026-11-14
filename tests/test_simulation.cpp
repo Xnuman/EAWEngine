@@ -60,6 +60,29 @@ void test_simulation_core()
     };
     require(run(25.0F) == run(25.0F) && run(25.0F) != run(26.0F), "identical command histories must produce identical state");
 
+    // Subject hashes name the part of the state that differs: a stance is combat state only.
+    const auto subjects = [](const bool hold_fire)
+    {
+        eaw::SimulationWorld sim(1.0 / 30.0);
+        const auto id = expect_ok(sim.spawn({.type_name = "Unit", .position = {0.0F, 0.0F, 0.0F}, .max_speed = 10.0F}), "spawning a unit");
+        if (hold_fire)
+        {
+            sim.submit({.kind = eaw::SimCommandKind::set_stance, .entities = {id}, .stance = eaw::Stance::hold_fire});
+        }
+        sim.step();
+        return std::pair{sim.state_hash(), sim.state_hashes()};
+    };
+    const auto [plain_total, plain] = subjects(false);
+    const auto [held_total, held] = subjects(true);
+    const auto at = [](const eaw::StateHashes& hashes, const eaw::StateSubject subject)
+    {
+        return hashes[static_cast<std::size_t>(subject)];
+    };
+    require(plain == subjects(false).second && plain_total != held_total && at(plain, eaw::StateSubject::combat) != at(held, eaw::StateSubject::combat) &&
+                at(plain, eaw::StateSubject::bodies) == at(held, eaw::StateSubject::bodies) && at(plain, eaw::StateSubject::routes) == at(held, eaw::StateSubject::routes) &&
+                eaw::state_subject_name(eaw::StateSubject::combat) == "combat",
+            "subject hashes must agree on equal state and differ only where the state does");
+
     // Clock: whole ticks, a capped backlog, and an interpolation fraction.
     eaw::FixedStepClock clock(10.0, 4);
     require(clock.advance(0.25) == 2 && std::fabs(clock.interpolation() - 0.5F) < 1.0e-4F, "the clock must return whole ticks and the remaining fraction");

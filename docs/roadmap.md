@@ -174,7 +174,7 @@ rendering rows join item 2).
       2026-11-15); then its first clients (presentation's pose sampling, a background lane in
       place of the sandbox's `std::async` calls) and profiling hooks.
    e. The simulation's migration to entities and components (ecs-design.md section 8): per-system
-      timings (per tick layer, done 2026-11-15) and sub-hashes; components as structs in the one table; the registry and pools;
+      timings and sub-hashes (done 2026-11-15: per tick layer, and `--hash-trace` by state subject); components as structs in the one table; the registry and pools;
       systems with declared access; recipes; command buffers and event queues; the one declared
       hash change (spawn order, per-component hashing); parallel systems (route searches first),
       each step with an unchanged battle hash except the declared one, folding in the deferred

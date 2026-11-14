@@ -466,7 +466,8 @@ Each step is its own commit and keeps `check-battle.ps1`'s hash, the test module
 captures, except step 7, which changes the hash's layout once, on purpose.
 
 0. **Tooling.** Per-system timings in the battle statistics; per-system sub-hashes behind a flag.
-   (Needed anyway to explain the superlinear tick.)
+   (Needed anyway to explain the superlinear tick.) Done 2026-11-15: per tick layer, and
+   `--hash-trace` by state subject.
 1. **The job library** (work order d) with its tests (determinism of `parallel_for` and
    `ChunkOutputs` across 1, 2, and 8 threads; Status propagation; preallocation limits). First
    client: presentation's pose sampling (not hash-relevant), then the background lane replacing
