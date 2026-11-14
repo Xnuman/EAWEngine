@@ -12,15 +12,6 @@ namespace eaw {
 
 using namespace simulation_detail;
 
-void SimulationWorld::run_navigation()
-{
-    std::ranges::fill(locomotor_.arriving, std::uint8_t{0});
-    process_path_queue();
-    measure_remaining_routes(route_, placement_);
-    update_group_cohesion();
-    plan_space_avoidance();
-}
-
 void SimulationWorld::MovementSystem::run(const View& view, const float dt)
 {
     auto& identity = view.get<IdentityColumns>();

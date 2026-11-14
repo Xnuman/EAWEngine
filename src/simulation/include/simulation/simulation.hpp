@@ -747,7 +747,7 @@ private:
         bool loop{};
     };
 
-    [[nodiscard]] std::optional<std::size_t> dense_index(EntityId id) const noexcept;
+    template <class Data> [[nodiscard]] static std::optional<std::size_t> dense_index(Data& data, EntityId id) noexcept;
     // Behavior layer (simulation_behavior.cpp): orders from commands, then each tick what every
     // unit wants from its order, stance, and target, as a move request or a steering intent.
     void apply(const SimCommand& command);
@@ -769,27 +769,12 @@ private:
     // the point they circle; reverse through a half-loop when that point is far behind.
     void plan_flight(std::size_t index, float dt);
     void destroy(std::size_t dense);
-    // Route requests under the search budget, remaining routes, group cohesion, and space
-    // avoidance, before movement (simulation_locomotion.cpp).
-    void run_navigation();
     // Requests a route to `target` (queued for the search budget when it needs a search).
     template <class Data> static void plan_move(Data& data, std::size_t index, const Vector3& target);
-    // Plans now: a full search from the entity's position.
-    void plan_route_now(std::size_t index, const Vector3& target);
-    // Sets an entity's route from planned waypoints (the last is its destination).
-    void set_route(std::size_t index, const std::vector<PathPoint>& waypoints, float height);
-    // Works through queued path requests until the tick's search budget is spent.
-    void process_path_queue();
     struct PathRequest;
-    // Plans a shared request's members until the tick's budget is spent; false when members remain.
-    [[nodiscard]] bool plan_shared_route(PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
-    void plan_shared_member(const PathRequest& request, std::size_t index, const Vector3& goal);
     void apply_formation_move(const SimCommand& command);
     // Attack-move and guard commands: their standing orders, and the first move.
     void apply_standing_order(const SimCommand& command);
-    // Marks group members that are ahead of their group to wait this tick, and releases members
-    // that stopped making progress.
-    void update_group_cohesion();
     // Speed this tick: the entity's own, or its group's when that is slower.
     template <class Data> [[nodiscard]] static float travel_speed(Data& data, std::size_t index) noexcept;
     // Where a turn played as clips is `time` into it: its clip, the progress through that clip, and
@@ -801,8 +786,6 @@ private:
         float turned{};
     };
     template <class Data> [[nodiscard]] static TurnPoint turn_point(Data& data, std::size_t index, float time) noexcept;
-    // Navigation (simulation_navigation.cpp): local avoidance of space ships (RouteColumns::detours).
-    void plan_space_avoidance();
     // Stamps (or removes) an entity's footprint into the ground's passability.
     void stamp_footprint(std::size_t index, bool add);
     void run_combat();
@@ -1330,6 +1313,7 @@ private:
     // The contact system's run on its view (ContactSystem).
     void run_contact();
     void run_movement();
+    void run_navigation();
     // Optional components in pools (component_pool.hpp), given at spawn: turns in place played as
     // clips to entities whose profile has them (MovementProfile::turn_begin_seconds), walks played as
     // clips to those that walk or raise a leg as clips (walk_stop_parts, walk_raise_seconds),
@@ -1354,10 +1338,6 @@ private:
     template <class Data> [[nodiscard]] static bool turning_as_clips(Data& data, std::size_t index) noexcept;
 
     // World state and per-tick scratch (not entity columns: sized per tick or per world).
-    GridPathfinder pathfinder_;
-    std::uint64_t path_searches_{};
-    std::uint64_t partial_paths_{};
-    std::uint64_t path_expansions_{};
     // A queued route request: one entity, or the ground members of a formation move that share a
     // movement class (planned on one shared path to `group_target`).
     struct PathRequest
@@ -1593,18 +1573,63 @@ private:
         std::vector<std::uint32_t> query_;
     };
     MovementSystem movement_;
-    // Short legs onto and off a shared path search at most this many nodes.
-    GridPathfinder local_pathfinder_{4096};
-    std::uint64_t shared_routes_{};
+
+    // Navigation (simulation_navigation.cpp; docs/ecs-design.md, 6.3, phase 3): route searches under
+    // their budget, the remaining routes, group cohesion, and space avoidance.
+    class NavigationSystem
+    {
+    public:
+        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<FlightColumns>, Read<CombatColumns>,
+                                Write<GroupColumns>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>>;
+        // Route requests under the search budget, remaining routes, group cohesion, and space
+        // avoidance, before movement.
+        void run(const View& view);
+        // The ground changed (set, or a footprint stamped or lifted): the pathfinders' cached regions
+        // are stale.
+        void ground_changed() noexcept
+        {
+            pathfinder_.reset();
+            local_pathfinder_.reset();
+        }
+        // Route searches so far, those that ended partial, and the nodes they expanded; members
+        // planned on a shared route; group members waiting in the last tick, and members released from
+        // their group so far.
+        std::uint64_t path_searches{};
+        std::uint64_t partial_paths{};
+        std::uint64_t path_expansions{};
+        std::uint64_t shared_routes{};
+        std::size_t waiting_members{};
+        std::uint64_t released_members{};
+
+    private:
+        // Works through queued path requests until the tick's search budget is spent.
+        void process_path_queue(const View& view);
+        // Plans now: a full search from the entity's position.
+        void plan_route_now(const View& view, std::size_t index, const Vector3& target);
+        void plan_shared_member(const View& view, const PathRequest& request, std::size_t index, const Vector3& goal);
+        // Plans a shared request's members until the tick's budget is spent; false when members remain.
+        [[nodiscard]] bool plan_shared_route(const View& view, PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
+        // Local avoidance of space ships: each steering ship's detour (RouteColumns::detours) around
+        // the ships in its way.
+        void plan_space_avoidance(const View& view);
+        // Sets an entity's route from planned waypoints (the last is its destination).
+        void set_route(const View& view, std::size_t index, const std::vector<PathPoint>& waypoints, float height);
+        // Marks group members that are ahead of their group to wait this tick, and releases members
+        // that stopped making progress.
+        void update_group_cohesion(const View& view);
+        GridPathfinder pathfinder_;
+        // Short legs onto and off a shared path search at most this many nodes.
+        GridPathfinder local_pathfinder_{4096};
+        std::vector<std::uint32_t> query_;
+        // Space avoidance's scratch: a ship's neighbours.
+        std::vector<std::uint32_t> neighbours_;
+    };
+    NavigationSystem navigation_;
     std::uint32_t next_group_id_{1};
-    std::size_t waiting_members_{};
-    std::uint64_t released_members_{};
     // Where shots stray (WeaponProfile::inaccuracy); part of the state.
     Pcg32 combat_random_{combat_random_seed};
     SpatialGrid grid_;
     std::vector<std::uint32_t> query_;
-    // Space avoidance's scratch: a ship's neighbours.
-    std::vector<std::uint32_t> neighbours_;
     std::uint64_t shots_fired_{};
     std::uint64_t hits_{};
     std::uint64_t kills_{};

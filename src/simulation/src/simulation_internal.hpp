@@ -331,4 +331,13 @@ template <class Data> void SimulationWorld::plan_move(Data& data, const std::siz
     route.pending[index] = serial;
     path_queue.requests.push_back({{identity.ids[index]}, {target}, {serial}, target});
 }
+template <class Data> std::optional<std::size_t> SimulationWorld::dense_index(Data& data, const EntityId id) noexcept
+{
+    auto& slots = data.template get<SlotTable>();
+    if (!id.valid() || id.index >= slots.generations.size() || slots.generations[id.index] != id.generation || slots.dense[id.index] == simulation_detail::no_dense)
+    {
+        return std::nullopt;
+    }
+    return slots.dense[id.index];
+}
 } // namespace eaw

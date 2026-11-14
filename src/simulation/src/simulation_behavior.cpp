@@ -47,7 +47,7 @@ void SimulationWorld::apply(const SimCommand& command)
     }
     for (const auto id : command.entities)
     {
-        const auto dense = dense_index(id);
+        const auto dense = dense_index(*this, id);
         if (!dense)
         {
             ++stale_references_;
@@ -121,7 +121,7 @@ void SimulationWorld::apply(const SimCommand& command)
             break;
         case SimCommandKind::attack:
         {
-            const auto victim = dense_index(command.target_entity);
+            const auto victim = dense_index(*this, command.target_entity);
             auto& combat = combat_.states[*dense];
             if (!victim || !damageable(*victim))
             {
@@ -230,7 +230,7 @@ void SimulationWorld::apply_standing_order(const SimCommand& command)
     }
     for (const auto id : command.entities)
     {
-        const auto dense = dense_index(id);
+        const auto dense = dense_index(*this, id);
         if (!dense)
         {
             ++stale_references_;
@@ -257,7 +257,7 @@ void SimulationWorld::apply_standing_order(const SimCommand& command)
         }
         locomotor_.speed_limits[*dense] = 0.0F;
         group_.ids[*dense] = 0;
-        if (const auto anchor = command.target_entity.valid() ? dense_index(command.target_entity) : std::optional<std::size_t>(); anchor)
+        if (const auto anchor = command.target_entity.valid() ? dense_index(*this, command.target_entity) : std::optional<std::size_t>(); anchor)
         {
             order.point = placement_.positions[*anchor];
         }
@@ -322,7 +322,7 @@ void SimulationWorld::run_standing_order(const std::size_t index)
     }
     if (order.entity.valid())
     {
-        if (const auto followed = dense_index(order.entity))
+        if (const auto followed = dense_index(*this, order.entity))
         {
             order.point = placement_.positions[*followed];
         }
@@ -423,7 +423,7 @@ std::optional<std::size_t> SimulationWorld::attack_victim(const std::size_t inde
     {
         return std::nullopt;
     }
-    const auto victim = dense_index(combat.target);
+    const auto victim = dense_index(*this, combat.target);
     if (!victim || !damageable(*victim) || !rules_.hostility.hostile(identity_.owners[index], identity_.owners[*victim]))
     {
         return std::nullopt;

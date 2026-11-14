@@ -112,7 +112,7 @@ std::optional<std::size_t> SimulationWorld::turret_victim(const std::size_t inde
         }
         if (const auto& state = combat.weapons[slot]; state.pulses_left > 0)
         {
-            if (const auto victim = dense_index(state.target))
+            if (const auto victim = dense_index(*this, state.target))
             {
                 return victim;
             }
@@ -179,7 +179,7 @@ void SimulationWorld::update_target(const std::size_t index)
     const auto range = combat.profile.range();
     if (combat.target.valid())
     {
-        const auto victim = dense_index(combat.target);
+        const auto victim = dense_index(*this, combat.target);
         bool keep = victim && damageable(*victim) && combat_.states[*victim].profile.targetable && rules_.hostility.hostile(identity_.owners[index], identity_.owners[*victim]);
         if (keep && !combat.ordered)
         {
@@ -235,7 +235,7 @@ void SimulationWorld::update_target(const std::size_t index)
 void SimulationWorld::run_weapon(const std::size_t index)
 {
     auto& combat = combat_.states[index];
-    const auto entity_target = combat.target.valid() ? dense_index(combat.target) : std::nullopt;
+    const auto entity_target = combat.target.valid() ? dense_index(*this, combat.target) : std::nullopt;
     for (std::size_t slot = 0; slot < combat.profile.weapons.size(); ++slot)
     {
         const auto& weapon = combat.profile.weapons[slot];
@@ -313,7 +313,7 @@ void SimulationWorld::run_weapon(const std::size_t index)
             state.cooldown = std::max(1U, ticks_for(weapon.recharge_seconds));
         }
         // A burst keeps firing at its victim, in range or not, until its shots are spent.
-        const auto victim = dense_index(state.target);
+        const auto victim = dense_index(*this, state.target);
         if (!victim)
         {
             state.pulses_left = 0;
@@ -656,7 +656,7 @@ void SimulationWorld::run_projectiles()
         auto projectile = projectiles_.flying[index];
         // Shots home on their target's current aim point; a dead target's shot flies on to the
         // last point and is lost there.
-        auto victim = dense_index(projectile.target);
+        auto victim = dense_index(*this, projectile.target);
         if (!victim && projectile.scan_range > 0.0F)
         {
             // A guided shot takes the nearest hostile in scan range of itself (ties: the higher dense

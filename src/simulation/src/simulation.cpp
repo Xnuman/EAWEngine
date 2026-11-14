@@ -275,13 +275,13 @@ void SimulationWorld::run_publish()
 
 std::string_view SimulationWorld::type_name(const EntityId id) const noexcept
 {
-    const auto dense = dense_index(id);
+    const auto dense = dense_index(*this, id);
     return dense ? std::string_view(identity_.type_names[*dense]) : std::string_view{};
 }
 
 bool SimulationWorld::alive(const EntityId id) const noexcept
 {
-    return dense_index(id).has_value();
+    return dense_index(*this, id).has_value();
 }
 
 const SimSnapshot& SimulationWorld::snapshot() const noexcept
@@ -296,11 +296,11 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .commands_applied = commands_applied_,
             .stale_references = stale_references_,
             .blocked_moves = movement_.blocked_moves,
-            .path_searches = path_searches_,
-            .partial_paths = partial_paths_,
-            .path_expansions = path_expansions_,
+            .path_searches = navigation_.path_searches,
+            .partial_paths = navigation_.partial_paths,
+            .path_expansions = navigation_.path_expansions,
             .queued_paths = path_queue_.requests.size(),
-            .shared_routes = shared_routes_,
+            .shared_routes = navigation_.shared_routes,
             .shots_fired = shots_fired_,
             .hits = hits_,
             .kills = kills_,
@@ -308,8 +308,8 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .crushed = contact_.crushed,
             .projectiles = projectiles_.flying.size(),
             .separated_pairs = contact_.separated_pairs,
-            .waiting_members = waiting_members_,
-            .released_members = released_members_,
+            .waiting_members = navigation_.waiting_members,
+            .released_members = navigation_.released_members,
             .rejected_spawns = rejected_spawns_,
             .phase_seconds = phase_seconds_,
             .slowest_phase_seconds = slowest_phase_seconds_};
@@ -535,6 +535,11 @@ const CrushProfile& SimulationWorld::crush_profile_of(const std::size_t index) c
     return crush_profile_in(crush_, slot_of(*this, index));
 }
 
+void SimulationWorld::run_navigation()
+{
+    navigation_.run(view_of<NavigationSystem::View>());
+}
+
 void SimulationWorld::run_movement()
 {
     movement_.run(view_of<MovementSystem::View>(), static_cast<float>(tick_seconds_));
@@ -543,15 +548,6 @@ void SimulationWorld::run_movement()
 void SimulationWorld::run_contact()
 {
     contact_.run(view_of<ContactSystem::View>(), static_cast<float>(tick_seconds_));
-}
-
-std::optional<std::size_t> SimulationWorld::dense_index(const EntityId id) const noexcept
-{
-    if (!id.valid() || id.index >= slots_.generations.size() || slots_.generations[id.index] != id.generation || slots_.dense[id.index] == no_dense)
-    {
-        return std::nullopt;
-    }
-    return slots_.dense[id.index];
 }
 
 void SimulationWorld::destroy(const std::size_t dense)
@@ -591,7 +587,7 @@ void SimulationWorld::destroy(const std::size_t dense)
 std::vector<Vector3> SimulationWorld::route(const EntityId id) const
 {
     std::vector<Vector3> points;
-    const auto dense = dense_index(id);
+    const auto dense = dense_index(*this, id);
     if (!dense || !route_.move_targets[*dense])
     {
         return points;
@@ -608,7 +604,6 @@ std::vector<Vector3> SimulationWorld::route(const EntityId id) const
 void SimulationWorld::set_ground(GroundMap ground)
 {
     ground_.map = std::move(ground);
-    local_pathfinder_.reset();
     ground_.own_passability = ground_.map.passability;
     ground_.footprint_cover.assign(ground_.own_passability.size(), 0);
     std::ranges::fill(footprint_.columns.stamped, std::uint8_t{0});
@@ -616,7 +611,7 @@ void SimulationWorld::set_ground(GroundMap ground)
     {
         stamp_footprint(index, true);
     }
-    pathfinder_.reset();
+    navigation_.ground_changed();
 }
 
 // Cells whose sample point lies inside the footprint rectangle take its passability type while any
@@ -663,8 +658,7 @@ void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
         }
     }
     footprint_.get(slot_of(*this, index), &FootprintColumns::stamped) = add ? 1U : 0U;
-    pathfinder_.reset();
-    local_pathfinder_.reset();
+    navigation_.ground_changed();
 }
 
 const GroundMap& SimulationWorld::ground() const noexcept
