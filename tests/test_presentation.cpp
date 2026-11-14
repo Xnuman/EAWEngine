@@ -203,12 +203,9 @@ void test_unit_animation()
     const auto animation = std::make_shared<const eaw::Animation>(eaw::load_animation(expect_ok(eaw::read_ala(make_test_ala()), "ALA parse")));
     eaw::VisualRig rig;
     rig.skeleton = model;
-    for (const auto& transform : eaw::skeleton_bind_pose(*model))
-    {
-        const auto inverted = eaw::inverse(transform);
-        require(inverted.has_value(), "the test bind pose must be invertible");
-        rig.inverse_bind_pose.push_back(*inverted);
-    }
+    auto inverse_bind_pose = eaw::skeleton_inverse_bind_pose(*model);
+    require(inverse_bind_pose.has_value(), "the test bind pose must be invertible");
+    rig.inverse_bind_pose = std::move(*inverse_bind_pose);
     rig.palette_size = 2;
     rig.clips = {{eaw::AnimationRole::idle, 0, "IDLE_00", animation}, {eaw::AnimationRole::move, 0, "MOVE_00", animation}, {eaw::AnimationRole::attack, 0, "ATTACK_00", animation}};
     eaw::VisualRig still;

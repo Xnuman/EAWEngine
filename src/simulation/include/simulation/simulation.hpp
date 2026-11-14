@@ -144,26 +144,32 @@ enum class StateSubject : std::uint8_t
 };
 
 inline constexpr std::size_t state_subject_count = static_cast<std::size_t>(StateSubject::count);
+inline constexpr std::array<std::string_view, state_subject_count> state_subject_names{"bodies", "routes", "combat", "clips", "flight", "formations", "orders", "projectiles", "random"};
+static_assert(!state_subject_names.back().empty(), "every subject needs its name");
 using StateHashes = std::array<std::uint64_t, state_subject_count>;
-
-[[nodiscard]] std::string_view state_subject_name(StateSubject subject) noexcept;
 
 namespace simulation_detail {
 struct StateHasher;
 }
 
-// Seconds per tick layer (SimulationWorld::step's order; Stats::phase_seconds).
-struct TickPhaseTimes
+// The tick's layers, in SimulationWorld::step's order, and seconds per layer (Stats::phase_seconds).
+enum class TickPhase : std::uint8_t
 {
-    double commands{};
-    double behavior{};
-    double navigation{};
-    double movement{};
-    double crushing{};
-    double separation{};
-    double combat{};
-    double publish{};
+    commands,
+    behavior,
+    navigation,
+    movement,
+    crushing,
+    separation,
+    combat,
+    publish,
+    count,
 };
+
+inline constexpr std::size_t tick_phase_count = static_cast<std::size_t>(TickPhase::count);
+inline constexpr std::array<std::string_view, tick_phase_count> tick_phase_names{"commands", "behavior", "navigation", "movement", "crushing", "separation", "combat", "publish"};
+static_assert(!tick_phase_names.back().empty(), "every layer needs its name");
+using TickPhaseTimes = std::array<double, tick_phase_count>;
 
 // Which turn clip a turn in place played as clips (MovementProfile::turn_begin_seconds) is in.
 enum class TurnClip : std::uint8_t
@@ -597,8 +603,8 @@ public:
         std::uint64_t rejected_spawns{};
         // Wall-clock seconds each tick layer took, over all ticks so far and in its slowest tick
         // (measurements, not simulation state: never hashed, never read by the simulation).
-        TickPhaseTimes phase_seconds;
-        TickPhaseTimes slowest_phase_seconds;
+        TickPhaseTimes phase_seconds{};
+        TickPhaseTimes slowest_phase_seconds{};
     };
 
     explicit SimulationWorld(double tick_seconds = 1.0 / 30.0);
@@ -1068,8 +1074,8 @@ private:
     std::uint64_t commands_applied_{};
     std::uint64_t stale_references_{};
     std::uint64_t rejected_spawns_{};
-    TickPhaseTimes phase_seconds_;
-    TickPhaseTimes slowest_phase_seconds_;
+    TickPhaseTimes phase_seconds_{};
+    TickPhaseTimes slowest_phase_seconds_{};
 };
 
 // Presentation helper: blends two consecutive snapshots by `alpha` (0 = previous, 1 = current).

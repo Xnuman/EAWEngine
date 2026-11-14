@@ -189,12 +189,13 @@ void SimulationWorld::step()
     // (navigation and locomotors carry it out), separation, and combat (targeting, weapons, damage).
     // Each layer is timed (Stats::phase_seconds); the times never reach the simulation's state.
     auto mark = std::chrono::steady_clock::now();
-    const auto timed = [&](double TickPhaseTimes::* phase)
+    const auto timed = [&](const TickPhase phase)
     {
         const auto now = std::chrono::steady_clock::now();
         const auto seconds = std::chrono::duration<double>(now - mark).count();
-        phase_seconds_.*phase += seconds;
-        slowest_phase_seconds_.*phase = std::max(slowest_phase_seconds_.*phase, seconds);
+        const auto layer = static_cast<std::size_t>(phase);
+        phase_seconds_[layer] += seconds;
+        slowest_phase_seconds_[layer] = std::max(slowest_phase_seconds_[layer], seconds);
         mark = now;
     };
     auto commands = std::move(pending_);
@@ -209,17 +210,16 @@ void SimulationWorld::step()
     shots_.clear();
     hardpoint_deaths_.clear();
     spins_.clear();
-    timed(&TickPhaseTimes::commands);
+    timed(TickPhase::commands);
     run_behavior();
-    timed(&TickPhaseTimes::behavior);
+    timed(TickPhase::behavior);
     run_navigation();
-    timed(&TickPhaseTimes::navigation);
+    timed(TickPhase::navigation);
     run_movement();
-    timed(&TickPhaseTimes::movement);
+    timed(TickPhase::movement);
     run_crushing();
-    timed(&TickPhaseTimes::crushing);
+    timed(TickPhase::crushing);
     run_separation();
-    timed(&TickPhaseTimes::separation);
     // Movement and separation are the only systems that move entities, and entities are only added
     // (commands) before and removed (combat) after them, so dense indices line up here.
     const auto dt = static_cast<float>(tick_seconds_);
@@ -230,11 +230,12 @@ void SimulationWorld::step()
         const auto moved = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y) + (to.z - from.z) * (to.z - from.z));
         speeds_[index] = dt > 0.0F && std::isfinite(moved) ? moved / dt : 0.0F;
     }
+    timed(TickPhase::separation);
     run_combat();
-    timed(&TickPhaseTimes::combat);
+    timed(TickPhase::combat);
     ++tick_;
     publish();
-    timed(&TickPhaseTimes::publish);
+    timed(TickPhase::publish);
 }
 
 std::string_view SimulationWorld::type_name(const EntityId id) const noexcept
@@ -277,34 +278,6 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .rejected_spawns = rejected_spawns_,
             .phase_seconds = phase_seconds_,
             .slowest_phase_seconds = slowest_phase_seconds_};
-}
-
-std::string_view state_subject_name(const StateSubject subject) noexcept
-{
-    switch (subject)
-    {
-    case StateSubject::bodies:
-        return "bodies";
-    case StateSubject::routes:
-        return "routes";
-    case StateSubject::combat:
-        return "combat";
-    case StateSubject::clips:
-        return "clips";
-    case StateSubject::flight:
-        return "flight";
-    case StateSubject::formations:
-        return "formations";
-    case StateSubject::orders:
-        return "orders";
-    case StateSubject::projectiles:
-        return "projectiles";
-    case StateSubject::random:
-        return "random";
-    case StateSubject::count:
-        break;
-    }
-    return "unknown";
 }
 
 std::uint64_t SimulationWorld::state_hash() const noexcept

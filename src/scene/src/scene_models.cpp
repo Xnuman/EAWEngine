@@ -403,15 +403,12 @@ Result<VisualModelAsset> build_visual_model(const AssetReader& vfs, const std::s
         return with_context(resolved->virtual_path, model->error());
     }
     asset.skeleton = model->value().skeleton;
-    for (const auto& transform : skeleton_bind_pose(asset.skeleton))
+    auto inverse_bind_pose = skeleton_inverse_bind_pose(asset.skeleton);
+    if (!inverse_bind_pose)
     {
-        const auto inverted = inverse(transform);
-        if (!inverted)
-        {
-            return with_context(resolved->virtual_path, make_error("ALO bone transform is singular"));
-        }
-        asset.inverse_bind_pose.push_back(*inverted);
+        return with_context(resolved->virtual_path, make_error("ALO bone transform is singular"));
     }
+    asset.inverse_bind_pose = std::move(*inverse_bind_pose);
     scene.name = resolved->virtual_path;
     scene.warnings = model->value().warnings;
     asset.visibility_palette = true;
@@ -520,16 +517,13 @@ void scene_build::build_map_rigs(SceneBuilder& builder, std::vector<VisualRig>& 
             }
             append_rest_palette(*rig.skeleton, rest_palette, rig.intact_hidden);
             rig.effects = proxy_effects(builder, model->value(), mesh.name);
-            for (const auto& transform : skeleton_bind_pose(*rig.skeleton))
+            if (auto inverse_bind_pose = skeleton_inverse_bind_pose(*rig.skeleton))
             {
-                const auto inverted = inverse(transform);
-                if (!inverted)
-                {
-                    scene.warnings.push_back(mesh.name + ": bind pose cannot be inverted, so the model is not animated: ALO bone transform is singular");
-                    rig.inverse_bind_pose.clear();
-                    break;
-                }
-                rig.inverse_bind_pose.push_back(*inverted);
+                rig.inverse_bind_pose = std::move(*inverse_bind_pose);
+            }
+            else
+            {
+                scene.warnings.push_back(mesh.name + ": bind pose cannot be inverted, so the model is not animated: ALO bone transform is singular");
             }
         }
         // Every mesh owns at least its own palette range.

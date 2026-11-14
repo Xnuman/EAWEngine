@@ -188,7 +188,8 @@ These are correctness rules, not optional optimizations.
 6. Run `clang-format` on changed C/C++ files only.
 7. Build Debug and Release, run the test modules that cover the change (`EAWEngineTests <module or test>...`; tests are built with `EAW_BUILD_TESTS=ON`), and the relevant smoke, corpus, or determinism check. The whole suite is not needed after every change.
 8. Run `git diff --check`, read the complete diff, and update `docs/status.md`, `docs/roadmap.md`, and other affected docs in the same change.
-9. Commit cohesive changes only when asked. Never stage the user's unrelated changes, personal game paths, build output, decoded assets, generated caches, `imgui.ini`, or `Reference Materials/`.
+9. Review the step before calling it done, after each logical step or change, not only at the end of a task: consistency with this file's practices and code style; the architecture (layer ownership, dependency direction, data-oriented layout where the design asks for it, [docs/ecs-design.md](docs/ecs-design.md)); and duplication: search the code base for a helper, type, table, or pattern that already does what the change wrote (or a second copy the change made of its own code), and use or move it instead. Fix what the review finds in the same step; take every doubt to the owner instead of deciding it silently, and report what the review found.
+10. Commit cohesive changes only when asked. Never stage the user's unrelated changes, personal game paths, build output, decoded assets, generated caches, `imgui.ini`, or `Reference Materials/`.
 
 Never use destructive Git commands (`reset --hard`, forced checkout, `clean`) on a shared worktree.
 
@@ -245,6 +246,7 @@ A change is complete when all applicable items hold:
 - the user's installation and legacy assets remain untouched;
 - documentation, status, and roadmap match the implementation, and guesses are marked as such;
 - `git diff --check` is clean and the diff contains no unrelated changes;
+- the step was reviewed for practices, code style, architecture, and duplication (Workflow, step 9), and its doubts were taken to the owner;
 - leftovers in the touched code are fixed or listed in the roadmap's Code health list;
 - visual changes are handed to the owner for visual verification.
 

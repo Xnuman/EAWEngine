@@ -80,7 +80,7 @@ void test_simulation_core()
     };
     require(plain == subjects(false).second && plain_total != held_total && at(plain, eaw::StateSubject::combat) != at(held, eaw::StateSubject::combat) &&
                 at(plain, eaw::StateSubject::bodies) == at(held, eaw::StateSubject::bodies) && at(plain, eaw::StateSubject::routes) == at(held, eaw::StateSubject::routes) &&
-                eaw::state_subject_name(eaw::StateSubject::combat) == "combat",
+                eaw::state_subject_names[static_cast<std::size_t>(eaw::StateSubject::combat)] == "combat",
             "subject hashes must agree on equal state and differ only where the state does");
 
     // Clock: whole ticks, a capped backlog, and an interpolation fraction.

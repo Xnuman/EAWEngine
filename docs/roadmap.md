@@ -388,6 +388,12 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
   the other order dependences the simulation rewrite removes; changing it changes the hash);
 - the script host's own SplitMix stream beside `core/random` (it is script state, so a move must keep
   its sequence);
+- pose sampling's allocations: `UnitAnimator::sample` builds a vector per layer (the layer's pose,
+  its first frame, the walked bones, the turns), the pose cache is a map of one vector per pose, and
+  the job outputs are one vector per pose; one flat pose arena (offsets per key) would remove them
+  (probably part of the serial half of `animate` in `EAWBenchmarks poses`; not profiled);
+- the tick's speed bookkeeping in `SimulationWorld::step` writes its vector length out by hand (the
+  hash depends on its order of operations, so a move onto `eaw_math` must keep it);
 
 ## Performance gates
 

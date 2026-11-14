@@ -14,6 +14,7 @@
 
 #include <array>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace eaw::benchmarks {
@@ -26,6 +27,8 @@ constexpr std::uint32_t mesh_count = 256;
 constexpr std::uint32_t bone_count = 40;
 constexpr std::uint32_t chain_length = 8;
 constexpr std::uint32_t key_count = 60;
+// Palette room for every pose (the renderer's limit plays no part here).
+constexpr std::size_t palette_budget = std::size_t{1} << 24U;
 
 struct Frame
 {
@@ -58,10 +61,7 @@ Workload prepare_poses()
     }
     VisualRig rig;
     rig.skeleton = skeleton;
-    for (const auto& transform : skeleton_bind_pose(*skeleton))
-    {
-        rig.inverse_bind_pose.push_back(inverse(transform).value_or(Matrix4::identity()));
-    }
+    rig.inverse_bind_pose = skeleton_inverse_bind_pose(*skeleton).value_or(std::vector<Matrix4>(bone_count, Matrix4::identity()));
     rig.palette_size = bone_count;
     rig.clips = {{AnimationRole::idle, 0, "IDLE_00", idle}};
     auto frame = std::make_shared<Frame>();
@@ -84,7 +84,7 @@ Workload prepare_poses()
                 UnitAnimator animator(frame->rigs, frame->rest);
                 auto entities = frame->entities;
                 auto instances = frame->instances;
-                animator.animate(frame->snapshot, entities, instances, 0.5, 1U << 24U, frame->palette, {}, jobs);
+                animator.animate(frame->snapshot, entities, instances, 0.5, palette_budget, frame->palette, {}, jobs);
                 return fingerprint(0, frame->palette.data(), frame->palette.size() * sizeof(Matrix4));
             }};
 }

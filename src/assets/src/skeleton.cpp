@@ -22,6 +22,21 @@ std::vector<Matrix4> skeleton_bind_pose(const Skeleton& skeleton)
     return pose;
 }
 
+std::optional<std::vector<Matrix4>> skeleton_inverse_bind_pose(const Skeleton& skeleton)
+{
+    auto pose = skeleton_bind_pose(skeleton);
+    for (auto& transform : pose)
+    {
+        const auto inverted = inverse(transform);
+        if (!inverted)
+        {
+            return std::nullopt;
+        }
+        transform = *inverted;
+    }
+    return pose;
+}
+
 std::optional<std::uint32_t> find_skeleton_bone(const Skeleton& skeleton, const std::string_view name)
 {
     const auto wanted = ascii_trim(name);
