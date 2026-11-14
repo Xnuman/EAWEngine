@@ -11,6 +11,7 @@
 #include "asset_inspector/inspector.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
@@ -88,6 +89,10 @@ eaw::Status gait(const eaw::VirtualFileSystem& vfs, const std::string& clip_path
 
     float speed_sum = 0.0F;
     int feet = 0;
+    // The planted bones' speed by quarter of the clip (a start or stop clip speeds up or slows down
+    // through it), without the step from the last frame back to the first.
+    std::array<float, 4> quarter_travel{};
+    std::array<int, 4> quarter_steps{};
     for (std::size_t bone = 0; bone < bones; ++bone)
     {
         const auto& track = positions[bone];
@@ -107,6 +112,12 @@ eaw::Status gait(const eaw::VirtualFileSystem& vfs, const std::string& clip_path
             {
                 travel += std::hypot(b.x - a.x, b.y - a.y);
                 ++steps;
+                if (frame + 1 < frames)
+                {
+                    const auto quarter = std::min<std::size_t>(frame * 4U / frames, 3U);
+                    quarter_travel[quarter] += std::hypot(b.x - a.x, b.y - a.y);
+                    ++quarter_steps[quarter];
+                }
             }
         }
         if (steps == 0)
@@ -126,6 +137,12 @@ eaw::Status gait(const eaw::VirtualFileSystem& vfs, const std::string& clip_path
     }
     const auto mean = speed_sum / static_cast<float>(feet);
     std::cout << "  mean ground speed at 1x: " << mean << "/s (" << mean / legacy_frames_per_second << " per 30 Hz frame)\n";
+    std::cout << "  by quarter of the clip (per 30 Hz frame):";
+    for (std::size_t quarter = 0; quarter < quarter_travel.size(); ++quarter)
+    {
+        std::cout << ' ' << (quarter_steps[quarter] > 0 ? quarter_travel[quarter] / static_cast<float>(quarter_steps[quarter]) * fps / legacy_frames_per_second : 0.0F);
+    }
+    std::cout << '\n';
 
     // Turning: while two ground bones far apart are both planted, the line between them turns with
     // the body over the ground (the opposite way in the model's frame); its mean rate is the turn
