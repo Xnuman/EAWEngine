@@ -1116,7 +1116,12 @@ particle-audit`.
   IDLE_LEGDROP starts where MOVE_ENDONE and TURNL_END end and ends where IDLE starts (0.0002); only
   a muzzle bone differs, by 4.2 units. Both are 70 frames. So the pod walker raises the leg before
   it sets off or turns and lowers it when it stands (the engine's reading; when the original
-  lowers it is not observed).
+  lowers it is not observed). Both of its idles (IDLE_00, 70 frames; IDLE_01, 100) keep the leg
+  down (IDLE_01 starts where IDLE_00 does, 0.00): variants, not a raised idle. The middle foot
+  stands 3.4 units up in IDLE and ATTACK, rises to 15.4 through IDLE_LEGLIFT, and stays between
+  14.4 and 18.5 through MOVESTART, MOVE, MOVE_END, and the turns. Its ATTACK (20 frames) is
+  authored standing: B_Body pitches up to 10.5 degrees while B_Mid_Shoulder turns up to 13.7 the
+  other way, so the planted foot holds still.
 - **The turn kit** (2026-11-14, `clip-joins` over every stock model with transition clips). Ten
   models carry the same set: TURNL/TURNR loops with _BEGIN, _END, _HALF, and _QUARTER (AT-AT, AT-ST,
   AT-AA, SPMAT, pod walker, Rancor, Wampa, Tauntaun, Hutt, Night Sister); 25 more (infantry,
