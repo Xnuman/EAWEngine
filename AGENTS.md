@@ -24,6 +24,7 @@ The reorganization of 2026-11-09/10 (small libraries, the resource pipeline, `bu
 - [docs/compatibility-research.md](docs/compatibility-research.md): evidence and findings about the original's formats and behavior.
 - [docs/tools.md](docs/tools.md): the command-line tools, audits, and sandbox options.
 - [docs/lua-runtime-research.md](docs/lua-runtime-research.md) and [docs/pathfinding-research.md](docs/pathfinding-research.md): research behind the script runtime and navigation.
+- [docs/ecs-design.md](docs/ecs-design.md) and [docs/ecs-research.md](docs/ecs-research.md): the agreed design of the simulation's entities, components, and systems and of the fiber job system, the migration steps, and the research behind them.
 
 Update `docs/status.md` and `docs/roadmap.md` in the same change as the code they describe.
 
@@ -128,6 +129,8 @@ Use, in descending confidence: documented public formats and APIs, published ref
 - Scripts enqueue validated commands; they do not mutate simulation storage from callbacks or worker threads.
 - Parallel work operates on disjoint partitions or immutable inputs and publishes results at explicit deterministic barriers, through a dependency-aware job system with measured budgets. "Put it on another thread" is not a design.
 - Random streams, iteration order, floating-point choices, and merge order are compatibility state: explicit and testable.
+- The entity-component design ([docs/ecs-design.md](docs/ecs-design.md)) is the target of the simulation's storage. Its rules: one tick order (the schedule's list; systems of a phase run in parallel only when declared independent and checked); one entity order (the dense core order, never a hash container); structural changes (spawns, removals, component additions and removals) only at the barrier, in sort-key order; side effects as data in event queues resolved by one system; random numbers from per-purpose streams keyed by entity and tick, never shared in parallel code; `/fp:precise`, never `/fp:fast`.
+- Parallel work goes through the job system (`eaw_jobs`, fibers, counters), created by the executable and passed explicitly. Chunk boundaries come from the item count and a constant grain, never the worker count; each chunk writes only its own output; outputs merge in chunk order; atomics only schedule. A job may resume on another thread after a wait: never hold a lock across a counter wait, and keep no `thread_local` state across one (the build uses `/GT`, fiber-safe thread-local storage).
 
 ## Error handling
 

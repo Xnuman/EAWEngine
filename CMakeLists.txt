@@ -48,6 +48,10 @@ add_compile_definitions(
 )
 
 add_compile_options(/W4 /permissive- /utf-8)
+# Fiber-safe thread-local storage: a job may resume on another thread after waiting on a counter
+# (eaw_jobs, docs/ecs-design.md), so the compiler must not cache thread-local addresses across
+# calls.
+add_compile_options(/GT)
 
 if(WIN32)
     # Shaders are compiled offline into generated headers that embed the bytecode, so runtime
