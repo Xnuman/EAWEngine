@@ -23,9 +23,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace eaw {
@@ -35,6 +37,7 @@ namespace eaw {
 // that type still cross it, or Obstacle).
 struct GroundFootprint
 {
+    bool operator==(const GroundFootprint&) const = default;
     Vector3 center;
     float half_length{};
     float half_width{};
@@ -80,6 +83,7 @@ enum class Stance : std::uint8_t
 // at once and turns at its turn rate at any speed.
 struct MovementProfile
 {
+    bool operator==(const MovementProfile&) const = default;
     // World units per second squared to speed up and to slow down; zero changes speed at once. A
     // mover that slows down brakes ahead of its destination so it stops there.
     float acceleration{};
@@ -204,6 +208,7 @@ enum class WalkClip : std::uint8_t
 // now); `visual` is an opaque presentation key chosen by the caller (for example a mesh index).
 struct EntitySpawn
 {
+    bool operator==(const EntitySpawn&) const = default;
     std::string type_name;
     std::uint32_t owner{};
     Vector3 position;
@@ -339,6 +344,7 @@ inline constexpr float space_formation_spacing = 1.25F;
 
 struct SimCommand
 {
+    bool operator==(const SimCommand&) const = default;
     SimCommandKind kind{SimCommandKind::move};
     std::vector<EntityId> entities;
     // Destination for move commands.
@@ -371,6 +377,7 @@ inline constexpr float turret_aim_tolerance = 0.0872665F;
 
 struct EntitySnapshot
 {
+    bool operator==(const EntitySnapshot&) const = default;
     EntityId id;
     Vector3 position;
     float heading{};
@@ -433,6 +440,7 @@ struct EntitySnapshot
 
 struct ProjectileSnapshot
 {
+    bool operator==(const ProjectileSnapshot&) const = default;
     Vector3 position;
     // Unit direction of flight.
     Vector3 direction;
@@ -454,6 +462,7 @@ struct ProjectileSnapshot
 // and effects; a derived output, not part of the state hash).
 struct DeathSnapshot
 {
+    bool operator==(const DeathSnapshot&) const = default;
     EntityId id;
     Vector3 position;
     float heading{};
@@ -485,6 +494,7 @@ enum class ImpactKind : std::uint8_t
 // hash). Instant weapons report their hits too.
 struct ImpactSnapshot
 {
+    bool operator==(const ImpactSnapshot&) const = default;
     Vector3 position;
     // Unit direction the shot was flying.
     Vector3 direction;
@@ -499,6 +509,7 @@ struct ImpactSnapshot
 // (a derived output, not part of the state hash).
 struct ShotSnapshot
 {
+    bool operator==(const ShotSnapshot&) const = default;
     EntityId shooter;
     Vector3 origin;
     // The weapon's WeaponProfile::fire_sound and launch_effect, or 0.
@@ -510,6 +521,7 @@ struct ShotSnapshot
 // (a derived output, not part of the state hash).
 struct SpinSnapshot
 {
+    bool operator==(const SpinSnapshot&) const = default;
     EntityId id;
     Vector3 position;
 };
@@ -518,6 +530,7 @@ struct SpinSnapshot
 // not part of the state hash).
 struct HardpointDeathSnapshot
 {
+    bool operator==(const HardpointDeathSnapshot&) const = default;
     // The entity it belongs to and its index in the entity's CombatProfile::hardpoints.
     EntityId entity;
     std::uint32_t hardpoint{};
@@ -530,6 +543,7 @@ struct HardpointDeathSnapshot
 
 struct SimSnapshot
 {
+    bool operator==(const SimSnapshot&) const = default;
     std::uint64_t tick{};
     std::vector<EntitySnapshot> entities;
     std::vector<ProjectileSnapshot> projectiles;
@@ -654,6 +668,7 @@ public:
 private:
     struct CombatState
     {
+        bool operator==(const CombatState&) const = default;
         CombatProfile profile;
         float health{};
         float shield{};
@@ -664,6 +679,7 @@ private:
         // the burst's next shot.
         struct WeaponState
         {
+            bool operator==(const WeaponState&) const = default;
             std::uint32_t cooldown{};
             std::uint32_t pulses_left{};
             std::uint32_t pulse_timer{};
@@ -691,6 +707,7 @@ private:
     };
     struct Projectile
     {
+        bool operator==(const Projectile&) const = default;
         Vector3 position;
         Vector3 aim;
         Vector3 direction;
@@ -722,6 +739,7 @@ private:
     // their move target and route (navigation); flyers steer at `point`, or hold their heading.
     struct SteeringIntent
     {
+        bool operator==(const SteeringIntent&) const = default;
         std::optional<Vector3> point;
         bool hold_heading{};
         // Flyers: reverse through a vertical half-loop (the locomotor finishes it once started).
@@ -892,6 +910,45 @@ private:
     std::vector<std::uint32_t> generations_;
     std::vector<std::uint32_t> slot_dense_;
     std::vector<std::uint32_t> free_slots_;
+    // What the tick's systems declare access to (the schedule below): the components of the entity
+    // table and the pools, and the world's resources.
+    enum class SimData : std::uint8_t
+    {
+        identity,
+        placement,
+        motion,
+        locomotor,
+        ground_mover,
+        route,
+        flight,
+        combat,
+        orders,
+        steering,
+        formation,
+        group,
+        turn_clips,
+        walk_clips,
+        flight_maneuvers,
+        footprints,
+        crush,
+        // The ground and the passability footprints stamp on it (declared, not checked: megabytes on
+        // a real map, copied before every system in Debug would be too slow).
+        ground,
+        path_queue,
+        projectiles,
+        // The tick's deaths, impacts, shots, hardpoint deaths, and spins.
+        events,
+        combat_random,
+        snapshot,
+        // The tick counter.
+        clock,
+        // The slot table (generations, dense positions, free slots).
+        slots,
+        // Commands submitted for the next tick.
+        commands,
+        count,
+    };
+    static constexpr std::size_t sim_data_count = static_cast<std::size_t>(SimData::count);
     // The dense entity table (docs/ecs-design.md, 6.2 and migration step 2): one column per field,
     // grouped by component, every column one entry per entity in dense order. Each group lists its
     // columns once more in for_each_column, and the table its groups in for_each_group; removal and
@@ -899,6 +956,8 @@ private:
     // so the constructor checks both lists against the sizes of what they list (check_entity_table).
     struct IdentityColumns
     {
+        bool operator==(const IdentityColumns&) const = default;
+        static constexpr SimData data = SimData::identity;
         std::vector<EntityId> ids;
         std::vector<std::string> type_names;
         std::vector<std::uint32_t> owners;
@@ -915,6 +974,8 @@ private:
     };
     struct PlacementColumns
     {
+        bool operator==(const PlacementColumns&) const = default;
+        static constexpr SimData data = SimData::placement;
         std::vector<Vector3> positions;
         std::vector<float> headings;
         // Flyers' current pitch (0 for everything else).
@@ -930,6 +991,8 @@ private:
     };
     struct MotionColumns
     {
+        bool operator==(const MotionColumns&) const = default;
+        static constexpr SimData data = SimData::motion;
         // Speed of the last tick (EntitySnapshot::speed).
         std::vector<float> speeds;
         template <class Visit> void for_each_column(Visit&& visit)
@@ -939,6 +1002,8 @@ private:
     };
     struct LocomotorColumns
     {
+        bool operator==(const LocomotorColumns&) const = default;
+        static constexpr SimData data = SimData::locomotor;
         std::vector<float> max_speeds;
         std::vector<float> turn_rates;
         std::vector<MovementProfile> movements;
@@ -964,6 +1029,8 @@ private:
     };
     struct GroundMoverColumns
     {
+        bool operator==(const GroundMoverColumns&) const = default;
+        static constexpr SimData data = SimData::ground_mover;
         std::vector<std::uint8_t> follows_ground;
         std::vector<std::uint32_t> passable_types;
         template <class Visit> void for_each_column(Visit&& visit)
@@ -974,6 +1041,8 @@ private:
     };
     struct RouteColumns
     {
+        bool operator==(const RouteColumns&) const = default;
+        static constexpr SimData data = SimData::route;
         std::vector<std::optional<Vector3>> move_targets;
         // Waypoints before the move target, last first (back() is the next one to reach).
         std::vector<std::vector<Vector3>> paths;
@@ -994,6 +1063,8 @@ private:
     // height), not constants a pool could stand in for. A minimum speed above 0 makes a flyer.
     struct FlightColumns
     {
+        bool operator==(const FlightColumns&) const = default;
+        static constexpr SimData data = SimData::flight;
         std::vector<float> min_speeds;
         // The height of the plane a flyer cruises in (its spawn height).
         std::vector<float> cruise_heights;
@@ -1007,6 +1078,7 @@ private:
     // whether it is inside a half-loop, and the roll it unwinds after one. A non-flyer's are 0.
     struct FlightManeuverColumns
     {
+        bool operator==(const FlightManeuverColumns&) const = default;
         std::vector<float> yaw_rates;
         std::vector<std::uint8_t> looping;
         std::vector<float> rolls;
@@ -1019,6 +1091,8 @@ private:
     };
     struct CombatColumns
     {
+        bool operator==(const CombatColumns&) const = default;
+        static constexpr SimData data = SimData::combat;
         std::vector<CombatState> states;
         std::vector<std::uint64_t> last_shot_ticks;
         std::vector<std::uint8_t> aims_with_body;
@@ -1036,6 +1110,7 @@ private:
     // began, and the ticks to the next scan for hostiles (staggered by entity index).
     struct StandingOrderState
     {
+        bool operator==(const StandingOrderState&) const = default;
         StandingOrder kind{StandingOrder::none};
         Vector3 point;
         EntityId entity;
@@ -1045,6 +1120,8 @@ private:
     };
     struct OrderColumns
     {
+        bool operator==(const OrderColumns&) const = default;
+        static constexpr SimData data = SimData::orders;
         std::vector<std::uint64_t> command_serials;
         std::vector<StandingOrderState> standing;
         template <class Visit> void for_each_column(Visit&& visit)
@@ -1059,6 +1136,7 @@ private:
     // QUARTER); hashed for entities with such turns only.
     struct TurnPlan
     {
+        bool operator==(const TurnPlan&) const = default;
         bool active{};
         float elapsed{};
         float start{};
@@ -1071,6 +1149,7 @@ private:
     };
     struct TurnClipColumns
     {
+        bool operator==(const TurnClipColumns&) const = default;
         std::vector<TurnPlan> plans;
         template <class Visit> void for_each_column(Visit&& visit)
         {
@@ -1083,6 +1162,7 @@ private:
     // (a move elsewhere ordered meanwhile goes on after the stop); hashed for such entities only.
     struct WalkPlan
     {
+        bool operator==(const WalkPlan&) const = default;
         WalkClip clip{WalkClip::standing};
         std::uint32_t part{};
         float elapsed{};
@@ -1100,6 +1180,7 @@ private:
     };
     struct WalkClipColumns
     {
+        bool operator==(const WalkClipColumns&) const = default;
         std::vector<WalkPlan> plans;
         template <class Visit> void for_each_column(Visit&& visit)
         {
@@ -1108,6 +1189,8 @@ private:
     };
     struct SteeringColumns
     {
+        bool operator==(const SteeringColumns&) const = default;
+        static constexpr SimData data = SimData::steering;
         // Rebuilt by the behavior layer every tick before movement.
         std::vector<SteeringIntent> intents;
         template <class Visit> void for_each_column(Visit&& visit)
@@ -1117,6 +1200,8 @@ private:
     };
     struct FormationColumns
     {
+        bool operator==(const FormationColumns&) const = default;
+        static constexpr SimData data = SimData::formation;
         std::vector<std::uint32_t> orders;
         std::vector<float> spacings;
         std::vector<std::uint8_t> solos;
@@ -1131,6 +1216,8 @@ private:
     };
     struct GroupColumns
     {
+        bool operator==(const GroupColumns&) const = default;
+        static constexpr SimData data = SimData::group;
         // Formation group of a member (zero when none), the remaining route it last made progress at,
         // ticks since then, and whether it waits this tick.
         std::vector<std::uint32_t> ids;
@@ -1148,6 +1235,7 @@ private:
     // An obstacle's footprint on the ground (pooled: obstacles only) and whether it is stamped.
     struct FootprintColumns
     {
+        bool operator==(const FootprintColumns&) const = default;
         std::vector<GroundFootprint> shapes;
         std::vector<std::uint8_t> stamped;
         template <class Visit> void for_each_column(Visit&& visit)
@@ -1160,6 +1248,7 @@ private:
     // default; the others crush nothing and are not crushed).
     struct CrushColumns
     {
+        bool operator==(const CrushColumns&) const = default;
         std::vector<CrushProfile> profiles;
         template <class Visit> void for_each_column(Visit&& visit)
         {
@@ -1205,6 +1294,71 @@ private:
     }
     // That for_each_column and for_each_group list every column and group (simulation.cpp).
     void check_entity_table();
+
+    // The tick's schedule (docs/ecs-design.md, 6.3 and migration step 4; simulation_schedule.cpp):
+    // its systems in order, each with the tick layer it is timed under and the data it reads and
+    // writes. DebugValidation builds check the writes: a system that changes data it did not declare
+    // stops the run with its name and the data's (run_system).
+    using SimAccess = std::uint64_t;
+    static_assert(sim_data_count <= 64, "SimAccess holds one bit per kind of data");
+    [[nodiscard]] static constexpr SimAccess access_to(std::initializer_list<SimData> data) noexcept
+    {
+        SimAccess access = 0;
+        for (const auto item : data)
+        {
+            access |= SimAccess{1} << static_cast<unsigned>(item);
+        }
+        return access;
+    }
+    static constexpr SimAccess all_data = (SimAccess{1} << sim_data_count) - 1U;
+    struct SystemEntry
+    {
+        std::string_view name;
+        TickPhase phase;
+        void (SimulationWorld::*run)();
+        SimAccess reads;
+        SimAccess writes;
+    };
+    static const std::array<SystemEntry, 9> schedule_;
+    [[nodiscard]] static std::string_view sim_data_name(SimData data) noexcept;
+    // Every kind of data with its objects (some kinds have several): the entity table's groups
+    // (for_each_group), the pools, and the resources.
+    template <class Visit> void for_each_data(Visit&& visit)
+    {
+        for_each_group(
+            [&](auto& group)
+            {
+                visit(std::remove_cvref_t<decltype(group)>::data, group);
+            });
+        visit(SimData::turn_clips, turn_clips_);
+        visit(SimData::walk_clips, walk_clips_);
+        visit(SimData::flight_maneuvers, flight_maneuvers_);
+        visit(SimData::footprints, footprint_);
+        visit(SimData::crush, crush_);
+        visit(SimData::path_queue, path_queue_);
+        visit(SimData::path_queue, next_path_serial_);
+        visit(SimData::projectiles, projectiles_);
+        visit(SimData::projectiles, next_projectile_serial_);
+        visit(SimData::events, deaths_);
+        visit(SimData::events, impacts_);
+        visit(SimData::events, shots_);
+        visit(SimData::events, hardpoint_deaths_);
+        visit(SimData::events, spins_);
+        visit(SimData::combat_random, combat_random_);
+        visit(SimData::snapshot, snapshot_);
+        visit(SimData::clock, tick_);
+        visit(SimData::slots, generations_);
+        visit(SimData::slots, slot_dense_);
+        visit(SimData::slots, free_slots_);
+        visit(SimData::commands, pending_);
+    }
+    // Runs one system of the schedule (in DebugValidation builds, with its write check).
+    void run_system(const SystemEntry& system);
+    // The systems step() ran inline before: the tick's commands and its event lists, the speeds
+    // movement and separation produced, and the tick counter with the snapshot.
+    void run_commands();
+    void run_motion();
+    void run_publish();
     // Optional components in pools (component_pool.hpp), given at spawn: turns in place played as
     // clips to entities whose profile has them (MovementProfile::turn_begin_seconds), walks played as
     // clips to those that walk or raise a leg as clips (walk_stop_parts, walk_raise_seconds),
@@ -1245,6 +1399,7 @@ private:
     // movement class (planned on one shared path to `group_target`).
     struct PathRequest
     {
+        bool operator==(const PathRequest&) const = default;
         std::vector<EntityId> members;
         std::vector<Vector3> goals;
         std::vector<std::uint32_t> serials;

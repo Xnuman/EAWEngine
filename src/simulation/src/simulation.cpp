@@ -229,10 +229,8 @@ void SimulationWorld::submit(SimCommand command)
 
 void SimulationWorld::step()
 {
-    // Commands first, in submission order, so the tick sees a consistent intent. Then the layers in
-    // order: behavior (what each unit wants from its order, stance, and target), movement
-    // (navigation and locomotors carry it out), separation, and combat (targeting, weapons, damage).
-    // Each layer is timed (Stats::phase_seconds); the times never reach the simulation's state.
+    // The schedule's systems in order (simulation_schedule.cpp). Each tick layer is timed
+    // (Stats::phase_seconds); the times never reach the simulation's state.
     auto mark = std::chrono::steady_clock::now();
     const auto timed = [&](const TickPhase phase)
     {
@@ -243,6 +241,15 @@ void SimulationWorld::step()
         slowest_phase_seconds_[layer] = std::max(slowest_phase_seconds_[layer], seconds);
         mark = now;
     };
+    for (const auto& system : schedule_)
+    {
+        run_system(system);
+        timed(system.phase);
+    }
+}
+
+void SimulationWorld::run_commands()
+{
     auto commands = std::move(pending_);
     pending_.clear();
     for (const auto& command : commands)
@@ -255,16 +262,10 @@ void SimulationWorld::step()
     shots_.clear();
     hardpoint_deaths_.clear();
     spins_.clear();
-    timed(TickPhase::commands);
-    run_behavior();
-    timed(TickPhase::behavior);
-    run_navigation();
-    timed(TickPhase::navigation);
-    run_movement();
-    timed(TickPhase::movement);
-    run_crushing();
-    timed(TickPhase::crushing);
-    run_separation();
+}
+
+void SimulationWorld::run_motion()
+{
     // Movement and separation are the only systems that move entities, and entities are only added
     // (commands) before and removed (combat) after them, so dense indices line up here.
     const auto dt = static_cast<float>(tick_seconds_);
@@ -275,12 +276,12 @@ void SimulationWorld::step()
         const auto moved = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y) + (to.z - from.z) * (to.z - from.z));
         motion_.speeds[index] = dt > 0.0F && std::isfinite(moved) ? moved / dt : 0.0F;
     }
-    timed(TickPhase::separation);
-    run_combat();
-    timed(TickPhase::combat);
+}
+
+void SimulationWorld::run_publish()
+{
     ++tick_;
     publish();
-    timed(TickPhase::publish);
 }
 
 std::string_view SimulationWorld::type_name(const EntityId id) const noexcept

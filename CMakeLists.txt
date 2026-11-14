@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.30)
 
+# DebugValidation is Debug with the expensive runtime checks compiled in: the simulation's access
+# check (every system's undeclared writes stop the run, src/simulation/src/simulation_schedule.cpp),
+# which makes a tick about 17 times slower on a populated map. Its files carry the _dv suffix.
+set(CMAKE_CONFIGURATION_TYPES "Debug;Release;MinSizeRel;RelWithDebInfo;DebugValidation" CACHE STRING "Build configurations" FORCE)
+
 if(NOT CMAKE_GENERATOR_PLATFORM STREQUAL x64)
   message(FATAL_ERROR "Unsupported platform [${CMAKE_GENERATOR_PLATFORM}]")
 endif()
@@ -23,9 +28,16 @@ set(EAW_ENGINE_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-# Debug builds carry this suffix: libraries through CMAKE_DEBUG_POSTFIX, executables through
-# eaw_debug_postfix_executables at the end of this file.
+# Debug builds carry this suffix, DebugValidation builds the second: libraries through
+# CMAKE_<CONFIG>_POSTFIX, executables through eaw_debug_postfix_executables at the end of this file.
 set(CMAKE_DEBUG_POSTFIX "_d")
+set(CMAKE_DEBUGVALIDATION_POSTFIX "_dv")
+
+# DebugValidation builds as Debug does: the same compiler and linker flags and the debug runtime.
+foreach(flags CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_STATIC_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS)
+    set(${flags}_DEBUGVALIDATION "${${flags}_DEBUG}")
+endforeach()
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug,DebugValidation>:Debug>DLL")
 
 get_filename_component(EAW_ENGINE_BINARY_DIR "${EAW_ENGINE_ROOT_DIR}/executables/" ABSOLUTE)
 
@@ -156,14 +168,14 @@ if(EAW_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-# Executables do not take CMAKE_DEBUG_POSTFIX, so every executable target defined below `directory`
-# gets it here.
+# Executables do not take CMAKE_<CONFIG>_POSTFIX, so every executable target defined below
+# `directory` gets the Debug and DebugValidation suffixes here.
 function(eaw_debug_postfix_executables directory)
     get_property(targets DIRECTORY "${directory}" PROPERTY BUILDSYSTEM_TARGETS)
     foreach(target IN LISTS targets)
         get_target_property(type ${target} TYPE)
         if(type STREQUAL "EXECUTABLE")
-            set_target_properties(${target} PROPERTIES DEBUG_POSTFIX "${CMAKE_DEBUG_POSTFIX}")
+            set_target_properties(${target} PROPERTIES DEBUG_POSTFIX "${CMAKE_DEBUG_POSTFIX}" DEBUGVALIDATION_POSTFIX "${CMAKE_DEBUGVALIDATION_POSTFIX}")
         endif()
     endforeach()
     get_property(subdirectories DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)

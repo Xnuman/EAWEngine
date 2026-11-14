@@ -13,7 +13,7 @@
     .\scripts\check-battle.ps1 -Configuration Debug -GameRoot 'D:\Games\Star Wars Empire at War'
 #>
 param(
-    [ValidateSet('Debug', 'Release')]
+    [ValidateSet('Debug', 'Release', 'DebugValidation')]
     [string] $Configuration = 'Release',
     # The state hash at tick 1500 since the last change that altered the simulation on purpose.
     [string] $Expected = '0x6989134036962a8f',
@@ -21,7 +21,7 @@ param(
 )
 
 Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot) -ErrorAction Stop
-$suffix = if ($Configuration -eq 'Debug') { '_d' } else { '' }
+$suffix = switch ($Configuration) { 'Debug' { '_d' } 'DebugValidation' { '_dv' } default { '' } }
 $engine = "executables\$Configuration\EAWEngine$suffix.exe"
 if (-not (Test-Path -LiteralPath $engine)) {
     Write-Host "$engine is missing; build it with .\build.ps1 -Configuration $Configuration" -ForegroundColor Red

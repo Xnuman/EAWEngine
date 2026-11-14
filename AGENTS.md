@@ -168,7 +168,7 @@ These are correctness rules, not optional optimizations.
 - Interfaces in headers, implementations in `.cpp` files, with common sense: one-line functions, `constexpr` helpers, small operators, and templates may live in headers.
 - Name non-obvious numbers: tolerances, limits, tuning values, and format magic get a named constant with a comment on its origin (evidence, or an engine choice). Bare numbers are fine where the meaning is plain (`0.5F` for a half, loop bounds of a 4x4 matrix).
 - Resources go through three stages, each in its own layer: the VFS produces bytes (a MEG entry, or a loose file read through `file_io`); a format reader turns bytes into file-level data; a loader in the game asset layer turns that data into the engine-native resource the engine and renderer use. Readers are `read_<format>(std::span<const std::byte>) -> Result<T>`, templated on the data type only where one format holds several kinds of data (an `.alo` holds a model or a particle system: `read_alo<AloModelData>`, `read_alo<AloParticleSystemData>`, and `read_alo<AloGenericData>` to learn which); writers are `write_<format>(const T&) -> bytes`. File-level types carry the `Data` suffix and are plain structures without methods; operations that encode format rules live in a per-format helper file (`dat_string_table_helpers`), and behavior that is not format knowledge belongs to its system. Readers and writers never do I/O and never see a file handle; whole-file reads and atomic writes go through `core/file_io`. Engine-native resources have plain names (`Model`, `Animation`, `ParticleEffect`) and know nothing of the source format, so another source format means another reader and loader producing the same resource.
-- Debug builds of every executable and library carry the `_d` suffix.
+- Debug builds of every executable and library carry the `_d` suffix. `DebugValidation` is Debug with the expensive runtime checks compiled in (the simulation's access check of its systems' writes); its files carry `_dv`. A check too slow for everyday Debug runs goes there, behind a definition of its own, never into Debug.
 - Shaders are newly written HLSL compiled at build time into embedded bytecode (DXC for D3D12, FXC for the D3D11 tools); no runtime shader compilation.
 - `.clang-format` is authoritative (four spaces, project brace rules, 200 columns). Format every changed C/C++ file.
 - Follow neighboring files: descriptive names, small cohesive types, early validation, explicit ownership, comments that explain invariants or evidence rather than restating code.
@@ -215,7 +215,7 @@ From the repository root; executables build into `executables/<Config>/`, Debug 
 git diff --check
 ```
 
-`build.ps1` takes `-Configuration Debug|Release|All` (default Debug), `-Tests`, `-Clean`, and `-BuildDirectory`; the C++ standard is set only by its configure step, not in `CMakeLists.txt`.
+`build.ps1` takes `-Configuration Debug|Release|DebugValidation|All` (default Debug; All is Debug and Release), `-Tests`, `-Clean`, and `-BuildDirectory`; the C++ standard is set only by its configure step, not in `CMakeLists.txt`.
 
 Format changed C/C++ files with the Visual Studio LLVM formatter (adjust the installation path only if necessary):
 

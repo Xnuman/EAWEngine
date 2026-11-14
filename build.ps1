@@ -5,19 +5,20 @@
 .DESCRIPTION
     Configures build/ with the Visual Studio 2022 generator (x64, C++20) and builds the chosen
     configurations. Executables go to executables/<Configuration>/; Debug files carry the _d suffix
-    (EAWEngine_d.exe). -Clean starts from an empty build tree but keeps the fetched third-party
+    (EAWEngine_d.exe), DebugValidation files (Debug with the expensive runtime checks) the _dv suffix. -Clean starts from an empty build tree but keeps the fetched third-party
     sources (build/_deps), and removes the built executables.
 
 .EXAMPLE
     .\build.ps1                              # Debug
     .\build.ps1 -Configuration Release       # Release
     .\build.ps1 -Configuration All -Tests    # Debug and Release, with EAWEngineTests
+    .\build.ps1 -Configuration DebugValidation -Tests  # Debug with the expensive checks (_dv files)
     .\build.ps1 -Configuration Release -Clean
 
     From cmd or Explorer: powershell -ExecutionPolicy Bypass -File build.ps1 -Configuration Release
 #>
 param(
-    [ValidateSet('Debug', 'Release', 'All')]
+    [ValidateSet('Debug', 'Release', 'DebugValidation', 'All')]
     [string] $Configuration = 'Debug',
     # Build EAWEngineTests too (run it with executables\<Configuration>\EAWEngineTests[_d].exe or ctest).
     [switch] $Tests,

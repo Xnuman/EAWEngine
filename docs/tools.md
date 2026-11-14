@@ -246,7 +246,7 @@ repository from their own location and use the built executables):
 
 ```powershell
 # The reference battle twice: both runs must agree on the expected state hash
-.\scripts\check-battle.ps1                        # -Configuration Debug, -Expected <hash>, -GameRoot <path>
+.\scripts\check-battle.ps1                        # -Configuration Debug|DebugValidation, -Expected <hash>, -GameRoot <path>
 
 # The reference scenes on WARP, compared with an earlier set (keep both folders outside the repository)
 .\scripts\check-captures.ps1 -Output D:\eaw-captures\before

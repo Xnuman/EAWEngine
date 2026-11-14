@@ -27,6 +27,8 @@ public:
         return state_;
     }
 
+    friend bool operator==(const Pcg32&, const Pcg32&) = default;
+
 private:
     std::uint64_t state_{};
     std::uint64_t increment_{};

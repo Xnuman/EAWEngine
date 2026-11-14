@@ -507,7 +507,18 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    non-members but changes membership during a tick (move orders form groups), so it waits for the
    command buffers of step 6.
 4. **Systems with declared access.** Turn the `run_*` member functions into systems over queries,
-   in the schedule of section 6.3, with Debug access checks.
+   in the schedule of section 6.3, with Debug access checks. First slice done 2026-11-15: the tick
+   is one table, `SimulationWorld::schedule_` (`simulation_schedule.cpp`): nine systems (commands,
+   behavior, navigation, movement, crushing, separation, motion, combat, publish), each with its
+   tick layer and the data it reads and writes (`SimData`: the 17 components and pools and the
+   resources). Reads are a static over-approximation (what each system's functions mention),
+   reviewed, not checked. Writes are checked in the `DebugValidation` build only (the owner's
+   choice: the check copies every undeclared kind of data before each system and compares it
+   after, about 17 times a Debug tick on a populated map): a system that changes data it did not
+   declare stops the run, naming both. The ground is declared but not checked (megabytes on a real
+   map). The first declarations, read from the code, missed 15 writes, all found by the check's
+   first runs. Commands and combat write everything until step 6 moves spawns and removals to the
+   barrier. Not yet: queries, and systems as functions over a context.
 5. **Recipes.** Readers per component; one construction path for spawns and placed objects;
    `EntitySpawn` reduced to a recipe plus per-instance values.
 6. **Command buffers and event queues.** Structural changes and damage through the barrier, in the

@@ -25,6 +25,7 @@ enum class TeamArrangement : std::uint8_t
 // slot up to that fraction of its slot pitch (XML FormationRaggedness; the scale is an engine choice).
 struct FormationTeam
 {
+    bool operator==(const FormationTeam&) const = default;
     std::uint32_t id{};
     TeamArrangement arrangement{TeamArrangement::rows};
     float spacing{0.5F};

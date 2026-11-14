@@ -121,6 +121,8 @@ public:
         return slots_.size();
     }
 
+    bool operator==(const ComponentPool&) const = default;
+
     // The packed columns, one row per member (rows from find or add).
     Columns columns;
 

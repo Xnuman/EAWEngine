@@ -28,6 +28,7 @@ struct LocalPoint
 // A part of an entity that can be targeted and destroyed on its own (ship hardpoints).
 struct HardpointProfile
 {
+    bool operator==(const HardpointProfile&) const = default;
     enum class Kind : std::uint8_t
     {
         weapon,
@@ -74,6 +75,7 @@ inline constexpr std::uint32_t all_categories = 0xffffffffU;
 
 struct CategoryInaccuracy
 {
+    bool operator==(const CategoryInaccuracy&) const = default;
     std::uint32_t categories{};
     float distance{};
 };
@@ -85,6 +87,7 @@ struct CategoryInaccuracy
 // excluding Structure. No ranks and no exclusions: every hostile ranks alike (the nearest wins).
 struct TargetPriority
 {
+    bool operator==(const TargetPriority&) const = default;
     std::uint32_t categories{};
     std::uint32_t properties{};
     float rank{};
@@ -92,6 +95,7 @@ struct TargetPriority
 
 struct TargetingPriorities
 {
+    bool operator==(const TargetingPriorities&) const = default;
     std::vector<TargetPriority> ranks;
     std::uint32_t excluded_categories{};
     std::uint32_t excluded_properties{};
@@ -134,6 +138,7 @@ struct TargetingPriorities
 // the reading of the tiers, are engine choices.
 struct AreaBlast
 {
+    bool operator==(const AreaBlast&) const = default;
     float damage{};
     float range{};
     std::uint32_t tiers{};
@@ -150,6 +155,7 @@ struct AreaBlast
 // turn about `pivot`, the turret bone's place in the model.
 struct TurretProfile
 {
+    bool operator==(const TurretProfile&) const = default;
     LocalPoint pivot;
     float rate{};
     float yaw_limit{pi};
@@ -161,6 +167,7 @@ struct TurretProfile
 // within `range`.
 struct WeaponProfile
 {
+    bool operator==(const WeaponProfile&) const = default;
     float range{};
     // Targets closer than this are not fired at (XML Targeting_Min_Attack_Distance: artillery).
     float min_range{};
@@ -222,6 +229,7 @@ struct WeaponProfile
 
 struct CombatProfile
 {
+    bool operator==(const CombatProfile&) const = default;
     // Hit points; zero means the entity cannot be damaged or targeted.
     float health{};
     float shield{};
