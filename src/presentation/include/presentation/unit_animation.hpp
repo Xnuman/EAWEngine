@@ -187,6 +187,8 @@ private:
         std::int16_t pitch{};
         // The entity's bone mask (destroyed hardpoints) by its content hash, 0 for the rig's own.
         std::uint64_t mask{};
+        // Layers 2 and 3 (aim and attack) are overlays (AnimationProfile::attack_overlay).
+        bool overlay{};
         bool operator==(const PoseKey&) const = default;
     };
     struct PoseKeyHash
@@ -235,8 +237,10 @@ private:
         float last_heading{};
         bool was_moving{};
         int turning{};
-        // Where the turn loop is (seconds of its clip) and the rate it plays at.
+        // Where the turn loop is (seconds of its clip; it starts from its first frame when it first
+        // shows, after BEGIN) and the rate it plays at.
         double turn_time{};
+        bool turn_looping{};
         float turn_playback{1.0F};
         std::int32_t transition{-1};
         double transition_start{};
@@ -257,9 +261,9 @@ private:
         // The stop of this walk has begun (once braking for the destination starts, or the walker is
         // all but still), so it does not begin again before the next start.
         bool stop_begun{};
-        // The stop clip's playback: faster when braking began below top speed (it brakes for less
-        // long).
-        float stop_playback{1.0F};
+        // The stop began with braking for the destination: its END plays faster when the walker is
+        // below top speed as END starts (it brakes for less long).
+        bool stop_braking{};
         // The END clip of this turn in place has begun (the turn is braking), so neither it nor the
         // turn loop starts again before the next turn.
         bool turn_end_begun{};

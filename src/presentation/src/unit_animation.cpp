@@ -146,7 +146,7 @@ std::size_t UnitAnimator::PoseKeyHash::operator()(const PoseKey& key) const noex
     }
     hash = mix(hash ^ (static_cast<std::uint64_t>(static_cast<std::uint16_t>(key.yaw)) << 16U) ^ static_cast<std::uint16_t>(key.pitch) ^
                (static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.turret)) << 32U));
-    hash = mix(hash ^ key.mask);
+    hash = mix(hash ^ key.mask ^ (key.overlay ? 0x6f766c79ULL : 0U));
     return static_cast<std::size_t>(hash);
 }
 
@@ -220,8 +220,9 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
     const auto& rig = rigs_[key.mesh];
     std::vector<LocalBone> pose;
     float total = 0.0F;
-    for (const auto& layer : key.layers)
+    for (std::size_t index = 0; index < key.layers.size(); ++index)
     {
+        const auto& layer = key.layers[index];
         if (layer.clip == no_clip || layer.eighths == 0)
         {
             continue;
@@ -238,6 +239,27 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
             layer_pose = sample_local_pose(*clip.animation, *rig.skeleton, seconds);
         }
         const auto weight = static_cast<float>(layer.eighths);
+        if (key.overlay && index >= 2 && !pose.empty() && layer.clip >= 0)
+        {
+            // An overlay moves only the bones its clip animates, by its own weight, over the rest.
+            std::vector<bool> moved(pose.size(), false);
+            for (const auto& track : rig.clips[static_cast<std::size_t>(layer.clip)].animation->tracks)
+            {
+                if (track.animated && track.bone < moved.size())
+                {
+                    moved[track.bone] = true;
+                }
+            }
+            for (std::size_t bone = 0; bone < pose.size() && bone < layer_pose.size(); ++bone)
+            {
+                if (!moved[bone])
+                {
+                    layer_pose[bone] = pose[bone];
+                }
+            }
+            blend_pose(pose, layer_pose, std::min(weight / 8.0F, 1.0F));
+            continue;
+        }
         if (pose.empty())
         {
             pose = std::move(layer_pose);
@@ -659,7 +681,8 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         };
         const auto fire_eighths = eighths(fire);
         const auto aim_eighths = std::min(eighths(state.attack_weight * (1.0F - fire)), 8U - fire_eighths);
-        const auto locomotion = static_cast<float>(8U - fire_eighths - aim_eighths) / 8.0F;
+        // An overlay attack leaves the locomotion its whole weight.
+        const auto locomotion = profile.attack_overlay ? 1.0F : static_cast<float>(8U - fire_eighths - aim_eighths) / 8.0F;
 
         // Events placed in the clips: the locomotion clip shown most, and ATTACK while it plays.
         const auto position = translation(instance.transform);
@@ -720,7 +743,8 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             // An animation-led walker turns in place while the simulation says so, the way its heading
             // goes (holding the last way while the turn has not wound up yet).
             const int sensed = std::fabs(rate) > 1.0e-4F ? (rate > 0.0F ? 1 : -1) : state.turning;
-            const int turning = profile.animation_led ? (entity.turning_in_place ? sensed : 0) : (slow && std::fabs(rate) > turn_in_place_rate ? (rate > 0.0F ? 1 : -1) : 0);
+            const int turning =
+                profile.animation_led ? (entity.turning_in_place ? (state.turning != 0 ? state.turning : sensed) : 0) : (slow && std::fabs(rate) > turn_in_place_rate ? (rate > 0.0F ? 1 : -1) : 0);
             // Moving by the shown speed, not the order: a walker turning in place before it sets off has
             // not started walking yet, and MOVESTART belongs to when it does.
             const bool moving = !slow;
@@ -761,15 +785,15 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                     state.stop_phase = state.stride_phase;
                     state.stop_quarter = std::clamp(static_cast<int>(std::floor(state.stride_phase * 4.0)) + 1, 1, 4);
                     // Braking from below top speed takes less long: the stop clip plays faster to match.
-                    state.stop_playback = walk_playback * (entity.arriving && entity.speed > 0.0F ? std::clamp(entity.max_speed / entity.speed, 1.0F, 4.0F) : 1.0F);
+                    state.stop_braking = entity.arriving;
                 }
                 else if (profile.animation_led && profile.pre_turn && entity.turn_arriving && state.turning != 0 && !state.turn_end_begun)
                 {
                     // The turn in place brakes over its END clip: it starts as the braking does.
-                    // Braking from below the full turn rate takes less long: END plays faster to match.
+                    // The simulation plays the turn as whole clips (BEGIN, loops, END), so END starts at a
+                    // loop's end and lasts its playing time.
                     state.turn_end_begun = true;
-                    start_transition(find_clip(instance.mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0),
-                                     state.turn_playback * (std::fabs(rate) > 1.0e-4F ? std::clamp(profile.in_place_turn_rate / std::fabs(rate), 1.0F, 4.0F) : 1.0F));
+                    start_transition(find_clip(instance.mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0), state.turn_playback);
                 }
                 else if (profile.pre_turn && turning != 0 && state.turning == 0)
                 {
@@ -780,14 +804,6 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 {
                     start_transition(find_clip(instance.mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0), state.turn_playback);
                 }
-            }
-            if (turning != 0 && turning != state.turning)
-            {
-                state.turn_time = 0.0;
-            }
-            else if (turning != 0)
-            {
-                state.turn_time += dt * static_cast<double>(state.turn_playback);
             }
             // A stop under way ends when the walker moves on without braking (a new order) or another
             // transition than its start begins.
@@ -814,7 +830,10 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 {
                     state.stopping = false;
                     state.stride_phase = std::fmod(target, 1.0);
-                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(state.stop_quarter % 4)), state.stop_playback);
+                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(state.stop_quarter % 4)),
+                                     // Braking from below top speed takes less long: measured as END starts (after the
+                                     // walk-on to the quarter), END plays faster to end with it.
+                                     state.stop_braking && entity.speed > 0.0F ? walk_playback * std::clamp(entity.max_speed / entity.speed, 1.0F, 4.0F) : walk_playback);
                 }
                 else
                 {
@@ -872,14 +891,18 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 const auto loop = find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left : AnimationRole::turn_right, 0);
                 if (loop >= 0)
                 {
+                    // TURN_BEGIN ends where the loop starts: the loop goes on from its first frame.
+                    state.turn_time = state.turn_looping ? state.turn_time + dt * static_cast<double>(state.turn_playback) : 0.0;
                     override_clip = loop;
                     override_time = state.turn_time;
                     override_weight = 1.0F;
                 }
             }
+            state.turn_looping = override_clip >= 0 && override_clip == find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left : AnimationRole::turn_right, 0) && turning != 0;
         }
         PoseKey pose_key{instance.mesh, {}};
         pose_key.mask = mask;
+        pose_key.overlay = profile.attack_overlay;
         pose_key.layers[0] = layer(lower, blend.lower, locomotion * (1.0F - blend.blend));
         pose_key.layers[1] = upper == lower ? Layer{} : layer(upper, blend.upper, locomotion * blend.blend);
         if (upper == lower)

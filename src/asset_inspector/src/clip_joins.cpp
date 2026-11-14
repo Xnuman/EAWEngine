@@ -126,6 +126,15 @@ eaw::Status clip_joins(const eaw::VirtualFileSystem& vfs, const std::string& mod
         join(begin, -1.0, loop, std::string("TURN") + side + "_BEGIN end -> TURN" + side + " start");
         join(loop, -1.0, loop, std::string("TURN") + side + " end -> start (loop)");
         join(loop, -1.0, end, std::string("TURN") + side + " end -> TURN" + side + "_END start");
+        if (loop)
+        {
+            const auto frames = static_cast<double>(std::max<std::uint32_t>(loop->animation.loop_frame_count, 1U));
+            for (std::size_t at = 1; at < 4; ++at)
+            {
+                join(loop, frames * static_cast<double>(at) / 4.0, end, std::string("TURN") + side + " at " + std::to_string(at) + "/4 -> TURN" + side + "_END start");
+            }
+        }
+        join(begin, -1.0, end, std::string("TURN") + side + "_BEGIN end -> TURN" + side + "_END start");
         join(end, -1.0, idle, std::string("TURN") + side + "_END end -> IDLE start");
     }
     return {};

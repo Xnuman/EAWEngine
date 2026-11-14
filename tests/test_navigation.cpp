@@ -886,8 +886,9 @@ void test_braking_stop_and_winding_turns()
     const auto braking = coast(10.0F);
     require(braking > 15.0F && braking < 25.0F && coast(0.0F) < 1.0F, "a braking ground unit must coast to a stop over its braking distance, an unbraking one halt");
 
-    // A winding turn in place (90 degrees off, past a 30 degree start angle) ends on the way before
-    // the unit moves off, so it leaves heading straight at its target.
+    // A turn in place played as clips (BEGIN 0.5 s, loop 1 s, END 0.5 s; 90 degrees at a stopped rate
+    // of 1 per second takes one loop): it lasts exactly 2 s, its END starts at the loop's boundary
+    // (1.5 s), and the unit leaves exactly on its way.
     eaw::SimulationWorld world(0.1);
     world.set_ground(ground);
     const auto turner = world.spawn({.type_name = "Turner",
@@ -902,23 +903,30 @@ void test_braking_stop_and_winding_turns()
                                                   .turn_speed_fraction = 0.1F,
                                                   .stopped_turn_rate = 1.0F,
                                                   .turn_in_place_angle = 0.5236F,
-                                                  .turn_acceleration = 2.0F,
-                                                  .turn_deceleration = 2.0F}});
+                                                  .turn_begin_seconds = {0.5F, 0.5F},
+                                                  .turn_loop_seconds = {1.0F, 1.0F},
+                                                  .turn_end_seconds = {0.5F, 0.5F}}});
     require(static_cast<bool>(turner), "test spawn must succeed");
     world.submit({.kind = eaw::SimCommandKind::move, .entities = {*turner}, .target = {100.0F, 300.0F, 0.0F}});
-    bool turned_in_place = false;
+    int turning_ticks = 0;
+    int first_end_tick = -1;
     float heading_when_moving = 0.0F;
-    for (int tick = 0; tick < 100; ++tick)
+    for (int tick = 1; tick <= 100; ++tick)
     {
         world.step();
         const auto& entity = world.snapshot().entities[0];
-        turned_in_place = turned_in_place || entity.turning_in_place;
+        turning_ticks += entity.turning_in_place ? 1 : 0;
+        if (entity.turn_arriving && first_end_tick < 0)
+        {
+            first_end_tick = tick;
+        }
         if (entity.speed > 0.0F && heading_when_moving == 0.0F)
         {
             heading_when_moving = entity.heading;
         }
     }
-    require(turned_in_place && std::fabs(heading_when_moving - 1.5707964F) < eaw::turn_in_place_finish + 0.01F, "a winding turn in place must end on the way before the unit moves off");
+    require(turning_ticks == 19 && first_end_tick == 15 && std::fabs(heading_when_moving - 1.5707964F) < 1.0e-3F,
+            "a turn in place played as clips must last its clips, end on a loop's boundary, and leave on the way");
 }
 
 void test_crushing()

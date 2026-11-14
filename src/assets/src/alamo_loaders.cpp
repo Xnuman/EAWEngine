@@ -127,6 +127,7 @@ Animation load_animation(const AlaAnimationData& animation)
     for (const auto& track : animation.tracks)
     {
         AnimationTrack loaded{track.name, track.bone_index, track.stepped, {}};
+        loaded.animated = track.rotation || track.translation || track.scale;
         loaded.keys.reserve(track.frames.size());
         for (const auto& frame : track.frames)
         {

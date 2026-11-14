@@ -92,6 +92,9 @@ struct AnimationProfile
     // else Max_Rate_Of_Turn).
     bool animation_led{};
     float in_place_turn_rate{};
+    // XML Attack_Animation_Is_Overlay: ATTACK and ATTACKIDLE play over the locomotion on the bones
+    // they animate only (the AT-AT's guns), instead of taking the whole body.
+    bool attack_overlay{};
     // A turret (XML Turret_Bone_Name, Barrel_Bone_Name: the bones' names as game_object_name_crc, 0
     // none): the turret bone's subtree yaws about the model's up axis to the simulation's turret
     // direction (EntitySnapshot::turret_yaw, which also decides when it fires), and the barrel's

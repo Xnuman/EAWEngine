@@ -418,13 +418,36 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
             const auto animation = resources.get<Animation>(stem + "_" + std::string(clip) + ".ALA");
             return animation->ok() ? animation_duration(animation->value()) / turn_playback : 0.0F;
         };
-        if (const auto begin = turn_seconds("TURNL_BEGIN_00"); begin > 0.0F)
+        static constexpr std::array<const char*, 2> sides{"L", "R"};
+        std::array<float, 2> begin{};
+        std::array<float, 2> loop{};
+        std::array<float, 2> end{};
+        for (std::size_t side = 0; side < sides.size(); ++side)
         {
-            movement.turn_acceleration = turn_rate / begin;
+            const std::string turn = std::string("TURN") + sides[side];
+            begin[side] = turn_seconds(turn + "_BEGIN_00");
+            loop[side] = turn_seconds(turn + "_00");
+            end[side] = turn_seconds(turn + "_END_00");
         }
-        if (const auto end = turn_seconds("TURNL_END_00"); end > 0.0F)
+        if (std::ranges::all_of(begin,
+                                [](const float value)
+                                {
+                                    return value > 0.0F;
+                                }) &&
+            std::ranges::all_of(loop,
+                                [](const float value)
+                                {
+                                    return value > 0.0F;
+                                }) &&
+            std::ranges::all_of(end,
+                                [](const float value)
+                                {
+                                    return value > 0.0F;
+                                }))
         {
-            movement.turn_deceleration = turn_rate / end;
+            movement.turn_begin_seconds = begin;
+            movement.turn_loop_seconds = loop;
+            movement.turn_end_seconds = end;
         }
     }
 }

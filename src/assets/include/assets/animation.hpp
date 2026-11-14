@@ -29,6 +29,9 @@ struct AnimationTrack
     // Holds each key until the next instead of interpolating.
     bool stepped{};
     std::vector<AnimationKey> keys;
+    // The track moves its bone (its rotation, translation, or scale changes over the clip); a track
+    // that does not only holds the bone at one transform (an overlay clip leaves such bones alone).
+    bool animated{true};
 };
 
 struct Animation

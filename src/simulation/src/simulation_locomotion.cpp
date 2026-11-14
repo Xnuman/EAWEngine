@@ -210,6 +210,60 @@ float SimulationWorld::steer(const std::size_t index, const float desired, const
         return 1.0F;
     }
     const auto& movement = movements_[index];
+    // A turn in place played as clips (MovementProfile::turn_begin_seconds): planned when it starts,
+    // then followed by its time.
+    if (auto& plan = turn_plans_[index]; movement.turn_begin_seconds[0] > 0.0F && movement.stopped_turn_rate > 0.0F)
+    {
+        if (!plan.active && movement.turn_in_place_angle > 0.0F && drive_speeds_[index] <= 0.0F && std::fabs(difference) > movement.turn_in_place_angle)
+        {
+            plan = {};
+            plan.active = true;
+            plan.way = difference > 0.0F ? 1.0F : -1.0F;
+            plan.start = heading;
+            plan.angle = std::fabs(difference);
+            const auto side = plan.way > 0.0F ? 0U : 1U;
+            const auto begin = movement.turn_begin_seconds[side];
+            const auto loop = movement.turn_loop_seconds[side];
+            const auto end = movement.turn_end_seconds[side];
+            // The whole loops that come closest to the turn at the stopped rate, and the steady rate
+            // that ends the turn exactly on the way with them.
+            const auto loops = loop > 0.0F ? std::round((plan.angle / movement.stopped_turn_rate - 0.5F * (begin + end)) / loop) : 0.0F;
+            plan.loops = static_cast<std::uint32_t>(std::max(loops, 0.0F));
+            plan.rate = plan.angle / std::max(0.5F * (begin + end) + static_cast<float>(plan.loops) * loop, 1.0e-3F);
+        }
+        if (plan.active)
+        {
+            const auto side = plan.way > 0.0F ? 0U : 1U;
+            const auto begin = movement.turn_begin_seconds[side];
+            const auto steady_end = begin + static_cast<float>(plan.loops) * movement.turn_loop_seconds[side];
+            const auto end = movement.turn_end_seconds[side];
+            plan.elapsed = std::min(plan.elapsed + dt, steady_end + end);
+            const auto time = plan.elapsed;
+            // Linear wind-up and wind-down: the angle turned by `time`.
+            float turned = 0.0F;
+            if (time < begin)
+            {
+                turned = plan.rate * time * time / (2.0F * std::max(begin, 1.0e-6F));
+            }
+            else if (time < steady_end)
+            {
+                turned = plan.rate * (0.5F * begin + (time - begin));
+            }
+            else
+            {
+                const auto into = time - steady_end;
+                turned = plan.rate * (0.5F * begin + (steady_end - begin) + into - into * into / (2.0F * std::max(end, 1.0e-6F)));
+                turn_arriving_[index] = 1;
+            }
+            heading = wrap_angle(plan.start + plan.way * std::min(turned, plan.angle));
+            if (plan.elapsed >= steady_end + end)
+            {
+                heading = wrap_angle(plan.start + plan.way * plan.angle);
+                plan.active = false;
+            }
+            return std::max(0.0F, std::cos(wrap_angle(desired - heading)));
+        }
+    }
     const bool slow = move_targets_[index] && movement.turn_speed_fraction > 0.0F && drive_speeds_[index] < movement.turn_speed_fraction * travel_speed(index);
     const auto standing = !move_targets_[index] && movement.turn_in_place_rate > 0.0F;
     const auto rate = slow ? movement.stopped_turn_rate : standing ? movement.turn_in_place_rate : turn_rates_[index];
@@ -217,33 +271,7 @@ float SimulationWorld::steer(const std::size_t index, const float desired, const
     {
         return std::max(0.0F, std::cos(difference));
     }
-    auto step = rate * dt;
-    if (movement.turn_acceleration > 0.0F)
-    {
-        // The turn winds up toward `rate`, and down so it ends on the way (when the braking turn rate
-        // holds it back, the turn is arriving); turning the other way starts from rest.
-        auto& turning = turn_speeds_[index];
-        const auto direction = difference >= 0.0F ? 1.0F : -1.0F;
-        auto speed = turning * direction > 0.0F ? std::fabs(turning) : 0.0F;
-        auto wanted = rate;
-        if (movement.turn_deceleration > 0.0F)
-        {
-            const auto braking = std::sqrt(2.0F * movement.turn_deceleration * std::fabs(difference));
-            if (braking < wanted)
-            {
-                wanted = braking;
-                turn_arriving_[index] = 1;
-            }
-        }
-        speed = wanted > speed ? std::min(wanted, speed + movement.turn_acceleration * dt)
-                               : std::max(wanted, speed - (movement.turn_deceleration > 0.0F ? movement.turn_deceleration : movement.turn_acceleration) * dt);
-        turning = speed * direction;
-        step = speed * dt;
-        if (std::fabs(difference) <= step)
-        {
-            turning = 0.0F;
-        }
-    }
+    const auto step = rate * dt;
     if (std::fabs(difference) <= step)
     {
         heading = wrap_angle(desired);
@@ -263,20 +291,7 @@ float SimulationWorld::wanted_speed(const std::size_t index, const float facing,
     auto factor = facing;
     // Turning in place is for starting from rest (Close_Enough_Angle_For_Move_Start); a unit on the
     // move turns while it walks (the owner's recording: the AT-AT swings 90 degrees mid-walk).
-    const bool far_off = facing < std::cos(movement.turn_in_place_angle);
-    if (movement.turn_acceleration > 0.0F && movement.turn_in_place_angle > 0.0F && drive_speeds_[index] <= 0.0F)
-    {
-        // A winding turn that started in place ends in place, on the way (turn_in_place_finish).
-        if (far_off)
-        {
-            in_place_turns_[index] = 1;
-        }
-        else if (facing >= std::cos(turn_in_place_finish) && turn_speeds_[index] == 0.0F)
-        {
-            in_place_turns_[index] = 0;
-        }
-    }
-    if (movement.turn_in_place_angle > 0.0F && drive_speeds_[index] <= 0.0F && (far_off || in_place_turns_[index] != 0))
+    if (turn_plans_[index].active || (movement.turn_in_place_angle > 0.0F && drive_speeds_[index] <= 0.0F && facing < std::cos(movement.turn_in_place_angle)))
     {
         factor = 0.0F;
     }

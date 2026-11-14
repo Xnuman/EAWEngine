@@ -343,7 +343,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Collidable_By_Projectile_Living` | `done` |  |
 | `Collidable_By_Projectile_Dead` | `gap` |  |
 | `Attack_Category_Restrictions` | `done` | applies to all the unit's weapons |
-| `Attack_Animation_Is_Overlay` | `gap` |  |
+| `Attack_Animation_Is_Overlay` | `done` | ATTACK and ATTACKIDLE play over the locomotion on the bones their clip animates only (2026-11-14) |
 
 ### Turrets
 

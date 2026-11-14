@@ -228,9 +228,9 @@ inline constexpr float maximum_walk_clip_playback = 6.0F;
 // slow down through MOVE_END: EAWAssetInspector gait), so it reaches `max_speed` over MOVESTART's
 // playing time and stops over MOVE_ENDONE's, instead of changing speed at once (an engine reading of
 // the field's name, backed by the clips; linear ramps are an engine choice). An XML acceleration
-// override wins. Its turn in place winds up over TURNL_BEGIN's playing time and down over
-// TURNL_END's at its stopped turn rate (MovementProfile::turn_acceleration). Clips are read beside
-// `model_path`; a type without them keeps `movement`.
+// override wins. Its turns in place play as its turn clips (BEGIN, whole loops, END: the clips meet
+// only there; MovementProfile::turn_begin_seconds), at the playing rate for its stopped turn rate.
+// Clips are read beside `model_path`; a type without them keeps `movement`.
 void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatalog& catalog, const XmlDefinition& definition, const ResourceManager& resources, std::string_view model_path,
                                 float max_speed);
 // An engine choice, not the original's: how far off its way a ground unit stops to turn (the

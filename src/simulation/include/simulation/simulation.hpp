@@ -18,6 +18,7 @@
 #include "simulation/simulation_types.hpp"
 #include "simulation/spatial_grid.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -93,17 +94,15 @@ struct MovementProfile
     // Turn rate (radians per second) while the entity has no move order and turns in place (space
     // ships facing their target); zero turns at its turn rate.
     float turn_in_place_rate{};
-    // Radians per second squared to wind its turning up and down; zero turns at full rate at once.
-    // An entity with them that stops to turn finishes the turn in place (within
-    // turn_in_place_finish) before it moves off, braking its turn to end on its way (animation-led
-    // walkers: their turn clips wind up and down).
-    float turn_acceleration{};
-    float turn_deceleration{};
+    // Turns in place played as clips (animation-led walkers; seconds at the clips' playing rate, left
+    // [0] and right [1]): winding up over BEGIN, turning at a steady rate for a whole number of loops,
+    // and winding down over END. The number of loops is the one that comes closest to the turn at
+    // stopped_turn_rate, and the steady rate is adjusted so the turn ends exactly on the way, so each
+    // clip starts where the last one ends. Zero turns in place at a steady rate.
+    std::array<float, 2> turn_begin_seconds{};
+    std::array<float, 2> turn_loop_seconds{};
+    std::array<float, 2> turn_end_seconds{};
 };
-
-// How close to its way a walker that turns in place with turn_acceleration must be, its turn wound
-// down, before it moves off (radians; an engine choice).
-inline constexpr float turn_in_place_finish = 0.035F;
 
 // Everything needed to create an entity. `type_name` is the XML object type (informational for
 // now); `visual` is an opaque presentation key chosen by the caller (for example a mesh index).
@@ -322,8 +321,8 @@ struct EntitySnapshot
     // turn, held its speed back); presentation starts a walker's stop clip then. Not part of the
     // state hash.
     bool arriving{};
-    // Turning in place before it moves off (MovementProfile::turn_acceleration), and braking that
-    // turn to end on its way; presentation plays the turn clips by them.
+    // Turning in place before it moves off as clips (MovementProfile::turn_begin_seconds), and in that
+    // turn's END; presentation plays the turn clips by them.
     bool turning_in_place{};
     bool turn_arriving{};
 };
@@ -812,11 +811,21 @@ private:
     std::vector<std::uint8_t> looping_;
     // Braking for its destination this tick (EntitySnapshot::arriving); not hashed.
     std::vector<std::uint8_t> arriving_;
-    // Entities with MovementProfile::turn_acceleration: how fast they turn now (radians per second,
-    // counter-clockwise positive) and whether they turn in place before moving off; hashed for those
-    // entities only. turn_arriving_ like arriving_, not hashed.
-    std::vector<float> turn_speeds_;
-    std::vector<std::uint8_t> in_place_turns_;
+    // A turn in place played as clips (MovementProfile::turn_begin_seconds): under way, seconds into
+    // it, the heading it started from, its steady rate, its angle, its loops, and its way (+1
+    // counter-clockwise, left); hashed for entities with such turns only. turn_arriving_ like
+    // arriving_, not hashed.
+    struct TurnPlan
+    {
+        bool active{};
+        float elapsed{};
+        float start{};
+        float rate{};
+        float angle{};
+        std::uint32_t loops{};
+        float way{};
+    };
+    std::vector<TurnPlan> turn_plans_;
     std::vector<std::uint8_t> turn_arriving_;
     std::vector<float> rolls_;
     std::vector<Stance> stances_;
