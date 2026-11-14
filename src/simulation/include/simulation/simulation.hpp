@@ -906,10 +906,6 @@ private:
 
     double tick_seconds_;
     std::uint64_t tick_{};
-    // Slot table: generation per slot and the slot's position in dense storage.
-    std::vector<std::uint32_t> generations_;
-    std::vector<std::uint32_t> slot_dense_;
-    std::vector<std::uint32_t> free_slots_;
     // What the tick's systems declare access to (the schedule below): the components of the entity
     // table and the pools, and the world's resources.
     enum class SimData : std::uint8_t
@@ -946,6 +942,8 @@ private:
         slots,
         // Commands submitted for the next tick.
         commands,
+        // The damage table and hostility (set up by the battle, read by the systems).
+        rules,
         count,
     };
     static constexpr std::size_t sim_data_count = static_cast<std::size_t>(SimData::count);
@@ -995,9 +993,12 @@ private:
         static constexpr SimData data = SimData::motion;
         // Speed of the last tick (EntitySnapshot::speed).
         std::vector<float> speeds;
+        // Positions before the tick's movement (set by the commands system every tick).
+        std::vector<Vector3> starts;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(speeds);
+            visit(starts);
         }
     };
     struct LocomotorColumns
@@ -1050,12 +1051,16 @@ private:
         std::vector<std::uint32_t> pending;
         // Where an idle flyer circles (set when it arrives or first idles).
         std::vector<std::optional<Vector3>> loiter_points;
+        // The route left to the move target this tick (measured by navigation and again by separation;
+        // 0 without a target).
+        std::vector<float> remaining;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(move_targets);
             visit(paths);
             visit(pending);
             visit(loiter_points);
+            visit(remaining);
         }
     };
     // Flight's columns that every entity has until step 7 of the migration: the hash covers them for
@@ -1335,22 +1340,16 @@ private:
         visit(SimData::flight_maneuvers, flight_maneuvers_);
         visit(SimData::footprints, footprint_);
         visit(SimData::crush, crush_);
-        visit(SimData::path_queue, path_queue_);
-        visit(SimData::path_queue, next_path_serial_);
-        visit(SimData::projectiles, projectiles_);
-        visit(SimData::projectiles, next_projectile_serial_);
-        visit(SimData::events, deaths_);
-        visit(SimData::events, impacts_);
-        visit(SimData::events, shots_);
-        visit(SimData::events, hardpoint_deaths_);
-        visit(SimData::events, spins_);
+        visit(SimData::ground, ground_.map);
+        visit(SimData::path_queue, path_queue_.requests);
+        visit(SimData::projectiles, projectiles_.flying);
+        visit(SimData::events, events_);
         visit(SimData::combat_random, combat_random_);
         visit(SimData::snapshot, snapshot_);
         visit(SimData::clock, tick_);
-        visit(SimData::slots, generations_);
-        visit(SimData::slots, slot_dense_);
-        visit(SimData::slots, free_slots_);
+        visit(SimData::slots, slots_);
         visit(SimData::commands, pending_);
+        visit(SimData::rules, rules_);
     }
     // Runs one system of the schedule (in DebugValidation builds, with its write check).
     void run_system(const SystemEntry& system);
@@ -1383,14 +1382,11 @@ private:
     [[nodiscard]] bool wants_turn_in_place(std::size_t index) const noexcept;
 
     // World state and per-tick scratch (not entity columns: sized per tick or per world).
-    GroundMap ground_;
     GridPathfinder pathfinder_;
     std::uint64_t blocked_moves_{};
     std::uint64_t path_searches_{};
     std::uint64_t partial_paths_{};
     std::uint64_t path_expansions_{};
-    // Positions before the tick's movement.
-    std::vector<Vector3> tick_start_positions_;
     std::vector<Vector3> separation_push_;
     // Space ships: the point steered at this tick to pass a unit in the way (navigation's local
     // avoidance); recomputed every tick from the state, so not hashed.
@@ -1412,38 +1408,82 @@ private:
         std::uint32_t mask{};
         std::size_t next_member{};
     };
-    std::deque<PathRequest> path_queue_;
-    std::uint32_t next_path_serial_{1};
+    // The world's resources (docs/ecs-design.md, 6.2): what exists once, each kind of data a struct of
+    // its own, so a system names what it uses by type.
+    struct GroundState
+    {
+        bool operator==(const GroundState&) const = default;
+        static constexpr SimData data = SimData::ground;
+        GroundMap map;
+        // The ground's own passability, and how many footprints cover each cell.
+        std::vector<std::uint32_t> own_passability;
+        std::vector<std::uint16_t> footprint_cover;
+    };
+    struct PathQueue
+    {
+        bool operator==(const PathQueue&) const = default;
+        static constexpr SimData data = SimData::path_queue;
+        std::deque<PathRequest> requests;
+        std::uint32_t next_serial{1};
+    };
+    struct ProjectileState
+    {
+        bool operator==(const ProjectileState&) const = default;
+        static constexpr SimData data = SimData::projectiles;
+        std::vector<Projectile> flying;
+        // Launch number of the next shot (ProjectileSnapshot::serial; presentation only, not hashed).
+        std::uint32_t next_serial{1};
+    };
+    // The current tick's deaths (SimSnapshot::deaths), impacts, shots, hardpoint deaths, and spins.
+    struct TickEvents
+    {
+        bool operator==(const TickEvents&) const = default;
+        static constexpr SimData data = SimData::events;
+        std::vector<DeathSnapshot> deaths;
+        std::vector<ImpactSnapshot> impacts;
+        std::vector<ShotSnapshot> shots;
+        std::vector<HardpointDeathSnapshot> hardpoint_deaths;
+        std::vector<SpinSnapshot> spins;
+    };
+    // The slot table: the generation per slot, the slot's position in dense storage, and the free
+    // slots.
+    struct SlotTable
+    {
+        bool operator==(const SlotTable&) const = default;
+        static constexpr SimData data = SimData::slots;
+        std::vector<std::uint32_t> generations;
+        std::vector<std::uint32_t> dense;
+        std::vector<std::uint32_t> free;
+    };
+    // What the battle sets up once: damage modifiers and who is hostile to whom.
+    struct Rules
+    {
+        bool operator==(const Rules&) const = default;
+        static constexpr SimData data = SimData::rules;
+        DamageTable damage_table;
+        Hostility hostility;
+    };
+    GroundState ground_;
+    PathQueue path_queue_;
+    ProjectileState projectiles_;
+    TickEvents events_;
+    SlotTable slots_;
+    Rules rules_;
     // Short legs onto and off a shared path search at most this many nodes.
     GridPathfinder local_pathfinder_{4096};
     std::uint64_t shared_routes_{};
-    // The ground's own passability, and how many footprints cover each cell.
-    std::vector<std::uint32_t> ground_passability_;
-    std::vector<std::uint16_t> footprint_cover_;
-    std::vector<float> remaining_route_;
     std::uint32_t next_group_id_{1};
     std::size_t waiting_members_{};
     std::uint64_t released_members_{};
     std::size_t separated_pairs_{};
-    std::vector<Projectile> projectiles_;
-    // Deaths of the current tick (SimSnapshot::deaths).
-    std::vector<DeathSnapshot> deaths_;
-    std::vector<ImpactSnapshot> impacts_;
-    std::vector<ShotSnapshot> shots_;
-    std::vector<HardpointDeathSnapshot> hardpoint_deaths_;
-    std::vector<SpinSnapshot> spins_;
     // Where shots stray (WeaponProfile::inaccuracy); part of the state.
     Pcg32 combat_random_{combat_random_seed};
-    // Launch number of the next shot (ProjectileSnapshot::serial; presentation only, not hashed).
-    std::uint32_t next_projectile_serial_{1};
     SpatialGrid grid_;
     std::vector<std::uint32_t> query_;
     // Space avoidance's scratch: a ship's neighbours, and the largest ship radius of the tick's
     // plan (0 when no ship steers; keep_apart then has nothing to do).
     std::vector<std::uint32_t> neighbours_;
     float largest_ship_radius_{};
-    DamageTable damage_table_;
-    Hostility hostility_;
     std::uint64_t shots_fired_{};
     std::uint64_t hits_{};
     std::uint64_t kills_{};

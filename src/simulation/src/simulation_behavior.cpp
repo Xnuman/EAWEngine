@@ -128,7 +128,7 @@ void SimulationWorld::apply(const SimCommand& command)
                 ++stale_references_;
                 break;
             }
-            if (!combat.profile.weapons.empty() && *victim != *dense && hostility_.hostile(identity_.owners[*dense], identity_.owners[*victim]))
+            if (!combat.profile.weapons.empty() && *victim != *dense && rules_.hostility.hostile(identity_.owners[*dense], identity_.owners[*victim]))
             {
                 combat.target = command.target_entity;
                 combat.ordered = true;
@@ -204,7 +204,7 @@ void SimulationWorld::run_behavior()
                     {
                         steering_.intents[index].point = to;
                     }
-                    else if (combat_.states[index].ordered && ground_mover_.follows_ground[index] == 0 && !ground_.valid())
+                    else if (combat_.states[index].ordered && ground_mover_.follows_ground[index] == 0 && !ground_.map.valid())
                     {
                         // An ordered space ship turns in place toward its target's nearest live
                         // hardpoint; an idle one keeps its heading (recorded in the FoC debug build:
@@ -273,9 +273,9 @@ void SimulationWorld::teleport(const std::size_t index, const Vector3& point, co
     // A placed obstacle's footprint moves with it.
     stamp_footprint(index, false);
     auto position = point;
-    if (ground_mover_.follows_ground[index] != 0 && ground_.valid())
+    if (ground_mover_.follows_ground[index] != 0 && ground_.map.valid())
     {
-        position.z = ground_.surface_height(position.x, position.y);
+        position.z = ground_.map.surface_height(position.x, position.y);
     }
     if (auto* footprint = footprint_.find(slot_of(index), &FootprintColumns::shapes))
     {
@@ -424,7 +424,7 @@ std::optional<std::size_t> SimulationWorld::attack_victim(const std::size_t inde
         return std::nullopt;
     }
     const auto victim = dense_index(combat.target);
-    if (!victim || !damageable(*victim) || !hostility_.hostile(identity_.owners[index], identity_.owners[*victim]))
+    if (!victim || !damageable(*victim) || !rules_.hostility.hostile(identity_.owners[index], identity_.owners[*victim]))
     {
         return std::nullopt;
     }

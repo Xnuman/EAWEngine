@@ -26,26 +26,26 @@ void SimulationWorld::plan_move(const std::size_t index, const Vector3& target)
     route_.loiter_points[index].reset();
     route_.paths[index].clear();
     route_.pending[index] = 0;
-    if (ground_mover_.follows_ground[index] == 0 || ground_mover_.passable_types[index] == 0 || ground_.passability.size() != ground_.heights.size() || !ground_.valid())
+    if (ground_mover_.follows_ground[index] == 0 || ground_mover_.passable_types[index] == 0 || ground_.map.passability.size() != ground_.map.heights.size() || !ground_.map.valid())
     {
         route_.move_targets[index] = target;
         return;
     }
     // The unit holds still (its target set, so it counts as moving) until the queue plans it.
     route_.move_targets[index] = target;
-    const auto serial = next_path_serial_++;
-    if (next_path_serial_ == 0)
+    const auto serial = path_queue_.next_serial++;
+    if (path_queue_.next_serial == 0)
     {
-        next_path_serial_ = 1;
+        path_queue_.next_serial = 1;
     }
     route_.pending[index] = serial;
-    path_queue_.push_back({{identity_.ids[index]}, {target}, {serial}, target});
+    path_queue_.requests.push_back({{identity_.ids[index]}, {target}, {serial}, target});
 }
 
 void SimulationWorld::plan_route_now(const std::size_t index, const Vector3& target)
 {
     const auto& position = placement_.positions[index];
-    const auto planned = pathfinder_.find(ground_, {position.x, position.y}, {target.x, target.y}, ground_mover_.passable_types[index]);
+    const auto planned = pathfinder_.find(ground_.map, {position.x, position.y}, {target.x, target.y}, ground_mover_.passable_types[index]);
     if (planned.status == PathStatus::unavailable)
     {
         route_.paths[index].clear();
@@ -85,9 +85,9 @@ void SimulationWorld::process_path_queue()
 {
     std::uint64_t spent = 0;
     bool first = true;
-    while (!path_queue_.empty() && (first || spent < path_budget_per_tick))
+    while (!path_queue_.requests.empty() && (first || spent < path_budget_per_tick))
     {
-        auto& request = path_queue_.front();
+        auto& request = path_queue_.requests.front();
         const auto before = path_expansions_;
         bool finished = true;
         if (request.members.size() == 1)
@@ -109,7 +109,7 @@ void SimulationWorld::process_path_queue()
             // The rest of the group waits for the next tick's budget.
             break;
         }
-        path_queue_.pop_front();
+        path_queue_.requests.pop_front();
     }
 }
 
@@ -173,7 +173,7 @@ bool SimulationWorld::plan_shared_route(PathRequest& request, std::uint64_t spen
         }
         request.mask = ground_mover_.passable_types[*commander];
         request.shared_start = {placement_.positions[*commander].x, placement_.positions[*commander].y};
-        const auto shared = pathfinder_.find(ground_, request.shared_start, {request.group_target.x, request.group_target.y}, request.mask);
+        const auto shared = pathfinder_.find(ground_.map, request.shared_start, {request.group_target.x, request.group_target.y}, request.mask);
         ++path_searches_;
         path_expansions_ += shared.expanded;
         if (shared.status == PathStatus::partial)
@@ -217,9 +217,9 @@ void SimulationWorld::plan_shared_member(const PathRequest& request, const std::
     const PathPoint position{placement_.positions[index].x, placement_.positions[index].y};
     std::vector<PathPoint> route;
     // Onto the shared path: straight to its first waypoint, or a short search to the commander.
-    if (!ground_line_passable(ground_, position, request.shared_waypoints.front(), request.mask))
+    if (!ground_line_passable(ground_.map, position, request.shared_waypoints.front(), request.mask))
     {
-        const auto onto = local_pathfinder_.find(ground_, position, request.shared_start, request.mask);
+        const auto onto = local_pathfinder_.find(ground_.map, position, request.shared_start, request.mask);
         path_expansions_ += onto.expanded;
         if (onto.status != PathStatus::reached)
         {
@@ -233,13 +233,13 @@ void SimulationWorld::plan_shared_member(const PathRequest& request, const std::
     const PathPoint slot{goal.x, goal.y};
     if (slot != shared_end)
     {
-        if (ground_line_passable(ground_, shared_end, slot, request.mask))
+        if (ground_line_passable(ground_.map, shared_end, slot, request.mask))
         {
             route.push_back(slot);
         }
         else
         {
-            const auto off = local_pathfinder_.find(ground_, shared_end, slot, request.mask);
+            const auto off = local_pathfinder_.find(ground_.map, shared_end, slot, request.mask);
             path_expansions_ += off.expanded;
             route.insert(route.end(), off.waypoints.begin(), off.waypoints.end());
         }
@@ -252,7 +252,7 @@ void SimulationWorld::plan_shared_member(const PathRequest& request, const std::
     for (std::size_t next = 0; next < route.size();)
     {
         auto furthest = next;
-        while (furthest + 1 < route.size() && ground_line_passable(ground_, anchor, route[furthest + 1], request.mask))
+        while (furthest + 1 < route.size() && ground_line_passable(ground_.map, anchor, route[furthest + 1], request.mask))
         {
             ++furthest;
         }
@@ -267,7 +267,7 @@ void SimulationWorld::plan_space_avoidance()
 {
     detours_.assign(identity_.ids.size(), std::nullopt);
     largest_ship_radius_ = 0.0F;
-    if (ground_.valid())
+    if (ground_.map.valid())
     {
         return;
     }
@@ -512,7 +512,7 @@ void SimulationWorld::plan_space_avoidance()
 Vector3 SimulationWorld::keep_apart(const std::size_t index, Vector3 step)
 {
     const float radius = placement_.radii[index];
-    if (largest_ship_radius_ <= 0.0F || radius <= 0.0F || flight_.min_speeds[index] > 0.0F || ground_.valid())
+    if (largest_ship_radius_ <= 0.0F || radius <= 0.0F || flight_.min_speeds[index] > 0.0F || ground_.map.valid())
     {
         return step;
     }
@@ -594,7 +594,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         }
         movers.push_back(*dense);
         // Ships in space keep slots wide enough for a ship to pass between two that have stopped.
-        const bool ship_in_space = !ground_.valid() && placement_.radii[*dense] > 0.0F && flight_.min_speeds[*dense] <= 0.0F;
+        const bool ship_in_space = !ground_.map.valid() && placement_.radii[*dense] > 0.0F && flight_.min_speeds[*dense] <= 0.0F;
         const auto spacing = ship_in_space ? std::max(formation_.spacings[*dense], space_formation_spacing) : formation_.spacings[*dense];
         members.push_back({id, placement_.positions[*dense], placement_.radii[*dense], spacing, formation_.orders[*dense], formation_.teams[*dense]});
     }
@@ -650,7 +650,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         }
         // Move the member's queued request into its class's shared request.
         const auto serial = route_.pending[index];
-        path_queue_.pop_back();
+        path_queue_.requests.pop_back();
         auto found = std::ranges::find_if(shared,
                                           [&](const PathRequest& request)
                                           {
@@ -667,13 +667,13 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     }
     for (auto& request : shared)
     {
-        path_queue_.push_back(std::move(request));
+        path_queue_.requests.push_back(std::move(request));
     }
 }
 
 void SimulationWorld::measure_remaining_routes()
 {
-    remaining_route_.assign(identity_.ids.size(), 0.0F);
+    route_.remaining.assign(identity_.ids.size(), 0.0F);
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         if (const auto& target = route_.move_targets[index])
@@ -685,7 +685,7 @@ void SimulationWorld::measure_remaining_routes()
                 length += std::hypot(waypoint->x - from.x, waypoint->y - from.y);
                 from = *waypoint;
             }
-            remaining_route_[index] = length + std::hypot(target->x - from.x, target->y - from.y);
+            route_.remaining[index] = length + std::hypot(target->x - from.x, target->y - from.y);
         }
     }
 }
@@ -718,7 +718,7 @@ void SimulationWorld::update_group_cohesion()
             groups.push_back({group_.ids[index], 0.0F, 0.0F});
             found = groups.end() - 1;
         }
-        found->furthest = std::max(found->furthest, remaining_route_[index]);
+        found->furthest = std::max(found->furthest, route_.remaining[index]);
         found->largest_radius = std::max(found->largest_radius, placement_.radii[index]);
     }
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
@@ -729,16 +729,16 @@ void SimulationWorld::update_group_cohesion()
         }
         const auto& group = *std::ranges::find(groups, group_.ids[index], &GroupState::id);
         const auto slack = cohesion_slack + 4.0F * group.largest_radius;
-        if (remaining_route_[index] + slack < group.furthest)
+        if (route_.remaining[index] + slack < group.furthest)
         {
             group_.waiting[index] = 1;
             ++waiting_members_;
             continue;
         }
         // Progress is measured against the best remaining route reached so far.
-        if (remaining_route_[index] + 0.5F < group_.best_remaining[index])
+        if (route_.remaining[index] + 0.5F < group_.best_remaining[index])
         {
-            group_.best_remaining[index] = remaining_route_[index];
+            group_.best_remaining[index] = route_.remaining[index];
             group_.stall_ticks[index] = 0;
         }
         else if (++group_.stall_ticks[index] >= cohesion_stall_ticks)

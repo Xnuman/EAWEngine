@@ -169,7 +169,7 @@ template <typename Accepts> std::optional<std::size_t> SimulationWorld::choose_t
     float best_distance = 0.0F;
     for (const auto candidate : query_)
     {
-        if (candidate == index || !damageable(candidate) || !combat_.states[candidate].profile.targetable || !hostility_.hostile(identity_.owners[index], identity_.owners[candidate]) ||
+        if (candidate == index || !damageable(candidate) || !combat_.states[candidate].profile.targetable || !rules_.hostility.hostile(identity_.owners[index], identity_.owners[candidate]) ||
             !accepts(candidate))
         {
             continue;

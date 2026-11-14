@@ -310,6 +310,7 @@ struct CombatProfile
 class DamageTable final
 {
 public:
+    bool operator==(const DamageTable&) const = default;
     void set(std::uint16_t damage_type, std::uint16_t armor_type, float modifier);
     [[nodiscard]] float modifier(std::uint16_t damage_type, std::uint16_t armor_type) const noexcept;
     [[nodiscard]] std::size_t size() const noexcept;
@@ -323,6 +324,7 @@ private:
 class Hostility final
 {
 public:
+    bool operator==(const Hostility&) const = default;
     static constexpr std::uint32_t max_owners = 64;
 
     void set(std::uint32_t first, std::uint32_t second, bool hostile) noexcept;

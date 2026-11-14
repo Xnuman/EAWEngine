@@ -129,19 +129,19 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
         return make_error("simulation entity storage is full");
     }
     std::uint32_t slot{};
-    if (!free_slots_.empty())
+    if (!slots_.free.empty())
     {
-        slot = free_slots_.back();
-        free_slots_.pop_back();
+        slot = slots_.free.back();
+        slots_.free.pop_back();
     }
     else
     {
-        slot = static_cast<std::uint32_t>(generations_.size());
-        generations_.push_back(1);
-        slot_dense_.push_back(no_dense);
+        slot = static_cast<std::uint32_t>(slots_.generations.size());
+        slots_.generations.push_back(1);
+        slots_.dense.push_back(no_dense);
     }
-    const EntityId id{slot, generations_[slot]};
-    slot_dense_[slot] = static_cast<std::uint32_t>(identity_.ids.size());
+    const EntityId id{slot, slots_.generations[slot]};
+    slots_.dense[slot] = static_cast<std::uint32_t>(identity_.ids.size());
     if (spawn.movement.turn_begin_seconds[0] > 0.0F)
     {
         turn_clips_.add(slot);
@@ -188,11 +188,13 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     locomotor_.movements.push_back(spawn.movement);
     locomotor_.drive_speeds.push_back(0.0F);
     route_.loiter_points.emplace_back();
+    route_.remaining.push_back(0.0F);
     combat_.stances.push_back(spawn.stance);
     combat_.aims_with_body.push_back(spawn.aims_with_body ? 1U : 0U);
     placement_.pitches.push_back(0.0F);
     flight_.cruise_heights.push_back(spawn.position.z);
     motion_.speeds.push_back(0.0F);
+    motion_.starts.push_back(spawn.position);
     combat_.last_shot_ticks.push_back(0);
     orders_.command_serials.push_back(0);
     orders_.standing.push_back({.scan_timer = slot % retarget_interval});
@@ -215,9 +217,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
             EAW_ASSERT_MSG(column.size() == identity_.ids.size(), "every entity column needs one entry per entity (a column missing from spawn or for_each_column)");
         });
     stamp_footprint(identity_.ids.size() - 1U, true);
-    if (spawn.follows_ground && ground_.valid())
+    if (spawn.follows_ground && ground_.map.valid())
     {
-        placement_.positions.back().z = ground_.surface_height(spawn.position.x, spawn.position.y);
+        placement_.positions.back().z = ground_.map.surface_height(spawn.position.x, spawn.position.y);
     }
     return id;
 }
@@ -256,12 +258,12 @@ void SimulationWorld::run_commands()
     {
         apply(command);
     }
-    tick_start_positions_ = placement_.positions;
-    deaths_.clear();
-    impacts_.clear();
-    shots_.clear();
-    hardpoint_deaths_.clear();
-    spins_.clear();
+    motion_.starts = placement_.positions;
+    events_.deaths.clear();
+    events_.impacts.clear();
+    events_.shots.clear();
+    events_.hardpoint_deaths.clear();
+    events_.spins.clear();
 }
 
 void SimulationWorld::run_motion()
@@ -271,7 +273,7 @@ void SimulationWorld::run_motion()
     const auto dt = static_cast<float>(tick_seconds_);
     for (std::size_t index = 0; index < placement_.positions.size(); ++index)
     {
-        const auto& from = tick_start_positions_[index];
+        const auto& from = motion_.starts[index];
         const auto& to = placement_.positions[index];
         const auto moved = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y) + (to.z - from.z) * (to.z - from.z));
         motion_.speeds[index] = dt > 0.0F && std::isfinite(moved) ? moved / dt : 0.0F;
@@ -310,14 +312,14 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .path_searches = path_searches_,
             .partial_paths = partial_paths_,
             .path_expansions = path_expansions_,
-            .queued_paths = path_queue_.size(),
+            .queued_paths = path_queue_.requests.size(),
             .shared_routes = shared_routes_,
             .shots_fired = shots_fired_,
             .hits = hits_,
             .kills = kills_,
             .hardpoints_destroyed = hardpoints_destroyed_,
             .crushed = crushed_,
-            .projectiles = projectiles_.size(),
+            .projectiles = projectiles_.flying.size(),
             .separated_pairs = separated_pairs_,
             .waiting_members = waiting_members_,
             .released_members = released_members_,
@@ -504,7 +506,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(locomotor_.suspended[index]);
     }
     hasher.subject = StateSubject::routes;
-    for (const auto& request : path_queue_)
+    for (const auto& request : path_queue_.requests)
     {
         for (std::size_t member = 0; member < request.members.size(); ++member)
         {
@@ -515,7 +517,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(request.group_target);
     }
     hasher.subject = StateSubject::projectiles;
-    for (const auto& projectile : projectiles_)
+    for (const auto& projectile : projectiles_.flying)
     {
         hasher.add(projectile.position);
         hasher.add(projectile.aim);
@@ -549,11 +551,11 @@ bool SimulationWorld::turning_as_clips(const std::size_t index) const noexcept
 
 std::optional<std::size_t> SimulationWorld::dense_index(const EntityId id) const noexcept
 {
-    if (!id.valid() || id.index >= generations_.size() || generations_[id.index] != id.generation || slot_dense_[id.index] == no_dense)
+    if (!id.valid() || id.index >= slots_.generations.size() || slots_.generations[id.index] != id.generation || slots_.dense[id.index] == no_dense)
     {
         return std::nullopt;
     }
-    return slot_dense_[id.index];
+    return slots_.dense[id.index];
 }
 
 void SimulationWorld::destroy(const std::size_t dense)
@@ -569,24 +571,24 @@ void SimulationWorld::destroy(const std::size_t dense)
             {
                 column[dense] = std::move(column[last]);
             });
-        slot_dense_[identity_.ids[dense].index] = static_cast<std::uint32_t>(dense);
+        slots_.dense[identity_.ids[dense].index] = static_cast<std::uint32_t>(dense);
     }
     for_each_column(
         [](auto& column)
         {
             column.pop_back();
         });
-    slot_dense_[slot] = no_dense;
+    slots_.dense[slot] = no_dense;
     turn_clips_.remove(slot);
     walk_clips_.remove(slot);
     flight_maneuvers_.remove(slot);
     footprint_.remove(slot);
     crush_.remove(slot);
     // A slot whose generation would wrap is retired instead of reused.
-    if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
+    if (slots_.generations[slot] != std::numeric_limits<std::uint32_t>::max())
     {
-        ++generations_[slot];
-        free_slots_.push_back(slot);
+        ++slots_.generations[slot];
+        slots_.free.push_back(slot);
     }
 }
 
@@ -609,10 +611,10 @@ std::vector<Vector3> SimulationWorld::route(const EntityId id) const
 
 void SimulationWorld::set_ground(GroundMap ground)
 {
-    ground_ = std::move(ground);
+    ground_.map = std::move(ground);
     local_pathfinder_.reset();
-    ground_passability_ = ground_.passability;
-    footprint_cover_.assign(ground_passability_.size(), 0);
+    ground_.own_passability = ground_.map.passability;
+    ground_.footprint_cover.assign(ground_.own_passability.size(), 0);
     std::ranges::fill(footprint_.columns.stamped, std::uint8_t{0});
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
@@ -627,7 +629,7 @@ void SimulationWorld::set_ground(GroundMap ground)
 void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
 {
     const auto* footprint = footprint_.find(slot_of(index), &FootprintColumns::shapes);
-    if (footprint == nullptr || !ground_.valid() || ground_.passability.size() != ground_.heights.size() || footprint_cover_.size() != ground_.passability.size() ||
+    if (footprint == nullptr || !ground_.map.valid() || ground_.map.passability.size() != ground_.map.heights.size() || ground_.footprint_cover.size() != ground_.map.passability.size() ||
         (footprint_.get(slot_of(index), &FootprintColumns::stamped) != 0) == add)
     {
         return;
@@ -635,11 +637,11 @@ void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
     const auto cos_heading = std::cos(footprint->heading);
     const auto sin_heading = std::sin(footprint->heading);
     const auto reach = std::hypot(footprint->half_length, footprint->half_width);
-    const auto spacing = ground_.spacing;
+    const auto spacing = ground_.map.spacing;
     const auto first_column = std::max(0L, static_cast<long>(std::floor((footprint->center.x - reach) / spacing)));
-    const auto last_column = std::min(static_cast<long>(ground_.width) - 1, static_cast<long>(std::ceil((footprint->center.x + reach) / spacing)));
+    const auto last_column = std::min(static_cast<long>(ground_.map.width) - 1, static_cast<long>(std::ceil((footprint->center.x + reach) / spacing)));
     const auto first_row = std::max(0L, static_cast<long>(std::floor((footprint->center.y - reach) / spacing)));
-    const auto last_row = std::min(static_cast<long>(ground_.height) - 1, static_cast<long>(std::ceil((footprint->center.y + reach) / spacing)));
+    const auto last_row = std::min(static_cast<long>(ground_.map.height) - 1, static_cast<long>(std::ceil((footprint->center.y + reach) / spacing)));
     for (auto row = first_row; row <= last_row; ++row)
     {
         for (auto column = first_column; column <= last_column; ++column)
@@ -652,15 +654,15 @@ void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
             {
                 continue;
             }
-            const auto cell = static_cast<std::size_t>(row) * ground_.width + static_cast<std::size_t>(column);
+            const auto cell = static_cast<std::size_t>(row) * ground_.map.width + static_cast<std::size_t>(column);
             if (add)
             {
-                ++footprint_cover_[cell];
-                ground_.passability[cell] = footprint->passability;
+                ++ground_.footprint_cover[cell];
+                ground_.map.passability[cell] = footprint->passability;
             }
-            else if (footprint_cover_[cell] > 0 && --footprint_cover_[cell] == 0)
+            else if (ground_.footprint_cover[cell] > 0 && --ground_.footprint_cover[cell] == 0)
             {
-                ground_.passability[cell] = ground_passability_[cell];
+                ground_.map.passability[cell] = ground_.own_passability[cell];
             }
         }
     }
@@ -671,7 +673,7 @@ void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
 
 const GroundMap& SimulationWorld::ground() const noexcept
 {
-    return ground_;
+    return ground_.map;
 }
 
 void SimulationWorld::publish()
@@ -746,14 +748,14 @@ void SimulationWorld::publish()
                                                                      : 0.0F;
         }
     }
-    snapshot_.deaths = deaths_;
-    snapshot_.impacts = impacts_;
-    snapshot_.shots = shots_;
-    snapshot_.hardpoint_deaths = hardpoint_deaths_;
-    snapshot_.spins = spins_;
+    snapshot_.deaths = events_.deaths;
+    snapshot_.impacts = events_.impacts;
+    snapshot_.shots = events_.shots;
+    snapshot_.hardpoint_deaths = events_.hardpoint_deaths;
+    snapshot_.spins = events_.spins;
     snapshot_.projectiles.clear();
-    snapshot_.projectiles.reserve(projectiles_.size());
-    for (const auto& projectile : projectiles_)
+    snapshot_.projectiles.reserve(projectiles_.flying.size());
+    for (const auto& projectile : projectiles_.flying)
     {
         const Vector3 to_aim{projectile.aim.x - projectile.position.x, projectile.aim.y - projectile.position.y, projectile.aim.z - projectile.position.z};
         snapshot_.projectiles.push_back({projectile.position, projectile.direction, projectile.owner, projectile.visual, projectile.speed, projectile.serial, projectile.flown,

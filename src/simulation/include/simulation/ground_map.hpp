@@ -40,6 +40,7 @@ inline constexpr std::uint32_t impassable = 0x100;
 
 struct GroundMap
 {
+    bool operator==(const GroundMap&) const = default;
     std::uint32_t width{};
     std::uint32_t height{};
     // World units between samples along X and Y.

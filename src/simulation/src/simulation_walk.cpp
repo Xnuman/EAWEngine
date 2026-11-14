@@ -209,17 +209,17 @@ bool SimulationWorld::walk_straight(const std::size_t index, const float dt)
     const auto moved = keep_apart(index, {std::cos(heading) * step, std::sin(heading) * step, 0.0F});
     auto& position = placement_.positions[index];
     Vector3 next{position.x + moved.x, position.y + moved.y, position.z};
-    if (ground_mover_.follows_ground[index] != 0 && ground_.valid())
+    if (ground_mover_.follows_ground[index] != 0 && ground_.map.valid())
     {
         // Ground it may not enter holds it where it is while the clip plays on.
         if (const auto allowed = ground_mover_.passable_types[index]; allowed != 0)
         {
-            if (const auto there = ground_.passability_at(next.x, next.y); there && (*there & allowed) == 0)
+            if (const auto there = ground_.map.passability_at(next.x, next.y); there && (*there & allowed) == 0)
             {
                 return true;
             }
         }
-        next.z = ground_.surface_height(next.x, next.y);
+        next.z = ground_.map.surface_height(next.x, next.y);
     }
     position = next;
     return true;

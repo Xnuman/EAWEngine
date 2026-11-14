@@ -74,7 +74,7 @@ void SimulationWorld::run_movement()
             continue;
         }
         auto& position = placement_.positions[index];
-        if (ground_mover_.follows_ground[index] != 0 && ground_.valid())
+        if (ground_mover_.follows_ground[index] != 0 && ground_.map.valid())
         {
             move_over_ground(index, dt);
             continue;
@@ -140,7 +140,7 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
         while (!path.empty())
         {
             const auto& after = path.size() > 1 ? path[path.size() - 2] : *target;
-            if (!ground_line_passable(ground_, {position.x, position.y}, {after.x, after.y}, allowed))
+            if (!ground_line_passable(ground_.map, {position.x, position.y}, {after.x, after.y}, allowed))
             {
                 break;
             }
@@ -162,7 +162,7 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
         {
             // shortcut: brakes for the destination only, so a heavy unit slides a little past a
             // sharp corner while it stops to turn; look ahead to the corner if that shows.
-            remaining = move_speed(index, facing, remaining_route_[index], dt) * dt;
+            remaining = move_speed(index, facing, route_.remaining[index], dt) * dt;
             driven = true;
         }
         else
@@ -175,8 +175,8 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
         const auto next_y = position.y + delta_y * scale;
         if (allowed != 0)
         {
-            const auto here = ground_.passability_at(position.x, position.y);
-            const auto there = ground_.passability_at(next_x, next_y);
+            const auto here = ground_.map.passability_at(position.x, position.y);
+            const auto there = ground_.map.passability_at(next_x, next_y);
             const bool leaving_blocked = here && (*here & allowed) == 0;
             if (there && (*there & allowed) == 0 && !leaving_blocked)
             {
@@ -188,7 +188,7 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
                 return;
             }
         }
-        position = {next_x, next_y, ground_.surface_height(next_x, next_y)};
+        position = {next_x, next_y, ground_.map.surface_height(next_x, next_y)};
         if (!arrives)
         {
             return;
@@ -329,12 +329,12 @@ bool SimulationWorld::can_crush(const std::size_t crusher, const std::size_t vic
     const auto& squash = crush_profile_of(victim);
     const bool may = squash.squashable || (kind == Crusher::supercrusher && squash.squashable_by_supercrusher);
     const auto& combat = combat_.states[victim];
-    return kind != Crusher::none && victim != crusher && may && combat.profile.health > 0.0F && combat.health > 0.0F && hostility_.hostile(identity_.owners[crusher], identity_.owners[victim]);
+    return kind != Crusher::none && victim != crusher && may && combat.profile.health > 0.0F && combat.health > 0.0F && rules_.hostility.hostile(identity_.owners[crusher], identity_.owners[victim]);
 }
 
 void SimulationWorld::run_crushing()
 {
-    if (!ground_.valid())
+    if (!ground_.map.valid())
     {
         return;
     }
@@ -342,7 +342,7 @@ void SimulationWorld::run_crushing()
     for (std::size_t crusher = 0; crusher < identity_.ids.size(); ++crusher)
     {
         const auto kind = crush_profile_of(crusher).crusher;
-        const auto& from = tick_start_positions_[crusher];
+        const auto& from = motion_.starts[crusher];
         const auto& at = placement_.positions[crusher];
         if (kind == Crusher::none || ground_mover_.follows_ground[crusher] == 0 || placement_.radii[crusher] <= 0.0F || (from.x == at.x && from.y == at.y))
         {
@@ -368,7 +368,7 @@ void SimulationWorld::run_separation()
     separated_pairs_ = 0;
     // On land, ground units separate on the surface. Space ships do not push each other (they avoid
     // contact instead: plan_space_avoidance); only flyers separate there.
-    const bool land = ground_.valid();
+    const bool land = ground_.map.valid();
     // Flyers separate only from flyers of their owner (observed in the original: squadron mates push
     // each other apart), sideways so they keep their plane; overlap counts in 3D, so flyers passing
     // above or below each other do not push.
@@ -411,9 +411,9 @@ void SimulationWorld::run_separation()
         {
             return 2.0F;
         }
-        if (route_.move_targets[other] && locomotor_.max_speeds[other] > 0.0F && remaining_route_[index] != remaining_route_[other])
+        if (route_.move_targets[other] && locomotor_.max_speeds[other] > 0.0F && route_.remaining[index] != route_.remaining[other])
         {
-            return remaining_route_[index] < remaining_route_[other] ? 0.25F : 1.75F;
+            return route_.remaining[index] < route_.remaining[other] ? 0.25F : 1.75F;
         }
         return 1.0F;
     };
@@ -517,13 +517,13 @@ void SimulationWorld::run_separation()
         const auto next_y = position.y + push.y;
         if (const auto allowed = ground_mover_.passable_types[index]; allowed != 0)
         {
-            const auto there = ground_.passability_at(next_x, next_y);
+            const auto there = ground_.map.passability_at(next_x, next_y);
             if (there && (*there & allowed) == 0)
             {
                 continue;
             }
         }
-        position = {next_x, next_y, land && !flyer(index) ? ground_.surface_height(next_x, next_y) : position.z};
+        position = {next_x, next_y, land && !flyer(index) ? ground_.map.surface_height(next_x, next_y) : position.z};
     }
 }
 

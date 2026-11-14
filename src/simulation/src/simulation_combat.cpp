@@ -13,17 +13,17 @@ using namespace simulation_detail;
 
 void SimulationWorld::set_damage_table(DamageTable table)
 {
-    damage_table_ = std::move(table);
+    rules_.damage_table = std::move(table);
 }
 
 void SimulationWorld::set_hostility(const Hostility& hostility) noexcept
 {
-    hostility_ = hostility;
+    rules_.hostility = hostility;
 }
 
 const Hostility& SimulationWorld::hostility() const noexcept
 {
-    return hostility_;
+    return rules_.hostility;
 }
 
 std::uint32_t SimulationWorld::ticks_for(const float seconds) const noexcept
@@ -180,7 +180,7 @@ void SimulationWorld::update_target(const std::size_t index)
     if (combat.target.valid())
     {
         const auto victim = dense_index(combat.target);
-        bool keep = victim && damageable(*victim) && combat_.states[*victim].profile.targetable && hostility_.hostile(identity_.owners[index], identity_.owners[*victim]);
+        bool keep = victim && damageable(*victim) && combat_.states[*victim].profile.targetable && rules_.hostility.hostile(identity_.owners[index], identity_.owners[*victim]);
         if (keep && !combat.ordered)
         {
             keep = distance_xy(placement_.positions[index], placement_.positions[*victim]) <= range;
@@ -351,7 +351,7 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
     // The tick being run: the snapshot published at its end carries it as its tick.
     combat_.last_shot_ticks[shooter] = tick_ + 1U;
     const auto origin = world_point(shooter, mount);
-    shots_.push_back({identity_.ids[shooter], origin, weapon.fire_sound, weapon.launch_effect});
+    events_.shots.push_back({identity_.ids[shooter], origin, weapon.fire_sound, weapon.launch_effect});
     auto hardpoint = aim_hardpoint(victim, origin);
     if (weapon.random_hardpoints && hardpoint >= 0)
     {
@@ -390,7 +390,7 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
         const Vector3 delta{point.x - origin.x, point.y - origin.y, point.z - origin.z};
         const auto length = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto direction = length > 0.0F ? Vector3{delta.x / length, delta.y / length, delta.z / length} : Vector3{};
-        impacts_.push_back({point, direction, weapon.projectile_visual, kind, struck});
+        events_.impacts.push_back({point, direction, weapon.projectile_visual, kind, struck});
         area_blast(point, identity_.owners[shooter], weapon.blast, weapon.damage_type, weapon.damages_shield, weapon.damages_health);
         return;
     }
@@ -410,11 +410,11 @@ void SimulationWorld::launch(const std::size_t shooter, const std::size_t victim
     projectile.speed = weapon.projectile_speed;
     projectile.max_flight = weapon.max_flight_distance;
     projectile.visual = weapon.projectile_visual;
-    projectile.serial = next_projectile_serial_++;
+    projectile.serial = projectiles_.next_serial++;
     projectile.stray = offset;
     projectile.misses = misses;
     projectile.aim = {projectile.aim.x + offset.x, projectile.aim.y + offset.y, projectile.aim.z + offset.z};
-    projectiles_.push_back(projectile);
+    projectiles_.flying.push_back(projectile);
 }
 
 Vector3 SimulationWorld::stray(const WeaponProfile& weapon, const std::size_t victim)
@@ -474,7 +474,7 @@ std::optional<std::size_t> SimulationWorld::stray_victim(const Vector3& point, c
     float best_distance = 0.0F;
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
-        if (index == target || !combat_.states[index].profile.collidable || !damageable(index) || !hostility_.hostile(owner, identity_.owners[index]))
+        if (index == target || !combat_.states[index].profile.collidable || !damageable(index) || !rules_.hostility.hostile(owner, identity_.owners[index]))
         {
             continue;
         }
@@ -608,7 +608,7 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
     auto& combat = combat_.states[victim];
     if (damages_shield && combat.shield > 0.0F)
     {
-        const auto modifier = damage_table_.modifier(damage_type, combat.profile.shield_armor_type);
+        const auto modifier = rules_.damage_table.modifier(damage_type, combat.profile.shield_armor_type);
         const auto dealt = damage * modifier;
         if (dealt <= combat.shield)
         {
@@ -621,7 +621,7 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
     auto kind = ImpactKind::hull;
     if (damages_health)
     {
-        const auto modifier = damage_table_.modifier(damage_type, combat.profile.armor_type);
+        const auto modifier = rules_.damage_table.modifier(damage_type, combat.profile.armor_type);
         if (modifier < 1.0F)
         {
             kind = ImpactKind::hull_reduced;
@@ -644,7 +644,7 @@ ImpactKind SimulationWorld::apply_damage(const std::size_t victim, float damage,
             part = 0.0F;
             ++hardpoints_destroyed_;
             const auto& profile = combat.profile.hardpoints[part_index];
-            hardpoint_deaths_.push_back(
+            events_.hardpoint_deaths.push_back(
                 {identity_.ids[victim], static_cast<std::uint32_t>(part_index), world_point(victim, profile.offset), profile.death_sound, profile.death_effect, profile.type_key});
         }
         // The hull follows its parts, and falls with the last of them.
@@ -676,9 +676,9 @@ void SimulationWorld::run_projectiles()
 {
     const auto dt = static_cast<float>(tick_seconds_);
     std::size_t kept = 0;
-    for (std::size_t index = 0; index < projectiles_.size(); ++index)
+    for (std::size_t index = 0; index < projectiles_.flying.size(); ++index)
     {
-        auto projectile = projectiles_[index];
+        auto projectile = projectiles_.flying[index];
         // Shots home on their target's current aim point; a dead target's shot flies on to the
         // last point and is lost there.
         auto victim = dense_index(projectile.target);
@@ -693,7 +693,7 @@ void SimulationWorld::run_projectiles()
                 const auto& at = placement_.positions[other];
                 const auto distance = std::sqrt((at.x - projectile.position.x) * (at.x - projectile.position.x) + (at.y - projectile.position.y) * (at.y - projectile.position.y) +
                                                 (at.z - projectile.position.z) * (at.z - projectile.position.z));
-                if (damageable(other) && combat_.states[other].profile.targetable && hostility_.hostile(projectile.owner, identity_.owners[other]) && distance <= best)
+                if (damageable(other) && combat_.states[other].profile.targetable && rules_.hostility.hostile(projectile.owner, identity_.owners[other]) && distance <= best)
                 {
                     victim = other;
                     best = distance;
@@ -726,18 +726,18 @@ void SimulationWorld::run_projectiles()
             {
                 ++hits_;
                 const auto kind = apply_damage(*victim, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, projectile.target_hardpoint);
-                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind, identity_.ids[*victim]});
+                events_.impacts.push_back({projectile.aim, projectile.direction, projectile.visual, kind, identity_.ids[*victim]});
             }
             else if (const auto other = projectile.misses ? stray_victim(projectile.aim, projectile.owner, victim.value_or(identity_.ids.size())) : std::nullopt)
             {
                 ++hits_;
                 const auto kind = apply_damage(*other, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, -1);
-                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, kind, identity_.ids[*other]});
+                events_.impacts.push_back({projectile.aim, projectile.direction, projectile.visual, kind, identity_.ids[*other]});
             }
             else
             {
                 // A shot that strays off its target, or whose target died, is lost at its aim point.
-                impacts_.push_back({projectile.aim, projectile.direction, projectile.visual, ImpactKind::expired});
+                events_.impacts.push_back({projectile.aim, projectile.direction, projectile.visual, ImpactKind::expired});
             }
             area_blast(projectile.aim, projectile.owner, projectile.blast, projectile.damage_type, projectile.damages_shield, projectile.damages_health);
             continue;
@@ -748,13 +748,13 @@ void SimulationWorld::run_projectiles()
         const bool expired = projectile.lifetime_ticks > 0U && --projectile.lifetime_ticks == 0U;
         if ((projectile.max_flight > 0.0F && projectile.flown > projectile.max_flight) || expired)
         {
-            impacts_.push_back({projectile.position, projectile.direction, projectile.visual, ImpactKind::expired});
+            events_.impacts.push_back({projectile.position, projectile.direction, projectile.visual, ImpactKind::expired});
             area_blast(projectile.position, projectile.owner, projectile.blast, projectile.damage_type, projectile.damages_shield, projectile.damages_health);
             continue;
         }
-        projectiles_[kept++] = projectile;
+        projectiles_.flying[kept++] = projectile;
     }
-    projectiles_.resize(kept);
+    projectiles_.flying.resize(kept);
 }
 
 void SimulationWorld::area_blast(const Vector3& point, const std::uint32_t owner, const AreaBlast& blast, const std::uint16_t damage_type, const bool damages_shield, const bool damages_health)
@@ -767,7 +767,7 @@ void SimulationWorld::area_blast(const Vector3& point, const std::uint32_t owner
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         const bool friendly = identity_.owners[index] == owner;
-        if (!damageable(index) || (!hostility_.hostile(owner, identity_.owners[index]) && !(friendly && blast.friendly_damage > 0.0F)))
+        if (!damageable(index) || (!rules_.hostility.hostile(owner, identity_.owners[index]) && !(friendly && blast.friendly_damage > 0.0F)))
         {
             continue;
         }
@@ -806,7 +806,7 @@ void SimulationWorld::remove_dead()
                 locomotor_.speed_limits[index] = 0.0F;
                 group_.ids[index] = 0;
                 orders_.standing[index].kind = StandingOrder::none;
-                spins_.push_back({identity_.ids[index], placement_.positions[index]});
+                events_.spins.push_back({identity_.ids[index], placement_.positions[index]});
                 continue;
             }
             if (combat.spin_ticks > 1U)
@@ -815,8 +815,8 @@ void SimulationWorld::remove_dead()
                 continue;
             }
             const bool spun = combat.spin_ticks != 0;
-            deaths_.push_back({identity_.ids[index], placement_.positions[index], placement_.headings[index], placement_.pitches[index], identity_.visuals[index], identity_.owners[index],
-                               spun && combat.profile.spin_effect != 0 ? combat.profile.spin_effect : combat.profile.death_effect, combat.profile.type_key, combat.crushed});
+            events_.deaths.push_back({identity_.ids[index], placement_.positions[index], placement_.headings[index], placement_.pitches[index], identity_.visuals[index], identity_.owners[index],
+                                      spun && combat.profile.spin_effect != 0 ? combat.profile.spin_effect : combat.profile.death_effect, combat.profile.type_key, combat.crushed});
             const auto position = placement_.positions[index];
             const auto owner = identity_.owners[index];
             const auto profile_blast = combat_.states[index].profile.death_blast;

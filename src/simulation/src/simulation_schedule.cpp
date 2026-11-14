@@ -22,7 +22,7 @@ const std::array<SimulationWorld::SystemEntry, 9> SimulationWorld::schedule_{{
     {"commands", TickPhase::commands, &SimulationWorld::run_commands, all_data, all_data},
     {"behavior", TickPhase::behavior, &SimulationWorld::run_behavior,
      access_to({SimData::clock, SimData::combat, SimData::flight, SimData::flight_maneuvers, SimData::ground, SimData::ground_mover, SimData::group, SimData::identity, SimData::locomotor,
-                SimData::orders, SimData::path_queue, SimData::placement, SimData::route, SimData::slots, SimData::steering, SimData::walk_clips}),
+                SimData::orders, SimData::path_queue, SimData::placement, SimData::route, SimData::slots, SimData::steering, SimData::walk_clips, SimData::rules}),
      // plan_move: the route, a walker's new way, and the queued route search.
      access_to({SimData::steering, SimData::orders, SimData::combat, SimData::route, SimData::walk_clips, SimData::path_queue})},
     {"navigation", TickPhase::navigation, &SimulationWorld::run_navigation,
@@ -34,12 +34,13 @@ const std::array<SimulationWorld::SystemEntry, 9> SimulationWorld::schedule_{{
                 SimData::placement, SimData::route, SimData::steering, SimData::turn_clips, SimData::walk_clips}),
      access_to({SimData::placement, SimData::locomotor, SimData::route, SimData::path_queue, SimData::group, SimData::flight_maneuvers, SimData::turn_clips, SimData::walk_clips})},
     // Crushing wounds what it runs over.
-    {"crushing", TickPhase::crushing, &SimulationWorld::run_crushing, access_to({SimData::combat, SimData::crush, SimData::ground, SimData::ground_mover, SimData::identity, SimData::placement}),
-     access_to({SimData::combat})},
+    {"crushing", TickPhase::crushing, &SimulationWorld::run_crushing,
+     access_to({SimData::combat, SimData::crush, SimData::ground, SimData::ground_mover, SimData::identity, SimData::placement, SimData::motion, SimData::rules}), access_to({SimData::combat})},
     {"separation", TickPhase::separation, &SimulationWorld::run_separation,
-     access_to({SimData::combat, SimData::crush, SimData::flight, SimData::ground, SimData::ground_mover, SimData::identity, SimData::locomotor, SimData::placement, SimData::route}),
-     access_to({SimData::placement})},
-    {"motion", TickPhase::separation, &SimulationWorld::run_motion, access_to({SimData::placement}), access_to({SimData::motion})},
+     access_to({SimData::combat, SimData::crush, SimData::flight, SimData::ground, SimData::ground_mover, SimData::identity, SimData::locomotor, SimData::placement, SimData::route, SimData::rules}),
+     // The remaining routes, measured again after movement.
+     access_to({SimData::placement, SimData::route})},
+    {"motion", TickPhase::separation, &SimulationWorld::run_motion, access_to({SimData::placement, SimData::motion}), access_to({SimData::motion})},
     {"combat", TickPhase::combat, &SimulationWorld::run_combat, all_data, all_data},
     {"publish", TickPhase::publish, &SimulationWorld::run_publish,
      access_to({SimData::clock, SimData::combat, SimData::events, SimData::flight_maneuvers, SimData::ground_mover, SimData::identity, SimData::locomotor, SimData::motion, SimData::orders,
@@ -50,8 +51,8 @@ const std::array<SimulationWorld::SystemEntry, 9> SimulationWorld::schedule_{{
 std::string_view SimulationWorld::sim_data_name(const SimData data) noexcept
 {
     static constexpr std::array<std::string_view, sim_data_count> names{
-        "identity",   "placement",        "motion",     "locomotor", "ground_mover", "route",      "flight",      "combat", "orders",        "steering", "formation", "group", "turn_clips",
-        "walk_clips", "flight_maneuvers", "footprints", "crush",     "ground",       "path_queue", "projectiles", "events", "combat_random", "snapshot", "clock",     "slots", "commands"};
+        "identity",         "placement",  "motion", "locomotor", "ground_mover", "route",       "flight", "combat",        "orders",   "steering", "formation", "group",    "turn_clips", "walk_clips",
+        "flight_maneuvers", "footprints", "crush",  "ground",    "path_queue",   "projectiles", "events", "combat_random", "snapshot", "clock",    "slots",     "commands", "rules"};
     static_assert(!names.back().empty(), "every kind of simulation data needs its name");
     return names[static_cast<std::size_t>(data)];
 }
