@@ -150,6 +150,20 @@ eaw::Status clip_joins(const eaw::VirtualFileSystem& vfs, const std::string& mod
         }
         join(begin, -1.0, end, std::string("TURN") + side + "_BEGIN end -> TURN" + side + "_END start");
         join(end, -1.0, idle, std::string("TURN") + side + "_END end -> IDLE start");
+        // The partial turns (HALF, QUARTER): whether each is a loop, or a one-shot from BEGIN or IDLE
+        // into END or IDLE.
+        for (const auto* part : {"HALF", "QUARTER"})
+        {
+            const auto name = std::string("TURN") + side + "_" + part;
+            const auto clip = load(name + "_00");
+            join(clip, -1.0, clip, name + " end -> start (loop)");
+            join(idle, 0.0, clip, "IDLE start -> " + name + " start");
+            join(begin, -1.0, clip, std::string("TURN") + side + "_BEGIN end -> " + name + " start");
+            join(loop, -1.0, clip, std::string("TURN") + side + " end -> " + name + " start");
+            join(clip, -1.0, loop, name + " end -> TURN" + side + " start");
+            join(clip, -1.0, end, name + " end -> TURN" + side + "_END start");
+            join(clip, -1.0, idle, name + " end -> IDLE start");
+        }
     }
     return {};
 }

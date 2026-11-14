@@ -378,8 +378,8 @@ EAWAssetInspector.exe inspect Data/Art/Models/Some_Unit.alo
 # and how fast a turn clip turns the body; the model is found from the clip's name
 EAWAssetInspector.exe gait Data/Art/Models/EV_AT-AT_MOVE_00.ala
 
-# Whether a model's clips meet where the engine joins them (idle, start, walk, the stops by quarter,
-# turns): the largest bone jump at each join
+# Whether a model's clips meet where the engine joins them (idle, start, walk, the stops by part of
+# the stride, turns with their HALF and QUARTER cycles): the largest bone jump at each join
 EAWAssetInspector.exe clip-joins Data/Art/Models/EV_AT-AT.alo
 
 # A particle system: each emitter's texture, blend, rate, kind, gravity (weather emitters also

@@ -1095,9 +1095,29 @@ particle-audit`.
   of MOVESTART and the start of MOVE, MOVE's loop, the end of every MOVE_END clip and IDLE's start,
   and the turns' BEGIN, loop, and END. Each MOVE_END clip starts where MOVE is at one quarter of
   its stride: ENDONE at 0/4, ENDTWO at 1/4, ENDTHREE at 2/4, ENDFOUR at 3/4 (elsewhere the toes jump
-  10-16 units). The AT-AA and SPMAT follow the same rule. So a walker that stops walks on to the
-  next quarter of its stride before its MOVE_END plays (the original's behavior by this evidence;
-  how it times the walk-on is not known).
+  10-16 units). Models with three MOVE_END clips (AT-ST, AT-AA, SPMAT, pod walker, Rancor, Night
+  Sister) start them at thirds of the stride instead. So a walker that stops walks on to the next
+  1/n of its stride, n its MOVE_END count, before its MOVE_END plays (the original's behavior by this
+  evidence; how it times the walk-on is not known).
+- **The turn kit** (2026-11-14, `clip-joins` over every stock model with transition clips). Ten
+  models carry the same set: TURNL/TURNR loops with _BEGIN, _END, _HALF, and _QUARTER (AT-AT, AT-ST,
+  AT-AA, SPMAT, pod walker, Rancor, Wampa, Tauntaun, Hutt, Night Sister); 25 more (infantry,
+  heroes, small creatures) have only the two loops. On all ten, joins within 0.5 units (pod
+  walker: a constant 13 units on one bone at every join, an artifact) show one pose shared by
+  IDLE's first frame, the start of MOVESTART and of each TURNx_BEGIN, and the end of every MOVE_END
+  and TURNx_END; one pose shared by BEGIN's end, END's start, and the start and end of the loop,
+  HALF, and QUARTER; and MOVESTART's end meets MOVE's start (within 1.1). HALF and QUARTER never
+  meet IDLE (4-21 units): they are not turns of their own but cycles interchangeable with the loop
+  between BEGIN and END, in any order. A loop cycle meets END only at its end (1-14 units off at
+  its quarters). HALF and QUARTER are as long as the loop or shorter (Rancor 20 frames against 30,
+  SPMAT 30 against 60, AT-AA's QUARTER 25 against 40), with smaller foot sweeps (AT-ST planted feet
+  about 62% and 39% of the loop's speed). The body-turn estimate from planted bones is too noisy on
+  these clips to measure the angle each cycle stands for (left and right sides disagree by up to
+  four times). Inference, not evidence: by their names, each stands for a half and a quarter of
+  the loop's angle, so the original likely composes a turn of a given size from whole cycles,
+  as a coin change (BEGIN, loops, a HALF, a QUARTER, END). Leaving IDLE mid-loop costs 0.1-0.3
+  units on the walkers and 1.6-3 on the creatures (SPMAT 4, on one bone): the only join in the kit
+  not authored to meet.
 - **Bone billboards** (2026-11-13). An ALO bone carries a billboard mode that turns the meshes on
   it. The MIT-licensed alo-viewer names the values 0 none, 1 parallel, 2 face, 3 about Z toward the
   view, 4 about Z toward the light, 5 about Z toward the wind, 6 sun glow, 7 sun, treats billboarded
