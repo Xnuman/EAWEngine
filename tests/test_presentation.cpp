@@ -576,6 +576,42 @@ void test_unit_animation()
                                       });
         };
         require(same_pose(pose(true, false), pose(false, false)) && !same_pose(pose(true, true), pose(false, false)), "a unit without ATTACKIDLE must not aim, and must play ATTACK when it fires");
+
+        // An overlay attack (Attack_Animation_Is_Overlay) adds what its clip does since its first
+        // frame: an ATTACK held 5 units up throughout moves nothing, one that starts 20 up and rises over
+        // its playing time lifts the bone by its rise so far (not to its own height) over the pose below it.
+        const auto overlay_height = [&](const bool rising, const bool fired)
+        {
+            auto attack = *animation;
+            for (auto& track : attack.tracks)
+            {
+                const auto keys = std::max<std::size_t>(track.keys.size(), 2U) - 1U;
+                for (std::size_t key = 0; key < track.keys.size(); ++key)
+                {
+                    track.keys[key].translation.z += rising ? 20.0F + 10.0F * static_cast<float>(key) / static_cast<float>(keys) : 5.0F;
+                }
+                track.animated = !rising ? false : track.animated;
+            }
+            auto overlay_rig = rig;
+            overlay_rig.clips[2].animation = std::make_shared<const eaw::Animation>(std::move(attack));
+            const std::array<eaw::VisualRig, 1> overlay_rigs{overlay_rig};
+            const std::array<eaw::AnimationProfile, 1> overlay_profile{eaw::AnimationProfile{.attack_overlay = true}};
+            eaw::UnitAnimator gunner(overlay_rigs, rest);
+            std::vector<eaw::EntitySnapshot> tank(1);
+            tank[0].id = {3, 1};
+            tank[0].max_speed = 10.0F;
+            std::vector<eaw::EntityId> tank_id{tank[0].id};
+            std::vector<eaw::VisualInstance> shown(1);
+            std::vector<eaw::Matrix4> tank_palette;
+            gunner.animate(tank, tank_id, shown, 1.0, 1U << 20U, tank_palette, overlay_profile);
+            tank[0].last_shot_tick = fired ? 10U : 0U;
+            gunner.animate(tank, tank_id, shown, 1.05, 1U << 20U, tank_palette, overlay_profile);
+            gunner.animate(tank, tank_id, shown, 1.3, 1U << 20U, tank_palette, overlay_profile);
+            return tank_palette[shown[0].bone_offset].values[14];
+        };
+        const auto still_height = overlay_height(false, false);
+        require(std::fabs(overlay_height(false, true) - still_height) < 1.0e-4F && overlay_height(true, true) - still_height > 0.5F && overlay_height(true, true) - still_height < 10.0F,
+                "an overlay attack must add only what its clip moves since its first frame");
     }
 
     // Corpses: a mesh with a DIE clip keeps its dead for the clip plus 4 s, drawn after the living

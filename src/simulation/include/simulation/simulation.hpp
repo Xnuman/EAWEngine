@@ -922,8 +922,11 @@ private:
         float scale{1.0F};
         bool ends_move{};
         Vector3 destination;
-        // Its way is more than 90 degrees off: it holds its heading, stops at its stride's next
-        // part, and turns in place from there.
+        // A new destination came while it walks (plan_move): the first way to it decides whether it
+        // turns in place first (steer).
+        bool new_way{};
+        // That way is more than its turn-in-place angle off: it holds its heading, stops at its
+        // stride's next part, and turns in place from there.
         bool turn_back{};
     };
     std::vector<WalkPlan> walk_plans_;

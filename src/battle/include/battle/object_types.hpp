@@ -240,6 +240,11 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
 // owner's observation that land units do not turn while moving off; GameConstants'
 // CloseEnoughAngleForMoveStart says 180, which would never stop them, so the two disagree).
 inline constexpr float ground_turn_in_place_angle = 0.785398163F;
+// A walker whose turns in place are played as clips turns in place for a way more than this far off
+// (radians), from rest and for a new destination while it walks, unless its type gives
+// Close_Enough_Angle_For_Move_Start: 30 degrees, the owner's observation of the AT-AA (2026-11-14;
+// the AT-AT's XML says 30 too).
+inline constexpr float walker_turn_in_place_angle = 0.523598776F;
 // The turn speed fraction of space ships that do not name one: they turn only at full speed, and
 // keep it through the turn (recorded in the FoC debug build: a corvette, which names none, ordered
 // 90 degrees left from rest flies straight for 62 frames, turns once it reaches 3.72, its full

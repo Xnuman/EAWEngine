@@ -33,6 +33,12 @@ struct Quaternion
             left.w * right.z + left.x * right.y - left.y * right.x + left.z * right.w, left.w * right.w - left.x * right.x - left.y * right.y - left.z * right.z};
 }
 
+// The inverse rotation of a unit quaternion.
+[[nodiscard]] constexpr Quaternion conjugate(const Quaternion& q) noexcept
+{
+    return {-q.x, -q.y, -q.z, q.w};
+}
+
 [[nodiscard]] constexpr float dot(const Quaternion& a, const Quaternion& b) noexcept
 {
     return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;

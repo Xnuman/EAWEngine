@@ -33,10 +33,6 @@ inline constexpr std::uint32_t cohesion_stall_ticks = 90;
 // Path search nodes expanded per tick at most (about 5 ms in a Release build), always at least one
 // request. An engine choice; requests beyond it wait for the next tick in order.
 inline constexpr std::uint64_t path_budget_per_tick = 30000;
-// A walk played as clips whose way is this far off its heading or more (radians) stops at its
-// stride's next part and turns in place; less, it turns while it walks (the owner's recording of
-// the original: an AT-AT swings 90 degrees and back while walking).
-inline constexpr float walk_turn_back_angle = pi / 2.0F;
 // Steepest climb or dive of a flyer (radians). An engine choice.
 inline constexpr float flight_max_pitch = pi / 3.0F;
 // A flyer reverses through a half-loop instead of a flat turn when its goal lies more than this far

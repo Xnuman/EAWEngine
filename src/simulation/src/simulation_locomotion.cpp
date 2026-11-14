@@ -219,10 +219,14 @@ float SimulationWorld::steer(const std::size_t index, const float desired, const
     {
         return std::max(0.0F, std::cos(wrap_angle(desired - heading)));
     }
-    // A walk played as clips turning back holds its heading until its stop (walk_speed).
-    if (auto& walk = walk_plans_[index]; movement.walk_stop_parts > 0 && walk.clip == WalkClip::moving && std::fabs(difference) >= walk_turn_back_angle)
+    // A walk played as clips given a new destination more than its turn-in-place angle off holds its
+    // heading, stops at its stride's next part, and turns in place with its clips (walk_speed); a
+    // route's corners it turns while it walks (the owner's recording of the original: an AT-AT swings
+    // 90 degrees and back while walking).
+    if (auto& walk = walk_plans_[index]; walk.new_way && walk.clip == WalkClip::moving)
     {
-        walk.turn_back = true;
+        walk.new_way = false;
+        walk.turn_back = movement.turn_begin_seconds[0] > 0.0F && movement.turn_in_place_angle > 0.0F && std::fabs(difference) > movement.turn_in_place_angle;
     }
     if (walk_plans_[index].turn_back)
     {

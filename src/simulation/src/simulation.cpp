@@ -359,6 +359,7 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
             hash = hash_value(hash, walk.destination.y);
             hash = hash_value(hash, walk.destination.z);
             hash = hash_value(hash, static_cast<std::uint8_t>(walk.turn_back ? 1U : 0U));
+            hash = hash_value(hash, static_cast<std::uint8_t>(walk.new_way ? 1U : 0U));
         }
         hash = hash_value(hash, drive_speeds_[index]);
         hash = hash_value(hash, stances_[index]);

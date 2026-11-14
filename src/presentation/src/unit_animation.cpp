@@ -3,6 +3,7 @@
 #include "unit_animation_internal.hpp"
 
 #include "math/matrix.hpp"
+#include "math/quaternion.hpp"
 #include "math/scalar.hpp"
 #include "core/string_utils.hpp"
 #include "assets/animation.hpp"
@@ -179,23 +180,32 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
         const auto weight = static_cast<float>(layer.eighths);
         if (key.overlay && index >= 2 && !pose.empty() && layer.clip >= 0)
         {
-            // An overlay moves only the bones its clip animates, by its own weight, over the rest.
-            std::vector<bool> moved(pose.size(), false);
-            for (const auto& track : rig.clips[static_cast<std::size_t>(layer.clip)].animation->tracks)
+            // An overlay adds what its clip does to the pose below it: each bone the clip moves turns,
+            // shifts, and scales by its change since the clip's first frame, at the layer's weight (an
+            // engine reading of Attack_Animation_Is_Overlay: the AT-AT's and AT-ST's attacks move
+            // their barrels only, the pod walker's recoils its whole body, which must not undo its
+            // walk).
+            const auto& animation = *rig.clips[static_cast<std::size_t>(layer.clip)].animation;
+            const auto first = sample_local_pose(animation, *rig.skeleton, 0.0F);
+            const auto amount = std::min(weight / 8.0F, 1.0F);
+            for (const auto& track : animation.tracks)
             {
-                if (track.animated && track.bone < moved.size())
+                const auto bone = static_cast<std::size_t>(track.bone);
+                if (!track.animated || bone >= pose.size() || bone >= layer_pose.size() || bone >= first.size())
                 {
-                    moved[track.bone] = true;
+                    continue;
                 }
-            }
-            for (std::size_t bone = 0; bone < pose.size() && bone < layer_pose.size(); ++bone)
-            {
-                if (!moved[bone])
+                auto& shown = pose[bone];
+                const auto turn = slerp(Quaternion::identity(), conjugate(first[bone].rotation) * layer_pose[bone].rotation, amount);
+                shown.rotation = normalize_or(shown.rotation * turn, shown.rotation);
+                shown.translation = shown.translation + (layer_pose[bone].translation - first[bone].translation) * amount;
+                const auto grow = [&](const float from, const float to)
                 {
-                    layer_pose[bone] = pose[bone];
-                }
+                    return from != 0.0F ? 1.0F + (to / from - 1.0F) * amount : 1.0F;
+                };
+                shown.scale = {shown.scale.x * grow(first[bone].scale.x, layer_pose[bone].scale.x), shown.scale.y * grow(first[bone].scale.y, layer_pose[bone].scale.y),
+                               shown.scale.z * grow(first[bone].scale.z, layer_pose[bone].scale.z)};
             }
-            blend_pose(pose, layer_pose, std::min(weight / 8.0F, 1.0F));
             continue;
         }
         if (pose.empty())

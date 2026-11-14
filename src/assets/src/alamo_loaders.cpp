@@ -117,6 +117,32 @@ Model load_model(const AloModelData& data)
     return model;
 }
 
+namespace {
+
+// A key differs from another when its rotation turns more than about a tenth of a degree, or its
+// translation or scale changes by more than this (engine choices: far below what shows on screen).
+constexpr float still_rotation_dot = 0.9999995F;
+constexpr float still_translation = 1.0e-3F;
+constexpr float still_scale = 1.0e-4F;
+
+// Whether the track's keys move its bone at all: a track whose keys all hold the first one's
+// transform does not, even when the file says it carries rotation, translation, or scale.
+bool keys_move(const std::vector<AnimationKey>& keys) noexcept
+{
+    for (const auto& key : keys)
+    {
+        const auto& first = keys.front();
+        const auto dot = std::fabs(key.rotation.x * first.rotation.x + key.rotation.y * first.rotation.y + key.rotation.z * first.rotation.z + key.rotation.w * first.rotation.w);
+        if (dot < still_rotation_dot || length(key.translation - first.translation) > still_translation || length(key.scale - first.scale) > still_scale)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
 Animation load_animation(const AlaAnimationData& animation)
 {
     Animation result;
@@ -127,12 +153,12 @@ Animation load_animation(const AlaAnimationData& animation)
     for (const auto& track : animation.tracks)
     {
         AnimationTrack loaded{track.name, track.bone_index, track.stepped, {}};
-        loaded.animated = track.rotation || track.translation || track.scale;
         loaded.keys.reserve(track.frames.size());
         for (const auto& frame : track.frames)
         {
             loaded.keys.push_back({frame.translation, frame.scale, frame.rotation, frame.visible});
         }
+        loaded.animated = (track.rotation || track.translation || track.scale) && keys_move(loaded.keys);
         result.tracks.push_back(std::move(loaded));
     }
     return result;

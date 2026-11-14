@@ -102,7 +102,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Alternate_Max_Rate_Of_Turn` | `needs secondary locomotor` | jetpack and phase heroes |
 | `Stopped_Rate_Of_Turn` | `done` |  |
 | `Min_Speed_Fraction_For_Turn` | `done` |  |
-| `Close_Enough_Angle_For_Move_Start` | `done` | the default (45) disagrees with GameConstants (180); see the roadmap |
+| `Close_Enough_Angle_For_Move_Start` | `done` | the default (45) disagrees with GameConstants (180); see the roadmap. Walkers with turn clips default to 30 (the owner's observation of the AT-AA) and use it for a new destination while walking as well (2026-11-14) |
 | `Begin_Turn_Towards_Distance` | `gap` |  |
 | `Bank_Turn_Angle` | `partial` | limits the flyers' bank; capital ships do not bank yet |
 | `Max_Rate_Of_Roll` | `gap` | needs per-entity bank state in presentation |
@@ -343,7 +343,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Collidable_By_Projectile_Living` | `done` |  |
 | `Collidable_By_Projectile_Dead` | `gap` |  |
 | `Attack_Category_Restrictions` | `done` | applies to all the unit's weapons |
-| `Attack_Animation_Is_Overlay` | `done` | ATTACK and ATTACKIDLE play over the locomotion on the bones their clip animates only (2026-11-14) |
+| `Attack_Animation_Is_Overlay` | `done` | ATTACK and ATTACKIDLE add their bones' change since their first frame to the locomotion (2026-11-14; an engine reading: the pod walker's attack recoils its whole body) |
 
 ### Turrets
 
