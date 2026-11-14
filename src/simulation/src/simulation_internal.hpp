@@ -159,30 +159,36 @@ inline float wrap_angle(float angle) noexcept
 
 namespace eaw {
 
-template <typename Accepts> std::optional<std::size_t> SimulationWorld::choose_target(const std::size_t index, const Vector3& center, const float reach, const Accepts& accepts)
+template <class Data, typename Accepts>
+std::optional<std::size_t> SimulationWorld::choose_target(Data& data, const SpatialGrid& grid, std::vector<std::uint32_t>& query, const std::size_t index, const Vector3& center, const float reach,
+                                                          const Accepts& accepts)
 {
-    const auto& priorities = combat_.states[index].profile.targeting;
-    query_.clear();
-    grid_.query(center, reach, query_);
+    auto& identity = data.template get<IdentityColumns>();
+    auto& placement = data.template get<PlacementColumns>();
+    auto& combat = data.template get<CombatColumns>();
+    auto& rules = data.template get<Rules>();
+    const auto& priorities = combat.states[index].profile.targeting;
+    query.clear();
+    grid.query(center, reach, query);
     std::optional<std::size_t> best;
     float best_rank = 0.0F;
     float best_distance = 0.0F;
-    for (const auto candidate : query_)
+    for (const auto candidate : query)
     {
-        if (candidate == index || !damageable(candidate) || !combat_.states[candidate].profile.targetable || !rules_.hostility.hostile(identity_.owners[index], identity_.owners[candidate]) ||
+        if (candidate == index || !damageable(data, candidate) || !combat.states[candidate].profile.targetable || !rules.hostility.hostile(identity.owners[index], identity.owners[candidate]) ||
             !accepts(candidate))
         {
             continue;
         }
-        const auto& profile = combat_.states[candidate].profile;
+        const auto& profile = combat.states[candidate].profile;
         const auto rank = priorities.rank(profile.categories, profile.properties, profile.type_key);
-        const auto distance = simulation_detail::distance_xy(center, placement_.positions[candidate]);
+        const auto distance = simulation_detail::distance_xy(center, placement.positions[candidate]);
         if (rank < 0.0F || distance > reach)
         {
             continue;
         }
-        const auto lower = best && (identity_.ids[candidate].index != identity_.ids[*best].index ? identity_.ids[candidate].index < identity_.ids[*best].index
-                                                                                                 : identity_.ids[candidate].generation < identity_.ids[*best].generation);
+        const auto lower = best && (identity.ids[candidate].index != identity.ids[*best].index ? identity.ids[candidate].index < identity.ids[*best].index
+                                                                                               : identity.ids[candidate].generation < identity.ids[*best].generation);
         if (!best || rank < best_rank || (rank == best_rank && (distance < best_distance || (distance == best_distance && lower))))
         {
             best = candidate;
@@ -339,5 +345,86 @@ template <class Data> std::optional<std::size_t> SimulationWorld::dense_index(Da
         return std::nullopt;
     }
     return slots.dense[id.index];
+}
+template <class Data> std::int32_t SimulationWorld::aim_hardpoint(Data& data, const std::size_t victim, const Vector3& from) noexcept
+{
+    auto& combat = data.template get<CombatColumns>();
+    std::int32_t best = -1;
+    float best_distance = 0.0F;
+    const auto& hardpoints = combat.states[victim].profile.hardpoints;
+    for (std::size_t hardpoint = 0; hardpoint < hardpoints.size(); ++hardpoint)
+    {
+        // Indestructible parts are not aimed at; destroyed ones no longer are.
+        if (!hardpoints[hardpoint].targetable || hardpoints[hardpoint].health <= 0.0F || combat.states[victim].hardpoint_health[hardpoint] <= 0.0F)
+        {
+            continue;
+        }
+        const auto point = world_point(data, victim, hardpoints[hardpoint].offset);
+        const auto distance = (point.x - from.x) * (point.x - from.x) + (point.y - from.y) * (point.y - from.y) + (point.z - from.z) * (point.z - from.z);
+        if (best < 0 || distance < best_distance)
+        {
+            best = static_cast<std::int32_t>(hardpoint);
+            best_distance = distance;
+        }
+    }
+    return best;
+}
+
+template <class Data> Vector3 SimulationWorld::aim_point(Data& data, const std::size_t victim, const std::int32_t hardpoint) noexcept
+{
+    auto& placement = data.template get<PlacementColumns>();
+    auto& combat = data.template get<CombatColumns>();
+    if (hardpoint >= 0)
+    {
+        return world_point(data, victim, combat.states[victim].profile.hardpoints[static_cast<std::size_t>(hardpoint)].offset);
+    }
+    const auto& to = placement.positions[victim];
+    return {to.x, to.y, to.z + combat.states[victim].profile.aim_height};
+}
+
+template <class Data> std::optional<std::size_t> SimulationWorld::attack_victim(Data& data, const std::size_t index) noexcept
+{
+    auto& identity = data.template get<IdentityColumns>();
+    auto& combat = data.template get<CombatColumns>();
+    auto& rules = data.template get<Rules>();
+    const auto& state = combat.states[index];
+    if (!state.target.valid())
+    {
+        return std::nullopt;
+    }
+    const auto victim = dense_index(data, state.target);
+    if (!victim || !damageable(data, *victim) || !rules.hostility.hostile(identity.owners[index], identity.owners[*victim]))
+    {
+        return std::nullopt;
+    }
+    return victim;
+}
+
+template <class Data> bool SimulationWorld::damageable(Data& data, const std::size_t index) noexcept
+{
+    auto& combat = data.template get<CombatColumns>();
+    return combat.states[index].profile.health > 0.0F && combat.states[index].health > 0.0F;
+}
+
+template <class Data> bool SimulationWorld::engages(Data& data, const std::size_t index, const std::size_t candidate) noexcept
+{
+    auto& combat = data.template get<CombatColumns>();
+    const auto& weapons = combat.states[index].profile.weapons;
+    const auto categories = combat.states[candidate].profile.categories;
+    return weapons.empty() || std::ranges::any_of(weapons,
+                                                  [&](const WeaponProfile& weapon)
+                                                  {
+                                                      return (weapon.excluded_categories & categories) == 0;
+                                                  });
+}
+
+template <class Data> Vector3 SimulationWorld::world_point(Data& data, const std::size_t index, const LocalPoint& point) noexcept
+{
+    auto& placement = data.template get<PlacementColumns>();
+    const auto heading = placement.headings[index];
+    const auto cos_heading = std::cos(heading);
+    const auto sin_heading = std::sin(heading);
+    const auto& position = placement.positions[index];
+    return {position.x + point.forward * cos_heading - point.left * sin_heading, position.y + point.forward * sin_heading + point.left * cos_heading, position.z + point.up};
 }
 } // namespace eaw

@@ -123,7 +123,7 @@ void SimulationWorld::apply(const SimCommand& command)
         {
             const auto victim = dense_index(*this, command.target_entity);
             auto& combat = combat_.states[*dense];
-            if (!victim || !damageable(*victim))
+            if (!victim || !damageable(*this, *victim))
             {
                 ++stale_references_;
                 break;
@@ -160,56 +160,64 @@ void SimulationWorld::apply(const SimCommand& command)
 // Each tick, before movement: every unit turns its order, stance, and target into what it asks of
 // navigation (a move request) or of its locomotor (a steering intent). Combat later picks targets
 // and fires; it never moves a unit.
-void SimulationWorld::run_behavior()
+void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
 {
-    const auto dt = static_cast<float>(clock_.tick_seconds);
+    auto& identity = view.get<IdentityColumns>();
+    auto& placement = view.get<PlacementColumns>();
+    auto& ground_mover = view.get<GroundMoverColumns>();
+    auto& route = view.get<RouteColumns>();
+    auto& flight = view.get<FlightColumns>();
+    auto& combat = view.get<CombatColumns>();
+    auto& orders = view.get<OrderColumns>();
+    auto& steering = view.get<SteeringColumns>();
+    auto& ground = view.get<GroundState>();
     // Standing orders scan with the spatial grid; built here only in ticks where one scans (the
     // grid of the last tick's combat names entities by dense indices that spawns and removals since
     // then have shifted).
-    const bool scans = std::ranges::any_of(orders_.standing,
+    const bool scans = std::ranges::any_of(orders.standing,
                                            [](const StandingOrderState& order)
                                            {
                                                return order.kind != StandingOrder::none && !order.engaging && order.scan_timer == 0;
                                            });
     if (scans)
     {
-        grid_.build(placement_.positions, grid_cell_size);
+        grid_.build(placement.positions, grid_cell_size);
     }
-    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
-        steering_.intents[index] = {};
-        run_standing_order(index);
-        if (flight_.min_speeds[index] > 0.0F)
+        steering.intents[index] = {};
+        run_standing_order(view, index);
+        if (flight.min_speeds[index] > 0.0F)
         {
-            plan_flight(index, dt);
+            plan_flight(view, index, dt);
         }
         else
         {
-            if (combat_.states[index].ordered)
+            if (combat.states[index].ordered)
             {
-                pursue_ordered_target(index);
+                pursue_ordered_target(view, index);
             }
             // Standing body-aimers turn to face their target (ordered or picked on their own), and so
             // do units whose limited turret cannot reach it (unless their turret does not turn them).
-            if (!route_.move_targets[index])
+            if (!route.move_targets[index])
             {
-                if (const auto victim = attack_victim(index))
+                if (const auto victim = attack_victim(view, index))
                 {
-                    const auto& turret = combat_.states[index].profile.turret;
-                    const auto& to = placement_.positions[*victim];
+                    const auto& turret = combat.states[index].profile.turret;
+                    const auto& to = placement.positions[*victim];
                     const bool beyond_turret =
                         turret && turret->turns_body && turret->yaw_limit < pi &&
-                        std::fabs(wrap_angle(std::atan2(to.y - placement_.positions[index].y, to.x - placement_.positions[index].x) - placement_.headings[index])) > turret->yaw_limit;
-                    if (combat_.aims_with_body[index] != 0 || beyond_turret)
+                        std::fabs(wrap_angle(std::atan2(to.y - placement.positions[index].y, to.x - placement.positions[index].x) - placement.headings[index])) > turret->yaw_limit;
+                    if (combat.aims_with_body[index] != 0 || beyond_turret)
                     {
-                        steering_.intents[index].point = to;
+                        steering.intents[index].point = to;
                     }
-                    else if (combat_.states[index].ordered && ground_mover_.follows_ground[index] == 0 && !ground_.map.valid())
+                    else if (combat.states[index].ordered && ground_mover.follows_ground[index] == 0 && !ground.map.valid())
                     {
                         // An ordered space ship turns in place toward its target's nearest live
                         // hardpoint; an idle one keeps its heading (recorded in the FoC debug build:
                         // EaW-Revised S-22 to S-27, docs/compatibility-research.md).
-                        steering_.intents[index].point = aim_point(*victim, aim_hardpoint(*victim, placement_.positions[index]));
+                        steering.intents[index].point = aim_point(view, *victim, aim_hardpoint(view, *victim, placement.positions[index]));
                     }
                 }
             }
@@ -301,11 +309,13 @@ void SimulationWorld::teleport(const std::size_t index, const Vector3& point, co
     stamp_footprint(index, true);
 }
 
-void SimulationWorld::disengage(const std::size_t index)
+void SimulationWorld::BehaviorSystem::disengage(const View& view, const std::size_t index)
 {
-    combat_.states[index].target = {};
-    combat_.states[index].ordered = false;
-    orders_.standing[index].engaging = false;
+    auto& combat = view.get<CombatColumns>();
+    auto& orders = view.get<OrderColumns>();
+    combat.states[index].target = {};
+    combat.states[index].ordered = false;
+    orders.standing[index].engaging = false;
 }
 
 // Attack-move and guard (engine semantics; the original's are unmeasured). Both scan for hostiles
@@ -313,53 +323,60 @@ void SimulationWorld::disengage(const std::size_t index)
 // ordered attack, which the pursuit chases; they break off when the victim is gone or the chase
 // leaves its leash, then head for the destination (attack-move) or back to the anchor (guard). An
 // attack-move ends once it arrives with no engagement; a guard ends when its object dies.
-void SimulationWorld::run_standing_order(const std::size_t index)
+void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const std::size_t index)
 {
-    auto& order = orders_.standing[index];
+    auto& identity = view.get<IdentityColumns>();
+    auto& placement = view.get<PlacementColumns>();
+    auto& locomotor = view.get<LocomotorColumns>();
+    auto& route = view.get<RouteColumns>();
+    auto& combat = view.get<CombatColumns>();
+    auto& orders = view.get<OrderColumns>();
+    auto& group = view.get<GroupColumns>();
+    auto& order = orders.standing[index];
     if (order.kind == StandingOrder::none)
     {
         return;
     }
     if (order.entity.valid())
     {
-        if (const auto followed = dense_index(*this, order.entity))
+        if (const auto followed = dense_index(view, order.entity))
         {
-            order.point = placement_.positions[*followed];
+            order.point = placement.positions[*followed];
         }
         else
         {
             // The destination or anchor is gone: the order ends, a fight it started included.
             if (order.engaging)
             {
-                disengage(index);
+                disengage(view, index);
             }
             order.kind = StandingOrder::none;
             return;
         }
     }
-    auto& combat = combat_.states[index];
-    const float range = combat.profile.range();
+    auto& state = combat.states[index];
+    const float range = state.profile.range();
     const bool guard = order.kind == StandingOrder::guard;
     const float guard_radius = std::max(range, minimum_guard_radius);
-    const bool mobile = locomotor_.max_speeds[index] > 0.0F;
+    const bool mobile = locomotor.max_speeds[index] > 0.0F;
     if (order.engaging)
     {
-        const auto victim = combat.ordered ? attack_victim(index) : std::nullopt;
+        const auto victim = state.ordered ? attack_victim(view, index) : std::nullopt;
         const auto& leash_center = guard ? order.point : order.engage_origin;
-        const float leash = guard && combat.profile.guard_chase_range > 0.0F ? combat.profile.guard_chase_range : std::max(range * leash_range_factor, guard ? guard_radius : 0.0F);
-        if (victim && distance_xy(placement_.positions[*victim], leash_center) <= leash)
+        const float leash = guard && state.profile.guard_chase_range > 0.0F ? state.profile.guard_chase_range : std::max(range * leash_range_factor, guard ? guard_radius : 0.0F);
+        if (victim && distance_xy(placement.positions[*victim], leash_center) <= leash)
         {
             return;
         }
-        disengage(index);
+        disengage(view, index);
         // Resume: back on the way, or back to the anchor when out of the guard's reach.
-        if (mobile && (!guard || distance_xy(placement_.positions[index], order.point) > guard_radius * 0.5F))
+        if (mobile && (!guard || distance_xy(placement.positions[index], order.point) > guard_radius * 0.5F))
         {
-            plan_move(*this, index, order.point);
+            plan_move(view, index, order.point);
         }
         return;
     }
-    if (!combat.profile.weapons.empty())
+    if (!state.profile.weapons.empty())
     {
         if (order.scan_timer > 0)
         {
@@ -368,23 +385,23 @@ void SimulationWorld::run_standing_order(const std::size_t index)
         else
         {
             order.scan_timer = retarget_interval;
-            const auto& center = guard ? order.point : placement_.positions[index];
-            const float response = combat.profile.attack_move_response_range;
+            const auto& center = guard ? order.point : placement.positions[index];
+            const float response = state.profile.attack_move_response_range;
             const float reach = guard ? guard_radius : (response > 0.0F ? response : range * acquire_range_factor);
-            const auto best = choose_target(index, center, reach,
+            const auto best = choose_target(view, grid_, query_, index, center, reach,
                                             [&](const std::size_t candidate)
                                             {
-                                                return engages(index, candidate);
+                                                return engages(view, index, candidate);
                                             });
             if (best)
             {
-                combat.target = identity_.ids[*best];
-                combat.ordered = true;
-                combat.chase_timer = 0;
-                locomotor_.speed_limits[index] = 0.0F;
-                group_.ids[index] = 0;
+                state.target = identity.ids[*best];
+                state.ordered = true;
+                state.chase_timer = 0;
+                locomotor.speed_limits[index] = 0.0F;
+                group.ids[index] = 0;
                 order.engaging = true;
-                order.engage_origin = placement_.positions[index];
+                order.engage_origin = placement.positions[index];
                 return;
             }
         }
@@ -396,70 +413,60 @@ void SimulationWorld::run_standing_order(const std::size_t index)
     if (guard)
     {
         // Back toward the anchor once out of its reach; a moving anchor is followed.
-        if (distance_xy(placement_.positions[index], order.point) > guard_radius * 0.5F && (!route_.move_targets[index] || distance_xy(*route_.move_targets[index], order.point) > follow_tolerance) &&
+        if (distance_xy(placement.positions[index], order.point) > guard_radius * 0.5F && (!route.move_targets[index] || distance_xy(*route.move_targets[index], order.point) > follow_tolerance) &&
             order.scan_timer == 0)
         {
-            plan_move(*this, index, order.point);
+            plan_move(view, index, order.point);
         }
         return;
     }
-    if (order.entity.valid() && (!route_.move_targets[index] || distance_xy(*route_.move_targets[index], order.point) > follow_tolerance) && order.scan_timer == 0)
+    if (order.entity.valid() && (!route.move_targets[index] || distance_xy(*route.move_targets[index], order.point) > follow_tolerance) && order.scan_timer == 0)
     {
-        plan_move(*this, index, order.point);
+        plan_move(view, index, order.point);
         return;
     }
     // Arrived with nothing to fight (at the point, or within reach of the object): the attack-move
     // is done.
-    if (!route_.move_targets[index] && route_.pending[index] == 0 && (!order.entity.valid() || distance_xy(placement_.positions[index], order.point) <= std::max(follow_tolerance, range)))
+    if (!route.move_targets[index] && route.pending[index] == 0 && (!order.entity.valid() || distance_xy(placement.positions[index], order.point) <= std::max(follow_tolerance, range)))
     {
         order.kind = StandingOrder::none;
     }
 }
 
-std::optional<std::size_t> SimulationWorld::attack_victim(const std::size_t index) const noexcept
-{
-    const auto& combat = combat_.states[index];
-    if (!combat.target.valid())
-    {
-        return std::nullopt;
-    }
-    const auto victim = dense_index(*this, combat.target);
-    if (!victim || !damageable(*victim) || !rules_.hostility.hostile(identity_.owners[index], identity_.owners[*victim]))
-    {
-        return std::nullopt;
-    }
-    return victim;
-}
-
 // Chase an ordered target until it is in range, then hold position (combat fires). The chase
 // replans every chase_interval ticks while the target moves.
-void SimulationWorld::pursue_ordered_target(const std::size_t index)
+void SimulationWorld::BehaviorSystem::pursue_ordered_target(const View& view, const std::size_t index)
 {
-    auto& combat = combat_.states[index];
-    const auto victim = attack_victim(index);
+    auto& placement = view.get<PlacementColumns>();
+    auto& locomotor = view.get<LocomotorColumns>();
+    auto& ground_mover = view.get<GroundMoverColumns>();
+    auto& route = view.get<RouteColumns>();
+    auto& combat = view.get<CombatColumns>();
+    auto& state = combat.states[index];
+    const auto victim = attack_victim(view, index);
     if (!victim)
     {
         // Combat drops the order this tick.
         return;
     }
-    if (distance_xy(placement_.positions[index], placement_.positions[*victim]) > combat.profile.range())
+    if (distance_xy(placement.positions[index], placement.positions[*victim]) > state.profile.range())
     {
-        if (locomotor_.max_speeds[index] > 0.0F && (combat.chase_timer == 0 || !route_.move_targets[index]))
+        if (locomotor.max_speeds[index] > 0.0F && (state.chase_timer == 0 || !route.move_targets[index]))
         {
             // Flyers keep their altitude; ground units take theirs from the surface anyway.
-            plan_move(*this, index,
-                      {placement_.positions[*victim].x, placement_.positions[*victim].y, ground_mover_.follows_ground[index] != 0 ? placement_.positions[*victim].z : placement_.positions[index].z});
-            combat.chase_timer = chase_interval;
+            plan_move(view, index,
+                      {placement.positions[*victim].x, placement.positions[*victim].y, ground_mover.follows_ground[index] != 0 ? placement.positions[*victim].z : placement.positions[index].z});
+            state.chase_timer = chase_interval;
         }
     }
-    else if (route_.move_targets[index])
+    else if (route.move_targets[index])
     {
-        route_.move_targets[index].reset();
-        route_.paths[index].clear();
+        route.move_targets[index].reset();
+        route.paths[index].clear();
     }
-    if (combat.chase_timer > 0)
+    if (state.chase_timer > 0)
     {
-        --combat.chase_timer;
+        --state.chase_timer;
     }
 }
 
@@ -476,67 +483,77 @@ void SimulationWorld::pursue_ordered_target(const std::size_t index)
 // - a goal far behind starts a half-loop, which the locomotor finishes.
 // An aggressive flyer engages any target it has; otherwise only an ordered one. The numbers are
 // engine choices.
-void SimulationWorld::plan_flight(const std::size_t index, const float dt)
+void SimulationWorld::BehaviorSystem::plan_flight(const View& view, const std::size_t index, const float dt)
 {
-    const auto& position = placement_.positions[index];
-    auto& intent = steering_.intents[index];
-    if (flight_maneuvers_.get(slot_of(*this, index), &FlightManeuverColumns::looping) != 0)
+    auto& identity = view.get<IdentityColumns>();
+    auto& placement = view.get<PlacementColumns>();
+    auto& locomotor = view.get<LocomotorColumns>();
+    auto& route = view.get<RouteColumns>();
+    auto& flight = view.get<FlightColumns>();
+    auto& combat = view.get<CombatColumns>();
+    auto& steering = view.get<SteeringColumns>();
+    auto& group = view.get<GroupColumns>();
+    auto& flight_maneuvers = view.get<ComponentPool<FlightManeuverColumns>>();
+    auto& clock = view.get<Clock>();
+    const auto& position = placement.positions[index];
+    auto& intent = steering.intents[index];
+    if (flight_maneuvers.get(slot_of(view, index), &FlightManeuverColumns::looping) != 0)
     {
         intent.loop = true;
         return;
     }
-    const auto& combat = combat_.states[index];
-    const auto plane = flight_.cruise_heights[index];
+    const auto& state = combat.states[index];
+    const auto plane = flight.cruise_heights[index];
     const auto choose = [&]
     {
-        if (combat.ordered || combat_.stances[index] == Stance::aggressive)
+        if (state.ordered || combat.stances[index] == Stance::aggressive)
         {
-            if (const auto victim = attack_victim(index))
+            if (const auto victim = attack_victim(view, index))
             {
-                const auto& there = placement_.positions[*victim];
-                if (flight_.min_speeds[*victim] > 0.0F)
+                const auto& there = placement.positions[*victim];
+                if (flight.min_speeds[*victim] > 0.0F)
                 {
                     // Each flyer weaves on its own phase (from its slot), so a fight spreads vertically.
-                    const auto seconds = static_cast<float>(static_cast<double>(clock_.tick) * clock_.tick_seconds);
-                    const auto phase = static_cast<float>(identity_.ids[index].index % 16U) * (pi / 8.0F);
+                    const auto seconds = static_cast<float>(static_cast<double>(clock.tick) * clock.tick_seconds);
+                    const auto phase = static_cast<float>(identity.ids[index].index % 16U) * (pi / 8.0F);
                     const auto weave = dogfight_weave * std::sin(seconds * (two_pi / dogfight_weave_seconds) + phase);
                     intent.point = Vector3{there.x, there.y, std::clamp(there.z + weave, plane - dogfight_band, plane + dogfight_band)};
                     return;
                 }
-                const auto pass = std::max(combat.profile.range() / 3.0F, (placement_.radii[index] + placement_.radii[*victim]) * 2.0F);
+                const auto pass = std::max(state.profile.range() / 3.0F, (placement.radii[index] + placement.radii[*victim]) * 2.0F);
                 intent.point = Vector3{there.x, there.y, plane};
                 intent.hold_heading = distance_xy(position, there) < pass;
                 return;
             }
         }
-        auto& target = route_.move_targets[index];
+        auto& target = route.move_targets[index];
         if (target)
         {
             intent.point = Vector3{target->x, target->y, plane};
-            if (distance_xy(position, *target) <= travel_speed(*this, index) * dt * 3.0F)
+            if (distance_xy(position, *target) <= travel_speed(view, index) * dt * 3.0F)
             {
-                route_.loiter_points[index] = *target;
+                route.loiter_points[index] = *target;
                 target.reset();
-                locomotor_.speed_limits[index] = 0.0F;
-                group_.ids[index] = 0;
+                locomotor.speed_limits[index] = 0.0F;
+                group.ids[index] = 0;
             }
             return;
         }
-        if (!route_.loiter_points[index])
+        if (!route.loiter_points[index])
         {
-            route_.loiter_points[index] = position;
+            route.loiter_points[index] = position;
         }
-        intent.point = Vector3{route_.loiter_points[index]->x, route_.loiter_points[index]->y, plane};
+        intent.point = Vector3{route.loiter_points[index]->x, route.loiter_points[index]->y, plane};
     };
     choose();
-    if (intent.hold_heading || !intent.point || locomotor_.turn_rates[index] <= 0.0F)
+    if (intent.hold_heading || !intent.point || locomotor.turn_rates[index] <= 0.0F)
     {
         return;
     }
     const auto dx = intent.point->x - position.x;
     const auto dy = intent.point->y - position.y;
-    const auto turn_circle = travel_speed(*this, index) / locomotor_.turn_rates[index];
-    if (std::hypot(dx, dy) > 4.0F * turn_circle && std::fabs(wrap_angle(std::atan2(dy, dx) - placement_.headings[index])) > flight_reversal_angle)
+    const auto turn_circle = travel_speed(view, index) / locomotor.turn_rates[index];
+    if (std::hypot(dx, dy) > 4.0F * turn_circle && std::fabs(wrap_angle(std::atan2(dy, dx) - placement.headings[index])) > flight_reversal_angle)
     {
         intent.loop = true;
     }

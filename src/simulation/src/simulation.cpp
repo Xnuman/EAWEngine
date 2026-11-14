@@ -535,6 +535,11 @@ const CrushProfile& SimulationWorld::crush_profile_of(const std::size_t index) c
     return crush_profile_in(crush_, slot_of(*this, index));
 }
 
+void SimulationWorld::run_behavior()
+{
+    behavior_.run(view_of<BehaviorSystem::View>(), static_cast<float>(clock_.tick_seconds));
+}
+
 void SimulationWorld::run_navigation()
 {
     navigation_.run(view_of<NavigationSystem::View>());

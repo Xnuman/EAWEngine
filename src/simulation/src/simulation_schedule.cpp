@@ -20,11 +20,7 @@ namespace eaw {
 // (commands, and combat's removal of the dead) write the whole entity table.
 const std::array<SimulationWorld::SystemEntry, 7> SimulationWorld::schedule_{{
     {"commands", TickPhase::commands, &SimulationWorld::run_commands, all_data, all_data},
-    {"behavior", TickPhase::behavior, &SimulationWorld::run_behavior,
-     access_to({SimData::clock, SimData::combat, SimData::flight, SimData::flight_maneuvers, SimData::ground, SimData::ground_mover, SimData::group, SimData::identity, SimData::locomotor,
-                SimData::orders, SimData::path_queue, SimData::placement, SimData::route, SimData::slots, SimData::steering, SimData::walk_clips, SimData::rules}),
-     // plan_move: the route, a walker's new way, and the queued route search.
-     access_to({SimData::steering, SimData::orders, SimData::combat, SimData::route, SimData::walk_clips, SimData::path_queue})},
+    {"behavior", TickPhase::behavior, &SimulationWorld::run_behavior, reads_of<BehaviorSystem::View>(), writes_of<BehaviorSystem::View>(), true},
     {"navigation", TickPhase::navigation, &SimulationWorld::run_navigation, reads_of<NavigationSystem::View>(), writes_of<NavigationSystem::View>(), true},
     {"movement", TickPhase::movement, &SimulationWorld::run_movement, reads_of<MovementSystem::View>(), writes_of<MovementSystem::View>(), true},
     // Contact's access is its view's type (ContactSystem::View).

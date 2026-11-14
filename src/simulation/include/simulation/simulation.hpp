@@ -751,23 +751,12 @@ private:
     // Behavior layer (simulation_behavior.cpp): orders from commands, then each tick what every
     // unit wants from its order, stance, and target, as a move request or a steering intent.
     void apply(const SimCommand& command);
-    void run_behavior();
     // An attack order's victim when it is still a valid one.
-    [[nodiscard]] std::optional<std::size_t> attack_victim(std::size_t index) const noexcept;
-    // Ground and straight-line movers: chase an ordered target until in range, then hold.
-    void pursue_ordered_target(std::size_t index);
-    // Attack-move and guard: when to engage (a scan for hostiles), when to break off, and where to
-    // go; the chase itself is the ordered-attack pursuit.
-    void run_standing_order(std::size_t index);
-    // Ends an engagement the standing order started (the target and its order are dropped).
-    void disengage(std::size_t index);
+    template <class Data> [[nodiscard]] static std::optional<std::size_t> attack_victim(Data& data, std::size_t index) noexcept;
     // Hull damage after shields and armor, under the scripted conditions (invulnerable: none; cannot
     // be killed: not below the floor); returns what the hull took.
     static float wound(CombatState& combat, float damage);
     void teleport(std::size_t index, const Vector3& point, std::optional<float> heading);
-    // Flyers: steer at the target (attack runs, or dogfights against flyers), the destination, or
-    // the point they circle; reverse through a half-loop when that point is far behind.
-    void plan_flight(std::size_t index, float dt);
     void destroy(std::size_t dense);
     // Requests a route to `target` (queued for the search budget when it needs a search).
     template <class Data> static void plan_move(Data& data, std::size_t index, const Vector3& target);
@@ -801,13 +790,13 @@ private:
     // Returns what the shot did (shields only, hull, or hull with armor reducing it).
     ImpactKind apply_damage(std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health, std::int32_t hardpoint);
     // A point of an entity's own frame in world space.
-    [[nodiscard]] Vector3 world_point(std::size_t index, const LocalPoint& point) const noexcept;
+    template <class Data> [[nodiscard]] static Vector3 world_point(Data& data, std::size_t index, const LocalPoint& point) noexcept;
     template <class Data> [[nodiscard]] static bool hardpoint_alive(Data& data, std::size_t index, std::size_t hardpoint) noexcept;
     // Whether any hardpoint of the kind survives (true when the entity has none of that kind).
     template <class Data> [[nodiscard]] static bool keeps(Data& data, std::size_t index, HardpointProfile::Kind kind) noexcept;
     // The victim's live targetable hardpoint nearest to `from`, or -1.
-    [[nodiscard]] std::int32_t aim_hardpoint(std::size_t victim, const Vector3& from) const noexcept;
-    [[nodiscard]] Vector3 aim_point(std::size_t victim, std::int32_t hardpoint) const noexcept;
+    template <class Data> [[nodiscard]] static std::int32_t aim_hardpoint(Data& data, std::size_t victim, const Vector3& from) noexcept;
+    template <class Data> [[nodiscard]] static Vector3 aim_point(Data& data, std::size_t victim, std::int32_t hardpoint) noexcept;
     // Where a shot of `weapon` at `victim` lands relative to its aim point (WeaponProfile::inaccuracy;
     // draws from combat_random_), and whether that misses the victim.
     [[nodiscard]] Vector3 stray(const WeaponProfile& weapon, std::size_t victim);
@@ -820,7 +809,7 @@ private:
     // Damages the hostiles of `owner` around `point` (AreaBlast).
     void area_blast(const Vector3& point, std::uint32_t owner, const AreaBlast& blast, std::uint16_t damage_type, bool damages_shield, bool damages_health);
     // Whether one of `index`'s weapons may fire at `candidate`'s categories (or it has none).
-    [[nodiscard]] bool engages(std::size_t index, std::size_t candidate) const noexcept;
+    template <class Data> [[nodiscard]] static bool engages(Data& data, std::size_t index, std::size_t candidate) noexcept;
     // Turns `index`'s turret toward turret_victim (CombatProfile::turret), and whether it points at
     // `victim` closely enough to fire (true without a turret).
     void aim_turret(std::size_t index, float dt);
@@ -836,10 +825,12 @@ private:
     // ground plane) that `accepts`: the lowest rank of its targeting priorities, then the nearest,
     // then the lower entity id. Defined in simulation_internal.hpp.
     void hash_state(simulation_detail::StateHasher& hasher) const noexcept;
-    template <typename Accepts> [[nodiscard]] std::optional<std::size_t> choose_target(std::size_t index, const Vector3& center, float reach, const Accepts& accepts);
+    template <class Data, typename Accepts>
+    [[nodiscard]] static std::optional<std::size_t> choose_target(Data& data, const SpatialGrid& grid, std::vector<std::uint32_t>& query, std::size_t index, const Vector3& center, float reach,
+                                                                  const Accepts& accepts);
     void run_projectiles();
     void remove_dead();
-    [[nodiscard]] bool damageable(std::size_t index) const noexcept;
+    template <class Data> [[nodiscard]] static bool damageable(Data& data, std::size_t index) noexcept;
     [[nodiscard]] std::uint32_t ticks_for(float seconds) const noexcept;
     void publish();
 
@@ -1312,6 +1303,7 @@ private:
     void run_contact();
     void run_movement();
     void run_navigation();
+    void run_behavior();
     // Optional components in pools (component_pool.hpp), given at spawn: turns in place played as
     // clips to entities whose profile has them (MovementProfile::turn_begin_seconds), walks played as
     // clips to those that walk or raise a leg as clips (walk_stop_parts, walk_raise_seconds),
@@ -1632,6 +1624,35 @@ private:
         std::vector<std::uint32_t> neighbours_;
     };
     NavigationSystem navigation_;
+
+    // Behavior (simulation_behavior.cpp; docs/ecs-design.md, 6.3, phase 2): orders, stances, and
+    // targets into steering intents and route requests.
+    class BehaviorSystem
+    {
+    public:
+        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<FlightColumns>, Write<CombatColumns>,
+                                Write<OrderColumns>, Write<SteeringColumns>, Write<GroupColumns>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightManeuverColumns>>, Read<GroundState>,
+                                Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>>;
+        // Every entity's steering intent for this tick, from its order, stance, and target; route
+        // requests for new destinations.
+        void run(const View& view, float dt);
+
+    private:
+        // Attack-move and guard: when to engage (a scan for hostiles), when to break off, and where to
+        // go; the chase itself is the ordered-attack pursuit.
+        void run_standing_order(const View& view, std::size_t index);
+        // Ground and straight-line movers: chase an ordered target until in range, then hold.
+        void pursue_ordered_target(const View& view, std::size_t index);
+        // Ends an engagement the standing order started (the target and its order are dropped).
+        void disengage(const View& view, std::size_t index);
+        // Flyers: steer at the target (attack runs, or dogfights against flyers), the destination, or
+        // the point they circle; reverse through a half-loop when that point is far behind.
+        void plan_flight(const View& view, std::size_t index, float dt);
+        // The grid of positions targets are chosen from this tick, and its query scratch.
+        SpatialGrid grid_;
+        std::vector<std::uint32_t> query_;
+    };
+    BehaviorSystem behavior_;
     std::uint32_t next_group_id_{1};
     // Where shots stray (WeaponProfile::inaccuracy); part of the state.
     Pcg32 combat_random_{combat_random_seed};
