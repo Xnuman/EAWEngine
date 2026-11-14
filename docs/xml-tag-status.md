@@ -116,7 +116,7 @@ Systems that `needs` rows wait for, by tag count:
 | `SecondaryTurnLookaheadDistance` | `gap` |  |
 | `Has_Pre_Turn_Anim` | `done` | TURNx_BEGIN before, TURNx_END after turning in place |
 | `Walk_Transition` | `done` | MOVESTART and MOVE_END by stride quarter |
-| `Locomotor_Has_Animation_Priority` | `gap` | needs the simulation to wait for MOVESTART: walkers set off at once, so the clip plays while walking |
+| `Locomotor_Has_Animation_Priority` | `done` | the walker speeds up over MOVESTART and brakes over MOVE_ENDONE at their playing rate (the clips carry the acceleration: `gait`; 2026-11-14), and presentation starts the stop as braking begins; an engine reading of the name |
 | `Should_Cause_Limited_Turrets_To_Turn` | `done` | no: the hull does not turn to a target beyond the arc |
 | `Movement_Directions_Count` | `gap` |  |
 
@@ -210,7 +210,6 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Movement_Animation_Speed` | `done` | speed (Max_Speed units) at which the move clip plays at 1x; measured with `gait` (compatibility-research.md, "Animation speeds") |
 | `Walk_Animation_Speed` | `done` | as Movement_Animation_Speed, for the walk clip |
-| `Locomotor_Has_Animation_Priority` | `done` | the walker speeds up over MOVESTART and brakes over MOVE_ENDONE at their playing rate (the clips carry the acceleration: `gait`); an engine reading of the name |
 | `Rotation_Animation_Speed` | `done` | turn rate (degrees per frame) at which turn and turn-transition clips play at 1x; by analogy with Movement_Animation_Speed, it equals Max_Rate_Of_Turn on most types with turn clips |
 | `Crouch_Animation_Speed` | `needs abilities` | crouch clips play under Spread Out |
 | `Tread_Scroll_Rate` | `gap` |  |
