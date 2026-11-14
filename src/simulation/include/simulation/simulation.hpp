@@ -93,7 +93,17 @@ struct MovementProfile
     // Turn rate (radians per second) while the entity has no move order and turns in place (space
     // ships facing their target); zero turns at its turn rate.
     float turn_in_place_rate{};
+    // Radians per second squared to wind its turning up and down; zero turns at full rate at once.
+    // An entity with them that stops to turn finishes the turn in place (within
+    // turn_in_place_finish) before it moves off, braking its turn to end on its way (animation-led
+    // walkers: their turn clips wind up and down).
+    float turn_acceleration{};
+    float turn_deceleration{};
 };
+
+// How close to its way a walker that turns in place with turn_acceleration must be, its turn wound
+// down, before it moves off (radians; an engine choice).
+inline constexpr float turn_in_place_finish = 0.035F;
 
 // Everything needed to create an entity. `type_name` is the XML object type (informational for
 // now); `visual` is an opaque presentation key chosen by the caller (for example a mesh index).
@@ -312,6 +322,10 @@ struct EntitySnapshot
     // turn, held its speed back); presentation starts a walker's stop clip then. Not part of the
     // state hash.
     bool arriving{};
+    // Turning in place before it moves off (MovementProfile::turn_acceleration), and braking that
+    // turn to end on its way; presentation plays the turn clips by them.
+    bool turning_in_place{};
+    bool turn_arriving{};
 };
 
 struct ProjectileSnapshot
@@ -798,6 +812,12 @@ private:
     std::vector<std::uint8_t> looping_;
     // Braking for its destination this tick (EntitySnapshot::arriving); not hashed.
     std::vector<std::uint8_t> arriving_;
+    // Entities with MovementProfile::turn_acceleration: how fast they turn now (radians per second,
+    // counter-clockwise positive) and whether they turn in place before moving off; hashed for those
+    // entities only. turn_arriving_ like arriving_, not hashed.
+    std::vector<float> turn_speeds_;
+    std::vector<std::uint8_t> in_place_turns_;
+    std::vector<std::uint8_t> turn_arriving_;
     std::vector<float> rolls_;
     std::vector<Stance> stances_;
     std::vector<std::uint8_t> aims_with_body_;

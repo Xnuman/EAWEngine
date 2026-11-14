@@ -108,6 +108,15 @@ void SimulationWorld::apply(const SimCommand& command)
             paths_[*dense].clear();
             combat_[*dense].target = {};
             combat_[*dense].ordered = false;
+            // A ground unit that brakes (MovementProfile::deceleration) coasts to a stop straight ahead
+            // over its braking distance instead of halting at once (an animation-led walker plays its
+            // stop clip meanwhile).
+            if (const auto speed = drive_speeds_[*dense]; follows_ground_[*dense] != 0 && movements_[*dense].deceleration > 0.0F && speed > 0.0F && max_speeds_[*dense] > 0.0F)
+            {
+                const auto distance = speed * speed / (2.0F * movements_[*dense].deceleration);
+                const auto& here = positions_[*dense];
+                plan_move(*dense, {here.x + std::cos(headings_[*dense]) * distance, here.y + std::sin(headings_[*dense]) * distance, here.z});
+            }
             break;
         case SimCommandKind::attack:
         {

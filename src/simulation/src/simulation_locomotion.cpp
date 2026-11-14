@@ -23,6 +23,7 @@ void SimulationWorld::run_movement()
 {
     const auto dt = static_cast<float>(tick_seconds_);
     std::ranges::fill(arriving_, std::uint8_t{0});
+    std::ranges::fill(turn_arriving_, std::uint8_t{0});
     process_path_queue();
     measure_remaining_routes();
     update_group_cohesion();
@@ -216,7 +217,33 @@ float SimulationWorld::steer(const std::size_t index, const float desired, const
     {
         return std::max(0.0F, std::cos(difference));
     }
-    const auto step = rate * dt;
+    auto step = rate * dt;
+    if (movement.turn_acceleration > 0.0F)
+    {
+        // The turn winds up toward `rate`, and down so it ends on the way (when the braking turn rate
+        // holds it back, the turn is arriving); turning the other way starts from rest.
+        auto& turning = turn_speeds_[index];
+        const auto direction = difference >= 0.0F ? 1.0F : -1.0F;
+        auto speed = turning * direction > 0.0F ? std::fabs(turning) : 0.0F;
+        auto wanted = rate;
+        if (movement.turn_deceleration > 0.0F)
+        {
+            const auto braking = std::sqrt(2.0F * movement.turn_deceleration * std::fabs(difference));
+            if (braking < wanted)
+            {
+                wanted = braking;
+                turn_arriving_[index] = 1;
+            }
+        }
+        speed = wanted > speed ? std::min(wanted, speed + movement.turn_acceleration * dt)
+                               : std::max(wanted, speed - (movement.turn_deceleration > 0.0F ? movement.turn_deceleration : movement.turn_acceleration) * dt);
+        turning = speed * direction;
+        step = speed * dt;
+        if (std::fabs(difference) <= step)
+        {
+            turning = 0.0F;
+        }
+    }
     if (std::fabs(difference) <= step)
     {
         heading = wrap_angle(desired);
@@ -236,7 +263,20 @@ float SimulationWorld::wanted_speed(const std::size_t index, const float facing,
     auto factor = facing;
     // Turning in place is for starting from rest (Close_Enough_Angle_For_Move_Start); a unit on the
     // move turns while it walks (the owner's recording: the AT-AT swings 90 degrees mid-walk).
-    if (movement.turn_in_place_angle > 0.0F && drive_speeds_[index] <= 0.0F && facing < std::cos(movement.turn_in_place_angle))
+    const bool far_off = facing < std::cos(movement.turn_in_place_angle);
+    if (movement.turn_acceleration > 0.0F && movement.turn_in_place_angle > 0.0F && drive_speeds_[index] <= 0.0F)
+    {
+        // A winding turn that started in place ends in place, on the way (turn_in_place_finish).
+        if (far_off)
+        {
+            in_place_turns_[index] = 1;
+        }
+        else if (facing >= std::cos(turn_in_place_finish) && turn_speeds_[index] == 0.0F)
+        {
+            in_place_turns_[index] = 0;
+        }
+    }
+    if (movement.turn_in_place_angle > 0.0F && drive_speeds_[index] <= 0.0F && (far_off || in_place_turns_[index] != 0))
     {
         factor = 0.0F;
     }

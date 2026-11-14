@@ -85,6 +85,13 @@ struct AnimationProfile
     // Rotation_Animation_Speed in degrees per frame, read like Movement_Animation_Speed by analogy;
     // 0: they play at their own rate). Walk transitions play at the move clip's rate at top speed.
     float turn_reference{};
+    // XML Locomotor_Has_Animation_Priority: the simulation winds the walker's speed and its turns in
+    // place up and down over its clips (battle's apply_animation_locomotion), so its transitions follow
+    // the simulation's flags (EntitySnapshot::arriving, turning_in_place, turn_arriving), and its turn
+    // clips play at the rate for `in_place_turn_rate` (radians per second: XML Stopped_Rate_Of_Turn,
+    // else Max_Rate_Of_Turn).
+    bool animation_led{};
+    float in_place_turn_rate{};
     // A turret (XML Turret_Bone_Name, Barrel_Bone_Name: the bones' names as game_object_name_crc, 0
     // none): the turret bone's subtree yaws about the model's up axis to the simulation's turret
     // direction (EntitySnapshot::turret_yaw, which also decides when it fires), and the barrel's

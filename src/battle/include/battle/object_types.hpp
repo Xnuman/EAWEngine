@@ -218,13 +218,19 @@ MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinit
 inline constexpr float minimum_walk_clip_playback = 0.25F;
 inline constexpr float maximum_walk_clip_playback = 6.0F;
 [[nodiscard]] float walk_clip_playback(float move_reference) noexcept;
+// How fast turn clips play turning at `turn_rate` (radians per second): over the type's turn
+// reference (XML Rotation_Animation_Speed, radians per second; 0 plays them at their own rate),
+// within the same bounds.
+[[nodiscard]] float turn_clip_playback(float turn_rate, float turn_reference) noexcept;
 
 // XML Locomotor_Has_Animation_Priority (the AT-AT, pod walkers, two droids): the walker's start and
 // stop clips carry its acceleration and braking (their planted feet speed up through MOVESTART and
 // slow down through MOVE_END: EAWAssetInspector gait), so it reaches `max_speed` over MOVESTART's
 // playing time and stops over MOVE_ENDONE's, instead of changing speed at once (an engine reading of
 // the field's name, backed by the clips; linear ramps are an engine choice). An XML acceleration
-// override wins. Clips are read beside `model_path`; a type without them keeps `movement`.
+// override wins. Its turn in place winds up over TURNL_BEGIN's playing time and down over
+// TURNL_END's at its stopped turn rate (MovementProfile::turn_acceleration). Clips are read beside
+// `model_path`; a type without them keeps `movement`.
 void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatalog& catalog, const XmlDefinition& definition, const ResourceManager& resources, std::string_view model_path,
                                 float max_speed);
 // An engine choice, not the original's: how far off its way a ground unit stops to turn (the

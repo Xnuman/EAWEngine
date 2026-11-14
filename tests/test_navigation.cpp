@@ -846,6 +846,81 @@ void test_movement_profiles()
             "negative accelerations and turn speed fractions above 1 must be rejected");
 }
 
+// A ground unit that brakes coasts to a stop over its braking distance when ordered to stop (one at
+// 20 per second braking at 10 stops about 20 further on); one that does not brake halts at once.
+// Turns that wind up and down end in place on the way before the unit moves off.
+void test_braking_stop_and_winding_turns()
+{
+    eaw::GroundMap ground;
+    ground.width = 40;
+    ground.height = 40;
+    ground.spacing = 10.0F;
+    ground.heights.assign(1600, 0.0F);
+    ground.passability.assign(1600, eaw::passability::clear);
+    const auto coast = [&](const float deceleration)
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto unit = world.spawn({.type_name = "Walker",
+                                       .position = {50.0F, 100.0F, 0.0F},
+                                       .max_speed = 20.0F,
+                                       .follows_ground = true,
+                                       .passable_types = eaw::passability::clear,
+                                       .radius = 2.0F,
+                                       .turn_rate = 3.0F,
+                                       .movement = {.acceleration = 100.0F, .deceleration = deceleration}});
+        require(static_cast<bool>(unit), "test spawn must succeed");
+        world.submit({.kind = eaw::SimCommandKind::move, .entities = {*unit}, .target = {350.0F, 100.0F, 0.0F}});
+        for (int tick = 0; tick < 30; ++tick)
+        {
+            world.step();
+        }
+        const auto stopped_at = world.snapshot().entities[0].position.x;
+        world.submit({.kind = eaw::SimCommandKind::stop, .entities = {*unit}});
+        for (int tick = 0; tick < 40; ++tick)
+        {
+            world.step();
+        }
+        return world.snapshot().entities[0].position.x - stopped_at;
+    };
+    const auto braking = coast(10.0F);
+    require(braking > 15.0F && braking < 25.0F && coast(0.0F) < 1.0F, "a braking ground unit must coast to a stop over its braking distance, an unbraking one halt");
+
+    // A winding turn in place (90 degrees off, past a 30 degree start angle) ends on the way before
+    // the unit moves off, so it leaves heading straight at its target.
+    eaw::SimulationWorld world(0.1);
+    world.set_ground(ground);
+    const auto turner = world.spawn({.type_name = "Turner",
+                                     .position = {100.0F, 100.0F, 0.0F},
+                                     .max_speed = 20.0F,
+                                     .follows_ground = true,
+                                     .passable_types = eaw::passability::clear,
+                                     .radius = 2.0F,
+                                     .turn_rate = 1.0F,
+                                     .movement = {.acceleration = 20.0F,
+                                                  .deceleration = 20.0F,
+                                                  .turn_speed_fraction = 0.1F,
+                                                  .stopped_turn_rate = 1.0F,
+                                                  .turn_in_place_angle = 0.5236F,
+                                                  .turn_acceleration = 2.0F,
+                                                  .turn_deceleration = 2.0F}});
+    require(static_cast<bool>(turner), "test spawn must succeed");
+    world.submit({.kind = eaw::SimCommandKind::move, .entities = {*turner}, .target = {100.0F, 300.0F, 0.0F}});
+    bool turned_in_place = false;
+    float heading_when_moving = 0.0F;
+    for (int tick = 0; tick < 100; ++tick)
+    {
+        world.step();
+        const auto& entity = world.snapshot().entities[0];
+        turned_in_place = turned_in_place || entity.turning_in_place;
+        if (entity.speed > 0.0F && heading_when_moving == 0.0F)
+        {
+            heading_when_moving = entity.heading;
+        }
+    }
+    require(turned_in_place && std::fabs(heading_when_moving - 1.5707964F) < eaw::turn_in_place_finish + 0.01F, "a winding turn in place must end on the way before the unit moves off");
+}
+
 void test_crushing()
 {
     eaw::GroundMap ground;
@@ -908,6 +983,7 @@ void test_crushing()
 }
 
 const ModuleRegistrar registrar("navigation", {
+                                                  {"test_braking_stop_and_winding_turns", &test_braking_stop_and_winding_turns},
                                                   {"test_ground_movement", &test_ground_movement},
                                                   {"test_pathfinding", &test_pathfinding},
                                                   {"test_turning_and_separation", &test_turning_and_separation},

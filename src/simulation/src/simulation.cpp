@@ -70,7 +70,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     }
     if (const auto& movement = spawn.movement; !valid_amount(movement.acceleration) || !valid_amount(movement.deceleration) || !valid_amount(movement.turn_speed_fraction) ||
                                                movement.turn_speed_fraction > 1.0F || !valid_amount(movement.stopped_turn_rate) || !valid_amount(movement.turn_in_place_angle) ||
-                                               !valid_amount(movement.turn_in_place_rate))
+                                               !valid_amount(movement.turn_in_place_rate) || !valid_amount(movement.turn_acceleration) || !valid_amount(movement.turn_deceleration))
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite movement value, or a turn speed fraction above 1");
     }
@@ -141,6 +141,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     locomotor_suspended_.push_back(0);
     looping_.push_back(0);
     arriving_.push_back(0);
+    turn_speeds_.push_back(0.0F);
+    in_place_turns_.push_back(0);
+    turn_arriving_.push_back(0);
     rolls_.push_back(0.0F);
     intents_.emplace_back();
     formation_orders_.push_back(spawn.formation_order);
@@ -304,6 +307,14 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
         hash = hash_value(hash, movement.stopped_turn_rate);
         hash = hash_value(hash, movement.turn_in_place_angle);
         hash = hash_value(hash, movement.turn_in_place_rate);
+        // Only entities that wind their turns (so other battles keep their hashes).
+        if (movement.turn_acceleration > 0.0F || movement.turn_deceleration > 0.0F)
+        {
+            hash = hash_value(hash, movement.turn_acceleration);
+            hash = hash_value(hash, movement.turn_deceleration);
+            hash = hash_value(hash, turn_speeds_[index]);
+            hash = hash_value(hash, in_place_turns_[index]);
+        }
         hash = hash_value(hash, drive_speeds_[index]);
         hash = hash_value(hash, stances_[index]);
         hash = hash_value(hash, aims_with_body_[index]);
@@ -419,6 +430,9 @@ void SimulationWorld::destroy(const std::size_t dense)
         locomotor_suspended_[dense] = locomotor_suspended_[last];
         looping_[dense] = looping_[last];
         arriving_[dense] = arriving_[last];
+        turn_speeds_[dense] = turn_speeds_[last];
+        in_place_turns_[dense] = in_place_turns_[last];
+        turn_arriving_[dense] = turn_arriving_[last];
         rolls_[dense] = rolls_[last];
         intents_[dense] = intents_[last];
         formation_orders_[dense] = formation_orders_[last];
@@ -467,6 +481,9 @@ void SimulationWorld::destroy(const std::size_t dense)
     locomotor_suspended_.pop_back();
     looping_.pop_back();
     arriving_.pop_back();
+    turn_speeds_.pop_back();
+    in_place_turns_.pop_back();
+    turn_arriving_.pop_back();
     rolls_.pop_back();
     intents_.pop_back();
     formation_orders_.pop_back();
@@ -617,7 +634,9 @@ void SimulationWorld::publish()
                                       last_shot_ticks_[index],
                                       command_serials_[index],
                                       standing_orders_[index].kind,
-                                      arriving_[index] != 0});
+                                      arriving_[index] != 0,
+                                      in_place_turns_[index] != 0,
+                                      turn_arriving_[index] != 0});
     }
     snapshot_.deaths = deaths_;
     snapshot_.impacts = impacts_;

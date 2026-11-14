@@ -257,6 +257,12 @@ private:
         // The stop of this walk has begun (once braking for the destination starts, or the walker is
         // all but still), so it does not begin again before the next start.
         bool stop_begun{};
+        // The stop clip's playback: faster when braking began below top speed (it brakes for less
+        // long).
+        float stop_playback{1.0F};
+        // The END clip of this turn in place has begun (the turn is braking), so neither it nor the
+        // turn loop starts again before the next turn.
+        bool turn_end_begun{};
         bool frame_seen{};
     };
 

@@ -717,14 +717,17 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
             // plays from its first step and its turn toward the way is not taken for a turn in place;
             // other units go by the shown speed.
             const bool slow = profile.walk_transition ? entity.speed < entity.max_speed * walk_start_speed_fraction : state.display_speed < entity.max_speed * turn_in_place_speed_fraction;
-            const int turning = slow && std::fabs(rate) > turn_in_place_rate ? (rate > 0.0F ? 1 : -1) : 0;
+            // An animation-led walker turns in place while the simulation says so, the way its heading
+            // goes (holding the last way while the turn has not wound up yet).
+            const int sensed = std::fabs(rate) > 1.0e-4F ? (rate > 0.0F ? 1 : -1) : state.turning;
+            const int turning = profile.animation_led ? (entity.turning_in_place ? sensed : 0) : (slow && std::fabs(rate) > turn_in_place_rate ? (rate > 0.0F ? 1 : -1) : 0);
             // Moving by the shown speed, not the order: a walker turning in place before it sets off has
             // not started walking yet, and MOVESTART belongs to when it does.
             const bool moving = !slow;
             // Walk transitions play at the move clip's rate at top speed (the type's reference speed
             // against its top speed), turns at the turn rate against the type's turn reference.
             const auto walk_playback = walk_clip_playback(profile.move_reference);
-            const auto turn_playback = profile.turn_reference > 0.0F ? std::clamp(std::fabs(rate) / profile.turn_reference, minimum_walk_clip_playback, maximum_walk_clip_playback) : 1.0F;
+            const auto turn_playback = turn_clip_playback(profile.animation_led ? profile.in_place_turn_rate : rate, profile.turn_reference);
             if (turning != 0)
             {
                 state.turn_playback = turn_playback;
@@ -757,12 +760,23 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                     state.stopping = true;
                     state.stop_phase = state.stride_phase;
                     state.stop_quarter = std::clamp(static_cast<int>(std::floor(state.stride_phase * 4.0)) + 1, 1, 4);
+                    // Braking from below top speed takes less long: the stop clip plays faster to match.
+                    state.stop_playback = walk_playback * (entity.arriving && entity.speed > 0.0F ? std::clamp(entity.max_speed / entity.speed, 1.0F, 4.0F) : 1.0F);
+                }
+                else if (profile.animation_led && profile.pre_turn && entity.turn_arriving && state.turning != 0 && !state.turn_end_begun)
+                {
+                    // The turn in place brakes over its END clip: it starts as the braking does.
+                    // Braking from below the full turn rate takes less long: END plays faster to match.
+                    state.turn_end_begun = true;
+                    start_transition(find_clip(instance.mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0),
+                                     state.turn_playback * (std::fabs(rate) > 1.0e-4F ? std::clamp(profile.in_place_turn_rate / std::fabs(rate), 1.0F, 4.0F) : 1.0F));
                 }
                 else if (profile.pre_turn && turning != 0 && state.turning == 0)
                 {
+                    state.turn_end_begun = false;
                     start_transition(find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left_begin : AnimationRole::turn_right_begin, 0), state.turn_playback);
                 }
-                else if (profile.pre_turn && turning == 0 && state.turning != 0)
+                else if (profile.pre_turn && turning == 0 && state.turning != 0 && !state.turn_end_begun)
                 {
                     start_transition(find_clip(instance.mesh, state.turning > 0 ? AnimationRole::turn_left_end : AnimationRole::turn_right_end, 0), state.turn_playback);
                 }
@@ -800,7 +814,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                 {
                     state.stopping = false;
                     state.stride_phase = std::fmod(target, 1.0);
-                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(state.stop_quarter % 4)), walk_playback);
+                    start_transition(find_clip(instance.mesh, AnimationRole::move_end, static_cast<std::uint32_t>(state.stop_quarter % 4)), state.stop_playback);
                 }
                 else
                 {
@@ -853,7 +867,7 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                     state.fading = -1;
                 }
             }
-            if (override_clip < 0 && turning != 0 && !state.stopping)
+            if (override_clip < 0 && turning != 0 && !state.stopping && !state.turn_end_begun)
             {
                 const auto loop = find_clip(instance.mesh, turning > 0 ? AnimationRole::turn_left : AnimationRole::turn_right, 0);
                 if (loop >= 0)
