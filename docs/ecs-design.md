@@ -496,6 +496,16 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    `walk_raise_seconds`); the hash already hashed these plans only for such entities, so it needed
    no defaults. The registry (run-time component ids, names, hash and snapshot hooks) is not built
    yet: nothing reads it before recipes (step 5).
+
+   The hash rule decides what can be pooled before step 7 (the owner's choice, 2026-11-15): an
+   absent component can stand in for its old values only where every non-member had the same
+   constant ones. Pooled on that rule: flight manoeuvres (yaw rate, half-loop, roll: zero for
+   non-flyers), footprints (not hashed), and crush profiles (the default profile for the others).
+   Kept in the core table until step 7, because a non-member's hashed values are its own: the
+   minimum speed and cruise height (a ground unit's spawn values; the minimum speed also marks a
+   flyer in hot loops), formation membership, and combat. Group cohesion has constant values for
+   non-members but changes membership during a tick (move orders form groups), so it waits for the
+   command buffers of step 6.
 4. **Systems with declared access.** Turn the `run_*` member functions into systems over queries,
    in the schedule of section 6.3, with Debug access checks.
 5. **Recipes.** Readers per component; one construction path for spawns and placed objects;

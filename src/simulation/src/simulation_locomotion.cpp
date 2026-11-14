@@ -325,8 +325,8 @@ float SimulationWorld::settle_distance(const std::size_t index) const noexcept
 // tick so packed groups spread out over a few ticks instead of jumping.
 bool SimulationWorld::can_crush(const std::size_t crusher, const std::size_t victim) const
 {
-    const auto kind = crush_.profiles[crusher].crusher;
-    const auto& squash = crush_.profiles[victim];
+    const auto kind = crush_profile_of(crusher).crusher;
+    const auto& squash = crush_profile_of(victim);
     const bool may = squash.squashable || (kind == Crusher::supercrusher && squash.squashable_by_supercrusher);
     const auto& combat = combat_.states[victim];
     return kind != Crusher::none && victim != crusher && may && combat.profile.health > 0.0F && combat.health > 0.0F && hostility_.hostile(identity_.owners[crusher], identity_.owners[victim]);
@@ -341,7 +341,7 @@ void SimulationWorld::run_crushing()
     // shortcut: every moving crusher scans every entity; use the spatial grid when battles get big.
     for (std::size_t crusher = 0; crusher < identity_.ids.size(); ++crusher)
     {
-        const auto kind = crush_.profiles[crusher].crusher;
+        const auto kind = crush_profile_of(crusher).crusher;
         const auto& from = tick_start_positions_[crusher];
         const auto& at = placement_.positions[crusher];
         if (kind == Crusher::none || ground_mover_.follows_ground[crusher] == 0 || placement_.radii[crusher] <= 0.0F || (from.x == at.x && from.y == at.y))
@@ -538,15 +538,17 @@ void SimulationWorld::fly(const std::size_t index, const float dt)
     const auto& intent = steering_.intents[index];
     auto& position = placement_.positions[index];
     auto& pitch = placement_.pitches[index];
-    auto& roll = flight_.rolls[index];
+    const auto slot = slot_of(index);
+    auto& roll = flight_maneuvers_.get(slot, &FlightManeuverColumns::rolls);
+    auto& looping = flight_maneuvers_.get(slot, &FlightManeuverColumns::looping);
     const auto heading_before = placement_.headings[index];
     const auto rate = locomotor_.turn_rates[index] > 0.0F ? locomotor_.turn_rates[index] : flight_max_pitch * 2.0F / std::max(dt, 1.0e-6F);
     auto factor = 1.0F;
-    if (intent.loop && flight_.looping[index] == 0)
+    if (intent.loop && looping == 0)
     {
-        flight_.looping[index] = 1;
+        looping = 1;
     }
-    if (flight_.looping[index] != 0)
+    if (looping != 0)
     {
         pitch = std::min(pitch + rate * dt, pi);
     }
@@ -576,12 +578,12 @@ void SimulationWorld::fly(const std::size_t index, const float dt)
     const auto heading = placement_.headings[index];
     const auto level = speed * std::cos(pitch) * dt;
     position = {position.x + std::cos(heading) * level, position.y + std::sin(heading) * level, position.z + std::sin(pitch) * speed * dt};
-    flight_.yaw_rates[index] = dt > 0.0F ? wrap_angle(heading - heading_before) / dt : 0.0F;
-    if (flight_.looping[index] != 0 && pitch >= pi)
+    flight_maneuvers_.get(slot, &FlightManeuverColumns::yaw_rates) = dt > 0.0F ? wrap_angle(heading - heading_before) / dt : 0.0F;
+    if (looping != 0 && pitch >= pi)
     {
         // Inverted at the top, heading back: the same attitude as level flight the other way rolled
         // upside down.
-        flight_.looping[index] = 0;
+        looping = 0;
         placement_.headings[index] = wrap_angle(heading + pi);
         pitch = 0.0F;
         roll = pi;

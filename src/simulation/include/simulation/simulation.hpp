@@ -988,20 +988,29 @@ private:
             visit(loiter_points);
         }
     };
+    // Flight's columns that every entity has until step 7 of the migration: the hash covers them for
+    // all, and a non-flyer's values are its own (its spawn's minimum speed, at most 0, and its spawn
+    // height), not constants a pool could stand in for. A minimum speed above 0 makes a flyer.
     struct FlightColumns
     {
         std::vector<float> min_speeds;
-        // The height of the plane they cruise in (their spawn height), and the heading change of the
-        // last tick per second.
+        // The height of the plane a flyer cruises in (its spawn height).
         std::vector<float> cruise_heights;
-        std::vector<float> yaw_rates;
-        // Inside a half-loop, and the roll they unwind after one.
-        std::vector<std::uint8_t> looping;
-        std::vector<float> rolls;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(min_speeds);
             visit(cruise_heights);
+        }
+    };
+    // A flyer's manoeuvres (pooled: flyers only): the heading change of the last tick per second,
+    // whether it is inside a half-loop, and the roll it unwinds after one. A non-flyer's are 0.
+    struct FlightManeuverColumns
+    {
+        std::vector<float> yaw_rates;
+        std::vector<std::uint8_t> looping;
+        std::vector<float> rolls;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
             visit(yaw_rates);
             visit(looping);
             visit(rolls);
@@ -1135,9 +1144,10 @@ private:
             visit(waiting);
         }
     };
+    // An obstacle's footprint on the ground (pooled: obstacles only) and whether it is stamped.
     struct FootprintColumns
     {
-        std::vector<std::optional<GroundFootprint>> shapes;
+        std::vector<GroundFootprint> shapes;
         std::vector<std::uint8_t> stamped;
         template <class Visit> void for_each_column(Visit&& visit)
         {
@@ -1145,6 +1155,8 @@ private:
             visit(stamped);
         }
     };
+    // What an entity crushes and what crushes it (pooled: entities with a profile other than the
+    // default; the others crush nothing and are not crushed).
     struct CrushColumns
     {
         std::vector<CrushProfile> profiles;
@@ -1165,10 +1177,8 @@ private:
     SteeringColumns steering_;
     FormationColumns formation_;
     GroupColumns group_;
-    FootprintColumns footprint_;
-    CrushColumns crush_;
     // Every column of the entity table, component by component.
-    // Every group of the entity table, in declaration order (identity_ first, crush_ last).
+    // Every group of the entity table, in declaration order (identity_ first, group_ last).
     template <class Visit> void for_each_group(Visit&& visit)
     {
         visit(identity_);
@@ -1183,8 +1193,6 @@ private:
         visit(steering_);
         visit(formation_);
         visit(group_);
-        visit(footprint_);
-        visit(crush_);
     }
     template <class Visit> void for_each_column(Visit&& visit)
     {
@@ -1198,9 +1206,16 @@ private:
     void check_entity_table();
     // Optional components in pools (component_pool.hpp), given at spawn: turns in place played as
     // clips to entities whose profile has them (MovementProfile::turn_begin_seconds), walks played as
-    // clips to those that walk or raise a leg as clips (walk_stop_parts, walk_raise_seconds).
+    // clips to those that walk or raise a leg as clips (walk_stop_parts, walk_raise_seconds),
+    // manoeuvres to flyers (a minimum speed above 0), footprints to obstacles (EntitySpawn::footprint),
+    // and crush profiles to entities whose profile is not the default (crush_profile_of reads them).
     ComponentPool<TurnClipColumns> turn_clips_;
     ComponentPool<WalkClipColumns> walk_clips_;
+    ComponentPool<FlightManeuverColumns> flight_maneuvers_;
+    ComponentPool<FootprintColumns> footprint_;
+    ComponentPool<CrushColumns> crush_;
+    // The entity's crush profile: the default one when it has none.
+    [[nodiscard]] const CrushProfile& crush_profile_of(std::size_t index) const noexcept;
     // The slot of the entity at dense `index`: the key of its pooled components.
     [[nodiscard]] std::uint32_t slot_of(const std::size_t index) const noexcept
     {

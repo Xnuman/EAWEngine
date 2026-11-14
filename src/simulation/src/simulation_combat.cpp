@@ -460,9 +460,9 @@ float SimulationWorld::target_size(const std::size_t index) const noexcept
 {
     // The separation footprint, else the obstacle footprint.
     auto size = placement_.radii[index];
-    if (size <= 0.0F && footprint_.shapes[index])
+    if (const auto* footprint = footprint_.find(slot_of(index), &FootprintColumns::shapes); size <= 0.0F && footprint != nullptr)
     {
-        size = std::max(footprint_.shapes[index]->half_length, footprint_.shapes[index]->half_width);
+        size = std::max(footprint->half_length, footprint->half_width);
     }
     return size;
 }

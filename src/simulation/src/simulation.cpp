@@ -63,7 +63,7 @@ void SimulationWorld::check_entity_table()
 {
     // Every column is a std::vector, all of one size whatever their element type,
     // so a group is exactly its columns, and the groups, declared one after
-    // another, span exactly the bytes from identity_ to the end of crush_.
+    // another, span exactly the bytes from identity_ to the end of group_.
     constexpr auto column_bytes = sizeof(std::vector<std::uint8_t>);
     std::size_t group_bytes = 0;
     for_each_group(
@@ -80,7 +80,7 @@ void SimulationWorld::check_entity_table()
             group_bytes += sizeof(group);
         });
     const auto first = reinterpret_cast<std::uintptr_t>(&identity_);
-    const auto end = reinterpret_cast<std::uintptr_t>(&crush_) + sizeof(crush_);
+    const auto end = reinterpret_cast<std::uintptr_t>(&group_) + sizeof(group_);
     EAW_ASSERT_MSG(end - first == group_bytes, "for_each_group must list every component group of the entity table");
 }
 
@@ -150,6 +150,19 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         walk_clips_.add(slot);
     }
+    // As min_speeds below: a flyer.
+    if (std::min(spawn.min_speed, spawn.max_speed) > 0.0F)
+    {
+        flight_maneuvers_.add(slot);
+    }
+    if (spawn.footprint)
+    {
+        footprint_.columns.shapes[footprint_.add(slot)] = *spawn.footprint;
+    }
+    if (spawn.crush.crusher != Crusher::none || spawn.crush.squashable || spawn.crush.squashable_by_supercrusher)
+    {
+        crush_.columns.profiles[crush_.add(slot)] = spawn.crush;
+    }
     identity_.ids.push_back(id);
     placement_.positions.push_back(spawn.position);
     placement_.headings.push_back(wrap_angle(spawn.heading));
@@ -178,29 +191,23 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     combat_.aims_with_body.push_back(spawn.aims_with_body ? 1U : 0U);
     placement_.pitches.push_back(0.0F);
     flight_.cruise_heights.push_back(spawn.position.z);
-    flight_.yaw_rates.push_back(0.0F);
     motion_.speeds.push_back(0.0F);
     combat_.last_shot_ticks.push_back(0);
     orders_.command_serials.push_back(0);
     orders_.standing.push_back({.scan_timer = slot % retarget_interval});
     locomotor_.suspended.push_back(0);
-    flight_.looping.push_back(0);
     locomotor_.arriving.push_back(0);
-    flight_.rolls.push_back(0.0F);
     steering_.intents.emplace_back();
     formation_.orders.push_back(spawn.formation_order);
     formation_.spacings.push_back(spawn.formation_spacing);
     formation_.solos.push_back(spawn.formation_solo ? 1U : 0U);
     formation_.teams.push_back(spawn.formation_team);
-    crush_.profiles.push_back(spawn.crush);
     locomotor_.speed_limits.push_back(0.0F);
     group_.ids.push_back(0);
     group_.best_remaining.push_back(0.0F);
     group_.stall_ticks.push_back(0);
     group_.waiting.push_back(0);
-    footprint_.shapes.push_back(spawn.footprint);
     route_.pending.push_back(0);
-    footprint_.stamped.push_back(0);
     for_each_column(
         [&](const auto& column)
         {
@@ -452,8 +459,10 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.subject = StateSubject::flight;
         hasher.add(placement_.pitches[index]);
         hasher.add(flight_.cruise_heights[index]);
-        hasher.add(flight_.looping[index]);
-        hasher.add(flight_.rolls[index]);
+        // A non-flyer's manoeuvres, absent from the pool, hash as the zeros it always had.
+        const auto maneuver = flight_maneuvers_.find(slot_of(index));
+        hasher.add(maneuver ? flight_maneuvers_.columns.looping[*maneuver] : std::uint8_t{0});
+        hasher.add(maneuver ? flight_maneuvers_.columns.rolls[*maneuver] : 0.0F);
         hasher.add(route_.loiter_points[index].has_value());
         if (route_.loiter_points[index])
         {
@@ -468,8 +477,10 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(formation_.teams[index].spacing);
         hasher.add(formation_.teams[index].raggedness);
         hasher.subject = StateSubject::bodies;
-        hasher.add(static_cast<std::uint8_t>(crush_.profiles[index].crusher));
-        hasher.add(static_cast<std::uint8_t>((crush_.profiles[index].squashable ? 1U : 0U) | (crush_.profiles[index].squashable_by_supercrusher ? 2U : 0U)));
+        // Without a crush profile, the default one every such entity had.
+        const auto& crush = crush_profile_of(index);
+        hasher.add(static_cast<std::uint8_t>(crush.crusher));
+        hasher.add(static_cast<std::uint8_t>((crush.squashable ? 1U : 0U) | (crush.squashable_by_supercrusher ? 2U : 0U)));
         hasher.add(locomotor_.speed_limits[index]);
         hasher.subject = StateSubject::routes;
         hasher.add(group_.ids[index]);
@@ -521,6 +532,13 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
     hasher.add(combat_random_.state());
 }
 
+const CrushProfile& SimulationWorld::crush_profile_of(const std::size_t index) const noexcept
+{
+    static constexpr CrushProfile none{};
+    const auto* profile = crush_.find(slot_of(index), &CrushColumns::profiles);
+    return profile != nullptr ? *profile : none;
+}
+
 bool SimulationWorld::turning_as_clips(const std::size_t index) const noexcept
 {
     const auto* plan = turn_clips_.find(slot_of(index), &TurnClipColumns::plans);
@@ -559,6 +577,9 @@ void SimulationWorld::destroy(const std::size_t dense)
     slot_dense_[slot] = no_dense;
     turn_clips_.remove(slot);
     walk_clips_.remove(slot);
+    flight_maneuvers_.remove(slot);
+    footprint_.remove(slot);
+    crush_.remove(slot);
     // A slot whose generation would wrap is retired instead of reused.
     if (generations_[slot] != std::numeric_limits<std::uint32_t>::max())
     {
@@ -590,7 +611,7 @@ void SimulationWorld::set_ground(GroundMap ground)
     local_pathfinder_.reset();
     ground_passability_ = ground_.passability;
     footprint_cover_.assign(ground_passability_.size(), 0);
-    std::ranges::fill(footprint_.stamped, std::uint8_t{0});
+    std::ranges::fill(footprint_.columns.stamped, std::uint8_t{0});
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         stamp_footprint(index, true);
@@ -603,8 +624,9 @@ void SimulationWorld::set_ground(GroundMap ground)
 // region labels are dropped, so paths see the change.
 void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
 {
-    const auto& footprint = footprint_.shapes[index];
-    if (!footprint || !ground_.valid() || ground_.passability.size() != ground_.heights.size() || footprint_cover_.size() != ground_.passability.size() || (footprint_.stamped[index] != 0) == add)
+    const auto* footprint = footprint_.find(slot_of(index), &FootprintColumns::shapes);
+    if (footprint == nullptr || !ground_.valid() || ground_.passability.size() != ground_.heights.size() || footprint_cover_.size() != ground_.passability.size() ||
+        (footprint_.get(slot_of(index), &FootprintColumns::stamped) != 0) == add)
     {
         return;
     }
@@ -640,7 +662,7 @@ void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
             }
         }
     }
-    footprint_.stamped[index] = add ? 1U : 0U;
+    footprint_.get(slot_of(index), &FootprintColumns::stamped) = add ? 1U : 0U;
     pathfinder_.reset();
     local_pathfinder_.reset();
 }
@@ -668,6 +690,9 @@ void SimulationWorld::publish()
                 destroyed += combat.hardpoint_health[hardpoint] <= 0.0F ? 1U : 0U;
             }
         }
+        // A non-flyer reports no manoeuvres.
+        const auto* yaw_rate = flight_maneuvers_.find(slot_of(index), &FlightManeuverColumns::yaw_rates);
+        const auto* roll = flight_maneuvers_.find(slot_of(index), &FlightManeuverColumns::rolls);
         snapshot_.entities.push_back({identity_.ids[index],
                                       placement_.positions[index],
                                       placement_.headings[index],
@@ -686,9 +711,9 @@ void SimulationWorld::publish()
                                       destroyable,
                                       destroyed,
                                       placement_.pitches[index],
-                                      flight_.yaw_rates[index],
+                                      (yaw_rate ? *yaw_rate : 0.0F),
                                       motion_.speeds[index],
-                                      flight_.rolls[index],
+                                      (roll ? *roll : 0.0F),
                                       combat.turret_yaw,
                                       combat_.last_shot_ticks[index],
                                       orders_.command_serials[index],

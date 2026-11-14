@@ -277,7 +277,7 @@ void SimulationWorld::teleport(const std::size_t index, const Vector3& point, co
     {
         position.z = ground_.surface_height(position.x, position.y);
     }
-    if (auto& footprint = footprint_.shapes[index])
+    if (auto* footprint = footprint_.find(slot_of(index), &FootprintColumns::shapes))
     {
         // The footprint keeps its place relative to the entity: its offset turns with the heading.
         const float turn = heading ? *heading - placement_.headings[index] : 0.0F;
@@ -480,7 +480,7 @@ void SimulationWorld::plan_flight(const std::size_t index, const float dt)
 {
     const auto& position = placement_.positions[index];
     auto& intent = steering_.intents[index];
-    if (flight_.looping[index] != 0)
+    if (flight_maneuvers_.get(slot_of(index), &FlightManeuverColumns::looping) != 0)
     {
         intent.loop = true;
         return;
