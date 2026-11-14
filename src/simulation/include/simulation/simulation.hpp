@@ -772,9 +772,8 @@ private:
     // Route requests under the search budget, remaining routes, group cohesion, and space
     // avoidance, before movement (simulation_locomotion.cpp).
     void run_navigation();
-    void run_movement();
     // Requests a route to `target` (queued for the search budget when it needs a search).
-    void plan_move(std::size_t index, const Vector3& target);
+    template <class Data> static void plan_move(Data& data, std::size_t index, const Vector3& target);
     // Plans now: a full search from the entity's position.
     void plan_route_now(std::size_t index, const Vector3& target);
     // Sets an entity's route from planned waypoints (the last is its destination).
@@ -792,34 +791,7 @@ private:
     // that stopped making progress.
     void update_group_cohesion();
     // Speed this tick: the entity's own, or its group's when that is slower.
-    [[nodiscard]] float travel_speed(std::size_t index) const noexcept;
-    // Locomotors (simulation_locomotion.cpp): physical movement only.
-    void move_over_ground(std::size_t index, float dt);
-    // Never below the minimum speed; turns and pitches toward the intent's point at the turn rate
-    // (pitch limited to flight_max_pitch) and moves along the nose.
-    void fly(std::size_t index, float dt);
-    // Turns toward `desired` (radians) at the entity's turn rate (its stopped turn rate when moving
-    // slower than its profile's turn speed) and returns how much of its speed it may use: 1 when
-    // facing the way, falling to 0 at 90 degrees or more off.
-    [[nodiscard]] float steer(std::size_t index, float desired, float dt);
-    // The speed a mover wants this tick, `distance` from its destination, after steer returned
-    // `facing`: the travel speed shaped by its movement profile (turning in place, keeping speed in
-    // a turn, braking ahead of the destination).
-    // Also marks the entity arriving_ when braking for its destination holds its speed back.
-    [[nodiscard]] float wanted_speed(std::size_t index, float facing, float distance) noexcept;
-    // This tick's speed toward a destination `distance` away after steer returned `facing`: the
-    // movement profile's (wanted_speed, then drive), or a walk played as clips' (walk_speed).
-    float move_speed(std::size_t index, float facing, float distance, float dt) noexcept;
-    // A walk played as clips (simulation_walk.cpp): this tick's speed, starting the walk from rest,
-    // advancing the stride, and beginning the stop at the stride's part where it lands closest to
-    // the destination `distance` away.
-    float walk_speed(std::size_t index, float facing, float distance, float dt) noexcept;
-    // Runs a walk played as clips that goes straight ahead this tick (stopping, or walking on to its
-    // stop without a destination); false when the entity moves or stands as usual.
-    bool walk_straight(std::size_t index, float dt);
-    // A turn in place played as clips (simulation_walk.cpp): plans it when a turn of `difference`
-    // (radians) begins from rest, and advances it by `dt`; false when the entity turns as usual.
-    bool turn_as_clips(std::size_t index, float difference, float dt);
+    template <class Data> [[nodiscard]] static float travel_speed(Data& data, std::size_t index) noexcept;
     // Where a turn played as clips is `time` into it: its clip, the progress through that clip, and
     // the angle turned (before the way and the scale).
     struct TurnPoint
@@ -828,18 +800,9 @@ private:
         float progress{};
         float turned{};
     };
-    [[nodiscard]] TurnPoint turn_point(std::size_t index, float time) const noexcept;
-    // Speeds up or slows down toward `wanted` at the profile's rates; returns this tick's speed.
-    float drive(std::size_t index, float wanted, float dt) noexcept;
-    // Movers that cannot turn while slow move along their heading, not straight at their target,
-    // until within settle_distance of it.
-    [[nodiscard]] bool moves_along_heading(std::size_t index) const noexcept;
-    [[nodiscard]] float settle_distance(std::size_t index) const noexcept;
+    template <class Data> [[nodiscard]] static TurnPoint turn_point(Data& data, std::size_t index, float time) noexcept;
     // Navigation (simulation_navigation.cpp): local avoidance of space ships (RouteColumns::detours).
     void plan_space_avoidance();
-    // A space ship's step without the part that would take it deeper into a ship it touches (both
-    // radii), so ships slide along each other instead of overlapping; other steps unchanged.
-    [[nodiscard]] Vector3 keep_apart(std::size_t index, Vector3 step);
     // Stamps (or removes) an entity's footprint into the ground's passability.
     void stamp_footprint(std::size_t index, bool add);
     void run_combat();
@@ -856,9 +819,9 @@ private:
     ImpactKind apply_damage(std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health, std::int32_t hardpoint);
     // A point of an entity's own frame in world space.
     [[nodiscard]] Vector3 world_point(std::size_t index, const LocalPoint& point) const noexcept;
-    [[nodiscard]] bool hardpoint_alive(std::size_t index, std::size_t hardpoint) const noexcept;
+    template <class Data> [[nodiscard]] static bool hardpoint_alive(Data& data, std::size_t index, std::size_t hardpoint) noexcept;
     // Whether any hardpoint of the kind survives (true when the entity has none of that kind).
-    [[nodiscard]] bool keeps(std::size_t index, HardpointProfile::Kind kind) const noexcept;
+    template <class Data> [[nodiscard]] static bool keeps(Data& data, std::size_t index, HardpointProfile::Kind kind) noexcept;
     // The victim's live targetable hardpoint nearest to `from`, or -1.
     [[nodiscard]] std::int32_t aim_hardpoint(std::size_t victim, const Vector3& from) const noexcept;
     [[nodiscard]] Vector3 aim_point(std::size_t victim, std::int32_t hardpoint) const noexcept;
@@ -1366,6 +1329,7 @@ private:
     void run_publish();
     // The contact system's run on its view (ContactSystem).
     void run_contact();
+    void run_movement();
     // Optional components in pools (component_pool.hpp), given at spawn: turns in place played as
     // clips to entities whose profile has them (MovementProfile::turn_begin_seconds), walks played as
     // clips to those that walk or raise a leg as clips (walk_stop_parts, walk_raise_seconds),
@@ -1382,19 +1346,15 @@ private:
     // Remaining route length of every moving entity (zero for the rest), into route.remaining.
     static void measure_remaining_routes(RouteColumns& route, const PlacementColumns& placement);
     // The slot of the entity at dense `index`: the key of its pooled components.
-    [[nodiscard]] std::uint32_t slot_of(const std::size_t index) const noexcept
+    template <class Data> [[nodiscard]] static std::uint32_t slot_of(Data& data, const std::size_t index) noexcept
     {
-        return identity_.ids[index].index;
+        return data.template get<IdentityColumns>().ids[index].index;
     }
     // A turn in place played as clips is under way.
-    [[nodiscard]] bool turning_as_clips(std::size_t index) const noexcept;
-    // Whether a standing walk played as clips is about to turn in place toward the behavior
-    // layer's point (so it keeps a raised leg up).
-    [[nodiscard]] bool wants_turn_in_place(std::size_t index) const noexcept;
+    template <class Data> [[nodiscard]] static bool turning_as_clips(Data& data, std::size_t index) noexcept;
 
     // World state and per-tick scratch (not entity columns: sized per tick or per world).
     GridPathfinder pathfinder_;
-    std::uint64_t blocked_moves_{};
     std::uint64_t path_searches_{};
     std::uint64_t partial_paths_{};
     std::uint64_t path_expansions_{};
@@ -1574,6 +1534,65 @@ private:
         std::vector<std::uint32_t> query_;
     };
     ContactSystem contact_;
+
+    // Movement (simulation_locomotion.cpp, simulation_walk.cpp; docs/ecs-design.md, 6.3, phase 4):
+    // ground movement, walks and turns played as clips, flight, and keeping ships apart.
+    class MovementSystem
+    {
+    public:
+        using View = SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<FlightColumns>, Read<CombatColumns>,
+                                Read<SteeringColumns>, Write<GroupColumns>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>, Write<ComponentPool<FlightManeuverColumns>>,
+                                Read<GroundState>, Read<SpaceAvoidance>, Write<PathQueue>>;
+        void run(const View& view, float dt);
+        // Moves planned again so far because the unit's planned line no longer fit (separation pushed
+        // it off, or the ground changed).
+        std::uint64_t blocked_moves{};
+
+    private:
+        // Speeds up or slows down toward `wanted` at the profile's rates; returns this tick's speed.
+        float drive(const View& view, std::size_t index, float wanted, float dt) noexcept;
+        // Never below the minimum speed; turns and pitches toward the intent's point at the turn rate
+        // (pitch limited to flight_max_pitch) and moves along the nose.
+        void fly(const View& view, std::size_t index, float dt);
+        // A space ship's step without the part that would take it deeper into a ship it touches (both
+        // radii), so ships slide along each other instead of overlapping; other steps unchanged.
+        [[nodiscard]] Vector3 keep_apart(const View& view, std::size_t index, Vector3 step);
+        // One entity's ground movement this tick, along its route at move_speed (physical movement only:
+        // where it goes is the behavior layer's).
+        void move_over_ground(const View& view, std::size_t index, float dt);
+        // This tick's speed toward a destination `distance` away after steer returned `facing`: the
+        // movement profile's (wanted_speed, then drive), or a walk played as clips' (walk_speed).
+        float move_speed(const View& view, std::size_t index, float facing, float distance, float dt) noexcept;
+        // Movers that cannot turn while slow move along their heading, not straight at their target,
+        // until within settle_distance of it.
+        [[nodiscard]] bool moves_along_heading(const View& view, std::size_t index) const noexcept;
+        [[nodiscard]] float settle_distance(const View& view, std::size_t index) const noexcept;
+        // Turns toward `desired` (radians) at the entity's turn rate (its stopped turn rate when moving
+        // slower than its profile's turn speed) and returns how much of its speed it may use: 1 when
+        // facing the way, falling to 0 at 90 degrees or more off.
+        [[nodiscard]] float steer(const View& view, std::size_t index, float desired, float dt);
+        // A turn in place played as clips (simulation_walk.cpp): plans it when a turn of `difference`
+        // (radians) begins from rest, and advances it by `dt`; false when the entity turns as usual.
+        bool turn_as_clips(const View& view, std::size_t index, float difference, float dt);
+        // A walk played as clips (simulation_walk.cpp): this tick's speed, starting the walk from rest,
+        // advancing the stride, and beginning the stop at the stride's part where it lands closest to
+        // the destination `distance` away.
+        float walk_speed(const View& view, std::size_t index, float facing, float distance, float dt) noexcept;
+        // Runs a walk played as clips that goes straight ahead this tick (stopping, or walking on to its
+        // stop without a destination); false when the entity moves or stands as usual.
+        bool walk_straight(const View& view, std::size_t index, float dt);
+        // The speed a mover wants this tick, `distance` from its destination, after steer returned
+        // `facing`: the travel speed shaped by its movement profile (turning in place, keeping speed in
+        // a turn, braking ahead of the destination).
+        // Also marks the entity arriving (LocomotorColumns::arriving) when braking for its destination
+        // holds its speed back.
+        [[nodiscard]] float wanted_speed(const View& view, std::size_t index, float facing, float distance) noexcept;
+        // Whether a standing walk played as clips is about to turn in place toward the behavior
+        // layer's point (so it keeps a raised leg up).
+        [[nodiscard]] bool wants_turn_in_place(const View& view, std::size_t index) const noexcept;
+        std::vector<std::uint32_t> query_;
+    };
+    MovementSystem movement_;
     // Short legs onto and off a shared path search at most this many nodes.
     GridPathfinder local_pathfinder_{4096};
     std::uint64_t shared_routes_{};

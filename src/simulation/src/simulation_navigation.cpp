@@ -13,35 +13,6 @@ namespace eaw {
 
 using namespace simulation_detail;
 
-void SimulationWorld::plan_move(const std::size_t index, const Vector3& target)
-{
-    // A walk played as clips given a new destination (not a route planned again to the same one)
-    // looks at its first way to it before it turns (steer).
-    if (auto* walk = walk_clips_.find(slot_of(index), &WalkClipColumns::plans);
-        walk != nullptr && (walk->clip == WalkClip::starting || walk->clip == WalkClip::moving) &&
-        (!route_.move_targets[index] || std::hypot(route_.move_targets[index]->x - target.x, route_.move_targets[index]->y - target.y) > arrival_distance))
-    {
-        walk->new_way = true;
-    }
-    route_.loiter_points[index].reset();
-    route_.paths[index].clear();
-    route_.pending[index] = 0;
-    if (ground_mover_.follows_ground[index] == 0 || ground_mover_.passable_types[index] == 0 || ground_.map.passability.size() != ground_.map.heights.size() || !ground_.map.valid())
-    {
-        route_.move_targets[index] = target;
-        return;
-    }
-    // The unit holds still (its target set, so it counts as moving) until the queue plans it.
-    route_.move_targets[index] = target;
-    const auto serial = path_queue_.next_serial++;
-    if (path_queue_.next_serial == 0)
-    {
-        path_queue_.next_serial = 1;
-    }
-    route_.pending[index] = serial;
-    path_queue_.requests.push_back({{identity_.ids[index]}, {target}, {serial}, target});
-}
-
 void SimulationWorld::plan_route_now(const std::size_t index, const Vector3& target)
 {
     const auto& position = placement_.positions[index];
@@ -317,7 +288,7 @@ void SimulationWorld::plan_space_avoidance()
         {
             return {};
         }
-        const float speed = travel_speed(index) * way(index, std::atan2(y, x));
+        const float speed = travel_speed(*this, index) * way(index, std::atan2(y, x));
         return {x / length * speed, y / length * speed};
     };
     std::vector<Vector2> velocities(identity_.ids.size());
@@ -334,7 +305,7 @@ void SimulationWorld::plan_space_avoidance()
         }
         const auto& here = placement_.positions[index];
         const float radius = placement_.radii[index];
-        const float speed = travel_speed(index);
+        const float speed = travel_speed(*this, index);
         const float horizon = std::max(avoid_lookahead_seconds, radius * avoid_min_lookahead_radii / std::max(speed, 1.0e-3F));
         query_.clear();
         avoidance_.grid.query(here, speed * horizon * 2.0F + radius + largest_radius, query_);
@@ -509,26 +480,30 @@ void SimulationWorld::plan_space_avoidance()
     }
 }
 
-Vector3 SimulationWorld::keep_apart(const std::size_t index, Vector3 step)
+Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std::size_t index, Vector3 step)
 {
-    const float radius = placement_.radii[index];
-    if (avoidance_.largest_ship_radius <= 0.0F || radius <= 0.0F || flight_.min_speeds[index] > 0.0F || ground_.map.valid())
+    auto& placement = view.get<PlacementColumns>();
+    auto& flight = view.get<FlightColumns>();
+    auto& ground = view.get<GroundState>();
+    auto& avoidance = view.get<SpaceAvoidance>();
+    const float radius = placement.radii[index];
+    if (avoidance.largest_ship_radius <= 0.0F || radius <= 0.0F || flight.min_speeds[index] > 0.0F || ground.map.valid())
     {
         return step;
     }
-    const auto& here = placement_.positions[index];
+    const auto& here = placement.positions[index];
     query_.clear();
-    avoidance_.grid.query(here, radius + avoidance_.largest_ship_radius + std::hypot(step.x, step.y), query_);
+    avoidance.grid.query(here, radius + avoidance.largest_ship_radius + std::hypot(step.x, step.y), query_);
     // Whether a step ends inside a ship it moves toward (deeper than it was).
     const auto deeper = [&](const std::uint32_t other, const Vector3& candidate, float& to_x, float& to_y, float& apart)
     {
-        const auto& there = placement_.positions[other];
-        if (other == index || placement_.radii[other] <= 0.0F || flight_.min_speeds[other] > 0.0F || placement_.radii[other] < radius * avoid_small_fraction ||
-            std::abs(there.z - here.z) > radius + placement_.radii[other])
+        const auto& there = placement.positions[other];
+        if (other == index || placement.radii[other] <= 0.0F || flight.min_speeds[other] > 0.0F || placement.radii[other] < radius * avoid_small_fraction ||
+            std::abs(there.z - here.z) > radius + placement.radii[other])
         {
             return false;
         }
-        if (std::hypot(here.x + candidate.x - there.x, here.y + candidate.y - there.y) >= radius + placement_.radii[other])
+        if (std::hypot(here.x + candidate.x - there.x, here.y + candidate.y - there.y) >= radius + placement.radii[other])
         {
             return false;
         }
@@ -609,7 +584,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         {
             goal.z = placement_.positions[index].z;
         }
-        plan_move(index, goal);
+        plan_move(*this, index, goal);
     }
     if (movers.empty())
     {
@@ -643,7 +618,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         {
             slot.z = placement_.positions[index].z;
         }
-        plan_move(index, slot);
+        plan_move(*this, index, slot);
         if (route_.pending[index] == 0 || movers.size() < 2)
         {
             continue;

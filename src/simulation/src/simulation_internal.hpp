@@ -193,4 +193,142 @@ template <typename Accepts> std::optional<std::size_t> SimulationWorld::choose_t
     return best;
 }
 
+template <class Data> float SimulationWorld::travel_speed(Data& data, const std::size_t index) noexcept
+{
+    auto& locomotor = data.template get<LocomotorColumns>();
+    const auto limit = locomotor.speed_limits[index];
+    const auto own = keeps(data, index, HardpointProfile::Kind::engine) ? locomotor.max_speeds[index] : locomotor.max_speeds[index] * 0.25F;
+    return limit > 0.0F ? std::min(own, limit) : own;
+}
+
+template <class Data> bool SimulationWorld::keeps(Data& data, const std::size_t index, const HardpointProfile::Kind kind) noexcept
+{
+    auto& combat = data.template get<CombatColumns>();
+    bool any = false;
+    const auto& hardpoints = combat.states[index].profile.hardpoints;
+    for (std::size_t hardpoint = 0; hardpoint < hardpoints.size(); ++hardpoint)
+    {
+        if (hardpoints[hardpoint].kind == kind)
+        {
+            any = true;
+            if (hardpoint_alive(data, index, hardpoint))
+            {
+                return true;
+            }
+        }
+    }
+    return !any;
+}
+
+template <class Data> bool SimulationWorld::hardpoint_alive(Data& data, const std::size_t index, const std::size_t hardpoint) noexcept
+{
+    auto& combat = data.template get<CombatColumns>();
+    const auto& state = combat.states[index];
+    return state.profile.hardpoints[hardpoint].health <= 0.0F || state.hardpoint_health[hardpoint] > 0.0F;
+}
+
+template <class Data> SimulationWorld::TurnPoint SimulationWorld::turn_point(Data& data, const std::size_t index, const float time) noexcept
+{
+    auto& locomotor = data.template get<LocomotorColumns>();
+    auto& turn_clips = data.template get<ComponentPool<TurnClipColumns>>();
+    const auto& movement = locomotor.movements[index];
+    const auto& plan = turn_clips.get(slot_of(data, index), &TurnClipColumns::plans);
+    const auto side = plan.way > 0.0F ? 0U : 1U;
+    const auto begin = std::max(movement.turn_begin_seconds[side], 1.0e-6F);
+    const auto end = std::max(movement.turn_end_seconds[side], 1.0e-6F);
+    const auto loop = movement.turn_loop_seconds[side];
+    const auto half = movement.turn_half_seconds[side];
+    const auto quarter = movement.turn_quarter_seconds[side];
+    // Each cycle turns at its nominal rate: the loop at the stopped rate, HALF and QUARTER through a
+    // half and a quarter of the loop's angle in their own time; all scaled to end on the way.
+    const auto rate = movement.stopped_turn_rate * plan.scale;
+    struct Cycle
+    {
+        TurnClip clip;
+        float seconds;
+        float rate;
+        std::uint32_t count;
+    };
+    const std::array<Cycle, 3> cycles{{
+        {TurnClip::loop, loop, rate, loop > 0.0F ? plan.loops : 0U},
+        {TurnClip::half, half, half > 0.0F ? rate * loop / (2.0F * half) : 0.0F, half > 0.0F ? plan.halves : 0U},
+        {TurnClip::quarter, quarter, quarter > 0.0F ? rate * loop / (4.0F * quarter) : 0.0F, quarter > 0.0F ? plan.quarters : 0U},
+    }};
+    // BEGIN winds up to the first cycle's rate and END down from the last one's (the loop's rate
+    // without cycles), linearly.
+    auto first = rate;
+    auto last = rate;
+    bool any = false;
+    for (const auto& cycle : cycles)
+    {
+        if (cycle.count > 0U)
+        {
+            first = any ? first : cycle.rate;
+            last = cycle.rate;
+            any = true;
+        }
+    }
+    if (time < begin)
+    {
+        return {TurnClip::begin, time / begin, first * time * time / (2.0F * begin)};
+    }
+    auto turned = 0.5F * first * begin;
+    auto at = begin;
+    for (const auto& cycle : cycles)
+    {
+        const auto span = static_cast<float>(cycle.count) * cycle.seconds;
+        if (cycle.count > 0U && time < at + span)
+        {
+            const auto into = time - at;
+            const auto whole = std::floor(into / cycle.seconds);
+            return {cycle.clip, (into - whole * cycle.seconds) / cycle.seconds, turned + cycle.rate * into};
+        }
+        turned += cycle.rate * span;
+        at += span;
+    }
+    const auto into = std::clamp(time - at, 0.0F, end);
+    return {TurnClip::end, into / end, turned + last * (into - into * into / (2.0F * end))};
+}
+
+template <class Data> bool SimulationWorld::turning_as_clips(Data& data, const std::size_t index) noexcept
+{
+    auto& turn_clips = data.template get<ComponentPool<TurnClipColumns>>();
+    const auto* plan = turn_clips.find(slot_of(data, index), &TurnClipColumns::plans);
+    return plan != nullptr && plan->active;
+}
+
+template <class Data> void SimulationWorld::plan_move(Data& data, const std::size_t index, const Vector3& target)
+{
+    auto& identity = data.template get<IdentityColumns>();
+    auto& ground_mover = data.template get<GroundMoverColumns>();
+    auto& route = data.template get<RouteColumns>();
+    auto& walk_clips = data.template get<ComponentPool<WalkClipColumns>>();
+    auto& ground = data.template get<GroundState>();
+    auto& path_queue = data.template get<PathQueue>();
+    // A walk played as clips given a new destination (not a route planned again to the same one)
+    // looks at its first way to it before it turns (steer).
+    if (auto* walk = walk_clips.find(slot_of(data, index), &WalkClipColumns::plans);
+        walk != nullptr && (walk->clip == WalkClip::starting || walk->clip == WalkClip::moving) &&
+        (!route.move_targets[index] || std::hypot(route.move_targets[index]->x - target.x, route.move_targets[index]->y - target.y) > simulation_detail::arrival_distance))
+    {
+        walk->new_way = true;
+    }
+    route.loiter_points[index].reset();
+    route.paths[index].clear();
+    route.pending[index] = 0;
+    if (ground_mover.follows_ground[index] == 0 || ground_mover.passable_types[index] == 0 || ground.map.passability.size() != ground.map.heights.size() || !ground.map.valid())
+    {
+        route.move_targets[index] = target;
+        return;
+    }
+    // The unit holds still (its target set, so it counts as moving) until the queue plans it.
+    route.move_targets[index] = target;
+    const auto serial = path_queue.next_serial++;
+    if (path_queue.next_serial == 0)
+    {
+        path_queue.next_serial = 1;
+    }
+    route.pending[index] = serial;
+    path_queue.requests.push_back({{identity.ids[index]}, {target}, {serial}, target});
+}
 } // namespace eaw

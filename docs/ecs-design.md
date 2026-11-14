@@ -530,7 +530,12 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    are members of the system object. The first one is contact (crushing, separation, and the
    measured speeds, one system for the design's contact phase, so the table has seven systems:
    commands, behavior, navigation, movement, contact, combat, publish). The other systems follow
-   one at a time, each with unchanged hashes. Queries as a separate helper were tried and dropped:
+   one at a time, each with unchanged hashes. Movement is the second (2026-11-15:
+   `MovementSystem`, ground movement, walks and turns as clips, flight, keeping ships apart). A
+   helper several systems use is a static template over its data, `template <class Data>
+   travel_speed(Data& data, ...)`, reading through `data.get<T>()`: a system passes its view (the
+   compiler holds the helper to that view's declaration), the systems still written as member
+   functions pass the world (`SimulationWorld::get<T>()`, full access), and there is one copy. Queries as a separate helper were tried and dropped:
    the loops already walk the dense order and look pools up by slot, and sorting a pool's members
    cost more than it saved (crushing, 0.006 to 0.025 ms a tick).
 5. **Recipes.** Readers per component; one construction path for spawns and placed objects;

@@ -295,7 +295,7 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .entities = identity_.ids.size(),
             .commands_applied = commands_applied_,
             .stale_references = stale_references_,
-            .blocked_moves = blocked_moves_,
+            .blocked_moves = movement_.blocked_moves,
             .path_searches = path_searches_,
             .partial_paths = partial_paths_,
             .path_expansions = path_expansions_,
@@ -405,7 +405,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
                 hasher.add(movement.turn_half_seconds[side]);
                 hasher.add(movement.turn_quarter_seconds[side]);
             }
-            const auto& plan = turn_clips_.get(slot_of(index), &TurnClipColumns::plans);
+            const auto& plan = turn_clips_.get(slot_of(*this, index), &TurnClipColumns::plans);
             hasher.add(static_cast<std::uint8_t>(plan.active ? 1U : 0U));
             hasher.add(plan.elapsed);
             hasher.add(plan.start);
@@ -426,7 +426,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(movement.walk_stop_parts);
             hasher.add(movement.walk_raise_seconds);
             hasher.add(movement.walk_lower_seconds);
-            const auto& walk = walk_clips_.get(slot_of(index), &WalkClipColumns::plans);
+            const auto& walk = walk_clips_.get(slot_of(*this, index), &WalkClipColumns::plans);
             hasher.add(walk.clip);
             hasher.add(walk.part);
             hasher.add(walk.elapsed);
@@ -451,7 +451,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(placement_.pitches[index]);
         hasher.add(flight_.cruise_heights[index]);
         // A non-flyer's manoeuvres, absent from the pool, hash as the zeros it always had.
-        const auto maneuver = flight_maneuvers_.find(slot_of(index));
+        const auto maneuver = flight_maneuvers_.find(slot_of(*this, index));
         hasher.add(maneuver ? flight_maneuvers_.columns.looping[*maneuver] : std::uint8_t{0});
         hasher.add(maneuver ? flight_maneuvers_.columns.rolls[*maneuver] : 0.0F);
         hasher.add(route_.loiter_points[index].has_value());
@@ -532,18 +532,17 @@ const CrushProfile& SimulationWorld::crush_profile_in(const ComponentPool<CrushC
 
 const CrushProfile& SimulationWorld::crush_profile_of(const std::size_t index) const noexcept
 {
-    return crush_profile_in(crush_, slot_of(index));
+    return crush_profile_in(crush_, slot_of(*this, index));
+}
+
+void SimulationWorld::run_movement()
+{
+    movement_.run(view_of<MovementSystem::View>(), static_cast<float>(tick_seconds_));
 }
 
 void SimulationWorld::run_contact()
 {
     contact_.run(view_of<ContactSystem::View>(), static_cast<float>(tick_seconds_));
-}
-
-bool SimulationWorld::turning_as_clips(const std::size_t index) const noexcept
-{
-    const auto* plan = turn_clips_.find(slot_of(index), &TurnClipColumns::plans);
-    return plan != nullptr && plan->active;
 }
 
 std::optional<std::size_t> SimulationWorld::dense_index(const EntityId id) const noexcept
@@ -625,9 +624,9 @@ void SimulationWorld::set_ground(GroundMap ground)
 // region labels are dropped, so paths see the change.
 void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
 {
-    const auto* footprint = footprint_.find(slot_of(index), &FootprintColumns::shapes);
+    const auto* footprint = footprint_.find(slot_of(*this, index), &FootprintColumns::shapes);
     if (footprint == nullptr || !ground_.map.valid() || ground_.map.passability.size() != ground_.map.heights.size() || ground_.footprint_cover.size() != ground_.map.passability.size() ||
-        (footprint_.get(slot_of(index), &FootprintColumns::stamped) != 0) == add)
+        (footprint_.get(slot_of(*this, index), &FootprintColumns::stamped) != 0) == add)
     {
         return;
     }
@@ -663,7 +662,7 @@ void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
             }
         }
     }
-    footprint_.get(slot_of(index), &FootprintColumns::stamped) = add ? 1U : 0U;
+    footprint_.get(slot_of(*this, index), &FootprintColumns::stamped) = add ? 1U : 0U;
     pathfinder_.reset();
     local_pathfinder_.reset();
 }
@@ -692,8 +691,8 @@ void SimulationWorld::publish()
             }
         }
         // A non-flyer reports no manoeuvres.
-        const auto* yaw_rate = flight_maneuvers_.find(slot_of(index), &FlightManeuverColumns::yaw_rates);
-        const auto* roll = flight_maneuvers_.find(slot_of(index), &FlightManeuverColumns::rolls);
+        const auto* yaw_rate = flight_maneuvers_.find(slot_of(*this, index), &FlightManeuverColumns::yaw_rates);
+        const auto* roll = flight_maneuvers_.find(slot_of(*this, index), &FlightManeuverColumns::rolls);
         snapshot_.entities.push_back({identity_.ids[index],
                                       placement_.positions[index],
                                       placement_.headings[index],
@@ -721,10 +720,10 @@ void SimulationWorld::publish()
                                       orders_.standing[index].kind,
                                       locomotor_.arriving[index] != 0});
         snapshot_.entities.back().turns_as_clips = locomotor_.movements[index].turn_begin_seconds[0] > 0.0F && locomotor_.movements[index].stopped_turn_rate > 0.0F;
-        if (turning_as_clips(index))
+        if (turning_as_clips(*this, index))
         {
-            const auto& plan = turn_clips_.get(slot_of(index), &TurnClipColumns::plans);
-            const auto point = turn_point(index, plan.elapsed);
+            const auto& plan = turn_clips_.get(slot_of(*this, index), &TurnClipColumns::plans);
+            const auto point = turn_point(*this, index, plan.elapsed);
             auto& entity = snapshot_.entities.back();
             entity.turn_clip = point.clip;
             entity.turn_left = plan.way > 0.0F;
@@ -732,7 +731,7 @@ void SimulationWorld::publish()
         }
         if (const auto& movement = locomotor_.movements[index]; movement.walk_stop_parts > 0)
         {
-            const auto& walk = walk_clips_.get(slot_of(index), &WalkClipColumns::plans);
+            const auto& walk = walk_clips_.get(slot_of(*this, index), &WalkClipColumns::plans);
             auto& entity = snapshot_.entities.back();
             entity.walk_clip = walk.clip;
             entity.walk_part = walk.part;

@@ -61,7 +61,7 @@ void SimulationWorld::run_combat()
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         auto& combat = combat_.states[index];
-        if (combat.shield < combat.profile.shield && combat.health > 0.0F && combat.profile.shield_refresh > 0.0F && keeps(index, HardpointProfile::Kind::shield_generator) &&
+        if (combat.shield < combat.profile.shield && combat.health > 0.0F && combat.profile.shield_refresh > 0.0F && keeps(*this, index, HardpointProfile::Kind::shield_generator) &&
             shield_refresh_due(index))
         {
             combat.shield = std::min(combat.profile.shield, combat.shield + combat.profile.shield_refresh);
@@ -240,7 +240,7 @@ void SimulationWorld::run_weapon(const std::size_t index)
     {
         const auto& weapon = combat.profile.weapons[slot];
         auto& state = combat.weapons[slot];
-        if (weapon.hardpoint >= 0 && !hardpoint_alive(index, static_cast<std::size_t>(weapon.hardpoint)))
+        if (weapon.hardpoint >= 0 && !hardpoint_alive(*this, index, static_cast<std::size_t>(weapon.hardpoint)))
         {
             state.pulses_left = 0;
             continue;
@@ -460,7 +460,7 @@ float SimulationWorld::target_size(const std::size_t index) const noexcept
 {
     // The separation footprint, else the obstacle footprint.
     auto size = placement_.radii[index];
-    if (const auto* footprint = footprint_.find(slot_of(index), &FootprintColumns::shapes); size <= 0.0F && footprint != nullptr)
+    if (const auto* footprint = footprint_.find(slot_of(*this, index), &FootprintColumns::shapes); size <= 0.0F && footprint != nullptr)
     {
         size = std::max(footprint->half_length, footprint->half_width);
     }
@@ -496,30 +496,6 @@ Vector3 SimulationWorld::world_point(const std::size_t index, const LocalPoint& 
     const auto sin_heading = std::sin(heading);
     const auto& position = placement_.positions[index];
     return {position.x + point.forward * cos_heading - point.left * sin_heading, position.y + point.forward * sin_heading + point.left * cos_heading, position.z + point.up};
-}
-
-bool SimulationWorld::hardpoint_alive(const std::size_t index, const std::size_t hardpoint) const noexcept
-{
-    const auto& combat = combat_.states[index];
-    return combat.profile.hardpoints[hardpoint].health <= 0.0F || combat.hardpoint_health[hardpoint] > 0.0F;
-}
-
-bool SimulationWorld::keeps(const std::size_t index, const HardpointProfile::Kind kind) const noexcept
-{
-    bool any = false;
-    const auto& hardpoints = combat_.states[index].profile.hardpoints;
-    for (std::size_t hardpoint = 0; hardpoint < hardpoints.size(); ++hardpoint)
-    {
-        if (hardpoints[hardpoint].kind == kind)
-        {
-            any = true;
-            if (hardpoint_alive(index, hardpoint))
-            {
-                return true;
-            }
-        }
-    }
-    return !any;
 }
 
 std::int32_t SimulationWorld::aim_hardpoint(const std::size_t victim, const Vector3& from) const noexcept

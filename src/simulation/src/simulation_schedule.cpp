@@ -29,10 +29,7 @@ const std::array<SimulationWorld::SystemEntry, 7> SimulationWorld::schedule_{{
      access_to({SimData::combat, SimData::flight, SimData::ground, SimData::ground_mover, SimData::group, SimData::identity, SimData::locomotor, SimData::path_queue, SimData::placement,
                 SimData::route, SimData::slots}),
      access_to({SimData::route, SimData::path_queue, SimData::group, SimData::locomotor, SimData::avoidance})},
-    {"movement", TickPhase::movement, &SimulationWorld::run_movement,
-     access_to({SimData::combat, SimData::flight, SimData::flight_maneuvers, SimData::ground, SimData::ground_mover, SimData::group, SimData::identity, SimData::locomotor, SimData::path_queue,
-                SimData::placement, SimData::route, SimData::steering, SimData::turn_clips, SimData::walk_clips, SimData::avoidance}),
-     access_to({SimData::placement, SimData::locomotor, SimData::route, SimData::path_queue, SimData::group, SimData::flight_maneuvers, SimData::turn_clips, SimData::walk_clips})},
+    {"movement", TickPhase::movement, &SimulationWorld::run_movement, reads_of<MovementSystem::View>(), writes_of<MovementSystem::View>(), true},
     // Contact's access is its view's type (ContactSystem::View).
     {"contact", TickPhase::contact, &SimulationWorld::run_contact, reads_of<ContactSystem::View>(), writes_of<ContactSystem::View>(), true},
     {"combat", TickPhase::combat, &SimulationWorld::run_combat, all_data, all_data},

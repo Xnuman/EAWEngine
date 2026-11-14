@@ -98,7 +98,7 @@ void SimulationWorld::apply(const SimCommand& command)
             group_.ids[*dense] = 0;
             if (locomotor_.max_speeds[*dense] > 0.0F)
             {
-                plan_move(*dense, command.target);
+                plan_move(*this, *dense, command.target);
             }
             break;
         case SimCommandKind::stop:
@@ -116,7 +116,7 @@ void SimulationWorld::apply(const SimCommand& command)
             {
                 const auto distance = speed * speed / (2.0F * locomotor_.movements[*dense].deceleration);
                 const auto& here = placement_.positions[*dense];
-                plan_move(*dense, {here.x + std::cos(placement_.headings[*dense]) * distance, here.y + std::sin(placement_.headings[*dense]) * distance, here.z});
+                plan_move(*this, *dense, {here.x + std::cos(placement_.headings[*dense]) * distance, here.y + std::sin(placement_.headings[*dense]) * distance, here.z});
             }
             break;
         case SimCommandKind::attack:
@@ -263,7 +263,7 @@ void SimulationWorld::apply_standing_order(const SimCommand& command)
         }
         if (locomotor_.max_speeds[*dense] > 0.0F)
         {
-            plan_move(*dense, order.point);
+            plan_move(*this, *dense, order.point);
         }
     }
 }
@@ -277,7 +277,7 @@ void SimulationWorld::teleport(const std::size_t index, const Vector3& point, co
     {
         position.z = ground_.map.surface_height(position.x, position.y);
     }
-    if (auto* footprint = footprint_.find(slot_of(index), &FootprintColumns::shapes))
+    if (auto* footprint = footprint_.find(slot_of(*this, index), &FootprintColumns::shapes))
     {
         // The footprint keeps its place relative to the entity: its offset turns with the heading.
         const float turn = heading ? *heading - placement_.headings[index] : 0.0F;
@@ -355,7 +355,7 @@ void SimulationWorld::run_standing_order(const std::size_t index)
         // Resume: back on the way, or back to the anchor when out of the guard's reach.
         if (mobile && (!guard || distance_xy(placement_.positions[index], order.point) > guard_radius * 0.5F))
         {
-            plan_move(index, order.point);
+            plan_move(*this, index, order.point);
         }
         return;
     }
@@ -399,13 +399,13 @@ void SimulationWorld::run_standing_order(const std::size_t index)
         if (distance_xy(placement_.positions[index], order.point) > guard_radius * 0.5F && (!route_.move_targets[index] || distance_xy(*route_.move_targets[index], order.point) > follow_tolerance) &&
             order.scan_timer == 0)
         {
-            plan_move(index, order.point);
+            plan_move(*this, index, order.point);
         }
         return;
     }
     if (order.entity.valid() && (!route_.move_targets[index] || distance_xy(*route_.move_targets[index], order.point) > follow_tolerance) && order.scan_timer == 0)
     {
-        plan_move(index, order.point);
+        plan_move(*this, index, order.point);
         return;
     }
     // Arrived with nothing to fight (at the point, or within reach of the object): the attack-move
@@ -447,7 +447,7 @@ void SimulationWorld::pursue_ordered_target(const std::size_t index)
         if (locomotor_.max_speeds[index] > 0.0F && (combat.chase_timer == 0 || !route_.move_targets[index]))
         {
             // Flyers keep their altitude; ground units take theirs from the surface anyway.
-            plan_move(index,
+            plan_move(*this, index,
                       {placement_.positions[*victim].x, placement_.positions[*victim].y, ground_mover_.follows_ground[index] != 0 ? placement_.positions[*victim].z : placement_.positions[index].z});
             combat.chase_timer = chase_interval;
         }
@@ -480,7 +480,7 @@ void SimulationWorld::plan_flight(const std::size_t index, const float dt)
 {
     const auto& position = placement_.positions[index];
     auto& intent = steering_.intents[index];
-    if (flight_maneuvers_.get(slot_of(index), &FlightManeuverColumns::looping) != 0)
+    if (flight_maneuvers_.get(slot_of(*this, index), &FlightManeuverColumns::looping) != 0)
     {
         intent.loop = true;
         return;
@@ -513,7 +513,7 @@ void SimulationWorld::plan_flight(const std::size_t index, const float dt)
         if (target)
         {
             intent.point = Vector3{target->x, target->y, plane};
-            if (distance_xy(position, *target) <= travel_speed(index) * dt * 3.0F)
+            if (distance_xy(position, *target) <= travel_speed(*this, index) * dt * 3.0F)
             {
                 route_.loiter_points[index] = *target;
                 target.reset();
@@ -535,7 +535,7 @@ void SimulationWorld::plan_flight(const std::size_t index, const float dt)
     }
     const auto dx = intent.point->x - position.x;
     const auto dy = intent.point->y - position.y;
-    const auto turn_circle = travel_speed(index) / locomotor_.turn_rates[index];
+    const auto turn_circle = travel_speed(*this, index) / locomotor_.turn_rates[index];
     if (std::hypot(dx, dy) > 4.0F * turn_circle && std::fabs(wrap_angle(std::atan2(dy, dx) - placement_.headings[index])) > flight_reversal_angle)
     {
         intent.loop = true;
