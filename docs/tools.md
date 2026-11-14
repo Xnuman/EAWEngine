@@ -378,6 +378,10 @@ EAWAssetInspector.exe inspect Data/Art/Models/Some_Unit.alo
 # and how fast a turn clip turns the body; the model is found from the clip's name
 EAWAssetInspector.exe gait Data/Art/Models/EV_AT-AT_MOVE_00.ala
 
+# Which XML types set the given tags, and to what (resolved through Variant_Of_Existing_Type; one
+# tab-separated row per type with its element and land model; "-" where a tag is absent)
+EAWAssetInspector.exe type-tags Walk_Transition,Has_Pre_Turn_Anim,Locomotor_Has_Animation_Priority --game foc
+
 # Whether a model's clips meet where the engine joins them (idle, start, walk, the stops by part of
 # the stride, turns with their HALF and QUARTER cycles): the largest bone jump at each join
 EAWAssetInspector.exe clip-joins Data/Art/Models/EV_AT-AT.alo

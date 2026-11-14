@@ -103,6 +103,8 @@ eaw::Status inspect_asset(const eaw::VirtualFileSystem& vfs, const std::string& 
 eaw::Status gait(const eaw::VirtualFileSystem& vfs, const std::string& clip_path);
 // Whether a model's clips meet where the engine joins them (clip_joins.cpp).
 eaw::Status clip_joins(const eaw::VirtualFileSystem& vfs, const std::string& model_path);
+// Which XML types set the given tags (a comma-separated list), and to what (type_tags.cpp).
+eaw::Status type_tags(const eaw::VirtualFileSystem& vfs, const std::string& tags);
 
 void audit_texture_references(const eaw::VirtualFileSystem& vfs, std::string_view prefix, std::size_t limit);
 

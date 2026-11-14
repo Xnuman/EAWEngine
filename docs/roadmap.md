@@ -152,7 +152,9 @@ rendering rows join item 2).
       Walker locomotion cleanup before the ECS (the owner's review, 2026-11-14), one commit each:
       (1) the clip naming in one place and planned walks on their clips' first variants (done
       2026-11-14: `assets/clip_names`); (2) which stock types still take the presentation's old
-      start and stop, then remove it or plan them; (3) `UnitAnimator::animate` split into stages
+      start and stop, then remove it or plan them (surveyed 2026-11-14: 24 types without
+      animation priority, the Rancor, SPMAT, AT-AA, Night Sister, speeder bike, Juggernaut,
+      Tauntaun, and ground beetle; the path stays for them unless the owner decides otherwise); (3) `UnitAnimator::animate` split into stages
       in files of their own, behavior unchanged; (4) turns report their clip and progress like
       walks, composed of loop, HALF, and QUARTER cycles. MovementProfile's optional modes and the
       simulation's parallel storage go to the ECS design (c) instead.

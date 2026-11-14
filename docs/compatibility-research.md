@@ -1099,6 +1099,16 @@ particle-audit`.
   Sister) start them at thirds of the stride instead. So a walker that stops walks on to the next
   1/n of its stride, n its MOVE_END count, before its MOVE_END plays (the original's behavior by this
   evidence; how it times the walk-on is not known).
+- **Who uses the walker tags** (2026-11-14, `EAWAssetInspector type-tags`). Walk_Transition,
+  Has_Pre_Turn_Anim, and Locomotor_Has_Animation_Priority with Attack_Animation_Is_Overlay: all
+  four on 29 types (AT-AT, AT-ST, pod walker models); the first two without the priority on 17
+  (Rancor 8, SPMAT 5, AT-AA 2, Night Sister 2), none of which overrides acceleration, so their
+  speed changes at once; Walk_Transition alone on 3 (the speeder bike, EV_BIKE); Has_Pre_Turn_Anim
+  alone on 4 (Juggernaut, Tauntaun, ground beetle; the Tauntaun and Juggernaut with small
+  acceleration overrides); priority and overlay without transitions on 2 (Destroyer droid). So
+  24 types play transitions without animation priority: by the tag's name, their locomotor leads
+  and the clips play over its motion (inference; how the original shows a Rancor setting off is
+  not observed yet).
 - **The turn kit** (2026-11-14, `clip-joins` over every stock model with transition clips). Ten
   models carry the same set: TURNL/TURNR loops with _BEGIN, _END, _HALF, and _QUARTER (AT-AT, AT-ST,
   AT-AA, SPMAT, pod walker, Rancor, Wampa, Tauntaun, Hutt, Night Sister); 25 more (infantry,

@@ -101,6 +101,11 @@ eaw::Result<int> run(const Options& options)
         const auto status = clip_joins(vfs, options.operand);
         return status ? 0 : report_error(status.error());
     }
+    if (options.command == "type-tags")
+    {
+        const auto status = type_tags(vfs, options.operand);
+        return status ? 0 : report_error(status.error());
+    }
     if (options.command == "gait")
     {
         const auto status = gait(vfs, options.operand);
