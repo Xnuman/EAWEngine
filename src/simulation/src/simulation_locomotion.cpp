@@ -40,6 +40,11 @@ void SimulationWorld::run_movement()
             fly(index, dt);
             continue;
         }
+        // A walk played as clips that stops, or walks on to its stop, goes straight ahead.
+        if (movements_[index].walk_stop_parts > 0 && walk_straight(index, dt))
+        {
+            continue;
+        }
         auto& target = move_targets_[index];
         if (!target || group_waiting_[index] != 0 || path_pending_[index] != 0)
         {
@@ -85,7 +90,7 @@ void SimulationWorld::run_movement()
             const auto length = std::sqrt(aside.x * aside.x + aside.y * aside.y + aside.z * aside.z);
             const auto factor = aside.x != 0.0F || aside.y != 0.0F ? steer(index, std::atan2(aside.y, aside.x), dt) : 1.0F;
             const auto left = std::hypot(target->x - position.x, target->y - position.y);
-            const auto step = std::min(drive(index, wanted_speed(index, factor, left), dt) * dt, length);
+            const auto step = std::min(move_speed(index, factor, left, dt) * dt, length);
             if (length > 0.0F)
             {
                 const auto& heading = headings_[index];
@@ -98,7 +103,7 @@ void SimulationWorld::run_movement()
         const Vector3 delta{target->x - position.x, target->y - position.y, target->z - position.z};
         const auto distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
         const auto speed_factor = delta.x != 0.0F || delta.y != 0.0F ? steer(index, std::atan2(delta.y, delta.x), dt) : 1.0F;
-        const auto step_length = drive(index, wanted_speed(index, speed_factor, distance), dt) * dt;
+        const auto step_length = move_speed(index, speed_factor, distance, dt) * dt;
         const auto scale = std::min(1.0F, step_length / std::max(distance, arrival_distance));
         const auto& heading = headings_[index];
         const Vector3 wanted = moves_along_heading(index) && distance > settle_distance(index) ? Vector3{std::cos(heading) * step_length, std::sin(heading) * step_length, delta.z * scale}
@@ -154,7 +159,7 @@ void SimulationWorld::move_over_ground(const std::size_t index, const float dt)
         {
             // shortcut: brakes for the destination only, so a heavy unit slides a little past a
             // sharp corner while it stops to turn; look ahead to the corner if that shows.
-            remaining = drive(index, wanted_speed(index, facing, remaining_route_[index]), dt) * dt;
+            remaining = move_speed(index, facing, remaining_route_[index], dt) * dt;
             driven = true;
         }
         else
@@ -300,7 +305,8 @@ float SimulationWorld::wanted_speed(const std::size_t index, const float facing,
         factor = std::max(factor, movement.turn_speed_fraction);
     }
     auto wanted = travel_speed(index) * factor;
-    if (movement.deceleration > 0.0F)
+    // A walk played as clips plans its stop by its stride instead (walk_speed).
+    if (movement.deceleration > 0.0F && movement.walk_stop_parts == 0)
     {
         // The speed it can still brake from to stop at the destination.
         const auto braking = std::sqrt(2.0F * movement.deceleration * std::max(distance, 0.0F));

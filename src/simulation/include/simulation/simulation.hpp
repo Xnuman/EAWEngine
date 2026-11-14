@@ -102,6 +102,30 @@ struct MovementProfile
     std::array<float, 2> turn_begin_seconds{};
     std::array<float, 2> turn_loop_seconds{};
     std::array<float, 2> turn_end_seconds{};
+    // Walks played as clips (animation-led walkers with MOVESTART, MOVE, and MOVE_END clips; seconds
+    // at the clips' playing rate at top speed): the walker speeds up over walk_start_seconds, its
+    // stride (one MOVE loop) covers top speed times walk_stride_seconds, and it stops only where a
+    // MOVE_END clip starts, at a whole walk_stop_parts-th of its stride, braking to rest over
+    // walk_stop_seconds; nothing turns or sets off before that stop ends. Zero walk_stop_parts
+    // changes speed by acceleration and deceleration instead.
+    float walk_start_seconds{};
+    float walk_stride_seconds{};
+    float walk_stop_seconds{};
+    std::uint32_t walk_stop_parts{};
+};
+
+// The most MOVE_END clips a walk played as clips stops by (MOVE_ENDONE..MOVE_ENDFOUR, the stock names).
+inline constexpr std::uint32_t max_walk_stop_parts = 4;
+
+// Which walk clip a walk played as clips (MovementProfile::walk_stop_parts) is in: unplanned for
+// every other entity.
+enum class WalkClip : std::uint8_t
+{
+    unplanned,
+    standing,
+    starting,
+    moving,
+    stopping,
 };
 
 // Everything needed to create an entity. `type_name` is the XML object type (informational for
@@ -325,6 +349,11 @@ struct EntitySnapshot
     // turn's END; presentation plays the turn clips by them.
     bool turning_in_place{};
     bool turn_arriving{};
+    // A walk played as clips: the clip, the MOVE_END clip a stop plays (0 for MOVE_ENDONE), and how far
+    // into the clip it is (0..1; the stride phase while moving).
+    WalkClip walk_clip{WalkClip::unplanned};
+    std::uint32_t walk_part{};
+    float walk_progress{};
 };
 
 struct ProjectileSnapshot
@@ -677,6 +706,16 @@ private:
     // a turn, braking ahead of the destination).
     // Also marks the entity arriving_ when braking for its destination holds its speed back.
     [[nodiscard]] float wanted_speed(std::size_t index, float facing, float distance) noexcept;
+    // This tick's speed toward a destination `distance` away after steer returned `facing`: the
+    // movement profile's (wanted_speed, then drive), or a walk played as clips' (walk_speed).
+    float move_speed(std::size_t index, float facing, float distance, float dt) noexcept;
+    // A walk played as clips (simulation_walk.cpp): this tick's speed, starting the walk from rest,
+    // advancing the stride, and beginning the stop at the stride's part where it lands closest to
+    // the destination `distance` away.
+    float walk_speed(std::size_t index, float facing, float distance, float dt) noexcept;
+    // Runs a walk played as clips that goes straight ahead this tick (stopping, or walking on to its
+    // stop without a destination); false when the entity moves or stands as usual.
+    bool walk_straight(std::size_t index, float dt);
     // Speeds up or slows down toward `wanted` at the profile's rates; returns this tick's speed.
     float drive(std::size_t index, float wanted, float dt) noexcept;
     // Movers that cannot turn while slow move along their heading, not straight at their target,
@@ -827,6 +866,22 @@ private:
     };
     std::vector<TurnPlan> turn_plans_;
     std::vector<std::uint8_t> turn_arriving_;
+    // A walk played as clips (MovementProfile::walk_stop_parts): its clip, the stop's part, seconds
+    // into the clip, the stride phase (0..1), the speed its stop brakes from, the share of the travel
+    // speed a walk too short for its clips keeps, and whether its stop ends the move to `destination`
+    // (a move elsewhere ordered meanwhile goes on after the stop); hashed for such entities only.
+    struct WalkPlan
+    {
+        WalkClip clip{WalkClip::standing};
+        std::uint32_t part{};
+        float elapsed{};
+        float phase{};
+        float from_speed{};
+        float scale{1.0F};
+        bool ends_move{};
+        Vector3 destination;
+    };
+    std::vector<WalkPlan> walk_plans_;
     std::vector<float> rolls_;
     std::vector<Stance> stances_;
     std::vector<std::uint8_t> aims_with_body_;

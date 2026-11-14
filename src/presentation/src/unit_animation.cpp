@@ -591,6 +591,11 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
         state.frame = frame_;
         const auto target_speed = std::isfinite(entity.speed) ? std::max(entity.speed, 0.0F) : 0.0F;
         state.display_speed += (target_speed - state.display_speed) * std::min(1.0F, static_cast<float>(dt) / speed_smoothing_seconds);
+        // A walk played as clips shapes its speed by its clips: standing is IDLE the moment its stop ends.
+        if (entity.walk_clip == WalkClip::standing)
+        {
+            state.display_speed = 0.0F;
+        }
 
         // Locomotion: two neighbouring clips by speed, falling back to whatever the mesh has.
         const auto blend = locomotion_blend(state.display_speed, entity.max_speed, state.walk >= 0);
@@ -767,14 +772,17 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                     state.fading = -1;
                 }
             };
+            // A walk played as clips shows the simulation's clip (EntitySnapshot::walk_clip); the
+            // start and stop below are for the other walkers.
+            const bool planned = entity.walk_clip != WalkClip::unplanned;
             if (state.frame_seen)
             {
-                if (profile.walk_transition && moving && !state.was_moving)
+                if (!planned && profile.walk_transition && moving && !state.was_moving)
                 {
                     state.stop_begun = false;
                     start_transition(find_clip(instance.mesh, AnimationRole::move_start, 0), walk_playback, true);
                 }
-                else if (profile.walk_transition && !state.stop_begun && state.move >= 0 && ((entity.arriving && moving) || (!moving && state.was_moving)))
+                else if (!planned && profile.walk_transition && !state.stop_begun && state.move >= 0 && ((entity.arriving && moving) || (!moving && state.was_moving)))
                 {
                     // An animation-led walker brakes over its MOVE_END clip (battle's
                     // apply_animation_locomotion): its stop begins as braking for the destination does.
@@ -877,6 +885,31 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                     // IDLE goes on from its first frame where a transition (MOVE_END) leaves it.
                     state.idle_start = state.fading_since;
                 }
+            }
+            if (planned)
+            {
+                const auto clip = entity.walk_clip == WalkClip::starting   ? find_clip(instance.mesh, AnimationRole::move_start, 0)
+                                  : entity.walk_clip == WalkClip::moving   ? state.move
+                                  : entity.walk_clip == WalkClip::stopping ? find_clip(instance.mesh, AnimationRole::move_end, entity.walk_part)
+                                                                           : no_clip;
+                if (clip >= 0)
+                {
+                    override_clip = clip;
+                    override_time = static_cast<double>(entity.walk_progress) * static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
+                    override_weight = 1.0F;
+                    state.transition = -1;
+                    state.fading = -1;
+                    if (entity.walk_clip == WalkClip::moving)
+                    {
+                        state.stride_phase = entity.walk_progress;
+                    }
+                }
+                // MOVE_END ends in IDLE's first frame: IDLE goes on from there.
+                if (entity.walk_clip == WalkClip::standing && state.walk_clip == WalkClip::stopping)
+                {
+                    state.idle_start = seconds;
+                }
+                state.walk_clip = entity.walk_clip;
             }
             // An ended transition holds its last frame while the next pose fades in.
             if (override_clip < 0 && state.fading >= 0)

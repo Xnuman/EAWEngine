@@ -407,6 +407,21 @@ void apply_animation_locomotion(MovementProfile& movement, const GameObjectCatal
             movement.deceleration = max_speed / stop;
         }
     }
+    // The walk as clips: MOVESTART, the MOVE stride, and the MOVE_END clips by the stock names (every
+    // stock walker's MOVE_END clips are as long as each other).
+    static constexpr std::array<const char*, max_walk_stop_parts> stops{"MOVE_ENDONE_00", "MOVE_ENDTWO_00", "MOVE_ENDTHREE_00", "MOVE_ENDFOUR_00"};
+    std::uint32_t parts = 0;
+    while (parts < stops.size() && seconds(stops[parts]) > 0.0F)
+    {
+        ++parts;
+    }
+    if (const auto start = seconds("MOVESTART_00"), stride = seconds("MOVE_00"), stop = seconds(stops[0]); parts > 0 && start > 0.0F && stride > 0.0F && stop > 0.0F)
+    {
+        movement.walk_start_seconds = start;
+        movement.walk_stride_seconds = stride;
+        movement.walk_stop_seconds = stop;
+        movement.walk_stop_parts = parts;
+    }
     // Turning in place, at the stopped turn rate, its clips at their turn playback.
     const auto turn_rate = movement.stopped_turn_rate;
     const auto rotation = type_float_field(catalog, definition, "Rotation_Animation_Speed");

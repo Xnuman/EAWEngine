@@ -929,6 +929,142 @@ void test_braking_stop_and_winding_turns()
             "a turn in place played as clips must last its clips, end on a loop's boundary, and leave on the way");
 }
 
+// A walk played as clips (MOVESTART 1 s, a 2 s stride of 20 units at top speed 10, four MOVE_END
+// clips of 1 s): it starts over MOVESTART, stops only where a stride's part begins, brakes over a
+// whole MOVE_END clip, and nothing turns or sets off meanwhile.
+void test_walk_as_clips()
+{
+    eaw::GroundMap ground;
+    ground.width = 40;
+    ground.height = 40;
+    ground.spacing = 10.0F;
+    ground.heights.assign(1600, 0.0F);
+    ground.passability.assign(1600, eaw::passability::clear);
+    struct Walk
+    {
+        eaw::SimulationWorld world{0.1};
+        eaw::EntityId unit;
+    };
+    const auto walker = [&](Walk& walk)
+    {
+        walk.world.set_ground(ground);
+        const auto unit =
+            walk.world.spawn({.type_name = "Walker",
+                              .position = {50.0F, 100.0F, 0.0F},
+                              .max_speed = 10.0F,
+                              .follows_ground = true,
+                              .passable_types = eaw::passability::clear,
+                              .radius = 2.0F,
+                              .turn_rate = 3.0F,
+                              .movement = {.acceleration = 10.0F, .deceleration = 10.0F, .walk_start_seconds = 1.0F, .walk_stride_seconds = 2.0F, .walk_stop_seconds = 1.0F, .walk_stop_parts = 4}});
+        require(static_cast<bool>(unit), "test spawn must succeed");
+        walk.unit = *unit;
+    };
+    // Steps until the walker stands again (at most `ticks`); returns the clips it went through, the
+    // ticks it stopped for, the stride phase before its stop, and the part the stop played.
+    struct Trace
+    {
+        std::vector<eaw::WalkClip> clips;
+        int stopping_ticks{};
+        float phase_before_stop{-1.0F};
+        std::uint32_t part{};
+    };
+    const auto run = [](Walk& walk, const int ticks)
+    {
+        Trace trace;
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            const auto before = walk.world.snapshot().entities.empty() ? eaw::EntitySnapshot{} : walk.world.snapshot().entities[0];
+            walk.world.step();
+            const auto& entity = walk.world.snapshot().entities[0];
+            if (trace.clips.empty() || trace.clips.back() != entity.walk_clip)
+            {
+                trace.clips.push_back(entity.walk_clip);
+                if (entity.walk_clip == eaw::WalkClip::stopping)
+                {
+                    trace.phase_before_stop = before.walk_progress;
+                    trace.part = entity.walk_part;
+                }
+            }
+            trace.stopping_ticks += entity.walk_clip == eaw::WalkClip::stopping ? 1 : 0;
+            if (entity.walk_clip == eaw::WalkClip::standing && tick > 0 && !entity.moving)
+            {
+                break;
+            }
+        }
+        return trace;
+    };
+    // The stop began within a tick's walk (0.1 of a stride part here) after the part it plays.
+    const auto at_its_part = [](const Trace& trace)
+    {
+        const auto part = static_cast<float>(trace.part) / 4.0F;
+        const auto past = std::fmod(trace.phase_before_stop - part + 1.0F, 1.0F);
+        return past < 0.06F || past > 0.94F;
+    };
+    {
+        Walk walk;
+        walker(walk);
+        walk.world.submit({.kind = eaw::SimCommandKind::move, .entities = {walk.unit}, .target = {250.0F, 100.0F, 0.0F}});
+        const auto trace = run(walk, 400);
+        const auto& entity = walk.world.snapshot().entities[0];
+        const std::vector<eaw::WalkClip> expected{eaw::WalkClip::starting, eaw::WalkClip::moving, eaw::WalkClip::stopping, eaw::WalkClip::standing};
+        // It stops within half a stride's part (2.5 units) and a tick's walk of its destination.
+        require(trace.clips == expected && trace.stopping_ticks >= 10 && trace.stopping_ticks <= 11 && std::fabs(entity.position.x - 250.0F) < 3.5F && !entity.moving,
+                "a walk as clips must start, walk, stop over a whole MOVE_END clip, and end its move near the destination");
+    }
+    {
+        // A stop order mid-stride walks on to the stride's next part and stops there.
+        Walk walk;
+        walker(walk);
+        walk.world.submit({.kind = eaw::SimCommandKind::move, .entities = {walk.unit}, .target = {350.0F, 100.0F, 0.0F}});
+        for (int tick = 0; tick < 27; ++tick)
+        {
+            walk.world.step();
+        }
+        walk.world.submit({.kind = eaw::SimCommandKind::stop, .entities = {walk.unit}});
+        const auto trace = run(walk, 100);
+        require(trace.stopping_ticks >= 10 && trace.stopping_ticks <= 11 && at_its_part(trace) && walk.world.snapshot().entities[0].walk_clip == eaw::WalkClip::standing,
+                "a stop order must walk on to the stride's next part and play its MOVE_END clip there");
+    }
+    {
+        // A new order while it stops waits for the stop: the heading holds until it stands.
+        Walk walk;
+        walker(walk);
+        walk.world.submit({.kind = eaw::SimCommandKind::move, .entities = {walk.unit}, .target = {120.0F, 100.0F, 0.0F}});
+        bool held = true;
+        bool ordered = false;
+        float heading = 0.0F;
+        bool set_off_again = false;
+        for (int tick = 0; tick < 300; ++tick)
+        {
+            walk.world.step();
+            const auto& entity = walk.world.snapshot().entities[0];
+            if (entity.walk_clip == eaw::WalkClip::stopping && !ordered)
+            {
+                ordered = true;
+                heading = entity.heading;
+                walk.world.submit({.kind = eaw::SimCommandKind::move, .entities = {walk.unit}, .target = {entity.position.x, 300.0F, 0.0F}});
+            }
+            if (ordered && !set_off_again && entity.walk_clip == eaw::WalkClip::stopping && std::fabs(entity.heading - heading) > 1.0e-6F)
+            {
+                held = false;
+            }
+            set_off_again = set_off_again || (ordered && entity.walk_clip == eaw::WalkClip::starting);
+        }
+        require(ordered && held && set_off_again && walk.world.snapshot().entities[0].position.y > 250.0F, "an order given while a walk as clips stops must wait for its stop, then set off");
+    }
+    {
+        // A step too short for the clips still plays them, slower, and ends near its destination.
+        Walk walk;
+        walker(walk);
+        walk.world.submit({.kind = eaw::SimCommandKind::move, .entities = {walk.unit}, .target = {56.0F, 100.0F, 0.0F}});
+        const auto trace = run(walk, 100);
+        const auto& entity = walk.world.snapshot().entities[0];
+        require(trace.stopping_ticks >= 10 && std::fabs(entity.position.x - 56.0F) < 1.5F && !entity.moving,
+                "a walk as clips too short for its clips must still play them and end near its destination");
+    }
+}
+
 void test_crushing()
 {
     eaw::GroundMap ground;
@@ -992,6 +1128,7 @@ void test_crushing()
 
 const ModuleRegistrar registrar("navigation", {
                                                   {"test_braking_stop_and_winding_turns", &test_braking_stop_and_winding_turns},
+                                                  {"test_walk_as_clips", &test_walk_as_clips},
                                                   {"test_ground_movement", &test_ground_movement},
                                                   {"test_pathfinding", &test_pathfinding},
                                                   {"test_turning_and_separation", &test_turning_and_separation},

@@ -71,9 +71,16 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     if (const auto& movement = spawn.movement; !valid_amount(movement.acceleration) || !valid_amount(movement.deceleration) || !valid_amount(movement.turn_speed_fraction) ||
                                                movement.turn_speed_fraction > 1.0F || !valid_amount(movement.stopped_turn_rate) || !valid_amount(movement.turn_in_place_angle) ||
                                                !valid_amount(movement.turn_in_place_rate) || !std::ranges::all_of(movement.turn_begin_seconds, valid_amount) ||
-                                               !std::ranges::all_of(movement.turn_loop_seconds, valid_amount) || !std::ranges::all_of(movement.turn_end_seconds, valid_amount))
+                                               !std::ranges::all_of(movement.turn_loop_seconds, valid_amount) || !std::ranges::all_of(movement.turn_end_seconds, valid_amount) ||
+                                               !valid_amount(movement.walk_start_seconds) || !valid_amount(movement.walk_stride_seconds) || !valid_amount(movement.walk_stop_seconds))
     {
         return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite movement value, or a turn speed fraction above 1");
+    }
+    if (const auto& movement = spawn.movement;
+        movement.walk_stop_parts > max_walk_stop_parts ||
+        (movement.walk_stop_parts > 0 && (!(movement.walk_start_seconds > 0.0F) || !(movement.walk_stride_seconds > 0.0F) || !(movement.walk_stop_seconds > 0.0F))))
+    {
+        return make_error("entity spawn '" + spawn.type_name + "' walks as clips without the clips' times, or with more than " + std::to_string(max_walk_stop_parts) + " stops");
     }
     if (spawn.stance != Stance::aggressive && spawn.stance != Stance::hold_position && spawn.stance != Stance::hold_fire)
     {
@@ -144,6 +151,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     arriving_.push_back(0);
     turn_plans_.emplace_back();
     turn_arriving_.push_back(0);
+    walk_plans_.emplace_back();
     rolls_.push_back(0.0F);
     intents_.emplace_back();
     formation_orders_.push_back(spawn.formation_order);
@@ -325,6 +333,25 @@ std::uint64_t SimulationWorld::state_hash() const noexcept
             hash = hash_value(hash, plan.loops);
             hash = hash_value(hash, plan.way);
         }
+        // Only entities that walk as clips.
+        if (movement.walk_stop_parts > 0)
+        {
+            hash = hash_value(hash, movement.walk_start_seconds);
+            hash = hash_value(hash, movement.walk_stride_seconds);
+            hash = hash_value(hash, movement.walk_stop_seconds);
+            hash = hash_value(hash, movement.walk_stop_parts);
+            const auto& walk = walk_plans_[index];
+            hash = hash_value(hash, walk.clip);
+            hash = hash_value(hash, walk.part);
+            hash = hash_value(hash, walk.elapsed);
+            hash = hash_value(hash, walk.phase);
+            hash = hash_value(hash, walk.from_speed);
+            hash = hash_value(hash, walk.scale);
+            hash = hash_value(hash, static_cast<std::uint8_t>(walk.ends_move ? 1U : 0U));
+            hash = hash_value(hash, walk.destination.x);
+            hash = hash_value(hash, walk.destination.y);
+            hash = hash_value(hash, walk.destination.z);
+        }
         hash = hash_value(hash, drive_speeds_[index]);
         hash = hash_value(hash, stances_[index]);
         hash = hash_value(hash, aims_with_body_[index]);
@@ -442,6 +469,7 @@ void SimulationWorld::destroy(const std::size_t dense)
         arriving_[dense] = arriving_[last];
         turn_plans_[dense] = turn_plans_[last];
         turn_arriving_[dense] = turn_arriving_[last];
+        walk_plans_[dense] = walk_plans_[last];
         rolls_[dense] = rolls_[last];
         intents_[dense] = intents_[last];
         formation_orders_[dense] = formation_orders_[last];
@@ -492,6 +520,7 @@ void SimulationWorld::destroy(const std::size_t dense)
     arriving_.pop_back();
     turn_plans_.pop_back();
     turn_arriving_.pop_back();
+    walk_plans_.pop_back();
     rolls_.pop_back();
     intents_.pop_back();
     formation_orders_.pop_back();
@@ -645,6 +674,17 @@ void SimulationWorld::publish()
                                       arriving_[index] != 0,
                                       turn_plans_[index].active,
                                       turn_arriving_[index] != 0});
+        if (const auto& movement = movements_[index]; movement.walk_stop_parts > 0)
+        {
+            const auto& walk = walk_plans_[index];
+            auto& entity = snapshot_.entities.back();
+            entity.walk_clip = walk.clip;
+            entity.walk_part = walk.part;
+            entity.walk_progress = walk.clip == WalkClip::starting   ? std::min(walk.elapsed / movement.walk_start_seconds, 1.0F)
+                                   : walk.clip == WalkClip::moving   ? walk.phase
+                                   : walk.clip == WalkClip::stopping ? std::min(walk.elapsed / movement.walk_stop_seconds, 1.0F)
+                                                                     : 0.0F;
+        }
     }
     snapshot_.deaths = deaths_;
     snapshot_.impacts = impacts_;
@@ -685,6 +725,20 @@ std::vector<EntitySnapshot> interpolate_snapshots(const SimSnapshot& previous, c
             blended.yaw_rate = old.yaw_rate + (entity.yaw_rate - old.yaw_rate) * t;
             blended.speed = old.speed + (entity.speed - old.speed) * t;
             blended.roll = old.roll + wrap_angle(entity.roll - old.roll) * t;
+            // A walk played as clips goes on through its clip; a new clip shows from the tick it begins.
+            if (old.walk_clip == entity.walk_clip && old.walk_part == entity.walk_part)
+            {
+                auto advance = entity.walk_progress - old.walk_progress;
+                if (entity.walk_clip == WalkClip::moving && advance < 0.0F)
+                {
+                    advance += 1.0F;
+                }
+                blended.walk_progress = old.walk_progress + advance * t;
+                if (blended.walk_progress >= 1.0F && entity.walk_clip == WalkClip::moving)
+                {
+                    blended.walk_progress -= 1.0F;
+                }
+            }
         }
         result.push_back(blended);
     }

@@ -259,6 +259,8 @@ private:
         double stop_phase{};
         int stop_part{};
         int stop_parts{4};
+        // The walk clip the simulation showed last (EntitySnapshot::walk_clip).
+        WalkClip walk_clip{WalkClip::unplanned};
         // The stop of this walk has begun (once braking for the destination starts, or the walker is
         // all but still), so it does not begin again before the next start.
         bool stop_begun{};

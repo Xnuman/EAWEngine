@@ -27,6 +27,7 @@ set(EAW_SIMULATION_SOURCES
     ${SOURCES_DIR}/simulation_internal.hpp
     ${SOURCES_DIR}/simulation_locomotion.cpp
     ${SOURCES_DIR}/simulation_navigation.cpp
+    ${SOURCES_DIR}/simulation_walk.cpp
     ${SOURCES_DIR}/spatial_grid.cpp
 )
 

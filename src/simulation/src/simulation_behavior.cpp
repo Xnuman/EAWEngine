@@ -109,9 +109,10 @@ void SimulationWorld::apply(const SimCommand& command)
             combat_[*dense].target = {};
             combat_[*dense].ordered = false;
             // A ground unit that brakes (MovementProfile::deceleration) coasts to a stop straight ahead
-            // over its braking distance instead of halting at once (an animation-led walker plays its
-            // stop clip meanwhile).
-            if (const auto speed = drive_speeds_[*dense]; follows_ground_[*dense] != 0 && movements_[*dense].deceleration > 0.0F && speed > 0.0F && max_speeds_[*dense] > 0.0F)
+            // over its braking distance instead of halting at once (a walk played as clips walks on to
+            // its stride's next part and plays its stop there: walk_straight).
+            if (const auto speed = drive_speeds_[*dense];
+                follows_ground_[*dense] != 0 && movements_[*dense].deceleration > 0.0F && movements_[*dense].walk_stop_parts == 0 && speed > 0.0F && max_speeds_[*dense] > 0.0F)
             {
                 const auto distance = speed * speed / (2.0F * movements_[*dense].deceleration);
                 const auto& here = positions_[*dense];

@@ -147,7 +147,7 @@ combat rules.
    the tick that keeps clear of the neighbours' predicted motion, as a detour point).
 4. **Locomotion** (`simulation_locomotion.cpp`): physical movement only (speed limits, turn rates,
    ground following and passability, flight above a minimum speed, following a detour point, space
-   ships never moving deeper into one they touch), then
+   ships never moving deeper into one they touch, walks played as clips: `simulation_walk.cpp`), then
    separation of ground units and of flyers among their owner's.
 5. **Combat** (`simulation_combat.cpp`): shields, target selection under the stance, weapons,
    projectiles, damage, and removal of the dead. Combat never moves a unit.
@@ -449,7 +449,8 @@ The file-level split of each module.
   `localization_validation` (a translation against its reference).
 - `src/simulation` (`eaw_simulation`): `SimulationWorld` split by tick layer: `simulation.cpp`
   (storage, spawning, the tick, the state hash, footprints, snapshots), `simulation_behavior.cpp`,
-  `simulation_navigation.cpp`, `simulation_locomotion.cpp`, and `simulation_combat.cpp`, sharing
+  `simulation_navigation.cpp`, `simulation_locomotion.cpp` (with `simulation_walk.cpp`, walks played
+  as clips), and `simulation_combat.cpp`, sharing
   `simulation_internal.hpp`; with `ground_map` (passability), `pathfinding`, `formation`,
   `spatial_grid`, and `combat` (weapon and damage data).
 - `src/script` (`eaw_script`): `script_host` (the sandboxed state, `require` through the VFS,
