@@ -82,6 +82,10 @@ std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::
 
 // The recipe of an XML type with the model it is drawn with (type_recipe.cpp): read once, for both
 // runtime spawns and placed objects.
+// A team's recipe from its container type (Create_Team_Type: TEAM, SELECTABLE, UNIT_AI behaviors,
+// no model): its movement, formation fields, and the arrangement its members stand in; no body.
+TypeRecipe build_team_recipe(const SpawnableBuild& build, const XmlDefinition& container, TeamArrangement arrangement);
+
 TypeRecipe build_type_recipe(const SpawnableBuild& build, const XmlDefinition& definition, const std::string& model_path, const Model& host_model, std::span<const ModelAttachment> attachments);
 
 } // namespace eaw

@@ -30,9 +30,12 @@ struct CompanyMember
 // Lays each company's members (consecutive entries with one object index) out with the formation
 // used for group orders, centered on the company's placed position and facing its heading, and
 // moves their spawns and models there (heights from the ground surface). The original arranges
-// companies at runtime; this layout is an engine choice.
-void arrange_companies(BattleMapAsset& asset, std::vector<BuiltModel>& models, std::span<const ModelBounds> bounds, const std::vector<CompanyMember>& members, const GameObjectCatalog& catalog)
+// companies at runtime; this layout is an engine choice. A company with a team container gets a
+// team entity per team at its members' center (appended to the entities, with no model), which
+// its members join (squads, not selectable on their own).
+void arrange_companies(BattleMapAsset& asset, std::vector<BuiltModel>& models, std::vector<ModelBounds>& bounds, const std::vector<CompanyMember>& members, const SpawnableBuild& build)
 {
+    const auto& catalog = build.catalog;
     for (std::size_t first = 0; first < members.size();)
     {
         auto last = first;
@@ -53,11 +56,15 @@ void arrange_companies(BattleMapAsset& asset, std::vector<BuiltModel>& models, s
             formation.push_back({EntityId{static_cast<std::uint32_t>(index + 1U), 1}, center, radius, type_formation_spacing(catalog, *member.type), type_formation_order(catalog, *member.type)});
             raggedness.push_back(type_formation_raggedness(catalog, *member.type));
         }
+        const auto layout = members[first].company != nullptr ? type_team_layout(catalog, *members[first].company) : TeamLayout{};
         if (members[first].company != nullptr)
         {
-            assign_teams(formation, raggedness, type_team_layout(catalog, *members[first].company), asset.next_team);
+            assign_teams(formation, raggedness, layout, asset.next_team);
         }
         const auto slots = formation_slots(formation, center, facing);
+        const auto* container = members[first].company != nullptr ? type_team_container(catalog, *members[first].company) : nullptr;
+        const auto team_recipe = container != nullptr ? std::optional(build_team_recipe(build, *container, layout.arrangement)) : std::nullopt;
+        const auto team_size = layout.size > 0U ? static_cast<std::size_t>(layout.size) : last - first;
         for (auto index = first; index < last; ++index)
         {
             auto position = slots[index - first].position;
@@ -69,6 +76,34 @@ void arrange_companies(BattleMapAsset& asset, std::vector<BuiltModel>& models, s
             set_translation(models[entity].transform, position);
             asset.entities[entity].spawn.position = position;
             asset.entities[entity].spawn.formation_team = formation[index - first].team;
+        }
+        if (team_recipe)
+        {
+            for (auto team_first = first; team_first < last; team_first += team_size)
+            {
+                const auto team_last = std::min(last, team_first + team_size);
+                Vector3 middle;
+                for (auto index = team_first; index < team_last; ++index)
+                {
+                    const auto& at = asset.entities[members[index].entity].spawn.position;
+                    middle = {middle.x + at.x, middle.y + at.y, middle.z};
+                }
+                const auto count = static_cast<float>(team_last - team_first);
+                middle = {middle.x / count, middle.y / count, asset.ground.valid() ? asset.ground.surface_height(middle.x / count, middle.y / count) : center.z};
+                const auto owner = asset.entities[members[team_first].entity].spawn.owner;
+                auto made = make_spawn(*team_recipe, {middle, facing, owner, 0, asset.ground.valid(), std::nullopt});
+                const auto team_index = static_cast<std::uint32_t>(asset.entities.size());
+                asset.entities.push_back({std::move(made.recipe), made.spawn, team_recipe->script, {}, {}});
+                models.push_back({.type = container, .transform = placement_transform(middle, facing, 1.0F), .player = owner});
+                bounds.emplace_back();
+                for (auto index = team_first; index < team_last; ++index)
+                {
+                    auto& spawn = asset.entities[members[index].entity].spawn;
+                    spawn.formation_team = {.raggedness = spawn.formation_team.raggedness};
+                    spawn.squad = team_index;
+                    spawn.selectable = false;
+                }
+            }
         }
         ++asset.expanded_companies;
         first = last;
@@ -160,8 +195,11 @@ std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::
             company.type_name = candidate->name;
             if (build.catalog.field(*candidate, "Company_Units").field != nullptr)
             {
-                company.team = type_team_movement(build.catalog, *candidate, build.speed_multiplier);
                 company.team_layout = type_team_layout(build.catalog, *candidate);
+                if (const auto* container = type_team_container(build.catalog, *candidate))
+                {
+                    company.team_recipe = build_team_recipe(build, *container, company.team_layout.arrangement);
+                }
             }
             for (const auto member : names)
             {
@@ -302,10 +340,6 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
             }
             recipe = &entry->second;
             made = make_spawn(*recipe, {position, heading, placed.player, 0, asset.ground.valid(), matrix});
-            if (made.recipe.max_speed > 0.0F && placement.container != nullptr && placement.needs_formation)
-            {
-                apply_team_movement(type_team_movement(catalog, *placement.container, speed_multiplier), made.recipe);
-            }
             asset.obstacle_footprints += made.spawn.footprint ? 1U : 0U;
             asset.space_obstacles += !asset.land && made.recipe.max_speed <= 0.0F && made.recipe.radius > 0.0F ? 1U : 0U;
         }
@@ -323,9 +357,14 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
         entity_models.push_back({placement.model_path, std::move(attachments), placement.type, matrix, model_scale, placed.player});
         entity_bounds.push_back(bounds);
     }
-    arrange_companies(asset, entity_models, entity_bounds, company_members, catalog);
+    arrange_companies(asset, entity_models, entity_bounds, company_members, spawnable_build);
     for (std::size_t index = 0; index < entity_models.size(); ++index)
     {
+        // Team entities have no model.
+        if (entity_bounds[index].empty())
+        {
+            continue;
+        }
         add_placed_bounds(asset.extent, entity_bounds[index], entity_models[index].transform);
     }
     for (const auto& [bounds, transform] : decoration_extents)

@@ -160,19 +160,36 @@ Survivors type_survivors(const GameObjectCatalog& catalog, const XmlDefinition& 
     return survivors;
 }
 
+const XmlDefinition* type_team_container(const GameObjectCatalog& catalog, const XmlDefinition& company)
+{
+    const auto* name = catalog.field(company, "Create_Team_Type").field;
+    const auto team_name = name != nullptr ? ascii_trim(name->text) : std::string_view{};
+    if (team_name.empty())
+    {
+        return nullptr;
+    }
+    const XmlDefinition* container = nullptr;
+    for (const auto* candidate : catalog.find(team_name))
+    {
+        if (container == nullptr || ascii_equal_ignoring_case(candidate->type, "Container"))
+        {
+            container = candidate;
+        }
+    }
+    return container;
+}
+
 TeamLayout type_team_layout(const GameObjectCatalog& catalog, const XmlDefinition& company)
 {
     TeamLayout layout;
     const auto size = type_float_field(catalog, company, "Max_Squad_Size");
     layout.size = size >= 1.0F && size <= 1000.0F ? static_cast<std::uint32_t>(size) : 0U;
-    const auto* name = catalog.field(company, "Create_Team_Type").field;
-    const auto team_name = name != nullptr ? ascii_trim(name->text) : std::string_view{};
-    const auto containers = team_name.empty() ? std::vector<const XmlDefinition*>{} : catalog.find(team_name);
-    if (containers.empty())
+    const auto* found = type_team_container(catalog, company);
+    if (found == nullptr)
     {
         return layout;
     }
-    const auto& container = *containers.front();
+    const auto& container = *found;
     if (const auto* arrangement = catalog.field(container, "ContainerArrangement").field)
     {
         layout.arrangement = ascii_equal_ignoring_case(ascii_trim(arrangement->text), "Rows") ? TeamArrangement::rows : TeamArrangement::dartboard;
@@ -543,52 +560,6 @@ MovementProfile type_movement(const GameObjectCatalog& catalog, const XmlDefinit
         movement.turn_in_place_angle = degrees > 0.0F ? std::min(degrees, 180.0F) * pi / 180.0F : ground_turn_in_place_angle;
     }
     return movement;
-}
-
-TeamMovement type_team_movement(const GameObjectCatalog& catalog, const XmlDefinition& company, const float speed_multiplier)
-{
-    TeamMovement team;
-    const auto* name = catalog.field(company, "Create_Team_Type").field;
-    const auto team_name = name != nullptr ? ascii_trim(name->text) : std::string_view{};
-    if (team_name.empty())
-    {
-        return team;
-    }
-    const XmlDefinition* container = nullptr;
-    for (const auto* candidate : catalog.find(team_name))
-    {
-        if (container == nullptr || ascii_equal_ignoring_case(candidate->type, "Container"))
-        {
-            container = candidate;
-        }
-    }
-    if (container == nullptr)
-    {
-        return team;
-    }
-    const auto sets = [&](const std::string_view field)
-    {
-        return catalog.field(*container, field).field != nullptr;
-    };
-    std::vector<std::string> ignored;
-    if (sets("Max_Speed"))
-    {
-        team.max_speed = type_max_speed(catalog, *container, ignored, speed_multiplier);
-    }
-    if (sets("Max_Rate_Of_Turn"))
-    {
-        team.turn_rate = type_turn_rate(catalog, *container);
-    }
-    const auto movement = type_movement(catalog, *container, true, false);
-    if (sets("OverrideAcceleration") || sets("Override_Acceleration"))
-    {
-        team.acceleration = movement.acceleration;
-    }
-    if (sets("OverrideDeceleration") || sets("Override_Deceleration"))
-    {
-        team.deceleration = movement.deceleration;
-    }
-    return team;
 }
 
 float type_min_flight_speed(const GameObjectCatalog& catalog, const XmlDefinition& definition, const float max_speed)

@@ -10,7 +10,8 @@
     second each group of up to eight units gets a new order (move, attack-move, attack, guard) to
     a random point or a hostile target, and the spawned units cannot be killed, so the load stays
     that of every unit. Half the units are each side's; each side is half single vehicles, half
-    infantry squads (a squad counts as one unit; its soldiers are entities).
+    infantry companies (a company counts as one unit; it lands as two or three squads, each a team
+    entity and its soldiers).
 
     A frame is the tick a 60 Hz frame runs, without rendering. Prints, per count, the frames over
     the budget (16.7 ms), the average, the 99th percentile, the worst, and the route searches, and

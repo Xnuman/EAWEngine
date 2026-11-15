@@ -62,28 +62,6 @@ inline void assign_teams(std::span<FormationMember> members, std::span<const flo
     next_team += static_cast<std::uint32_t>((members.size() + layout.size - 1U) / layout.size);
 }
 
-// How a company's team moves its members. A company forms teams of its Create_Team_Type container
-// (Stormtrooper_Team for Imperial_Stormtrooper_Squad); in the original the container moves and its
-// members follow it, so the container's Max_Speed (.8 against the member's 1), Max_Rate_Of_Turn,
-// and acceleration are the members' (data; the engine has no team entity, so each member takes
-// them). Unset fields leave the member's own. Space squadrons are not teams in this sense: their
-// fighters fly on their own.
-struct TeamMovement
-{
-    std::optional<float> max_speed;
-    std::optional<float> turn_rate;
-    std::optional<float> acceleration;
-    std::optional<float> deceleration;
-};
-
-inline void apply_team_movement(const TeamMovement& team, EntityRecipe& recipe) noexcept
-{
-    recipe.max_speed = team.max_speed.value_or(recipe.max_speed);
-    recipe.turn_rate = team.turn_rate.value_or(recipe.turn_rate);
-    recipe.movement.acceleration = team.acceleration.value_or(recipe.movement.acceleration);
-    recipe.movement.deceleration = team.deceleration.value_or(recipe.movement.deceleration);
-}
-
 // An XML object type that can be spawned at runtime: its recipe (type_recipe.hpp) and, for a
 // company (Company_Units) or squadron, its members. Its look is a SpawnableLook at the same index.
 struct SpawnableType : TypeRecipe
@@ -91,9 +69,12 @@ struct SpawnableType : TypeRecipe
     // A company: the spawnable types of its members, in list order, spawned together in formation.
     // Empty for ordinary types.
     std::vector<std::size_t> members;
-    // A company's team movement, applied to its members, and how it splits into teams.
-    TeamMovement team;
+    // A company's teams: how it splits into them, and the team entity's recipe when it names a
+    // Create_Team_Type container (in the original the container moves and its members follow it:
+    // Stormtrooper_Team at .8 against its members' 1). Space squadrons have none: their fighters fly
+    // on their own.
     TeamLayout team_layout;
+    std::optional<TypeRecipe> team_recipe;
 };
 
 // A map built for a battle (build_battle_map): what BattleMap views, and what the build counted.

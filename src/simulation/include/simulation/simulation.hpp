@@ -269,8 +269,9 @@ struct EntitySpawn
     // Ground occupied while the entity exists (structures, walls, obstacle props), placed.
     std::optional<GroundFootprint> footprint;
     Stance stance{Stance::aggressive};
-    // A squad member: the index of its team's spawn earlier in the same list (a spawn command's
-    // spawns, or a battle's map entities). Whoever spawns the list passes the team's id to spawn().
+    // A squad member: the index of its team's spawn in the same list (a spawn command's spawns, or a
+    // battle's map entities). Whoever spawns the list spawns teams before their members and passes
+    // the team's id to spawn().
     std::optional<std::uint32_t> squad;
 };
 
@@ -1382,7 +1383,8 @@ private:
     // Squads (simulation_squads.cpp; pooled): a team entity's members, in id order, their ring's
     // arrangement and extent (the farthest member's distance plus the largest footprint), its
     // ordered attack target, how long it has waited for members behind, and its chase timer; and a
-    // member's team and its offset (forward, right) from the team's center, with its raggedness.
+    // member's team, its offset (forward, right) from the team's center with its raggedness, and the
+    // slot it was last sent to.
     struct SquadState
     {
         bool operator==(const SquadState&) const = default;
@@ -1411,6 +1413,7 @@ private:
         float ahead{};
         float aside{};
         float raggedness{};
+        std::optional<Vector3> slot;
     };
     struct SquadMemberColumns
     {
@@ -1792,7 +1795,7 @@ private:
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<ComponentPool<CombatColumns>>,
                                 Write<OrderColumns>, Write<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>,
-                                Read<GroundState>, Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>, Write<ComponentPool<SquadColumns>>, Read<ComponentPool<SquadMemberColumns>>>;
+                                Read<GroundState>, Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>, Write<ComponentPool<SquadColumns>>, Write<ComponentPool<SquadMemberColumns>>>;
         // Every entity's steering intent for this tick, from its order, stance, and target; route
         // requests for new destinations.
         void run(const View& view, float dt);

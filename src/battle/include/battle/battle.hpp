@@ -152,7 +152,12 @@ public:
 
 private:
     [[nodiscard]] Result<SimCommand> translate(const BattleCommand& command);
-    [[nodiscard]] Result<EntitySpawn> spawn_of(std::size_t type_index, Vector3 position, std::uint32_t owner, const TeamMovement* team = nullptr);
+    // Spawns the map entity at `index` (a squad member's team spawned before it), noting its id,
+    // hint, script, and survivors.
+    void spawn_map_entity(const MapEntity& entity, std::size_t index);
+    // An entity of `type` with look `visual` for `owner`, on open ground near `position` (its
+    // recipe registered).
+    [[nodiscard]] Result<EntitySpawn> spawn_of(const TypeRecipe& type, std::uint32_t visual, Vector3 position, std::uint32_t owner);
 
     SimulationWorld world_;
     std::vector<SpawnableType> spawnable_;

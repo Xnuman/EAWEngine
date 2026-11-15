@@ -49,17 +49,26 @@ void SimulationWorld::apply(const SimCommand& given)
     }
     if (command.kind == SimCommandKind::spawn)
     {
-        // A squad member names its team by its index in this list.
-        std::vector<EntityId> made;
-        for (const auto& entity : command.spawns)
+        // A squad member names its team by its index in this list; teams spawn before their members.
+        std::vector<EntityId> made(command.spawns.size());
+        for (const bool members : {false, true})
         {
-            const auto squad = entity.squad && *entity.squad < made.size() ? made[*entity.squad] : EntityId{};
-            const auto id = spawn(entity, squad);
-            if (!id)
+            for (std::size_t index = 0; index < command.spawns.size(); ++index)
             {
-                ++rejected_spawns_;
+                const auto& entity = command.spawns[index];
+                if (entity.squad.has_value() != members)
+                {
+                    continue;
+                }
+                const auto squad = entity.squad && *entity.squad < made.size() ? made[*entity.squad] : EntityId{};
+                const auto id = entity.squad && !squad.valid() ? Result<EntityId>(make_error("its team was not spawned")) : spawn(entity, squad);
+                if (!id)
+                {
+                    ++rejected_spawns_;
+                    continue;
+                }
+                made[index] = *id;
             }
-            made.push_back(id ? *id : EntityId{});
         }
         return;
     }

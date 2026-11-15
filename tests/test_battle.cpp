@@ -219,10 +219,9 @@ void test_combat_content()
     require(wanted.rank(0x100U, 0, 0) == 1.0F && wanted.rank(0x80U, 0x4U, 0) == 2.0F && wanted.rank(0x200U, 0, 0) == 1.0F && wanted.rank(0x80U, 0x100U, 0) < 0.0F &&
                 wanted.rank(0x80U, 0, eaw::game_object_name_crc("Tank")) < 0.0F && wanted.rank(0x80U, 0, 0) == eaw::TargetingPriorities::unlisted_rank && wanted.rank(0x300U, 0, 0) == 1.0F,
             "a match must rank, exclusions must apply only to unmatched targets, and the rest must rank last");
-    const auto team = eaw::type_team_movement(catalog, *definition("Slow_Company"), 2.0F);
-    require(team.max_speed && *team.max_speed == eaw::legacy_units::speed_per_frame(0.5F) * 2.0F && team.acceleration && *team.acceleration == eaw::legacy_units::acceleration_per_frame(0.1F) &&
-                !team.turn_rate && !team.deceleration && !eaw::type_team_movement(catalog, *definition("Tank"), 1.0F).max_speed,
-            "a company's team must give its members the team's speed and acceleration, and only what it sets");
+    const auto* team = eaw::type_team_container(catalog, *definition("Slow_Company"));
+    require(team != nullptr && team->name == "Slow_Team" && eaw::type_team_container(catalog, *definition("Tank")) == nullptr,
+            "a company's Create_Team_Type container must be found, and nothing for a type without one");
     {
         // Rotated a quarter turn and moved: the type's forward (x) maps to the model's -Y.
         auto placement = eaw::Matrix4::identity();
@@ -331,9 +330,6 @@ void test_combat_content()
         eaw::assign_teams(members, {}, rows, next_team);
         require(members[0].team.id == 5 && members[8].team.id == 5 && members[9].team.id == 6 && members[19].team.id == 7 && next_team == 8, "teams of nine must take consecutive ids");
     }
-    eaw::EntityRecipe member{.max_speed = 30.0F, .turn_rate = 2.0F};
-    eaw::apply_team_movement(team, member);
-    require(member.max_speed == *team.max_speed && member.turn_rate == 2.0F && member.movement.acceleration == *team.acceleration, "team movement must replace only what the team sets");
     const auto paced = eaw::combat_profile(catalog, *definition("Paced"), content, warnings);
     require(paced.weapons.size() == 1 && paced.weapons[0].recharge_seconds == 6.0F && paced.weapons[0].pulse_count == 2 && tank.weapons[0].recharge_seconds == 1.5F,
             "a shooter without its own cadence must take its projectile's");
@@ -1017,9 +1013,51 @@ void test_type_recipe()
                 !unplaced.spawn.footprint,
             "a mobile type must take its radius from its placement's scale, and follow the ground only where there is one");
 }
+// A company with a team container spawns as squads: a team entity per Max_Squad_Size members, each
+// at its members' center and before them, its members joining it and not selectable on their own.
+void test_company_squads()
+{
+    eaw::SpawnableType trooper;
+    trooper.type_name = "Trooper";
+    trooper.max_speed = 10.0F;
+    trooper.radius = 2.0F;
+    eaw::SpawnableType company;
+    company.type_name = "Trooper_Company";
+    company.members = {0, 0, 0, 0, 0};
+    company.team_layout = {.size = 2};
+    eaw::TypeRecipe team;
+    team.type_name = "Trooper_Team";
+    team.max_speed = 8.0F;
+    team.team = eaw::TeamArrangement::dartboard;
+    company.team_recipe = team;
+    const std::array<eaw::SpawnableType, 2> types{trooper, company};
+    eaw::BattleMap map;
+    map.spawnable = types;
+    eaw::Battle battle(map, "TEST.TED", 0.1);
+    expect_ok(battle.submit({.order = eaw::BattleOrder::spawn, .point = {0.0F, 0.0F, 0.0F}, .type = "Trooper_Company", .count = 1, .owner = 1}), "spawning the company");
+    battle.step();
+    std::vector<eaw::EntityId> teams;
+    std::size_t members = 0;
+    bool members_unselectable = true;
+    for (const auto& entity : battle.world().snapshot().entities)
+    {
+        if (entity.squad.valid())
+        {
+            ++members;
+            members_unselectable = members_unselectable && !entity.selectable;
+            if (std::ranges::find(teams, entity.squad) == teams.end())
+            {
+                teams.push_back(entity.squad);
+            }
+        }
+    }
+    require(members == 5 && teams.size() == 3 && members_unselectable && battle.world().snapshot().entities.size() == 8 && battle.world().type_name(teams.front()) == "Trooper_Team",
+            "a company of five in teams of two must spawn three teams and five members that join them");
+}
 
 const ModuleRegistrar registrar("battle", {
                                               {"test_combat_content", &test_combat_content},
+                                              {"test_company_squads", &test_company_squads},
                                               {"test_type_recipe", &test_type_recipe},
                                               {"test_battle_scripts", &test_battle_scripts},
                                               {"test_battle_object_scripts", &test_battle_object_scripts},

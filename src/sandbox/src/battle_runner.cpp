@@ -140,12 +140,13 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
         }
         else if (options.auto_move && !auto_move_sent && tick >= 2)
         {
-            // Once the spawns have applied: every mobile unit, in id order, moves to the center.
+            // Once the spawns have applied: every mobile unit (a squad by its team), in id order, moves
+            // to the center.
             auto_move_sent = true;
             std::vector<EntityId> movers;
             for (const auto& entity : world.snapshot().entities)
             {
-                if (entity.max_speed > 0.0F)
+                if (entity.max_speed > 0.0F && !entity.squad.valid())
                 {
                     movers.push_back(entity.id);
                 }

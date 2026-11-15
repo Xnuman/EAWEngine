@@ -64,6 +64,27 @@ TypeRecipe build_type_recipe(const SpawnableBuild& build, const XmlDefinition& d
     return recipe;
 }
 
+TypeRecipe build_team_recipe(const SpawnableBuild& build, const XmlDefinition& container, const TeamArrangement arrangement)
+{
+    TypeRecipe recipe;
+    recipe.type_name = container.name;
+    recipe.max_speed = type_max_speed(build.catalog, container, build.warnings, build.speed_multiplier);
+    recipe.follows_ground = build.land && type_follows_ground(build.catalog, container);
+    recipe.passable_types = recipe.follows_ground ? type_passable_types(build.catalog, container, build.movement_classes) : 0U;
+    recipe.script = type_script_info(build.catalog, container);
+    if (recipe.max_speed > 0.0F)
+    {
+        const auto motion_multiplier = build.land ? 1.0F : build.speed_multiplier;
+        recipe.turn_rate = type_turn_rate(build.catalog, container, motion_multiplier);
+        recipe.movement = type_movement(build.catalog, container, build.land, false, motion_multiplier);
+        recipe.formation_order = type_formation_order(build.catalog, container);
+        recipe.formation_spacing = type_formation_spacing(build.catalog, container);
+        recipe.formation_solo = type_formation_solo(build.catalog, container);
+    }
+    recipe.team = arrangement;
+    return recipe;
+}
+
 PreparedSpawn make_spawn(const TypeRecipe& recipe, const SpawnInstance& instance)
 {
     PreparedSpawn made;
@@ -79,6 +100,7 @@ PreparedSpawn make_spawn(const TypeRecipe& recipe, const SpawnInstance& instance
     entity.max_speed = recipe.max_speed;
     entity.combat = recipe.combat;
     entity.crush = recipe.crush;
+    entity.team = recipe.team;
     if (recipe.max_speed > 0.0F)
     {
         // A placement's matrix sizes the model (a map may scale a placement); a type without a soft

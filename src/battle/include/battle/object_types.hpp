@@ -145,6 +145,9 @@ Survivors type_survivors(const GameObjectCatalog& catalog, const XmlDefinition& 
 // A company's TeamLayout: XML Max_Squad_Size and its Create_Team_Type container's
 // ContainerArrangement (Rows or Dartboard, the default) and FormationSpacing.
 TeamLayout type_team_layout(const GameObjectCatalog& catalog, const XmlDefinition& company);
+// A company's Create_Team_Type container (its Container element when several types share the
+// name), or null when it names none that exists.
+const XmlDefinition* type_team_container(const GameObjectCatalog& catalog, const XmlDefinition& company);
 // XML FormationRaggedness, clamped to 0..10.
 float type_formation_raggedness(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // XML FormationGrouping Solo (the other stock value is Standard, the default).
@@ -252,7 +255,6 @@ inline constexpr float default_space_turn_speed_fraction = 1.0F;
 // The movement of the team `company` forms (its XML Create_Team_Type container): the container's
 // Max_Speed (scaled like type_max_speed, times `speed_multiplier`), Max_Rate_Of_Turn, and
 // acceleration where it sets them; empty without a team.
-TeamMovement type_team_movement(const GameObjectCatalog& catalog, const XmlDefinition& company, float speed_multiplier);
 
 // Minimum flight speed of fighters and bombers (SpaceBehavior names FIGHTER_LOCOMOTOR): XML
 // Min_Speed on the Max_Speed scale, or half of `max_speed` without one; 0 for every other type.

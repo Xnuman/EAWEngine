@@ -21,6 +21,9 @@ namespace {
 // slot, for at most the wait limit at a stretch (a member that cannot reach its slot, inside an
 // obstacle, must not hold its team for good).
 constexpr float squad_follow_tolerance = 0.5F;
+// A member keeps the way it is on (a path it planned around a blockage) until its slot moves this
+// far from where it was sent.
+constexpr float squad_reslot_distance = 4.0F;
 constexpr float squad_leash = 40.0F;
 constexpr float squad_wait_limit_seconds = 2.0F;
 
@@ -279,18 +282,21 @@ void SimulationWorld::BehaviorSystem::follow_squads(const View& view)
         for (const auto id : squad->members)
         {
             const auto member = *dense_index(view, id);
-            const auto& offset = members.get(id.index, &SquadMemberColumns::states);
+            auto& offset = members.get(id.index, &SquadMemberColumns::states);
             const Vector3 slot{center.x + forward_x * offset.ahead + forward_y * offset.aside, center.y + forward_y * offset.ahead - forward_x * offset.aside, center.z};
             const auto& at = placement.positions[member];
             const auto away = std::hypot(slot.x - at.x, slot.y - at.y);
             lag = std::max(lag, away);
             fighting = fighting || combat_state(view, member).target.valid();
-            // Straight to the slot, a few world units from the team that planned the way.
-            if (away > squad_follow_tolerance && (!route.move_targets[member] || std::hypot(route.move_targets[member]->x - slot.x, route.move_targets[member]->y - slot.y) > squad_follow_tolerance))
+            // Straight to the slot, a few world units from the team that planned the way; a member
+            // blocked on the way plans around (movement) and keeps that way until its slot moves on.
+            const bool moved = !offset.slot || std::hypot(offset.slot->x - slot.x, offset.slot->y - slot.y) > squad_reslot_distance;
+            if (away > squad_follow_tolerance && (moved || (!route.move_targets[member] && route.pending[member] == 0)))
             {
                 route.move_targets[member] = slot;
                 route.paths[member].clear();
                 route.pending[member] = 0;
+                offset.slot = slot;
             }
         }
         // shortcut: a member walks straight to its slot; around a corner it can be blocked until the

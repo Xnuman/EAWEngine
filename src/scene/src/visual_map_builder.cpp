@@ -152,6 +152,11 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     // look; `combat` (null for decorations) names its damage bones.
     const auto draw_placed = [&](const BuiltModel& model, const CombatProfile* combat)
     {
+        // A team entity (a squad's) has no model: nothing to draw, by design.
+        if (model.path.empty())
+        {
+            return MapEntityLook{.hidden = true};
+        }
         auto [entry, inserted] = meshes.try_emplace(attached_mesh_key(model.path, model.attachments));
         if (inserted)
         {

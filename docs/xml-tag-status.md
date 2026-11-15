@@ -694,8 +694,8 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Company_Units` | `done` |  |
 | `Company_Transport_Unit` | `needs transports` |  |
-| `Create_Team_Type` | `partial` | company members only; squadrons ignore it |
-| `Max_Squad_Size` | `done` | teams in formations; not yet one selectable unit |
+| `Create_Team_Type` | `partial` | the team entity (squads) of land companies; squadrons ignore it |
+| `Max_Squad_Size` | `done` | a team entity per that many members when the company names a `Create_Team_Type`; formation teams otherwise |
 | `Create_Team` | `needs hero teams` |  |
 | `ContainerArrangement` | `done` | Rows and Dartboard |
 | `Is_Force_Sensitive` | `needs abilities` |  |

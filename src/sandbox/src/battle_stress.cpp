@@ -64,7 +64,8 @@ void StressOrders::issue(Battle& battle, const std::uint64_t tick)
             continue;
         }
         targets.emplace_back(entity.owner, entity.id);
-        if (entity.max_speed <= 0.0F)
+        // A squad takes its orders as its team.
+        if (entity.max_speed <= 0.0F || entity.squad.valid())
         {
             continue;
         }

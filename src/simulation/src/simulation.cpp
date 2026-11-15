@@ -615,6 +615,11 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(member->ahead);
             hasher.add(member->aside);
             hasher.add(member->raggedness);
+            hasher.add(member->slot.has_value());
+            if (member->slot)
+            {
+                hasher.add(*member->slot);
+            }
         }
     }
     hasher.subject = StateSubject::orders;

@@ -90,33 +90,19 @@ Battle::Battle(const BattleMap& map, std::string map_name, const double tick_sec
     }
     world_.set_damage_table(map.damage_table);
     world_.set_hostility(map.hostility);
-    map_ids_.reserve(map.entities.size());
-    for (const auto& entity : map.entities)
+    // Teams spawn before their members (a member names its team's index in the list), the rest in
+    // map order.
+    map_ids_.resize(map.entities.size());
+    for (const bool members : {false, true})
     {
-        auto spawn = entity.spawn;
-        const auto recipe = world_.add_recipe(entity.recipe);
-        if (recipe)
+        for (std::size_t index = 0; index < map.entities.size(); ++index)
         {
-            spawn.recipe = *recipe;
-        }
-        auto id = recipe ? world_.spawn(spawn) : Result<EntityId>(recipe.error());
-        if (!id)
-        {
-            // Map data: one bad placement does not stop the rest of the map.
-            log_warning("simulation", with_context("skipping map entity", id.error()));
-            map_ids_.emplace_back();
-            continue;
-        }
-        map_ids_.emplace_back(*id);
-        if (!entity.hint.empty())
-        {
-            hinted_.emplace_back(*id, entity.hint);
-        }
-        type_info_.try_emplace(ascii_lower(entity.recipe.type_name), entity.script);
-        next_team_ = std::max(next_team_, entity.spawn.formation_team.id + 1U);
-        if (!entity.survivors.types.empty())
-        {
-            survivors_.try_emplace(game_object_name_crc(entity.recipe.type_name), entity.survivors);
+            const auto& entity = map.entities[index];
+            if (entity.spawn.squad.has_value() != members)
+            {
+                continue;
+            }
+            spawn_map_entity(entity, index);
         }
     }
     for (const auto& type : spawnable_)
@@ -128,6 +114,35 @@ Battle::Battle(const BattleMap& map, std::string map_name, const double tick_sec
         }
     }
     world_.step();
+}
+
+void Battle::spawn_map_entity(const MapEntity& entity, const std::size_t index)
+{
+    auto spawn = entity.spawn;
+    const auto recipe = world_.add_recipe(entity.recipe);
+    if (recipe)
+    {
+        spawn.recipe = *recipe;
+    }
+    const auto team = spawn.squad && *spawn.squad < map_ids_.size() ? map_ids_[*spawn.squad] : std::nullopt;
+    auto id = !recipe ? Result<EntityId>(recipe.error()) : spawn.squad && !team ? Result<EntityId>(make_error("its team was not spawned")) : world_.spawn(spawn, team.value_or(EntityId{}));
+    if (!id)
+    {
+        // Map data: one bad placement does not stop the rest of the map.
+        log_warning("simulation", with_context("skipping map entity", id.error()));
+        return;
+    }
+    map_ids_[index] = *id;
+    if (!entity.hint.empty())
+    {
+        hinted_.emplace_back(*id, entity.hint);
+    }
+    type_info_.try_emplace(ascii_lower(entity.recipe.type_name), entity.script);
+    next_team_ = std::max(next_team_, entity.spawn.formation_team.id + 1U);
+    if (!entity.survivors.types.empty())
+    {
+        survivors_.try_emplace(game_object_name_crc(entity.recipe.type_name), entity.survivors);
+    }
 }
 
 std::span<const std::pair<EntityId, std::string>> Battle::hinted_entities() const noexcept
@@ -224,9 +239,8 @@ void Battle::step()
     }
 }
 
-Result<EntitySpawn> Battle::spawn_of(const std::size_t type_index, Vector3 position, const std::uint32_t owner, const TeamMovement* team)
+Result<EntitySpawn> Battle::spawn_of(const TypeRecipe& type, const std::uint32_t visual, Vector3 position, const std::uint32_t owner)
 {
-    const auto& type = spawnable_[type_index];
     const auto& ground = world_.ground();
     const bool follows_ground = type.follows_ground && ground.valid();
     // Never inside a building, a wall, or off the map (its stamped footprints count).
@@ -243,11 +257,7 @@ Result<EntitySpawn> Battle::spawn_of(const std::size_t type_index, Vector3 posit
         // In space a unit takes its layer's height, whatever height the order names.
         position.z = type.layer_z_adjust;
     }
-    auto made = make_spawn(type, {position, 0.0F, owner, spawnable_visual(type_index), ground.valid(), std::nullopt});
-    if (team != nullptr)
-    {
-        apply_team_movement(*team, made.recipe);
-    }
+    auto made = make_spawn(type, {position, 0.0F, owner, visual, ground.valid(), std::nullopt});
     EAW_TRY_ASSIGN(made.spawn.recipe, world_.add_recipe(std::move(made.recipe)));
     return made.spawn;
 }
@@ -284,12 +294,14 @@ Result<SimCommand> Battle::translate(const BattleCommand& command)
         {
             for (const auto& spot : grid_targets(command.point, command.count, unit_spacing))
             {
-                EAW_TRY_ASSIGN(auto spawn, spawn_of(type_index, spot, command.owner));
+                EAW_TRY_ASSIGN(auto spawn, spawn_of(*found, spawnable_visual(type_index), spot, command.owner));
                 translated.spawns.push_back(std::move(spawn));
             }
             return translated;
         }
-        // A company or squadron: its members in formation around each group center, facing +X.
+        // A company or squadron: its members in formation around each group center, facing +X. A
+        // company with a team container spawns each team as a team entity, at its members' slots'
+        // center and before them, and its members join it (squads; not selectable on their own).
         for (const auto& center : grid_targets(command.point, command.count, group_spacing))
         {
             std::vector<FormationMember> members;
@@ -302,10 +314,33 @@ Result<SimCommand> Battle::translate(const BattleCommand& command)
             }
             assign_teams(members, raggedness, found->team_layout, next_team_);
             const auto slots = formation_slots(members, center, 0.0F);
+            const auto team_size = found->team_layout.size > 0U ? found->team_layout.size : found->members.size();
+            std::optional<std::uint32_t> team_spawn;
             for (std::size_t member = 0; member < found->members.size(); ++member)
             {
-                EAW_TRY_ASSIGN(auto spawn, spawn_of(found->members[member], slots[member].position, command.owner, &found->team));
+                if (found->team_recipe && member % team_size == 0)
+                {
+                    Vector3 middle;
+                    const auto last = std::min(found->members.size(), member + team_size);
+                    for (auto index = member; index < last; ++index)
+                    {
+                        middle = {middle.x + slots[index].position.x, middle.y + slots[index].position.y, slots[index].position.z};
+                    }
+                    const auto count = static_cast<float>(last - member);
+                    EAW_TRY_ASSIGN(auto team, spawn_of(*found->team_recipe, 0, {middle.x / count, middle.y / count, middle.z}, command.owner));
+                    team_spawn = static_cast<std::uint32_t>(translated.spawns.size());
+                    translated.spawns.push_back(std::move(team));
+                }
+                const auto member_type = found->members[member];
+                EAW_TRY_ASSIGN(auto spawn, spawn_of(spawnable_[member_type], spawnable_visual(member_type), slots[member].position, command.owner));
                 spawn.formation_team = members[member].team;
+                if (team_spawn)
+                {
+                    // A squad member stands in its team's ring, not a formation team of its own.
+                    spawn.formation_team = {.raggedness = members[member].team.raggedness};
+                    spawn.squad = team_spawn;
+                    spawn.selectable = false;
+                }
                 translated.spawns.push_back(std::move(spawn));
             }
         }

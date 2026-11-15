@@ -95,6 +95,8 @@ struct TypeRecipe
     // The radius ships keep clear of an immobile type in space (its space obstacle radius, else its
     // soft radius; 0 when ships may enter it).
     float space_obstacle_radius{};
+    // A team container (XML Create_Team_Type): its members' ring arrangement (EntityRecipe::team).
+    std::optional<TeamArrangement> team;
 };
 
 // What differs between entities of one recipe: where and how one is placed, its owner, its look,
