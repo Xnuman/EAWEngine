@@ -125,6 +125,11 @@ void SimulationWorld::form_frames(const SimCommand& command, const std::span<con
             const auto dy = slots[member].position.y - command.target.y;
             group_.columns.ahead[row] = dx * forward_x + dy * forward_y;
             group_.columns.aside[row] = dx * forward_y - dy * forward_x;
+            // Where it stands in the frame at the start, along the frame's first heading.
+            const auto sx = placement_.positions[index].x - start.x;
+            const auto sy = placement_.positions[index].y - start.y;
+            group_.columns.start_ahead[row] = sx * std::cos(heading) + sy * std::sin(heading);
+            group_.columns.start_aside[row] = sx * std::sin(heading) - sy * std::cos(heading);
             group_.columns.sent[row].reset();
             request.members.push_back(identity_.ids[index]);
         }
@@ -143,19 +148,34 @@ void SimulationWorld::NavigationSystem::plan_frame_route(const View& view, const
     }
     frame->planned = true;
     frame->route.clear();
-    // The route fits the group's largest member (a squad by its extent).
+    // The route fits the group's largest footprint: a vehicle's, or a squad's largest soldier's (not
+    // the squad's whole circle: planned for that, narrow ways looked closed and the route ended short,
+    // the owner's report of groups stopping early).
+    auto& placement = view.get<PlacementColumns>();
     std::optional<std::size_t> largest;
     float radius = 0.0F;
     for (const auto id : request.members)
     {
-        if (const auto member = dense_index(view, id))
+        const auto member = dense_index(view, id);
+        if (!member)
         {
-            const auto own = unit_radius(view, *member);
-            if (!largest || own > radius)
+            continue;
+        }
+        auto own = placement.radii[*member];
+        if (const auto* squad = view.get<ComponentPool<SquadColumns>>().find(slot_of(view, *member), &SquadColumns::states))
+        {
+            for (const auto soldier_id : squad->members)
             {
-                largest = member;
-                radius = own;
+                if (const auto soldier = dense_index(view, soldier_id))
+                {
+                    own = std::max(own, placement.radii[*soldier]);
+                }
             }
+        }
+        if (!largest || own > radius)
+        {
+            largest = member;
+            radius = own;
         }
     }
     if (!largest)
@@ -174,12 +194,21 @@ void SimulationWorld::NavigationSystem::plan_frame_route(const View& view, const
     if (found.waypoints.empty())
     {
         frame->route.push_back(frame->target);
+        frame->forming = std::min(frame_forming_distance, distance_xy(frame->position, frame->target));
         return;
     }
     ++shared_routes;
     // A goal out of reach: the frame ends where the route does.
     const auto& end = found.waypoints.back();
     frame->target = {end.x, end.y, frame->target.z};
+    float length = 0.0F;
+    PathPoint from{frame->position.x, frame->position.y};
+    for (const auto& waypoint : found.waypoints)
+    {
+        length += std::hypot(waypoint.x - from.x, waypoint.y - from.y);
+        from = waypoint;
+    }
+    frame->forming = std::min(frame_forming_distance, length);
     for (auto waypoint = found.waypoints.rbegin(); waypoint != found.waypoints.rend(); ++waypoint)
     {
         frame->route.push_back({waypoint->x, waypoint->y, frame->target.z});
@@ -312,8 +341,8 @@ void SimulationWorld::BehaviorSystem::follow_frames(const View& view, const floa
             continue;
         }
         // The slots: at the ordered point once arrived; on the way around the frame, and where the
-        // ground is narrower than the formation, in as many files as fit, members in their order front
-        // to back and left to right (Age of Empires II, Company of Heroes). The ground counts at the
+        // ground is narrower than the formation, in as many files as fit, members in the order they
+        // stand front to back and left to right (Age of Empires II, Company of Heroes). The ground counts at the
         // frame and at every member, so the formation stays in files until its whole body is through.
         slots_.clear();
         const auto& center = frame.arrived ? frame.target : frame.position;
@@ -348,16 +377,25 @@ void SimulationWorld::BehaviorSystem::follow_frames(const View& view, const floa
             {
                 order_[member] = member;
             }
+            // By where the members are (furthest along the frame's heading first, then left to right):
+            // ordered by their formation slots, a member near the front of a forming formation was sent
+            // to the back of the file through the others.
+            const Vector2 forward{std::cos(turn), std::sin(turn)};
+            const auto along = [&](const std::size_t member)
+            {
+                const auto& at = placement.positions[members[member].first];
+                return Vector2{at.x - center.x, at.y - center.y};
+            };
             std::ranges::sort(order_,
                               [&](const std::size_t a, const std::size_t b)
                               {
-                                  const auto row_a = members[a].second;
-                                  const auto row_b = members[b].second;
-                                  if (group.columns.ahead[row_a] != group.columns.ahead[row_b])
+                                  const auto ahead_a = dot(along(a), forward);
+                                  const auto ahead_b = dot(along(b), forward);
+                                  if (ahead_a != ahead_b)
                                   {
-                                      return group.columns.ahead[row_a] > group.columns.ahead[row_b];
+                                      return ahead_a > ahead_b;
                                   }
-                                  return group.columns.aside[row_a] < group.columns.aside[row_b];
+                                  return cross(forward, along(a)) > cross(forward, along(b));
                               });
             slots_.resize(members.size());
             for (std::size_t rank = 0; rank < order_.size(); ++rank)
@@ -371,7 +409,11 @@ void SimulationWorld::BehaviorSystem::follow_frames(const View& view, const floa
         {
             for (const auto& [index, row] : members)
             {
-                slots_.push_back(place(center, turn, group.columns.ahead[row], group.columns.aside[row]));
+                // Blending from where the member stood (before the route is planned, it holds there).
+                const auto formed = frame.arrived ? 1.0F : !frame.planned ? 0.0F : frame.forming > 0.0F ? std::min(1.0F, frame.travelled / frame.forming) : 1.0F;
+                const auto ahead = group.columns.start_ahead[row] + (group.columns.ahead[row] - group.columns.start_ahead[row]) * formed;
+                const auto aside = group.columns.start_aside[row] + (group.columns.aside[row] - group.columns.start_aside[row]) * formed;
+                slots_.push_back(place(center, turn, ahead, aside));
             }
         }
         // Laggers: far behind their slots. The frame holds for them while they close in; one that has
@@ -434,6 +476,7 @@ void SimulationWorld::BehaviorSystem::follow_frames(const View& view, const floa
                 }
                 const auto travel = std::min(left, distance);
                 frame.position = {frame.position.x + to_x / distance * travel, frame.position.y + to_y / distance * travel, frame.position.z};
+                frame.travelled += travel;
                 left -= travel;
                 if (travel >= distance)
                 {
@@ -458,7 +501,32 @@ void SimulationWorld::BehaviorSystem::follow_frames(const View& view, const floa
             auto slot = slots_[member];
             if (!stands_at(view, index, slot.x, slot.y))
             {
-                slot = center;
+                // The nearest point around it where the member can stand (rings of its footprint, six
+                // points more each), else the frame's own place.
+                const auto step = std::max(2.0F * radius_of(index), 1.0F);
+                std::optional<Vector3> found;
+                for (std::uint32_t ring = 1; ring <= frame_slot_rings && !found; ++ring)
+                {
+                    const auto points = 6U * ring;
+                    for (std::uint32_t point = 0; point < points; ++point)
+                    {
+                        const auto angle = two_pi * static_cast<float>(point) / static_cast<float>(points);
+                        const Vector3 candidate{slot.x + std::cos(angle) * step * static_cast<float>(ring), slot.y + std::sin(angle) * step * static_cast<float>(ring), slot.z};
+                        if (stands_at(view, index, candidate.x, candidate.y))
+                        {
+                            found = candidate;
+                            break;
+                        }
+                    }
+                }
+                slot = found.value_or(center);
+            }
+            // At the end: a member that stopped after it was sent to its final slot (there, or at the unit
+            // standing on it) is done and leaves the group; sent again, it stopped and restarted every tick.
+            const auto& last_sent = group.columns.sent[row];
+            if (frame.arrived && !route.move_targets[index] && route.pending[index] == 0 && last_sent && distance_xy(*last_sent, slot) <= slot_follow_tolerance)
+            {
+                continue;
             }
             const auto sent_before = group.columns.sent[row];
             follow_slot(view, index, slot, group.columns.sent[row]);

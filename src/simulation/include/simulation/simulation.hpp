@@ -948,6 +948,9 @@ private:
     // Whether the entity at `index` is a ground unit avoidance keeps apart on land: a footprint, on
     // the ground, not flying.
     template <class Data> [[nodiscard]] static bool ground_body(Data& data, std::size_t index) noexcept;
+    // Whether the entity at `index` belongs to a formation frame still on its way (it follows a moving
+    // slot: arrival and giving way among its members are the frame's business).
+    template <class Data> [[nodiscard]] static bool in_moving_frame(Data& data, std::size_t index) noexcept;
     // The radius the entity at `index` takes as a whole: a squad's extent, otherwise its footprint.
     template <class Data> [[nodiscard]] static float unit_radius(Data& data, std::size_t index) noexcept;
     // Whether the entity at `index` waits this tick (for its formation group, or as a team for its
@@ -1314,13 +1317,17 @@ private:
         // than one unit and left when the move ends, is broken off, or stalls): the group, the
         // remaining route it last made progress at, ticks since then, and whether it waits this tick.
         // In a group with a frame (FormationFrame): the member's slot as an offset in the frame
-        // (forward, right) and the slot it was last sent to.
+        // (forward, right), where it stood in the frame when the order came (the slot it starts from,
+        // blending into its formation slot over the frame's forming distance), and the slot it was
+        // last sent to.
         std::vector<std::uint32_t> ids;
         std::vector<float> best_remaining;
         std::vector<std::uint32_t> stall_ticks;
         std::vector<std::uint8_t> waiting;
         std::vector<float> ahead;
         std::vector<float> aside;
+        std::vector<float> start_ahead;
+        std::vector<float> start_aside;
         std::vector<std::optional<Vector3>> sent;
         template <class Visit> void for_each_column(Visit&& visit)
         {
@@ -1330,6 +1337,8 @@ private:
             visit(waiting);
             visit(ahead);
             visit(aside);
+            visit(start_ahead);
+            visit(start_aside);
             visit(sent);
         }
     };
@@ -1620,6 +1629,10 @@ private:
         bool planned{};
         bool arrived{};
         std::uint32_t wait_ticks{};
+        // How far it has moved, and over how much of its way the members' slots blend from where they
+        // stood into the formation (the formation forms on the move).
+        float travelled{};
+        float forming{};
     };
     struct FormationFrames
     {
@@ -1816,10 +1829,10 @@ private:
     class MovementSystem
     {
     public:
-        using View =
-            SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<CombatColumns>>,
-                       Read<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>, Write<ComponentPool<FlightColumns>>,
-                       Read<GroundState>, Read<Avoidance>, Write<PathQueue>, Read<ComponentPool<SquadColumns>>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<Clock>, Read<OrderColumns>>;
+        using View = SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<CombatColumns>>,
+                                Read<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>,
+                                Write<ComponentPool<FlightColumns>>, Read<GroundState>, Read<Avoidance>, Write<PathQueue>, Read<ComponentPool<SquadColumns>>, Read<ComponentPool<CrushColumns>>,
+                                Read<Rules>, Read<Clock>, Read<OrderColumns>, Read<FormationFrames>>;
         void run(const View& view, float dt);
         // Moves planned again so far because the unit's planned line no longer fit (avoidance took it
         // off its line, or the ground changed).
@@ -1842,7 +1855,11 @@ private:
         // A unit giving way (RouteColumns::give_ways) steps toward the point aside, or back to where it
         // stood, never into a unit; back there, or held by units in its way, it is done.
         void give_way_step(const View& view, std::size_t index, float dt);
-        // Whether the unit's destination is taken: it heads for its last point and touches (within
+        // Records where the unit stops at the end of a move (RouteColumns::last_goals), not at a
+        // formation slot on the way.
+        void record_stop(const View& view, std::size_t index);
+        // Whether the unit's destination is taken (or as good as reached: held for a while within its
+        // radius of it): it heads for its last point and touches (within
         // taken_goal_margin) a standing agent covering that point, or, having come no closer for
         // arrival_stall_seconds, a standing agent of its owner nearer that point. It then stops where
         // it is, the point closest to the goal where it overlaps no one (the owner, 2026-11-15).

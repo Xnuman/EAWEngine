@@ -54,7 +54,8 @@ void SimulationWorld::NavigationSystem::measure_arrival_progress(const View& vie
     auto& route = view.get<RouteColumns>();
     for (std::size_t index = 0; index < route.move_targets.size(); ++index)
     {
-        if (!route.move_targets[index] || !route.paths[index].empty())
+        // Not on a last leg, or following a frame's moving slot (its distance never shrinks there).
+        if (!route.move_targets[index] || !route.paths[index].empty() || in_moving_frame(view, index))
         {
             route.closest_approaches[index] = std::numeric_limits<float>::max();
             route.stalled_ticks[index] = 0;
@@ -133,7 +134,16 @@ void SimulationWorld::NavigationSystem::plan_ground_avoidance(const View& view)
         }
         const auto radius = radii[index];
         const auto speed = travel_speed(view, index);
-        const auto preferred = heading * speed;
+        // On its last leg it means to stop at its goal: no faster than reaches the goal within the
+        // horizon, so a goal beside a standing unit is not taken for a collision beyond it (a formation
+        // member stood still ten units short of its slot for that).
+        auto wanted = speed;
+        if (route.paths[index].empty())
+        {
+            const auto& goal = *route.move_targets[index];
+            wanted = std::min(speed, distance_xy(goal, placement.positions[index]) / avoidance_horizon_seconds);
+        }
+        const auto preferred = heading * wanted;
         // Its nearest ground units, nearest first (ties by dense index); not what it crushes.
         query_.clear();
         avoidance.grid.query_overlapping(placement.positions[index], radius + std::min(speed * avoidance_horizon_seconds, radius * avoidance_reach_radii), query_);
@@ -286,6 +296,16 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
             const auto yielder = *blocker;
             if (identity.owners[yielder] != identity.owners[passer] || (route.give_ways[yielder] && !route.give_ways[yielder]->returning) || locomotor.max_speeds[yielder] <= 0.0F ||
                 locomotor.suspended[yielder] != 0)
+            {
+                continue;
+            }
+            // Members of one formation on its way keep their slots; they do not ask each other aside
+            // (they did, over and over, and the frame held for the members giving way). Once it has
+            // arrived they sort into their final slots and may.
+            const auto& groups = view.get<ComponentPool<GroupColumns>>();
+            const auto passer_group = groups.find(slot_of(view, passer));
+            const auto yielder_group = groups.find(slot_of(view, yielder));
+            if (passer_group && yielder_group && groups.columns.ids[*passer_group] == groups.columns.ids[*yielder_group] && in_moving_frame(view, passer))
             {
                 continue;
             }
@@ -481,14 +501,24 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
     {
         return false;
     }
+    // A member of a formation on its way follows a moving slot: its frame decides where it stops.
+    if (in_moving_frame(view, index))
+    {
+        return false;
+    }
     const auto& goal = *route.move_targets[index];
     const auto& here = placement.positions[index];
     const auto own_distance = std::hypot(goal.x - here.x, goal.y - here.y);
     // It has come no closer for a while: a unit still working its way through a crowd is not stopped.
     const bool stalled = route.stalled_ticks[index] >= ticks_for(view, arrival_stall_seconds);
+    // Held within its footprint's radius of its goal (by the units around it): arrived.
+    if (stalled && own_distance <= radius * arrival_reach_share)
+    {
+        return true;
+    }
     const auto owner = view.get<IdentityColumns>().owners[index];
     query_.clear();
-    avoidance.grid.query_overlapping(here, radius * 3.0F + avoidance.largest_radius * taken_goal_margin, query_);
+    avoidance.grid.query_overlapping(here, radius * 5.0F + avoidance.largest_radius * taken_goal_margin, query_);
     return std::ranges::any_of(query_,
                                [&](const std::uint32_t other)
                                {
@@ -509,7 +539,8 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
                                    // Stalled at a crowd of its allies that stopped at the end of the same order, or at
                                    // destinations near its own (within taken_goal_crowd of their summed radii: units sent
                                    // to one point, or to neighbouring slots), between it and
-                                   // its goal, within one of its own footprints' width of them (a crowd grows ring by ring:
+                                   // its goal, within two of its own footprints' widths of them (a crowd grows ring by ring,
+                                   // rings a little apart where avoidance kept its margins:
                                    // each ring stops at the ring that stopped before it). An ally that stopped elsewhere is
                                    // no crowd at this goal: a unit held behind it waits for it to give way (the owner's
                                    // report: companies sent through a standing squad stopped at it). A jam of moving units
@@ -518,7 +549,7 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
                                    const auto& serials = view.get<OrderColumns>().command_serials;
                                    const bool same_order = serials[other] == serials[index];
                                    return stalled && standing && stopped_at && (same_order || distance_xy(*stopped_at, goal) < reach * taken_goal_crowd) &&
-                                          view.get<IdentityColumns>().owners[other] == owner && from_goal < own_distance && apart <= reach + 2.0F * radius;
+                                          view.get<IdentityColumns>().owners[other] == owner && from_goal < own_distance && apart <= reach + 4.0F * radius;
                                });
 }
 

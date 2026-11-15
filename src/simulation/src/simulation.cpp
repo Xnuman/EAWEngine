@@ -529,6 +529,8 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(group_.columns.stall_ticks[*row]);
             hasher.add(group_.columns.ahead[*row]);
             hasher.add(group_.columns.aside[*row]);
+            hasher.add(group_.columns.start_ahead[*row]);
+            hasher.add(group_.columns.start_aside[*row]);
             const auto& sent = group_.columns.sent[*row];
             hasher.add(sent.has_value());
             if (sent)
@@ -554,6 +556,8 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(frame.planned);
         hasher.add(frame.arrived);
         hasher.add(frame.wait_ticks);
+        hasher.add(frame.travelled);
+        hasher.add(frame.forming);
     }
     hasher.subject = StateSubject::combat;
     for (std::size_t index = 0; index < count; ++index)

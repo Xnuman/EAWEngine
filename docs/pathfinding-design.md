@@ -165,6 +165,19 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
   squads' soldiers use (`follow_slot`); a member that cannot walk straight goes by way of the frame.
   Not built: companies passing a narrow place one after another (the parts do not queue each
   other), splitting by anything but distance. Ships in space keep the per-member routes.
+- **Formation fixes after the owner's tests** (2026-11-15; the frame had stopped short, stood for
+  seconds forming up, gathered far from some companies, and left companies apart): the formation
+  forms on the move (each member's slot starts where it stands in the frame and blends into its
+  formation slot over the first 150 units of the way, or all of it when shorter), so the frame never
+  waits for the block to form and nobody walks back; the route is planned for the largest vehicle's
+  or soldier's footprint, not a squad's whole circle (planned for that, narrow ways looked closed and
+  the route ended short); files in a narrow place take members in the order they stand along the
+  frame's heading (by formation slot, a member near the front was sent to the back through the
+  others); a final slot on ground a member cannot stand on moves to the nearest point it can (rings
+  of its footprint), not the frame's centre; members of a frame on its way do not ask each other to
+  give way (they did, over and over), but may once it arrived; arrival rules and the progress measure
+  leave a member of a moving frame alone (its moving slot never comes closer), and its stops on the
+  way are not recorded as where its move ended; a member done at its final slot is not sent again.
 
 ### 4.4 Local movement: avoidance without overlap
 
@@ -211,8 +224,12 @@ Built 2026-11-15 (step 6), except the blocked-unit replans; `simulation_avoidanc
 - **Arrival among others** (the owner, 2026-11-15: the closest point to the goal where it overlaps
   no one): a unit stops where it touches a standing unit on its destination, or, having come no
   closer for a second, at a standing ally between it and its destination that stopped at the end of
-  the same order or at a destination within four summed radii of its own (a crowd grows ring by
-  ring; `RouteColumns::last_goals`). An ally standing in the way after a move elsewhere is no crowd:
+  the same order or at a destination within six summed radii of its own, and within two of its
+  footprints' widths beyond contact (a crowd grows ring by ring, rings a little apart where
+  avoidance kept its margins; `RouteColumns::last_goals`). A unit that came no closer for a second
+  within its radius of its goal has arrived. On its last leg a unit's preferred speed is what
+  reaches its goal within the horizon: at full speed ORCA took a standing unit beyond the goal for a
+  collision and held a unit still ten units short. An ally standing in the way after a move elsewhere is no crowd:
   without that condition companies sent through a standing squad stopped at it (the owner's report).
   A unit never asks the unit on its destination to give way.
 - **No separation**: the post-movement push goes. Spawns, teleports, and company expansion place

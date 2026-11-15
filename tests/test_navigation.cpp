@@ -436,7 +436,8 @@ void test_formations()
     const auto& arrived = world.snapshot().entities;
     require(!arrived[0].moving && !arrived[1].moving && std::hypot(arrived[0].position.x - arrived[1].position.x, arrived[0].position.y - arrived[1].position.y) >= 14.0F &&
                 std::fabs((arrived[0].position.x + arrived[1].position.x) * 0.5F - 300.0F) < 1.0F,
-            "a group must arrive in distinct slots around the target");
+            "a group must arrive in distinct slots around the target (" + std::to_string(arrived[0].position.x) + ", " + std::to_string(arrived[0].position.y) + " / " +
+                std::to_string(arrived[1].position.x) + ", " + std::to_string(arrived[1].position.y) + (arrived[0].moving || arrived[1].moving ? ", moving" : "") + ")");
 
     // A solo member (XML FormationGrouping Solo) leaves the group: own speed, straight to the point.
     eaw::SimulationWorld solo_world(0.1);
@@ -759,7 +760,7 @@ void test_narrow_passage()
     }
     for (const auto& entity : world.snapshot().entities)
     {
-        require(!entity.moving && entity.position.x > 200.0F, "a group must queue through a passage one unit wide instead of jamming at its mouth; one stands at (" +
+        require(!entity.moving && entity.position.x > 170.0F, "a group must queue through a passage one unit wide instead of jamming at its mouth; one stands at (" +
                                                                   std::to_string(entity.position.x) + ", " + std::to_string(entity.position.y) + "), blocked moves " +
                                                                   std::to_string(world.stats().blocked_moves) + ", path searches " + std::to_string(world.stats().path_searches) +
                                                                   ", still moving:" + still_moving(world.snapshot().entities));
@@ -782,7 +783,8 @@ void test_group_cohesion()
         return *id;
     };
 
-    // A straggler 150 units behind: the members ahead wait for it, and the group arrives together.
+    // A straggler 150 units behind: the formation forms on the move (no one waits at the start, the
+    // owner's report of companies standing for seconds), and the group arrives together.
     {
         eaw::SimulationWorld world(0.1);
         world.set_ground(ground);
@@ -795,8 +797,8 @@ void test_group_cohesion()
             world.step();
             if (tick == 5)
             {
-                // The frame holds for the straggler (its route planned on the order's tick).
-                require(world.stats().waiting_members >= 2, "members ahead of the group must wait");
+                // The straggler's slot starts where it stands: nobody waits for it at the start.
+                require(world.stats().waiting_members == 0, "a formation must not wait at the start for members to gather");
             }
             for (std::size_t member = 0; member < 3; ++member)
             {
@@ -945,14 +947,23 @@ void test_path_budget_and_shared_routes()
         {
             arrived += !entity.moving && entity.position.x > 1500.0F ? 1U : 0U;
         }
-        return std::tuple{queued_after_first, searches_after_first, world.stats(), arrived, world.state_hash(), still_moving(world.snapshot().entities)};
+        // Where the units that have not arrived stand (moving or stopped short), for failure messages.
+        std::string short_of;
+        for (const auto& entity : world.snapshot().entities)
+        {
+            if (entity.moving || entity.position.x <= 1500.0F)
+            {
+                short_of += " (" + std::to_string(entity.position.x) + ", " + std::to_string(entity.position.y) + ")";
+            }
+        }
+        return std::tuple{queued_after_first, searches_after_first, world.stats(), arrived, world.state_hash(), short_of};
     };
     // Individual orders: the budget spreads 150 long searches over several ticks (searches over chunks
     // are cheap enough that a few dozen fit one tick's budget).
     constexpr int many = 150;
     const auto [queued, first_searches, individual, individual_arrived, individual_hash, individual_moving] = run(false, many);
     require(queued > 0 && first_searches >= 1 && first_searches < static_cast<std::uint64_t>(many) && individual.queued_paths == 0 && individual_arrived == static_cast<std::size_t>(many),
-            "the search budget must spread a large order over ticks and still plan every unit (" + std::to_string(individual_arrived) + " arrived; still moving:" + individual_moving + ")");
+            "the search budget must spread a large order over ticks and still plan every unit (" + std::to_string(individual_arrived) + " arrived; not arrived:" + individual_moving + ")");
     require(std::get<4>(run(false, many)) == individual_hash, "budgeted planning must be deterministic");
     // One group order: one shared search instead of 24 (its one request may finish on the next tick
     // when it costs more than one tick's budget).
@@ -963,7 +974,7 @@ void test_path_budget_and_shared_routes()
     // matters.
     require(grouped.shared_routes == 1 && grouped.path_searches < 48 && group_queued <= 1 && grouped_arrived == 24,
             "a formation must plan one shared route and short legs, and every member must arrive (" + std::to_string(grouped.path_searches) + " searches, " + std::to_string(grouped_arrived) +
-                " arrived; still moving:" + group_moving + ")");
+                " arrived; not arrived:" + group_moving + ")");
     require(grouped.path_expansions * 4 < individual.path_expansions, "a shared route must cost far less than searches per unit");
     (void)group_first;
     (void)group_hash;

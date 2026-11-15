@@ -152,7 +152,7 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
     }
     if (goal_taken(view, index))
     {
-        route.last_goals[index] = *target;
+        record_stop(view, index);
         target.reset();
         return;
     }
@@ -216,7 +216,7 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
         }
         if (path.empty())
         {
-            route.last_goals[index] = *target;
+            record_stop(view, index);
             target.reset();
             return;
         }
@@ -227,6 +227,17 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
         {
             return;
         }
+    }
+}
+
+void SimulationWorld::MovementSystem::record_stop(const View& view, const std::size_t index)
+{
+    // Only where a move ends: a member of a formation on its way reaches its moving slot many times,
+    // and recorded there it made frame-mates mid-way look like the crowd at the destination.
+    if (!in_moving_frame(view, index))
+    {
+        auto& route = view.get<RouteColumns>();
+        route.last_goals[index] = route.move_targets[index];
     }
 }
 

@@ -83,9 +83,13 @@ inline constexpr float give_way_held_fraction = 0.5F;
 inline constexpr float taken_goal_margin = 0.25F;
 // Allies count as the crowd at a unit's destination when they stopped at destinations within this
 // many summed radii of it (goal_taken). An engine choice.
-inline constexpr float taken_goal_crowd = 4.0F;
+inline constexpr float taken_goal_crowd = 6.0F;
 inline constexpr float arrival_progress = 0.5F;
 inline constexpr float arrival_stall_seconds = 1.0F;
+// A unit that came no closer for the stall time within this share of its radius of its goal has
+// arrived (packed neighbours held formation members a few units short of their slots). An engine
+// choice.
+inline constexpr float arrival_reach_share = 1.0F;
 // Seconds between automatic target searches of an idle weapon, and between replans of an ordered
 // chase whose target is out of range (10 and 30 ticks at the old 30 Hz). Engine choices, not
 // measured from the original.
@@ -123,6 +127,14 @@ inline constexpr float frame_file_spacing = 1.25F;
 inline constexpr float frame_turn_rate = 1.5F;
 inline constexpr float frame_turn_hold = 0.6F;
 inline constexpr float frame_split_distance = 400.0F;
+// A formation forms on the move: its members' slots blend from where they stood into the formation
+// over this much of the frame's way (all of it when shorter), so no member walks back to a gathering
+// point and the frame never waits for the block to form (the owner's report, 2026-11-15: companies
+// stood for seconds and gathered far from where some stood). A final slot on ground a member cannot
+// stand on moves to the nearest point it can, searched this many rings of its footprint out. Engine
+// choices.
+inline constexpr float frame_forming_distance = 150.0F;
+inline constexpr std::uint32_t frame_slot_rings = 6;
 // Path search nodes expanded per tick at most (about 2.5 ms in a Release build, the share of a frame
 // 30000 was at 30 Hz; halved for 60 Hz, the owner, 2026-11-15), always at least one request. An
 // engine choice; requests beyond it wait for the next tick in order.
@@ -537,6 +549,19 @@ template <class Data> bool SimulationWorld::can_crush(Data& data, const std::siz
 template <class Data> bool SimulationWorld::ground_body(Data& data, const std::size_t index) noexcept
 {
     return data.template get<PlacementColumns>().radii[index] > 0.0F && data.template get<GroundMoverColumns>().follows_ground[index] != 0 && !flies(data, index);
+}
+
+template <class Data> bool SimulationWorld::in_moving_frame(Data& data, const std::size_t index) noexcept
+{
+    const auto& groups = data.template get<ComponentPool<GroupColumns>>();
+    const auto row = groups.find(slot_of(data, index));
+    if (!row)
+    {
+        return false;
+    }
+    const auto& frames = data.template get<FormationFrames>().list;
+    const auto frame = std::ranges::find(frames, groups.columns.ids[*row], &FormationFrame::group);
+    return frame != frames.end() && !frame->arrived;
 }
 
 template <class Data> float SimulationWorld::unit_radius(Data& data, const std::size_t index) noexcept
