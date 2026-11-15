@@ -807,7 +807,6 @@ private:
     void remove_dead();
     template <class Data> [[nodiscard]] static bool damageable(Data& data, std::size_t index) noexcept;
     template <class Data> [[nodiscard]] static std::uint32_t ticks_for(Data& data, float seconds) noexcept;
-    void publish();
 
     // What the tick's systems declare access to (the schedule below): the components of the entity
     // table and the pools, and the world's resources.
@@ -838,7 +837,6 @@ private:
         // The tick's deaths, impacts, shots, hardpoint deaths, and spins.
         events,
         combat_random,
-        snapshot,
         // The tick counter and the tick's length.
         clock,
         // The slot table (generations, dense positions, free slots).
@@ -1263,7 +1261,6 @@ private:
         visit(SimData::projectiles, projectiles_);
         visit(SimData::events, events_);
         visit(SimData::combat_random, combat_random_);
-        visit(SimData::snapshot, snapshot_);
         visit(SimData::clock, clock_);
         visit(SimData::slots, slots_);
         visit(SimData::commands, pending_);
@@ -1276,13 +1273,13 @@ private:
     // The systems step() ran inline before: the tick's commands and its event lists, the speeds
     // movement and separation produced, and the tick counter with the snapshot.
     void run_commands();
-    void run_publish();
     // The contact system's run on its view (ContactSystem).
     void run_contact();
     void run_movement();
     void run_navigation();
     void run_behavior();
     void run_combat();
+    void run_publish();
     // Removing the dead (remove_dead): structural, so written as a member function with full access
     // until migration step 6 queues removals for the barrier.
     void run_removal();
@@ -1697,9 +1694,27 @@ private:
         std::vector<std::uint32_t> query_;
     };
     CombatSystem combat_system_;
+
+    // Publish (simulation.cpp; docs/ecs-design.md, 6.3, phase 9): the tick counter, and the snapshot
+    // presentation, scripts, and tools read.
+    class PublishSystem
+    {
+    public:
+        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Read<MotionColumns>, Read<LocomotorColumns>, Read<GroundMoverColumns>, Read<RouteColumns>, Read<CombatColumns>,
+                                Read<OrderColumns>, Read<ComponentPool<TurnClipColumns>>, Read<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightManeuverColumns>>, Read<ProjectileState>,
+                                Read<TickEvents>, Write<Clock>>;
+        // Advances the tick counter and publishes the tick's snapshot.
+        void run(const View& view);
+        // The snapshot of the last tick (SimulationWorld::snapshot).
+        SimSnapshot snapshot;
+
+    private:
+        // Fills the snapshot from the entity table, the tick's events, and the projectiles in flight.
+        void publish(const View& view);
+    };
+    PublishSystem publish_;
     std::uint32_t next_group_id_{1};
     std::vector<SimCommand> pending_;
-    SimSnapshot snapshot_;
     std::uint64_t commands_applied_{};
     std::uint64_t stale_references_{};
     std::uint64_t rejected_spawns_{};

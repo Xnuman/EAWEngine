@@ -267,10 +267,11 @@ void SimulationWorld::run_commands()
     events_.spins.clear();
 }
 
-void SimulationWorld::run_publish()
+void SimulationWorld::PublishSystem::run(const View& view)
 {
-    ++clock_.tick;
-    publish();
+    auto& clock = view.get<Clock>();
+    ++clock.tick;
+    publish(view);
 }
 
 std::string_view SimulationWorld::type_name(const EntityId id) const noexcept
@@ -286,7 +287,7 @@ bool SimulationWorld::alive(const EntityId id) const noexcept
 
 const SimSnapshot& SimulationWorld::snapshot() const noexcept
 {
-    return snapshot_;
+    return publish_.snapshot;
 }
 
 SimulationWorld::Stats SimulationWorld::stats() const noexcept
@@ -535,6 +536,11 @@ const CrushProfile& SimulationWorld::crush_profile_of(const std::size_t index) c
     return crush_profile_in(crush_, slot_of(*this, index));
 }
 
+void SimulationWorld::run_publish()
+{
+    publish_.run(view_of<PublishSystem::View>());
+}
+
 void SimulationWorld::run_combat()
 {
     combat_system_.run(view_of<CombatSystem::View>(), static_cast<float>(clock_.tick_seconds));
@@ -676,67 +682,81 @@ const GroundMap& SimulationWorld::ground() const noexcept
     return ground_.map;
 }
 
-void SimulationWorld::publish()
+void SimulationWorld::PublishSystem::publish(const View& view)
 {
-    snapshot_.tick = clock_.tick;
-    snapshot_.entities.clear();
-    snapshot_.entities.reserve(identity_.ids.size());
-    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
+    auto& identity = view.get<IdentityColumns>();
+    auto& placement = view.get<PlacementColumns>();
+    auto& motion = view.get<MotionColumns>();
+    auto& locomotor = view.get<LocomotorColumns>();
+    auto& ground_mover = view.get<GroundMoverColumns>();
+    auto& route = view.get<RouteColumns>();
+    auto& combat = view.get<CombatColumns>();
+    auto& orders = view.get<OrderColumns>();
+    auto& turn_clips = view.get<ComponentPool<TurnClipColumns>>();
+    auto& walk_clips = view.get<ComponentPool<WalkClipColumns>>();
+    auto& flight_maneuvers = view.get<ComponentPool<FlightManeuverColumns>>();
+    auto& projectiles = view.get<ProjectileState>();
+    auto& events = view.get<TickEvents>();
+    auto& clock = view.get<Clock>();
+    snapshot.tick = clock.tick;
+    snapshot.entities.clear();
+    snapshot.entities.reserve(identity.ids.size());
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
-        const auto& combat = combat_.states[index];
+        const auto& state = combat.states[index];
         std::uint32_t destroyable = 0;
         std::uint32_t destroyed = 0;
-        for (std::size_t hardpoint = 0; hardpoint < combat.profile.hardpoints.size(); ++hardpoint)
+        for (std::size_t hardpoint = 0; hardpoint < state.profile.hardpoints.size(); ++hardpoint)
         {
-            if (combat.profile.hardpoints[hardpoint].health > 0.0F)
+            if (state.profile.hardpoints[hardpoint].health > 0.0F)
             {
                 ++destroyable;
-                destroyed += combat.hardpoint_health[hardpoint] <= 0.0F ? 1U : 0U;
+                destroyed += state.hardpoint_health[hardpoint] <= 0.0F ? 1U : 0U;
             }
         }
         // A non-flyer reports no manoeuvres.
-        const auto* yaw_rate = flight_maneuvers_.find(slot_of(*this, index), &FlightManeuverColumns::yaw_rates);
-        const auto* roll = flight_maneuvers_.find(slot_of(*this, index), &FlightManeuverColumns::rolls);
-        snapshot_.entities.push_back({identity_.ids[index],
-                                      placement_.positions[index],
-                                      placement_.headings[index],
-                                      identity_.visuals[index],
-                                      identity_.owners[index],
-                                      route_.move_targets[index].has_value(),
-                                      identity_.selectable[index] != 0,
-                                      locomotor_.max_speeds[index],
-                                      ground_mover_.follows_ground[index] != 0,
-                                      combat.health,
-                                      combat.profile.health,
-                                      combat.shield,
-                                      combat.profile.shield,
-                                      combat.target,
-                                      placement_.radii[index],
-                                      destroyable,
-                                      destroyed,
-                                      placement_.pitches[index],
-                                      (yaw_rate ? *yaw_rate : 0.0F),
-                                      motion_.speeds[index],
-                                      (roll ? *roll : 0.0F),
-                                      combat.turret_yaw,
-                                      combat_.last_shot_ticks[index],
-                                      orders_.command_serials[index],
-                                      orders_.standing[index].kind,
-                                      locomotor_.arriving[index] != 0});
-        snapshot_.entities.back().turns_as_clips = locomotor_.movements[index].turn_begin_seconds[0] > 0.0F && locomotor_.movements[index].stopped_turn_rate > 0.0F;
-        if (turning_as_clips(*this, index))
+        const auto* yaw_rate = flight_maneuvers.find(slot_of(view, index), &FlightManeuverColumns::yaw_rates);
+        const auto* roll = flight_maneuvers.find(slot_of(view, index), &FlightManeuverColumns::rolls);
+        snapshot.entities.push_back({identity.ids[index],
+                                     placement.positions[index],
+                                     placement.headings[index],
+                                     identity.visuals[index],
+                                     identity.owners[index],
+                                     route.move_targets[index].has_value(),
+                                     identity.selectable[index] != 0,
+                                     locomotor.max_speeds[index],
+                                     ground_mover.follows_ground[index] != 0,
+                                     state.health,
+                                     state.profile.health,
+                                     state.shield,
+                                     state.profile.shield,
+                                     state.target,
+                                     placement.radii[index],
+                                     destroyable,
+                                     destroyed,
+                                     placement.pitches[index],
+                                     (yaw_rate ? *yaw_rate : 0.0F),
+                                     motion.speeds[index],
+                                     (roll ? *roll : 0.0F),
+                                     state.turret_yaw,
+                                     combat.last_shot_ticks[index],
+                                     orders.command_serials[index],
+                                     orders.standing[index].kind,
+                                     locomotor.arriving[index] != 0});
+        snapshot.entities.back().turns_as_clips = locomotor.movements[index].turn_begin_seconds[0] > 0.0F && locomotor.movements[index].stopped_turn_rate > 0.0F;
+        if (turning_as_clips(view, index))
         {
-            const auto& plan = turn_clips_.get(slot_of(*this, index), &TurnClipColumns::plans);
-            const auto point = turn_point(*this, index, plan.elapsed);
-            auto& entity = snapshot_.entities.back();
+            const auto& plan = turn_clips.get(slot_of(view, index), &TurnClipColumns::plans);
+            const auto point = turn_point(view, index, plan.elapsed);
+            auto& entity = snapshot.entities.back();
             entity.turn_clip = point.clip;
             entity.turn_left = plan.way > 0.0F;
             entity.turn_progress = point.progress;
         }
-        if (const auto& movement = locomotor_.movements[index]; movement.walk_stop_parts > 0)
+        if (const auto& movement = locomotor.movements[index]; movement.walk_stop_parts > 0)
         {
-            const auto& walk = walk_clips_.get(slot_of(*this, index), &WalkClipColumns::plans);
-            auto& entity = snapshot_.entities.back();
+            const auto& walk = walk_clips.get(slot_of(view, index), &WalkClipColumns::plans);
+            auto& entity = snapshot.entities.back();
             entity.walk_clip = walk.clip;
             entity.walk_part = walk.part;
             entity.walk_progress = walk.clip == WalkClip::starting   ? std::min(walk.elapsed / movement.walk_start_seconds, 1.0F)
@@ -748,18 +768,18 @@ void SimulationWorld::publish()
                                                                      : 0.0F;
         }
     }
-    snapshot_.deaths = events_.deaths;
-    snapshot_.impacts = events_.impacts;
-    snapshot_.shots = events_.shots;
-    snapshot_.hardpoint_deaths = events_.hardpoint_deaths;
-    snapshot_.spins = events_.spins;
-    snapshot_.projectiles.clear();
-    snapshot_.projectiles.reserve(projectiles_.flying.size());
-    for (const auto& projectile : projectiles_.flying)
+    snapshot.deaths = events.deaths;
+    snapshot.impacts = events.impacts;
+    snapshot.shots = events.shots;
+    snapshot.hardpoint_deaths = events.hardpoint_deaths;
+    snapshot.spins = events.spins;
+    snapshot.projectiles.clear();
+    snapshot.projectiles.reserve(projectiles.flying.size());
+    for (const auto& projectile : projectiles.flying)
     {
         const Vector3 to_aim{projectile.aim.x - projectile.position.x, projectile.aim.y - projectile.position.y, projectile.aim.z - projectile.position.z};
-        snapshot_.projectiles.push_back({projectile.position, projectile.direction, projectile.owner, projectile.visual, projectile.speed, projectile.serial, projectile.flown,
-                                         std::sqrt(to_aim.x * to_aim.x + to_aim.y * to_aim.y + to_aim.z * to_aim.z)});
+        snapshot.projectiles.push_back({projectile.position, projectile.direction, projectile.owner, projectile.visual, projectile.speed, projectile.serial, projectile.flown,
+                                        std::sqrt(to_aim.x * to_aim.x + to_aim.y * to_aim.y + to_aim.z * to_aim.z)});
     }
 }
 

@@ -28,18 +28,14 @@ const std::array<SimulationWorld::SystemEntry, 8> SimulationWorld::schedule_{{
     {"combat", TickPhase::combat, &SimulationWorld::run_combat, reads_of<CombatSystem::View>(), writes_of<CombatSystem::View>(), true},
     // Removing the dead writes the whole entity table until step 6 queues it for the barrier.
     {"removal", TickPhase::combat, &SimulationWorld::run_removal, all_data, all_data},
-    {"publish", TickPhase::publish, &SimulationWorld::run_publish,
-     access_to({SimData::clock, SimData::combat, SimData::events, SimData::flight_maneuvers, SimData::ground_mover, SimData::identity, SimData::locomotor, SimData::motion, SimData::orders,
-                SimData::placement, SimData::projectiles, SimData::route, SimData::snapshot, SimData::turn_clips, SimData::walk_clips}),
-     access_to({SimData::clock, SimData::snapshot})},
+    {"publish", TickPhase::publish, &SimulationWorld::run_publish, reads_of<PublishSystem::View>(), writes_of<PublishSystem::View>(), true},
 }};
 
 std::string_view SimulationWorld::sim_data_name(const SimData data) noexcept
 {
-    static constexpr std::array<std::string_view, sim_data_count> names{"identity", "placement", "motion",     "locomotor",   "ground_mover",   "route",         "flight",           "combat",
-                                                                        "orders",   "steering",  "formation",  "group",       "turn_clips",     "walk_clips",    "flight_maneuvers", "footprints",
-                                                                        "crush",    "ground",    "path_queue", "projectiles", "events",         "combat_random", "snapshot",         "clock",
-                                                                        "slots",    "commands",  "rules",      "avoidance",   "combat_counters"};
+    static constexpr std::array<std::string_view, sim_data_count> names{
+        "identity",         "placement",  "motion", "locomotor", "ground_mover", "route",       "flight", "combat",        "orders", "steering", "formation", "group", "turn_clips", "walk_clips",
+        "flight_maneuvers", "footprints", "crush",  "ground",    "path_queue",   "projectiles", "events", "combat_random", "clock",  "slots",    "commands",  "rules", "avoidance",  "combat_counters"};
     static_assert(!names.back().empty(), "every kind of simulation data needs its name");
     return names[static_cast<std::size_t>(data)];
 }

@@ -178,7 +178,8 @@ rendering rows join item 2).
       timings and sub-hashes (done 2026-11-15: per tick layer, and `--hash-trace` by state subject); components as column groups in the one table (done 2026-11-15); the registry and pools (pools
       for walk and turn clips, flight manoeuvres, footprints, and crush profiles, 2026-11-15; the
       rest after steps 6 and 7);
-      systems with declared access (the schedule table and the DebugValidation write check, 2026-11-15); recipes; command buffers and event queues; the one declared
+      systems with declared access (the schedule table, the DebugValidation write check, and six of eight
+      systems on typed views, 2026-11-15; commands and removal after step 6); recipes; command buffers and event queues; the one declared
       hash change (spawn order, per-component hashing); parallel systems (route searches first),
       each step with an unchanged battle hash except the declared one, folding in the deferred
       determinism work (stable-id order, keyed random draws, a full-state hash).

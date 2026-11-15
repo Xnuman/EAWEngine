@@ -535,7 +535,13 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    helper several systems use is a static template over its data, `template <class Data>
    travel_speed(Data& data, ...)`, reading through `data.get<T>()`: a system passes its view (the
    compiler holds the helper to that view's declaration), the systems still written as member
-   functions pass the world (`SimulationWorld::get<T>()`, full access), and there is one copy. Queries as a separate helper were tried and dropped:
+   functions pass the world (`SimulationWorld::get<T>()`, full access), and there is one copy.
+   Navigation, behavior, combat, and publish followed (2026-11-15): six of the eight systems are on
+   typed views. Commands and the removal of the dead stay member functions with full access, since
+   they spawn and remove entities, until step 6 queues structural changes for the barrier; removal
+   was split from combat for that reason. A typed view found writes the hand-written declarations
+   missed and DebugValidation's runs never reached (behavior clears a unit's group speed limit and
+   group when it starts an engagement or sends a flyer to loiter). Queries as a separate helper were tried and dropped:
    the loops already walk the dense order and look pools up by slot, and sorting a pool's members
    cost more than it saved (crushing, 0.006 to 0.025 ms a tick).
 5. **Recipes.** Readers per component; one construction path for spawns and placed objects;
