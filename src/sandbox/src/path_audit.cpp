@@ -12,6 +12,7 @@
 #include "sandbox/text_format.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -28,6 +29,9 @@ namespace {
 constexpr std::uint32_t default_pairs = 100;
 constexpr std::uint64_t audit_seed = 0xA0D17A0D17ULL;
 constexpr double percentile = 0.95;
+// The footprint radii audited per movement class: the size buckets of docs/pathfinding-design.md,
+// 4.1 (stock footprints up to 7, 20, 35, and 65).
+constexpr std::array<float, 4> audit_radii{7.0F, 20.0F, 35.0F, 65.0F};
 
 struct PairResult
 {
@@ -133,69 +137,76 @@ int run_path_audit(const SandboxOptions& options, const VirtualFileSystem& vfs)
         const Battle battle(battle_map(*asset), map_name);
         const auto& ground = battle.world().ground();
         GridPathfinder pathfinder;
-        for (const auto& [mask, class_name] : masks)
+        for (const auto& [mask, mask_name] : masks)
         {
-            std::vector<std::uint32_t> cells;
-            for (std::uint32_t cell = 0; cell < ground.passability.size(); ++cell)
+            const auto clearance = clearance_field(ground, mask, audit_radii.back());
+            for (const auto radius : audit_radii)
             {
-                if ((ground.passability[cell] & mask) != 0U)
+                // Starts and goals where a unit of this size fits.
+                const auto class_name = mask_name + "@" + std::to_string(static_cast<int>(radius));
+                const Footing footing(mask, &clearance, radius);
+                std::vector<std::uint32_t> cells;
+                for (std::uint32_t cell = 0; cell < ground.passability.size(); ++cell)
                 {
-                    cells.push_back(cell);
+                    if ((ground.passability[cell] & mask) != 0U && clearance.cells[cell] >= radius)
+                    {
+                        cells.push_back(cell);
+                    }
                 }
+                if (cells.empty())
+                {
+                    continue;
+                }
+                Pcg32 random(audit_seed ^ crc32(ascii_lower(map_name)) ^ (static_cast<std::uint64_t>(mask) << 32U) ^ static_cast<std::uint64_t>(radius));
+                const auto point_of = [&](const std::uint32_t cell)
+                {
+                    return PathPoint{static_cast<float>(cell % ground.width) * ground.spacing, static_cast<float>(cell / ground.width) * ground.spacing};
+                };
+                std::vector<PairResult> results;
+                for (std::uint32_t pair = 0; pair < pairs; ++pair)
+                {
+                    PairResult result;
+                    result.start = point_of(cells[random.below(static_cast<std::uint32_t>(cells.size()))]);
+                    result.goal = point_of(cells[random.below(static_cast<std::uint32_t>(cells.size()))]);
+                    const auto started = std::chrono::steady_clock::now();
+                    const auto found = pathfinder.find(ground, result.start, result.goal, footing);
+                    result.microseconds = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count();
+                    result.status = found.status;
+                    result.expanded = found.expanded;
+                    result.length = path_length(result.start, found.waypoints);
+                    rows << map_name << '\t' << class_name << '\t' << mask << '\t' << pair << '\t' << result.start.x << '\t' << result.start.y << '\t' << result.goal.x << '\t' << result.goal.y << '\t'
+                         << (result.status == PathStatus::reached   ? "reached"
+                             : result.status == PathStatus::partial ? "partial"
+                                                                    : "unavailable")
+                         << '\t' << result.expanded << '\t' << format_fixed(result.length, 1) << '\t' << format_fixed(result.microseconds, 1) << '\n';
+                    results.push_back(result);
+                }
+                std::vector<std::uint32_t> expanded;
+                std::vector<double> microseconds;
+                std::size_t reached = 0;
+                double length = 0.0;
+                for (const auto& result : results)
+                {
+                    expanded.push_back(result.expanded);
+                    microseconds.push_back(result.microseconds);
+                    reached += result.status == PathStatus::reached ? 1U : 0U;
+                    length += result.length;
+                }
+                all_expanded.insert(all_expanded.end(), expanded.begin(), expanded.end());
+                all_microseconds.insert(all_microseconds.end(), microseconds.begin(), microseconds.end());
+                all_reached += reached;
+                double expanded_sum = 0.0;
+                double time_sum = 0.0;
+                for (std::size_t index = 0; index < results.size(); ++index)
+                {
+                    expanded_sum += expanded[index];
+                    time_sum += microseconds[index];
+                }
+                const auto count = static_cast<double>(results.size());
+                std::cout << map_name << '\t' << class_name << '\t' << results.size() << '\t' << reached << '\t' << format_fixed(expanded_sum / count, 0) << '/' << percentile_of(expanded) << '/'
+                          << *std::ranges::max_element(expanded) << '\t' << format_fixed(time_sum / count / 1000.0, 3) << '/' << format_fixed(percentile_of(microseconds) / 1000.0, 3) << '/'
+                          << format_fixed(*std::ranges::max_element(microseconds) / 1000.0, 3) << '\t' << format_fixed(length / count, 0) << '\n';
             }
-            if (cells.empty())
-            {
-                continue;
-            }
-            Pcg32 random(audit_seed ^ crc32(ascii_lower(map_name)) ^ (static_cast<std::uint64_t>(mask) << 32U));
-            const auto point_of = [&](const std::uint32_t cell)
-            {
-                return PathPoint{static_cast<float>(cell % ground.width) * ground.spacing, static_cast<float>(cell / ground.width) * ground.spacing};
-            };
-            std::vector<PairResult> results;
-            for (std::uint32_t pair = 0; pair < pairs; ++pair)
-            {
-                PairResult result;
-                result.start = point_of(cells[random.below(static_cast<std::uint32_t>(cells.size()))]);
-                result.goal = point_of(cells[random.below(static_cast<std::uint32_t>(cells.size()))]);
-                const auto started = std::chrono::steady_clock::now();
-                const auto found = pathfinder.find(ground, result.start, result.goal, mask);
-                result.microseconds = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count();
-                result.status = found.status;
-                result.expanded = found.expanded;
-                result.length = path_length(result.start, found.waypoints);
-                rows << map_name << '\t' << class_name << '\t' << mask << '\t' << pair << '\t' << result.start.x << '\t' << result.start.y << '\t' << result.goal.x << '\t' << result.goal.y << '\t'
-                     << (result.status == PathStatus::reached   ? "reached"
-                         : result.status == PathStatus::partial ? "partial"
-                                                                : "unavailable")
-                     << '\t' << result.expanded << '\t' << format_fixed(result.length, 1) << '\t' << format_fixed(result.microseconds, 1) << '\n';
-                results.push_back(result);
-            }
-            std::vector<std::uint32_t> expanded;
-            std::vector<double> microseconds;
-            std::size_t reached = 0;
-            double length = 0.0;
-            for (const auto& result : results)
-            {
-                expanded.push_back(result.expanded);
-                microseconds.push_back(result.microseconds);
-                reached += result.status == PathStatus::reached ? 1U : 0U;
-                length += result.length;
-            }
-            all_expanded.insert(all_expanded.end(), expanded.begin(), expanded.end());
-            all_microseconds.insert(all_microseconds.end(), microseconds.begin(), microseconds.end());
-            all_reached += reached;
-            double expanded_sum = 0.0;
-            double time_sum = 0.0;
-            for (std::size_t index = 0; index < results.size(); ++index)
-            {
-                expanded_sum += expanded[index];
-                time_sum += microseconds[index];
-            }
-            const auto count = static_cast<double>(results.size());
-            std::cout << map_name << '\t' << class_name << '\t' << results.size() << '\t' << reached << '\t' << format_fixed(expanded_sum / count, 0) << '/' << percentile_of(expanded) << '/'
-                      << *std::ranges::max_element(expanded) << '\t' << format_fixed(time_sum / count / 1000.0, 3) << '/' << format_fixed(percentile_of(microseconds) / 1000.0, 3) << '/'
-                      << format_fixed(*std::ranges::max_element(microseconds) / 1000.0, 3) << '\t' << format_fixed(length / count, 0) << '\n';
         }
     }
     if (built == 0)

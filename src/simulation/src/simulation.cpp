@@ -226,8 +226,11 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     {
         squads_.columns.states[squads_.add(slot)].arrangement = *recipe.team;
     }
+    // On free ground: ground units never stand on each other or where their footprint does not fit
+    // (found before any column grows, while every column still lists the same entities).
+    const auto start = recipe.follows_ground && ground_.map.valid() ? free_ground(spawn.position, recipe.radius, recipe.passable_types, std::nullopt) : spawn.position;
     identity_.ids.push_back(id);
-    placement_.positions.push_back(spawn.position);
+    placement_.positions.push_back(start);
     placement_.headings.push_back(wrap_angle(spawn.heading));
     locomotor_.max_speeds.push_back(recipe.max_speed);
     route_.move_targets.emplace_back();
@@ -276,12 +279,13 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     stamp_footprint(identity_.ids.size() - 1U, true);
     if (recipe.follows_ground && ground_.map.valid())
     {
-        placement_.positions.back().z = ground_.map.surface_height(spawn.position.x, spawn.position.y);
+        placement_.positions.back().z = ground_.map.surface_height(start.x, start.y);
     }
     if (squad.valid())
     {
         join_squad(identity_.ids.size() - 1U, squad, spawn.formation_team.raggedness);
     }
+    occupy(identity_.ids.size() - 1U);
     return id;
 }
 
@@ -319,6 +323,9 @@ void SimulationWorld::run_commands()
     {
         apply(command);
     }
+    refresh_clearance();
+    // Units move after the commands: the occupancy is rebuilt at the next tick's first spawn.
+    occupancy_.tick.reset();
     motion_.starts = placement_.positions;
     events_.deaths.clear();
     events_.impacts.clear();
@@ -713,6 +720,8 @@ void SimulationWorld::run_contact()
 
 void SimulationWorld::remove_entities(std::vector<std::size_t> dense)
 {
+    // Dense indices shift: the occupancy is rebuilt at the next spawn.
+    occupancy_.tick.reset();
     std::vector<std::uint32_t> reshaped;
     expand_squad_removals(dense, reshaped);
     if (dense.empty())
@@ -791,6 +800,8 @@ void SimulationWorld::set_ground(GroundMap ground)
     ground_.map = std::move(ground);
     ground_.own_passability = ground_.map.passability;
     ground_.footprint_cover.assign(ground_.own_passability.size(), 0);
+    ground_.clearance.clear();
+    ground_.changed.reset();
     std::ranges::fill(footprint_.columns.stamped, std::uint8_t{0});
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
@@ -843,7 +854,193 @@ void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
         }
     }
     footprint_.get(slot_of(*this, index), &FootprintColumns::stamped) = add ? 1U : 0U;
+    if (first_column <= last_column && first_row <= last_row)
+    {
+        const CellRect stamped{static_cast<std::uint32_t>(first_column), static_cast<std::uint32_t>(first_row), static_cast<std::uint32_t>(last_column), static_cast<std::uint32_t>(last_row)};
+        ground_.changed = ground_.changed ? CellRect{std::min(ground_.changed->first_column, stamped.first_column), std::min(ground_.changed->first_row, stamped.first_row),
+                                                     std::max(ground_.changed->last_column, stamped.last_column), std::max(ground_.changed->last_row, stamped.last_row)}
+                                          : stamped;
+    }
     navigation_.ground_changed();
+}
+
+void SimulationWorld::occupy(const std::size_t index)
+{
+    if (!occupancy_.tick || ground_mover_.follows_ground[index] == 0 || placement_.radii[index] <= 0.0F)
+    {
+        return;
+    }
+    const auto& at = placement_.positions[index];
+    const auto column = static_cast<std::uint32_t>(std::clamp(std::floor((at.x - occupancy_.origin_x) / occupancy_.cell), 0.0F, static_cast<float>(occupancy_.columns - 1U)));
+    const auto row = static_cast<std::uint32_t>(std::clamp(std::floor((at.y - occupancy_.origin_y) / occupancy_.cell), 0.0F, static_cast<float>(occupancy_.rows - 1U)));
+    occupancy_.cells[static_cast<std::size_t>(row) * occupancy_.columns + column].push_back(static_cast<std::uint32_t>(index));
+    occupancy_.largest_radius = std::max(occupancy_.largest_radius, placement_.radii[index]);
+}
+
+Vector3 SimulationWorld::free_ground(const Vector3& at, const float radius, const std::uint32_t passable_types, const std::optional<std::size_t> except)
+{
+    if (!(radius > 0.0F) || !ground_.map.valid())
+    {
+        return at;
+    }
+    if (occupancy_.tick != clock_.tick)
+    {
+        // Over the ground's extent (positions off it count at its edge cells).
+        occupancy_.tick = clock_.tick;
+        occupancy_.cell = occupancy_cell_size;
+        occupancy_.origin_x = -ground_.map.spacing;
+        occupancy_.origin_y = -ground_.map.spacing;
+        occupancy_.columns = static_cast<std::uint32_t>(std::ceil((static_cast<float>(ground_.map.width + 1U) * ground_.map.spacing) / occupancy_.cell)) + 1U;
+        occupancy_.rows = static_cast<std::uint32_t>(std::ceil((static_cast<float>(ground_.map.height + 1U) * ground_.map.spacing) / occupancy_.cell)) + 1U;
+        occupancy_.largest_radius = 0.0F;
+        occupancy_.cells.assign(static_cast<std::size_t>(occupancy_.columns) * occupancy_.rows, {});
+        for (std::size_t index = 0; index < identity_.ids.size(); ++index)
+        {
+            occupy(index);
+        }
+    }
+    const ClearanceField* field = nullptr;
+    for (const auto& candidate : ground_.clearance)
+    {
+        if (candidate.passable_types == passable_types)
+        {
+            field = &candidate;
+        }
+    }
+    const Footing footing(passable_types, field, radius);
+    const auto free = [&](const float x, const float y)
+    {
+        if (passable_types != 0 && !ground_stands(ground_.map, {x, y}, footing))
+        {
+            return false;
+        }
+        const auto reach_all = radius + occupancy_.largest_radius;
+        const auto cell_of = [&](const float value, const float origin, const std::uint32_t count)
+        {
+            return static_cast<std::uint32_t>(std::clamp(std::floor((value - origin) / occupancy_.cell), 0.0F, static_cast<float>(count - 1U)));
+        };
+        for (auto row = cell_of(y - reach_all, occupancy_.origin_y, occupancy_.rows); row <= cell_of(y + reach_all, occupancy_.origin_y, occupancy_.rows); ++row)
+        {
+            for (auto column = cell_of(x - reach_all, occupancy_.origin_x, occupancy_.columns); column <= cell_of(x + reach_all, occupancy_.origin_x, occupancy_.columns); ++column)
+            {
+                for (const auto other : occupancy_.cells[static_cast<std::size_t>(row) * occupancy_.columns + column])
+                {
+                    if (other == except)
+                    {
+                        continue;
+                    }
+                    const auto reach = radius + placement_.radii[other];
+                    const auto dx = placement_.positions[other].x - x;
+                    const auto dy = placement_.positions[other].y - y;
+                    if (dx * dx + dy * dy < reach * reach)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    };
+    if (free(at.x, at.y))
+    {
+        return at;
+    }
+    const auto step = 2.0F * radius;
+    for (std::uint32_t ring = 1; ring <= free_ground_rings; ++ring)
+    {
+        const auto points = 6U * ring;
+        for (std::uint32_t point = 0; point < points; ++point)
+        {
+            const auto angle = two_pi * static_cast<float>(point) / static_cast<float>(points);
+            const auto x = at.x + std::cos(angle) * step * static_cast<float>(ring);
+            const auto y = at.y + std::sin(angle) * step * static_cast<float>(ring);
+            if (free(x, y))
+            {
+                return {x, y, at.z};
+            }
+        }
+    }
+    return at;
+}
+
+void SimulationWorld::reserve_clearance(const std::uint32_t passable_types, const float radius)
+{
+    if (!ground_.map.valid() || ground_.map.passability.size() != ground_.map.heights.size() || passable_types == 0 || !(radius > 0.0F))
+    {
+        return;
+    }
+    refresh_clearance();
+    auto field = std::ranges::find(ground_.clearance, passable_types, &ClearanceField::passable_types);
+    if (field == ground_.clearance.end() || field->limit < radius)
+    {
+        if (field != ground_.clearance.end())
+        {
+            ground_.clearance.erase(field);
+        }
+        ground_.clearance.push_back(clearance_field(ground_.map, passable_types, std::max(clearance_minimum_limit, radius)));
+        navigation_.ground_changed();
+    }
+}
+
+void SimulationWorld::refresh_clearance()
+{
+    if (!ground_.map.valid() || ground_.map.passability.size() != ground_.map.heights.size())
+    {
+        return;
+    }
+    // The movement classes ground units use, each with the largest footprint among them.
+    std::vector<std::pair<std::uint32_t, float>> needs;
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
+    {
+        const auto mask = ground_mover_.passable_types[index];
+        if (mask == 0 || placement_.radii[index] <= 0.0F)
+        {
+            continue;
+        }
+        const auto found = std::ranges::find(needs, mask, &std::pair<std::uint32_t, float>::first);
+        if (found == needs.end())
+        {
+            needs.emplace_back(mask, placement_.radii[index]);
+        }
+        else
+        {
+            found->second = std::max(found->second, placement_.radii[index]);
+        }
+    }
+    bool rebuilt = false;
+    for (const auto& [mask, radius] : needs)
+    {
+        auto field = std::ranges::find(ground_.clearance, mask, &ClearanceField::passable_types);
+        const auto limit = std::max(clearance_minimum_limit, radius);
+        if (field == ground_.clearance.end() || field->limit < radius)
+        {
+            if (field != ground_.clearance.end())
+            {
+                ground_.clearance.erase(field);
+            }
+            ground_.clearance.push_back(clearance_field(ground_.map, mask, limit));
+            rebuilt = true;
+        }
+        else if (ground_.changed)
+        {
+            update_clearance(*field, ground_.map, *ground_.changed);
+        }
+    }
+    // A field that went stale for a class no unit uses now is rebuilt when one appears again.
+    if (ground_.changed)
+    {
+        std::erase_if(ground_.clearance,
+                      [&](const ClearanceField& field)
+                      {
+                          return std::ranges::find(needs, field.passable_types, &std::pair<std::uint32_t, float>::first) == needs.end();
+                      });
+    }
+    ground_.changed.reset();
+    if (rebuilt)
+    {
+        // Region labels at a radius depend on the field.
+        navigation_.ground_changed();
+    }
 }
 
 const GroundMap& SimulationWorld::ground() const noexcept

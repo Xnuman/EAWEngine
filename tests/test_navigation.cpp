@@ -222,10 +222,10 @@ void test_turning_and_separation()
     }
 
     // Separation: overlapping idle units part, an immobile one stays put, and nobody is pushed onto
-    // ground its class may not enter.
+    // ground its class may not enter. Spawns land on free ground, so the units are spawned before the
+    // ground exists to start overlapped.
     {
         eaw::SimulationWorld world(0.1);
-        world.set_ground(ground);
         const auto a = test_spawn(world, {.type_name = "A", .position = {50.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
         const auto b = test_spawn(world, {.type_name = "B", .position = {52.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
         const auto wall = test_spawn(world, {.type_name = "Bunker", .position = {80.0F, 80.0F, 0.0F}, .follows_ground = true, .radius = 10.0F});
@@ -233,6 +233,7 @@ void test_turning_and_separation()
         const auto d = test_spawn(world, {.type_name = "D", .position = {141.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
         const auto e = test_spawn(world, {.type_name = "E", .position = {139.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
         require(a && b && wall && c && d && e, "test spawns must succeed");
+        world.set_ground(ground);
         for (int tick = 0; tick < 20; ++tick)
         {
             world.step();
@@ -428,10 +429,72 @@ void test_formation_teams()
     require(moved, "raggedness must move members off the grid");
 }
 
+// Clearance (docs/pathfinding-design.md, 4.1): a cell has room for a unit when its center lies at
+// least the unit's radius from ground the unit may not enter and from the map's edge; a unit plans
+// only through gaps its footprint fits.
+void test_clearance()
+{
+    // A wall at column 10 with a one-cell gap at row 10 (cells 10 units apart, so the gap's clearance
+    // is half a cell).
+    eaw::GroundMap ground;
+    ground.width = 21;
+    ground.height = 21;
+    ground.spacing = 10.0F;
+    ground.heights.assign(441, 0.0F);
+    ground.passability.assign(441, eaw::passability::clear);
+    for (std::uint32_t y = 0; y < 21; ++y)
+    {
+        if (y != 10)
+        {
+            ground.passability[y * 21 + 10] = eaw::passability::steep;
+        }
+    }
+    const auto field = eaw::clearance_field(ground, eaw::passability::clear, 65.0F);
+    require(field.cells[10 * 21 + 10] == 5.0F && std::fabs(field.cells[10 * 21 + 5] - std::hypot(45.0F, 5.0F)) < 1.0e-3F && field.cells[0] == 5.0F && field.cells[5 * 21 + 10] == 0.0F,
+            "clearance must measure to the nearest blocked square and to the map's edge, and be 0 on blocked cells");
+    eaw::GridPathfinder pathfinder;
+    const auto small = pathfinder.find(ground, {20.0F, 100.0F}, {180.0F, 100.0F}, eaw::Footing(eaw::passability::clear, &field, 4.0F));
+    const auto large = pathfinder.find(ground, {20.0F, 100.0F}, {180.0F, 100.0F}, eaw::Footing(eaw::passability::clear, &field, 8.0F));
+    require(small.status == eaw::PathStatus::reached && large.status == eaw::PathStatus::partial && !large.waypoints.empty() && large.waypoints.back().x < 100.0F,
+            "a unit must plan through a gap its footprint fits, and a larger one stop on its side");
+    require(!eaw::ground_line_passable(ground, {80.0F, 100.0F}, {120.0F, 100.0F}, eaw::Footing(eaw::passability::clear, &field, 8.0F)) &&
+                eaw::ground_line_passable(ground, {80.0F, 100.0F}, {120.0F, 100.0F}, eaw::Footing(eaw::passability::clear, &field, 4.0F)),
+            "a straight line must pass a gap only for a footprint that fits it");
+    // A stamp changes the field where it lands, and only there.
+    auto changed = field;
+    ground.passability[10 * 21 + 5] = eaw::passability::steep;
+    eaw::update_clearance(changed, ground, {5, 10, 5, 10});
+    const auto rebuilt = eaw::clearance_field(ground, eaw::passability::clear, 65.0F);
+    require(changed == rebuilt && changed.cells[10 * 21 + 5] == 0.0F, "an update must give what a full build gives");
+
+    // Spawns land on free ground: off other ground units, and where their footprint fits.
+    ground.passability[10 * 21 + 5] = eaw::passability::clear;
+    eaw::SimulationWorld world(0.1);
+    world.set_ground(ground);
+    const TestSpawn unit{.type_name = "Unit", .position = {50.0F, 50.0F, 0.0F}, .max_speed = 10.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 8.0F};
+    world.reserve_clearance(eaw::passability::clear, 8.0F);
+    const auto first = expect_ok(test_spawn(world, unit), "spawning a unit");
+    const auto second = expect_ok(test_spawn(world, unit), "spawning a unit on it");
+    auto in_gap = unit;
+    in_gap.position = {100.0F, 100.0F, 0.0F};
+    const auto squeezed = expect_ok(test_spawn(world, in_gap), "spawning a unit in the gap");
+    world.step();
+    const auto& entities = world.snapshot().entities;
+    const auto at = [&](const eaw::EntityId id)
+    {
+        return std::ranges::find(entities, id, &eaw::EntitySnapshot::id)->position;
+    };
+    require(std::hypot(at(second).x - at(first).x, at(second).y - at(first).y) >= 16.0F, "a unit spawned on another must land beside it");
+    require(std::fabs(at(squeezed).x - 100.0F) + std::fabs(at(squeezed).y - 100.0F) > 1.0F && world.stats().separated_pairs == 0,
+            "a unit spawned where its footprint does not fit must land where it does, and nothing overlaps");
+}
+
 void test_narrow_passage()
 {
-    // A wall at column 15 with a one-cell gap at row 14; six tank-sized units ordered through it. With
-    // equal pushes they jammed at the gap (reported on Bespin); route priority makes them queue.
+    // A wall at column 15 with a gap of three cells at rows 13 to 15, room for one tank-sized unit at
+    // a time (radius 8: only the middle row's clearance, 15, holds it); six of them ordered through
+    // it. With equal pushes they jammed at the gap (reported on Bespin); route priority makes them
+    // queue.
     eaw::GroundMap ground;
     ground.width = 30;
     ground.height = 30;
@@ -440,7 +503,7 @@ void test_narrow_passage()
     ground.passability.assign(900, eaw::passability::clear);
     for (std::uint32_t y = 0; y < 30; ++y)
     {
-        if (y != 14)
+        if (y < 13 || y > 15)
         {
             ground.passability[y * 30 + 15] = eaw::passability::steep;
         }
@@ -1259,6 +1322,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_turning_and_separation", &test_turning_and_separation},
                                                   {"test_formations", &test_formations},
                                                   {"test_formation_teams", &test_formation_teams},
+                                                  {"test_clearance", &test_clearance},
                                                   {"test_narrow_passage", &test_narrow_passage},
                                                   {"test_group_cohesion", &test_group_cohesion},
                                                   {"test_ground_footprints", &test_ground_footprints},

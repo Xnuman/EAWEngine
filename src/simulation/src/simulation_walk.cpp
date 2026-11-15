@@ -226,12 +226,9 @@ bool SimulationWorld::MovementSystem::walk_straight(const View& view, const std:
     if (ground_mover.follows_ground[index] != 0 && ground.map.valid())
     {
         // Ground it may not enter holds it where it is while the clip plays on.
-        if (const auto allowed = ground_mover.passable_types[index]; allowed != 0)
+        if (!stands_at(view, index, next.x, next.y))
         {
-            if (const auto there = ground.map.passability_at(next.x, next.y); there && (*there & allowed) == 0)
-            {
-                return true;
-            }
+            return true;
         }
         next.z = ground.map.surface_height(next.x, next.y);
     }

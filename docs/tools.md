@@ -221,8 +221,9 @@ so a log recorded in the sandbox replays headless with the same hash.
 `EAWEngine path-audit` is the pathfinding baseline ([pathfinding-design.md](pathfinding-design.md),
 section 5, step 2): on `--map`, or every land map under `Data/Art/Maps`, it builds the battle (so
 placed objects' footprints are stamped), and for each movement class of `MovementClassTypeDefs.xml`
-(each distinct mask once) plans `--pairs` (default 100) seeded random pairs of start and goal cells
-the class may enter. It prints, per map and class, how many reached their goal, the nodes expanded
+(each distinct mask once) and each footprint size bucket (radius 7, 20, 35, 65; classes appear as
+`class@radius`) plans `--pairs` (default 100) seeded random pairs of start and goal cells where a
+unit of that size fits. It prints, per map and class, how many reached their goal, the nodes expanded
 (mean, 95th percentile, most), the time, and the mean path length, then the totals; `--report
 <folder>` writes `path-audit.tsv`, one row per pair. The pairs depend only on the map, the class, and
 the seed, so two runs plan the same ones and `scripts/compare-path-audit.ps1` compares them pair by

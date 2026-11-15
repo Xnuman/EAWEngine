@@ -28,11 +28,10 @@ void SimulationWorld::NavigationSystem::run(const View& view)
 void SimulationWorld::NavigationSystem::plan_route_now(const View& view, const std::size_t index, const Vector3& target)
 {
     auto& placement = view.get<PlacementColumns>();
-    auto& ground_mover = view.get<GroundMoverColumns>();
     auto& route = view.get<RouteColumns>();
     auto& ground = view.get<GroundState>();
     const auto& position = placement.positions[index];
-    const auto planned = pathfinder_.find(ground.map, {position.x, position.y}, {target.x, target.y}, ground_mover.passable_types[index]);
+    const auto planned = pathfinder_.find(ground.map, {position.x, position.y}, {target.x, target.y}, footing_of(view, index));
     if (planned.status == PathStatus::unavailable)
     {
         route.paths[index].clear();
@@ -167,7 +166,16 @@ bool SimulationWorld::NavigationSystem::plan_shared_route(const View& view, Path
         }
         request.mask = ground_mover.passable_types[*commander];
         request.shared_start = {placement.positions[*commander].x, placement.positions[*commander].y};
-        const auto shared = pathfinder_.find(ground.map, request.shared_start, {request.group_target.x, request.group_target.y}, request.mask);
+        // The shared way fits the request's largest member (members share a movement class).
+        auto footing = footing_of(view, *commander);
+        for (const auto id : request.members)
+        {
+            if (const auto member = dense_index(view, id))
+            {
+                footing.radius = std::max(footing.radius, placement.radii[*member]);
+            }
+        }
+        const auto shared = pathfinder_.find(ground.map, request.shared_start, {request.group_target.x, request.group_target.y}, footing);
         ++path_searches;
         path_expansions += shared.expanded;
         if (shared.status == PathStatus::partial)
@@ -211,11 +219,12 @@ void SimulationWorld::NavigationSystem::plan_shared_member(const View& view, con
     const auto& shared_end = request.shared_waypoints.back();
 
     const PathPoint position{placement.positions[index].x, placement.positions[index].y};
+    const auto footing = footing_of(view, index);
     std::vector<PathPoint> path_points;
     // Onto the shared path: straight to its first waypoint, or a short search to the commander.
-    if (!ground_line_passable(ground.map, position, request.shared_waypoints.front(), request.mask))
+    if (!ground_line_passable(ground.map, position, request.shared_waypoints.front(), footing))
     {
-        const auto onto = local_pathfinder_.find(ground.map, position, request.shared_start, request.mask);
+        const auto onto = local_pathfinder_.find(ground.map, position, request.shared_start, footing);
         path_expansions += onto.expanded;
         if (onto.status != PathStatus::reached)
         {
@@ -229,13 +238,13 @@ void SimulationWorld::NavigationSystem::plan_shared_member(const View& view, con
     const PathPoint slot{goal.x, goal.y};
     if (slot != shared_end)
     {
-        if (ground_line_passable(ground.map, shared_end, slot, request.mask))
+        if (ground_line_passable(ground.map, shared_end, slot, footing))
         {
             path_points.push_back(slot);
         }
         else
         {
-            const auto off = local_pathfinder_.find(ground.map, shared_end, slot, request.mask);
+            const auto off = local_pathfinder_.find(ground.map, shared_end, slot, footing);
             path_expansions += off.expanded;
             path_points.insert(path_points.end(), off.waypoints.begin(), off.waypoints.end());
         }
@@ -248,7 +257,7 @@ void SimulationWorld::NavigationSystem::plan_shared_member(const View& view, con
     for (std::size_t next = 0; next < path_points.size();)
     {
         auto furthest = next;
-        while (furthest + 1 < path_points.size() && ground_line_passable(ground.map, anchor, path_points[furthest + 1], request.mask))
+        while (furthest + 1 < path_points.size() && ground_line_passable(ground.map, anchor, path_points[furthest + 1], footing))
         {
             ++furthest;
         }

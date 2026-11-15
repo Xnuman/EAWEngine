@@ -107,6 +107,11 @@ Battle::Battle(const BattleMap& map, std::string map_name, const double tick_sec
     }
     for (const auto& type : spawnable_)
     {
+        // Their footing's clearance while the map loads, not in the tick a spawn order lands.
+        if (type.follows_ground)
+        {
+            world_.reserve_clearance(type.passable_types, type.radius);
+        }
         type_info_.try_emplace(ascii_lower(type.type_name), type.script);
         if (!type.survivors.types.empty())
         {

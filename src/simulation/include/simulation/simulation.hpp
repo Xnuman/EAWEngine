@@ -667,6 +667,9 @@ public:
     [[nodiscard]] Result<RecipeId> add_recipe(EntityRecipe recipe);
     [[nodiscard]] const EntityRecipe& recipe(RecipeId id) const;
     [[nodiscard]] std::size_t recipe_count() const noexcept;
+    // Builds the clearance of a movement class for footprints up to `radius` now (a battle does it as
+    // its map loads for every type it can spawn), so no later tick builds a whole field.
+    void reserve_clearance(std::uint32_t passable_types, float radius);
     // `squad`: the team a squad member joins (the id spawn.squad's list index resolved to).
     [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn, EntityId squad = {});
     // Ground for entities that follow it; entity footprints are stamped into a copy of its
@@ -856,6 +859,33 @@ private:
     template <class Data> [[nodiscard]] static TurnPoint turn_point(Data& data, std::size_t index, float time) noexcept;
     // Stamps (or removes) an entity's footprint into the ground's passability.
     void stamp_footprint(std::size_t index, bool add);
+    // Builds the clearance of each movement class that ground units of the world use, up to the
+    // largest of them (at least clearance_minimum_limit), and recomputes the cells stamps changed.
+    void refresh_clearance();
+    // The free point nearest `at` for a ground unit of `radius` and movement class `passable_types`
+    // (docs/pathfinding-design.md, 4.4: units never overlap): ground with room for its footprint,
+    // off every other ground unit's (`except`, the unit itself, aside). `at` itself when it is free,
+    // or when no free point lies within free_ground_rings rings around it.
+    [[nodiscard]] Vector3 free_ground(const Vector3& at, float radius, std::uint32_t passable_types, std::optional<std::size_t> except);
+    // Where ground units stand, for free_ground (scratch, not state): built at the tick's first
+    // spawn or teleport, then each placed unit added; dropped when units move or leave.
+    struct Occupancy
+    {
+        std::optional<std::uint64_t> tick;
+        float cell{};
+        float origin_x{};
+        float origin_y{};
+        std::uint32_t columns{};
+        std::uint32_t rows{};
+        float largest_radius{};
+        std::vector<std::vector<std::uint32_t>> cells;
+    };
+    Occupancy occupancy_;
+    void occupy(std::size_t index);
+    // What the entity at `index` may stand on: its movement class's cells with room for its
+    // footprint (docs/pathfinding-design.md, 4.1), and whether it may stand at (x, y).
+    template <class Data> [[nodiscard]] static Footing footing_of(Data& data, std::size_t index) noexcept;
+    template <class Data> [[nodiscard]] static bool stands_at(Data& data, std::size_t index, float x, float y) noexcept;
     // The hull share an entity's destroyable parts leave it, and whether every one is destroyed
     // (simulation_combat.cpp, apply_damage).
     template <class Data> [[nodiscard]] static float hull_share_of_parts(Data& data, std::size_t index) noexcept;
@@ -1489,6 +1519,10 @@ private:
         // The ground's own passability, and how many footprints cover each cell.
         std::vector<std::uint32_t> own_passability;
         std::vector<std::uint16_t> footprint_cover;
+        // Clearance per movement class in use (pathfinding.hpp), refreshed at the start barrier
+        // (refresh_clearance); the cells footprint stamps changed since, as one rectangle.
+        std::vector<ClearanceField> clearance;
+        std::optional<CellRect> changed;
     };
     struct PathQueue
     {

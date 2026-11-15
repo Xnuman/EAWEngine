@@ -26,6 +26,46 @@ enum class PathStatus : std::uint8_t
     unavailable,
 };
 
+// How far each cell's center lies from ground a movement class may not stand on (cells whose
+// passability is not in `passable_types`, and the area off the map), in world units, up to `limit`
+// (docs/pathfinding-design.md, 4.1): a unit of radius r fits on a cell whose clearance is at least
+// r. Cells are the nearest-sample squares of GroundMap::passability_at.
+struct ClearanceField
+{
+    bool operator==(const ClearanceField&) const = default;
+    std::uint32_t passable_types{};
+    float limit{};
+    std::vector<float> cells;
+};
+
+// A rectangle of cells, both ends included.
+struct CellRect
+{
+    bool operator==(const CellRect&) const = default;
+    std::uint32_t first_column{};
+    std::uint32_t first_row{};
+    std::uint32_t last_column{};
+    std::uint32_t last_row{};
+};
+
+// The field of `passable_types` up to `limit` over the whole ground.
+[[nodiscard]] ClearanceField clearance_field(const GroundMap& ground, std::uint32_t passable_types, float limit);
+// Recomputes the cells whose clearance a change of passability within `changed` can affect.
+void update_clearance(ClearanceField& field, const GroundMap& ground, CellRect changed);
+
+// What a unit may stand on: its movement class's cells and, with a clearance field, only those with
+// room for its radius. A plain mask converts to a footing without clearance (any radius fits).
+struct Footing
+{
+    Footing(std::uint32_t mask) noexcept : passable_types(mask)
+    {}
+    Footing(std::uint32_t mask, const ClearanceField* field, float unit_radius) noexcept : passable_types(mask), clearance(field), radius(unit_radius)
+    {}
+    std::uint32_t passable_types{};
+    const ClearanceField* clearance{};
+    float radius{};
+};
+
 struct PathResult
 {
     PathStatus status{PathStatus::unavailable};
@@ -40,7 +80,10 @@ struct PathResult
 // corner needs both side cells. The cell containing `from` is not checked, so a unit may leave a
 // cell it should not stand on; cells off the map are not passable. True when the ground has no
 // passability data.
-[[nodiscard]] bool ground_line_passable(const GroundMap& ground, PathPoint from, PathPoint to, std::uint32_t passable_types);
+[[nodiscard]] bool ground_line_passable(const GroundMap& ground, PathPoint from, PathPoint to, const Footing& footing);
+// Whether a unit with `footing` may stand at `point` (its cell's passability and clearance); true
+// when the ground has no passability data.
+[[nodiscard]] bool ground_stands(const GroundMap& ground, PathPoint point, const Footing& footing) noexcept;
 
 // A* over the passability cells (one node per elevation sample): 8-connected, steps cost 10
 // straight and 14 diagonal, a diagonal step needs both side cells, and ties break by lower
@@ -56,7 +99,7 @@ struct PathResult
 // `point` when its ground cell's passability is among `passable_types`, else the center of the
 // nearest such cell (Euclidean; ties to the lower index); nothing without passability data or
 // when no cell qualifies.
-[[nodiscard]] std::optional<PathPoint> nearest_enterable(const GroundMap& ground, PathPoint point, std::uint32_t passable_types);
+[[nodiscard]] std::optional<PathPoint> nearest_enterable(const GroundMap& ground, PathPoint point, const Footing& footing);
 
 class GridPathfinder final
 {
@@ -64,19 +107,22 @@ public:
     // At most `max_expansions` nodes per search; zero means every cell of the map.
     explicit GridPathfinder(std::uint32_t max_expansions = 0) noexcept;
 
-    [[nodiscard]] PathResult find(const GroundMap& ground, PathPoint start, PathPoint goal, std::uint32_t passable_types);
+    [[nodiscard]] PathResult find(const GroundMap& ground, PathPoint start, PathPoint goal, const Footing& footing);
     // Forgets the cached region labels.
     void reset() noexcept;
 
 private:
+    // Per movement class and, with clearance, per whole-unit radius (each radius its own labels:
+    // a unit fits through what its radius fits through, no more and no less).
     struct RegionLabels
     {
         std::uint32_t passable_types{};
+        std::uint32_t radius{};
         // Per cell: 0 when the class may not enter it, otherwise its connected region (from 1).
         std::vector<std::uint32_t> labels;
     };
 
-    [[nodiscard]] const std::vector<std::uint32_t>& regions(const GroundMap& ground, std::uint32_t passable_types);
+    [[nodiscard]] const std::vector<std::uint32_t>& regions(const GroundMap& ground, const Footing& footing);
 
     struct OpenNode
     {

@@ -71,13 +71,18 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
 
 ### 4.1 Navigation data: size classes, clearance, chunks
 
-- **Size classes** from `UnitCollisionClass` (the owner's choice): Infantry, Vehicle, Large Vehicle,
-  Giant Vehicle, each with a clearance radius from the largest footprint of its stock types (an
-  engine choice, measured by audit). Flyers do not use ground navigation.
-- **Clearance**: per movement-class mask in use and size class, whether a unit of that size may
-  stand at each cell's center (a distance transform over the cells it may not enter). A size class
-  plans and moves only on its own set, so a walker never plans through a trooper's gap, and no move
-  can cross a gap too narrow for the unit.
+- **Sizes** (the owner, 2026-11-15, revising D4 after the stock data showed `UnitCollisionClass`
+  does not measure size: "Vehicle" types range in footprint radius from 1 to 52, "Large Vehicle"
+  from 3.5 to 33, "Giant Vehicle" from 32 to 63, and 49 mobile types set no class): each unit
+  plans and moves with its own footprint radius against the clearance; connectivity caches are
+  per whole-unit radius, and the chunk graphs of 4.2 are kept for four size buckets (radius up to
+  7, 20, 35, and 65, from the stock footprints; a unit uses the smallest that holds it).
+  `UnitCollisionClass` stays what the data says it is, collision behavior. Flyers do not use
+  ground navigation.
+- **Clearance**: per movement-class mask in use, how far each cell's center lies from ground the
+  class may not enter and from the map's edge; a unit fits a cell whose clearance is at least its
+  radius. A unit plans and moves only where it fits, so a walker never plans through a trooper's
+  gap, and no move can cross a gap too narrow for the unit (done 2026-11-15).
 - **Chunks**: per (mask, size), the connected components of each chunk and which components of
   neighbouring chunks they touch, an abstract graph. Two layouts are built and compared (the owner,
   2026-11-15): one level of 16 x 16 cells, and two levels (16 x 16 under 32 x 32), each refined

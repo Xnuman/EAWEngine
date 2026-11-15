@@ -335,8 +335,12 @@ void SimulationWorld::teleport(const std::size_t index, const Vector3& point, co
     auto position = point;
     if (ground_mover_.follows_ground[index] != 0 && ground_.map.valid())
     {
+        // Onto free ground, as a spawn.
+        position = free_ground(position, placement_.radii[index], ground_mover_.passable_types[index], index);
         position.z = ground_.map.surface_height(position.x, position.y);
     }
+    // The occupancy holds where the unit stood; drop it rather than keep a stale place.
+    occupancy_.tick.reset();
     if (auto* footprint = footprint_.find(slot_of(*this, index), &FootprintColumns::shapes))
     {
         // The footprint keeps its place relative to the entity: its offset turns with the heading.

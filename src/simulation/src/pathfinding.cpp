@@ -42,9 +42,57 @@ PathPoint cell_center(const GroundMap& ground, const std::uint32_t cell) noexcep
     return {static_cast<float>(cell % ground.width) * ground.spacing, static_cast<float>(cell / ground.width) * ground.spacing};
 }
 
-bool enterable(const GroundMap& ground, const std::uint32_t cell, const std::uint32_t passable_types) noexcept
+bool enterable(const GroundMap& ground, const std::uint32_t cell, const Footing& footing) noexcept
 {
-    return (ground.passability[cell] & passable_types) != 0;
+    if ((ground.passability[cell] & footing.passable_types) == 0)
+    {
+        return false;
+    }
+    return footing.clearance == nullptr || footing.radius <= 0.0F || footing.clearance->cells.size() != ground.passability.size() || footing.clearance->cells[cell] >= footing.radius;
+}
+
+// The whole-unit radius regions are labeled for (0 without clearance).
+std::uint32_t region_radius(const Footing& footing) noexcept
+{
+    return footing.clearance != nullptr && footing.radius > 0.0F ? static_cast<std::uint32_t>(std::ceil(footing.radius)) : 0U;
+}
+
+// The clearance of `cell` for `passable_types`, up to `limit`: the distance from its center to the
+// nearest cell square the class may not stand on, or to the map's edge, within the cells `reach`
+// around it.
+float cell_clearance(const GroundMap& ground, const std::uint32_t cell, const std::uint32_t passable_types, const float limit, const long reach) noexcept
+{
+    if ((ground.passability[cell] & passable_types) == 0)
+    {
+        return 0.0F;
+    }
+    const auto half = ground.spacing * 0.5F;
+    const auto x = static_cast<long>(cell % ground.width);
+    const auto y = static_cast<long>(cell / ground.width);
+    // The map's edge: its squares end half a cell beyond the outer samples.
+    auto best = std::min({static_cast<float>(x) * ground.spacing + half, static_cast<float>(static_cast<long>(ground.width) - 1 - x) * ground.spacing + half,
+                          static_cast<float>(y) * ground.spacing + half, static_cast<float>(static_cast<long>(ground.height) - 1 - y) * ground.spacing + half, limit});
+    for (long other_y = std::max(0L, y - reach); other_y <= std::min(static_cast<long>(ground.height) - 1, y + reach); ++other_y)
+    {
+        for (long other_x = std::max(0L, x - reach); other_x <= std::min(static_cast<long>(ground.width) - 1, x + reach); ++other_x)
+        {
+            const auto other = static_cast<std::uint32_t>(other_y) * ground.width + static_cast<std::uint32_t>(other_x);
+            if ((ground.passability[other] & passable_types) != 0)
+            {
+                continue;
+            }
+            const auto gap_x = std::max(0.0F, static_cast<float>(std::abs(other_x - x)) * ground.spacing - half);
+            const auto gap_y = std::max(0.0F, static_cast<float>(std::abs(other_y - y)) * ground.spacing - half);
+            best = std::min(best, std::hypot(gap_x, gap_y));
+        }
+    }
+    return best;
+}
+
+// Cells around a cell whose squares can lie within `limit` of its center.
+long clearance_reach(const GroundMap& ground, const float limit) noexcept
+{
+    return static_cast<long>(std::ceil((limit + ground.spacing * 0.5F) / ground.spacing));
 }
 
 // Octile distance in step-cost units; consistent with the step costs, so A* stays optimal.
@@ -110,25 +158,72 @@ template <class Wanted> std::optional<std::uint32_t> nearest_cell(const GroundMa
 
 } // namespace
 
-std::optional<PathPoint> nearest_enterable(const GroundMap& ground, const PathPoint point, const std::uint32_t passable_types)
+ClearanceField clearance_field(const GroundMap& ground, const std::uint32_t passable_types, const float limit)
 {
-    if (!ground.valid() || ground.passability.size() != ground.heights.size() || passable_types == 0)
+    ClearanceField field{.passable_types = passable_types, .limit = limit};
+    if (!has_passability(ground))
+    {
+        return field;
+    }
+    field.cells.assign(ground.passability.size(), 0.0F);
+    const auto reach = clearance_reach(ground, limit);
+    for (std::uint32_t cell = 0; cell < field.cells.size(); ++cell)
+    {
+        field.cells[cell] = cell_clearance(ground, cell, passable_types, limit, reach);
+    }
+    return field;
+}
+
+void update_clearance(ClearanceField& field, const GroundMap& ground, const CellRect changed)
+{
+    if (!has_passability(ground) || field.cells.size() != ground.passability.size())
+    {
+        field = clearance_field(ground, field.passable_types, field.limit);
+        return;
+    }
+    const auto reach = clearance_reach(ground, field.limit);
+    const auto first_x = static_cast<long>(changed.first_column) - reach;
+    const auto first_y = static_cast<long>(changed.first_row) - reach;
+    const auto last_x = static_cast<long>(changed.last_column) + reach;
+    const auto last_y = static_cast<long>(changed.last_row) + reach;
+    for (long y = std::max(0L, first_y); y <= std::min(static_cast<long>(ground.height) - 1, last_y); ++y)
+    {
+        for (long x = std::max(0L, first_x); x <= std::min(static_cast<long>(ground.width) - 1, last_x); ++x)
+        {
+            const auto cell = static_cast<std::uint32_t>(y) * ground.width + static_cast<std::uint32_t>(x);
+            field.cells[cell] = cell_clearance(ground, cell, field.passable_types, field.limit, reach);
+        }
+    }
+}
+
+bool ground_stands(const GroundMap& ground, const PathPoint point, const Footing& footing) noexcept
+{
+    if (!has_passability(ground) || !finite(point))
+    {
+        return true;
+    }
+    return enterable(ground, cell_of(ground, point), footing);
+}
+
+std::optional<PathPoint> nearest_enterable(const GroundMap& ground, const PathPoint point, const Footing& footing)
+{
+    if (!ground.valid() || ground.passability.size() != ground.heights.size() || footing.passable_types == 0)
     {
         return std::nullopt;
     }
-    if (enterable(ground, cell_of(ground, point), passable_types))
+    if (enterable(ground, cell_of(ground, point), footing))
     {
         return point;
     }
     const auto cell = nearest_cell(ground, point, point,
                                    [&](const std::uint32_t candidate)
                                    {
-                                       return enterable(ground, candidate, passable_types);
+                                       return enterable(ground, candidate, footing);
                                    });
     return cell ? std::optional<PathPoint>{cell_center(ground, *cell)} : std::nullopt;
 }
 
-bool ground_line_passable(const GroundMap& ground, const PathPoint from, const PathPoint to, const std::uint32_t passable_types)
+bool ground_line_passable(const GroundMap& ground, const PathPoint from, const PathPoint to, const Footing& footing)
 {
     if (!has_passability(ground) || !finite(from) || !finite(to))
     {
@@ -147,7 +242,7 @@ bool ground_line_passable(const GroundMap& ground, const PathPoint from, const P
     const auto passable = [&](const long cx, const long cy)
     {
         return cx >= 0 && cy >= 0 && cx < static_cast<long>(ground.width) && cy < static_cast<long>(ground.height) &&
-               enterable(ground, static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx), passable_types);
+               enterable(ground, static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx), footing);
     };
     const auto du = u1 - u0;
     const auto dv = v1 - v0;
@@ -202,12 +297,17 @@ void GridPathfinder::reset() noexcept
     regions_.clear();
 }
 
-const std::vector<std::uint32_t>& GridPathfinder::regions(const GroundMap& ground, const std::uint32_t passable_types)
+const std::vector<std::uint32_t>& GridPathfinder::regions(const GroundMap& ground, const Footing& given)
 {
     const auto cells = ground.passability.size();
+    const auto radius = region_radius(given);
+    const auto passable_types = given.passable_types;
+    // Labeled at the whole-unit radius (the unit's radius rounded up), so one set serves every unit of
+    // that size.
+    const Footing footing(passable_types, given.clearance, static_cast<float>(radius));
     for (const auto& cached : regions_)
     {
-        if (cached.passable_types == passable_types && cached.labels.size() == cells)
+        if (cached.passable_types == passable_types && cached.radius == radius && cached.labels.size() == cells)
         {
             return cached.labels;
         }
@@ -216,12 +316,13 @@ const std::vector<std::uint32_t>& GridPathfinder::regions(const GroundMap& groun
     // neighbors that are connected at all are connected through a side cell. Labels start at 1.
     auto& entry = regions_.emplace_back();
     entry.passable_types = passable_types;
+    entry.radius = radius;
     entry.labels.assign(cells, 0);
     std::vector<std::uint32_t> pending;
     std::uint32_t next_label = 0;
     for (std::uint32_t seed = 0; seed < cells; ++seed)
     {
-        if (entry.labels[seed] != 0 || !enterable(ground, seed, passable_types))
+        if (entry.labels[seed] != 0 || !enterable(ground, seed, footing))
         {
             continue;
         }
@@ -236,7 +337,7 @@ const std::vector<std::uint32_t>& GridPathfinder::regions(const GroundMap& groun
             const auto y = cell / ground.width;
             const auto visit = [&](const std::uint32_t neighbor)
             {
-                if (entry.labels[neighbor] == 0 && enterable(ground, neighbor, passable_types))
+                if (entry.labels[neighbor] == 0 && enterable(ground, neighbor, footing))
                 {
                     entry.labels[neighbor] = next_label;
                     pending.push_back(neighbor);
@@ -263,8 +364,10 @@ const std::vector<std::uint32_t>& GridPathfinder::regions(const GroundMap& groun
     return entry.labels;
 }
 
-PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPoint goal, const std::uint32_t passable_types)
+PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPoint goal, const Footing& given)
 {
+    // The search plans at the whole-unit radius its regions are labeled at, so the two agree.
+    const Footing footing(given.passable_types, given.clearance, static_cast<float>(region_radius(given)));
     PathResult result;
     if (!has_passability(ground) || !finite(start) || !finite(goal))
     {
@@ -278,13 +381,13 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
     // leaves in a straight line for the nearest enterable cell, and the search starts there.
     const auto origin = start;
     auto start_cell = cell_of(ground, start);
-    const bool escaping = !enterable(ground, start_cell, passable_types);
+    const bool escaping = !enterable(ground, start_cell, footing);
     if (escaping)
     {
         const auto nearest = nearest_cell(ground, start, goal,
                                           [&](const std::uint32_t cell)
                                           {
-                                              return enterable(ground, cell, passable_types);
+                                              return enterable(ground, cell, footing);
                                           });
         if (!nearest)
         {
@@ -296,7 +399,7 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
     // A goal outside the start's region (on a cell the class may not enter, or in a region it cannot
     // reach) moves to the region's cell nearest to it, so the search below always succeeds instead
     // of exhausting the region.
-    const auto& labels = regions(ground, passable_types);
+    const auto& labels = regions(ground, footing);
     auto goal_cell = cell_of(ground, goal);
     bool goal_moved = false;
     if (labels[goal_cell] != labels[start_cell])
@@ -386,7 +489,7 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
         const auto open_cell = [&](const long cx, const long cy)
         {
             return cx >= 0 && cy >= 0 && cx < static_cast<long>(ground.width) && cy < static_cast<long>(ground.height) &&
-                   enterable(ground, static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx), passable_types);
+                   enterable(ground, static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx), footing);
         };
         for (const auto& [dx, dy] : directions)
         {
@@ -449,7 +552,7 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
     while (anchor + 1 < points.size())
     {
         auto next = anchor + 1;
-        while (next + 1 < points.size() && ground_line_passable(ground, points[anchor], points[next + 1], passable_types))
+        while (next + 1 < points.size() && ground_line_passable(ground, points[anchor], points[next + 1], footing))
         {
             ++next;
         }

@@ -136,7 +136,7 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
         while (!path.empty())
         {
             const auto& after = path.size() > 1 ? path[path.size() - 2] : *target;
-            if (!ground_line_passable(ground.map, {position.x, position.y}, {after.x, after.y}, allowed))
+            if (!ground_line_passable(ground.map, {position.x, position.y}, {after.x, after.y}, footing_of(view, index)))
             {
                 break;
             }
@@ -171,10 +171,10 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
         const auto next_y = position.y + delta_y * scale;
         if (allowed != 0)
         {
-            const auto here = ground.map.passability_at(position.x, position.y);
-            const auto there = ground.map.passability_at(next_x, next_y);
-            const bool leaving_blocked = here && (*here & allowed) == 0;
-            if (there && (*there & allowed) == 0 && !leaving_blocked)
+            // Ground without room for its footprint is as closed as ground it may not enter; a unit
+            // standing on such ground (spawned there, or the ground changed) may still leave it.
+            const bool leaving_blocked = !stands_at(view, index, position.x, position.y);
+            if (!stands_at(view, index, next_x, next_y) && !leaving_blocked)
             {
                 // The planned line no longer fits: separation pushed the unit off it, or the ground
                 // changed. Plan again from here (plan_move drops a goal that is no longer reachable).

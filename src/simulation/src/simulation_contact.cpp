@@ -231,13 +231,10 @@ void SimulationWorld::ContactSystem::separate(const View& view, const float dt)
         auto& position = placement.positions[index];
         const auto next_x = position.x + push.x;
         const auto next_y = position.y + push.y;
-        if (const auto allowed = ground_mover.passable_types[index]; allowed != 0)
+        // Never onto ground without room for its footprint.
+        if (!stands_at(view, index, next_x, next_y))
         {
-            const auto there = ground.passability_at(next_x, next_y);
-            if (there && (*there & allowed) == 0)
-            {
-                continue;
-            }
+            continue;
         }
         position = {next_x, next_y, land && !flyer(index) ? ground.surface_height(next_x, next_y) : position.z};
     }

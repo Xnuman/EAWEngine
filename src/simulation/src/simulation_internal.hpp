@@ -31,6 +31,15 @@ inline constexpr float hull_floor_share = 0.2F;
 // in every cell it covers (SpatialGrid's sized build), so no query reaches farther than its own
 // footprint. An engine choice; the pairs found are the same at any cell size.
 inline constexpr float contact_cell_size = 16.0F;
+// The clearance a field covers at least: the largest of the size buckets of
+// docs/pathfinding-design.md, 4.1 (stock footprints up to the giant vehicles' 63); larger units on a
+// map extend it to their own radius.
+inline constexpr float clearance_minimum_limit = 65.0F;
+// Where a spawn or teleport looks for free ground: rings one footprint diameter apart, the k-th with
+// 6k points, out to this many rings. Engine choices.
+inline constexpr std::uint32_t free_ground_rings = 24;
+// The occupancy grid's cells (an engine choice: a few vehicle footprints wide).
+inline constexpr float occupancy_cell_size = 32.0F;
 // The fastest separation pushes a unit, in its radii per second: half a radius per tick at the old
 // 30 Hz. An engine choice.
 inline constexpr float separation_radii_per_second = 15.0F;
@@ -438,6 +447,29 @@ template <class Data> bool SimulationWorld::damageable(Data& data, const std::si
 template <class Data> bool SimulationWorld::flies(Data& data, const std::size_t index) noexcept
 {
     return data.template get<ComponentPool<FlightColumns>>().find(slot_of(data, index)).has_value();
+}
+
+template <class Data> Footing SimulationWorld::footing_of(Data& data, const std::size_t index) noexcept
+{
+    auto& ground = data.template get<GroundState>();
+    auto& ground_mover = data.template get<GroundMoverColumns>();
+    auto& placement = data.template get<PlacementColumns>();
+    const auto mask = ground_mover.passable_types[index];
+    const ClearanceField* field = nullptr;
+    for (const auto& candidate : ground.clearance)
+    {
+        if (candidate.passable_types == mask)
+        {
+            field = &candidate;
+        }
+    }
+    return {mask, field, placement.radii[index]};
+}
+
+template <class Data> bool SimulationWorld::stands_at(Data& data, const std::size_t index, const float x, const float y) noexcept
+{
+    auto& ground = data.template get<GroundState>();
+    return data.template get<GroundMoverColumns>().passable_types[index] == 0 || ground_stands(ground.map, {x, y}, footing_of(data, index));
 }
 
 template <class Data> bool SimulationWorld::waits(Data& data, const std::size_t index) noexcept

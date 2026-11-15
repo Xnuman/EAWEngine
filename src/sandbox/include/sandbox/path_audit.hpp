@@ -2,7 +2,8 @@
 
 // The pathfinding audit (EAWEngine path-audit; docs/pathfinding-design.md, 5 step 2): on land maps
 // (--map, or every land map under Data/Art/Maps), for each movement class of
-// MovementClassTypeDefs.xml, plans seeded random pairs of start and goal cells the class may enter,
+// MovementClassTypeDefs.xml and each footprint size bucket (radius 7, 20, 35, 65), plans seeded
+// random pairs of start and goal cells where a unit of that size fits,
 // on the battle's ground with its stamped footprints, and reports how many reached their goal, the
 // nodes expanded, the time, and the path length. The baseline every pathfinding change is measured
 // against: --report <folder> writes one row per pair (path-audit.tsv), so two runs compare pair by

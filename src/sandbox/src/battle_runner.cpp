@@ -27,8 +27,9 @@ constexpr std::uint64_t default_ticks = 6000;
 // A frame at 60 frames per second, which a frame with its ticks must fit in (the owner, 2026-11-15).
 // Headless, a frame is the tick it runs (60 Hz), without rendering.
 constexpr double frame_budget_ms = 1000.0 / 60.0;
-// Frames are measured from this tick on: the ticks before apply the spawns (loading, not play).
-constexpr std::uint64_t first_measured_tick = 1;
+// Frames are measured from this tick on: the ticks before apply the spawns (loading, not play): the
+// orders given before the first tick reach the world in the second (Battle::step).
+constexpr std::uint64_t first_measured_tick = 2;
 constexpr double frame_percentile = 0.99;
 
 std::string hex(const std::uint64_t value)

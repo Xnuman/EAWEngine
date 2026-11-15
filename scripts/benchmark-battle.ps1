@@ -41,9 +41,9 @@ if (-not (Test-Path -LiteralPath $engine)) {
     exit 2
 }
 
-# The engine's default rate; the first tick applies the spawns and is not measured.
+# The engine's default rate; the first two ticks give and apply the spawns and are not measured.
 $ticksPerSecond = 60
-$ticks = 1 + $Seconds * $ticksPerSecond
+$ticks = 2 + $Seconds * $ticksPerSecond
 
 $failed = 0
 $rows = @()
