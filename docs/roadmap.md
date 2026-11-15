@@ -183,26 +183,22 @@ rendering rows join item 2).
       recipes (one construction path, and the simulation's recipes with shared profiles,
       2026-11-15); the damage queue, compacting removal, and per-component hashing, the one
       declared hash change (2026-11-15); pools for flight, formation, group, and combat (2026-11-15); parallel
-      systems (route searches first); a refactoring step last, its scope to be agreed with the
+      systems (route searches first), after work order g (the owner, 2026-11-15); a refactoring step last, its scope to be agreed with the
       owner,
       each step with an unchanged battle hash except the declared one, folding in the deferred
       determinism work (stable-id order, keyed random draws, a full-state hash).
-   f. Real squads: a squad is one commandable unit made of its soldiers (no single soldier of it
-      can be ordered).
-   g. Pathfinding, group movement, and collisions reworked on squads and components, after
-      research: each unit plans to its own destination slot instead of the group gathering at one
-      point first; routes spread by congestion so groups do not queue single-file; blocked units
-      plan again instead of bumping; pushing follows mass or priority (an infantry squad cannot
-      move an AT-AT); walls and placed obstacles are hard limits. Seen 2026-11-14: cohesion
-      waits for members thousands of units away (the sandbox's `--auto-move` groups every
-      mobile unit of an owner), and a walker's turn in place played as clips (3 s) counts as a
-      stall that releases it from its group. Target searches belong to the same rework (measured
-      2026-11-15, 3,300 entities on Utapau; postponed by the owner until then): every entity's
-      combat retarget timer starts at 0, so all of them search on the first tick (5,062 searches,
-      2.5 million candidates, 38-47 ms) and again together ten ticks later (18 ms); weapons whose
-      unit's target is beyond their range search every tick with no timer (about 200 searches,
-      3.5 ms a tick while the armies close). Reordering the candidate tests gained only 8%; the
-      cost is the number of searches and candidates, not their reads.
+   f. Real squads (the owner: before the rest of g): a squad is one commandable unit made of its
+      soldiers in a ring (no single soldier of it can be ordered); step 1 of
+      [pathfinding-design.md](pathfinding-design.md).
+   g. Pathfinding, group movement, and collisions redesigned: [pathfinding-design.md](pathfinding-design.md)
+      (agreed 2026-11-15), its order of work in section 5: the pathfinding audit; the shared,
+      size-binned spatial index and staggered target timers; clearance per size class
+      (`UnitCollisionClass`); chunks, one level and two levels compared on stock maps; formation
+      frames; ORCA avoidance with allies giving way and units never overlapping (no pushing; only
+      crushers move onto what they crush). Enemies count for planning when seen; every enemy until
+      fog of war exists. The measurements behind it (separation's broad phase sized by the largest
+      unit, 63 candidates a query against 8 with infantry only; about 13 overlaps a unit; the
+      opening tick's 5,062 target searches, 38-47 ms with 3,300 entities) are in its section 1.
    h. Enhanced water as an ocean on maps such as Kamino: waves (a tessellated surface displaced by
       wave functions), foam on crests.
    This closes M2.

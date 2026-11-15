@@ -24,6 +24,7 @@ The reorganization of 2026-11-09/10 (small libraries, the resource pipeline, `bu
 - [docs/compatibility-research.md](docs/compatibility-research.md): evidence and findings about the original's formats and behavior.
 - [docs/tools.md](docs/tools.md): the command-line tools, audits, and sandbox options.
 - [docs/lua-runtime-research.md](docs/lua-runtime-research.md) and [docs/pathfinding-research.md](docs/pathfinding-research.md): research behind the script runtime and navigation.
+- [docs/pathfinding-design.md](docs/pathfinding-design.md): the agreed design of route planning, group movement, and avoidance (units never overlap; allies give way), and its order of work.
 - [docs/ecs-design.md](docs/ecs-design.md) and [docs/ecs-research.md](docs/ecs-research.md): the agreed design of the simulation's entities, components, and systems and of the fiber job system, the migration steps, and the research behind them.
 
 Update `docs/status.md` and `docs/roadmap.md` in the same change as the code they describe.
