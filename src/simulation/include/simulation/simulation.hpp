@@ -1174,19 +1174,16 @@ private:
             visit(intents);
         }
     };
+    // A company member's team (pooled: entities spawned with a team other than the default; the
+    // rest hold the default). Its type's formation order, spacing, and whether it moves alone are
+    // recipe data (EntityRecipe), not columns.
     struct FormationColumns
     {
         bool operator==(const FormationColumns&) const = default;
         static constexpr SimData data = SimData::formation;
-        std::vector<std::uint32_t> orders;
-        std::vector<float> spacings;
-        std::vector<std::uint8_t> solos;
         std::vector<FormationTeam> teams;
         template <class Visit> void for_each_column(Visit&& visit)
         {
-            visit(orders);
-            visit(spacings);
-            visit(solos);
             visit(teams);
         }
     };
@@ -1242,7 +1239,6 @@ private:
     CombatColumns combat_;
     OrderColumns orders_;
     SteeringColumns steering_;
-    FormationColumns formation_;
     GroupColumns group_;
     // Every column of the entity table, component by component.
     // Every group of the entity table, in declaration order (identity_ first, group_ last).
@@ -1257,7 +1253,6 @@ private:
         visit(combat_);
         visit(orders_);
         visit(steering_);
-        visit(formation_);
         visit(group_);
     }
     template <class Visit> void for_each_column(Visit&& visit)
@@ -1309,6 +1304,7 @@ private:
         visit(SimData::flight, flight_);
         visit(SimData::footprints, footprint_);
         visit(SimData::crush, crush_);
+        visit(SimData::formation, formation_);
         visit(SimData::ground, ground_);
         visit(SimData::path_queue, path_queue_);
         visit(SimData::projectiles, projectiles_);
@@ -1348,6 +1344,7 @@ private:
     ComponentPool<FlightColumns> flight_;
     ComponentPool<FootprintColumns> footprint_;
     ComponentPool<CrushColumns> crush_;
+    ComponentPool<FormationColumns> formation_;
     [[nodiscard]] static const CrushProfile& crush_profile_in(const ComponentPool<CrushColumns>& pool, std::uint32_t slot) noexcept;
     // Remaining route length of every moving entity (zero for the rest), into route.remaining.
     static void measure_remaining_routes(RouteColumns& route, const PlacementColumns& placement);

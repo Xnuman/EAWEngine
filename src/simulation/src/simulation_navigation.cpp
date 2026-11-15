@@ -592,7 +592,8 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         orders_.command_serials[*dense] = command.serial;
         orders_.standing[*dense].kind = StandingOrder::none;
         orders_.standing[*dense].engaging = false;
-        if (formation_.solos[*dense] != 0)
+        const auto& recipe = recipes_.list[identity_.recipes[*dense]];
+        if (recipe.formation_solo)
         {
             solos.push_back(*dense);
             continue;
@@ -600,8 +601,9 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         movers.push_back(*dense);
         // Ships in space keep slots wide enough for a ship to pass between two that have stopped.
         const bool ship_in_space = !ground_.map.valid() && placement_.radii[*dense] > 0.0F && !flies(*this, *dense);
-        const auto spacing = ship_in_space ? std::max(formation_.spacings[*dense], space_formation_spacing) : formation_.spacings[*dense];
-        members.push_back({id, placement_.positions[*dense], placement_.radii[*dense], spacing, formation_.orders[*dense], formation_.teams[*dense]});
+        const auto spacing = ship_in_space ? std::max(recipe.formation_spacing, space_formation_spacing) : recipe.formation_spacing;
+        const auto* team = formation_.find(slot_of(*this, *dense), &FormationColumns::teams);
+        members.push_back({id, placement_.positions[*dense], placement_.radii[*dense], spacing, recipe.formation_order, team != nullptr ? *team : FormationTeam{}});
     }
     for (const auto index : solos)
     {

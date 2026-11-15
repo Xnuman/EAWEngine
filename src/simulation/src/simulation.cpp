@@ -206,6 +206,10 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         crush_.columns.profiles[crush_.add(slot)] = recipe.crush;
     }
+    if (spawn.formation_team != FormationTeam{})
+    {
+        formation_.columns.teams[formation_.add(slot)] = spawn.formation_team;
+    }
     identity_.ids.push_back(id);
     placement_.positions.push_back(spawn.position);
     placement_.headings.push_back(wrap_angle(spawn.heading));
@@ -242,10 +246,6 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     locomotor_.suspended.push_back(0);
     locomotor_.arriving.push_back(0);
     steering_.intents.emplace_back();
-    formation_.orders.push_back(recipe.formation_order);
-    formation_.spacings.push_back(recipe.formation_spacing);
-    formation_.solos.push_back(recipe.formation_solo ? 1U : 0U);
-    formation_.teams.push_back(spawn.formation_team);
     locomotor_.speed_limits.push_back(0.0F);
     group_.ids.push_back(0);
     group_.best_remaining.push_back(0.0F);
@@ -406,6 +406,9 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(movement.walk_stop_parts);
         hasher.add(movement.walk_raise_seconds);
         hasher.add(movement.walk_lower_seconds);
+        hasher.add(recipe.formation_order);
+        hasher.add(recipe.formation_spacing);
+        hasher.add(recipe.formation_solo);
     }
     hasher.add(count);
     for (std::size_t index = 0; index < count; ++index)
@@ -551,13 +554,14 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
     hasher.subject = StateSubject::formations;
     for (std::size_t index = 0; index < count; ++index)
     {
-        hasher.add(formation_.orders[index]);
-        hasher.add(formation_.spacings[index]);
-        hasher.add(formation_.solos[index]);
-        hasher.add(formation_.teams[index].id);
-        hasher.add(static_cast<std::uint8_t>(formation_.teams[index].arrangement));
-        hasher.add(formation_.teams[index].spacing);
-        hasher.add(formation_.teams[index].raggedness);
+        if (const auto* team = formation_.find(slot_of(*this, index), &FormationColumns::teams))
+        {
+            hasher.add(index);
+            hasher.add(team->id);
+            hasher.add(static_cast<std::uint8_t>(team->arrangement));
+            hasher.add(team->spacing);
+            hasher.add(team->raggedness);
+        }
     }
     hasher.subject = StateSubject::orders;
     for (std::size_t index = 0; index < count; ++index)
@@ -656,6 +660,7 @@ void SimulationWorld::remove_entities(std::vector<std::size_t> dense)
         flight_.remove(slot);
         footprint_.remove(slot);
         crush_.remove(slot);
+        formation_.remove(slot);
         // A slot whose generation would wrap is retired instead of reused.
         if (slots_.generations[slot] != std::numeric_limits<std::uint32_t>::max())
         {
