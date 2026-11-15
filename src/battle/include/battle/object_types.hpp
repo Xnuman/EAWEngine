@@ -157,10 +157,13 @@ bool type_formation_solo(const GameObjectCatalog& catalog, const XmlDefinition& 
 // props do not block. A provisional reading of the stock data.
 std::optional<std::uint32_t> type_obstacle_passability(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 
-// The ground rectangle a type's XML gives when placed with `placement`: its Obstacle_Width/_Height
-// rectangle (from the Obstacle_X/_Y_Offset corner), else its Custom_Hard_X/_YExtent half extents
-// (around the _Offset center), read from its Obstacle_Proxy_Type when it names one; nothing when
-// it sets neither (the mesh bounds stand in).
+// The ground rectangle a type's XML gives: its Obstacle_Width/_Height rectangle (from the
+// Obstacle_X/_Y_Offset corner), else its Custom_Hard_X/_YExtent half extents (around the _Offset
+// center), read from its Obstacle_Proxy_Type when it names one; nothing when it sets neither (the
+// mesh bounds stand in). place_obstacle puts it on the ground with a placement's transform;
+// type_ground_footprint does both.
+std::optional<ObstacleShape> type_obstacle_shape(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+GroundFootprint place_obstacle(const ObstacleShape& shape, const Matrix4& placement, std::uint32_t passability_type);
 std::optional<GroundFootprint> type_ground_footprint(const GameObjectCatalog& catalog, const XmlDefinition& definition, const Matrix4& placement, std::uint32_t passability_type);
 
 // The radius ships keep clear of an immobile space object: its XML Space_Obstacle_Radius when its

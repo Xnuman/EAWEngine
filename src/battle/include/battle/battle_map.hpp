@@ -11,6 +11,7 @@
 #include "simulation/formation.hpp"
 #include "simulation/ground_map.hpp"
 #include "simulation/simulation.hpp"
+#include "battle/type_recipe.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -24,26 +25,6 @@ namespace eaw {
 
 class AssetCache;
 class AssetReader;
-
-// Units an object's destruction leaves (XML Destruction_Survivors: crews, prisoners): each listed
-// type, `count` groups of it, owned by the destroyed object's owner. Every stock entry has weight
-// 1.0, so each spawns; a count range (Minimum_/Maximum_Destruction_Survivor_Count, one prison)
-// spawns its minimum. Both are engine choices.
-struct Survivors
-{
-    std::vector<std::string> types;
-    std::uint32_t count{1};
-};
-
-// What scripts read of an object type beyond its name: its game-object script (XML Lua_Script;
-// empty: none), its categories (XML CategoryMask, folded: "infantry", "landhero"), and its combat
-// rating (XML AI_Combat_Power, which Get_Combat_Rating presumably reads; 0 when absent).
-struct ScriptTypeInfo
-{
-    std::string lua_script;
-    std::vector<std::string> categories;
-    float combat_rating{};
-};
 
 // A placed object as the battle sees it: what it spawns as, what its scripts read, the name
 // scripts find it by (TedPlacedObject::hint; company members share their company's), and what its
@@ -102,49 +83,16 @@ inline void apply_team_movement(const TeamMovement& team, EntitySpawn& spawn) no
     spawn.movement.deceleration = team.deceleration.value_or(spawn.movement.deceleration);
 }
 
-// An XML object type that can be spawned at runtime, as the battle sees it (its look is a
-// SpawnableLook at the same index).
-struct SpawnableType
+// An XML object type that can be spawned at runtime: its recipe (type_recipe.hpp) and, for a
+// company (Company_Units) or squadron, its members. Its look is a SpawnableLook at the same index.
+struct SpawnableType : TypeRecipe
 {
-    std::string type_name;
-    float max_speed{};
-    // Walks on the ground on land maps (Space_Layer Land or None); flyers keep a height instead.
-    bool follows_ground{};
-    // XML Hover_Offset: height above the surface for flyers (air whales 250, snowspeeders 50).
-    float hover_offset{};
-    // XML Layer_Z_Adjust: the height a unit spawned in space takes, the space plane being 0
-    // (recorded in the FoC debug build: units staged at 0 sit at their type's value, a corvette -20,
-    // a Nebulon-B -90, an MC80 -290; EaW-Revised S-10 to S-14, S-32 to S-34).
-    float layer_z_adjust{};
-    // Passability types its MovementClass may enter (MovementClassTypeDefs.xml).
-    std::uint32_t passable_types{};
-    // Health, shields, armor, and weapon from XML (combat_content.hpp).
-    CombatProfile combat;
-    // Separation footprint (from the model bounds) and turn rate (XML Max_Rate_Of_Turn); see
-    // EntitySpawn.
-    float radius{};
-    float turn_rate{};
-    // Acceleration and turning (type_movement).
-    MovementProfile movement;
-    // Fighters' minimum flight speed (EntitySpawn::min_speed); 0 for other types.
-    float min_speed{};
-    // Aims with its body (no TURRET behavior); applies when it walks on the ground.
-    bool aims_with_body{};
-    // XML FormationOrder and FormationSpacing (formation.hpp).
-    std::uint32_t formation_order{2};
-    float formation_spacing{0.5F};
-    bool formation_solo{};
-    CrushProfile crush;
-    Survivors survivors;
-    ScriptTypeInfo script;
-    // A company (Company_Units): the spawnable types of its members, in list order, spawned
-    // together in formation. Empty for ordinary types.
+    // A company: the spawnable types of its members, in list order, spawned together in formation.
+    // Empty for ordinary types.
     std::vector<std::size_t> members;
     // A company's team movement, applied to its members, and how it splits into teams.
     TeamMovement team;
     TeamLayout team_layout;
-    // XML FormationRaggedness (FormationTeam::raggedness) when it stands in a team.
-    float formation_raggedness{};
 };
 
 // A map built for a battle (build_battle_map): what BattleMap views, and what the build counted.

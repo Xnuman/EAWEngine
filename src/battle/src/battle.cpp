@@ -237,25 +237,7 @@ EntitySpawn Battle::spawn_of(const std::size_t type_index, Vector3 position, con
         // In space a unit takes its layer's height, whatever height the order names.
         position.z = type.layer_z_adjust;
     }
-    EntitySpawn spawn;
-    spawn.type_name = type.type_name;
-    spawn.owner = owner;
-    spawn.position = position;
-    spawn.max_speed = type.max_speed;
-    spawn.visual = spawnable_visual(type_index);
-    spawn.follows_ground = follows_ground;
-    spawn.passable_types = follows_ground ? type.passable_types : 0U;
-    spawn.combat = type.combat;
-    spawn.radius = type.radius;
-    spawn.turn_rate = type.turn_rate;
-    spawn.movement = type.movement;
-    spawn.min_speed = type.min_speed;
-    spawn.aims_with_body = follows_ground && type.aims_with_body;
-    spawn.formation_order = type.formation_order;
-    spawn.formation_spacing = type.formation_spacing;
-    spawn.formation_solo = type.formation_solo;
-    spawn.crush = type.crush;
-    return spawn;
+    return make_spawn(type, {position, 0.0F, owner, spawnable_visual(type_index), ground.valid(), std::nullopt});
 }
 
 Result<SimCommand> Battle::translate(const BattleCommand& command) const

@@ -80,4 +80,8 @@ struct SpawnableBuild
 // warning when it has no model for the context, and nullopt when its model has nothing to draw.
 std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::string& type_name, int depth);
 
+// The recipe of an XML type with the model it is drawn with (type_recipe.cpp): read once, for both
+// runtime spawns and placed objects.
+TypeRecipe build_type_recipe(const SpawnableBuild& build, const XmlDefinition& definition, const std::string& model_path, const Model& host_model, std::span<const ModelAttachment> attachments);
+
 } // namespace eaw

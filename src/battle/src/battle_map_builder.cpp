@@ -190,37 +190,8 @@ std::optional<std::size_t> add_spawnable_type(SpawnableBuild& build, const std::
         return std::nullopt;
     }
     SpawnableType spawnable;
-    const auto scale = type_scale_factor(build.catalog, *definition, build.warnings);
-    spawnable.type_name = definition->name;
-    spawnable.max_speed = type_max_speed(build.catalog, *definition, build.warnings, build.speed_multiplier);
-    spawnable.follows_ground = build.land && type_follows_ground(build.catalog, *definition);
-    spawnable.passable_types = spawnable.follows_ground ? type_passable_types(build.catalog, *definition, build.movement_classes) : 0U;
-    spawnable.combat = build.profile_of(*definition, host_model);
-    spawnable.hover_offset = type_float_field(build.catalog, *definition, "Hover_Offset");
-    spawnable.layer_z_adjust = type_float_field(build.catalog, *definition, "Layer_Z_Adjust");
-    spawnable.crush = type_crush(build.catalog, *definition);
-    spawnable.survivors = type_survivors(build.catalog, *definition);
-    spawnable.script = type_script_info(build.catalog, *definition);
-    if (spawnable.max_speed > 0.0F)
-    {
-        const auto soft_radius = type_soft_footprint_radius(build.catalog, *definition);
-        spawnable.radius = soft_radius > 0.0F ? soft_radius : model_footprint_radius(drawn_model_bounds(*host_model, attachments, true), scaled_model_transform(Matrix4::identity(), scale));
-        // Turn rates and acceleration take the mode's speed multiplier in space (type_movement).
-        const auto motion_multiplier = build.land ? 1.0F : build.speed_multiplier;
-        spawnable.turn_rate = type_turn_rate(build.catalog, *definition, motion_multiplier);
-        spawnable.min_speed = build.land ? 0.0F : type_min_flight_speed(build.catalog, *definition, spawnable.max_speed);
-        spawnable.movement = type_movement(build.catalog, *definition, build.land, spawnable.min_speed > 0.0F, motion_multiplier);
-        apply_animation_locomotion(spawnable.movement, build.catalog, *definition, build.resources, *path, spawnable.max_speed);
-        if (!build.land)
-        {
-            spawnable.movement.turn_in_place_rate = build.combat != nullptr ? spawnable.turn_rate / type_turn_in_place_slowdown(build.catalog, *definition, *build.combat) : 0.0F;
-        }
-        spawnable.aims_with_body = type_aims_with_body(build.catalog, *definition);
-        spawnable.formation_order = type_formation_order(build.catalog, *definition);
-        spawnable.formation_spacing = type_formation_spacing(build.catalog, *definition);
-        spawnable.formation_solo = type_formation_solo(build.catalog, *definition);
-        spawnable.formation_raggedness = type_formation_raggedness(build.catalog, *definition);
-    }
+    static_cast<TypeRecipe&>(spawnable) = build_type_recipe(build, *definition, *path, *host_model, attachments);
+    const auto scale = spawnable.scale;
     build.spawnable.push_back(std::move(spawnable));
     build.models.push_back({*path, std::move(attachments), definition, Matrix4::identity(), scale});
     return build.spawnable.size() - 1U;
@@ -248,8 +219,6 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
         asset.ground = map_ground(map);
     }
     const auto speed_multiplier = combat.max_speed_multiplier.of(asset.land);
-    // Turn rates and acceleration take the mode's speed multiplier in space (type_movement).
-    const auto motion_multiplier = asset.land ? 1.0F : speed_multiplier;
     // One profile per type, so a type's warnings are reported once however often it is placed.
     std::unordered_map<const XmlDefinition*, CombatProfile> combat_profiles;
     const auto profile_of = [&](const XmlDefinition& definition, const Model* model) -> const CombatProfile&
@@ -265,6 +234,15 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
         }
         return found->second;
     };
+
+    // How XML types are read for this map (their recipes): for runtime spawning and for the placed
+    // objects alike.
+    SpawnableBuild spawnable_build{resources,        catalog,       sources.movement.classes, asset.land ? GameModelContext::land : GameModelContext::space, asset.land, profile_of, asset.spawnable,
+                                   spawnable_models, asset.warnings};
+    spawnable_build.speed_multiplier = speed_multiplier;
+    spawnable_build.combat = &combat;
+    // Placed objects' recipes, once per type and model.
+    std::unordered_map<std::string, TypeRecipe> recipes;
 
     // Each entity's drawn model bounds (once per model and attachments), which its footprint and
     // radius fall back to and the map's extent is measured from.
@@ -310,75 +288,38 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
             }
             continue;
         }
-        EntitySpawn spawn;
-        spawn.type_name = placement.type != nullptr ? placement.type->name : std::string{};
-        spawn.owner = placed.player;
-        spawn.position = translation(matrix);
         // Heading is the direction of the model's forward (-Y) axis about +Z.
-        spawn.heading = model_forward_heading(matrix);
-        spawn.follows_ground = asset.land && placement.type != nullptr && type_follows_ground(catalog, *placement.type);
-        if (spawn.follows_ground)
-        {
-            spawn.passable_types = type_passable_types(catalog, *placement.type, sources.movement.classes);
-        }
+        const auto position = translation(matrix);
+        const auto heading = model_forward_heading(matrix);
+        EntitySpawn spawn;
+        const TypeRecipe* recipe = nullptr;
         if (placement.type != nullptr)
         {
-            spawn.max_speed = type_max_speed(catalog, *placement.type, asset.warnings, speed_multiplier);
-            spawn.combat = profile_of(*placement.type, host_model);
-            spawn.crush = type_crush(catalog, *placement.type);
-            // Only mobile units take space for now; structures and props keep overlapping until
-            // their collision footprints are read.
-            if (spawn.max_speed <= 0.0F && asset.land)
+            auto [entry, fresh_recipe] = recipes.try_emplace(placement.type->name + '|' + attached_mesh_key(placement.model_path, attachments));
+            if (fresh_recipe)
             {
-                if (const auto blocks = type_obstacle_passability(catalog, *placement.type))
-                {
-                    spawn.footprint = type_ground_footprint(catalog, *placement.type, matrix, *blocks);
-                    if (!spawn.footprint)
-                    {
-                        spawn.footprint = model_ground_footprint(bounds, matrix, *blocks);
-                    }
-                    ++asset.obstacle_footprints;
-                }
+                entry->second = build_type_recipe(spawnable_build, *placement.type, placement.model_path, *host_model, attachments);
             }
-            if (spawn.max_speed > 0.0F)
+            recipe = &entry->second;
+            spawn = make_spawn(*recipe, {position, heading, placed.player, 0, asset.ground.valid(), matrix});
+            if (spawn.max_speed > 0.0F && placement.container != nullptr && placement.needs_formation)
             {
-                const auto soft_radius = type_soft_footprint_radius(catalog, *placement.type);
-                spawn.radius = soft_radius > 0.0F ? soft_radius : model_footprint_radius(bounds, matrix);
-                spawn.turn_rate = type_turn_rate(catalog, *placement.type, motion_multiplier);
-                spawn.min_speed = asset.land ? 0.0F : type_min_flight_speed(catalog, *placement.type, spawn.max_speed);
-                spawn.movement = type_movement(catalog, *placement.type, asset.land, spawn.min_speed > 0.0F, motion_multiplier);
-                apply_animation_locomotion(spawn.movement, catalog, *placement.type, resources, placement.model_path, spawn.max_speed);
-                if (!asset.land)
-                {
-                    spawn.movement.turn_in_place_rate = spawn.turn_rate / type_turn_in_place_slowdown(catalog, *placement.type, combat);
-                }
-                spawn.aims_with_body = spawn.follows_ground && type_aims_with_body(catalog, *placement.type);
-                spawn.formation_order = type_formation_order(catalog, *placement.type);
-                spawn.formation_spacing = type_formation_spacing(catalog, *placement.type);
-                spawn.formation_solo = type_formation_solo(catalog, *placement.type);
-                if (placement.container != nullptr && placement.needs_formation)
-                {
-                    apply_team_movement(type_team_movement(catalog, *placement.container, speed_multiplier), spawn);
-                }
+                apply_team_movement(type_team_movement(catalog, *placement.container, speed_multiplier), spawn);
             }
-            else if (!asset.land)
-            {
-                // Space avoidance steers ships around immobile entities with a radius. Starbases
-                // give only their soft radius (100 to 550).
-                spawn.radius = type_space_obstacle_radius(catalog, *placement.type);
-                if (spawn.radius <= 0.0F)
-                {
-                    spawn.radius = type_soft_footprint_radius(catalog, *placement.type);
-                }
-                asset.space_obstacles += spawn.radius > 0.0F ? 1U : 0U;
-            }
+            asset.obstacle_footprints += spawn.footprint ? 1U : 0U;
+            asset.space_obstacles += !asset.land && spawn.max_speed <= 0.0F && spawn.radius > 0.0F ? 1U : 0U;
+        }
+        else
+        {
+            spawn.owner = placed.player;
+            spawn.position = position;
+            spawn.heading = heading;
         }
         if (placement.needs_formation)
         {
             company_members.push_back({placement.object_index, asset.entities.size(), placement.type, placement.container});
         }
-        asset.entities.push_back({std::move(spawn), placement.type != nullptr ? type_script_info(catalog, *placement.type) : ScriptTypeInfo{}, placed.hint,
-                                  placement.type != nullptr ? type_survivors(catalog, *placement.type) : Survivors{}});
+        asset.entities.push_back({std::move(spawn), recipe != nullptr ? recipe->script : ScriptTypeInfo{}, placed.hint, recipe != nullptr ? recipe->survivors : Survivors{}});
         entity_models.push_back({placement.model_path, std::move(attachments), placement.type, matrix, model_scale, placed.player});
         entity_bounds.push_back(bounds);
     }
@@ -403,10 +344,6 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
 
     // Types requested for runtime spawning, each name once: an existing entry is reused (company
     // members are often repeated).
-    SpawnableBuild spawnable_build{resources,        catalog,       sources.movement.classes, asset.land ? GameModelContext::land : GameModelContext::space, asset.land, profile_of, asset.spawnable,
-                                   spawnable_models, asset.warnings};
-    spawnable_build.speed_multiplier = speed_multiplier;
-    spawnable_build.combat = &combat;
     for (const auto& type_name : spawn_types)
     {
         (void)add_spawnable_type(spawnable_build, type_name, 0);

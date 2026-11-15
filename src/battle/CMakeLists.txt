@@ -16,6 +16,7 @@ set(EAW_BATTLE_HEADERS
     ${HEADERS_DIR}/battle_scripts.hpp
     ${HEADERS_DIR}/combat_content.hpp
     ${HEADERS_DIR}/object_types.hpp
+    ${HEADERS_DIR}/type_recipe.hpp
 )
 
 set(EAW_BATTLE_SOURCES
@@ -26,6 +27,7 @@ set(EAW_BATTLE_SOURCES
     ${SOURCES_DIR}/battle_scripts.cpp
     ${SOURCES_DIR}/combat_content.cpp
     ${SOURCES_DIR}/object_types.cpp
+    ${SOURCES_DIR}/type_recipe.cpp
 )
 
 source_group( "" FILES ${EAW_BATTLE_SOURCES} ${EAW_BATTLE_HEADERS} )

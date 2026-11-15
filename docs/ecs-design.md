@@ -548,7 +548,18 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    the loops already walk the dense order and look pools up by slot, and sorting a pool's members
    cost more than it saved (crushing, 0.006 to 0.025 ms a tick).
 5. **Recipes.** Readers per component; one construction path for spawns and placed objects;
-   `EntitySpawn` reduced to a recipe plus per-instance values.
+   `EntitySpawn` reduced to a recipe plus per-instance values. First part done 2026-11-15, in the
+   battle layer: `TypeRecipe` (`battle/type_recipe.hpp`) is what an XML type gives every entity,
+   read once from its XML and model (`build_type_recipe`), and `make_spawn(recipe, instance)` is
+   the one construction path; `SpawnableType` is a recipe plus a company's members, and placed
+   objects take a recipe per type and model from a cache of their own (so the runtime-spawn list,
+   its looks, and the sandbox's spawn menu are as before). The owner's rule for the two paths'
+   differences: a type behaves the same however it appears, so runtime-spawned obstacles block the
+   ground and immobile space objects keep ships clear, and following the ground needs a valid
+   ground on both paths. The readers stay the free functions they were (`type_movement`,
+   `type_crush`, ...); a registry of them waits for modder-defined components. Not yet: the
+   simulation's side (`EntitySpawn` as a recipe reference plus instance values, type data stored
+   once per recipe, decision 6), which changes the simulation's interface.
 6. **Command buffers and event queues.** Structural changes and damage through the barrier, in the
    order they happen today.
 7. **The declared change.** Spawn order as the dense order (compacting removal), per-component

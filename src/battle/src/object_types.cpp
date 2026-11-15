@@ -213,7 +213,7 @@ std::optional<std::uint32_t> type_obstacle_passability(const GameObjectCatalog& 
     return std::nullopt;
 }
 
-std::optional<GroundFootprint> type_ground_footprint(const GameObjectCatalog& catalog, const XmlDefinition& definition, const Matrix4& placement, const std::uint32_t passability_type)
+std::optional<ObstacleShape> type_obstacle_shape(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     const auto* source = &definition;
     if (const auto* proxy = catalog.field(definition, "Obstacle_Proxy_Type").field)
@@ -251,11 +251,16 @@ std::optional<GroundFootprint> type_ground_footprint(const GameObjectCatalog& ca
     {
         return std::nullopt;
     }
+    return ObstacleShape{half_x, half_y, center_x, center_y};
+}
+
+GroundFootprint place_obstacle(const ObstacleShape& shape, const Matrix4& placement, const std::uint32_t passability_type)
+{
     // The type's x runs along the model's -Y (its forward) and its y along the model's +X, matched
     // against the mesh bounds of off-center props (W_ROCKCLSTR01, W_RUINS03, W_TEMPROCKCLSTR03).
     // Sizes are world units, not scaled by Scale_Factor (TIE crawler and MPTL: an inference).
-    const auto model_x = center_y;
-    const auto model_y = -center_x;
+    const auto model_x = shape.center_y;
+    const auto model_y = -shape.center_x;
     const auto heading = std::atan2(placement.values[1], placement.values[0]);
     const auto cos_heading = std::cos(heading);
     const auto sin_heading = std::sin(heading);
@@ -263,10 +268,16 @@ std::optional<GroundFootprint> type_ground_footprint(const GameObjectCatalog& ca
     footprint.passability = passability_type;
     footprint.center = {placement.values[12] + model_x * cos_heading - model_y * sin_heading, placement.values[13] + model_x * sin_heading + model_y * cos_heading, placement.values[14]};
     // GroundFootprint's length runs along its heading, the model's +X.
-    footprint.half_length = half_y;
-    footprint.half_width = half_x;
+    footprint.half_length = shape.half_y;
+    footprint.half_width = shape.half_x;
     footprint.heading = heading;
     return footprint;
+}
+
+std::optional<GroundFootprint> type_ground_footprint(const GameObjectCatalog& catalog, const XmlDefinition& definition, const Matrix4& placement, const std::uint32_t passability_type)
+{
+    const auto shape = type_obstacle_shape(catalog, definition);
+    return shape ? std::optional<GroundFootprint>{place_obstacle(*shape, placement, passability_type)} : std::nullopt;
 }
 
 float type_space_obstacle_radius(const GameObjectCatalog& catalog, const XmlDefinition& definition)

@@ -6,6 +6,7 @@
 #include "battle/battle_log.hpp"
 #include "battle/battle_runtime.hpp"
 #include "battle/battle_scripts.hpp"
+#include "battle/type_recipe.hpp"
 #include "presentation/battle_effects.hpp"
 #include "presentation/damage_states.hpp"
 #include "presentation/particle_effects.hpp"
@@ -962,8 +963,60 @@ void test_battle_object_scripts()
     std::filesystem::remove_all(root, ignored);
 }
 
+// One construction path: a type's entity made from its recipe, placed (with the placement's matrix)
+// or spawned at runtime (from position and heading), gets the same footprint, and immobile space
+// objects their radius either way.
+void test_type_recipe()
+{
+    const auto near = [](const float a, const float b)
+    {
+        return std::fabs(a - b) < 1.0e-4F;
+    };
+    for (const float heading : {0.0F, 1.0F, -2.5F, 3.0F})
+    {
+        const auto transform = eaw::placement_transform({10.0F, 20.0F, 5.0F}, heading, 2.0F);
+        const auto at = eaw::translation(transform);
+        require(near(eaw::model_forward_heading(transform), heading) && near(eaw::model_footprint_radius(eaw::ModelBounds{{-1.0F, -1.0F, 0.0F}, {1.0F, 1.0F, 1.0F}}, transform), 2.0F) &&
+                    at.x == 10.0F && at.y == 20.0F && at.z == 5.0F,
+                "a placement transform must face its heading, keep its scale, and sit at its position");
+    }
+
+    eaw::TypeRecipe wall;
+    wall.type_name = "Wall";
+    wall.obstacle_passability = eaw::passability::obstacle;
+    wall.obstacle_shape = eaw::ObstacleShape{10.0F, 5.0F, 2.0F, 0.0F};
+    const eaw::Vector3 where{100.0F, 50.0F, 0.0F};
+    const auto spawned = eaw::make_spawn(wall, {where, 0.5F, 1, 0, true, std::nullopt});
+    const auto placed = eaw::make_spawn(wall, {where, 0.5F, 1, 0, true, eaw::placement_transform(where, 0.5F, 1.0F)});
+    require(spawned.footprint && placed.footprint && *spawned.footprint == *placed.footprint && spawned.footprint->passability == eaw::passability::obstacle &&
+                spawned.footprint->half_length == 5.0F && spawned.footprint->half_width == 10.0F && spawned.radius == 0.0F && spawned.owner == 1U,
+            "a runtime-spawned obstacle must block the ground as a placed one does");
+
+    eaw::TypeRecipe station;
+    station.type_name = "Station";
+    station.space_obstacle_radius = 130.0F;
+    require(eaw::make_spawn(station, {where, 0.0F, 2, 0, false, std::nullopt}).radius == 130.0F && !eaw::make_spawn(station, {where, 0.0F, 2, 0, false, std::nullopt}).footprint,
+            "an immobile space object must keep ships clear by its radius however it appears");
+
+    eaw::TypeRecipe tank;
+    tank.type_name = "Tank";
+    tank.max_speed = 10.0F;
+    tank.follows_ground = true;
+    tank.passable_types = eaw::passability::clear;
+    tank.aims_with_body = true;
+    tank.bounds = eaw::ModelBounds{{-2.0F, -2.0F, 0.0F}, {2.0F, 2.0F, 1.0F}};
+    tank.radius = 2.0F;
+    const auto unplaced = eaw::make_spawn(tank, {where, 0.0F, 1, 0, true, std::nullopt});
+    const auto doubled = eaw::make_spawn(tank, {where, 0.0F, 1, 0, true, eaw::placement_transform(where, 0.0F, 2.0F)});
+    const auto off_ground = eaw::make_spawn(tank, {where, 0.0F, 1, 0, false, std::nullopt});
+    require(unplaced.radius == 2.0F && near(doubled.radius, 4.0F) && unplaced.follows_ground && unplaced.aims_with_body && unplaced.passable_types == eaw::passability::clear &&
+                !off_ground.follows_ground && !off_ground.aims_with_body && off_ground.passable_types == 0U && !unplaced.footprint,
+            "a mobile type must take its radius from its placement's scale, and follow the ground only where there is one");
+}
+
 const ModuleRegistrar registrar("battle", {
                                               {"test_combat_content", &test_combat_content},
+                                              {"test_type_recipe", &test_type_recipe},
                                               {"test_battle_scripts", &test_battle_scripts},
                                               {"test_battle_object_scripts", &test_battle_object_scripts},
                                               {"test_battle_orders", &test_battle_orders},
