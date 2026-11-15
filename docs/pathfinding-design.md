@@ -195,8 +195,9 @@ Each step keeps the battles' outcomes or declares the change, and is measured wi
 4. **Clearance per size class** (4.1), with spawns and teleports on free ground.
 5. **Chunks and windowed refinement** (4.1, 4.2): both layouts, measured by the audit on maps of
    every kind; one is kept.
-6. **Formation frames and splitting selections by distance** (4.3).
-7. **ORCA, giving way, and the no-overlap check** (4.4); separation removed; blocked-unit replans.
+6. **ORCA, giving way, and the no-overlap check** (4.4); separation removed; blocked-unit replans.
+   Moved before formation frames (the owner, 2026-11-15: overlaps and pushing are what play shows).
+7. **Formation frames and splitting selections by distance** (4.3).
 8. Then the entity-component migration's step 8 (parallel systems).
 
 ## 6. Black-box questions for the original (the owner's observations)
@@ -205,6 +206,7 @@ Each step keeps the battles' outcomes or declares the change, and is measured wi
   under avoidance and formation rules (the owner, 2026-11-15; 4.3).
 - Where does a group stop when its goal is unreachable or occupied? At the point closest to the goal
   where it overlaps no other unit (the owner, 2026-11-15; 4.2).
-- Do the soldiers of a squad keep their arrangement while moving, or only at rest? Open.
+- Do the soldiers of a squad keep their arrangement while moving, or only at rest? They hold it
+  while walking: the squad walks as a fixed shape (the owner, 2026-11-15).
 - Does a faster unit pass slower allies, and how do they make room? They step sideways off its line,
   each to its own side, and it passes straight (the owner's drawing, 2026-11-15; 4.4).
