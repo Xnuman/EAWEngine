@@ -301,10 +301,10 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .path_expansions = navigation_.path_expansions,
             .queued_paths = path_queue_.requests.size(),
             .shared_routes = navigation_.shared_routes,
-            .shots_fired = shots_fired_,
-            .hits = hits_,
-            .kills = kills_,
-            .hardpoints_destroyed = hardpoints_destroyed_,
+            .shots_fired = combat_counters_.shots_fired,
+            .hits = combat_counters_.hits,
+            .kills = combat_counters_.kills,
+            .hardpoints_destroyed = combat_counters_.hardpoints_destroyed,
             .crushed = contact_.crushed,
             .projectiles = projectiles_.flying.size(),
             .separated_pairs = contact_.separated_pairs,
@@ -520,7 +520,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(projectile.misses);
     }
     hasher.subject = StateSubject::random;
-    hasher.add(combat_random_.state());
+    hasher.add(combat_random_.stream.state());
 }
 
 const CrushProfile& SimulationWorld::crush_profile_in(const ComponentPool<CrushColumns>& pool, const std::uint32_t slot) noexcept
@@ -533,6 +533,11 @@ const CrushProfile& SimulationWorld::crush_profile_in(const ComponentPool<CrushC
 const CrushProfile& SimulationWorld::crush_profile_of(const std::size_t index) const noexcept
 {
     return crush_profile_in(crush_, slot_of(*this, index));
+}
+
+void SimulationWorld::run_combat()
+{
+    combat_system_.run(view_of<CombatSystem::View>(), static_cast<float>(clock_.tick_seconds));
 }
 
 void SimulationWorld::run_behavior()

@@ -21,6 +21,12 @@ inline constexpr std::uint32_t no_dense = std::numeric_limits<std::uint32_t>::ma
 inline constexpr float arrival_distance = 0.01F;
 // Broad-phase cell size in world units (a little above typical weapon ranges).
 inline constexpr float grid_cell_size = 256.0F;
+// The hull of an entity with destroyable parts follows them: max health x min(1, S/T + 0.2), where
+// S/T is the parts' remaining share of their total health (recorded in the FoC debug build: every
+// hull drop of a Nebulon-B under fire lies on this curve, and the hull never loses health to a shot
+// at a part; EaW-Revised's S-45, S-49, S-50, docs/compatibility-research.md). Space ships were
+// recorded; land objects with parts follow the same rule unobserved.
+inline constexpr float hull_floor_share = 0.2F;
 // Separation's grid cells: twice the largest footprint taking part (a query then visits a few cells
 // of near neighbours instead of every unit within 256 units: 74% of a 3,300-unit tick went there),
 // within these bounds. Engine choices; the pairs found are the same at any cell size.
@@ -426,5 +432,161 @@ template <class Data> Vector3 SimulationWorld::world_point(Data& data, const std
     const auto sin_heading = std::sin(heading);
     const auto& position = placement.positions[index];
     return {position.x + point.forward * cos_heading - point.left * sin_heading, position.y + point.forward * sin_heading + point.left * cos_heading, position.z + point.up};
+}
+// Shields absorb a shot first (scaled by the shield armor type); what the shield cannot absorb,
+// converted back to raw damage, is scaled by the armor type and reaches the part the shot aims at
+// or, without one, the hull. A shot at a part damages only the part (recorded: 4000 scripted damage
+// on a Nebulon-B laser silenced it for good and left the hull at 5400; S-19), and the hull then
+// follows the parts; the entity dies with its last destroyable part unless its type says not to
+// (recorded: the Nebulon-B dies with it at 0.35 or 0.23 of its hull). Damage aimed at no part
+// (blasts, unaimed shots) reaches the hull directly, an engine choice: that case is not observed.
+template <class Data>
+ImpactKind SimulationWorld::apply_damage(Data& data, const std::size_t victim, float damage, const std::uint16_t damage_type, const bool damages_shield, const bool damages_health,
+                                         const std::int32_t hardpoint)
+{
+    auto& identity = data.template get<IdentityColumns>();
+    auto& combat = data.template get<CombatColumns>();
+    auto& events = data.template get<TickEvents>();
+    auto& rules = data.template get<Rules>();
+    auto& counters = data.template get<CombatCounters>();
+    auto& state = combat.states[victim];
+    if (damages_shield && state.shield > 0.0F)
+    {
+        const auto modifier = rules.damage_table.modifier(damage_type, state.profile.shield_armor_type);
+        const auto dealt = damage * modifier;
+        if (dealt <= state.shield)
+        {
+            state.shield -= dealt;
+            return ImpactKind::shield;
+        }
+        damage = modifier > 0.0F ? (dealt - state.shield) / modifier : 0.0F;
+        state.shield = 0.0F;
+    }
+    auto kind = ImpactKind::hull;
+    if (damages_health)
+    {
+        const auto modifier = rules.damage_table.modifier(damage_type, state.profile.armor_type);
+        if (modifier < 1.0F)
+        {
+            kind = ImpactKind::hull_reduced;
+        }
+        const auto part_index = static_cast<std::size_t>(std::max(hardpoint, 0));
+        const bool at_part = hardpoint >= 0 && state.profile.hardpoints[part_index].health > 0.0F && state.hardpoint_health[part_index] > 0.0F;
+        if (!at_part)
+        {
+            (void)wound(combat.states[victim], damage * modifier);
+            return kind;
+        }
+        if (state.invulnerable || state.profile.immune)
+        {
+            return kind;
+        }
+        auto& part = state.hardpoint_health[part_index];
+        part -= damage * modifier;
+        if (part <= 0.0F)
+        {
+            part = 0.0F;
+            ++counters.hardpoints_destroyed;
+            const auto& profile = state.profile.hardpoints[part_index];
+            events.hardpoint_deaths.push_back(
+                {identity.ids[victim], static_cast<std::uint32_t>(part_index), world_point(data, victim, profile.offset), profile.death_sound, profile.death_effect, profile.type_key});
+        }
+        // The hull follows its parts, and falls with the last of them.
+        const auto followed = state.profile.health * hull_share_of_parts(data, victim);
+        const auto lost = state.profile.dies_with_hardpoints && parts_all_destroyed(data, victim) ? state.health : std::max(state.health - followed, 0.0F);
+        (void)wound(combat.states[victim], lost);
+    }
+    return kind;
+}
+
+template <class Data>
+void SimulationWorld::area_blast(Data& data, const Vector3& point, const std::uint32_t owner, const AreaBlast& blast, const std::uint16_t damage_type, const bool damages_shield,
+                                 const bool damages_health)
+{
+    auto& identity = data.template get<IdentityColumns>();
+    auto& placement = data.template get<PlacementColumns>();
+    auto& rules = data.template get<Rules>();
+    if ((blast.damage <= 0.0F && blast.friendly_damage <= 0.0F) || blast.range <= 0.0F)
+    {
+        return;
+    }
+    // shortcut: a scan over every entity per blast; use the spatial grid when battles get big.
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
+    {
+        const bool friendly = identity.owners[index] == owner;
+        if (!damageable(data, index) || (!rules.hostility.hostile(owner, identity.owners[index]) && !(friendly && blast.friendly_damage > 0.0F)))
+        {
+            continue;
+        }
+        const auto& at = placement.positions[index];
+        const auto distance = std::max(0.0F, std::sqrt((at.x - point.x) * (at.x - point.x) + (at.y - point.y) * (at.y - point.y) + (at.z - point.z) * (at.z - point.z)) - target_size(data, index));
+        if (distance > blast.range)
+        {
+            continue;
+        }
+        auto damage = friendly ? blast.friendly_damage : blast.damage;
+        if (blast.tiers > 0)
+        {
+            const auto ring = std::min(static_cast<std::uint32_t>(distance / blast.range * static_cast<float>(blast.tiers)), blast.tiers - 1U);
+            damage *= static_cast<float>(blast.tiers - ring) / static_cast<float>(blast.tiers);
+        }
+        (void)apply_damage(data, index, damage, damage_type, damages_shield, damages_health, -1);
+    }
+}
+
+template <class Data> float SimulationWorld::hull_share_of_parts(Data& data, const std::size_t index) noexcept
+{
+    auto& combat = data.template get<CombatColumns>();
+    const auto& state = combat.states[index];
+    float total = 0.0F;
+    float remaining = 0.0F;
+    for (std::size_t hardpoint = 0; hardpoint < state.profile.hardpoints.size(); ++hardpoint)
+    {
+        if (state.profile.hardpoints[hardpoint].health > 0.0F)
+        {
+            total += state.profile.hardpoints[hardpoint].health;
+            remaining += std::max(state.hardpoint_health[hardpoint], 0.0F);
+        }
+    }
+    return total > 0.0F ? std::min(1.0F, remaining / total + simulation_detail::hull_floor_share) : 1.0F;
+}
+
+template <class Data> bool SimulationWorld::parts_all_destroyed(Data& data, const std::size_t index) noexcept
+{
+    auto& combat = data.template get<CombatColumns>();
+    const auto& state = combat.states[index];
+    bool any = false;
+    for (std::size_t hardpoint = 0; hardpoint < state.profile.hardpoints.size(); ++hardpoint)
+    {
+        if (state.profile.hardpoints[hardpoint].health > 0.0F)
+        {
+            any = true;
+            if (state.hardpoint_health[hardpoint] > 0.0F)
+            {
+                return false;
+            }
+        }
+    }
+    return any;
+}
+
+template <class Data> float SimulationWorld::target_size(Data& data, const std::size_t index) noexcept
+{
+    auto& placement = data.template get<PlacementColumns>();
+    auto& footprints = data.template get<ComponentPool<FootprintColumns>>();
+    // The separation footprint, else the obstacle footprint.
+    auto size = placement.radii[index];
+    if (const auto* footprint = footprints.find(slot_of(data, index), &FootprintColumns::shapes); size <= 0.0F && footprint != nullptr)
+    {
+        size = std::max(footprint->half_length, footprint->half_width);
+    }
+    return size;
+}
+
+template <class Data> std::uint32_t SimulationWorld::ticks_for(Data& data, const float seconds) noexcept
+{
+    auto& clock = data.template get<Clock>();
+    const auto ticks = std::lround(static_cast<double>(seconds) / clock.tick_seconds);
+    return static_cast<std::uint32_t>(std::clamp<long>(ticks, 0L, 1L << 30));
 }
 } // namespace eaw

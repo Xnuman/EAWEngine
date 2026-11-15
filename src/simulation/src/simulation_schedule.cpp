@@ -18,14 +18,16 @@ namespace eaw {
 // them. Until migration
 // step 6 queues structural changes for the barrier, the systems that spawn or remove entities
 // (commands, and combat's removal of the dead) write the whole entity table.
-const std::array<SimulationWorld::SystemEntry, 7> SimulationWorld::schedule_{{
+const std::array<SimulationWorld::SystemEntry, 8> SimulationWorld::schedule_{{
     {"commands", TickPhase::commands, &SimulationWorld::run_commands, all_data, all_data},
     {"behavior", TickPhase::behavior, &SimulationWorld::run_behavior, reads_of<BehaviorSystem::View>(), writes_of<BehaviorSystem::View>(), true},
     {"navigation", TickPhase::navigation, &SimulationWorld::run_navigation, reads_of<NavigationSystem::View>(), writes_of<NavigationSystem::View>(), true},
     {"movement", TickPhase::movement, &SimulationWorld::run_movement, reads_of<MovementSystem::View>(), writes_of<MovementSystem::View>(), true},
     // Contact's access is its view's type (ContactSystem::View).
     {"contact", TickPhase::contact, &SimulationWorld::run_contact, reads_of<ContactSystem::View>(), writes_of<ContactSystem::View>(), true},
-    {"combat", TickPhase::combat, &SimulationWorld::run_combat, all_data, all_data},
+    {"combat", TickPhase::combat, &SimulationWorld::run_combat, reads_of<CombatSystem::View>(), writes_of<CombatSystem::View>(), true},
+    // Removing the dead writes the whole entity table until step 6 queues it for the barrier.
+    {"removal", TickPhase::combat, &SimulationWorld::run_removal, all_data, all_data},
     {"publish", TickPhase::publish, &SimulationWorld::run_publish,
      access_to({SimData::clock, SimData::combat, SimData::events, SimData::flight_maneuvers, SimData::ground_mover, SimData::identity, SimData::locomotor, SimData::motion, SimData::orders,
                 SimData::placement, SimData::projectiles, SimData::route, SimData::snapshot, SimData::turn_clips, SimData::walk_clips}),
@@ -34,9 +36,10 @@ const std::array<SimulationWorld::SystemEntry, 7> SimulationWorld::schedule_{{
 
 std::string_view SimulationWorld::sim_data_name(const SimData data) noexcept
 {
-    static constexpr std::array<std::string_view, sim_data_count> names{
-        "identity",         "placement",  "motion", "locomotor", "ground_mover", "route",       "flight", "combat",        "orders",   "steering", "formation", "group",    "turn_clips", "walk_clips",
-        "flight_maneuvers", "footprints", "crush",  "ground",    "path_queue",   "projectiles", "events", "combat_random", "snapshot", "clock",    "slots",     "commands", "rules",      "avoidance"};
+    static constexpr std::array<std::string_view, sim_data_count> names{"identity", "placement", "motion",     "locomotor",   "ground_mover",   "route",         "flight",           "combat",
+                                                                        "orders",   "steering",  "formation",  "group",       "turn_clips",     "walk_clips",    "flight_maneuvers", "footprints",
+                                                                        "crush",    "ground",    "path_queue", "projectiles", "events",         "combat_random", "snapshot",         "clock",
+                                                                        "slots",    "commands",  "rules",      "avoidance",   "combat_counters"};
     static_assert(!names.back().empty(), "every kind of simulation data needs its name");
     return names[static_cast<std::size_t>(data)];
 }

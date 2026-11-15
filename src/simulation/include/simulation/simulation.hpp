@@ -777,18 +777,12 @@ private:
     template <class Data> [[nodiscard]] static TurnPoint turn_point(Data& data, std::size_t index, float time) noexcept;
     // Stamps (or removes) an entity's footprint into the ground's passability.
     void stamp_footprint(std::size_t index, bool add);
-    void run_combat();
-    // Whether this tick refreshes the entity's shield (simulation_combat.cpp).
-    [[nodiscard]] bool shield_refresh_due(std::size_t index) const noexcept;
     // The hull share an entity's destroyable parts leave it, and whether every one is destroyed
     // (simulation_combat.cpp, apply_damage).
-    [[nodiscard]] float hull_share_of_parts(std::size_t index) const noexcept;
-    [[nodiscard]] bool parts_all_destroyed(std::size_t index) const noexcept;
-    void update_target(std::size_t index);
-    void run_weapon(std::size_t index);
-    void launch(std::size_t shooter, std::size_t victim, const WeaponProfile& weapon, const LocalPoint& mount);
+    template <class Data> [[nodiscard]] static float hull_share_of_parts(Data& data, std::size_t index) noexcept;
+    template <class Data> [[nodiscard]] static bool parts_all_destroyed(Data& data, std::size_t index) noexcept;
     // Returns what the shot did (shields only, hull, or hull with armor reducing it).
-    ImpactKind apply_damage(std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health, std::int32_t hardpoint);
+    template <class Data> static ImpactKind apply_damage(Data& data, std::size_t victim, float damage, std::uint16_t damage_type, bool damages_shield, bool damages_health, std::int32_t hardpoint);
     // A point of an entity's own frame in world space.
     template <class Data> [[nodiscard]] static Vector3 world_point(Data& data, std::size_t index, const LocalPoint& point) noexcept;
     template <class Data> [[nodiscard]] static bool hardpoint_alive(Data& data, std::size_t index, std::size_t hardpoint) noexcept;
@@ -797,30 +791,12 @@ private:
     // The victim's live targetable hardpoint nearest to `from`, or -1.
     template <class Data> [[nodiscard]] static std::int32_t aim_hardpoint(Data& data, std::size_t victim, const Vector3& from) noexcept;
     template <class Data> [[nodiscard]] static Vector3 aim_point(Data& data, std::size_t victim, std::int32_t hardpoint) noexcept;
-    // Where a shot of `weapon` at `victim` lands relative to its aim point (WeaponProfile::inaccuracy;
-    // draws from combat_random_), and whether that misses the victim.
-    [[nodiscard]] Vector3 stray(const WeaponProfile& weapon, std::size_t victim);
-    [[nodiscard]] bool strays_off(std::size_t victim, const Vector3& stray) const noexcept;
-    // The entity a stray shot of `owner` landing at `point` hits instead of its target: the nearest
-    // live, damageable, collidable entity hostile to `owner` whose footprint holds the point.
-    [[nodiscard]] std::optional<std::size_t> stray_victim(const Vector3& point, std::uint32_t owner, std::size_t target) const noexcept;
     // The radius strays_off measures against (0: unknown size).
-    [[nodiscard]] float target_size(std::size_t index) const noexcept;
+    template <class Data> [[nodiscard]] static float target_size(Data& data, std::size_t index) noexcept;
     // Damages the hostiles of `owner` around `point` (AreaBlast).
-    void area_blast(const Vector3& point, std::uint32_t owner, const AreaBlast& blast, std::uint16_t damage_type, bool damages_shield, bool damages_health);
+    template <class Data> static void area_blast(Data& data, const Vector3& point, std::uint32_t owner, const AreaBlast& blast, std::uint16_t damage_type, bool damages_shield, bool damages_health);
     // Whether one of `index`'s weapons may fire at `candidate`'s categories (or it has none).
     template <class Data> [[nodiscard]] static bool engages(Data& data, std::size_t index, std::size_t candidate) noexcept;
-    // Turns `index`'s turret toward turret_victim (CombatProfile::turret), and whether it points at
-    // `victim` closely enough to fire (true without a turret).
-    void aim_turret(std::size_t index, float dt);
-    // The victim `index`'s turret turns toward: its own weapon's burst victim, else the entity's
-    // target within that weapon's reach, else the nearest hostile within it.
-    [[nodiscard]] std::optional<std::size_t> turret_victim(std::size_t index);
-    // Whether `victim` is within `weapon`'s range, beyond its minimum, and of a category it fires at.
-    [[nodiscard]] bool in_reach(std::size_t index, const WeaponProfile& weapon, std::size_t victim) const noexcept;
-    // `mount` of `weapon`, turned with the turret when the weapon is on it.
-    [[nodiscard]] LocalPoint weapon_mount(std::size_t index, const WeaponProfile& weapon, const LocalPoint& mount) const noexcept;
-    [[nodiscard]] bool turret_aimed(std::size_t index, std::size_t victim) const noexcept;
     // The target `index` prefers among the damageable hostiles within `reach` of `center` (in the
     // ground plane) that `accepts`: the lowest rank of its targeting priorities, then the nearest,
     // then the lower entity id. Defined in simulation_internal.hpp.
@@ -828,10 +804,9 @@ private:
     template <class Data, typename Accepts>
     [[nodiscard]] static std::optional<std::size_t> choose_target(Data& data, const SpatialGrid& grid, std::vector<std::uint32_t>& query, std::size_t index, const Vector3& center, float reach,
                                                                   const Accepts& accepts);
-    void run_projectiles();
     void remove_dead();
     template <class Data> [[nodiscard]] static bool damageable(Data& data, std::size_t index) noexcept;
-    [[nodiscard]] std::uint32_t ticks_for(float seconds) const noexcept;
+    template <class Data> [[nodiscard]] static std::uint32_t ticks_for(Data& data, float seconds) noexcept;
     void publish();
 
     // What the tick's systems declare access to (the schedule below): the components of the entity
@@ -874,6 +849,8 @@ private:
         rules,
         // Space avoidance's grid and largest ship radius (navigation builds them, movement reads them).
         avoidance,
+        // Combat's statistics: shots fired, hits, kills, and hardpoints destroyed so far (not hashed).
+        combat_counters,
         count,
     };
     static constexpr std::size_t sim_data_count = static_cast<std::size_t>(SimData::count);
@@ -1265,7 +1242,7 @@ private:
         // Written over a typed view: its access is its view's type, so the copy check skips it.
         bool typed{};
     };
-    static const std::array<SystemEntry, 7> schedule_;
+    static const std::array<SystemEntry, 8> schedule_;
     [[nodiscard]] static std::string_view sim_data_name(SimData data) noexcept;
     // Every kind of data with its objects (some kinds have several): the entity table's groups
     // (for_each_group), the pools, and the resources.
@@ -1292,6 +1269,7 @@ private:
         visit(SimData::commands, pending_);
         visit(SimData::rules, rules_);
         visit(SimData::avoidance, avoidance_);
+        visit(SimData::combat_counters, combat_counters_);
     }
     // Runs one system of the schedule (in DebugValidation builds, with its write check).
     void run_system(const SystemEntry& system);
@@ -1304,6 +1282,10 @@ private:
     void run_movement();
     void run_navigation();
     void run_behavior();
+    void run_combat();
+    // Removing the dead (remove_dead): structural, so written as a member function with full access
+    // until migration step 6 queues removals for the barrier.
+    void run_removal();
     // Optional components in pools (component_pool.hpp), given at spawn: turns in place played as
     // clips to entities whose profile has them (MovementProfile::turn_begin_seconds), walks played as
     // clips to those that walk or raise a leg as clips (walk_stop_parts, walk_raise_seconds),
@@ -1426,6 +1408,26 @@ private:
     TickEvents events_;
     SlotTable slots_;
     Rules rules_;
+    // Shots fired, hits, kills, and hardpoints destroyed so far (Stats; not hashed).
+    struct CombatCounters
+    {
+        bool operator==(const CombatCounters&) const = default;
+        static constexpr SimData data = SimData::combat_counters;
+        std::uint64_t shots_fired{};
+        std::uint64_t hits{};
+        std::uint64_t kills{};
+        std::uint64_t hardpoints_destroyed{};
+    };
+    CombatCounters combat_counters_;
+    // The combat random stream: where shots stray (WeaponProfile::inaccuracy) and who spins as it
+    // dies; part of the state.
+    struct CombatRandom
+    {
+        bool operator==(const CombatRandom&) const = default;
+        static constexpr SimData data = SimData::combat_random;
+        Pcg32 stream{combat_random_seed};
+    };
+    CombatRandom combat_random_;
 
     // Typed system views (system_view.hpp): the kind of data a type is (a pool's is its columns'),
     // the masks a view's type declares, the world's one object of a type, and a view of them.
@@ -1653,15 +1655,49 @@ private:
         std::vector<std::uint32_t> query_;
     };
     BehaviorSystem behavior_;
+
+    // Combat (simulation_combat.cpp; docs/ecs-design.md, 6.3, phase 6): shields, targeting, weapons,
+    // projectiles, and damage. Removing the dead is the removal system that follows it.
+    class CombatSystem
+    {
+    public:
+        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Read<RouteColumns>, Write<CombatColumns>, Read<ComponentPool<FootprintColumns>>, Write<ProjectileState>,
+                                Write<TickEvents>, Read<SlotTable>, Read<Rules>, Write<CombatRandom>, Read<Clock>, Write<CombatCounters>>;
+        // Shield refresh, then every armed entity's target, turret, and weapons, then the projectiles
+        // in flight.
+        void run(const View& view, float dt);
+
+    private:
+        // Turns `index`'s turret toward turret_victim (CombatProfile::turret).
+        void aim_turret(const View& view, std::size_t index, float dt);
+        // Whether `victim` is within `weapon`'s range, beyond its minimum, and of a category it fires at.
+        [[nodiscard]] bool in_reach(const View& view, std::size_t index, const WeaponProfile& weapon, std::size_t victim) const noexcept;
+        void launch(const View& view, std::size_t shooter, std::size_t victim, const WeaponProfile& weapon, const LocalPoint& mount);
+        void run_projectiles(const View& view);
+        void run_weapon(const View& view, std::size_t index);
+        // Whether this tick refreshes the entity's shield (simulation_combat.cpp).
+        [[nodiscard]] bool shield_refresh_due(const View& view, std::size_t index) const noexcept;
+        // Where a shot of `weapon` at `victim` lands relative to its aim point (WeaponProfile::inaccuracy;
+        // draws from the combat random stream), and whether that misses the victim.
+        [[nodiscard]] Vector3 stray(const View& view, const WeaponProfile& weapon, std::size_t victim);
+        // The entity a stray shot of `owner` landing at `point` hits instead of its target: the nearest
+        // live, damageable, collidable entity hostile to `owner` whose footprint holds the point.
+        [[nodiscard]] std::optional<std::size_t> stray_victim(const View& view, const Vector3& point, std::uint32_t owner, std::size_t target) const noexcept;
+        [[nodiscard]] bool strays_off(const View& view, std::size_t victim, const Vector3& stray) const noexcept;
+        // Whether `index`'s turret points at `victim` closely enough to fire (true without a turret).
+        [[nodiscard]] bool turret_aimed(const View& view, std::size_t index, std::size_t victim) const noexcept;
+        // The victim `index`'s turret turns toward: its own weapon's burst victim, else the entity's
+        // target within that weapon's reach, else the nearest hostile within it.
+        [[nodiscard]] std::optional<std::size_t> turret_victim(const View& view, std::size_t index);
+        void update_target(const View& view, std::size_t index);
+        // `mount` of `weapon`, turned with the turret when the weapon is on it.
+        [[nodiscard]] LocalPoint weapon_mount(const View& view, std::size_t index, const WeaponProfile& weapon, const LocalPoint& mount) const noexcept;
+        // The grid of positions targets are chosen from this tick, and its query scratch.
+        SpatialGrid grid_;
+        std::vector<std::uint32_t> query_;
+    };
+    CombatSystem combat_system_;
     std::uint32_t next_group_id_{1};
-    // Where shots stray (WeaponProfile::inaccuracy); part of the state.
-    Pcg32 combat_random_{combat_random_seed};
-    SpatialGrid grid_;
-    std::vector<std::uint32_t> query_;
-    std::uint64_t shots_fired_{};
-    std::uint64_t hits_{};
-    std::uint64_t kills_{};
-    std::uint64_t hardpoints_destroyed_{};
     std::vector<SimCommand> pending_;
     SimSnapshot snapshot_;
     std::uint64_t commands_applied_{};
