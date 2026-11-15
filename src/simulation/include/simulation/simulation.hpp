@@ -1180,6 +1180,11 @@ private:
         // closer past a crowd of its allies).
         std::vector<float> closest_approaches;
         std::vector<std::uint32_t> stalled_ticks;
+        // Ticks a moving ground unit has been held up (slower than give_way_held_fraction of its speed),
+        // and whether its path is a detour around standing units (followed waypoint by waypoint; a
+        // straight line to a later one may run into them). Hashed.
+        std::vector<std::uint32_t> blocked_ticks;
+        std::vector<std::uint8_t> detoured;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(move_targets);
@@ -1193,6 +1198,8 @@ private:
             visit(last_goals);
             visit(closest_approaches);
             visit(stalled_ticks);
+            visit(blocked_ticks);
+            visit(detoured);
         }
     };
     // Flight (pooled: flyers only, the entities whose recipe has a minimum speed above 0): the
@@ -1949,6 +1956,7 @@ private:
         {
             pathfinder_.reset();
             local_pathfinder_.reset();
+            detour_pathfinder_.reset();
         }
         // Route searches so far, those that ended partial, and the nodes they expanded; members
         // planned on a shared route; group members waiting in the last tick, and members released from
@@ -1981,6 +1989,11 @@ private:
         // passer has passed (or is gone, stopped, or took too long), then asks the allies in each moving
         // unit's way to step aside (RouteColumns::give_ways). From the state at the start of the tick.
         void plan_giving_way(const View& view);
+        // Detours (docs/pathfinding-design.md, 4.4; the owner, 2026-11-15: a unit with an order reaches
+        // its destination or the closest point it can): a unit held up for detour_after_seconds plans
+        // a route around the standing units near it, as obstacles, and follows it; where even that
+        // way ends where it stands, it has reached the closest point and stops.
+        void plan_detours(const View& view);
         // Whether the unit at `yielder` stepping aside to (x, y) would stand clear of every ground unit
         // but `passer` (a unit that cannot make room is not asked to).
         [[nodiscard]] bool room_at(const View& view, std::size_t yielder, std::size_t passer, float x, float y);
@@ -2014,6 +2027,13 @@ private:
     private:
         // Short legs onto and off a shared path search at most this many nodes.
         GridPathfinder local_pathfinder_{4096};
+        // Detours search the cells around a unit without chunks (standing units block cells the chunk
+        // graphs know nothing of), at most this many nodes (an engine choice).
+        static constexpr std::uint32_t detour_search_nodes = 16384;
+        GridPathfinder detour_pathfinder_{detour_search_nodes};
+        // The cells standing units block for a detour, and those marked for the current one (scratch).
+        std::vector<std::uint8_t> obstacle_cells_;
+        std::vector<std::uint32_t> marked_cells_;
         std::vector<std::uint32_t> query_;
         // Ground avoidance's scratch: a unit's nearest neighbours (squared distance, dense index) and
         // their ORCA lines.

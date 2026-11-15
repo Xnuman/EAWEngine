@@ -79,6 +79,16 @@ inline constexpr float give_way_margin = 0.25F;
 inline constexpr float give_way_seconds = 4.0F;
 inline constexpr float give_way_slower_fraction = 0.9F;
 inline constexpr float give_way_held_fraction = 0.5F;
+// Detours (plan_detours): a unit held up this long plans around the standing units within the window
+// (world units beyond its own size), each blocking the cells within their summed radii. Engine
+// choices.
+inline constexpr float detour_after_seconds = 2.0F;
+inline constexpr float detour_window = 300.0F;
+// A unit detours only when a standing unit is within this many summed radii of it (what holds it up).
+inline constexpr float detour_beside = 1.5F;
+// Detours planned a tick at most (a whole group held up at once plans over a few ticks). An engine
+// choice.
+inline constexpr std::uint32_t detours_per_tick = 4;
 // A unit heading for its destination stops where it touches (within this share of their summed radii
 // beyond contact) a standing unit that covers the destination, or, having come no closer to it by the
 // progress distance (world units) for the stall time, a standing unit of its owner nearer the

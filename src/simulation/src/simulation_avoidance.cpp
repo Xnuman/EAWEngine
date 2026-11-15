@@ -119,6 +119,7 @@ void SimulationWorld::NavigationSystem::plan_ground_avoidance(const View& view)
     // large other agents are (as contact's grid).
     avoidance.grid.build(placement.positions, radii, avoidance_cell_size);
     plan_giving_way(view);
+    plan_detours(view);
     const auto step = static_cast<float>(view.get<Clock>().tick_seconds);
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
@@ -361,6 +362,128 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
         auto& way = route.give_ways[asked.yielder];
         const auto back = way ? way->back : placement.positions[asked.yielder];
         way = GiveWay{.passer = identity.ids[asked.passer], .aside = asked.aside, .back = back};
+    }
+}
+
+void SimulationWorld::NavigationSystem::plan_detours(const View& view)
+{
+    const auto& identity = view.get<IdentityColumns>();
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& motion = view.get<MotionColumns>();
+    const auto& ground = view.get<GroundState>();
+    auto& route = view.get<RouteColumns>();
+    auto& avoidance = view.get<Avoidance>();
+    const auto& radii = avoidance.radii;
+    const auto limit = ticks_for(view, detour_after_seconds);
+    const auto& map = ground.map;
+    if (obstacle_cells_.size() != map.passability.size())
+    {
+        obstacle_cells_.assign(map.passability.size(), 0);
+    }
+    std::uint32_t planned = 0;
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
+    {
+        // Held up: moving, slower than the held share of its speed (a formation member follows its
+        // frame instead).
+        if (!ground_steers(view, index) || in_moving_frame(view, index) || length(motion.velocities[index]) >= travel_speed(view, index) * give_way_held_fraction)
+        {
+            route.blocked_ticks[index] = 0;
+            continue;
+        }
+        if (route.blocked_ticks[index] < limit)
+        {
+            ++route.blocked_ticks[index];
+        }
+        // At most detours_per_tick a tick (whole groups are held up at once); the rest on the next.
+        if (route.blocked_ticks[index] < limit || planned >= detours_per_tick)
+        {
+            continue;
+        }
+        route.blocked_ticks[index] = 0;
+        // The standing units near it block the cells within their summed radii (not those under the
+        // unit itself, where it stands).
+        const auto& here = placement.positions[index];
+        const auto own = radii[index];
+        // The cells marked are cleared again after the search (only they, not the whole map).
+        marked_cells_.clear();
+        query_.clear();
+        avoidance.grid.query_overlapping(here, own + detour_window, query_);
+        // Only a unit held by a standing unit beside it detours: a jam of moving units is avoidance's.
+        bool beside = false;
+        for (const auto other : query_)
+        {
+            if (other == index || radii[other] <= 0.0F || route.move_targets[other])
+            {
+                continue;
+            }
+            const auto& there = placement.positions[other];
+            const auto reach = own + radii[other];
+            beside = beside || distance_xy(there, here) <= reach * detour_beside;
+            const auto first_x = static_cast<long>(std::floor((there.x - reach) / map.spacing));
+            const auto last_x = static_cast<long>(std::ceil((there.x + reach) / map.spacing));
+            const auto first_y = static_cast<long>(std::floor((there.y - reach) / map.spacing));
+            const auto last_y = static_cast<long>(std::ceil((there.y + reach) / map.spacing));
+            for (auto y = std::max(0L, first_y); y <= std::min(static_cast<long>(map.height) - 1, last_y); ++y)
+            {
+                for (auto x = std::max(0L, first_x); x <= std::min(static_cast<long>(map.width) - 1, last_x); ++x)
+                {
+                    const Vector3 center{static_cast<float>(x) * map.spacing, static_cast<float>(y) * map.spacing, 0.0F};
+                    if (distance_xy(center, there) < reach && distance_xy(center, here) > own)
+                    {
+                        const auto cell = static_cast<std::uint32_t>(y) * map.width + static_cast<std::uint32_t>(x);
+                        if (obstacle_cells_[cell] == 0)
+                        {
+                            obstacle_cells_[cell] = 1;
+                            marked_cells_.push_back(cell);
+                        }
+                    }
+                }
+            }
+        }
+        const auto unmark = [&]
+        {
+            for (const auto cell : marked_cells_)
+            {
+                obstacle_cells_[cell] = 0;
+            }
+        };
+        const auto& goal = *route.move_targets[index];
+        // A goal among the standing units is taken: no way leads closer through them, and where it
+        // stops is the arrival rules' (goal_taken), which a detour would keep from ever applying.
+        const auto goal_cell = map.cell_at(goal.x, goal.y);
+        if (!beside || (goal_cell && obstacle_cells_[*goal_cell] != 0))
+        {
+            unmark();
+            continue;
+        }
+        ++planned;
+        detour_pathfinder_.set_obstacles(obstacle_cells_);
+        const auto found = detour_pathfinder_.find(map, {here.x, here.y}, {goal.x, goal.y}, footing_of(view, index));
+        detour_pathfinder_.set_obstacles({});
+        unmark();
+        ++path_searches;
+        path_expansions += found.expanded;
+        if (found.waypoints.empty())
+        {
+            continue;
+        }
+        const auto& end = found.waypoints.back();
+        if (found.status != PathStatus::reached && std::hypot(end.x - here.x, end.y - here.y) <= std::max(own, map.spacing))
+        {
+            // No way closer than where it stands: the closest point it can reach.
+            route.last_goals[index] = goal;
+            route.move_targets[index].reset();
+            route.paths[index].clear();
+            continue;
+        }
+        // Around them, then on to its goal as before (the goal stays the order's).
+        auto& path = route.paths[index];
+        path.clear();
+        for (auto waypoint = found.waypoints.rbegin(); waypoint != found.waypoints.rend(); ++waypoint)
+        {
+            path.push_back({waypoint->x, waypoint->y, 0.0F});
+        }
+        route.detoured[index] = 1;
     }
 }
 

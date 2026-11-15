@@ -236,8 +236,15 @@ Built 2026-11-15 (step 6), except the blocked-unit replans; `simulation_avoidanc
   crusher moving onto units it can crush. A unit whose step comes back empty while it should move is
   blocked: it asks for a local replan around the units in its way (as obstacles), and after a few
   failures its order ends as unreachable, as today. Built: the check (`keep_apart`, as space ships
-  had) removes the part of a step that would go deeper into a unit, so units slide along each other;
-  not built: the replans.
+  had) removes the part of a step that would go deeper into a unit, so units slide along each other.
+  Built 2026-11-15 (the owner: a unit with an order reaches its destination or the closest point it
+  can): a unit held up for 2 s beside a standing unit plans a detour (`plan_detours`): a search
+  without chunks, at most 16,384 nodes, in which the standing units within 300 units block the cells
+  within their summed radii; it follows the detour waypoint by waypoint, then goes on to its goal.
+  Where the detour ends where it stands, it has reached the closest point and stops; where its goal
+  lies among the standing units, the arrival rules decide instead. At most 4 detours a tick. A jam of
+  moving units does not detour (avoidance's). Not built: a line of allies opening a lane by giving
+  way in a chain (each asked unit needs room beside it).
 - **Arrival among others** (the owner, 2026-11-15: the closest point to the goal where it overlaps
   no one): a unit stops where it touches a standing unit on its destination, or, having come no
   closer for a second, at a standing ally between it and its destination that stopped at the end of

@@ -140,14 +140,22 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
     // passage's mouth back and forth between that line and their replanned route.
     if (allowed != 0)
     {
+        // A detour around standing units is followed waypoint by waypoint, each passed once the unit
+        // is within a cell of it: a straight line on may run into the units it goes around.
+        const bool detour = route.detoured[index] != 0;
         while (!path.empty())
         {
             const auto& after = path.size() > 1 ? path[path.size() - 2] : *target;
-            if (!ground_line_passable(ground.map, {position.x, position.y}, {after.x, after.y}, footing_of(view, index)))
+            if (detour ? std::hypot(path.back().x - position.x, path.back().y - position.y) > ground.map.spacing
+                       : !ground_line_passable(ground.map, {position.x, position.y}, {after.x, after.y}, footing_of(view, index)))
             {
                 break;
             }
             path.pop_back();
+        }
+        if (path.empty())
+        {
+            route.detoured[index] = 0;
         }
     }
     if (goal_taken(view, index))

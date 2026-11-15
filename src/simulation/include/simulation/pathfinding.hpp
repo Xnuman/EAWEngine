@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <deque>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace eaw {
@@ -85,6 +86,12 @@ public:
     void prepare(const GroundMap& ground, const Footing& footing);
     // Forgets the cached region labels.
     void reset() noexcept;
+    // Cells the next searches may not enter besides the ground's (one entry per cell, nonzero blocked;
+    // empty for none): the units a detour goes around. The caller keeps them alive and clears them.
+    void set_obstacles(std::span<const std::uint8_t> blocked) noexcept
+    {
+        obstacles_ = blocked;
+    }
 
 private:
     // Per movement class and, with clearance, per whole-unit radius (each radius its own labels:
@@ -135,6 +142,12 @@ private:
     std::vector<std::uint32_t> parent_;
     std::vector<OpenNode> open_;
     std::vector<RegionLabels> regions_;
+    std::span<const std::uint8_t> obstacles_;
+    // Whether `cell` is one of the obstacles set.
+    [[nodiscard]] bool obstacle(std::uint32_t cell) const noexcept
+    {
+        return cell < obstacles_.size() && obstacles_[cell] != 0;
+    }
 };
 
 } // namespace eaw

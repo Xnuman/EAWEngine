@@ -536,6 +536,42 @@ void test_group_move()
         require(closest >= 9.99F && std::hypot(entities[1].position.x - 150.0F, entities[1].position.y - 50.0F) < 1.0F,
                 "the ally must make way without being touched and return to its place (at " + std::to_string(entities[1].position.x) + ", " + std::to_string(entities[1].position.y) + ")");
     }
+    // A large unit sent through a line of standing allies packed too close to pass between (the owner's
+    // report, 2026-11-15: an AT-ST stopped at a line of stormtrooper squads): the line makes way, or
+    // the unit goes around it; either way it arrives, and nobody overlaps.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto walker =
+            test_spawn(world, {.type_name = "Walker", .position = {60.0F, 200.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 12.0F});
+        require(walker.ok(), "test spawn must succeed");
+        for (int index = 0; index < 9; ++index)
+        {
+            require(test_spawn(world, {.type_name = "Trooper",
+                                       .position = {200.0F, 120.0F + 20.0F * static_cast<float>(index), 0.0F},
+                                       .max_speed = 30.0F,
+                                       .follows_ground = true,
+                                       .passable_types = eaw::passability::clear,
+                                       .radius = 9.0F})
+                        .ok(),
+                    "test spawn must succeed");
+        }
+        world.submit({.kind = eaw::SimCommandKind::move, .entities = {*walker}, .target = {340.0F, 200.0F, 0.0F}});
+        float closest = 1000.0F;
+        for (int tick = 0; tick < 600; ++tick)
+        {
+            world.step();
+            const auto& entities = world.snapshot().entities;
+            for (std::size_t other = 1; other < entities.size(); ++other)
+            {
+                closest = std::min(closest, std::hypot(entities[other].position.x - entities[0].position.x, entities[other].position.y - entities[0].position.y));
+            }
+        }
+        const auto& entities = world.snapshot().entities;
+        require(!entities[0].moving && std::hypot(entities[0].position.x - 340.0F, entities[0].position.y - 200.0F) < 2.0F,
+                "a unit blocked by a line of allies must get through or around it (at " + std::to_string(entities[0].position.x) + ", " + std::to_string(entities[0].position.y) + ")");
+        require(closest >= 20.99F, "nobody may overlap the unit on its way (closest " + std::to_string(closest) + ")");
+    }
     // Destinations fit where they are ordered (the owner's model, 2026-11-15): a move onto a standing
     // unit ends beside it; a group's block ordered against ground it cannot enter shifts until every
     // member's slot fits.

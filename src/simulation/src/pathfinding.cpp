@@ -311,7 +311,7 @@ GridPathfinder::CellSearch GridPathfinder::search_cells(const GroundMap& ground,
                 return false;
             }
             const auto cell = static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx);
-            return enterable(ground, cell, footing) && held(cell);
+            return enterable(ground, cell, footing) && held(cell) && (cell == start_cell || !obstacle(cell));
         };
         for (const auto& [dx, dy] : directions)
         {
@@ -651,10 +651,29 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
     // Consecutive cell centers are always connected, so this never fails to advance.
     auto roomy = footing;
     roomy.radius = footing.radius > 0.0F ? footing.radius + wall_margin : 0.0F;
+    // With obstacles set, a straight line must also keep off their cells (sampled every half cell).
+    const auto clear_of_obstacles = [&](const PathPoint from, const PathPoint to)
+    {
+        if (obstacles_.empty())
+        {
+            return true;
+        }
+        const auto length = std::hypot(to.x - from.x, to.y - from.y);
+        const auto samples = static_cast<std::uint32_t>(std::ceil(length / (ground.spacing * 0.5F)));
+        for (std::uint32_t sample = 1; sample < samples; ++sample)
+        {
+            const auto t = static_cast<float>(sample) / static_cast<float>(samples);
+            if (obstacle(cell_of(ground, {from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t})))
+            {
+                return false;
+            }
+        }
+        return true;
+    };
     const auto furthest = [&](const std::size_t from, const Footing& room)
     {
         auto next = from + 1;
-        while (next + 1 < points.size() && ground_line_passable(ground, points[from], points[next + 1], room))
+        while (next + 1 < points.size() && ground_line_passable(ground, points[from], points[next + 1], room) && clear_of_obstacles(points[from], points[next + 1]))
         {
             ++next;
         }
