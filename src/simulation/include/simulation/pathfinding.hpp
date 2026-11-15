@@ -4,10 +4,12 @@
 // fully ordered open list make the same request on the same ground return the same waypoints.
 
 #include "math/vector.hpp"
+#include "simulation/chunk_graph.hpp"
 #include "simulation/clearance.hpp"
 #include "simulation/ground_map.hpp"
 
 #include <cstdint>
+#include <deque>
 #include <optional>
 #include <vector>
 
@@ -47,13 +49,29 @@ struct PathResult
 // when no cell qualifies.
 [[nodiscard]] std::optional<PathPoint> nearest_enterable(const GroundMap& ground, PathPoint point, const Footing& footing);
 
+// How a search uses chunks (chunk_graph.hpp; docs/pathfinding-design.md, 4.2): not at all, one level
+// of 16-cell squares, or 32-cell squares over the 16-cell ones (the two compared by the path audit).
+enum class ChunkLayout : std::uint8_t
+{
+    none,
+    one_level,
+    two_level,
+};
+inline constexpr std::uint32_t fine_chunk_cells = 16;
+inline constexpr std::uint32_t coarse_chunk_cells = 32;
+
 class GridPathfinder final
 {
 public:
-    // At most `max_expansions` nodes per search; zero means every cell of the map.
-    explicit GridPathfinder(std::uint32_t max_expansions = 0) noexcept;
+    // At most `max_expansions` nodes per search (cells, and with chunks the parts as well); zero means
+    // every cell of the map. With chunks, a search first plans over the chunk graph of its footing's
+    // size bucket and holds the cell search to the corridor of parts it found.
+    explicit GridPathfinder(std::uint32_t max_expansions = 0, ChunkLayout layout = ChunkLayout::none) noexcept;
 
     [[nodiscard]] PathResult find(const GroundMap& ground, PathPoint start, PathPoint goal, const Footing& footing);
+    // Builds now what searches with `footing` use (its size bucket's chunk graph), so the first
+    // search does not.
+    void prepare(const GroundMap& ground, const Footing& footing);
     // Forgets the cached region labels.
     void reset() noexcept;
 
@@ -77,7 +95,13 @@ private:
         std::uint32_t cell{};
     };
 
+    // The chunk graph of `footing` (at its radius) in squares of `chunk_cells`, built on first use.
+    [[nodiscard]] const ChunkGraph& chunks(const GroundMap& ground, const Footing& footing, std::uint32_t chunk_cells);
+
     std::uint32_t max_expansions_;
+    ChunkLayout layout_;
+    // A deque: a graph's reference stays valid while another is built.
+    std::deque<ChunkGraph> chunk_graphs_;
     // Per-cell search stamps: a cell's cost and parent are valid when seen_ equals search_, and it
     // is closed when closed_ does. Stamps avoid clearing the arrays for every search.
     std::uint32_t search_{};

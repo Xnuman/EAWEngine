@@ -195,12 +195,41 @@ bool ground_line_passable(const GroundMap& ground, const PathPoint from, const P
     return start_cell || passable(end_x, end_y);
 }
 
-GridPathfinder::GridPathfinder(const std::uint32_t max_expansions) noexcept : max_expansions_(max_expansions)
+GridPathfinder::GridPathfinder(const std::uint32_t max_expansions, const ChunkLayout layout) noexcept : max_expansions_(max_expansions), layout_(layout)
 {}
 
 void GridPathfinder::reset() noexcept
 {
     regions_.clear();
+    chunk_graphs_.clear();
+}
+
+void GridPathfinder::prepare(const GroundMap& ground, const Footing& footing)
+{
+    if (layout_ == ChunkLayout::none || !ground.has_passability() || footing.passable_types == 0)
+    {
+        return;
+    }
+    const auto bucket = footing.clearance != nullptr && footing.radius > 0.0F ? footing_bucket(footing.radius) : 0.0F;
+    const Footing bucket_footing(footing.passable_types, footing.clearance, bucket);
+    (void)chunks(ground, bucket_footing, fine_chunk_cells);
+    if (layout_ == ChunkLayout::two_level)
+    {
+        (void)chunks(ground, bucket_footing, coarse_chunk_cells);
+    }
+}
+
+const ChunkGraph& GridPathfinder::chunks(const GroundMap& ground, const Footing& footing, const std::uint32_t chunk_cells)
+{
+    const auto radius = static_cast<std::uint32_t>(std::max(0.0F, footing.radius));
+    for (const auto& graph : chunk_graphs_)
+    {
+        if (graph.passable_types == footing.passable_types && graph.radius == radius && graph.chunk_cells == chunk_cells && graph.part_of.size() == ground.passability.size())
+        {
+            return graph;
+        }
+    }
+    return chunk_graphs_.emplace_back(build_chunk_graph(ground, footing, chunk_cells));
 }
 
 const std::vector<std::uint32_t>& GridPathfinder::regions(const GroundMap& ground, const Footing& given)
@@ -358,6 +387,66 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
     seen_[start_cell] = search_;
     cost_[start_cell] = 0;
     parent_[start_cell] = start_cell;
+    // With chunks: the corridor of parts the chunk graph routes through, at the footing's size bucket
+    // (every corridor cell has room for the bucket, so for the unit: the search always finds the way).
+    const ChunkGraph* corridor_graph = nullptr;
+    std::vector<std::uint8_t> corridor;
+    if (layout_ != ChunkLayout::none && start_cell != goal_cell)
+    {
+        const auto bucket = footing.clearance != nullptr && footing.radius > 0.0F ? footing_bucket(footing.radius) : 0.0F;
+        const Footing bucket_footing(footing.passable_types, footing.clearance, bucket);
+        const auto& fine = chunks(ground, bucket_footing, fine_chunk_cells);
+        const auto start_part = fine.part_of[start_cell];
+        const auto goal_part = fine.part_of[goal_cell];
+        std::uint32_t abstract_expanded = 0;
+        if (start_part != 0 && goal_part != 0 && start_part != goal_part)
+        {
+            std::vector<std::uint8_t> allowed;
+            if (layout_ == ChunkLayout::two_level)
+            {
+                // The 32-cell route first; a 16-cell part lies inside one 32-cell part.
+                const auto& coarse = chunks(ground, bucket_footing, coarse_chunk_cells);
+                const auto coarse_route = chunk_route(ground, coarse, coarse.part_of[start_cell], coarse.part_of[goal_cell], {}, abstract_expanded);
+                if (!coarse_route.empty())
+                {
+                    std::vector<std::uint8_t> in_route(coarse.parts(), 0);
+                    for (const auto part : coarse_route)
+                    {
+                        in_route[part - 1U] = 1;
+                    }
+                    allowed.assign(fine.parts(), 0);
+                    for (std::size_t part = 0; part < fine.parts(); ++part)
+                    {
+                        allowed[part] = in_route[coarse.part_of[fine.center_of_part[part]] - 1U];
+                    }
+                }
+            }
+            auto route = chunk_route(ground, fine, start_part, goal_part, allowed, abstract_expanded);
+            if (route.empty() && !allowed.empty())
+            {
+                route = chunk_route(ground, fine, start_part, goal_part, {}, abstract_expanded);
+            }
+            if (!route.empty())
+            {
+                corridor.assign(fine.parts(), 0);
+                for (const auto part : route)
+                {
+                    corridor[part - 1U] = 1;
+                }
+                corridor_graph = &fine;
+            }
+        }
+        result.expanded += abstract_expanded;
+    }
+    const auto in_corridor = [&](const std::uint32_t cell)
+    {
+        if (corridor_graph == nullptr)
+        {
+            return true;
+        }
+        const auto part = corridor_graph->part_of[cell];
+        return part != 0 && corridor[part - 1U] != 0;
+    };
     const auto start_heuristic = heuristic(ground, start_cell, goal_cell);
     open_.push_back({start_heuristic, start_heuristic, start_cell});
     auto closest = start_cell;
@@ -395,7 +484,8 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
         const auto open_cell = [&](const long cx, const long cy)
         {
             return cx >= 0 && cy >= 0 && cx < static_cast<long>(ground.width) && cy < static_cast<long>(ground.height) &&
-                   enterable(ground, static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx), footing);
+                   enterable(ground, static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx), footing) &&
+                   in_corridor(static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx));
         };
         for (const auto& [dx, dy] : directions)
         {

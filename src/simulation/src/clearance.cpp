@@ -94,6 +94,18 @@ void update_clearance(ClearanceField& field, const GroundMap& ground, const Cell
     }
 }
 
+float footing_bucket(const float radius) noexcept
+{
+    for (const auto bucket : footing_buckets)
+    {
+        if (radius <= bucket)
+        {
+            return bucket;
+        }
+    }
+    return std::ceil(radius);
+}
+
 bool ground_stands(const GroundMap& ground, const Vector2 point, const Footing& footing) noexcept
 {
     // Off the grid, or without passability data, nothing constrains a unit.

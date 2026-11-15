@@ -980,6 +980,8 @@ void SimulationWorld::reserve_clearance(const std::uint32_t passable_types, cons
         ground_.clearance.push_back(clearance_field(ground_.map, passable_types, std::max(clearance_minimum_limit, radius)));
         navigation_.ground_changed();
     }
+    const auto found = std::ranges::find(ground_.clearance, passable_types, &ClearanceField::passable_types);
+    navigation_.prepare(ground_.map, Footing(passable_types, &*found, radius));
 }
 
 void SimulationWorld::refresh_clearance()

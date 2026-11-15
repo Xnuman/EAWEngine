@@ -84,9 +84,12 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
   radius. A unit plans and moves only where it fits, so a walker never plans through a trooper's
   gap, and no move can cross a gap too narrow for the unit (done 2026-11-15).
 - **Chunks**: per (mask, size), the connected components of each chunk and which components of
-  neighbouring chunks they touch, an abstract graph. Two layouts are built and compared (the owner,
-  2026-11-15): one level of 16 x 16 cells, and two levels (16 x 16 under 32 x 32), each refined
-  locally. The pathfinding audit (6, step 1) decides on stock maps of every kind.
+  neighbouring chunks they touch, an abstract graph. Two layouts were built and compared (the
+  owner, 2026-11-15): one level of 16 x 16 cells, and two levels (16 x 16 under 32 x 32). On the
+  path audit's 395,200 searches over the 76 stock land maps, one level expands 0.52 of the plain
+  search's nodes (time 0.61) with paths 0.5% longer; two levels 0.55 (time 0.69) and 1.2% longer,
+  and on no single map fewer nodes than one level. One level is kept; two levels stays a layout of
+  the pathfinder for later comparison.
 - **Changes**: a stamped footprint, wall, or shield marks its chunks dirty; they are rebuilt at the
   tick barrier (clearance within a margin, then the components) before navigation runs.
 
@@ -94,8 +97,11 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
 
 - A request plans on the chunk graph first: the chunk components to the goal. Unreachable goals end
   there, at the nearest reachable component (today's partial-path rule).
-- The exact cell path is refined only for the next few chunks (a window), by A* restricted to the
-  corridor with the abstract distance as its heuristic, and refined further as the unit gets there.
+- The exact cell path is found by A* held to the corridor of parts the chunk route passes
+  (2026-11-15). Refining only the next few chunks (a window) and continuing as the unit gets there
+  is not built: with the corridor a search costs about half as many nodes already, and continuing
+  a route needs navigation to plan again on arrival; it comes when an audit shows long searches
+  still costly.
 - Seen enemies (2) are obstacles to the local refinement and to avoidance, never to the chunk graph:
   units move, terrain does not.
 - JPS is left out for now: with four sizes and several masks its pruning gets complicated, and the

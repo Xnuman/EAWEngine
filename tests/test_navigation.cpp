@@ -489,6 +489,43 @@ void test_clearance()
             "a unit spawned where its footprint does not fit must land where it does, and nothing overlaps");
 }
 
+// Chunks (docs/pathfinding-design.md, 4.2): per square of cells, the connected parts a footing fits
+// and which neighbouring parts touch; a search held to the corridor of parts reaches what the plain
+// search reaches.
+void test_chunks()
+{
+    // 40 x 40 cells; a wall along column 20 with a gap at rows 30 to 33.
+    eaw::GroundMap ground;
+    ground.width = 40;
+    ground.height = 40;
+    ground.spacing = 10.0F;
+    ground.heights.assign(1600, 0.0F);
+    ground.passability.assign(1600, eaw::passability::clear);
+    for (std::uint32_t y = 0; y < 40; ++y)
+    {
+        if (y < 30 || y > 33)
+        {
+            ground.passability[y * 40 + 20] = eaw::passability::steep;
+        }
+    }
+    const auto graph = eaw::build_chunk_graph(ground, eaw::passability::clear, 16);
+    // Squares of 16 (columns and rows 0-15, 16-31, 32-39): the wall splits the top middle square in two;
+    // the gap joins its halves in the squares below.
+    require(graph.parts() == 10 && graph.part_of[0] != 0 && graph.part_of[20] == 0 && graph.part_of[17] != graph.part_of[22], "a wall must split a square's cells into two parts");
+    std::uint32_t expanded = 0;
+    const auto route = eaw::chunk_route(ground, graph, graph.part_of[5 * 40 + 5], graph.part_of[5 * 40 + 35], {}, expanded);
+    require(route.size() >= 4 && route.front() == graph.part_of[5 * 40 + 5] && route.back() == graph.part_of[5 * 40 + 35] && expanded > 0, "a part route must lead around the wall");
+    for (const auto layout : {eaw::ChunkLayout::one_level, eaw::ChunkLayout::two_level})
+    {
+        eaw::GridPathfinder plain;
+        eaw::GridPathfinder chunked(0, layout);
+        const auto direct = plain.find(ground, {50.0F, 50.0F}, {350.0F, 50.0F}, eaw::passability::clear);
+        const auto held = chunked.find(ground, {50.0F, 50.0F}, {350.0F, 50.0F}, eaw::passability::clear);
+        require(held.status == eaw::PathStatus::reached && direct.status == eaw::PathStatus::reached && held.expanded < direct.expanded && held.waypoints.back() == direct.waypoints.back(),
+                "a search held to the chunk corridor must reach the goal, expanding less");
+    }
+}
+
 void test_narrow_passage()
 {
     // A wall at column 15 with a gap of three cells at rows 13 to 15, room for one tank-sized unit at
@@ -698,7 +735,9 @@ void test_path_budget_and_shared_routes()
     // One group order: one shared search instead of 24 (its one request may finish on the next tick
     // when it costs more than one tick's budget).
     const auto [group_queued, group_first, grouped, grouped_arrived, group_hash] = run(true);
-    require(grouped.shared_routes == 1 && grouped.path_searches < 6 && group_queued <= 1 && grouped_arrived == 24,
+    // Searches: the shared one, legs, and replans of members whose straightened leg grazes a corner
+    // (a path held to the chunk corridor hugs corners more often); well under one per member.
+    require(grouped.shared_routes == 1 && grouped.path_searches < 12 && group_queued <= 1 && grouped_arrived == 24,
             "a formation must plan one shared route and short legs, and every member must arrive");
     require(grouped.path_expansions * 4 < individual.path_expansions, "a shared route must cost far less than searches per unit");
     (void)group_first;
@@ -1323,6 +1362,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_formations", &test_formations},
                                                   {"test_formation_teams", &test_formation_teams},
                                                   {"test_clearance", &test_clearance},
+                                                  {"test_chunks", &test_chunks},
                                                   {"test_narrow_passage", &test_narrow_passage},
                                                   {"test_group_cohesion", &test_group_cohesion},
                                                   {"test_ground_footprints", &test_ground_footprints},

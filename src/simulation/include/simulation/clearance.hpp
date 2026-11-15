@@ -6,6 +6,7 @@
 #include "math/vector.hpp"
 #include "simulation/ground_map.hpp"
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -50,6 +51,13 @@ struct Footing
     const ClearanceField* clearance{};
     float radius{};
 };
+
+// The footprint sizes connectivity is kept for (docs/pathfinding-design.md, 4.1; the owner,
+// 2026-11-15): radius up to 7, 20, 35, and 65, from the stock footprints (infantry up to 6.5, most
+// vehicles up to 20, the large ones up to 35, giant vehicles up to 63). A unit uses the smallest
+// that holds it; a larger one its own radius.
+inline constexpr std::array<float, 4> footing_buckets{7.0F, 20.0F, 35.0F, 65.0F};
+[[nodiscard]] float footing_bucket(float radius) noexcept;
 
 // Whether `footing` fits the cell (its movement class's passability and, with a field, room for
 // its radius).

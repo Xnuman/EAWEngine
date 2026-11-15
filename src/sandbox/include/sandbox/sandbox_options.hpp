@@ -9,6 +9,7 @@
 #include "render/visual_frame.hpp"
 #include "render/visual_lod.hpp"
 #include "assets/particle_rules.hpp"
+#include "simulation/pathfinding.hpp"
 
 #include <array>
 #include <cstdint>
@@ -159,8 +160,10 @@ struct SandboxOptions
     // tick.
     std::optional<std::uint64_t> ticks;
     std::optional<float> tick_rate;
-    // Path audit: start and goal pairs per map and movement class (default 100).
+    // Path audit: start and goal pairs per map and movement class (default 100), and the chunk layout
+    // searches use (--layout none, chunks, or chunks2: one or two levels).
     std::optional<std::uint32_t> pairs;
+    ChunkLayout path_layout{ChunkLayout::none};
     std::optional<std::filesystem::path> record;
     std::optional<std::filesystem::path> replay;
     // lua-survey: a folder for its api.tsv and scripts.tsv reports.

@@ -12,7 +12,6 @@
 #include "sandbox/text_format.hpp"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -29,9 +28,6 @@ namespace {
 constexpr std::uint32_t default_pairs = 100;
 constexpr std::uint64_t audit_seed = 0xA0D17A0D17ULL;
 constexpr double percentile = 0.95;
-// The footprint radii audited per movement class: the size buckets of docs/pathfinding-design.md,
-// 4.1 (stock footprints up to 7, 20, 35, and 65).
-constexpr std::array<float, 4> audit_radii{7.0F, 20.0F, 35.0F, 65.0F};
 
 struct PairResult
 {
@@ -136,11 +132,12 @@ int run_path_audit(const SandboxOptions& options, const VirtualFileSystem& vfs)
         // The battle's ground: the map's passability with the placed objects' footprints stamped.
         const Battle battle(battle_map(*asset), map_name);
         const auto& ground = battle.world().ground();
-        GridPathfinder pathfinder;
+        GridPathfinder pathfinder(0, options.path_layout);
         for (const auto& [mask, mask_name] : masks)
         {
-            const auto clearance = clearance_field(ground, mask, audit_radii.back());
-            for (const auto radius : audit_radii)
+            // Each size bucket (clearance.hpp).
+            const auto clearance = clearance_field(ground, mask, footing_buckets.back());
+            for (const auto radius : footing_buckets)
             {
                 // Starts and goals where a unit of this size fits.
                 const auto class_name = mask_name + "@" + std::to_string(static_cast<int>(radius));

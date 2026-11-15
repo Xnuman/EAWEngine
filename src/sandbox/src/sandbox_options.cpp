@@ -68,7 +68,8 @@ void print_sandbox_usage()
               << "  lua-survey         Run every script under Data/Scripts headless on recording stubs and report the\n"
               << "                     host API they use (--ticks, default 600, 10 s; --report <folder> for TSV files)\n"
               << "  path-audit         Plan seeded start and goal pairs per movement class on --map, or every land map,\n"
-              << "                     and report reach, nodes, time, and length (--pairs, default 100; --report <folder>)\n"
+              << "                     and report reach, nodes, time, and length (--pairs, default 100; --report <folder>;\n"
+              << "                     --layout none|chunks|chunks2 for the chunk layout searches use)\n"
               << "  bootstrap          Alias for doctor for older launch scripts\n"
               << "  --game-root <path> Empire at War installation root\n"
               << "  --game <eaw|foc>   Select the base game or expansion\n"
@@ -160,6 +161,26 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         else if (argument == "path-audit")
         {
             options.mode = RunMode::path_audit;
+        }
+        else if (argument == "--layout")
+        {
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            if (text == "none")
+            {
+                options.path_layout = ChunkLayout::none;
+            }
+            else if (text == "chunks")
+            {
+                options.path_layout = ChunkLayout::one_level;
+            }
+            else if (text == "chunks2")
+            {
+                options.path_layout = ChunkLayout::two_level;
+            }
+            else
+            {
+                return make_error("--layout must be none, chunks, or chunks2, got '" + text + "'");
+            }
         }
         else if (argument == "--pairs")
         {

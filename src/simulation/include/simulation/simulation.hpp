@@ -667,8 +667,9 @@ public:
     [[nodiscard]] Result<RecipeId> add_recipe(EntityRecipe recipe);
     [[nodiscard]] const EntityRecipe& recipe(RecipeId id) const;
     [[nodiscard]] std::size_t recipe_count() const noexcept;
-    // Builds the clearance of a movement class for footprints up to `radius` now (a battle does it as
-    // its map loads for every type it can spawn), so no later tick builds a whole field.
+    // Builds the clearance of a movement class for footprints up to `radius`, and the chunk graph of its
+    // size bucket, now (a battle does it as its map loads for every type it can spawn), so no later
+    // tick builds them whole.
     void reserve_clearance(std::uint32_t passable_types, float radius);
     // `squad`: the team a squad member joins (the id spawn.squad's list index resolved to).
     [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn, EntityId squad = {});
@@ -1813,7 +1814,19 @@ private:
         // Marks group members that are ahead of their group to wait this tick, and releases members
         // that stopped making progress.
         void update_group_cohesion(const View& view);
-        GridPathfinder pathfinder_;
+        // One level of 16-cell chunks: across the 76 stock land maps the path audit's searches expand
+        // 0.52 of the plain search's nodes with paths 0.5% longer, against 0.55 and 1.2% for two
+        // levels, which won on no map (2026-11-15).
+        GridPathfinder pathfinder_{0, ChunkLayout::one_level};
+
+    public:
+        // Builds what searches with `footing` use now (a battle's map load), not in a tick.
+        void prepare(const GroundMap& ground, const Footing& footing)
+        {
+            pathfinder_.prepare(ground, footing);
+        }
+
+    private:
         // Short legs onto and off a shared path search at most this many nodes.
         GridPathfinder local_pathfinder_{4096};
         std::vector<std::uint32_t> query_;
