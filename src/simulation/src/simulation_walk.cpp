@@ -151,7 +151,6 @@ bool SimulationWorld::MovementSystem::walk_straight(const View& view, const std:
     auto& locomotor = view.get<LocomotorColumns>();
     auto& ground_mover = view.get<GroundMoverColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& group = view.get<GroupColumns>();
     auto& walk_clips = view.get<ComponentPool<WalkClipColumns>>();
     auto& ground = view.get<GroundState>();
     const auto& movement = *locomotor.movements[index];
@@ -178,7 +177,7 @@ bool SimulationWorld::MovementSystem::walk_straight(const View& view, const std:
         return true;
     }
     const bool walking = walk.clip == WalkClip::starting || walk.clip == WalkClip::moving;
-    const bool destination = route.move_targets[index].has_value() && group.waiting[index] == 0;
+    const bool destination = route.move_targets[index].has_value() && !waits(view, index);
     if (walk.clip != WalkClip::stopping && (!walking || (destination && route.pending[index] == 0)))
     {
         return false;

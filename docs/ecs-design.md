@@ -597,7 +597,12 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    is the flyer test that a minimum speed above 0 was. Then formation: its order, spacing, and
    moving alone are recipe data, read from the recipe (and hashed once per recipe) instead of
    copied into columns, and a company member's team is a pool (`FormationColumns`, entities spawned
-   with a team other than the default). Group and combat are next.
+   with a team other than the default). Then group cohesion (`GroupColumns`): an entity joins the
+   pool when a formation move of more than one unit takes it and leaves it when the move ends, is
+   broken off (an engagement, a spin, a loiter, a new order), or stalls (`leave_group`), so the
+   membership changes within a tick as it did; queries look rows up per entity, since a leaving
+   member's row is refilled from the pool's last, and `waits(data, index)` is false for a
+   non-member. Combat is next.
 8. **Parallel systems.** Route searches, then contact and targeting, each verified with 1 and N
    threads giving the same hash, and measured.
 9. **Refactoring.** A review of what the migration left, its scope and plan to be agreed with the

@@ -421,6 +421,17 @@ template <class Data> bool SimulationWorld::flies(Data& data, const std::size_t 
     return data.template get<ComponentPool<FlightColumns>>().find(slot_of(data, index)).has_value();
 }
 
+template <class Data> bool SimulationWorld::waits(Data& data, const std::size_t index) noexcept
+{
+    const auto* waiting = data.template get<ComponentPool<GroupColumns>>().find(slot_of(data, index), &GroupColumns::waiting);
+    return waiting != nullptr && *waiting != 0;
+}
+
+template <class Data> void SimulationWorld::leave_group(Data& data, const std::size_t index)
+{
+    data.template get<ComponentPool<GroupColumns>>().remove(slot_of(data, index));
+}
+
 template <class Data> bool SimulationWorld::engages(Data& data, const std::size_t index, const std::size_t candidate) noexcept
 {
     auto& combat = data.template get<CombatColumns>();

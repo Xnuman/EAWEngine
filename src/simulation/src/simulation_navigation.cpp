@@ -265,7 +265,6 @@ void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
     auto& placement = view.get<PlacementColumns>();
     auto& locomotor = view.get<LocomotorColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& group = view.get<GroupColumns>();
     auto& ground = view.get<GroundState>();
     auto& avoidance = view.get<SpaceAvoidance>();
     route.detours.assign(identity.ids.size(), std::nullopt);
@@ -280,7 +279,7 @@ void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
     };
     const auto steers = [&](const std::size_t index)
     {
-        return ship(index) && route.move_targets[index] && group.waiting[index] == 0 && route.pending[index] == 0 && locomotor.max_speeds[index] > 0.0F && locomotor.suspended[index] == 0;
+        return ship(index) && route.move_targets[index] && !waits(view, index) && route.pending[index] == 0 && locomotor.max_speeds[index] > 0.0F && locomotor.suspended[index] == 0;
     };
     float largest_radius = 0.0F;
     bool any = false;
@@ -610,7 +609,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         combat_.states[index].target = {};
         combat_.states[index].ordered = false;
         locomotor_.speed_limits[index] = 0.0F;
-        group_.ids[index] = 0;
+        leave_group(*this, index);
         auto goal = command.target;
         if (ground_mover_.follows_ground[index] == 0)
         {
@@ -641,9 +640,14 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         combat_.states[index].target = {};
         combat_.states[index].ordered = false;
         locomotor_.speed_limits[index] = movers.size() > 1 ? group_speed : 0.0F;
-        group_.ids[index] = group;
-        group_.best_remaining[index] = std::numeric_limits<float>::max();
-        group_.stall_ticks[index] = 0;
+        // A lone mover has no group; the members of a new one start afresh.
+        leave_group(*this, index);
+        if (group != 0)
+        {
+            const auto row = group_.add(identity_.ids[index].index);
+            group_.columns.ids[row] = group;
+            group_.columns.best_remaining[row] = std::numeric_limits<float>::max();
+        }
         auto slot = slots[member].position;
         // Flyers keep their altitude; ground units take theirs from the surface anyway.
         if (ground_mover_.follows_ground[index] == 0)
@@ -706,9 +710,9 @@ void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
     auto& identity = view.get<IdentityColumns>();
     auto& placement = view.get<PlacementColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& group = view.get<GroupColumns>();
+    auto& group = view.get<ComponentPool<GroupColumns>>();
     waiting_members = 0;
-    group.waiting.assign(identity.ids.size(), 0);
+    std::ranges::fill(group.columns.waiting, std::uint8_t{0});
     // Furthest remaining route and largest footprint per progress, in first-seen order.
     struct GroupState
     {
@@ -719,14 +723,16 @@ void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
     std::vector<GroupState> groups;
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
-        if (group.ids[index] == 0 || !route.move_targets[index])
+        const auto row = group.find(slot_of(view, index));
+        if (!row || !route.move_targets[index])
         {
             continue;
         }
-        auto found = std::ranges::find(groups, group.ids[index], &GroupState::id);
+        const auto id = group.columns.ids[*row];
+        auto found = std::ranges::find(groups, id, &GroupState::id);
         if (found == groups.end())
         {
-            groups.push_back({group.ids[index], 0.0F, 0.0F});
+            groups.push_back({id, 0.0F, 0.0F});
             found = groups.end() - 1;
         }
         found->furthest = std::max(found->furthest, route.remaining[index]);
@@ -734,27 +740,29 @@ void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
     }
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
-        if (group.ids[index] == 0 || !route.move_targets[index])
+        // Rows are looked up per entity: a release swaps the pool's last row into its place.
+        const auto row = group.find(slot_of(view, index));
+        if (!row || !route.move_targets[index])
         {
             continue;
         }
-        const auto& progress = *std::ranges::find(groups, group.ids[index], &GroupState::id);
+        const auto& progress = *std::ranges::find(groups, group.columns.ids[*row], &GroupState::id);
         const auto slack = cohesion_slack + 4.0F * progress.largest_radius;
         if (route.remaining[index] + slack < progress.furthest)
         {
-            group.waiting[index] = 1;
+            group.columns.waiting[*row] = 1;
             ++waiting_members;
             continue;
         }
         // Progress is measured against the best remaining route reached so far.
-        if (route.remaining[index] + 0.5F < group.best_remaining[index])
+        if (route.remaining[index] + 0.5F < group.columns.best_remaining[*row])
         {
-            group.best_remaining[index] = route.remaining[index];
-            group.stall_ticks[index] = 0;
+            group.columns.best_remaining[*row] = route.remaining[index];
+            group.columns.stall_ticks[*row] = 0;
         }
-        else if (++group.stall_ticks[index] >= ticks_for(view, cohesion_stall_seconds))
+        else if (++group.columns.stall_ticks[*row] >= ticks_for(view, cohesion_stall_seconds))
         {
-            group.ids[index] = 0;
+            leave_group(view, index);
             ++released_members;
         }
     }

@@ -872,6 +872,10 @@ private:
     template <class Data> [[nodiscard]] static bool damageable(Data& data, std::size_t index) noexcept;
     // Whether the entity at `index` flies (is in the flight pool).
     template <class Data> [[nodiscard]] static bool flies(Data& data, std::size_t index) noexcept;
+    // Whether the entity at `index` waits for its formation group this tick, and its leaving its
+    // group (if it has one).
+    template <class Data> [[nodiscard]] static bool waits(Data& data, std::size_t index) noexcept;
+    template <class Data> static void leave_group(Data& data, std::size_t index);
     template <class Data> [[nodiscard]] static std::uint32_t ticks_for(Data& data, float seconds) noexcept;
 
     // What the tick's systems declare access to (the schedule below): the components of the entity
@@ -1191,8 +1195,9 @@ private:
     {
         bool operator==(const GroupColumns&) const = default;
         static constexpr SimData data = SimData::group;
-        // Formation group of a member (zero when none), the remaining route it last made progress at,
-        // ticks since then, and whether it waits this tick.
+        // Group cohesion (pooled: members of a formation group, joined by a formation move of more
+        // than one unit and left when the move ends, is broken off, or stalls): the group, the
+        // remaining route it last made progress at, ticks since then, and whether it waits this tick.
         std::vector<std::uint32_t> ids;
         std::vector<float> best_remaining;
         std::vector<std::uint32_t> stall_ticks;
@@ -1239,9 +1244,8 @@ private:
     CombatColumns combat_;
     OrderColumns orders_;
     SteeringColumns steering_;
-    GroupColumns group_;
     // Every column of the entity table, component by component.
-    // Every group of the entity table, in declaration order (identity_ first, group_ last).
+    // Every group of the entity table, in declaration order (identity_ first, steering_ last).
     template <class Visit> void for_each_group(Visit&& visit)
     {
         visit(identity_);
@@ -1253,7 +1257,6 @@ private:
         visit(combat_);
         visit(orders_);
         visit(steering_);
-        visit(group_);
     }
     template <class Visit> void for_each_column(Visit&& visit)
     {
@@ -1305,6 +1308,7 @@ private:
         visit(SimData::footprints, footprint_);
         visit(SimData::crush, crush_);
         visit(SimData::formation, formation_);
+        visit(SimData::group, group_);
         visit(SimData::ground, ground_);
         visit(SimData::path_queue, path_queue_);
         visit(SimData::projectiles, projectiles_);
@@ -1345,6 +1349,7 @@ private:
     ComponentPool<FootprintColumns> footprint_;
     ComponentPool<CrushColumns> crush_;
     ComponentPool<FormationColumns> formation_;
+    ComponentPool<GroupColumns> group_;
     [[nodiscard]] static const CrushProfile& crush_profile_in(const ComponentPool<CrushColumns>& pool, std::uint32_t slot) noexcept;
     // Remaining route length of every moving entity (zero for the rest), into route.remaining.
     static void measure_remaining_routes(RouteColumns& route, const PlacementColumns& placement);
@@ -1586,8 +1591,8 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<CombatColumns>, Read<SteeringColumns>,
-                                Write<GroupColumns>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>, Write<ComponentPool<FlightColumns>>, Read<GroundState>,
-                                Read<SpaceAvoidance>, Write<PathQueue>>;
+                                Write<ComponentPool<GroupColumns>>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>, Write<ComponentPool<FlightColumns>>,
+                                Read<GroundState>, Read<SpaceAvoidance>, Write<PathQueue>>;
         void run(const View& view, float dt);
         // Moves planned again so far because the unit's planned line no longer fit (separation pushed
         // it off, or the ground changed).
@@ -1645,7 +1650,7 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<FlightColumns>>,
-                                Read<CombatColumns>, Write<GroupColumns>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>>;
+                                Read<CombatColumns>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>>;
         // Route requests under the search budget, remaining routes, group cohesion, and space
         // avoidance, before movement.
         void run(const View& view);
@@ -1697,8 +1702,8 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<CombatColumns>, Write<OrderColumns>,
-                                Write<SteeringColumns>, Write<GroupColumns>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>, Read<GroundState>, Write<PathQueue>,
-                                Read<SlotTable>, Read<Rules>, Read<Clock>>;
+                                Write<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>, Read<GroundState>,
+                                Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>>;
         // Every entity's steering intent for this tick, from its order, stance, and target; route
         // requests for new destinations.
         void run(const View& view, float dt);

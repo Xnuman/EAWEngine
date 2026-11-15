@@ -20,7 +20,6 @@ void SimulationWorld::MovementSystem::run(const View& view, const float dt)
     auto& ground_mover = view.get<GroundMoverColumns>();
     auto& route = view.get<RouteColumns>();
     auto& steering = view.get<SteeringColumns>();
-    auto& group = view.get<GroupColumns>();
     auto& ground = view.get<GroundState>();
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
@@ -40,14 +39,14 @@ void SimulationWorld::MovementSystem::run(const View& view, const float dt)
             continue;
         }
         auto& target = route.move_targets[index];
-        if (!target || group.waiting[index] != 0 || route.pending[index] != 0)
+        if (!target || waits(view, index) || route.pending[index] != 0)
         {
             locomotor.drive_speeds[index] = 0.0F;
         }
         if (!target)
         {
             locomotor.speed_limits[index] = 0.0F;
-            group.ids[index] = 0;
+            leave_group(view, index);
             // Standing: turn in place toward the behavior layer's point, if any.
             if (const auto& face = steering.intents[index].point)
             {
@@ -60,7 +59,7 @@ void SimulationWorld::MovementSystem::run(const View& view, const float dt)
             }
             continue;
         }
-        if (group.waiting[index] != 0 || route.pending[index] != 0)
+        if (waits(view, index) || route.pending[index] != 0)
         {
             continue;
         }

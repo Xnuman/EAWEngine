@@ -63,7 +63,7 @@ void SimulationWorld::check_entity_table()
 {
     // Every column is a std::vector, all of one size whatever their element type,
     // so a group is exactly its columns, and the groups, declared one after
-    // another, span exactly the bytes from identity_ to the end of group_.
+    // another, span exactly the bytes from identity_ to the end of steering_.
     constexpr auto column_bytes = sizeof(std::vector<std::uint8_t>);
     std::size_t group_bytes = 0;
     for_each_group(
@@ -80,7 +80,7 @@ void SimulationWorld::check_entity_table()
             group_bytes += sizeof(group);
         });
     const auto first = reinterpret_cast<std::uintptr_t>(&identity_);
-    const auto end = reinterpret_cast<std::uintptr_t>(&group_) + sizeof(group_);
+    const auto end = reinterpret_cast<std::uintptr_t>(&steering_) + sizeof(steering_);
     EAW_ASSERT_MSG(end - first == group_bytes, "for_each_group must list every component group of the entity table");
 }
 
@@ -247,10 +247,6 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     locomotor_.arriving.push_back(0);
     steering_.intents.emplace_back();
     locomotor_.speed_limits.push_back(0.0F);
-    group_.ids.push_back(0);
-    group_.best_remaining.push_back(0.0F);
-    group_.stall_ticks.push_back(0);
-    group_.waiting.push_back(0);
     route_.pending.push_back(0);
     for_each_column(
         [&](const auto& column)
@@ -470,9 +466,13 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
     }
     for (std::size_t index = 0; index < count; ++index)
     {
-        hasher.add(group_.ids[index]);
-        hasher.add(group_.best_remaining[index]);
-        hasher.add(group_.stall_ticks[index]);
+        if (const auto row = group_.find(slot_of(*this, index)))
+        {
+            hasher.add(index);
+            hasher.add(group_.columns.ids[*row]);
+            hasher.add(group_.columns.best_remaining[*row]);
+            hasher.add(group_.columns.stall_ticks[*row]);
+        }
     }
     hasher.subject = StateSubject::combat;
     for (std::size_t index = 0; index < count; ++index)
@@ -661,6 +661,7 @@ void SimulationWorld::remove_entities(std::vector<std::size_t> dense)
         footprint_.remove(slot);
         crush_.remove(slot);
         formation_.remove(slot);
+        group_.remove(slot);
         // A slot whose generation would wrap is retired instead of reused.
         if (slots_.generations[slot] != std::numeric_limits<std::uint32_t>::max())
         {

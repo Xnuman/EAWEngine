@@ -683,7 +683,7 @@ bool SimulationWorld::resolve_deaths(std::vector<std::uint8_t>& handled)
             route_.move_targets[index].reset();
             route_.paths[index].clear();
             locomotor_.speed_limits[index] = 0.0F;
-            group_.ids[index] = 0;
+            leave_group(*this, index);
             orders_.standing[index].kind = StandingOrder::none;
             events_.spins.push_back({identity_.ids[index], placement_.positions[index]});
             continue;

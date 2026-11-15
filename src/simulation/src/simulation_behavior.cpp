@@ -95,7 +95,7 @@ void SimulationWorld::apply(const SimCommand& command)
             combat_.states[*dense].target = {};
             combat_.states[*dense].ordered = false;
             locomotor_.speed_limits[*dense] = 0.0F;
-            group_.ids[*dense] = 0;
+            leave_group(*this, *dense);
             if (locomotor_.max_speeds[*dense] > 0.0F)
             {
                 plan_move(*this, *dense, command.target);
@@ -103,7 +103,7 @@ void SimulationWorld::apply(const SimCommand& command)
             break;
         case SimCommandKind::stop:
             locomotor_.speed_limits[*dense] = 0.0F;
-            group_.ids[*dense] = 0;
+            leave_group(*this, *dense);
             route_.move_targets[*dense].reset();
             route_.paths[*dense].clear();
             combat_.states[*dense].target = {};
@@ -133,7 +133,7 @@ void SimulationWorld::apply(const SimCommand& command)
                 combat.target = command.target_entity;
                 combat.ordered = true;
                 locomotor_.speed_limits[*dense] = 0.0F;
-                group_.ids[*dense] = 0;
+                leave_group(*this, *dense);
                 combat.chase_timer = 0;
             }
             break;
@@ -263,7 +263,7 @@ void SimulationWorld::apply_standing_order(const SimCommand& command)
             continue;
         }
         locomotor_.speed_limits[*dense] = 0.0F;
-        group_.ids[*dense] = 0;
+        leave_group(*this, *dense);
         if (const auto anchor = command.target_entity.valid() ? dense_index(*this, command.target_entity) : std::optional<std::size_t>(); anchor)
         {
             order.point = placement_.positions[*anchor];
@@ -303,7 +303,7 @@ void SimulationWorld::teleport(const std::size_t index, const Vector3& point, co
     route_.paths[index].clear();
     route_.pending[index] = 0;
     locomotor_.speed_limits[index] = 0.0F;
-    group_.ids[index] = 0;
+    leave_group(*this, index);
     route_.loiter_points[index].reset();
     stamp_footprint(index, true);
 }
@@ -330,7 +330,6 @@ void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const
     auto& route = view.get<RouteColumns>();
     auto& combat = view.get<CombatColumns>();
     auto& orders = view.get<OrderColumns>();
-    auto& group = view.get<GroupColumns>();
     auto& order = orders.standing[index];
     if (order.kind == StandingOrder::none)
     {
@@ -398,7 +397,7 @@ void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const
                 state.ordered = true;
                 state.chase_timer = 0;
                 locomotor.speed_limits[index] = 0.0F;
-                group.ids[index] = 0;
+                leave_group(view, index);
                 order.engaging = true;
                 order.engage_origin = placement.positions[index];
                 return;
@@ -490,7 +489,6 @@ void SimulationWorld::BehaviorSystem::plan_flight(const View& view, const std::s
     auto& route = view.get<RouteColumns>();
     auto& combat = view.get<CombatColumns>();
     auto& steering = view.get<SteeringColumns>();
-    auto& group = view.get<GroupColumns>();
     auto& flight = view.get<ComponentPool<FlightColumns>>();
     auto& clock = view.get<Clock>();
     const auto& position = placement.positions[index];
@@ -533,7 +531,7 @@ void SimulationWorld::BehaviorSystem::plan_flight(const View& view, const std::s
                 route.loiter_points[index] = *target;
                 target.reset();
                 locomotor.speed_limits[index] = 0.0F;
-                group.ids[index] = 0;
+                leave_group(view, index);
             }
             return;
         }
