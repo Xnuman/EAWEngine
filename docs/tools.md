@@ -228,8 +228,11 @@ unit of that size fits. It prints, per map and class, how many reached their goa
 <folder>` writes `path-audit.tsv`, one row per pair. The pairs depend only on the map, the class, and
 the seed, so two runs plan the same ones and `scripts/compare-path-audit.ps1` compares them pair by
 pair: reach changes, the candidate's nodes and time against the reference's, and path lengths for
-pairs both reached. `--layout none|chunks|chunks2` sets the chunk layout searches use (none, the
-default; one level of 16-cell squares, the battles' layout; two levels). Node counts repeat exactly; times vary between runs by up to about 40% for a
+pairs both reached. `--layout none|chunks|chunks2|refined` sets the chunk layout searches use (none, the
+default; one level of 16-cell squares; two levels; refined, the battles' layout: 32-cell squares,
+then 16-cell ones, then cells part by part). The `first_stretch` column holds the nodes spent
+up to the refined layout's first two parts, what a lazily refined route would need before a unit
+moves. Node counts repeat exactly; times vary between runs by up to about 40% for a
 class, so compare them over repeated runs.
 
 ```powershell

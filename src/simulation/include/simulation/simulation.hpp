@@ -1814,10 +1814,11 @@ private:
         // Marks group members that are ahead of their group to wait this tick, and releases members
         // that stopped making progress.
         void update_group_cohesion(const View& view);
-        // One level of 16-cell chunks: across the 76 stock land maps the path audit's searches expand
-        // 0.52 of the plain search's nodes with paths 0.5% longer, against 0.55 and 1.2% for two
-        // levels, which won on no map (2026-11-15).
-        GridPathfinder pathfinder_{0, ChunkLayout::one_level};
+        // The refined layout, the owner's scheme: across the 76 stock land maps the path audit's
+        // searches expand 0.12 of the plain search's nodes (0.035 before the first stretch is
+        // ready), time 0.38, paths 1.5% longer, against 0.52, 0.61, and 0.5% for one level held to
+        // its corridor (2026-11-15).
+        GridPathfinder pathfinder_{0, ChunkLayout::refined};
 
     public:
         // Builds what searches with `footing` use now (a battle's map load), not in a tick.

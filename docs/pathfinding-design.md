@@ -88,8 +88,14 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
   owner, 2026-11-15): one level of 16 x 16 cells, and two levels (16 x 16 under 32 x 32). On the
   path audit's 395,200 searches over the 76 stock land maps, one level expands 0.52 of the plain
   search's nodes (time 0.61) with paths 0.5% longer; two levels 0.55 (time 0.69) and 1.2% longer,
-  and on no single map fewer nodes than one level. One level is kept; two levels stays a layout of
-  the pathfinder for later comparison.
+  and on no single map fewer nodes than one level. A third layout, refined (the owner's meaning of
+  two levels, 2026-11-15), plans over the 32-cell parts first, then over the 16-cell parts inside
+  that corridor, and searches cells part by part, each search held to its part and ending at the
+  crossing into the next part nearest the line to the goal. It expands 0.12 of the plain search's
+  nodes (the first stretch, the first two parts a lazily refined route would need before the unit
+  moves, 0.035), time 0.38, with paths 1.5% longer (21% of them
+  longer by more than 1%; the crossing is chosen greedily). Refined is the battles' layout; one and
+  two levels stay layouts of the pathfinder for comparison.
 - **Changes**: a stamped footprint, wall, or shield marks its chunks dirty; they are rebuilt at the
   tick barrier (clearance within a margin, then the components) before navigation runs.
 

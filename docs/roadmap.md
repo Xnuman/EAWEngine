@@ -194,8 +194,9 @@ rendering rows join item 2).
    g. Pathfinding, group movement, and collisions redesigned: [pathfinding-design.md](pathfinding-design.md)
       (agreed 2026-11-15), its order of work in section 5: the pathfinding audit (done 2026-11-15); the
       footprint grid for contact and staggered target timers (done 2026-11-15; sharing one grid with
-      combat and behavior waits, since separation moves units between them); clearance (each unit's own footprint, done 2026-11-15); chunks (one level of 16-cell squares, chosen over two levels on the stock maps, 2026-11-15;
-      rebuilding only changed squares and the cell search's window are still to do); formation
+      combat and behavior waits, since separation moves units between them); clearance (each unit's own footprint, done 2026-11-15); chunks (32-cell squares, then 16-cell ones, then cells part by part, chosen over one
+      and two plain levels on the stock maps, 2026-11-15; refining the rest of the route as a unit
+      advances, rebuilding only changed squares, and the cell search's window are still to do); formation
       frames; ORCA avoidance with allies giving way and units never overlapping (no pushing; only
       crushers move onto what they crush). Enemies count for planning when seen; every enemy until
       fog of war exists. The measurements behind it (separation's broad phase sized by the largest

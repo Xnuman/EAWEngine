@@ -213,10 +213,143 @@ void GridPathfinder::prepare(const GroundMap& ground, const Footing& footing)
     const auto bucket = footing.clearance != nullptr && footing.radius > 0.0F ? footing_bucket(footing.radius) : 0.0F;
     const Footing bucket_footing(footing.passable_types, footing.clearance, bucket);
     (void)chunks(ground, bucket_footing, fine_chunk_cells);
-    if (layout_ == ChunkLayout::two_level)
+    if (layout_ == ChunkLayout::two_level || layout_ == ChunkLayout::refined)
     {
         (void)chunks(ground, bucket_footing, coarse_chunk_cells);
     }
+}
+
+GridPathfinder::CellSearch GridPathfinder::search_cells(const GroundMap& ground, const Footing& footing, const std::uint32_t start_cell, const std::uint32_t goal_cell, const ChunkGraph* graph,
+                                                        const std::vector<std::uint8_t>* parts, const std::size_t budget, std::uint32_t& expanded)
+{
+    const auto cells = ground.passability.size();
+    if (seen_.size() != cells)
+    {
+        seen_.assign(cells, 0);
+        closed_.assign(cells, 0);
+        cost_.assign(cells, 0);
+        parent_.assign(cells, 0);
+        search_ = 0;
+    }
+    if (++search_ == 0)
+    {
+        // The stamp wrapped: clear the stamps once so no stale cell looks current.
+        std::ranges::fill(seen_, 0U);
+        std::ranges::fill(closed_, 0U);
+        search_ = 1;
+    }
+    // A min-heap ordered by estimate, then heuristic, then cell index: no two nodes compare equal,
+    // so the expansion order is fully determined.
+    const auto later = [](const OpenNode& left, const OpenNode& right)
+    {
+        if (left.estimate != right.estimate)
+        {
+            return left.estimate > right.estimate;
+        }
+        if (left.heuristic != right.heuristic)
+        {
+            return left.heuristic > right.heuristic;
+        }
+        return left.cell > right.cell;
+    };
+    const auto held = [&](const std::uint32_t cell)
+    {
+        if (graph == nullptr)
+        {
+            return true;
+        }
+        const auto part = graph->part_of[cell];
+        return part != 0 && (*parts)[part - 1U] != 0;
+    };
+    open_.clear();
+    seen_[start_cell] = search_;
+    cost_[start_cell] = 0;
+    parent_[start_cell] = start_cell;
+    const auto start_heuristic = heuristic(ground, start_cell, goal_cell);
+    open_.push_back({start_heuristic, start_heuristic, start_cell});
+    auto closest = start_cell;
+    auto closest_heuristic = start_heuristic;
+    std::size_t own_expanded = 0;
+    static constexpr std::array<std::array<int, 2>, 8> directions{{{1, 0}, {0, 1}, {-1, 0}, {0, -1}, {1, 1}, {-1, 1}, {-1, -1}, {1, -1}}};
+    while (!open_.empty())
+    {
+        std::ranges::pop_heap(open_, later);
+        const auto node = open_.back();
+        open_.pop_back();
+        if (closed_[node.cell] == search_)
+        {
+            continue;
+        }
+        closed_[node.cell] = search_;
+        ++expanded;
+        ++own_expanded;
+        if (node.heuristic < closest_heuristic || (node.heuristic == closest_heuristic && cost_[node.cell] < cost_[closest]))
+        {
+            closest = node.cell;
+            closest_heuristic = node.heuristic;
+        }
+        if (node.cell == goal_cell)
+        {
+            return {true, goal_cell};
+        }
+        if (own_expanded >= budget)
+        {
+            break;
+        }
+        const auto x = static_cast<long>(node.cell % ground.width);
+        const auto y = static_cast<long>(node.cell / ground.width);
+        const auto open_cell = [&](const long cx, const long cy)
+        {
+            if (cx < 0 || cy < 0 || cx >= static_cast<long>(ground.width) || cy >= static_cast<long>(ground.height))
+            {
+                return false;
+            }
+            const auto cell = static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx);
+            return enterable(ground, cell, footing) && held(cell);
+        };
+        for (const auto& [dx, dy] : directions)
+        {
+            const auto nx = x + dx;
+            const auto ny = y + dy;
+            if (!open_cell(nx, ny))
+            {
+                continue;
+            }
+            const bool diagonal = dx != 0 && dy != 0;
+            if (diagonal && (!open_cell(x + dx, y) || !open_cell(x, y + dy)))
+            {
+                continue;
+            }
+            const auto neighbor = static_cast<std::uint32_t>(ny) * ground.width + static_cast<std::uint32_t>(nx);
+            if (closed_[neighbor] == search_)
+            {
+                continue;
+            }
+            const auto cost = cost_[node.cell] + (diagonal ? diagonal_cost : straight_cost);
+            if (seen_[neighbor] != search_ || cost < cost_[neighbor])
+            {
+                seen_[neighbor] = search_;
+                cost_[neighbor] = cost;
+                parent_[neighbor] = node.cell;
+                const auto estimate_heuristic = heuristic(ground, neighbor, goal_cell);
+                open_.push_back({cost + estimate_heuristic, estimate_heuristic, neighbor});
+                std::ranges::push_heap(open_, later);
+            }
+        }
+    }
+    return {false, closest};
+}
+
+std::vector<std::uint32_t> GridPathfinder::way_back(const std::uint32_t start_cell, const std::uint32_t end) const
+{
+    std::vector<std::uint32_t> cells;
+    for (auto cell = end; cell != start_cell; cell = parent_[cell])
+    {
+        cells.push_back(cell);
+    }
+    cells.push_back(start_cell);
+    std::ranges::reverse(cells);
+    return cells;
 }
 
 const ChunkGraph& GridPathfinder::chunks(const GroundMap& ground, const Footing& footing, const std::uint32_t chunk_cells)
@@ -354,59 +487,28 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
         goal_moved = true;
     }
 
-    if (seen_.size() != cells)
-    {
-        seen_.assign(cells, 0);
-        closed_.assign(cells, 0);
-        cost_.assign(cells, 0);
-        parent_.assign(cells, 0);
-        search_ = 0;
-    }
-    if (++search_ == 0)
-    {
-        // The stamp wrapped: clear the stamps once so no stale cell looks current.
-        std::ranges::fill(seen_, 0U);
-        std::ranges::fill(closed_, 0U);
-        search_ = 1;
-    }
-    // A min-heap ordered by estimate, then heuristic, then cell index: no two nodes compare equal,
-    // so the expansion order is fully determined.
-    const auto later = [](const OpenNode& left, const OpenNode& right)
-    {
-        if (left.estimate != right.estimate)
-        {
-            return left.estimate > right.estimate;
-        }
-        if (left.heuristic != right.heuristic)
-        {
-            return left.heuristic > right.heuristic;
-        }
-        return left.cell > right.cell;
-    };
-    open_.clear();
-    seen_[start_cell] = search_;
-    cost_[start_cell] = 0;
-    parent_[start_cell] = start_cell;
-    // With chunks: the corridor of parts the chunk graph routes through, at the footing's size bucket
-    // (every corridor cell has room for the bucket, so for the unit: the search always finds the way).
-    const ChunkGraph* corridor_graph = nullptr;
-    std::vector<std::uint8_t> corridor;
+    const auto budget = max_expansions_ == 0 ? cells : std::min<std::size_t>(max_expansions_, cells);
+    // The cells of the way, start to end.
+    std::vector<std::uint32_t> way;
+    bool found = false;
+    bool chunked = false;
     if (layout_ != ChunkLayout::none && start_cell != goal_cell)
     {
+        // At the footing's size bucket: every corridor cell has room for the bucket, so for the unit,
+        // and a search held to the corridor always finds the way.
         const auto bucket = footing.clearance != nullptr && footing.radius > 0.0F ? footing_bucket(footing.radius) : 0.0F;
         const Footing bucket_footing(footing.passable_types, footing.clearance, bucket);
         const auto& fine = chunks(ground, bucket_footing, fine_chunk_cells);
         const auto start_part = fine.part_of[start_cell];
         const auto goal_part = fine.part_of[goal_cell];
-        std::uint32_t abstract_expanded = 0;
         if (start_part != 0 && goal_part != 0 && start_part != goal_part)
         {
             std::vector<std::uint8_t> allowed;
-            if (layout_ == ChunkLayout::two_level)
+            if (layout_ == ChunkLayout::two_level || layout_ == ChunkLayout::refined)
             {
                 // The 32-cell route first; a 16-cell part lies inside one 32-cell part.
                 const auto& coarse = chunks(ground, bucket_footing, coarse_chunk_cells);
-                const auto coarse_route = chunk_route(ground, coarse, coarse.part_of[start_cell], coarse.part_of[goal_cell], {}, abstract_expanded);
+                const auto coarse_route = chunk_route(ground, coarse, coarse.part_of[start_cell], coarse.part_of[goal_cell], {}, result.expanded);
                 if (!coarse_route.empty())
                 {
                     std::vector<std::uint8_t> in_route(coarse.parts(), 0);
@@ -421,119 +523,129 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
                     }
                 }
             }
-            auto route = chunk_route(ground, fine, start_part, goal_part, allowed, abstract_expanded);
+            auto route = chunk_route(ground, fine, start_part, goal_part, allowed, result.expanded);
             if (route.empty() && !allowed.empty())
             {
-                route = chunk_route(ground, fine, start_part, goal_part, {}, abstract_expanded);
+                route = chunk_route(ground, fine, start_part, goal_part, {}, result.expanded);
             }
-            if (!route.empty())
+            if (!route.empty() && layout_ == ChunkLayout::refined)
             {
-                corridor.assign(fine.parts(), 0);
+                // Part by part: from where the route enters the part to its best crossing into the next
+                // (least cost so far plus estimate on), held to the part.
+                std::vector<std::uint8_t> only(fine.parts(), 0);
+                auto current = start_cell;
+                way.push_back(start_cell);
+                chunked = true;
+                for (std::size_t step = 0; step < route.size(); ++step)
+                {
+                    const auto part = route[step];
+                    auto target = goal_cell;
+                    std::optional<std::uint32_t> across;
+                    if (step + 1 < route.size())
+                    {
+                        const auto next = route[step + 1];
+                        const auto center = fine.center_of_part[part - 1U];
+                        const auto first_x = center % ground.width / fine_chunk_cells * fine_chunk_cells;
+                        const auto first_y = center / ground.width / fine_chunk_cells * fine_chunk_cells;
+                        auto best = std::numeric_limits<std::uint32_t>::max();
+                        for (auto y = first_y; y < std::min(ground.height, first_y + fine_chunk_cells); ++y)
+                        {
+                            for (auto x = first_x; x < std::min(ground.width, first_x + fine_chunk_cells); ++x)
+                            {
+                                const auto cell = y * ground.width + x;
+                                if (fine.part_of[cell] != part)
+                                {
+                                    continue;
+                                }
+                                for (const auto other :
+                                     {x > 0 ? cell - 1U : cell, x + 1U < ground.width ? cell + 1U : cell, y > 0 ? cell - ground.width : cell, y + 1U < ground.height ? cell + ground.width : cell})
+                                {
+                                    if (other == cell || fine.part_of[other] != next)
+                                    {
+                                        continue;
+                                    }
+                                    const auto score = heuristic(ground, current, cell) + heuristic(ground, other, goal_cell);
+                                    if (score < best)
+                                    {
+                                        best = score;
+                                        target = cell;
+                                        across = other;
+                                    }
+                                }
+                            }
+                        }
+                        if (!across)
+                        {
+                            chunked = false;
+                            break;
+                        }
+                    }
+                    only[part - 1U] = 1;
+                    const auto piece = search_cells(ground, footing, current, target, &fine, &only, budget, result.expanded);
+                    only[part - 1U] = 0;
+                    if (!piece.found)
+                    {
+                        chunked = false;
+                        break;
+                    }
+                    const auto cells_of_piece = way_back(current, target);
+                    way.insert(way.end(), cells_of_piece.begin() + 1, cells_of_piece.end());
+                    if (step + 1 == refined_first_chunks)
+                    {
+                        result.first_stretch_expanded = result.expanded;
+                    }
+                    if (across)
+                    {
+                        way.push_back(*across);
+                        current = *across;
+                    }
+                }
+                if (!chunked)
+                {
+                    way.clear();
+                }
+                found = chunked;
+            }
+            else if (!route.empty())
+            {
+                std::vector<std::uint8_t> corridor(fine.parts(), 0);
                 for (const auto part : route)
                 {
                     corridor[part - 1U] = 1;
                 }
-                corridor_graph = &fine;
+                const auto searched = search_cells(ground, footing, start_cell, goal_cell, &fine, &corridor, budget, result.expanded);
+                found = searched.found;
+                way = way_back(start_cell, searched.end);
+                chunked = true;
             }
         }
-        result.expanded += abstract_expanded;
     }
-    const auto in_corridor = [&](const std::uint32_t cell)
+    if (!chunked)
     {
-        if (corridor_graph == nullptr)
-        {
-            return true;
-        }
-        const auto part = corridor_graph->part_of[cell];
-        return part != 0 && corridor[part - 1U] != 0;
-    };
-    const auto start_heuristic = heuristic(ground, start_cell, goal_cell);
-    open_.push_back({start_heuristic, start_heuristic, start_cell});
-    auto closest = start_cell;
-    auto closest_heuristic = start_heuristic;
-    const auto budget = max_expansions_ == 0 ? cells : std::min<std::size_t>(max_expansions_, cells);
-    bool found = false;
-    static constexpr std::array<std::array<int, 2>, 8> directions{{{1, 0}, {0, 1}, {-1, 0}, {0, -1}, {1, 1}, {-1, 1}, {-1, -1}, {1, -1}}};
-    while (!open_.empty())
+        const auto searched = search_cells(ground, footing, start_cell, goal_cell, nullptr, nullptr, budget, result.expanded);
+        found = searched.found;
+        way = way_back(start_cell, searched.end);
+    }
+    if (result.first_stretch_expanded == 0)
     {
-        std::ranges::pop_heap(open_, later);
-        const auto node = open_.back();
-        open_.pop_back();
-        if (closed_[node.cell] == search_)
-        {
-            continue;
-        }
-        closed_[node.cell] = search_;
-        ++result.expanded;
-        if (node.heuristic < closest_heuristic || (node.heuristic == closest_heuristic && cost_[node.cell] < cost_[closest]))
-        {
-            closest = node.cell;
-            closest_heuristic = node.heuristic;
-        }
-        if (node.cell == goal_cell)
-        {
-            found = true;
-            break;
-        }
-        if (result.expanded >= budget)
-        {
-            break;
-        }
-        const auto x = static_cast<long>(node.cell % ground.width);
-        const auto y = static_cast<long>(node.cell / ground.width);
-        const auto open_cell = [&](const long cx, const long cy)
-        {
-            return cx >= 0 && cy >= 0 && cx < static_cast<long>(ground.width) && cy < static_cast<long>(ground.height) &&
-                   enterable(ground, static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx), footing) &&
-                   in_corridor(static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx));
-        };
-        for (const auto& [dx, dy] : directions)
-        {
-            const auto nx = x + dx;
-            const auto ny = y + dy;
-            if (!open_cell(nx, ny))
-            {
-                continue;
-            }
-            const bool diagonal = dx != 0 && dy != 0;
-            if (diagonal && (!open_cell(x + dx, y) || !open_cell(x, y + dy)))
-            {
-                continue;
-            }
-            const auto neighbor = static_cast<std::uint32_t>(ny) * ground.width + static_cast<std::uint32_t>(nx);
-            if (closed_[neighbor] == search_)
-            {
-                continue;
-            }
-            const auto cost = cost_[node.cell] + (diagonal ? diagonal_cost : straight_cost);
-            if (seen_[neighbor] != search_ || cost < cost_[neighbor])
-            {
-                seen_[neighbor] = search_;
-                cost_[neighbor] = cost;
-                parent_[neighbor] = node.cell;
-                const auto estimate_heuristic = heuristic(ground, neighbor, goal_cell);
-                open_.push_back({cost + estimate_heuristic, estimate_heuristic, neighbor});
-                std::ranges::push_heap(open_, later);
-            }
-        }
+        result.first_stretch_expanded = result.expanded;
     }
 
-    const auto end_cell = found ? goal_cell : closest;
-    // Cell path from the start to the end (start included), then the exact goal when it was reached.
+    // Points from the start to the end (the start's own point first), then the exact goal when it
+    // was reached.
     std::vector<PathPoint> points;
-    for (auto cell = end_cell; cell != start_cell; cell = parent_[cell])
-    {
-        points.push_back(cell_center(ground, cell));
-    }
-    points.push_back(start);
     if (escaping)
     {
         points.push_back(origin);
     }
-    std::ranges::reverse(points);
+    points.push_back(start);
+    for (std::size_t index = 1; index < way.size(); ++index)
+    {
+        points.push_back(cell_center(ground, way[index]));
+    }
     if (found)
     {
-        if (points.size() > 1)
+        if (points.size() > 1 + (escaping ? 1U : 0U))
         {
             points.back() = goal;
         }

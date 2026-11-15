@@ -35,6 +35,7 @@ struct PairResult
     PathPoint goal;
     PathStatus status{};
     std::uint32_t expanded{};
+    std::uint32_t first_stretch{};
     float length{};
     double microseconds{};
 };
@@ -114,7 +115,7 @@ int run_path_audit(const SandboxOptions& options, const VirtualFileSystem& vfs)
     const auto pairs = options.pairs.value_or(default_pairs);
     const auto masks = class_masks(vfs);
     std::ostringstream rows;
-    rows << "map\tclass\tmask\tpair\tstart_x\tstart_y\tgoal_x\tgoal_y\tstatus\texpanded\tlength\tmicroseconds\n";
+    rows << "map\tclass\tmask\tpair\tstart_x\tstart_y\tgoal_x\tgoal_y\tstatus\texpanded\tfirst_stretch\tlength\tmicroseconds\n";
     std::size_t built = 0;
     std::vector<std::uint32_t> all_expanded;
     std::vector<double> all_microseconds;
@@ -170,12 +171,13 @@ int run_path_audit(const SandboxOptions& options, const VirtualFileSystem& vfs)
                     result.microseconds = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count();
                     result.status = found.status;
                     result.expanded = found.expanded;
+                    result.first_stretch = found.first_stretch_expanded;
                     result.length = path_length(result.start, found.waypoints);
                     rows << map_name << '\t' << class_name << '\t' << mask << '\t' << pair << '\t' << result.start.x << '\t' << result.start.y << '\t' << result.goal.x << '\t' << result.goal.y << '\t'
                          << (result.status == PathStatus::reached   ? "reached"
                              : result.status == PathStatus::partial ? "partial"
                                                                     : "unavailable")
-                         << '\t' << result.expanded << '\t' << format_fixed(result.length, 1) << '\t' << format_fixed(result.microseconds, 1) << '\n';
+                         << '\t' << result.expanded << '\t' << result.first_stretch << '\t' << format_fixed(result.length, 1) << '\t' << format_fixed(result.microseconds, 1) << '\n';
                     results.push_back(result);
                 }
                 std::vector<std::uint32_t> expanded;
