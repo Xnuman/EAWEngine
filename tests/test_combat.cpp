@@ -271,9 +271,10 @@ void test_hardpoints_and_fire_cones()
         const auto victim = test_spawn(world, {.type_name = "Victim", .owner = 2, .position = {0.0F, 0.0F, 0.0F}, .max_speed = 40.0F, .combat = victim_profile});
         (void)test_spawn(world, {.type_name = "Gun", .owner = 1, .position = {-200.0F, 0.0F, 0.0F}, .combat = gun});
         require(victim.ok(), "test spawn must succeed");
-        // Four shots of 10: three destroy the 30-point engine, the fourth moves on to the next part.
+        // Four shots of 10: three destroy the 30-point engine, the fourth moves on to the next part
+        // (the first search waits for the gun's retarget phase).
         std::vector<eaw::HardpointDeathSnapshot> fallen;
-        for (int tick = 0; tick < 4; ++tick)
+        for (int tick = 0; tick < 20 && world.stats().shots_fired < 4; ++tick)
         {
             world.step();
             fallen.insert(fallen.end(), world.snapshot().hardpoint_deaths.begin(), world.snapshot().hardpoint_deaths.end());
@@ -304,8 +305,9 @@ void test_hardpoints_and_fire_cones()
         gun.weapons = {eaw::WeaponProfile{.range = 500.0F, .recharge_seconds = 0.1F, .damage = 10.0F, .damages_shield = false}};
         const auto victim = test_spawn(world, {.type_name = "Hulk", .owner = 2, .combat = hulk});
         (void)test_spawn(world, {.type_name = "Gun", .owner = 1, .position = {-200.0F, 0.0F, 0.0F}, .combat = gun});
-        // Two shots of 10 destroy the 20-point part.
-        for (int tick = 0; tick < 2; ++tick)
+        // Two shots of 10 destroy the 20-point part (the first search waits for the gun's retarget
+        // phase).
+        for (int tick = 0; tick < 20 && world.stats().shots_fired < 2; ++tick)
         {
             world.step();
         }
@@ -1042,17 +1044,18 @@ void test_damage_resolution()
     gun.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 10.0F, .damage = 10.0F}};
     eaw::CombatProfile sturdy;
     sturdy.health = 1000.0F;
-    // Two shooters fire at once at a target the first shot kills: both shots land, the second on
-    // the dead body, without damage.
+    // Two shooters ordered at a target fire at once, and the first shot kills: both shots land, the
+    // second on the dead body, without damage.
     {
         eaw::SimulationWorld world(0.1);
         world.set_hostility(hostility);
         eaw::CombatProfile frail;
         frail.health = 10.0F;
-        (void)test_spawn(world, {.type_name = "First", .owner = 1, .combat = gun});
-        (void)test_spawn(world, {.type_name = "Second", .owner = 1, .position = {0.0F, 10.0F, 0.0F}, .combat = gun});
+        const auto first = test_spawn(world, {.type_name = "First", .owner = 1, .combat = gun});
+        const auto second = test_spawn(world, {.type_name = "Second", .owner = 1, .position = {0.0F, 10.0F, 0.0F}, .combat = gun});
         const auto target = test_spawn(world, {.type_name = "Target", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = frail});
-        require(target.ok(), "test spawn must succeed");
+        require(first.ok() && second.ok() && target.ok(), "test spawns must succeed");
+        world.submit({.kind = eaw::SimCommandKind::attack, .entities = {*first, *second}, .target_entity = *target});
         world.step();
         const auto& impacts = world.snapshot().impacts;
         require(!world.alive(*target) && world.stats().kills == 1 && world.stats().hits == 2 && impacts.size() == 2 && impacts[0].target == *target && impacts[1].target == *target &&

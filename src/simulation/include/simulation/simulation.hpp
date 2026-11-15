@@ -1843,6 +1843,9 @@ private:
         void run_weapon(const View& view, std::size_t index);
         // Whether this tick refreshes the entity's shield (simulation_combat.cpp).
         [[nodiscard]] bool shield_refresh_due(const View& view, std::size_t index) const noexcept;
+        // Whether this tick is the entity's retarget beat (every retarget_seconds, at a phase from
+        // its slot): when a weapon looks for a victim of its own.
+        [[nodiscard]] bool retarget_due(const View& view, std::size_t index) const noexcept;
         // Where a shot of `weapon` at `victim` lands relative to its aim point (WeaponProfile::inaccuracy;
         // draws from the combat random stream), and whether that misses the victim.
         [[nodiscard]] Vector3 stray(const View& view, const WeaponProfile& weapon, std::size_t victim);

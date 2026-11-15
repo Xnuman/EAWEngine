@@ -242,6 +242,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     {
         auto& state = combat_.columns.states[combat_.add(slot)];
         state = {.profile = &profile, .health = profile.health, .shield = profile.shield, .stance = spawn.stance, .aims_with_body = recipe.aims_with_body};
+        // The first target search at a phase from the slot, so the units of a battle do not all
+        // search in its first tick.
+        state.retarget_timer = slot % std::max(1U, ticks_for(*this, retarget_seconds));
         state.weapons.resize(profile.weapons.size());
         for (const auto& hardpoint : profile.hardpoints)
         {

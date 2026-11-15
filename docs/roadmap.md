@@ -192,8 +192,9 @@ rendering rows join item 2).
       [pathfinding-design.md](pathfinding-design.md). Done 2026-11-15 (team entities; companies
       spawn as squads; the sandbox selects them by their soldiers).
    g. Pathfinding, group movement, and collisions redesigned: [pathfinding-design.md](pathfinding-design.md)
-      (agreed 2026-11-15), its order of work in section 5: the pathfinding audit (done 2026-11-15); the shared,
-      size-binned spatial index and staggered target timers; clearance per size class
+      (agreed 2026-11-15), its order of work in section 5: the pathfinding audit (done 2026-11-15); the
+      footprint grid for contact and staggered target timers (done 2026-11-15; sharing one grid with
+      combat and behavior waits, since separation moves units between them); clearance per size class
       (`UnitCollisionClass`); chunks, one level and two levels compared on stock maps; formation
       frames; ORCA avoidance with allies giving way and units never overlapping (no pushing; only
       crushers move onto what they crush). Enemies count for planning when seen; every enemy until

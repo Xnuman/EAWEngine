@@ -31,6 +31,14 @@ const Hostility& SimulationWorld::hostility() const noexcept
 // EaW-Revised's S-15, S-51, S-52, docs/compatibility-research.md). How the original chooses the
 // phase is not observed; one from the entity's stable id spreads units the same way (an engine
 // choice), and keeps the refresh a function of the tick, so it adds no state to hash.
+bool SimulationWorld::CombatSystem::retarget_due(const View& view, const std::size_t index) const noexcept
+{
+    auto& identity = view.get<IdentityColumns>();
+    auto& clock = view.get<Clock>();
+    const auto interval = static_cast<std::uint64_t>(std::max(1U, ticks_for(view, retarget_seconds)));
+    return (clock.tick + identity.ids[index].index) % interval == 0;
+}
+
 bool SimulationWorld::CombatSystem::shield_refresh_due(const View& view, const std::size_t index) const noexcept
 {
     auto& identity = view.get<IdentityColumns>();
@@ -339,8 +347,10 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
             {
                 victim = entity_target;
             }
-            else if ((!fighter.ordered || !entity_target) && combat_state(view, index).stance != Stance::hold_fire)
+            else if ((!fighter.ordered || !entity_target) && combat_state(view, index).stance != Stance::hold_fire && retarget_due(view, index))
             {
+                // A weapon its unit's target is out of reach of looks for its own on the unit's
+                // retarget beat, not every tick.
                 victim = choose_target(view, grid_, query_, index, placement.positions[index], weapon.range, covers);
             }
             if (!victim)
