@@ -1864,6 +1864,8 @@ private:
         // arrival_stall_seconds, a standing agent of its owner nearer that point. It then stops where
         // it is, the point closest to the goal where it overlaps no one (the owner, 2026-11-15).
         [[nodiscard]] bool goal_taken(const View& view, std::size_t index);
+        // goal_taken's scratch: the agents at the goal.
+        std::vector<std::uint32_t> goal_query_;
         // One entity's ground movement this tick, along its route at move_speed (physical movement only:
         // where it goes is the behavior layer's).
         void move_over_ground(const View& view, std::size_t index, float dt);

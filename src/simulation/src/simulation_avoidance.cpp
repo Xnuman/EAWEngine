@@ -241,6 +241,7 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
         else
         {
             way->returning = true;
+            way->ticks = 0;
         }
     }
     // Asking: an ally in a moving unit's corridor (its footprint swept ahead) steps sideways out of
@@ -519,6 +520,21 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
     const auto owner = view.get<IdentityColumns>().owners[index];
     query_.clear();
     avoidance.grid.query_overlapping(here, radius * 5.0F + avoidance.largest_radius * taken_goal_margin, query_);
+    // Standing: no move of its own, and not giving way (a unit stepping aside is no crowd).
+    const auto standing_at = [&](const std::size_t other)
+    {
+        return !route.move_targets[other] && !route.give_ways[other];
+    };
+    // A crowd only stops a unit whose own goal is taken: in a group move each member has a slot of its
+    // own, and group-mates standing in theirs are no crowd at its goal (the owner's report: units
+    // stopped while others had not finished giving way).
+    goal_query_.clear();
+    avoidance.grid.query_overlapping(goal, radius, goal_query_);
+    const bool occupied = std::ranges::any_of(goal_query_,
+                                              [&](const std::uint32_t other)
+                                              {
+                                                  return other != index && radii[other] > 0.0F && standing_at(other) && distance_xy(placement.positions[other], goal) < radius + radii[other];
+                                              });
     return std::ranges::any_of(query_,
                                [&](const std::uint32_t other)
                                {
@@ -530,7 +546,7 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
                                    const auto reach = radius + radii[other];
                                    const auto from_goal = std::hypot(goal.x - there.x, goal.y - there.y);
                                    const auto apart = std::hypot(here.x - there.x, here.y - there.y);
-                                   const bool standing = !route.move_targets[other];
+                                   const bool standing = standing_at(other);
                                    // Its goal under a standing unit it touches.
                                    if (standing && from_goal < reach && apart <= reach * (1.0F + taken_goal_margin))
                                    {
@@ -548,7 +564,7 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
                                    const auto& stopped_at = route.last_goals[other];
                                    const auto& serials = view.get<OrderColumns>().command_serials;
                                    const bool same_order = serials[other] == serials[index];
-                                   return stalled && standing && stopped_at && (same_order || distance_xy(*stopped_at, goal) < reach * taken_goal_crowd) &&
+                                   return occupied && stalled && standing && stopped_at && (same_order || distance_xy(*stopped_at, goal) < reach * taken_goal_crowd) &&
                                           view.get<IdentityColumns>().owners[other] == owner && from_goal < own_distance && apart <= reach + 4.0F * radius;
                                });
 }
@@ -577,8 +593,15 @@ void SimulationWorld::MovementSystem::give_way_step(const View& view, const std:
     const auto moved = keep_apart(view, index, {to.x / distance * travel, to.y / distance * travel, 0.0F});
     if (moved.x == 0.0F && moved.y == 0.0F)
     {
-        // Units stand in its way aside (it cannot make room) or back (its spot is taken): it stays
-        // where it is instead of standing frozen in the crowd until giving way times out.
+        // Units stand in its way aside: it cannot make room, and stays where it is instead of standing
+        // frozen in the crowd until giving way times out. On its way back it waits for the way to
+        // clear (the unit it made way for often still stands in it), at most the giving-way limit;
+        // giving up at once, units that had given way stayed aside (the owner's report).
+        if (way->returning && ++way->ticks <= ticks_for(view, give_way_seconds))
+        {
+            (void)drive(view, index, 0.0F, dt);
+            return;
+        }
         way.reset();
         return;
     }

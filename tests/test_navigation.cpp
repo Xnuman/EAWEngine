@@ -533,7 +533,48 @@ void test_group_move()
         const auto& entities = world.snapshot().entities;
         require(!entities[0].moving && std::hypot(entities[0].position.x - 300.0F, entities[0].position.y - 50.0F) < 1.0F,
                 "a unit sent past a standing ally must get by it, not stop at it (at " + std::to_string(entities[0].position.x) + ", " + std::to_string(entities[0].position.y) + ")");
-        require(closest >= 9.99F && std::hypot(entities[1].position.x - 150.0F, entities[1].position.y - 50.0F) < 15.0F, "the ally must make way without being touched and stay near its place");
+        require(closest >= 9.99F && std::hypot(entities[1].position.x - 150.0F, entities[1].position.y - 50.0F) < 1.0F,
+                "the ally must make way without being touched and return to its place (at " + std::to_string(entities[1].position.x) + ", " + std::to_string(entities[1].position.y) + ")");
+    }
+    // Six in a column in a corridor five cells wide, one group move ahead: the ones whose slots lie past
+    // group-mates already standing in theirs get by them (the owner's report: units stopped while others
+    // had not finished giving way), and everyone reaches the target's area.
+    {
+        auto corridor = ground;
+        for (std::uint32_t y = 0; y < 40; ++y)
+        {
+            for (std::uint32_t x = 0; x < 40; ++x)
+            {
+                if (y < 3 || y > 7)
+                {
+                    corridor.passability[y * 40 + x] = eaw::passability::steep;
+                }
+            }
+        }
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(corridor);
+        std::vector<eaw::EntityId> column;
+        for (int index = 0; index < 6; ++index)
+        {
+            const auto id = test_spawn(world, {.type_name = "Trooper",
+                                               .position = {40.0F + 16.0F * static_cast<float>(index), 50.0F, 0.0F},
+                                               .max_speed = 30.0F,
+                                               .follows_ground = true,
+                                               .passable_types = eaw::passability::clear,
+                                               .radius = 5.0F});
+            require(id.ok(), "test spawn must succeed");
+            column.push_back(*id);
+        }
+        world.submit({.kind = eaw::SimCommandKind::group_move, .entities = column, .target = {300.0F, 50.0F, 0.0F}});
+        for (int tick = 0; tick < 400; ++tick)
+        {
+            world.step();
+        }
+        for (const auto& entity : world.snapshot().entities)
+        {
+            require(!entity.moving && entity.position.x > 260.0F, "every member of a group move must reach the target's area (one stands at " + std::to_string(entity.position.x) + ", " +
+                                                                      std::to_string(entity.position.y) + (entity.moving ? ", moving" : "") + ")");
+        }
     }
 }
 

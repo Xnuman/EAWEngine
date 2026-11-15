@@ -16,20 +16,38 @@ struct Squad
     std::vector<eaw::EntityId> members;
 };
 
-// A team of `count` armed soldiers of `owner` at `at`, in a dartboard ring.
-Squad make_squad(eaw::SimulationWorld& world, const std::uint32_t owner, const eaw::Vector3 at, const std::size_t count, const float health = 50.0F)
+// A team of `count` armed soldiers of `owner` at `at`, in a dartboard ring; on the ground (followed,
+// clear passability) when `grounded`.
+Squad make_squad(eaw::SimulationWorld& world, const std::uint32_t owner, const eaw::Vector3 at, const std::size_t count, const float health = 50.0F, const bool grounded = false)
 {
     Squad squad;
-    squad.team = expect_ok(test_spawn(world, {.type_name = "Team", .owner = owner, .position = at, .max_speed = 8.0F, .turn_rate = 10.0F, .team = eaw::TeamArrangement::dartboard}), "spawning a team");
+    const auto passable = grounded ? eaw::passability::clear : 0U;
+    squad.team = expect_ok(test_spawn(world, {.type_name = "Team",
+                                              .owner = owner,
+                                              .position = at,
+                                              .max_speed = 8.0F,
+                                              .follows_ground = grounded,
+                                              .passable_types = passable,
+                                              .turn_rate = 10.0F,
+                                              .team = eaw::TeamArrangement::dartboard}),
+                           "spawning a team");
     eaw::CombatProfile soldier;
     soldier.health = health;
     soldier.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 0.5F, .damage = 10.0F}};
     for (std::size_t index = 0; index < count; ++index)
     {
-        squad.members.push_back(expect_ok(
-            test_spawn(world,
-                       {.type_name = "Soldier", .owner = owner, .position = at, .max_speed = 10.0F, .selectable = false, .combat = soldier, .radius = 2.0F, .turn_rate = 10.0F, .squad = squad.team}),
-            "spawning a soldier"));
+        squad.members.push_back(expect_ok(test_spawn(world, {.type_name = "Soldier",
+                                                             .owner = owner,
+                                                             .position = at,
+                                                             .max_speed = 10.0F,
+                                                             .selectable = false,
+                                                             .follows_ground = grounded,
+                                                             .passable_types = passable,
+                                                             .combat = soldier,
+                                                             .radius = 2.0F,
+                                                             .turn_rate = 10.0F,
+                                                             .squad = squad.team}),
+                                          "spawning a soldier"));
     }
     return squad;
 }
@@ -124,6 +142,50 @@ void test_squads()
                                          }) &&
                     world.alive(loner),
                 "destroying a team destroys its members, and nothing else");
+    }
+    // A squad sent through a squad standing in a corridor (the owner's report, 2026-11-15: companies
+    // stopped at a standing squad, and squads that gave way did not return): the standing squad makes
+    // way and returns to its place; the other gets through and arrives.
+    {
+        eaw::GroundMap ground;
+        ground.width = 60;
+        ground.height = 30;
+        ground.spacing = 10.0F;
+        ground.heights.assign(1800, 0.0F);
+        ground.passability.assign(1800, eaw::passability::clear);
+        for (std::uint32_t y = 0; y < 30; ++y)
+        {
+            for (std::uint32_t x = 0; x < 60; ++x)
+            {
+                if (y < 13 || y > 17)
+                {
+                    ground.passability[y * 60 + x] = eaw::passability::steep;
+                }
+            }
+        }
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        // The standing squad walked to its place (so it stopped at the end of a move of its own).
+        const auto standing = make_squad(world, 1, {250.0F, 150.0F, 0.0F}, 5, 50.0F, true);
+        const auto passing = make_squad(world, 1, {100.0F, 150.0F, 0.0F}, 5, 50.0F, true);
+        world.submit({.kind = eaw::SimCommandKind::group_move, .entities = {standing.team}, .target = {300.0F, 150.0F, 0.0F}});
+        for (int tick = 0; tick < 150; ++tick)
+        {
+            world.step();
+        }
+        const auto home = entity(world, standing.team).position;
+        world.submit({.kind = eaw::SimCommandKind::group_move, .entities = {passing.team}, .target = {400.0F, 150.0F, 0.0F}});
+        for (int tick = 0; tick < 1200; ++tick)
+        {
+            world.step();
+        }
+        const auto& passed = entity(world, passing.team);
+        const auto& returned = entity(world, standing.team);
+        require(!passed.moving && std::hypot(passed.position.x - 400.0F, passed.position.y - 150.0F) < 10.0F,
+                "a squad sent through a standing squad must get by it and arrive (at " + std::to_string(passed.position.x) + ", " + std::to_string(passed.position.y) + ")");
+        require(!returned.moving && std::hypot(returned.position.x - home.x, returned.position.y - home.y) < 2.0F,
+                "a squad that made way must return to its place (at " + std::to_string(returned.position.x) + ", " + std::to_string(returned.position.y) + ", home " + std::to_string(home.x) + ", " +
+                    std::to_string(home.y) + ")");
     }
 }
 

@@ -44,7 +44,7 @@ $battles = @(
 )
 if ($Extended) {
     $battles += @(
-        @{ Name = 'large Utapau'; Expected = '0xfe563a56bdbebc10'
+        @{ Name = 'large Utapau'; Expected = '0x238037dcf961c8eb'
             Arguments = @('--map', $utapau, '--spawn', 'Rebel_Infantry_Squad:80@1', '--spawn', 'Imperial_Stormtrooper_Squad:80@2', '--spawn', 'T2B_Tank:60@1',
                 '--spawn', 'AT_ST_Walker:40@2', '--auto-move', '--ticks', '1800') },
         @{ Name = 'Kuat fighters'; Expected = '0xfc6e0d71f7abc370'
@@ -52,7 +52,7 @@ if ($Extended) {
         @{ Name = 'Kuat capital ships'; Expected = '0xb1e6c3387e816e54'
             Arguments = @('--map', $kuat, '--spawn', 'Nebulon_B_Frigate:4@1', '--spawn', 'Corellian_Corvette:6@1', '--spawn', 'Acclamator_Assault_Ship:3@2',
                 '--spawn', 'Tartan_Patrol_Cruiser:6@2', '--auto-move', '--ticks', '3000') },
-        @{ Name = 'Utapau AT-ATs'; Expected = '0x885f59854db31625'
+        @{ Name = 'Utapau AT-ATs'; Expected = '0xb1eb0cec71e11be1'
             Arguments = @('--map', $utapau, '--spawn', 'AT_AT_Walker:4@2', '--spawn', 'Rebel_Infantry_Squad:6@1', '--spawn', 'T2B_Tank:4@1', '--auto-move', '--ticks', '3600') }
     )
 }
