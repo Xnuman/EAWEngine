@@ -1017,6 +1017,67 @@ void test_target_validity()
     }
 }
 
+// The tick's damage is queued and resolved after combat (docs/ecs-design.md, 6.9 rule 4).
+void test_damage_resolution()
+{
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    eaw::CombatProfile gun;
+    gun.health = 50.0F;
+    gun.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 10.0F, .damage = 10.0F}};
+    eaw::CombatProfile sturdy;
+    sturdy.health = 1000.0F;
+    // Two shooters fire at once at a target the first shot kills: both shots land, the second on
+    // the dead body, without damage.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        eaw::CombatProfile frail;
+        frail.health = 10.0F;
+        (void)test_spawn(world, {.type_name = "First", .owner = 1, .combat = gun});
+        (void)test_spawn(world, {.type_name = "Second", .owner = 1, .position = {0.0F, 10.0F, 0.0F}, .combat = gun});
+        const auto target = test_spawn(world, {.type_name = "Target", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = frail});
+        require(target.ok(), "test spawn must succeed");
+        world.step();
+        const auto& impacts = world.snapshot().impacts;
+        require(!world.alive(*target) && world.stats().kills == 1 && world.stats().hits == 2 && impacts.size() == 2 && impacts[0].target == *target && impacts[1].target == *target &&
+                    impacts[1].kind == eaw::ImpactKind::hull && world.snapshot().deaths.size() == 1,
+                "two shots at once must both hit, the second on the dead body");
+    }
+    // A chain: the first station's death blast kills the second, whose blast reaches the ship, all
+    // in one tick.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_hostility(hostility);
+        eaw::CombatProfile station;
+        station.health = 10.0F;
+        station.death_blast = {.damage = 50.0F, .range = 30.0F};
+        const auto first = test_spawn(world, {.type_name = "Station", .owner = 2, .combat = station});
+        const auto second = test_spawn(world, {.type_name = "Station", .owner = 1, .position = {20.0F, 0.0F, 0.0F}, .combat = station});
+        (void)test_spawn(world, {.type_name = "Ship", .owner = 2, .position = {45.0F, 0.0F, 0.0F}, .combat = sturdy});
+        require(first.ok() && second.ok(), "test spawns must succeed");
+        world.submit({.kind = eaw::SimCommandKind::damage, .entities = {*first}, .amount = 100.0F});
+        world.step();
+        require(!world.alive(*first) && !world.alive(*second) && world.stats().kills == 2 && world.snapshot().entities.size() == 1 && world.snapshot().entities[0].health == 950.0F,
+                "a death blast must kill in the tick it goes off, and the blasts it sets off too");
+    }
+    // Removal keeps the survivors' order: the dense order stays the spawn order.
+    {
+        eaw::SimulationWorld world(0.1);
+        std::vector<eaw::EntityId> ids;
+        for (int index = 0; index < 5; ++index)
+        {
+            const auto id = test_spawn(world, {.type_name = "Rock", .owner = 1, .position = {static_cast<float>(index) * 100.0F, 0.0F, 0.0F}, .combat = sturdy});
+            require(id.ok(), "test spawn must succeed");
+            ids.push_back(*id);
+        }
+        world.submit({.kind = eaw::SimCommandKind::destroy, .entities = {ids[1], ids[3]}});
+        world.step();
+        const auto& entities = world.snapshot().entities;
+        require(entities.size() == 3 && entities[0].id == ids[0] && entities[1].id == ids[2] && entities[2].id == ids[4], "removal must keep the survivors in spawn order");
+    }
+}
+
 const ModuleRegistrar registrar("combat", {
                                               {"test_combat", &test_combat},
                                               {"test_target_validity", &test_target_validity},
@@ -1027,6 +1088,7 @@ const ModuleRegistrar registrar("combat", {
                                               {"test_scripted_conditions", &test_scripted_conditions},
                                               {"test_inaccuracy", &test_inaccuracy},
                                               {"test_target_priorities", &test_target_priorities},
+                                              {"test_damage_resolution", &test_damage_resolution},
                                           });
 
 } // namespace

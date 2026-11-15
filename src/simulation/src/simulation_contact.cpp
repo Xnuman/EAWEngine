@@ -43,7 +43,7 @@ void SimulationWorld::ContactSystem::crush(const View& view)
     const auto& placement = view.get<PlacementColumns>();
     const auto& motion = view.get<MotionColumns>();
     const auto& ground_mover = view.get<GroundMoverColumns>();
-    auto& combat = view.get<CombatColumns>();
+    auto& damage = view.get<DamageQueue>();
     if (!ground.valid())
     {
         return;
@@ -64,10 +64,9 @@ void SimulationWorld::ContactSystem::crush(const View& view)
             {
                 continue;
             }
-            if (std::hypot(placement.positions[victim].x - at.x, placement.positions[victim].y - at.y) < placement.radii[crusher] && wound(combat.states[victim], combat.states[victim].health) > 0.0F)
+            if (std::hypot(placement.positions[victim].x - at.x, placement.positions[victim].y - at.y) < placement.radii[crusher])
             {
-                ++crushed;
-                combat.states[victim].crushed = true;
+                damage.events.push_back({.kind = DamageEvent::Kind::crush, .victim = identity.ids[victim]});
             }
         }
     }
@@ -254,7 +253,7 @@ void SimulationWorld::ContactSystem::measure_speeds(const View& view, const floa
     const auto& placement = view.get<PlacementColumns>();
     auto& motion = view.get<MotionColumns>();
     // Movement and separation are the only systems that move entities, and entities are only added
-    // (commands) before and removed (combat) after them, so dense indices line up here.
+    // (commands) before and removed (the end of the tick) after them, so dense indices line up here.
     for (std::size_t index = 0; index < placement.positions.size(); ++index)
     {
         const auto& from = motion.starts[index];

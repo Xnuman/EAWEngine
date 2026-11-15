@@ -346,7 +346,7 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .hits = combat_counters_.hits,
             .kills = combat_counters_.kills,
             .hardpoints_destroyed = combat_counters_.hardpoints_destroyed,
-            .crushed = contact_.crushed,
+            .crushed = combat_counters_.crushed,
             .projectiles = projectiles_.flying.size(),
             .separated_pairs = contact_.separated_pairs,
             .waiting_members = navigation_.waiting_members,
@@ -374,32 +374,106 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
 {
     // The tick goes into the total only: each subject hash says whether that part of the state agrees.
     hasher.total = hash_value(hasher.total, clock_.tick);
-    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
+    // Component by component, each in dense order (the spawn order); a pooled component only for
+    // its members, with their dense index. Visual keys are presentation data the simulation never
+    // reads (a mesh index on maps), so they stay out: the same battle hashes alike however its scene
+    // was built.
+    const auto count = identity_.ids.size();
+    hasher.subject = StateSubject::bodies;
+    // The recipes once each (append-only: every recipe ever added); entities hash their recipe id.
+    hasher.add(recipes_.list.size());
+    for (const auto& recipe : recipes_.list)
     {
-        hasher.subject = StateSubject::bodies;
+        hasher.add_bytes(recipe.type_name.data(), recipe.type_name.size());
+        const auto& movement = recipe.movement;
+        hasher.add(movement.acceleration);
+        hasher.add(movement.deceleration);
+        hasher.add(movement.turn_speed_fraction);
+        hasher.add(movement.stopped_turn_rate);
+        hasher.add(movement.turn_in_place_angle);
+        hasher.add(movement.turn_in_place_rate);
+        for (std::size_t side = 0; side < 2; ++side)
+        {
+            hasher.add(movement.turn_begin_seconds[side]);
+            hasher.add(movement.turn_loop_seconds[side]);
+            hasher.add(movement.turn_end_seconds[side]);
+            hasher.add(movement.turn_half_seconds[side]);
+            hasher.add(movement.turn_quarter_seconds[side]);
+        }
+        hasher.add(movement.walk_start_seconds);
+        hasher.add(movement.walk_stride_seconds);
+        hasher.add(movement.walk_stop_seconds);
+        hasher.add(movement.walk_stop_parts);
+        hasher.add(movement.walk_raise_seconds);
+        hasher.add(movement.walk_lower_seconds);
+    }
+    hasher.add(count);
+    for (std::size_t index = 0; index < count; ++index)
+    {
         hasher.add(identity_.ids[index]);
+        hasher.add(identity_.recipes[index]);
+        hasher.add(identity_.owners[index]);
+        hasher.add(identity_.selectable[index]);
+    }
+    for (std::size_t index = 0; index < count; ++index)
+    {
         hasher.add(placement_.positions[index]);
         hasher.add(placement_.headings[index]);
+        hasher.add(placement_.pitches[index]);
+        hasher.add(placement_.radii[index]);
+    }
+    for (std::size_t index = 0; index < count; ++index)
+    {
         hasher.add(locomotor_.max_speeds[index]);
+        hasher.add(locomotor_.turn_rates[index]);
+        hasher.add(locomotor_.drive_speeds[index]);
+        hasher.add(locomotor_.speed_limits[index]);
+        hasher.add(locomotor_.suspended[index]);
+    }
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        hasher.add(ground_mover_.follows_ground[index]);
+        hasher.add(ground_mover_.passable_types[index]);
+    }
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        if (const auto* crush = crush_.find(slot_of(*this, index), &CrushColumns::profiles))
+        {
+            hasher.add(index);
+            hasher.add(static_cast<std::uint8_t>(crush->crusher));
+            hasher.add(static_cast<std::uint8_t>((crush->squashable ? 1U : 0U) | (crush->squashable_by_supercrusher ? 2U : 0U)));
+        }
+    }
+    hasher.subject = StateSubject::routes;
+    for (std::size_t index = 0; index < count; ++index)
+    {
         const auto& target = route_.move_targets[index];
         hasher.add(target.has_value());
         if (target)
         {
             hasher.add(*target);
         }
-        hasher.add(identity_.owners[index]);
-        // Visual keys are presentation data the simulation never reads (a mesh index on maps), so
-        // they stay out of the hash: the same battle hashes alike however its scene was built.
-        hasher.add(identity_.selectable[index]);
-        hasher.add(ground_mover_.follows_ground[index]);
-        hasher.add(ground_mover_.passable_types[index]);
-        hasher.subject = StateSubject::routes;
         hasher.add(route_.paths[index].size());
         for (const auto& waypoint : route_.paths[index])
         {
             hasher.add(waypoint);
         }
-        hasher.subject = StateSubject::combat;
+        hasher.add(route_.pending[index]);
+        hasher.add(route_.loiter_points[index].has_value());
+        if (route_.loiter_points[index])
+        {
+            hasher.add(*route_.loiter_points[index]);
+        }
+    }
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        hasher.add(group_.ids[index]);
+        hasher.add(group_.best_remaining[index]);
+        hasher.add(group_.stall_ticks[index]);
+    }
+    hasher.subject = StateSubject::combat;
+    for (std::size_t index = 0; index < count; ++index)
+    {
         // Field by field: the combat records have padding, whose bytes are unspecified.
         const auto& combat = combat_.states[index];
         hasher.add(combat.health);
@@ -423,85 +497,63 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(combat.spin_ticks);
         hasher.add(combat.turret_yaw);
         hasher.add(combat.chase_timer);
-        hasher.subject = StateSubject::bodies;
-        hasher.add(placement_.radii[index]);
-        hasher.add(locomotor_.turn_rates[index]);
-        hasher.add(flight_.min_speeds[index]);
-        const auto& movement = *locomotor_.movements[index];
-        hasher.add(movement.acceleration);
-        hasher.add(movement.deceleration);
-        hasher.add(movement.turn_speed_fraction);
-        hasher.add(movement.stopped_turn_rate);
-        hasher.add(movement.turn_in_place_angle);
-        hasher.add(movement.turn_in_place_rate);
-        // Only entities that wind their turns (so other battles keep their hashes).
-        if (movement.turn_begin_seconds[0] > 0.0F)
-        {
-            hasher.subject = StateSubject::clips;
-            for (std::size_t side = 0; side < 2; ++side)
-            {
-                hasher.add(movement.turn_begin_seconds[side]);
-                hasher.add(movement.turn_loop_seconds[side]);
-                hasher.add(movement.turn_end_seconds[side]);
-                hasher.add(movement.turn_half_seconds[side]);
-                hasher.add(movement.turn_quarter_seconds[side]);
-            }
-            const auto& plan = turn_clips_.get(slot_of(*this, index), &TurnClipColumns::plans);
-            hasher.add(static_cast<std::uint8_t>(plan.active ? 1U : 0U));
-            hasher.add(plan.elapsed);
-            hasher.add(plan.start);
-            hasher.add(plan.angle);
-            hasher.add(plan.way);
-            hasher.add(plan.scale);
-            hasher.add(plan.loops);
-            hasher.add(plan.halves);
-            hasher.add(plan.quarters);
-        }
-        // Only entities that walk as clips.
-        if (movement.walk_stop_parts > 0)
-        {
-            hasher.subject = StateSubject::clips;
-            hasher.add(movement.walk_start_seconds);
-            hasher.add(movement.walk_stride_seconds);
-            hasher.add(movement.walk_stop_seconds);
-            hasher.add(movement.walk_stop_parts);
-            hasher.add(movement.walk_raise_seconds);
-            hasher.add(movement.walk_lower_seconds);
-            const auto& walk = walk_clips_.get(slot_of(*this, index), &WalkClipColumns::plans);
-            hasher.add(walk.clip);
-            hasher.add(walk.part);
-            hasher.add(walk.elapsed);
-            hasher.add(walk.phase);
-            hasher.add(walk.from_speed);
-            hasher.add(walk.scale);
-            hasher.add(static_cast<std::uint8_t>(walk.ends_move ? 1U : 0U));
-            hasher.add(walk.destination.x);
-            hasher.add(walk.destination.y);
-            hasher.add(walk.destination.z);
-            hasher.add(static_cast<std::uint8_t>(walk.turn_back ? 1U : 0U));
-            hasher.add(static_cast<std::uint8_t>(walk.new_way ? 1U : 0U));
-        }
-        hasher.subject = StateSubject::bodies;
-        hasher.add(locomotor_.drive_speeds[index]);
-        hasher.subject = StateSubject::combat;
+        hasher.add(combat.invulnerable);
+        hasher.add(combat.cannot_be_killed);
         hasher.add(combat_.stances[index]);
-        hasher.subject = StateSubject::bodies;
         hasher.add(combat_.aims_with_body[index]);
-        const auto& type_name = recipes_.list[identity_.recipes[index]].type_name;
-        hasher.add_bytes(type_name.data(), type_name.size());
-        hasher.subject = StateSubject::flight;
-        hasher.add(placement_.pitches[index]);
-        hasher.add(flight_.cruise_heights[index]);
-        // A non-flyer's manoeuvres, absent from the pool, hash as the zeros it always had.
-        const auto maneuver = flight_maneuvers_.find(slot_of(*this, index));
-        hasher.add(maneuver ? flight_maneuvers_.columns.looping[*maneuver] : std::uint8_t{0});
-        hasher.add(maneuver ? flight_maneuvers_.columns.rolls[*maneuver] : 0.0F);
-        hasher.add(route_.loiter_points[index].has_value());
-        if (route_.loiter_points[index])
+    }
+    hasher.subject = StateSubject::clips;
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        if (const auto* plan = turn_clips_.find(slot_of(*this, index), &TurnClipColumns::plans))
         {
-            hasher.add(*route_.loiter_points[index]);
+            hasher.add(index);
+            hasher.add(static_cast<std::uint8_t>(plan->active ? 1U : 0U));
+            hasher.add(plan->elapsed);
+            hasher.add(plan->start);
+            hasher.add(plan->angle);
+            hasher.add(plan->way);
+            hasher.add(plan->scale);
+            hasher.add(plan->loops);
+            hasher.add(plan->halves);
+            hasher.add(plan->quarters);
         }
-        hasher.subject = StateSubject::formations;
+    }
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        if (const auto* walk = walk_clips_.find(slot_of(*this, index), &WalkClipColumns::plans))
+        {
+            hasher.add(index);
+            hasher.add(walk->clip);
+            hasher.add(walk->part);
+            hasher.add(walk->elapsed);
+            hasher.add(walk->phase);
+            hasher.add(walk->from_speed);
+            hasher.add(walk->scale);
+            hasher.add(static_cast<std::uint8_t>(walk->ends_move ? 1U : 0U));
+            hasher.add(walk->destination);
+            hasher.add(static_cast<std::uint8_t>(walk->turn_back ? 1U : 0U));
+            hasher.add(static_cast<std::uint8_t>(walk->new_way ? 1U : 0U));
+        }
+    }
+    hasher.subject = StateSubject::flight;
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        hasher.add(flight_.min_speeds[index]);
+        hasher.add(flight_.cruise_heights[index]);
+    }
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        if (const auto maneuver = flight_maneuvers_.find(slot_of(*this, index)))
+        {
+            hasher.add(index);
+            hasher.add(flight_maneuvers_.columns.looping[*maneuver]);
+            hasher.add(flight_maneuvers_.columns.rolls[*maneuver]);
+        }
+    }
+    hasher.subject = StateSubject::formations;
+    for (std::size_t index = 0; index < count; ++index)
+    {
         hasher.add(formation_.orders[index]);
         hasher.add(formation_.spacings[index]);
         hasher.add(formation_.solos[index]);
@@ -509,18 +561,10 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(static_cast<std::uint8_t>(formation_.teams[index].arrangement));
         hasher.add(formation_.teams[index].spacing);
         hasher.add(formation_.teams[index].raggedness);
-        hasher.subject = StateSubject::bodies;
-        // Without a crush profile, the default one every such entity had.
-        const auto& crush = crush_profile_of(index);
-        hasher.add(static_cast<std::uint8_t>(crush.crusher));
-        hasher.add(static_cast<std::uint8_t>((crush.squashable ? 1U : 0U) | (crush.squashable_by_supercrusher ? 2U : 0U)));
-        hasher.add(locomotor_.speed_limits[index]);
-        hasher.subject = StateSubject::routes;
-        hasher.add(group_.ids[index]);
-        hasher.add(group_.best_remaining[index]);
-        hasher.add(group_.stall_ticks[index]);
-        hasher.add(route_.pending[index]);
-        hasher.subject = StateSubject::orders;
+    }
+    hasher.subject = StateSubject::orders;
+    for (std::size_t index = 0; index < count; ++index)
+    {
         const auto& order = orders_.standing[index];
         hasher.add(order.kind);
         hasher.add(order.point);
@@ -528,11 +572,6 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(order.engaging);
         hasher.add(order.engage_origin);
         hasher.add(order.scan_timer);
-        hasher.subject = StateSubject::combat;
-        hasher.add(combat.invulnerable);
-        hasher.add(combat.cannot_be_killed);
-        hasher.subject = StateSubject::bodies;
-        hasher.add(locomotor_.suspended[index]);
     }
     hasher.subject = StateSubject::routes;
     for (const auto& request : path_queue_.requests)
@@ -572,11 +611,6 @@ const CrushProfile& SimulationWorld::crush_profile_in(const ComponentPool<CrushC
     return profile != nullptr ? *profile : none;
 }
 
-const CrushProfile& SimulationWorld::crush_profile_of(const std::size_t index) const noexcept
-{
-    return crush_profile_in(crush_, slot_of(*this, index));
-}
-
 void SimulationWorld::run_publish()
 {
     publish_.run(view_of<PublishSystem::View>());
@@ -607,37 +641,51 @@ void SimulationWorld::run_contact()
     contact_.run(view_of<ContactSystem::View>(), static_cast<float>(clock_.tick_seconds));
 }
 
-void SimulationWorld::destroy(const std::size_t dense)
+void SimulationWorld::remove_entities(std::vector<std::size_t> dense)
 {
-    stamp_footprint(dense, false);
-    const auto slot = identity_.ids[dense].index;
-    const auto last = identity_.ids.size() - 1U;
-    if (dense != last)
+    std::ranges::sort(dense);
+    dense.erase(std::unique(dense.begin(), dense.end()), dense.end());
+    if (dense.empty())
     {
-        // Swap-remove keeps storage dense; the order change depends only on the command history.
-        for_each_column(
-            [&](auto& column)
-            {
-                column[dense] = std::move(column[last]);
-            });
-        slots_.dense[identity_.ids[dense].index] = static_cast<std::uint32_t>(dense);
+        return;
     }
-    for_each_column(
-        [](auto& column)
-        {
-            column.pop_back();
-        });
-    slots_.dense[slot] = no_dense;
-    turn_clips_.remove(slot);
-    walk_clips_.remove(slot);
-    flight_maneuvers_.remove(slot);
-    footprint_.remove(slot);
-    crush_.remove(slot);
-    // A slot whose generation would wrap is retired instead of reused.
-    if (slots_.generations[slot] != std::numeric_limits<std::uint32_t>::max())
+    for (const auto index : dense)
     {
-        ++slots_.generations[slot];
-        slots_.free.push_back(slot);
+        stamp_footprint(index, false);
+        const auto slot = identity_.ids[index].index;
+        slots_.dense[slot] = no_dense;
+        turn_clips_.remove(slot);
+        walk_clips_.remove(slot);
+        flight_maneuvers_.remove(slot);
+        footprint_.remove(slot);
+        crush_.remove(slot);
+        // A slot whose generation would wrap is retired instead of reused.
+        if (slots_.generations[slot] != std::numeric_limits<std::uint32_t>::max())
+        {
+            ++slots_.generations[slot];
+            slots_.free.push_back(slot);
+        }
+    }
+    // One stable pass over every column: the survivors keep their order.
+    for_each_column(
+        [&](auto& column)
+        {
+            std::size_t kept = dense.front();
+            std::size_t next = 0;
+            for (auto index = dense.front(); index < column.size(); ++index)
+            {
+                if (next < dense.size() && dense[next] == index)
+                {
+                    ++next;
+                    continue;
+                }
+                column[kept++] = std::move(column[index]);
+            }
+            column.erase(column.begin() + static_cast<std::ptrdiff_t>(kept), column.end());
+        });
+    for (auto index = dense.front(); index < identity_.ids.size(); ++index)
+    {
+        slots_.dense[identity_.ids[index].index] = static_cast<std::uint32_t>(index);
     }
 }
 

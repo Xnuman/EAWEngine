@@ -139,7 +139,7 @@ void SimulationWorld::apply(const SimCommand& command)
             break;
         }
         case SimCommandKind::destroy:
-            destroy(*dense);
+            remove_entities({*dense});
             break;
         case SimCommandKind::set_stance:
             if (command.stance != Stance::aggressive && command.stance != Stance::hold_position && command.stance != Stance::hold_fire)

@@ -364,6 +364,7 @@ void SimulationWorld::CombatSystem::launch(const View& view, const std::size_t s
     auto& combat_random = view.get<CombatRandom>();
     auto& clock = view.get<Clock>();
     auto& counters = view.get<CombatCounters>();
+    auto& damage = view.get<DamageQueue>();
     ++counters.shots_fired;
     // The tick being run: the snapshot published at its end carries it as its tick.
     combat.last_shot_ticks[shooter] = clock.tick + 1U;
@@ -390,25 +391,32 @@ void SimulationWorld::CombatSystem::launch(const View& view, const std::size_t s
     {
         auto point = aim_point(view, victim, hardpoint);
         point = {point.x + offset.x, point.y + offset.y, point.z + offset.z};
-        auto kind = ImpactKind::expired;
-        EntityId struck;
+        const Vector3 delta{point.x - origin.x, point.y - origin.y, point.z - origin.z};
+        const auto length = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+        DamageEvent shot{.kind = DamageEvent::Kind::miss,
+                         .damage = weapon.damage,
+                         .damage_type = weapon.damage_type,
+                         .damages_shield = weapon.damages_shield,
+                         .damages_health = weapon.damages_health,
+                         .point = point,
+                         .direction = length > 0.0F ? Vector3{delta.x / length, delta.y / length, delta.z / length} : Vector3{},
+                         .visual = weapon.projectile_visual,
+                         .owner = identity.owners[shooter],
+                         .blast = weapon.blast};
         if (!misses)
         {
             ++counters.hits;
-            kind = apply_damage(view, victim, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, hardpoint);
-            struck = identity.ids[victim];
+            shot.kind = DamageEvent::Kind::hit;
+            shot.victim = identity.ids[victim];
+            shot.hardpoint = hardpoint;
         }
         else if (const auto other = stray_victim(view, point, identity.owners[shooter], victim))
         {
             ++counters.hits;
-            kind = apply_damage(view, *other, weapon.damage, weapon.damage_type, weapon.damages_shield, weapon.damages_health, -1);
-            struck = identity.ids[*other];
+            shot.kind = DamageEvent::Kind::hit;
+            shot.victim = identity.ids[*other];
         }
-        const Vector3 delta{point.x - origin.x, point.y - origin.y, point.z - origin.z};
-        const auto length = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
-        const auto direction = length > 0.0F ? Vector3{delta.x / length, delta.y / length, delta.z / length} : Vector3{};
-        events.impacts.push_back({point, direction, weapon.projectile_visual, kind, struck});
-        area_blast(view, point, identity.owners[shooter], weapon.blast, weapon.damage_type, weapon.damages_shield, weapon.damages_health);
+        damage.events.push_back(shot);
         return;
     }
     Projectile projectile;
@@ -512,10 +520,10 @@ void SimulationWorld::CombatSystem::run_projectiles(const View& view)
     auto& placement = view.get<PlacementColumns>();
     auto& combat = view.get<CombatColumns>();
     auto& projectiles = view.get<ProjectileState>();
-    auto& events = view.get<TickEvents>();
     auto& rules = view.get<Rules>();
     auto& clock = view.get<Clock>();
     auto& counters = view.get<CombatCounters>();
+    auto& damage = view.get<DamageQueue>();
     const auto dt = static_cast<float>(clock.tick_seconds);
     std::size_t kept = 0;
     for (std::size_t index = 0; index < projectiles.flying.size(); ++index)
@@ -562,26 +570,33 @@ void SimulationWorld::CombatSystem::run_projectiles(const View& view)
         {
             projectile.direction = {delta.x / distance, delta.y / distance, delta.z / distance};
         }
+        DamageEvent shot{.kind = DamageEvent::Kind::miss,
+                         .damage = projectile.damage,
+                         .damage_type = projectile.damage_type,
+                         .damages_shield = projectile.damages_shield,
+                         .damages_health = projectile.damages_health,
+                         .point = projectile.aim,
+                         .direction = projectile.direction,
+                         .visual = projectile.visual,
+                         .owner = projectile.owner,
+                         .blast = projectile.blast};
         if (distance <= step_length)
         {
+            // A shot that strays off its target, or whose target died, is lost at its aim point.
             if (victim && damageable(view, *victim) && !projectile.misses)
             {
                 ++counters.hits;
-                const auto kind = apply_damage(view, *victim, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, projectile.target_hardpoint);
-                events.impacts.push_back({projectile.aim, projectile.direction, projectile.visual, kind, identity.ids[*victim]});
+                shot.kind = DamageEvent::Kind::hit;
+                shot.victim = identity.ids[*victim];
+                shot.hardpoint = projectile.target_hardpoint;
             }
             else if (const auto other = projectile.misses ? stray_victim(view, projectile.aim, projectile.owner, victim.value_or(identity.ids.size())) : std::nullopt)
             {
                 ++counters.hits;
-                const auto kind = apply_damage(view, *other, projectile.damage, projectile.damage_type, projectile.damages_shield, projectile.damages_health, -1);
-                events.impacts.push_back({projectile.aim, projectile.direction, projectile.visual, kind, identity.ids[*other]});
+                shot.kind = DamageEvent::Kind::hit;
+                shot.victim = identity.ids[*other];
             }
-            else
-            {
-                // A shot that strays off its target, or whose target died, is lost at its aim point.
-                events.impacts.push_back({projectile.aim, projectile.direction, projectile.visual, ImpactKind::expired});
-            }
-            area_blast(view, projectile.aim, projectile.owner, projectile.blast, projectile.damage_type, projectile.damages_shield, projectile.damages_health);
+            damage.events.push_back(shot);
             continue;
         }
         const auto scale = step_length / distance;
@@ -590,8 +605,8 @@ void SimulationWorld::CombatSystem::run_projectiles(const View& view)
         const bool expired = projectile.lifetime_ticks > 0U && --projectile.lifetime_ticks == 0U;
         if ((projectile.max_flight > 0.0F && projectile.flown > projectile.max_flight) || expired)
         {
-            events.impacts.push_back({projectile.position, projectile.direction, projectile.visual, ImpactKind::expired});
-            area_blast(view, projectile.position, projectile.owner, projectile.blast, projectile.damage_type, projectile.damages_shield, projectile.damages_health);
+            shot.point = projectile.position;
+            damage.events.push_back(shot);
             continue;
         }
         projectiles.flying[kept++] = projectile;
@@ -599,53 +614,107 @@ void SimulationWorld::CombatSystem::run_projectiles(const View& view)
     projectiles.flying.resize(kept);
 }
 
-void SimulationWorld::run_removal()
+void SimulationWorld::run_resolution()
 {
-    remove_dead();
+    // Each entity's death is handled once per tick; the blasts of the dead may kill more, whose
+    // blasts are resolved in the next round, until a round kills nothing.
+    std::vector<std::uint8_t> handled(identity_.ids.size(), 0);
+    std::size_t next = 0;
+    do
+    {
+        for (; next < damage_queue_.events.size(); ++next)
+        {
+            resolve(damage_queue_.events[next]);
+        }
+    } while (resolve_deaths(handled));
+    damage_queue_.events.clear();
 }
 
-void SimulationWorld::remove_dead()
+void SimulationWorld::resolve(const DamageEvent& event)
 {
-    // Back to front: swap-removal only moves already-visited entities.
-    for (auto index = identity_.ids.size(); index-- > 0;)
+    const auto victim = dense_index(*this, event.victim);
+    switch (event.kind)
+    {
+    case DamageEvent::Kind::crush:
+        if (victim && wound(combat_.states[*victim], combat_.states[*victim].health) > 0.0F)
+        {
+            ++combat_counters_.crushed;
+            combat_.states[*victim].crushed = true;
+        }
+        return;
+    case DamageEvent::Kind::hit:
+    {
+        // A victim killed earlier in the tick takes the shot on its body, without damage (the
+        // owner's rule: two units firing at once both hit).
+        auto kind = ImpactKind::expired;
+        if (victim)
+        {
+            kind = damageable(*this, *victim) ? apply_damage(*this, *victim, event.damage, event.damage_type, event.damages_shield, event.damages_health, event.hardpoint) : ImpactKind::hull;
+        }
+        events_.impacts.push_back({event.point, event.direction, event.visual, kind, victim ? event.victim : EntityId{}});
+        break;
+    }
+    case DamageEvent::Kind::miss:
+        events_.impacts.push_back({event.point, event.direction, event.visual, ImpactKind::expired});
+        break;
+    case DamageEvent::Kind::blast:
+        break;
+    }
+    area_blast(*this, event.point, event.owner, event.blast, event.damage_type, event.damages_shield, event.damages_health);
+}
+
+bool SimulationWorld::resolve_deaths(std::vector<std::uint8_t>& handled)
+{
+    const auto queued = damage_queue_.events.size();
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         auto& combat = combat_.states[index];
-        if (combat.profile->health > 0.0F && combat.health <= 0.0F)
+        if (handled[index] != 0 || combat.profile->health <= 0.0F || combat.health > 0.0F)
         {
-            // Spinning away: out of control until the spin ends.
-            if (combat.spin_ticks == 0 && combat.profile->spin_chance > 0.0F && combat_random_.stream.unit() < combat.profile->spin_chance)
-            {
-                combat.spin_ticks = std::max(1U, ticks_for(*this, combat.profile->spin_seconds));
-                combat.target = {};
-                combat.ordered = false;
-                route_.move_targets[index].reset();
-                route_.paths[index].clear();
-                locomotor_.speed_limits[index] = 0.0F;
-                group_.ids[index] = 0;
-                orders_.standing[index].kind = StandingOrder::none;
-                events_.spins.push_back({identity_.ids[index], placement_.positions[index]});
-                continue;
-            }
-            if (combat.spin_ticks > 1U)
-            {
-                --combat.spin_ticks;
-                continue;
-            }
-            const bool spun = combat.spin_ticks != 0;
-            events_.deaths.push_back({identity_.ids[index], placement_.positions[index], placement_.headings[index], placement_.pitches[index], identity_.visuals[index], identity_.owners[index],
-                                      spun && combat.profile->spin_effect != 0 ? combat.profile->spin_effect : combat.profile->death_effect, combat.profile->type_key, combat.crushed});
-            const auto position = placement_.positions[index];
-            const auto owner = identity_.owners[index];
-            const auto profile_blast = combat_.states[index].profile->death_blast;
-            const auto blast_type = combat_.states[index].profile->death_blast_damage_type;
-            const auto blast_shield = combat_.states[index].profile->death_blast_damages_shield;
-            const auto blast_health = combat_.states[index].profile->death_blast_damages_health;
-            destroy(index);
-            ++combat_counters_.kills;
-            // Entities it kills die in this pass when they come later in it, else the next tick.
-            area_blast(*this, position, owner, profile_blast, blast_type, blast_shield, blast_health);
+            continue;
         }
+        handled[index] = 1;
+        // Spinning away: out of control until the spin ends.
+        if (combat.spin_ticks == 0 && combat.profile->spin_chance > 0.0F && combat_random_.stream.unit() < combat.profile->spin_chance)
+        {
+            combat.spin_ticks = std::max(1U, ticks_for(*this, combat.profile->spin_seconds));
+            combat.target = {};
+            combat.ordered = false;
+            route_.move_targets[index].reset();
+            route_.paths[index].clear();
+            locomotor_.speed_limits[index] = 0.0F;
+            group_.ids[index] = 0;
+            orders_.standing[index].kind = StandingOrder::none;
+            events_.spins.push_back({identity_.ids[index], placement_.positions[index]});
+            continue;
+        }
+        if (combat.spin_ticks > 1U)
+        {
+            --combat.spin_ticks;
+            continue;
+        }
+        const bool spun = combat.spin_ticks != 0;
+        const auto& profile = *combat.profile;
+        events_.deaths.push_back({identity_.ids[index], placement_.positions[index], placement_.headings[index], placement_.pitches[index], identity_.visuals[index], identity_.owners[index],
+                                  spun && profile.spin_effect != 0 ? profile.spin_effect : profile.death_effect, profile.type_key, combat.crushed});
+        damage_queue_.dying.push_back(index);
+        ++combat_counters_.kills;
+        // An empty blast is skipped where it is resolved.
+        damage_queue_.events.push_back({.kind = DamageEvent::Kind::blast,
+                                        .damage_type = profile.death_blast_damage_type,
+                                        .damages_shield = profile.death_blast_damages_shield,
+                                        .damages_health = profile.death_blast_damages_health,
+                                        .point = placement_.positions[index],
+                                        .owner = identity_.owners[index],
+                                        .blast = profile.death_blast});
     }
+    return damage_queue_.events.size() != queued;
+}
+
+void SimulationWorld::run_removal()
+{
+    remove_entities(std::move(damage_queue_.dying));
+    damage_queue_.dying.clear();
 }
 
 } // namespace eaw

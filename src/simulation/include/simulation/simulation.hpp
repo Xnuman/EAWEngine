@@ -169,12 +169,13 @@ enum class TickPhase : std::uint8_t
     movement,
     contact,
     combat,
+    resolution,
     publish,
     count,
 };
 
 inline constexpr std::size_t tick_phase_count = static_cast<std::size_t>(TickPhase::count);
-inline constexpr std::array<std::string_view, tick_phase_count> tick_phase_names{"commands", "behavior", "navigation", "movement", "contact", "combat", "publish"};
+inline constexpr std::array<std::string_view, tick_phase_count> tick_phase_names{"commands", "behavior", "navigation", "movement", "contact", "combat", "resolution", "publish"};
 static_assert(!tick_phase_names.back().empty(), "every layer needs its name");
 using TickPhaseTimes = std::array<double, tick_phase_count>;
 
@@ -562,7 +563,8 @@ struct SimSnapshot
     std::uint64_t tick{};
     std::vector<EntitySnapshot> entities;
     std::vector<ProjectileSnapshot> projectiles;
-    // Entities killed in this tick, in removal order (destroy commands are not deaths).
+    // Entities killed in this tick, in dense order within each round of deaths (destroy commands are
+    // not deaths).
     std::vector<DeathSnapshot> deaths;
     // Shots that ended in this tick, in the order they ended.
     std::vector<ImpactSnapshot> impacts;
@@ -767,6 +769,36 @@ private:
         bool loop{};
     };
 
+    // A side effect of the tick's fighting (docs/ecs-design.md, 6.9 rule 4): queued by the systems
+    // that cause it and applied by the resolution system in queue order after combat, so no system
+    // sees another's damage within the tick (two shots at one target both land; the second strikes
+    // the body, the owner's rule). A shot's hit (on `victim`, with its impact), a crush, a blast
+    // (`blast` of `owner` at `point`), or a shot that struck nothing (its impact only).
+    struct DamageEvent
+    {
+        bool operator==(const DamageEvent&) const = default;
+        enum class Kind : std::uint8_t
+        {
+            hit,
+            crush,
+            blast,
+            miss,
+        };
+        Kind kind{Kind::hit};
+        EntityId victim;
+        float damage{};
+        std::uint16_t damage_type{};
+        bool damages_shield{};
+        bool damages_health{};
+        std::int32_t hardpoint{-1};
+        // A shot's impact: where, which way it flew, and its visual.
+        Vector3 point;
+        Vector3 direction;
+        std::uint32_t visual{};
+        std::uint32_t owner{};
+        AreaBlast blast;
+    };
+
     template <class Data> [[nodiscard]] static std::optional<std::size_t> dense_index(Data& data, EntityId id) noexcept;
     // Behavior layer (simulation_behavior.cpp): orders from commands, then each tick what every
     // unit wants from its order, stance, and target, as a move request or a steering intent.
@@ -777,7 +809,9 @@ private:
     // be killed: not below the floor); returns what the hull took.
     static float wound(CombatState& combat, float damage);
     void teleport(std::size_t index, const Vector3& point, std::optional<float> heading);
-    void destroy(std::size_t dense);
+    // Removes the entities at the dense indices in `dense` (any order; repeats allowed), keeping the
+    // others' order: the dense order stays the order entities were spawned in.
+    void remove_entities(std::vector<std::size_t> dense);
     // Requests a route to `target` (queued for the search budget when it needs a search).
     template <class Data> static void plan_move(Data& data, std::size_t index, const Vector3& target);
     struct PathRequest;
@@ -824,7 +858,12 @@ private:
     template <class Data, typename Accepts>
     [[nodiscard]] static std::optional<std::size_t> choose_target(Data& data, const SpatialGrid& grid, std::vector<std::uint32_t>& query, std::size_t index, const Vector3& center, float reach,
                                                                   const Accepts& accepts);
-    void remove_dead();
+    // Applies one queued damage event (run_resolution).
+    void resolve(const DamageEvent& event);
+    // Deaths of entities not yet handled this tick, in dense order: spins begin or count down, the
+    // dead are reported, queued for removal, and their death blasts queued; returns whether any
+    // died.
+    bool resolve_deaths(std::vector<std::uint8_t>& handled);
     template <class Data> [[nodiscard]] static bool damageable(Data& data, std::size_t index) noexcept;
     template <class Data> [[nodiscard]] static std::uint32_t ticks_for(Data& data, float seconds) noexcept;
 
@@ -870,6 +909,8 @@ private:
         combat_counters,
         // The recipes entities are spawned from (append-only; a recipe never changes once added).
         recipes,
+        // The tick's damage, queued for the resolution system.
+        damage,
         count,
     };
     static constexpr std::size_t sim_data_count = static_cast<std::size_t>(SimData::count);
@@ -1259,7 +1300,7 @@ private:
         SimAccess reads;
         SimAccess writes;
     };
-    static const std::array<SystemEntry, 8> schedule_;
+    static const std::array<SystemEntry, 9> schedule_;
     // Every kind of data with its objects (some kinds have several): the entity table's groups
     // (for_each_group), the pools, and the resources.
     template <class Visit> void for_each_data(Visit&& visit)
@@ -1286,6 +1327,7 @@ private:
         visit(SimData::avoidance, avoidance_);
         visit(SimData::combat_counters, combat_counters_);
         visit(SimData::recipes, recipes_);
+        visit(SimData::damage, damage_queue_);
     }
     // The systems step() ran inline before: the tick's commands and its event lists, the speeds
     // movement and separation produced, and the tick counter with the snapshot.
@@ -1297,8 +1339,10 @@ private:
     void run_behavior();
     void run_combat();
     void run_publish();
-    // Removing the dead (remove_dead): structural, so written as a member function with full access
-    // until migration step 6 queues removals for the barrier.
+    // Resolution: the tick's queued damage in order, then deaths and the blasts they set off, until no
+    // more die (chain kills end in the same tick).
+    void run_resolution();
+    // The barrier at the end of the tick: the dead leave, the others keep their order.
     void run_removal();
     // Optional components in pools (component_pool.hpp), given at spawn: turns in place played as
     // clips to entities whose profile has them (MovementProfile::turn_begin_seconds), walks played as
@@ -1310,8 +1354,6 @@ private:
     ComponentPool<FlightManeuverColumns> flight_maneuvers_;
     ComponentPool<FootprintColumns> footprint_;
     ComponentPool<CrushColumns> crush_;
-    // The entity's crush profile: the default one when it has none.
-    [[nodiscard]] const CrushProfile& crush_profile_of(std::size_t index) const noexcept;
     [[nodiscard]] static const CrushProfile& crush_profile_in(const ComponentPool<CrushColumns>& pool, std::uint32_t slot) noexcept;
     // Remaining route length of every moving entity (zero for the rest), into route.remaining.
     static void measure_remaining_routes(RouteColumns& route, const PlacementColumns& placement);
@@ -1439,8 +1481,18 @@ private:
         std::uint64_t hits{};
         std::uint64_t kills{};
         std::uint64_t hardpoints_destroyed{};
+        std::uint64_t crushed{};
     };
     CombatCounters combat_counters_;
+    struct DamageQueue
+    {
+        bool operator==(const DamageQueue&) const = default;
+        static constexpr SimData data = SimData::damage;
+        std::vector<DamageEvent> events;
+        // The dense indices of the entities that died in the tick, removed at its end.
+        std::vector<std::size_t> dying;
+    };
+    DamageQueue damage_queue_;
     // The combat random stream: where shots stray (WeaponProfile::inaccuracy) and who spins as it
     // dies; part of the state.
     struct CombatRandom
@@ -1516,10 +1568,9 @@ private:
     {
     public:
         using View = SystemView<Read<GroundState>, Read<IdentityColumns>, Write<PlacementColumns>, Write<MotionColumns>, Read<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>,
-                                Read<FlightColumns>, Write<CombatColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>>;
+                                Read<FlightColumns>, Read<CombatColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Write<DamageQueue>>;
         void run(const View& view, float dt);
-        // Entities crushed so far, and the pairs separation pushed apart in the last tick.
-        std::uint64_t crushed{};
+        // The pairs separation pushed apart in the last tick.
         std::size_t separated_pairs{};
 
     private:
@@ -1684,7 +1735,7 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Read<RouteColumns>, Write<CombatColumns>, Read<ComponentPool<FootprintColumns>>, Write<ProjectileState>,
-                                Write<TickEvents>, Read<SlotTable>, Read<Rules>, Write<CombatRandom>, Read<Clock>, Write<CombatCounters>>;
+                                Write<TickEvents>, Read<SlotTable>, Read<Rules>, Write<CombatRandom>, Read<Clock>, Write<CombatCounters>, Write<DamageQueue>>;
         // Shield refresh, then every armed entity's target, turret, and weapons, then the projectiles
         // in flight.
         void run(const View& view, float dt);

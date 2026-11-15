@@ -179,9 +179,11 @@ rendering rows join item 2).
       for walk and turn clips, flight manoeuvres, footprints, and crush profiles, 2026-11-15; the
       rest after steps 6 and 7);
       systems with declared access (the schedule table, the DebugValidation write check, and six of eight
-      systems on typed views, 2026-11-15; commands and removal after step 6); recipes (one
-      construction path, and the simulation's recipes with shared profiles, 2026-11-15); recipes; command buffers and event queues; the one declared
-      hash change (spawn order, per-component hashing); parallel systems (route searches first); a refactoring step last, its scope to be agreed with the
+      systems on typed views, 2026-11-15; commands, resolution, and removal stay member functions);
+      recipes (one construction path, and the simulation's recipes with shared profiles,
+      2026-11-15); the damage queue, compacting removal, and per-component hashing, the one
+      declared hash change (2026-11-15); pools for flight, formation, combat, and group; parallel
+      systems (route searches first); a refactoring step last, its scope to be agreed with the
       owner,
       each step with an unchanged battle hash except the declared one, folding in the deferred
       determinism work (stable-id order, keyed random draws, a full-state hash).
@@ -409,6 +411,9 @@ exists, not guessed in advance.
   optimization.
 - Presentation at the display's rate with the fixed simulation tick (30 Hz, an engine choice until
   the original's rate is measured); a configurable tick is an open option.
+- 60 frames per second at the least (the owner, 2026-11-15): a frame, any simulation ticks it runs
+  included, within 16.6 ms. The opening tick of a 3,300-entity battle (50-60 ms, roadmap work order
+  2g) breaks it today.
 - No fixed texture dimension, vertex count, entity count, or 32-bit address-space assumption.
 - Automated budgets, reported by the tools, for frame time, tick time, streaming throughput,
   memory, draw and dispatch counts, and worst-case path requests.

@@ -246,9 +246,10 @@ Recommendation: **B**. Reasons:
   already use.
 - Add a monotonic 64-bit **spawn serial** per entity: the canonical order (like OpenRA's actor id),
   the key for deterministic merges, and the identity that survives a future save and load.
-- The dense core keeps every entity in one order. Today removal swaps the last entity into the gap
-  (history order). Proposed for the end of the migration (the one declared hash change): removal
-  compacts at the end of the tick preserving order, so the dense order is always the spawn order.
+- The dense core keeps every entity in one order. Removal compacts at the end of the tick
+  preserving order, so the dense order is always the spawn order (done at migration steps 6 and 7,
+  2026-11-15; removal used to swap the last entity into the gap). Not yet: the spawn serial, added
+  with its first reader (a merge keyed by it, or save and load).
 
 ### 6.2 Components
 
@@ -517,8 +518,7 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    after, about 17 times a Debug tick on a populated map): a system that changes data it did not
    declare stops the run, naming both. The ground is declared but not checked (megabytes on a real
    map). The first declarations, read from the code, missed 15 writes, all found by the check's
-   first runs. Commands and combat write everything until step 6 moves spawns and removals to the
-   barrier. Not yet: queries, and systems as functions over a context.
+   first runs. Commands and combat wrote everything until step 6 moved removals to the barrier. Not yet: queries, and systems as functions over a context.
 
    Typed views (2026-11-15, Singe's access modifiers adapted to column groups,
    `simulation/system_view.hpp`): a system declares its access as the type of its view,
@@ -576,6 +576,23 @@ captures, except step 7, which changes the hash's layout once, on purpose.
 7. **The declared change.** Spawn order as the dense order (compacting removal), per-component
    hashing, absent components no longer hashed, recipe profiles hashed once per recipe; the
    battle hash is rebaselined once and said so.
+
+   Steps 6 and 7 done together 2026-11-15 (the owner's choice: one declared hash change). Damage is
+   an event queue (`DamageQueue`): combat queues each shot's hit or miss with its blast, contact its
+   crushes, and the resolution system (after combat, its own tick layer) applies them in queue
+   order. A shot whose victim died earlier in the tick strikes the body without damage (the
+   owner's rule: two units firing at once both hit), so no system sees damage done within the tick
+   before resolution. Deaths are then handled in dense order, each entity once per tick (spins
+   begin or count down, the dead are reported and their death blasts queued), in rounds until a
+   round kills nothing, so chain kills end in the tick they start. The dead leave at the end of the
+   tick in one stable pass over every column (`remove_entities`), and a script's destroy command
+   uses the same pass at once (commands are the start barrier; script damage stays immediate
+   there too). The hash is per component, each in dense order, pooled components only for their
+   members, recipe type names and movement profiles once per recipe. Every battle hash changed
+   once; the battles' outcomes stay close (the capital ships fire the same 3,789 shots and land 50
+   more, the shots that now strike a body) and their tick times unchanged. The pools for the rest
+   (flight's core columns, formation, combat, group) are still to come; pooling one of them now
+   changes the hash again, since a non-member's values are hashed today.
 8. **Parallel systems.** Route searches, then contact and targeting, each verified with 1 and N
    threads giving the same hash, and measured.
 9. **Refactoring.** A review of what the migration left, its scope and plan to be agreed with the
