@@ -182,6 +182,41 @@ void SimulationWorld::CombatSystem::update_target(const View& view, const std::s
     // Armed: it has combat (run).
     auto& state = *combat_of(view, index);
     const auto range = state.profile->range();
+    if (state.ordered_squad.valid())
+    {
+        // Ordered at a team: keep a living member of it, else take the nearest; the order ends with
+        // the team.
+        const auto team = dense_index(view, state.ordered_squad);
+        const auto* squad = team ? view.get<ComponentPool<SquadColumns>>().find(slot_of(view, *team), &SquadColumns::states) : nullptr;
+        if (squad == nullptr)
+        {
+            state.ordered_squad = {};
+            state.target = {};
+            state.ordered = false;
+        }
+        else
+        {
+            const auto current = std::ranges::find(squad->members, state.target) != squad->members.end() ? dense_index(view, state.target) : std::nullopt;
+            if (!current || !damageable(view, *current))
+            {
+                std::optional<std::size_t> nearest;
+                float best = 0.0F;
+                for (const auto id : squad->members)
+                {
+                    const auto member = dense_index(view, id);
+                    const auto distance = member ? distance_xy(placement.positions[index], placement.positions[*member]) : 0.0F;
+                    if (member && damageable(view, *member) && (!nearest || distance < best))
+                    {
+                        nearest = member;
+                        best = distance;
+                    }
+                }
+                state.target = nearest ? identity.ids[*nearest] : EntityId{};
+            }
+            state.ordered = state.target.valid();
+            return;
+        }
+    }
     if (state.target.valid())
     {
         const auto victim = dense_index(view, state.target);

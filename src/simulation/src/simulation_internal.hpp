@@ -443,7 +443,12 @@ template <class Data> bool SimulationWorld::flies(Data& data, const std::size_t 
 template <class Data> bool SimulationWorld::waits(Data& data, const std::size_t index) noexcept
 {
     const auto* waiting = data.template get<ComponentPool<GroupColumns>>().find(slot_of(data, index), &GroupColumns::waiting);
-    return waiting != nullptr && *waiting != 0;
+    if (waiting != nullptr && *waiting != 0)
+    {
+        return true;
+    }
+    const auto* squad = data.template get<ComponentPool<SquadColumns>>().find(slot_of(data, index), &SquadColumns::states);
+    return squad != nullptr && squad->waiting;
 }
 
 template <class Data> void SimulationWorld::leave_group(Data& data, const std::size_t index)

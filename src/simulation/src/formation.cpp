@@ -68,6 +68,31 @@ std::vector<std::pair<float, float>> team_offsets(const TeamArrangement arrangem
 
 } // namespace
 
+TeamShape team_shape(const std::span<const FormationMember> members, const TeamArrangement arrangement)
+{
+    TeamShape shape;
+    float member_pitch = 0.0F;
+    float member_radius = 0.0F;
+    for (const auto& member : members)
+    {
+        member_pitch = std::max(member_pitch, pitch(member));
+        member_radius = std::max(member_radius, std::isfinite(member.radius) ? member.radius : 0.0F);
+    }
+    shape.offsets = team_offsets(arrangement, members.size(), member_pitch);
+    float extent = 0.0F;
+    for (std::size_t slot = 0; slot < shape.offsets.size(); ++slot)
+    {
+        const auto& member = members[slot];
+        const auto ragged = std::isfinite(member.team.raggedness) ? std::clamp(member.team.raggedness, 0.0F, 10.0F) * member_pitch : 0.0F;
+        auto& [ahead, aside] = shape.offsets[slot];
+        ahead += jitter(member.id, 1U) * ragged;
+        aside += jitter(member.id, 2U) * ragged;
+        extent = std::max(extent, std::hypot(ahead, aside));
+    }
+    shape.extent = extent + member_radius;
+    return shape;
+}
+
 float formation_facing(const std::span<const FormationMember> members, const Vector3 target)
 {
     if (members.empty())
@@ -141,33 +166,22 @@ std::vector<FormationSlot> formation_slots(const std::span<const FormationMember
                           {
                               return members[left].id < members[right].id;
                           });
-        float member_pitch = 0.0F;
-        float member_radius = 0.0F;
         double x = 0.0;
         double y = 0.0;
+        std::vector<FormationMember> team;
         for (const auto index : unit.members)
         {
-            member_pitch = std::max(member_pitch, pitch(members[index]));
-            member_radius = std::max(member_radius, std::isfinite(members[index].radius) ? members[index].radius : 0.0F);
             unit.order = std::min(unit.order, members[index].order);
             x += members[index].position.x;
             y += members[index].position.y;
+            team.push_back(members[index]);
         }
         unit.id = members[unit.members.front()].id;
         const auto count = static_cast<double>(unit.members.size());
         unit.position = {static_cast<float>(x / count), static_cast<float>(y / count), first.position.z};
-        unit.offsets = team_offsets(first.team.arrangement, unit.members.size(), member_pitch);
-        float extent = 0.0F;
-        for (std::size_t slot = 0; slot < unit.offsets.size(); ++slot)
-        {
-            const auto& member = members[unit.members[slot]];
-            const auto ragged = std::isfinite(member.team.raggedness) ? std::clamp(member.team.raggedness, 0.0F, 10.0F) * member_pitch : 0.0F;
-            auto& [ahead, aside] = unit.offsets[slot];
-            ahead += jitter(member.id, 1U) * ragged;
-            aside += jitter(member.id, 2U) * ragged;
-            extent = std::max(extent, std::hypot(ahead, aside));
-        }
-        unit.pitch = pitch_of(extent + member_radius, first.team.spacing);
+        auto shape = team_shape(team, first.team.arrangement);
+        unit.offsets = std::move(shape.offsets);
+        unit.pitch = pitch_of(shape.extent, first.team.spacing);
     }
 
     std::vector<std::size_t> ranked(units.size());

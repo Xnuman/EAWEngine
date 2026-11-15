@@ -244,6 +244,10 @@ struct EntityRecipe
     // Aims with its body instead of a turret (infantry): standing, it turns to face its target, and
     // it fires only while standing and facing the target within body_aim_tolerance.
     bool aims_with_body{};
+    // A team (XML Create_Team_Type containers: TEAM, SELECTABLE, UNIT_AI behaviors): an entity
+    // without a body that takes its squad's orders and plans its route, its members (spawned with
+    // EntitySpawn::squad) standing in this arrangement around it (docs/pathfinding-design.md, 4.3).
+    std::optional<TeamArrangement> team;
 };
 
 // A recipe's place in the world's recipe store, in registration order.
@@ -265,6 +269,9 @@ struct EntitySpawn
     // Ground occupied while the entity exists (structures, walls, obstacle props), placed.
     std::optional<GroundFootprint> footprint;
     Stance stance{Stance::aggressive};
+    // A squad member: the index of its team's spawn earlier in the same list (a spawn command's
+    // spawns, or a battle's map entities). Whoever spawns the list passes the team's id to spawn().
+    std::optional<std::uint32_t> squad;
 };
 
 enum class SimCommandKind : std::uint8_t
@@ -409,6 +416,9 @@ struct EntitySnapshot
     float max_shield{};
     // The entity its weapon is aimed at (invalid when none).
     EntityId target;
+    // A squad member's team (invalid otherwise). A team has no body and no visual; its position is
+    // where its members' ring stands.
+    EntityId squad;
     float radius{};
     // Destroyable hardpoints, and how many of them are destroyed.
     std::uint32_t hardpoints{};
@@ -656,7 +666,8 @@ public:
     [[nodiscard]] Result<RecipeId> add_recipe(EntityRecipe recipe);
     [[nodiscard]] const EntityRecipe& recipe(RecipeId id) const;
     [[nodiscard]] std::size_t recipe_count() const noexcept;
-    [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn);
+    // `squad`: the team a squad member joins (the id spawn.squad's list index resolved to).
+    [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn, EntityId squad = {});
     // Ground for entities that follow it; entity footprints are stamped into a copy of its
     // passability (and removed when their entity is destroyed). A move order for a ground entity with passable_types is
     // planned when it is applied (GridPathfinder): the entity follows the waypoints, ending at the
@@ -737,6 +748,9 @@ private:
         Stance stance{Stance::aggressive};
         bool aims_with_body{};
         std::uint64_t last_shot_tick{};
+        // An attack order on a team: the entity fires at any of the team's members (the owner,
+        // 2026-11-15), the nearest when it picks.
+        EntityId ordered_squad;
     };
     struct Projectile
     {
@@ -887,8 +901,8 @@ private:
     template <class Data> static void drop_target(Data& data, std::size_t index) noexcept;
     // Whether the entity at `index` flies (is in the flight pool).
     template <class Data> [[nodiscard]] static bool flies(Data& data, std::size_t index) noexcept;
-    // Whether the entity at `index` waits for its formation group this tick, and its leaving its
-    // group (if it has one).
+    // Whether the entity at `index` waits this tick (for its formation group, or as a team for its
+    // members), and its leaving its formation group (if it has one).
     template <class Data> [[nodiscard]] static bool waits(Data& data, std::size_t index) noexcept;
     template <class Data> static void leave_group(Data& data, std::size_t index);
     template <class Data> [[nodiscard]] static std::uint32_t ticks_for(Data& data, float seconds) noexcept;
@@ -909,6 +923,8 @@ private:
         steering,
         formation,
         group,
+        squads,
+        squad_members,
         turn_clips,
         walk_clips,
         footprints,
@@ -1319,6 +1335,8 @@ private:
         visit(SimData::formation, formation_);
         visit(SimData::group, group_);
         visit(SimData::combat, combat_);
+        visit(SimData::squads, squads_);
+        visit(SimData::squad_members, squad_members_);
         visit(SimData::ground, ground_);
         visit(SimData::path_queue, path_queue_);
         visit(SimData::projectiles, projectiles_);
@@ -1361,6 +1379,65 @@ private:
     ComponentPool<FormationColumns> formation_;
     ComponentPool<GroupColumns> group_;
     ComponentPool<CombatColumns> combat_;
+    // Squads (simulation_squads.cpp; pooled): a team entity's members, in id order, their ring's
+    // arrangement and extent (the farthest member's distance plus the largest footprint), its
+    // ordered attack target, how long it has waited for members behind, and its chase timer; and a
+    // member's team and its offset (forward, right) from the team's center, with its raggedness.
+    struct SquadState
+    {
+        bool operator==(const SquadState&) const = default;
+        std::vector<EntityId> members;
+        TeamArrangement arrangement{TeamArrangement::dartboard};
+        float extent{};
+        EntityId target;
+        bool waiting{};
+        std::uint32_t wait_ticks{};
+        std::uint32_t chase_timer{};
+    };
+    struct SquadColumns
+    {
+        bool operator==(const SquadColumns&) const = default;
+        static constexpr SimData data = SimData::squads;
+        std::vector<SquadState> states;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(states);
+        }
+    };
+    struct SquadMemberState
+    {
+        bool operator==(const SquadMemberState&) const = default;
+        EntityId squad;
+        float ahead{};
+        float aside{};
+        float raggedness{};
+    };
+    struct SquadMemberColumns
+    {
+        bool operator==(const SquadMemberColumns&) const = default;
+        static constexpr SimData data = SimData::squad_members;
+        std::vector<SquadMemberState> states;
+        template <class Visit> void for_each_column(Visit&& visit)
+        {
+            visit(states);
+        }
+    };
+    ComponentPool<SquadColumns> squads_;
+    ComponentPool<SquadMemberColumns> squad_members_;
+    // Joins the member at `member` to the team `squad`, then reshapes the team's ring.
+    void join_squad(std::size_t member, EntityId squad, float raggedness);
+    // The members' ring offsets and the team's extent, from its members' footprints.
+    void reshape_squad(std::uint32_t squad_slot);
+    // A command as squads take it: orders to a member go to its team (each team once), an attack on
+    // a member is an attack on its team, and a stance set on a team is set on its members.
+    [[nodiscard]] SimCommand for_squads(const SimCommand& command) const;
+    // A team's attack order, given to its members (any member of a target team for each), and its
+    // end (a move, stop, or standing order).
+    void order_squad_attack(std::size_t squad, std::size_t victim);
+    void clear_squad_attack(std::size_t squad);
+    // The entities `dense` names, with each removed team's members and each team whose last member
+    // goes; the teams that lose members but stay, by slot.
+    void expand_squad_removals(std::vector<std::size_t>& dense, std::vector<std::uint32_t>& reshaped);
     [[nodiscard]] static const CrushProfile& crush_profile_in(const ComponentPool<CrushColumns>& pool, std::uint32_t slot) noexcept;
     // Remaining route length of every moving entity (zero for the rest), into route.remaining.
     static void measure_remaining_routes(RouteColumns& route, const PlacementColumns& placement);
@@ -1603,7 +1680,7 @@ private:
     public:
         using View = SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<CombatColumns>>,
                                 Read<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>,
-                                Write<ComponentPool<FlightColumns>>, Read<GroundState>, Read<SpaceAvoidance>, Write<PathQueue>>;
+                                Write<ComponentPool<FlightColumns>>, Read<GroundState>, Read<SpaceAvoidance>, Write<PathQueue>, Read<ComponentPool<SquadColumns>>>;
         void run(const View& view, float dt);
         // Moves planned again so far because the unit's planned line no longer fit (separation pushed
         // it off, or the ground changed).
@@ -1661,7 +1738,8 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<FlightColumns>>,
-                                Read<ComponentPool<CombatColumns>>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>>;
+                                Read<ComponentPool<CombatColumns>>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>,
+                                Read<ComponentPool<SquadColumns>>>;
         // Route requests under the search budget, remaining routes, group cohesion, and space
         // avoidance, before movement.
         void run(const View& view);
@@ -1714,7 +1792,7 @@ private:
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<ComponentPool<CombatColumns>>,
                                 Write<OrderColumns>, Write<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>,
-                                Read<GroundState>, Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>>;
+                                Read<GroundState>, Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>, Write<ComponentPool<SquadColumns>>, Read<ComponentPool<SquadMemberColumns>>>;
         // Every entity's steering intent for this tick, from its order, stance, and target; route
         // requests for new destinations.
         void run(const View& view, float dt);
@@ -1730,6 +1808,11 @@ private:
         // Flyers: steer at the target (attack runs, or dogfights against flyers), the destination, or
         // the point they circle; reverse through a half-loop when that point is far behind.
         void plan_flight(const View& view, std::size_t index, float dt);
+        // Squads (simulation_squads.cpp): a team chases its ordered target until its members reach
+        // it, and members walk to their ring slots around their team, which waits for members far
+        // behind and, under a standing order, while its members fight.
+        void pursue_squad_target(const View& view, std::size_t index);
+        void follow_squads(const View& view);
         // The grid of positions targets are chosen from this tick, and its query scratch.
         SpatialGrid grid_;
         std::vector<std::uint32_t> query_;
@@ -1742,7 +1825,7 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Read<RouteColumns>, Write<ComponentPool<CombatColumns>>, Read<ComponentPool<FootprintColumns>>, Write<ProjectileState>,
-                                Write<TickEvents>, Read<SlotTable>, Read<Rules>, Write<CombatRandom>, Read<Clock>, Write<CombatCounters>, Write<DamageQueue>>;
+                                Write<TickEvents>, Read<SlotTable>, Read<Rules>, Write<CombatRandom>, Read<Clock>, Write<CombatCounters>, Write<DamageQueue>, Read<ComponentPool<SquadColumns>>>;
         // Shield refresh, then every armed entity's target, turret, and weapons, then the projectiles
         // in flight.
         void run(const View& view, float dt);
@@ -1785,7 +1868,7 @@ private:
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Read<MotionColumns>, Read<LocomotorColumns>, Read<GroundMoverColumns>, Read<RouteColumns>,
                                 Read<ComponentPool<CombatColumns>>, Read<OrderColumns>, Read<ComponentPool<TurnClipColumns>>, Read<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>,
-                                Read<ProjectileState>, Read<TickEvents>, Write<Clock>>;
+                                Read<ProjectileState>, Read<TickEvents>, Write<Clock>, Read<ComponentPool<SquadMemberColumns>>>;
         // Advances the tick counter and publishes the tick's snapshot.
         void run(const View& view);
         // The snapshot of the last tick (SimulationWorld::snapshot).

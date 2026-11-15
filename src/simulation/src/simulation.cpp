@@ -140,7 +140,7 @@ std::size_t SimulationWorld::recipe_count() const noexcept
     return recipes_.list.size();
 }
 
-Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
+Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId squad)
 {
     if (spawn.recipe >= recipes_.list.size())
     {
@@ -163,6 +163,18 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
         footprint && (!is_finite(footprint->center) || !valid_amount(footprint->half_length) || !valid_amount(footprint->half_width) || !std::isfinite(footprint->heading)))
     {
         return make_error("entity spawn '" + recipe.type_name + "' has a negative or non-finite footprint");
+    }
+    if (spawn.squad.has_value() != squad.valid())
+    {
+        return make_error("entity spawn '" + recipe.type_name + "' names a squad but was given no team, or a team without naming a squad");
+    }
+    if (squad.valid())
+    {
+        const auto team = dense_index(*this, squad);
+        if (!team || !squads_.find(squad.index))
+        {
+            return make_error("entity spawn '" + recipe.type_name + "' joins a squad whose team is gone or is not a team");
+        }
     }
     if (identity_.ids.size() >= no_dense)
     {
@@ -209,6 +221,10 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     if (spawn.formation_team != FormationTeam{})
     {
         formation_.columns.teams[formation_.add(slot)] = spawn.formation_team;
+    }
+    if (recipe.team)
+    {
+        squads_.columns.states[squads_.add(slot)].arrangement = *recipe.team;
     }
     identity_.ids.push_back(id);
     placement_.positions.push_back(spawn.position);
@@ -258,6 +274,10 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     if (recipe.follows_ground && ground_.map.valid())
     {
         placement_.positions.back().z = ground_.map.surface_height(spawn.position.x, spawn.position.y);
+    }
+    if (squad.valid())
+    {
+        join_squad(identity_.ids.size() - 1U, squad, spawn.formation_team.raggedness);
     }
     return id;
 }
@@ -509,6 +529,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(combat.chase_timer);
         hasher.add(combat.invulnerable);
         hasher.add(combat.cannot_be_killed);
+        hasher.add(combat.ordered_squad);
         hasher.add(combat.stance);
         hasher.add(combat.aims_with_body);
     }
@@ -568,6 +589,32 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(static_cast<std::uint8_t>(team->arrangement));
             hasher.add(team->spacing);
             hasher.add(team->raggedness);
+        }
+    }
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        if (const auto* squad = squads_.find(slot_of(*this, index), &SquadColumns::states))
+        {
+            hasher.add(index);
+            hasher.add(squad->members.size());
+            for (const auto member : squad->members)
+            {
+                hasher.add(member);
+            }
+            hasher.add(static_cast<std::uint8_t>(squad->arrangement));
+            hasher.add(squad->extent);
+            hasher.add(squad->target);
+            hasher.add(squad->waiting);
+            hasher.add(squad->wait_ticks);
+            hasher.add(squad->chase_timer);
+        }
+        if (const auto* member = squad_members_.find(slot_of(*this, index), &SquadMemberColumns::states))
+        {
+            hasher.add(index);
+            hasher.add(member->squad);
+            hasher.add(member->ahead);
+            hasher.add(member->aside);
+            hasher.add(member->raggedness);
         }
     }
     hasher.subject = StateSubject::orders;
@@ -658,8 +705,8 @@ void SimulationWorld::run_contact()
 
 void SimulationWorld::remove_entities(std::vector<std::size_t> dense)
 {
-    std::ranges::sort(dense);
-    dense.erase(std::unique(dense.begin(), dense.end()), dense.end());
+    std::vector<std::uint32_t> reshaped;
+    expand_squad_removals(dense, reshaped);
     if (dense.empty())
     {
         return;
@@ -677,6 +724,8 @@ void SimulationWorld::remove_entities(std::vector<std::size_t> dense)
         formation_.remove(slot);
         group_.remove(slot);
         combat_.remove(slot);
+        squads_.remove(slot);
+        squad_members_.remove(slot);
         // A slot whose generation would wrap is retired instead of reused.
         if (slots_.generations[slot] != std::numeric_limits<std::uint32_t>::max())
         {
@@ -704,6 +753,11 @@ void SimulationWorld::remove_entities(std::vector<std::size_t> dense)
     for (auto index = dense.front(); index < identity_.ids.size(); ++index)
     {
         slots_.dense[identity_.ids[index].index] = static_cast<std::uint32_t>(index);
+    }
+    // The rings of teams that lost members close up.
+    for (const auto squad_slot : reshaped)
+    {
+        reshape_squad(squad_slot);
     }
 }
 
@@ -801,6 +855,7 @@ void SimulationWorld::PublishSystem::publish(const View& view)
     auto& turn_clips = view.get<ComponentPool<TurnClipColumns>>();
     auto& walk_clips = view.get<ComponentPool<WalkClipColumns>>();
     auto& flight = view.get<ComponentPool<FlightColumns>>();
+    auto& squad_members = view.get<ComponentPool<SquadMemberColumns>>();
     auto& projectiles = view.get<ProjectileState>();
     auto& events = view.get<TickEvents>();
     auto& clock = view.get<Clock>();
@@ -820,6 +875,7 @@ void SimulationWorld::PublishSystem::publish(const View& view)
                 destroyed += state.hardpoint_health[hardpoint] <= 0.0F ? 1U : 0U;
             }
         }
+        const auto* member = squad_members.find(slot_of(view, index), &SquadMemberColumns::states);
         // A non-flyer reports no manoeuvres.
         const auto* yaw_rate = flight.find(slot_of(view, index), &FlightColumns::yaw_rates);
         const auto* roll = flight.find(slot_of(view, index), &FlightColumns::rolls);
@@ -837,6 +893,7 @@ void SimulationWorld::PublishSystem::publish(const View& view)
                                      state.shield,
                                      state.profile->shield,
                                      state.target,
+                                     member != nullptr ? member->squad : EntityId{},
                                      placement.radii[index],
                                      destroyable,
                                      destroyed,

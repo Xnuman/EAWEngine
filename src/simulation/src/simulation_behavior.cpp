@@ -11,8 +11,9 @@ namespace eaw {
 
 using namespace simulation_detail;
 
-void SimulationWorld::apply(const SimCommand& command)
+void SimulationWorld::apply(const SimCommand& given)
 {
+    const auto command = for_squads(given);
     ++commands_applied_;
     if ((command.kind == SimCommandKind::move || command.kind == SimCommandKind::formation_move) && !is_finite(command.target))
     {
@@ -23,6 +24,18 @@ void SimulationWorld::apply(const SimCommand& command)
     {
         ++stale_references_;
         return;
+    }
+    // A new move, stop, or standing order ends a team's attack order.
+    if (command.kind == SimCommandKind::move || command.kind == SimCommandKind::stop || command.kind == SimCommandKind::formation_move || command.kind == SimCommandKind::attack_move ||
+        command.kind == SimCommandKind::guard)
+    {
+        for (const auto id : command.entities)
+        {
+            if (const auto dense = dense_index(*this, id))
+            {
+                clear_squad_attack(*dense);
+            }
+        }
     }
     if (command.kind == SimCommandKind::formation_move)
     {
@@ -36,12 +49,17 @@ void SimulationWorld::apply(const SimCommand& command)
     }
     if (command.kind == SimCommandKind::spawn)
     {
+        // A squad member names its team by its index in this list.
+        std::vector<EntityId> made;
         for (const auto& entity : command.spawns)
         {
-            if (!spawn(entity))
+            const auto squad = entity.squad && *entity.squad < made.size() ? made[*entity.squad] : EntityId{};
+            const auto id = spawn(entity, squad);
+            if (!id)
             {
                 ++rejected_spawns_;
             }
+            made.push_back(id ? *id : EntityId{});
         }
         return;
     }
@@ -127,15 +145,30 @@ void SimulationWorld::apply(const SimCommand& command)
         {
             const auto victim = dense_index(*this, command.target_entity);
             auto* combat = combat_of(*this, *dense);
-            if (!victim || !damageable(*this, *victim))
+            // A team is a target while it has members (it has no body of its own).
+            const bool team = victim && squads_.find(identity_.ids[*victim].index).has_value();
+            if (!victim || (!team && !damageable(*this, *victim)))
             {
                 ++stale_references_;
                 break;
             }
-            if (combat != nullptr && !combat->profile->weapons.empty() && *victim != *dense && rules_.hostility.hostile(identity_.owners[*dense], identity_.owners[*victim]))
+            if (*victim == *dense || !rules_.hostility.hostile(identity_.owners[*dense], identity_.owners[*victim]))
             {
-                combat->target = command.target_entity;
-                combat->ordered = true;
+                break;
+            }
+            if (squads_.find(identity_.ids[*dense].index))
+            {
+                // A team attacks with its members; it chases until they reach (pursue_squad_target).
+                order_squad_attack(*dense, *victim);
+                locomotor_.speed_limits[*dense] = 0.0F;
+                leave_group(*this, *dense);
+            }
+            else if (combat != nullptr && !combat->profile->weapons.empty())
+            {
+                // Against a team: any of its members (update_target picks the nearest).
+                combat->target = team ? EntityId{} : command.target_entity;
+                combat->ordered_squad = team ? command.target_entity : EntityId{};
+                combat->ordered = !team;
                 locomotor_.speed_limits[*dense] = 0.0F;
                 leave_group(*this, *dense);
                 combat->chase_timer = 0;
@@ -176,6 +209,8 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
     auto& orders = view.get<OrderColumns>();
     auto& steering = view.get<SteeringColumns>();
     auto& ground = view.get<GroundState>();
+    auto& squads = view.get<ComponentPool<SquadColumns>>();
+    auto& members = view.get<ComponentPool<SquadMemberColumns>>();
     // Standing orders scan with the spatial grid; built here only in ticks where one scans (the
     // grid of the last tick's combat names entities by dense indices that spawns and removals since
     // then have shifted).
@@ -198,7 +233,11 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
         }
         else
         {
-            if (combat_state(view, index).ordered)
+            if (const auto* squad = squads.find(identity.ids[index].index, &SquadColumns::states); squad != nullptr && squad->target.valid())
+            {
+                pursue_squad_target(view, index);
+            }
+            else if (combat_state(view, index).ordered && members.find(identity.ids[index].index) == std::nullopt)
             {
                 pursue_ordered_target(view, index);
             }
@@ -228,6 +267,7 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
             }
         }
     }
+    follow_squads(view);
 }
 
 void SimulationWorld::apply_standing_order(const SimCommand& command)

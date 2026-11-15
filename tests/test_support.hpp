@@ -169,6 +169,9 @@ struct TestSpawn
     float min_speed{};
     eaw::Stance stance{eaw::Stance::aggressive};
     bool aims_with_body{};
+    // A team's ring arrangement (the entity is a team), and the team a squad member joins.
+    std::optional<eaw::TeamArrangement> team;
+    eaw::EntityId squad;
 };
 
 inline eaw::EntityRecipe recipe_of(const TestSpawn& spawn)
@@ -186,7 +189,8 @@ inline eaw::EntityRecipe recipe_of(const TestSpawn& spawn)
             .formation_solo = spawn.formation_solo,
             .crush = spawn.crush,
             .min_speed = spawn.min_speed,
-            .aims_with_body = spawn.aims_with_body};
+            .aims_with_body = spawn.aims_with_body,
+            .team = spawn.team};
 }
 
 inline eaw::EntitySpawn instance_of(const TestSpawn& spawn, const eaw::RecipeId recipe = 0)
@@ -199,13 +203,14 @@ inline eaw::EntitySpawn instance_of(const TestSpawn& spawn, const eaw::RecipeId 
             .selectable = spawn.selectable,
             .formation_team = spawn.formation_team,
             .footprint = spawn.footprint,
-            .stance = spawn.stance};
+            .stance = spawn.stance,
+            .squad = spawn.squad.valid() ? std::optional<std::uint32_t>(0) : std::nullopt};
 }
 
 inline eaw::Result<eaw::EntityId> test_spawn(eaw::SimulationWorld& world, const TestSpawn& spawn)
 {
     EAW_TRY_ASSIGN(const auto recipe, world.add_recipe(recipe_of(spawn)));
-    return world.spawn(instance_of(spawn, recipe));
+    return world.spawn(instance_of(spawn, recipe), spawn.squad);
 }
 
 inline eaw::MapEntity map_entity(const TestSpawn& spawn)

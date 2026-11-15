@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace eaw {
@@ -44,6 +45,18 @@ struct FormationMember
     std::uint32_t order{2};
     FormationTeam team;
 };
+
+// A team's shape: each member's offset (forward, right) from the team's center, in the order of
+// the members given (callers pass them in id order), from the arrangement at the largest member's
+// pitch, each moved by its raggedness (a deterministic offset from its id); and the team's extent,
+// the farthest member's distance from the center plus the largest footprint radius. A squad's ring
+// and a company team's place in a formation are the same shape.
+struct TeamShape
+{
+    std::vector<std::pair<float, float>> offsets;
+    float extent{};
+};
+[[nodiscard]] TeamShape team_shape(std::span<const FormationMember> members, TeamArrangement arrangement);
 
 struct FormationSlot
 {

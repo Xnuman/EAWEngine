@@ -20,6 +20,7 @@ set(EAW_TEST_MODULES
     scene
     script
     simulation
+    squads
     vfs
     xml
 )

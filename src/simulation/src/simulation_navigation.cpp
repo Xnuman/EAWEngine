@@ -602,7 +602,9 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         const bool ship_in_space = !ground_.map.valid() && placement_.radii[*dense] > 0.0F && !flies(*this, *dense);
         const auto spacing = ship_in_space ? std::max(recipe.formation_spacing, space_formation_spacing) : recipe.formation_spacing;
         const auto* team = formation_.find(slot_of(*this, *dense), &FormationColumns::teams);
-        members.push_back({id, placement_.positions[*dense], placement_.radii[*dense], spacing, recipe.formation_order, team != nullptr ? *team : FormationTeam{}});
+        const auto* squad = squads_.find(identity_.ids[*dense].index, &SquadColumns::states);
+        const auto radius = squad != nullptr ? squad->extent : placement_.radii[*dense];
+        members.push_back({id, placement_.positions[*dense], radius, spacing, recipe.formation_order, team != nullptr ? *team : FormationTeam{}});
     }
     for (const auto index : solos)
     {
