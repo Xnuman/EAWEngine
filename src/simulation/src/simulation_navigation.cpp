@@ -699,7 +699,7 @@ void SimulationWorld::measure_remaining_routes(RouteColumns& route, const Placem
 
 // A formation advances together, as in Age of Empires II: a moving member more than the slack
 // ahead of its group's furthest moving member waits, so a group torn apart by a narrow passage or a
-// detour re-forms. A member that makes no progress for cohesion_stall_ticks while not waiting is
+// detour re-forms. A member that makes no progress for cohesion_stall_seconds while not waiting is
 // released from its group (it keeps its order), so one stuck unit cannot hold the others forever.
 void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
 {
@@ -752,7 +752,7 @@ void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
             group.best_remaining[index] = route.remaining[index];
             group.stall_ticks[index] = 0;
         }
-        else if (++group.stall_ticks[index] >= cohesion_stall_ticks)
+        else if (++group.stall_ticks[index] >= ticks_for(view, cohesion_stall_seconds))
         {
             group.ids[index] = 0;
             ++released_members;

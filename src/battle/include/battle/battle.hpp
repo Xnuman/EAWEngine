@@ -122,7 +122,7 @@ public:
     // Sets up the world: the map's ground, damage table, and hostility, then its placed entities in
     // order (entities the world rejects are logged as warnings and skipped), then one tick so a
     // first snapshot exists. The spawnable types are copied.
-    Battle(const BattleMap& map, std::string map_name, double tick_seconds = 1.0 / 30.0);
+    Battle(const BattleMap& map, std::string map_name, double tick_seconds = 1.0 / default_ticks_per_second);
 
     [[nodiscard]] SimulationWorld& world() noexcept;
     [[nodiscard]] const SimulationWorld& world() const noexcept;

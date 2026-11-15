@@ -221,7 +221,7 @@ void SimulationWorld::CombatSystem::update_target(const View& view, const std::s
         --state.retarget_timer;
         return;
     }
-    state.retarget_timer = retarget_interval;
+    state.retarget_timer = ticks_for(view, retarget_seconds);
     const auto best = choose_target(view, grid_, query_, index, placement.positions[index], range,
                                     [&](const std::size_t candidate)
                                     {

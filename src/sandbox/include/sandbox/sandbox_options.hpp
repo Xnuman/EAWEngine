@@ -146,11 +146,14 @@ struct SandboxOptions
     // --effect: particle effects (model references) played at the map center, restarting when they
     // end (repeatable).
     std::vector<std::string> effects;
-    // Battles: total simulation ticks to run (battle mode; default 3000, or the replayed log's end),
-    // a file to write the order log to when the battle ends (battle and sandbox modes), a log to
-    // replay instead of the spawn and auto-move options, whether to run the battle twice and
-    // compare the state hashes, and whether to compare them by subject after every tick.
+    // Battles: total simulation ticks to run (battle mode; default 6000, or the replayed log's end),
+    // the ticks per second (battle mode; default the simulation's, 60; a log replays only at the
+    // rate it was recorded at), a file to write the order log to when the battle ends (battle and
+    // sandbox modes), a log to replay instead of the spawn and auto-move options, whether to run the
+    // battle twice and compare the state hashes, and whether to compare them by subject after every
+    // tick.
     std::optional<std::uint64_t> ticks;
+    std::optional<float> tick_rate;
     std::optional<std::filesystem::path> record;
     std::optional<std::filesystem::path> replay;
     // lua-survey: a folder for its api.tsv and scripts.tsv reports.

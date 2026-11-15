@@ -127,7 +127,7 @@ std::string tsv(std::string text)
 
 int run_lua_survey(const SandboxOptions& options, const VirtualFileSystem& vfs)
 {
-    const auto ticks = options.ticks.value_or(300U);
+    const auto ticks = options.ticks.value_or(600U); // 10 seconds at the host's 60 Hz.
     const auto started = std::chrono::steady_clock::now();
     HostApiRecorder recorder;
     std::vector<ScriptResult> results;

@@ -435,7 +435,7 @@ void test_battle_orders()
     const auto run = [&](const bool record, const bool through_runtime)
     {
         eaw::BattleRuntime runtime(map, "TEST.TED", nullptr);
-        eaw::Battle plain(map, "TEST.TED", 1.0 / 30.0);
+        eaw::Battle plain(map, "TEST.TED", 1.0 / eaw::default_ticks_per_second);
         auto& battle = through_runtime ? runtime.battle() : plain;
         const auto step = [&]
         {
@@ -472,7 +472,8 @@ void test_battle_orders()
             }
         }
         expect_ok(battle.submit({.order = eaw::BattleOrder::move, .entities = squadron_ids, .point = {600.0F, 200.0F, 0.0F}}), "move order");
-        for (int tick = 0; tick < 300; ++tick)
+        // Ten seconds of battle.
+        for (int tick = 0; tick < static_cast<int>(10.0 * eaw::default_ticks_per_second); ++tick)
         {
             step();
         }
@@ -484,7 +485,8 @@ void test_battle_orders()
     require(run(true, true) == first, "a battle runtime must step its battle as Battle::step does");
     // The runtime's clock owes ticks by real time, at most eight per advance (FixedStepClock).
     eaw::BattleRuntime clock_check(map, "TEST.TED", nullptr);
-    require(clock_check.scripts() == nullptr && clock_check.ticks_due(0.5 / 30.0) == 0 && clock_check.ticks_due(0.6 / 30.0) == 1 && clock_check.ticks_due(10.0) == 8,
+    require(clock_check.scripts() == nullptr && clock_check.ticks_due(0.5 / eaw::default_ticks_per_second) == 0 && clock_check.ticks_due(0.6 / eaw::default_ticks_per_second) == 1 &&
+                clock_check.ticks_due(10.0) == 8,
             "a battle runtime must owe ticks by elapsed real time");
     require(first.second > 0, "the test battle must be a real fight");
 }
@@ -788,7 +790,8 @@ void test_battle_scripts()
     eaw::BattleMap map;
     map.spawnable = types;
     map.hostility.set(1, 2, true);
-    constexpr std::uint64_t ticks = 300;
+    // Ten seconds of battle, long enough for the walker to arrive.
+    constexpr auto ticks = static_cast<std::uint64_t>(10.0 * eaw::default_ticks_per_second);
 
     // One run: the players' orders (here: the spawns) at tick 0, the script from tick 1, and the
     // driver's order step, scripts, players. Returns the final hash and the script's output.

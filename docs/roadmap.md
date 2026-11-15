@@ -409,8 +409,8 @@ exists, not guessed in advance.
 
 - The headless battle (`EAWEngine battle`) is the simulation benchmark; it stays ahead of renderer
   optimization.
-- Presentation at the display's rate with the fixed simulation tick (30 Hz, an engine choice until
-  the original's rate is measured); a configurable tick is an open option.
+- Presentation at the display's rate with the fixed simulation tick (60 Hz, the owner, 2026-11-15;
+  `--tick-rate` sets another for headless battles).
 - 60 frames per second at the least (the owner, 2026-11-15): a frame, any simulation ticks it runs
   included, within 16.6 ms. The opening tick of a 3,300-entity battle (50-60 ms, roadmap work order
   2g) breaks it today.

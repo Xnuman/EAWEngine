@@ -319,7 +319,7 @@ void SimulationWorld::BehaviorSystem::disengage(const View& view, const std::siz
 }
 
 // Attack-move and guard (engine semantics; the original's are unmeasured). Both scan for hostiles
-// every retarget_interval ticks (staggered by entity index) and engage the nearest one as an
+// every retarget_seconds (staggered by entity index) and engage the nearest one as an
 // ordered attack, which the pursuit chases; they break off when the victim is gone or the chase
 // leaves its leash, then head for the destination (attack-move) or back to the anchor (guard). An
 // attack-move ends once it arrives with no engagement; a guard ends when its object dies.
@@ -384,7 +384,7 @@ void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const
         }
         else
         {
-            order.scan_timer = retarget_interval;
+            order.scan_timer = ticks_for(view, retarget_seconds);
             const auto& center = guard ? order.point : placement.positions[index];
             const float response = state.profile->attack_move_response_range;
             const float reach = guard ? guard_radius : (response > 0.0F ? response : range * acquire_range_factor);
@@ -434,7 +434,7 @@ void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const
 }
 
 // Chase an ordered target until it is in range, then hold position (combat fires). The chase
-// replans every chase_interval ticks while the target moves.
+// replans every chase_seconds while the target moves.
 void SimulationWorld::BehaviorSystem::pursue_ordered_target(const View& view, const std::size_t index)
 {
     auto& placement = view.get<PlacementColumns>();
@@ -456,7 +456,7 @@ void SimulationWorld::BehaviorSystem::pursue_ordered_target(const View& view, co
             // Flyers keep their altitude; ground units take theirs from the surface anyway.
             plan_move(view, index,
                       {placement.positions[*victim].x, placement.positions[*victim].y, ground_mover.follows_ground[index] != 0 ? placement.positions[*victim].z : placement.positions[index].z});
-            state.chase_timer = chase_interval;
+            state.chase_timer = ticks_for(view, chase_seconds);
         }
     }
     else if (route.move_targets[index])

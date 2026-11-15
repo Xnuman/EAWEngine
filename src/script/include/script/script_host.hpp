@@ -46,7 +46,8 @@ inline constexpr std::size_t max_script_string_bytes = 16U * 1024U * 1024U;
 struct ScriptHostOptions
 {
     std::uint64_t random_seed{1};
-    double tick_seconds{1.0 / 30.0};
+    // Seconds per tick: the battle passes its clock's (the simulation's default rate is 60 Hz).
+    double tick_seconds{1.0 / 60.0};
     // Lua instructions one call or one thread resume may run before it is stopped as runaway.
     std::uint64_t instruction_budget{5'000'000};
     // Names any script defines (script_defined_globals): reading one that is not set gives nil, never

@@ -19,7 +19,8 @@
 namespace eaw {
 namespace {
 
-constexpr std::uint64_t default_ticks = 3000;
+// 100 seconds at the default 60 Hz.
+constexpr std::uint64_t default_ticks = 6000;
 
 std::string hex(const std::uint64_t value)
 {
@@ -68,7 +69,7 @@ Vector3 battle_center(const BattleMapAsset& asset)
 BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, const SandboxOptions& options, const BattleLog* replay, const std::uint64_t ticks, const AssetReader* scripts_reader)
 {
     BattleRun run;
-    BattleRuntime runtime(battle_map(asset), map_name, scripts_reader);
+    BattleRuntime runtime(battle_map(asset), map_name, scripts_reader, options.tick_rate ? static_cast<double>(*options.tick_rate) : default_ticks_per_second);
     auto& battle = runtime.battle();
     auto& world = battle.world();
     run.starting_entities = world.stats().entities;

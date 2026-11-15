@@ -10,7 +10,8 @@ BattleRuntime::BattleRuntime(const BattleMap& map, std::string map_name, const A
 {
     if (scripts_reader != nullptr)
     {
-        scripts_.emplace(*scripts_reader);
+        // Scripts count time in the battle's ticks (Sleep, GetCurrentTime).
+        scripts_.emplace(*scripts_reader, ScriptHostOptions{.tick_seconds = clock_.tick_seconds()});
     }
 }
 

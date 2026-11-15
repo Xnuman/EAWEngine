@@ -31,15 +31,19 @@ inline constexpr float hull_floor_share = 0.2F;
 // of near neighbours instead of every unit within 256 units: 74% of a 3,300-unit tick went there),
 // within these bounds. Engine choices; the pairs found are the same at any cell size.
 inline constexpr float separation_min_cell_size = 16.0F;
-// Ticks between automatic target searches of an idle weapon, and between replans of an ordered
-// chase whose target is out of range. Engine choices, not measured from the original.
-inline constexpr std::uint32_t retarget_interval = 10;
-inline constexpr std::uint32_t chase_interval = 30;
+// The fastest separation pushes a unit, in its radii per second: half a radius per tick at the old
+// 30 Hz. An engine choice.
+inline constexpr float separation_radii_per_second = 15.0F;
+// Seconds between automatic target searches of an idle weapon, and between replans of an ordered
+// chase whose target is out of range (10 and 30 ticks at the old 30 Hz). Engine choices, not
+// measured from the original.
+inline constexpr float retarget_seconds = 1.0F / 3.0F;
+inline constexpr float chase_seconds = 1.0F;
 // A formation member waits while it is more than this much route ahead of its group's furthest
-// member (plus two footprint diameters), and leaves its group after this many ticks without
+// member (plus two footprint diameters), and leaves its group after this many seconds without
 // progress while not waiting. Engine choices.
 inline constexpr float cohesion_slack = 30.0F;
-inline constexpr std::uint32_t cohesion_stall_ticks = 90;
+inline constexpr float cohesion_stall_seconds = 3.0F;
 // Path search nodes expanded per tick at most (about 5 ms in a Release build), always at least one
 // request. An engine choice; requests beyond it wait for the next tick in order.
 inline constexpr std::uint64_t path_budget_per_tick = 30000;

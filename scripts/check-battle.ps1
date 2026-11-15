@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     The battle every simulation change is checked against (AGENTS.md, "Build and validation"):
-    Utapau, two opposing groups ordered to the center, 1500 ticks, run twice with
+    Utapau, two opposing groups ordered to the center, 3000 ticks (50 seconds at 60 Hz), run twice with
     --check-determinism. Fails when the runs differ or the hash is not -Expected. A change that
     alters the hash on purpose says so and why, and updates the expected hashes here.
 
@@ -21,9 +21,9 @@
 param(
     [ValidateSet('Debug', 'Release', 'DebugValidation')]
     [string] $Configuration = 'Release',
-    # The reference battle's state hash at tick 1500 since the last change that altered the
+    # The reference battle's state hash at tick 3000 since the last change that altered the
     # simulation on purpose.
-    [string] $Expected = '0xbed05879a9bfff2c',
+    [string] $Expected = '0x5e486b97af004368',
     [switch] $Extended,
     [string] $GameRoot
 )
@@ -40,20 +40,20 @@ $utapau = 'DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED'
 $kuat = 'DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED'
 $battles = @(
     @{ Name = 'reference'; Expected = $Expected
-        Arguments = @('--map', $utapau, '--spawn', 'Rebel_Infantry_Squad:2@1', '--spawn', 'T2B_Tank:3@2', '--auto-move', '--ticks', '1500') }
+        Arguments = @('--map', $utapau, '--spawn', 'Rebel_Infantry_Squad:2@1', '--spawn', 'T2B_Tank:3@2', '--auto-move', '--ticks', '3000') }
 )
 if ($Extended) {
     $battles += @(
-        @{ Name = 'large Utapau'; Expected = '0x8f962c04c6179584'
+        @{ Name = 'large Utapau'; Expected = '0xe12854f58dbfb841'
             Arguments = @('--map', $utapau, '--spawn', 'Rebel_Infantry_Squad:80@1', '--spawn', 'Imperial_Stormtrooper_Squad:80@2', '--spawn', 'T2B_Tank:60@1',
-                '--spawn', 'AT_ST_Walker:40@2', '--auto-move', '--ticks', '900') },
-        @{ Name = 'Kuat fighters'; Expected = '0xdc78b4e4cfb51ef2'
-            Arguments = @('--map', $kuat, '--spawn', 'Rebel_X-Wing_Squadron:4@1', '--spawn', 'TIE_Fighter_Squadron:4@2', '--ticks', '1500') },
-        @{ Name = 'Kuat capital ships'; Expected = '0x34a6ae06746a12b7'
+                '--spawn', 'AT_ST_Walker:40@2', '--auto-move', '--ticks', '1800') },
+        @{ Name = 'Kuat fighters'; Expected = '0x22f1681a1b9f81fe'
+            Arguments = @('--map', $kuat, '--spawn', 'Rebel_X-Wing_Squadron:4@1', '--spawn', 'TIE_Fighter_Squadron:4@2', '--ticks', '3000') },
+        @{ Name = 'Kuat capital ships'; Expected = '0xf8fdb041e394952d'
             Arguments = @('--map', $kuat, '--spawn', 'Nebulon_B_Frigate:4@1', '--spawn', 'Corellian_Corvette:6@1', '--spawn', 'Acclamator_Assault_Ship:3@2',
-                '--spawn', 'Tartan_Patrol_Cruiser:6@2', '--auto-move', '--ticks', '1500') },
-        @{ Name = 'Utapau AT-ATs'; Expected = '0xe0fc1ee2c9df1db3'
-            Arguments = @('--map', $utapau, '--spawn', 'AT_AT_Walker:4@2', '--spawn', 'Rebel_Infantry_Squad:6@1', '--spawn', 'T2B_Tank:4@1', '--auto-move', '--ticks', '1800') }
+                '--spawn', 'Tartan_Patrol_Cruiser:6@2', '--auto-move', '--ticks', '3000') },
+        @{ Name = 'Utapau AT-ATs'; Expected = '0x4ce99e4c015797e2'
+            Arguments = @('--map', $utapau, '--spawn', 'AT_AT_Walker:4@2', '--spawn', 'Rebel_Infantry_Squad:6@1', '--spawn', 'T2B_Tank:4@1', '--auto-move', '--ticks', '3600') }
     )
 }
 

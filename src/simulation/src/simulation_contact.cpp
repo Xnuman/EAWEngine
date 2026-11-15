@@ -226,8 +226,8 @@ void SimulationWorld::ContactSystem::separate(const View& view, const float dt)
         {
             continue;
         }
-        // At most half a radius, or the unit's own speed, per tick.
-        const auto limit = std::max(placement.radii[index] * 0.5F, locomotor.max_speeds[index] * dt);
+        // At most the separation rate in radii, or the unit's own speed.
+        const auto limit = std::max(placement.radii[index] * separation_radii_per_second, locomotor.max_speeds[index]) * dt;
         if (length > limit)
         {
             push.x *= limit / length;

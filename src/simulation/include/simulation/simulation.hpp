@@ -575,13 +575,18 @@ struct SimSnapshot
     std::vector<SpinSnapshot> spins;
 };
 
+// Simulation ticks per second of real time: 60 (the owner, 2026-11-15: never below 60 frames per
+// second, and the simulation steps as often; it was 30 Hz, an engine choice). The original's rate
+// is not measured; its XML units per 30 Hz frame are converted apart (assets/legacy_units.hpp).
+inline constexpr double default_ticks_per_second = 60.0;
+
 // Converts real elapsed time into whole simulation ticks. At most `max_ticks_per_advance` ticks are
 // returned per call (excess time is dropped), so a long stall cannot trigger an ever-growing
 // backlog of ticks.
 class FixedStepClock final
 {
 public:
-    explicit FixedStepClock(double ticks_per_second = 30.0, std::uint32_t max_ticks_per_advance = 8);
+    explicit FixedStepClock(double ticks_per_second = default_ticks_per_second, std::uint32_t max_ticks_per_advance = 8);
 
     // Adds elapsed real time and returns how many ticks should run now.
     std::uint32_t advance(double seconds);
@@ -640,7 +645,7 @@ public:
         TickPhaseTimes slowest_phase_seconds{};
     };
 
-    explicit SimulationWorld(double tick_seconds = 1.0 / 30.0);
+    explicit SimulationWorld(double tick_seconds = 1.0 / default_ticks_per_second);
 
     // Spawning is immediate and intended for setup before the first tick (map load); during a battle
     // spawns go through spawn commands, so they apply at a tick boundary like every order. Spawn
@@ -1654,7 +1659,7 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<FlightColumns>, Read<CombatColumns>,
-                                Write<GroupColumns>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>>;
+                                Write<GroupColumns>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>>;
         // Route requests under the search budget, remaining routes, group cohesion, and space
         // avoidance, before movement.
         void run(const View& view);

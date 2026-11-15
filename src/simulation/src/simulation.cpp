@@ -238,7 +238,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     motion_.starts.push_back(spawn.position);
     combat_.last_shot_ticks.push_back(0);
     orders_.command_serials.push_back(0);
-    orders_.standing.push_back({.scan_timer = slot % retarget_interval});
+    orders_.standing.push_back({.scan_timer = slot % std::max(1U, ticks_for(*this, retarget_seconds))});
     locomotor_.suspended.push_back(0);
     locomotor_.arriving.push_back(0);
     steering_.intents.emplace_back();

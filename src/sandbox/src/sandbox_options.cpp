@@ -66,7 +66,7 @@ void print_sandbox_usage()
               << "  doctor             Validate discovery, mounts, and an asset probe\n"
               << "  compare-images     Compare two captures (EAWEngine compare-images --help)\n"
               << "  lua-survey         Run every script under Data/Scripts headless on recording stubs and report the\n"
-              << "                     host API they use (--ticks, default 300; --report <folder> for TSV files)\n"
+              << "                     host API they use (--ticks, default 600, 10 s; --report <folder> for TSV files)\n"
               << "  bootstrap          Alias for doctor for older launch scripts\n"
               << "  --game-root <path> Empire at War installation root\n"
               << "  --game <eaw|foc>   Select the base game or expansion\n"
@@ -124,7 +124,8 @@ void print_sandbox_usage()
               << "  --spawn-later <TYPE>[:N][@OWNER] Load a type at runtime once the map is shown and spawn N (automation)\n"
               << "  --effect <NAME>          Play a particle effect (e.g. P_EXPLOSION_SMALL) at the map center, repeating (maps)\n"
               << "  --reload-every <frames>  Replace the scene with a fresh copy every N frames (lifetime test)\n"
-              << "  --ticks <count>    Battle: total simulation ticks to run (default 3000, or the replayed log's end)\n"
+              << "  --ticks <count>    Battle: total simulation ticks to run (default 6000, or the replayed log's end)\n"
+              << "  --tick-rate <hz>   Battle: simulation ticks per second (default 60; replay a log at its recording's rate)\n"
               << "  --record <file>    Write the battle's order log when it ends (battle and sandbox)\n"
               << "  --replay <file>    Battle: replay a recorded order log (its map unless --map is given) and check its state hash\n"
               << "  --check-determinism  Battle: run twice and require identical state hashes\n"
@@ -164,6 +165,17 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
             if (*options.ticks == 0 || *options.ticks > 100'000'000ULL)
             {
                 return make_error("--ticks must be from 1 to 100000000");
+            }
+        }
+        else if (argument == "--tick-rate")
+        {
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.tick_rate, parse_float(text, argument));
+            // Bounds of sense, an engine choice: below 1 Hz nothing plays, above 1000 Hz the tick is
+            // shorter than the timers' resolution matters for.
+            if (*options.tick_rate < 1.0F || *options.tick_rate > 1000.0F)
+            {
+                return make_error("--tick-rate must be from 1 to 1000");
             }
         }
         else if (argument == "--record")

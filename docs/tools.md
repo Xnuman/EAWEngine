@@ -167,7 +167,7 @@ combat and path statistics. It is
 the determinism check and the simulation benchmark.
 
 ```powershell
-# Two opposing fighter groups at the map center, 3000 ticks, order log written
+# Two opposing fighter groups at the map center, 6000 ticks (100 s at 60 Hz), order log written
 EAWEngine.exe battle --game foc --map DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED `
   --spawn Rebel_X-Wing_Squadron:2@1 --spawn TIE_Fighter_Squadron:2@2 --record kuat.log
 
@@ -175,10 +175,13 @@ EAWEngine.exe battle --game foc --map DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED `
 EAWEngine.exe battle --game foc --replay kuat.log
 
 # Every mobile unit of a land map ordered to the center, run twice and compared
-EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --auto-move --ticks 1500 --check-determinism
+EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --auto-move --ticks 3000 --check-determinism
+
+# The same battle's 50 seconds at 30 Hz: whether a result depends on the tick rate
+EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --auto-move --tick-rate 30 --ticks 1500
 
 # The same, and if the runs differ, the first tick and the parts of the state where they do
-EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --auto-move --ticks 1500 --check-determinism --hash-trace
+EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --auto-move --ticks 3000 --check-determinism --hash-trace
 ```
 
 `--hash-trace` hashes the state by subject after every tick of both runs (bodies, routes, combat,
@@ -214,11 +217,11 @@ stubs and reports which engine functions and methods they call. It executes the 
 mod's scripts, in the engine, never in the inspector or tests.
 
 ```powershell
-EAWEngine.exe lua-survey --game foc --ticks 300 --report survey
+EAWEngine.exe lua-survey --game foc --ticks 600 --report survey
 ```
 
 Each script is loaded and `Base_Definitions` (else `Definitions`) is called. Then, for `--ticks`
-simulation ticks (default 300):
+simulation ticks (default 600, 10 seconds at 60 Hz):
 
 - the engine objects the framework expects are bound as stubs: `Object` for game-object scripts,
   `PlayerObject` for AI, free-store, evaluator, and intervention scripts, `Target` and one object

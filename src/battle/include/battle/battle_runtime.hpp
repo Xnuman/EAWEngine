@@ -17,10 +17,6 @@ namespace eaw {
 
 class AssetReader;
 
-// Simulation ticks per second of real time: an engine choice until the original's rate is
-// measured (roadmap, "Performance gates").
-inline constexpr double default_ticks_per_second = 30.0;
-
 class BattleRuntime final
 {
 public:

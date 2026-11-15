@@ -121,8 +121,11 @@ show each virtual path once, with its winning layer; lower layers stay available
 
 ## Simulation
 
-Gameplay runs on a fixed tick (30 Hz, an engine choice until the original's logic rate is measured);
-presentation runs at its own frame rate. The world stores units in structure-of-arrays components
+Gameplay runs on a fixed tick (60 Hz, the owner's decision of 2026-11-15; the original's logic rate
+is not measured, and XML values per 30 Hz frame are converted to seconds apart from it, in
+`assets/legacy_units.hpp`); presentation runs at its own frame rate. Every duration the simulation
+counts is in seconds and turned into ticks by the clock (`ticks_for`), so the rate is a parameter
+(`--tick-rate` on headless battles). The world stores units in structure-of-arrays components
 under stable entity ids and publishes immutable snapshots. Presentation-only data (visual keys,
 effects, derived speeds) never enters the state hash and never feeds back into the simulation.
 The state hash, recorded order logs, and `--check-determinism` guard determinism; random streams,
