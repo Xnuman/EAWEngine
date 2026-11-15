@@ -558,6 +558,31 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     }
     const auto facing = formation_facing(members, command.target);
     const auto slots = formation_slots(members, command.target, facing);
+    if (command.kind == SimCommandKind::group_move)
+    {
+        // A group move (the default; the owner, 2026-11-15): each member from where it stands to its
+        // own slot on a route of its own, all at the slowest member's speed; no shared route, no
+        // frame, no waiting.
+        auto group_speed = std::numeric_limits<float>::max();
+        for (const auto index : movers)
+        {
+            group_speed = std::min(group_speed, locomotor_.max_speeds[index]);
+        }
+        for (std::size_t member = 0; member < movers.size(); ++member)
+        {
+            const auto index = movers[member];
+            drop_target(*this, index);
+            leave_group(*this, index);
+            locomotor_.speed_limits[index] = movers.size() > 1 ? group_speed : 0.0F;
+            auto slot = slots[member].position;
+            if (ground_mover_.follows_ground[index] == 0)
+            {
+                slot.z = placement_.positions[index].z;
+            }
+            plan_move(*this, index, slot);
+        }
+        return;
+    }
     // On land, ground members of a group move as frames; the rest (and ships) plan routes per member.
     std::vector<std::size_t> framed;
     std::vector<FormationSlot> framed_slots;

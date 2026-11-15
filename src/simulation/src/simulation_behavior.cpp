@@ -15,7 +15,7 @@ void SimulationWorld::apply(const SimCommand& given)
 {
     const auto command = for_squads(given);
     ++commands_applied_;
-    if ((command.kind == SimCommandKind::move || command.kind == SimCommandKind::formation_move) && !is_finite(command.target))
+    if ((command.kind == SimCommandKind::move || command.kind == SimCommandKind::formation_move || command.kind == SimCommandKind::group_move) && !is_finite(command.target))
     {
         ++stale_references_;
         return;
@@ -26,8 +26,8 @@ void SimulationWorld::apply(const SimCommand& given)
         return;
     }
     // A new move, stop, or standing order ends a team's attack order.
-    if (command.kind == SimCommandKind::move || command.kind == SimCommandKind::stop || command.kind == SimCommandKind::formation_move || command.kind == SimCommandKind::attack_move ||
-        command.kind == SimCommandKind::guard)
+    if (command.kind == SimCommandKind::move || command.kind == SimCommandKind::stop || command.kind == SimCommandKind::formation_move || command.kind == SimCommandKind::group_move ||
+        command.kind == SimCommandKind::attack_move || command.kind == SimCommandKind::guard)
     {
         for (const auto id : command.entities)
         {
@@ -37,7 +37,7 @@ void SimulationWorld::apply(const SimCommand& given)
             }
         }
     }
-    if (command.kind == SimCommandKind::formation_move)
+    if (command.kind == SimCommandKind::formation_move || command.kind == SimCommandKind::group_move)
     {
         apply_formation_move(command);
         return;
@@ -89,6 +89,7 @@ void SimulationWorld::apply(const SimCommand& given)
         switch (command.kind)
         {
         case SimCommandKind::formation_move:
+        case SimCommandKind::group_move:
         case SimCommandKind::spawn:
         case SimCommandKind::attack_move:
         case SimCommandKind::guard:
@@ -283,12 +284,12 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
 void SimulationWorld::apply_standing_order(const SimCommand& command)
 {
     const bool attack_move = command.kind == SimCommandKind::attack_move;
-    // An attack-move to a point moves the group as one formation; each member then keeps its own
-    // slot as destination. To an object, or a guard, each entity heads for the object or point.
+    // An attack-move to a point moves the group as a group move; each member then keeps its own slot
+    // as destination. To an object, or a guard, each entity heads for the object or point.
     if (attack_move && !command.target_entity.valid())
     {
         SimCommand move = command;
-        move.kind = SimCommandKind::formation_move;
+        move.kind = SimCommandKind::group_move;
         apply_formation_move(move);
     }
     for (const auto id : command.entities)

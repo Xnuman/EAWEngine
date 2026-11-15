@@ -80,6 +80,7 @@ SimCommand SimulationWorld::for_squads(const SimCommand& command) const
     case SimCommandKind::stop:
     case SimCommandKind::attack:
     case SimCommandKind::formation_move:
+    case SimCommandKind::group_move:
     case SimCommandKind::attack_move:
     case SimCommandKind::guard:
     {

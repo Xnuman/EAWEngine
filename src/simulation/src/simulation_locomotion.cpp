@@ -152,6 +152,7 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
     }
     if (goal_taken(view, index))
     {
+        route.last_goals[index] = *target;
         target.reset();
         return;
     }
@@ -215,6 +216,7 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
         }
         if (path.empty())
         {
+            route.last_goals[index] = *target;
             target.reset();
             return;
         }

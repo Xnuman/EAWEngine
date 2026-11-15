@@ -284,8 +284,8 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
         if (blocker)
         {
             const auto yielder = *blocker;
-            if (identity.owners[yielder] != identity.owners[passer] || radii[yielder] > own_radius || (route.give_ways[yielder] && !route.give_ways[yielder]->returning) ||
-                locomotor.max_speeds[yielder] <= 0.0F || locomotor.suspended[yielder] != 0)
+            if (identity.owners[yielder] != identity.owners[passer] || (route.give_ways[yielder] && !route.give_ways[yielder]->returning) || locomotor.max_speeds[yielder] <= 0.0F ||
+                locomotor.suspended[yielder] != 0)
             {
                 continue;
             }
@@ -506,10 +506,19 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
                                    {
                                        return true;
                                    }
-                                   // Stalled at a crowd of its allies standing between it and its goal, within one of its
-                                   // own footprints' width of them (a crowd grows ring by ring: the units of each ring stop
-                                   // at the ring that stopped before them). A jam of moving units is no crowd at the goal.
-                                   return stalled && standing && view.get<IdentityColumns>().owners[other] == owner && from_goal < own_distance && apart <= reach + 2.0F * radius;
+                                   // Stalled at a crowd of its allies that stopped at the end of the same order, or at
+                                   // destinations near its own (within taken_goal_crowd of their summed radii: units sent
+                                   // to one point, or to neighbouring slots), between it and
+                                   // its goal, within one of its own footprints' width of them (a crowd grows ring by ring:
+                                   // each ring stops at the ring that stopped before it). An ally that stopped elsewhere is
+                                   // no crowd at this goal: a unit held behind it waits for it to give way (the owner's
+                                   // report: companies sent through a standing squad stopped at it). A jam of moving units
+                                   // is no crowd either.
+                                   const auto& stopped_at = route.last_goals[other];
+                                   const auto& serials = view.get<OrderColumns>().command_serials;
+                                   const bool same_order = serials[other] == serials[index];
+                                   return stalled && standing && stopped_at && (same_order || distance_xy(*stopped_at, goal) < reach * taken_goal_crowd) &&
+                                          view.get<IdentityColumns>().owners[other] == owner && from_goal < own_distance && apart <= reach + 2.0F * radius;
                                });
 }
 

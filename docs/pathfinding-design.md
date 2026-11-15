@@ -140,6 +140,14 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
   bounded by the formation's size; an order splits a selection into groups by distance (an engine
   choice), so no member thousands of units away belongs to the formation. Stalls are measured
   against the frame's progress, and turning in place is not a stall (concern 6).
+- **Two kinds of group move** (the owner, 2026-11-15, after trying frames): the default group move
+  (`SimCommandKind::group_move`, `BattleOrder::move`, a right-click) sends each member from where it
+  stands to its own slot at the target on a route of its own, all at the slowest member's speed
+  (units with XML `FormationGrouping` Solo at their own speed, straight to the point); no gathering,
+  no shared route, no waiting. The formation move with a frame (`formation_move`,
+  `BattleOrder::formation_move`, Alt + right-click in the sandbox) is the special one. Attack-moves
+  to a point use the default. In play the frame showed companies standing for seconds while it
+  formed up and waited, gathering points far from some companies, and companies left far apart.
 - **As built** (2026-11-15, step 7; `simulation_frames.cpp`; engine choices as named constants): a
   ground formation on land gets a frame per part of the selection (single linkage at 400 world
   units); slots are laid out once for the whole selection at the target, so the parts arrive into
@@ -189,8 +197,9 @@ Built 2026-11-15 (step 6), except the blocked-unit replans; `simulation_avoidanc
   last tick than half its speed) asks, and only the nearest unit in its corridor; that unit gives
   way when it is standing, slower by nature (top speed, not this tick's), all but at its destination,
   or behind the asker in the flow (more route left: Age of Empires II's priority, so a queue's
-  leader never stands aside for those behind it); never to a smaller unit, and only where the point
-  aside is free. A unit that cannot reach the point aside, or back, stays where it is.
+  leader never stands aside for those behind it), whatever its size (a rule against giving way to
+  smaller units kept companies from giving way, the owner's report of 2026-11-15), and only where
+  the point aside is free. A unit that cannot reach the point aside, or back, stays where it is.
 - **The no-overlap guarantee**: ORCA can fail to find a velocity (an infeasible program in a dense
   crowd), and a tick's step is discrete. So movement ends with a hard check: a step that would
   bring two units into contact is shortened to the contact (no unit is moved by another), except a
@@ -201,8 +210,11 @@ Built 2026-11-15 (step 6), except the blocked-unit replans; `simulation_avoidanc
   not built: the replans.
 - **Arrival among others** (the owner, 2026-11-15: the closest point to the goal where it overlaps
   no one): a unit stops where it touches a standing unit on its destination, or, having come no
-  closer for a second, at a standing ally between it and its destination (a crowd grows ring by
-  ring). A unit never asks the unit on its destination to give way.
+  closer for a second, at a standing ally between it and its destination that stopped at the end of
+  the same order or at a destination within four summed radii of its own (a crowd grows ring by
+  ring; `RouteColumns::last_goals`). An ally standing in the way after a move elsewhere is no crowd:
+  without that condition companies sent through a standing squad stopped at it (the owner's report).
+  A unit never asks the unit on its destination to give way.
 - **No separation**: the post-movement push goes. Spawns, teleports, and company expansion place
   units on free ground (the nearest free point of the right size class), so no overlap exists to
   correct.

@@ -45,7 +45,8 @@ enum class BattleOrder : std::uint8_t
     // `count` groups of `type` for `owner` around `point`: single types on a grid 40 units apart,
     // companies and squadrons as their members in formation, groups 160 units apart.
     spawn,
-    // `entities` move to `point` as one formation (SimCommandKind::formation_move).
+    // `entities` move to `point`, each from where it stands to its own slot, at the slowest one's speed
+    // (SimCommandKind::group_move).
     move,
     // `entities` attack `target`.
     attack,
@@ -68,6 +69,9 @@ enum class BattleOrder : std::uint8_t
     damage,
     // `entities` move to `point` at once, facing `heading` when given.
     teleport,
+    // `entities` move to `point` as one formation that keeps its shape on the way
+    // (SimCommandKind::formation_move).
+    formation_move,
 };
 
 struct BattleCommand

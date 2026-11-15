@@ -131,6 +131,10 @@ std::string format_battle_log(const BattleLog& log)
             out += " move";
             point();
             break;
+        case BattleOrder::formation_move:
+            out += " formation_move";
+            point();
+            break;
         case BattleOrder::attack:
             out += " attack ";
             append_id(out, command.target);
@@ -333,12 +337,12 @@ Result<BattleLog> parse_battle_log(const std::string_view text)
             command.count = *count;
             command.owner = *owner;
         }
-        else if (order == "move")
+        else if (order == "move" || order == "formation_move")
         {
-            command.order = BattleOrder::move;
+            command.order = order == "move" ? BattleOrder::move : BattleOrder::formation_move;
             if (!read_point())
             {
-                return failure("move needs a point");
+                return failure(std::string(order) + " needs a point");
             }
         }
         else if (order == "attack")

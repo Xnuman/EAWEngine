@@ -35,6 +35,7 @@ enum class Key : std::uint8_t
     f1,
     shift,
     control,
+    alt,
     backspace,
     del,
     home,

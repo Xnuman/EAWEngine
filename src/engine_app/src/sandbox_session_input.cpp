@@ -69,9 +69,10 @@ void SandboxSession::respond(const eaw::EntityId unit, const eaw::UnitResponse r
     }
 }
 
-void SandboxSession::order_move(const eaw::Vector3& target)
+void SandboxSession::order_move(const eaw::Vector3& target, const bool formation)
 {
-    // Selected mobile units, in id order, move as one formation centered on the target.
+    // Selected mobile units, in id order, move to their slots of a formation centered on the target:
+    // each on its own route (a group move), or as one formation keeping its shape (Alt).
     std::vector<eaw::EntityId> movers;
     for (const auto& entity : world->snapshot().entities)
     {
@@ -87,14 +88,15 @@ void SandboxSession::order_move(const eaw::Vector3& target)
     std::ranges::sort(movers, {}, eaw::entity_key);
     const auto count = movers.size();
     const auto responder = movers.front();
-    if (const auto submitted = runtime->battle().submit({.order = eaw::BattleOrder::move, .entities = movers, .point = target}); !submitted)
+    if (const auto submitted = runtime->battle().submit({.order = formation ? eaw::BattleOrder::formation_move : eaw::BattleOrder::move, .entities = movers, .point = target}); !submitted)
     {
         eaw::log_warning("simulation", submitted.error());
         return;
     }
     ++orders_issued;
     respond(responder, eaw::UnitResponse::move, movers);
-    std::cout << "Move " << count << " units to " << eaw::format_fixed(target.x, 0) << ", " << eaw::format_fixed(target.y, 0) << ", " << eaw::format_fixed(target.z, 0) << '\n';
+    std::cout << (formation ? "Formation move " : "Move ") << count << " units to " << eaw::format_fixed(target.x, 0) << ", " << eaw::format_fixed(target.y, 0) << ", "
+              << eaw::format_fixed(target.z, 0) << '\n';
 }
 
 void SandboxSession::order_standing(const eaw::BattleOrder order, const eaw::Vector3& point, const eaw::EntityId target)
@@ -182,7 +184,7 @@ void SandboxSession::set_camera_mode(const SandboxCameraMode mode)
     std::cout << "Camera: " << to_string(mode)
               << (mode == SandboxCameraMode::free    ? " (right-drag looks, WASD moves, Q/E down/up, Shift faster, wheel speed)\n"
                   : mode == SandboxCameraMode::debug ? " (drag rotates, right-drag pans)\n"
-                                                     : " (RTS: drag selects, right-click moves, Ctrl attack-moves, Shift guards)\n");
+                                                     : " (RTS: drag selects, right-click moves, Alt in formation, Ctrl attack-moves, Shift guards)\n");
 }
 
 void SandboxSession::update_camera(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode)
@@ -319,7 +321,7 @@ void SandboxSession::handle_pointer(const eaw::InputState& input, const bool sce
     // RTS mode: the right button has no drag action, so an order is issued on the press with no
     // movement threshold (a threshold dropped quick clicks made while the mouse was moving).
     // Ctrl + right-click attack-moves to the ground point; Shift + right-click guards it (or, once
-    // the pick names an object there, that object).
+    // the pick names an object there, that object); Alt + right-click moves as one formation.
     if (right_button.pressed && rts_mode && scene_mouse && !selection.empty() && world)
     {
         const bool attack_move = input.keys[static_cast<std::size_t>(eaw::Key::control)].down;
@@ -332,7 +334,7 @@ void SandboxSession::handle_pointer(const eaw::InputState& input, const bool sce
             }
             else
             {
-                order_move(*target);
+                order_move(*target, input.keys[static_cast<std::size_t>(eaw::Key::alt)].down);
             }
         }
         if (!attack_move && input.mouse_x >= 0 && input.mouse_y >= 0)

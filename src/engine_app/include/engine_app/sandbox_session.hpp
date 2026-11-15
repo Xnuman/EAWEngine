@@ -286,7 +286,8 @@ struct SandboxSession
     // speaks), and then, after a short pause, the first member of another type with an assist line
     // answers with it (SFXEvent_Assist_Move, _Assist_Attack; the owner's account of the original).
     void respond(eaw::EntityId unit, eaw::UnitResponse response, std::span<const eaw::EntityId> group = {});
-    void order_move(const eaw::Vector3& target);
+    // A group move of the selection to `target`; with `formation`, one formation keeping its shape.
+    void order_move(const eaw::Vector3& target, bool formation = false);
     void order_attack(const eaw::EntityId victim);
     // Attack-move (Ctrl + right-click) or guard (Shift + right-click) for the selected mobile units:
     // to a point, or to `target` while it lives.

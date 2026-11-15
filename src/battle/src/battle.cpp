@@ -359,6 +359,10 @@ Result<SimCommand> Battle::translate(const BattleCommand& command)
     switch (command.order)
     {
     case BattleOrder::move:
+        translated.kind = SimCommandKind::group_move;
+        translated.target = command.point;
+        break;
+    case BattleOrder::formation_move:
         translated.kind = SimCommandKind::formation_move;
         translated.target = command.point;
         break;

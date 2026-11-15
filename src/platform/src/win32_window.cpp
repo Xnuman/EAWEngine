@@ -143,7 +143,12 @@ struct PlatformWindow::Impl
             {
                 update_key(w_param, message == WM_SYSKEYDOWN);
             }
-            // Alt+F4 and the system menu keep working.
+            // Alt is a modifier (Alt + right-click orders a formation move): releasing it alone must
+            // not open the system menu, which would take the next keys. Alt+F4 keeps working.
+            if (message == WM_SYSKEYUP && w_param == VK_MENU)
+            {
+                return 0;
+            }
             return DefWindowProcW(handle, message, w_param, l_param);
         case WM_LBUTTONDOWN:
             update_mouse_button(MouseButton::left, true);
@@ -461,6 +466,10 @@ struct PlatformWindow::Impl
         case VK_LCONTROL:
         case VK_RCONTROL:
             return Key::control;
+        case VK_MENU:
+        case VK_LMENU:
+        case VK_RMENU:
+            return Key::alt;
         default:
             return std::nullopt;
         }

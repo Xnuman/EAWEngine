@@ -286,9 +286,9 @@ enum class SimCommandKind : std::uint8_t
     destroy,
     // Attack `target_entity`: armed entities chase it until it is in range and fire until it dies.
     attack,
-    // Move the mobile entities together: each to its slot of a formation centered on `target`
-    // (formation.hpp), all at the slowest member's speed, members ahead of the group waiting for
-    // the rest. Clears attack orders like move.
+    // Move the mobile entities as one formation: on land a frame they keep their slots in on the
+    // way (docs/pathfinding-design.md, 4.3); in space each to its slot at the slowest member's speed,
+    // members ahead waiting for the rest. Clears attack orders like move.
     formation_move,
     // Sets the entities' `stance`; hold_fire also drops targets they picked on their own.
     set_stance,
@@ -312,6 +312,10 @@ enum class SimCommandKind : std::uint8_t
     damage,
     // The entities move to `target` at once, facing `heading` when given; their movement ends.
     teleport,
+    // The default group move (the owner, 2026-11-15): each mobile entity from where it stands to its
+    // own slot of a formation centered on `target`, on a route of its own, all at the slowest
+    // member's speed; members with XML FormationGrouping Solo at their own speed to the point.
+    group_move,
 };
 
 // What an entity keeps doing besides its current movement and target: nothing, an attack-move, or a
@@ -1137,6 +1141,9 @@ private:
         std::vector<std::optional<Vector2>> avoid_velocities;
         // Ground units making way for an ally (hashed).
         std::vector<std::optional<GiveWay>> give_ways;
+        // Where a ground unit last stopped at the end of a move (hashed): units that stopped at one
+        // destination are its crowd (goal_taken).
+        std::vector<std::optional<Vector3>> last_goals;
         // On the last leg to the move target: the closest the unit has come to it, and the ticks since
         // it last came closer by arrival_progress (hashed; goal_taken stops a unit that cannot get
         // closer past a crowd of its allies).
@@ -1152,6 +1159,7 @@ private:
             visit(detours);
             visit(avoid_velocities);
             visit(give_ways);
+            visit(last_goals);
             visit(closest_approaches);
             visit(stalled_ticks);
         }
@@ -1811,7 +1819,7 @@ private:
         using View =
             SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<CombatColumns>>,
                        Read<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>, Write<ComponentPool<FlightColumns>>,
-                       Read<GroundState>, Read<Avoidance>, Write<PathQueue>, Read<ComponentPool<SquadColumns>>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<Clock>>;
+                       Read<GroundState>, Read<Avoidance>, Write<PathQueue>, Read<ComponentPool<SquadColumns>>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<Clock>, Read<OrderColumns>>;
         void run(const View& view, float dt);
         // Moves planned again so far because the unit's planned line no longer fit (avoidance took it
         // off its line, or the ground changed).

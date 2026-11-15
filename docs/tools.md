@@ -90,7 +90,8 @@ On maps the sandbox starts in the fixed (RTS) camera; C or the Camera panel swit
 | Mouse wheel | Zoom within map limits | Zoom |
 | Left drag | Box-select mobile units | Rotate and tilt (orbit a model) |
 | Left click | Select the object under the cursor | Select the object under the cursor |
-| Right click / right drag | Move the selection, or attack the hostile under the cursor | Pan (maps) |
+| Right click / right drag | Move the selection (each unit on its own route to its slot, at the slowest one's speed), or attack the hostile under the cursor | Pan (maps) |
+| Alt + right click | Move the selection as one formation that keeps its shape on the way | |
 | Ctrl + right click | Attack-move the selection to the point (engage hostiles on the way) | |
 | Shift + right click | Guard the point, or the object under the cursor (followed as it moves) | |
 | Space | Reset the camera | Reset the camera |

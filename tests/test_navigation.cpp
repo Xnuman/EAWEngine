@@ -462,6 +462,80 @@ void test_formations()
 
 // Company teams: members of a team stand together by its arrangement; teams are units of the
 // formation; raggedness moves members deterministically.
+// The default group move (the owner, 2026-11-15): each member from where it stands to its own slot on
+// a route of its own, at the slowest member's speed, without gathering first; and a unit sent past a
+// standing ally in a corridor gets by it (the owner's report: companies stopped at a standing squad).
+void test_group_move()
+{
+    eaw::GroundMap ground;
+    ground.width = 40;
+    ground.height = 40;
+    ground.spacing = 10.0F;
+    ground.heights.assign(1600, 0.0F);
+    ground.passability.assign(1600, eaw::passability::clear);
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto fast =
+            test_spawn(world, {.type_name = "Fast", .position = {50.0F, 50.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto slow =
+            test_spawn(world, {.type_name = "Slow", .position = {50.0F, 250.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        require(fast && slow, "test spawns must succeed");
+        world.submit({.kind = eaw::SimCommandKind::group_move, .entities = {*fast, *slow}, .target = {300.0F, 150.0F, 0.0F}});
+        world.step();
+        world.step();
+        // Straight from where each stands: its route is its own slot (open ground), not a shared way
+        // through a gathering point.
+        const auto fast_route = world.route(*fast);
+        const auto slow_route = world.route(*slow);
+        require(fast_route.size() == 1 && slow_route.size() == 1 && fast_route.back().x > 250.0F && slow_route.back().x > 250.0F, "each member must head straight for its own slot");
+        const auto& moved = world.snapshot().entities;
+        require(std::hypot(moved[0].position.x - 50.0F, moved[0].position.y - 50.0F) <= 4.0F + 1.0e-3F && moved[0].position.y < 60.0F && moved[1].position.y > 240.0F,
+                "members must start from where they stand, at the slowest member's speed");
+        for (int tick = 0; tick < 200; ++tick)
+        {
+            world.step();
+        }
+        const auto& arrived = world.snapshot().entities;
+        require(still_moving(arrived).empty() && std::hypot(arrived[0].position.x - arrived[1].position.x, arrived[0].position.y - arrived[1].position.y) >= 9.99F && arrived[0].position.x > 280.0F &&
+                    arrived[1].position.x > 280.0F,
+                "members must arrive in their own slots at the target");
+    }
+    // A corridor three cells wide (rows 4 to 6 open); an ally stands in it; a unit is sent past it.
+    {
+        auto corridor = ground;
+        for (std::uint32_t y = 0; y < 40; ++y)
+        {
+            for (std::uint32_t x = 0; x < 40; ++x)
+            {
+                if (y < 4 || y > 6)
+                {
+                    corridor.passability[y * 40 + x] = eaw::passability::steep;
+                }
+            }
+        }
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(corridor);
+        const auto mover =
+            test_spawn(world, {.type_name = "Mover", .position = {50.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto stander =
+            test_spawn(world, {.type_name = "Stander", .position = {150.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        require(mover && stander, "test spawns must succeed");
+        world.submit({.kind = eaw::SimCommandKind::group_move, .entities = {*mover}, .target = {300.0F, 50.0F, 0.0F}});
+        float closest = 100.0F;
+        for (int tick = 0; tick < 300; ++tick)
+        {
+            world.step();
+            const auto& entities = world.snapshot().entities;
+            closest = std::min(closest, std::hypot(entities[1].position.x - entities[0].position.x, entities[1].position.y - entities[0].position.y));
+        }
+        const auto& entities = world.snapshot().entities;
+        require(!entities[0].moving && std::hypot(entities[0].position.x - 300.0F, entities[0].position.y - 50.0F) < 1.0F,
+                "a unit sent past a standing ally must get by it, not stop at it (at " + std::to_string(entities[0].position.x) + ", " + std::to_string(entities[0].position.y) + ")");
+        require(closest >= 9.99F && std::hypot(entities[1].position.x - 150.0F, entities[1].position.y - 50.0F) < 15.0F, "the ally must make way without being touched and stay near its place");
+    }
+}
+
 void test_formation_teams()
 {
     const auto layout = [](const eaw::TeamArrangement arrangement, const float raggedness)
@@ -1512,6 +1586,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_turning_and_separation", &test_turning_and_separation},
                                                   {"test_formations", &test_formations},
                                                   {"test_formation_teams", &test_formation_teams},
+                                                  {"test_group_move", &test_group_move},
                                                   {"test_clearance", &test_clearance},
                                                   {"test_chunks", &test_chunks},
                                                   {"test_orca", &test_orca},

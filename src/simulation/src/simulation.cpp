@@ -263,6 +263,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     route_.detours.emplace_back();
     route_.avoid_velocities.emplace_back();
     route_.give_ways.emplace_back();
+    route_.last_goals.emplace_back();
     route_.closest_approaches.push_back(std::numeric_limits<float>::max());
     route_.stalled_ticks.push_back(0);
     placement_.pitches.push_back(0.0F);
@@ -504,6 +505,11 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(give_way->back);
             hasher.add(give_way->ticks);
             hasher.add(give_way->returning);
+        }
+        hasher.add(route_.last_goals[index].has_value());
+        if (route_.last_goals[index])
+        {
+            hasher.add(*route_.last_goals[index]);
         }
         hasher.add(route_.closest_approaches[index]);
         hasher.add(route_.stalled_ticks[index]);
@@ -836,6 +842,19 @@ std::vector<Vector3> SimulationWorld::route(const EntityId id) const
     }
     points.insert(points.end(), route_.paths[*dense].rbegin(), route_.paths[*dense].rend());
     points.push_back(*route_.move_targets[*dense]);
+    // A formation frame's member: its slot now, then the frame's way on to its slot at the end.
+    if (const auto row = group_.find(slot_of(*this, *dense)))
+    {
+        if (const auto frame = std::ranges::find(frames_.list, group_.columns.ids[*row], &FormationFrame::group); frame != frames_.list.end() && !frame->arrived)
+        {
+            points.insert(points.end(), frame->route.rbegin(), frame->route.rend());
+            const auto ahead = group_.columns.ahead[*row];
+            const auto aside = group_.columns.aside[*row];
+            const auto forward_x = std::cos(frame->target_facing);
+            const auto forward_y = std::sin(frame->target_facing);
+            points.push_back({frame->target.x + forward_x * ahead + forward_y * aside, frame->target.y + forward_y * ahead - forward_x * aside, frame->target.z});
+        }
+    }
     return points;
 }
 

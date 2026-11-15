@@ -67,9 +67,9 @@ inline constexpr float contact_tolerance = 0.01F;
 // Giving way (plan_giving_way): an ally a moving unit would meet within this many seconds of its
 // travel steps aside, clearing the mover's footprint by this share of its own radius; it gives way at
 // most this long. A mover asks only when held up (slower last tick than the held share of its speed).
-// Only a unit no larger than the mover gives way, and only when it stands or is slower by nature
-// than this share of the mover's speed (the owner, 2026-11-15: slower allies give way to faster
-// ones; a larger unit is passed around instead). Engine choices.
+// A unit gives way when it stands or is slower by nature than this share of the mover's speed,
+// whatever its size (the owner, 2026-11-15: slower allies give way to faster ones; companies of
+// other sizes did not give way while a larger unit never did). Engine choices.
 inline constexpr float give_way_lookahead_seconds = 1.0F;
 inline constexpr float give_way_margin = 0.25F;
 inline constexpr float give_way_seconds = 4.0F;
@@ -81,6 +81,9 @@ inline constexpr float give_way_held_fraction = 0.5F;
 // destination than itself: the closest point to the goal where it overlaps no one, when units
 // already stand there (the owner, 2026-11-15; goal_taken). Engine choices.
 inline constexpr float taken_goal_margin = 0.25F;
+// Allies count as the crowd at a unit's destination when they stopped at destinations within this
+// many summed radii of it (goal_taken). An engine choice.
+inline constexpr float taken_goal_crowd = 4.0F;
 inline constexpr float arrival_progress = 0.5F;
 inline constexpr float arrival_stall_seconds = 1.0F;
 // Seconds between automatic target searches of an idle weapon, and between replans of an ordered
