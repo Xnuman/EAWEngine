@@ -590,9 +590,11 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    there too). The hash is per component, each in dense order, pooled components only for their
    members, recipe type names and movement profiles once per recipe. Every battle hash changed
    once; the battles' outcomes stay close (the capital ships fire the same 3,789 shots and land 50
-   more, the shots that now strike a body) and their tick times unchanged. The pools for the rest
-   (flight's core columns, formation, combat, group) are still to come; pooling one of them now
-   changes the hash again, since a non-member's values are hashed today.
+   more, the shots that now strike a body) and their tick times unchanged.    The pools for the rest
+   followed as declared hash changes of their own (the owner, 2026-11-15), each with the battles'
+   outcomes unchanged: flight first (2026-11-15), the minimum speed and cruise height joining the
+   manoeuvres in one `FlightColumns` pool, flyers only, so `flies(data, index)` (pool membership)
+   is the flyer test that a minimum speed above 0 was. Formation, group, and combat are next.
 8. **Parallel systems.** Route searches, then contact and targeting, each verified with 1 and N
    threads giving the same hash, and measured.
 9. **Refactoring.** A review of what the migration left, its scope and plan to be agreed with the
