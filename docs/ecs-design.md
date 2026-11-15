@@ -541,7 +541,10 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    they spawn and remove entities, until step 6 queues structural changes for the barrier; removal
    was split from combat for that reason. A typed view found writes the hand-written declarations
    missed and DebugValidation's runs never reached (behavior clears a unit's group speed limit and
-   group when it starts an engagement or sends a flyer to loiter). Queries as a separate helper were tried and dropped:
+   group when it starts an engagement or sends a flyer to loiter).
+   The copy check was removed then (the owner, 2026-11-15): no system is left for it, since the typed
+   ones are checked by the compiler and commands and removal declare that they write everything;
+   `DebugValidation` stays for later time-consuming checks. Queries as a separate helper were tried and dropped:
    the loops already walk the dense order and look pools up by slot, and sorting a pool's members
    cost more than it saved (crushing, 0.006 to 0.025 ms a tick).
 5. **Recipes.** Readers per component; one construction path for spawns and placed objects;
@@ -553,6 +556,8 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    battle hash is rebaselined once and said so.
 8. **Parallel systems.** Route searches, then contact and targeting, each verified with 1 and N
    threads giving the same hash, and measured.
+9. **Refactoring.** A review of what the migration left, its scope and plan to be agreed with the
+   owner first (the owner, 2026-11-15).
 
 Squads (work order f) follow, built on pools and the command buffer.
 

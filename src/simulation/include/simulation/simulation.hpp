@@ -829,8 +829,7 @@ private:
         flight_maneuvers,
         footprints,
         crush,
-        // The ground and the passability footprints stamp on it (declared, not checked: megabytes on
-        // a real map, copied before every system in Debug would be too slow).
+        // The ground and the passability footprints stamp on it.
         ground,
         path_queue,
         projectiles,
@@ -1216,8 +1215,7 @@ private:
 
     // The tick's schedule (docs/ecs-design.md, 6.3 and migration step 4; simulation_schedule.cpp):
     // its systems in order, each with the tick layer it is timed under and the data it reads and
-    // writes. DebugValidation builds check the writes: a system that changes data it did not declare
-    // stops the run with its name and the data's (run_system).
+    // writes (a typed system's from its view's type, system_view.hpp).
     using SimAccess = std::uint64_t;
     static_assert(sim_data_count <= 64, "SimAccess holds one bit per kind of data");
     [[nodiscard]] static constexpr SimAccess access_to(std::initializer_list<SimData> data) noexcept
@@ -1237,11 +1235,8 @@ private:
         void (SimulationWorld::*run)();
         SimAccess reads;
         SimAccess writes;
-        // Written over a typed view: its access is its view's type, so the copy check skips it.
-        bool typed{};
     };
     static const std::array<SystemEntry, 8> schedule_;
-    [[nodiscard]] static std::string_view sim_data_name(SimData data) noexcept;
     // Every kind of data with its objects (some kinds have several): the entity table's groups
     // (for_each_group), the pools, and the resources.
     template <class Visit> void for_each_data(Visit&& visit)
@@ -1268,8 +1263,6 @@ private:
         visit(SimData::avoidance, avoidance_);
         visit(SimData::combat_counters, combat_counters_);
     }
-    // Runs one system of the schedule (in DebugValidation builds, with its write check).
-    void run_system(const SystemEntry& system);
     // The systems step() ran inline before: the tick's commands and its event lists, the speeds
     // movement and separation produced, and the tick counter with the snapshot.
     void run_commands();

@@ -246,7 +246,7 @@ void SimulationWorld::step()
     };
     for (const auto& system : schedule_)
     {
-        run_system(system);
+        (this->*system.run)();
         timed(system.phase);
     }
 }

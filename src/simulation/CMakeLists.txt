@@ -47,8 +47,5 @@ target_sources(eaw_simulation
     ${EAW_SIMULATION_SOURCES}
 )
 
-# The access check of the tick's systems, in DebugValidation builds only (simulation_schedule.cpp).
-target_compile_definitions(eaw_simulation PRIVATE $<$<CONFIG:DebugValidation>:EAW_SIMULATION_ACCESS_CHECK>)
-
 # eaw_core only for Status/Result and fatal errors; the simulation reads no files.
 target_link_libraries(eaw_simulation PUBLIC eaw_core eaw_math)

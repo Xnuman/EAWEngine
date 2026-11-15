@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.30)
 
-# DebugValidation is Debug with the expensive runtime checks compiled in: the simulation's access
-# check (every system's undeclared writes stop the run, src/simulation/src/simulation_schedule.cpp),
-# which makes a tick about 17 times slower on a populated map. Its files carry the _dv suffix.
+# DebugValidation is Debug with room for runtime checks too slow for everyday Debug runs, each behind
+# a definition of its own (none at present: the simulation's systems declare their access as typed
+# views, which the compiler checks). Its files carry the _dv suffix.
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;MinSizeRel;RelWithDebInfo;DebugValidation" CACHE STRING "Build configurations" FORCE)
 
 if(NOT CMAKE_GENERATOR_PLATFORM STREQUAL x64)
