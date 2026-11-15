@@ -17,14 +17,16 @@ std::vector<EntityId> entities_in_rectangle(const std::span<const EntitySnapshot
     std::vector<EntityId> result;
     for (const auto& entity : entities)
     {
-        if (!entity.selectable || (mobile_only && !(entity.max_speed > 0.0F)))
+        // A squad member in the rectangle selects its team (members are not selectable alone).
+        const auto chosen = entity.squad.valid() ? entity.squad : entity.id;
+        if ((!entity.selectable && !entity.squad.valid()) || (mobile_only && !(entity.max_speed > 0.0F)) || std::ranges::find(result, chosen) != result.end())
         {
             continue;
         }
         const auto screen = project_to_screen(camera, width, height, {entity.position.x, entity.position.y, entity.position.z});
         if (screen && (*screen)[0] >= left && (*screen)[0] <= right && (*screen)[1] >= top && (*screen)[1] <= bottom)
         {
-            result.push_back(entity.id);
+            result.push_back(chosen);
         }
     }
     return result;

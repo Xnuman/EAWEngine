@@ -951,6 +951,12 @@ void test_rts_control()
     const auto boxed = eaw::entities_in_rectangle(entities, camera, width, height, {350.0F, 250.0F, 450.0F, 350.0F}, true);
     require(boxed.size() == 1 && boxed[0] == eaw::EntityId{1, 1}, "drag-selection must keep only mobile entities inside the box");
     require(eaw::entities_in_rectangle(entities, camera, width, height, {450.0F, 350.0F, 350.0F, 250.0F}, false).size() == 2, "any corner order works and props count without mobile_only");
+    // Squad members in the box select their team, once (the team stands outside it here).
+    std::vector<eaw::EntitySnapshot> squad(2);
+    squad[0] = {.id = {4, 1}, .position = {0.0F, 0.0F, 0.0F}, .selectable = false, .max_speed = 10.0F, .squad = {9, 1}};
+    squad[1] = {.id = {5, 1}, .position = {1.0F, 0.0F, 0.0F}, .selectable = false, .max_speed = 10.0F, .squad = {9, 1}};
+    const auto teams = eaw::entities_in_rectangle(squad, camera, width, height, {350.0F, 250.0F, 450.0F, 350.0F}, true);
+    require(teams.size() == 1 && teams[0] == eaw::EntityId{9, 1}, "squad members in the box must select their team once");
 
     // Grid targets are centered on the order point.
     const auto targets = eaw::grid_targets({100.0F, 50.0F, 2.0F}, 4, 10.0F);

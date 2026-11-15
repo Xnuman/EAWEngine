@@ -158,7 +158,8 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
         }
         auto instance = found->instance;
         instance.transform = pose_transform(instance.transform, found->base_heading, entity.position, entity.heading, entity.pitch, flight_bank(entity.yaw_rate, found->bank_limit) + entity.roll);
-        instance.highlighted = selected.contains(entity_key(entity.id));
+        // A squad member shows its team's selection (the team has no model of its own).
+        instance.highlighted = selected.contains(entity_key(entity.id)) || (entity.squad.valid() && selected.contains(entity_key(entity.squad)));
         instance.key = entity_key(entity.id);
         // The land model's damage state by health (decorations, with no health, stay intact).
         if (!found->damage.empty() && entity.max_health > 0.0F)

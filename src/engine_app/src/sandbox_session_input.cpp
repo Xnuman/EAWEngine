@@ -422,9 +422,19 @@ void SandboxSession::process_picks()
         selection.clear();
         if (entity.valid())
         {
-            selection.insert(eaw::entity_key(entity));
+            // A soldier of a squad selects its team; the soldier answers (the team has no voice).
+            auto chosen = entity;
+            if (world != nullptr)
+            {
+                const auto& entities = world->snapshot().entities;
+                if (const auto found = std::ranges::find(entities, entity, &eaw::EntitySnapshot::id); found != entities.end() && found->squad.valid())
+                {
+                    chosen = found->squad;
+                }
+            }
+            selection.insert(eaw::entity_key(chosen));
             respond(entity, eaw::UnitResponse::select);
-            std::cout << "Selected " << (world != nullptr ? world->type_name(entity) : std::string_view{}) << '\n';
+            std::cout << "Selected " << (world != nullptr ? world->type_name(chosen) : std::string_view{}) << '\n';
         }
         else
         {
