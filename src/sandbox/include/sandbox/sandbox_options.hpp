@@ -128,6 +128,9 @@ struct SandboxOptions
     std::filesystem::path log_directory;
     // Once the scene is shown, select every mobile entity and order it to the scene center.
     bool auto_move{};
+    // Battle mode: keep giving the spawned units new orders (a benchmark of route planning under
+    // load; sandbox/src/battle_stress.hpp).
+    bool stress_orders{};
     // Game-object scripts (XML Lua_Script) run in battles; --no-scripts turns them off (sandbox and
     // headless battles alike, so recordings replay the same way).
     bool scripts{true};

@@ -4,6 +4,7 @@
 
 #include "math/vector.hpp"
 
+#include <compare>
 #include <cstdint>
 
 namespace eaw {
@@ -20,6 +21,8 @@ struct EntityId
         return generation != 0;
     }
     friend constexpr bool operator==(const EntityId&, const EntityId&) = default;
+    // By index, then generation: the order deterministic sorts of ids use.
+    friend constexpr auto operator<=>(const EntityId&, const EntityId&) = default;
 };
 
 } // namespace eaw

@@ -1,5 +1,7 @@
 #include "sandbox/battle_runner.hpp"
 
+#include "battle_stress.hpp"
+
 #include "core/log.hpp"
 #include "battle/battle.hpp"
 #include "battle/battle_log.hpp"
@@ -12,6 +14,7 @@
 #include <charconv>
 #include <chrono>
 #include <iostream>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <vector>
@@ -21,6 +24,12 @@ namespace {
 
 // 100 seconds at the default 60 Hz.
 constexpr std::uint64_t default_ticks = 6000;
+// A frame at 60 frames per second, which a frame with its ticks must fit in (the owner, 2026-11-15).
+// Headless, a frame is the tick it runs (60 Hz), without rendering.
+constexpr double frame_budget_ms = 1000.0 / 60.0;
+// Frames are measured from this tick on: the ticks before apply the spawns (loading, not play).
+constexpr std::uint64_t first_measured_tick = 1;
+constexpr double frame_percentile = 0.99;
 
 std::string hex(const std::uint64_t value)
 {
@@ -38,6 +47,8 @@ struct BattleRun
     double seconds{};
     double slowest_ms{};
     std::uint64_t slowest_tick{};
+    // Milliseconds of each step from first_measured_tick on.
+    std::vector<double> frame_ms;
     std::size_t starting_entities{};
     // The script phases (none with --no-scripts).
     std::optional<BattleScriptStats> scripts;
@@ -76,6 +87,19 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
     const auto center = battle_center(asset);
     std::size_t next_entry = 0;
     bool auto_move_sent = false;
+    std::optional<StressOrders> stress;
+    if (options.stress_orders)
+    {
+        std::vector<EntityId> placed;
+        for (const auto& id : battle.map_entity_ids())
+        {
+            if (id)
+            {
+                placed.push_back(*id);
+            }
+        }
+        stress.emplace(center, asset.ground.valid() ? &asset.ground : nullptr, std::move(placed), runtime.tick_seconds());
+    }
     const auto start = std::chrono::steady_clock::now();
     if (!replay)
     {
@@ -110,6 +134,10 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
                 }
             }
         }
+        else if (stress)
+        {
+            stress->issue(battle, tick);
+        }
         else if (options.auto_move && !auto_move_sent && tick >= 2)
         {
             // Once the spawns have applied: every mobile unit, in id order, moves to the center.
@@ -122,11 +150,7 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
                     movers.push_back(entity.id);
                 }
             }
-            std::ranges::sort(movers,
-                              [](const EntityId left, const EntityId right)
-                              {
-                                  return left.index != right.index ? left.index < right.index : left.generation < right.generation;
-                              });
+            std::ranges::sort(movers);
             if (!movers.empty())
             {
                 if (const auto submitted = battle.submit({.order = BattleOrder::move, .entities = std::move(movers), .point = center}); !submitted)
@@ -140,6 +164,10 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
         {
             run.slowest_ms = runtime.last_step_milliseconds();
             run.slowest_tick = tick + 1U;
+        }
+        if (tick >= first_measured_tick)
+        {
+            run.frame_ms.push_back(runtime.last_step_milliseconds());
         }
         if (options.hash_trace)
         {
@@ -206,6 +234,20 @@ void print_run(const BattleRun& run, const std::uint64_t ticks_run)
         std::cout << ' ' << tick_phase_names[layer] << ' ' << per_tick(stats.phase_seconds[layer]) << '/' << format_fixed(stats.slowest_phase_seconds[layer] * 1000.0, 2);
     }
     std::cout << '\n';
+    if (!run.frame_ms.empty())
+    {
+        auto sorted = run.frame_ms;
+        std::ranges::sort(sorted);
+        const auto over = static_cast<std::size_t>(std::ranges::count_if(sorted,
+                                                                         [](const double ms)
+                                                                         {
+                                                                             return ms > frame_budget_ms;
+                                                                         }));
+        const auto percentile = sorted[std::min(sorted.size() - 1U, static_cast<std::size_t>(frame_percentile * static_cast<double>(sorted.size())))];
+        std::cout << "Frame budget " << format_fixed(frame_budget_ms, 1) << " ms: " << over << " of " << sorted.size() << " frames over | average "
+                  << format_fixed(std::accumulate(sorted.begin(), sorted.end(), 0.0) / static_cast<double>(sorted.size()), 3) << " ms, 99th percentile " << format_fixed(percentile, 2) << " ms, worst "
+                  << format_fixed(sorted.back(), 2) << " ms\n";
+    }
     if (run.scripts)
     {
         const auto& scripts = *run.scripts;

@@ -73,7 +73,7 @@ Every library and executable has its own directory and `CMakeLists.txt`.
 | `third_party/imgui` | `eaw_imgui` | Pinned Dear ImGui. |
 | `third_party/lua` | `eaw_lua` | Lua 5.0.3 (MIT), pinned by archive hash, built as C with only base, string, table, and math, and with the sandbox's memory cap and pattern-matching step limit (`eaw_lua_config.h`, a checked configure-time copy of `lstrlib.c`). |
 | `docs` | | Architecture, status, roadmap, evidence, tools. |
-| `scripts` | | PowerShell scripts for repeated checks (`check-battle.ps1`, `check-captures.ps1`, `benchmark.ps1`); `build.ps1` stays at the root. |
+| `scripts` | | PowerShell scripts for repeated checks (`check-battle.ps1`, `check-captures.ps1`, `benchmark.ps1`, `benchmark-battle.ps1`); `build.ps1` stays at the root. |
 | `build` | | Generated output; never edit generated project files. |
 
 Dependencies point inward: platform, renderer, and adapters depend on stable engine-native contracts; core data code never reaches outward into a renderer or GUI. If a tool needs a capability, add it to a reusable library instead of scraping another executable's output or spawning a subprocess. When ownership of a change crosses layers, fix the contract instead of adding a shortcut. The file-level split of the larger modules is in [docs/architecture.md](docs/architecture.md#source-files-by-subject).

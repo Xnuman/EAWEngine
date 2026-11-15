@@ -162,9 +162,15 @@ shell is `eaw_imgui_app` (`src/imgui_app`), shared with EAWTools.
 
 `EAWEngine battle` runs a battle on a map without a window, as fast as it can,
 and prints the state hash, tick timing (per tick layer too: average and slowest milliseconds of
-commands, behavior, navigation, movement, contact, combat, resolution, and publishing), and
-combat and path statistics. It is
-the determinism check and the simulation benchmark.
+commands, behavior, navigation, movement, contact, combat, resolution, and publishing), the frame
+budget (how many ticks after the spawns took longer than a 60 FPS frame, 16.7 ms, with the average,
+99th percentile, and worst; headless, a frame is the tick a 60 Hz frame runs, without rendering), and
+combat and path statistics. It is the determinism check and the simulation benchmark.
+`--stress-orders` keeps the spawned units busy instead of `--auto-move`: every second each group of
+up to eight units of one owner gets a new order (move, attack-move, attack, guard, in turn) to a
+point drawn around the center from a fixed-seed stream (on open ground on land) or a hostile target,
+the groups staggered over the ticks, and the spawned units cannot be killed, so the load stays that
+of every unit. The orders are recorded like any other, so `--check-determinism` and `--record` work.
 
 ```powershell
 # Two opposing fighter groups at the map center, 6000 ticks (100 s at 60 Hz), order log written
@@ -262,7 +268,22 @@ repository from their own location and use the built executables):
 # Benchmarks (EAWBenchmarks) compared with an earlier run (keep the result files outside the repository)
 .\scripts\benchmark.ps1 -Output D:\eaw-bench\before.tsv
 .\scripts\benchmark.ps1 -Output D:\eaw-bench\after.tsv -Reference D:\eaw-bench\before.tsv
+
+# Battle frames against the 60 FPS budget under constant new orders, at 10, 50, 100, and 500 units
+.\scripts\benchmark-battle.ps1                    # -Counts 100,500, -Seconds 20, -Map <path>, -GameRoot <path>
 ```
+
+`benchmark-battle.ps1` is not for every change: run it when a change risks route planning or
+simulation performance (pathfinding, movement, group cohesion, targeting). Per unit count it builds
+Utapau, spawns half the units a side (each side half single vehicles, half infantry squads; a squad
+counts as one unit), and runs 10 seconds of `EAWEngine battle --stress-orders` in Release; it
+prints the frames over budget, the average, 99th percentile, and worst frame, the entities, and the
+route searches, and fails when any frame went over 16.7 ms. On the development machine
+(2026-11-15): 10 and 50 units stay within the budget (worst 3.7 and 6.8 ms); 100 units go over
+once, on the first tick of fighting (24 ms); 500 units (4,400 entities) average 15.3 ms and go
+over in 110 of 600 frames, the route searches (navigation 5.9 ms a tick, the search budget spent
+every tick) and separation (6.6 ms) the largest parts, the first tick's target search the worst
+(about 125 ms).
 
 `check-battle.ps1` holds the expected hash as its default; a change that alters the simulation on
 purpose updates it and says why. `check-captures.ps1` renders a Kuat fighter battle (frames 90 and

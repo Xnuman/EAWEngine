@@ -413,7 +413,10 @@ exists, not guessed in advance.
   `--tick-rate` sets another for headless battles).
 - 60 frames per second at the least (the owner, 2026-11-15): a frame, any simulation ticks it runs
   included, within 16.6 ms. The opening tick of a 3,300-entity battle (50-60 ms, roadmap work order
-  2g) breaks it today.
+  2g) breaks it today. `scripts/benchmark-battle.ps1` measures it under constant orders: 10 and 50
+  units pass, 100 go over on the first tick of fighting, 500 in 110 of 600 frames (route searches
+  and separation about 6 ms each a tick; the search budget of 30,000 nodes a tick, about 5 ms, was
+  set for a 33 ms tick).
 - No fixed texture dimension, vertex count, entity count, or 32-bit address-space assumption.
 - Automated budgets, reported by the tools, for frame time, tick time, streaming throughput,
   memory, draw and dispatch counts, and worst-case path requests.

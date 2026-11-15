@@ -9,11 +9,6 @@
 namespace eaw {
 namespace {
 
-bool lower_id(const EntityId left, const EntityId right) noexcept
-{
-    return left.index != right.index ? left.index < right.index : left.generation < right.generation;
-}
-
 // Slot pitch of a footprint: its diameter plus the spacing fraction of it, at least one world unit.
 float pitch_of(const float radius, const float spacing) noexcept
 {
@@ -144,7 +139,7 @@ std::vector<FormationSlot> formation_slots(const std::span<const FormationMember
         std::ranges::sort(unit.members,
                           [&](const std::size_t left, const std::size_t right)
                           {
-                              return lower_id(members[left].id, members[right].id);
+                              return members[left].id < members[right].id;
                           });
         float member_pitch = 0.0F;
         float member_radius = 0.0F;
@@ -184,7 +179,7 @@ std::vector<FormationSlot> formation_slots(const std::span<const FormationMember
                           {
                               return units[left].order < units[right].order;
                           }
-                          return lower_id(units[left].id, units[right].id);
+                          return units[left].id < units[right].id;
                       });
     const auto count = units.size();
     const auto columns = std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(std::sqrt(2.0 * static_cast<double>(count)))));
@@ -225,7 +220,7 @@ std::vector<FormationSlot> formation_slots(const std::span<const FormationMember
                               {
                                   return left_side < right_side;
                               }
-                              return lower_id(units[left].id, units[right].id);
+                              return units[left].id < units[right].id;
                           });
         const auto width = row.pitch * static_cast<float>(row.members.size() - 1U);
         for (std::size_t column = 0; column < row.members.size(); ++column)

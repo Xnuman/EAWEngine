@@ -91,6 +91,9 @@ void test_sandbox_options()
             "invalid battle options must be rejected");
     const auto rate = expect_ok(parse({"battle", "--map", "X.TED", "--tick-rate", "30"}), "parsing a tick rate");
     require(rate.tick_rate == 30.0F, "the tick rate must be read");
+    require(expect_ok(parse({"battle", "--map", "X.TED", "--stress-orders"}), "parsing stress orders").stress_orders, "stress orders must be read");
+    require(!parse({"battle", "--map", "X.TED", "--stress-orders", "--auto-move"}) && !parse({"battle", "--replay", "in.log", "--stress-orders"}) && !parse({"sandbox", "--stress-orders"}),
+            "stress orders must not combine with other orders or leave battle mode");
 }
 
 const ModuleRegistrar registrar("sandbox", {

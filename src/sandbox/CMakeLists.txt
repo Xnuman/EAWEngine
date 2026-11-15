@@ -16,6 +16,8 @@ set(EAW_SANDBOX_HEADERS
 
 set(EAW_SANDBOX_SOURCES
     ${SOURCES_DIR}/battle_runner.cpp
+    ${SOURCES_DIR}/battle_stress.cpp
+    ${SOURCES_DIR}/battle_stress.hpp
     ${SOURCES_DIR}/sandbox_content.cpp
     ${SOURCES_DIR}/sandbox_debug_lines.cpp
     ${SOURCES_DIR}/sandbox_options.cpp

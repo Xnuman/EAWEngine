@@ -113,6 +113,7 @@ void print_sandbox_usage()
               << "  --log-dir <path>   Folder for log files (default: logs next to the executable)\n"
               << "  --crash-test <assert|exception|access-violation>  Fail deliberately to check crash reporting\n"
               << "  --auto-move        Order every mobile unit to the map center once shown (automation)\n"
+              << "  --stress-orders    Battle: give the spawned units new orders every second (move, attack-move, attack, guard)\n"
               << "  --no-scripts       Do not run game-object scripts (XML Lua_Script) in battles\n"
               << "  --audio <xaudio2|fmod|none>  Audio backend (default xaudio2; fmod only in builds with EAW_AUDIO_FMOD)\n"
               << "  --no-audio         Play no sound (the same as --audio none)\n"
@@ -289,6 +290,10 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         else if (argument == "--auto-move")
         {
             options.auto_move = true;
+        }
+        else if (argument == "--stress-orders")
+        {
+            options.stress_orders = true;
         }
         else if (argument == "--no-scripts")
         {
@@ -645,9 +650,13 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
     {
         return make_error("battle needs --map or --replay");
     }
-    if (options.replay && (options.mode != RunMode::battle || !options.spawns.empty() || options.auto_move))
+    if (options.replay && (options.mode != RunMode::battle || !options.spawns.empty() || options.auto_move || options.stress_orders))
     {
-        return make_error("--replay runs in battle mode and takes its orders from the log, not --spawn or --auto-move");
+        return make_error("--replay runs in battle mode and takes its orders from the log, not --spawn, --auto-move, or --stress-orders");
+    }
+    if (options.stress_orders && (options.mode != RunMode::battle || options.auto_move))
+    {
+        return make_error("--stress-orders gives a battle's orders itself, in battle mode, without --auto-move");
     }
     if (options.hash_trace && !options.check_determinism)
     {
