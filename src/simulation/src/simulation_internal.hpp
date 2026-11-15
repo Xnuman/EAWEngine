@@ -27,10 +27,10 @@ inline constexpr float grid_cell_size = 256.0F;
 // at a part; EaW-Revised's S-45, S-49, S-50, docs/compatibility-research.md). Space ships were
 // recorded; land objects with parts follow the same rule unobserved.
 inline constexpr float hull_floor_share = 0.2F;
-// Separation's grid cells: twice the largest footprint taking part (a query then visits a few cells
-// of near neighbours instead of every unit within 256 units: 74% of a 3,300-unit tick went there),
-// within these bounds. Engine choices; the pairs found are the same at any cell size.
-inline constexpr float separation_min_cell_size = 16.0F;
+// Contact's grid cells (crushing and separation): a few infantry footprints wide; a larger unit lies
+// in every cell it covers (SpatialGrid's sized build), so no query reaches farther than its own
+// footprint. An engine choice; the pairs found are the same at any cell size.
+inline constexpr float contact_cell_size = 16.0F;
 // The fastest separation pushes a unit, in its radii per second: half a radius per tick at the old
 // 30 Hz. An engine choice.
 inline constexpr float separation_radii_per_second = 15.0F;

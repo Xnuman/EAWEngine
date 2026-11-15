@@ -24,6 +24,21 @@ void test_combat()
     near.clear();
     grid.query({150.0F, 0.0F, 0.0F}, 160.0F, near);
     require(near == std::vector<std::uint32_t>{0, 2, 1}, "queries spanning cells must visit cells in order");
+    // Built with radii: a large item lies in every cell it covers and is reported once; an overlap
+    // query reaches only its own radius.
+    const std::vector<eaw::Vector3> sized_points{{0.0F, 0.0F, 0.0F}, {60.0F, 0.0F, 0.0F}, {200.0F, 0.0F, 0.0F}, {62.0F, 1.0F, 0.0F}};
+    const std::vector<float> sized_radii{58.0F, 3.0F, 3.0F, 3.0F};
+    grid.build(sized_points, sized_radii, 16.0F);
+    near.clear();
+    grid.query_overlapping({60.0F, 0.0F, 0.0F}, 3.0F, near);
+    std::ranges::sort(near);
+    require(near == std::vector<std::uint32_t>{0, 1, 3}, "an overlap query must find the large item that reaches it, once, and its small neighbours");
+    near.clear();
+    grid.query({10.0F, 0.0F, 0.0F}, 15.0F, near);
+    require(near == std::vector<std::uint32_t>{0}, "a center query must report a large item once, by its center");
+    near.clear();
+    grid.query_overlapping({120.0F, 0.0F, 0.0F}, 3.0F, near);
+    require(near.empty(), "an overlap query must not find items whose circles do not reach it");
 
     eaw::DamageTable table;
     table.set(1, 2, 0.5F);

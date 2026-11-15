@@ -14,6 +14,9 @@ using namespace simulation_detail;
 
 void SimulationWorld::ContactSystem::run(const View& view, const float dt)
 {
+    // One grid of footprints after movement for crushing and separation (crushing moves nothing).
+    const auto& placement = view.get<PlacementColumns>();
+    grid_.build(placement.positions, placement.radii, contact_cell_size);
     crush(view);
     separate(view, dt);
     measure_speeds(view, dt);
@@ -47,7 +50,6 @@ void SimulationWorld::ContactSystem::crush(const View& view)
     {
         return;
     }
-    // shortcut: every moving crusher scans every entity; use the spatial grid when battles get big.
     for (std::size_t crusher = 0; crusher < identity.ids.size(); ++crusher)
     {
         const auto kind = crush_profile_of(view, crusher).crusher;
@@ -57,7 +59,11 @@ void SimulationWorld::ContactSystem::crush(const View& view)
         {
             continue;
         }
-        for (std::size_t victim = 0; victim < identity.ids.size(); ++victim)
+        // What lies under the crusher, in index order (as a scan of every entity found it).
+        query_.clear();
+        grid_.query(at, placement.radii[crusher], query_);
+        std::ranges::sort(query_);
+        for (const auto victim : query_)
         {
             if (!can_crush(view, crusher, victim))
             {
@@ -101,15 +107,6 @@ void SimulationWorld::ContactSystem::separate(const View& view, const float dt)
         return flyer(index) || (placement.radii[index] > 0.0F && !flies(view, index) && land && ground_mover.follows_ground[index] != 0);
     };
     pushes_.assign(identity.ids.size(), Vector3{});
-    float largest_radius = 0.0F;
-    for (std::size_t index = 0; index < identity.ids.size(); ++index)
-    {
-        if (takes_part(index))
-        {
-            largest_radius = std::max(largest_radius, placement.radii[index]);
-        }
-    }
-    grid_.build(placement.positions, std::clamp(2.0F * largest_radius, separation_min_cell_size, grid_cell_size));
     // Remaining route length of every moving unit: of two moving units, the one further along
     // (less route left) has priority and yields much less, so units queue through a narrow
     // passage instead of shoving each other back and forth (Age of Empires II's priority rule).
@@ -144,7 +141,7 @@ void SimulationWorld::ContactSystem::separate(const View& view, const float dt)
             continue;
         }
         query_.clear();
-        grid_.query(placement.positions[index], placement.radii[index] + largest_radius, query_);
+        grid_.query_overlapping(placement.positions[index], placement.radii[index], query_);
         // Each pair once, from its lower dense index, and only units that touch: whether they do comes
         // from positions and footprints alone (most neighbours a query finds do not), before anything
         // else about the other unit is read (separation is memory-bound: a crowd of 2,500 makes about
