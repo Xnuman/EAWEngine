@@ -86,7 +86,6 @@ void SimulationWorld::ContactSystem::separate(const View& view, const float dt)
     const auto& locomotor = view.get<LocomotorColumns>();
     const auto& ground_mover = view.get<GroundMoverColumns>();
     auto& route = view.get<RouteColumns>();
-    const auto& flight = view.get<FlightColumns>();
     separated_pairs = 0;
     // On land, ground units separate on the surface. Space ships do not push each other (they avoid
     // contact instead: plan_space_avoidance); only flyers separate there.
@@ -96,11 +95,11 @@ void SimulationWorld::ContactSystem::separate(const View& view, const float dt)
     // above or below each other do not push.
     const auto flyer = [&](const std::size_t index)
     {
-        return placement.radii[index] > 0.0F && flight.min_speeds[index] > 0.0F;
+        return placement.radii[index] > 0.0F && flies(view, index);
     };
     const auto takes_part = [&](const std::size_t index)
     {
-        return flyer(index) || (placement.radii[index] > 0.0F && flight.min_speeds[index] <= 0.0F && land && ground_mover.follows_ground[index] != 0);
+        return flyer(index) || (placement.radii[index] > 0.0F && !flies(view, index) && land && ground_mover.follows_ground[index] != 0);
     };
     pushes_.assign(identity.ids.size(), Vector3{});
     float largest_radius = 0.0F;

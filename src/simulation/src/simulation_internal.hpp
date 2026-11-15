@@ -416,6 +416,11 @@ template <class Data> bool SimulationWorld::damageable(Data& data, const std::si
     return combat.states[index].profile->health > 0.0F && combat.states[index].health > 0.0F;
 }
 
+template <class Data> bool SimulationWorld::flies(Data& data, const std::size_t index) noexcept
+{
+    return data.template get<ComponentPool<FlightColumns>>().find(slot_of(data, index)).has_value();
+}
+
 template <class Data> bool SimulationWorld::engages(Data& data, const std::size_t index, const std::size_t candidate) noexcept
 {
     auto& combat = data.template get<CombatColumns>();

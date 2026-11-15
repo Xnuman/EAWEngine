@@ -194,7 +194,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     const auto min_speed = std::min(recipe.min_speed, recipe.max_speed);
     if (min_speed > 0.0F)
     {
-        flight_maneuvers_.add(slot);
+        const auto row = flight_.add(slot);
+        flight_.columns.min_speeds[row] = min_speed;
+        flight_.columns.cruise_heights[row] = spawn.position.z;
     }
     if (spawn.footprint)
     {
@@ -224,7 +226,6 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     }
     placement_.radii.push_back(recipe.radius);
     locomotor_.turn_rates.push_back(recipe.turn_rate);
-    flight_.min_speeds.push_back(min_speed);
     locomotor_.movements.push_back(&recipe.movement);
     locomotor_.drive_speeds.push_back(0.0F);
     route_.loiter_points.emplace_back();
@@ -233,7 +234,6 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     combat_.stances.push_back(spawn.stance);
     combat_.aims_with_body.push_back(recipe.aims_with_body ? 1U : 0U);
     placement_.pitches.push_back(0.0F);
-    flight_.cruise_heights.push_back(spawn.position.z);
     motion_.speeds.push_back(0.0F);
     motion_.starts.push_back(spawn.position);
     combat_.last_shot_ticks.push_back(0);
@@ -539,16 +539,13 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
     hasher.subject = StateSubject::flight;
     for (std::size_t index = 0; index < count; ++index)
     {
-        hasher.add(flight_.min_speeds[index]);
-        hasher.add(flight_.cruise_heights[index]);
-    }
-    for (std::size_t index = 0; index < count; ++index)
-    {
-        if (const auto maneuver = flight_maneuvers_.find(slot_of(*this, index)))
+        if (const auto row = flight_.find(slot_of(*this, index)))
         {
             hasher.add(index);
-            hasher.add(flight_maneuvers_.columns.looping[*maneuver]);
-            hasher.add(flight_maneuvers_.columns.rolls[*maneuver]);
+            hasher.add(flight_.columns.min_speeds[*row]);
+            hasher.add(flight_.columns.cruise_heights[*row]);
+            hasher.add(flight_.columns.looping[*row]);
+            hasher.add(flight_.columns.rolls[*row]);
         }
     }
     hasher.subject = StateSubject::formations;
@@ -656,7 +653,7 @@ void SimulationWorld::remove_entities(std::vector<std::size_t> dense)
         slots_.dense[slot] = no_dense;
         turn_clips_.remove(slot);
         walk_clips_.remove(slot);
-        flight_maneuvers_.remove(slot);
+        flight_.remove(slot);
         footprint_.remove(slot);
         crush_.remove(slot);
         // A slot whose generation would wrap is retired instead of reused.
@@ -783,7 +780,7 @@ void SimulationWorld::PublishSystem::publish(const View& view)
     auto& orders = view.get<OrderColumns>();
     auto& turn_clips = view.get<ComponentPool<TurnClipColumns>>();
     auto& walk_clips = view.get<ComponentPool<WalkClipColumns>>();
-    auto& flight_maneuvers = view.get<ComponentPool<FlightManeuverColumns>>();
+    auto& flight = view.get<ComponentPool<FlightColumns>>();
     auto& projectiles = view.get<ProjectileState>();
     auto& events = view.get<TickEvents>();
     auto& clock = view.get<Clock>();
@@ -804,8 +801,8 @@ void SimulationWorld::PublishSystem::publish(const View& view)
             }
         }
         // A non-flyer reports no manoeuvres.
-        const auto* yaw_rate = flight_maneuvers.find(slot_of(view, index), &FlightManeuverColumns::yaw_rates);
-        const auto* roll = flight_maneuvers.find(slot_of(view, index), &FlightManeuverColumns::rolls);
+        const auto* yaw_rate = flight.find(slot_of(view, index), &FlightColumns::yaw_rates);
+        const auto* roll = flight.find(slot_of(view, index), &FlightColumns::rolls);
         snapshot.entities.push_back({identity.ids[index],
                                      placement.positions[index],
                                      placement.headings[index],

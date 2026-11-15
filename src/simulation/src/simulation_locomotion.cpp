@@ -19,7 +19,6 @@ void SimulationWorld::MovementSystem::run(const View& view, const float dt)
     auto& locomotor = view.get<LocomotorColumns>();
     auto& ground_mover = view.get<GroundMoverColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& flight = view.get<FlightColumns>();
     auto& steering = view.get<SteeringColumns>();
     auto& group = view.get<GroupColumns>();
     auto& ground = view.get<GroundState>();
@@ -30,7 +29,7 @@ void SimulationWorld::MovementSystem::run(const View& view, const float dt)
         {
             continue;
         }
-        if (flight.min_speeds[index] > 0.0F)
+        if (flies(view, index))
         {
             fly(view, index, dt);
             continue;
@@ -334,15 +333,14 @@ void SimulationWorld::MovementSystem::fly(const View& view, const std::size_t in
 {
     auto& placement = view.get<PlacementColumns>();
     auto& locomotor = view.get<LocomotorColumns>();
-    auto& flight = view.get<FlightColumns>();
     auto& steering = view.get<SteeringColumns>();
-    auto& flight_maneuvers = view.get<ComponentPool<FlightManeuverColumns>>();
+    auto& flight = view.get<ComponentPool<FlightColumns>>();
     const auto& intent = steering.intents[index];
     auto& position = placement.positions[index];
     auto& pitch = placement.pitches[index];
     const auto slot = slot_of(view, index);
-    auto& roll = flight_maneuvers.get(slot, &FlightManeuverColumns::rolls);
-    auto& looping = flight_maneuvers.get(slot, &FlightManeuverColumns::looping);
+    auto& roll = flight.get(slot, &FlightColumns::rolls);
+    auto& looping = flight.get(slot, &FlightColumns::looping);
     const auto heading_before = placement.headings[index];
     const auto rate = locomotor.turn_rates[index] > 0.0F ? locomotor.turn_rates[index] : flight_max_pitch * 2.0F / std::max(dt, 1.0e-6F);
     auto factor = 1.0F;
@@ -376,11 +374,11 @@ void SimulationWorld::MovementSystem::fly(const View& view, const std::size_t in
         roll = std::fabs(roll) <= unwind ? 0.0F : roll - std::copysign(unwind, roll);
     }
     const auto top = travel_speed(view, index);
-    const auto speed = std::clamp(top * factor, std::min(flight.min_speeds[index], top), top);
+    const auto speed = std::clamp(top * factor, std::min(flight.get(slot, &FlightColumns::min_speeds), top), top);
     const auto heading = placement.headings[index];
     const auto level = speed * std::cos(pitch) * dt;
     position = {position.x + std::cos(heading) * level, position.y + std::sin(heading) * level, position.z + std::sin(pitch) * speed * dt};
-    flight_maneuvers.get(slot, &FlightManeuverColumns::yaw_rates) = dt > 0.0F ? wrap_angle(heading - heading_before) / dt : 0.0F;
+    flight.get(slot, &FlightColumns::yaw_rates) = dt > 0.0F ? wrap_angle(heading - heading_before) / dt : 0.0F;
     if (looping != 0 && pitch >= pi)
     {
         // Inverted at the top, heading back: the same attitude as level flight the other way rolled

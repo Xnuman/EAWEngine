@@ -166,7 +166,6 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
     auto& placement = view.get<PlacementColumns>();
     auto& ground_mover = view.get<GroundMoverColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& flight = view.get<FlightColumns>();
     auto& combat = view.get<CombatColumns>();
     auto& orders = view.get<OrderColumns>();
     auto& steering = view.get<SteeringColumns>();
@@ -187,7 +186,7 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
     {
         steering.intents[index] = {};
         run_standing_order(view, index);
-        if (flight.min_speeds[index] > 0.0F)
+        if (flies(view, index))
         {
             plan_flight(view, index, dt);
         }
@@ -489,21 +488,20 @@ void SimulationWorld::BehaviorSystem::plan_flight(const View& view, const std::s
     auto& placement = view.get<PlacementColumns>();
     auto& locomotor = view.get<LocomotorColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& flight = view.get<FlightColumns>();
     auto& combat = view.get<CombatColumns>();
     auto& steering = view.get<SteeringColumns>();
     auto& group = view.get<GroupColumns>();
-    auto& flight_maneuvers = view.get<ComponentPool<FlightManeuverColumns>>();
+    auto& flight = view.get<ComponentPool<FlightColumns>>();
     auto& clock = view.get<Clock>();
     const auto& position = placement.positions[index];
     auto& intent = steering.intents[index];
-    if (flight_maneuvers.get(slot_of(view, index), &FlightManeuverColumns::looping) != 0)
+    if (flight.get(slot_of(view, index), &FlightColumns::looping) != 0)
     {
         intent.loop = true;
         return;
     }
     const auto& state = combat.states[index];
-    const auto plane = flight.cruise_heights[index];
+    const auto plane = flight.get(slot_of(view, index), &FlightColumns::cruise_heights);
     const auto choose = [&]
     {
         if (state.ordered || combat.stances[index] == Stance::aggressive)
@@ -511,7 +509,7 @@ void SimulationWorld::BehaviorSystem::plan_flight(const View& view, const std::s
             if (const auto victim = attack_victim(view, index))
             {
                 const auto& there = placement.positions[*victim];
-                if (flight.min_speeds[*victim] > 0.0F)
+                if (flies(view, *victim))
                 {
                     // Each flyer weaves on its own phase (from its slot), so a fight spreads vertically.
                     const auto seconds = static_cast<float>(static_cast<double>(clock.tick) * clock.tick_seconds);

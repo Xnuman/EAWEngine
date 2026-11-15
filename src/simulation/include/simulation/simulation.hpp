@@ -870,6 +870,8 @@ private:
     // died.
     bool resolve_deaths(std::vector<std::uint8_t>& handled);
     template <class Data> [[nodiscard]] static bool damageable(Data& data, std::size_t index) noexcept;
+    // Whether the entity at `index` flies (is in the flight pool).
+    template <class Data> [[nodiscard]] static bool flies(Data& data, std::size_t index) noexcept;
     template <class Data> [[nodiscard]] static std::uint32_t ticks_for(Data& data, float seconds) noexcept;
 
     // What the tick's systems declare access to (the schedule below): the components of the entity
@@ -890,7 +892,6 @@ private:
         group,
         turn_clips,
         walk_clips,
-        flight_maneuvers,
         footprints,
         crush,
         // The ground and the passability footprints stamp on it.
@@ -1040,33 +1041,23 @@ private:
             visit(detours);
         }
     };
-    // Flight's columns that every entity has until step 7 of the migration: the hash covers them for
-    // all, and a non-flyer's values are its own (its spawn's minimum speed, at most 0, and its spawn
-    // height), not constants a pool could stand in for. A minimum speed above 0 makes a flyer.
+    // Flight (pooled: flyers only, the entities whose recipe has a minimum speed above 0): the
+    // speed it never drops below, the height of the plane it cruises in (its spawn height), the
+    // heading change of the last tick per second, whether it is inside a half-loop, and the roll it
+    // unwinds after one.
     struct FlightColumns
     {
         bool operator==(const FlightColumns&) const = default;
         static constexpr SimData data = SimData::flight;
         std::vector<float> min_speeds;
-        // The height of the plane a flyer cruises in (its spawn height).
         std::vector<float> cruise_heights;
-        template <class Visit> void for_each_column(Visit&& visit)
-        {
-            visit(min_speeds);
-            visit(cruise_heights);
-        }
-    };
-    // A flyer's manoeuvres (pooled: flyers only): the heading change of the last tick per second,
-    // whether it is inside a half-loop, and the roll it unwinds after one. A non-flyer's are 0.
-    struct FlightManeuverColumns
-    {
-        bool operator==(const FlightManeuverColumns&) const = default;
-        static constexpr SimData data = SimData::flight_maneuvers;
         std::vector<float> yaw_rates;
         std::vector<std::uint8_t> looping;
         std::vector<float> rolls;
         template <class Visit> void for_each_column(Visit&& visit)
         {
+            visit(min_speeds);
+            visit(cruise_heights);
             visit(yaw_rates);
             visit(looping);
             visit(rolls);
@@ -1248,7 +1239,6 @@ private:
     LocomotorColumns locomotor_;
     GroundMoverColumns ground_mover_;
     RouteColumns route_;
-    FlightColumns flight_;
     CombatColumns combat_;
     OrderColumns orders_;
     SteeringColumns steering_;
@@ -1264,7 +1254,6 @@ private:
         visit(locomotor_);
         visit(ground_mover_);
         visit(route_);
-        visit(flight_);
         visit(combat_);
         visit(orders_);
         visit(steering_);
@@ -1317,7 +1306,7 @@ private:
             });
         visit(SimData::turn_clips, turn_clips_);
         visit(SimData::walk_clips, walk_clips_);
-        visit(SimData::flight_maneuvers, flight_maneuvers_);
+        visit(SimData::flight, flight_);
         visit(SimData::footprints, footprint_);
         visit(SimData::crush, crush_);
         visit(SimData::ground, ground_);
@@ -1356,7 +1345,7 @@ private:
     // and crush profiles to entities whose profile is not the default (crush_profile_of reads them).
     ComponentPool<TurnClipColumns> turn_clips_;
     ComponentPool<WalkClipColumns> walk_clips_;
-    ComponentPool<FlightManeuverColumns> flight_maneuvers_;
+    ComponentPool<FlightColumns> flight_;
     ComponentPool<FootprintColumns> footprint_;
     ComponentPool<CrushColumns> crush_;
     [[nodiscard]] static const CrushProfile& crush_profile_in(const ComponentPool<CrushColumns>& pool, std::uint32_t slot) noexcept;
@@ -1573,7 +1562,7 @@ private:
     {
     public:
         using View = SystemView<Read<GroundState>, Read<IdentityColumns>, Write<PlacementColumns>, Write<MotionColumns>, Read<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>,
-                                Read<FlightColumns>, Read<CombatColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Write<DamageQueue>>;
+                                Read<ComponentPool<FlightColumns>>, Read<CombatColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Write<DamageQueue>>;
         void run(const View& view, float dt);
         // The pairs separation pushed apart in the last tick.
         std::size_t separated_pairs{};
@@ -1599,9 +1588,9 @@ private:
     class MovementSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<FlightColumns>, Read<CombatColumns>,
-                                Read<SteeringColumns>, Write<GroupColumns>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>, Write<ComponentPool<FlightManeuverColumns>>,
-                                Read<GroundState>, Read<SpaceAvoidance>, Write<PathQueue>>;
+        using View = SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<CombatColumns>, Read<SteeringColumns>,
+                                Write<GroupColumns>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>, Write<ComponentPool<FlightColumns>>, Read<GroundState>,
+                                Read<SpaceAvoidance>, Write<PathQueue>>;
         void run(const View& view, float dt);
         // Moves planned again so far because the unit's planned line no longer fit (separation pushed
         // it off, or the ground changed).
@@ -1658,8 +1647,8 @@ private:
     class NavigationSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<FlightColumns>, Read<CombatColumns>,
-                                Write<GroupColumns>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>>;
+        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<FlightColumns>>,
+                                Read<CombatColumns>, Write<GroupColumns>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>>;
         // Route requests under the search budget, remaining routes, group cohesion, and space
         // avoidance, before movement.
         void run(const View& view);
@@ -1710,9 +1699,9 @@ private:
     class BehaviorSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<FlightColumns>, Write<CombatColumns>,
-                                Write<OrderColumns>, Write<SteeringColumns>, Write<GroupColumns>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightManeuverColumns>>, Read<GroundState>,
-                                Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>>;
+        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<CombatColumns>, Write<OrderColumns>,
+                                Write<SteeringColumns>, Write<GroupColumns>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>, Read<GroundState>, Write<PathQueue>,
+                                Read<SlotTable>, Read<Rules>, Read<Clock>>;
         // Every entity's steering intent for this tick, from its order, stance, and target; route
         // requests for new destinations.
         void run(const View& view, float dt);
@@ -1782,7 +1771,7 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Read<MotionColumns>, Read<LocomotorColumns>, Read<GroundMoverColumns>, Read<RouteColumns>, Read<CombatColumns>,
-                                Read<OrderColumns>, Read<ComponentPool<TurnClipColumns>>, Read<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightManeuverColumns>>, Read<ProjectileState>,
+                                Read<OrderColumns>, Read<ComponentPool<TurnClipColumns>>, Read<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>, Read<ProjectileState>,
                                 Read<TickEvents>, Write<Clock>>;
         // Advances the tick counter and publishes the tick's snapshot.
         void run(const View& view);

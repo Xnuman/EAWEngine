@@ -265,7 +265,6 @@ void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
     auto& placement = view.get<PlacementColumns>();
     auto& locomotor = view.get<LocomotorColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& flight = view.get<FlightColumns>();
     auto& group = view.get<GroupColumns>();
     auto& ground = view.get<GroundState>();
     auto& avoidance = view.get<SpaceAvoidance>();
@@ -277,7 +276,7 @@ void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
     }
     const auto ship = [&](const std::size_t index)
     {
-        return placement.radii[index] > 0.0F && flight.min_speeds[index] <= 0.0F;
+        return placement.radii[index] > 0.0F && !flies(view, index);
     };
     const auto steers = [&](const std::size_t index)
     {
@@ -515,11 +514,10 @@ void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
 Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std::size_t index, Vector3 step)
 {
     auto& placement = view.get<PlacementColumns>();
-    auto& flight = view.get<FlightColumns>();
     auto& ground = view.get<GroundState>();
     auto& avoidance = view.get<SpaceAvoidance>();
     const float radius = placement.radii[index];
-    if (avoidance.largest_ship_radius <= 0.0F || radius <= 0.0F || flight.min_speeds[index] > 0.0F || ground.map.valid())
+    if (avoidance.largest_ship_radius <= 0.0F || radius <= 0.0F || flies(view, index) || ground.map.valid())
     {
         return step;
     }
@@ -530,7 +528,7 @@ Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std:
     const auto deeper = [&](const std::uint32_t other, const Vector3& candidate, float& to_x, float& to_y, float& apart)
     {
         const auto& there = placement.positions[other];
-        if (other == index || placement.radii[other] <= 0.0F || flight.min_speeds[other] > 0.0F || placement.radii[other] < radius * avoid_small_fraction ||
+        if (other == index || placement.radii[other] <= 0.0F || flies(view, other) || placement.radii[other] < radius * avoid_small_fraction ||
             std::abs(there.z - here.z) > radius + placement.radii[other])
         {
             return false;
@@ -601,7 +599,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         }
         movers.push_back(*dense);
         // Ships in space keep slots wide enough for a ship to pass between two that have stopped.
-        const bool ship_in_space = !ground_.map.valid() && placement_.radii[*dense] > 0.0F && flight_.min_speeds[*dense] <= 0.0F;
+        const bool ship_in_space = !ground_.map.valid() && placement_.radii[*dense] > 0.0F && !flies(*this, *dense);
         const auto spacing = ship_in_space ? std::max(formation_.spacings[*dense], space_formation_spacing) : formation_.spacings[*dense];
         members.push_back({id, placement_.positions[*dense], placement_.radii[*dense], spacing, formation_.orders[*dense], formation_.teams[*dense]});
     }
