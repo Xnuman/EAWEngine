@@ -212,7 +212,9 @@ Built 2026-11-15 (step 6), except the blocked-unit replans; `simulation_avoidanc
   or behind the asker in the flow (more route left: Age of Empires II's priority, so a queue's
   leader never stands aside for those behind it), whatever its size (a rule against giving way to
   smaller units kept companies from giving way, the owner's report of 2026-11-15), and only where
-  the point aside is free. A unit that cannot reach the point aside, or back, stays where it is.
+  the point aside is free. A unit that cannot reach the point aside stays where it is; on its way
+  back it waits for the way to clear (the unit it made way for often still stands in it) up to the
+  giving-way limit (giving up at once, squads that made way stayed aside: the owner's report).
 - **The no-overlap guarantee**: ORCA can fail to find a velocity (an infeasible program in a dense
   crowd), and a tick's step is discrete. So movement ends with a hard check: a step that would
   bring two units into contact is shortened to the contact (no unit is moved by another), except a
@@ -226,7 +228,10 @@ Built 2026-11-15 (step 6), except the blocked-unit replans; `simulation_avoidanc
   closer for a second, at a standing ally between it and its destination that stopped at the end of
   the same order or at a destination within six summed radii of its own, and within two of its
   footprints' widths beyond contact (a crowd grows ring by ring, rings a little apart where
-  avoidance kept its margins; `RouteColumns::last_goals`). A unit that came no closer for a second
+  avoidance kept its margins; `RouteColumns::last_goals`), and only when a standing unit occupies
+  the unit's own goal (in a group move each member has a slot of its own: group-mates standing in
+  theirs, or units giving way, are no crowd; the owner's report of units stopping while others gave
+  way). A unit that came no closer for a second
   within its radius of its goal has arrived. On its last leg a unit's preferred speed is what
   reaches its goal within the horizon: at full speed ORCA took a standing unit beyond the goal for a
   collision and held a unit still ten units short. An ally standing in the way after a move elsewhere is no crowd:
