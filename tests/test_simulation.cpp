@@ -61,11 +61,14 @@ void test_simulation_core()
     };
     require(run(25.0F) == run(25.0F) && run(25.0F) != run(26.0F), "identical command histories must produce identical state");
 
-    // Subject hashes name the part of the state that differs: a stance is combat state only.
+    // Subject hashes name the part of the state that differs: a stance is combat state only (of a
+    // unit with combat: one without has no stance to set).
     const auto subjects = [](const bool hold_fire)
     {
         eaw::SimulationWorld sim(1.0 / 30.0);
-        const auto id = expect_ok(test_spawn(sim, {.type_name = "Unit", .position = {0.0F, 0.0F, 0.0F}, .max_speed = 10.0F}), "spawning a unit");
+        eaw::CombatProfile mortal;
+        mortal.health = 10.0F;
+        const auto id = expect_ok(test_spawn(sim, {.type_name = "Unit", .position = {0.0F, 0.0F, 0.0F}, .max_speed = 10.0F, .combat = mortal}), "spawning a unit");
         if (hold_fire)
         {
             sim.submit({.kind = eaw::SimCommandKind::set_stance, .entities = {id}, .stance = eaw::Stance::hold_fire});

@@ -34,9 +34,8 @@ const Hostility& SimulationWorld::hostility() const noexcept
 bool SimulationWorld::CombatSystem::shield_refresh_due(const View& view, const std::size_t index) const noexcept
 {
     auto& identity = view.get<IdentityColumns>();
-    auto& combat = view.get<CombatColumns>();
     auto& clock = view.get<Clock>();
-    const auto interval = static_cast<std::uint64_t>(std::max(1.0, std::round(static_cast<double>(combat.states[index].profile->shield_refresh_seconds) / clock.tick_seconds)));
+    const auto interval = static_cast<std::uint64_t>(std::max(1.0, std::round(static_cast<double>(combat_state(view, index).profile->shield_refresh_seconds) / clock.tick_seconds)));
     // A multiplicative hash (Knuth's) of the id spreads consecutive ids over the interval.
     constexpr std::uint64_t phase_multiplier = 2654435761U;
     const auto phase = (static_cast<std::uint64_t>(identity.ids[index].index) * phase_multiplier) % interval;
@@ -50,11 +49,15 @@ void SimulationWorld::CombatSystem::run(const View& view, const float dt)
 {
     auto& identity = view.get<IdentityColumns>();
     auto& placement = view.get<PlacementColumns>();
-    auto& combat = view.get<CombatColumns>();
     grid_.build(placement.positions, grid_cell_size);
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
-        auto& state = combat.states[index];
+        auto* member = combat_of(view, index);
+        if (member == nullptr)
+        {
+            continue;
+        }
+        auto& state = *member;
         if (state.shield < state.profile->shield && state.health > 0.0F && state.profile->shield_refresh > 0.0F && keeps(view, index, HardpointProfile::Kind::shield_generator) &&
             shield_refresh_due(view, index))
         {
@@ -64,7 +67,7 @@ void SimulationWorld::CombatSystem::run(const View& view, const float dt)
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
         // A spinning (dying) entity no longer fights.
-        if (!combat.states[index].profile->weapons.empty() && combat.states[index].health > 0.0F)
+        if (!combat_state(view, index).profile->weapons.empty() && combat_state(view, index).health > 0.0F)
         {
             update_target(view, index);
             aim_turret(view, index, dt);
@@ -77,8 +80,8 @@ void SimulationWorld::CombatSystem::run(const View& view, const float dt)
 void SimulationWorld::CombatSystem::aim_turret(const View& view, const std::size_t index, const float dt)
 {
     auto& placement = view.get<PlacementColumns>();
-    auto& combat = view.get<CombatColumns>();
-    auto& state = combat.states[index];
+    // Armed: it has combat (run).
+    auto& state = *combat_of(view, index);
     if (!state.profile->turret)
     {
         return;
@@ -97,8 +100,7 @@ void SimulationWorld::CombatSystem::aim_turret(const View& view, const std::size
 std::optional<std::size_t> SimulationWorld::CombatSystem::turret_victim(const View& view, const std::size_t index)
 {
     auto& placement = view.get<PlacementColumns>();
-    auto& combat = view.get<CombatColumns>();
-    const auto& fighter = combat.states[index];
+    const auto& fighter = combat_state(view, index);
     const auto target = attack_victim(view, index);
     for (std::size_t slot = 0; slot < fighter.profile->weapons.size(); ++slot)
     {
@@ -120,7 +122,7 @@ std::optional<std::size_t> SimulationWorld::CombatSystem::turret_victim(const Vi
         {
             return target;
         }
-        if ((fighter.ordered && target) || combat.stances[index] == Stance::hold_fire)
+        if ((fighter.ordered && target) || combat_state(view, index).stance == Stance::hold_fire)
         {
             return target;
         }
@@ -140,20 +142,18 @@ std::optional<std::size_t> SimulationWorld::CombatSystem::turret_victim(const Vi
 bool SimulationWorld::CombatSystem::in_reach(const View& view, const std::size_t index, const WeaponProfile& weapon, const std::size_t victim) const noexcept
 {
     auto& placement = view.get<PlacementColumns>();
-    auto& combat = view.get<CombatColumns>();
     const auto distance = distance_xy(placement.positions[index], placement.positions[victim]);
-    return distance <= weapon.range && distance >= weapon.min_range && (weapon.excluded_categories & combat.states[victim].profile->categories) == 0;
+    return distance <= weapon.range && distance >= weapon.min_range && (weapon.excluded_categories & combat_state(view, victim).profile->categories) == 0;
 }
 
 LocalPoint SimulationWorld::CombatSystem::weapon_mount(const View& view, const std::size_t index, const WeaponProfile& weapon, const LocalPoint& mount) const noexcept
 {
-    auto& combat = view.get<CombatColumns>();
-    const auto& turret = combat.states[index].profile->turret;
+    const auto& turret = combat_state(view, index).profile->turret;
     if (!weapon.on_turret || !turret)
     {
         return mount;
     }
-    const auto yaw = combat.states[index].turret_yaw;
+    const auto yaw = combat_state(view, index).turret_yaw;
     const auto c = std::cos(yaw);
     const auto s = std::sin(yaw);
     const auto forward = mount.forward - turret->pivot.forward;
@@ -164,8 +164,7 @@ LocalPoint SimulationWorld::CombatSystem::weapon_mount(const View& view, const s
 bool SimulationWorld::CombatSystem::turret_aimed(const View& view, const std::size_t index, const std::size_t victim) const noexcept
 {
     auto& placement = view.get<PlacementColumns>();
-    auto& combat = view.get<CombatColumns>();
-    const auto& state = combat.states[index];
+    const auto& state = combat_state(view, index);
     if (!state.profile->turret)
     {
         return true;
@@ -179,14 +178,15 @@ void SimulationWorld::CombatSystem::update_target(const View& view, const std::s
 {
     auto& identity = view.get<IdentityColumns>();
     auto& placement = view.get<PlacementColumns>();
-    auto& combat = view.get<CombatColumns>();
     auto& rules = view.get<Rules>();
-    auto& state = combat.states[index];
+    // Armed: it has combat (run).
+    auto& state = *combat_of(view, index);
     const auto range = state.profile->range();
     if (state.target.valid())
     {
         const auto victim = dense_index(view, state.target);
-        bool keep = victim && damageable(view, *victim) && combat.states[*victim].profile->targetable && rules.hostility.hostile(identity.owners[index], identity.owners[*victim]);
+        const auto* kept = victim ? &combat_state(view, *victim) : nullptr;
+        bool keep = kept != nullptr && damageable(*kept) && kept->profile->targetable && rules.hostility.hostile(identity.owners[index], identity.owners[*victim]);
         if (keep && !state.ordered)
         {
             keep = distance_xy(placement.positions[index], placement.positions[*victim]) <= range;
@@ -212,7 +212,7 @@ void SimulationWorld::CombatSystem::update_target(const View& view, const std::s
     }
     // Ordered targets are kept (behavior chases them); automatic ones are searched every few ticks
     // unless the stance forbids picking targets.
-    if (state.target.valid() || combat.stances[index] == Stance::hold_fire)
+    if (state.target.valid() || combat_state(view, index).stance == Stance::hold_fire)
     {
         return;
     }
@@ -243,8 +243,8 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
     auto& identity = view.get<IdentityColumns>();
     auto& placement = view.get<PlacementColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& combat = view.get<CombatColumns>();
-    auto& fighter = combat.states[index];
+    // Armed: it has combat (run).
+    auto& fighter = *combat_of(view, index);
     const auto entity_target = fighter.target.valid() ? dense_index(view, fighter.target) : std::nullopt;
     for (std::size_t slot = 0; slot < fighter.profile->weapons.size(); ++slot)
     {
@@ -264,7 +264,7 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
             --state.pulse_timer;
         }
         // Body-aimers hold fire while moving (a burst resumes once they stand again).
-        if (combat.aims_with_body[index] != 0 && route.move_targets[index])
+        if (combat_state(view, index).aims_with_body && route.move_targets[index])
         {
             continue;
         }
@@ -282,7 +282,7 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
                 {
                     return false;
                 }
-                if (combat.aims_with_body[index] != 0)
+                if (combat_state(view, index).aims_with_body)
                 {
                     const auto& to = placement.positions[victim];
                     const auto bearing = std::atan2(to.y - placement.positions[index].y, to.x - placement.positions[index].x);
@@ -304,7 +304,7 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
             {
                 victim = entity_target;
             }
-            else if ((!fighter.ordered || !entity_target) && combat.stances[index] != Stance::hold_fire)
+            else if ((!fighter.ordered || !entity_target) && combat_state(view, index).stance != Stance::hold_fire)
             {
                 victim = choose_target(view, grid_, query_, index, placement.positions[index], weapon.range, covers);
             }
@@ -329,7 +329,7 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
             state.pulses_left = 0;
             continue;
         }
-        if (combat.aims_with_body[index] != 0)
+        if (combat_state(view, index).aims_with_body)
         {
             const auto& to = placement.positions[*victim];
             const auto bearing = std::atan2(to.y - placement.positions[index].y, to.x - placement.positions[index].x);
@@ -358,7 +358,6 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
 void SimulationWorld::CombatSystem::launch(const View& view, const std::size_t shooter, const std::size_t victim, const WeaponProfile& weapon, const LocalPoint& mount)
 {
     auto& identity = view.get<IdentityColumns>();
-    auto& combat = view.get<CombatColumns>();
     auto& projectiles = view.get<ProjectileState>();
     auto& events = view.get<TickEvents>();
     auto& combat_random = view.get<CombatRandom>();
@@ -367,7 +366,7 @@ void SimulationWorld::CombatSystem::launch(const View& view, const std::size_t s
     auto& damage = view.get<DamageQueue>();
     ++counters.shots_fired;
     // The tick being run: the snapshot published at its end carries it as its tick.
-    combat.last_shot_ticks[shooter] = clock.tick + 1U;
+    combat_of(view, shooter)->last_shot_tick = clock.tick + 1U;
     const auto origin = world_point(view, shooter, mount);
     events.shots.push_back({identity.ids[shooter], origin, weapon.fire_sound, weapon.launch_effect});
     auto hardpoint = aim_hardpoint(view, victim, origin);
@@ -375,10 +374,10 @@ void SimulationWorld::CombatSystem::launch(const View& view, const std::size_t s
     {
         // Any intact, targetable part, drawn from the combat stream.
         std::vector<std::int32_t> parts;
-        const auto& hardpoints = combat.states[victim].profile->hardpoints;
+        const auto& hardpoints = combat_state(view, victim).profile->hardpoints;
         for (std::size_t part = 0; part < hardpoints.size(); ++part)
         {
-            if (hardpoints[part].targetable && hardpoints[part].health > 0.0F && combat.states[victim].hardpoint_health[part] > 0.0F)
+            if (hardpoints[part].targetable && hardpoints[part].health > 0.0F && combat_state(view, victim).hardpoint_health[part] > 0.0F)
             {
                 parts.push_back(static_cast<std::int32_t>(part));
             }
@@ -444,9 +443,8 @@ void SimulationWorld::CombatSystem::launch(const View& view, const std::size_t s
 
 Vector3 SimulationWorld::CombatSystem::stray(const View& view, const WeaponProfile& weapon, const std::size_t victim)
 {
-    auto& combat = view.get<CombatColumns>();
     auto& combat_random = view.get<CombatRandom>();
-    const auto categories = combat.states[victim].profile->categories;
+    const auto categories = combat_state(view, victim).profile->categories;
     for (const auto& entry : weapon.inaccuracy)
     {
         if (entry.categories != all_categories && (entry.categories & categories) == 0)
@@ -476,14 +474,17 @@ std::optional<std::size_t> SimulationWorld::CombatSystem::stray_victim(const Vie
 {
     auto& identity = view.get<IdentityColumns>();
     auto& placement = view.get<PlacementColumns>();
-    auto& combat = view.get<CombatColumns>();
     auto& rules = view.get<Rules>();
     // shortcut: a scan over every entity per stray shot; use the spatial grid when battles get big.
     std::optional<std::size_t> best;
     float best_distance = 0.0F;
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
-        if (index == target || !combat.states[index].profile->collidable || !damageable(view, index) || !rules.hostility.hostile(owner, identity.owners[index]))
+        if (index == target || !rules.hostility.hostile(owner, identity.owners[index]))
+        {
+            continue;
+        }
+        if (const auto& state = combat_state(view, index); !state.profile->collidable || !damageable(state))
         {
             continue;
         }
@@ -518,7 +519,6 @@ void SimulationWorld::CombatSystem::run_projectiles(const View& view)
 {
     auto& identity = view.get<IdentityColumns>();
     auto& placement = view.get<PlacementColumns>();
-    auto& combat = view.get<CombatColumns>();
     auto& projectiles = view.get<ProjectileState>();
     auto& rules = view.get<Rules>();
     auto& clock = view.get<Clock>();
@@ -543,7 +543,8 @@ void SimulationWorld::CombatSystem::run_projectiles(const View& view)
                 const auto& at = placement.positions[other];
                 const auto distance = std::sqrt((at.x - projectile.position.x) * (at.x - projectile.position.x) + (at.y - projectile.position.y) * (at.y - projectile.position.y) +
                                                 (at.z - projectile.position.z) * (at.z - projectile.position.z));
-                if (damageable(view, other) && combat.states[other].profile->targetable && rules.hostility.hostile(projectile.owner, identity.owners[other]) && distance <= best)
+                const auto& state = combat_state(view, other);
+                if (damageable(state) && state.profile->targetable && rules.hostility.hostile(projectile.owner, identity.owners[other]) && distance <= best)
                 {
                     victim = other;
                     best = distance;
@@ -636,10 +637,10 @@ void SimulationWorld::resolve(const DamageEvent& event)
     switch (event.kind)
     {
     case DamageEvent::Kind::crush:
-        if (victim && wound(combat_.states[*victim], combat_.states[*victim].health) > 0.0F)
+        if (auto* state = victim ? combat_of(*this, *victim) : nullptr; state != nullptr && wound(*state, state->health) > 0.0F)
         {
             ++combat_counters_.crushed;
-            combat_.states[*victim].crushed = true;
+            state->crushed = true;
         }
         return;
     case DamageEvent::Kind::hit:
@@ -668,11 +669,12 @@ bool SimulationWorld::resolve_deaths(std::vector<std::uint8_t>& handled)
     const auto queued = damage_queue_.events.size();
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
-        auto& combat = combat_.states[index];
-        if (handled[index] != 0 || combat.profile->health <= 0.0F || combat.health > 0.0F)
+        auto* member = combat_of(*this, index);
+        if (handled[index] != 0 || member == nullptr || member->profile->health <= 0.0F || member->health > 0.0F)
         {
             continue;
         }
+        auto& combat = *member;
         handled[index] = 1;
         // Spinning away: out of control until the spin ends.
         if (combat.spin_ticks == 0 && combat.profile->spin_chance > 0.0F && combat_random_.stream.unit() < combat.profile->spin_chance)

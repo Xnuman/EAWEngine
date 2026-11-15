@@ -602,7 +602,17 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    broken off (an engagement, a spin, a loiter, a new order), or stalls (`leave_group`), so the
    membership changes within a tick as it did; queries look rows up per entity, since a leaving
    member's row is refilled from the pool's last, and `waits(data, index)` is false for a
-   non-member. Combat is next.
+   non-member. Then combat (`CombatColumns`, one column of `CombatState`, which took in the
+   stance, whether the body aims, and the last shot's tick): members are the entities whose
+   recipe has health, a shield, weapons, or hardpoints (on Utapau 25 of 770 placed objects; the
+   rest are props). `combat_state(data, index)` reads a member's state or `no_combat()` (no
+   health, weapons, or target, the default profile), `combat_of` gives a member's to change (null
+   for others), and `drop_target` clears a target; scripted conditions, damage, and stances reach
+   members only. The pool's lookups cost about 9% of a 500-unit tick at first (the target search
+   looked a candidate up three times); one lookup per candidate, after the cheaper hostility test,
+   brought it level with the core table (A/B on one machine, 12.0 against 12.2 ms). Every component
+   but the core's (identity, placement, motion, locomotor, ground mover, route, orders, steering)
+   is now a pool.
 8. **Parallel systems.** Route searches, then contact and targeting, each verified with 1 and N
    threads giving the same hash, and measured.
 9. **Refactoring.** A review of what the migration left, its scope and plan to be agreed with the

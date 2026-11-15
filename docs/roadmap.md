@@ -182,7 +182,7 @@ rendering rows join item 2).
       systems on typed views, 2026-11-15; commands, resolution, and removal stay member functions);
       recipes (one construction path, and the simulation's recipes with shared profiles,
       2026-11-15); the damage queue, compacting removal, and per-component hashing, the one
-      declared hash change (2026-11-15); pools for flight, formation, and group (2026-11-15), and combat; parallel
+      declared hash change (2026-11-15); pools for flight, formation, group, and combat (2026-11-15); parallel
       systems (route searches first); a refactoring step last, its scope to be agreed with the
       owner,
       each step with an unchanged battle hash except the declared one, folding in the deferred

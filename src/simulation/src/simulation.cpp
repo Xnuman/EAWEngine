@@ -222,11 +222,15 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     ground_mover_.follows_ground.push_back(recipe.follows_ground ? 1U : 0U);
     ground_mover_.passable_types.push_back(recipe.passable_types);
     route_.paths.emplace_back();
-    combat_.states.push_back({.profile = &recipe.combat, .health = recipe.combat.health, .shield = recipe.combat.shield});
-    combat_.states.back().weapons.resize(recipe.combat.weapons.size());
-    for (const auto& hardpoint : recipe.combat.hardpoints)
+    if (const auto& profile = recipe.combat; profile.health > 0.0F || profile.shield > 0.0F || !profile.weapons.empty() || !profile.hardpoints.empty())
     {
-        combat_.states.back().hardpoint_health.push_back(hardpoint.health);
+        auto& state = combat_.columns.states[combat_.add(slot)];
+        state = {.profile = &profile, .health = profile.health, .shield = profile.shield, .stance = spawn.stance, .aims_with_body = recipe.aims_with_body};
+        state.weapons.resize(profile.weapons.size());
+        for (const auto& hardpoint : profile.hardpoints)
+        {
+            state.hardpoint_health.push_back(hardpoint.health);
+        }
     }
     placement_.radii.push_back(recipe.radius);
     locomotor_.turn_rates.push_back(recipe.turn_rate);
@@ -235,12 +239,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     route_.loiter_points.emplace_back();
     route_.remaining.push_back(0.0F);
     route_.detours.emplace_back();
-    combat_.stances.push_back(spawn.stance);
-    combat_.aims_with_body.push_back(recipe.aims_with_body ? 1U : 0U);
     placement_.pitches.push_back(0.0F);
     motion_.speeds.push_back(0.0F);
     motion_.starts.push_back(spawn.position);
-    combat_.last_shot_ticks.push_back(0);
     orders_.command_serials.push_back(0);
     orders_.standing.push_back({.scan_timer = slot % std::max(1U, ticks_for(*this, retarget_seconds))});
     locomotor_.suspended.push_back(0);
@@ -478,7 +479,13 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
     for (std::size_t index = 0; index < count; ++index)
     {
         // Field by field: the combat records have padding, whose bytes are unspecified.
-        const auto& combat = combat_.states[index];
+        const auto* member = combat_.find(slot_of(*this, index), &CombatColumns::states);
+        if (member == nullptr)
+        {
+            continue;
+        }
+        const auto& combat = *member;
+        hasher.add(index);
         hasher.add(combat.health);
         hasher.add(combat.shield);
         hasher.add(combat.target);
@@ -502,8 +509,8 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(combat.chase_timer);
         hasher.add(combat.invulnerable);
         hasher.add(combat.cannot_be_killed);
-        hasher.add(combat_.stances[index]);
-        hasher.add(combat_.aims_with_body[index]);
+        hasher.add(combat.stance);
+        hasher.add(combat.aims_with_body);
     }
     hasher.subject = StateSubject::clips;
     for (std::size_t index = 0; index < count; ++index)
@@ -605,6 +612,13 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
     hasher.add(combat_random_.stream.state());
 }
 
+const SimulationWorld::CombatState& SimulationWorld::no_combat() noexcept
+{
+    static const CombatProfile none_profile{};
+    static const CombatState none{.profile = &none_profile};
+    return none;
+}
+
 const CrushProfile& SimulationWorld::crush_profile_in(const ComponentPool<CrushColumns>& pool, const std::uint32_t slot) noexcept
 {
     static constexpr CrushProfile none{};
@@ -662,6 +676,7 @@ void SimulationWorld::remove_entities(std::vector<std::size_t> dense)
         crush_.remove(slot);
         formation_.remove(slot);
         group_.remove(slot);
+        combat_.remove(slot);
         // A slot whose generation would wrap is retired instead of reused.
         if (slots_.generations[slot] != std::numeric_limits<std::uint32_t>::max())
         {
@@ -782,7 +797,6 @@ void SimulationWorld::PublishSystem::publish(const View& view)
     auto& locomotor = view.get<LocomotorColumns>();
     auto& ground_mover = view.get<GroundMoverColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& combat = view.get<CombatColumns>();
     auto& orders = view.get<OrderColumns>();
     auto& turn_clips = view.get<ComponentPool<TurnClipColumns>>();
     auto& walk_clips = view.get<ComponentPool<WalkClipColumns>>();
@@ -795,7 +809,7 @@ void SimulationWorld::PublishSystem::publish(const View& view)
     snapshot.entities.reserve(identity.ids.size());
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
-        const auto& state = combat.states[index];
+        const auto& state = combat_state(view, index);
         std::uint32_t destroyable = 0;
         std::uint32_t destroyed = 0;
         for (std::size_t hardpoint = 0; hardpoint < state.profile->hardpoints.size(); ++hardpoint)
@@ -831,7 +845,7 @@ void SimulationWorld::PublishSystem::publish(const View& view)
                                      motion.speeds[index],
                                      (roll ? *roll : 0.0F),
                                      state.turret_yaw,
-                                     combat.last_shot_ticks[index],
+                                     combat_state(view, index).last_shot_tick,
                                      orders.command_serials[index],
                                      orders.standing[index].kind,
                                      locomotor.arriving[index] != 0});

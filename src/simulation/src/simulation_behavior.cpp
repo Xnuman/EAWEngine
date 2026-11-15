@@ -67,10 +67,16 @@ void SimulationWorld::apply(const SimCommand& command)
         case SimCommandKind::guard:
             break;
         case SimCommandKind::set_invulnerable:
-            combat_.states[*dense].invulnerable = command.flag;
+            if (auto* state = combat_of(*this, *dense))
+            {
+                state->invulnerable = command.flag;
+            }
             break;
         case SimCommandKind::set_cannot_be_killed:
-            combat_.states[*dense].cannot_be_killed = command.flag;
+            if (auto* state = combat_of(*this, *dense))
+            {
+                state->cannot_be_killed = command.flag;
+            }
             break;
         case SimCommandKind::suspend_locomotor:
             locomotor_.suspended[*dense] = command.flag ? 1U : 0U;
@@ -78,9 +84,9 @@ void SimulationWorld::apply(const SimCommand& command)
         case SimCommandKind::damage:
             // Damage only entities that can die (structures without health stay); removal is the
             // combat layer's, as for shots.
-            if (combat_.states[*dense].profile->health > 0.0F && std::isfinite(command.amount))
+            if (auto* state = combat_of(*this, *dense); state != nullptr && state->profile->health > 0.0F && std::isfinite(command.amount))
             {
-                (void)wound(combat_.states[*dense], command.amount);
+                (void)wound(*state, command.amount);
             }
             break;
         case SimCommandKind::teleport:
@@ -92,8 +98,7 @@ void SimulationWorld::apply(const SimCommand& command)
             teleport(*dense, command.target, command.heading);
             break;
         case SimCommandKind::move:
-            combat_.states[*dense].target = {};
-            combat_.states[*dense].ordered = false;
+            drop_target(*this, *dense);
             locomotor_.speed_limits[*dense] = 0.0F;
             leave_group(*this, *dense);
             if (locomotor_.max_speeds[*dense] > 0.0F)
@@ -106,8 +111,7 @@ void SimulationWorld::apply(const SimCommand& command)
             leave_group(*this, *dense);
             route_.move_targets[*dense].reset();
             route_.paths[*dense].clear();
-            combat_.states[*dense].target = {};
-            combat_.states[*dense].ordered = false;
+            drop_target(*this, *dense);
             // A ground unit that brakes (MovementProfile::deceleration) coasts to a stop straight ahead
             // over its braking distance instead of halting at once (a walk played as clips walks on to
             // its stride's next part and plays its stop there: walk_straight).
@@ -122,19 +126,19 @@ void SimulationWorld::apply(const SimCommand& command)
         case SimCommandKind::attack:
         {
             const auto victim = dense_index(*this, command.target_entity);
-            auto& combat = combat_.states[*dense];
+            auto* combat = combat_of(*this, *dense);
             if (!victim || !damageable(*this, *victim))
             {
                 ++stale_references_;
                 break;
             }
-            if (!combat.profile->weapons.empty() && *victim != *dense && rules_.hostility.hostile(identity_.owners[*dense], identity_.owners[*victim]))
+            if (combat != nullptr && !combat->profile->weapons.empty() && *victim != *dense && rules_.hostility.hostile(identity_.owners[*dense], identity_.owners[*victim]))
             {
-                combat.target = command.target_entity;
-                combat.ordered = true;
+                combat->target = command.target_entity;
+                combat->ordered = true;
                 locomotor_.speed_limits[*dense] = 0.0F;
                 leave_group(*this, *dense);
-                combat.chase_timer = 0;
+                combat->chase_timer = 0;
             }
             break;
         }
@@ -147,10 +151,13 @@ void SimulationWorld::apply(const SimCommand& command)
                 ++stale_references_;
                 break;
             }
-            combat_.stances[*dense] = command.stance;
-            if (command.stance == Stance::hold_fire && !combat_.states[*dense].ordered)
+            if (auto* state = combat_of(*this, *dense))
             {
-                combat_.states[*dense].target = {};
+                state->stance = command.stance;
+                if (command.stance == Stance::hold_fire && !state->ordered)
+                {
+                    state->target = {};
+                }
             }
             break;
         }
@@ -166,7 +173,6 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
     auto& placement = view.get<PlacementColumns>();
     auto& ground_mover = view.get<GroundMoverColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& combat = view.get<CombatColumns>();
     auto& orders = view.get<OrderColumns>();
     auto& steering = view.get<SteeringColumns>();
     auto& ground = view.get<GroundState>();
@@ -192,7 +198,7 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
         }
         else
         {
-            if (combat.states[index].ordered)
+            if (combat_state(view, index).ordered)
             {
                 pursue_ordered_target(view, index);
             }
@@ -202,16 +208,16 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
             {
                 if (const auto victim = attack_victim(view, index))
                 {
-                    const auto& turret = combat.states[index].profile->turret;
+                    const auto& turret = combat_state(view, index).profile->turret;
                     const auto& to = placement.positions[*victim];
                     const bool beyond_turret =
                         turret && turret->turns_body && turret->yaw_limit < pi &&
                         std::fabs(wrap_angle(std::atan2(to.y - placement.positions[index].y, to.x - placement.positions[index].x) - placement.headings[index])) > turret->yaw_limit;
-                    if (combat.aims_with_body[index] != 0 || beyond_turret)
+                    if (combat_state(view, index).aims_with_body || beyond_turret)
                     {
                         steering.intents[index].point = to;
                     }
-                    else if (combat.states[index].ordered && ground_mover.follows_ground[index] == 0 && !ground.map.valid())
+                    else if (combat_state(view, index).ordered && ground_mover.follows_ground[index] == 0 && !ground.map.valid())
                     {
                         // An ordered space ship turns in place toward its target's nearest live
                         // hardpoint; an idle one keeps its heading (recorded in the FoC debug build:
@@ -244,10 +250,8 @@ void SimulationWorld::apply_standing_order(const SimCommand& command)
             continue;
         }
         auto& order = orders_.standing[*dense];
-        auto& combat = combat_.states[*dense];
         orders_.command_serials[*dense] = command.serial;
-        combat.target = {};
-        combat.ordered = false;
+        drop_target(*this, *dense);
         order.kind = attack_move ? StandingOrder::attack_move : StandingOrder::guard;
         order.entity = command.target_entity;
         order.point = command.target;
@@ -310,10 +314,8 @@ void SimulationWorld::teleport(const std::size_t index, const Vector3& point, co
 
 void SimulationWorld::BehaviorSystem::disengage(const View& view, const std::size_t index)
 {
-    auto& combat = view.get<CombatColumns>();
     auto& orders = view.get<OrderColumns>();
-    combat.states[index].target = {};
-    combat.states[index].ordered = false;
+    drop_target(view, index);
     orders.standing[index].engaging = false;
 }
 
@@ -328,7 +330,6 @@ void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const
     auto& placement = view.get<PlacementColumns>();
     auto& locomotor = view.get<LocomotorColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& combat = view.get<CombatColumns>();
     auto& orders = view.get<OrderColumns>();
     auto& order = orders.standing[index];
     if (order.kind == StandingOrder::none)
@@ -352,7 +353,7 @@ void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const
             return;
         }
     }
-    auto& state = combat.states[index];
+    const auto& state = combat_state(view, index);
     const float range = state.profile->range();
     const bool guard = order.kind == StandingOrder::guard;
     const float guard_radius = std::max(range, minimum_guard_radius);
@@ -393,9 +394,11 @@ void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const
                                             });
             if (best)
             {
-                state.target = identity.ids[*best];
-                state.ordered = true;
-                state.chase_timer = 0;
+                // Armed (the scan runs for weapons only): it has combat.
+                auto& fighter = *combat_of(view, index);
+                fighter.target = identity.ids[*best];
+                fighter.ordered = true;
+                fighter.chase_timer = 0;
                 locomotor.speed_limits[index] = 0.0F;
                 leave_group(view, index);
                 order.engaging = true;
@@ -439,8 +442,8 @@ void SimulationWorld::BehaviorSystem::pursue_ordered_target(const View& view, co
     auto& locomotor = view.get<LocomotorColumns>();
     auto& ground_mover = view.get<GroundMoverColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& combat = view.get<CombatColumns>();
-    auto& state = combat.states[index];
+    // Only an entity with combat is ordered to attack.
+    auto& state = *combat_of(view, index);
     const auto victim = attack_victim(view, index);
     if (!victim)
     {
@@ -487,7 +490,6 @@ void SimulationWorld::BehaviorSystem::plan_flight(const View& view, const std::s
     auto& placement = view.get<PlacementColumns>();
     auto& locomotor = view.get<LocomotorColumns>();
     auto& route = view.get<RouteColumns>();
-    auto& combat = view.get<CombatColumns>();
     auto& steering = view.get<SteeringColumns>();
     auto& flight = view.get<ComponentPool<FlightColumns>>();
     auto& clock = view.get<Clock>();
@@ -498,11 +500,11 @@ void SimulationWorld::BehaviorSystem::plan_flight(const View& view, const std::s
         intent.loop = true;
         return;
     }
-    const auto& state = combat.states[index];
+    const auto& state = combat_state(view, index);
     const auto plane = flight.get(slot_of(view, index), &FlightColumns::cruise_heights);
     const auto choose = [&]
     {
-        if (state.ordered || combat.stances[index] == Stance::aggressive)
+        if (state.ordered || combat_state(view, index).stance == Stance::aggressive)
         {
             if (const auto victim = attack_victim(view, index))
             {

@@ -27,12 +27,11 @@ const CrushProfile& SimulationWorld::ContactSystem::crush_profile_of(const View&
 bool SimulationWorld::ContactSystem::can_crush(const View& view, const std::size_t crusher, const std::size_t victim)
 {
     const auto& identity = view.get<IdentityColumns>();
-    const auto& combat = view.get<CombatColumns>();
     const auto& rules = view.get<Rules>();
     const auto kind = crush_profile_of(view, crusher).crusher;
     const auto& squash = crush_profile_of(view, victim);
     const bool may = squash.squashable || (kind == Crusher::supercrusher && squash.squashable_by_supercrusher);
-    const auto& state = combat.states[victim];
+    const auto& state = combat_state(view, victim);
     return kind != Crusher::none && victim != crusher && may && state.profile->health > 0.0F && state.health > 0.0F && rules.hostility.hostile(identity.owners[crusher], identity.owners[victim]);
 }
 

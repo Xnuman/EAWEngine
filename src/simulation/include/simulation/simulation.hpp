@@ -732,6 +732,11 @@ private:
         // Scripted conditions: no damage at all, and health that damage cannot take below the floor.
         bool invulnerable{};
         bool cannot_be_killed{};
+        // The stance (spawned with, then set by commands), whether it turns its body to aim
+        // (EntityRecipe::aims_with_body), and the tick it last fired in (presentation reads it).
+        Stance stance{Stance::aggressive};
+        bool aims_with_body{};
+        std::uint64_t last_shot_tick{};
     };
     struct Projectile
     {
@@ -870,6 +875,16 @@ private:
     // died.
     bool resolve_deaths(std::vector<std::uint8_t>& handled);
     template <class Data> [[nodiscard]] static bool damageable(Data& data, std::size_t index) noexcept;
+    [[nodiscard]] static bool damageable(const CombatState& state) noexcept
+    {
+        return state.profile->health > 0.0F && state.health > 0.0F;
+    }
+    // The combat state of the entity at `index`: to read (no_combat() for an entity without the
+    // component), to change (null without it), and its target dropped (if it has combat).
+    [[nodiscard]] static const CombatState& no_combat() noexcept;
+    template <class Data> [[nodiscard]] static const CombatState& combat_state(Data& data, std::size_t index) noexcept;
+    template <class Data> [[nodiscard]] static auto* combat_of(Data& data, std::size_t index) noexcept;
+    template <class Data> static void drop_target(Data& data, std::size_t index) noexcept;
     // Whether the entity at `index` flies (is in the flight pool).
     template <class Data> [[nodiscard]] static bool flies(Data& data, std::size_t index) noexcept;
     // Whether the entity at `index` waits for its formation group this tick, and its leaving its
@@ -1067,20 +1082,16 @@ private:
             visit(rolls);
         }
     };
+    // Combat (pooled: entities whose recipe has health, a shield, weapons, or hardpoints; the rest
+    // read as no_combat(): no health, no weapons, no target).
     struct CombatColumns
     {
         bool operator==(const CombatColumns&) const = default;
         static constexpr SimData data = SimData::combat;
         std::vector<CombatState> states;
-        std::vector<std::uint64_t> last_shot_ticks;
-        std::vector<std::uint8_t> aims_with_body;
-        std::vector<Stance> stances;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(states);
-            visit(last_shot_ticks);
-            visit(aims_with_body);
-            visit(stances);
         }
     };
     // Standing orders (gameplay state, hashed): the kind, the destination or anchor point and object
@@ -1241,7 +1252,6 @@ private:
     LocomotorColumns locomotor_;
     GroundMoverColumns ground_mover_;
     RouteColumns route_;
-    CombatColumns combat_;
     OrderColumns orders_;
     SteeringColumns steering_;
     // Every column of the entity table, component by component.
@@ -1254,7 +1264,6 @@ private:
         visit(locomotor_);
         visit(ground_mover_);
         visit(route_);
-        visit(combat_);
         visit(orders_);
         visit(steering_);
     }
@@ -1309,6 +1318,7 @@ private:
         visit(SimData::crush, crush_);
         visit(SimData::formation, formation_);
         visit(SimData::group, group_);
+        visit(SimData::combat, combat_);
         visit(SimData::ground, ground_);
         visit(SimData::path_queue, path_queue_);
         visit(SimData::projectiles, projectiles_);
@@ -1350,6 +1360,7 @@ private:
     ComponentPool<CrushColumns> crush_;
     ComponentPool<FormationColumns> formation_;
     ComponentPool<GroupColumns> group_;
+    ComponentPool<CombatColumns> combat_;
     [[nodiscard]] static const CrushProfile& crush_profile_in(const ComponentPool<CrushColumns>& pool, std::uint32_t slot) noexcept;
     // Remaining route length of every moving entity (zero for the rest), into route.remaining.
     static void measure_remaining_routes(RouteColumns& route, const PlacementColumns& placement);
@@ -1564,7 +1575,7 @@ private:
     {
     public:
         using View = SystemView<Read<GroundState>, Read<IdentityColumns>, Write<PlacementColumns>, Write<MotionColumns>, Read<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>,
-                                Read<ComponentPool<FlightColumns>>, Read<CombatColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Write<DamageQueue>>;
+                                Read<ComponentPool<FlightColumns>>, Read<ComponentPool<CombatColumns>>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Write<DamageQueue>>;
         void run(const View& view, float dt);
         // The pairs separation pushed apart in the last tick.
         std::size_t separated_pairs{};
@@ -1590,9 +1601,9 @@ private:
     class MovementSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<CombatColumns>, Read<SteeringColumns>,
-                                Write<ComponentPool<GroupColumns>>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>, Write<ComponentPool<FlightColumns>>,
-                                Read<GroundState>, Read<SpaceAvoidance>, Write<PathQueue>>;
+        using View = SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<CombatColumns>>,
+                                Read<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>,
+                                Write<ComponentPool<FlightColumns>>, Read<GroundState>, Read<SpaceAvoidance>, Write<PathQueue>>;
         void run(const View& view, float dt);
         // Moves planned again so far because the unit's planned line no longer fit (separation pushed
         // it off, or the ground changed).
@@ -1650,7 +1661,7 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<FlightColumns>>,
-                                Read<CombatColumns>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>>;
+                                Read<ComponentPool<CombatColumns>>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>>;
         // Route requests under the search budget, remaining routes, group cohesion, and space
         // avoidance, before movement.
         void run(const View& view);
@@ -1701,9 +1712,9 @@ private:
     class BehaviorSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<CombatColumns>, Write<OrderColumns>,
-                                Write<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>, Read<GroundState>,
-                                Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>>;
+        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<ComponentPool<CombatColumns>>,
+                                Write<OrderColumns>, Write<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>,
+                                Read<GroundState>, Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>>;
         // Every entity's steering intent for this tick, from its order, stance, and target; route
         // requests for new destinations.
         void run(const View& view, float dt);
@@ -1730,7 +1741,7 @@ private:
     class CombatSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Read<RouteColumns>, Write<CombatColumns>, Read<ComponentPool<FootprintColumns>>, Write<ProjectileState>,
+        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Read<RouteColumns>, Write<ComponentPool<CombatColumns>>, Read<ComponentPool<FootprintColumns>>, Write<ProjectileState>,
                                 Write<TickEvents>, Read<SlotTable>, Read<Rules>, Write<CombatRandom>, Read<Clock>, Write<CombatCounters>, Write<DamageQueue>>;
         // Shield refresh, then every armed entity's target, turret, and weapons, then the projectiles
         // in flight.
@@ -1772,9 +1783,9 @@ private:
     class PublishSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Read<MotionColumns>, Read<LocomotorColumns>, Read<GroundMoverColumns>, Read<RouteColumns>, Read<CombatColumns>,
-                                Read<OrderColumns>, Read<ComponentPool<TurnClipColumns>>, Read<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>, Read<ProjectileState>,
-                                Read<TickEvents>, Write<Clock>>;
+        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Read<MotionColumns>, Read<LocomotorColumns>, Read<GroundMoverColumns>, Read<RouteColumns>,
+                                Read<ComponentPool<CombatColumns>>, Read<OrderColumns>, Read<ComponentPool<TurnClipColumns>>, Read<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>,
+                                Read<ProjectileState>, Read<TickEvents>, Write<Clock>>;
         // Advances the tick counter and publishes the tick's snapshot.
         void run(const View& view);
         // The snapshot of the last tick (SimulationWorld::snapshot).

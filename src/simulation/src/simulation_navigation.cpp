@@ -606,8 +606,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     }
     for (const auto index : solos)
     {
-        combat_.states[index].target = {};
-        combat_.states[index].ordered = false;
+        drop_target(*this, index);
         locomotor_.speed_limits[index] = 0.0F;
         leave_group(*this, index);
         auto goal = command.target;
@@ -637,8 +636,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     for (std::size_t member = 0; member < movers.size(); ++member)
     {
         const auto index = movers[member];
-        combat_.states[index].target = {};
-        combat_.states[index].ordered = false;
+        drop_target(*this, index);
         locomotor_.speed_limits[index] = movers.size() > 1 ? group_speed : 0.0F;
         // A lone mover has no group; the members of a new one start afresh.
         leave_group(*this, index);

@@ -176,9 +176,8 @@ std::optional<std::size_t> SimulationWorld::choose_target(Data& data, const Spat
 {
     auto& identity = data.template get<IdentityColumns>();
     auto& placement = data.template get<PlacementColumns>();
-    auto& combat = data.template get<CombatColumns>();
     auto& rules = data.template get<Rules>();
-    const auto& priorities = combat.states[index].profile->targeting;
+    const auto& priorities = combat_state(data, index).profile->targeting;
     query.clear();
     grid.query(center, reach, query);
     std::optional<std::size_t> best;
@@ -186,12 +185,16 @@ std::optional<std::size_t> SimulationWorld::choose_target(Data& data, const Spat
     float best_distance = 0.0F;
     for (const auto candidate : query)
     {
-        if (candidate == index || !damageable(data, candidate) || !combat.states[candidate].profile->targetable || !rules.hostility.hostile(identity.owners[index], identity.owners[candidate]) ||
-            !accepts(candidate))
+        if (candidate == index || !rules.hostility.hostile(identity.owners[index], identity.owners[candidate]))
         {
             continue;
         }
-        const auto& profile = *combat.states[candidate].profile;
+        const auto& target = combat_state(data, candidate);
+        if (!damageable(target) || !target.profile->targetable || !accepts(candidate))
+        {
+            continue;
+        }
+        const auto& profile = *target.profile;
         const auto rank = priorities.rank(profile.categories, profile.properties, profile.type_key);
         const auto distance = simulation_detail::distance_xy(center, placement.positions[candidate]);
         if (rank < 0.0F || distance > reach)
@@ -220,9 +223,8 @@ template <class Data> float SimulationWorld::travel_speed(Data& data, const std:
 
 template <class Data> bool SimulationWorld::keeps(Data& data, const std::size_t index, const HardpointProfile::Kind kind) noexcept
 {
-    auto& combat = data.template get<CombatColumns>();
     bool any = false;
-    const auto& hardpoints = combat.states[index].profile->hardpoints;
+    const auto& hardpoints = combat_state(data, index).profile->hardpoints;
     for (std::size_t hardpoint = 0; hardpoint < hardpoints.size(); ++hardpoint)
     {
         if (hardpoints[hardpoint].kind == kind)
@@ -239,8 +241,7 @@ template <class Data> bool SimulationWorld::keeps(Data& data, const std::size_t 
 
 template <class Data> bool SimulationWorld::hardpoint_alive(Data& data, const std::size_t index, const std::size_t hardpoint) noexcept
 {
-    auto& combat = data.template get<CombatColumns>();
-    const auto& state = combat.states[index];
+    const auto& state = combat_state(data, index);
     return state.profile->hardpoints[hardpoint].health <= 0.0F || state.hardpoint_health[hardpoint] > 0.0F;
 }
 
@@ -348,6 +349,27 @@ template <class Data> void SimulationWorld::plan_move(Data& data, const std::siz
     route.pending[index] = serial;
     path_queue.requests.push_back({{identity.ids[index]}, {target}, {serial}, target});
 }
+template <class Data> const SimulationWorld::CombatState& SimulationWorld::combat_state(Data& data, const std::size_t index) noexcept
+{
+    const auto& pool = data.template get<ComponentPool<CombatColumns>>();
+    const auto* state = pool.find(slot_of(data, index), &CombatColumns::states);
+    return state != nullptr ? *state : no_combat();
+}
+
+template <class Data> auto* SimulationWorld::combat_of(Data& data, const std::size_t index) noexcept
+{
+    return data.template get<ComponentPool<CombatColumns>>().find(slot_of(data, index), &CombatColumns::states);
+}
+
+template <class Data> void SimulationWorld::drop_target(Data& data, const std::size_t index) noexcept
+{
+    if (auto* state = combat_of(data, index))
+    {
+        state->target = {};
+        state->ordered = false;
+    }
+}
+
 template <class Data> std::optional<std::size_t> SimulationWorld::dense_index(Data& data, const EntityId id) noexcept
 {
     auto& slots = data.template get<SlotTable>();
@@ -359,14 +381,13 @@ template <class Data> std::optional<std::size_t> SimulationWorld::dense_index(Da
 }
 template <class Data> std::int32_t SimulationWorld::aim_hardpoint(Data& data, const std::size_t victim, const Vector3& from) noexcept
 {
-    auto& combat = data.template get<CombatColumns>();
     std::int32_t best = -1;
     float best_distance = 0.0F;
-    const auto& hardpoints = combat.states[victim].profile->hardpoints;
+    const auto& hardpoints = combat_state(data, victim).profile->hardpoints;
     for (std::size_t hardpoint = 0; hardpoint < hardpoints.size(); ++hardpoint)
     {
         // Indestructible parts are not aimed at; destroyed ones no longer are.
-        if (!hardpoints[hardpoint].targetable || hardpoints[hardpoint].health <= 0.0F || combat.states[victim].hardpoint_health[hardpoint] <= 0.0F)
+        if (!hardpoints[hardpoint].targetable || hardpoints[hardpoint].health <= 0.0F || combat_state(data, victim).hardpoint_health[hardpoint] <= 0.0F)
         {
             continue;
         }
@@ -384,21 +405,19 @@ template <class Data> std::int32_t SimulationWorld::aim_hardpoint(Data& data, co
 template <class Data> Vector3 SimulationWorld::aim_point(Data& data, const std::size_t victim, const std::int32_t hardpoint) noexcept
 {
     auto& placement = data.template get<PlacementColumns>();
-    auto& combat = data.template get<CombatColumns>();
     if (hardpoint >= 0)
     {
-        return world_point(data, victim, combat.states[victim].profile->hardpoints[static_cast<std::size_t>(hardpoint)].offset);
+        return world_point(data, victim, combat_state(data, victim).profile->hardpoints[static_cast<std::size_t>(hardpoint)].offset);
     }
     const auto& to = placement.positions[victim];
-    return {to.x, to.y, to.z + combat.states[victim].profile->aim_height};
+    return {to.x, to.y, to.z + combat_state(data, victim).profile->aim_height};
 }
 
 template <class Data> std::optional<std::size_t> SimulationWorld::attack_victim(Data& data, const std::size_t index) noexcept
 {
     auto& identity = data.template get<IdentityColumns>();
-    auto& combat = data.template get<CombatColumns>();
     auto& rules = data.template get<Rules>();
-    const auto& state = combat.states[index];
+    const auto& state = combat_state(data, index);
     if (!state.target.valid())
     {
         return std::nullopt;
@@ -413,8 +432,7 @@ template <class Data> std::optional<std::size_t> SimulationWorld::attack_victim(
 
 template <class Data> bool SimulationWorld::damageable(Data& data, const std::size_t index) noexcept
 {
-    auto& combat = data.template get<CombatColumns>();
-    return combat.states[index].profile->health > 0.0F && combat.states[index].health > 0.0F;
+    return damageable(combat_state(data, index));
 }
 
 template <class Data> bool SimulationWorld::flies(Data& data, const std::size_t index) noexcept
@@ -435,9 +453,8 @@ template <class Data> void SimulationWorld::leave_group(Data& data, const std::s
 
 template <class Data> bool SimulationWorld::engages(Data& data, const std::size_t index, const std::size_t candidate) noexcept
 {
-    auto& combat = data.template get<CombatColumns>();
-    const auto& weapons = combat.states[index].profile->weapons;
-    const auto categories = combat.states[candidate].profile->categories;
+    const auto& weapons = combat_state(data, index).profile->weapons;
+    const auto categories = combat_state(data, candidate).profile->categories;
     return weapons.empty() || std::ranges::any_of(weapons,
                                                   [&](const WeaponProfile& weapon)
                                                   {
@@ -466,11 +483,11 @@ ImpactKind SimulationWorld::apply_damage(Data& data, const std::size_t victim, f
                                          const std::int32_t hardpoint)
 {
     auto& identity = data.template get<IdentityColumns>();
-    auto& combat = data.template get<CombatColumns>();
     auto& events = data.template get<TickEvents>();
     auto& rules = data.template get<Rules>();
     auto& counters = data.template get<CombatCounters>();
-    auto& state = combat.states[victim];
+    // A victim is damageable: it has combat.
+    auto& state = *combat_of(data, victim);
     if (damages_shield && state.shield > 0.0F)
     {
         const auto modifier = rules.damage_table.modifier(damage_type, state.profile->shield_armor_type);
@@ -495,7 +512,7 @@ ImpactKind SimulationWorld::apply_damage(Data& data, const std::size_t victim, f
         const bool at_part = hardpoint >= 0 && state.profile->hardpoints[part_index].health > 0.0F && state.hardpoint_health[part_index] > 0.0F;
         if (!at_part)
         {
-            (void)wound(combat.states[victim], damage * modifier);
+            (void)wound(state, damage * modifier);
             return kind;
         }
         if (state.invulnerable || state.profile->immune)
@@ -515,7 +532,7 @@ ImpactKind SimulationWorld::apply_damage(Data& data, const std::size_t victim, f
         // The hull follows its parts, and falls with the last of them.
         const auto followed = state.profile->health * hull_share_of_parts(data, victim);
         const auto lost = state.profile->dies_with_hardpoints && parts_all_destroyed(data, victim) ? state.health : std::max(state.health - followed, 0.0F);
-        (void)wound(combat.states[victim], lost);
+        (void)wound(state, lost);
     }
     return kind;
 }
@@ -535,7 +552,7 @@ void SimulationWorld::area_blast(Data& data, const Vector3& point, const std::ui
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
         const bool friendly = identity.owners[index] == owner;
-        if (!damageable(data, index) || (!rules.hostility.hostile(owner, identity.owners[index]) && !(friendly && blast.friendly_damage > 0.0F)))
+        if ((!rules.hostility.hostile(owner, identity.owners[index]) && !(friendly && blast.friendly_damage > 0.0F)) || !damageable(data, index))
         {
             continue;
         }
@@ -557,8 +574,7 @@ void SimulationWorld::area_blast(Data& data, const Vector3& point, const std::ui
 
 template <class Data> float SimulationWorld::hull_share_of_parts(Data& data, const std::size_t index) noexcept
 {
-    auto& combat = data.template get<CombatColumns>();
-    const auto& state = combat.states[index];
+    const auto& state = combat_state(data, index);
     float total = 0.0F;
     float remaining = 0.0F;
     for (std::size_t hardpoint = 0; hardpoint < state.profile->hardpoints.size(); ++hardpoint)
@@ -574,8 +590,7 @@ template <class Data> float SimulationWorld::hull_share_of_parts(Data& data, con
 
 template <class Data> bool SimulationWorld::parts_all_destroyed(Data& data, const std::size_t index) noexcept
 {
-    auto& combat = data.template get<CombatColumns>();
-    const auto& state = combat.states[index];
+    const auto& state = combat_state(data, index);
     bool any = false;
     for (std::size_t hardpoint = 0; hardpoint < state.profile->hardpoints.size(); ++hardpoint)
     {
