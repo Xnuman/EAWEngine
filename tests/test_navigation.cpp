@@ -632,9 +632,10 @@ void test_path_budget_and_shared_routes()
     require(queued > 0 && first_searches >= 1 && first_searches < 24 && individual.queued_paths == 0 && individual_arrived == 24,
             "the search budget must spread a large order over ticks and still plan every unit");
     require(std::get<4>(run(false)) == individual_hash, "budgeted planning must be deterministic");
-    // One group order: one shared search instead of 24.
+    // One group order: one shared search instead of 24 (its one request may finish on the next tick
+    // when it costs more than one tick's budget).
     const auto [group_queued, group_first, grouped, grouped_arrived, group_hash] = run(true);
-    require(grouped.shared_routes == 1 && grouped.path_searches < 6 && group_queued == 0 && grouped_arrived == 24,
+    require(grouped.shared_routes == 1 && grouped.path_searches < 6 && group_queued <= 1 && grouped_arrived == 24,
             "a formation must plan one shared route and short legs, and every member must arrive");
     require(grouped.path_expansions * 4 < individual.path_expansions, "a shared route must cost far less than searches per unit");
     (void)group_first;

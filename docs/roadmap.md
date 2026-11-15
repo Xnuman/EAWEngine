@@ -415,8 +415,11 @@ exists, not guessed in advance.
   included, within 16.6 ms. The opening tick of a 3,300-entity battle (50-60 ms, roadmap work order
   2g) breaks it today. `scripts/benchmark-battle.ps1` measures it under constant orders: 10 and 50
   units pass, 100 go over on the first tick of fighting, 500 in 110 of 600 frames (route searches
-  and separation about 6 ms each a tick; the search budget of 30,000 nodes a tick, about 5 ms, was
-  set for a 33 ms tick).
+  and separation about 6 ms each a tick). The route-search budget was halved to 15,000 nodes a tick
+  (about 2.5 ms, the share of a frame it had at 30 Hz; the owner, 2026-11-15): at 500 units the
+  average frame fell from 13.6 to 11.0 ms and the frames over budget from 75 to 42 of 600, while 30%
+  fewer routes were planned in the 10 seconds (orders wait longer for theirs); the worst frames,
+  the first tick's target search, are unchanged.
 - No fixed texture dimension, vertex count, entity count, or 32-bit address-space assumption.
 - Automated budgets, reported by the tools, for frame time, tick time, streaming throughput,
   memory, draw and dispatch counts, and worst-case path requests.

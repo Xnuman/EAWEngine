@@ -44,9 +44,10 @@ inline constexpr float chase_seconds = 1.0F;
 // progress while not waiting. Engine choices.
 inline constexpr float cohesion_slack = 30.0F;
 inline constexpr float cohesion_stall_seconds = 3.0F;
-// Path search nodes expanded per tick at most (about 5 ms in a Release build), always at least one
-// request. An engine choice; requests beyond it wait for the next tick in order.
-inline constexpr std::uint64_t path_budget_per_tick = 30000;
+// Path search nodes expanded per tick at most (about 2.5 ms in a Release build, the share of a frame
+// 30000 was at 30 Hz; halved for 60 Hz, the owner, 2026-11-15), always at least one request. An
+// engine choice; requests beyond it wait for the next tick in order.
+inline constexpr std::uint64_t path_budget_per_tick = 15000;
 // Steepest climb or dive of a flyer (radians). An engine choice.
 inline constexpr float flight_max_pitch = pi / 3.0F;
 // A flyer reverses through a half-loop instead of a flat turn when its goal lies more than this far
