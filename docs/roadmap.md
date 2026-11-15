@@ -199,7 +199,8 @@ rendering rows join item 2).
       advances, rebuilding only changed squares, and the cell search's window are still to do); ORCA
       avoidance with allies giving way and units never overlapping (no pushing; only crushers move
       onto what they crush; done 2026-11-15 with squads as single agents, blocked-unit replans still
-      to do), then formation frames (the owner, 2026-11-15: avoidance first). Enemies count for planning when seen; every enemy until
+      to do), then formation frames (the owner, 2026-11-15: avoidance first; done 2026-11-15, with
+      selections split by distance; companies queueing at narrow places still to do). Enemies count for planning when seen; every enemy until
       fog of war exists. The measurements behind it (separation's broad phase sized by the largest
       unit, 63 candidates a query against 8 with infantry only; about 13 overlaps a unit; the
       opening tick's 5,062 target searches, 38-47 ms with 3,300 entities) are in its section 1.

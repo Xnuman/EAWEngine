@@ -81,7 +81,11 @@ void SimulationWorld::NavigationSystem::process_path_queue(const View& view)
         auto& request = path_queue.requests.front();
         const auto before = path_expansions;
         bool finished = true;
-        if (request.members.size() == 1)
+        if (request.frame != 0)
+        {
+            plan_frame_route(view, request);
+        }
+        else if (request.members.size() == 1)
         {
             if (const auto dense = dense_index(view, request.members.front()); dense && route.pending[*dense] == request.serials.front())
             {
@@ -134,38 +138,19 @@ bool SimulationWorld::NavigationSystem::plan_shared_route(const View& view, Path
     {
         request.shared_ready = true;
         // The commander: the live member nearest the live members' centroid (ties to the lower id).
-        double cx = 0.0;
-        double cy = 0.0;
-        std::size_t count = 0;
+        std::vector<std::size_t> alive;
         for (std::size_t member = 0; member < request.members.size(); ++member)
         {
             if (const auto dense = live(member))
             {
-                cx += placement.positions[*dense].x;
-                cy += placement.positions[*dense].y;
-                ++count;
+                alive.push_back(*dense);
             }
         }
-        if (count == 0)
+        if (alive.empty())
         {
             return true;
         }
-        cx /= static_cast<double>(count);
-        cy /= static_cast<double>(count);
-        std::optional<std::size_t> commander;
-        for (std::size_t member = 0; member < request.members.size(); ++member)
-        {
-            const auto dense = live(member);
-            if (!dense)
-            {
-                continue;
-            }
-            const auto distance = std::hypot(static_cast<double>(placement.positions[*dense].x) - cx, static_cast<double>(placement.positions[*dense].y) - cy);
-            if (!commander || distance < std::hypot(static_cast<double>(placement.positions[*commander].x) - cx, static_cast<double>(placement.positions[*commander].y) - cy))
-            {
-                commander = dense;
-            }
-        }
+        const std::optional<std::size_t> commander = nearest_to_centroid(placement, alive);
         request.mask = ground_mover.passable_types[*commander];
         request.shared_start = {placement.positions[*commander].x, placement.positions[*commander].y};
         // The shared way fits the request's largest member (members share a movement class).
@@ -552,8 +537,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         const bool ship_in_space = !ground_.map.valid() && placement_.radii[*dense] > 0.0F && !flies(*this, *dense);
         const auto spacing = ship_in_space ? std::max(recipe.formation_spacing, space_formation_spacing) : recipe.formation_spacing;
         const auto* team = formation_.find(slot_of(*this, *dense), &FormationColumns::teams);
-        const auto* squad = squads_.find(identity_.ids[*dense].index, &SquadColumns::states);
-        const auto radius = squad != nullptr ? squad->extent : placement_.radii[*dense];
+        const auto radius = unit_radius(*this, *dense);
         members.push_back({id, placement_.positions[*dense], radius, spacing, recipe.formation_order, team != nullptr ? *team : FormationTeam{}});
     }
     for (const auto index : solos)
@@ -572,24 +556,50 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     {
         return;
     }
-    const auto slots = formation_slots(members, command.target, formation_facing(members, command.target));
-    const auto group = movers.size() > 1 ? next_group_id_++ : 0U;
+    const auto facing = formation_facing(members, command.target);
+    const auto slots = formation_slots(members, command.target, facing);
+    // On land, ground members of a group move as frames; the rest (and ships) plan routes per member.
+    std::vector<std::size_t> framed;
+    std::vector<FormationSlot> framed_slots;
+    std::vector<std::size_t> routed;
+    for (std::size_t member = 0; member < movers.size(); ++member)
+    {
+        if (movers.size() > 1 && ground_.map.valid() && ground_mover_.follows_ground[movers[member]] != 0)
+        {
+            framed.push_back(movers[member]);
+            framed_slots.push_back(slots[member]);
+            drop_target(*this, movers[member]);
+        }
+        else
+        {
+            routed.push_back(member);
+        }
+    }
+    if (!framed.empty())
+    {
+        form_frames(command, framed, framed_slots, facing);
+    }
+    if (routed.empty())
+    {
+        return;
+    }
+    const auto group = routed.size() > 1 ? next_group_id_++ : 0U;
     if (next_group_id_ == 0)
     {
         next_group_id_ = 1;
     }
-    float group_speed = locomotor_.max_speeds[movers.front()];
-    for (const auto index : movers)
+    float group_speed = locomotor_.max_speeds[movers[routed.front()]];
+    for (const auto member : routed)
     {
-        group_speed = std::min(group_speed, locomotor_.max_speeds[index]);
+        group_speed = std::min(group_speed, locomotor_.max_speeds[movers[member]]);
     }
-    // Ground members that search share one request per movement class; the rest plan as usual.
+    // Members that search share one request per movement class; the rest plan as usual.
     std::vector<PathRequest> shared;
-    for (std::size_t member = 0; member < movers.size(); ++member)
+    for (const auto member : routed)
     {
         const auto index = movers[member];
         drop_target(*this, index);
-        locomotor_.speed_limits[index] = movers.size() > 1 ? group_speed : 0.0F;
+        locomotor_.speed_limits[index] = routed.size() > 1 ? group_speed : 0.0F;
         // A lone mover has no group; the members of a new one start afresh.
         leave_group(*this, index);
         if (group != 0)
@@ -605,7 +615,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
             slot.z = placement_.positions[index].z;
         }
         plan_move(*this, index, slot);
-        if (route_.pending[index] == 0 || movers.size() < 2)
+        if (route_.pending[index] == 0 || routed.size() < 2)
         {
             continue;
         }
@@ -661,8 +671,23 @@ void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
     auto& placement = view.get<PlacementColumns>();
     auto& route = view.get<RouteColumns>();
     auto& group = view.get<ComponentPool<GroupColumns>>();
+    const auto& frames = view.get<FormationFrames>().list;
     waiting_members = 0;
     std::ranges::fill(group.columns.waiting, std::uint8_t{0});
+    // A group with a frame keeps together through its frame (simulation_frames.cpp); its members wait
+    // while the frame holds for members behind.
+    const auto framed = [&](const std::uint32_t id)
+    {
+        return std::ranges::find(frames, id, &FormationFrame::group) != frames.end();
+    };
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
+    {
+        if (const auto row = group.find(slot_of(view, index)))
+        {
+            const auto frame = std::ranges::find(frames, group.columns.ids[*row], &FormationFrame::group);
+            waiting_members += frame != frames.end() && frame->wait_ticks > 0 ? 1U : 0U;
+        }
+    }
     // Furthest remaining route and largest footprint per progress, in first-seen order.
     struct GroupState
     {
@@ -674,7 +699,7 @@ void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
         const auto row = group.find(slot_of(view, index));
-        if (!row || !route.move_targets[index])
+        if (!row || !route.move_targets[index] || framed(group.columns.ids[*row]))
         {
             continue;
         }
@@ -692,7 +717,7 @@ void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
     {
         // Rows are looked up per entity: a release swaps the pool's last row into its place.
         const auto row = group.find(slot_of(view, index));
-        if (!row || !route.move_targets[index])
+        if (!row || !route.move_targets[index] || framed(group.columns.ids[*row]))
         {
             continue;
         }

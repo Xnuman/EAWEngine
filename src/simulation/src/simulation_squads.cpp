@@ -17,14 +17,10 @@ using namespace simulation_detail;
 
 namespace {
 
-// Engine choices, not measured from the original: a member walks to its slot when it stands more
-// than this far from it; a team waits for a member farther than its extent plus the leash from its
-// slot, for at most the wait limit at a stretch (a member that cannot reach its slot, inside an
-// obstacle, must not hold its team for good).
-constexpr float squad_follow_tolerance = 0.5F;
-// A member keeps the way it is on (a path it planned around a blockage) until its slot moves this
-// far from where it was sent.
-constexpr float squad_reslot_distance = 4.0F;
+// Engine choices, not measured from the original: a team waits for a member farther than its extent
+// plus the leash from its slot, for at most the wait limit at a stretch (a member that cannot reach
+// its slot, inside an obstacle, must not hold its team for good). Members follow their slots as
+// formation members do (follow_slot).
 constexpr float squad_leash = 40.0F;
 constexpr float squad_wait_limit_seconds = 2.0F;
 
@@ -260,7 +256,6 @@ void SimulationWorld::BehaviorSystem::follow_squads(const View& view)
 {
     auto& identity = view.get<IdentityColumns>();
     auto& placement = view.get<PlacementColumns>();
-    auto& route = view.get<RouteColumns>();
     auto& orders = view.get<OrderColumns>();
     auto& squads = view.get<ComponentPool<SquadColumns>>();
     auto& members = view.get<ComponentPool<SquadMemberColumns>>();
@@ -283,21 +278,19 @@ void SimulationWorld::BehaviorSystem::follow_squads(const View& view)
         {
             const auto member = *dense_index(view, id);
             auto& offset = members.get(id.index, &SquadMemberColumns::states);
-            const Vector3 slot{center.x + forward_x * offset.ahead + forward_y * offset.aside, center.y + forward_y * offset.ahead - forward_x * offset.aside, center.z};
+            Vector3 slot{center.x + forward_x * offset.ahead + forward_y * offset.aside, center.y + forward_y * offset.ahead - forward_x * offset.aside, center.z};
+            // A slot on ground the soldier cannot stand on (inside a rock's footprint): the team's own
+            // place instead (sent to it, the soldier planned a partial way there over and over).
+            if (!stands_at(view, member, slot.x, slot.y))
+            {
+                slot = center;
+            }
             const auto& at = placement.positions[member];
             const auto away = std::hypot(slot.x - at.x, slot.y - at.y);
             lag = std::max(lag, away);
             fighting = fighting || combat_state(view, member).target.valid();
-            // Straight to the slot, a few world units from the team that planned the way; a member
-            // blocked on the way plans around (movement) and keeps that way until its slot moves on.
-            const bool moved = !offset.slot || std::hypot(offset.slot->x - slot.x, offset.slot->y - slot.y) > squad_reslot_distance;
-            if (away > squad_follow_tolerance && (moved || (!route.move_targets[member] && route.pending[member] == 0)))
-            {
-                route.move_targets[member] = slot;
-                route.paths[member].clear();
-                route.pending[member] = 0;
-                offset.slot = slot;
-            }
+            // Straight to the slot, a few world units from the team that planned the way.
+            follow_slot(view, member, slot, offset.slot);
         }
         // shortcut: a member walks straight to its slot; around a corner it can be blocked until the
         // team moves on, and a member lagging outside its team's circle is not kept apart from other

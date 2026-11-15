@@ -276,6 +276,7 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
             }
         }
     }
+    follow_frames(view, dt);
     follow_squads(view);
 }
 

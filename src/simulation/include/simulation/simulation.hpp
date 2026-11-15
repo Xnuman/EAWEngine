@@ -27,6 +27,7 @@
 #include <deque>
 #include <initializer_list>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -846,6 +847,9 @@ private:
     template <class Data> static void plan_move(Data& data, std::size_t index, const Vector3& target);
     struct PathRequest;
     void apply_formation_move(const SimCommand& command);
+    // The ground members of a formation move on land (`movers`, their `slots` at the ordered point
+    // facing `facing`) as frames, one per part of the selection by distance (simulation_frames.cpp).
+    void form_frames(const SimCommand& command, std::span<const std::size_t> movers, std::span<const FormationSlot> slots, float facing);
     // Attack-move and guard commands: their standing orders, and the first move.
     void apply_standing_order(const SimCommand& command);
     // Speed this tick: the entity's own, or its group's when that is slower.
@@ -940,10 +944,16 @@ private:
     // Whether the entity at `index` is a ground unit avoidance keeps apart on land: a footprint, on
     // the ground, not flying.
     template <class Data> [[nodiscard]] static bool ground_body(Data& data, std::size_t index) noexcept;
+    // The radius the entity at `index` takes as a whole: a squad's extent, otherwise its footprint.
+    template <class Data> [[nodiscard]] static float unit_radius(Data& data, std::size_t index) noexcept;
     // Whether the entity at `index` waits this tick (for its formation group, or as a team for its
     // members), and its leaving its formation group (if it has one).
     template <class Data> [[nodiscard]] static bool waits(Data& data, std::size_t index) noexcept;
     template <class Data> static void leave_group(Data& data, std::size_t index);
+    // Sends the member at `member` to `slot` (a squad's or a formation frame's) when it stands more than
+    // a little away and the slot moved on from where it was last sent (`sent`), or it stopped; a member
+    // blocked on the way plans around (movement) and keeps that way until the slot moves on.
+    template <class Data> static void follow_slot(Data& data, std::size_t member, const Vector3& slot, std::optional<Vector3>& sent);
     template <class Data> [[nodiscard]] static std::uint32_t ticks_for(Data& data, float seconds) noexcept;
 
     // What the tick's systems declare access to (the schedule below): the components of the entity
@@ -971,6 +981,8 @@ private:
         // The ground and the passability footprints stamp on it.
         ground,
         path_queue,
+        // Formation frames (docs/pathfinding-design.md, 4.3).
+        frames,
         projectiles,
         // The tick's deaths, impacts, shots, hardpoint deaths, and spins.
         events,
@@ -1293,16 +1305,24 @@ private:
         // Group cohesion (pooled: members of a formation group, joined by a formation move of more
         // than one unit and left when the move ends, is broken off, or stalls): the group, the
         // remaining route it last made progress at, ticks since then, and whether it waits this tick.
+        // In a group with a frame (FormationFrame): the member's slot as an offset in the frame
+        // (forward, right) and the slot it was last sent to.
         std::vector<std::uint32_t> ids;
         std::vector<float> best_remaining;
         std::vector<std::uint32_t> stall_ticks;
         std::vector<std::uint8_t> waiting;
+        std::vector<float> ahead;
+        std::vector<float> aside;
+        std::vector<std::optional<Vector3>> sent;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(ids);
             visit(best_remaining);
             visit(stall_ticks);
             visit(waiting);
+            visit(ahead);
+            visit(aside);
+            visit(sent);
         }
     };
     // An obstacle's footprint on the ground (pooled: obstacles only) and whether it is stamped.
@@ -1407,6 +1427,7 @@ private:
         visit(SimData::squad_members, squad_members_);
         visit(SimData::ground, ground_);
         visit(SimData::path_queue, path_queue_);
+        visit(SimData::frames, frames_);
         visit(SimData::projectiles, projectiles_);
         visit(SimData::events, events_);
         visit(SimData::combat_random, combat_random_);
@@ -1511,6 +1532,9 @@ private:
     [[nodiscard]] static const CrushProfile& crush_profile_in(const ComponentPool<CrushColumns>& pool, std::uint32_t slot) noexcept;
     // Remaining route length of every moving entity (zero for the rest), into route.remaining.
     static void measure_remaining_routes(RouteColumns& route, const PlacementColumns& placement);
+    // Of `members` (dense indices), the one nearest their centroid, ties to the earlier (a group's
+    // commander: where its route starts).
+    [[nodiscard]] static std::size_t nearest_to_centroid(const PlacementColumns& placement, std::span<const std::size_t> members);
     // The slot of the entity at dense `index`: the key of its pooled components.
     template <class Data> [[nodiscard]] static std::uint32_t slot_of(Data& data, const std::size_t index) noexcept
     {
@@ -1536,6 +1560,9 @@ private:
         PathPoint shared_start;
         std::uint32_t mask{};
         std::size_t next_member{};
+        // A formation frame's route (its group; 0 for none): only the shared path is planned, from
+        // the frame, for the frame (FormationFrame::route).
+        std::uint32_t frame{};
     };
     // The world's resources (docs/ecs-design.md, 6.2): what exists once, each kind of data a struct of
     // its own, so a system names what it uses by type.
@@ -1567,6 +1594,31 @@ private:
         static constexpr SimData data = SimData::path_queue;
         std::deque<PathRequest> requests;
         std::uint32_t next_serial{1};
+    };
+    // A ground formation's frame (docs/pathfinding-design.md, 4.3; simulation_frames.cpp): the point
+    // and facing its members' slots move with, along the group's route at its slowest member's speed,
+    // waiting for members that fall behind; at the end of the route, the slots at the ordered point.
+    struct FormationFrame
+    {
+        bool operator==(const FormationFrame&) const = default;
+        std::uint32_t group{};
+        Vector3 position;
+        float facing{};
+        Vector3 target;
+        float target_facing{};
+        float speed{};
+        // The route ahead, the next waypoint last (as RouteColumns::paths); planned once.
+        std::vector<Vector3> route;
+        bool planned{};
+        bool arrived{};
+        std::uint32_t wait_ticks{};
+    };
+    struct FormationFrames
+    {
+        bool operator==(const FormationFrames&) const = default;
+        static constexpr SimData data = SimData::frames;
+        // In creation order (ascending group).
+        std::vector<FormationFrame> list;
     };
     struct ProjectileState
     {
@@ -1624,6 +1676,7 @@ private:
     GroundState ground_;
     Avoidance avoidance_;
     PathQueue path_queue_;
+    FormationFrames frames_;
     ProjectileState projectiles_;
     TickEvents events_;
     SlotTable slots_;
@@ -1828,9 +1881,10 @@ private:
     class NavigationSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<FlightColumns>>,
-                                Read<ComponentPool<CombatColumns>>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<Avoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>,
-                                Read<ComponentPool<SquadColumns>>, Read<MotionColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<ComponentPool<SquadMemberColumns>>>;
+        using View =
+            SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<FlightColumns>>,
+                       Read<ComponentPool<CombatColumns>>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<Avoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>,
+                       Read<ComponentPool<SquadColumns>>, Read<MotionColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<ComponentPool<SquadMemberColumns>>, Write<FormationFrames>>;
         // Route requests under the search budget, remaining routes, group cohesion, and space and
         // ground avoidance, before movement.
         void run(const View& view);
@@ -1856,6 +1910,8 @@ private:
         void process_path_queue(const View& view);
         // Plans now: a full search from the entity's position.
         void plan_route_now(const View& view, std::size_t index, const Vector3& target);
+        // A formation frame's route (simulation_frames.cpp), for its largest member.
+        void plan_frame_route(const View& view, const PathRequest& request);
         void plan_shared_member(const View& view, const PathRequest& request, std::size_t index, const Vector3& goal);
         // Plans a shared request's members until the tick's budget is spent; false when members remain.
         [[nodiscard]] bool plan_shared_route(const View& view, PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
@@ -1927,12 +1983,15 @@ private:
     class BehaviorSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<ComponentPool<CombatColumns>>,
-                                Write<OrderColumns>, Write<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>,
-                                Read<GroundState>, Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>, Write<ComponentPool<SquadColumns>>, Write<ComponentPool<SquadMemberColumns>>>;
+        using View =
+            SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<ComponentPool<CombatColumns>>, Write<OrderColumns>,
+                       Write<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>, Read<GroundState>, Write<PathQueue>,
+                       Read<SlotTable>, Read<Rules>, Read<Clock>, Write<ComponentPool<SquadColumns>>, Write<ComponentPool<SquadMemberColumns>>, Write<FormationFrames>>;
         // Every entity's steering intent for this tick, from its order, stance, and target; route
         // requests for new destinations.
         void run(const View& view, float dt);
+        // Members released from their formation group so far (stalled far behind their slot).
+        std::uint64_t released_members{};
 
     private:
         // Attack-move and guard: when to engage (a scan for hostiles), when to break off, and where to
@@ -1950,9 +2009,25 @@ private:
         // behind and, under a standing order, while its members fight.
         void pursue_squad_target(const View& view, std::size_t index);
         void follow_squads(const View& view);
+        // Formation frames (simulation_frames.cpp): each frame advances along its route unless a
+        // member is far behind its slot, narrows its slots to the ground's clearance, and sends its
+        // members to their slots; a lagger that came no closer for the wait limit leaves, and an
+        // arrived frame dissolves once its members stand in their slots.
+        void follow_frames(const View& view, float dt);
+        // An arrived frame's members take its final slots by where they stand: the front ones the
+        // front rank, left to right in each rank, among members of one footprint (a column out of a
+        // narrow passage fans out into the block without crossing).
+        void take_final_slots(const View& view, const FormationFrame& frame, std::span<const std::pair<std::size_t, std::size_t>> members);
         // The grid of positions targets are chosen from this tick, and its query scratch.
         SpatialGrid grid_;
         std::vector<std::uint32_t> query_;
+        // Formation frames' scratch: each frame's members (dense index, group row), its slots, the
+        // members' order for files, which members leave this tick, and those leaving with their goal.
+        std::vector<std::vector<std::pair<std::size_t, std::size_t>>> frame_members_;
+        std::vector<Vector3> slots_;
+        std::vector<std::size_t> order_;
+        std::vector<std::uint8_t> releasing_;
+        std::vector<std::pair<std::size_t, Vector3>> releases_;
     };
     BehaviorSystem behavior_;
 

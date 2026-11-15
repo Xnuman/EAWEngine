@@ -140,6 +140,23 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
   bounded by the formation's size; an order splits a selection into groups by distance (an engine
   choice), so no member thousands of units away belongs to the formation. Stalls are measured
   against the frame's progress, and turning in place is not a stall (concern 6).
+- **As built** (2026-11-15, step 7; `simulation_frames.cpp`; engine choices as named constants): a
+  ground formation on land gets a frame per part of the selection (single linkage at 400 world
+  units); slots are laid out once for the whole selection at the target, so the parts arrive into
+  one block. The frame starts at the member nearest the part's centroid and gets one route (the
+  path queue, for its largest member, a squad by its extent); it moves at 0.9 of its slowest
+  member's speed, so members behind their slots catch up, turns at 1.5 rad/s and holds while more
+  than 0.6 rad off its way. While the route is planned the members form up around the start. It
+  holds while a member is more than 30 units (plus its footprint's diameter) behind its slot, at
+  most 5 s at a stretch; a member that came no closer for 3 s leaves and goes on alone. Where the
+  clearance at the frame or at any member is narrower than the formation, the slots become as many
+  files as fit (1.25 footprints apart), members in their order front to back, left to right, so the
+  formation stays in files until its whole body is through. On arrival the members take the final
+  slots by where they stand (front ones the front rank, left to right; among members of one
+  footprint), so a column fans out without crossing. Members walk to their slots by the rule
+  squads' soldiers use (`follow_slot`); a member that cannot walk straight goes by way of the frame.
+  Not built: companies passing a narrow place one after another (the parts do not queue each
+  other), splitting by anything but distance. Ships in space keep the per-member routes.
 
 ### 4.4 Local movement: avoidance without overlap
 
@@ -222,7 +239,7 @@ Each step keeps the battles' outcomes or declares the change, and is measured wi
 6. **ORCA, giving way, and the no-overlap check** (4.4); separation removed; blocked-unit replans.
    Moved before formation frames (the owner, 2026-11-15: overlaps and pushing are what play shows).
    Done 2026-11-15 but for the blocked-unit replans, with squads as single agents.
-7. **Formation frames and splitting selections by distance** (4.3).
+7. **Formation frames and splitting selections by distance** (4.3). Done 2026-11-15.
 8. Then the entity-component migration's step 8 (parallel systems).
 
 ## 6. Black-box questions for the original (the owner's observations)

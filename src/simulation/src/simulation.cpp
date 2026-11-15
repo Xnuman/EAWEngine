@@ -382,7 +382,7 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .projectiles = projectiles_.flying.size(),
             .separated_pairs = contact_.separated_pairs,
             .waiting_members = navigation_.waiting_members,
-            .released_members = navigation_.released_members,
+            .released_members = navigation_.released_members + behavior_.released_members,
             .rejected_spawns = rejected_spawns_,
             .phase_seconds = phase_seconds_,
             .slowest_phase_seconds = slowest_phase_seconds_};
@@ -521,7 +521,33 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(group_.columns.ids[*row]);
             hasher.add(group_.columns.best_remaining[*row]);
             hasher.add(group_.columns.stall_ticks[*row]);
+            hasher.add(group_.columns.ahead[*row]);
+            hasher.add(group_.columns.aside[*row]);
+            const auto& sent = group_.columns.sent[*row];
+            hasher.add(sent.has_value());
+            if (sent)
+            {
+                hasher.add(*sent);
+            }
         }
+    }
+    hasher.add(frames_.list.size());
+    for (const auto& frame : frames_.list)
+    {
+        hasher.add(frame.group);
+        hasher.add(frame.position);
+        hasher.add(frame.facing);
+        hasher.add(frame.target);
+        hasher.add(frame.target_facing);
+        hasher.add(frame.speed);
+        hasher.add(frame.route.size());
+        for (const auto& waypoint : frame.route)
+        {
+            hasher.add(waypoint);
+        }
+        hasher.add(frame.planned);
+        hasher.add(frame.arrived);
+        hasher.add(frame.wait_ticks);
     }
     hasher.subject = StateSubject::combat;
     for (std::size_t index = 0; index < count; ++index)

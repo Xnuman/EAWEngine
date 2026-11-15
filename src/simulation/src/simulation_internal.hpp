@@ -93,6 +93,33 @@ inline constexpr float chase_seconds = 1.0F;
 // progress while not waiting. Engine choices.
 inline constexpr float cohesion_slack = 30.0F;
 inline constexpr float cohesion_stall_seconds = 3.0F;
+// Following a slot (a squad's or a formation frame's; follow_slot): a member walks to its slot when it
+// stands more than the tolerance from it, and is sent again when its slot moved the reslot distance
+// from where it was sent; a member on a path it planned around a blockage keeps that path until its
+// slot moved the detour distance (sent again sooner, it walked back into the blockage every few ticks
+// of a moving frame). Engine choices.
+inline constexpr float slot_follow_tolerance = 0.5F;
+inline constexpr float slot_reslot_distance = 4.0F;
+inline constexpr float slot_detour_distance = 40.0F;
+// Formation frames (docs/pathfinding-design.md, 4.3): a frame holds while a member stands more than
+// the leash (plus its footprint's diameter) from its slot, for at most the wait limit, after which
+// a lagger that came no closer leaves the group and goes on alone; it turns toward its route at the
+// turn rate and holds
+// its place while more than the hold angle off; an order splits a selection into frames where members
+// stand more than the split distance from every member of another part (single linkage). Engine
+// choices.
+inline constexpr float frame_leash = 30.0F;
+inline constexpr float frame_wait_seconds = 3.0F;
+// A frame holds for laggers at most this long at a stretch, then goes on (they still follow). An
+// engine choice.
+inline constexpr float frame_hold_seconds = 5.0F;
+// A frame moves at this share of its slowest member's speed, so members behind their slots catch
+// up; files in a narrow passage are this many footprint diameters apart. Engine choices.
+inline constexpr float frame_pace = 0.9F;
+inline constexpr float frame_file_spacing = 1.25F;
+inline constexpr float frame_turn_rate = 1.5F;
+inline constexpr float frame_turn_hold = 0.6F;
+inline constexpr float frame_split_distance = 400.0F;
 // Path search nodes expanded per tick at most (about 2.5 ms in a Release build, the share of a frame
 // 30000 was at 30 Hz; halved for 60 Hz, the owner, 2026-11-15), always at least one request. An
 // engine choice; requests beyond it wait for the next tick in order.
@@ -509,6 +536,12 @@ template <class Data> bool SimulationWorld::ground_body(Data& data, const std::s
     return data.template get<PlacementColumns>().radii[index] > 0.0F && data.template get<GroundMoverColumns>().follows_ground[index] != 0 && !flies(data, index);
 }
 
+template <class Data> float SimulationWorld::unit_radius(Data& data, const std::size_t index) noexcept
+{
+    const auto* squad = data.template get<ComponentPool<SquadColumns>>().find(slot_of(data, index), &SquadColumns::states);
+    return squad != nullptr ? squad->extent : data.template get<PlacementColumns>().radii[index];
+}
+
 template <class Data> Footing SimulationWorld::footing_of(Data& data, const std::size_t index) noexcept
 {
     auto& ground = data.template get<GroundState>();
@@ -546,6 +579,22 @@ template <class Data> bool SimulationWorld::waits(Data& data, const std::size_t 
 template <class Data> void SimulationWorld::leave_group(Data& data, const std::size_t index)
 {
     data.template get<ComponentPool<GroupColumns>>().remove(slot_of(data, index));
+}
+
+template <class Data> void SimulationWorld::follow_slot(Data& data, const std::size_t member, const Vector3& slot, std::optional<Vector3>& sent)
+{
+    auto& route = data.template get<RouteColumns>();
+    const auto& at = data.template get<PlacementColumns>().positions[member];
+    const auto away = std::hypot(slot.x - at.x, slot.y - at.y);
+    const auto reslot = route.paths[member].empty() ? simulation_detail::slot_reslot_distance : simulation_detail::slot_detour_distance;
+    const bool moved = !sent || std::hypot(sent->x - slot.x, sent->y - slot.y) > reslot;
+    if (away > simulation_detail::slot_follow_tolerance && (moved || (!route.move_targets[member] && route.pending[member] == 0)))
+    {
+        route.move_targets[member] = slot;
+        route.paths[member].clear();
+        route.pending[member] = 0;
+        sent = slot;
+    }
 }
 
 template <class Data> bool SimulationWorld::engages(Data& data, const std::size_t index, const std::size_t candidate) noexcept

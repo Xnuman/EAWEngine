@@ -417,9 +417,19 @@ void test_formations()
     require(fast && slow && fixed, "test spawns must succeed");
     world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = {*fast, *slow, *fixed}, .target = {300.0F, 110.0F, 0.0F}});
     world.step();
-    const auto& moving = world.snapshot().entities;
-    require(std::fabs(moving[0].position.x - 52.0F) < 0.5F && std::fabs(moving[1].position.x - 52.0F) < 0.5F && !moving[2].moving, "a group must move at its slowest member's speed");
-    for (int tick = 0; tick < 200; ++tick)
+    const auto& first = world.snapshot().entities;
+    // The group forms up around its frame, then moves as one body at the slowest member's pace.
+    require(std::hypot(first[0].position.x - 50.0F, first[0].position.y - 100.0F) <= 2.0F + 1.0e-3F && std::hypot(first[1].position.x - 50.0F, first[1].position.y - 120.0F) <= 2.0F + 1.0e-3F &&
+                !first[2].moving,
+            "no member of a group may move faster than its slowest member");
+    for (int tick = 0; tick < 60; ++tick)
+    {
+        world.step();
+    }
+    const auto& abreast = world.snapshot().entities;
+    require(abreast[0].position.x > 100.0F && abreast[1].position.x > 100.0F && std::fabs(abreast[0].position.x - abreast[1].position.x) < 5.0F,
+            "a group must move as one body (" + std::to_string(abreast[0].position.x) + ", " + std::to_string(abreast[1].position.x) + ")");
+    for (int tick = 0; tick < 140; ++tick)
     {
         world.step();
     }
@@ -705,20 +715,26 @@ void test_group_cohesion()
         const std::vector<eaw::EntityId> group{spawn(world, 200.0F, 140.0F), spawn(world, 200.0F, 160.0F), spawn(world, 50.0F, 150.0F)};
         world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = group, .target = {450.0F, 150.0F, 0.0F}});
         world.step();
-        require(world.stats().waiting_members == 2, "members ahead of the group must wait");
         std::array<int, 3> arrived{-1, -1, -1};
         for (int tick = 1; tick < 400; ++tick)
         {
             world.step();
+            if (tick == 5)
+            {
+                // The frame holds for the straggler (its route planned on the order's tick).
+                require(world.stats().waiting_members >= 2, "members ahead of the group must wait");
+            }
             for (std::size_t member = 0; member < 3; ++member)
             {
-                if (arrived[member] < 0 && !world.snapshot().entities[member].moving)
+                if (arrived[member] < 0 && !world.snapshot().entities[member].moving && world.snapshot().entities[member].position.x > 400.0F)
                 {
                     arrived[member] = tick;
                 }
             }
         }
-        require(arrived[0] > 0 && arrived[2] > 0 && std::abs(arrived[0] - arrived[2]) < 40 && std::abs(arrived[1] - arrived[2]) < 40, "a re-formed group must arrive together");
+        require(arrived[0] > 0 && arrived[2] > 0 && std::abs(arrived[0] - arrived[2]) < 40 && std::abs(arrived[1] - arrived[2]) < 40,
+                "a re-formed group must arrive together (ticks " + std::to_string(arrived[0]) + ", " + std::to_string(arrived[1]) + ", " + std::to_string(arrived[2]) + "; released " +
+                    std::to_string(world.stats().released_members) + ")");
     }
 
     // A member that cannot make progress (it faces away and turns almost imperceptibly slowly) is
@@ -742,6 +758,25 @@ void test_group_cohesion()
             world.step();
         }
         require(world.stats().released_members >= 1 && !world.snapshot().entities[1].moving, "a stuck member must be released so the group does not wait forever");
+    }
+
+    // Two pairs 470 units apart ordered together are split by distance into two frames: neither waits
+    // for the other, and both arrive.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const std::vector<eaw::EntityId> group{spawn(world, 100.0F, 100.0F), spawn(world, 100.0F, 120.0F), spawn(world, 550.0F, 250.0F), spawn(world, 550.0F, 270.0F)};
+        world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = group, .target = {300.0F, 150.0F, 0.0F}});
+        for (int tick = 0; tick < 5; ++tick)
+        {
+            world.step();
+        }
+        require(world.stats().waiting_members == 0, "parts of a selection far apart must not wait for each other");
+        for (int tick = 0; tick < 300; ++tick)
+        {
+            world.step();
+        }
+        require(still_moving(world.snapshot().entities).empty(), "both parts must arrive");
     }
 }
 
@@ -848,10 +883,11 @@ void test_path_budget_and_shared_routes()
     // One group order: one shared search instead of 24 (its one request may finish on the next tick
     // when it costs more than one tick's budget).
     const auto [group_queued, group_first, grouped, grouped_arrived, group_hash, group_moving] = run(true, 24);
-    // Searches: the shared one, legs, and replans of members whose leg no longer fits (a straightened
-    // leg grazing a corner, or avoidance taking a member off its line among the others: 22 with
-    // avoidance against 12 with separation); fewer than one per member.
-    require(grouped.shared_routes == 1 && grouped.path_searches < 24 && group_queued <= 1 && grouped_arrived == 24,
+    // Searches: the frame's route, and short detours of members whose straight way to their slot runs
+    // into the wall's end (37 with frames, 2026-11-15; each member walks to its slot, so one rounding
+    // the corner plans around it); fewer than two per member. The cost check below is the one that
+    // matters.
+    require(grouped.shared_routes == 1 && grouped.path_searches < 48 && group_queued <= 1 && grouped_arrived == 24,
             "a formation must plan one shared route and short legs, and every member must arrive (" + std::to_string(grouped.path_searches) + " searches, " + std::to_string(grouped_arrived) +
                 " arrived; still moving:" + group_moving + ")");
     require(grouped.path_expansions * 4 < individual.path_expansions, "a shared route must cost far less than searches per unit");

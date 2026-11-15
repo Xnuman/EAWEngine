@@ -144,7 +144,9 @@ combat rules.
    intent (attack runs, flying to a destination, circling). Stances decide whether a unit picks
    targets and moves for them; orders always apply. Standing orders (attack-move, guard) decide here
    when to engage (a scan for hostiles on the target-search interval), when to break off (the
-   leash), and where to go next; the engagement itself is an ordered attack.
+   leash), and where to go next; the engagement itself is an ordered attack. Squads' soldiers and
+   formation frames' members are sent to their slots here (`simulation_squads.cpp`,
+   `simulation_frames.cpp`).
 3. **Navigation** (`simulation_navigation.cpp`): route requests under a per-tick search budget,
    shared formation routes, group cohesion, the local avoidance of space ships (a course for the
    tick that keeps clear of the neighbours' predicted motion, as a detour point), and on land giving
@@ -458,7 +460,8 @@ The file-level split of each module.
   `localization_validation` (a translation against its reference).
 - `src/simulation` (`eaw_simulation`): `SimulationWorld` split by tick layer: `simulation.cpp`
   (storage, spawning, the tick, the state hash, footprints, snapshots), `simulation_schedule.cpp`,
-  `simulation_behavior.cpp`, `simulation_squads.cpp`, `simulation_navigation.cpp`,
+  `simulation_behavior.cpp`, `simulation_squads.cpp`, `simulation_frames.cpp` (formation frames),
+  `simulation_navigation.cpp`,
   `simulation_avoidance.cpp` (giving way, ORCA velocities, keeping units apart, arrival among
   others), `simulation_locomotion.cpp` (with `simulation_walk.cpp`, walks played as clips),
   `simulation_contact.cpp`, and `simulation_combat.cpp`, sharing `simulation_internal.hpp`; with
