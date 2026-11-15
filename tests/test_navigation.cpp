@@ -572,6 +572,44 @@ void test_group_move()
                 "a unit blocked by a line of allies must get through or around it (at " + std::to_string(entities[0].position.x) + ", " + std::to_string(entities[0].position.y) + ")");
         require(closest >= 20.99F, "nobody may overlap the unit on its way (closest " + std::to_string(closest) + ")");
     }
+    // A block of allies three deep across its way, packed so that none can step aside alone (the
+    // owner, 2026-11-15: lines open): the units in its lane step on one after another, opening a lane
+    // it goes straight through, and every one returns to its place.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto walker =
+            test_spawn(world, {.type_name = "Walker", .position = {60.0F, 200.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 12.0F});
+        require(walker.ok(), "test spawn must succeed");
+        std::vector<eaw::Vector3> places;
+        for (int row = 0; row < 5; ++row)
+        {
+            for (int column = 0; column < 3; ++column)
+            {
+                places.push_back({180.0F + 20.0F * static_cast<float>(column), 160.0F + 20.0F * static_cast<float>(row), 0.0F});
+                require(
+                    test_spawn(world, {.type_name = "Trooper", .position = places.back(), .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 9.0F}).ok(),
+                    "test spawn must succeed");
+            }
+        }
+        world.submit({.kind = eaw::SimCommandKind::move, .entities = {*walker}, .target = {340.0F, 200.0F, 0.0F}});
+        float widest = 0.0F;
+        for (int tick = 0; tick < 900; ++tick)
+        {
+            world.step();
+            widest = std::max(widest, std::fabs(world.snapshot().entities[0].position.y - 200.0F));
+        }
+        const auto& entities = world.snapshot().entities;
+        require(!entities[0].moving && std::hypot(entities[0].position.x - 340.0F, entities[0].position.y - 200.0F) < 2.0F && widest < 30.0F,
+                "a unit at a packed block of allies must pass through the lane they open (at " + std::to_string(entities[0].position.x) + ", " + std::to_string(entities[0].position.y) + ", widest " +
+                    std::to_string(widest) + ")");
+        for (std::size_t index = 0; index < places.size(); ++index)
+        {
+            const auto& ally = entities[index + 1];
+            require(!ally.moving && std::hypot(ally.position.x - places[index].x, ally.position.y - places[index].y) < 1.0F,
+                    "the allies that opened the lane must return to their places (one at " + std::to_string(ally.position.x) + ", " + std::to_string(ally.position.y) + ")");
+        }
+    }
     // Destinations fit where they are ordered (the owner's model, 2026-11-15): a move onto a standing
     // unit ends beside it; a group's block ordered against ground it cannot enter shifts until every
     // member's slot fits.

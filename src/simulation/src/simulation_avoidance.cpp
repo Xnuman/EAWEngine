@@ -8,9 +8,11 @@
 
 #include "simulation_internal.hpp"
 
+#include "math/scalar.hpp"
 #include "simulation/orca.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <optional>
@@ -208,7 +210,6 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
     const auto& placement = view.get<PlacementColumns>();
     const auto& locomotor = view.get<LocomotorColumns>();
     const auto& motion = view.get<MotionColumns>();
-    const auto& ground = view.get<GroundState>();
     auto& route = view.get<RouteColumns>();
     auto& avoidance = view.get<Avoidance>();
     const auto& radii = avoidance.radii;
@@ -245,9 +246,9 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
             way->ticks = 0;
         }
     }
-    // Asking: an ally in a moving unit's corridor (its footprint swept ahead) steps sideways out of
-    // it, to the side of the mover's line it stands on (right when dead ahead), just far enough (the
-    // owner's drawing, 2026-11-15); the other side when that side has no room. A moving ally gives way
+    // Asking: an ally in a moving unit's corridor (its footprint swept ahead) steps out of it, just
+    // far enough, preferring the side of the mover's line it stands on (the owner's drawing,
+    // 2026-11-15), in any direction where the way is free; a packed line opens a lane (make_way). A moving ally gives way
     // when it is slower by nature (its top speed, not this tick's: in a queue every unit is slow for a
     // while), when it is all but at its destination (less route left than the two footprints), which
     // then counts as standing there, or when it is behind the mover in the flow (more route left, ties
@@ -257,16 +258,19 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
     requests_.clear();
     for (std::size_t passer = 0; passer < identity.ids.size(); ++passer)
     {
-        // Only a unit held up asks (slower last tick than give_way_held_fraction of its speed): one
-        // that flows past its allies disturbs no one, and one catching up with slower allies is held
-        // up by avoidance first.
+        // A unit held up (slower last tick than give_way_held_fraction of its speed) asks the ally in
+        // its way; one still flowing asks only a standing ally there, so a line it walks at opens
+        // instead of the mover sliding around it (the owner, 2026-11-15: lines open). Moving allies
+        // it catches up with hold it up by avoidance first.
         const auto speed = travel_speed(view, passer);
-        if (!ground_steers(view, passer) || length(motion.velocities[passer]) >= speed * give_way_held_fraction)
+        if (!ground_steers(view, passer))
         {
             continue;
         }
+        const bool held = length(motion.velocities[passer]) < speed * give_way_held_fraction;
         const auto heading = heading_toward_waypoint(view, passer);
-        if (heading == Vector2{})
+        // A unit that went straight at its speed last tick had nothing in its way.
+        if (heading == Vector2{} || (!held && dot(motion.velocities[passer], heading) >= speed * give_way_unhindered_fraction))
         {
             continue;
         }
@@ -293,7 +297,7 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
                 blocker = other;
             }
         }
-        if (blocker)
+        if (blocker && (held || (!ground_steers(view, *blocker) && !route.move_targets[*blocker])))
         {
             const auto yielder = *blocker;
             if (identity.owners[yielder] != identity.owners[passer] || (route.give_ways[yielder] && !route.give_ways[yielder]->returning) || locomotor.max_speeds[yielder] <= 0.0F ||
@@ -311,7 +315,6 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
             {
                 continue;
             }
-            const auto offset = Vector2{placement.positions[yielder].x - placement.positions[passer].x, placement.positions[yielder].y - placement.positions[passer].y};
             const auto reach = own_radius + radii[yielder];
             // A standing unit on its destination does not make way: the mover stops at it (goal_taken).
             // Units merely near the destination do (a later formation member reaches its slot past
@@ -321,7 +324,6 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
             {
                 continue;
             }
-            const auto aside = cross(heading, offset);
             const auto& yielder_goal = route.move_targets[yielder];
             const bool arriving =
                 yielder_goal && route.paths[yielder].empty() && std::hypot(yielder_goal->x - placement.positions[yielder].x, yielder_goal->y - placement.positions[yielder].y) < reach;
@@ -330,20 +332,7 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
             {
                 continue;
             }
-            const Vector2 left{-heading.y, heading.x};
-            const auto clear = own_radius + radii[yielder] * (1.0F + give_way_margin);
-            const auto own_side = aside > 0.0F ? 1.0F : -1.0F;
-            for (const auto side : {own_side, -own_side})
-            {
-                const auto shift = side == own_side ? clear - std::fabs(aside) : clear + std::fabs(aside);
-                const auto x = placement.positions[yielder].x + left.x * side * shift;
-                const auto y = placement.positions[yielder].y + left.y * side * shift;
-                if (stands_at(view, yielder, x, y) && room_at(view, yielder, passer, x, y))
-                {
-                    requests_.push_back({static_cast<std::uint32_t>(yielder), static_cast<std::uint32_t>(passer), {x, y, ground.map.surface_height(x, y)}});
-                    break;
-                }
-            }
+            make_way(view, yielder, passer, heading);
         }
     }
     // One passer per unit, the lowest, so the outcome does not depend on the order of the scan.
@@ -487,20 +476,205 @@ void SimulationWorld::NavigationSystem::plan_detours(const View& view)
     }
 }
 
-bool SimulationWorld::NavigationSystem::room_at(const View& view, const std::size_t yielder, const std::size_t passer, const float x, const float y)
+void SimulationWorld::NavigationSystem::blockers_at(const View& view, const std::size_t unit, const std::size_t passer, const Vector2 at)
 {
     const auto& placement = view.get<PlacementColumns>();
-    const auto& radii = view.get<Avoidance>().radii;
     const auto& avoidance = view.get<Avoidance>();
-    const auto radius = radii[yielder];
+    const auto& radii = avoidance.radii;
+    const auto radius = radii[unit];
+    blockers_.clear();
     room_query_.clear();
-    avoidance.grid.query_overlapping({x, y, 0.0F}, radius, room_query_);
-    return std::ranges::none_of(room_query_,
-                                [&](const std::uint32_t other)
+    avoidance.grid.query_overlapping({at.x, at.y, 0.0F}, radius, room_query_);
+    for (const auto other : room_query_)
+    {
+        const bool chained = std::ranges::any_of(chain_,
+                                                 [&](const GiveWayRequest& asked)
+                                                 {
+                                                     return asked.yielder == other;
+                                                 });
+        if (other != unit && other != passer && radii[other] > 0.0F && !chained && std::hypot(placement.positions[other].x - at.x, placement.positions[other].y - at.y) < radius + radii[other])
+        {
+            blockers_.push_back(other);
+        }
+    }
+    // The places units of this chain step to are taken too.
+    for (const auto& asked : chain_)
+    {
+        if (asked.yielder != unit && std::hypot(asked.aside.x - at.x, asked.aside.y - at.y) < radius + radii[asked.yielder])
+        {
+            blockers_.push_back(asked.yielder);
+        }
+    }
+}
+
+bool SimulationWorld::NavigationSystem::way_clear(const View& view, const std::size_t unit, const Vector2 from, const Vector2 to)
+{
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& avoidance = view.get<Avoidance>();
+    const auto& radii = avoidance.radii;
+    const auto step = to - from;
+    const auto span = length(step);
+    if (span <= 0.0F)
+    {
+        return true;
+    }
+    const auto middle = from + step * 0.5F;
+    room_query_.clear();
+    avoidance.grid.query_overlapping({middle.x, middle.y, 0.0F}, span * 0.5F + radii[unit], room_query_);
+    for (const auto other : room_query_)
+    {
+        // The units of the chain step on ahead of it; those at its new place are the chain's to move.
+        const bool moving_on = std::ranges::any_of(chain_,
+                                                   [&](const GiveWayRequest& asked)
+                                                   {
+                                                       return asked.yielder == other;
+                                                   }) ||
+                               std::ranges::find(blockers_, other) != blockers_.end();
+        if (other == unit || radii[other] <= 0.0F || moving_on)
+        {
+            continue;
+        }
+        const Vector2 there{placement.positions[other].x, placement.positions[other].y};
+        const auto reach = radii[unit] + radii[other];
+        const auto along = std::clamp(dot(there - from, step) / (span * span), 0.0F, 1.0F);
+        const auto nearest = length(there - (from + step * along));
+        // Not nearer than it already is (units packed side by side may slide past each other).
+        if (nearest < std::min(reach, length(there - from)) - give_way_way_tolerance)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool SimulationWorld::NavigationSystem::may_shift(const View& view, const std::size_t unit, const std::size_t passer) noexcept
+{
+    const auto& identity = view.get<IdentityColumns>();
+    const auto& locomotor = view.get<LocomotorColumns>();
+    const auto& route = view.get<RouteColumns>();
+    return unit != passer && view.get<Avoidance>().radii[unit] > 0.0F && identity.owners[unit] == identity.owners[passer] && !route.move_targets[unit] &&
+           (!route.give_ways[unit] || route.give_ways[unit]->returning) && locomotor.max_speeds[unit] > 0.0F && locomotor.suspended[unit] == 0 &&
+           std::ranges::none_of(chain_,
+                                [&](const GiveWayRequest& asked)
                                 {
-                                    return other != yielder && other != passer && radii[other] > 0.0F &&
-                                           std::hypot(placement.positions[other].x - x, placement.positions[other].y - y) < radius + radii[other];
+                                    return asked.yielder == unit;
                                 });
+}
+
+void SimulationWorld::NavigationSystem::make_way(const View& view, const std::size_t yielder, const std::size_t passer, const Vector2 heading)
+{
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& ground = view.get<GroundState>();
+    const auto& radii = view.get<Avoidance>().radii;
+    const Vector2 here{placement.positions[yielder].x, placement.positions[yielder].y};
+    const Vector2 from{placement.positions[passer].x, placement.positions[passer].y};
+    const auto clear = radii[passer] + radii[yielder] * (1.0F + give_way_margin);
+    const auto aside = cross(heading, here - from);
+    // Candidates: the shortest step in each of give_way_directions directions that takes the unit out
+    // of the passer's corridor, shortest first, then toward its own side of the line (the owner's
+    // drawing, 2026-11-15, and after it: any direction where the ground is free, sideways, diagonally,
+    // or back).
+    struct Candidate
+    {
+        float shift{};
+        bool own_side{};
+        std::uint32_t direction{};
+        Vector2 toward;
+    };
+    std::array<Candidate, give_way_directions> candidates{};
+    std::size_t count = 0;
+    const auto facing = std::atan2(heading.y, heading.x);
+    for (std::uint32_t direction = 0; direction < give_way_directions; ++direction)
+    {
+        const auto angle = facing + two_pi * static_cast<float>(direction) / static_cast<float>(give_way_directions);
+        const Vector2 toward{std::cos(angle), std::sin(angle)};
+        const auto lateral = cross(heading, toward);
+        if (std::fabs(lateral) < give_way_least_lateral)
+        {
+            continue;
+        }
+        // The step s at which |aside + lateral s| reaches the clearance.
+        const auto side = lateral > 0.0F ? 1.0F : -1.0F;
+        const auto shift = (side * clear - aside) / lateral;
+        if (shift <= 0.0F || shift > clear * give_way_max_shift)
+        {
+            continue;
+        }
+        candidates[count++] = {shift, (side > 0.0F) == (aside > 0.0F), direction, toward};
+    }
+    std::sort(candidates.begin(), candidates.begin() + static_cast<std::ptrdiff_t>(count),
+              [](const Candidate& a, const Candidate& b)
+              {
+                  if (a.shift != b.shift)
+                  {
+                      return a.shift < b.shift;
+                  }
+                  return a.own_side != b.own_side ? a.own_side : a.direction < b.direction;
+              });
+    // A free place first; else a place a single standing ally holds, which steps on the same way to
+    // make room (a line opens a lane, give_way_chain deep). The cheap checks go first: an ask is
+    // made for every unit in a mover's way each tick.
+    for (const bool chained : {false, true})
+    {
+        for (std::size_t candidate = 0; candidate < count; ++candidate)
+        {
+            const auto to = here + candidates[candidate].toward * candidates[candidate].shift;
+            if (!stands_at(view, yielder, to.x, to.y))
+            {
+                continue;
+            }
+            chain_.clear();
+            chain_.push_back({static_cast<std::uint32_t>(yielder), static_cast<std::uint32_t>(passer), {to.x, to.y, ground.map.surface_height(to.x, to.y)}});
+            blockers_at(view, yielder, passer, to);
+            if ((chained ? blockers_.size() != 1 : !blockers_.empty()) || !ground_line_passable(ground.map, {here.x, here.y}, {to.x, to.y}, footing_of(view, yielder)) ||
+                !way_clear(view, yielder, here, to))
+            {
+                continue;
+            }
+            if (!chained || shift_on(view, passer, candidates[candidate].toward, 1U))
+            {
+                requests_.insert(requests_.end(), chain_.begin(), chain_.end());
+                chain_.clear();
+                return;
+            }
+        }
+    }
+    chain_.clear();
+}
+
+bool SimulationWorld::NavigationSystem::shift_on(const View& view, const std::size_t passer, const Vector2 toward, const std::uint32_t depth)
+{
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& ground = view.get<GroundState>();
+    const auto& radii = view.get<Avoidance>().radii;
+    // The one ally in the way of the last place of the chain; more than one, or one that cannot move,
+    // and the chain fails.
+    if (blockers_.size() != 1 || depth > give_way_chain || !may_shift(view, blockers_.front(), passer))
+    {
+        return false;
+    }
+    const auto unit = static_cast<std::size_t>(blockers_.front());
+    const auto& pusher = chain_.back();
+    const Vector2 there{placement.positions[unit].x, placement.positions[unit].y};
+    const Vector2 taken{pusher.aside.x, pusher.aside.y};
+    // Far enough along `toward` to clear the place the unit before it steps to.
+    const auto reach = (radii[unit] + radii[pusher.yielder]) * (1.0F + give_way_margin);
+    const auto offset = there - taken;
+    const auto along = dot(offset, toward);
+    const auto discriminant = along * along - (dot(offset, offset) - reach * reach);
+    const auto shift = discriminant > 0.0F ? -along + std::sqrt(discriminant) : 0.0F;
+    if (shift <= 0.0F)
+    {
+        return false;
+    }
+    const auto to = there + toward * shift;
+    if (!stands_at(view, unit, to.x, to.y) || !ground_line_passable(ground.map, {there.x, there.y}, {to.x, to.y}, footing_of(view, unit)))
+    {
+        return false;
+    }
+    chain_.push_back({static_cast<std::uint32_t>(unit), static_cast<std::uint32_t>(passer), {to.x, to.y, ground.map.surface_height(to.x, to.y)}});
+    blockers_at(view, unit, passer, to);
+    return way_clear(view, unit, there, to) && (blockers_.empty() || shift_on(view, passer, toward, depth + 1U));
 }
 
 Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std::size_t index, Vector3 step)
@@ -738,6 +912,14 @@ void SimulationWorld::MovementSystem::give_way_step(const View& view, const std:
         if (way->returning && ++way->ticks <= ticks_for(view, give_way_seconds))
         {
             (void)drive(view, index, 0.0F, dt);
+            return;
+        }
+        if (!way->returning && distance_xy(position, way->back) > arrival_distance)
+        {
+            // Held on its way aside, away from its place: it walks back (forgetting the place, it was
+            // asked again from where it stood and drifted).
+            way->returning = true;
+            way->ticks = 0;
             return;
         }
         way.reset();

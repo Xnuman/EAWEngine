@@ -1994,9 +1994,24 @@ private:
         // a route around the standing units near it, as obstacles, and follows it; where even that
         // way ends where it stands, it has reached the closest point and stops.
         void plan_detours(const View& view);
-        // Whether the unit at `yielder` stepping aside to (x, y) would stand clear of every ground unit
-        // but `passer` (a unit that cannot make room is not asked to).
-        [[nodiscard]] bool room_at(const View& view, std::size_t yielder, std::size_t passer, float x, float y);
+        // Where the unit at `yielder` steps to let `passer` (heading `heading`) by: the shortest free
+        // step out of its corridor in any of give_way_directions directions, or one a line of standing
+        // allies opens by stepping on the same way (shift_on); its requests (and the chain's) go to
+        // requests_.
+        void make_way(const View& view, std::size_t yielder, std::size_t passer, Vector2 heading);
+        // The chain's next link: the single ally in blockers_ steps on along `toward` to clear the last
+        // place of chain_; false when it cannot (more than one in the way, not one that may shift, no
+        // ground, or deeper than give_way_chain).
+        [[nodiscard]] bool shift_on(const View& view, std::size_t passer, Vector2 toward, std::uint32_t depth);
+        // The agents in the way of `unit` standing at `at` (not `passer`, counting the places chain_ has
+        // given its units), into blockers_.
+        void blockers_at(const View& view, std::size_t unit, std::size_t passer, Vector2 at);
+        // Whether the unit at `unit` has a free way from `from` to `to`: no agent nearer the line than
+        // their summed radii (nor nearer than it already is) but the chain's and blockers_.
+        [[nodiscard]] bool way_clear(const View& view, std::size_t unit, Vector2 from, Vector2 to);
+        // Whether the unit at `unit` may step on for `passer`'s chain: an ally standing, free to move,
+        // not giving way already, not in the chain.
+        [[nodiscard]] bool may_shift(const View& view, std::size_t unit, std::size_t passer) noexcept;
         // Each entity's avoidance radius and crush proxy (Avoidance::radii, crush_proxies).
         void measure_agents(const View& view);
         // How long each unit on its last leg has made no progress (RouteColumns::stalled_ticks).
@@ -2048,6 +2063,9 @@ private:
         };
         std::vector<GiveWayRequest> requests_;
         std::vector<std::uint32_t> room_query_;
+        // make_way's scratch: the chain of units stepping aside for one passer, and those in the way.
+        std::vector<GiveWayRequest> chain_;
+        std::vector<std::uint32_t> blockers_;
         // Space avoidance's scratch: a ship's neighbours.
         std::vector<std::uint32_t> neighbours_;
     };

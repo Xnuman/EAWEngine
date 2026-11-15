@@ -227,9 +227,23 @@ Built 2026-11-15 (step 6), except the blocked-unit replans; `simulation_avoidanc
   or behind the asker in the flow (more route left: Age of Empires II's priority, so a queue's
   leader never stands aside for those behind it), whatever its size (a rule against giving way to
   smaller units kept companies from giving way, the owner's report of 2026-11-15), and only where
-  the point aside is free. A unit that cannot reach the point aside stays where it is; on its way
-  back it waits for the way to clear (the unit it made way for often still stands in it) up to the
-  giving-way limit (giving up at once, squads that made way stayed aside: the owner's report).
+  the point aside is free. A unit that cannot reach the point aside walks back to its place; on its
+  way back it waits for the way to clear (the unit it made way for often still stands in it) up to
+  the giving-way limit (giving up at once, squads that made way stayed aside: the owner's report).
+  A unit still moving at its speed straight along its way asks no one; one turned aside or slowed
+  asks a standing ally in its corridor before it is held (without this, avoidance slid it around a
+  line instead of the line opening).
+- **Any direction, and lanes** (the owner, 2026-11-15: units may step diagonally and in other
+  directions as long as the way is free, and go back to their place; lines open): the point aside is
+  the shortest step out of the passer's corridor in any of 16 directions (sideways, diagonally,
+  forward, or back, not within a sine of 0.2 of the passer's line, at most three clearances),
+  shortest first, then toward the unit's own side of the line. The point must be free, on ground the
+  unit stands on, reached by a straight line on that ground, and the way there must pass no unit
+  closer than contact (nor closer than it already is: packed units slide past each other); a step
+  back past the passer was taken, then held by it, and a queue at a passage's mouth jammed. Where no
+  point is free, but one is held by a single standing ally that may move, that ally steps on along
+  the same direction just far enough to clear it, and so on up to three allies deep: a packed line
+  opens a lane (`make_way`, `shift_on`). Engine choices.
 - **The no-overlap guarantee**: ORCA can fail to find a velocity (an infeasible program in a dense
   crowd), and a tick's step is discrete. So movement ends with a hard check: a step that would
   bring two units into contact is shortened to the contact (no unit is moved by another), except a

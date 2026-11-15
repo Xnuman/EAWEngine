@@ -79,6 +79,19 @@ inline constexpr float give_way_margin = 0.25F;
 inline constexpr float give_way_seconds = 4.0F;
 inline constexpr float give_way_slower_fraction = 0.9F;
 inline constexpr float give_way_held_fraction = 0.5F;
+// Where a unit steps to give way: the shortest step out of the mover's corridor in this many
+// directions (sideways, diagonally, or back), not along directions closer to the corridor's than this
+// sine, nor farther than this many clearances; a line of standing allies opens a lane this many units
+// deep, each stepping on the same way. Engine choices.
+inline constexpr std::uint32_t give_way_directions = 16;
+inline constexpr float give_way_least_lateral = 0.2F;
+inline constexpr float give_way_max_shift = 3.0F;
+inline constexpr std::uint32_t give_way_chain = 3;
+// A moving unit that went this share of its speed along its way last tick asks no one (nothing held
+// it up or turned it aside). Engine choice.
+inline constexpr float give_way_unhindered_fraction = 0.95F;
+// How much nearer than contact a unit's way aside may pass another (rounding). Engine choice.
+inline constexpr float give_way_way_tolerance = 0.01F;
 // Detours (plan_detours): a unit held up this long plans around the standing units within the window
 // (world units beyond its own size), each blocking the cells within their summed radii. Engine
 // choices.
