@@ -1,5 +1,5 @@
 // Locomotion: how units physically move toward what the behavior layer asks for (speed limits,
-// turn rates, ground following, flight) and separation.
+// turn rates, ground following, flight); keeping them apart is in simulation_avoidance.cpp.
 
 #include "simulation_internal.hpp"
 
@@ -31,6 +31,11 @@ void SimulationWorld::MovementSystem::run(const View& view, const float dt)
         if (flies(view, index))
         {
             fly(view, index, dt);
+            continue;
+        }
+        if (route.give_ways[index] && ground.map.valid())
+        {
+            give_way_step(view, index, dt);
             continue;
         }
         // A walk played as clips that stops, or walks on to its stop, goes straight ahead.
@@ -129,8 +134,10 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
     auto remaining = 0.0F;
     bool driven = false;
     // An intermediate waypoint is passed once the one after it is in straight reach. A crowd keeps
-    // pushing units away from a shared corner waypoint, so requiring each unit to touch it left
-    // groups circling there (found by the path budget test).
+    // units away from a shared corner waypoint, so requiring each unit to touch it left groups
+    // circling there (found by the path budget test). Only this rule: passing a waypoint whose next
+    // line does not fit (because the footprint covers it, or the unit is beyond it) sent units at a
+    // passage's mouth back and forth between that line and their replanned route.
     if (allowed != 0)
     {
         while (!path.empty())
@@ -142,6 +149,15 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
             }
             path.pop_back();
         }
+    }
+    if (goal_taken(view, index))
+    {
+        target.reset();
+        return;
+    }
+    if (const auto& avoid = route.avoid_velocities[index]; avoid && avoid_step(view, index, *avoid, dt))
+    {
+        return;
     }
     while (target)
     {
@@ -165,10 +181,13 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
         {
             remaining *= facing;
         }
-        const bool arrives = distance <= std::max(remaining, arrival_distance);
-        const auto scale = arrives || distance <= 0.0F ? 1.0F : remaining / distance;
-        const auto next_x = position.x + delta_x * scale;
-        const auto next_y = position.y + delta_y * scale;
+        const auto scale = distance <= std::max(remaining, arrival_distance) || distance <= 0.0F ? 1.0F : remaining / distance;
+        // Never into another unit: a unit in the way holds it short of the waypoint.
+        const auto moved = keep_apart(view, index, {delta_x * scale, delta_y * scale, 0.0F});
+        const bool held = moved.x != delta_x * scale || moved.y != delta_y * scale;
+        const bool arrives = !held && distance <= std::max(remaining, arrival_distance);
+        const auto next_x = position.x + moved.x;
+        const auto next_y = position.y + moved.y;
         if (allowed != 0)
         {
             // Ground without room for its footprint is as closed as ground it may not enter; a unit
@@ -176,7 +195,12 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
             const bool leaving_blocked = !stands_at(view, index, position.x, position.y);
             if (!stands_at(view, index, next_x, next_y) && !leaving_blocked)
             {
-                // The planned line no longer fits: separation pushed the unit off it, or the ground
+                if (held)
+                {
+                    // Sliding along a unit would leave the ground: it waits where it is.
+                    return;
+                }
+                // The planned line no longer fits: avoidance took the unit off it, or the ground
                 // changed. Plan again from here (plan_move drops a goal that is no longer reachable).
                 const auto goal = *target;
                 ++blocked_moves;

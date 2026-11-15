@@ -143,25 +143,49 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
 
 ### 4.4 Local movement: avoidance without overlap
 
-- **ORCA** (the owner's choice): each moving unit picks its velocity for the tick, toward its slot or
-  next waypoint, inside the reciprocal velocity obstacles of its neighbours over a short horizon, so
-  units flow around each other (concerns 2 and 3). Neighbours are gathered in a fixed order; the
-  solver is deterministic on one build, as the rest of the simulation is.
-- **Responsibility by size and side**: of two allies, the larger takes less of the avoidance (an
-  AT-AT none against infantry, concern 4); against an enemy, the enemy takes none (enemies never
-  give way).
+Built 2026-11-15 (step 6), except the blocked-unit replans; `simulation_avoidance.cpp`, `orca.*`.
+
+- **The agents**: a ground unit, or a squad as one agent, the circle of its extent; its soldiers
+  hold their places in it and are not kept apart themselves (the owner: they keep their arrangement
+  while walking). With every soldier an agent, the large Utapau battle cost 39 ms a tick; with
+  squads, 2 ms.
+- **ORCA** (the owner's choice; van den Berg, Guy, Lin, and Manocha, "Reciprocal n-body collision
+  avoidance", 2011): each moving agent picks its velocity for the tick, toward its next waypoint,
+  inside the half-planes its nearest ten neighbours (within four of its radii) impose over one
+  second, so units flow around each other (concerns 2 and 3). All from the state at the start of
+  the tick (neighbours' velocities are last tick's, hashed); neighbours in a fixed order. Two moving
+  allies share the avoidance from their current velocities (ORCA's rule); against a standing unit or
+  another owner's, the agent takes all of it from the velocity it prefers, so it goes around instead
+  of slowing to a stop in front (the constraint at a resting unit's velocity only slows it). A unit
+  that cannot go its way prefers a little to its right, so two meeting head-on pass instead of
+  stopping nose to nose. Engine choices.
+- **Responsibility by size and side**: of two moving allies, each takes the other's share of their
+  summed footprint areas, so the larger gives way less (an AT-AT next to none against infantry,
+  concern 4); against an enemy, the enemy takes none (enemies never give way).
 - **Giving way** (2): a unit that wants to pass allies slower than itself, or standing, asks them
   to yield. The passing unit keeps its line; a yielding unit steps sideways, across that line, just
   far enough to clear the passing unit's corridor, to the side of the line it already stands on (two
   allies with too narrow a gap between them part, each to its own side; the owner's drawing,
   2026-11-15). A unit dead on the line steps to the side with room, ties by id. It waits until the
   passing unit has passed and returns to its stance, its formation slot, and its route. Yielding is state, so it is hashed and deterministic.
+  As built (engine choices, each from a deadlock found in the tests): only a unit held up (slower
+  last tick than half its speed) asks, and only the nearest unit in its corridor; that unit gives
+  way when it is standing, slower by nature (top speed, not this tick's), all but at its destination,
+  or behind the asker in the flow (more route left: Age of Empires II's priority, so a queue's
+  leader never stands aside for those behind it); never to a smaller unit, and only where the point
+  aside is free. A unit that cannot reach the point aside, or back, stays where it is.
 - **The no-overlap guarantee**: ORCA can fail to find a velocity (an infeasible program in a dense
   crowd), and a tick's step is discrete. So movement ends with a hard check: a step that would
   bring two units into contact is shortened to the contact (no unit is moved by another), except a
   crusher moving onto units it can crush. A unit whose step comes back empty while it should move is
   blocked: it asks for a local replan around the units in its way (as obstacles), and after a few
-  failures its order ends as unreachable, as today.
+  failures its order ends as unreachable, as today. Built: the check (`keep_apart`, as space ships
+  had) removes the part of a step that would go deeper into a unit, so units slide along each other;
+  not built: the replans.
+- **Arrival among others** (the owner, 2026-11-15: the closest point to the goal where it overlaps
+  no one): a unit stops where it touches a standing unit on its destination, or, having come no
+  closer for a second, at a standing ally between it and its destination (a crowd grows ring by
+  ring). A unit never asks the unit on its destination to give way.
 - **No separation**: the post-movement push goes. Spawns, teleports, and company expansion place
   units on free ground (the nearest free point of the right size class), so no overlap exists to
   correct.
@@ -197,6 +221,7 @@ Each step keeps the battles' outcomes or declares the change, and is measured wi
    every kind; one is kept.
 6. **ORCA, giving way, and the no-overlap check** (4.4); separation removed; blocked-unit replans.
    Moved before formation frames (the owner, 2026-11-15: overlaps and pushing are what play shows).
+   Done 2026-11-15 but for the blocked-unit replans, with squads as single agents.
 7. **Formation frames and splitting selections by distance** (4.3).
 8. Then the entity-component migration's step 8 (parallel systems).
 

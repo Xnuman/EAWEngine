@@ -2,8 +2,10 @@
 #include "test_support.hpp"
 
 #include "simulation/formation.hpp"
+#include "simulation/orca.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <numbers>
@@ -12,6 +14,20 @@
 namespace {
 
 using namespace eaw_test;
+
+// Where the entities that still move stand, for failure messages ("" when none moves).
+std::string still_moving(const std::vector<eaw::EntitySnapshot>& entities)
+{
+    std::string moving;
+    for (const auto& entity : entities)
+    {
+        if (entity.moving)
+        {
+            moving += " (" + std::to_string(entity.position.x) + ", " + std::to_string(entity.position.y) + ")";
+        }
+    }
+    return moving;
+}
 
 void test_ground_movement()
 {
@@ -221,34 +237,22 @@ void test_turning_and_separation()
         require(world.snapshot().entities[0].position.x == 20.0F, "a turning unit must still arrive");
     }
 
-    // Separation: overlapping idle units part, an immobile one stays put, and nobody is pushed onto
-    // ground its class may not enter. Spawns land on free ground, so the units are spawned before the
-    // ground exists to start overlapped.
+    // No pushing (docs/pathfinding-design.md, 2): units that start overlapped (spawned before the
+    // ground existed, so not placed on free ground) stay where they are.
     {
         eaw::SimulationWorld world(0.1);
         const auto a = test_spawn(world, {.type_name = "A", .position = {50.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
         const auto b = test_spawn(world, {.type_name = "B", .position = {52.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
-        const auto wall = test_spawn(world, {.type_name = "Bunker", .position = {80.0F, 80.0F, 0.0F}, .follows_ground = true, .radius = 10.0F});
-        const auto c = test_spawn(world, {.type_name = "C", .position = {82.0F, 80.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
-        const auto d = test_spawn(world, {.type_name = "D", .position = {141.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
-        const auto e = test_spawn(world, {.type_name = "E", .position = {139.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
-        require(a && b && wall && c && d && e, "test spawns must succeed");
+        require(a && b, "test spawns must succeed");
         world.set_ground(ground);
         for (int tick = 0; tick < 20; ++tick)
         {
             world.step();
         }
         const auto& entities = world.snapshot().entities;
-        const auto gap = [&](const std::size_t first, const std::size_t second)
-        {
-            return std::hypot(entities[second].position.x - entities[first].position.x, entities[second].position.y - entities[first].position.y);
-        };
-        require(gap(0, 1) >= 9.99F && std::fabs(entities[0].position.x + entities[1].position.x - 102.0F) < 1.0e-3F, "overlapping equal units must part symmetrically");
-        require(entities[2].position.x == 80.0F && entities[2].position.y == 80.0F && gap(2, 3) >= 14.99F, "an immobile entity must not be pushed but must push");
-        require(world.snapshot().entities[4].position.x < 145.0F, "a push must not move a unit onto a cell it may not enter");
-        require(world.stats().separated_pairs == 0, "separated units must stop pushing once apart");
+        require(entities[0].position.x == 50.0F && entities[1].position.x == 52.0F && world.stats().separated_pairs == 0, "idle ground units must never be pushed");
     }
-    // A unit walking into an idle unit of another owner does not push it aside.
+    // A unit walking into an idle unit of another owner goes around it; the other never moves.
     {
         eaw::SimulationWorld world(0.1);
         world.set_ground(ground);
@@ -258,12 +262,79 @@ void test_turning_and_separation()
             world, {.type_name = "Enemy", .owner = 2, .position = {60.0F, 150.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
         require(walker && enemy, "test spawns must succeed");
         world.submit({eaw::SimCommandKind::move, {*walker}, {80.0F, 150.0F, 0.0F}});
-        for (int tick = 0; tick < 30; ++tick)
+        float closest = 100.0F;
+        for (int tick = 0; tick < 40; ++tick)
+        {
+            world.step();
+            const auto& entities = world.snapshot().entities;
+            closest = std::min(closest, std::hypot(entities[1].position.x - entities[0].position.x, entities[1].position.y - entities[0].position.y));
+        }
+        const auto& entities = world.snapshot().entities;
+        require(entities[1].position.x == 60.0F && entities[1].position.y == 150.0F, "an idle foreign unit must stand its ground");
+        require(closest >= 9.99F && entities[0].position.x == 80.0F && entities[0].position.y == 150.0F, "a unit must go around a standing unit without touching it and arrive (closest " +
+                                                                                                             std::to_string(closest) + ", at " + std::to_string(entities[0].position.x) + ", " +
+                                                                                                             std::to_string(entities[0].position.y) + ")");
+    }
+    // Two lines of five crossing head-on through each other: no pair ever overlaps, and all arrive.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        std::vector<eaw::EntityId> left;
+        std::vector<eaw::EntityId> right;
+        for (int row = 0; row < 5; ++row)
+        {
+            const auto y = 60.0F + 15.0F * static_cast<float>(row);
+            const auto from_left =
+                test_spawn(world, {.type_name = "Left", .position = {20.0F, y, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 4.0F});
+            const auto from_right =
+                test_spawn(world, {.type_name = "Right", .position = {120.0F, y, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 4.0F});
+            require(from_left && from_right, "test spawns must succeed");
+            left.push_back(*from_left);
+            right.push_back(*from_right);
+        }
+        for (int row = 0; row < 5; ++row)
+        {
+            const auto y = 60.0F + 15.0F * static_cast<float>(row);
+            world.submit({eaw::SimCommandKind::move, {left[static_cast<std::size_t>(row)]}, {120.0F, y, 0.0F}});
+            world.submit({eaw::SimCommandKind::move, {right[static_cast<std::size_t>(row)]}, {20.0F, y, 0.0F}});
+        }
+        float closest = 100.0F;
+        for (int tick = 0; tick < 120; ++tick)
+        {
+            world.step();
+            const auto& entities = world.snapshot().entities;
+            for (std::size_t first = 0; first < entities.size(); ++first)
+            {
+                for (auto second = first + 1; second < entities.size(); ++second)
+                {
+                    closest = std::min(closest, std::hypot(entities[second].position.x - entities[first].position.x, entities[second].position.y - entities[first].position.y));
+                }
+            }
+        }
+        const auto& entities = world.snapshot().entities;
+        const auto moving = still_moving(entities);
+        require(closest >= 7.99F, "crossing units must never overlap (closest " + std::to_string(closest) + ")");
+        require(moving.empty(), "crossing units must all arrive; still moving at" + moving);
+    }
+    // A goal a standing unit covers: the mover stops touching that unit, the point closest to its goal
+    // where it overlaps no one (the owner, 2026-11-15).
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto mover =
+            test_spawn(world, {.type_name = "Mover", .position = {40.0F, 30.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto stander =
+            test_spawn(world, {.type_name = "Stander", .position = {100.0F, 30.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        require(mover && stander, "test spawns must succeed");
+        world.submit({eaw::SimCommandKind::move, {*mover}, {100.0F, 30.0F, 0.0F}});
+        for (int tick = 0; tick < 60; ++tick)
         {
             world.step();
         }
         const auto& entities = world.snapshot().entities;
-        require(entities[1].position.x == 60.0F && entities[1].position.y == 150.0F && entities[0].position.x < 51.0F, "an idle foreign unit must stand its ground");
+        const auto gap = std::hypot(entities[1].position.x - entities[0].position.x, entities[1].position.y - entities[0].position.y);
+        require(!entities[0].moving && gap >= 9.99F && gap <= 10.0F * (1.0F + 0.25F) + 0.01F && entities[1].position.x == 100.0F,
+                "a unit whose goal is taken must stop next to the unit standing there, without overlapping it");
     }
     {
         const auto replay = [&]
@@ -286,7 +357,7 @@ void test_turning_and_separation()
             }
             return world.state_hash();
         };
-        require(replay() == replay(), "separation must be deterministic");
+        require(replay() == replay(), "avoidance must be deterministic");
     }
     eaw::SimulationWorld world(0.1);
     require(!test_spawn(world, {.type_name = "Bad", .radius = -1.0F}) && !test_spawn(world, {.type_name = "Bad", .turn_rate = std::nanf("")}), "invalid radii and turn rates must be rejected");
@@ -526,6 +597,43 @@ void test_chunks()
     }
 }
 
+// ORCA alone: without neighbours a unit keeps its preferred velocity (within its top speed); two
+// units head-on pass without touching, each taking half the avoidance; a unit hemmed in on every
+// side still gets a velocity within its top speed.
+void test_orca()
+{
+    const auto alone = eaw::orca_velocity({}, 5.0F, {10.0F, 0.0F});
+    require(std::fabs(alone.x - 5.0F) < 1.0e-5F && alone.y == 0.0F, "without neighbours ORCA must keep the preferred direction at top speed");
+
+    eaw::Vector2 first{0.0F, 0.0F};
+    eaw::Vector2 second{20.0F, 0.1F};
+    eaw::Vector2 first_velocity{2.0F, 0.0F};
+    eaw::Vector2 second_velocity{-2.0F, 0.0F};
+    constexpr float reach = 2.0F;
+    constexpr float step = 0.1F;
+    float closest = 100.0F;
+    for (int tick = 0; tick < 200; ++tick)
+    {
+        const std::array first_lines{eaw::orca_line(second - first, first_velocity - second_velocity, reach, 2.0F, step, 0.5F, first_velocity)};
+        const std::array second_lines{eaw::orca_line(first - second, second_velocity - first_velocity, reach, 2.0F, step, 0.5F, second_velocity)};
+        first_velocity = eaw::orca_velocity(first_lines, 2.0F, {2.0F, 0.0F});
+        second_velocity = eaw::orca_velocity(second_lines, 2.0F, {-2.0F, 0.0F});
+        first += first_velocity * step;
+        second += second_velocity * step;
+        closest = std::min(closest, eaw::length(second - first));
+    }
+    require(closest >= reach * 0.99F && first.x > 30.0F && second.x < -10.0F, "units meeting head-on must pass each other without touching");
+
+    std::vector<eaw::OrcaLine> hemmed;
+    for (int side = 0; side < 6; ++side)
+    {
+        const auto angle = static_cast<float>(side) * std::numbers::pi_v<float> / 3.0F;
+        hemmed.push_back(eaw::orca_line({std::cos(angle) * 1.9F, std::sin(angle) * 1.9F}, {}, reach, 2.0F, step, 1.0F, {}));
+    }
+    const auto squeezed = eaw::orca_velocity(hemmed, 3.0F, {3.0F, 0.0F});
+    require(eaw::is_finite(squeezed) && eaw::length(squeezed) <= 3.0F + 1.0e-4F, "a hemmed-in unit must still get a velocity within its top speed");
+}
+
 void test_narrow_passage()
 {
     // A wall at column 15 with a gap of three cells at rows 13 to 15, room for one tank-sized unit at
@@ -567,7 +675,10 @@ void test_narrow_passage()
     }
     for (const auto& entity : world.snapshot().entities)
     {
-        require(!entity.moving && entity.position.x > 200.0F, "a group must queue through a passage one unit wide instead of jamming at its mouth");
+        require(!entity.moving && entity.position.x > 200.0F, "a group must queue through a passage one unit wide instead of jamming at its mouth; one stands at (" +
+                                                                  std::to_string(entity.position.x) + ", " + std::to_string(entity.position.y) + "), blocked moves " +
+                                                                  std::to_string(world.stats().blocked_moves) + ", path searches " + std::to_string(world.stats().path_searches) +
+                                                                  ", still moving:" + still_moving(world.snapshot().entities));
     }
     require(world.stats().separated_pairs == 0, "units at rest must stop pushing each other");
 }
@@ -725,22 +836,24 @@ void test_path_budget_and_shared_routes()
         {
             arrived += !entity.moving && entity.position.x > 1500.0F ? 1U : 0U;
         }
-        return std::tuple{queued_after_first, searches_after_first, world.stats(), arrived, world.state_hash()};
+        return std::tuple{queued_after_first, searches_after_first, world.stats(), arrived, world.state_hash(), still_moving(world.snapshot().entities)};
     };
     // Individual orders: the budget spreads 150 long searches over several ticks (searches over chunks
     // are cheap enough that a few dozen fit one tick's budget).
     constexpr int many = 150;
-    const auto [queued, first_searches, individual, individual_arrived, individual_hash] = run(false, many);
+    const auto [queued, first_searches, individual, individual_arrived, individual_hash, individual_moving] = run(false, many);
     require(queued > 0 && first_searches >= 1 && first_searches < static_cast<std::uint64_t>(many) && individual.queued_paths == 0 && individual_arrived == static_cast<std::size_t>(many),
-            "the search budget must spread a large order over ticks and still plan every unit");
+            "the search budget must spread a large order over ticks and still plan every unit (" + std::to_string(individual_arrived) + " arrived; still moving:" + individual_moving + ")");
     require(std::get<4>(run(false, many)) == individual_hash, "budgeted planning must be deterministic");
     // One group order: one shared search instead of 24 (its one request may finish on the next tick
     // when it costs more than one tick's budget).
-    const auto [group_queued, group_first, grouped, grouped_arrived, group_hash] = run(true, 24);
-    // Searches: the shared one, legs, and replans of members whose straightened leg grazes a corner
-    // (a path held to the chunk corridor hugs corners more often); at most one per two members.
-    require(grouped.shared_routes == 1 && grouped.path_searches <= 12 && group_queued <= 1 && grouped_arrived == 24,
-            "a formation must plan one shared route and short legs, and every member must arrive");
+    const auto [group_queued, group_first, grouped, grouped_arrived, group_hash, group_moving] = run(true, 24);
+    // Searches: the shared one, legs, and replans of members whose leg no longer fits (a straightened
+    // leg grazing a corner, or avoidance taking a member off its line among the others: 22 with
+    // avoidance against 12 with separation); fewer than one per member.
+    require(grouped.shared_routes == 1 && grouped.path_searches < 24 && group_queued <= 1 && grouped_arrived == 24,
+            "a formation must plan one shared route and short legs, and every member must arrive (" + std::to_string(grouped.path_searches) + " searches, " + std::to_string(grouped_arrived) +
+                " arrived; still moving:" + group_moving + ")");
     require(grouped.path_expansions * 4 < individual.path_expansions, "a shared route must cost far less than searches per unit");
     (void)group_first;
     (void)group_hash;
@@ -1365,6 +1478,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_formation_teams", &test_formation_teams},
                                                   {"test_clearance", &test_clearance},
                                                   {"test_chunks", &test_chunks},
+                                                  {"test_orca", &test_orca},
                                                   {"test_narrow_passage", &test_narrow_passage},
                                                   {"test_group_cohesion", &test_group_cohesion},
                                                   {"test_ground_footprints", &test_ground_footprints},

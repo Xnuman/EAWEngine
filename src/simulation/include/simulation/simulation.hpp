@@ -15,6 +15,7 @@
 #include "simulation/component_pool.hpp"
 #include "simulation/formation.hpp"
 #include "simulation/ground_map.hpp"
+#include "simulation/orca.hpp"
 #include "simulation/pathfinding.hpp"
 #include "simulation/simulation_types.hpp"
 #include "simulation/spatial_grid.hpp"
@@ -418,7 +419,7 @@ struct EntitySnapshot
     // The entity its weapon is aimed at (invalid when none).
     EntityId target;
     // A squad member's team (invalid otherwise). A team has no body and no visual; its position is
-    // where its members' ring stands.
+    // where its members stand.
     EntityId squad;
     float radius{};
     // Destroyable hardpoints, and how many of them are destroyed.
@@ -430,7 +431,7 @@ struct EntitySnapshot
     float pitch{};
     float yaw_rate{};
     // How fast the entity actually moved in the last tick (world units per second, in 3D, including
-    // separation pushes); zero for a spawn's first tick. Derived from positions, so not part of the
+    // separation's pushes of flyers); zero for a spawn's first tick. Derived from positions, so not part of the
     // state hash.
     float speed{};
     // Flyers: roll left from a half-loop that has not unwound yet (radians; presentation adds it to
@@ -933,6 +934,12 @@ private:
     template <class Data> static void drop_target(Data& data, std::size_t index) noexcept;
     // Whether the entity at `index` flies (is in the flight pool).
     template <class Data> [[nodiscard]] static bool flies(Data& data, std::size_t index) noexcept;
+    // Whether `crusher` crushes `victim` by walking over it: a crusher, a living hostile victim
+    // squashable by its kind. Such a pair never avoids each other: the crusher walks onto the victim.
+    template <class Data> [[nodiscard]] static bool can_crush(Data& data, std::size_t crusher, std::size_t victim) noexcept;
+    // Whether the entity at `index` is a ground unit avoidance keeps apart on land: a footprint, on
+    // the ground, not flying.
+    template <class Data> [[nodiscard]] static bool ground_body(Data& data, std::size_t index) noexcept;
     // Whether the entity at `index` waits this tick (for its formation group, or as a team for its
     // members), and its leaving its formation group (if it has one).
     template <class Data> [[nodiscard]] static bool waits(Data& data, std::size_t index) noexcept;
@@ -1035,10 +1042,14 @@ private:
         std::vector<float> speeds;
         // Positions before the tick's movement (set by the commands system every tick).
         std::vector<Vector3> starts;
+        // Horizontal velocity of the last tick, from where movement and contact left the entity: what
+        // ground avoidance takes as a neighbour's velocity (hashed: the next tick reads it).
+        std::vector<Vector2> velocities;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(speeds);
             visit(starts);
+            visit(velocities);
         }
     };
     struct LocomotorColumns
@@ -1081,6 +1092,18 @@ private:
             visit(passable_types);
         }
     };
+    // A unit making way for a faster ally (docs/pathfinding-design.md, 4.4): the ally, the point it
+    // steps aside to, where it stood when asked (a standing unit returns there), the ticks it has
+    // given way, and whether it is on its way back.
+    struct GiveWay
+    {
+        bool operator==(const GiveWay&) const = default;
+        EntityId passer;
+        Vector3 aside;
+        Vector3 back;
+        std::uint32_t ticks{};
+        bool returning{};
+    };
     struct RouteColumns
     {
         bool operator==(const RouteColumns&) const = default;
@@ -1092,12 +1115,21 @@ private:
         std::vector<std::uint32_t> pending;
         // Where an idle flyer circles (set when it arrives or first idles).
         std::vector<std::optional<Vector3>> loiter_points;
-        // The route left to the move target this tick (measured by navigation and again by separation;
-        // 0 without a target).
+        // The route left to the move target this tick (measured by navigation; 0 without a target).
         std::vector<float> remaining;
         // Space ships: the point steered at this tick to pass a unit in the way (navigation's local
         // avoidance); recomputed every tick from the state, so not hashed.
         std::vector<std::optional<Vector3>> detours;
+        // Ground units: the velocity avoidance picked this tick where it differs from the one toward
+        // the next waypoint (navigation's ORCA); recomputed every tick from the state, so not hashed.
+        std::vector<std::optional<Vector2>> avoid_velocities;
+        // Ground units making way for an ally (hashed).
+        std::vector<std::optional<GiveWay>> give_ways;
+        // On the last leg to the move target: the closest the unit has come to it, and the ticks since
+        // it last came closer by arrival_progress (hashed; goal_taken stops a unit that cannot get
+        // closer past a crowd of its allies).
+        std::vector<float> closest_approaches;
+        std::vector<std::uint32_t> stalled_ticks;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(move_targets);
@@ -1106,6 +1138,10 @@ private:
             visit(loiter_points);
             visit(remaining);
             visit(detours);
+            visit(avoid_velocities);
+            visit(give_ways);
+            visit(closest_approaches);
+            visit(stalled_ticks);
         }
     };
     // Flight (pooled: flyers only, the entities whose recipe has a minimum speed above 0): the
@@ -1569,18 +1605,24 @@ private:
         DamageTable damage_table;
         Hostility hostility;
     };
-    // The tick's space avoidance: the grid of positions navigation planned with, and the largest ship
-    // radius of its plan (0 when no ship steers; keep_apart then has nothing to do). Movement keeps
-    // ships apart against this grid, built before anything moved.
-    struct SpaceAvoidance
+    // The tick's avoidance: the grid of positions navigation planned with (ground units on land, ships
+    // in space) and the largest radius among them (0 when nothing is kept apart; keep_apart then has
+    // nothing to do). Movement keeps units apart against this grid, built before anything moved.
+    struct Avoidance
     {
-        bool operator==(const SpaceAvoidance&) const = default;
+        bool operator==(const Avoidance&) const = default;
         static constexpr SimData data = SimData::avoidance;
         SpatialGrid grid;
-        float largest_ship_radius{};
+        float largest_radius{};
+        // On land, each entity's avoidance radius this tick: a ground unit's footprint, a squad's
+        // extent (the squad avoids as one; its soldiers hold their places in it and are not kept
+        // apart themselves), 0 for what avoidance leaves alone; and the entity whose crush profile
+        // stands for it (a squad's first soldier, itself otherwise).
+        std::vector<float> radii;
+        std::vector<std::uint32_t> crush_proxies;
     };
     GroundState ground_;
-    SpaceAvoidance avoidance_;
+    Avoidance avoidance_;
     PathQueue path_queue_;
     ProjectileState projectiles_;
     TickEvents events_;
@@ -1689,21 +1731,18 @@ private:
     class ContactSystem
     {
     public:
-        using View = SystemView<Read<GroundState>, Read<IdentityColumns>, Write<PlacementColumns>, Write<MotionColumns>, Read<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>,
+        using View = SystemView<Read<GroundState>, Read<IdentityColumns>, Write<PlacementColumns>, Write<MotionColumns>, Read<LocomotorColumns>, Read<GroundMoverColumns>,
                                 Read<ComponentPool<FlightColumns>>, Read<ComponentPool<CombatColumns>>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Write<DamageQueue>>;
         void run(const View& view, float dt);
-        // The pairs separation pushed apart in the last tick.
+        // The pairs of flyers separation pushed apart in the last tick.
         std::size_t separated_pairs{};
 
     private:
-        // Crushing: after movement, before separation pushes the victims out.
+        // Crushing: after movement.
         void crush(const View& view);
         void separate(const View& view, float dt);
-        // Speed of the last tick from where movement and contact left each entity.
+        // Speed and velocity of the last tick from where movement and contact left each entity.
         static void measure_speeds(const View& view, float dt);
-        // Whether `crusher` crushes `victim` by walking over it: a crusher, a living hostile victim
-        // squashable by its kind.
-        [[nodiscard]] static bool can_crush(const View& view, std::size_t crusher, std::size_t victim);
         [[nodiscard]] static const CrushProfile& crush_profile_of(const View& view, std::size_t index) noexcept;
         std::vector<Vector3> pushes_;
         SpatialGrid grid_;
@@ -1716,12 +1755,13 @@ private:
     class MovementSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<CombatColumns>>,
-                                Read<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>,
-                                Write<ComponentPool<FlightColumns>>, Read<GroundState>, Read<SpaceAvoidance>, Write<PathQueue>, Read<ComponentPool<SquadColumns>>>;
+        using View =
+            SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<CombatColumns>>,
+                       Read<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>, Write<ComponentPool<FlightColumns>>,
+                       Read<GroundState>, Read<Avoidance>, Write<PathQueue>, Read<ComponentPool<SquadColumns>>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<Clock>>;
         void run(const View& view, float dt);
-        // Moves planned again so far because the unit's planned line no longer fit (separation pushed
-        // it off, or the ground changed).
+        // Moves planned again so far because the unit's planned line no longer fit (avoidance took it
+        // off its line, or the ground changed).
         std::uint64_t blocked_moves{};
 
     private:
@@ -1730,9 +1770,22 @@ private:
         // Never below the minimum speed; turns and pitches toward the intent's point at the turn rate
         // (pitch limited to flight_max_pitch) and moves along the nose.
         void fly(const View& view, std::size_t index, float dt);
-        // A space ship's step without the part that would take it deeper into a ship it touches (both
-        // radii), so ships slide along each other instead of overlapping; other steps unchanged.
+        // A step without the part that would take the unit deeper into a unit it touches (both radii):
+        // a ground unit on land against other ground units (not what it crushes), a space ship against
+        // ships; units slide along each other instead of overlapping, and a wedged unit holds still.
         [[nodiscard]] Vector3 keep_apart(const View& view, std::size_t index, Vector3 step);
+        // A ground step along the velocity avoidance picked (RouteColumns::avoid_velocities), turning
+        // toward it and never into a unit; false, before turning or speeding up, when that step does
+        // not fit the ground (avoidance does not see walls): the unit then follows its route.
+        [[nodiscard]] bool avoid_step(const View& view, std::size_t index, Vector2 velocity, float dt);
+        // A unit giving way (RouteColumns::give_ways) steps toward the point aside, or back to where it
+        // stood, never into a unit; back there, or held by units in its way, it is done.
+        void give_way_step(const View& view, std::size_t index, float dt);
+        // Whether the unit's destination is taken: it heads for its last point and touches (within
+        // taken_goal_margin) a standing agent covering that point, or, having come no closer for
+        // arrival_stall_seconds, a standing agent of its owner nearer that point. It then stops where
+        // it is, the point closest to the goal where it overlaps no one (the owner, 2026-11-15).
+        [[nodiscard]] bool goal_taken(const View& view, std::size_t index);
         // One entity's ground movement this tick, along its route at move_speed (physical movement only:
         // where it goes is the behavior layer's).
         void move_over_ground(const View& view, std::size_t index, float dt);
@@ -1776,10 +1829,10 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<FlightColumns>>,
-                                Read<ComponentPool<CombatColumns>>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<SpaceAvoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>,
-                                Read<ComponentPool<SquadColumns>>>;
-        // Route requests under the search budget, remaining routes, group cohesion, and space
-        // avoidance, before movement.
+                                Read<ComponentPool<CombatColumns>>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<Avoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>,
+                                Read<ComponentPool<SquadColumns>>, Read<MotionColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<ComponentPool<SquadMemberColumns>>>;
+        // Route requests under the search budget, remaining routes, group cohesion, and space and
+        // ground avoidance, before movement.
         void run(const View& view);
         // The ground changed (set, or a footprint stamped or lifted): the pathfinders' cached regions
         // are stale.
@@ -1809,6 +1862,26 @@ private:
         // Local avoidance of space ships: each steering ship's detour (RouteColumns::detours) around
         // the ships in its way.
         void plan_space_avoidance(const View& view);
+        // Ground avoidance on land (simulation_avoidance.cpp): each moving ground unit's velocity for
+        // the tick by ORCA against its nearest ground units (RouteColumns::avoid_velocities), from the
+        // state at the start of the tick, and the grid movement keeps them apart with.
+        void plan_ground_avoidance(const View& view);
+        // Giving way, before ground avoidance plans velocities: ends the giving way of units whose
+        // passer has passed (or is gone, stopped, or took too long), then asks the allies in each moving
+        // unit's way to step aside (RouteColumns::give_ways). From the state at the start of the tick.
+        void plan_giving_way(const View& view);
+        // Whether the unit at `yielder` stepping aside to (x, y) would stand clear of every ground unit
+        // but `passer` (a unit that cannot make room is not asked to).
+        [[nodiscard]] bool room_at(const View& view, std::size_t yielder, std::size_t passer, float x, float y);
+        // Each entity's avoidance radius and crush proxy (Avoidance::radii, crush_proxies).
+        void measure_agents(const View& view);
+        // How long each unit on its last leg has made no progress (RouteColumns::stalled_ticks).
+        static void measure_arrival_progress(const View& view);
+        // Whether the avoidance agent at `index` moves this tick (a target, not waiting, not held, not
+        // giving way): the agents avoidance plans a velocity for.
+        [[nodiscard]] static bool ground_steers(const View& view, std::size_t index) noexcept;
+        // The direction a moving ground unit heads in: toward its next waypoint (zero when there).
+        [[nodiscard]] static Vector2 heading_toward_waypoint(const View& view, std::size_t index) noexcept;
         // Sets an entity's route from planned waypoints (the last is its destination).
         void set_route(const View& view, std::size_t index, const std::vector<PathPoint>& waypoints, float height);
         // Marks group members that are ahead of their group to wait this tick, and releases members
@@ -1831,6 +1904,19 @@ private:
         // Short legs onto and off a shared path search at most this many nodes.
         GridPathfinder local_pathfinder_{4096};
         std::vector<std::uint32_t> query_;
+        // Ground avoidance's scratch: a unit's nearest neighbours (squared distance, dense index) and
+        // their ORCA lines.
+        std::vector<std::pair<float, std::uint32_t>> nearest_;
+        std::vector<OrcaLine> lines_;
+        // Giving way's scratch: the requests of a tick (who steps aside, for whom, to where).
+        struct GiveWayRequest
+        {
+            std::uint32_t yielder{};
+            std::uint32_t passer{};
+            Vector3 aside;
+        };
+        std::vector<GiveWayRequest> requests_;
+        std::vector<std::uint32_t> room_query_;
         // Space avoidance's scratch: a ship's neighbours.
         std::vector<std::uint32_t> neighbours_;
     };

@@ -146,12 +146,14 @@ combat rules.
    when to engage (a scan for hostiles on the target-search interval), when to break off (the
    leash), and where to go next; the engagement itself is an ordered attack.
 3. **Navigation** (`simulation_navigation.cpp`): route requests under a per-tick search budget,
-   shared formation routes, group cohesion, and the local avoidance of space ships (a course for
-   the tick that keeps clear of the neighbours' predicted motion, as a detour point).
+   shared formation routes, group cohesion, the local avoidance of space ships (a course for the
+   tick that keeps clear of the neighbours' predicted motion, as a detour point), and on land giving
+   way and each moving agent's ORCA velocity (`simulation_avoidance.cpp`).
 4. **Locomotion** (`simulation_locomotion.cpp`): physical movement only (speed limits, turn rates,
-   ground following and passability, flight above a minimum speed, following a detour point, space
-   ships never moving deeper into one they touch, walks played as clips: `simulation_walk.cpp`), then
-   separation of ground units and of flyers among their owner's.
+   ground following and passability, flight above a minimum speed, following a detour point or an
+   avoidance velocity, never moving deeper into a unit it touches, walks played as clips:
+   `simulation_walk.cpp`); then contact (`simulation_contact.cpp`): crushing, and separation of
+   flyers among their owner's (nothing pushes a ground unit).
 5. **Combat** (`simulation_combat.cpp`): shields, target selection under the stance, weapons,
    projectiles, damage, and removal of the dead. Combat never moves a unit.
 
@@ -455,11 +457,14 @@ The file-level split of each module.
   keys, DAT string tables on disk), `localization_scan` (TEXT_* references in mod XML), and
   `localization_validation` (a translation against its reference).
 - `src/simulation` (`eaw_simulation`): `SimulationWorld` split by tick layer: `simulation.cpp`
-  (storage, spawning, the tick, the state hash, footprints, snapshots), `simulation_behavior.cpp`,
-  `simulation_navigation.cpp`, `simulation_locomotion.cpp` (with `simulation_walk.cpp`, walks played
-  as clips), and `simulation_combat.cpp`, sharing
-  `simulation_internal.hpp`; with `ground_map` (passability), `pathfinding`, `formation`,
-  `spatial_grid`, and `combat` (weapon and damage data).
+  (storage, spawning, the tick, the state hash, footprints, snapshots), `simulation_schedule.cpp`,
+  `simulation_behavior.cpp`, `simulation_squads.cpp`, `simulation_navigation.cpp`,
+  `simulation_avoidance.cpp` (giving way, ORCA velocities, keeping units apart, arrival among
+  others), `simulation_locomotion.cpp` (with `simulation_walk.cpp`, walks played as clips),
+  `simulation_contact.cpp`, and `simulation_combat.cpp`, sharing `simulation_internal.hpp`; with
+  `ground_map` (passability), `clearance`, `chunk_graph`, `pathfinding`, `orca` (the avoidance
+  solver), `formation`, `spatial_grid`, `component_pool`, `system_view`, and `combat` (weapon and
+  damage data).
 - `src/script` (`eaw_script`): `script_host` (the sandboxed state, `require` through the VFS,
   budgeted protected calls, the thread scheduler, the implemented primitives), `script_events` (the
   event queue behind `GetEvent`, callbacks), `script_objects` (engine objects as userdata, the

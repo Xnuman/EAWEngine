@@ -124,6 +124,20 @@ constexpr Vector2& operator*=(Vector2& a, const float s) noexcept
     return std::isfinite(a.x) && std::isfinite(a.y);
 }
 
+// The z of the 3D cross product of `a` and `b` (the determinant of the 2x2 matrix [a b]): positive
+// when `b` lies counterclockwise of `a`.
+[[nodiscard]] constexpr float cross(const Vector2& a, const Vector2& b) noexcept
+{
+    return a.x * b.y - a.y * b.x;
+}
+
+// `a` scaled to unit length, or `fallback` when its length is zero or not finite.
+[[nodiscard]] inline Vector2 normalize_or(const Vector2& a, const Vector2& fallback) noexcept
+{
+    const auto l = length(a);
+    return l > 0.0F && std::isfinite(l) ? a / l : fallback;
+}
+
 // Vector3
 
 [[nodiscard]] constexpr Vector3 operator+(const Vector3& a, const Vector3& b) noexcept

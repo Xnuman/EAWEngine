@@ -1,8 +1,9 @@
 // Squads (docs/pathfinding-design.md, 4.3; the owner, 2026-11-15): a team entity (XML
 // Create_Team_Type containers: TEAM, SELECTABLE, UNIT_AI) takes its squad's orders and plans its
-// route; its members walk to their slots of a ring around it and fight on their own unless the team
+// route; its members walk to their slots in its arrangement and fight on their own unless the team
 // was ordered to attack. The team has no body: no footprint, no combat, never hit; it leaves with
-// its last member.
+// its last member. It avoids other units as one agent, the circle of its extent
+// (simulation_avoidance.cpp); its members are not kept apart themselves.
 
 #include "simulation_internal.hpp"
 
@@ -221,8 +222,7 @@ void SimulationWorld::BehaviorSystem::pursue_squad_target(const View& view, cons
         squad.target = {};
         return;
     }
-    // In reach when its members' shortest weapon reaches the target (a team's ring counts by its
-    // extent).
+    // In reach when its members' shortest weapon reaches the target (a team counts by its extent).
     auto reach = std::numeric_limits<float>::max();
     for (const auto id : squad.members)
     {
@@ -300,7 +300,8 @@ void SimulationWorld::BehaviorSystem::follow_squads(const View& view)
             }
         }
         // shortcut: a member walks straight to its slot; around a corner it can be blocked until the
-        // team moves on. Members plan with the clearance and avoidance of design steps 4 and 7.
+        // team moves on, and a member lagging outside its team's circle is not kept apart from other
+        // units (the team is the avoidance agent); keep laggers apart if that shows in play.
         const bool behind = lag > squad->extent + squad_leash;
         const bool engaged = orders.standing[index].kind != StandingOrder::none && fighting;
         const bool wait = (behind && squad->wait_ticks < wait_limit) || engaged;

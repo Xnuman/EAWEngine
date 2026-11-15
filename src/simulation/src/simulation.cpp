@@ -261,9 +261,14 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     route_.loiter_points.emplace_back();
     route_.remaining.push_back(0.0F);
     route_.detours.emplace_back();
+    route_.avoid_velocities.emplace_back();
+    route_.give_ways.emplace_back();
+    route_.closest_approaches.push_back(std::numeric_limits<float>::max());
+    route_.stalled_ticks.push_back(0);
     placement_.pitches.push_back(0.0F);
     motion_.speeds.push_back(0.0F);
     motion_.starts.push_back(spawn.position);
+    motion_.velocities.emplace_back();
     orders_.command_serials.push_back(0);
     orders_.standing.push_back({.scan_timer = slot % std::max(1U, ticks_for(*this, retarget_seconds))});
     locomotor_.suspended.push_back(0);
@@ -489,6 +494,19 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(waypoint);
         }
         hasher.add(route_.pending[index]);
+        hasher.add(motion_.velocities[index]);
+        const auto& give_way = route_.give_ways[index];
+        hasher.add(give_way.has_value());
+        if (give_way)
+        {
+            hasher.add(give_way->passer);
+            hasher.add(give_way->aside);
+            hasher.add(give_way->back);
+            hasher.add(give_way->ticks);
+            hasher.add(give_way->returning);
+        }
+        hasher.add(route_.closest_approaches[index]);
+        hasher.add(route_.stalled_ticks[index]);
         hasher.add(route_.loiter_points[index].has_value());
         if (route_.loiter_points[index])
         {

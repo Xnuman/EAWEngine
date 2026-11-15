@@ -40,9 +40,49 @@ inline constexpr float clearance_minimum_limit = 65.0F;
 inline constexpr std::uint32_t free_ground_rings = 24;
 // The occupancy grid's cells (an engine choice: a few vehicle footprints wide).
 inline constexpr float occupancy_cell_size = 32.0F;
-// The fastest separation pushes a unit, in its radii per second: half a radius per tick at the old
+// The fastest separation pushes a flyer, in its radii per second: half a radius per tick at the old
 // 30 Hz. An engine choice.
 inline constexpr float separation_radii_per_second = 15.0F;
+// Ground avoidance (docs/pathfinding-design.md, 4.4): a unit avoids contact this far ahead with at
+// most this many of its nearest neighbours, found in a grid of this cell size; an avoidance velocity
+// closer than this share of the unit's speed to the one toward its waypoint is not used, so a unit
+// with nothing in its way follows its route exactly. Of two allies that both move, each takes the
+// other's share of their summed footprint areas, so the larger gives way less (an AT-AT next to
+// none against infantry). Engine choices.
+inline constexpr float avoidance_horizon_seconds = 1.0F;
+// How far (in the unit's radii, beyond its own footprint) a unit looks for neighbours to avoid and
+// allies to ask aside, at most: in a dense crowd only the nearest matter, and a second's travel
+// reached about 200 soldiers in each query (the large Utapau battle, 2026-11-15). An engine choice.
+inline constexpr float avoidance_reach_radii = 4.0F;
+inline constexpr std::size_t avoidance_neighbours = 10;
+inline constexpr float avoidance_cell_size = 32.0F;
+inline constexpr float avoidance_tolerance = 1.0e-3F;
+// How far to its right (radians) a unit that cannot go straight its way prefers to turn
+// (plan_ground_avoidance). An engine choice.
+inline constexpr float avoidance_keep_right = 0.15F;
+// Units this close to touching (world units) count as touching, not overlapping: sliding along each
+// other leaves them a rounding error inside, which ORCA would otherwise ask them to undo within a
+// tick. An engine choice (the hundredth separation tolerated).
+inline constexpr float contact_tolerance = 0.01F;
+// Giving way (plan_giving_way): an ally a moving unit would meet within this many seconds of its
+// travel steps aside, clearing the mover's footprint by this share of its own radius; it gives way at
+// most this long. A mover asks only when held up (slower last tick than the held share of its speed).
+// Only a unit no larger than the mover gives way, and only when it stands or is slower by nature
+// than this share of the mover's speed (the owner, 2026-11-15: slower allies give way to faster
+// ones; a larger unit is passed around instead). Engine choices.
+inline constexpr float give_way_lookahead_seconds = 1.0F;
+inline constexpr float give_way_margin = 0.25F;
+inline constexpr float give_way_seconds = 4.0F;
+inline constexpr float give_way_slower_fraction = 0.9F;
+inline constexpr float give_way_held_fraction = 0.5F;
+// A unit heading for its destination stops where it touches (within this share of their summed radii
+// beyond contact) a standing unit that covers the destination, or, having come no closer to it by the
+// progress distance (world units) for the stall time, a standing unit of its owner nearer the
+// destination than itself: the closest point to the goal where it overlaps no one, when units
+// already stand there (the owner, 2026-11-15; goal_taken). Engine choices.
+inline constexpr float taken_goal_margin = 0.25F;
+inline constexpr float arrival_progress = 0.5F;
+inline constexpr float arrival_stall_seconds = 1.0F;
 // Seconds between automatic target searches of an idle weapon, and between replans of an ordered
 // chase whose target is out of range (10 and 30 ticks at the old 30 Hz). Engine choices, not
 // measured from the original.
@@ -447,6 +487,26 @@ template <class Data> bool SimulationWorld::damageable(Data& data, const std::si
 template <class Data> bool SimulationWorld::flies(Data& data, const std::size_t index) noexcept
 {
     return data.template get<ComponentPool<FlightColumns>>().find(slot_of(data, index)).has_value();
+}
+
+template <class Data> bool SimulationWorld::can_crush(Data& data, const std::size_t crusher, const std::size_t victim) noexcept
+{
+    const auto& identity = data.template get<IdentityColumns>();
+    const auto& pool = data.template get<ComponentPool<CrushColumns>>();
+    const auto kind = crush_profile_in(pool, identity.ids[crusher].index).crusher;
+    if (kind == Crusher::none || victim == crusher)
+    {
+        return false;
+    }
+    const auto& squash = crush_profile_in(pool, identity.ids[victim].index);
+    const bool may = squash.squashable || (kind == Crusher::supercrusher && squash.squashable_by_supercrusher);
+    const auto& state = combat_state(data, victim);
+    return may && state.profile->health > 0.0F && state.health > 0.0F && data.template get<Rules>().hostility.hostile(identity.owners[crusher], identity.owners[victim]);
+}
+
+template <class Data> bool SimulationWorld::ground_body(Data& data, const std::size_t index) noexcept
+{
+    return data.template get<PlacementColumns>().radii[index] > 0.0F && data.template get<GroundMoverColumns>().follows_ground[index] != 0 && !flies(data, index);
 }
 
 template <class Data> Footing SimulationWorld::footing_of(Data& data, const std::size_t index) noexcept

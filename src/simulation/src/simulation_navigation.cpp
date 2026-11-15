@@ -21,8 +21,10 @@ void SimulationWorld::NavigationSystem::run(const View& view)
     std::ranges::fill(locomotor.arriving, std::uint8_t{0});
     process_path_queue(view);
     measure_remaining_routes(route, placement);
+    measure_arrival_progress(view);
     update_group_cohesion(view);
     plan_space_avoidance(view);
+    plan_ground_avoidance(view);
 }
 
 void SimulationWorld::NavigationSystem::plan_route_now(const View& view, const std::size_t index, const Vector3& target)
@@ -275,9 +277,9 @@ void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
     auto& locomotor = view.get<LocomotorColumns>();
     auto& route = view.get<RouteColumns>();
     auto& ground = view.get<GroundState>();
-    auto& avoidance = view.get<SpaceAvoidance>();
+    auto& avoidance = view.get<Avoidance>();
     route.detours.assign(identity.ids.size(), std::nullopt);
-    avoidance.largest_ship_radius = 0.0F;
+    avoidance.largest_radius = 0.0F;
     if (ground.map.valid())
     {
         return;
@@ -304,7 +306,7 @@ void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
     {
         return;
     }
-    avoidance.largest_ship_radius = largest_radius;
+    avoidance.largest_radius = largest_radius;
     // How fast a ship makes way on a course: a ship that turns slows by the cosine of how far its
     // heading is off the course, as locomotion moves it (steer).
     const auto way = [&](const std::size_t index, const float course)
@@ -517,67 +519,6 @@ void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
         const float height = here.z + (target.z - here.z) * std::min(1.0F, ahead / distance);
         route.detours[index] = Vector3{here.x + std::cos(best_angle) * ahead, here.y + std::sin(best_angle) * ahead, height};
     }
-}
-
-Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std::size_t index, Vector3 step)
-{
-    auto& placement = view.get<PlacementColumns>();
-    auto& ground = view.get<GroundState>();
-    auto& avoidance = view.get<SpaceAvoidance>();
-    const float radius = placement.radii[index];
-    if (avoidance.largest_ship_radius <= 0.0F || radius <= 0.0F || flies(view, index) || ground.map.valid())
-    {
-        return step;
-    }
-    const auto& here = placement.positions[index];
-    query_.clear();
-    avoidance.grid.query(here, radius + avoidance.largest_ship_radius + std::hypot(step.x, step.y), query_);
-    // Whether a step ends inside a ship it moves toward (deeper than it was).
-    const auto deeper = [&](const std::uint32_t other, const Vector3& candidate, float& to_x, float& to_y, float& apart)
-    {
-        const auto& there = placement.positions[other];
-        if (other == index || placement.radii[other] <= 0.0F || flies(view, other) || placement.radii[other] < radius * avoid_small_fraction ||
-            std::abs(there.z - here.z) > radius + placement.radii[other])
-        {
-            return false;
-        }
-        if (std::hypot(here.x + candidate.x - there.x, here.y + candidate.y - there.y) >= radius + placement.radii[other])
-        {
-            return false;
-        }
-        to_x = there.x - here.x;
-        to_y = there.y - here.y;
-        apart = std::hypot(to_x, to_y);
-        return apart > 0.0F && candidate.x * to_x + candidate.y * to_y > 0.0F;
-    };
-    // Twice, so a ship wedged between two slides clear of both where it can.
-    for (int pass = 0; pass < 2; ++pass)
-    {
-        for (const auto other : query_)
-        {
-            float to_x = 0.0F;
-            float to_y = 0.0F;
-            float apart = 0.0F;
-            if (deeper(other, step, to_x, to_y, apart))
-            {
-                const float along = (step.x * to_x + step.y * to_y) / apart;
-                step.x -= to_x / apart * along;
-                step.y -= to_y / apart * along;
-            }
-        }
-    }
-    // Wedged in where no slide is free: it holds its place this tick.
-    for (const auto other : query_)
-    {
-        float to_x = 0.0F;
-        float to_y = 0.0F;
-        float apart = 0.0F;
-        if (deeper(other, step, to_x, to_y, apart))
-        {
-            return {0.0F, 0.0F, step.z};
-        }
-    }
-    return step;
 }
 
 void SimulationWorld::apply_formation_move(const SimCommand& command)
