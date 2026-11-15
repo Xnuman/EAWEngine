@@ -34,6 +34,37 @@ struct CellRect
     std::uint32_t last_row{};
 };
 
+// Every cell of the ground (call only for a ground with cells).
+[[nodiscard]] inline CellRect whole_ground(const GroundMap& ground)
+{
+    return {0, 0, ground.width - 1U, ground.height - 1U};
+}
+
+// Calls visit(neighbour) for each side neighbour of `cell` inside `bounds`, in the order left, right,
+// up, down (callers that keep the first of equal candidates depend on it); `width` is the grid's row
+// length.
+template <typename Visit> void for_each_side_neighbor(const std::uint32_t cell, const std::uint32_t width, const CellRect& bounds, Visit&& visit)
+{
+    const auto x = cell % width;
+    const auto y = cell / width;
+    if (x > bounds.first_column)
+    {
+        visit(cell - 1U);
+    }
+    if (x < bounds.last_column)
+    {
+        visit(cell + 1U);
+    }
+    if (y > bounds.first_row)
+    {
+        visit(cell - width);
+    }
+    if (y < bounds.last_row)
+    {
+        visit(cell + width);
+    }
+}
+
 // The field of `passable_types` up to `limit` over the whole ground.
 [[nodiscard]] ClearanceField clearance_field(const GroundMap& ground, std::uint32_t passable_types, float limit);
 // Recomputes the cells whose clearance a change of passability within `changed` can affect.

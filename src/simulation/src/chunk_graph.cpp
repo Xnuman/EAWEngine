@@ -48,6 +48,7 @@ ChunkGraph build_chunk_graph(const GroundMap& ground, const Footing& footing, co
             const auto first_y = chunk_y * size;
             const auto last_x = std::min(ground.width, first_x + size) - 1U;
             const auto last_y = std::min(ground.height, first_y + size) - 1U;
+            const CellRect square{first_x, first_y, last_x, last_y};
             for (auto y = first_y; y <= last_y; ++y)
             {
                 for (auto x = first_x; x <= last_x; ++x)
@@ -73,30 +74,15 @@ ChunkGraph build_chunk_graph(const GroundMap& ground, const Footing& footing, co
                         const auto cy = cell / ground.width;
                         sum_x += cx;
                         sum_y += cy;
-                        const auto visit = [&](const std::uint32_t neighbor)
-                        {
-                            if (graph.part_of[neighbor] == 0 && fits(neighbor))
-                            {
-                                graph.part_of[neighbor] = part;
-                                pending.push_back(neighbor);
-                            }
-                        };
-                        if (cx > first_x)
-                        {
-                            visit(cell - 1);
-                        }
-                        if (cx < last_x)
-                        {
-                            visit(cell + 1);
-                        }
-                        if (cy > first_y)
-                        {
-                            visit(cell - ground.width);
-                        }
-                        if (cy < last_y)
-                        {
-                            visit(cell + ground.width);
-                        }
+                        for_each_side_neighbor(cell, ground.width, square,
+                                               [&](const std::uint32_t neighbor)
+                                               {
+                                                   if (graph.part_of[neighbor] == 0 && fits(neighbor))
+                                                   {
+                                                       graph.part_of[neighbor] = part;
+                                                       pending.push_back(neighbor);
+                                                   }
+                                               });
                     }
                     const auto mean_x = sum_x / static_cast<double>(members.size());
                     const auto mean_y = sum_y / static_cast<double>(members.size());

@@ -401,32 +401,15 @@ const std::vector<std::uint32_t>& GridPathfinder::regions(const GroundMap& groun
         {
             const auto cell = pending.back();
             pending.pop_back();
-            const auto x = cell % ground.width;
-            const auto y = cell / ground.width;
-            const auto visit = [&](const std::uint32_t neighbor)
-            {
-                if (entry.labels[neighbor] == 0 && enterable(ground, neighbor, footing))
-                {
-                    entry.labels[neighbor] = next_label;
-                    pending.push_back(neighbor);
-                }
-            };
-            if (x > 0)
-            {
-                visit(cell - 1);
-            }
-            if (x + 1 < ground.width)
-            {
-                visit(cell + 1);
-            }
-            if (y > 0)
-            {
-                visit(cell - ground.width);
-            }
-            if (y + 1 < ground.height)
-            {
-                visit(cell + ground.width);
-            }
+            for_each_side_neighbor(cell, ground.width, whole_ground(ground),
+                                   [&](const std::uint32_t neighbor)
+                                   {
+                                       if (entry.labels[neighbor] == 0 && enterable(ground, neighbor, footing))
+                                       {
+                                           entry.labels[neighbor] = next_label;
+                                           pending.push_back(neighbor);
+                                       }
+                                   });
         }
     }
     return entry.labels;
@@ -557,21 +540,21 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
                                 {
                                     continue;
                                 }
-                                for (const auto other :
-                                     {x > 0 ? cell - 1U : cell, x + 1U < ground.width ? cell + 1U : cell, y > 0 ? cell - ground.width : cell, y + 1U < ground.height ? cell + ground.width : cell})
-                                {
-                                    if (other == cell || fine.part_of[other] != next)
-                                    {
-                                        continue;
-                                    }
-                                    const auto score = heuristic(ground, current, cell) + heuristic(ground, other, goal_cell);
-                                    if (score < best)
-                                    {
-                                        best = score;
-                                        target = cell;
-                                        across = other;
-                                    }
-                                }
+                                for_each_side_neighbor(cell, ground.width, whole_ground(ground),
+                                                       [&](const std::uint32_t other)
+                                                       {
+                                                           if (fine.part_of[other] != next)
+                                                           {
+                                                               return;
+                                                           }
+                                                           const auto score = heuristic(ground, current, cell) + heuristic(ground, other, goal_cell);
+                                                           if (score < best)
+                                                           {
+                                                               best = score;
+                                                               target = cell;
+                                                               across = other;
+                                                           }
+                                                       });
                             }
                         }
                         if (!across)
