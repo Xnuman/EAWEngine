@@ -240,6 +240,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     identity_.recipes.push_back(spawn.recipe);
     ground_mover_.follows_ground.push_back(recipe.follows_ground ? 1U : 0U);
     ground_mover_.passable_types.push_back(recipe.passable_types);
+    ground_mover_.footing_radii.push_back(recipe.radius);
     route_.paths.emplace_back();
     if (const auto& profile = recipe.combat; profile.health > 0.0F || profile.shield > 0.0F || !profile.weapons.empty() || !profile.hardpoints.empty())
     {
@@ -470,6 +471,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
     {
         hasher.add(ground_mover_.follows_ground[index]);
         hasher.add(ground_mover_.passable_types[index]);
+        hasher.add(ground_mover_.footing_radii[index]);
     }
     for (std::size_t index = 0; index < count; ++index)
     {
@@ -944,90 +946,174 @@ void SimulationWorld::occupy(const std::size_t index)
     occupancy_.largest_radius = std::max(occupancy_.largest_radius, placement_.radii[index]);
 }
 
+void SimulationWorld::refresh_occupancy()
+{
+    if (occupancy_.tick == clock_.tick)
+    {
+        return;
+    }
+    // Over the ground's extent (positions off it count at its edge cells).
+    occupancy_.tick = clock_.tick;
+    occupancy_.cell = occupancy_cell_size;
+    occupancy_.origin_x = -ground_.map.spacing;
+    occupancy_.origin_y = -ground_.map.spacing;
+    occupancy_.columns = static_cast<std::uint32_t>(std::ceil((static_cast<float>(ground_.map.width + 1U) * ground_.map.spacing) / occupancy_.cell)) + 1U;
+    occupancy_.rows = static_cast<std::uint32_t>(std::ceil((static_cast<float>(ground_.map.height + 1U) * ground_.map.spacing) / occupancy_.cell)) + 1U;
+    occupancy_.largest_radius = 0.0F;
+    occupancy_.cells.assign(static_cast<std::size_t>(occupancy_.columns) * occupancy_.rows, {});
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
+    {
+        occupy(index);
+    }
+}
+
+template <class Counts> bool SimulationWorld::overlaps_unit(const float x, const float y, const float radius, Counts&& counts)
+{
+    refresh_occupancy();
+    const auto reach_all = radius + occupancy_.largest_radius;
+    const auto cell_of = [&](const float value, const float origin, const std::uint32_t count)
+    {
+        return static_cast<std::uint32_t>(std::clamp(std::floor((value - origin) / occupancy_.cell), 0.0F, static_cast<float>(count - 1U)));
+    };
+    for (auto row = cell_of(y - reach_all, occupancy_.origin_y, occupancy_.rows); row <= cell_of(y + reach_all, occupancy_.origin_y, occupancy_.rows); ++row)
+    {
+        for (auto column = cell_of(x - reach_all, occupancy_.origin_x, occupancy_.columns); column <= cell_of(x + reach_all, occupancy_.origin_x, occupancy_.columns); ++column)
+        {
+            for (const auto other : occupancy_.cells[static_cast<std::size_t>(row) * occupancy_.columns + column])
+            {
+                const auto reach = radius + placement_.radii[other];
+                const auto dx = placement_.positions[other].x - x;
+                const auto dy = placement_.positions[other].y - y;
+                if (dx * dx + dy * dy < reach * reach && counts(other))
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+const ClearanceField* SimulationWorld::clearance_of(const std::uint32_t passable_types) const noexcept
+{
+    const auto found = std::ranges::find(ground_.clearance, passable_types, &ClearanceField::passable_types);
+    return found != ground_.clearance.end() ? &*found : nullptr;
+}
+
 Vector3 SimulationWorld::free_ground(const Vector3& at, const float radius, const std::uint32_t passable_types, const std::optional<std::size_t> except)
 {
     if (!(radius > 0.0F) || !ground_.map.valid())
     {
         return at;
     }
-    if (occupancy_.tick != clock_.tick)
-    {
-        // Over the ground's extent (positions off it count at its edge cells).
-        occupancy_.tick = clock_.tick;
-        occupancy_.cell = occupancy_cell_size;
-        occupancy_.origin_x = -ground_.map.spacing;
-        occupancy_.origin_y = -ground_.map.spacing;
-        occupancy_.columns = static_cast<std::uint32_t>(std::ceil((static_cast<float>(ground_.map.width + 1U) * ground_.map.spacing) / occupancy_.cell)) + 1U;
-        occupancy_.rows = static_cast<std::uint32_t>(std::ceil((static_cast<float>(ground_.map.height + 1U) * ground_.map.spacing) / occupancy_.cell)) + 1U;
-        occupancy_.largest_radius = 0.0F;
-        occupancy_.cells.assign(static_cast<std::size_t>(occupancy_.columns) * occupancy_.rows, {});
-        for (std::size_t index = 0; index < identity_.ids.size(); ++index)
-        {
-            occupy(index);
-        }
-    }
-    const ClearanceField* field = nullptr;
-    for (const auto& candidate : ground_.clearance)
-    {
-        if (candidate.passable_types == passable_types)
-        {
-            field = &candidate;
-        }
-    }
-    const Footing footing(passable_types, field, radius);
+    const Footing footing(passable_types, clearance_of(passable_types), radius);
     const auto free = [&](const float x, const float y)
     {
-        if (passable_types != 0 && !ground_stands(ground_.map, {x, y}, footing))
+        return (passable_types == 0 || ground_stands(ground_.map, {x, y}, footing)) && !overlaps_unit(x, y, radius,
+                                                                                                      [&](const std::uint32_t other)
+                                                                                                      {
+                                                                                                          return other != except;
+                                                                                                      });
+    };
+    const auto found = nearest_free_point(at, 2.0F * radius, free_ground_rings, free);
+    return found ? Vector3{found->x, found->y, at.z} : at;
+}
+
+bool SimulationWorld::destination_free(const float x, const float y, const std::size_t index, const std::span<const std::size_t> movers, const std::span<const ReservedGround> reserved)
+{
+    const auto radius = unit_radius(*this, index);
+    const auto mask = ground_mover_.passable_types[index];
+    if (mask != 0 && !ground_stands(ground_.map, {x, y}, Footing(mask, clearance_of(mask), radius)))
+    {
+        return false;
+    }
+    if (std::ranges::any_of(reserved,
+                            [&](const ReservedGround& taken)
+                            {
+                                return std::hypot(taken.at.x - x, taken.at.y - y) < taken.radius + radius;
+                            }))
+    {
+        return false;
+    }
+    // Standing units only (moving ones are leaving), and not the units of this order or their soldiers.
+    const auto moving_with = [&](const std::size_t other)
+    {
+        auto unit = other;
+        if (const auto* member = squad_members_.find(slot_of(*this, other), &SquadMemberColumns::states))
         {
-            return false;
-        }
-        const auto reach_all = radius + occupancy_.largest_radius;
-        const auto cell_of = [&](const float value, const float origin, const std::uint32_t count)
-        {
-            return static_cast<std::uint32_t>(std::clamp(std::floor((value - origin) / occupancy_.cell), 0.0F, static_cast<float>(count - 1U)));
-        };
-        for (auto row = cell_of(y - reach_all, occupancy_.origin_y, occupancy_.rows); row <= cell_of(y + reach_all, occupancy_.origin_y, occupancy_.rows); ++row)
-        {
-            for (auto column = cell_of(x - reach_all, occupancy_.origin_x, occupancy_.columns); column <= cell_of(x + reach_all, occupancy_.origin_x, occupancy_.columns); ++column)
+            if (const auto team = dense_index(*this, member->squad))
             {
-                for (const auto other : occupancy_.cells[static_cast<std::size_t>(row) * occupancy_.columns + column])
-                {
-                    if (other == except)
-                    {
-                        continue;
-                    }
-                    const auto reach = radius + placement_.radii[other];
-                    const auto dx = placement_.positions[other].x - x;
-                    const auto dy = placement_.positions[other].y - y;
-                    if (dx * dx + dy * dy < reach * reach)
-                    {
-                        return false;
-                    }
-                }
+                unit = *team;
+            }
+        }
+        return std::ranges::find(movers, unit) != movers.end();
+    };
+    return !overlaps_unit(x, y, radius,
+                          [&](const std::uint32_t other)
+                          {
+                              return !route_.move_targets[other] && !moving_with(other);
+                          });
+}
+
+void SimulationWorld::place_block(std::vector<FormationSlot>& slots, const std::span<const std::size_t> movers)
+{
+    if (!ground_.map.valid() || slots.empty())
+    {
+        return;
+    }
+    // The whole block first: at the ordered point, else shifted by the nearest offset (rings of the
+    // largest member's size) at which every ground member's slot fits.
+    float largest = 0.0F;
+    for (const auto index : movers)
+    {
+        largest = std::max(largest, unit_radius(*this, index));
+    }
+    const auto fits = [&](const float dx, const float dy)
+    {
+        for (std::size_t member = 0; member < movers.size(); ++member)
+        {
+            const auto index = movers[member];
+            if (ground_mover_.follows_ground[index] != 0 && unit_radius(*this, index) > 0.0F && !destination_free(slots[member].position.x + dx, slots[member].position.y + dy, index, movers, {}))
+            {
+                return false;
             }
         }
         return true;
     };
-    if (free(at.x, at.y))
+    if (largest > 0.0F)
     {
-        return at;
-    }
-    const auto step = 2.0F * radius;
-    for (std::uint32_t ring = 1; ring <= free_ground_rings; ++ring)
-    {
-        const auto points = 6U * ring;
-        for (std::uint32_t point = 0; point < points; ++point)
+        if (const auto offset = nearest_free_point({}, 2.0F * largest, block_shift_rings, fits))
         {
-            const auto angle = two_pi * static_cast<float>(point) / static_cast<float>(points);
-            const auto x = at.x + std::cos(angle) * step * static_cast<float>(ring);
-            const auto y = at.y + std::sin(angle) * step * static_cast<float>(ring);
-            if (free(x, y))
+            for (auto& slot : slots)
             {
-                return {x, y, at.z};
+                slot.position.x += offset->x;
+                slot.position.y += offset->y;
             }
         }
     }
-    return at;
+    // Then each slot that still does not fit, beside those placed before it.
+    std::vector<ReservedGround> reserved;
+    for (std::size_t member = 0; member < movers.size(); ++member)
+    {
+        const auto index = movers[member];
+        slots[member].position = place_destination(slots[member].position, index, movers, reserved);
+        reserved.push_back({slots[member].position, unit_radius(*this, index)});
+    }
+}
+
+Vector3 SimulationWorld::place_destination(const Vector3& at, const std::size_t index, const std::span<const std::size_t> movers, const std::span<const ReservedGround> reserved)
+{
+    const auto radius = unit_radius(*this, index);
+    if (!ground_.map.valid() || ground_mover_.follows_ground[index] == 0 || !(radius > 0.0F))
+    {
+        return at;
+    }
+    const auto found = nearest_free_point(at, 2.0F * radius, free_ground_rings,
+                                          [&](const float x, const float y)
+                                          {
+                                              return destination_free(x, y, index, movers, reserved);
+                                          });
+    return found ? Vector3{found->x, found->y, at.z} : at;
 }
 
 void SimulationWorld::reserve_clearance(const std::uint32_t passable_types, const float radius)

@@ -13,6 +13,12 @@ namespace {
 
 constexpr std::uint32_t straight_cost = 10;
 constexpr std::uint32_t diagonal_cost = 14;
+// Routes keep off walls where there is room (the owner's finer size buckets, 2026-11-15, let units
+// through every gap they fit, but routes hugged corners at exactly the unit's radius and crowds
+// jammed there): a cell closer than this margin beyond the unit's radius to ground it cannot enter
+// costs this much more to enter, and smoothing keeps the margin where it can. Engine choices.
+constexpr float wall_margin = 5.0F;
+constexpr std::uint32_t wall_cost = straight_cost;
 
 bool finite(const PathPoint point) noexcept
 {
@@ -325,7 +331,9 @@ GridPathfinder::CellSearch GridPathfinder::search_cells(const GroundMap& ground,
             {
                 continue;
             }
-            const auto cost = cost_[node.cell] + (diagonal ? diagonal_cost : straight_cost);
+            const bool near_wall =
+                footing.clearance != nullptr && footing.radius > 0.0F && neighbor < footing.clearance->cells.size() && footing.clearance->cells[neighbor] < footing.radius + wall_margin;
+            const auto cost = cost_[node.cell] + (diagonal ? diagonal_cost : straight_cost) + (near_wall ? wall_cost : 0U);
             if (seen_[neighbor] != search_ || cost < cost_[neighbor])
             {
                 seen_[neighbor] = search_;
@@ -638,14 +646,27 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
         }
     }
     // Keep a waypoint only when the next one cannot be reached in a straight line from the last
-    // kept point. Consecutive cell centers are always connected, so this never fails to advance.
+    // kept point: with the wall margin as far as the line can keep it, else with the unit's own room
+    // (kept only, a margin-less stretch left the search's staircase along a wall in the route).
+    // Consecutive cell centers are always connected, so this never fails to advance.
+    auto roomy = footing;
+    roomy.radius = footing.radius > 0.0F ? footing.radius + wall_margin : 0.0F;
+    const auto furthest = [&](const std::size_t from, const Footing& room)
+    {
+        auto next = from + 1;
+        while (next + 1 < points.size() && ground_line_passable(ground, points[from], points[next + 1], room))
+        {
+            ++next;
+        }
+        return next;
+    };
     std::size_t anchor = 0;
     while (anchor + 1 < points.size())
     {
-        auto next = anchor + 1;
-        while (next + 1 < points.size() && ground_line_passable(ground, points[anchor], points[next + 1], footing))
+        auto next = furthest(anchor, roomy);
+        if (next == anchor + 1)
         {
-            ++next;
+            next = furthest(anchor, footing);
         }
         result.waypoints.push_back(points[next]);
         anchor = next;

@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 
 namespace eaw::simulation_detail {
 
@@ -34,10 +35,13 @@ inline constexpr float contact_cell_size = 16.0F;
 // The clearance a field covers at least: the largest of the size buckets of
 // docs/pathfinding-design.md, 4.1 (stock footprints up to the giant vehicles' 63); larger units on a
 // map extend it to their own radius.
-inline constexpr float clearance_minimum_limit = 65.0F;
+inline constexpr float clearance_minimum_limit = footing_buckets.back();
 // Where a spawn or teleport looks for free ground: rings one footprint diameter apart, the k-th with
 // 6k points, out to this many rings. Engine choices.
 inline constexpr std::uint32_t free_ground_rings = 24;
+// How far a group's whole block is shifted to fit before its slots are placed one by one: rings one
+// largest member's diameter apart, this many. An engine choice.
+inline constexpr std::uint32_t block_shift_rings = 8;
 // The occupancy grid's cells (an engine choice: a few vehicle footprints wide).
 inline constexpr float occupancy_cell_size = 32.0F;
 // The fastest separation pushes a flyer, in its radii per second: half a radius per tick at the old
@@ -86,10 +90,14 @@ inline constexpr float taken_goal_margin = 0.25F;
 inline constexpr float taken_goal_crowd = 6.0F;
 inline constexpr float arrival_progress = 0.5F;
 inline constexpr float arrival_stall_seconds = 1.0F;
+// A unit that came no closer for this long beside standing allies nearer its goal stops there even
+// when its goal is free (a hole among them it cannot reach); giving way, which takes about a second,
+// had its chance first. An engine choice.
+inline constexpr float arrival_give_up_seconds = 3.0F;
 // A unit that came no closer for the stall time within this share of its radius of its goal has
-// arrived (packed neighbours held formation members a few units short of their slots). An engine
-// choice.
-inline constexpr float arrival_reach_share = 1.0F;
+// arrived (packed neighbours held formation members a few units short of their slots, and two units
+// sent to one point held each other off it). An engine choice.
+inline constexpr float arrival_reach_share = 2.0F;
 // Seconds between automatic target searches of an idle weapon, and between replans of an ordered
 // chase whose target is out of range (10 and 30 ticks at the old 30 Hz). Engine choices, not
 // measured from the original.
@@ -242,6 +250,31 @@ struct StateHasher
         add_bytes(&value, sizeof(value));
     }
 };
+
+// The point nearest `at` that `free` accepts: `at` itself, else rings `step` apart around it, the k-th
+// with 6k points, out to `rings` rings; none when no point is accepted.
+template <class Free> std::optional<Vector2> nearest_free_point(const Vector3& at, const float step, const std::uint32_t rings, Free&& free)
+{
+    if (free(at.x, at.y))
+    {
+        return Vector2{at.x, at.y};
+    }
+    for (std::uint32_t ring = 1; ring <= rings; ++ring)
+    {
+        const auto points = 6U * ring;
+        for (std::uint32_t point = 0; point < points; ++point)
+        {
+            const auto angle = two_pi * static_cast<float>(point) / static_cast<float>(points);
+            const auto x = at.x + std::cos(angle) * step * static_cast<float>(ring);
+            const auto y = at.y + std::sin(angle) * step * static_cast<float>(ring);
+            if (free(x, y))
+            {
+                return Vector2{x, y};
+            }
+        }
+    }
+    return std::nullopt;
+}
 
 inline float wrap_angle(float angle) noexcept
 {
@@ -574,7 +607,6 @@ template <class Data> Footing SimulationWorld::footing_of(Data& data, const std:
 {
     auto& ground = data.template get<GroundState>();
     auto& ground_mover = data.template get<GroundMoverColumns>();
-    auto& placement = data.template get<PlacementColumns>();
     const auto mask = ground_mover.passable_types[index];
     const ClearanceField* field = nullptr;
     for (const auto& candidate : ground.clearance)
@@ -584,7 +616,7 @@ template <class Data> Footing SimulationWorld::footing_of(Data& data, const std:
             field = &candidate;
         }
     }
-    return {mask, field, placement.radii[index]};
+    return {mask, field, ground_mover.footing_radii[index]};
 }
 
 template <class Data> bool SimulationWorld::stands_at(Data& data, const std::size_t index, const float x, const float y) noexcept

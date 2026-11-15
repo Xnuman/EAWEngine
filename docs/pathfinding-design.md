@@ -75,8 +75,11 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
   does not measure size: "Vehicle" types range in footprint radius from 1 to 52, "Large Vehicle"
   from 3.5 to 33, "Giant Vehicle" from 32 to 63, and 49 mobile types set no class): each unit
   plans and moves with its own footprint radius against the clearance; connectivity caches are
-  per whole-unit radius, and the chunk graphs of 4.2 are kept for four size buckets (radius up to
-  7, 20, 35, and 65, from the stock footprints; a unit uses the smallest that holds it).
+  per whole-unit radius, and the chunk graphs of 4.2 are kept for size buckets every 2 units of
+  radius from 2 to 68 (the owner, 2026-11-15; first 7, 20, 35, and 65, which kept units out of gaps
+  they fit; a unit uses the smallest that holds it, and graphs exist only for the sizes a map uses).
+  A squad stands and plans with its largest soldier's footprint (`GroundMoverColumns::footing_radii`),
+  so it goes single file where its soldiers fit; its destination is placed for its whole circle.
   `UnitCollisionClass` stays what the data says it is, collision behavior. Flyers do not use
   ground navigation.
 - **Clearance**: per movement-class mask in use, how far each cell's center lies from ground the
@@ -101,6 +104,18 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
 
 ### 4.2 Route planning
 
+- **The destination first** (the owner's model, 2026-11-15): an ordered point moves to the nearest
+  place the unit fits as a whole: ground with room for it (a squad by its extent), off every standing
+  unit but those of the same order and their soldiers (`place_destination`, rings of the unit's
+  size). A group's block of slots first shifts to the nearest offset where every slot fits (8 rings
+  of the largest member's size), then each slot that still does not fit moves on its own, beside the
+  slots placed before it (`place_block`). Moving units do not count: a destination free at the order
+  may be taken by the time the unit arrives, so the arrival rules of 4.4 stay.
+- **Routes keep off walls where there is room**: a cell closer than 5 units beyond the unit's radius
+  to ground it cannot enter costs one more straight step to enter, and smoothing straightens with
+  that margin where the line can keep it, else with the unit's own room. With buckets every 2 units,
+  routes otherwise hugged corners at exactly the unit's radius and crowds jammed there. Engine
+  choices.
 - A request plans on the chunk graph first: the chunk components to the goal. Unreachable goals end
   there, at the nearest reachable component (today's partial-path rule). A unit or group whose goal
   is unreachable or occupied stops at the point closest to the goal where it overlaps no other unit
@@ -228,11 +243,12 @@ Built 2026-11-15 (step 6), except the blocked-unit replans; `simulation_avoidanc
   closer for a second, at a standing ally between it and its destination that stopped at the end of
   the same order or at a destination within six summed radii of its own, and within two of its
   footprints' widths beyond contact (a crowd grows ring by ring, rings a little apart where
-  avoidance kept its margins; `RouteColumns::last_goals`), and only when a standing unit occupies
-  the unit's own goal (in a group move each member has a slot of its own: group-mates standing in
-  theirs, or units giving way, are no crowd; the owner's report of units stopping while others gave
-  way). A unit that came no closer for a second
-  within its radius of its goal has arrived. On its last leg a unit's preferred speed is what
+  avoidance kept its margins; `RouteColumns::last_goals`). The crowd is made of allies that stopped
+  short of their own goals; allies that reached theirs count only where the unit's own goal is
+  occupied, or once it has come no closer for 3 s beside allies that stopped near its goal (a free
+  goal enclosed among them). In a group move each member has a slot of its own: group-mates standing
+  in theirs, or units giving way, are no crowd (the owner's report of units stopping while others
+  gave way). A unit that came no closer for a second within its diameter of its goal has arrived. On its last leg a unit's preferred speed is what
   reaches its goal within the horizon: at full speed ORCA took a standing unit beyond the goal for a
   collision and held a unit still ten units short. An ally standing in the way after a move elsewhere is no crowd:
   without that condition companies sent through a standing squad stopped at it (the owner's report).

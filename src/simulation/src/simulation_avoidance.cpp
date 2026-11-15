@@ -512,7 +512,7 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
     const auto own_distance = std::hypot(goal.x - here.x, goal.y - here.y);
     // It has come no closer for a while: a unit still working its way through a crowd is not stopped.
     const bool stalled = route.stalled_ticks[index] >= ticks_for(view, arrival_stall_seconds);
-    // Held within its footprint's radius of its goal (by the units around it): arrived.
+    // Held within its footprint's diameter of its goal (by the units around it): arrived.
     if (stalled && own_distance <= radius * arrival_reach_share)
     {
         return true;
@@ -525,16 +525,28 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
     {
         return !route.move_targets[other] && !route.give_ways[other];
     };
-    // A crowd only stops a unit whose own goal is taken: in a group move each member has a slot of its
-    // own, and group-mates standing in theirs are no crowd at its goal (the owner's report: units
-    // stopped while others had not finished giving way).
+    // A crowd is made of allies that stopped short of their own goals (held off by those in front):
+    // in a group move each member has a slot of its own, and group-mates that reached theirs are no
+    // crowd at its goal; a unit held behind them waits for them to give way (the owner's report:
+    // units stopped while others had not finished giving way).
+    const auto stopped_short = [&](const std::size_t other)
+    {
+        const auto& stopped_at = route.last_goals[other];
+        return stopped_at && distance_xy(placement.positions[other], *stopped_at) > radii[other];
+    };
+    // Allies that reached their own goals count too where this unit's own goal is taken (a standing
+    // unit on it): the inner ring of a crowd at shared points; or once it has come no closer for the
+    // give-up time (its goal is a hole among standing allies too narrow to reach, and no one made way):
+    // where it stands is the closest point it can reach.
+    const auto& placed = placement.positions;
+    const bool given_up = route.stalled_ticks[index] >= ticks_for(view, arrival_give_up_seconds);
     goal_query_.clear();
     avoidance.grid.query_overlapping(goal, radius, goal_query_);
-    const bool occupied = std::ranges::any_of(goal_query_,
-                                              [&](const std::uint32_t other)
-                                              {
-                                                  return other != index && radii[other] > 0.0F && standing_at(other) && distance_xy(placement.positions[other], goal) < radius + radii[other];
-                                              });
+    const bool goal_occupied = std::ranges::any_of(goal_query_,
+                                                   [&](const std::uint32_t other)
+                                                   {
+                                                       return other != index && radii[other] > 0.0F && standing_at(other) && distance_xy(placed[other], goal) < radius + radii[other];
+                                                   });
     return std::ranges::any_of(query_,
                                [&](const std::uint32_t other)
                                {
@@ -564,7 +576,10 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
                                    const auto& stopped_at = route.last_goals[other];
                                    const auto& serials = view.get<OrderColumns>().command_serials;
                                    const bool same_order = serials[other] == serials[index];
-                                   return occupied && stalled && standing && stopped_at && (same_order || distance_xy(*stopped_at, goal) < reach * taken_goal_crowd) &&
+                                   // Giving up counts only beside allies that stopped near its own goal (not anywhere along a
+                                   // queue at a passage, where a long wait is normal).
+                                   const bool near_goal = stopped_at && distance_xy(*stopped_at, goal) < reach * taken_goal_crowd;
+                                   return stalled && standing && (stopped_short(other) || goal_occupied || (given_up && near_goal)) && (same_order || near_goal) &&
                                           view.get<IdentityColumns>().owners[other] == owner && from_goal < own_distance && apart <= reach + 4.0F * radius;
                                });
 }

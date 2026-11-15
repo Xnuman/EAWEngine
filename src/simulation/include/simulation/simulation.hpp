@@ -877,6 +877,29 @@ private:
     // off every other ground unit's (`except`, the unit itself, aside). `at` itself when it is free,
     // or when no free point lies within free_ground_rings rings around it.
     [[nodiscard]] Vector3 free_ground(const Vector3& at, float radius, std::uint32_t passable_types, std::optional<std::size_t> except);
+    // A destination's ground taken already: a slot an earlier member of the same order was placed in.
+    struct ReservedGround
+    {
+        Vector3 at;
+        float radius{};
+    };
+    // Where the unit at `index` can end a move to `at` (the owner's model, 2026-11-15: the ordered
+    // point moves to the nearest place the unit fits): ground with room for the unit as a whole (a
+    // squad by its extent), off every standing unit but those of the order (`movers`, with their
+    // soldiers) and off `reserved` ground. `at` when it fits, or when nothing within free_ground_rings
+    // rings of its size does.
+    [[nodiscard]] Vector3 place_destination(const Vector3& at, std::size_t index, std::span<const std::size_t> movers, std::span<const ReservedGround> reserved);
+    [[nodiscard]] bool destination_free(float x, float y, std::size_t index, std::span<const std::size_t> movers, std::span<const ReservedGround> reserved);
+    // A group's destination (`slots`, one per entry of `movers`): the whole block shifted to the
+    // nearest place where all of it fits (block_shift_rings rings out), then each slot that still
+    // does not fit placed on its own (place_destination), beside the slots placed before it.
+    void place_block(std::vector<FormationSlot>& slots, std::span<const std::size_t> movers);
+    // Builds the occupancy grid for this tick if it is not built yet.
+    void refresh_occupancy();
+    // Whether a footprint of `radius` at (x, y) overlaps a ground unit that `counts` accepts.
+    template <class Counts> [[nodiscard]] bool overlaps_unit(float x, float y, float radius, Counts&& counts);
+    // The clearance field of a movement class (null when none is built).
+    [[nodiscard]] const ClearanceField* clearance_of(std::uint32_t passable_types) const noexcept;
     // Where ground units stand, for free_ground (scratch, not state): built at the tick's first
     // spawn or teleport, then each placed unit added; dropped when units move or leave.
     struct Occupancy
@@ -1105,10 +1128,15 @@ private:
         static constexpr SimData data = SimData::ground_mover;
         std::vector<std::uint8_t> follows_ground;
         std::vector<std::uint32_t> passable_types;
+        // The footprint the ground must have room for where the entity stands and plans its routes
+        // (footing_of): its own, or a squad team's largest soldier's (a squad goes single file where
+        // its soldiers fit; reshape_squad keeps it).
+        std::vector<float> footing_radii;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(follows_ground);
             visit(passable_types);
+            visit(footing_radii);
         }
     };
     // A unit making way for a faster ally (docs/pathfinding-design.md, 4.4): the ally, the point it
@@ -1859,7 +1887,7 @@ private:
         // formation slot on the way.
         void record_stop(const View& view, std::size_t index);
         // Whether the unit's destination is taken (or as good as reached: held for a while within its
-        // radius of it): it heads for its last point and touches (within
+        // diameter of it): it heads for its last point and touches (within
         // taken_goal_margin) a standing agent covering that point, or, having come no closer for
         // arrival_stall_seconds, a standing agent of its owner nearer that point. It then stops where
         // it is, the point closest to the goal where it overlaps no one (the owner, 2026-11-15).

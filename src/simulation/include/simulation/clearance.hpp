@@ -7,6 +7,7 @@
 #include "simulation/ground_map.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -84,10 +85,21 @@ struct Footing
 };
 
 // The footprint sizes connectivity is kept for (docs/pathfinding-design.md, 4.1; the owner,
-// 2026-11-15): radius up to 7, 20, 35, and 65, from the stock footprints (infantry up to 6.5, most
-// vehicles up to 20, the large ones up to 35, giant vehicles up to 63). A unit uses the smallest
-// that holds it; a larger one its own radius.
-inline constexpr std::array<float, 4> footing_buckets{7.0F, 20.0F, 35.0F, 65.0F};
+// 2026-11-15, after 7, 20, 35, and 65 kept units out of gaps they fit): radius every 2 units, 2 to 68
+// (stock footprints: infantry up to 6.5, most vehicles up to 20, the large ones up to 35, giant
+// vehicles up to 63). A unit uses the smallest that holds it, so it avoids only gaps less than 4
+// units narrower than it needs; a larger one its own radius. Graphs exist only for the sizes a map
+// uses.
+inline constexpr float footing_bucket_step = 2.0F;
+inline constexpr auto footing_buckets = []
+{
+    std::array<float, 34> buckets{};
+    for (std::size_t bucket = 0; bucket < buckets.size(); ++bucket)
+    {
+        buckets[bucket] = footing_bucket_step * static_cast<float>(bucket + 1U);
+    }
+    return buckets;
+}();
 [[nodiscard]] float footing_bucket(float radius) noexcept;
 
 // Whether `footing` fits the cell (its movement class's passability and, with a field, room for

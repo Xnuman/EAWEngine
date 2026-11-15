@@ -72,6 +72,20 @@ void SimulationWorld::apply(const SimCommand& given)
         }
         return;
     }
+    // A move's units, and the ground their destinations took (a plain move of several units to one
+    // point places each beside the others).
+    std::vector<std::size_t> movers;
+    std::vector<ReservedGround> reserved;
+    if (command.kind == SimCommandKind::move)
+    {
+        for (const auto id : command.entities)
+        {
+            if (const auto dense = dense_index(*this, id))
+            {
+                movers.push_back(*dense);
+            }
+        }
+    }
     for (const auto id : command.entities)
     {
         const auto dense = dense_index(*this, id);
@@ -131,7 +145,9 @@ void SimulationWorld::apply(const SimCommand& given)
             leave_group(*this, *dense);
             if (locomotor_.max_speeds[*dense] > 0.0F)
             {
-                plan_move(*this, *dense, command.target);
+                const auto goal = place_destination(command.target, *dense, movers, reserved);
+                reserved.push_back({goal, unit_radius(*this, *dense)});
+                plan_move(*this, *dense, goal);
             }
             break;
         case SimCommandKind::stop:

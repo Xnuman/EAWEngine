@@ -557,7 +557,8 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         return;
     }
     const auto facing = formation_facing(members, command.target);
-    const auto slots = formation_slots(members, command.target, facing);
+    auto slots = formation_slots(members, command.target, facing);
+    place_block(slots, movers);
     if (command.kind == SimCommandKind::group_move)
     {
         // A group move (the default; the owner, 2026-11-15): each member from where it stands to its
