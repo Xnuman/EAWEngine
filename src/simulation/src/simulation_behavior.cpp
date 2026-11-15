@@ -78,7 +78,7 @@ void SimulationWorld::apply(const SimCommand& command)
         case SimCommandKind::damage:
             // Damage only entities that can die (structures without health stay); removal is the
             // combat layer's, as for shots.
-            if (combat_.states[*dense].profile.health > 0.0F && std::isfinite(command.amount))
+            if (combat_.states[*dense].profile->health > 0.0F && std::isfinite(command.amount))
             {
                 (void)wound(combat_.states[*dense], command.amount);
             }
@@ -111,10 +111,10 @@ void SimulationWorld::apply(const SimCommand& command)
             // A ground unit that brakes (MovementProfile::deceleration) coasts to a stop straight ahead
             // over its braking distance instead of halting at once (a walk played as clips walks on to
             // its stride's next part and plays its stop there: walk_straight).
-            if (const auto speed = locomotor_.drive_speeds[*dense]; ground_mover_.follows_ground[*dense] != 0 && locomotor_.movements[*dense].deceleration > 0.0F &&
-                                                                    locomotor_.movements[*dense].walk_stop_parts == 0 && speed > 0.0F && locomotor_.max_speeds[*dense] > 0.0F)
+            if (const auto speed = locomotor_.drive_speeds[*dense]; ground_mover_.follows_ground[*dense] != 0 && locomotor_.movements[*dense]->deceleration > 0.0F &&
+                                                                    locomotor_.movements[*dense]->walk_stop_parts == 0 && speed > 0.0F && locomotor_.max_speeds[*dense] > 0.0F)
             {
-                const auto distance = speed * speed / (2.0F * locomotor_.movements[*dense].deceleration);
+                const auto distance = speed * speed / (2.0F * locomotor_.movements[*dense]->deceleration);
                 const auto& here = placement_.positions[*dense];
                 plan_move(*this, *dense, {here.x + std::cos(placement_.headings[*dense]) * distance, here.y + std::sin(placement_.headings[*dense]) * distance, here.z});
             }
@@ -128,7 +128,7 @@ void SimulationWorld::apply(const SimCommand& command)
                 ++stale_references_;
                 break;
             }
-            if (!combat.profile.weapons.empty() && *victim != *dense && rules_.hostility.hostile(identity_.owners[*dense], identity_.owners[*victim]))
+            if (!combat.profile->weapons.empty() && *victim != *dense && rules_.hostility.hostile(identity_.owners[*dense], identity_.owners[*victim]))
             {
                 combat.target = command.target_entity;
                 combat.ordered = true;
@@ -203,7 +203,7 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
             {
                 if (const auto victim = attack_victim(view, index))
                 {
-                    const auto& turret = combat.states[index].profile.turret;
+                    const auto& turret = combat.states[index].profile->turret;
                     const auto& to = placement.positions[*victim];
                     const bool beyond_turret =
                         turret && turret->turns_body && turret->yaw_limit < pi &&
@@ -355,7 +355,7 @@ void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const
         }
     }
     auto& state = combat.states[index];
-    const float range = state.profile.range();
+    const float range = state.profile->range();
     const bool guard = order.kind == StandingOrder::guard;
     const float guard_radius = std::max(range, minimum_guard_radius);
     const bool mobile = locomotor.max_speeds[index] > 0.0F;
@@ -363,7 +363,7 @@ void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const
     {
         const auto victim = state.ordered ? attack_victim(view, index) : std::nullopt;
         const auto& leash_center = guard ? order.point : order.engage_origin;
-        const float leash = guard && state.profile.guard_chase_range > 0.0F ? state.profile.guard_chase_range : std::max(range * leash_range_factor, guard ? guard_radius : 0.0F);
+        const float leash = guard && state.profile->guard_chase_range > 0.0F ? state.profile->guard_chase_range : std::max(range * leash_range_factor, guard ? guard_radius : 0.0F);
         if (victim && distance_xy(placement.positions[*victim], leash_center) <= leash)
         {
             return;
@@ -376,7 +376,7 @@ void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const
         }
         return;
     }
-    if (!state.profile.weapons.empty())
+    if (!state.profile->weapons.empty())
     {
         if (order.scan_timer > 0)
         {
@@ -386,7 +386,7 @@ void SimulationWorld::BehaviorSystem::run_standing_order(const View& view, const
         {
             order.scan_timer = retarget_interval;
             const auto& center = guard ? order.point : placement.positions[index];
-            const float response = state.profile.attack_move_response_range;
+            const float response = state.profile->attack_move_response_range;
             const float reach = guard ? guard_radius : (response > 0.0F ? response : range * acquire_range_factor);
             const auto best = choose_target(view, grid_, query_, index, center, reach,
                                             [&](const std::size_t candidate)
@@ -449,7 +449,7 @@ void SimulationWorld::BehaviorSystem::pursue_ordered_target(const View& view, co
         // Combat drops the order this tick.
         return;
     }
-    if (distance_xy(placement.positions[index], placement.positions[*victim]) > state.profile.range())
+    if (distance_xy(placement.positions[index], placement.positions[*victim]) > state.profile->range())
     {
         if (locomotor.max_speeds[index] > 0.0F && (state.chase_timer == 0 || !route.move_targets[index]))
         {
@@ -520,7 +520,7 @@ void SimulationWorld::BehaviorSystem::plan_flight(const View& view, const std::s
                     intent.point = Vector3{there.x, there.y, std::clamp(there.z + weave, plane - dogfight_band, plane + dogfight_band)};
                     return;
                 }
-                const auto pass = std::max(state.profile.range() / 3.0F, (placement.radii[index] + placement.radii[*victim]) * 2.0F);
+                const auto pass = std::max(state.profile->range() / 3.0F, (placement.radii[index] + placement.radii[*victim]) * 2.0F);
                 intent.point = Vector3{there.x, there.y, plane};
                 intent.hold_heading = distance_xy(position, there) < pass;
                 return;

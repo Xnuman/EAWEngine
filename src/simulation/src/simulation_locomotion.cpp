@@ -36,7 +36,7 @@ void SimulationWorld::MovementSystem::run(const View& view, const float dt)
             continue;
         }
         // A walk played as clips that stops, or walks on to its stop, goes straight ahead.
-        if (locomotor.movements[index].walk_stop_parts > 0 && walk_straight(view, index, dt))
+        if (locomotor.movements[index]->walk_stop_parts > 0 && walk_straight(view, index, dt))
         {
             continue;
         }
@@ -219,7 +219,7 @@ float SimulationWorld::MovementSystem::steer(const View& view, const std::size_t
         heading = wrap_angle(desired);
         return 1.0F;
     }
-    const auto& movement = locomotor.movements[index];
+    const auto& movement = *locomotor.movements[index];
     // A turn in place played as clips (MovementProfile::turn_begin_seconds) follows its plan.
     if (turn_as_clips(view, index, difference, dt))
     {
@@ -263,7 +263,7 @@ float SimulationWorld::MovementSystem::steer(const View& view, const std::size_t
 float SimulationWorld::MovementSystem::wanted_speed(const View& view, const std::size_t index, const float facing, const float distance) noexcept
 {
     auto& locomotor = view.get<LocomotorColumns>();
-    const auto& movement = locomotor.movements[index];
+    const auto& movement = *locomotor.movements[index];
     auto factor = facing;
     // Turning in place is for starting from rest (Close_Enough_Angle_For_Move_Start); a unit on the
     // move turns while it walks (the owner's recording: the AT-AT swings 90 degrees mid-walk).
@@ -293,7 +293,7 @@ float SimulationWorld::MovementSystem::wanted_speed(const View& view, const std:
 float SimulationWorld::MovementSystem::drive(const View& view, const std::size_t index, const float wanted, const float dt) noexcept
 {
     auto& locomotor = view.get<LocomotorColumns>();
-    const auto& movement = locomotor.movements[index];
+    const auto& movement = *locomotor.movements[index];
     auto& speed = locomotor.drive_speeds[index];
     const auto rate = wanted > speed ? movement.acceleration : movement.deceleration;
     if (rate <= 0.0F)
@@ -311,7 +311,7 @@ bool SimulationWorld::MovementSystem::moves_along_heading(const View& view, cons
 {
     auto& locomotor = view.get<LocomotorColumns>();
     auto& ground_mover = view.get<GroundMoverColumns>();
-    const auto& movement = locomotor.movements[index];
+    const auto& movement = *locomotor.movements[index];
     return ground_mover.follows_ground[index] == 0 && locomotor.turn_rates[index] > 0.0F && movement.turn_speed_fraction > 0.0F && movement.stopped_turn_rate <= 0.0F;
 }
 
@@ -320,7 +320,7 @@ bool SimulationWorld::MovementSystem::moves_along_heading(const View& view, cons
 float SimulationWorld::MovementSystem::settle_distance(const View& view, const std::size_t index) const noexcept
 {
     auto& locomotor = view.get<LocomotorColumns>();
-    const auto turn_radius = locomotor.movements[index].turn_speed_fraction * travel_speed(view, index) / locomotor.turn_rates[index];
+    const auto turn_radius = locomotor.movements[index]->turn_speed_fraction * travel_speed(view, index) / locomotor.turn_rates[index];
     return std::max(2.0F * turn_radius, arrival_distance);
 }
 

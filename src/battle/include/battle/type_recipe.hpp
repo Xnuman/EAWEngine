@@ -110,9 +110,17 @@ struct SpawnInstance
     std::optional<Matrix4> placement;
 };
 
+// An entity of a type as the simulation takes it: the simulation recipe (registered with
+// SimulationWorld::add_recipe, which gives `spawn.recipe`) and the instance's values.
+struct PreparedSpawn
+{
+    EntityRecipe recipe;
+    EntitySpawn spawn;
+};
+
 // An entity of `recipe` made with `instance`'s values: the one construction path of entities from
 // XML types.
-[[nodiscard]] EntitySpawn make_spawn(const TypeRecipe& recipe, const SpawnInstance& instance);
+[[nodiscard]] PreparedSpawn make_spawn(const TypeRecipe& recipe, const SpawnInstance& instance);
 
 // The transform of an object of `scale` placed at `position` facing `heading` (radians about +Z,
 // as model_forward_heading reads it).

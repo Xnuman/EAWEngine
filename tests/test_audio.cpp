@@ -265,7 +265,7 @@ void test_battle_audio()
     gun.weapons = {shot, zap, twin};
     eaw::CombatProfile target;
     target.health = 15.0F;
-    require(world.spawn({.type_name = "Gunner", .owner = 1, .combat = gun}) && world.spawn({.type_name = "Target", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = target}),
+    require(test_spawn(world, {.type_name = "Gunner", .owner = 1, .combat = gun}) && test_spawn(world, {.type_name = "Target", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = target}),
             "test spawns must succeed");
     const auto count = [&](const eaw::AudioCategory category)
     {
@@ -323,7 +323,7 @@ void test_unit_loops()
     eaw::NullAudioDevice device;
     eaw::BattleAudio audio(vfs, &cache, device, "English", true);
     eaw::SimulationWorld world(0.1);
-    const auto walker = *world.spawn({.type_name = "Walker", .owner = 1, .max_speed = 50.0F});
+    const auto walker = *test_spawn(world, {.type_name = "Walker", .owner = 1, .max_speed = 50.0F});
     const eaw::VisualCamera camera{{0.0F, -100.0F, 100.0F}, {0.0F, 0.0F, 0.0F}};
     world.step();
     audio.update(camera, world.snapshot(), world, 0.1F);
@@ -365,8 +365,8 @@ void test_turret_loop()
     tank.turret = eaw::TurretProfile{.rate = 1.5707964F};
     eaw::CombatProfile sturdy;
     sturdy.health = 1000.0F;
-    (void)world.spawn({.type_name = "Tank", .owner = 1, .combat = tank});
-    (void)world.spawn({.type_name = "Target", .owner = 2, .position = {-100.0F, 0.0F, 0.0F}, .combat = sturdy});
+    (void)test_spawn(world, {.type_name = "Tank", .owner = 1, .combat = tank});
+    (void)test_spawn(world, {.type_name = "Target", .owner = 2, .position = {-100.0F, 0.0F, 0.0F}, .combat = sturdy});
     const eaw::VisualCamera camera{{0.0F, -100.0F, 100.0F}, {0.0F, 0.0F, 0.0F}};
     world.step();
     audio.update(camera, world.snapshot(), world, 0.1F);
@@ -505,7 +505,7 @@ void test_impact_and_moving_sounds()
     audio.play_tick_events(impacts, world);
     require(audio.stats().played == 3 && audio.stats().missing == 0, "hits must play their detonation (reduced by armor when there is one), lapsed and unknown shots nothing");
 
-    const auto walker = *world.spawn({.type_name = "Walker", .owner = 1, .max_speed = 10.0F});
+    const auto walker = *test_spawn(world, {.type_name = "Walker", .owner = 1, .max_speed = 10.0F});
     world.submit({eaw::SimCommandKind::move, {walker}, {1000.0F, 0.0F, 0.0F}});
     const eaw::VisualCamera camera{{0.0F, -100.0F, 100.0F}, {0.0F, 0.0F, 0.0F}};
     const auto played = audio.stats().played;
@@ -563,7 +563,7 @@ void test_impact_and_moving_sounds()
         // A type with a secondary locomotor (a jetpack) plays its moving loop only on it: walking is silent.
         eaw::BattleAudio jets(vfs, &cache, device, "English", true);
         eaw::SimulationWorld walk(0.1);
-        const auto boba = *walk.spawn({.type_name = "Jetpacker", .owner = 1, .max_speed = 10.0F});
+        const auto boba = *test_spawn(walk, {.type_name = "Jetpacker", .owner = 1, .max_speed = 10.0F});
         walk.submit({eaw::SimCommandKind::move, {boba}, {1000.0F, 0.0F, 0.0F}});
         for (int frame = 0; frame < 3; ++frame)
         {
@@ -577,7 +577,7 @@ void test_impact_and_moving_sounds()
     {
         eaw::BattleAudio quiet_audio(vfs, &cache, device, "English", true);
         eaw::SimulationWorld quiet(0.1);
-        const auto mute = *quiet.spawn({.type_name = "Mute", .owner = 1, .max_speed = 10.0F});
+        const auto mute = *test_spawn(quiet, {.type_name = "Mute", .owner = 1, .max_speed = 10.0F});
         quiet.submit({eaw::SimCommandKind::move, {mute}, {1000.0F, 0.0F, 0.0F}});
         for (int frame = 0; frame < 5; ++frame)
         {
@@ -591,7 +591,7 @@ void test_impact_and_moving_sounds()
         eaw::SimulationWorld hurt(0.1);
         eaw::CombatProfile hero;
         hero.health = 100.0F;
-        const auto unit = *hurt.spawn({.type_name = "Hero", .owner = 1, .combat = hero});
+        const auto unit = *test_spawn(hurt, {.type_name = "Hero", .owner = 1, .combat = hero});
         const auto tick = [&](const float damage)
         {
             if (damage > 0.0F)
@@ -620,7 +620,7 @@ void test_impact_and_moving_sounds()
         eaw::SimulationWorld hurt(0.1);
         eaw::CombatProfile tower;
         tower.health = 100.0F;
-        const auto unit = *hurt.spawn({.type_name = "Tower", .owner = 1, .combat = tower});
+        const auto unit = *test_spawn(hurt, {.type_name = "Tower", .owner = 1, .combat = tower});
         const auto tick = [&](const float damage)
         {
             if (damage > 0.0F)

@@ -209,7 +209,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
     };
     for (std::size_t index = 0; index < battle.entities.size(); ++index)
     {
-        asset.entity_looks.push_back(draw_placed(entity_models[index], &battle.entities[index].spawn.combat));
+        asset.entity_looks.push_back(draw_placed(entity_models[index], &battle.entities[index].recipe.combat));
     }
     for (const auto& model : decoration_models)
     {
@@ -323,7 +323,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         std::vector<std::uint32_t> keys;
         for (const auto& entity : battle.entities)
         {
-            collect_projectile_keys(entity.spawn.combat, keys);
+            collect_projectile_keys(entity.recipe.combat, keys);
         }
         for (const auto& type : battle.spawnable)
         {
@@ -335,7 +335,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         std::vector<const CombatProfile*> combats;
         for (const auto& entity : battle.entities)
         {
-            combats.push_back(&entity.spawn.combat);
+            combats.push_back(&entity.recipe.combat);
         }
         for (const auto& type : battle.spawnable)
         {
@@ -355,7 +355,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         collect_debris_effect_keys(asset.debris, keys);
         for (const auto& entity : battle.entities)
         {
-            collect_death_effect_keys(entity.spawn.combat, keys);
+            collect_death_effect_keys(entity.recipe.combat, keys);
         }
         for (const auto& type : battle.spawnable)
         {

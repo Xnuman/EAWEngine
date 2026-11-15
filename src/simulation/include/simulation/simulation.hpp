@@ -207,18 +207,16 @@ enum class WalkClip : std::uint8_t
 
 // Everything needed to create an entity. `type_name` is the XML object type (informational for
 // now); `visual` is an opaque presentation key chosen by the caller (for example a mesh index).
-struct EntitySpawn
+// What a type gives every entity of it (docs/ecs-design.md, 6.2 and decision 6): registered once
+// with SimulationWorld::add_recipe, which keeps identical recipes as one, and shared by the
+// entities spawned from it. Entities of one type that must differ (a company member taking its
+// team's speed, a placement scaled differently) are spawned from a recipe of their own.
+struct EntityRecipe
 {
-    bool operator==(const EntitySpawn&) const = default;
+    bool operator==(const EntityRecipe&) const = default;
     std::string type_name;
-    std::uint32_t owner{};
-    Vector3 position;
-    // Rotation about +Z in radians.
-    float heading{};
     // World units per second; zero means the entity cannot move.
     float max_speed{};
-    std::uint32_t visual{};
-    bool selectable{true};
     // Moves over the world's ground (height from the surface) instead of in a straight 3D line.
     bool follows_ground{};
     // Passability types a ground entity may enter (its movement class; see ground_map.hpp). Zero
@@ -237,19 +235,35 @@ struct EntitySpawn
     // Takes no slot in a formation move: goes to the ordered point on its own, at its own speed
     // (XML FormationGrouping Solo: walkers, the largest vehicles, air units, large creatures).
     bool formation_solo{};
-    // The company team it stands with in formations (formation.hpp).
-    FormationTeam formation_team;
     CrushProfile crush;
-    // Ground occupied while the entity exists (structures, walls, obstacle props).
-    std::optional<GroundFootprint> footprint;
     // Flight (fighters): above zero the entity never stops. It flies along its heading at no less than
     // this speed, steering toward its target (or its destination, which it circles on arrival) at
     // its turn rate, so attack runs overshoot and come back.
     float min_speed{};
-    Stance stance{Stance::aggressive};
     // Aims with its body instead of a turret (infantry): standing, it turns to face its target, and
     // it fires only while standing and facing the target within body_aim_tolerance.
     bool aims_with_body{};
+};
+
+// A recipe's place in the world's recipe store, in registration order.
+using RecipeId = std::uint32_t;
+
+// One entity to spawn: its recipe and what differs between entities of it.
+struct EntitySpawn
+{
+    bool operator==(const EntitySpawn&) const = default;
+    RecipeId recipe{};
+    std::uint32_t owner{};
+    Vector3 position;
+    // Rotation about +Z in radians.
+    float heading{};
+    std::uint32_t visual{};
+    bool selectable{true};
+    // The company team it stands with in formations (formation.hpp).
+    FormationTeam formation_team;
+    // Ground occupied while the entity exists (structures, walls, obstacle props), placed.
+    std::optional<GroundFootprint> footprint;
+    Stance stance{Stance::aggressive};
 };
 
 enum class SimCommandKind : std::uint8_t
@@ -630,6 +644,11 @@ public:
     // spawns go through spawn commands, so they apply at a tick boundary like every order. Spawn
     // data comes from map and mod content: a non-finite position, heading, or speed, or full entity
     // storage, returns an error and spawns nothing.
+    // Registers a recipe (validated) and returns its id; a recipe equal to one already registered
+    // returns that one's id.
+    [[nodiscard]] Result<RecipeId> add_recipe(EntityRecipe recipe);
+    [[nodiscard]] const EntityRecipe& recipe(RecipeId id) const;
+    [[nodiscard]] std::size_t recipe_count() const noexcept;
     [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn);
     // Ground for entities that follow it; entity footprints are stamped into a copy of its
     // passability (and removed when their entity is destroyed). A move order for a ground entity with passable_types is
@@ -670,7 +689,8 @@ private:
     struct CombatState
     {
         bool operator==(const CombatState&) const = default;
-        CombatProfile profile;
+        // The recipe's profile (shared by the entities of the recipe; recipes never change).
+        const CombatProfile* profile{};
         float health{};
         float shield{};
         EntityId target;
@@ -848,6 +868,8 @@ private:
         avoidance,
         // Combat's statistics: shots fired, hits, kills, and hardpoints destroyed so far (not hashed).
         combat_counters,
+        // The recipes entities are spawned from (append-only; a recipe never changes once added).
+        recipes,
         count,
     };
     static constexpr std::size_t sim_data_count = static_cast<std::size_t>(SimData::count);
@@ -861,14 +883,14 @@ private:
         bool operator==(const IdentityColumns&) const = default;
         static constexpr SimData data = SimData::identity;
         std::vector<EntityId> ids;
-        std::vector<std::string> type_names;
+        std::vector<RecipeId> recipes;
         std::vector<std::uint32_t> owners;
         std::vector<std::uint32_t> visuals;
         std::vector<std::uint8_t> selectable;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(ids);
-            visit(type_names);
+            visit(recipes);
             visit(owners);
             visit(visuals);
             visit(selectable);
@@ -911,7 +933,8 @@ private:
         static constexpr SimData data = SimData::locomotor;
         std::vector<float> max_speeds;
         std::vector<float> turn_rates;
-        std::vector<MovementProfile> movements;
+        // The recipe's profile (shared by the entities of the recipe).
+        std::vector<const MovementProfile*> movements;
         // The locomotor's own speed, which accelerates and brakes (MotionColumns::speeds is the
         // measured one).
         std::vector<float> drive_speeds;
@@ -1262,6 +1285,7 @@ private:
         visit(SimData::rules, rules_);
         visit(SimData::avoidance, avoidance_);
         visit(SimData::combat_counters, combat_counters_);
+        visit(SimData::recipes, recipes_);
     }
     // The systems step() ran inline before: the tick's commands and its event lists, the speeds
     // movement and separation produced, and the tick counter with the snapshot.
@@ -1398,6 +1422,14 @@ private:
     TickEvents events_;
     SlotTable slots_;
     Rules rules_;
+    // The recipes, in registration order; a deque, so the profiles entities point at never move.
+    struct RecipeStore
+    {
+        bool operator==(const RecipeStore&) const = default;
+        static constexpr SimData data = SimData::recipes;
+        std::deque<EntityRecipe> list;
+    };
+    RecipeStore recipes_;
     // Shots fired, hits, kills, and hardpoints destroyed so far (Stats; not hashed).
     struct CombatCounters
     {

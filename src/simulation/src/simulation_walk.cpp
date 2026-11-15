@@ -32,7 +32,7 @@ namespace {
 float SimulationWorld::MovementSystem::move_speed(const View& view, const std::size_t index, const float facing, const float distance, const float dt) noexcept
 {
     auto& locomotor = view.get<LocomotorColumns>();
-    return locomotor.movements[index].walk_stop_parts > 0 ? walk_speed(view, index, facing, distance, dt) : drive(view, index, wanted_speed(view, index, facing, distance), dt);
+    return locomotor.movements[index]->walk_stop_parts > 0 ? walk_speed(view, index, facing, distance, dt) : drive(view, index, wanted_speed(view, index, facing, distance), dt);
 }
 
 float SimulationWorld::MovementSystem::walk_speed(const View& view, const std::size_t index, const float facing, const float distance, const float dt) noexcept
@@ -40,7 +40,7 @@ float SimulationWorld::MovementSystem::walk_speed(const View& view, const std::s
     auto& locomotor = view.get<LocomotorColumns>();
     auto& route = view.get<RouteColumns>();
     auto& walk_clips = view.get<ComponentPool<WalkClipColumns>>();
-    const auto& movement = locomotor.movements[index];
+    const auto& movement = *locomotor.movements[index];
     auto& walk = walk_clips.get(slot_of(view, index), &WalkClipColumns::plans);
     auto& speed = locomotor.drive_speeds[index];
     const auto travel = travel_speed(view, index);
@@ -142,7 +142,7 @@ bool SimulationWorld::MovementSystem::wants_turn_in_place(const View& view, cons
     }
     const auto dx = point->x - placement.positions[index].x;
     const auto dy = point->y - placement.positions[index].y;
-    return (dx != 0.0F || dy != 0.0F) && std::fabs(wrap_angle(std::atan2(dy, dx) - placement.headings[index])) > locomotor.movements[index].turn_in_place_angle;
+    return (dx != 0.0F || dy != 0.0F) && std::fabs(wrap_angle(std::atan2(dy, dx) - placement.headings[index])) > locomotor.movements[index]->turn_in_place_angle;
 }
 
 bool SimulationWorld::MovementSystem::walk_straight(const View& view, const std::size_t index, const float dt)
@@ -154,7 +154,7 @@ bool SimulationWorld::MovementSystem::walk_straight(const View& view, const std:
     auto& group = view.get<GroupColumns>();
     auto& walk_clips = view.get<ComponentPool<WalkClipColumns>>();
     auto& ground = view.get<GroundState>();
-    const auto& movement = locomotor.movements[index];
+    const auto& movement = *locomotor.movements[index];
     auto& walk = walk_clips.get(slot_of(view, index), &WalkClipColumns::plans);
     // A raised leg goes up or down while nothing else moves.
     if (walk.clip == WalkClip::raising || walk.clip == WalkClip::lowering)
@@ -246,7 +246,7 @@ bool SimulationWorld::MovementSystem::turn_as_clips(const View& view, const std:
     auto& locomotor = view.get<LocomotorColumns>();
     auto& turn_clips = view.get<ComponentPool<TurnClipColumns>>();
     auto& walk_clips = view.get<ComponentPool<WalkClipColumns>>();
-    const auto& movement = locomotor.movements[index];
+    const auto& movement = *locomotor.movements[index];
     if (!(movement.turn_begin_seconds[0] > 0.0F) || !(movement.stopped_turn_rate > 0.0F))
     {
         return false;

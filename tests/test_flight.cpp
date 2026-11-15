@@ -13,7 +13,7 @@ void test_fighter_flight()
 {
     // A fighter: 120 units/s top speed, 75 minimum, a quarter turn per second (turn circle radius
     // about 48 at minimum speed).
-    const eaw::EntitySpawn fighter{.type_name = "Fighter", .owner = 1, .max_speed = 120.0F, .turn_rate = std::numbers::pi_v<float> / 2.0F, .min_speed = 75.0F};
+    const TestSpawn fighter{.type_name = "Fighter", .owner = 1, .max_speed = 120.0F, .turn_rate = std::numbers::pi_v<float> / 2.0F, .min_speed = 75.0F};
     const auto distance = [](const eaw::Vector3& a, const eaw::Vector3& b)
     {
         return std::hypot(a.x - b.x, a.y - b.y);
@@ -22,7 +22,7 @@ void test_fighter_flight()
     // Idle, it never stops but circles where it is; ordered away, it flies there and circles that point.
     {
         eaw::SimulationWorld world(0.1);
-        const auto id = world.spawn(fighter);
+        const auto id = test_spawn(world, fighter);
         require(id.ok(), "test spawn must succeed");
         // Snapshots exist from the first tick on; the fighter starts at the origin.
         eaw::Vector3 previous{};
@@ -53,8 +53,8 @@ void test_fighter_flight()
         armed.combat.weapons = {eaw::WeaponProfile{.range = 450.0F, .recharge_seconds = 1.0F, .damage = 1.0F}};
         eaw::CombatProfile station;
         station.health = 1.0e6F;
-        const auto attacker = world.spawn(armed);
-        const auto target = world.spawn({.type_name = "Station", .owner = 2, .position = {300.0F, 0.0F, 0.0F}, .combat = station});
+        const auto attacker = test_spawn(world, armed);
+        const auto target = test_spawn(world, {.type_name = "Station", .owner = 2, .position = {300.0F, 0.0F, 0.0F}, .combat = station});
         require(attacker.ok() && target.ok(), "test spawns must succeed");
         world.submit({.kind = eaw::SimCommandKind::attack, .entities = {*attacker}, .target_entity = *target});
         int passes = 0;
@@ -89,11 +89,11 @@ void test_fighter_flight()
 // mates (same owner) apart sideways; flyers of other owners pass through each other.
 void test_flight_plane_and_separation()
 {
-    const eaw::EntitySpawn fighter{
+    const TestSpawn fighter{
         .type_name = "Fighter", .owner = 1, .position = {0.0F, 0.0F, 100.0F}, .max_speed = 120.0F, .radius = 5.0F, .turn_rate = std::numbers::pi_v<float> / 2.0F, .min_speed = 75.0F};
     {
         eaw::SimulationWorld world(0.1);
-        const auto id = world.spawn(fighter);
+        const auto id = test_spawn(world, fighter);
         require(id.ok(), "test spawn must succeed");
         // An order to a point on another plane: the fighter turns left toward it but stays at its height.
         world.submit({eaw::SimCommandKind::move, {*id}, {0.0F, 1000.0F, 0.0F}});
@@ -111,7 +111,7 @@ void test_flight_plane_and_separation()
         eaw::SimulationWorld world(0.1);
         auto other = fighter;
         other.owner = second_owner;
-        require(world.spawn(fighter).ok() && world.spawn(other).ok(), "test spawns must succeed");
+        require(test_spawn(world, fighter).ok() && test_spawn(world, other).ok(), "test spawns must succeed");
         for (int tick = 0; tick < 60; ++tick)
         {
             world.step();
@@ -128,7 +128,7 @@ void test_flight_plane_and_separation()
 // and flyers of any class dogfight each other above and below their plane, returning to it after.
 void test_half_loops_and_dogfights()
 {
-    const eaw::EntitySpawn fighter{
+    const TestSpawn fighter{
         .type_name = "Fighter", .owner = 1, .position = {0.0F, 0.0F, 100.0F}, .max_speed = 120.0F, .radius = 5.0F, .turn_rate = std::numbers::pi_v<float> / 2.0F, .min_speed = 75.0F};
     const auto heading_error = [](const float heading, const float wanted)
     {
@@ -139,7 +139,7 @@ void test_half_loops_and_dogfights()
     // unwind, then returns to its plane and flies on.
     {
         eaw::SimulationWorld world(0.1);
-        const auto id = world.spawn(fighter);
+        const auto id = test_spawn(world, fighter);
         require(id.ok(), "test spawn must succeed");
         world.submit({eaw::SimCommandKind::move, {*id}, {-8000.0F, 0.0F, 0.0F}});
         float highest = 100.0F;
@@ -159,7 +159,7 @@ void test_half_loops_and_dogfights()
     // A goal off to the side is a flat turn.
     {
         eaw::SimulationWorld world(0.1);
-        const auto id = world.spawn(fighter);
+        const auto id = test_spawn(world, fighter);
         require(id.ok(), "test spawn must succeed");
         world.submit({eaw::SimCommandKind::move, {*id}, {0.0F, 3000.0F, 0.0F}});
         for (int tick = 0; tick < 100; ++tick)
@@ -186,7 +186,7 @@ void test_half_loops_and_dogfights()
         bomber.max_speed = 100.0F;
         bomber.min_speed = 60.0F;
         bomber.combat.health = 60.0F;
-        require(world.spawn(hunter).ok() && world.spawn(bomber).ok(), "test spawns must succeed");
+        require(test_spawn(world, hunter).ok() && test_spawn(world, bomber).ok(), "test spawns must succeed");
         float lowest = 100.0F;
         float highest = 100.0F;
         float farthest = 0.0F;

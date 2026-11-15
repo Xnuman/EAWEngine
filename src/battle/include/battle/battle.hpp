@@ -151,8 +151,8 @@ public:
     [[nodiscard]] const BattleLog& log() const noexcept;
 
 private:
-    [[nodiscard]] Result<SimCommand> translate(const BattleCommand& command) const;
-    [[nodiscard]] EntitySpawn spawn_of(std::size_t type_index, Vector3 position, std::uint32_t owner) const;
+    [[nodiscard]] Result<SimCommand> translate(const BattleCommand& command);
+    [[nodiscard]] Result<EntitySpawn> spawn_of(std::size_t type_index, Vector3 position, std::uint32_t owner, const TeamMovement* team = nullptr);
 
     SimulationWorld world_;
     std::vector<SpawnableType> spawnable_;
@@ -166,7 +166,7 @@ private:
     // spawnable types.
     std::unordered_map<std::uint32_t, Survivors> survivors_;
     // The next company team id (after the map's; FormationTeam::id).
-    mutable std::uint32_t next_team_{1};
+    std::uint32_t next_team_{1};
 };
 
 } // namespace eaw

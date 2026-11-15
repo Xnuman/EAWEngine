@@ -68,7 +68,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
             continue;
         }
         EAW_ASSERT_MSG(look.instance < scene.instances.size() && !scene.instances[look.instance].background,
-                       "entity '" + entity.spawn.type_name + "' names scene instance " + std::to_string(look.instance) + ", which is missing or a background");
+                       "entity '" + entity.recipe.type_name + "' names scene instance " + std::to_string(look.instance) + ", which is missing or a background");
         if (ids[index])
         {
             templates_.emplace(entity_key(*ids[index]),

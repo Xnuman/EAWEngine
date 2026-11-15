@@ -93,7 +93,13 @@ Battle::Battle(const BattleMap& map, std::string map_name, const double tick_sec
     map_ids_.reserve(map.entities.size());
     for (const auto& entity : map.entities)
     {
-        auto id = world_.spawn(entity.spawn);
+        auto spawn = entity.spawn;
+        const auto recipe = world_.add_recipe(entity.recipe);
+        if (recipe)
+        {
+            spawn.recipe = *recipe;
+        }
+        auto id = recipe ? world_.spawn(spawn) : Result<EntityId>(recipe.error());
         if (!id)
         {
             // Map data: one bad placement does not stop the rest of the map.
@@ -106,11 +112,11 @@ Battle::Battle(const BattleMap& map, std::string map_name, const double tick_sec
         {
             hinted_.emplace_back(*id, entity.hint);
         }
-        type_info_.try_emplace(ascii_lower(entity.spawn.type_name), entity.script);
+        type_info_.try_emplace(ascii_lower(entity.recipe.type_name), entity.script);
         next_team_ = std::max(next_team_, entity.spawn.formation_team.id + 1U);
         if (!entity.survivors.types.empty())
         {
-            survivors_.try_emplace(game_object_name_crc(entity.spawn.type_name), entity.survivors);
+            survivors_.try_emplace(game_object_name_crc(entity.recipe.type_name), entity.survivors);
         }
     }
     for (const auto& type : spawnable_)
@@ -218,7 +224,7 @@ void Battle::step()
     }
 }
 
-EntitySpawn Battle::spawn_of(const std::size_t type_index, Vector3 position, const std::uint32_t owner) const
+Result<EntitySpawn> Battle::spawn_of(const std::size_t type_index, Vector3 position, const std::uint32_t owner, const TeamMovement* team)
 {
     const auto& type = spawnable_[type_index];
     const auto& ground = world_.ground();
@@ -237,10 +243,16 @@ EntitySpawn Battle::spawn_of(const std::size_t type_index, Vector3 position, con
         // In space a unit takes its layer's height, whatever height the order names.
         position.z = type.layer_z_adjust;
     }
-    return make_spawn(type, {position, 0.0F, owner, spawnable_visual(type_index), ground.valid(), std::nullopt});
+    auto made = make_spawn(type, {position, 0.0F, owner, spawnable_visual(type_index), ground.valid(), std::nullopt});
+    if (team != nullptr)
+    {
+        apply_team_movement(*team, made.recipe);
+    }
+    EAW_TRY_ASSIGN(made.spawn.recipe, world_.add_recipe(std::move(made.recipe)));
+    return made.spawn;
 }
 
-Result<SimCommand> Battle::translate(const BattleCommand& command) const
+Result<SimCommand> Battle::translate(const BattleCommand& command)
 {
     if (!finite_point(command.point))
     {
@@ -272,7 +284,8 @@ Result<SimCommand> Battle::translate(const BattleCommand& command) const
         {
             for (const auto& spot : grid_targets(command.point, command.count, unit_spacing))
             {
-                translated.spawns.push_back(spawn_of(type_index, spot, command.owner));
+                EAW_TRY_ASSIGN(auto spawn, spawn_of(type_index, spot, command.owner));
+                translated.spawns.push_back(std::move(spawn));
             }
             return translated;
         }
@@ -291,9 +304,9 @@ Result<SimCommand> Battle::translate(const BattleCommand& command) const
             const auto slots = formation_slots(members, center, 0.0F);
             for (std::size_t member = 0; member < found->members.size(); ++member)
             {
-                translated.spawns.push_back(spawn_of(found->members[member], slots[member].position, command.owner));
-                apply_team_movement(found->team, translated.spawns.back());
-                translated.spawns.back().formation_team = members[member].team;
+                EAW_TRY_ASSIGN(auto spawn, spawn_of(found->members[member], slots[member].position, command.owner, &found->team));
+                spawn.formation_team = members[member].team;
+                translated.spawns.push_back(std::move(spawn));
             }
         }
         return translated;

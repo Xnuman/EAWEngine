@@ -39,15 +39,15 @@ void test_scene_presentation()
     eaw::VisualInstance unit{0};
     unit.transform.values[12] = 10.0F;
     scene.instances = {sky, unit};
-    eaw::EntitySpawn spawn;
+    TestSpawn spawn;
     spawn.type_name = "Test_Unit";
     spawn.position = {10.0F, 0.0F, 0.0F};
     spawn.max_speed = 10.0F;
     // The second entity's map data is not finite: it is skipped with a warning, the rest still spawn.
-    eaw::EntitySpawn broken = spawn;
+    TestSpawn broken = spawn;
     broken.type_name = "Broken_Unit";
     broken.position.x = std::numeric_limits<float>::infinity();
-    const std::array<eaw::MapEntity, 2> entities{{{spawn}, {broken}}};
+    const std::array<eaw::MapEntity, 2> entities{map_entity(spawn), map_entity(broken)};
     const std::array<eaw::MapEntityLook, 2> looks{{{1}, {1}}};
     eaw::SpawnableType spawnable;
     spawnable.type_name = "Spawned_Unit";
@@ -84,7 +84,7 @@ void test_scene_presentation()
             "a spawned type must be drawn at its Scale_Factor");
 
     // A marker (Is_Marker) is an entity scripts can find, but it is not drawn.
-    const eaw::MapEntity marker{spawn};
+    const eaw::MapEntity marker = map_entity(spawn);
     eaw::MapEntityLook marker_look{1};
     marker_look.hidden = true;
     eaw::BattleMap marker_map;

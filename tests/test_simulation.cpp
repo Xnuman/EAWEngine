@@ -12,8 +12,8 @@ void test_simulation_core()
 {
     // Movement: 3 units/s at 10 ticks/s reaches a point 1 unit away in four ticks (0.3 per tick).
     eaw::SimulationWorld world(0.1);
-    const auto mover = expect_ok(world.spawn({.type_name = "Mover", .owner = 1, .position = {0.0F, 0.0F, 0.0F}, .max_speed = 3.0F, .visual = 7}), "spawning the mover");
-    const auto statue = expect_ok(world.spawn({.type_name = "Statue", .position = {5.0F, 5.0F, 0.0F}}), "spawning the statue");
+    const auto mover = expect_ok(test_spawn(world, {.type_name = "Mover", .owner = 1, .position = {0.0F, 0.0F, 0.0F}, .max_speed = 3.0F, .visual = 7}), "spawning the mover");
+    const auto statue = expect_ok(test_spawn(world, {.type_name = "Statue", .position = {5.0F, 5.0F, 0.0F}}), "spawning the statue");
     world.submit({eaw::SimCommandKind::move, {mover, statue}, {1.0F, 0.0F, 0.0F}});
     world.step();
     const auto& first = world.snapshot();
@@ -34,7 +34,7 @@ void test_simulation_core()
     world.submit({eaw::SimCommandKind::move, {mover}, {2.0F, 0.0F, 0.0F}});
     world.step();
     require(world.stats().stale_references == 1, "a command naming a destroyed entity must count as stale");
-    const auto reused = expect_ok(world.spawn({.type_name = "Mover", .max_speed = 1.0F}), "spawning into a reused slot");
+    const auto reused = expect_ok(test_spawn(world, {.type_name = "Mover", .max_speed = 1.0F}), "spawning into a reused slot");
     require(reused.index == mover.index && reused.generation != mover.generation && !world.alive(mover) && world.alive(reused), "a reused slot must not revive the old id");
 
     // Determinism: identical histories give identical state; a different command does not.
@@ -44,8 +44,8 @@ void test_simulation_core()
         std::vector<eaw::EntityId> ids;
         for (int index = 0; index < 20; ++index)
         {
-            ids.push_back(
-                expect_ok(sim.spawn({.type_name = "Unit", .position = {static_cast<float>(index), 0.0F, 0.0F}, .heading = 0.1F * static_cast<float>(index), .max_speed = 12.5F}), "spawning a unit"));
+            ids.push_back(expect_ok(test_spawn(sim, {.type_name = "Unit", .position = {static_cast<float>(index), 0.0F, 0.0F}, .heading = 0.1F * static_cast<float>(index), .max_speed = 12.5F}),
+                                    "spawning a unit"));
         }
         sim.submit({eaw::SimCommandKind::move, {ids.begin(), ids.begin() + 10}, {target_x, 40.0F, 0.0F}});
         for (int tick = 0; tick < 45; ++tick)
@@ -65,7 +65,7 @@ void test_simulation_core()
     const auto subjects = [](const bool hold_fire)
     {
         eaw::SimulationWorld sim(1.0 / 30.0);
-        const auto id = expect_ok(sim.spawn({.type_name = "Unit", .position = {0.0F, 0.0F, 0.0F}, .max_speed = 10.0F}), "spawning a unit");
+        const auto id = expect_ok(test_spawn(sim, {.type_name = "Unit", .position = {0.0F, 0.0F, 0.0F}, .max_speed = 10.0F}), "spawning a unit");
         if (hold_fire)
         {
             sim.submit({.kind = eaw::SimCommandKind::set_stance, .entities = {id}, .stance = eaw::Stance::hold_fire});
@@ -97,16 +97,30 @@ void test_simulation_core()
             "snapshot interpolation must blend matching entities only");
 
     const auto entities_before = world.stats().entities;
-    const auto rejected = world.spawn({.type_name = "Bad", .position = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F}});
+    const auto rejected = test_spawn(world, {.type_name = "Bad", .position = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F}});
     require(!rejected && rejected.error().message.find("'Bad'") != std::string::npos && world.stats().entities == entities_before, "a non-finite spawn must be rejected");
+
+    // Recipes: an equal recipe is the same one, a variant its own; a bad recipe is refused when it is
+    // registered, and a spawn must name a registered recipe. Entities of one recipe share it.
+    eaw::SimulationWorld shared(1.0 / 30.0);
+    const auto tank = expect_ok(shared.add_recipe({.type_name = "Tank", .max_speed = 10.0F}), "registering a recipe");
+    const auto again = expect_ok(shared.add_recipe({.type_name = "Tank", .max_speed = 10.0F}), "registering it again");
+    const auto faster = expect_ok(shared.add_recipe({.type_name = "Tank", .max_speed = 12.0F}), "registering a variant");
+    const auto negative = shared.add_recipe({.type_name = "Broken", .radius = -1.0F});
+    require(tank == again && faster != tank && shared.recipe_count() == 2 && !negative && negative.error().message.find("'Broken'") != std::string::npos && shared.recipe(faster).max_speed == 12.0F,
+            "equal recipes must be one, variants their own, and bad recipes refused");
+    const auto first_tank = expect_ok(shared.spawn({.recipe = tank, .position = {0.0F, 0.0F, 0.0F}}), "spawning from a recipe");
+    const auto second_tank = expect_ok(shared.spawn({.recipe = tank, .position = {10.0F, 0.0F, 0.0F}}), "spawning from it again");
+    require(shared.type_name(first_tank) == "Tank" && shared.type_name(second_tank) == "Tank" && !shared.spawn({.recipe = 7}),
+            "entities of a recipe must share it, and a spawn must name a registered one");
 }
 
 // Snapshots report how fast each entity actually moved in the last tick.
 void test_snapshot_speed()
 {
     eaw::SimulationWorld world(0.1);
-    const auto walker = world.spawn({.type_name = "Walker", .max_speed = 10.0F});
-    const auto fighter = world.spawn({.type_name = "Fighter", .position = {0.0F, 500.0F, 0.0F}, .max_speed = 120.0F, .turn_rate = 1.5F, .min_speed = 75.0F});
+    const auto walker = test_spawn(world, {.type_name = "Walker", .max_speed = 10.0F});
+    const auto fighter = test_spawn(world, {.type_name = "Fighter", .position = {0.0F, 500.0F, 0.0F}, .max_speed = 120.0F, .turn_rate = 1.5F, .min_speed = 75.0F});
     require(walker.ok() && fighter.ok(), "test spawns must succeed");
     world.step();
     require(world.snapshot().entities[0].speed == 0.0F && world.snapshot().entities[1].speed >= 74.9F, "an idle unit must report no speed and a fighter at least its minimum");
@@ -136,9 +150,9 @@ void test_death_snapshots()
     eaw::CombatProfile frail;
     frail.health = 40.0F;
     frail.death_effect = 77U;
-    (void)world.spawn({.type_name = "Gun", .owner = 1, .combat = gun});
-    const auto victim = world.spawn({.type_name = "Victim", .owner = 2, .position = {100.0F, 20.0F, 0.0F}, .heading = 1.0F, .combat = frail});
-    const auto bystander = world.spawn({.type_name = "Bystander", .owner = 1, .position = {-50.0F, 0.0F, 0.0F}});
+    (void)test_spawn(world, {.type_name = "Gun", .owner = 1, .combat = gun});
+    const auto victim = test_spawn(world, {.type_name = "Victim", .owner = 2, .position = {100.0F, 20.0F, 0.0F}, .heading = 1.0F, .combat = frail});
+    const auto bystander = test_spawn(world, {.type_name = "Bystander", .owner = 1, .position = {-50.0F, 0.0F, 0.0F}});
     require(victim.ok() && bystander.ok(), "test spawns must succeed");
     std::size_t deaths = 0;
     std::size_t hull_impacts = 0;

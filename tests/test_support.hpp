@@ -36,6 +36,7 @@
 #include "localization/localization_scan.hpp"
 #include "localization/localization_workspace.hpp"
 #include "simulation/simulation.hpp"
+#include "battle/battle_map.hpp"
 #include "battle/combat_content.hpp"
 #include "presentation/debug_draw.hpp"
 #include "presentation/scene_presentation.hpp"
@@ -141,4 +142,74 @@ std::vector<std::byte> make_test_dat();
 // shape group.
 std::vector<std::byte> make_test_particle_system(const std::int32_t death_child, const bool unknown_property = false, const bool short_group = false);
 
+// An entity as tests describe it: its recipe's fields and its instance's in one flat list (the
+// layout EntitySpawn had before recipes), so a test names only what it needs. test_spawn registers
+// the recipe and spawns the instance; map_entity makes a battle map's entity of it.
+struct TestSpawn
+{
+    std::string type_name;
+    std::uint32_t owner{};
+    eaw::Vector3 position;
+    float heading{};
+    float max_speed{};
+    std::uint32_t visual{};
+    bool selectable{true};
+    bool follows_ground{};
+    std::uint32_t passable_types{};
+    eaw::CombatProfile combat;
+    float radius{};
+    float turn_rate{};
+    eaw::MovementProfile movement;
+    std::uint32_t formation_order{2};
+    float formation_spacing{0.5F};
+    bool formation_solo{};
+    eaw::FormationTeam formation_team;
+    eaw::CrushProfile crush;
+    std::optional<eaw::GroundFootprint> footprint;
+    float min_speed{};
+    eaw::Stance stance{eaw::Stance::aggressive};
+    bool aims_with_body{};
+};
+
+inline eaw::EntityRecipe recipe_of(const TestSpawn& spawn)
+{
+    return {.type_name = spawn.type_name,
+            .max_speed = spawn.max_speed,
+            .follows_ground = spawn.follows_ground,
+            .passable_types = spawn.passable_types,
+            .combat = spawn.combat,
+            .radius = spawn.radius,
+            .turn_rate = spawn.turn_rate,
+            .movement = spawn.movement,
+            .formation_order = spawn.formation_order,
+            .formation_spacing = spawn.formation_spacing,
+            .formation_solo = spawn.formation_solo,
+            .crush = spawn.crush,
+            .min_speed = spawn.min_speed,
+            .aims_with_body = spawn.aims_with_body};
+}
+
+inline eaw::EntitySpawn instance_of(const TestSpawn& spawn, const eaw::RecipeId recipe = 0)
+{
+    return {.recipe = recipe,
+            .owner = spawn.owner,
+            .position = spawn.position,
+            .heading = spawn.heading,
+            .visual = spawn.visual,
+            .selectable = spawn.selectable,
+            .formation_team = spawn.formation_team,
+            .footprint = spawn.footprint,
+            .stance = spawn.stance};
+}
+
+inline eaw::Result<eaw::EntityId> test_spawn(eaw::SimulationWorld& world, const TestSpawn& spawn)
+{
+    EAW_TRY_ASSIGN(const auto recipe, world.add_recipe(recipe_of(spawn)));
+    return world.spawn(instance_of(spawn, recipe));
+}
+
+inline eaw::MapEntity map_entity(const TestSpawn& spawn)
+{
+    return {recipe_of(spawn), instance_of(spawn)};
+}
 } // namespace eaw_test

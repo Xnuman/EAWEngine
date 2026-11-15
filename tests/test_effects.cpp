@@ -843,7 +843,7 @@ void test_trails()
             return std::optional<float>(0.0F);
         });
     eaw::SimulationWorld world(0.1);
-    const auto tank = *world.spawn({.type_name = "Tank", .owner = 1});
+    const auto tank = *test_spawn(world, {.type_name = "Tank", .owner = 1});
     const eaw::UnitAnimator animator(std::span<const eaw::VisualRig>{}, std::span<const eaw::Matrix4>{});
     const auto drive = [&](const float x, const double seconds)
     {

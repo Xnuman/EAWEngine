@@ -298,12 +298,12 @@ void SandboxSession::apply_content(eaw::SandboxContent content)
         if (!scene.instances.empty())
         {
             const auto& matrix = scene.instances.front().transform;
-            eaw::EntitySpawn spawn;
-            spawn.type_name = scene.name;
-            spawn.position = eaw::translation(matrix);
-            spawn.heading = eaw::model_forward_heading(matrix);
-            spawn.visual = scene.instances.front().mesh;
-            model_entity.push_back({std::move(spawn)});
+            eaw::MapEntity entity;
+            entity.recipe.type_name = scene.name;
+            entity.spawn.position = eaw::translation(matrix);
+            entity.spawn.heading = eaw::model_forward_heading(matrix);
+            entity.spawn.visual = scene.instances.front().mesh;
+            model_entity.push_back(std::move(entity));
             model_look.push_back({0});
         }
         const auto layout = presentation_layout(scene);

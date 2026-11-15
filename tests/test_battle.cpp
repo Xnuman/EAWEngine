@@ -331,7 +331,7 @@ void test_combat_content()
         eaw::assign_teams(members, {}, rows, next_team);
         require(members[0].team.id == 5 && members[8].team.id == 5 && members[9].team.id == 6 && members[19].team.id == 7 && next_team == 8, "teams of nine must take consecutive ids");
     }
-    eaw::EntitySpawn member{.max_speed = 30.0F, .turn_rate = 2.0F};
+    eaw::EntityRecipe member{.max_speed = 30.0F, .turn_rate = 2.0F};
     eaw::apply_team_movement(team, member);
     require(member.max_speed == *team.max_speed && member.turn_rate == 2.0F && member.movement.acceleration == *team.acceleration, "team movement must replace only what the team sets");
     const auto paced = eaw::combat_profile(catalog, *definition("Paced"), content, warnings);
@@ -905,7 +905,7 @@ void test_battle_object_scripts()
     broken.script.lua_script = "No_Such_Script";
     const std::array<eaw::SpawnableType, 2> types{walker, broken};
     eaw::MapEntity beacon;
-    beacon.spawn.type_name = "Beacon";
+    beacon.recipe.type_name = "Beacon";
     beacon.spawn.owner = 2;
     beacon.spawn.position = {300.0F, 0.0F, 0.0F};
     beacon.script.lua_script = "Guard";
@@ -988,14 +988,14 @@ void test_type_recipe()
     const eaw::Vector3 where{100.0F, 50.0F, 0.0F};
     const auto spawned = eaw::make_spawn(wall, {where, 0.5F, 1, 0, true, std::nullopt});
     const auto placed = eaw::make_spawn(wall, {where, 0.5F, 1, 0, true, eaw::placement_transform(where, 0.5F, 1.0F)});
-    require(spawned.footprint && placed.footprint && *spawned.footprint == *placed.footprint && spawned.footprint->passability == eaw::passability::obstacle &&
-                spawned.footprint->half_length == 5.0F && spawned.footprint->half_width == 10.0F && spawned.radius == 0.0F && spawned.owner == 1U,
+    require(spawned.spawn.footprint && placed.spawn.footprint && *spawned.spawn.footprint == *placed.spawn.footprint && spawned.spawn.footprint->passability == eaw::passability::obstacle &&
+                spawned.spawn.footprint->half_length == 5.0F && spawned.spawn.footprint->half_width == 10.0F && spawned.recipe.radius == 0.0F && spawned.spawn.owner == 1U,
             "a runtime-spawned obstacle must block the ground as a placed one does");
 
     eaw::TypeRecipe station;
     station.type_name = "Station";
     station.space_obstacle_radius = 130.0F;
-    require(eaw::make_spawn(station, {where, 0.0F, 2, 0, false, std::nullopt}).radius == 130.0F && !eaw::make_spawn(station, {where, 0.0F, 2, 0, false, std::nullopt}).footprint,
+    require(eaw::make_spawn(station, {where, 0.0F, 2, 0, false, std::nullopt}).recipe.radius == 130.0F && !eaw::make_spawn(station, {where, 0.0F, 2, 0, false, std::nullopt}).spawn.footprint,
             "an immobile space object must keep ships clear by its radius however it appears");
 
     eaw::TypeRecipe tank;
@@ -1009,8 +1009,9 @@ void test_type_recipe()
     const auto unplaced = eaw::make_spawn(tank, {where, 0.0F, 1, 0, true, std::nullopt});
     const auto doubled = eaw::make_spawn(tank, {where, 0.0F, 1, 0, true, eaw::placement_transform(where, 0.0F, 2.0F)});
     const auto off_ground = eaw::make_spawn(tank, {where, 0.0F, 1, 0, false, std::nullopt});
-    require(unplaced.radius == 2.0F && near(doubled.radius, 4.0F) && unplaced.follows_ground && unplaced.aims_with_body && unplaced.passable_types == eaw::passability::clear &&
-                !off_ground.follows_ground && !off_ground.aims_with_body && off_ground.passable_types == 0U && !unplaced.footprint,
+    require(unplaced.recipe.radius == 2.0F && near(doubled.recipe.radius, 4.0F) && unplaced.recipe.follows_ground && unplaced.recipe.aims_with_body &&
+                unplaced.recipe.passable_types == eaw::passability::clear && !off_ground.recipe.follows_ground && !off_ground.recipe.aims_with_body && off_ground.recipe.passable_types == 0U &&
+                !unplaced.spawn.footprint,
             "a mobile type must take its radius from its placement's scale, and follow the ground only where there is one");
 }
 

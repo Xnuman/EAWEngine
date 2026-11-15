@@ -84,45 +84,85 @@ void SimulationWorld::check_entity_table()
     EAW_ASSERT_MSG(end - first == group_bytes, "for_each_group must list every component group of the entity table");
 }
 
-Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
+Result<RecipeId> SimulationWorld::add_recipe(EntityRecipe recipe)
 {
-    if (!is_finite(spawn.position) || !std::isfinite(spawn.heading) || !std::isfinite(spawn.max_speed) || spawn.max_speed < 0.0F)
+    if (!std::isfinite(recipe.max_speed) || recipe.max_speed < 0.0F)
     {
-        return make_error("entity spawn '" + spawn.type_name + "' has a non-finite position, heading, or speed");
+        return make_error("entity recipe '" + recipe.type_name + "' has a non-finite or negative speed");
     }
-    if (!valid_amount(spawn.radius) || !valid_amount(spawn.turn_rate) || !valid_amount(spawn.formation_spacing) || !valid_amount(spawn.min_speed) || !valid_amount(spawn.formation_team.spacing) ||
-        !valid_amount(spawn.formation_team.raggedness))
+    if (!valid_amount(recipe.radius) || !valid_amount(recipe.turn_rate) || !valid_amount(recipe.formation_spacing) || !valid_amount(recipe.min_speed))
     {
-        return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite radius, turn rate, minimum speed, or formation spacing");
+        return make_error("entity recipe '" + recipe.type_name + "' has a negative or non-finite radius, turn rate, minimum speed, or formation spacing");
     }
-    if (const auto& movement = spawn.movement; !valid_amount(movement.acceleration) || !valid_amount(movement.deceleration) || !valid_amount(movement.turn_speed_fraction) ||
-                                               movement.turn_speed_fraction > 1.0F || !valid_amount(movement.stopped_turn_rate) || !valid_amount(movement.turn_in_place_angle) ||
-                                               !valid_amount(movement.turn_in_place_rate) || !std::ranges::all_of(movement.turn_begin_seconds, valid_amount) ||
-                                               !std::ranges::all_of(movement.turn_loop_seconds, valid_amount) || !std::ranges::all_of(movement.turn_end_seconds, valid_amount) ||
-                                               !std::ranges::all_of(movement.turn_half_seconds, valid_amount) || !std::ranges::all_of(movement.turn_quarter_seconds, valid_amount) ||
-                                               !valid_amount(movement.walk_start_seconds) || !valid_amount(movement.walk_stride_seconds) || !valid_amount(movement.walk_stop_seconds) ||
-                                               !valid_amount(movement.walk_raise_seconds) || !valid_amount(movement.walk_lower_seconds))
+    if (const auto& movement = recipe.movement; !valid_amount(movement.acceleration) || !valid_amount(movement.deceleration) || !valid_amount(movement.turn_speed_fraction) ||
+                                                movement.turn_speed_fraction > 1.0F || !valid_amount(movement.stopped_turn_rate) || !valid_amount(movement.turn_in_place_angle) ||
+                                                !valid_amount(movement.turn_in_place_rate) || !std::ranges::all_of(movement.turn_begin_seconds, valid_amount) ||
+                                                !std::ranges::all_of(movement.turn_loop_seconds, valid_amount) || !std::ranges::all_of(movement.turn_end_seconds, valid_amount) ||
+                                                !std::ranges::all_of(movement.turn_half_seconds, valid_amount) || !std::ranges::all_of(movement.turn_quarter_seconds, valid_amount) ||
+                                                !valid_amount(movement.walk_start_seconds) || !valid_amount(movement.walk_stride_seconds) || !valid_amount(movement.walk_stop_seconds) ||
+                                                !valid_amount(movement.walk_raise_seconds) || !valid_amount(movement.walk_lower_seconds))
     {
-        return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite movement value, or a turn speed fraction above 1");
+        return make_error("entity recipe '" + recipe.type_name + "' has a negative or non-finite movement value, or a turn speed fraction above 1");
     }
-    if (const auto& movement = spawn.movement;
+    if (const auto& movement = recipe.movement;
         movement.walk_stop_parts > max_walk_stop_parts ||
         (movement.walk_stop_parts > 0 && (!(movement.walk_start_seconds > 0.0F) || !(movement.walk_stride_seconds > 0.0F) || !(movement.walk_stop_seconds > 0.0F))))
     {
-        return make_error("entity spawn '" + spawn.type_name + "' walks as clips without the clips' times, or with more than " + std::to_string(max_walk_stop_parts) + " stops");
+        return make_error("entity recipe '" + recipe.type_name + "' walks as clips without the clips' times, or with more than " + std::to_string(max_walk_stop_parts) + " stops");
+    }
+    if (!valid_profile(recipe.combat))
+    {
+        return make_error("entity recipe '" + recipe.type_name + "' has a negative or non-finite combat value");
+    }
+    for (std::size_t index = 0; index < recipes_.list.size(); ++index)
+    {
+        if (recipes_.list[index] == recipe)
+        {
+            return static_cast<RecipeId>(index);
+        }
+    }
+    if (recipes_.list.size() >= std::numeric_limits<RecipeId>::max())
+    {
+        return make_error("simulation recipe storage is full");
+    }
+    recipes_.list.push_back(std::move(recipe));
+    return static_cast<RecipeId>(recipes_.list.size() - 1U);
+}
+
+const EntityRecipe& SimulationWorld::recipe(const RecipeId id) const
+{
+    EAW_ASSERT_MSG(id < recipes_.list.size(), "a recipe id must come from add_recipe");
+    return recipes_.list[id];
+}
+
+std::size_t SimulationWorld::recipe_count() const noexcept
+{
+    return recipes_.list.size();
+}
+
+Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
+{
+    if (spawn.recipe >= recipes_.list.size())
+    {
+        return make_error("entity spawn names recipe " + std::to_string(spawn.recipe) + ", which is not registered");
+    }
+    const auto& recipe = recipes_.list[spawn.recipe];
+    if (!is_finite(spawn.position) || !std::isfinite(spawn.heading))
+    {
+        return make_error("entity spawn '" + recipe.type_name + "' has a non-finite position or heading");
+    }
+    if (!valid_amount(spawn.formation_team.spacing) || !valid_amount(spawn.formation_team.raggedness))
+    {
+        return make_error("entity spawn '" + recipe.type_name + "' has a negative or non-finite formation team spacing");
     }
     if (spawn.stance != Stance::aggressive && spawn.stance != Stance::hold_position && spawn.stance != Stance::hold_fire)
     {
-        return make_error("entity spawn '" + spawn.type_name + "' has an unknown stance");
+        return make_error("entity spawn '" + recipe.type_name + "' has an unknown stance");
     }
     if (const auto& footprint = spawn.footprint;
         footprint && (!is_finite(footprint->center) || !valid_amount(footprint->half_length) || !valid_amount(footprint->half_width) || !std::isfinite(footprint->heading)))
     {
-        return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite footprint");
-    }
-    if (!valid_profile(spawn.combat))
-    {
-        return make_error("entity spawn '" + spawn.type_name + "' has a negative or non-finite combat value");
+        return make_error("entity spawn '" + recipe.type_name + "' has a negative or non-finite footprint");
     }
     if (identity_.ids.size() >= no_dense)
     {
@@ -142,16 +182,16 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     }
     const EntityId id{slot, slots_.generations[slot]};
     slots_.dense[slot] = static_cast<std::uint32_t>(identity_.ids.size());
-    if (spawn.movement.turn_begin_seconds[0] > 0.0F)
+    if (recipe.movement.turn_begin_seconds[0] > 0.0F)
     {
         turn_clips_.add(slot);
     }
-    if (spawn.movement.walk_stop_parts > 0 || spawn.movement.walk_raise_seconds > 0.0F)
+    if (recipe.movement.walk_stop_parts > 0 || recipe.movement.walk_raise_seconds > 0.0F)
     {
         walk_clips_.add(slot);
     }
     // A minimum speed above 0 makes a flyer (FlightColumns::min_speeds).
-    const auto min_speed = std::min(spawn.min_speed, spawn.max_speed);
+    const auto min_speed = std::min(recipe.min_speed, recipe.max_speed);
     if (min_speed > 0.0F)
     {
         flight_maneuvers_.add(slot);
@@ -160,38 +200,38 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     {
         footprint_.columns.shapes[footprint_.add(slot)] = *spawn.footprint;
     }
-    if (spawn.crush != CrushProfile{})
+    if (recipe.crush != CrushProfile{})
     {
-        crush_.columns.profiles[crush_.add(slot)] = spawn.crush;
+        crush_.columns.profiles[crush_.add(slot)] = recipe.crush;
     }
     identity_.ids.push_back(id);
     placement_.positions.push_back(spawn.position);
     placement_.headings.push_back(wrap_angle(spawn.heading));
-    locomotor_.max_speeds.push_back(spawn.max_speed);
+    locomotor_.max_speeds.push_back(recipe.max_speed);
     route_.move_targets.emplace_back();
     identity_.owners.push_back(spawn.owner);
     identity_.visuals.push_back(spawn.visual);
     identity_.selectable.push_back(spawn.selectable ? 1U : 0U);
-    identity_.type_names.push_back(spawn.type_name);
-    ground_mover_.follows_ground.push_back(spawn.follows_ground ? 1U : 0U);
-    ground_mover_.passable_types.push_back(spawn.passable_types);
+    identity_.recipes.push_back(spawn.recipe);
+    ground_mover_.follows_ground.push_back(recipe.follows_ground ? 1U : 0U);
+    ground_mover_.passable_types.push_back(recipe.passable_types);
     route_.paths.emplace_back();
-    combat_.states.push_back({.profile = spawn.combat, .health = spawn.combat.health, .shield = spawn.combat.shield});
-    combat_.states.back().weapons.resize(spawn.combat.weapons.size());
-    for (const auto& hardpoint : spawn.combat.hardpoints)
+    combat_.states.push_back({.profile = &recipe.combat, .health = recipe.combat.health, .shield = recipe.combat.shield});
+    combat_.states.back().weapons.resize(recipe.combat.weapons.size());
+    for (const auto& hardpoint : recipe.combat.hardpoints)
     {
         combat_.states.back().hardpoint_health.push_back(hardpoint.health);
     }
-    placement_.radii.push_back(spawn.radius);
-    locomotor_.turn_rates.push_back(spawn.turn_rate);
+    placement_.radii.push_back(recipe.radius);
+    locomotor_.turn_rates.push_back(recipe.turn_rate);
     flight_.min_speeds.push_back(min_speed);
-    locomotor_.movements.push_back(spawn.movement);
+    locomotor_.movements.push_back(&recipe.movement);
     locomotor_.drive_speeds.push_back(0.0F);
     route_.loiter_points.emplace_back();
     route_.remaining.push_back(0.0F);
     route_.detours.emplace_back();
     combat_.stances.push_back(spawn.stance);
-    combat_.aims_with_body.push_back(spawn.aims_with_body ? 1U : 0U);
+    combat_.aims_with_body.push_back(recipe.aims_with_body ? 1U : 0U);
     placement_.pitches.push_back(0.0F);
     flight_.cruise_heights.push_back(spawn.position.z);
     motion_.speeds.push_back(0.0F);
@@ -202,9 +242,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
     locomotor_.suspended.push_back(0);
     locomotor_.arriving.push_back(0);
     steering_.intents.emplace_back();
-    formation_.orders.push_back(spawn.formation_order);
-    formation_.spacings.push_back(spawn.formation_spacing);
-    formation_.solos.push_back(spawn.formation_solo ? 1U : 0U);
+    formation_.orders.push_back(recipe.formation_order);
+    formation_.spacings.push_back(recipe.formation_spacing);
+    formation_.solos.push_back(recipe.formation_solo ? 1U : 0U);
     formation_.teams.push_back(spawn.formation_team);
     locomotor_.speed_limits.push_back(0.0F);
     group_.ids.push_back(0);
@@ -218,7 +258,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn)
             EAW_ASSERT_MSG(column.size() == identity_.ids.size(), "every entity column needs one entry per entity (a column missing from spawn or for_each_column)");
         });
     stamp_footprint(identity_.ids.size() - 1U, true);
-    if (spawn.follows_ground && ground_.map.valid())
+    if (recipe.follows_ground && ground_.map.valid())
     {
         placement_.positions.back().z = ground_.map.surface_height(spawn.position.x, spawn.position.y);
     }
@@ -277,7 +317,7 @@ void SimulationWorld::PublishSystem::run(const View& view)
 std::string_view SimulationWorld::type_name(const EntityId id) const noexcept
 {
     const auto dense = dense_index(*this, id);
-    return dense ? std::string_view(identity_.type_names[*dense]) : std::string_view{};
+    return dense ? std::string_view(recipes_.list[identity_.recipes[*dense]].type_name) : std::string_view{};
 }
 
 bool SimulationWorld::alive(const EntityId id) const noexcept
@@ -387,7 +427,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(placement_.radii[index]);
         hasher.add(locomotor_.turn_rates[index]);
         hasher.add(flight_.min_speeds[index]);
-        const auto& movement = locomotor_.movements[index];
+        const auto& movement = *locomotor_.movements[index];
         hasher.add(movement.acceleration);
         hasher.add(movement.deceleration);
         hasher.add(movement.turn_speed_fraction);
@@ -447,7 +487,8 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(combat_.stances[index]);
         hasher.subject = StateSubject::bodies;
         hasher.add(combat_.aims_with_body[index]);
-        hasher.add_bytes(identity_.type_names[index].data(), identity_.type_names[index].size());
+        const auto& type_name = recipes_.list[identity_.recipes[index]].type_name;
+        hasher.add_bytes(type_name.data(), type_name.size());
         hasher.subject = StateSubject::flight;
         hasher.add(placement_.pitches[index]);
         hasher.add(flight_.cruise_heights[index]);
@@ -706,9 +747,9 @@ void SimulationWorld::PublishSystem::publish(const View& view)
         const auto& state = combat.states[index];
         std::uint32_t destroyable = 0;
         std::uint32_t destroyed = 0;
-        for (std::size_t hardpoint = 0; hardpoint < state.profile.hardpoints.size(); ++hardpoint)
+        for (std::size_t hardpoint = 0; hardpoint < state.profile->hardpoints.size(); ++hardpoint)
         {
-            if (state.profile.hardpoints[hardpoint].health > 0.0F)
+            if (state.profile->hardpoints[hardpoint].health > 0.0F)
             {
                 ++destroyable;
                 destroyed += state.hardpoint_health[hardpoint] <= 0.0F ? 1U : 0U;
@@ -727,9 +768,9 @@ void SimulationWorld::PublishSystem::publish(const View& view)
                                      locomotor.max_speeds[index],
                                      ground_mover.follows_ground[index] != 0,
                                      state.health,
-                                     state.profile.health,
+                                     state.profile->health,
                                      state.shield,
-                                     state.profile.shield,
+                                     state.profile->shield,
                                      state.target,
                                      placement.radii[index],
                                      destroyable,
@@ -743,7 +784,7 @@ void SimulationWorld::PublishSystem::publish(const View& view)
                                      orders.command_serials[index],
                                      orders.standing[index].kind,
                                      locomotor.arriving[index] != 0});
-        snapshot.entities.back().turns_as_clips = locomotor.movements[index].turn_begin_seconds[0] > 0.0F && locomotor.movements[index].stopped_turn_rate > 0.0F;
+        snapshot.entities.back().turns_as_clips = locomotor.movements[index]->turn_begin_seconds[0] > 0.0F && locomotor.movements[index]->stopped_turn_rate > 0.0F;
         if (turning_as_clips(view, index))
         {
             const auto& plan = turn_clips.get(slot_of(view, index), &TurnClipColumns::plans);
@@ -753,7 +794,7 @@ void SimulationWorld::PublishSystem::publish(const View& view)
             entity.turn_left = plan.way > 0.0F;
             entity.turn_progress = point.progress;
         }
-        if (const auto& movement = locomotor.movements[index]; movement.walk_stop_parts > 0)
+        if (const auto& movement = *locomotor.movements[index]; movement.walk_stop_parts > 0)
         {
             const auto& walk = walk_clips.get(slot_of(view, index), &WalkClipColumns::plans);
             auto& entity = snapshot.entities.back();

@@ -48,8 +48,8 @@ void arrange_companies(BattleMapAsset& asset, std::vector<BuiltModel>& models, s
         for (auto index = first; index < last; ++index)
         {
             const auto& member = members[index];
-            const auto& spawn = asset.entities[member.entity].spawn;
-            const auto radius = spawn.radius > 0.0F ? spawn.radius : model_footprint_radius(bounds[member.entity], models[member.entity].transform);
+            const auto& recipe = asset.entities[member.entity].recipe;
+            const auto radius = recipe.radius > 0.0F ? recipe.radius : model_footprint_radius(bounds[member.entity], models[member.entity].transform);
             formation.push_back({EntityId{static_cast<std::uint32_t>(index + 1U), 1}, center, radius, type_formation_spacing(catalog, *member.type), type_formation_order(catalog, *member.type)});
             raggedness.push_back(type_formation_raggedness(catalog, *member.type));
         }
@@ -291,7 +291,7 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
         // Heading is the direction of the model's forward (-Y) axis about +Z.
         const auto position = translation(matrix);
         const auto heading = model_forward_heading(matrix);
-        EntitySpawn spawn;
+        PreparedSpawn made;
         const TypeRecipe* recipe = nullptr;
         if (placement.type != nullptr)
         {
@@ -301,25 +301,25 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
                 entry->second = build_type_recipe(spawnable_build, *placement.type, placement.model_path, *host_model, attachments);
             }
             recipe = &entry->second;
-            spawn = make_spawn(*recipe, {position, heading, placed.player, 0, asset.ground.valid(), matrix});
-            if (spawn.max_speed > 0.0F && placement.container != nullptr && placement.needs_formation)
+            made = make_spawn(*recipe, {position, heading, placed.player, 0, asset.ground.valid(), matrix});
+            if (made.recipe.max_speed > 0.0F && placement.container != nullptr && placement.needs_formation)
             {
-                apply_team_movement(type_team_movement(catalog, *placement.container, speed_multiplier), spawn);
+                apply_team_movement(type_team_movement(catalog, *placement.container, speed_multiplier), made.recipe);
             }
-            asset.obstacle_footprints += spawn.footprint ? 1U : 0U;
-            asset.space_obstacles += !asset.land && spawn.max_speed <= 0.0F && spawn.radius > 0.0F ? 1U : 0U;
+            asset.obstacle_footprints += made.spawn.footprint ? 1U : 0U;
+            asset.space_obstacles += !asset.land && made.recipe.max_speed <= 0.0F && made.recipe.radius > 0.0F ? 1U : 0U;
         }
         else
         {
-            spawn.owner = placed.player;
-            spawn.position = position;
-            spawn.heading = heading;
+            made.spawn.owner = placed.player;
+            made.spawn.position = position;
+            made.spawn.heading = heading;
         }
         if (placement.needs_formation)
         {
             company_members.push_back({placement.object_index, asset.entities.size(), placement.type, placement.container});
         }
-        asset.entities.push_back({std::move(spawn), recipe != nullptr ? recipe->script : ScriptTypeInfo{}, placed.hint, recipe != nullptr ? recipe->survivors : Survivors{}});
+        asset.entities.push_back({std::move(made.recipe), made.spawn, recipe != nullptr ? recipe->script : ScriptTypeInfo{}, placed.hint, recipe != nullptr ? recipe->survivors : Survivors{}});
         entity_models.push_back({placement.model_path, std::move(attachments), placement.type, matrix, model_scale, placed.player});
         entity_bounds.push_back(bounds);
     }

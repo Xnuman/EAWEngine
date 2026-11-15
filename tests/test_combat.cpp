@@ -48,10 +48,10 @@ void test_combat()
     target.health = 25.0F;
     target.armor_type = 2;
     auto world = make_world();
-    const auto shooter = world.spawn({.type_name = "Shooter", .owner = 1, .combat = gun});
-    const auto victim = world.spawn({.type_name = "Victim", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = target});
-    const auto bystander = world.spawn({.type_name = "Neutral", .owner = 3, .position = {20.0F, 0.0F, 0.0F}, .combat = target});
-    const auto distant = world.spawn({.type_name = "Distant", .owner = 2, .position = {500.0F, 0.0F, 0.0F}, .combat = target});
+    const auto shooter = test_spawn(world, {.type_name = "Shooter", .owner = 1, .combat = gun});
+    const auto victim = test_spawn(world, {.type_name = "Victim", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = target});
+    const auto bystander = test_spawn(world, {.type_name = "Neutral", .owner = 3, .position = {20.0F, 0.0F, 0.0F}, .combat = target});
+    const auto distant = test_spawn(world, {.type_name = "Distant", .owner = 2, .position = {500.0F, 0.0F, 0.0F}, .combat = target});
     require(shooter && victim && bystander && distant, "test spawns must succeed");
     world.step();
     require(world.snapshot().entities[1].health == 20.0F && world.snapshot().entities[0].target == *victim, "an armed entity must target the nearest hostile in range and fire");
@@ -75,8 +75,8 @@ void test_combat()
         auto shielded = target;
         shielded.shield = 8.0F;
         shielded.shield_armor_type = 3;
-        (void)shielded_world.spawn({.type_name = "Shooter", .owner = 1, .combat = gun});
-        (void)shielded_world.spawn({.type_name = "Shielded", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = shielded});
+        (void)test_spawn(shielded_world, {.type_name = "Shooter", .owner = 1, .combat = gun});
+        (void)test_spawn(shielded_world, {.type_name = "Shielded", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = shielded});
         shielded_world.step();
         const auto& hit = shielded_world.snapshot().entities[1];
         require(hit.shield == 0.0F && hit.health == 24.0F, "damage beyond the shield must reach the hull");
@@ -96,14 +96,14 @@ void test_combat()
         fighter.categories = 0x1U;
         auto bomber = fighter;
         bomber.categories = 0x2U;
-        (void)retention_world.spawn({.type_name = "Defender", .owner = 1, .combat = defender});
-        const auto held = retention_world.spawn({.type_name = "Fighter", .owner = 2, .position = {250.0F, 20.0F, 0.0F}, .combat = fighter});
+        (void)test_spawn(retention_world, {.type_name = "Defender", .owner = 1, .combat = defender});
+        const auto held = test_spawn(retention_world, {.type_name = "Fighter", .owner = 2, .position = {250.0F, 20.0F, 0.0F}, .combat = fighter});
         for (int tick = 0; tick < 20; ++tick)
         {
             retention_world.step();
         }
         const bool acquired = retention_world.snapshot().entities[0].target == *held;
-        (void)retention_world.spawn({.type_name = "Bomber", .owner = 2, .position = {180.0F, -25.0F, 0.0F}, .combat = bomber});
+        (void)test_spawn(retention_world, {.type_name = "Bomber", .owner = 2, .position = {180.0F, -25.0F, 0.0F}, .combat = bomber});
         for (int tick = 0; tick < 50; ++tick)
         {
             retention_world.step();
@@ -122,8 +122,8 @@ void test_combat()
         refreshing.shield = 30.0F;
         refreshing.shield_refresh = 5.0F;
         refreshing.shield_refresh_seconds = 1.0F;
-        (void)refresh_world.spawn({.type_name = "Shooter", .owner = 1, .combat = one_shot});
-        (void)refresh_world.spawn({.type_name = "Refreshing", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = refreshing});
+        (void)test_spawn(refresh_world, {.type_name = "Shooter", .owner = 1, .combat = one_shot});
+        (void)test_spawn(refresh_world, {.type_name = "Refreshing", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = refreshing});
         refresh_world.step();
         const auto after_hit = refresh_world.snapshot().entities[1].shield;
         bool stepped_only = true;
@@ -142,8 +142,8 @@ void test_combat()
         auto cannon = gun;
         cannon.weapons[0].projectile_speed = 100.0F;
         cannon.weapons[0].pulse_count = 1;
-        (void)flight_world.spawn({.type_name = "Cannon", .owner = 1, .combat = cannon});
-        (void)flight_world.spawn({.type_name = "Victim", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = target});
+        (void)test_spawn(flight_world, {.type_name = "Cannon", .owner = 1, .combat = cannon});
+        (void)test_spawn(flight_world, {.type_name = "Victim", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = target});
         flight_world.step();
         require(flight_world.snapshot().projectiles.size() == 1 && flight_world.snapshot().projectiles[0].direction.x == 1.0F && flight_world.snapshot().entities[1].health == 25.0F,
                 "a projectile must be in flight before it hits");
@@ -164,8 +164,8 @@ void test_combat()
     {
         auto chase_world = make_world();
         auto mobile = gun;
-        const auto hunter = chase_world.spawn({.type_name = "Hunter", .owner = 1, .max_speed = 100.0F, .combat = mobile});
-        const auto prey = chase_world.spawn({.type_name = "Prey", .owner = 2, .position = {400.0F, 0.0F, 0.0F}, .combat = target});
+        const auto hunter = test_spawn(chase_world, {.type_name = "Hunter", .owner = 1, .max_speed = 100.0F, .combat = mobile});
+        const auto prey = test_spawn(chase_world, {.type_name = "Prey", .owner = 2, .position = {400.0F, 0.0F, 0.0F}, .combat = target});
         require(hunter && prey, "test spawns must succeed");
         chase_world.submit({.kind = eaw::SimCommandKind::attack, .entities = {*hunter}, .target_entity = *prey});
         for (int tick = 0; tick < 60; ++tick)
@@ -181,8 +181,8 @@ void test_combat()
     const auto run = [&]
     {
         auto replay = make_world();
-        (void)replay.spawn({.type_name = "A", .owner = 1, .max_speed = 50.0F, .combat = gun});
-        (void)replay.spawn({.type_name = "B", .owner = 2, .position = {150.0F, 30.0F, 0.0F}, .max_speed = 50.0F, .combat = gun});
+        (void)test_spawn(replay, {.type_name = "A", .owner = 1, .max_speed = 50.0F, .combat = gun});
+        (void)test_spawn(replay, {.type_name = "B", .owner = 2, .position = {150.0F, 30.0F, 0.0F}, .max_speed = 50.0F, .combat = gun});
         for (int tick = 0; tick < 40; ++tick)
         {
             replay.step();
@@ -193,7 +193,7 @@ void test_combat()
 
     auto invalid = gun;
     invalid.weapons[0].range = -1.0F;
-    require(!world.spawn({.type_name = "Invalid", .combat = invalid}), "a negative weapon range must be rejected");
+    require(!test_spawn(world, {.type_name = "Invalid", .combat = invalid}), "a negative weapon range must be rejected");
 }
 
 void test_hardpoints_and_fire_cones()
@@ -222,15 +222,15 @@ void test_hardpoints_and_fire_cones()
         auto world = make_world();
         eaw::CombatProfile target;
         target.health = 100.0F;
-        (void)world.spawn({.type_name = "Ship", .owner = 1, .combat = ship});
-        const auto behind = world.spawn({.type_name = "Behind", .owner = 2, .position = {-200.0F, 0.0F, 0.0F}, .combat = target});
+        (void)test_spawn(world, {.type_name = "Ship", .owner = 1, .combat = ship});
+        const auto behind = test_spawn(world, {.type_name = "Behind", .owner = 2, .position = {-200.0F, 0.0F, 0.0F}, .combat = target});
         require(behind.ok(), "test spawn must succeed");
         for (int tick = 0; tick < 20; ++tick)
         {
             world.step();
         }
         require(world.stats().shots_fired == 0, "a weapon must not fire outside its arc");
-        (void)world.spawn({.type_name = "Ahead", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .combat = target});
+        (void)test_spawn(world, {.type_name = "Ahead", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .combat = target});
         for (int tick = 0; tick < 20; ++tick)
         {
             world.step();
@@ -253,8 +253,8 @@ void test_hardpoints_and_fire_cones()
         gun.health = 100.0F;
         gun.weapons = {eaw::WeaponProfile{.range = 500.0F, .recharge_seconds = 0.1F, .damage = 10.0F, .damages_shield = false}};
         // The victim's engine (20 behind its center) faces the attacker, which stands behind it.
-        const auto victim = world.spawn({.type_name = "Victim", .owner = 2, .position = {0.0F, 0.0F, 0.0F}, .max_speed = 40.0F, .combat = victim_profile});
-        (void)world.spawn({.type_name = "Gun", .owner = 1, .position = {-200.0F, 0.0F, 0.0F}, .combat = gun});
+        const auto victim = test_spawn(world, {.type_name = "Victim", .owner = 2, .position = {0.0F, 0.0F, 0.0F}, .max_speed = 40.0F, .combat = victim_profile});
+        (void)test_spawn(world, {.type_name = "Gun", .owner = 1, .position = {-200.0F, 0.0F, 0.0F}, .combat = gun});
         require(victim.ok(), "test spawn must succeed");
         // Four shots of 10: three destroy the 30-point engine, the fourth moves on to the next part.
         std::vector<eaw::HardpointDeathSnapshot> fallen;
@@ -287,8 +287,8 @@ void test_hardpoints_and_fire_cones()
         eaw::CombatProfile gun;
         gun.health = 100.0F;
         gun.weapons = {eaw::WeaponProfile{.range = 500.0F, .recharge_seconds = 0.1F, .damage = 10.0F, .damages_shield = false}};
-        const auto victim = world.spawn({.type_name = "Hulk", .owner = 2, .combat = hulk});
-        (void)world.spawn({.type_name = "Gun", .owner = 1, .position = {-200.0F, 0.0F, 0.0F}, .combat = gun});
+        const auto victim = test_spawn(world, {.type_name = "Hulk", .owner = 2, .combat = hulk});
+        (void)test_spawn(world, {.type_name = "Gun", .owner = 1, .position = {-200.0F, 0.0F, 0.0F}, .combat = gun});
         // Two shots of 10 destroy the 20-point part.
         for (int tick = 0; tick < 2; ++tick)
         {
@@ -308,8 +308,8 @@ void test_hardpoints_and_fire_cones()
         eaw::CombatProfile mark;
         mark.health = 100.0F;
         mark.hardpoints = {{Kind::weapon, 20.0F, true, {0.0F, 30.0F, 0.0F}}};
-        const auto shooter = world.spawn({.type_name = "Gunship", .owner = 1, .combat = gunship, .turn_rate = 1.0F});
-        const auto target = world.spawn({.type_name = "Mark", .owner = 2, .position = {-300.0F, 0.0F, 0.0F}, .combat = mark});
+        const auto shooter = test_spawn(world, {.type_name = "Gunship", .owner = 1, .combat = gunship, .turn_rate = 1.0F});
+        const auto target = test_spawn(world, {.type_name = "Mark", .owner = 2, .position = {-300.0F, 0.0F, 0.0F}, .combat = mark});
         if (ordered)
         {
             world.submit({.kind = eaw::SimCommandKind::attack, .entities = {*shooter}, .target_entity = *target});
@@ -342,8 +342,8 @@ void test_body_aiming()
         auto world = std::make_unique<eaw::SimulationWorld>(0.1);
         world->set_hostility(hostility);
         const auto shooter =
-            world->spawn({.type_name = "Trooper", .owner = 1, .heading = heading, .max_speed = 20.0F, .combat = rifle, .turn_rate = std::numbers::pi_v<float> / 2.0F, .aims_with_body = body});
-        const auto victim = world->spawn({.type_name = "Target", .owner = 2, .position = target_at, .combat = target});
+            test_spawn(*world, {.type_name = "Trooper", .owner = 1, .heading = heading, .max_speed = 20.0F, .combat = rifle, .turn_rate = std::numbers::pi_v<float> / 2.0F, .aims_with_body = body});
+        const auto victim = test_spawn(*world, {.type_name = "Target", .owner = 2, .position = target_at, .combat = target});
         require(shooter.ok() && victim.ok(), "test spawns must succeed");
         return std::pair{std::move(world), *shooter};
     };
@@ -399,10 +399,10 @@ void test_stances()
     {
         eaw::SimulationWorld world(0.1);
         world.set_hostility(hostility);
-        const auto quiet = world.spawn({.type_name = "Quiet", .owner = 1, .combat = armed, .stance = eaw::Stance::hold_fire});
+        const auto quiet = test_spawn(world, {.type_name = "Quiet", .owner = 1, .combat = armed, .stance = eaw::Stance::hold_fire});
         eaw::CombatProfile target = armed;
         target.weapons.clear();
-        const auto victim = world.spawn({.type_name = "Target", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .combat = target});
+        const auto victim = test_spawn(world, {.type_name = "Target", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .combat = target});
         require(quiet.ok() && victim.ok(), "test spawns must succeed");
         run(world, 30);
         require(world.stats().shots_fired == 0 && !world.snapshot().entities[0].target.valid(), "a hold_fire unit must not pick targets or fire on its own");
@@ -424,7 +424,7 @@ void test_stances()
         world.submit({.kind = eaw::SimCommandKind::set_stance, .entities = {*quiet}, .stance = static_cast<eaw::Stance>(7)});
         run(world, 1);
         require(world.stats().stale_references == 1, "an unknown stance must be rejected");
-        require(!world.spawn({.type_name = "Bad", .stance = static_cast<eaw::Stance>(7)}).ok(), "a spawn with an unknown stance must be rejected");
+        require(!test_spawn(world, {.type_name = "Bad", .stance = static_cast<eaw::Stance>(7)}).ok(), "a spawn with an unknown stance must be rejected");
     }
 
     // A fighter holding position keeps circling where it is and fires at what comes in range; an
@@ -434,10 +434,10 @@ void test_stances()
         eaw::SimulationWorld world(0.1);
         world.set_hostility(hostility);
         const auto fighter =
-            world.spawn({.type_name = "Fighter", .owner = 1, .max_speed = 120.0F, .combat = armed, .turn_rate = std::numbers::pi_v<float> / 2.0F, .min_speed = 75.0F, .stance = stance});
+            test_spawn(world, {.type_name = "Fighter", .owner = 1, .max_speed = 120.0F, .combat = armed, .turn_rate = std::numbers::pi_v<float> / 2.0F, .min_speed = 75.0F, .stance = stance});
         eaw::CombatProfile station = armed;
         station.weapons.clear();
-        const auto target = world.spawn({.type_name = "Station", .owner = 2, .position = {400.0F, 0.0F, 0.0F}, .combat = station});
+        const auto target = test_spawn(world, {.type_name = "Station", .owner = 2, .position = {400.0F, 0.0F, 0.0F}, .combat = station});
         require(fighter.ok() && target.ok(), "test spawns must succeed");
         float closest = 1.0e9F;
         float farthest_from_start = 0.0F;
@@ -491,8 +491,8 @@ void test_standing_orders()
     {
         eaw::SimulationWorld world(0.1);
         world.set_hostility(hostility);
-        const auto mover = *world.spawn({.type_name = "Mover", .owner = 1, .max_speed = 50.0F, .combat = armed, .stance = eaw::Stance::hold_fire});
-        const auto victim = *world.spawn({.type_name = "Victim", .owner = 2, .position = {500.0F, 60.0F, 0.0F}, .combat = weak});
+        const auto mover = *test_spawn(world, {.type_name = "Mover", .owner = 1, .max_speed = 50.0F, .combat = armed, .stance = eaw::Stance::hold_fire});
+        const auto victim = *test_spawn(world, {.type_name = "Victim", .owner = 2, .position = {500.0F, 60.0F, 0.0F}, .combat = weak});
         world.submit({.kind = eaw::SimCommandKind::attack_move, .entities = {mover}, .target = {1000.0F, 0.0F, 0.0F}});
         run(world, 1);
         require(entity(world, mover).order == eaw::StandingOrder::attack_move, "an attack-move must become the entity's standing order");
@@ -508,8 +508,8 @@ void test_standing_orders()
         world.set_hostility(hostility);
         auto short_reach = armed;
         short_reach.attack_move_response_range = 30.0F;
-        const auto mover = *world.spawn({.type_name = "Mover", .owner = 1, .max_speed = 50.0F, .combat = short_reach, .stance = eaw::Stance::hold_fire});
-        const auto victim = *world.spawn({.type_name = "Victim", .owner = 2, .position = {500.0F, 60.0F, 0.0F}, .combat = weak});
+        const auto mover = *test_spawn(world, {.type_name = "Mover", .owner = 1, .max_speed = 50.0F, .combat = short_reach, .stance = eaw::Stance::hold_fire});
+        const auto victim = *test_spawn(world, {.type_name = "Victim", .owner = 2, .position = {500.0F, 60.0F, 0.0F}, .combat = weak});
         world.submit({.kind = eaw::SimCommandKind::attack_move, .entities = {mover}, .target = {1000.0F, 0.0F, 0.0F}});
         run(world, 400);
         require(world.alive(victim) && world.stats().shots_fired == 0, "an attack-move must react only within its response range");
@@ -519,8 +519,8 @@ void test_standing_orders()
     {
         eaw::SimulationWorld world(0.1);
         world.set_hostility(hostility);
-        const auto mover = *world.spawn({.type_name = "Mover", .owner = 1, .max_speed = 50.0F, .combat = armed});
-        const auto runner = *world.spawn({.type_name = "Runner", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .max_speed = 300.0F, .combat = tough});
+        const auto mover = *test_spawn(world, {.type_name = "Mover", .owner = 1, .max_speed = 50.0F, .combat = armed});
+        const auto runner = *test_spawn(world, {.type_name = "Runner", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .max_speed = 300.0F, .combat = tough});
         world.submit({.kind = eaw::SimCommandKind::attack_move, .entities = {mover}, .target = {600.0F, 0.0F, 0.0F}});
         run(world, 30);
         require(entity(world, mover).target == runner, "the attack-mover must engage the hostile in reach");
@@ -535,12 +535,12 @@ void test_standing_orders()
     {
         eaw::SimulationWorld world(0.1);
         world.set_hostility(hostility);
-        const auto guard = *world.spawn({.type_name = "Guard", .owner = 1, .max_speed = 50.0F, .combat = armed, .stance = eaw::Stance::hold_fire});
-        const auto distant = *world.spawn({.type_name = "Distant", .owner = 2, .position = {400.0F, 0.0F, 0.0F}, .combat = tough});
+        const auto guard = *test_spawn(world, {.type_name = "Guard", .owner = 1, .max_speed = 50.0F, .combat = armed, .stance = eaw::Stance::hold_fire});
+        const auto distant = *test_spawn(world, {.type_name = "Distant", .owner = 2, .position = {400.0F, 0.0F, 0.0F}, .combat = tough});
         world.submit({.kind = eaw::SimCommandKind::guard, .entities = {guard}, .target = {0.0F, 0.0F, 0.0F}});
         run(world, 50);
         require(entity(world, guard).order == eaw::StandingOrder::guard && !entity(world, guard).target.valid() && world.stats().shots_fired == 0, "a guard must ignore hostiles outside its radius");
-        const auto intruder = *world.spawn({.type_name = "Intruder", .owner = 2, .position = {120.0F, 0.0F, 0.0F}, .combat = weak});
+        const auto intruder = *test_spawn(world, {.type_name = "Intruder", .owner = 2, .position = {120.0F, 0.0F, 0.0F}, .combat = weak});
         run(world, 100);
         require(!world.alive(intruder) && world.alive(distant), "a guard must engage a hostile that comes within its radius");
         const auto& settled = entity(world, guard);
@@ -551,8 +551,8 @@ void test_standing_orders()
     {
         eaw::SimulationWorld world(0.1);
         world.set_hostility(hostility);
-        const auto guard = *world.spawn({.type_name = "Guard", .owner = 1, .max_speed = 60.0F, .combat = armed});
-        const auto ward = *world.spawn({.type_name = "Ward", .owner = 1, .position = {50.0F, 0.0F, 0.0F}, .max_speed = 30.0F, .combat = weak});
+        const auto guard = *test_spawn(world, {.type_name = "Guard", .owner = 1, .max_speed = 60.0F, .combat = armed});
+        const auto ward = *test_spawn(world, {.type_name = "Ward", .owner = 1, .position = {50.0F, 0.0F, 0.0F}, .max_speed = 30.0F, .combat = weak});
         world.submit({.kind = eaw::SimCommandKind::guard, .entities = {guard}, .target_entity = ward});
         world.submit({.kind = eaw::SimCommandKind::move, .entities = {ward}, .target = {800.0F, 0.0F, 0.0F}});
         run(world, 400);
@@ -595,8 +595,8 @@ void test_scripted_conditions()
     {
         eaw::SimulationWorld world(0.1);
         world.set_hostility(hostility);
-        (void)world.spawn({.type_name = "Gun", .owner = 1, .combat = gun});
-        const auto victim = *world.spawn({.type_name = "Victim", .owner = 2, .position = {100.0F, 0.0F, 0.0F}, .combat = body});
+        (void)test_spawn(world, {.type_name = "Gun", .owner = 1, .combat = gun});
+        const auto victim = *test_spawn(world, {.type_name = "Victim", .owner = 2, .position = {100.0F, 0.0F, 0.0F}, .combat = body});
         world.submit({.kind = eaw::SimCommandKind::set_invulnerable, .entities = {victim}, .flag = true});
         run(world, 30);
         require(world.stats().shots_fired > 0 && entity(world, victim).health == 100.0F, "an invulnerable unit must take no damage");
@@ -611,7 +611,7 @@ void test_scripted_conditions()
     }
     {
         eaw::SimulationWorld world(0.1);
-        const auto unit = *world.spawn({.type_name = "Unit", .owner = 1, .max_speed = 50.0F, .combat = body});
+        const auto unit = *test_spawn(world, {.type_name = "Unit", .owner = 1, .max_speed = 50.0F, .combat = body});
         world.submit({eaw::SimCommandKind::move, {unit}, {500.0F, 0.0F, 0.0F}});
         world.submit({.kind = eaw::SimCommandKind::suspend_locomotor, .entities = {unit}, .flag = true});
         run(world, 20);
@@ -642,14 +642,14 @@ void test_inaccuracy()
         eaw::CombatProfile target;
         target.health = 100000.0F;
         target.categories = 0x80U;
-        (void)world.spawn({.type_name = "Gun", .owner = 1, .combat = gun});
-        (void)world.spawn({.type_name = "Target", .owner = 2, .position = {100.0F, 0.0F, 0.0F}, .combat = target, .radius = 5.0F});
+        (void)test_spawn(world, {.type_name = "Gun", .owner = 1, .combat = gun});
+        (void)test_spawn(world, {.type_name = "Target", .owner = 2, .position = {100.0F, 0.0F, 0.0F}, .combat = target, .radius = 5.0F});
         if (bystander)
         {
             // A large hostile around the target catches every stray shot.
             auto large = target;
             large.categories = 0;
-            (void)world.spawn({.type_name = "Bystander", .owner = 2, .position = {100.0F, 0.0F, 0.0F}, .combat = large, .radius = 150.0F});
+            (void)test_spawn(world, {.type_name = "Bystander", .owner = 2, .position = {100.0F, 0.0F, 0.0F}, .combat = large, .radius = 150.0F});
         }
         for (int tick = 0; tick < 60; ++tick)
         {
@@ -691,9 +691,9 @@ void test_target_priorities()
     tank.categories = 0x100U;
     auto flyer = soldier;
     flyer.categories = 0x200U;
-    (void)world.spawn({.type_name = "Gun", .owner = 1, .combat = gun});
-    const auto near = world.spawn({.type_name = "Soldier", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = soldier});
-    const auto far = world.spawn({.type_name = "Tank", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .combat = tank});
+    (void)test_spawn(world, {.type_name = "Gun", .owner = 1, .combat = gun});
+    const auto near = test_spawn(world, {.type_name = "Soldier", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = soldier});
+    const auto far = test_spawn(world, {.type_name = "Tank", .owner = 2, .position = {200.0F, 0.0F, 0.0F}, .combat = tank});
     require(near.ok() && far.ok(), "test spawns must succeed");
     world.step();
     require(world.snapshot().entities[0].target == *far, "a ranked target must be chosen over a nearer unranked one");
@@ -705,7 +705,7 @@ void test_target_priorities()
     }
     require(world.snapshot().entities[0].target == *near, "an unranked target must be chosen when no ranked one is left");
     world.submit({eaw::SimCommandKind::destroy, {*near}});
-    (void)world.spawn({.type_name = "Flyer", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = flyer});
+    (void)test_spawn(world, {.type_name = "Flyer", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = flyer});
     for (int tick = 0; tick < 20; ++tick)
     {
         world.step();
@@ -729,9 +729,9 @@ void test_target_validity()
         eaw::CombatProfile far;
         far.health = 100.0F;
         far.categories = 0x80U;
-        (void)world.spawn({.type_name = "Shooter", .owner = 1, .combat = gun});
-        (void)world.spawn({.type_name = "Near", .owner = 2, .position = {20.0F, 0.0F, 0.0F}, .combat = near});
-        (void)world.spawn({.type_name = "Far", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = far});
+        (void)test_spawn(world, {.type_name = "Shooter", .owner = 1, .combat = gun});
+        (void)test_spawn(world, {.type_name = "Near", .owner = 2, .position = {20.0F, 0.0F, 0.0F}, .combat = near});
+        (void)test_spawn(world, {.type_name = "Far", .owner = 2, .position = {60.0F, 0.0F, 0.0F}, .combat = far});
         world.step();
         const auto& entities = world.snapshot().entities;
         return std::pair{entities[1].health < near.health, entities[2].health < far.health};
@@ -754,7 +754,7 @@ void test_target_validity()
     eaw::CombatProfile pad;
     pad.health = 10.0F;
     pad.immune = true;
-    const auto immune = world.spawn({.type_name = "Pad", .combat = pad});
+    const auto immune = test_spawn(world, {.type_name = "Pad", .combat = pad});
     require(immune.ok(), "test spawn must succeed");
     world.submit({.kind = eaw::SimCommandKind::damage, .entities = {*immune}, .amount = 100.0F});
     world.step();
@@ -773,8 +773,8 @@ void test_target_validity()
             tank.turret = turret;
             eaw::CombatProfile sturdy;
             sturdy.health = 1000.0F;
-            (void)tanks.spawn({.type_name = "Tank", .owner = 1, .max_speed = 10.0F, .combat = tank, .turn_rate = 3.14159265F});
-            (void)tanks.spawn({.type_name = "Target", .owner = 2, .position = at, .combat = sturdy});
+            (void)test_spawn(tanks, {.type_name = "Tank", .owner = 1, .max_speed = 10.0F, .combat = tank, .turn_rate = 3.14159265F});
+            (void)test_spawn(tanks, {.type_name = "Target", .owner = 2, .position = at, .combat = sturdy});
             int first_shot = -1;
             for (int tick = 1; tick <= ticks && first_shot < 0; ++tick)
             {
@@ -801,8 +801,8 @@ void test_target_validity()
             tank.turret = eaw::TurretProfile{.rate = 3.14159265F};
             eaw::CombatProfile sturdy;
             sturdy.health = 1000.0F;
-            (void)tanks.spawn({.type_name = "Tank", .owner = 1, .combat = tank});
-            (void)tanks.spawn({.type_name = "Target", .owner = 2, .position = {0.0F, 100.0F, 0.0F}, .combat = sturdy});
+            (void)test_spawn(tanks, {.type_name = "Tank", .owner = 1, .combat = tank});
+            (void)test_spawn(tanks, {.type_name = "Target", .owner = 2, .position = {0.0F, 100.0F, 0.0F}, .combat = sturdy});
             std::optional<eaw::Vector3> origin;
             for (int tick = 0; tick < 20 && !origin; ++tick)
             {
@@ -827,13 +827,13 @@ void test_target_validity()
             tank.turret = eaw::TurretProfile{.rate = 3.14159265F};
             eaw::CombatProfile sturdy;
             sturdy.health = 1000.0F;
-            (void)tanks.spawn({.type_name = "Tank", .owner = 1, .combat = tank});
-            (void)tanks.spawn({.type_name = "Far", .owner = 2, .position = {250.0F, 0.0F, 0.0F}, .combat = sturdy});
+            (void)test_spawn(tanks, {.type_name = "Tank", .owner = 1, .combat = tank});
+            (void)test_spawn(tanks, {.type_name = "Far", .owner = 2, .position = {250.0F, 0.0F, 0.0F}, .combat = sturdy});
             for (int tick = 0; tick < 5; ++tick)
             {
                 tanks.step();
             }
-            (void)tanks.spawn({.type_name = "Near", .owner = 2, .position = {-80.0F, 0.0F, 0.0F}, .combat = sturdy});
+            (void)test_spawn(tanks, {.type_name = "Near", .owner = 2, .position = {-80.0F, 0.0F, 0.0F}, .combat = sturdy});
             for (int tick = 0; tick < 40; ++tick)
             {
                 tanks.step();
@@ -851,11 +851,11 @@ void test_target_validity()
         bomber.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 10.0F, .damage = 5.0F, .blast = {.damage = 20.0F, .range = 40.0F, .tiers = 2}}};
         eaw::CombatProfile sturdy;
         sturdy.health = 1000.0F;
-        (void)blasting.spawn({.type_name = "Bomber", .owner = 1, .combat = bomber});
-        (void)blasting.spawn({.type_name = "Victim", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = sturdy});
-        (void)blasting.spawn({.type_name = "Near", .owner = 2, .position = {50.0F, 30.0F, 0.0F}, .combat = sturdy});
-        (void)blasting.spawn({.type_name = "Far", .owner = 2, .position = {50.0F, 60.0F, 0.0F}, .combat = sturdy});
-        (void)blasting.spawn({.type_name = "Friend", .owner = 1, .position = {55.0F, 0.0F, 0.0F}, .combat = sturdy});
+        (void)test_spawn(blasting, {.type_name = "Bomber", .owner = 1, .combat = bomber});
+        (void)test_spawn(blasting, {.type_name = "Victim", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = sturdy});
+        (void)test_spawn(blasting, {.type_name = "Near", .owner = 2, .position = {50.0F, 30.0F, 0.0F}, .combat = sturdy});
+        (void)test_spawn(blasting, {.type_name = "Far", .owner = 2, .position = {50.0F, 60.0F, 0.0F}, .combat = sturdy});
+        (void)test_spawn(blasting, {.type_name = "Friend", .owner = 1, .position = {55.0F, 0.0F, 0.0F}, .combat = sturdy});
         blasting.step();
         const auto& hurt = blasting.snapshot().entities;
         require(hurt[1].health == 975.0F && hurt[2].health == 990.0F && hurt[3].health == 1000.0F && hurt[4].health == 1000.0F,
@@ -872,7 +872,7 @@ void test_target_validity()
         fighter.spin_chance = chance;
         fighter.spin_seconds = 0.5F;
         fighter.spin_effect = 2U;
-        const auto craft = spin_world.spawn({.type_name = "Fighter", .combat = fighter});
+        const auto craft = test_spawn(spin_world, {.type_name = "Fighter", .combat = fighter});
         require(craft.ok(), "test spawn must succeed");
         spin_world.submit({.kind = eaw::SimCommandKind::damage, .entities = {*craft}, .amount = 100.0F});
         spin_world.step();
@@ -902,10 +902,10 @@ void test_target_validity()
             gun.weapons = {weapon};
             eaw::CombatProfile sturdy;
             sturdy.health = 1000.0F;
-            (void)flight.spawn({.type_name = "Gun", .owner = 1, .combat = gun});
-            const auto first = flight.spawn({.type_name = "First", .owner = 2, .position = {80.0F, 0.0F, 0.0F}, .combat = sturdy});
-            (void)flight.spawn({.type_name = "Second", .owner = 2, .position = {90.0F, 30.0F, 0.0F}, .combat = sturdy});
-            (void)flight.spawn({.type_name = "Mate", .owner = 1, .position = {85.0F, 0.0F, 0.0F}, .combat = sturdy});
+            (void)test_spawn(flight, {.type_name = "Gun", .owner = 1, .combat = gun});
+            const auto first = test_spawn(flight, {.type_name = "First", .owner = 2, .position = {80.0F, 0.0F, 0.0F}, .combat = sturdy});
+            (void)test_spawn(flight, {.type_name = "Second", .owner = 2, .position = {90.0F, 30.0F, 0.0F}, .combat = sturdy});
+            (void)test_spawn(flight, {.type_name = "Mate", .owner = 1, .position = {85.0F, 0.0F, 0.0F}, .combat = sturdy});
             flight.step();
             if (kill_first)
             {
@@ -944,9 +944,9 @@ void test_target_validity()
         bomber.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 100.0F, .damage = 1.0F, .blast = {.damage = 50.0F, .range = 10.0F, .friendly_damage = 20.0F}}};
         eaw::CombatProfile sturdy;
         sturdy.health = 1000.0F;
-        (void)mates.spawn({.type_name = "Bomber", .owner = 1, .combat = bomber});
-        (void)mates.spawn({.type_name = "Victim", .owner = 2, .position = {80.0F, 0.0F, 0.0F}, .combat = sturdy});
-        (void)mates.spawn({.type_name = "Mate", .owner = 1, .position = {85.0F, 0.0F, 0.0F}, .combat = sturdy});
+        (void)test_spawn(mates, {.type_name = "Bomber", .owner = 1, .combat = bomber});
+        (void)test_spawn(mates, {.type_name = "Victim", .owner = 2, .position = {80.0F, 0.0F, 0.0F}, .combat = sturdy});
+        (void)test_spawn(mates, {.type_name = "Mate", .owner = 1, .position = {85.0F, 0.0F, 0.0F}, .combat = sturdy});
         mates.step();
         const auto& hurt = mates.snapshot().entities;
         require(hurt[1].health == 949.0F && hurt[2].health == 980.0F && hurt[0].health == 50.0F, "a blast's friendly amount must hurt the shooter's own entities in range");
@@ -960,8 +960,8 @@ void test_target_validity()
         station.death_blast = {.damage = 50.0F, .range = 100.0F};
         eaw::CombatProfile sturdy;
         sturdy.health = 1000.0F;
-        const auto doomed = station_world.spawn({.type_name = "Station", .owner = 2, .combat = station});
-        (void)station_world.spawn({.type_name = "Ship", .owner = 1, .position = {60.0F, 0.0F, 0.0F}, .combat = sturdy});
+        const auto doomed = test_spawn(station_world, {.type_name = "Station", .owner = 2, .combat = station});
+        (void)test_spawn(station_world, {.type_name = "Ship", .owner = 1, .position = {60.0F, 0.0F, 0.0F}, .combat = sturdy});
         require(doomed.ok(), "test spawn must succeed");
         station_world.submit({.kind = eaw::SimCommandKind::damage, .entities = {*doomed}, .amount = 100.0F});
         station_world.step();
@@ -976,8 +976,8 @@ void test_target_validity()
         guns.weapons = {eaw::WeaponProfile{.range = 100.0F, .recharge_seconds = 0.1F, .damage = 1.0F, .mount = {.left = 5.0F}, .extra_mounts = {{.left = -5.0F}, {.left = 0.0F}}}};
         eaw::CombatProfile sturdy;
         sturdy.health = 1000.0F;
-        (void)twin.spawn({.type_name = "Twin", .owner = 1, .combat = guns});
-        (void)twin.spawn({.type_name = "Target", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = sturdy});
+        (void)test_spawn(twin, {.type_name = "Twin", .owner = 1, .combat = guns});
+        (void)test_spawn(twin, {.type_name = "Target", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = sturdy});
         std::vector<float> sides;
         for (int tick = 0; tick < 8 && sides.size() < 4; ++tick)
         {
@@ -1004,11 +1004,11 @@ void test_target_validity()
         sturdy.health = 1000.0F;
         auto preferred = sturdy;
         preferred.categories = 0x200U;
-        (void)sticky.spawn({.type_name = "Shooter", .owner = 1, .combat = picky});
-        const auto first = sticky.spawn({.type_name = "First", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = sturdy});
+        (void)test_spawn(sticky, {.type_name = "Shooter", .owner = 1, .combat = picky});
+        const auto first = test_spawn(sticky, {.type_name = "First", .owner = 2, .position = {50.0F, 0.0F, 0.0F}, .combat = sturdy});
         sticky.step();
         require(first.ok() && sticky.snapshot().entities[0].target == *first, "the only hostile must be targeted");
-        const auto better = sticky.spawn({.type_name = "Better", .owner = 2, .position = {80.0F, 0.0F, 0.0F}, .combat = preferred});
+        const auto better = test_spawn(sticky, {.type_name = "Better", .owner = 2, .position = {80.0F, 0.0F, 0.0F}, .combat = preferred});
         for (int tick = 0; tick < 15; ++tick)
         {
             sticky.step();

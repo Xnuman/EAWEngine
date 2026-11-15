@@ -33,8 +33,8 @@ void test_ground_movement()
 
     eaw::SimulationWorld world(0.1);
     world.set_ground(ground);
-    const auto walker = world.spawn({.type_name = "Walker", .position = {0.0F, 20.0F, 999.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
-    const auto flyer = world.spawn({.type_name = "Flyer", .position = {0.0F, 20.0F, 50.0F}, .max_speed = 100.0F});
+    const auto walker = test_spawn(world, {.type_name = "Walker", .position = {0.0F, 20.0F, 999.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
+    const auto flyer = test_spawn(world, {.type_name = "Flyer", .position = {0.0F, 20.0F, 50.0F}, .max_speed = 100.0F});
     require(walker && flyer, "test spawns must succeed");
     world.step();
     require(world.snapshot().entities[0].position.z == 0.0F && world.snapshot().entities[1].position.z == 50.0F, "a ground unit spawns on the surface; others keep their height");
@@ -56,7 +56,7 @@ void test_ground_movement()
     require(stopped[1].position.x == 100.0F && stopped[1].position.z == 50.0F, "a unit that does not follow the ground ignores passability");
 
     // A unit standing on a blocked cell may leave it.
-    const auto stranded = world.spawn({.type_name = "Stranded", .position = {80.0F, 0.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
+    const auto stranded = test_spawn(world, {.type_name = "Stranded", .position = {80.0F, 0.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
     require(stranded.ok(), "test spawn must succeed");
     world.submit({eaw::SimCommandKind::move, {*stranded}, {100.0F, 0.0F, 0.0F}});
     for (int tick = 0; tick < 5; ++tick)
@@ -67,7 +67,7 @@ void test_ground_movement()
 
     // A climbing class may enter steep cells.
     const auto climber =
-        world.spawn({.type_name = "Climber", .position = {60.0F, 40.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear | eaw::passability::steep});
+        test_spawn(world, {.type_name = "Climber", .position = {60.0F, 40.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear | eaw::passability::steep});
     require(climber.ok(), "test spawn must succeed");
     world.submit({eaw::SimCommandKind::move, {*climber}, {100.0F, 40.0F, 0.0F}});
     for (int tick = 0; tick < 5; ++tick)
@@ -169,7 +169,7 @@ void test_pathfinding()
     // The simulation plans ground orders and follows the waypoints to the ordered point.
     eaw::SimulationWorld world(0.1);
     world.set_ground(ground);
-    const auto walker = world.spawn({.type_name = "Walker", .position = {10.0F, 10.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = clear});
+    const auto walker = test_spawn(world, {.type_name = "Walker", .position = {10.0F, 10.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = clear});
     require(walker.ok(), "test spawn must succeed");
     world.submit({eaw::SimCommandKind::move, {*walker}, {110.0F, 12.0F, 0.0F}});
     world.step();
@@ -201,8 +201,8 @@ void test_turning_and_separation()
         eaw::SimulationWorld world(0.1);
         world.set_ground(ground);
         const auto pi = std::numbers::pi_v<float>;
-        const auto turner =
-            world.spawn({.type_name = "Turner", .position = {100.0F, 50.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .turn_rate = pi / 2.0F});
+        const auto turner = test_spawn(
+            world, {.type_name = "Turner", .position = {100.0F, 50.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .turn_rate = pi / 2.0F});
         require(turner.ok(), "test spawn must succeed");
         world.submit({eaw::SimCommandKind::move, {*turner}, {20.0F, 50.0F, 0.0F}});
         world.step();
@@ -226,12 +226,12 @@ void test_turning_and_separation()
     {
         eaw::SimulationWorld world(0.1);
         world.set_ground(ground);
-        const auto a = world.spawn({.type_name = "A", .position = {50.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
-        const auto b = world.spawn({.type_name = "B", .position = {52.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
-        const auto wall = world.spawn({.type_name = "Bunker", .position = {80.0F, 80.0F, 0.0F}, .follows_ground = true, .radius = 10.0F});
-        const auto c = world.spawn({.type_name = "C", .position = {82.0F, 80.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
-        const auto d = world.spawn({.type_name = "D", .position = {141.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
-        const auto e = world.spawn({.type_name = "E", .position = {139.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto a = test_spawn(world, {.type_name = "A", .position = {50.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto b = test_spawn(world, {.type_name = "B", .position = {52.0F, 50.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto wall = test_spawn(world, {.type_name = "Bunker", .position = {80.0F, 80.0F, 0.0F}, .follows_ground = true, .radius = 10.0F});
+        const auto c = test_spawn(world, {.type_name = "C", .position = {82.0F, 80.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto d = test_spawn(world, {.type_name = "D", .position = {141.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto e = test_spawn(world, {.type_name = "E", .position = {139.0F, 100.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
         require(a && b && wall && c && d && e, "test spawns must succeed");
         for (int tick = 0; tick < 20; ++tick)
         {
@@ -251,10 +251,10 @@ void test_turning_and_separation()
     {
         eaw::SimulationWorld world(0.1);
         world.set_ground(ground);
-        const auto walker =
-            world.spawn({.type_name = "Walker", .owner = 1, .position = {40.0F, 150.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
-        const auto enemy =
-            world.spawn({.type_name = "Enemy", .owner = 2, .position = {60.0F, 150.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto walker = test_spawn(
+            world, {.type_name = "Walker", .owner = 1, .position = {40.0F, 150.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        const auto enemy = test_spawn(
+            world, {.type_name = "Enemy", .owner = 2, .position = {60.0F, 150.0F, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
         require(walker && enemy, "test spawns must succeed");
         world.submit({eaw::SimCommandKind::move, {*walker}, {80.0F, 150.0F, 0.0F}});
         for (int tick = 0; tick < 30; ++tick)
@@ -271,13 +271,13 @@ void test_turning_and_separation()
             world.set_ground(ground);
             for (int index = 0; index < 12; ++index)
             {
-                (void)world.spawn({.type_name = "Crowd",
-                                   .position = {60.0F + static_cast<float>(index % 3), 60.0F + static_cast<float>(index / 3), 0.0F},
-                                   .max_speed = 30.0F,
-                                   .follows_ground = true,
-                                   .passable_types = eaw::passability::clear,
-                                   .radius = 4.0F,
-                                   .turn_rate = 3.0F});
+                (void)test_spawn(world, {.type_name = "Crowd",
+                                         .position = {60.0F + static_cast<float>(index % 3), 60.0F + static_cast<float>(index / 3), 0.0F},
+                                         .max_speed = 30.0F,
+                                         .follows_ground = true,
+                                         .passable_types = eaw::passability::clear,
+                                         .radius = 4.0F,
+                                         .turn_rate = 3.0F});
             }
             for (int tick = 0; tick < 30; ++tick)
             {
@@ -288,7 +288,7 @@ void test_turning_and_separation()
         require(replay() == replay(), "separation must be deterministic");
     }
     eaw::SimulationWorld world(0.1);
-    require(!world.spawn({.type_name = "Bad", .radius = -1.0F}) && !world.spawn({.type_name = "Bad", .turn_rate = std::nanf("")}), "invalid radii and turn rates must be rejected");
+    require(!test_spawn(world, {.type_name = "Bad", .radius = -1.0F}) && !test_spawn(world, {.type_name = "Bad", .turn_rate = std::nanf("")}), "invalid radii and turn rates must be rejected");
 }
 
 void test_formations()
@@ -337,9 +337,11 @@ void test_formations()
     ground.passability.assign(1600, eaw::passability::clear);
     eaw::SimulationWorld world(0.1);
     world.set_ground(ground);
-    const auto fast = world.spawn({.type_name = "Fast", .position = {50.0F, 100.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
-    const auto slow = world.spawn({.type_name = "Slow", .position = {50.0F, 120.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
-    const auto fixed = world.spawn({.type_name = "Turret", .position = {50.0F, 140.0F, 0.0F}, .follows_ground = true});
+    const auto fast =
+        test_spawn(world, {.type_name = "Fast", .position = {50.0F, 100.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+    const auto slow =
+        test_spawn(world, {.type_name = "Slow", .position = {50.0F, 120.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+    const auto fixed = test_spawn(world, {.type_name = "Turret", .position = {50.0F, 140.0F, 0.0F}, .follows_ground = true});
     require(fast && slow && fixed, "test spawns must succeed");
     world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = {*fast, *slow, *fixed}, .target = {300.0F, 110.0F, 0.0F}});
     world.step();
@@ -357,11 +359,13 @@ void test_formations()
     // A solo member (XML FormationGrouping Solo) leaves the group: own speed, straight to the point.
     eaw::SimulationWorld solo_world(0.1);
     solo_world.set_ground(ground);
-    const auto walker = solo_world.spawn(
+    const auto walker = test_spawn(
+        solo_world,
         {.type_name = "Walker", .position = {50.0F, 100.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F, .formation_solo = true});
-    const auto tank = solo_world.spawn({.type_name = "Slow", .position = {50.0F, 120.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+    const auto tank =
+        test_spawn(solo_world, {.type_name = "Slow", .position = {50.0F, 120.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
     const auto other =
-        solo_world.spawn({.type_name = "Slow", .position = {50.0F, 140.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
+        test_spawn(solo_world, {.type_name = "Slow", .position = {50.0F, 140.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F});
     require(walker && tank && other, "test spawns must succeed");
     solo_world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = {*walker, *tank, *other}, .target = {300.0F, 100.0F, 0.0F}});
     solo_world.step();
@@ -446,13 +450,13 @@ void test_narrow_passage()
     std::vector<eaw::EntityId> group;
     for (int index = 0; index < 6; ++index)
     {
-        const auto id = world.spawn({.type_name = "Trooper",
-                                     .position = {40.0F + static_cast<float>(index % 3) * 20.0F, 100.0F + static_cast<float>(index / 3) * 20.0F, 0.0F},
-                                     .max_speed = 30.0F,
-                                     .follows_ground = true,
-                                     .passable_types = eaw::passability::clear,
-                                     .radius = 8.0F,
-                                     .turn_rate = 8.0F});
+        const auto id = test_spawn(world, {.type_name = "Trooper",
+                                           .position = {40.0F + static_cast<float>(index % 3) * 20.0F, 100.0F + static_cast<float>(index / 3) * 20.0F, 0.0F},
+                                           .max_speed = 30.0F,
+                                           .follows_ground = true,
+                                           .passable_types = eaw::passability::clear,
+                                           .radius = 8.0F,
+                                           .turn_rate = 8.0F});
         require(id.ok(), "test spawn must succeed");
         group.push_back(*id);
     }
@@ -478,7 +482,7 @@ void test_group_cohesion()
     ground.passability.assign(1800, eaw::passability::clear);
     const auto spawn = [&](eaw::SimulationWorld& world, const float x, const float y)
     {
-        const auto id = world.spawn({.type_name = "Trooper", .position = {x, y, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 4.0F});
+        const auto id = test_spawn(world, {.type_name = "Trooper", .position = {x, y, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 4.0F});
         require(id.ok(), "test spawn must succeed");
         return *id;
     };
@@ -511,14 +515,14 @@ void test_group_cohesion()
     {
         eaw::SimulationWorld world(0.1);
         world.set_ground(ground);
-        const auto stuck = world.spawn({.type_name = "Stuck",
-                                        .position = {100.0F, 150.0F, 0.0F},
-                                        .heading = std::numbers::pi_v<float>,
-                                        .max_speed = 30.0F,
-                                        .follows_ground = true,
-                                        .passable_types = eaw::passability::clear,
-                                        .radius = 4.0F,
-                                        .turn_rate = 1.0e-4F});
+        const auto stuck = test_spawn(world, {.type_name = "Stuck",
+                                              .position = {100.0F, 150.0F, 0.0F},
+                                              .heading = std::numbers::pi_v<float>,
+                                              .max_speed = 30.0F,
+                                              .follows_ground = true,
+                                              .passable_types = eaw::passability::clear,
+                                              .radius = 4.0F,
+                                              .turn_rate = 1.0e-4F});
         const auto free = spawn(world, 100.0F, 100.0F);
         require(stuck.ok(), "test spawn must succeed");
         world.submit({.kind = eaw::SimCommandKind::formation_move, .entities = {*stuck, free}, .target = {300.0F, 130.0F, 0.0F}});
@@ -540,16 +544,16 @@ void test_ground_footprints()
     ground.heights.assign(900, 0.0F);
     ground.passability.assign(900, eaw::passability::clear);
     eaw::SimulationWorld world(0.1);
-    const auto wall = world.spawn({.type_name = "Empire_Wall", .footprint = eaw::GroundFootprint{{150.0F, 150.0F, 0.0F}, 5.0F, 60.0F, 0.0F, eaw::passability::empire_wall}});
+    const auto wall = test_spawn(world, {.type_name = "Empire_Wall", .footprint = eaw::GroundFootprint{{150.0F, 150.0F, 0.0F}, 5.0F, 60.0F, 0.0F, eaw::passability::empire_wall}});
     require(wall.ok(), "test spawn must succeed");
     // Footprints spawned before the ground is set are stamped when it arrives.
     world.set_ground(ground);
     require(world.ground().passability_at(150.0F, 150.0F) == eaw::passability::empire_wall && world.ground().passability_at(150.0F, 210.0F) == eaw::passability::empire_wall &&
                 world.ground().passability_at(150.0F, 220.0F) == eaw::passability::clear && world.ground().passability_at(140.0F, 150.0F) == eaw::passability::clear,
             "a footprint must stamp exactly the cells inside its rectangle");
-    const auto walker = world.spawn({.type_name = "Walker", .position = {100.0F, 150.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
-    const auto large_walker = world.spawn(
-        {.type_name = "LargeWalker", .position = {100.0F, 160.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear | eaw::passability::empire_wall});
+    const auto walker = test_spawn(world, {.type_name = "Walker", .position = {100.0F, 150.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear});
+    const auto large_walker = test_spawn(
+        world, {.type_name = "LargeWalker", .position = {100.0F, 160.0F, 0.0F}, .max_speed = 50.0F, .follows_ground = true, .passable_types = eaw::passability::clear | eaw::passability::empire_wall});
     require(walker && large_walker, "test spawns must succeed");
     world.submit({eaw::SimCommandKind::move, {*walker}, {200.0F, 150.0F, 0.0F}});
     world.submit({eaw::SimCommandKind::move, {*large_walker}, {200.0F, 160.0F, 0.0F}});
@@ -566,7 +570,7 @@ void test_ground_footprints()
     world.submit({eaw::SimCommandKind::destroy, {*wall}, {}});
     world.step();
     require(world.ground().passability_at(150.0F, 150.0F) == eaw::passability::clear, "a destroyed footprint must restore the ground");
-    require(!world.spawn({.type_name = "Bad", .footprint = eaw::GroundFootprint{{0.0F, 0.0F, 0.0F}, -1.0F, 1.0F, 0.0F, eaw::passability::obstacle}}), "an invalid footprint must be rejected");
+    require(!test_spawn(world, {.type_name = "Bad", .footprint = eaw::GroundFootprint{{0.0F, 0.0F, 0.0F}, -1.0F, 1.0F, 0.0F, eaw::passability::obstacle}}), "an invalid footprint must be rejected");
 }
 
 void test_path_budget_and_shared_routes()
@@ -589,12 +593,12 @@ void test_path_budget_and_shared_routes()
         std::vector<eaw::EntityId> units;
         for (int index = 0; index < 24; ++index)
         {
-            const auto id = world.spawn({.type_name = "Trooper",
-                                         .position = {300.0F + static_cast<float>(index % 6) * 12.0F, 300.0F + static_cast<float>(index / 6) * 12.0F, 0.0F},
-                                         .max_speed = 60.0F,
-                                         .follows_ground = true,
-                                         .passable_types = eaw::passability::clear,
-                                         .radius = 4.0F});
+            const auto id = test_spawn(world, {.type_name = "Trooper",
+                                               .position = {300.0F + static_cast<float>(index % 6) * 12.0F, 300.0F + static_cast<float>(index / 6) * 12.0F, 0.0F},
+                                               .max_speed = 60.0F,
+                                               .follows_ground = true,
+                                               .passable_types = eaw::passability::clear,
+                                               .radius = 4.0F});
             require(id.ok(), "test spawn must succeed");
             units.push_back(*id);
         }
@@ -653,7 +657,7 @@ void test_space_crowds()
         std::vector<eaw::EntityId> ids;
         for (const auto& ship : ships)
         {
-            ids.push_back(*world.spawn({.type_name = "Ship", .owner = 1, .position = ship.at, .max_speed = ship.speed, .radius = 100.0F, .turn_rate = 0.4F}));
+            ids.push_back(*test_spawn(world, {.type_name = "Ship", .owner = 1, .position = ship.at, .max_speed = ship.speed, .radius = 100.0F, .turn_rate = 0.4F}));
         }
         std::vector<eaw::EntityId> moving;
         for (const auto index : movers)
@@ -704,7 +708,7 @@ void test_space_avoidance()
 {
     const auto make = [](const float speed, const eaw::Vector3& at, const float radius)
     {
-        return eaw::EntitySpawn{.type_name = "Ship", .owner = 1, .position = at, .max_speed = speed, .radius = radius};
+        return TestSpawn{.type_name = "Ship", .owner = 1, .position = at, .max_speed = speed, .radius = radius};
     };
     const auto closest = [](eaw::SimulationWorld& world, const eaw::EntityId a, const eaw::EntityId b, const int ticks)
     {
@@ -725,8 +729,8 @@ void test_space_avoidance()
     };
     {
         eaw::SimulationWorld world(0.1);
-        const auto mover = *world.spawn(make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
-        const auto rock = *world.spawn(make(0.0F, {500.0F, 0.0F, 0.0F}, 20.0F));
+        const auto mover = *test_spawn(world, make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
+        const auto rock = *test_spawn(world, make(0.0F, {500.0F, 0.0F, 0.0F}, 20.0F));
         world.submit({eaw::SimCommandKind::move, {mover}, {1000.0F, 0.0F, 0.0F}});
         const auto nearest = closest(world, mover, rock, 200);
         require(nearest >= 40.0F && std::abs(position(world, mover).x - 1000.0F) < 1.0F && position(world, rock).x == 500.0F,
@@ -735,8 +739,8 @@ void test_space_avoidance()
     for (const auto& [obstacle, what] : {std::pair{make(0.0F, {500.0F, 0.0F, 200.0F}, 20.0F), "a ship at another height"}, std::pair{make(0.0F, {500.0F, 0.0F, 0.0F}, 2.0F), "a much smaller ship"}})
     {
         eaw::SimulationWorld world(0.1);
-        const auto mover = *world.spawn(make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
-        (void)world.spawn(obstacle);
+        const auto mover = *test_spawn(world, make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
+        (void)test_spawn(world, obstacle);
         world.submit({eaw::SimCommandKind::move, {mover}, {1000.0F, 0.0F, 0.0F}});
         float widest = 0.0F;
         for (int tick = 0; tick < 200; ++tick)
@@ -748,8 +752,8 @@ void test_space_avoidance()
     }
     {
         eaw::SimulationWorld world(0.1);
-        const auto east = *world.spawn(make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
-        const auto west = *world.spawn(make(100.0F, {1000.0F, 0.0F, 0.0F}, 20.0F));
+        const auto east = *test_spawn(world, make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
+        const auto west = *test_spawn(world, make(100.0F, {1000.0F, 0.0F, 0.0F}, 20.0F));
         world.submit({eaw::SimCommandKind::move, {east}, {1000.0F, 0.0F, 0.0F}});
         world.submit({eaw::SimCommandKind::move, {west}, {0.0F, 0.0F, 0.0F}});
         require(closest(world, east, west, 300) >= 40.0F && std::abs(position(world, east).x - 1000.0F) < 1.0F && std::abs(position(world, west).x) < 1.0F,
@@ -757,15 +761,15 @@ void test_space_avoidance()
     }
     {
         eaw::SimulationWorld world(0.1);
-        const auto first = *world.spawn(make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
-        const auto second = *world.spawn(make(100.0F, {10.0F, 0.0F, 0.0F}, 20.0F));
+        const auto first = *test_spawn(world, make(100.0F, {0.0F, 0.0F, 0.0F}, 20.0F));
+        const auto second = *test_spawn(world, make(100.0F, {10.0F, 0.0F, 0.0F}, 20.0F));
         for (int tick = 0; tick < 20; ++tick)
         {
             world.step();
         }
         require(position(world, first).x == 0.0F && position(world, second).x == 10.0F, "idle space ships must not push each other apart");
         world.submit({eaw::SimCommandKind::move, {first}, {500.0F, 0.0F, 0.0F}});
-        (void)world.spawn(make(0.0F, {500.0F, 0.0F, 0.0F}, 20.0F));
+        (void)test_spawn(world, make(0.0F, {500.0F, 0.0F, 0.0F}, 20.0F));
         for (int tick = 0; tick < 100; ++tick)
         {
             world.step();
@@ -790,7 +794,7 @@ void test_movement_profiles()
         // 20 units/s, accelerating and braking at 10 units/s^2: 0.1 units in the first tick, and a
         // stop exactly at the destination.
         eaw::SimulationWorld world(0.1);
-        const auto mover = world.spawn({.type_name = "Mover", .max_speed = 20.0F, .turn_rate = pi, .movement = {.acceleration = 10.0F, .deceleration = 10.0F}});
+        const auto mover = test_spawn(world, {.type_name = "Mover", .max_speed = 20.0F, .turn_rate = pi, .movement = {.acceleration = 10.0F, .deceleration = 10.0F}});
         require(mover.ok(), "test spawn must succeed");
         world.submit({eaw::SimCommandKind::move, {*mover}, {100.0F, 0.0F, 0.0F}});
         world.step();
@@ -804,7 +808,7 @@ void test_movement_profiles()
     {
         // Facing +X, ordered to -X: it turns where it stands before moving off.
         eaw::SimulationWorld world(0.1);
-        const auto turner = world.spawn({.type_name = "Turner", .max_speed = 20.0F, .turn_rate = pi / 2.0F, .movement = {.turn_in_place_angle = pi / 4.0F}});
+        const auto turner = test_spawn(world, {.type_name = "Turner", .max_speed = 20.0F, .turn_rate = pi / 2.0F, .movement = {.turn_in_place_angle = pi / 4.0F}});
         require(turner.ok(), "test spawn must succeed");
         world.submit({eaw::SimCommandKind::move, {*turner}, {-50.0F, 0.0F, 0.0F}});
         run(world, 14);
@@ -817,7 +821,7 @@ void test_movement_profiles()
     {
         // On the move, a new way 60 degrees off is taken while walking, not by stopping to turn.
         eaw::SimulationWorld world(0.1);
-        const auto walker = world.spawn({.type_name = "Walker", .max_speed = 20.0F, .turn_rate = pi / 2.0F, .movement = {.turn_in_place_angle = pi / 4.0F}});
+        const auto walker = test_spawn(world, {.type_name = "Walker", .max_speed = 20.0F, .turn_rate = pi / 2.0F, .movement = {.turn_in_place_angle = pi / 4.0F}});
         require(walker.ok(), "test spawn must succeed");
         world.submit({eaw::SimCommandKind::move, {*walker}, {200.0F, 0.0F, 0.0F}});
         run(world, 5);
@@ -830,7 +834,7 @@ void test_movement_profiles()
     {
         // A ship that cannot turn below half its speed goes forward first, then turns back.
         eaw::SimulationWorld world(0.1);
-        const auto ship = world.spawn({.type_name = "Ship", .max_speed = 20.0F, .turn_rate = pi / 2.0F, .movement = {.acceleration = 20.0F, .deceleration = 20.0F, .turn_speed_fraction = 0.5F}});
+        const auto ship = test_spawn(world, {.type_name = "Ship", .max_speed = 20.0F, .turn_rate = pi / 2.0F, .movement = {.acceleration = 20.0F, .deceleration = 20.0F, .turn_speed_fraction = 0.5F}});
         require(ship.ok(), "test spawn must succeed");
         world.submit({eaw::SimCommandKind::move, {*ship}, {-200.0F, 0.0F, 0.0F}});
         run(world, 4);
@@ -842,7 +846,7 @@ void test_movement_profiles()
         require(world.snapshot().entities[0].position.x == -200.0F, "a ship that turned under way must arrive");
     }
     eaw::SimulationWorld world(0.1);
-    require(!world.spawn({.type_name = "Bad", .movement = {.acceleration = -1.0F}}) && !world.spawn({.type_name = "Bad", .movement = {.turn_speed_fraction = 1.5F}}),
+    require(!test_spawn(world, {.type_name = "Bad", .movement = {.acceleration = -1.0F}}) && !test_spawn(world, {.type_name = "Bad", .movement = {.turn_speed_fraction = 1.5F}}),
             "negative accelerations and turn speed fractions above 1 must be rejected");
 }
 
@@ -861,14 +865,14 @@ void test_braking_stop_and_winding_turns()
     {
         eaw::SimulationWorld world(0.1);
         world.set_ground(ground);
-        const auto unit = world.spawn({.type_name = "Walker",
-                                       .position = {50.0F, 100.0F, 0.0F},
-                                       .max_speed = 20.0F,
-                                       .follows_ground = true,
-                                       .passable_types = eaw::passability::clear,
-                                       .radius = 2.0F,
-                                       .turn_rate = 3.0F,
-                                       .movement = {.acceleration = 100.0F, .deceleration = deceleration}});
+        const auto unit = test_spawn(world, {.type_name = "Walker",
+                                             .position = {50.0F, 100.0F, 0.0F},
+                                             .max_speed = 20.0F,
+                                             .follows_ground = true,
+                                             .passable_types = eaw::passability::clear,
+                                             .radius = 2.0F,
+                                             .turn_rate = 3.0F,
+                                             .movement = {.acceleration = 100.0F, .deceleration = deceleration}});
         require(static_cast<bool>(unit), "test spawn must succeed");
         world.submit({.kind = eaw::SimCommandKind::move, .entities = {*unit}, .target = {350.0F, 100.0F, 0.0F}});
         for (int tick = 0; tick < 30; ++tick)
@@ -891,21 +895,21 @@ void test_braking_stop_and_winding_turns()
     // (1.5 s), and the unit leaves exactly on its way.
     eaw::SimulationWorld world(0.1);
     world.set_ground(ground);
-    const auto turner = world.spawn({.type_name = "Turner",
-                                     .position = {100.0F, 100.0F, 0.0F},
-                                     .max_speed = 20.0F,
-                                     .follows_ground = true,
-                                     .passable_types = eaw::passability::clear,
-                                     .radius = 2.0F,
-                                     .turn_rate = 1.0F,
-                                     .movement = {.acceleration = 20.0F,
-                                                  .deceleration = 20.0F,
-                                                  .turn_speed_fraction = 0.1F,
-                                                  .stopped_turn_rate = 1.0F,
-                                                  .turn_in_place_angle = 0.5236F,
-                                                  .turn_begin_seconds = {0.5F, 0.5F},
-                                                  .turn_loop_seconds = {1.0F, 1.0F},
-                                                  .turn_end_seconds = {0.5F, 0.5F}}});
+    const auto turner = test_spawn(world, {.type_name = "Turner",
+                                           .position = {100.0F, 100.0F, 0.0F},
+                                           .max_speed = 20.0F,
+                                           .follows_ground = true,
+                                           .passable_types = eaw::passability::clear,
+                                           .radius = 2.0F,
+                                           .turn_rate = 1.0F,
+                                           .movement = {.acceleration = 20.0F,
+                                                        .deceleration = 20.0F,
+                                                        .turn_speed_fraction = 0.1F,
+                                                        .stopped_turn_rate = 1.0F,
+                                                        .turn_in_place_angle = 0.5236F,
+                                                        .turn_begin_seconds = {0.5F, 0.5F},
+                                                        .turn_loop_seconds = {1.0F, 1.0F},
+                                                        .turn_end_seconds = {0.5F, 0.5F}}});
     require(static_cast<bool>(turner), "test spawn must succeed");
     world.submit({.kind = eaw::SimCommandKind::move, .entities = {*turner}, .target = {100.0F, 300.0F, 0.0F}});
     int turning_ticks = 0;
@@ -934,23 +938,23 @@ void test_braking_stop_and_winding_turns()
     // all, ending exactly on the way (the walker sets off without turning further).
     eaw::SimulationWorld composed(0.1);
     composed.set_ground(ground);
-    const auto kit = composed.spawn({.type_name = "Kit",
-                                     .position = {100.0F, 100.0F, 0.0F},
-                                     .max_speed = 20.0F,
-                                     .follows_ground = true,
-                                     .passable_types = eaw::passability::clear,
-                                     .radius = 2.0F,
-                                     .turn_rate = 1.0F,
-                                     .movement = {.acceleration = 20.0F,
-                                                  .deceleration = 20.0F,
-                                                  .turn_speed_fraction = 0.1F,
-                                                  .stopped_turn_rate = 1.0F,
-                                                  .turn_in_place_angle = 0.5236F,
-                                                  .turn_begin_seconds = {0.5F, 0.5F},
-                                                  .turn_loop_seconds = {1.0F, 1.0F},
-                                                  .turn_end_seconds = {0.5F, 0.5F},
-                                                  .turn_half_seconds = {0.5F, 0.5F},
-                                                  .turn_quarter_seconds = {0.5F, 0.5F}}});
+    const auto kit = test_spawn(composed, {.type_name = "Kit",
+                                           .position = {100.0F, 100.0F, 0.0F},
+                                           .max_speed = 20.0F,
+                                           .follows_ground = true,
+                                           .passable_types = eaw::passability::clear,
+                                           .radius = 2.0F,
+                                           .turn_rate = 1.0F,
+                                           .movement = {.acceleration = 20.0F,
+                                                        .deceleration = 20.0F,
+                                                        .turn_speed_fraction = 0.1F,
+                                                        .stopped_turn_rate = 1.0F,
+                                                        .turn_in_place_angle = 0.5236F,
+                                                        .turn_begin_seconds = {0.5F, 0.5F},
+                                                        .turn_loop_seconds = {1.0F, 1.0F},
+                                                        .turn_end_seconds = {0.5F, 0.5F},
+                                                        .turn_half_seconds = {0.5F, 0.5F},
+                                                        .turn_quarter_seconds = {0.5F, 0.5F}}});
     require(static_cast<bool>(kit), "test spawn must succeed");
     composed.submit({.kind = eaw::SimCommandKind::move, .entities = {*kit}, .target = {100.0F - 200.0F * 0.70710678F, 100.0F + 200.0F * 0.70710678F, 0.0F}});
     std::vector<eaw::TurnClip> clips;
@@ -1001,15 +1005,15 @@ void test_walk_as_clips()
     const auto walker = [&](Walk& walk)
     {
         walk.world.set_ground(ground);
-        const auto unit =
-            walk.world.spawn({.type_name = "Walker",
-                              .position = {50.0F, 100.0F, 0.0F},
-                              .max_speed = 10.0F,
-                              .follows_ground = true,
-                              .passable_types = eaw::passability::clear,
-                              .radius = 2.0F,
-                              .turn_rate = 3.0F,
-                              .movement = {.acceleration = 10.0F, .deceleration = 10.0F, .walk_start_seconds = 1.0F, .walk_stride_seconds = 2.0F, .walk_stop_seconds = 1.0F, .walk_stop_parts = 4}});
+        const auto unit = test_spawn(
+            walk.world, {.type_name = "Walker",
+                         .position = {50.0F, 100.0F, 0.0F},
+                         .max_speed = 10.0F,
+                         .follows_ground = true,
+                         .passable_types = eaw::passability::clear,
+                         .radius = 2.0F,
+                         .turn_rate = 3.0F,
+                         .movement = {.acceleration = 10.0F, .deceleration = 10.0F, .walk_start_seconds = 1.0F, .walk_stride_seconds = 2.0F, .walk_stop_seconds = 1.0F, .walk_stop_parts = 4}});
         require(static_cast<bool>(unit), "test spawn must succeed");
         walk.unit = *unit;
     };
@@ -1121,27 +1125,27 @@ void test_walk_as_clips()
     const auto kit_walker = [&](Walk& walk)
     {
         walk.world.set_ground(ground);
-        const auto unit = walk.world.spawn({.type_name = "Kit_Walker",
-                                            .position = {150.0F, 100.0F, 0.0F},
-                                            .max_speed = 10.0F,
-                                            .follows_ground = true,
-                                            .passable_types = eaw::passability::clear,
-                                            .radius = 2.0F,
-                                            .turn_rate = 3.0F,
-                                            .movement = {.acceleration = 10.0F,
-                                                         .deceleration = 10.0F,
-                                                         .turn_speed_fraction = 0.1F,
-                                                         .stopped_turn_rate = 1.0F,
-                                                         .turn_in_place_angle = 0.5236F,
-                                                         .turn_begin_seconds = {0.5F, 0.5F},
-                                                         .turn_loop_seconds = {1.0F, 1.0F},
-                                                         .turn_end_seconds = {0.5F, 0.5F},
-                                                         .walk_start_seconds = 1.0F,
-                                                         .walk_stride_seconds = 2.0F,
-                                                         .walk_stop_seconds = 1.0F,
-                                                         .walk_stop_parts = 4,
-                                                         .walk_raise_seconds = 1.0F,
-                                                         .walk_lower_seconds = 1.0F}});
+        const auto unit = test_spawn(walk.world, {.type_name = "Kit_Walker",
+                                                  .position = {150.0F, 100.0F, 0.0F},
+                                                  .max_speed = 10.0F,
+                                                  .follows_ground = true,
+                                                  .passable_types = eaw::passability::clear,
+                                                  .radius = 2.0F,
+                                                  .turn_rate = 3.0F,
+                                                  .movement = {.acceleration = 10.0F,
+                                                               .deceleration = 10.0F,
+                                                               .turn_speed_fraction = 0.1F,
+                                                               .stopped_turn_rate = 1.0F,
+                                                               .turn_in_place_angle = 0.5236F,
+                                                               .turn_begin_seconds = {0.5F, 0.5F},
+                                                               .turn_loop_seconds = {1.0F, 1.0F},
+                                                               .turn_end_seconds = {0.5F, 0.5F},
+                                                               .walk_start_seconds = 1.0F,
+                                                               .walk_stride_seconds = 2.0F,
+                                                               .walk_stop_seconds = 1.0F,
+                                                               .walk_stop_parts = 4,
+                                                               .walk_raise_seconds = 1.0F,
+                                                               .walk_lower_seconds = 1.0F}});
         require(static_cast<bool>(unit), "test spawn must succeed");
         walk.unit = *unit;
     };
@@ -1205,23 +1209,23 @@ void test_crushing()
         eaw::SimulationWorld world(0.1);
         world.set_ground(ground);
         world.set_hostility(hostility);
-        const auto tank = world.spawn({.type_name = "Tank",
-                                       .owner = 1,
-                                       .position = {50.0F, 100.0F, 0.0F},
-                                       .max_speed = speed,
-                                       .follows_ground = true,
-                                       .passable_types = eaw::passability::clear,
-                                       .radius = 10.0F,
-                                       .crush = {.crusher = kind}});
-        const auto victim = world.spawn({.type_name = "Victim",
-                                         .owner = victim_owner,
-                                         .position = {150.0F, 100.0F, 0.0F},
-                                         .max_speed = victim_radius > 0.0F ? 20.0F : 0.0F,
-                                         .follows_ground = true,
-                                         .passable_types = eaw::passability::clear,
-                                         .combat = alive,
-                                         .radius = victim_radius,
-                                         .crush = victim_crush});
+        const auto tank = test_spawn(world, {.type_name = "Tank",
+                                             .owner = 1,
+                                             .position = {50.0F, 100.0F, 0.0F},
+                                             .max_speed = speed,
+                                             .follows_ground = true,
+                                             .passable_types = eaw::passability::clear,
+                                             .radius = 10.0F,
+                                             .crush = {.crusher = kind}});
+        const auto victim = test_spawn(world, {.type_name = "Victim",
+                                               .owner = victim_owner,
+                                               .position = {150.0F, 100.0F, 0.0F},
+                                               .max_speed = victim_radius > 0.0F ? 20.0F : 0.0F,
+                                               .follows_ground = true,
+                                               .passable_types = eaw::passability::clear,
+                                               .combat = alive,
+                                               .radius = victim_radius,
+                                               .crush = victim_crush});
         require(tank && victim, "test spawns must succeed");
         world.submit({.kind = eaw::SimCommandKind::move, .entities = {*tank}, .target = {250.0F, 100.0F, 0.0F}});
         for (int tick = 0; tick < 600; ++tick)

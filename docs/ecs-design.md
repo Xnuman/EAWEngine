@@ -557,9 +557,20 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    differences: a type behaves the same however it appears, so runtime-spawned obstacles block the
    ground and immobile space objects keep ships clear, and following the ground needs a valid
    ground on both paths. The readers stay the free functions they were (`type_movement`,
-   `type_crush`, ...); a registry of them waits for modder-defined components. Not yet: the
-   simulation's side (`EntitySpawn` as a recipe reference plus instance values, type data stored
-   once per recipe, decision 6), which changes the simulation's interface.
+   `type_crush`, ...); a registry of them waits for modder-defined components.
+
+   Second part done 2026-11-15 (the owner's decision, after weighing it against waiting for step 6):
+   the simulation's side. `EntityRecipe` holds a type's data and `EntitySpawn` is a `RecipeId` plus
+   the instance's values (owner, position, heading, look, selectability, formation team, footprint,
+   stance). `SimulationWorld::add_recipe` validates a recipe once and keeps equal recipes as one,
+   so entities of one type that must differ (a company member taking its team's speed, a placement
+   scaled differently) get a recipe of their own: per-entity variation is a variant recipe, ids in
+   registration order. The recipes live in an append-only deque, never changed during a battle; an
+   entity points at its recipe's combat and movement profiles (`CombatState::profile`,
+   `LocomotorColumns::movements`) instead of copying them, and its type name is its recipe's.
+   Cheap scalars (speeds, radius, turn rate) stay per-entity columns copied at spawn. The hash reads
+   the same values through the pointers, so it is unchanged. Temporary per-entity changes of type
+   data (abilities, veterancy) will need override columns when they come.
 6. **Command buffers and event queues.** Structural changes and damage through the barrier, in the
    order they happen today.
 7. **The declared change.** Spawn order as the dense order (compacting removal), per-component

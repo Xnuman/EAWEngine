@@ -33,7 +33,7 @@ bool SimulationWorld::ContactSystem::can_crush(const View& view, const std::size
     const auto& squash = crush_profile_of(view, victim);
     const bool may = squash.squashable || (kind == Crusher::supercrusher && squash.squashable_by_supercrusher);
     const auto& state = combat.states[victim];
-    return kind != Crusher::none && victim != crusher && may && state.profile.health > 0.0F && state.health > 0.0F && rules.hostility.hostile(identity.owners[crusher], identity.owners[victim]);
+    return kind != Crusher::none && victim != crusher && may && state.profile->health > 0.0F && state.health > 0.0F && rules.hostility.hostile(identity.owners[crusher], identity.owners[victim]);
 }
 
 void SimulationWorld::ContactSystem::crush(const View& view)

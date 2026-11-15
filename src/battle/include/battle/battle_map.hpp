@@ -31,6 +31,7 @@ class AssetReader;
 // destruction leaves.
 struct MapEntity
 {
+    EntityRecipe recipe;
     EntitySpawn spawn;
     ScriptTypeInfo script;
     std::string hint;
@@ -75,12 +76,12 @@ struct TeamMovement
     std::optional<float> deceleration;
 };
 
-inline void apply_team_movement(const TeamMovement& team, EntitySpawn& spawn) noexcept
+inline void apply_team_movement(const TeamMovement& team, EntityRecipe& recipe) noexcept
 {
-    spawn.max_speed = team.max_speed.value_or(spawn.max_speed);
-    spawn.turn_rate = team.turn_rate.value_or(spawn.turn_rate);
-    spawn.movement.acceleration = team.acceleration.value_or(spawn.movement.acceleration);
-    spawn.movement.deceleration = team.deceleration.value_or(spawn.movement.deceleration);
+    recipe.max_speed = team.max_speed.value_or(recipe.max_speed);
+    recipe.turn_rate = team.turn_rate.value_or(recipe.turn_rate);
+    recipe.movement.acceleration = team.acceleration.value_or(recipe.movement.acceleration);
+    recipe.movement.deceleration = team.deceleration.value_or(recipe.movement.deceleration);
 }
 
 // An XML object type that can be spawned at runtime: its recipe (type_recipe.hpp) and, for a

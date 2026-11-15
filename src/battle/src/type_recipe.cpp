@@ -64,31 +64,33 @@ TypeRecipe build_type_recipe(const SpawnableBuild& build, const XmlDefinition& d
     return recipe;
 }
 
-EntitySpawn make_spawn(const TypeRecipe& recipe, const SpawnInstance& instance)
+PreparedSpawn make_spawn(const TypeRecipe& recipe, const SpawnInstance& instance)
 {
-    EntitySpawn spawn;
-    spawn.type_name = recipe.type_name;
+    PreparedSpawn made;
+    auto& entity = made.recipe;
+    auto& spawn = made.spawn;
+    entity.type_name = recipe.type_name;
     spawn.owner = instance.owner;
     spawn.position = instance.position;
     spawn.heading = instance.heading;
     spawn.visual = instance.visual;
-    spawn.follows_ground = recipe.follows_ground && instance.ground_valid;
-    spawn.passable_types = spawn.follows_ground ? recipe.passable_types : 0U;
-    spawn.max_speed = recipe.max_speed;
-    spawn.combat = recipe.combat;
-    spawn.crush = recipe.crush;
+    entity.follows_ground = recipe.follows_ground && instance.ground_valid;
+    entity.passable_types = entity.follows_ground ? recipe.passable_types : 0U;
+    entity.max_speed = recipe.max_speed;
+    entity.combat = recipe.combat;
+    entity.crush = recipe.crush;
     if (recipe.max_speed > 0.0F)
     {
         // A placement's matrix sizes the model (a map may scale a placement); a type without a soft
         // radius takes its radius from the bounds through it.
-        spawn.radius = instance.placement && recipe.soft_radius <= 0.0F ? model_footprint_radius(recipe.bounds, *instance.placement) : recipe.radius;
-        spawn.turn_rate = recipe.turn_rate;
-        spawn.min_speed = recipe.min_speed;
-        spawn.movement = recipe.movement;
-        spawn.aims_with_body = spawn.follows_ground && recipe.aims_with_body;
-        spawn.formation_order = recipe.formation_order;
-        spawn.formation_spacing = recipe.formation_spacing;
-        spawn.formation_solo = recipe.formation_solo;
+        entity.radius = instance.placement && recipe.soft_radius <= 0.0F ? model_footprint_radius(recipe.bounds, *instance.placement) : recipe.radius;
+        entity.turn_rate = recipe.turn_rate;
+        entity.min_speed = recipe.min_speed;
+        entity.movement = recipe.movement;
+        entity.aims_with_body = entity.follows_ground && recipe.aims_with_body;
+        entity.formation_order = recipe.formation_order;
+        entity.formation_spacing = recipe.formation_spacing;
+        entity.formation_solo = recipe.formation_solo;
     }
     else if (recipe.obstacle_passability)
     {
@@ -98,9 +100,9 @@ EntitySpawn make_spawn(const TypeRecipe& recipe, const SpawnInstance& instance)
     }
     else
     {
-        spawn.radius = recipe.space_obstacle_radius;
+        entity.radius = recipe.space_obstacle_radius;
     }
-    return spawn;
+    return made;
 }
 
 Matrix4 placement_transform(const Vector3& position, const float heading, const float scale) noexcept

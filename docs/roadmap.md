@@ -180,7 +180,7 @@ rendering rows join item 2).
       rest after steps 6 and 7);
       systems with declared access (the schedule table, the DebugValidation write check, and six of eight
       systems on typed views, 2026-11-15; commands and removal after step 6); recipes (one
-      construction path in the battle layer, 2026-11-15; the simulation's side next); recipes; command buffers and event queues; the one declared
+      construction path, and the simulation's recipes with shared profiles, 2026-11-15); recipes; command buffers and event queues; the one declared
       hash change (spawn order, per-component hashing); parallel systems (route searches first); a refactoring step last, its scope to be agreed with the
       owner,
       each step with an unchanged battle hash except the declared one, folding in the deferred
