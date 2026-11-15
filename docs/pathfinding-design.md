@@ -18,8 +18,8 @@ behind it is [pathfinding-research.md](pathfinding-research.md); what is built i
    plans through a gap an infantryman fits through, and a push can move a unit through it.
 6. Cohesion waits for members thousands of units away (an order to every unit of an owner is one
    group), and a walker's 3 s turn in place counts as a stall that drops it from its group.
-7. Infantry in the original move as loose teams of about eight, each in its ring, the teams in a
-   block (the owner's recording, 2026-11-12); the engine has no squads yet.
+7. Infantry in the original move as loose teams of about eight, the teams in a block (the owner's
+   recording, 2026-11-12); the engine has no squads yet.
 8. The opening tick's target search (5,000 searches, 38-47 ms with 3,300 entities).
 
 ### Performance (2026-11-15, Release, `benchmark-battle.ps1`, 500 units, 4,400 entities)
@@ -102,7 +102,9 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
 ### 4.2 Route planning
 
 - A request plans on the chunk graph first: the chunk components to the goal. Unreachable goals end
-  there, at the nearest reachable component (today's partial-path rule).
+  there, at the nearest reachable component (today's partial-path rule). A unit or group whose goal
+  is unreachable or occupied stops at the point closest to the goal where it overlaps no other unit
+  (the owner, 2026-11-15).
 - The exact cell path is found by A* held to the corridor of parts the chunk route passes
   (2026-11-15). Refining only the next few chunks (a window) and continuing as the unit gets there
   is not built: with the corridor a search costs about half as many nodes already, and continuing
@@ -118,8 +120,9 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
 
 ### 4.3 Groups: one plan per group, slots that move with it
 
-- **Squads** (the owner: first): a squad is one commandable unit made of its soldiers, a ring
-  around its leader; no single soldier of it can be ordered. A company's squads are slots in its
+- **Squads** (the owner: first): a squad is one commandable unit made of its soldiers, standing in
+  its team container's XML `ContainerArrangement` (rows, or a center and circles around it); no
+  single soldier of it can be ordered. A company's squads are slots in its
   block (the owner's recording).
 - **The planning unit is the group**: a squad, a formation (a group order), or a unit alone. A group
   plans one route for its largest size class from its center (today's commander rule).
@@ -127,6 +130,9 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
   facing. Members steer to their slot in the frame, so the group moves as one body and arrives in
   shape (concern 1). Slots follow today's rules (`FormationOrder` ranks, spacing from footprints and
   `FormationSpacing`).
+- **Several companies** (the owner, 2026-11-15): companies ordered together pass a narrow
+  passage one company after another; the members of one company move at once, under the avoidance
+  and formation rules.
 - **Narrow passages**: where the corridor (from clearance) is narrower than the formation, the frame
   narrows to as many files as fit and widens after (Age of Empires II, Company of Heroes); members
   pass by slot, not by who arrives first.
@@ -145,9 +151,11 @@ correction after overlap is both the cost and the jams of concerns 2 to 4.
   AT-AT none against infantry, concern 4); against an enemy, the enemy takes none (enemies never
   give way).
 - **Giving way** (2): a unit that wants to pass allies slower than itself, or standing, asks them
-  to yield. A yielding unit steps aside out of the passing unit's corridor (the side of the corridor
-  with room, ties by id), waits until it has passed, and returns to its stance, its formation slot,
-  and its route. Yielding is state, so it is hashed and deterministic.
+  to yield. The passing unit keeps its line; a yielding unit steps sideways, across that line, just
+  far enough to clear the passing unit's corridor, to the side of the line it already stands on (two
+  allies with too narrow a gap between them part, each to its own side; the owner's drawing,
+  2026-11-15). A unit dead on the line steps to the side with room, ties by id. It waits until the
+  passing unit has passed and returns to its stance, its formation slot, and its route. Yielding is state, so it is hashed and deterministic.
 - **The no-overlap guarantee**: ORCA can fail to find a velocity (an infeasible program in a dense
   crowd), and a tick's step is discrete. So movement ends with a hard check: a step that would
   bring two units into contact is shortened to the contact (no unit is moved by another), except a
@@ -179,7 +187,7 @@ Each step keeps the battles' outcomes or declares the change, and is measured wi
 `benchmark-battle.ps1` and `check-battle.ps1`.
 
 1. **Squads** (work order f, the owner: first), on today's movement: a squad as one commandable
-   unit of soldiers in a ring.
+   unit of soldiers.
 2. **The pathfinding audit**: a command over stock land maps (seeded start and goal pairs per
    movement and size class; expansions, time, path length, reachability against today's A*), the
    baseline every later step is measured against, and the comparison of the two chunk layouts.
@@ -193,7 +201,10 @@ Each step keeps the battles' outcomes or declares the change, and is measured wi
 
 ## 6. Black-box questions for the original (the owner's observations)
 
-- How does a group pass a narrow gap: in file, by rank, or all at once?
-- Where does a group stop when its goal is unreachable or occupied?
-- Do the soldiers of a squad keep a ring while moving, or only at rest?
-- Does a faster unit of the original pass slower allies, and how do they make room?
+- How does a group pass a narrow gap? Company after company; the members of one company at once,
+  under avoidance and formation rules (the owner, 2026-11-15; 4.3).
+- Where does a group stop when its goal is unreachable or occupied? At the point closest to the goal
+  where it overlaps no other unit (the owner, 2026-11-15; 4.2).
+- Do the soldiers of a squad keep their arrangement while moving, or only at rest? Open.
+- Does a faster unit pass slower allies, and how do they make room? They step sideways off its line,
+  each to its own side, and it passes straight (the owner's drawing, 2026-11-15; 4.4).

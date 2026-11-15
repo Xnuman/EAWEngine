@@ -188,7 +188,7 @@ rendering rows join item 2).
       each step with an unchanged battle hash except the declared one, folding in the deferred
       determinism work (stable-id order, keyed random draws, a full-state hash).
    f. Real squads (the owner: before the rest of g): a squad is one commandable unit made of its
-      soldiers in a ring (no single soldier of it can be ordered); step 1 of
+      soldiers (no single soldier of it can be ordered); step 1 of
       [pathfinding-design.md](pathfinding-design.md). Done 2026-11-15 (team entities; companies
       spawn as squads; the sandbox selects them by their soldiers).
    g. Pathfinding, group movement, and collisions redesigned: [pathfinding-design.md](pathfinding-design.md)
