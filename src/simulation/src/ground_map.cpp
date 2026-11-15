@@ -84,9 +84,9 @@ float GroundMap::surface_height(const float x, const float y) const
     return liquid_level ? std::max(ground, *liquid_level) : ground;
 }
 
-std::optional<std::uint32_t> GroundMap::passability_at(const float x, const float y) const
+std::optional<std::uint32_t> GroundMap::cell_at(const float x, const float y) const
 {
-    if (!valid() || passability.size() != heights.size() || !std::isfinite(x) || !std::isfinite(y))
+    if (!has_passability() || !std::isfinite(x) || !std::isfinite(y))
     {
         return std::nullopt;
     }
@@ -96,7 +96,13 @@ std::optional<std::uint32_t> GroundMap::passability_at(const float x, const floa
     {
         return std::nullopt;
     }
-    return passability[static_cast<std::size_t>(row) * width + static_cast<std::size_t>(column)];
+    return static_cast<std::uint32_t>(row) * width + static_cast<std::uint32_t>(column);
+}
+
+std::optional<std::uint32_t> GroundMap::passability_at(const float x, const float y) const
+{
+    const auto cell = cell_at(x, y);
+    return cell ? std::optional<std::uint32_t>(passability[*cell]) : std::nullopt;
 }
 
 } // namespace eaw

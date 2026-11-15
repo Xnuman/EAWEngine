@@ -58,6 +58,13 @@ struct GroundMap
     [[nodiscard]] float terrain_height(float x, float y) const;
     // The walkable or clickable surface: the terrain, or the liquid surface where it is higher.
     [[nodiscard]] float surface_height(float x, float y) const;
+    // Whether the ground has a passability value for every sample.
+    [[nodiscard]] bool has_passability() const noexcept
+    {
+        return valid() && passability.size() == heights.size();
+    }
+    // The cell nearest to world X/Y (row-major index), nothing outside the grid or without data.
+    [[nodiscard]] std::optional<std::uint32_t> cell_at(float x, float y) const;
     // Raw passability of the cell nearest to world X/Y (nothing outside the grid or without data).
     [[nodiscard]] std::optional<std::uint32_t> passability_at(float x, float y) const;
 };

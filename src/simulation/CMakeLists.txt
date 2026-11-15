@@ -7,6 +7,7 @@ set(HEADERS_DIR "include/simulation")
 set(SOURCES_DIR "src")
 
 set(EAW_SIMULATION_HEADERS
+    ${HEADERS_DIR}/clearance.hpp
     ${HEADERS_DIR}/combat.hpp
     ${HEADERS_DIR}/component_pool.hpp
     ${HEADERS_DIR}/formation.hpp
@@ -19,6 +20,7 @@ set(EAW_SIMULATION_HEADERS
 )
 
 set(EAW_SIMULATION_SOURCES
+    ${SOURCES_DIR}/clearance.cpp
     ${SOURCES_DIR}/combat.cpp
     ${SOURCES_DIR}/formation.cpp
     ${SOURCES_DIR}/ground_map.cpp
