@@ -189,9 +189,10 @@ rendering rows join item 2).
       determinism work (stable-id order, keyed random draws, a full-state hash).
    f. Real squads (the owner: before the rest of g): a squad is one commandable unit made of its
       soldiers in a ring (no single soldier of it can be ordered); step 1 of
-      [pathfinding-design.md](pathfinding-design.md).
+      [pathfinding-design.md](pathfinding-design.md). Done 2026-11-15 (team entities; companies
+      spawn as squads; the sandbox selects them by their soldiers).
    g. Pathfinding, group movement, and collisions redesigned: [pathfinding-design.md](pathfinding-design.md)
-      (agreed 2026-11-15), its order of work in section 5: the pathfinding audit; the shared,
+      (agreed 2026-11-15), its order of work in section 5: the pathfinding audit (done 2026-11-15); the shared,
       size-binned spatial index and staggered target timers; clearance per size class
       (`UnitCollisionClass`); chunks, one level and two levels compared on stock maps; formation
       frames; ORCA avoidance with allies giving way and units never overlapping (no pushing; only

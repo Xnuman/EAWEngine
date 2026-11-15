@@ -216,6 +216,31 @@ and mods as the recording; logs do not record them yet. Headless runs skip
 textures and animation clips, and the state hash covers gameplay state only,
 so a log recorded in the sandbox replays headless with the same hash.
 
+## Path audit
+
+`EAWEngine path-audit` is the pathfinding baseline ([pathfinding-design.md](pathfinding-design.md),
+section 5, step 2): on `--map`, or every land map under `Data/Art/Maps`, it builds the battle (so
+placed objects' footprints are stamped), and for each movement class of `MovementClassTypeDefs.xml`
+(each distinct mask once) plans `--pairs` (default 100) seeded random pairs of start and goal cells
+the class may enter. It prints, per map and class, how many reached their goal, the nodes expanded
+(mean, 95th percentile, most), the time, and the mean path length, then the totals; `--report
+<folder>` writes `path-audit.tsv`, one row per pair. The pairs depend only on the map, the class, and
+the seed, so two runs plan the same ones and `scripts/compare-path-audit.ps1` compares them pair by
+pair: reach changes, the candidate's nodes and time against the reference's, and path lengths for
+pairs both reached. Node counts repeat exactly; times vary between runs by up to about 40% for a
+class, so compare them over repeated runs.
+
+```powershell
+EAWEngine.exe path-audit --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED
+EAWEngine.exe path-audit --game foc --report D:\eaw-audit\before
+.\scripts\compare-path-audit.ps1 -Reference D:\eaw-audit\before -Candidate D:\eaw-audit\after
+```
+
+The baseline (2026-11-15, the grid A*): 76 stock land maps, 13 movement classes, 98,800 pairs, 82%
+reached (the rest partial: their goal lies in a region the start cannot reach); nodes expanded mean
+1,385, 95th percentile 6,722; 0.25 ms a search on average, 1.1 ms at the 95th percentile; the whole
+run takes about 80 s.
+
 ## Lua survey
 
 `EAWEngine lua-survey` runs every script under `Data/Scripts` in its own sandboxed host on recording

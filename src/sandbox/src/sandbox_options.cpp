@@ -67,6 +67,8 @@ void print_sandbox_usage()
               << "  compare-images     Compare two captures (EAWEngine compare-images --help)\n"
               << "  lua-survey         Run every script under Data/Scripts headless on recording stubs and report the\n"
               << "                     host API they use (--ticks, default 600, 10 s; --report <folder> for TSV files)\n"
+              << "  path-audit         Plan seeded start and goal pairs per movement class on --map, or every land map,\n"
+              << "                     and report reach, nodes, time, and length (--pairs, default 100; --report <folder>)\n"
               << "  bootstrap          Alias for doctor for older launch scripts\n"
               << "  --game-root <path> Empire at War installation root\n"
               << "  --game <eaw|foc>   Select the base game or expansion\n"
@@ -154,6 +156,20 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         else if (argument == "lua-survey")
         {
             options.mode = RunMode::lua_survey;
+        }
+        else if (argument == "path-audit")
+        {
+            options.mode = RunMode::path_audit;
+        }
+        else if (argument == "--pairs")
+        {
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(const auto count, parse_unsigned_64(text, argument));
+            if (count == 0 || count > 1'000'000ULL)
+            {
+                return make_error("--pairs must be from 1 to 1000000");
+            }
+            options.pairs = static_cast<std::uint32_t>(count);
         }
         else if (argument == "--report")
         {

@@ -26,6 +26,8 @@ enum class RunMode
     battle,
     // Every script under Data/Scripts run headless on recording stubs (lua_survey_command.hpp).
     lua_survey,
+    // Seeded route searches on land maps, the pathfinding baseline (path_audit.hpp).
+    path_audit,
     doctor,
 };
 
@@ -157,6 +159,8 @@ struct SandboxOptions
     // tick.
     std::optional<std::uint64_t> ticks;
     std::optional<float> tick_rate;
+    // Path audit: start and goal pairs per map and movement class (default 100).
+    std::optional<std::uint32_t> pairs;
     std::optional<std::filesystem::path> record;
     std::optional<std::filesystem::path> replay;
     // lua-survey: a folder for its api.tsv and scripts.tsv reports.

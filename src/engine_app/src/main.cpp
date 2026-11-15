@@ -3,6 +3,7 @@
 #include "vfs/game_installation.hpp"
 #include "vfs/virtual_file_system.hpp"
 #include "sandbox/battle_runner.hpp"
+#include "sandbox/path_audit.hpp"
 #include "sandbox/sandbox_options.hpp"
 #include "engine_app/image_compare_command.hpp"
 #include "engine_app/lua_survey_command.hpp"
@@ -153,6 +154,10 @@ int main(const int argc, char** argv)
         if (options.mode == eaw::RunMode::lua_survey)
         {
             return eaw::engine_app::run_lua_survey(options, vfs);
+        }
+        if (options.mode == eaw::RunMode::path_audit)
+        {
+            return eaw::run_path_audit(options, vfs);
         }
 
 #ifdef _WIN32

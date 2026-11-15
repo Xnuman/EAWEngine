@@ -91,6 +91,8 @@ void test_sandbox_options()
             "invalid battle options must be rejected");
     const auto rate = expect_ok(parse({"battle", "--map", "X.TED", "--tick-rate", "30"}), "parsing a tick rate");
     require(rate.tick_rate == 30.0F, "the tick rate must be read");
+    const auto audit = expect_ok(parse({"path-audit", "--pairs", "250"}), "parsing a path audit");
+    require(audit.mode == eaw::RunMode::path_audit && audit.pairs == 250U && !parse({"path-audit", "--pairs", "0"}), "the path audit and its pair count must be read, and zero pairs rejected");
     require(expect_ok(parse({"battle", "--map", "X.TED", "--stress-orders"}), "parsing stress orders").stress_orders, "stress orders must be read");
     require(!parse({"battle", "--map", "X.TED", "--stress-orders", "--auto-move"}) && !parse({"battle", "--replay", "in.log", "--stress-orders"}) && !parse({"sandbox", "--stress-orders"}),
             "stress orders must not combine with other orders or leave battle mode");
