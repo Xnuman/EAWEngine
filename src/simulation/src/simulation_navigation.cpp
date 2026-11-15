@@ -54,7 +54,7 @@ void SimulationWorld::NavigationSystem::set_route(const View& view, const std::s
     auto& route = view.get<RouteColumns>();
     auto& path = route.paths[index];
     path.clear();
-    route.detoured[index] = 0;
+    route.detoured[index] = detour_none;
     if (waypoints.empty())
     {
         route.move_targets[index].reset();

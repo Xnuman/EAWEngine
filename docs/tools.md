@@ -310,11 +310,9 @@ Utapau, spawns half the units a side (each side half single vehicles, half infan
 counts as one unit), and runs 10 seconds of `EAWEngine battle --stress-orders` in Release; it
 prints the frames over budget, the average, 99th percentile, and worst frame, the entities, and the
 route searches, and fails when any frame went over 16.7 ms. On the development machine
-(2026-11-15): 10 and 50 units stay within the budget (worst 3.7 and 6.8 ms); 100 units go over
-once, on the first tick of fighting (24 ms); 500 units (4,400 entities) average 15.3 ms and go
-over in 110 of 600 frames, the route searches (navigation 5.9 ms a tick, the search budget spent
-every tick) and separation (6.6 ms) the largest parts, the first tick's target search the worst
-(about 125 ms).
+(2026-11-16): 100 units average 1.4 ms (worst 7.2 ms); 500 units (5,000 entities) average 7.5 ms
+with no frame over (worst 15.2 ms), navigation (2.8 ms a tick: ORCA, then giving way) and movement
+(1.6 ms) the largest parts. Timings vary by about 1 ms between runs on that machine.
 
 `check-battle.ps1` holds the expected hash as its default; a change that alters the simulation on
 purpose updates it and says why. `check-captures.ps1` renders a Kuat fighter battle (frames 90 and

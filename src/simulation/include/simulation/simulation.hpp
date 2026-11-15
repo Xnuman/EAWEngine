@@ -1184,6 +1184,9 @@ private:
         // and whether its path is a detour around standing units (followed waypoint by waypoint; a
         // straight line to a later one may run into them). Hashed.
         std::vector<std::uint32_t> blocked_ticks;
+        // Ticks before a unit whose last ask to give way found no place asks again (a crowd that
+        // cannot part is not asked every tick). Hashed.
+        std::vector<std::uint32_t> ask_waits;
         std::vector<std::uint8_t> detoured;
         template <class Visit> void for_each_column(Visit&& visit)
         {
@@ -1199,6 +1202,7 @@ private:
             visit(closest_approaches);
             visit(stalled_ticks);
             visit(blocked_ticks);
+            visit(ask_waits);
             visit(detoured);
         }
     };
@@ -1997,8 +2001,8 @@ private:
         // Where the unit at `yielder` steps to let `passer` (heading `heading`) by: the shortest free
         // step out of its corridor in any of give_way_directions directions, or one a line of standing
         // allies opens by stepping on the same way (shift_on); its requests (and the chain's) go to
-        // requests_.
-        void make_way(const View& view, std::size_t yielder, std::size_t passer, Vector2 heading);
+        // requests_; false when it found none.
+        [[nodiscard]] bool make_way(const View& view, std::size_t yielder, std::size_t passer, Vector2 heading);
         // The chain's next link: the single ally in blockers_ steps on along `toward` to clear the last
         // place of chain_; false when it cannot (more than one in the way, not one that may shift, no
         // ground, or deeper than give_way_chain).

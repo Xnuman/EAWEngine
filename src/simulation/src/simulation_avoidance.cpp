@@ -258,6 +258,11 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
     requests_.clear();
     for (std::size_t passer = 0; passer < identity.ids.size(); ++passer)
     {
+        if (route.ask_waits[passer] > 0)
+        {
+            --route.ask_waits[passer];
+            continue;
+        }
         // A unit held up (slower last tick than give_way_held_fraction of its speed) asks the ally in
         // its way; one still flowing asks only a standing ally there, so a line it walks at opens
         // instead of the mover sliding around it (the owner, 2026-11-15: lines open). Moving allies
@@ -332,7 +337,10 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
             {
                 continue;
             }
-            make_way(view, yielder, passer, heading);
+            if (!make_way(view, yielder, passer, heading))
+            {
+                route.ask_waits[passer] = ticks_for(view, give_way_retry_seconds);
+            }
         }
     }
     // One passer per unit, the lowest, so the outcome does not depend on the order of the scan.
@@ -389,6 +397,17 @@ void SimulationWorld::NavigationSystem::plan_detours(const View& view)
             continue;
         }
         route.blocked_ticks[index] = 0;
+        if (route.detoured[index] == detour_fresh)
+        {
+            // Held up again before passing a waypoint of its detour: where it stands is the closest
+            // point it can reach (planning the same detour again, a unit in contact with the standing
+            // units around it never stopped).
+            route.last_goals[index] = *route.move_targets[index];
+            route.move_targets[index].reset();
+            route.paths[index].clear();
+            route.detoured[index] = detour_none;
+            continue;
+        }
         // The standing units near it block the cells within their summed radii (not those under the
         // unit itself, where it stands).
         const auto& here = placement.positions[index];
@@ -472,7 +491,7 @@ void SimulationWorld::NavigationSystem::plan_detours(const View& view)
         {
             path.push_back({waypoint->x, waypoint->y, 0.0F});
         }
-        route.detoured[index] = 1;
+        route.detoured[index] = detour_fresh;
     }
 }
 
@@ -561,7 +580,7 @@ bool SimulationWorld::NavigationSystem::may_shift(const View& view, const std::s
                                 });
 }
 
-void SimulationWorld::NavigationSystem::make_way(const View& view, const std::size_t yielder, const std::size_t passer, const Vector2 heading)
+bool SimulationWorld::NavigationSystem::make_way(const View& view, const std::size_t yielder, const std::size_t passer, const Vector2 heading)
 {
     const auto& placement = view.get<PlacementColumns>();
     const auto& ground = view.get<GroundState>();
@@ -612,34 +631,55 @@ void SimulationWorld::NavigationSystem::make_way(const View& view, const std::si
                   return a.own_side != b.own_side ? a.own_side : a.direction < b.direction;
               });
     // A free place first; else a place a single standing ally holds, which steps on the same way to
-    // make room (a line opens a lane, give_way_chain deep). The cheap checks go first: an ask is
-    // made for every unit in a mover's way each tick.
-    for (const bool chained : {false, true})
+    // make room (a line opens a lane, give_way_chain deep). Each candidate is checked once, the cheap
+    // checks first: an ask is made for every unit in a mover's way each tick, and most fail in a
+    // crowd.
+    const auto at = [&](const std::size_t candidate)
     {
-        for (std::size_t candidate = 0; candidate < count; ++candidate)
+        return here + candidates[candidate].toward * candidates[candidate].shift;
+    };
+    const auto start_chain = [&](const Vector2 to)
+    {
+        chain_.clear();
+        chain_.push_back({static_cast<std::uint32_t>(yielder), static_cast<std::uint32_t>(passer), {to.x, to.y, ground.map.surface_height(to.x, to.y)}});
+    };
+    std::array<std::uint8_t, give_way_directions> held_by_one{};
+    chain_.clear();
+    for (std::size_t candidate = 0; candidate < count; ++candidate)
+    {
+        const auto to = at(candidate);
+        blockers_at(view, yielder, passer, to);
+        if (blockers_.size() > 1 || !stands_at(view, yielder, to.x, to.y) || !ground_line_passable(ground.map, {here.x, here.y}, {to.x, to.y}, footing_of(view, yielder)) ||
+            !way_clear(view, yielder, here, to))
         {
-            const auto to = here + candidates[candidate].toward * candidates[candidate].shift;
-            if (!stands_at(view, yielder, to.x, to.y))
-            {
-                continue;
-            }
+            continue;
+        }
+        if (blockers_.empty())
+        {
+            start_chain(to);
+            requests_.insert(requests_.end(), chain_.begin(), chain_.end());
             chain_.clear();
-            chain_.push_back({static_cast<std::uint32_t>(yielder), static_cast<std::uint32_t>(passer), {to.x, to.y, ground.map.surface_height(to.x, to.y)}});
-            blockers_at(view, yielder, passer, to);
-            if ((chained ? blockers_.size() != 1 : !blockers_.empty()) || !ground_line_passable(ground.map, {here.x, here.y}, {to.x, to.y}, footing_of(view, yielder)) ||
-                !way_clear(view, yielder, here, to))
-            {
-                continue;
-            }
-            if (!chained || shift_on(view, passer, candidates[candidate].toward, 1U))
-            {
-                requests_.insert(requests_.end(), chain_.begin(), chain_.end());
-                chain_.clear();
-                return;
-            }
+            return true;
+        }
+        held_by_one[candidate] = 1;
+    }
+    for (std::size_t candidate = 0; candidate < count; ++candidate)
+    {
+        if (held_by_one[candidate] == 0)
+        {
+            continue;
+        }
+        start_chain(at(candidate));
+        blockers_at(view, yielder, passer, at(candidate));
+        if (shift_on(view, passer, candidates[candidate].toward, 1U))
+        {
+            requests_.insert(requests_.end(), chain_.begin(), chain_.end());
+            chain_.clear();
+            return true;
         }
     }
     chain_.clear();
+    return false;
 }
 
 bool SimulationWorld::NavigationSystem::shift_on(const View& view, const std::size_t passer, const Vector2 toward, const std::uint32_t depth)

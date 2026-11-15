@@ -268,6 +268,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     route_.closest_approaches.push_back(std::numeric_limits<float>::max());
     route_.stalled_ticks.push_back(0);
     route_.blocked_ticks.push_back(0);
+    route_.ask_waits.push_back(0);
     route_.detoured.push_back(0);
     placement_.pitches.push_back(0.0F);
     motion_.speeds.push_back(0.0F);
@@ -518,6 +519,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(route_.closest_approaches[index]);
         hasher.add(route_.stalled_ticks[index]);
         hasher.add(route_.blocked_ticks[index]);
+        hasher.add(route_.ask_waits[index]);
         hasher.add(route_.detoured[index]);
         hasher.add(route_.loiter_points[index].has_value());
         if (route_.loiter_points[index])

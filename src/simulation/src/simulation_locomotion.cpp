@@ -142,7 +142,7 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
     {
         // A detour around standing units is followed waypoint by waypoint, each passed once the unit
         // is within a cell of it: a straight line on may run into the units it goes around.
-        const bool detour = route.detoured[index] != 0;
+        const bool detour = route.detoured[index] != detour_none;
         while (!path.empty())
         {
             const auto& after = path.size() > 1 ? path[path.size() - 2] : *target;
@@ -152,10 +152,14 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
                 break;
             }
             path.pop_back();
+            if (detour)
+            {
+                route.detoured[index] = detour_under_way;
+            }
         }
         if (path.empty())
         {
-            route.detoured[index] = 0;
+            route.detoured[index] = detour_none;
         }
     }
     if (goal_taken(view, index))

@@ -243,7 +243,9 @@ Built 2026-11-15 (step 6), except the blocked-unit replans; `simulation_avoidanc
   back past the passer was taken, then held by it, and a queue at a passage's mouth jammed. Where no
   point is free, but one is held by a single standing ally that may move, that ally steps on along
   the same direction just far enough to clear it, and so on up to three allies deep: a packed line
-  opens a lane (`make_way`, `shift_on`). Engine choices.
+  opens a lane (`make_way`, `shift_on`). A unit whose ask found no place asks again after a
+  quarter of a second (`RouteColumns::ask_waits`; asking every tick cost 2.5 ms a tick at 500 units,
+  nearly every ask failing in the crowds). Engine choices.
 - **The no-overlap guarantee**: ORCA can fail to find a velocity (an infeasible program in a dense
   crowd), and a tick's step is discrete. So movement ends with a hard check: a step that would
   bring two units into contact is shortened to the contact (no unit is moved by another), except a

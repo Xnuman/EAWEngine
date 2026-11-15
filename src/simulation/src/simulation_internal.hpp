@@ -87,6 +87,9 @@ inline constexpr std::uint32_t give_way_directions = 16;
 inline constexpr float give_way_least_lateral = 0.2F;
 inline constexpr float give_way_max_shift = 3.0F;
 inline constexpr std::uint32_t give_way_chain = 3;
+// A unit whose ask found no place asks again after this long (asking every tick cost 2.5 ms a tick
+// in the 500-unit benchmark, nearly every ask failing in its crowds). Engine choice.
+inline constexpr float give_way_retry_seconds = 0.25F;
 // A moving unit that went this share of its speed along its way last tick asks no one (nothing held
 // it up or turned it aside). Engine choice.
 inline constexpr float give_way_unhindered_fraction = 0.95F;
@@ -96,6 +99,10 @@ inline constexpr float give_way_way_tolerance = 0.01F;
 // (world units beyond its own size), each blocking the cells within their summed radii. Engine
 // choices.
 inline constexpr float detour_after_seconds = 2.0F;
+// RouteColumns::detoured: no detour, a detour no waypoint of which is passed yet, one under way.
+inline constexpr std::uint8_t detour_none = 0;
+inline constexpr std::uint8_t detour_fresh = 1;
+inline constexpr std::uint8_t detour_under_way = 2;
 inline constexpr float detour_window = 300.0F;
 // A unit detours only when a standing unit is within this many summed radii of it (what holds it up).
 inline constexpr float detour_beside = 1.5F;
