@@ -314,8 +314,9 @@ Compatibility with the original's multiplayer protocol is an open question, not 
    measurement with `scripts/check-input-load.ps1` (status.md). Open:
    - the run of `check-input-load.ps1` with a synthetic 8 kHz mouse, which waits for the owner (it
      needs the window to hold the focus);
-   - default bindings as the original's hotkeys, once the owner's screenshots of its controls menu
-     are transcribed;
+   - default bindings as the original's hotkeys (transcribed in compatibility-research.md, "Default
+     key bindings"): chords, order keys that arm the next click, arrow-key panning; applied with the
+     in-game UI and the player layer, not before (the owner);
    - controllers (GameInput, a new dependency), which wait for the player layer (the owner);
    - input timestamps, left out until something consumes them (orders take effect on the next
      tick; nothing yet orders events within a frame).

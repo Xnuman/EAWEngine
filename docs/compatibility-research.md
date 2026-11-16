@@ -1387,6 +1387,93 @@ button selects units, by click or by dragging a selection rectangle, and the rig
 move and attack commands. Exact angles, zoom limits, pan speeds, and per-map camera settings need
 evidence from the shipped data or black-box observation before a legacy camera can follow them.
 
+### Default key bindings
+
+Transcribed from the owner's screenshots of Forces of Corruption's controls menu (Options, five tabs;
+copies kept locally under `Reference Materials/Screenshots/Original UI/`, never committed). Every
+binding is rebindable there, with Back, Defaults, and Accept. Plain keys are the orders, groups, and
+camera; every ability is a chord: Ctrl for land abilities, Shift for space abilities, Alt for heroes.
+
+Units:
+
+| Action | Key | Action | Key |
+| --- | --- | --- | --- |
+| Select group 1-9, 0 | 1-9, 0 | Guard | G |
+| Select all | Ctrl+A | Attack | A |
+| Select like | Ctrl+Q | Stop | S |
+| Next unit | F | Move | M |
+| Previous unit | D | Attack move | T |
+| | | Waypoint | W |
+| | | Retreat | E |
+| | | Reinforce | R |
+| | | Place beacon | B |
+| | | Super weapon | Ctrl+W |
+
+Land abilities: Deploy/undeploy Ctrl+D, Take cover Ctrl+Z, Jetpack Ctrl+J, Thermal detonator K (the
+one unchorded ability), Drop thermal detonator Ctrl+K, Rocket weapon Ctrl+G, Cable attack Ctrl+F,
+Sensor ping Ctrl+O, Boost weapon power Ctrl+B, Self destruct Ctrl+X, Deploy stormtroopers Ctrl+H,
+Maximum firepower Ctrl+M, Sprint Ctrl+N, System control Ctrl+C, Remote explosive Ctrl+E, Detonate
+remote explosive Ctrl+R, Fire cannon Ctrl+U, Point defense laser system Ctrl+L, Stim pack Ctrl+S,
+Swap weapons Ctrl+I, Minor drain life Ctrl+T, Proximity mines Ctrl+P.
+
+Space abilities: Boost shield power Shift+O, Tractor beam Shift+T, Gravity well generator Shift+G,
+Barrage area Shift+B, Hunt for enemies Shift+H, Boost engine power Shift+E, Lure enemy fighters
+Shift+L, Missile jamming field Shift+M, Lock S-foils Shift+W, Ion cannon shot Shift+I, Destroy planet
+Shift+D, Sensor jamming Shift+J, Stealth Shift+C, Leech shields Shift+N, Buzz droids Shift+Z,
+Enhanced targeting Shift+A, Cluster bomb Shift+K, Point defense laser system Shift+P, Self destruct
+Shift+S, Full salvo Shift+F, Deploy squadron Shift+Q.
+
+Interface:
+
+| Action | Key | Action | Key |
+| --- | --- | --- | --- |
+| Toggle droid advisor | Numpad Subtract | Quick save | F6 |
+| Initiate chat | Enter | Quick load | F5 |
+| Scroll up, down, left, right | Arrow keys | Mission holocron | Tab |
+| Reset camera | End | Taunt one, two, three | Numpad 1, 2, 3 |
+| Camera center | Page Up | (Multiplayer) give credits | Shift+Y |
+| Camera home | Home | Toggle tactical interface | I |
+| Tactical overview | Insert | Toggle player list | P |
+| Camera tether | Scroll Lock | | |
+| Battlecam | Space | | |
+| Unit preview | C | | |
+| Screen shot | F12 | | |
+
+Hero: Lucky shot Alt+K, Call for wingmen Alt+W, Force crush Alt+H, Force push Alt+P, Force lightning
+Alt+L, Force corrupt Alt+O, Force protect Alt+Z, Capture vehicle Alt+V, Exit vehicle Alt+Y, Proton
+beam Alt+X, Seismic charge Alt+M, Weaken enemy Alt+[, Invulnerability Alt+], EMP burst Alt+/,
+Control turret Alt+comma, Repair vehicle Alt+period, Flame thrower Alt+J, Redirect all firepower
+Alt+;, Saber throw Alt+T, Stealth Alt+C, Jedi mind trick Alt+U, Force sight Alt+S, Force attack
+Alt+E, Radioactive contamination Alt+minus, Infection Alt+I, Drain life Alt+D, Summon Rancor Alt+R,
+Blast Alt+G, Shield flare Alt+F, Sonic stunner Alt+N, Bribe enemies Alt+B, Full salvo Alt+A, Sensor
+jamming Alt+Q.
+
+What the table implies for the engine: bindings are chords (a modifier and a key), and orders are
+keys of their own (attack A, attack move T, guard G, move M, stop S, waypoint W), not modifiers held
+while right-clicking. There are no WASD camera keys: W, A, S, and D are orders, so panning is the
+arrow keys only (and the screen edges, not shown in the menu). An order key arms the next click: the
+cursor changes, and the next left-click on the ground or a unit gives the order (the owner's
+account of the game; Stop presumably acts at once, unconfirmed).
+
+### Main menu
+
+The owner's screenshot of Forces of Corruption's main menu (build 1.121.859328, shown at the bottom
+left): a live space battle as the background (X-wings, a Mon Calamari cruiser and Star Destroyers
+with their weapon fire), the title at the top, the LucasArts and Petroglyph logos at the bottom left,
+the faction emblem at the right, and the menu at the bottom right under the heading "Main Menu":
+Tutorial, Single Player, Multiplayer, Load Game, Options, Exit Game, as wide framed buttons. A UI
+reference for the menu's layout, not an asset to reproduce.
+
+### Skirmish battle setup
+
+The owner's screenshot of Forces of Corruption's skirmish setup (`skirmish_setup.png` beside the
+others): a game type list (Land, Space, Land Control), the map list with each map's player count in
+brackets ("(2) Alderaan at War" to "(4) Yavin Training Grounds", scrolling), a preview of the
+selected map with numbered start positions, Official Maps and Custom Maps buttons under it, and
+eight player slots, each with four drop-downs: the player (the local player's name, an AI level such
+as Easy AI, or Open), the faction (Empire, Rebellion), a team color swatch, and the team (Team 1,
+Team 2). Cancel, Advanced..., and Start Game close it. A UI reference for M4's skirmish setup.
+
 ## Lua host protocol
 
 What the engine must provide to the stock scripts, from the framework library under

@@ -843,3 +843,8 @@ rewritten to describe the current state; the source document is noted in bracket
   world units from the camera (guesses; Graphics panel sliders); the opaque BatchMeshGloss by a
   screen-space dither. The pixel shader's dither threshold became a helper shared with the
   detail-level cross-fade.
+- The owner sent screenshots of Forces of Corruption's controls menu (five tabs), main menu, and
+  skirmish setup, kept locally under Reference Materials/Screenshots/Original UI/. Every default
+  binding is transcribed in compatibility-research.md (orders and camera are plain keys, abilities
+  Ctrl, Shift, or Alt chords; an order key arms the next click, the owner's account). The owner
+  chose to record them only: the sandbox's bindings change with the in-game UI and the player layer.
