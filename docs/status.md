@@ -383,8 +383,8 @@ improvements, off or optional unless stated; legacy is the default.
   noise of about 420-unit cells drifting with the wind decides where, a fine one of about 7-unit
   cells breaks it up, procedural in world space, so nothing repeats). The Graphics panel tunes the
   waves (`VisualOceanWaves`: height at most 1.25 times, length, speed, crest sharpness, calm and full
-  depths, crest-foam start, Defaults); the defaults are the owner's tuning on Kamino (height 1.15,
-  length 1.77, speed 2.04, crest sharpness 0.2, calm below 4, full from 3, crest foam from 0.3).
+  depths, crest-foam start, Defaults); the defaults are the owner's tuning for ocean maps (height 1.25, the
+  most, length 2.5, speed 2.7, crest sharpness 0.7, calm below 0, full from 10, crest foam from 0.54).
   Waves run only on open sea (the owner's choice): `ocean_map` names the ocean planets by the map's
   file name, Kamino and Manaan, and sets `VisualLightRig::ocean`; the panel's setting is ocean maps
   (default), on, or off. A corpus survey showed why a measure cannot decide it: the share under water

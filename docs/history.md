@@ -818,3 +818,6 @@ rewritten to describe the current state; the source document is noted in bracket
   projectile state is hashed only for shots flying on). Projectile_Ground_Detonation_Particle had
   been marked done but played only for death explosions naming a projectile; no shot reached the
   ground before.
+- The owner's third ocean tuning, for ocean maps, became the defaults: height 1.25 (the mesh bounds'
+  maximum), length 2.5, speed 2.7, crest sharpness 0.7, calm below 0, full from 10, crest foam from
+  0.54 (before: 1.15, 1.77, 2.04, 0.2, 4, 3, 0.3).

@@ -151,8 +151,8 @@ choices.
 - Sliders. With enhanced water the Graphics panel tunes the waves (`VisualOceanWaves` in
   `d3d12_renderer.hpp`): height scale (at most 1.25), length and speed scales, crest sharpness, the
   calm and full depths, where crest foam starts, and Defaults. The defaults are the owner's, tuned
-  by eye on Kamino: height 1.15, length 1.77, speed 2.04, crest sharpness 0.2, calm below 4, full
-  from 3, crest foam from 0.3. A full depth at or below the calm depth makes the waves start at
+  by eye for ocean maps: height 1.25 (the most the mesh bounds allow), length 2.5, speed 2.7, crest
+  sharpness 0.7, calm below 0, full from 10, crest foam from 0.54. A full depth at or below the calm depth makes the waves start at
   full height just past the calm depth.
 - Only on ocean maps. Waves run only where the water is open sea, not on lakes, ponds, and rivers
   (the owner's decision). `ocean_map` (`scene_terrain.cpp`, the one place) names the ocean planets
