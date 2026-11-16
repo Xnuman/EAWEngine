@@ -383,7 +383,7 @@ Systems that `needs` rows wait for, by tag count:
 | --- | --- | --- |
 | `Death_Explosions` | `done` |  |
 | `Death_Explosions_End` | `done` | played where the wreck lay when it goes; wrecks of meshes without a DIE clip leave nothing to end |
-| `Death_Clone` | `partial` | the normal clone's look: its DIE variant, persistence, end explosion and sound, and its own model when it has one (capital ships, stations, transports); damage-type-specific clones other than crushing are not chosen |
+| `Death_Clone` | `partial` | the normal clone (its DIE variant, persistence, end explosion and sound, its own model) and the crush clone; the other damage kinds (infection, remote bomb, Force lightning and telekinesis, Veers' deployed state) come from abilities, which are not implemented |
 | `Death_Clone_Is_Obstacle` | `needs wreck entities` | needs wrecks as simulation entities |
 | `IsDeathClone` | `gap` |  |
 | `IsDeathCloneObstacle` | `needs wreck entities` | as Death_Clone_Is_Obstacle |

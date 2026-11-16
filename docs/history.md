@@ -832,3 +832,7 @@ rewritten to describe the current state; the source document is noted in bracket
 - "Beams for instant-hit weapons" left the open list: no stock weapon fires an instant beam (the
   nine projectiles without a speed are ability blasts and two bombs); every stock beam belongs to an
   ability (superlasers, laser defense, energy weapon, shield leech, tractor beams, drain life).
+- "Damage-specific death clones" left combat presentation's open list: besides Damage_Normal and
+  Damage_Crush (both done), the stock death-clone damage kinds come from abilities: Damage_Infection
+  from IG-88's infection ability (Infection_Projectile), Damage_Remote_Bomb from no weapon (the
+  remote bomb deals Damage_Bomb), Force lightning and telekinesis, and Veers' deployed state.
