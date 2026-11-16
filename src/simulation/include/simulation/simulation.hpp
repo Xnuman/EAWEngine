@@ -2205,10 +2205,16 @@ private:
         // Shield refresh, then every armed entity's target, turret, and weapons, then the projectiles
         // in flight.
         void run(const View& view, float dt);
+        // Where parallel parts run (not owned; none runs them serially, with the same results).
+        void set_jobs(JobSystem* jobs) noexcept
+        {
+            jobs_ = jobs;
+        }
 
     private:
-        // Turns `index`'s turret toward turret_victim (CombatProfile::turret).
-        void aim_turret(const View& view, std::size_t index, float dt);
+        // Turns `index`'s turret toward turret_victim (CombatProfile::turret); `query` is the caller's
+        // scratch (one per chunk of entities aimed at once).
+        void aim_turret(const View& view, std::size_t index, float dt, std::vector<std::uint32_t>& query);
         // Whether `victim` is within `weapon`'s range, beyond its minimum, and of a category it fires at.
         [[nodiscard]] bool in_reach(const View& view, std::size_t index, const WeaponProfile& weapon, std::size_t victim) const noexcept;
         void launch(const View& view, std::size_t shooter, std::size_t victim, const WeaponProfile& weapon, const LocalPoint& mount);
@@ -2230,13 +2236,17 @@ private:
         [[nodiscard]] bool turret_aimed(const View& view, std::size_t index, std::size_t victim) const noexcept;
         // The victim `index`'s turret turns toward: its own weapon's burst victim, else the entity's
         // target within that weapon's reach, else the nearest hostile within it.
-        [[nodiscard]] std::optional<std::size_t> turret_victim(const View& view, std::size_t index);
-        void update_target(const View& view, std::size_t index);
+        [[nodiscard]] std::optional<std::size_t> turret_victim(const View& view, std::size_t index, std::vector<std::uint32_t>& query);
+        void update_target(const View& view, std::size_t index, std::vector<std::uint32_t>& query);
         // `mount` of `weapon`, turned with the turret when the weapon is on it.
         [[nodiscard]] LocalPoint weapon_mount(const View& view, std::size_t index, const WeaponProfile& weapon, const LocalPoint& mount) const noexcept;
         // The grid of positions targets are chosen from this tick, and its query scratch.
         SpatialGrid grid_;
         std::vector<std::uint32_t> query_;
+        // The armed entities of a tick (dense order), and the query scratch of each chunk aimed at once.
+        std::vector<std::uint32_t> armed_;
+        std::vector<std::vector<std::uint32_t>> aim_queries_;
+        JobSystem* jobs_{};
     };
     CombatSystem combat_system_;
 

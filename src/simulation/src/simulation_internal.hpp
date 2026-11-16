@@ -93,6 +93,8 @@ inline constexpr std::uint32_t give_way_chain = 3;
 // Route searches run this many at a time on the job system (each with its own search scratch, about
 // 16 bytes a ground cell for each of two pathfinders). Engine choice.
 inline constexpr std::size_t route_batch = 8;
+// Combat aims this many armed entities to a job (target choice and turret). Engine choice.
+inline constexpr std::size_t aim_grain = 8;
 // Ground avoidance plans this many steering units to a job. Engine choice, from the 500-unit
 // benchmark.
 inline constexpr std::size_t avoidance_grain = 4;

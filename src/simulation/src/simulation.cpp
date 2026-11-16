@@ -1256,6 +1256,7 @@ void SimulationWorld::refresh_clearance()
 void SimulationWorld::set_job_system(JobSystem* jobs) noexcept
 {
     navigation_.set_jobs(jobs);
+    combat_system_.set_jobs(jobs);
 }
 
 const GroundMap& SimulationWorld::ground() const noexcept

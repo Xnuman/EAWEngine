@@ -3,6 +3,7 @@
 #include "simulation_internal.hpp"
 
 #include "math/scalar.hpp"
+#include "jobs/parallel.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -72,20 +73,52 @@ void SimulationWorld::CombatSystem::run(const View& view, const float dt)
             state.shield = std::min(state.profile->shield, state.shield + state.profile->shield_refresh);
         }
     }
+    // The armed (a spinning, dying entity no longer fights). Each picks its target and turns its
+    // turret first: they read the others' state, which no armed entity changes in this phase (damage
+    // waits in its queue), and write their own, so they run in chunks on the job system, each with its
+    // own query scratch (docs/ecs-design.md, 7.5). Then the weapons fire in entity order, as they draw
+    // from the one combat random stream. (Each entity's weapons used to fire right after its own aim;
+    // the battles' hashes are the same either way.)
+    armed_.clear();
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
-        // A spinning (dying) entity no longer fights.
         if (!combat_state(view, index).profile->weapons.empty() && combat_state(view, index).health > 0.0F)
         {
-            update_target(view, index);
-            aim_turret(view, index, dt);
-            run_weapon(view, index);
+            armed_.push_back(static_cast<std::uint32_t>(index));
         }
+    }
+    const auto aim = [&](const std::size_t index, std::vector<std::uint32_t>& query)
+    {
+        update_target(view, index, query);
+        aim_turret(view, index, dt, query);
+    };
+    if (jobs_ == nullptr)
+    {
+        for (const auto index : armed_)
+        {
+            aim(index, query_);
+        }
+    }
+    else
+    {
+        aim_queries_.resize(std::max(aim_queries_.size(), chunk_count(armed_.size(), aim_grain)));
+        parallel_for(*jobs_, armed_.size(), aim_grain,
+                     [&](const std::size_t begin, const std::size_t end, const std::size_t chunk)
+                     {
+                         for (auto armed = begin; armed < end; ++armed)
+                         {
+                             aim(armed_[armed], aim_queries_[chunk]);
+                         }
+                     });
+    }
+    for (const auto index : armed_)
+    {
+        run_weapon(view, index);
     }
     run_projectiles(view);
 }
 
-void SimulationWorld::CombatSystem::aim_turret(const View& view, const std::size_t index, const float dt)
+void SimulationWorld::CombatSystem::aim_turret(const View& view, const std::size_t index, const float dt, std::vector<std::uint32_t>& query)
 {
     auto& placement = view.get<PlacementColumns>();
     // Armed: it has combat (run).
@@ -96,7 +129,7 @@ void SimulationWorld::CombatSystem::aim_turret(const View& view, const std::size
     }
     const auto& turret = *state.profile->turret;
     float wanted = 0.0F;
-    if (const auto victim = turret_victim(view, index))
+    if (const auto victim = turret_victim(view, index, query))
     {
         const auto& to = placement.positions[*victim];
         wanted = std::clamp(wrap_angle(std::atan2(to.y - placement.positions[index].y, to.x - placement.positions[index].x) - placement.headings[index]), -turret.yaw_limit, turret.yaw_limit);
@@ -105,7 +138,7 @@ void SimulationWorld::CombatSystem::aim_turret(const View& view, const std::size
     state.turret_yaw = wrap_angle(state.turret_yaw + std::clamp(wrap_angle(wanted - state.turret_yaw), -step, step));
 }
 
-std::optional<std::size_t> SimulationWorld::CombatSystem::turret_victim(const View& view, const std::size_t index)
+std::optional<std::size_t> SimulationWorld::CombatSystem::turret_victim(const View& view, const std::size_t index, std::vector<std::uint32_t>& query)
 {
     auto& placement = view.get<PlacementColumns>();
     const auto& fighter = combat_state(view, index);
@@ -134,7 +167,7 @@ std::optional<std::size_t> SimulationWorld::CombatSystem::turret_victim(const Vi
         {
             return target;
         }
-        if (const auto nearest = choose_target(view, grid_, query_, index, placement.positions[index], weapon.range,
+        if (const auto nearest = choose_target(view, grid_, query, index, placement.positions[index], weapon.range,
                                                [&](const std::size_t candidate)
                                                {
                                                    return in_reach(view, index, weapon, candidate);
@@ -182,7 +215,7 @@ bool SimulationWorld::CombatSystem::turret_aimed(const View& view, const std::si
     return std::fabs(wrap_angle(bearing - (placement.headings[index] + state.turret_yaw))) <= turret_aim_tolerance;
 }
 
-void SimulationWorld::CombatSystem::update_target(const View& view, const std::size_t index)
+void SimulationWorld::CombatSystem::update_target(const View& view, const std::size_t index, std::vector<std::uint32_t>& query)
 {
     auto& identity = view.get<IdentityColumns>();
     auto& placement = view.get<PlacementColumns>();
@@ -243,7 +276,7 @@ void SimulationWorld::CombatSystem::update_target(const View& view, const std::s
         else if (!state.ordered && state.profile->stickiness_seconds > 0.0F && ++state.target_ticks >= ticks_for(view, state.profile->stickiness_seconds))
         {
             state.target_ticks = 0;
-            if (const auto best = choose_target(view, grid_, query_, index, placement.positions[index], range,
+            if (const auto best = choose_target(view, grid_, query, index, placement.positions[index], range,
                                                 [&](const std::size_t candidate)
                                                 {
                                                     return engages(view, index, candidate);
@@ -265,7 +298,7 @@ void SimulationWorld::CombatSystem::update_target(const View& view, const std::s
         return;
     }
     state.retarget_timer = ticks_for(view, retarget_seconds);
-    const auto best = choose_target(view, grid_, query_, index, placement.positions[index], range,
+    const auto best = choose_target(view, grid_, query, index, placement.positions[index], range,
                                     [&](const std::size_t candidate)
                                     {
                                         return engages(view, index, candidate);

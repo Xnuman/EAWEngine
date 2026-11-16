@@ -624,7 +624,10 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    opening tick's spikes need them. Route searches followed the same day for those spikes: the
    pathfinders' regions and chunk graphs became shared `NavigationData`, frozen while searches run,
    and requests are planned eight at a time on the job system and given in request order under the
-   unchanged budget (a large order's worst search tick 18 to 10-12 ms, hashes unchanged).
+   unchanged budget (a large order's worst search tick 18 to 10-12 ms, hashes unchanged). Combat's
+   target choice and turrets followed (combat 1.2 to 0.82 ms a tick, its opening spike 6.2 to 2.3 ms);
+   weapons stay serial on the shared combat random stream until keyed streams (the deferred
+   determinism work).
 9. **Refactoring.** A review of what the migration left, its scope and plan to be agreed with the
    owner first (the owner, 2026-11-15).
 
