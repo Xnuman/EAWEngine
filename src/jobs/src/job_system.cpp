@@ -94,6 +94,8 @@ struct JobSystem::State
     std::vector<std::thread> threads;
     // Bumped (and waited on) whenever work arrives, so idle workers sleep without a lock.
     std::atomic<std::uint32_t> epoch{0};
+    // Workers sleeping on the epoch (or about to), so wake calls the OS only when one does.
+    std::atomic<std::uint32_t> sleeping{0};
     std::atomic<std::uint32_t> started{0};
     std::atomic<bool> stopping{false};
     bool converted_creator{};
@@ -105,18 +107,38 @@ struct JobSystem::State
         return *worker;
     }
 
-    void wake() noexcept
+    // New work for up to `count` threads: wakes that many sleeping workers, none when none sleeps
+    // (each wake is a call into the OS; waking every worker for one job cost them all a wake-up).
+    // Sequentially consistent with idle's increment of `sleeping` and its read of `epoch`: a worker
+    // either is counted here or sees the new epoch (and the work published before it) and stays up.
+    void wake(const std::size_t count = 1) noexcept
     {
-        epoch.fetch_add(1, std::memory_order_release);
-        epoch.notify_all();
+        epoch.fetch_add(1, std::memory_order_seq_cst);
+        const auto asleep = sleeping.load(std::memory_order_seq_cst);
+        if (asleep == 0)
+        {
+            return;
+        }
+        if (count >= asleep)
+        {
+            epoch.notify_all();
+            return;
+        }
+        for (std::size_t woken = 0; woken < count; ++woken)
+        {
+            epoch.notify_one();
+        }
     }
 
     // Moves a parked fiber to the queue it may run from.
     void make_ready(const std::uint32_t fiber) noexcept
     {
-        const bool pushed = fiber >= pool_size ? pinned[fiber - pool_size]->push(fiber) : ready.push(fiber);
+        const bool home = fiber >= pool_size;
+        const bool pushed = home ? pinned[fiber - pool_size]->push(fiber) : ready.push(fiber);
         EAW_ASSERT_MSG(pushed, "a ready queue overflowed (it holds every fiber)");
-        wake();
+        // A home fiber resumes only on its own thread, which a single wake may miss (the one woken
+        // finds nothing it may run and sleeps again): those wake every sleeper.
+        wake(home ? workers.size() : 1);
     }
 
     // Switches this thread to `target`, telling it what to do for the fiber switched from; returns
@@ -258,12 +280,13 @@ struct JobSystem::State
             }
             _mm_pause();
         }
-        const auto seen = epoch.load(std::memory_order_acquire);
-        if (has_work(worker) || stopping.load(std::memory_order_acquire))
+        sleeping.fetch_add(1, std::memory_order_seq_cst);
+        const auto seen = epoch.load(std::memory_order_seq_cst);
+        if (!has_work(worker) && !stopping.load(std::memory_order_acquire))
         {
-            return;
+            epoch.wait(seen, std::memory_order_acquire);
         }
-        epoch.wait(seen, std::memory_order_acquire);
+        sleeping.fetch_sub(1, std::memory_order_seq_cst);
     }
 
     // The loop every pool fiber runs: resume ready fibers, run jobs, sleep when there is nothing.
@@ -446,7 +469,7 @@ JobSystem::~JobSystem()
     State::QueuedJob left;
     EAW_ASSERT_MSG(!state.pop_job(left), "the job system was destroyed with jobs still queued");
     state.stopping.store(true, std::memory_order_release);
-    state.wake();
+    state.wake(state.workers.size());
     for (auto& thread : state.threads)
     {
         thread.join();
@@ -479,11 +502,11 @@ void JobSystem::run(const std::span<const Job> jobs, const JobPriority priority,
         {
             // A full queue: the calling fiber does the job itself (the order jobs run in never
             // decides a result).
-            state.wake();
+            state.wake(jobs.size());
             state.execute(queued);
         }
     }
-    state.wake();
+    state.wake(jobs.size());
 }
 
 void JobSystem::wait(JobCounter& counter)

@@ -344,14 +344,20 @@ EAWBenchmarks.exe paths --workers 0,3,7 --repeat 9 --output D:\eaw-bench\paths.t
 ```
 
 Suites: `jobs-tiny` (200,000 one-number jobs: the scheduling cost of a job), `jobs-math` (2,000,000
-items of float math in chunks: scaling), `jobs-nested` (jobs waiting on their own jobs: parking and
+items of float math in chunks: scaling), `jobs-loops` (1,000 `parallel_for` calls of 512 items in
+chunks of 4: the fixed cost of a short loop, as a simulation tick runs them), `jobs-nested` (jobs waiting on their own jobs: parking and
 resuming fibers), and `paths` (384 A* searches on a synthetic 512 by 512 ground, the route searches
 the simulation will run on the job system first), and `poses` (one frame of `UnitAnimator::animate`
 with 256 new 40-bone poses and an empty pose cache: presentation's pose sampling). `scripts/benchmark.ps1` runs it and, with
 `-Reference`, prints each configuration's median against an earlier run's. The first run
 (2026-11-15, 8 hardware threads): float math 6.6 times faster with 7 workers, path searches 5.2
 times; a job costs about 43 ns on one thread and 90-110 ns with workers sharing one queue, so a job
-should carry several microseconds of work.
+should carry several microseconds of work. After `parallel_for` took chunks from a shared index and
+wakes went only to sleeping workers (2026-11-16, 7 workers, A/B on one machine): short loops 80.1 to
+67.7 ms (4.9 to 5.9 times the serial run), tiny jobs 23.5 to 20.0 ms, long chunks unchanged (211
+against 215-220 ms). A suite's work runs in functions the compiler may not inline
+(`churn_range`): inlined, the serial loop and the chunks got different code from one source, and
+a change to `parallel_for` alone made the serial run 23% slower.
 
 ## Profiling
 
