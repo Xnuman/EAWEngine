@@ -1087,7 +1087,10 @@ cohesion stall (to be reworked with group movement).
   the blast besides the shot. Friendly units are spared except by a blast's `Friendly_Damage_Amount`
   (only the remote bomb: 200), which supports blasts sparing friends otherwise;
   `Projectile_Blast_Area_Immune_Faction` is not read. A type's `Death_Projectiles` (four stations and
-  a prop) sets off that projectile's blast where it dies.
+  a prop) sets off that projectile's blast where it dies, and reports its detonation there
+  (`ImpactKind::detonated`): presentation plays the projectile's lifetime detonation particle (else
+  its object, else its ground one, as for death explosions naming a projectile) and its
+  `Projectile_SFXEvent_Detonate`, besides the type's own `Death_Explosions`.
 - **Crushing**: in contact, a moving ground crusher kills each hostile entity it may crush whose
   center lies within its footprint radius (`CrushProfile`; counted in the combat counters). XML
   `Is_Supercrusher` types (both AT-ATs, the Gargantuan, the HTT) crush `Is_Squashable` and

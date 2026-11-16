@@ -525,6 +525,8 @@ enum class ImpactKind : std::uint8_t
     expired,
     // A miss that flew on and met the ground (or the liquid over it) on land.
     ground,
+    // A projectile that detonated where it was set off: a dying entity's Death_Projectiles.
+    detonated,
 };
 
 // A shot that ended in the last tick, for impact effects (a derived output, not part of the state

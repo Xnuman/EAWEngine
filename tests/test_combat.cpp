@@ -998,6 +998,7 @@ void test_target_validity()
         eaw::CombatProfile station;
         station.health = 10.0F;
         station.death_blast = {.damage = 50.0F, .range = 100.0F};
+        station.death_blast_visual = 33U;
         eaw::CombatProfile sturdy;
         sturdy.health = 1000.0F;
         const auto doomed = test_spawn(station_world, {.type_name = "Station", .owner = 2, .combat = station});
@@ -1006,6 +1007,13 @@ void test_target_validity()
         station_world.submit({.kind = eaw::SimCommandKind::damage, .entities = {*doomed}, .amount = 100.0F});
         station_world.step();
         require(!station_world.alive(*doomed) && station_world.snapshot().entities[0].health == 950.0F, "a death blast must damage the hostiles around the dead");
+        const auto& impacts = station_world.snapshot().impacts;
+        require(std::ranges::count_if(impacts,
+                                      [](const eaw::ImpactSnapshot& impact)
+                                      {
+                                          return impact.kind == eaw::ImpactKind::detonated && impact.visual == 33U && impact.position == eaw::Vector3{};
+                                      }) == 1,
+                "a death blast must report its projectile's detonation where the dead lay");
     }
     // Three muzzles (MuzzleA_nn): shots cycle through them, the first from the main one.
     {

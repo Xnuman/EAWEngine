@@ -423,8 +423,8 @@ void BattleAudio::play_tick_events(const SimSnapshot& snapshot, const Simulation
             ++stats_.missing;
         }
     }
-    // Shots that hit play their projectile's detonation: the armor-reduced one when armor took part
-    // (falling back to the plain one); shields take the plain one too. Shots that flew their range
+    // Shots that hit, and death projectiles where they go off, play their projectile's detonation: the
+    // armor-reduced one when armor took part (falling back to the plain one); shields take the plain one too. Shots that flew their range
     // out play nothing (an engine choice: whether a lapsed shot detonates is not known).
     for (const auto& impact : snapshot.impacts)
     {

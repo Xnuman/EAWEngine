@@ -821,3 +821,8 @@ rewritten to describe the current state; the source document is noted in bracket
 - The owner's third ocean tuning, for ocean maps, became the defaults: height 1.25 (the mesh bounds'
   maximum), length 2.5, speed 2.7, crest sharpness 0.7, calm below 0, full from 10, crest foam from
   0.54 (before: 1.15, 1.77, 2.04, 0.2, 4, 3, 0.3).
+- Death projectiles' detonations: a dying type's Death_Projectiles blast now also reports its
+  detonation (ImpactKind::detonated), which plays the projectile's detonation particle and sound
+  where the type died (8 stock types: exploding crates, orbital resource containers, destroyable
+  docks). Their damage was already done; no hash changed (impacts and the new profile key are not
+  hashed).

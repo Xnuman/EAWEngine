@@ -39,8 +39,10 @@ struct ProjectileVisual
     // absorbed by shields (Projectile_Absorbed_By_Shields_Particle), on the hull
     // (Projectile_Object_Detonation_Particle), on the hull with armor reducing it
     // (Projectile_Object_Armor_Reduced_Detonation_Particle), at the end of its flight
-    // (Projectile_Lifetime_Detonation_Particle), and on the ground (Projectile_Ground_Detonation_Particle).
-    std::array<std::uint32_t, 5> impact_effects{};
+    // (Projectile_Lifetime_Detonation_Particle), on the ground (Projectile_Ground_Detonation_Particle),
+    // and detonated where it was set off (a death projectile: its lifetime detonation, else its object
+    // one, else its ground one, as death explosions naming a projectile; an inference from the data).
+    std::array<std::uint32_t, 6> impact_effects{};
     // On the ground, the particle of its Projectile_Ground_Detonation_SurfaceFX for each surface kind
     // the SurfaceFX names (lower case: default, water, lava, ice); see ground_impact_effects.
     struct SurfaceParticle

@@ -788,6 +788,10 @@ void SimulationWorld::resolve(const DamageEvent& event)
         events_.impacts.push_back({event.point, event.direction, event.visual, event.ground ? ImpactKind::ground : ImpactKind::expired});
         break;
     case DamageEvent::Kind::blast:
+        if (event.visual != 0)
+        {
+            events_.impacts.push_back({event.point, {0.0F, 0.0F, 1.0F}, event.visual, ImpactKind::detonated});
+        }
         break;
     }
     area_blast(*this, event.point, event.owner, event.blast, event.damage_type, event.damages_shield, event.damages_health);
@@ -836,6 +840,7 @@ bool SimulationWorld::resolve_deaths(std::vector<std::uint8_t>& handled)
                                         .damages_shield = profile.death_blast_damages_shield,
                                         .damages_health = profile.death_blast_damages_health,
                                         .point = placement_.positions[index],
+                                        .visual = profile.death_blast_visual,
                                         .owner = identity_.owners[index],
                                         .blast = profile.death_blast});
     }

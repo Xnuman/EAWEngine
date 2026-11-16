@@ -508,6 +508,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 profile.death_blast_damage_type = shot.damage_type;
                 profile.death_blast_damages_shield = shot.damages_shield;
                 profile.death_blast_damages_health = shot.damages_health;
+                profile.death_blast_visual = shot.projectile_visual;
             }
             else
             {

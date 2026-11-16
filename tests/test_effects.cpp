@@ -656,6 +656,13 @@ void test_projectile_sprites()
     std::ranges::sort(keys);
     require(keys == std::vector<std::uint32_t>{11U, 12U, 14U, 22U}, "impact effect keys failed");
 
+    // A death projectile detonates with its lifetime particle, else its object one, else its ground one.
+    {
+        const eaw::CombatProfile station{.death_blast_visual = 5U};
+        std::vector<std::uint32_t> death_keys;
+        eaw::collect_projectile_keys(station, death_keys);
+        require(death_keys == std::vector<std::uint32_t>{5U}, "a death projectile must be collected for its visual");
+    }
     // Ground hits: the ground detonation and the SurfaceFX's default particle on ground; the
     // liquid's particle alone over a liquid; a surface the SurfaceFX does not name falls back.
     eaw::ProjectileVisual grounded;

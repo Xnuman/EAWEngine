@@ -391,7 +391,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Death_Fade_Time` | `gap` | needs a per-instance fade in the renderer |
 | `Remove_Upon_Death` | `done` | no corpse |
 | `Death_Leave_Hulk_Behind` | `gap` |  |
-| `Death_Projectiles` | `done` | the projectile's blast where it dies |
+| `Death_Projectiles` | `done` | the projectile's blast where it dies, with its detonation particle and sound |
 | `Retreat_Self_Destruct_Explosion` | `needs retreat` |  |
 | `Spin_Away_On_Death` | `partial` | delayed death out of control; the spin is not drawn |
 | `Spin_Away_On_Death_Chance` | `done` |  |

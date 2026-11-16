@@ -265,6 +265,9 @@ struct CombatProfile
     std::uint16_t death_blast_damage_type{};
     bool death_blast_damages_shield{true};
     bool death_blast_damages_health{true};
+    // That projectile's presentation key (as WeaponProfile::projectile_visual; 0 none): its
+    // detonation plays where the entity dies. Not hashed.
+    std::uint32_t death_blast_visual{};
     // Spinning away (XML Spin_Away_On_Death, _Chance, _Time; fighters, corvettes): when its health
     // runs out it spins away with this chance instead of dying at once: out of control (no orders,
     // no target, no fire, no further damage) for `spin_seconds`, then it dies and plays

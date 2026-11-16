@@ -67,9 +67,16 @@ void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<c
             const auto name = fields.text(field);
             return name.empty() ? 0U : game_object_name_crc(name);
         };
-        visual.impact_effects = {particle_key("Projectile_Absorbed_By_Shields_Particle"), particle_key("Projectile_Object_Detonation_Particle"),
-                                 particle_key("Projectile_Object_Armor_Reduced_Detonation_Particle"), particle_key("Projectile_Lifetime_Detonation_Particle"),
-                                 particle_key("Projectile_Ground_Detonation_Particle")};
+        visual.impact_effects = {
+            particle_key("Projectile_Absorbed_By_Shields_Particle"), particle_key("Projectile_Object_Detonation_Particle"), particle_key("Projectile_Object_Armor_Reduced_Detonation_Particle"),
+            particle_key("Projectile_Lifetime_Detonation_Particle"), particle_key("Projectile_Ground_Detonation_Particle"), 0U};
+        for (const auto kind : {ImpactKind::expired, ImpactKind::hull, ImpactKind::ground})
+        {
+            if (auto& detonated = visual.impact_effects[static_cast<std::size_t>(ImpactKind::detonated)]; detonated == 0)
+            {
+                detonated = visual.impact_effects[static_cast<std::size_t>(kind)];
+            }
+        }
         if (const auto surface_fx = fields.text("Projectile_Ground_Detonation_SurfaceFX"); surfaces != nullptr && !surface_fx.empty())
         {
             for (const auto& setting : surfaces->settings(surface_fx))
@@ -155,6 +162,10 @@ void collect_projectile_keys(const CombatProfile& profile, std::vector<std::uint
         {
             keys.push_back(weapon.projectile_visual);
         }
+    }
+    if (profile.death_blast_visual != 0)
+    {
+        keys.push_back(profile.death_blast_visual);
     }
 }
 
