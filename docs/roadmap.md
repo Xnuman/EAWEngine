@@ -277,14 +277,16 @@ rendering rows join item 2).
 1. Tactical battles. Done: the core, spawning, RTS orders, terrain and passability, A*, group
    movement and formations, space combat with hardpoints, flight, headless battles and replays.
    Open: AT-AT animations are broken (the owner, 2026-11-13: in the sandbox an AT-AT can stay in its
-   idle clip while ordered to move); combat presentation and fidelity (hardpoint damage visuals, turret rotation of hardpoint
+   idle clip while ordered to move); combat presentation and fidelity (hardpoint damage visuals and
+   breakoff debris done 2026-11-13, a wreck's end sound 2026-11-16; open: turret rotation of hardpoint
    turrets (unit turrets done 2026-11-12); walkers' `_QUARTER`/`_HALF` turn clips (cycles between
    BEGIN and END, compatibility-research.md "The turn kit"; turns are composed of them, done
    2026-11-14; the angle each stands for is inferred from the names, not measured),
    `Rotation_Animation_Speed`, and `Locomotor_Has_Animation_Priority` (turn-in-place, begin/end,
    start and stop transitions done 2026-11-12)),
-   damage-specific death clones and wreck explosions, ground detonations, debris, death-projectile
-   blasts, beams for instant-hit weapons), and game and mod identity in order logs. With the
+   damage-specific death clones, ground detonations' surface effects, death-projectile blasts,
+   beams for instant-hit weapons, `Damaged_Smoke_Asset_Name`, `Should_Death_Clone_Play_Idle`; the
+   gap rows of docs/xml-tag-status.md list the rest), and game and mod identity in order logs. With the
    simulation rewrite (owner, 2026-11-13): staged battles (a spawn facing, invulnerable targets, a
    per-hardpoint shot report) and, on them, the fire-cone regression cases from the recorded
    hardpoint shot counts by bearing (S-22 to S-42, compatibility-research.md).

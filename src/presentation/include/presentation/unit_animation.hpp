@@ -42,6 +42,7 @@
 #include <limits>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -155,11 +156,13 @@ public:
     [[nodiscard]] std::optional<Vector3> bone_position(std::size_t instance, std::string_view bone, std::span<const VisualInstance> instances, std::span<const Matrix4> palette) const;
     // The bone's whole world transform (its axes as well as its place), as bone_position finds it.
     [[nodiscard]] std::optional<Matrix4> bone_transform(std::size_t instance, std::string_view bone, std::span<const VisualInstance> instances, std::span<const Matrix4> palette) const;
-    // A wreck that went in the last animate() with an effect to play there (DeathStyle::end_effect).
+    // A wreck that went in the last animate() with an effect or a sound to play there
+    // (DeathStyle::end_effect and end_sound).
     struct EndedCorpse
     {
         Vector3 position;
         std::uint32_t effect{};
+        std::string sound;
     };
     // Valid until the next animate(); wrecks dropped for the corpse limit are not listed.
     [[nodiscard]] const std::vector<EndedCorpse>& ended_corpses() const noexcept;
@@ -254,6 +257,7 @@ private:
         // Where its DIE clip was last frame (frames; -1 before the first).
         double cue_frame{-1.0};
         std::uint32_t end_effect{};
+        std::string end_sound;
     };
     // Reports the frames a clip passed from `from` to `to` (a loop of `loop_frames` wraps).
     void add_cue(EntityId entity, const Vector3& position, const VisualClip& clip, double from, double to, double loop_frames, std::size_t instance);

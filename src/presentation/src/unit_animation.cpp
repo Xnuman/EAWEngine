@@ -414,7 +414,7 @@ void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id,
                 corpses_.erase(corpses_.begin());
             }
             const auto lifetime = style.persistence_seconds ? static_cast<double>(*style.persistence_seconds) : std::numeric_limits<double>::infinity();
-            corpses_.push_back({instance, -1, seconds, lifetime, -1.0, style.end_effect});
+            corpses_.push_back({instance, -1, seconds, lifetime, -1.0, style.end_effect, style.end_sound});
         }
         return;
     }
@@ -424,7 +424,7 @@ void UnitAnimator::add_corpse(const VisualInstance& instance, const EntityId id,
     }
     const auto duration = static_cast<double>(animation_duration(*rigs_[instance.mesh].clips[static_cast<std::size_t>(clip)].animation));
     const auto lifetime = style.persistence_seconds ? std::max(static_cast<double>(*style.persistence_seconds), duration) : duration + corpse_linger_seconds;
-    corpses_.push_back({instance, clip, seconds, lifetime, -1.0, style.end_effect});
+    corpses_.push_back({instance, clip, seconds, lifetime, -1.0, style.end_effect, style.end_sound});
 }
 
 void UnitAnimator::add_frame_cues(const EntityFrame& current, const LocomotionPose& locomotion_pose, const AttackPose& attack)
@@ -651,9 +651,9 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                       {
                           return false;
                       }
-                      if (corpse.end_effect != 0)
+                      if (corpse.end_effect != 0 || !corpse.end_sound.empty())
                       {
-                          ended_corpses_.push_back({translation(corpse.instance.transform), corpse.end_effect});
+                          ended_corpses_.push_back({translation(corpse.instance.transform), corpse.end_effect, corpse.end_sound});
                       }
                       return true;
                   });

@@ -97,7 +97,7 @@ void test_combat_content()
                 "<GroundInfantry Name=\"Squishy_Dead\"><Specific_Death_Anim_Index>1</Specific_Death_Anim_Index><Death_Persistence_Duration>15</Death_Persistence_Duration>"
                 "<Death_Explosions_End>Big_Boom, Other</Death_Explosions_End></GroundInfantry>"
                 "<GroundInfantry Name=\"Own_Wreck\"><Specific_Death_Anim_Index>3</Specific_Death_Anim_Index><Death_Persistence_Duration>2</Death_Persistence_Duration>"
-                "<Death_Explosions_End>Small_Boom</Death_Explosions_End></GroundInfantry>"
+                "<Death_Explosions_End>Small_Boom</Death_Explosions_End><Death_SFXEvent_End_Die> Crash_SFX </Death_SFXEvent_End_Die></GroundInfantry>"
                 "<GroundInfantry Name=\"Squishy_Flat\"><Specific_Death_Anim_Type> Crushed </Specific_Death_Anim_Type><Specific_Death_Anim_Index>0</Specific_Death_Anim_Index></GroundInfantry>"
                 "<SpaceUnit Name=\"Debris\"><Remove_Upon_Death> true </Remove_Upon_Death></SpaceUnit>"
                 "<SpaceProp Name=\"Backdrop_Planet\"><In_Background> Yes </In_Background></SpaceProp>"
@@ -280,7 +280,7 @@ void test_combat_content()
                 "the crush death clone must give the crushed clip, the normal one the DIE variant");
         const auto own = eaw::scene_build::type_death_style(catalog, *definition("Own_Wreck"));
         require(squishy.persistence_seconds == 15.0F && squishy.end_effect == eaw::game_object_name_crc("Big_Boom") && own.persistence_seconds == 2.0F &&
-                    own.end_effect == eaw::game_object_name_crc("Small_Boom") && !own.die_variant,
+                    own.end_effect == eaw::game_object_name_crc("Small_Boom") && own.end_sound == "Crash_SFX" && squishy.end_sound.empty() && !own.die_variant,
                 "a wreck's persistence and end explosion must come from its death clone, or from the type itself without one (not its DIE variant)");
     }
     require(eaw::scene_build::type_death_style(catalog, *definition("Debris")).removed && !eaw::scene_build::type_death_style(catalog, *definition("Tank")).removed,

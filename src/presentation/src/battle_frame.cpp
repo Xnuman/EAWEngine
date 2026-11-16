@@ -81,6 +81,10 @@ void build_battle_frame(const BattleRuntime& runtime, const SimSnapshot& previou
     for (const auto& ended : presenters.animator->ended_corpses())
     {
         presenters.effects.play_object(ended.effect, ended.position);
+        if (presenters.audio != nullptr && !ended.sound.empty())
+        {
+            presenters.audio->play_event(ended.sound, ended.position);
+        }
     }
     if (presenters.audio != nullptr)
     {

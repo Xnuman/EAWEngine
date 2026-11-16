@@ -26,9 +26,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 177 |
+| `done` | 187 |
 | `partial` | 24 |
-| `gap` | 191 |
+| `gap` | 181 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -69,7 +69,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Movement, locomotion, formations, and collision
 
-37 done, 7 partial, 43 gap, 19 needs, 7 n/a.
+40 done, 7 partial, 40 gap, 19 needs, 7 n/a.
 
 ### Speed and acceleration
 
@@ -152,7 +152,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Space_Layer` | `done` |  |
 | `Space_Obstacle_Offset` | `gap` | 0 0 0 in nearly all stock uses |
 | `Space_Obstacle_Radius` | `done` | ships steer around it; fields, nebulae, and ion storms excepted |
-| `Debris_Movement_Vector` | `gap` |  |
+| `Debris_Movement_Vector` | `done` | presentation only (debris.hpp); units per 30 Hz frame in the frame of the unit it broke off (an engine choice) |
 
 ### Footprint, extents, and passability
 
@@ -231,7 +231,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-49 done, 3 partial, 48 gap, 35 needs.
+55 done, 3 partial, 42 gap, 35 needs.
 
 ### Health, shields, armor, and energy
 
@@ -283,7 +283,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Damage_Particles` | `done` |  |
 | `Damage_Decal` | `done` |  |
 | `Death_Explosion_Particles` | `done` | the first entry |
-| `Death_Breakoff_Prop` | `gap` |  |
+| `Death_Breakoff_Prop` | `done` | debris broken off a destroyed hardpoint, presentation only (also on land, where the original is said to leave it out) |
 | `Repair_Amount_Per_Frame` | `needs repair` |  |
 | `Repair_Cost_Per_Frame` | `needs repair` |  |
 | `Should_Be_Destroyed_When_All_Hardpoints_Destroyed` | `done` | default yes; the hull follows its parts (recorded) |
@@ -407,10 +407,10 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Debris_Attached_Particle` | `gap` |  |
-| `Debris_Facing_Rotate_Vector` | `gap` |  |
-| `Debris_Min_Lifetime_Seconds` | `gap` |  |
-| `Debris_Max_Lifetime_Seconds` | `gap` |  |
+| `Debris_Attached_Particle` | `done` | the trail of the debris piece |
+| `Debris_Facing_Rotate_Vector` | `done` | degrees per 30 Hz frame (an engine choice) |
+| `Debris_Min_Lifetime_Seconds` | `done` |  |
+| `Debris_Max_Lifetime_Seconds` | `done` |  |
 
 ### Other single-purpose tags
 
@@ -1496,7 +1496,7 @@ Postponed by the owner (2026-11-13): battles use the engine's own cameras for no
 
 ## Sound events and speech
 
-25 done, 1 partial, 3 gap, 58 needs, 4 n/a.
+26 done, 1 partial, 2 gap, 58 needs, 4 n/a.
 
 ### Unit responses to orders and selection
 
@@ -1559,7 +1559,7 @@ Postponed by the owner (2026-11-13): battles use the engine's own cameras for no
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Death_SFXEvent_Start_Die` | `done` |  |
-| `Death_SFXEvent_End_Die` | `gap` |  |
+| `Death_SFXEvent_End_Die` | `done` | played with the wreck's Death_Explosions_End (an inference: every stock user has both) |
 | `Spin_Away_On_Death_SFXEvent_Start_Die` | `done` |  |
 | `Selt_Destruct_SFXEvent_Start_Die` | `needs retreat` |  |
 | `Land_Damage_SFX` | `done` | on entering a state on the way down, on land |

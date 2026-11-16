@@ -220,6 +220,10 @@ DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinitio
             style.end_effect = game_object_name_crc(names.front());
         }
     }
+    if (const auto* sound = catalog.field(wreck, "Death_SFXEvent_End_Die").field)
+    {
+        style.end_sound = ascii_trim(sound->text);
+    }
     return style;
 }
 

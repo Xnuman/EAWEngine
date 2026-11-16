@@ -672,7 +672,7 @@ void test_unit_animation()
     require(drawn.empty() && mourner.stats().corpses == 0, "a corpse must be removed after lingering");
     // A death clone's style: its DIE variant and persistence (30 s for the AT-ST's).
     eaw::set_translation(body.transform, {5.0F, 6.0F, 7.0F});
-    mourner.add_corpse(body, {5, 1}, 100.0, eaw::DeathStyle{.die_variant = 0U, .persistence_seconds = 12.0F, .end_effect = 77U});
+    mourner.add_corpse(body, {5, 1}, 100.0, eaw::DeathStyle{.die_variant = 0U, .persistence_seconds = 12.0F, .end_effect = 77U, .end_sound = "Crash"});
     none.clear();
     drawn.clear();
     mourner.animate({}, none, drawn, 111.0, 1U << 20U, palette);
@@ -680,7 +680,8 @@ void test_unit_animation()
     none.clear();
     drawn.clear();
     mourner.animate({}, none, drawn, 112.5, 1U << 20U, palette);
-    require(drawn.empty() && mourner.ended_corpses().size() == 1 && mourner.ended_corpses()[0].effect == 77U && mourner.ended_corpses()[0].position == eaw::Vector3{5.0F, 6.0F, 7.0F},
+    require(drawn.empty() && mourner.ended_corpses().size() == 1 && mourner.ended_corpses()[0].effect == 77U && mourner.ended_corpses()[0].sound == "Crash" &&
+                mourner.ended_corpses()[0].position == eaw::Vector3{5.0F, 6.0F, 7.0F},
             "a death clone's corpse must go once its persistence ends, reporting its end effect where it lay");
     // A clipless mesh in a damage state keeps its rubble, at rest pose, for good.
     auto rubble = prop;

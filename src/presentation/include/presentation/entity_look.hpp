@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
 namespace eaw {
 
@@ -34,6 +35,10 @@ struct DeathStyle
     // The Particle object played where the wreck is when it goes (the clone's Death_Explosions_End,
     // its first entry, as a game_object_name_crc key; 0 for none).
     std::uint32_t end_effect{};
+    // The sound event played with it (Death_SFXEvent_End_Die, "at the end of a death sequence"; every
+    // stock user also has a Death_Explosions_End and names a large explosion sound, so it is read as
+    // the wreck's final explosion: an inference), or empty.
+    std::string end_sound;
     // Leaves no corpse: removed the moment it dies (XML Remove_Upon_Death: fighters, debris,
     // satellites, most props).
     bool removed{};
