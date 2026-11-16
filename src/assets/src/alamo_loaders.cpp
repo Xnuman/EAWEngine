@@ -37,6 +37,7 @@ Model load_model(const AloModelData& data)
     {
         const auto& mesh = data.meshes[mesh_index];
         ModelMesh loaded{mesh.name, mesh.attached_bone, mesh.hidden, {}, {}, {}};
+        loaded.stealth = alo_stealth_mesh(mesh.name);
         if (mesh.attached_bone && *mesh.attached_bone < data.bones.size())
         {
             loaded.billboard = alo_billboard(data.bones[*mesh.attached_bone].billboard);

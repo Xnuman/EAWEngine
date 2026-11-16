@@ -172,8 +172,7 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
    - the distance fade's defaults (5,000 to 7,000 units, guesses), for the owner to tune with the
      Graphics panel's sliders;
    - heat distortion: shockwave rings as an enhanced option (heat particles and meshes are done);
-   - shields: the FoC stealth meshes' visibility (when the original shows them), and reading
-     `Shield_Flash_*` from GameConstants;
+   - shields: reading `Shield_Flash_*` from GameConstants;
    - weather: the fog plane, the weather cube's size, fade-out distance, and fade; tiles that
      appear while panning filling from the top; weather kinds in gameplay through
      WeatherModifiers.xml, with the timeline then on the battle's ticks; the placement is an engine
@@ -221,7 +220,8 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
 2. Skirmish systems: the player layer (the local player's owner, factions and hostility from data
    instead of the provisional slot rule, team colours by owner, fog of war), build pads,
    reinforcements, abilities from `Unit_Abilities_Data` (the infantry crouch first, researched in
-   the compatibility notes; `ROCKET_ATTACK` among them), transports, capture, retreat, victory
+   the compatibility notes; `ROCKET_ATTACK` among them; stealth shows the model's stealth look,
+   `ModelMesh::stealth`, in place of the model), transports, capture, retreat, victory
    conditions.
 3. Galactic systems: planets, fleets, economy, construction, heroes, transitions between galactic
    and tactical play.

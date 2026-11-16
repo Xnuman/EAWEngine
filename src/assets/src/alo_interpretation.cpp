@@ -43,6 +43,12 @@ AloNameVariant alo_name_variant(const std::string_view name) noexcept
     return {kind, index};
 }
 
+bool alo_stealth_mesh(const std::string_view name) noexcept
+{
+    const auto base = alo_name_variant(name).kind == AloVariantKind::none ? name : name.substr(0, name.rfind('_'));
+    return ascii_equal_ignoring_case(base, "stealth");
+}
+
 AloNameVariant alo_mesh_variant(const AloModelData& model, const AloMesh& mesh) noexcept
 {
     auto variant = alo_name_variant(mesh.name);

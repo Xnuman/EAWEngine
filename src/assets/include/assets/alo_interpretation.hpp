@@ -31,6 +31,11 @@ struct AloNameVariant
 };
 
 [[nodiscard]] AloNameVariant alo_name_variant(std::string_view name) noexcept;
+// Whether a mesh is a stealth look: named "stealth" apart from a variant suffix (stock: 9 FoC models,
+// MeshShield, RSkinAdditive, or an ordinary material). The files leave them visible; the stealth
+// ability shows one in place of the model (the owner's account), so it is no part of the model's
+// own appearance.
+[[nodiscard]] bool alo_stealth_mesh(std::string_view name) noexcept;
 // A bone's billboard mode as the engine's: 0 none, 1 parallel and 2 face (facing the camera), 3 about
 // Z toward the camera, 4 toward the light, 5 along the wind, 6 sun glow, 7 sun (the names and order
 // of the MIT-licensed alo-viewer; unknown values draw fixed).

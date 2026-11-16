@@ -42,6 +42,8 @@ struct ModelMesh
     std::vector<ModelSubmesh> submeshes;
     // How the mesh turns as its bone's billboard mode says (none: fixed).
     VisualBillboard billboard{VisualBillboard::none};
+    // The stealth ability's look (legacy: alo_stealth_mesh), never part of the model's appearance.
+    bool stealth{};
 };
 
 // A named attachment point on a bone, as effects use it.

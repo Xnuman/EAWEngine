@@ -901,3 +901,7 @@ rewritten to describe the current state; the source document is noted in bracket
 - Placed map decals surveyed: the one stock map is UM11_RAIDERS_OF_THE_LOST_HOLOCRON.TED; its 65
   decals carry a position, a size, and a small type index (3 on 64, 6 on one) but no texture, so
   they stay undrawn until a screenshot of the original shows what they are.
+- Stealth meshes are no longer drawn: 9 FoC models carry a visible mesh named stealth (with LOD
+  variants on Tyber and Urai Fen); the owner reports the stealth ability shows it in place of the
+  model, so it is now kept out of the model's appearance, bounds, and footprint
+  (ModelMesh::stealth). Battle hashes unchanged.

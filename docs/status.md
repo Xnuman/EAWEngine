@@ -302,8 +302,14 @@ improvements, off or optional unless stated; legacy is the default.
   for the wave and the other way round; the contract names layers by what they do and the
   translation keeps the observed pairing. Used by the hidden `shield` meshes of capital ships and
   base shield generators (flashed by the shield abilities), the `stealth` meshes of the FoC stealth
-  ships (visible in their models; when the original shows them is not established), and
-  always-visible energy spheres (the Gungan projectile, the droideka's shield).
+  ships (not drawn, see below), and always-visible energy spheres (the Gungan projectile, the
+  droideka's shield).
+- **Stealth looks** (`ModelMesh::stealth`, `alo_stealth_mesh`): meshes named `stealth` apart from a
+  variant suffix (9 FoC models: the Vengeance, the F9-TZ transport, the TIE Phantom, Tyber Zann's
+  Krayt destroyer, Tyber (free and jailed), Urai Fen, Luke, the mouse droid; `MeshShield`, `RSkinAdditive`, or an
+  ordinary material). The files leave them visible; the stealth ability shows one in place of the
+  model (the owner's account), so they are no part of the model's appearance, its bounds, or its
+  footprint. Showing them waits for the ability.
 - **Sky domes** (`VisualLightingModel::sky`, `Skydome`, 19 uses): lit by every map light through the
   turned-around normal, times the vertex color, plus `Emissive`, with the cloud layer (scrolled
   along U, then scaled) over the base by cloud alpha x vertex alpha, never shadowed.

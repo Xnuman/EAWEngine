@@ -33,6 +33,8 @@ void test_alo_model()
 
 void test_alo_mesh_visibility()
 {
+    require(eaw::alo_stealth_mesh("stealth") && eaw::alo_stealth_mesh("Stealth_LOD2") && !eaw::alo_stealth_mesh("stealth_hull") && !eaw::alo_stealth_mesh("hull_LOD0"),
+            "stealth meshes are named stealth apart from a variant suffix");
     require(eaw::alo_name_variant("NB_dish_ALT2").kind == eaw::AloVariantKind::alternate && eaw::alo_name_variant("NB_dish_ALT2").index == 2, "ALT suffix was not parsed");
     require(eaw::alo_name_variant("hull_lod1").kind == eaw::AloVariantKind::level_of_detail && eaw::alo_name_variant("hull_lod1").index == 1, "LOD suffix is case-insensitive");
     require(eaw::alo_name_variant("ALTAR").kind == eaw::AloVariantKind::none && eaw::alo_name_variant("BASE_ALT").kind == eaw::AloVariantKind::none &&

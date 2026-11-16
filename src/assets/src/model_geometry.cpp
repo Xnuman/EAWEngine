@@ -28,7 +28,7 @@ bool drawn_mesh(const Model& source, const ModelMesh& mesh, const DrawnMeshFilte
 {
     const auto& bones = source.skeleton.bones;
     const bool hidden_bone = filter.bind_pose_visibility && mesh.attached_bone && *mesh.attached_bone < bones.size() && !bones[*mesh.attached_bone].visible;
-    if (mesh.hidden || hidden_bone)
+    if (mesh.hidden || hidden_bone || mesh.stealth)
     {
         return false;
     }
