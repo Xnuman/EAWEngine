@@ -63,7 +63,7 @@ Result<std::string> require_value(const int argc, const char* const* argv, int& 
 void print_sandbox_usage()
 {
     std::cout << "EAWEngine visual sandbox\n\n"
-              << "Usage: EAWEngine [sandbox|battle|doctor|bootstrap|compare-images|lua-survey] [options]\n"
+              << "Usage: EAWEngine [sandbox|battle|doctor|bootstrap|compare-images|lua-survey|path-audit] [options]\n"
               << "  sandbox            Open the Direct3D 12 visual sandbox (default)\n"
               << "  battle             Run a battle on --map without a window and print its state hash and statistics\n"
               << "  doctor             Validate discovery, mounts, and an asset probe\n"
@@ -113,7 +113,7 @@ void print_sandbox_usage()
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
               << "  --show-passability Start with the map's passability classes drawn (G toggles)\n"
               << "  --overlay          Start with the on-screen statistics panel shown (hidden by default; the F1 menu toggles it)\n"
-              << "  --panel <menu|statistics|spawn|sound|camera>  Open a dev panel at start (repeatable; F1 hides the bar)\n"
+              << "  --panel <menu|statistics|spawn|sound|camera|graphics|controls>  Open a dev panel at start (repeatable; F1 hides the bar)\n"
               << "  --no-raw-input     Read mouse movement and keys from window messages instead of raw input\n"
               << "  --no-error-dialog  Report fatal errors on stderr only (no error window)\n"
               << "  --log-dir <path>   Folder for log files (default: logs next to the executable)\n"

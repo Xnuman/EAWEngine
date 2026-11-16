@@ -31,13 +31,12 @@ build, tests, and the launcher and engine split.
 
 Discovery, the layered VFS, lossless readers for MEG, DAT, DDS, MTD, ALO, ALA, TED, XML (with the
 optional eaw-schema), and Lua, each audited against the stock corpus; the asset inspector, DAT
-editor, and EAWTools on the same libraries. Audio and video formats were not part of M1; they are
-stages of the Data track.
+editor, and EAWTools on the same libraries. Audio and video formats are stages of the Data track.
 
 ### M2: legacy-mode renderer complete for stock content (active)
 
 The first deliverable (load and inspect a stock unit and a tactical map in the sandbox) is met. M2
-now closes when the renderer shows stock content with every feature it was authored for.
+closes when the renderer shows stock content with every feature it was authored for.
 
 - Needs: Rendering stages 1 and 2.
 - Deliverable: every stock material family and map environment renders with its features; captures
@@ -78,144 +77,59 @@ Complete skirmish matches against the AI.
 
 ## Work order
 
-Set by the owner on 2026-11-10: the base technical systems and M2's renderer come before combat
-presentation and the player layer. Inserted by the owner on 2026-11-11, before item 2: the
-game-object tags existing systems should honor, worked through tag by tag from
-[xml-tag-status.md](xml-tag-status.md) (its `gap` and `partial` rows, family by family; the
-rendering rows join item 2).
+Set by the owner: the base technical systems and M2's renderer come before combat presentation and
+the player layer. Before item 2, and alongside it, the game-object tags existing systems should
+honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) (its `gap` and
+`partial` rows, family by family; the rendering rows join item 2).
 
-1. Done (2026-11-10): Audio, first stage (Data stage 2 and Audio stage 1): the effect archives, the
-   WAV reader, the sound-event catalog, XAudio2 (optional FMOD) devices, and positional battle
-   sounds from presentation.
-2. M2's renderer (Rendering stages 1 and 2), in this order: damage states and LODs (detail levels
-   done 2026-11-11: renderer-side selection by distance, screen size, or both, with cross-fades;
-   damage states done 2026-11-13: chosen from health, with their effects, sounds, and rubble;
-   hardpoint damage visuals belong to combat presentation, Simulation 1), depth-sorted transparency (done 2026-11-13), HDR with tone mapping and anti-aliasing (edge
-   temporal, and hybrid (TAA then FXAA) anti-aliasing done 2026-11-13, with per-object motion vectors for models (blended parts and particles still
-   reproject by camera motion, but particles mark a reactive mask that TAA and FXAA respect, 2026-11-13); HDR postponed by the owner (2026-11-13) to the later
-   visual enhancement: it needs linear lighting, since the shading works in display space like the
-   original's, so it starts the enhanced lighting profile with the physically based path),
-   shadows, fog (done 2026-11-13: legacy and enhanced height fog, particles included; volumetric fog
-   for light shafts and smoke later, the owner agreeing), decals (map and runtime; terrain decals in
-   the terrain shader, scorch marks, footprints, and DynamicTrackFX trails done 2026-11-13;
-   the one map with placed decals later; screen-space decals if the renderer becomes deferred), special materials, in the order of stock
-   use measured by `texture-audit` (2026-11-13; 9,294 material instances): planets (`Planet`
-   296: atmosphere rim, clouds, city lights), wind bend (`Tree` 185, `Grass` 14), shields
-   (`MeshShield` 27, seen in every space battle), water (the owner's addition: legacy from the TED
-   water data, since the published shaders hold no water shader, and an enhanced mode designed
-   from research into current and RTS practice, [water-research.md](water-research.md), agreed
-   2026-11-13: depth color, refraction from a scene copy, shoreline and foam, layered normals,
-   sun glint, planar screen-space reflections with a sky fallback; general screen-space
-   reflections join the enhanced lighting step, and water then moves onto them; done 2026-11-13:
-   water drawn again (scenery), its own pass, enhanced depth color, shore fade, two normal layers,
-   Fresnel toward a sky color, glint, refraction, foam, planar screen-space reflections; next:
-   the TED water fields 0x17-0x22 (the owner will read their labels and Mon Calamari 02's values in
-   the map editor), a sky to reflect where the screen has nothing, and live tuning: the enhanced
-   water's constants (clarity, shore fade, foam depth and strength, refraction and reflection
-   distortion, glint) as sliders in a Water section of the Graphics panel, so the owner can tune
-   them by eye and the chosen values become the defaults), skydomes and nebulae (`Skydome` 19, `Nebula` 15),
-   occluded units (chosen by the engine, not by materials), heat distortion (`MeshHeat` 3, plus
-   heat particles), reflections (`MeshAdditiveReflection` 3; no stock material uses the reflective
-   profiles); then weather and soft particles (both done 2026-11-13: soft particles enhanced; legacy
-   weather from the map's scenario, with the cube size, fade-out distance, and fog plane still unused
-   and the placement an engine choice for the owner to check), look tuning. Wind bend for trees and waving grass
-   (second UV set) done 2026-11-13; grass's distance fade later. Occluded-unit silhouettes done 2026-11-13. Heat distortion from heat
-   particles done 2026-11-13 (the 3 heat meshes remain); the enhanced heat mode from
-   [heat-research.md](heat-research.md) done 2026-11-13 (shockwave rings later, as an option). Shields done 2026-11-13 (the
-   material and hit flashes); the FoC stealth meshes' visibility (when the original shows them) and
-   reading Shield_Flash_* from GameConstants remain. Legacy sky domes and nebulae done 2026-11-13;
-   enhanced sky agreed 2026-11-13 from [sky-research.md](sky-research.md): cloud shadows (done, a
-   legacy feature), a sky capture for the water's reflection fallback and a sky-tinted ambient, fog
-   toward the horizon color (all done 2026-11-13); the sun disk, star intensity, and an atmosphere
-   after HDR.
-   Global illumination (the owner, 2026-11-13: the sky as a major contributor), in steps: sky
-   irradiance (the captured sky projected to spherical harmonics, the ambient term; done 2026-11-13
-   as the enhanced sky ambient), then sky
-   visibility (how much sky each terrain point sees, from the heightfield once at load, applied to
-   the terrain and to units standing on it; done 2026-11-13), then bounced light once lighting is
-   linear (HDR). Open: objects do not occlude the sky yet (buildings, cliffs as models; a
-   screen-space or per-object term later).
-   Reordered by the owner on 2026-11-13: the job system and an entity-component design join M2 as
-   general engine systems, and the battle issues the owner found come first where they need no
-   rework. In this order:
-   a. Visual fixes: the line across planets (done 2026-11-13: bone billboards), skydomes too bright (done 2026-11-13: bloom
-      ignores the sky and fog, the sky ambient is balanced upward) for the lighting they feed
-      (the sky capture, sky ambient, horizon fog), water that tiles visibly (done 2026-11-13: a broad
-      anti-tiling layer in both modes; the TED repeat fields remain to be read).
-   b. Bugs that need no rework: walker animation state changes (start from rest, turn, and stop
-      play wrongly and slowly; done 2026-11-13: transitions play at the walk's and turn's rates); the T4-B's two weapons (missile launcher and laser cannons, with
-      different ranges): their gun animations play out of range and loop instead of following the
-      actual shots (done 2026-11-13: ATTACK plays with the shots only; the missile launcher is the
-      ROCKET_ATTACK unit ability, not implemented yet, with the other unit abilities); walkers do not crush enemy infantry (done 2026-11-13: crushers and what they crush do not push each other); destroyed space hardpoints are not
-      replaced by their destroyed versions (done 2026-11-13/14: scorch marks and damage effects appear, attached models go, and Death_Breakoff_Prop debris breaks off). Shield hits play
-      only the absorb particle; the shield mesh flash waits for the shield abilities (2026-11-14).
-      Walker locomotion cleanup before the ECS (the owner's review, 2026-11-14), one commit each:
-      (1) the clip naming in one place and planned walks on their clips' first variants (done
-      2026-11-14: `assets/clip_names`); (2) which stock types still take the presentation's old
-      start and stop, then remove it or plan them (surveyed 2026-11-14: 24 types without
-      animation priority, the Rancor, SPMAT, AT-AA, Night Sister, speeder bike, Juggernaut,
-      Tauntaun, and ground beetle; done 2026-11-14 by the owner's decision: they are planned as
-      the AT-AT is, and the old path is gone); (3) `UnitAnimator::animate` split into stages
-      in files of their own, behavior unchanged (done 2026-11-14: five stages, every pose key the
-      same frame for frame in two traced scenes); (4) turns report their clip and progress like
-      walks, composed of loop, HALF, and QUARTER cycles (done 2026-11-14). MovementProfile's optional modes and the
-      simulation's parallel storage go to the ECS design (c) instead.
-   c. Research and one design document for an entity-component system (modern engines' ECS,
-      data-driven composition, archetypes) and the job system: entities as ids, components in
-      their own storage, systems over component sets with declared reads and writes, XML types as
-      component recipes through a tag-to-component registry, deterministic iteration, and a
-      hash-neutral migration path. Modder-defined component tags only get room in the design,
-      not a design of their own yet. The owner reviews it before code. Done 2026-11-15:
-      [ecs-design.md](ecs-design.md) (agreed: a dense core table and sparse component pools,
-      recipes from XML, an explicit phase schedule with declared access, fibers for jobs), the
-      research in [ecs-research.md](ecs-research.md).
-   d. The job system (ecs-design.md section 7): `eaw_jobs` on fibers without OS mutexes,
-      counters, deterministic `parallel_for` and chunk outputs, tests across worker counts (done
-      2026-11-15); then its first clients (presentation's pose sampling, done 2026-11-15; a
-      background lane in place of the sandbox's `std::async` calls, once content builds are split
-      into short jobs) and profiling hooks.
-   e. The simulation's migration to entities and components (ecs-design.md section 8): per-system
-      timings and sub-hashes (done 2026-11-15: per tick layer, and `--hash-trace` by state subject); components as column groups in the one table (done 2026-11-15); the registry and pools (pools
-      for walk and turn clips, flight manoeuvres, footprints, and crush profiles, 2026-11-15; the
-      rest after steps 6 and 7);
-      systems with declared access (the schedule table, the DebugValidation write check, and six of eight
-      systems on typed views, 2026-11-15; commands, resolution, and removal stay member functions);
-      recipes (one construction path, and the simulation's recipes with shared profiles,
-      2026-11-15); the damage queue, compacting removal, and per-component hashing, the one
-      declared hash change (2026-11-15); pools for flight, formation, group, and combat (2026-11-15); parallel
-      systems (route searches first), after work order g (the owner, 2026-11-15; begun 2026-11-16 with
-      ground avoidance, which measurement put first, then route searches in batches and combat's target
-      choice and turrets; rebuilding only the chunks a ground change touches waits for base building:
-      stock battles reset the navigation data twice in 1,800 ticks, 25 ms in all); a refactoring step last, its scope to be agreed with the
-      owner,
-      each step with an unchanged battle hash except the declared one, folding in the deferred
-      determinism work (stable-id order, keyed random draws, a full-state hash).
-   f. Real squads (the owner: before the rest of g): a squad is one commandable unit made of its
-      soldiers (no single soldier of it can be ordered); step 1 of
-      [pathfinding-design.md](pathfinding-design.md). Done 2026-11-15 (team entities; companies
-      spawn as squads; the sandbox selects them by their soldiers).
-   g. Pathfinding, group movement, and collisions redesigned: [pathfinding-design.md](pathfinding-design.md)
-      (agreed 2026-11-15), its order of work in section 5: the pathfinding audit (done 2026-11-15); the
-      footprint grid for contact and staggered target timers (done 2026-11-15; sharing one grid with
-      combat and behavior waits, since separation moves units between them); clearance (each unit's own footprint, done 2026-11-15); chunks (32-cell squares, then 16-cell ones, then cells part by part, chosen over one
-      and two plain levels on the stock maps, 2026-11-15; refining the rest of the route as a unit
-      advances, rebuilding only changed squares, and the cell search's window are still to do); ORCA
-      avoidance with allies giving way and units never overlapping (no pushing; only crushers move
-      onto what they crush; done 2026-11-15 with squads as single agents, blocked-unit replans still
-      to do), then formation frames (the owner, 2026-11-15: avoidance first; done 2026-11-15, with
-      selections split by distance; companies queueing at narrow places still to do; since the owner's
-      tests a special move, Alt + right-click, the default being each unit on its own route at the
-      slowest speed). Enemies count for planning when seen; every enemy until
-      fog of war exists. The measurements behind it (separation's broad phase sized by the largest
-      unit, 63 candidates a query against 8 with infantry only; about 13 overlaps a unit; the
-      opening tick's 5,062 target searches, 38-47 ms with 3,300 entities) are in its section 1.
-   h. Enhanced water as an ocean on maps such as Kamino: waves (a tessellated surface displaced by
-      wave functions), foam on crests. First slice done 2026-11-16 (a water grid of about 12-unit
-      cells, four Gerstner waves fading in with depth, crest foam; the owner judges the look), with
-      sliders for tuning in the Graphics panel (2026-11-16; the owner's chosen values become the
-      defaults). Waves run only on ocean maps (2026-11-16, the owner: not on lakes, ponds, and
-      rivers): Kamino and Manaan by name, with an ocean-maps/on/off setting. The owner judges the
-      ocean far from done; the rest waits for Rendering stage 5.
+1. Audio, first stage (Data stage 2 and Audio stage 1): done; see status.md.
+2. M2's renderer (Rendering stages 1 and 2), with the job system and the entity-component design
+   joining it as general engine systems (the owner's order). Done so far: detail levels, damage
+   states, depth-sorted transparency, anti-aliasing, fog, shadows, decals, the special materials,
+   weather, soft particles, and the enhanced sky and sky lighting (status.md). HDR is postponed to
+   the enhanced lighting profile (Rendering stage 5, the owner's decision): it needs linear
+   lighting, and the shading works in display space like the original's. What remains of the
+   renderer is listed under Rendering stage 1; then look tuning (Rendering stage 2). The steps:
+   a. Visual fixes (the line across planets, bright skydomes, tiling water): done. Open: the TED
+      water repeat fields are still to be read.
+   b. Bugs that need no rework (walker transitions, the T4-B's gun animations, crushing, destroyed
+      space hardpoints, the walker locomotion cleanup): done. Open: the T4-B's missile launcher is
+      the `ROCKET_ATTACK` unit ability, which waits for the unit abilities (Simulation stage 2);
+      shield hits play only the absorb particle, and the shield mesh flash waits for the shield
+      abilities.
+   c. The entity-component design: done, [ecs-design.md](ecs-design.md) and
+      [ecs-research.md](ecs-research.md). Modder-defined component tags only have room in the
+      design, not a design of their own yet.
+   d. The job system (ecs-design.md section 7) with its first client (pose sampling) and the
+      profiling hooks (Tracy): done. Open: a background lane in place of the sandbox's
+      `std::async` content builds, once content builds are split into short jobs.
+   e. The simulation's migration to entities and components (ecs-design.md section 8). Done: steps
+      up to the parallel systems (status.md). Open:
+      - the remaining pools (after steps 6 and 7) and the systems not yet on typed views (commands,
+        resolution, and removal stay member functions);
+      - parallel systems, begun with ground avoidance, batched route searches, and combat's target
+        choice and turrets; rebuilding only the navigation chunks a ground change touches waits for
+        base building (stock battles reset the navigation data twice in 1,800 ticks, 25 ms in all);
+      - a refactoring step last, its scope to be agreed with the owner;
+      - the deferred determinism work folded in: stable-id order, keyed random draws, a full-state
+        hash.
+      Each step keeps the battle hash unchanged unless declared.
+   f. Real squads (step 1 of [pathfinding-design.md](pathfinding-design.md)): done.
+   g. Pathfinding, group movement, and collisions ([pathfinding-design.md](pathfinding-design.md),
+      its order of work in section 5). Done: the audit, the footprint grid, clearance, chunks, ORCA
+      avoidance with allies giving way, detours and route repair for held units, formation frames
+      (status.md). Open:
+      - sharing one footprint index between avoidance, contact, behavior, and combat (four grids
+        are built each tick; pathfinding-design.md 4.5);
+      - refining the rest of a route as a unit advances, and rebuilding only changed chunks;
+      - companies queueing at narrow places.
+      Enemies count for planning when seen; every enemy until fog of war exists. The measurements
+      behind it (separation's broad phase sized by the largest unit, 63 candidates a query against
+      8 with infantry only; about 13 overlaps a unit; the opening tick's 5,062 target searches,
+      38-47 ms with 3,300 entities) are in its section 1.
+   h. Enhanced water as an ocean on ocean maps (Kamino, Manaan): the first slice is done (Gerstner
+      waves, crest foam, tuning sliders, an ocean-maps/on/off setting; status.md). The owner judges
+      the ocean far from done; the rest waits for Rendering stage 5.
    This closes M2.
 3. Input bindings (Platform and input stage 2).
 4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).
@@ -229,8 +143,8 @@ rendering rows join item 2).
 
 1. Done: VFS, MEG, and the M1 formats; the game asset layer with loaders and the resource manager.
 2. Audio data: done for effects and responses (the sound archives, WAV, the sound-event catalog,
-   `sound-audit`); MP3 for music and speech comes with Audio stage 3 (a decoder is a new dependency
-   or a reader of our own, the owner decides).
+   `sound-audit`). MP3 for music and speech comes with Audio stage 3 (a decoder is a new dependency
+   or a reader of our own; the owner decides).
 3. Cinematics: survey the movie format and decide between a reader and a pinned decoder (a new
    dependency, so the owner decides).
 4. Steam Workshop mod discovery and mod-stack diagnostics (which layer wins, what is missing).
@@ -239,83 +153,96 @@ rendering rows join item 2).
 
 ### Rendering
 
-1. Legacy-mode features content depends on: damage-state (`_ALT<n>`) and LOD switching,
-   skinned-mesh and gameplay-driven visibility; depth-sorted transparency; map decals (no texture
-   link established yet) and runtime scorch marks; shadows (the original uses stencil shadow
-   volumes, an implementation artifact; the engine uses stable cascaded shadow maps from each map's
-   key light, land and space alike, and every model casts: the owner's choice of 2026-11-13 over
-   the original's per-model shadow meshes, for quality; skies, backdrops, markers, blended parts,
-   and particles do not; done 2026-11-13: cascades, the shadow pass, and receiving; open: per-cascade
-   culling, cached distant cascades, blob shadows at low detail, PCSS as an enhanced option); fog; shield, planet (atmosphere, clouds, city lights),
-   nebula, heat-distortion, wind-bend, and occluded-unit materials; cube reflections (no stock
-   material uses them); weather (done 2026-11-13; tiled over the ground in view since the owner's report; open: the fog plane, the weather
-   cube's size, distance, and fade-out, tiles that appear while panning filling from the top, weather kinds in gameplay through WeatherModifiers.xml,
-   with the timeline then on the battle's ticks); soft particles (done 2026-11-13, enhanced option).
-2. Modern presentation without an original counterpart, chosen freely: anti-aliasing, HDR with
-   tone mapping beside the existing bloom, and look tuning against the owner's screenshots (hotter
-   engine-glow cores, more contrast on hulls).
+1. Legacy-mode features content depends on. Done: damage-state (`_ALT<n>`) and LOD switching,
+   depth-sorted transparency, fog, shadows, runtime decals, the special materials, weather, and
+   soft particles (status.md). Shadows are stable cascaded shadow maps from each map's key light,
+   land and space alike, with every model casting (the owner's choice over the original's stencil
+   shadow volumes and per-model shadow meshes, an implementation artifact, for quality); skies,
+   backdrops, markers, blended parts, and particles do not cast. Open:
+   - shadows: per-cascade culling, cached distant cascades, blob shadows at low detail, PCSS as an
+     enhanced option;
+   - decals: the one stock map with placed decals (no texture link established yet); screen-space
+     decals if the renderer becomes deferred;
+   - water: the TED water fields 0x17-0x22 (the owner will read their labels and Mon Calamari 02's
+     values in the map editor); live tuning of the enhanced water's constants (clarity, shore fade,
+     foam depth and strength, refraction and reflection distortion, glint) as sliders in the
+     Graphics panel, so the owner can tune them by eye and the chosen values become the defaults;
+   - grass's distance fade;
+   - heat distortion on the 3 `MeshHeat` meshes (heat particles are done); shockwave rings as an
+     enhanced option;
+   - shields: the FoC stealth meshes' visibility (when the original shows them), and reading
+     `Shield_Flash_*` from GameConstants;
+   - reflections: `MeshAdditiveReflection` (3 stock uses; no stock material uses the reflective
+     profiles);
+   - weather: the fog plane, the weather cube's size, fade-out distance, and fade; tiles that
+     appear while panning filling from the top; weather kinds in gameplay through
+     WeatherModifiers.xml, with the timeline then on the battle's ticks; the placement is an engine
+     choice for the owner to check;
+   - sky: the sun disk, star intensity, and an atmosphere, after HDR; volumetric fog for light
+     shafts and smoke later (the owner agreeing);
+   - global illumination: objects do not occlude the sky yet (buildings and cliffs as models; a
+     screen-space or per-object term later); bounced light once lighting is linear (HDR).
+2. Modern presentation without an original counterpart, chosen freely: anti-aliasing (done), HDR
+   with tone mapping beside the existing bloom (postponed to stage 5), and look tuning against the
+   owner's screenshots (hotter engine-glow cores, more contrast on hulls).
 3. Scale: per-asset geometry handles and several resident scenes, GPU-driven culling and indirect
-   drawing, mesh LODs, clustered lighting, texture compression and streaming budgets. To try
-   (owner's request, 2026-11-11): a LOD cross-fade driven by the selection's position within a
-   border band around each level boundary instead of by time, so the blend follows the camera and
-   holds while it stands still; compare it with the current timed fade (`VisualLodTracker`).
+   drawing, mesh LODs, clustered lighting, texture compression and streaming budgets. To try (the
+   owner's request): a LOD cross-fade driven by the selection's position within a border band
+   around each level boundary instead of by time, so the blend follows the camera and holds while
+   it stands still; compare it with the current timed fade (`VisualLodTracker`).
 4. A thin rendering hardware interface extracted from the Direct3D 12 backend, then Vulkan. Done
-   toward it (2026-11-13): the contract split by subject, `eaw_render_core` (detail levels,
-   resource lifetime, the frame graph's barrier planning, no graphics API), and the frame graph in
-   the D3D12 backend. With it: generation-checked mesh and texture handles in the contract (the
-   handle types exist in `gpu_resource_lifetime`; deferred by the owner until a second backend or
-   a stale-index bug needs them), and transient targets with memory aliasing once shadows or HDR
-   add passes.
+   toward it: the contract split by subject, `eaw_render_core` (detail levels, resource lifetime,
+   the frame graph's barrier planning, no graphics API), and the frame graph in the D3D12 backend.
+   Open with it: generation-checked mesh and texture handles in the contract (the handle types
+   exist in `gpu_resource_lifetime`; deferred by the owner until a second backend or a stale-index
+   bug needs them), and transient targets with memory aliasing once shadows or HDR add passes.
 5. The physically based material path, with a documented conversion from the legacy profiles, once
-   legacy mode is stable (also an engine extension for new content). With it, the ocean's remaining
-   work (the owner, 2026-11-16: "needs a lot of work"): less visible tiling of the water's normal
+   legacy mode is stable (also an engine extension for new content), starting the enhanced lighting
+   profile with HDR and linear lighting; general screen-space reflections join it, and water then
+   moves onto them. With it, the ocean's remaining work: less visible tiling of the water's normal
    maps (fading their detail with distance), a richer wave spectrum than four Gerstner waves, wave
    motion in the motion vectors if TAA ghosts, and ocean maps declared in metadata for new content.
 
 ### Simulation
 
-1. Tactical battles. Done: the core, spawning, RTS orders, terrain and passability, A*, group
-   movement and formations, space combat with hardpoints, flight, headless battles and replays.
-   Open: AT-AT animations are broken (the owner, 2026-11-13: in the sandbox an AT-AT can stay in its
-   idle clip while ordered to move); combat presentation and fidelity (hardpoint damage visuals and
-   breakoff debris done 2026-11-13, a wreck's end sound and death clones' own models 2026-11-16;
-   with their proxy effects; open: turret rotation of hardpoint
-   turrets (unit turrets done 2026-11-12); walkers' `_QUARTER`/`_HALF` turn clips (cycles between
-   BEGIN and END, compatibility-research.md "The turn kit"; turns are composed of them, done
-   2026-11-14; the angle each stands for is inferred from the names, not measured),
-   `Rotation_Animation_Speed`, and `Locomotor_Has_Animation_Priority` (turn-in-place, begin/end,
-   start and stop transitions done 2026-11-12)),
-   damage-specific death clones, ground detonations' surface effects, death-projectile blasts,
-   beams for instant-hit weapons, `Damaged_Smoke_Asset_Name`, `Should_Death_Clone_Play_Idle`; the
-   gap rows of docs/xml-tag-status.md list the rest), and game and mod identity in order logs. With the
-   simulation rewrite (owner, 2026-11-13): staged battles (a spawn facing, invulnerable targets, a
-   per-hardpoint shot report) and, on them, the fire-cone regression cases from the recorded
-   hardpoint shot counts by bearing (S-22 to S-42, compatibility-research.md).
+1. Tactical battles. Done: the core, spawning, RTS orders, terrain and passability, pathfinding,
+   group movement and formations, squads, space combat with hardpoints, flight, walker locomotion,
+   headless battles and replays (status.md). Open:
+   - combat presentation and fidelity: turret rotation of hardpoint turrets (unit turrets are
+     done); damage-specific death clones; ground detonations' surface effects; the detonation
+     effect of death-projectile blasts (their damage is done); beams for instant-hit weapons; `Damaged_Smoke_Asset_Name`;
+     `Should_Death_Clone_Play_Idle` (no stock effect; for mods whose clone models have an IDLE);
+     the gap rows of [xml-tag-status.md](xml-tag-status.md) list the rest;
+   - walkers' `_QUARTER`/`_HALF` turn clips: turns are composed of them, but the angle each stands
+     for is inferred from the names, not measured (compatibility-research.md, "The turn kit");
+   - game and mod identity in order logs;
+   - with the simulation rewrite (the owner's decision): staged battles (a spawn facing,
+     invulnerable targets, a per-hardpoint shot report) and, on them, the fire-cone regression
+     cases from the recorded hardpoint shot counts by bearing (S-22 to S-42,
+     compatibility-research.md).
 2. Skirmish systems: the player layer (the local player's owner, factions and hostility from data
    instead of the provisional slot rule, team colours by owner, fog of war), build pads,
-   reinforcements, abilities from `Unit_Abilities_Data` (the infantry crouch first; researched in
-   the compatibility notes), transports, capture, retreat, victory conditions.
+   reinforcements, abilities from `Unit_Abilities_Data` (the infantry crouch first, researched in
+   the compatibility notes; `ROCKET_ATTACK` among them), transports, capture, retreat, victory
+   conditions.
 3. Galactic systems: planets, fleets, economy, construction, heroes, transitions between galactic
    and tactical play.
-4. Scale: the dependency-aware job system once measured budgets need it, and the staged navigation
-   plan in [pathfinding-research.md](pathfinding-research.md) (hierarchical search, flow fields or
-   shared paths, clearance), with A* kept as the reference.
+4. Scale: the job system and the hierarchical navigation are in place (work order 2e and 2g); what
+   remains of the staged navigation plan in [pathfinding-research.md](pathfinding-research.md)
+   (flow fields or shared paths), with A* kept as the reference.
 
 ### Scripting
 
-1. Foundation. Done: the sandboxed Lua 5.0 host, script threads on ticks, recording stubs, the
-   engine event queue and script callbacks, values between the engine and scripts, `Create_Thread`
-   control and `GameRandom`, and `lua-survey` driving AI plans, story events, task force events, and
-   callbacks over the stock scripts; engine objects as userdata through a provider, and scripts in
-   battles (`BattleScripts`: one immutable view per tick, per-script order buffers merged in a fixed
-   order as validated commands, blocks, script orders outside the log); game-object scripts started
-   on their entities from XML `Lua_Script`, map hints (`Find_Hint`), and proximity events. Open:
-   the rest of the tactical API by survey rank, starting with calls that need no players;
-   `Spawn_Unit` waits for the player layer (its owner comes from `Find_Player`) and will return
-   provisional objects that the merge maps to the spawned entities (agreed 2026-11-10), so a script
-   can order them at once while they read as not valid for one tick; decide whether running script state must be saveable (it
-   shapes Persistence), whether the instruction budget should be lower (a runaway resume costs about
-   73 ms), and how to cut a script's start (about 20 ms, mostly loading the framework libraries).
+1. Foundation. Done: the sandboxed Lua 5.0 host, script threads on ticks, the event queue and
+   callbacks, engine objects as userdata, scripts in battles with validated commands, game-object
+   scripts, map hints, and proximity events (status.md). Open:
+   - the rest of the tactical API by survey rank, starting with calls that need no players;
+   - `Spawn_Unit`, which waits for the player layer (its owner comes from `Find_Player`) and will
+     return provisional objects that the merge maps to the spawned entities (agreed), so a script
+     can order them at once while they read as not valid for one tick;
+   - whether running script state must be saveable (it shapes Persistence);
+   - whether the instruction budget should be lower (a runaway resume costs about 73 ms);
+   - how to cut a script's start (about 20 ms, mostly loading the framework libraries).
 2. The tactical host API, ranked by the survey, replacing stubs as Simulation stage 2 provides the
    systems.
 3. The galactic and story API.
@@ -323,9 +250,7 @@ rendering rows join item 2).
 
 ### Audio
 
-1. Done: sound events and samples played from presentation, never from the simulation: weapon
-   fire, deaths, engine loops, and unit responses in the sandbox, positioned by AUDIO.XML's mode
-   factors, through XAudio2 (default) or FMOD (built with a local SDK).
+1. Done: sound events and samples played from presentation, never from the simulation (status.md).
 2. A mixer with categories and options (effects, voices, music, volumes in the UI), loop intros and
    outros (`Pre_Samples`/`Post_Samples`, fades), priorities and voice stealing, response rules
    (`Kills_Previous_Object_SFX`), ambient and impact sounds, and checking the 3D curve and the
@@ -335,14 +260,15 @@ rendering rows join item 2).
    `SpeechEvent`s for advisor and HUD voice; scripts' `Play_Music`, `Stop_All_Music`,
    `Resume_Mode_Based_Music`, `Stop_All_Speech`.
 
-Not tied to a stage yet: weather and environment ambience (`WEATHERAUDIO.XML`, needs the map's
-weather kind, which `MapWeather::state()` now gives, and the environment kind from TED); scripts' `Weather_Audio_Pause` and
-the music and speech calls, as further requests on the script presentation channel
-(`Play_SFX_Event` uses it already);
-hardpoint destruction reports, `Death_SFXEvent_End_Die`, `Land_Damage_SFX`, turret rotation,
-ability and nebula sounds (each a small presentation rule over existing snapshots or a missing
-system; projectile detonation and `SFXEvent_Ambient_Moving` are done); HUD, advisor, and GUI sounds with UI stage 1;
-movies with cinematics.
+Not tied to a stage yet:
+
+- weather and environment ambience (`WEATHERAUDIO.XML`; needs the map's weather kind, which
+  `MapWeather::state()` gives, and the environment kind from TED);
+- scripts' `Weather_Audio_Pause` and the music and speech calls, as further requests on the script
+  presentation channel (`Play_SFX_Event` uses it already);
+- hardpoint destruction reports, `Land_Damage_SFX`, turret rotation of hardpoint turrets, ability
+  and nebula sounds (each a small presentation rule over existing snapshots or a missing system);
+- HUD, advisor, and GUI sounds with UI stage 1; movies with cinematics.
 
 ### UI
 
@@ -383,24 +309,21 @@ Compatibility with the original's multiplayer protocol is an open question, not 
 ### Platform and input
 
 1. Done: Win32 window, raw input, crash handling, log sinks.
-2. Verification with high-polling-rate mice, input timestamps, controllers (GameInput), key
-   rebinding (with UI stage 2). Key rebinding done 2026-11-16 ahead of the UI, as the owner chose:
-   the full keyboard (`platform/keys.hpp`), an action table with a bindings file
-   (`platform/input_bindings.hpp`), the sandbox's actions (`engine_app/sandbox_actions.hpp`), and a
-   Controls panel; the defaults become the original's hotkeys once the owner's screenshots of its
-   controls menu are transcribed. Controllers (GameInput, a new dependency) wait for the player
-   layer (the owner, 2026-11-16). High polling rate mice: raw input is read in bulk
-   (`GetRawInputBuffer`) since stage 1; since 2026-11-16 the sandbox measures it (records and read
-   time a frame, in the Statistics panel and at exit) and `scripts/check-input-load.ps1` floods it
-   with a synthetic 8 kHz mouse; the run waits for the owner (it needs the focus). Input
-   timestamps are left out until something consumes them (orders take effect on the next tick;
-   nothing yet orders events within a frame).
+2. Input. Done: key rebinding ahead of the UI (the owner's choice), and the sandbox's input-load
+   measurement with `scripts/check-input-load.ps1` (status.md). Open:
+   - the run of `check-input-load.ps1` with a synthetic 8 kHz mouse, which waits for the owner (it
+     needs the window to hold the focus);
+   - default bindings as the original's hotkeys, once the owner's screenshots of its controls menu
+     are transcribed;
+   - controllers (GameInput, a new dependency), which wait for the player layer (the owner);
+   - input timestamps, left out until something consumes them (orders take effect on the next
+     tick; nothing yet orders events within a frame).
 
-### Code health (ongoing)
+### Code health
 
-Not a stage plan: leftovers are fixed while features touch the code around them, and the owner's
-periodic whole-project reviews add to this list or turn it into a plan of steps (AGENTS.md, "Code
-health"). Remove an entry when it is fixed. Known leftovers after the reorganization of 2026-11:
+Ongoing, not a stage plan: leftovers are fixed while features touch the code around them, and the
+owner's periodic whole-project reviews add to this list or turn it into a plan of steps (AGENTS.md,
+"Code health"). Remove an entry when it is fixed. Known leftovers:
 
 - two bounds for clip playback: `walk_clip_playback`'s 0.25-6 (battle) and the animator's 0.5-1.5
   for speed-scaled playback (presentation), one idea in two places;
@@ -414,8 +337,7 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
 - the `pe_*` and hardpoint-bone role rules (which bones a hardpoint's `Damage_Particles`,
   `Damage_Decal`, and `Engine_Particles` name), still read separately in `scene_particles` and
   `combat_content` instead of one place (see Engine extensions, explicit asset metadata); the
-  hardpoint list itself (`type_hardpoints`) and the scorch-subtree rule (`bones_in_subtrees`) are
-  shared now;
+  hardpoint list (`type_hardpoints`) and the scorch-subtree rule (`bones_in_subtrees`) are shared;
 - `using namespace d3d12;` in the renderer's private header, which imports every helper into every
   renderer source (about 180 uses to qualify; with the renderer restructuring, proposal G);
 - the projectile reacquisition tie-break, which takes the higher dense index (storage order, like
@@ -427,7 +349,7 @@ health"). Remove an entry when it is fixed. Known leftovers after the reorganiza
   the job outputs are one vector per pose; one flat pose arena (offsets per key) would remove them
   (probably part of the serial half of `animate` in `EAWBenchmarks poses`; not profiled);
 - the tick's speed bookkeeping in `SimulationWorld::step` writes its vector length out by hand (the
-  hash depends on its order of operations, so a move onto `eaw_math` must keep it);
+  hash depends on its order of operations, so a move onto `eaw_math` must keep it).
 
 ## Performance gates
 
@@ -436,17 +358,15 @@ exists, not guessed in advance.
 
 - The headless battle (`EAWEngine battle`) is the simulation benchmark; it stays ahead of renderer
   optimization.
-- Presentation at the display's rate with the fixed simulation tick (60 Hz, the owner, 2026-11-15;
+- Presentation at the display's rate with the fixed simulation tick (60 Hz, the owner's decision;
   `--tick-rate` sets another for headless battles).
-- 60 frames per second at the least (the owner, 2026-11-15): a frame, any simulation ticks it runs
-  included, within 16.6 ms. The opening tick of a 3,300-entity battle (50-60 ms, roadmap work order
-  2g) breaks it today. `scripts/benchmark-battle.ps1` measures it under constant orders: 10 and 50
-  units pass, 100 go over on the first tick of fighting, 500 in 110 of 600 frames (route searches
-  and separation about 6 ms each a tick). The route-search budget was halved to 15,000 nodes a tick
-  (about 2.5 ms, the share of a frame it had at 30 Hz; the owner, 2026-11-15): at 500 units the
-  average frame fell from 13.6 to 11.0 ms and the frames over budget from 75 to 42 of 600, while 30%
-  fewer routes were planned in the 10 seconds (orders wait longer for theirs); the worst frames,
-  the first tick's target search, are unchanged.
+- 60 frames per second at the least (the owner's decision): a frame, any simulation ticks it runs
+  included, within 16.6 ms. The opening tick of a 3,300-entity battle broke it (about 51 ms,
+  mostly its 5,000 target searches, measured before combat targeting ran on the job system; not
+  re-measured since). `scripts/benchmark-battle.ps1` measures it under constant orders; on its last
+  run (tools.md, "Benchmarks"), no frame went over at 10 to 500 units (500 units: 6.0 ms average,
+  13.9 ms worst). The route-search budget is 15,000 nodes a tick (`path_budget_per_tick`, about 2.5 ms;
+  the owner's choice), so orders may wait longer for their routes.
 - No fixed texture dimension, vertex count, entity count, or 32-bit address-space assumption.
 - Automated budgets, reported by the tools, for frame time, tick time, streaming throughput,
   memory, draw and dispatch counts, and worst-case path requests.
@@ -466,11 +386,12 @@ compared by measured ratios from screenshots, never by recreated scenes):
   reference tools disagree);
 - idle animations: whether units play a random IDLE variant after each one ends, and how long a
   lone idle that does not loop (`Loop_Idle_Anim_00` No) rests before playing again (the engine:
-  2-4 s, the owner's choice of 2026-11-13);
+  2-4 s, the owner's choice);
 - whether melee units attack on the move: most infantry stop to attack (the owner's recollection,
-  2026-11-13, which the engine follows), but `Dark_Trooper_PhaseI` sets
-  `Is_Stationary_When_Attacking` to No, the only explicit No in stock;
-- the original's logic rate, which every per-frame XML value is read at (30 per second, `assets/legacy_units.hpp`: speeds, turn rates, accelerations, frame counts);
+  which the engine follows), but `Dark_Trooper_PhaseI` sets `Is_Stationary_When_Attacking` to No,
+  the only explicit No in stock;
+- the original's logic rate, which every per-frame XML value is read at (30 per second,
+  `assets/legacy_units.hpp`: speeds, turn rates, accelerations, frame counts);
 - shield refresh units, and how shields and armor combine;
 - ranges measured in the ground plane;
 - the owner-slot hostility rule;
@@ -479,7 +400,7 @@ compared by measured ratios from screenshots, never by recreated scenes):
   hardpoint positions) also scales collision and selection, and whether `Custom_Soft_Footprint_Radius`
   is meant before or after it (the engine leaves it unscaled);
 - the RTS camera's angles, zoom range, and pan speeds (the engine's own cameras for now, by the
-  owner's choice of 2026-11-13; the TacticalCameras.xml tags are postponed);
+  owner's choice; the TacticalCameras.xml tags are postponed);
 - attack-move and guard: the acquisition range (1.25 x weapon range), the leash (2 x weapon
   range), the guard radius (weapon range, at least 150 units), and how far a followed object may
   move before the unit follows (50 units);
@@ -520,8 +441,8 @@ compared by measured ratios from screenshots, never by recreated scenes):
 
 ### Play-feel audit (owner, pending)
 
-The owner checks how play feels in one pass later instead of after each change (2026-11-13). Changes
-waiting for it, oldest first:
+The owner checks how play feels in one pass later instead of after each change. Changes waiting for
+it, oldest first:
 
 - shields refreshing in 3 s steps; in space, the speed multiplier also scaling acceleration and
   turning;
@@ -534,14 +455,17 @@ waiting for it, oldest first:
 - idles: random variants one after another, lone idles pausing 2-4 s;
 - scorch marks after explosions and walkers' footprints (size, darkness, orientation, how long they
   stay);
-- infantry and vehicle trails (bump decals: barely visible at overview zoom; how far behind they fade);
-- edge anti-aliasing on by default (`--no-aa` to compare), temporal anti-aliasing (`--aa taa`), and both (`--aa hybrid`):
-  ghosting behind particles and blended parts, softness against FXAA, the hybrid mode;
+- infantry and vehicle trails (bump decals: barely visible at overview zoom; how far behind they
+  fade);
+- edge anti-aliasing on by default (`--no-aa` to compare), temporal anti-aliasing (`--aa taa`), and
+  both (`--aa hybrid`): ghosting behind particles and blended parts, softness against FXAA, the
+  hybrid mode;
 - transparent model parts drawn back to front (canopies, glass, glows on models);
-- distance fog from the map environments (`--fog off` to compare, `--fog enhanced` for height fog); its ranges suit the original's
-  closer camera, so zoomed far out distant ground fades (cap the zoom, or scale the fog to it?);
+- distance fog from the map environments (`--fog off` to compare, `--fog enhanced` for height
+  fog); its ranges suit the original's closer camera, so zoomed far out distant ground fades (cap
+  the zoom, or scale the fog to it?);
 - key-light shadows (on by default, `--shadows off` to compare): their darkness, softness, and
-  reach (backdrops such as planets receive none, owner 2026-11-13);
+  reach (backdrops such as planets receive none, the owner noted);
 - damage states on land: damaged meshes and their `_ALT` effects by health, the state sounds, and
   rubble that stays (structures without a death animation keep their last state for good).
 

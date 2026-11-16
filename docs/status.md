@@ -1,277 +1,1645 @@
 # Implementation status
 
-What is implemented, how, and with which known limitations, milestone by milestone. This is the
-detailed record that used to live in `AGENTS.md`; [roadmap.md](roadmap.md) is the plan and the
-authoritative milestone description. Update both in the same change when scope or status changes.
+What is implemented, system by system: how it works and its known limitations. The plan, open
+stages, and work order are in [roadmap.md](roadmap.md); the structure in
+[architecture.md](architecture.md); how to run the tools in [tools.md](tools.md); the dated record of
+how the work got here in [history.md](history.md). Update this file and the roadmap in the same change as the code
+they describe.
 
-## M0: repository and research discipline — complete
+Numbers marked as engine choices or guesses are not the original's behavior; they wait for evidence
+or for the owner's judgment in play.
 
-- CMake/Visual Studio build, tests, documentation, and separate launcher/engine programs exist.
-- Architecture, compatibility-evidence rules, and the no-modification installation boundary are established.
+## Milestones
 
-## M1: data bootstrap — baseline complete
+- **M0, repository and research discipline: complete.** CMake/Visual Studio build, tests,
+  documentation, separate launcher and engine programs, the architecture, the compatibility-evidence
+  rules, and the no-modification boundary of the installation.
+- **M1, data bootstrap: complete.** The layered VFS and the readers of the original's formats
+  ([Data and formats](#data-and-formats)).
+- **M2, legacy-mode renderer: active.** Stock units and tactical maps load and can be inspected in
+  the Direct3D 12 sandbox; M2 stays open for the features content was authored for (the Rendering
+  track in [roadmap.md](roadmap.md#rendering)). See [Rendering](#rendering).
+- **M3, tactical battle slice: active.** A deterministic simulation with movement, pathfinding,
+  group movement, combat, headless battles with replayable order logs, scripts in battles, unit
+  animation, particles, projectiles, impact and death effects, and battle sound. See
+  [Simulation](#simulation) and the sections after it. Combat presentation is in progress; the
+  player layer belongs to M4.
+- Not started: runtime UI, the player layer, galactic play, networking, and save compatibility.
 
-- Steam EAW/FoC installations are discovered automatically.
-- MEG v1 archives, loose files, inherited EAW data, patches, and repeatable mod layers are exposed through one case-insensitive layered VFS.
-- DAT localization supports lossless read/write, validation, sparse TSV workspaces, new-unit bundles, a CLI, and a Dear ImGui editor.
-- DDS/MTD decoding covers stock textures, mip/subresource layout, BC1-BC5, common uncompressed/DX10 metadata, and mega-texture directories.
-- ALO decoding covers render-ready geometry, skeletons, materials and raw parameters, skin palettes, bind transforms, attachments, proxies, lights, and dazzles.
-- ALA decoding covers compressed animation tracks, pose sampling, visibility, and stepped tracks.
-- TED decoding covers land terrain/elevation/passability/objects and space objects/tactical bounds. All 269 resolved stock maps decode in the current corpus.
-- XML parsing handles Petroglyph fragments and builds a typed definition/reference index. Optional public `eaw-schema` data provides stronger validation.
-- Lua inspection handles source dependencies and structural inspection of standard Lua 5.0 and Petroglyph persistent bytecode without executing it.
-- `EAWAssetInspector`, `EAWDatEditor`, and the Dear ImGui/Direct3D 11 `EAWTools` workbench consume the same format readers (`eaw_formats`) and VFS (`eaw_vfs`). `EAWAssetInspector extract` copies resolved files out of the VFS into a chosen folder (`asset_output_path` refuses archive names that could escape it).
-- Repeated checks are scripts: `scripts/check-battle.ps1` (the reference battle's state hash) and `scripts/check-captures.ps1` (the reference WARP scenes against an earlier set).
-- Corpus at the end of M1: all 638 resolved stock XML files parse, indexing 21,283 named definitions across 185 element types (20,881 typed with eaw-schema); all 2,213 DDS files and the 1,107-entry command-bar MTD decode; 370 Lua source scripts (85,312 lines) resolve every detected dependency.
+The order of the remaining work is the roadmap's [work order](roadmap.md#work-order).
+
+## Data and formats
+
+### Installations and the VFS
+
+- Steam EAW and FoC installations are discovered automatically. `check_installation_root` refuses
+  an explicit root that is not an installation (and names a mod folder as one) in EAWDevLauncher,
+  EAWEngine, EAWLauncher, and EAWAssetInspector; without the check, discovery silently fell back to
+  the Steam installation without the mod.
+- MEG v1 archives, loose files, inherited EAW data, patches, and repeatable mod layers form one
+  case-insensitive layered VFS in the order AGENTS.md fixes. Relative mod paths resolve as the
+  game's MODPATH (`resolve_mod_path`: under the runtime root, then as given).
+- The sound archives mount under `DATA/AUDIO/SFX/` for each layer, with only the `--language`
+  archive (archive discovery skips their folder).
+- Malformed data: `megafiles.xml` entries inside XML comments are not listed (the stock manifests
+  have none); a MEG header whose counts need more bytes than the archive holds is rejected before
+  anything is reserved; a path listed twice in one archive is counted and reported when mounting
+  and resolves to the later record (an engine choice; no stock archive has one).
+- `EAWAssetInspector extract` copies resolved files out of the VFS into a chosen folder
+  (`asset_output_path` refuses archive names that could escape it).
+
+### Formats
+
+Readers and writers live in `eaw_formats` (bytes to plain `...Data` types, no I/O):
+
+- **DAT** localization: lossless read and write, validation, sparse TSV workspaces, new-unit
+  bundles, a CLI, and the Dear ImGui editor.
+- **DDS/MTD**: stock textures, mip and subresource layout, BC1-BC5, common uncompressed and DX10
+  metadata, mega-texture directories.
+- **ALO models**: render-ready geometry, skeletons, materials with raw parameters, skin palettes,
+  bind transforms, attachments, proxies, lights, dazzles, the second texture-coordinate set
+  (`TEXCOORD1`), and bone billboard modes. `inspect` prints every shader parameter, each bone's
+  billboard mode, and each submesh's second-UV range.
+- **ALO particle systems** (`formats/alo_particle_system.hpp`, `read_alo<AloParticleSystemData>`):
+  every stock particle ALO (root chunk 0x0900) with emitters, raw properties, shape groups, keyframe
+  tracks, and child links; the 0x1500 plugin format is detected and rejected
+  (`EAWAssetInspector particle-audit`).
+- **ALA animations**: compressed tracks, visibility, stepped tracks. A track counts as animating its
+  bone only when its keys change (flagged in the file and moving by more than about 0.1 degree or
+  0.001 units; `AnimationTrack::animated`).
+- **TED maps**: land terrain, elevation, passability, and objects; space objects and tactical
+  bounds; each placed object's hint (`TedPlacedObject::hint`, from its 0x482 container; 2,450 hinted
+  stock objects, 1,713 distinct hints). Per environment: fog (color 0x0f, switch 0x10, start 0x11,
+  end 0x12), wind (direction 0x2b in degrees, speed 0x2c on the editor's 1-10 scale, a reading of the
+  stock values), and the cloud layer (texture 0x2f, repeat 0x2d in world units, drift speed 0x2e;
+  the drift follows the wind direction, which the terrain chunk's 0x10 velocity supports). All 269
+  resolved stock maps decode. `map-audit` reports every environment field by type, size, and value
+  range. Unread: the water fields 0x17-0x22, the terrain layer and track header fields (two
+  angles, two colors, flags), and the cloud field that may weaken cloud shadows (perhaps 0x24).
+- **XML**: Petroglyph fragments, a typed definition and reference index, optional validation
+  against a local public `eaw-schema`; element nesting is bounded at 256 levels with a diagnostic
+  (stock nests at most 5).
+- **Lua inspection**: source dependencies and structural inspection of standard Lua 5.0 and
+  Petroglyph persistent bytecode, without executing it.
+- **WAV** (`read_wav`, every chunk kept) and **ANIMATIONSFXMAPS.TXT** (`read_animation_sfx_map`,
+  rows of fields).
+- **PNG and RGBA images** (`formats/rgba_image.hpp`, `formats/png_image.hpp`: uncompressed PNG,
+  read back only in that form) for captures; the comparison itself is `eaw_image_compare`.
+
+### XML loading
+
+`XmlAssetDatabase` reads the files `GameObjectFiles.xml` and the other registries list, in list
+order, then the rest, so a duplicated name resolves by its registry's rule: first registered for
+game objects, last for hardpoints and the other last-wins registries (from the public eaw-schema,
+to be confirmed by a black-box test). Definitions in files nothing reaches are left out when their
+type is one the game loads only through lists (stock FoC: EAW's campaigns and story events, 4,813
+definitions in 208 files). `xml-audit` reports registry entries naming no file and unreached files.
+Without registries (synthetic data) every file loads. Details in compatibility-research.md, "XML
+loading".
+
+### Corpus at the end of M1
+
+All 638 resolved stock XML files parse, indexing 21,283 named definitions across 185 element types
+(20,881 typed with eaw-schema); all 2,213 DDS files and the 1,107-entry command-bar MTD decode; 370
+Lua source scripts (85,312 lines) resolve every detected dependency.
 
 ## Code organization
 
-Feature work paused on 2026-11-09 and 2026-11-10 for a reorganization of the code in six steps,
-each with an unchanged simulation hash, bit-identical WARP captures, and byte-identical stock-data
-audits; since then tidying is continuous (AGENTS.md, "Code health"; leftovers in the roadmap's
-Code health list):
+The code was reorganized on 2026-11-09 and 2026-11-10 in six steps, each with an unchanged
+simulation hash, bit-identical WARP captures, and byte-identical stock-data audits; since then
+tidying is continuous (AGENTS.md, "Code health"; leftovers in the roadmap's Code health list). The
+engine's categories became libraries of their own on 2026-11-13 under the same checks.
 
 - `eaw_math`: the only vector, quaternion, matrix, and transform types (row-vector convention);
   matrices and quaternions have no default value (`identity()`, `zero()`).
 - `eaw_core`: the foundation only: error handling, the log, `string_utils` (one ASCII case
-  folding, trimming, search, and UTF-8/UTF-16 conversion replacing about 50 local copies),
+  folding, trimming, search, and UTF-8/UTF-16 conversion, replacing about 50 local copies),
   `file_io` (size-limited reads, atomic writes through an exclusively created staging file), and
   `checksum` (one CRC-32).
-- `eaw_formats`: readers and writers of the original's formats, bytes to plain `…Data` types
+- `eaw_formats`: readers and writers of the original's formats, bytes to plain `...Data` types
   (`read_alo<AloModelData>`, `read_alo<AloGenericData>`, `read_ted`, `read_dat`/`write_dat`, ...),
   with per-format helper files; no I/O.
 - `eaw_vfs`: the layered VFS, MEG archives, path normalization, and installation discovery.
-- `eaw_assets`: the game asset layer (XML database and schema, catalogs, map object layout,
-  legacy materials, ALO naming rules) and the engine-native resources `Model`, `Skeleton`, and
-  `Animation`, loaded from ALO and ALA data, with pose sampling; the engine keeps only these of
-  models and clips; `ParticleEffect` and its fidelity rules load particle systems the same way.
-  The `ResourceManager` loads and caches every resource by type over `AssetCache` (hot reload
-  intact); resource IDs are deferred until a consumer needs them.
+- `eaw_assets`: the game asset layer (XML database and schema, catalogs, map object layout, legacy
+  materials, ALO naming rules, clip names, legacy units, typed type fields) and the engine-native
+  resources `Model`, `Skeleton`, `Animation`, `ParticleEffect`, and `Sound`, with pose sampling and
+  the particle fidelity rules. The `ResourceManager` loads and caches every resource by type over
+  `AssetCache` (hot reload intact); resource IDs are deferred until a consumer needs them.
 - `eaw_localization`: the DAT editor's and EAWTools' localization tools.
-
-- Build: `build.ps1` (configuration, clean, tests switch, C++20 at configure) replaced the batch
-  files; Debug libraries and executables carry the `_d` suffix, and the launchers start the engine
-  by its built file name.
-
-## M2: legacy-mode renderer — active
-
-The first deliverable (a stock unit and tactical maps load and can be inspected in the sandbox) is met; M2 stays open for the features content was authored for (shadows, anti-aliasing, damage states, decals, special materials; the Rendering track in [roadmap.md](roadmap.md#rendering)).
-
-Map orientation (2026-11-11, from the owner's Anaxes 02 screenshots against the original's editor): two faults made placed objects look wrong. (1) The renderer viewed the right-handed, Z-up world through a left-handed look-at, so every scene was mirrored left to right (the crashed ships and landing pads sat on the other side; the tactical camera's pan had been written to match the mirror, and the free camera's A/D looked swapped); the view and the CPU camera math (`camera_math`) are now right-handed and the tactical pan uses the true right. (2) A placed object's Z rotation is its facing (counter-clockwise from +X, as the simulation's headings), and models face -Y, so `placed_object_transform` now turns the model a quarter first (`placed_model_facing`); before, every placed object faced 90 degrees clockwise of its facing (the train tubes lay across their lines). Squadron offsets are in the facing frame (+X ahead) and take the inverse turn. The reference battle's hash changed to 0x169c3763c48a4288 (placed units start facing their map heading, structure footprints turn with them); every capture changes (the mirror) and needs the owner's look before new references are made.
-
-Fixes from the game-object tag survey (2026-11-11, [xml-object-tags.md](xml-object-tags.md#implications-for-eawengine)): (1) GameConstants' per-mode multipliers apply: unit top speeds times `Object_Max_Speed_Multiplier_Land`/`_Space` (1.56, 1.2) and object and hardpoint health times `Object_Max_Health_Multiplier_*` (1.0 land, 1.5 space), both stated by developer comments (`CombatContent::max_speed_multiplier`, `max_health_multiplier`); projectile speeds are left unscaled (open question). (2) Destroyed hardpoints play their `Death_Explosion_SFXEvent` (all stock uses are on HardPoint definitions): snapshots list them (`SimSnapshot::hardpoint_deaths`, presentation only), `BattleAudio` plays them. (3) The team containers' `Override_Acceleration`/`Override_Deceleration` spelling is read. (4) A shooter without its own `Projectile_Fire_*` cadence takes its projectile's (Bossk, MAL, the Disruptor merc carry it on each of their projectiles); their second `Projectile_Types` entry waits for the SWAP_WEAPONS ability. (5) Company members move with their team (`Create_Team_Type` container: its `Max_Speed`, `Max_Rate_Of_Turn`, and acceleration; `TeamMovement`; the engine has no team entity, so each member takes them), and a squadron without `Squadron_Offsets` takes its team container's (Vader's TIE squadron), the rest lining up astern 40 units apart (an engine choice) instead of stacking. (6) Shots stray: entities carry their `CategoryMask` and `Property_Flags` bits (read from `Data/XML/Enum`), weapons their inaccuracy by target category (`Targeting_Fire_Inaccuracy`, else `Fire_Inaccuracy_Distance`, then `Targeting_Fire_Inaccuracy_Fixed_Radius`; hardpoints their own `Fire_Inaccuracy_Distance`), and each shot lands uniformly within that radius of its aim point from a seeded stream that is part of the state (`combat_random_seed`); it misses when that lies outside the target's footprint and then hits the nearest hostile collidable entity it lands on (`Collidable_By_Projectile_Living`). That reading of the values is inference: it fits the data (infantry blasters miss air units, turbolasers fighters) but is unverified, and land hit rates fell (the reference battle: 94 of 415 shots hit, 150 of 187 before). Targets are chosen through one rule (`choose_target`, replacing three copies of the nearest-hostile loop): a type's `Targeting_Priority_Set` ranks targets by category or property (lower first), exclusions apply to unranked targets only, and the rest rank last; the AI-only `Hard_Point_Priorities` are not read. The reference battle's hash is now 0xd2ccd9c1fee34a51.
-
-Acceleration and turning (2026-11-11, the owner's list: ships went from rest straight into a turn, land units turned while moving off): movers carry a `MovementProfile` (`EntitySpawn::movement`, hashed with the locomotor's own speed): they accelerate and brake at XML `OverrideAcceleration`/`OverrideDeceleration` (read as Max_Speed units per 30 Hz frame per frame, a guess; types without them change speed at once, as before) and brake ahead of their destination so they stop on it. Below `Min_Speed_Fraction_For_Turn` of their speed, ground units turn at `Stopped_Rate_Of_Turn` (walkers; else their turn rate) and space ships cannot turn at all, and a mover keeps at least that fraction of its speed in a turn; a ship that cannot turn while slow therefore gathers speed straight ahead, moves along its heading, and slides straight onto its destination only within twice its slowest turn radius (so it cannot orbit it). Ground units stop and turn where they stand when their way is more than 45 degrees off (`ground_turn_in_place_angle`, an engine choice), corners included. Capital ships name no turn speed fraction; they take 1, turning only at full speed (`default_space_turn_speed_fraction`; 0.25 until 2026-11-13, when recordings showed it). Flyers keep their own flight model. The reference battle's hash changed to 0x7e22213aecfe423e. Not yet: braking ahead of a sharp corner (a heavy unit slides a little past it while it stops), `Max_Thrust`, `Begin_Turn_Towards_Distance`, pre-turn animations (`Has_Pre_Turn_Anim`), and the avoidance planner still predicts courses without acceleration.
-
-Sandbox interface (2026-11-11, the owner's list): a bar pinned to the top (F1 shows or hides it) with Panels and View menus; every panel first opens in its own place below the bar and is then freely moved and resized, kept between runs in `sandbox_imgui.ini` next to the executable (the renderer takes the file as `D3d12RendererOptions::overlay_settings_file`; its built-in text panel is gone and the statistics panel is the sandbox's, graphics numbers only); a camera panel and C switch between the fixed (RTS) camera, the debug camera, and a free flying camera (`FlyCamera`; `--free-camera` places it); the spawn panel filters by category (infantry, vehicles, heroes, structures, space units, props, other) and faction (XML `Affiliation`), and lists squads, companies, and squadrons (they were missing: `GroundCompany` and `Squadron` were not unit kinds) and props.
-
-Detail levels (2026-11-11, the first part of render feature 1): models keep every `_ALT<n>` and `_LOD<n>` mesh (`ModelMesh::damage_state`, `detail_level`); the scene builder lays a model's draws out by state and level (`VisualMesh::states`, the default range staying intact at full detail); the renderer picks each instance's level by the `--lod` policy (`distance`, `screen`, `hybrid` by default, or `off`), scaled by the type's `LOD_Bias` and `--mesh-detail`, with hysteresis, and cross-fades level changes of keyed instances (map units: the entity key) over 0.25 s with complementary dither masks. The run summary counts instances below full detail and cross-fades. Damage states are drawn from health since 2026-11-13 (below). All distances, pixel sizes, the hysteresis, and the fade time are engine choices; LOD changes are only seen when the camera or the units move far enough (a fixed automation camera rarely crosses a boundary).
-
-The native Direct3D 12 sandbox currently has:
-
-- a Win32 window/input layer;
-- triple-buffered frame contexts and a waitable flip-model swap chain;
-- independent direct and copy queues with monotonic per-queue fences;
-- GPU-side copy-to-direct synchronization and deferred upload retirement;
-- optional tearing, WARP, debug layer, GPU validation, DRED (in every build, 2026-11-13), and device-removal diagnostics: a failed call on the device or any of its objects reports the removal reason, each unfinished command list with its last completed operation, and the page-fault address (`check_device_hresult`); resources retired before the render that records their upload transitions drop those transitions (`retire_uploaded`), so a resize flush in between cannot free a resource a barrier names;
-- depth buffering, indexed ALO batches, DDS mip uploads, conservative blend translation, and an orbit camera;
-- CPU ALA pose sampling and GPU skinning through persistently mapped, per-frame bone palettes;
-- automatic `_IDLE_00.ALA` lookup, explicit `--model`/`--animation` selection, pause/reset controls, and a validation-triangle fallback;
-- engine-owned cameras: `eaw_scene` and `eaw_control` (scene building and camera controllers, unit-tested) produces a `VisualCamera` for the renderer; `--map` uses a tactical camera and draws the active environment's sky dome and backdrop as a camera-centered background layer;
-- instanced scenes: `VisualScene` meshes and instances (transform, tint, bone offset) drawn with one `DrawIndexedInstanced` per mesh draw, and `sandbox --map` loading every placed object of a TED map (space squadrons expanded at their `Squadron_Offsets`);
-- render direction: the first target is **legacy mode**: running the original game on the new engine with rendering that approximates Alamo, driven by `LegacyMaterial` reference profiles and newly written shaders, then stabilizing behavior. A modern physically based shading (PBS) pipeline with engine-native materials comes after legacy mode is stable; the profiles will then also be conversion input for it;
-- `GameObjectCatalog` resolves TED placed-object CRCs (CRC-32 of the uppercased type name) to XML definitions and models through `Variant_Of_Existing_Type`; `EAWAssetInspector map-objects` audits it (99.7% of stock placed objects reach an existing model). `build_map_object_layout` adds per-object world transforms, and the `EAWTools` map previews draw the resolved models;
-- an evidence-based legacy shader inventory ([docs/legacy-shader-mapping.md](legacy-shader-mapping.md)) and reference profiles in `LegacyMaterial` for all 39 readable effects of the shader sources published with Petroglyph's official mod tools (kept locally in `Reference Materials/Shaders/`). The profiles record render phase, depth/cull/alpha-test state, lighting model, texture-channel roles, UV/vertex animation, and vertex requirements. Unreferenced names keep tagged name heuristics. The sandbox skips heat and occluded-unit materials with a warning until those passes exist.
-
-Debug and Release builds, unit tests, WARP/GPU-validation smoke tests, and human visual checks have passed for the current slice.
-
-Known limitations are intentional, not invitations to hide special cases:
-
-- legacy-mode shading covers fill plus key-light lighting (2x diffuse convention, exponent-16 highlight evaluated per pixel), normal maps, gloss from base/normal alpha or gloss-texture red, team-color masks, self-illumination masks, material Diffuse/Specular/Emissive/Color, alpha test/blend/additive, and UV scrolling. Maps use their active TED environment's key, two fill lights, specular, and ambient; team colors come from the type's affiliated faction `Color` (player-slot palette fallback). Not yet: cube reflections, planet atmosphere/clouds/city lights, shield distortion layers, nebula wobble, wind bend, heat distortion, occluded-unit silhouettes, shadows, fog, fog of war, and depth-sorted transparency;
-- selection uses a GPU pick target (`R32_UINT`, scene instance index + 1, terrain reserved) written by opaque, alpha-tested, and terrain surfaces; each request gets an id and copies one texel (up to eight per frame, the rest wait, none are dropped) into the frame's readback buffer; results are read after that frame's fence and returned in request order, so they arrive a frame or two later without a CPU wait, and the sandbox maps each id to its purpose (select, move order, spawn). Platform input latches button and key edges within a frame, so a quick click registers both its press and release. Blended effects and backgrounds are not pickable; the selection is tinted and outlined by its bounds;
-- debug lines (`set_debug_lines`, engine helpers in `presentation/debug_draw.*`) draw depth-tested over the scene from a frame-buffered, persistently mapped vertex buffer with a temporary capacity of 32768 lines per frame; lines beyond it are counted in `stats().dropped_debug_lines`. The sandbox outlines the selection and toggles every object's bounds plus world axes with B (`--show-bounds`);
-- the sandbox's dev panels are Dear ImGui windows in the renderer's overlay: F1 opens a menu (`sandbox_panels.*`) that shows or hides the statistics and spawn panels and toggles bounds and passability (`--panel menu|statistics|spawn` opens them at start, `--overlay` the statistics); engine-built panels are submitted through `D3d12Renderer::set_overlay_ui` (a callback run inside the overlay's ImGui frame; button presses come back as actions applied next frame), the overlay gets typed characters and editing keys through `set_overlay_input` (platform `InputState::text` from WM_CHAR, Backspace/Delete/Home/End keys), and while one of its text fields is active (`overlay_wants_keyboard`) the scene gets no keys. The spawn panel lists the spawnable types with a search field, marks those not loaded yet, and sets the type, count, and owner N and its "Spawn at view center" button use. The statistics panel is drawn by the renderer from engine-supplied text (`set_overlay_text`) and mouse input (`set_overlay_input`); it can be moved, resized, and minimized with its "-" button, and while it wants the mouse (`overlay_wants_mouse`) the scene ignores clicks, drags, and the wheel. It shows FPS, CPU and GPU frame time (timestamp queries read after the frame's fence), draw calls, triangles, instances, video memory against the DXGI budget, texture residency and slots, scene, camera, animation, selection, and hot-reload status. Exception to the no-CPU-wait rule: the ImGui DX12 backend waits on the CPU for its font-texture uploads, which happen only when the font atlas changes, never per frame;
-- alpha ordering is coarse and material translation is conservative;
-- shaders are newly written HLSL under `src/render/shaders` (D3D12, DXC, shader model 6.0, root signature declared in the HLSL) and `src/tools_gui/shaders` (D3D11 tools, FXC, shader model 5.0), compiled at build time into embedded bytecode; there is no runtime shader compilation. Shader reflection metadata is not generated yet, and the pipeline-state cache is opt-in (`--pipeline-cache <dir>`);
-- `sandbox --model` lists every `<MODEL>_*.ALA` and Left/Right step through the bind pose and them; models show the intact `_ALT0` damage state and the highest `_LOD<n>` detail level. Model scenes animate bone visibility for rigid attachments through a second, visibility-collapsed palette half (meshes on bones hidden in the bind pose appear when an animation shows the bone); skinned-mesh visibility, damage-state and LOD switching, and gameplay-driven visibility are not modeled; map meshes carry the same visibility half and animate (see M3 item 11);
-- the sandbox builds a map or model on a worker thread while the window renders; `load_scene` may replace the scene at any time. Geometry and materials upload at once, while textures are validated up front and stream in under a per-frame byte budget (`--upload-budget`), drawn with role-appropriate fallbacks through a frame-buffered logical-texture residency table. Textures live in a generation-checked handle pool, take texture-table slots from a fence-deferred allocator, and replaced buffers, textures, and bone palettes retire on the direct-queue timeline (`gpu_resource_lifetime.hpp`; `sandbox --reload-every` exercises it). Scene builders read through the core `AssetReader` interface and an `AssetCache` (now in `eaw_assets`, behind the `ResourceManager`) of decoded models, textures, maps, and the XML object catalog; every cached asset records fingerprints of the files it consulted (including failed lookups and listings), and `sandbox --hot-reload` polls them and the MEG archives once a second on a worker, remounts rebuilt archives between builds, and rebuilds the scene from the cache. Decoded textures carry an identity (a fresh serial per decode), and `load_scene` keeps every resident texture whose identity the replacement scene names again, so a reload uploads only changed textures; geometry, instance, and material buffers are still per scene, the renderer holds one scene at a time, and MEG archives added to or removed from a layer need a restart;
-- the descriptor and bone capacities are temporary implementation limits, not asset-format limits;
-- land terrain renders as a textured heightfield (per-vertex layer index, three-layer blending, layer tiling, normal maps; layers without a color texture are not drawn, an inference from Cloud City and Kamino); water, lava, and ice surfaces render at the map's liquid level with their textures and highlights, resembling the original's low-end fallback because reflection and refraction are not modeled (tiling and scroll are engine choices); tracks render as unlit, alpha-blended ribbons draped on the terrain with start/middle/end opacity and texture scroll; vertex colors reach materials whose legacy profile reads them. Decals (one stock map, no established texture link), fog of war, clouds, and the unexplained terrain layer and track header fields (two angles, two colors, flags) are not rendered or interpreted yet. Land teams/companies are not expanded (their formations are runtime behavior), and transparent draws are not depth-sorted;
-- the world is right-handed with Z up (the renderer's look-at and the camera math since 2026-11-11, matched to the owner's screenshots of the original's editor); background parallax and sky-dome scaling are inferred, not measured;
-- Alamo models face -Y (muzzle and fire bones, docs/compatibility-research.md): an entity heading is the direction of its model's -Y axis (`model_forward_heading`, `identity_model_heading`);
-- `EAWTools` remains on Direct3D 11 and its preview renderer is not the production renderer; its model preview (2026-11-11) selects a damage state and detail level through the engine's rule (`alo_mesh_visibility`, `alo_model_variants`), lists the XML types that use the model, and toggles each hardpoint of the chosen type (a marker by kind, the `Model_To_Attach` model at its bone, or destroyed: its `Damage_Decal` scorch meshes, which `bones_in_subtrees` hides while intact). The hardpoint list is resolved once for the engine and the tools (`type_hardpoints` in `src/assets`, replacing the separate lookups in `combat_content` and `scene_models`; battle hashes unchanged);
-- a complete renderer-agnostic RHI has not yet been extracted;
-- simulation, gameplay Lua execution, audio, runtime UI, networking, and save compatibility are future milestones.
-
-The order of the remaining work is the roadmap's [work order](roadmap.md#work-order).
-
-## M3: tactical simulation slice — active
-
-The first goal is a thin vertical slice: units on a map that can be selected and moved, proving that simulation and rendering stay separate, the tick is deterministic, and commands flow in while snapshots flow out.
-
-1. ~~Simulation core (`src/simulation`, no graphics): stable generation-checked entity ids, structure-of-arrays component storage, a fixed-step scheduler, deterministic command application at tick boundaries, and immutable snapshots for presentation.~~ Done.
-2. ~~Spawning from XML: placed TED objects become entities built from their XML object types (owner, position, heading, `Max_Speed` with a provisional ×30 scale) instead of a static scene.~~ Done; reinforcements come later.
-3. ~~Renderer object API: the loaded scene's meshes form a mesh library and `set_instances` submits each frame's instances (any count, added or removed freely) through a growable frame-buffered buffer; `ScenePresentation` re-poses instances from interpolated snapshots.~~ Done; animated units on maps are item 11.
-4. ~~First interaction: the legacy RTS camera (fixed pitch and heading, zoom, keyboard pan), click and box selection, and right-click move with straight-line movement on the fixed tick.~~ Done: maps start in RTS mode (C toggles the free debug camera); left-drag box-selects mobile units, a click selects any object, and right-click orders selected units to the ground under the cursor, found on the CPU in the same frame (`TerrainHeightField` built from the map, ray-marched by `intersect_terrain`, liquid surfaces included; the z = 0 plane in space), spread on a grid. GPU picks are only used to identify clicked objects, and completed picks are read from any frame context whose fence has finished. Flyers move in a straight 3D line with instant turning (ground units: items 5 and 6); there is no collision or formation yet, and the camera's fixed pitch and heading are provisional. `--spawn <TYPE>[:N]` adds XML types' models to the map's mesh library so the sandbox can spawn them (N at the cursor, Tab cycles); runtime spawning is a deterministic `spawn` simulation command (through `Battle`, see item 10), and any type can be spawned at any time (see item 12).
-5. ~~Terrain following and passability data.~~ Done provisionally: `GroundMap` (`src/simulation`) carries the heightfield, liquid level, and raw TED passability; units whose XML `Space_Layer` is `Land` or `None` follow the surface on land maps and stop before cells whose passability type their XML `MovementClass` may not enter (`MovementClassTypeDefs.xml`; 0x1 Clear, 0x2 Steep, 0x20 Water, 0x80 InfantryOnly, 0x100 Impassable, 0x4 Obstacle with medium confidence; runtime walls and shields have unverified bits); flyers keep their altitude. Sandbox G draws the types.
-6. ~~Pathfinding.~~ Done as a first engine-native slice, not a reproduction of the original's navigation: `GridPathfinder` (`simulation/pathfinding.*`) runs A* over the TED passability cells for each ground unit's movement-class mask when its move command is applied at the tick boundary (8-connected, integer costs, no corner cutting, fully ordered ties, so it is deterministic), then drops waypoints a straight line can skip. Connected regions are labeled once per mask, so a goal the class cannot reach moves at once to the nearest cell of the unit's region; a unit standing where it may not be first leaves for the nearest enterable cell. Units follow the waypoints at full speed through corners; the sandbox draws selected units' routes and shows path counts, expanded nodes, and tick cost. Searches run synchronously in the tick (about 1 ms per cross-map path in Release; a 15-unit cross-map order on Alderaan costs about 18 ms), so a per-tick search budget or the job system must take over before large armies. Not yet: unit size and clearance, collision and separation, formations, turn rates, and dynamic obstacles (walls, shields, units). The staged plan and its sources are in [docs/pathfinding-research.md](pathfinding-research.md); A* stays as the reference implementation.
-7. ~~First combat slice.~~ Done: the simulation carries engine-native combat data (`src/simulation/include/simulation/combat.hpp`: health, shields with regeneration, armor and shield armor types, aim height, one projectile weapon with range, recharge, pulse bursts, damage type, speed, and flight limit; a `DamageTable` of damage-versus-armor multipliers; a symmetric `Hostility` relation over owner slots) and a deterministic uniform-grid broad phase (`SpatialGrid`). Each tick after movement, shields recharge, armed entities target the nearest damageable hostile in range (ties to the lower id, searched every 10 ticks) or chase an attack-command target, fire bursts, shots home at their speed, shields then armor take damage, and the dead are removed back to front. `combat_content.*` (`src/engine`) translates the XML fields and `GameConstants.xml` damage modifiers; map owner slot 3 is provisionally neutral and all other slots hostile. The sandbox right-click attacks a hostile under the cursor (resolved through a pick against the entity list of the frame that drew it), O cycles the debug-spawn owner, `--spawn TYPE[:N][@OWNER]` places opposing groups, and projectiles and health/shield bars are drawn as debug lines. Not yet: hardpoints (space weapons), several weapons per unit, inaccuracy, turret target priorities, splash damage, death effects and damage states, garrisons, and ability or AI behavior.
-8. Group movement, in steps (sources and plan in [docs/pathfinding-research.md](pathfinding-research.md)). Step 1 is done: mobile units have a separation footprint (from model bounds) and an XML turn rate (`Max_Rate_Of_Turn`, provisionally degrees per 30 Hz frame); after movement, overlapping ground units are pushed apart deterministically (summed per pair, then applied; immobile entities never move, idle units yield to moving ones, nobody is pushed onto ground they may not enter), units pushed off their route replan, and units turn at their rate, slowing while facing away. Step 2 is done: `formation_move` commands (the sandbox right-click) lay the selected units out in ranked rows (`formation.hpp`: lower XML `FormationOrder` in front, pitch from footprint and `FormationSpacing`, about twice as wide as deep, centered on the target, slots assigned by where units stand across the facing so paths do not cross) and move them at the slowest member's speed until each arrives. Step 3 is done: land companies (`Company_Units`, GroundCompany/HeroCompany/SlaveCompany) expand into their members even when the company names a model of its own (most stock companies do; 4,665 members across the stock maps), placed at the company's origin and flagged; the map builder arranges each company with the same formation, facing its placed heading, and `--spawn` accepts company types (spawned as their members). Type-name lists split on commas and whitespace (one stock FoC list has no commas). Group moves keep together and queue: members more than a slack ahead of their group's furthest member wait (a member without progress for 3 s is released), and between two moving units of one owner the one with less route left yields much less (route priority, as in Age of Empires II), so a group files through a one-unit-wide passage instead of jamming; only units of one owner make way for each other, so idle enemies and neutrals stand their ground. Immobile obstacles on land maps (structure kinds, and types whose `UnitCollisionClass` names an obstacle) carry a `GroundFootprint` (their XML rectangle: `Obstacle_Width`/`_Height` from the `Obstacle_X`/`_Y_Offset` corner, else the `Custom_Hard_X`/`_YExtent` half extents around their offsets, through `Obstacle_Proxy_Type`, `type_ground_footprint`, axes and units in [compatibility-research.md](compatibility-research.md); else their model bounds as a rotated rectangle, an engine choice) that the simulation stamps into its copy of the ground's passability with their XML `OverridePassability` type (walls: RebelWall, EmpireWall, so classes allowed on walls still cross them) or Obstacle, and removes when the entity is destroyed (cached region labels are dropped); the G overlay shows the stamped grid. Units use XML `Custom_Soft_Footprint_Radius` (infantry 3.5) when present. Route planning is budgeted and shared: path requests (orders, chases, replans) wait in a FIFO queue planned up to 30,000 nodes per tick (at least one request; a unit waiting for its route holds still, a newer request supersedes), and a formation move plans one shared search per movement class from the member nearest the group's centroid, then per member a straight or short (4,096-node) leg onto it and off to its slot, straightened against the ground; a shared request resumes over several ticks when its members exceed the budget. Intermediate waypoints are passed once the next one is in straight reach (a crowd kept units from touching a shared corner waypoint). Ordering every unit on Utapau now costs at most about 12 ms in one Release tick (40 ms before).
-9. Space combat, step 1 done: `CombatProfile` holds any number of weapons, each with its own recharge and bursts, firing at the entity's target when within that weapon's range (targeting uses the longest range). `combat_content` reads ship weapons from `HardPoints` (every entry whose `Type` is a weapon: `Fire_Projectile_Type`, `Fire_Range_Distance`, `Fire_Pulse_Count`/`Fire_Pulse_Delay_Seconds`, recharge = midpoint of `Fire_Min/Max_Recharge_Seconds` until a seeded random stream exists, hardpoint `Damage_Type` overriding the projectile's) besides `Projectile_Types`. Separation runs in the plane on space maps. A repeated `Squadron_Units` continues the list (stock Rebel_X-Wing_Squadron: 2 + 2 + 1 X-wings beside five offsets; 1,474 squadron members on the stock maps, 1,026 before), and squadrons spawn like companies (`--spawn Rebel_X-Wing_Squadron`). Step 2 done: every `HardPoints` entry is a part (`HardpointProfile`: kind from `Type`, `Health` unless `Is_Destroyable` No, `Is_Targetable`, offset from the model's `Attachment_Bone` in the entity's forward/left/up frame); weapon hardpoints fire from `Fire_Bone_A` within `Fire_Cone_Width` centered on that bone's X axis, each weapon starting bursts at the entity's target when in its range and arc or else at the nearest hostile within them; shots aim at the victim's nearest live targetable hardpoint and damage it and the hull (provisional split); losing every shield generator stops shield recharge and losing every engine slows to a quarter (provisional); a destroyed weapon hardpoint silences its weapon. Fighter movement done: types whose `SpaceBehavior` names `FIGHTER_LOCOMOTOR` get a minimum flight speed (`Min_Speed` on the `Max_Speed` scale, else half of it) and never stop: they fly along their heading at their turn rate toward their target, destination, or the point they circle when idle or arrived, and make attack runs (inside a third of their weapon range of the target they hold their heading, pass, and turn back outside); flyers do not separate and steer at an attack target themselves instead of chasing it by move orders. Behavior is a layer of its own: each tick, after commands, `run_behavior` turns every unit's order, stance, and target into a chase move request or a flyer's steering intent, before navigation, locomotion, and combat; a `Stance` (aggressive, hold_position, hold_fire; `EntitySpawn::stance`, `set_stance` command) decides whether a unit picks targets and moves for them, while orders always apply. Engine-native; the original's stances are not mapped yet, and the sandbox has no stance control yet. Flight is 3D: flyers pitch (at their turn rate, at most 60 degrees) toward the behavior layer's point, which keeps them at their cruise height (their spawn height) for now, and separate from flyers of their owner sideways (3D overlap, in-plane push); snapshots carry `pitch` and `yaw_rate`, and `ScenePresentation` poses pitch and a bank from the yaw rate (`flight_bank`). A goal more than 135 degrees behind and more than four turn circles away starts a half-loop (behavior asks, the locomotor pitches through the vertical, comes out heading back, and unwinds the half roll, carried as snapshot `roll`); flyers return to their plane within a few turn circles. Against a flyer of any class (fighters, bombers, mod units with the fighter locomotor, by minimum speed, never by name) a flyer dogfights: it steers at the target in 3D, weaving 60 units above and below it on an 8 s period with a per-unit phase, within 150 units of its plane, and loops when the target is far behind; against anything else it keeps attack runs in its plane. All values are engine choices pending measurement. Next: the headless battle command.
-10. Headless battle, in steps. Step 1 is done: `Battle` (`battle/battle.*`) owns the `SimulationWorld` of the sandbox and of headless runs. It sets the world up from a `BattleMap` (ground, damage table, hostility, then the placed entities in order, then one tick) and takes `BattleCommand`s in replayable terms (spawn TYPE COUNT OWNER at a point, move as a formation, attack, stop, set stance; type names, owner slots, points, entity ids), validating them, translating them into simulation commands for the next tick, and recording each with its tick in a `BattleLog`. Spawning is the simulation's `spawn` command (`SimCommand::spawns`, rejected spawns counted), and command-spawned entities carry `spawnable_visual(type index)` as visual key, by which `ScenePresentation` draws them; the world names entities' types (`SimulationWorld::type_name`), and the state hash includes them. Step 2 is done: `EAWEngine battle` (`battle_runner.*`) builds the map with the types its orders name, spawns the `--spawn` groups at the map center, optionally orders every mobile unit there (`--auto-move`), runs `--ticks` total ticks (default 3000) without a window, and prints the state hash, tick timing, and combat and path statistics; `battle_log.*` writes and reads the order log as text (one order per line with its tick, shortest exact float text that reads back bit-identically, an `end` line with the final tick and state hash), `--record` writes it from battle and sandbox runs, `--replay` runs a log and checks its hash (exit 4 on a mismatch), and `--check-determinism` runs twice. Debug and Release builds reach the same state hash on Kuat and Utapau test battles (Release: about 0.05 ms per tick on average, the first auto-move tick on Utapau about 10 ms). The sandbox's `--auto-move` waits for the tick after its spawn orders. Headless builds skip textures and animation clips (`MapBuildOptions`; Utapau builds in 0.7 s instead of 2.3), and nothing the simulation reads depends on them: the ground's liquid level comes from map data (a liquid type at or above the lowest ground) instead of from the drawn water surface, the headless center is the middle of the ground (or of the placed objects in space), and `state_hash` leaves out presentation keys (`EntitySpawn::visual`, a mesh index that shifted when the water mesh was missing) and derived outputs (snapshot speed); a sandbox session (full build) replays headless with a matching hash. Hash values changed once with this (logs recorded before do not verify). Not yet: logs carry no game or mod identity (a replay must use the same data).
-11. ~~Unit animation on maps.~~ Done as a first slice: map meshes are built with the visibility half of the palette and get a `VisualRig` each (model, inverse bind pose, rest palette range, role clips found by the stock naming `<MODEL>_<ROLE>_<NN>.ALA`: IDLE, MOVE, WALKMOVE, ATTACK, ATTACKIDLE; `parse_clip_name`), and the scene palette starts as every mesh's rest pose. `UnitAnimator` (`presentation/unit_animation.*`, presentation only) picks each drawn entity's role from its snapshot (moving: MOVE, else WALKMOVE, else IDLE; a target while standing: ATTACK, else ATTACKIDLE, else IDLE; otherwise IDLE), its variant and loop phase from its id, restarts the clip when the role changes, and samples poses at pose slots (the clip's frames, at least 30 per second) shared by every entity at the same mesh, clip, and slot, cached across frames; units beyond the palette budget stay at rest. The renderer's bone palette is now set per frame (`set_bone_transforms` before `set_instances`, any size up to `max_bone_transforms()`, 262,144 matrices; frame buffers grow on demand). Simulation state hashes are unchanged. Blending (an engine choice for the engine's own look; the original's blending is not documented): `sample_local_pose`, `blend_pose` (normalized-lerp rotations, linear translation and scale), and `compose_pose` blend in bone space (`decompose_transform` splits bind transforms); snapshots carry each entity's `speed` in the last tick (derived, not hashed); `UnitAnimator` smooths that speed (0.15 s) and places it on IDLE - WALKMOVE (40% of top speed) - MOVE (top speed), or IDLE - MOVE by a quarter of top speed without WALKMOVE (a mesh without IDLE blends from its rest pose), with WALKMOVE and MOVE on one shared phase played 0.5x to 1.5x by speed, and fades ATTACK/ATTACKIDLE in and out over 0.2 s; poses are keyed by mesh, up to three (clip, slot, weight in eighths) layers, so steady units still share. Attacks follow shots: snapshots carry each entity's `last_shot_tick` (derived, not hashed), and the animator aims with ATTACKIDLE while a standing unit has a target, plays ATTACK from its start on every shot, and fades back over 0.15 s after it ends (a turreted unit firing on the move plays it over its locomotion; a mesh without ATTACKIDLE loops ATTACK, one without ATTACK only aims). Body aiming (simulation): ground units whose behavior lists (`LandBehavior`, `Behavior`) do not name TURRET (stock infantry) carry `EntitySpawn::aims_with_body`; standing, behavior turns them to face their target (the locomotor turns in place toward the intent's point), and combat fires their weapons only while they stand and face the target within `body_aim_tolerance` (20 degrees, after the stock `Crouch_Move_Fire_Angle_Cutoff`), pausing a burst while they move or turn away; turreted units (T2-B, AT-ST) fire on the move as before, without drawn turret rotation yet. Deaths: snapshots list the entities combat destroyed in their tick (`SimSnapshot::deaths`: id, position, heading, pitch, visual, owner; derived, not hashed; destroy commands are not deaths); the sandbox turns each into a corpse (`ScenePresentation::corpse_instance`, which also forgets the dead entity's template) that `UnitAnimator::add_corpse` keeps when the mesh has a DIE clip: it plays the DIE variant its type's normal death clone names (`DeathStyle` from `Death_Clone "Damage_Normal, <clone>"`: the clone's `Specific_Death_Anim_Index`, else a variant by id) and stays for the clone's `Death_Persistence_Duration` (the AT-ST's 30 s), else holds the last frame 4 s, and is drawn after the living with an invalid entity id (not pickable); at most 4,096 corpses. Not yet: directional deaths (FW_DIE, FL_DIE), turn, flinch, and crouch animations, death effects (explosions, debris, damage states), firing synchronized with shots, XML animation overrides, and Lua `Play_Animation`.
-12. ~~Runtime mesh registration.~~ Done: `D3d12Renderer::add_meshes` appends a mesh fragment (vertices, indices, textures, materials, draws, meshes; no instances or terrain) to the loaded scene's mesh library as a geometry block of its own (draws record their block; the draw loop rebinds per block), rebuilds the material buffer from a CPU copy (the old one retires on the direct timeline), streams new textures like the scene's and shares textures whose identity is already present, and returns the first new mesh index; existing indices stay valid, and `load_scene` drops added blocks. The map build's spawnable logic is `scene_build::add_spawnable_type` (a `SpawnableBuild` context), shared with `build_spawnable_package`, which builds one type (with its company or squadron members) into a `SpawnablePackage` (mesh fragment, rigs and rest palette, types with fragment-relative meshes and package-relative members, the requested type last); `spawnable_type_names` lists the unit types with a model for the map's context through the cached catalog (`list_spawn_types` moved from the launcher into core). Death clones (types a `Death_Clone` entry names, or that carry `Specific_Death_Anim_Index` or `Death_Persistence_Duration`) are wrecks, not units, and are left out of the list (770 land types became 494). Clips follow XML `Land_Model_Anim_Override_Name` (27 stock uses, inherited through `Variant_Of_Existing_Type`: civilians, slaves, and field commanders play RI_INFANTRY, EI_TROOPER, or NI_GMale_Urban_A clips, Ewok variants NI_EWOK's), retargeted to the model's bones by name (`ala_retarget_by_bone_name`); land models without clips went from 383 to 290 (buildings and props). The sandbox lists every such type (Tab/Shift+Tab, Ctrl for ten, or the spawn panel), and N on an unloaded type builds its package on a worker, registers it (`add_meshes`, `ScenePresentation::add_meshes`/`add_spawnable`, `UnitAnimator::add_rigs`, `Battle::add_spawnable`), then gives the waiting spawns; hot reload waits for package builds and rebuilds keep runtime types; `--spawn-later TYPE[:N][@OWNER]` automates it. Headless replays build every type their log names into the map, so a sandbox session with runtime types replays with a matching hash. Not yet: a searchable type picker, sharing meshes between packages (a member type already loaded is built again), and removing meshes.
-13. Since 2026-11-09, in the owner's order of that date (the roadmap's [work order](roadmap.md#work-order) has replaced it):
-    1. the missing render features: particles (engine glows, muzzle flashes, explosions, smoke), attached trails, projectile visuals, runtime decals, and the rest of the legacy-mode render backlog. Step 1 is done: particle systems decode (`formats/alo_particle_system.hpp`, read with `read_alo<AloParticleSystemData>`: every stock particle ALO, root chunk 0x0900, with emitters, properties kept raw, shape groups, keyframe tracks, and child links; the 0x1500 plugin format is detected and rejected; `EAWAssetInspector particle-audit`); the interpretation layer (`particle_rules`, now in `src/assets`) normalizes each into an engine-native `ParticleEffect` of `ParticleEmitterDesc`s under a `ParticleFidelity` profile (legacy, the default: additive ignores alpha, effects draw with emitters in list order; enhanced: additive scaled by alpha, every particle sorted back to front; linked particles follow their emitter's position and rotation under both, since the editors' "position only" reflects previews that never rotate; `sandbox --particles legacy|enhanced`, `MapBuildOptions::particle_fidelity`); `ParticleWorld` (`presentation/particle_effects.*`, presentation only, seeded PCG32 stream per effect, never reading file fields) plays them on the frame clock, following the MIT-licensed GlyphX particle editor where it differs from alo-viewer (bursts and continuous emission, initial delay, skip and freeze time, lifetime and size variances that only shorten and shrink, colour, scale, texture-cell, and rotation tracks, gravity, acceleration, inward speed and acceleration, link to system (rigid: translation and rotation), ground collision, trail and death children, an explicit live-particle capacity with drops counted) and sorts sprites back to front; the renderer draws `VisualParticle`s (`set_particles`; billboard, ground-plane, and velocity-stretched kite quads expanded in `particle.hlsl` from a growable frame-buffered structured buffer; additive, alpha, and modulate blends, depth-tested or not, no depth or pick writes; textures from the scene's logical texture table, added with `add_textures`); map builds attach the effects of models' visible proxies (`VisualRig::effects`, `_ALT1`+ proxies skipped as damage states, and proxies under a bone a hardpoint's XML `Damage_Particles` names, kept as `damage_bone` but not played until hardpoint damage is presented; likewise the scorch meshes on a hardpoint's `Damage_Decal` bone and its children collapse in the palette's visibility half through `VisualRig::intact_hidden`; hardpoint models (`Model_To_Attach` at `Attachment_Bone`, 226 stock uses: Star Destroyer turrets and batteries, station parts) are merged into the host's mesh at their bone, rigid on its palette entry, with meshes keyed by model and attachment list (`type_hardpoint_models`, `attached_mesh_key`); emitters with `emit_from_mesh` spawn on the mesh on the proxy bone's parent (the reference's rule: the Star Destroyer's `pe_stardestroyerengines` glows at the three vertices of its `engines_big` triangle), on every vertex, a random vertex, or a random surface point, pushed out along the normal), and `AttachedEffects` keeps them at their bones from the animated palette (hidden bones stop emission) and stops them when the entity is no longer drawn; `sandbox --effect NAME` plays an effect at the map center; P on maps pauses the world (no ticks; unit animation, particles, and texture scroll read a frozen presentation clock whose origin shifts on resume) while the cameras keep working. Step 2 (trails) is done: the stock data has no separate trail system (no XML trail fields; engine and missile trails are world-space particles of moving emitters, lasers are drawn from `Projectile_Width`/`Length`/`Laser_Color`, part of projectile visuals), so emission is sub-frame: each particle spawns where the emitter was at its emission time (translation interpolated over the update) and lives through only the rest of the update, so fast movers leave even trails instead of per-frame clumps. Step 3 is done: bloom (the scene renders into its own target; a bright pass (each texel of a 4x4 block thresholded with a soft knee, then the block mean mixed half and half with its brightest texel, so glows a few pixels wide still bloom) fills a quarter-resolution `R11G11B10_FLOAT` target, two rounds of separable nine-tap Gaussian blur ping-pong between two such targets, and a composite writes scene plus bloom into the back buffer before debug lines and the overlay; `post.hlsl`, a clamped linear sampler `s1` in the root signature, target views in texture-table slots reserved at startup; `D3d12RendererOptions::bloom`, `bloom_threshold` 0.6, `bloom_strength` 0.8, an engine stand-in for the original's glow option tuned by eye; `sandbox --bloom <strength>`, `--no-bloom`), and engine effects (proxies named `pe_*` or under a hardpoint's `Engine_Particles` bone) follow their unit's speed: `AttachedEffects` smooths speed over top speed (0.5 s) and `ParticleWorld::set_intensity` scales size from 50% and opacity from 15% at rest to full at top speed (engine choices fitted to the owner's screenshots of the original). Step 4 (projectile visuals) is done: shots carry a presentation-only `projectile_visual` key (the CRC-32 of the projectile type name; `WeaponProfile`, the shot, and `ProjectileSnapshot` with its speed, none of it hashed), map builds and spawn packages read the visuals of the projectile types their weapons use (`projectile_visuals.*`: `Projectile_Custom_Render` 1 or 2, `Projectile_Width`, `Projectile_Length`, `Projectile_Texture_Slot` as column,row of the 4x4 `W_LASER_PILL` atlas, `Projectile_Laser_Color` for render 2) and load the atlas with the particle textures, and the sandbox draws each typed shot between ticks instead of a debug streak: render 1 as a `beam` particle (the diagonal pill mapped along the flight direction), render 2 as a procedural `teardrop` in `Projectile_Laser_Color`, `Projectile_Length` widths long (inferred from a modder's description and the owner's screenshot of the original). Impact and death effects are done: gameplay effects are XML `Particle` objects (`Space_Model_Name`/`Land_Model_Name`, `Scale_Factor`) that types name by field; snapshots list each tick's impacts (`SimSnapshot::impacts`: position, direction, projectile key, `ImpactKind` shield, hull, hull_reduced (armor modifier below 1, provisional), or expired (flight limit or a dead target)) and each death's `death_effect` (the first `Death_Explosions` entry), all presentation only and not hashed; builds resolve the objects the projectiles' `Projectile_Absorbed_By_Shields_Particle`, `_Object_Detonation_`, `_Object_Armor_Reduced_Detonation_`, and `_Lifetime_Detonation_Particle` and the types' death explosions name (`load_effect_objects`, `ParticleEffectObjectTable`; projectiles without a custom render keep their impacts and draw no bolt, `ProjectileVisual::bolt`), and `BattleEffects` (`presentation/battle_effects.*`, which also keeps attached effects and bolts) plays each one-shot at its point, upright, sized by `Scale_Factor` (`ParticleWorld::play` scale: transform and particle size). Unit `Scale_Factor` is applied (`type_scale_factor`, `scaled_model_transform`): models are drawn at it, model-derived separation radii, obstacle footprints, and hardpoint positions (`combat_profile`'s `model_scale`) scale with it, and attached effects take the unit's scale, particle sizes included (state hashes changed). A `Death_Explosions` entry that names a Projectile (mines, bombs, construction pods) plays its detonation particle; objects that cannot play are reported. Model projectiles (no custom render: 62 of the 115 fired stock projectiles) draw their model (`Space_Model_Name`, else `Land_Model_Name`, the reverse on land maps; `scene_projectiles.cpp`, `load_projectile_models`, before the rigs so their proxies get attachments) at the projectile's `Scale_Factor`, nose (model -Y) along the flight and placed between ticks like bolts (`projectile_model_transform`, `append_projectile_instances`; drawn without an entity, so never picked, in the mesh's rest pose); missile trails are the model's proxies, played by `BattleEffects::follow_projectiles` through a second `AttachedEffects` keyed by shot serial (`ProjectileSnapshot::serial`, presentation only, not hashed), and projectiles whose model is a particle file (`p_turbolaser_burst_med00`, `p_proton_Vengance`) play it along the flight, stopping when the shot ends; headless builds skip all of it. Not yet: the area blast of death projectiles, ground detonations, hardpoint destruction (`Death_Explosion_Particles`), debris, impact orientation, and beams for instant-hit weapons. Heat-distortion and weather emitters, wind, and soft (depth-sprite) particles are not drawn yet; effects of hidden proxies (damage) and weapons come with combat presentation;
-    2. a visual capture-and-compare workflow (the same scene in the original and the engine, image regression on the engine side) before more visual tuning. Part 1 is done: `D3d12Renderer::request_capture`/`take_capture` copy the back buffer after the scene and post-processing, before debug lines and the overlay, into a per-frame readback read once that frame's fence completes (no CPU wait); `formats/rgba_image.hpp` (`RgbaImage`, `compare_images`) and `formats/png_image.hpp` (`write_png`/`read_png`: uncompressed PNG, read back only in that form); the sandbox's `presentation_now()` clock (wall clock, or `--fixed-frame-time`) drives simulation ticks, animation, particles, and cameras, and a `--capture` run holds it until textures are resident, so a capture repeats bit for bit (checked on WARP with a Kuat battle, particles and bloom included); `--camera` frames a map view; `EAWEngine compare-images` reports mean and largest differences and the changed share, with a diff image. Comparison with the original is by measured features from ordinary screenshots, not recreated scenes (see the roadmap);
-    3. the review of the technical foundation, starting with the Lua host as a foundation question: a deterministic Lua 5.0-compatible VM, script threads on simulation ticks, generation-checked object handles, orders through validated commands, and recording stubs for every host function, run over all stock scripts to measure the host API they use; no scripted behavior yet. First slice done: Lua 5.0.3 (MIT, lua.org, pinned by archive hash) builds as C with only base, string, table, and math; `eaw_script` runs one sandboxed state per script (no io, os, debug, or file loaders; `print` to the log; `math.random` from a seeded stream; `require` through the VFS; compiled chunks refused, since Lua 5.0 does not verify bytecode; every call and resume under an instruction budget, coroutines included). The stock framework (`PGBase.lua`, `PGBaseDefinitions.lua`, `PGStateMachine.lua`) showed the real boundary is lower than assumed: `Sleep`, `ScriptExit`, and `PumpEvents` are Lua, built on engine primitives the host now implements: `Create_Thread`, `GetThreadID`, `_ScriptExit`, `GetCurrentTime`, `ThreadValue` (with `Set`, `Reset`), and `GetEvent` (with `Params`, `Reset`; an empty queue until the engine delivers events). Threads are coroutines serviced every `ServiceRate` seconds; yielding false ends one. Everything else is a recording stub (callable and indexable, so engine tables and returned objects keep working); names any stock script defines are script names, never stubs. `EAWEngine lua-survey` runs all 370 stock scripts headless (load, `Base_Definitions`, `main` for 300 ticks; game-object scripts get `Object` bound to a stub after creation): 362 run without errors and they call 46 engine functions and 18 methods. That covers creation and main loops without events; story callbacks, AI plan steps, and event-driven code do not run yet, which is why it is far below the 3,074-name upper bound. Second slice done (2026-11-10): the engine talks to scripts through `ScriptValue` (`script/script_value.hpp`: nil, boolean, number, string, engine object, function, table): `ScriptHost::set_global` binds what a script expects, `global` reads definitions back (nesting and size limits, keys sorted), and `queue_event`/`queue_callback` queue calls that the framework's `PumpEvents` drains through `GetEvent` and `GetEvent.Params` (argument tables carry `n`, so nil arguments survive `unpack`); script functions passed to engine stubs become callbacks, once per function. `Create_Thread` is a table with `Kill` (a running thread ends at its next yield) and `Is_Thread_Active`, and `GameRandom` (call, `Get_Float`, `Free_Random`) draws from the host's seeded stream. `lua-survey` now drives AI plans (task force objects and `<Name>_Thread`, task force events with the `Default_` fallback), story events through `Story_Event_Trigger`, and callbacks, binding `PlayerObject` and `Target` by script kind: about 2,900 events, 167 functions and 129 methods called (from 46 and 18), 317 of 370 scripts without errors; most remaining errors come from story states fired out of campaign order and stubs where numbers are expected. The library moved to `include/script/` (code health). Third slice done (2026-11-10): engine objects. `script/script_object.hpp` defines `ScriptObject` (kind, index, generation, point), `ScriptObjectKind`, `ScriptCall` (arguments read from and results pushed onto the Lua stack, no conversion or allocation), and `ScriptObjectProvider`; the host shows objects as userdata with one metatable per kind (method names resolved to ids once; bound closures, since scripts call with a dot; unknown names stay stubs), interned per kind in a weak table keyed by the 32-bit index with a generation check. The recorder is optional (`ScriptHostOptions::recorder`), and `run_definitions` is the creation call shared by the survey and battles. `BattleScripts` (`battle/battle_scripts.*`) runs scripts in battles: a `BattleScriptView` rebuilt after each tick (snapshot, slot table, entities by type, type ids in first-seen order), one provider context per script with its own order buffer and a ring of 4,096 blocks, orders merged in script order through `Battle::submit(command, BattleOrigin::script)` (not logged), and phase timing (`BattleScriptStats`). Implemented: `Find_Object_Type`, `Find_First_Object`, `Find_All_Objects_Of_Type` (type name or object type, optional player); game objects' `Is_Valid`, `Get_ID`, `Get_Type`, `Get_Owner`, `Get_Position`, `Get_Hull`, `Move_To`, `Attack_Target`, `Stop`; object types' `Get_Name`; players' `Get_ID` (the owner slot; `Find_Player` waits for the player layer); blocks' `IsFinished` and `Result`. `Battle::submit` returns each order's serial and the simulation keeps the serial of the order every entity follows (`EntitySnapshot::command_serial`, outside the state hash; the battle hash is unchanged). A test moves a unit from a script, waits on its block, and replays the player-only log with the script running again to the same hash. `lua-survey` now times script ticks: 2.3 microseconds per script and tick on average. Fourth slice done (2026-11-10): object scripts, hints, and proximity. The TED reader keeps each placed object's hint (`TedPlacedObject::hint`, from its 0x482 container; `map-audit` counts 2,450 hinted stock objects with 1,713 distinct hints). Map builds carry each entity's hint and its type's `Lua_Script` (`MapEntity`, `SpawnableType::lua_script`, `type_lua_script` through the variant chain); `Battle` keeps the hinted entities and a type-to-script table (`hinted_entities`, `object_script`). `BattleScripts::run` starts the script of every entity that appears whose type names one (Object bound to it), ends scripts whose object is gone, and reports a script that cannot start once per name. New provider calls: `Find_Hint`, `Find_All_Objects_With_Hint`, and game objects' `Event_Object_In_Range` (a callback through `ScriptCall::callback`, a range, an optional real player as filter), `Cancel_Event_Object_In_Range`, and `Service_Wrapper`, which queues the handler with (self, other) for every object in range in the ground plane. Headless battles and the sandbox run the script phase after every tick; `--no-scripts` turns it off, and the battle summary lists scripts started and their time. The reference battle hash and captures are unchanged; a Kuat battle with the Calamari cruiser (ObjectScript_PowerToShields) gives the same hash with and without scripts and replays to its recorded hash. Starting a script costs about 20 ms (loading the framework libraries). Agreed next (2026-11-10): `Spawn_Unit` waits for the player layer and will return provisional objects mapped to the spawned entities at the merge; until then, the rest of the tactical API by survey rank that needs no players. Fifth slice done (2026-11-10): the host implements the framework's message sinks (`_ScriptMessage`, `_MessagePopup`, `_OuputDebug`, to the script's output, now capped at `max_script_output` lines with a count) and the `Script` object (`tostring` names the script file; `Debug_Should_Issue_Event_Alert` is false). What scripts read of a type is one `ScriptTypeInfo` (Lua_Script and the folded CategoryMask names) on `SpawnableType` and `MapEntity`, kept by `Battle::type_info`. New provider calls: `Get_Game_Mode` ("Land" or "Space" by whether the battle has ground), and game objects' `Get_Distance` (ground plane) and `Is_Category` (a `|` list matches any). Sixth slice done (2026-11-10): calls on existing systems. `Despawn` (373 stock calls) is a new battle order, `remove` (logged as `remove`), carried out by the simulation's destroy command, so the object leaves without dying; `Prevent_Opportunity_Fire(true|false)` sets the hold_fire or aggressive stance (a mapping onto engine stances); `Get_Shield` is the shield's share; object types answer `Is_Hero` (a hero category, an inference) and `Get_Combat_Rating` (XML `AI_Combat_Power` in `ScriptTypeInfo`, an inference). `ScriptCall::truthy` reads a Lua truth value. Seventh slice done (2026-11-10): attack-move and guard. The simulation has standing orders (`StandingOrder`: none, attack_move, guard; `SimCommandKind::attack_move` and `guard` with a point or a followed entity), decided in the behavior layer (`run_standing_order`): a scan for hostiles every target-search interval, staggered by entity index (the spatial grid is rebuilt in behavior only in ticks where a scan is due), engagement as an ordered attack, a leash, a resume, and the end of the order (an attack-move on arrival or when its object is gone, a guard when its object dies); every move, stop, attack, and formation move clears it. The tuning (`acquire_range_factor` 1.25, `leash_range_factor` 2, `minimum_guard_radius` 150, `follow_tolerance` 50) is an engine choice to check in play. The standing order is hashed, so the reference battle's hash changed once, to 0xfe56ca19bc7ac97, with unit behavior unchanged (the old hash returns with the new fields left out of the hash). Battle orders `attack_move` and `guard` (logged as `attack_move <id> x y z` and `guard <id> x y z`, 0.0 for no object), the scripts' `Attack_Move` and `Guard_Target` with their blocks (an attack-move's ends with the order, a guard's only when it ends), stub destinations dropped with a warning (for `Move_To` too), and sandbox keys: Ctrl + right-click attack-moves, Shift + right-click guards a point or the object under the cursor. Known limitation: on land, a move whose destination is an occupied point (another unit stands there) may never arrive, because separation keeps pushing the unit off it, so its block never finishes; arrival tolerance belongs to locomotion (space ships stop at the occupant's clearance instead). Next: the calls that need more simulation features (invulnerability, `Take_Damage`, `Teleport_And_Face`, `Suspend_Locomotor`), which change the state hash; story, cinematic, and task force calls wait for their systems.
-
-Eighth slice done (2026-11-10): scripted conditions. Simulation commands `set_invulnerable`, `set_cannot_be_killed`, `suspend_locomotor` (`SimCommand::flag`), `damage` (`amount`, past shields and armor), and `teleport` (`target`, optional `heading`; a footprint moves and turns with its entity), the same as battle orders (logged as `invulnerable 0|1`, `unkillable 0|1`, `suspend 0|1`, `damage <amount>`, `teleport x y z <heading|->`), and the scripts' `Make_Invulnerable`, `Set_Cannot_Be_Killed`, `Suspend_Locomotor`, `Take_Damage`, `Teleport_And_Face`, and `Teleport`. All combat damage goes through `wound`, which applies invulnerability and the health floor (`unkillable_health_floor` 1, or `unkillable_health_fraction` of the health). The new state is hashed, so the reference battle's hash changed once, to 0x84ffaeab29599e7, with behavior unchanged (the previous hash returns without the new fields).
-
-Hardpoint loss reports (2026-11-12): when a hardpoint is destroyed, its owner reports it in its own voice: the owner type's XML `SFXEvent_Hardpoint_Destroyed` entry ("HARD_POINT_<kind>, event") for the hardpoint's `Type` (`HardpointProfile::type_key`, `HardpointDeathSnapshot::type_key`, presentation only); empty entries stay silent. Played for every owner until the player layer decides whose reports are heard.
-
-Walker transitions (2026-11-12): walkers' transition clips are clip roles (`TURNL`/`TURNR` loops, `TURNL_BEGIN`/`_END`, `TURNR_BEGIN`/`_END`, `MOVESTART`, `MOVE_ENDONE`..`MOVE_ENDFOUR` as variants 0..3). A unit whose heading changes faster than 0.15 rad/s while it moves slower than a tenth of its top speed turns in place and plays its turn loop; with XML `Has_Pre_Turn_Anim` the BEGIN clip comes first and the END clip after; with `Walk_Transition` starting to walk (by the shown speed, not the move order, so a walker turning in place before it sets off plays its turn clips first) plays `MOVESTART` and stopping plays the `MOVE_END` clip of the stride's quarter. A one-shot transition replaces locomotion until it ends (presentation only; the thresholds and the quarter-to-foot mapping are engine choices). Not yet: `_QUARTER`/`_HALF` turn clips, `Rotation_Animation_Speed`, and movement that follows the walk clip (`Locomotor_Has_Animation_Priority`).
-
-Gameplay measures apart from drawing, slice 1 (2026-11-13, review proposal A): ground footprints and separation radii that fall back to a model's extent come from the engine-native `Model` (`drawn_model_bounds` in `assets/model_geometry.hpp`: drawn meshes and submeshes, rigid meshes on their bone, hardpoint attachments intact) instead of the built scene mesh, once per model and attachments; the scene mesh takes its bounds from the same function, so both agree by construction. Slice 2: whether a placed object or a spawnable type exists is decided from its model (`has_drawn_geometry`: a drawn submesh with a whole triangle), not from whether the scene builder could add it; on the stock maps that is the same 59 placements as before (42 particle files placed as props, 16 swamp bug swarms and one traffic shadow without visible geometry), and a model that exists but cannot be drawn is now a scene warning. Slice 3: what a battle knows of a map is apart from how it is drawn: `MapEntity` and `SpawnableType` (`battle/battle_map.hpp`) hold gameplay data, `MapEntityLook` and `SpawnableLook` the look (scene instance or mesh, team color, scale, death, bank limit, animation, hidden), at the same index. `build_battle_map` (`battle_map_builder.cpp`) builds a `BattleMapAsset` (entities, spawnable types, ground, damage table, counts, warnings, and the placed models' extent, the frame of a map without ground) from the TED, the XML types, and the models without a scene builder; `build_visual_map` runs the same walk and then draws what it built (`VisualMapAsset::battle` beside the looks), so the two cannot drift. The headless runner builds only the battle side (Utapau in 0.45 s, recorded as 0.7 s before; one decode cache per build now that placements share models), and its space center is the middle of the extent instead of the scene bounds (the same value). An entity whose model has geometry but cannot be added to the scene now stays in the battle, hidden, with a warning (how often on the stock maps is not counted). Placed entities no longer carry a mesh index as `EntitySpawn::visual` (the presentation finds them by id). Hashes, captures, and audits are unchanged. Headless builds now attach hardpoint models too (`Model_To_Attach`), which existence and model-derived footprints measure, so they no longer differ from the sandbox's for such types; the three reference battles keep their hashes (their footprints do not come from bounds the attachments widen).
-
-One battle runtime, slice 1 (2026-11-13, review proposal D): `BattleRuntime` (`battle/battle_runtime.*`) owns a battle, its game-object scripts, and the fixed simulation clock (`default_ticks_per_second`, 30, an engine choice); its `step` is the battle's tick and then the script phase, timed. The sandbox and the headless runner both step through it (they keep their own loops: orders between ticks, the sandbox's watchdog and per-tick presentation), so they cannot step a battle differently again, as they did when the sandbox stepped the world directly and spawned no survivors. The previous snapshot that presentation interpolates from stays in the sandbox. Hashes and captures are unchanged. Slice 2: frame assembly is an engine part (`presentation/battle_frame.*`): `present_tick` plays a tick's events (the scripts' sound requests, corpses, impact and death effects, battle sounds) and `build_battle_frame` builds a `BattleFrame` (instances, their entities and clip profiles, shots drawn as models, the bone palette, animation cues, attached effects) from the runtime's interpolated snapshots, through `BattlePresenters` (the scene presentation and optionally the unit animator and battle audio, which the sandbox keeps owning). The sandbox calls both and hands the frame to the renderer; a test builds a frame without a window. The sandbox's watchdog now has one presentation stage where it had presentation and unit animation. Captures are unchanged.
-
-Engine libraries, step 1 (2026-11-13, review proposal C): the engine's categories depend one way (scene building on presentation and battles, presentation on battles, the sandbox's parts on all), so they can become libraries. Gameplay reads of XML types and models moved to the battle side (`object_types.*`: the cached catalog, movement classes, combat content loaders, type fields, model footprints, hardpoint models, the provisional scales; `battle_map_build.hpp`: the shared walk; `spawnable_types`; `grid_targets` from `rts_control` into `battle`), the look fields of types stayed with scene building (`type_looks.cpp`), and rigs, clips, palettes, and looks moved to presentation (`visual_rig.*`, `entity_look.hpp`); the headless command (`battle_runner`) is with the sandbox's parts. Hashes, captures, and audits are unchanged. Step 2: each is a library of its own (`src/battle` `eaw_battle`, `src/presentation` `eaw_presentation`, `src/scene` `eaw_scene`, `src/control` `eaw_control`, `src/sandbox` `eaw_sandbox`), included by its directory (`"battle/battle.hpp"`); a library includes only what it links, so the build enforces the direction (the battle library includes no render header; it reaches the render contract only through the asset layer, which uses it for vertex data). `eaw_engine` is gone. Hashes, captures, and audits are unchanged.
-
-Legacy units in one place (2026-11-13, review proposal H): the original's per-frame values are converted in `assets/legacy_units.hpp` (`speed_per_frame`, `acceleration_per_frame`, `degrees_per_frame`, `frames`, at `frames_per_second` 30, a guess) instead of three scales and a bare division spread over the battle, scene, and presentation code; changing the guessed logic rate is now one constant. The conversions keep the readers' order of operations, so hashes and captures are unchanged. Plain degree-to-radian conversions (cone and arc widths, bank angles) are units, not guesses, and stay where they are.
-
-Overlay textures through the renderer (2026-11-13): Dear ImGui's textures (its font atlas, which since 1.92 grows when new glyphs appear) upload through the renderer's own path: the overlay's frame is built before the frame records its pending transitions, its texture requests are honoured with `begin_upload`/`upload_texture` (copy queue, a GPU wait on the direct queue, slots and resources retired by fence value), and the backend gets no texture requests (`ImDrawData::Textures` cleared). The backend no longer signals a fence of its own on the direct queue or waits on the CPU, the two breaches of the D3D12 invariants it had. What remains, a documented exception for this debug overlay: it compiles its two shaders at startup (`D3DCompile`) and reuses its vertex and index buffers by frame index; our own overlay renderer would remove both (a later step). Checked with a short hardware run under GPU validation (no errors); captures are taken before the overlay, so the panels' look is the owner's to check.
-
-Malformed-data hardening (2026-11-13, found by comparing with EaW-Revised): `megafiles.xml` entries inside XML comments are no longer listed (the manifest scan found `<File>` in comments, so a commented-out archive took a listed archive's place in the mount order; the stock manifests have no comments); a MEG header whose counts need more bytes than the archive holds is rejected before anything is reserved for them (it could ask for two million names from a 12-byte file), and a path listed twice in one archive is counted and reported when mounting (it still resolves to the later record, an engine choice; no stock archive has one); XML element nesting is bounded at 256 levels with a diagnostic (stock nests at most 5; deeper mod data overflowed the stack). Tests cover each; hashes, captures, and audits are unchanged.
-
-XML loads through the game's registries (2026-11-13): `XmlAssetDatabase` reads the files `GameObjectFiles.xml` and the other registries list, in list order, then the rest, so a duplicated name resolves by its registry's rule (first registered for game objects, last for hardpoints and the other last-wins registries; from the public eaw-schema, to be confirmed by a black-box test) instead of by file name; definitions in files nothing reaches are left out when their type is one the game loads only through lists (stock FoC: EAW's campaigns and story events, 4,813 definitions in 208 files). `xml-audit` reports registry entries naming no file and the unreached files. Without registries (synthetic data) every file loads as before. Hashes, captures, and the other audits are unchanged; details in compatibility-research.md, "XML loading".
-
-Recorded rules adopted (2026-11-13, from EaW-Revised's recordings of the running FoC debug build): shields refresh in steps, `Shield_Refresh_Rate` once per GameConstants' `ShieldRechargeIntervalInSecs` (3 s) on a per-unit phase drawn from the entity id, instead of per second (a third of the former rate); in space, the mode speed multiplier (1.2) now also scales acceleration, deceleration, and turn rates (land unchanged: not observed). Battle hashes changed: Utapau 0x94836fbc0149669a (the T2-B's shield), Kuat 0xddd57c413c9eb0b6; Fondor is unchanged. Further recorded rules (turning in place, straight start from rest, hardpoint damage and the hull cap, target retention, layer heights) are listed in compatibility-research.md, "Recorded rules from EaW-Revised". Hardpoint damage (same day): a shot at a destroyable hardpoint damages only the part, the hull follows the parts at min(1, S/T + 0.2) of its health, and the entity dies with its last part (`Should_Be_Destroyed_When_All_Hardpoints_Destroyed`); Kuat's hash became 0xa1ce38ff72d82517. Turning in place (same day): a ship without a move order turns at its rate divided by the TurnInPlaceSlowdown of its Space_Layer (corvette 2 recorded; frigate 3, capital 4 from data); `MovementProfile::turn_in_place_rate` joins the hash, so every hash changed once (land behavior unchanged, checked): Utapau 0x4d4fde35264e932a, Kuat 0x93e188dbb88b4209, Fondor 0x24674c0449b36a77. Facing an ordered target (same day): a space ship with an attack order and its target in range turns in place toward the target's nearest live hardpoint; idle ships keep their heading. The reference battles give no attack orders, so their hashes are unchanged. Straight start (same day): space ships that name no `Min_Speed_Fraction_For_Turn` turn only at full speed (default 1, was 0.25); Kuat 0x927dd82aa3a2924. Target retention (same day): the engine already keeps a held target when a better one appears and replaces a removed one at the next allowed shot, as recorded (S-02, S-03); a test pins it, no behavior changed. Layer heights (same day): units spawned in space take their type's `Layer_Z_Adjust` as height; Kuat 0x350cd4eb2dea4bb6. Decorations (same day): placed objects whose type sets `Is_Decoration` are no longer simulation entities (the XML comment: decorations are idle and unsynchronized); the presentation draws and animates them under ids from `decoration_id_base`, and they still count toward the map's extent. None of the stock decorations on the reference maps had an obstacle footprint, so paths are unchanged; Fondor 02 loses 532 entities, Utapau 2. Hashes: Utapau 0xb0762fda26d52b85, Fondor 0x857d79ebf918e980, Kuat unchanged (no decorations).
-
-Typed type fields (2026-11-13, review proposal B): `TypeFields` (`assets/type_fields.hpp`) reads a game object type's fields through its variant chain with one number rule (like C's atof, the stock "2.0f" suffix accepted; other trailing text reported), comma lists, and yes/no values, and its diagnostics name the type, field, value, and the variant that declared it. `combat_content` (its former `FieldReader`, local `parse_float` and `split_list`), `object_type_properties` (`type_float_field`, the yes/no reads, `type_max_speed`), and `projectile_visuals` (its text reads and single numbers) use it; their behavior on the stock data is unchanged (hashes, captures, and audits).
-
-Script sandbox hardening (2026-11-13, after an independent review of the Lua host): `newproxy` is gone and engine objects' metatables are locked (`__metatable`), so a script can neither forge an engine object (which read past a userdata before) nor give one a `__gc` (which ran outside the budget); `object_method` checks its object, kind, and method; the instruction budget is sticky (`pcall`, `xpcall`, and `coroutine.resume` re-raise a spent budget or a memory error); each Lua state is capped at 64 MiB through Lua's `l_realloc` and pattern matching at 5,000,000 matcher steps through a checked configure-time copy of `lstrlib.c` (`third_party/lua`), and the host caps `string.rep` results (16 MiB), patterns (1,024 characters), and script threads (256); `collectgarbage` only collects; a script that runs out of memory is stopped for good; a `require` inside a thread runs within its resume. All limits are engine choices; none trips on the stock scripts (`lua-survey`). Not yet: the stub metatables and callbacks a script can create without bound, and the small leaks where a Lua error unwinds over C++ frames.
-
-Turrets in the simulation (2026-11-12, the owner's request: no firing backwards or sideways): a type with XML `Turret_Bone_Name` carries a `TurretProfile` (`Turret_Rotate_Speed` per frame, scaled like turn rates, 5 without it; half of `Turret_Rotate_Extent_Degrees` each way; `Should_Cause_Limited_Turrets_To_Turn`, default yes). Each tick its turret direction (relative to the hull, hashed: `CombatState::turret_yaw`) turns toward the attack victim within the arc, and the unit's own weapon starts a burst, and fires each pulse, only while the turret points at the victim within 5 degrees (`turret_aim_tolerance`, an engine choice); the turret's own weapon fires from its `Barrel_Bone_Name` bone (the muzzle, falling back to the hull centre at `Ranged_Target_Z_Adjust`) turned with the turret about the turret bone, and hardpoint weapons whose fire bone hangs under the turret bone (the T4-B's missiles) turn with it too, cone and mounts (`WeaponProfile::on_turret`, `TurretProfile::pivot`). The turret turns toward what its own weapon can reach: its burst victim, else the entity's target when in that weapon's range, else the nearest hostile in it (`turret_victim`); before this, a target picked at a longer hardpoint range held the turret while the weapon waited for a nearer victim forever. A target outside a limited arc turns the standing hull toward it (as body-aimers face theirs), unless the type's turret does not turn it (snowspeeder, Lancet, HTT). Presentation draws the simulation's direction (`EntitySnapshot::turret_yaw`); barrel pitch stays presentation only. Infantry keep their timing (they fire on facing the target, which the owner finds in sync). The reference battle's hash is now 0xae42e24ba70c9280 (the T2-Bs fire from their barrels).
-
-Turret aiming (2026-11-12): a type with XML `Turret_Bone_Name` (41 types: T2B, AT-ST, AT-AT, turbolaser towers, anti-air turrets, the MPTL) turns that bone's subtree about the model's up axis toward its combat target, and pitches its `Barrel_Bone_Name` subtree up or down to it, at `Turret_Rotate_Speed` (per frame, scaled like turn rates: a guess; 5 without it), within half of `Turret_Rotate_Extent_Degrees` and `Turret_Elevate_Extent_Degrees` each way (a guess), and back to rest without a target (presentation only: `AnimationProfile::turret_*`, the animator's `EntityState::turret_yaw`/`barrel_pitch`, `append_rig_local_palette`'s `BoneTurn`s about each bone's posed pivot). The aim joins the pose key in steps of about 2.8 degrees, so turrets aiming alike share a pose; unturned turrets share the plain one. The axis tags (`Apply_Y_Turret_Rotate_To_Axis`, `Apply_Z_Turret_Rotate_To_Axis`) are not read: yaw is about the model's up axis and pitch about its horizontal. Hardpoint turrets (the Gargantuan's, `Is_Turret`) and `Turret_Rest_Angle` are not turned yet.
-
-Crushed deaths (2026-11-12): a unit run over plays the clip of its `Damage_Crush` death clone (`Specific_Death_Anim_Type` Crushed or DIE, `Specific_Death_Anim_Index`; `DeathStyle::crushed`) when its model has it (`CRUSHED_nn` clips are a new clip role): the simulation marks deaths by crushing (`DeathSnapshot::crushed`, not hashed) and the corpse takes that clip. Reading the death clones no longer stops at the `Damage_Normal` entry. The Force, fire, and telekinesis death types (`FW_DIE`, `FL_DIE`, `FIRE_DIE`, `FTK_DIE`) wait for the abilities and damage types that cause them.
-
-Animation profiles (2026-11-12): the animator gets each drawn instance's type data (`AnimationProfile`, from `ScenePresentation::build` beside the instances, presentation only): the move and walk clips play at their own rate at a reference speed, XML `Movement_Animation_Speed` and `Walk_Animation_Speed` in `Max_Speed`'s units (`move_reference`/`walk_reference` as fractions of top speed; an inference from the corpus, see compatibility-research.md "Clip speeds"; read as multipliers before, which played the AT-AT's legs at 0.14 times), the engine's speed matching rescaled to them; the idle clip plays at `Idle_Anim_00_Rate_Mod` (props: the huge asteroid masses spin at 8); and a type with neither a move nor a walk clip keeps its idle clip while moving when `Allow_Idle_When_Moving` (birds), instead of its rest pose. Whether the original bounds the resulting rate is not known.
-
-Jetpack loops (2026-11-12, reported by the owner: Boba Fett played his jetpack sound while walking): a type with a secondary locomotor (XML `Secondary_Locomotor_Name`: Boba Fett and the Dark Troopers' `JETPACK_LOCOMOTOR`) plays its `SFXEvent_Engine_Moving_Loop` only on that locomotor (a developer comment marks Boba's loop as the jet pack's); with no secondary locomotor in the engine yet, the loop stays silent.
-
-Spawnable hero companies (2026-11-12, reported by the owner: the spawn menu's Heroes lacked most named heroes): the spawn catalog lists a company or squadron without a model of its own where one of its members has a model (`list_spawn_types`), so the hero companies the game fields (`Darth_Team`, `Han_Solo_Team` with Chewbacca, `Luke_Skywalker_Jedi_Team`, `Emperor_Palpatine_Team`; 36 in FoC) appear; spawning them already worked.
-
-Assist lines (2026-11-12, from the owner's account of the original): after an order's response, the first unit of another type in the same order with an assist line answers 0.2 s after the response has finished (XML `SFXEvent_Assist_Move` for moves, `SFXEvent_Assist_Attack` for attacks; `BattleAudio::play_assist_response`: a pending event that restarts its pause while any answer to an order plays or waits for its predelay (responses are marked, whatever their overlap name) or a voice of its own overlap name plays, dropped after 5 s; the owner noticed lines lost, then lines talking over the response when the two had different overlap names).
-
-Group lines (2026-11-12): a sandbox order to more than one unit is answered by a member whose type has a group line (heroes: XML `SFXEvent_Group_Move` for moves, `SFXEvent_Group_Attack` for attacks and attack-moves), else by the first unit's usual response (`BattleAudio::play_group_response`; who speaks is an engine choice).
-
-Overlays give way to the walk (2026-11-14, the owner's check: the pod walker's middle leg is not up for several frames while it walks): its ATTACK recoils the body while the planted legs counter-turn (compatibility-research.md, "The pod walker's raised leg"), and the additive overlay bent the raised walking leg down by that counter-turn for the attack's 0.67 s with every shot. An overlay now leaves alone the bones that a moving clip below it moves (any locomotion clip but an idle: the walk, a turn, a leg clip), so the walking pod walker keeps only the recoil of its guns and the standing one the whole attack; the AT-AT's and AT-ST's barrels, which their walks do not move, are unchanged. Additive overlays and the turn-in-place angle (2026-11-14, the owner's check: the pod walker's middle leg loops while it walks, the AT-AT turns up to 180 degrees without its turn clips where 30 is right, its Close_Enough_Angle_For_Move_Start). (1) The pod walker's ATTACK moves its whole body and every leg joint (a recoil; the AT-AT's and AT-ST's move their barrels and muzzles only), so the overlay that took those bones from ATTACK pulled the walking legs into the attack's standing pose with every shot. An overlay now adds each bone's change since the clip's first frame to the pose below it (rotation, translation, and scale, at the layer's weight; `conjugate` added to `math/quaternion.hpp`), and a track counts as moving its bone only when its keys change (`AnimationTrack::animated`: flagged in the file and moving by more than about 0.1 degree or 0.001 units; `load_animation`). (2) A new destination while a walk played as clips is under way decides the turn once, on its first way (`WalkPlan::new_way`, set by `plan_move` when the destination changes, not for a route planned again): more than the type's turn-in-place angle off, the walker holds its heading, stops at its stride's next part, and turns in place with its clips; a route's corners it still turns while walking (the AT-AT's 90 degree swing in the owner's recording, most likely a corner). Types without Close_Enough_Angle_For_Move_Start (the AT-AA, AT-ST, pod walker, Rancor) keep the ground default of 45 degrees, an engine choice against GameConstants' CloseEnoughAngleForMoveStart of 180; which the original uses for them is not observed (a test: order a standing AT-AA 20, 45, 90, and 170 degrees off and see whether it turns in place first or walks off turning, its turn clips playing while it is slower than Min_Speed_Fraction_For_Turn). The 90 degree turn-back of the step below is replaced. Turning back and the raised leg (2026-11-14, the owner's check: the AT-AA ignores its turn clips for an order given while it walks straight, the pod walker's start and stop are broken). (1) A walk played as clips never stopped for a new order, so a walker swung around even a reversal while striding (the AT-AA turns 180 degrees a second); before the plans it stopped by accident (speed changed at once and the route request zeroed it for a tick). Now a way 90 degrees or more off the heading (`walk_turn_back_angle`, from the owner's recording: the AT-AT swings 90 degrees while walking) latches a turn back: the walker holds its heading, walks on to its stride's next part, plays its stop without ending the move, and turns in place with its clips before it walks the new way. (2) The pod walker's walk and turn clips keep its middle leg raised, IDLE keeps it down (`clip-joins`: compatibility-research.md, "The pod walker's raised leg"), so every start and stop jumped 13 units; `MovementProfile::walk_raise_seconds`, `walk_lower_seconds` (IDLE_LEGLIFT_00, IDLE_LEGDROP_00 at their own rate; new roles `idle_leg_lift`, `idle_leg_drop`) make it raise the leg before it sets off or turns from standing and lower it once it stands with nothing to do (no destination, no turn about to begin), with walk clips `raising`, `raised` (LEGLIFT's last frame), and `lowering`. Traced on Utapau: IDLE, IDLE_LEGLIFT from frame 0, TURNR_BEGIN, loop, QUARTER, END, MOVESTART, MOVE, MOVE_ENDTHREE, IDLE_LEGDROP from frame 0, IDLE_00 from frame 0. Every walker with transition clips plays as clips (2026-11-14, the owner's decision on cleanup step 2): 24 stock types have Walk_Transition or Has_Pre_Turn_Anim without Locomotor_Has_Animation_Priority (Rancor, SPMAT, AT-AA, Night Sister, speeder bike, Juggernaut, Tauntaun, ground beetle); battle's `apply_animation_locomotion` now plans walks for Walk_Transition and turns for Has_Pre_Turn_Anim (or the priority) whenever the clips exist, with the clips at their own rate when Movement_Animation_Speed or Rotation_Animation_Speed is absent. This changes their speeding up, stopping distance, and turns (they changed speed at once before). Presentation's own start, stop, and BEGIN/END guessing is gone (16 fields of the animator's state, `AnimationProfile::pre_turn`, `walk_transition`, `animation_led`, and two tuning constants); it keeps only the turn loop of units whose turns are not planned (infantry, the Juggernaut, which has loops but no BEGIN or END), told by `EntitySnapshot::turns_as_clips`. Traced: the Rancor on Hoth (TURNR_BEGIN, loop, HALF, QUARTER, END, MOVESTART, MOVE_ENDONE, IDLE_00 from frame 0), the AT-AA and SPMAT on Utapau (their turns composed of loop, HALF or QUARTER, then MOVESTART and MOVE). Seen while tracing, not changed: the sandbox's `--auto-move` orders every mobile unit of an owner, placed units included, as one group, so a new unit can wait for stragglers thousands of units away (group cohesion), and a turn in place long enough (3 s) counts as a stall that releases its unit from the group; both belong to group movement's rework (roadmap work order 2g). Turns composed of cycles (2026-11-14, the owner's review, step 4): a turn in place played as clips is BEGIN, whole loops, then at most one HALF and one QUARTER cycle, and END (`MovementProfile::turn_half_seconds`, `turn_quarter_seconds` from TURNL/TURNR_HALF_00 and _QUARTER_00; new clip roles `turn_left_half` and the like), the cycles that come closest to the turn at the stopped rate in quarters of a loop (a coin change); each cycle turns at its nominal rate (the loop at the stopped rate, HALF and QUARTER through a half and a quarter of the loop's angle in their own time: an inference from their names, the foot sweeps agreeing in order), BEGIN winds up to the first cycle's rate and END down from the last one's, and one scale makes the turn end exactly on the way (`simulation_walk.cpp`: `turn_as_clips`, `turn_point`). Snapshots carry the turn clip, its side, and its progress (`EntitySnapshot::turn_clip`, `turn_left`, `turn_progress`, interpolated between ticks), replacing `turning_in_place` and `turn_arriving`; presentation shows exactly that clip and settles into IDLE_00 after END, so it no longer keeps a turn clock of its own (`AnimationProfile::in_place_turn_rate` and the animator's `turn_end_begun` are gone). Traced on Hoth: TURNR_BEGIN, the loop from frame 0 to its end, TURNR_QUARTER from frame 0, TURNR_END from frame 0, MOVESTART. Units without animation priority keep the presentation's turn detection. The state hash changes only for animation-led walkers. Unit animation in stages (2026-11-14, the owner's review): `UnitAnimator::animate` (about 580 lines) runs an entity's frame as five stages in files of their own, in order: its state and idles, the locomotion by speed with the stride (`unit_animation_locomotion.cpp`), aiming and firing (`unit_animation_attack.cpp`), the frame's animation cues, walkers' transitions (`unit_animation_transitions.cpp`), and the pose key with the turret (`unit_animation_pose.cpp`), passing small results (`LocomotionPose`, `AttackPose`, `ClipOverride`) instead of sharing locals; `animate` itself is 146 lines with the corpses. Behavior unchanged: a probe printing every entity's pose key (all layers, turret steps, mask) and the cues each frame gave the same 295,630 lines before and after, over a mixed Hoth battle (AT-AT, AT-ST, T2-B, infantry; turrets, overlays, firing) and an infantry fight (aiming, deaths, corpses). Clip names in one place (2026-11-14, the owner's review): the clip roles, `parse_clip_name`, and its inverse `clip_file_stem` moved from presentation's `visual_rig` to `assets/clip_names`, so battle's `apply_animation_locomotion` reads clip lengths by role instead of by names spelled out; walks played as clips walk on MOVE_00 and settle into IDLE_00 after a stop (the clips the simulation timed them by, and the measured joins), whatever variants the unit otherwise plays. Behavior unchanged otherwise (the Hoth trace is the same frame for frame). Walks played as clips (2026-11-14, the owner's check: the AT-AT jolts from its stop into idle; a trace showed MOVE_ENDFOUR, 160 frames, played at 4.6x and cut at frame 125 when the simulation, having braked on its own timing, ended the move and a turn began). The simulation now plans an animation-led walker's walk by its clips, as it already planned its turns (`simulation_walk.cpp`; `MovementProfile::walk_start_seconds`, `walk_stride_seconds`, `walk_stop_seconds`, `walk_stop_parts` from MOVESTART_00, MOVE_00, and the MOVE_END clips at the walk's playback; every stock walker's MOVE_END clips are as long as each other): it speeds up over MOVESTART, tracks its stride phase by the distance walked (a stride is top speed times its MOVE time), decides a stop only where a stride's part begins (as MOVESTART ends, or at each 1/n of the stride), taking the part that lands closest to the destination (within half a part, 4.4 units on the AT-AT), and brakes linearly over one whole MOVE_END clip, going straight ahead; the stop then ends the move (unless a move elsewhere was ordered meanwhile, which sets off after it). Nothing turns or sets off during a stop, and a stop order or a group's wait walks on to the next part and stops there; waiting for a route walks on. A walk shorter than its start and stop at travel speed goes at a lower speed with the clips at their rate (an engine choice; the feet slide a little). Snapshots carry the walk clip, the stop's MOVE_END clip, and the progress through the clip (interpolated between ticks), and presentation plays exactly that, with no smoothing of the speed (standing is IDLE from its first frame the moment the stop ends); the old presentation-side start and stop stay for walkers without the clips. Traced on Hoth: MOVESTART whole, MOVE from its first frame, MOVE_ENDTHREE whole from half a stride, one frame of IDLE from frame 0, TURNL_BEGIN. The state hash changes only for animation-led walkers (the check battle has none). Open: HALF and QUARTER turn cycles (below) not planned yet; types with several IDLE clips may leave the stop into an IDLE other than IDLE_00, whose first frame is the one measured. Stops by the number of MOVE_END clips (2026-11-14): `clip-joins` (proxy bones P_* now left out) shows the AT-AT's four MOVE_END clips start at the quarters of its stride and the AT-ST's three at its thirds (within 0.0007 units), so a stop walks on to the next 1/n of the stride, n the model's MOVE_END count, and plays variant (part mod n). The types with XML Locomotor_Has_Animation_Priority are the AT-AT (and Veers'), the AT-ST, the Scavenger droid (the AT-ST model), the two pod walkers, and the Destroyer droid; the droid has no transition clips and gets only the overlay attack. The pod walker's turns join cleanly; its walk joins show a constant offset of about 13 units on one foot bone at every join, probably an artifact of that bone, so its stops are unverified. Clip-planned turns and overlay attacks (2026-11-14, the owner's check: a reset on stop, turn poses repeating; a per-frame trace of the shown clips found the causes): (1) the AT-AT fires while it turns and stops, and ATTACK took the whole body at full weight, restarting with every pulse of a burst (every 0.2 s): the repeating poses and the reset. XML Attack_Animation_Is_Overlay now plays ATTACK and ATTACKIDLE over the locomotion on the bones their clip animates only (its tracks with rotation, translation, or scale: `AnimationTrack::animated`; the AT-AT's barrels and muzzle flashes), the locomotion keeping its whole weight. (2) The turn loop started mid-loop after BEGIN; it starts from its first frame now. (3) `clip-joins` showed TURN_END meets the loop only at the loop's end (6-14 units off elsewhere) and meets BEGIN's end too; a turn in place is now planned in the simulation as whole clips: BEGIN, the whole number of loops that comes closest at the stopped turn rate, and END, with the steady rate adjusted so the turn ends exactly on the way (`MovementProfile::turn_begin_seconds`, `turn_loop_seconds`, `turn_end_seconds` per side; the turn acceleration of the previous step is gone), so every clip starts where the last one ends. Traced on Hoth: TURNR_BEGIN, the loop from frame 0, TURNR_END at the loop's end, MOVESTART as it ends. (4) A stop's END plays faster by top speed over the speed as END starts (after the walk-on to the quarter). Open: the simulation settles onto its destination in its last ticks, so a stop's END can still outlast the braking by about 0.2 s, and a turn ordered right then cuts its tail. Animation-led turns and stops (2026-11-14, the owner's check: still a reset at the end of a walk, turns unfixed; changes the hash of battles with such walkers only): (1) turns in place wind up and down like the walk: `MovementProfile::turn_acceleration` and `turn_deceleration` (from TURNL_BEGIN's and TURNL_END's playing time at the stopped turn rate, `turn_clip_playback`; hashed only for entities that use them), braking so the turn ends on the way, and a turn that started in place ends in place (wound down, within 2 degrees) before the walker moves off; the snapshot says `turning_in_place` and `turn_arriving`, and presentation plays BEGIN, the loop, and END by them (END from the turn's braking), at the playback for the type's in-place turn rate. (2) A stop or turn that brakes from below full speed or rate is shorter, so its END clip plays faster by full over the speed it brakes from; the walk's END outlasting the braking was the reset at its end. (3) A Stop order brings a ground unit that brakes (any MovementProfile::deceleration) to a halt over its braking distance straight ahead instead of at once, so an animation-led walker plays its stop clip. Measured on Hoth: TURNR_BEGIN at 0.1 s, TURNR_END at 3.16 s, MOVESTART at 3.96 s as the END ends, MOVE_ENDFOUR at 6.49 s as braking starts. Open: the turns use TURNL's clip lengths for both sides (TURNR_BEGIN is 5 frames longer); the walker's last tick snaps onto its destination. Animation-led walkers (2026-11-14, with the owner's agreement; changes the hash of battles with such walkers, not the reference battle's): XML Locomotor_Has_Animation_Priority (7 stock types: the AT-ATs, pod walkers, the Destroyer and Scavenger droids) marks walkers whose start and stop clips carry their acceleration and braking: `gait`'s speed by quarter shows the AT-AT's MOVESTART feet rising from 0.055 to 0.12 units per frame and its MOVE_END clips falling to 0.03-0.06. The AT-AT has no acceleration in its XML, so it was at full speed on its first tick and stopped dead, skating out of every start (the legs winding up while the body glided) and walking on the spot after every stop, whatever the animator did. Such a type now speeds up over MOVESTART's playing time and brakes over MOVE_ENDONE's (`apply_animation_locomotion` in the battle layer; the playing rate is `walk_clip_playback`, shared with presentation; linear ramps are an engine choice; an XML acceleration wins), the simulation marks an entity braking for its destination (`EntitySnapshot::arriving`, not hashed), and presentation starts the stop then (walking on to the stride's quarter, or straight after MOVESTART when the walk was too short to finish it, since MOVESTART ends where MOVE_ENDONE begins). Walkers with transitions count as moving from 2 % of their top speed by their actual speed, so a start plays from the first step and the turn toward the way is not taken for a turn in place. Walker stops (2026-11-14, the owner's video of clanky AT-AT starts and stops, with the transition fades already off): `clip-joins` showed every authored join meets exactly where it should, and each MOVE_END clip starts where MOVE is at a quarter of its stride (compatibility-research.md, "Walker clip joins"); the engine started the MOVE_END of the quarter the stride was in, wherever in it, so the legs snapped by up to 16 units. A stopping walker now walks its stride on to the next quarter at the move clip's top-speed rate and cuts to that quarter's MOVE_END there; it starts walking again if ordered to meanwhile. Open: a walker that stops to turn starts its turn's BEGIN at once, cutting MOVE mid-stride. Hardpoint debris (2026-11-14, the owner's report that a destroyed hardpoint's destroyed version is not spawned): 169 stock hardpoints name a Death_Breakoff_Prop, a SpaceProp with SpaceBehavior DEBRIS whose model is the hardpoint's own attached model (the Star Destroyer's front-left gun breaks off as EV_StarDestroyer_HP00_L-F), with Debris_Movement_Vector, Debris_Facing_Rotate_Vector, a 15-25 s lifetime, a trailing Debris_Attached_Particle, and Death_Explosions. The scene loads them (`load_debris_types`, `DebrisTable` on the map and on spawn packages, their models in the mesh library, their effects among the Particle objects) and presentation breaks a piece off each destroyed hardpoint (`BattleDebris`, owned by BattleEffects): drawn at its unit's transform, drifting and tumbling about the hardpoint, trailing its fire, and exploding when its life ends; drawn without an entity (never picked) and never seen by the simulation. Units are engine choices (the movement vector in world units and the rotation vector in degrees per 30 Hz frame, in the unit's frame). The sandbox prints the debris types it loaded (15 on Kuat with a Star Destroyer). Presentation only; battle hash unchanged. Follow-ups from the owner's checks (2026-11-14): (1) destroyed hardpoints collapsed their attachment bone's whole subtree, and on the Star Destroyer the scorch bone (HP_F-L_Blast) and the damage emitter (HP_F-L_EmitDamage with its p_hp_imperial_damage proxies) hang under the attachment bone (HP_F-L_Bone), so the scorch never showed; now only the attachment bone itself collapses (the attached model is bound to it alone). Damage effects (proxies under a hardpoint's Damage_Particles bone) were never played; their bones are now hidden while intact like the scorch bones, the effects attach like any other, and a hardpoint's destruction reveals them (fire and smoke on the wreck of the hardpoint). (2) Walker transitions popped: MOVE resumed at its old stride after MOVESTART, and every transition switched in and out at once. MOVESTART now holds the stride at its start, so MOVE goes on from its first frame, and transitions fade in from the pose before them and out (holding their last frame) into the one after over 0.25 s (an engine choice); the owner found the fades clanky, so for a test they are off (2026-11-14: transitions cut straight from one clip to the next, and IDLE starts from its first frame after MOVE_END; `transition_fade_seconds` in unit_animation.cpp turns them back on). (3) Shield hits no longer flash the shield mesh: ordinary hits show the projectile's absorb particle (Projectile_Absorbed_By_Shields_Particle), and the mesh flash is kept for the shield abilities (SHIELD_FLARE, MISSILE_SHIELD, DEFEND), the owner's reading of the original. Death_Breakoff_Prop debris followed the same day. Destroyed hardpoints show it (2026-11-13, the owner's report that destroyed space hardpoints are not replaced by their destroyed versions): a hardpoint's scorch meshes (its Damage_Decal bone and below, 237 stock hardpoints) were hidden while intact but never revealed, and its attached model (Model_To_Attach, 218: the Star Destroyer's turrets, station parts; none of these models has a destroyed mesh of its own) stayed. Now each hardpoint's death (HardpointDeathSnapshot) reaches the animator (`UnitAnimator::destroy_hardpoint`, from `present_tick` through the type's look, `HardpointLook`), which keeps a bone mask for that entity: the scorch bones appear and the attachment bone's subtree (the merged attached model) collapses. Such an entity draws with a palette of its own, also without clips; its pose key carries the mask's content hash, so ships damaged alike still share. `HardpointProfile::attachment_bone` (presentation only, not hashed) is set only for hardpoints with an attached model. Death_Breakoff_Prop (169 hardpoints: a piece of the hardpoint flying off) is not implemented yet. Presentation only; battle hash and captures unchanged; GPU validation clean in a space battle that destroyed 10 hardpoints. Crushers walk over what they crush (2026-11-13, the owner's report that walkers do not crush enemy infantry; changes the battle hash, Utapau now 0x6989134036962a8f): separation held a moving unit back against an idle unit of another owner, so a walker ordered into standing enemy infantry stopped at their edge and its crush check (a victim's center inside the crusher's radius) never fired; the crushes headless battles counted came mostly from separation shoving the walkers about. A crusher and what it can crush (a living hostile unit squashable by its kind, `SimulationWorld::can_crush`, shared with the crush check) now do not push each other: the walker walks over standing infantry and crushes it, and infantry may stand at a still walker's feet, out of its guns' reach, as in the original. Pushing the infantry aside instead was tried and rejected: pushed exactly to contact every tick, it was never reached by a slow walker (the AT-AT moves half a unit a tick). The test covers a standing victim with a body, for a fast and a slow crusher. Attack clips without an aiming pose (2026-11-13, the owner's report that the T4-B's gun animation played out of range and looped instead of following its shots): the T4-B's model has only ATTACK_00 (its gun recoil), and the engine looped ATTACK as the aiming pose of meshes without ATTACKIDLE whenever the unit had a target, in range or not, while shots replayed ATTACK only for meshes that also had ATTACKIDLE. Now a mesh without ATTACKIDLE shows no aiming pose, and every shot (each pulse of a burst: the T4-B fires two, 0.2 s apart) plays ATTACK once from its start, as with ATTACKIDLE. The T4-B's second weapon, its missile launcher, is the ROCKET_ATTACK unit ability, which the simulation does not implement yet (roadmap). Presentation only; captures and the battle hash unchanged. Walker transitions (2026-11-13, the owner's report that walkers start, turn, and stop wrongly and slowly): the walk loop already played at speed over Movement_Animation_Speed, but the transitions (MOVESTART and the MOVE_END clips, 5.3 s each on the AT-AT; TURN BEGIN and END 2 s, the turn loop 3 s) played at their own rate while the unit moved at full speed and turned at Stopped_Rate_Of_Turn. `EAWAssetInspector gait` measured what the clips mean: the AT-AT's planted feet move at 0.137 units per frame in its MOVE clip against Movement_Animation_Speed 0.1366 (the stormtrooper and Bantha agree once their Scale_Factor is counted), so that field is the ground speed at which the move clip plays at its own rate. Walk transitions now play at the move clip's rate at top speed (the AT-AT 3.7x: MOVESTART in 1.5 s), and turn clips at the turn rate over Rotation_Animation_Speed (read by analogy; the turn clips' planted feet do not show the body's turn, so this is an inference: the AT-AT turning in place at 1 degree per frame plays them at 2x), both within 0.25x to 6x. Presentation only. Water tiling (2026-11-13, the owner's report that water looks too tiled): the water's bump map and base color repeat every 200 world units (an engine choice; the TED water fields that may hold the original's repeat, 0x17-0x22, are still unread), which shows as a uniform grain over wide water. Both modes now add a broad layer of the bump map and base color at about five times the repeat and an unrelated angle (`MATERIAL_WATER`, `water_broad_*` in sandbox.hlsl; enhanced water keeps its detail layer as well), so no grid lines up across the surface. Engine choices; the water captures change. Sky brightness (2026-11-13, the owner's report that skydomes are too bright for the light they feed): measured on Alderaan 02, bloom took the pale dome (over the 0.6 threshold) and the fog-whitened distance and hazed the whole frame, the sky band clipping at 251 of 255 and the ground 14 % brighter than without bloom. Bloom now ignores the sky (backgrounds, at the far plane) and takes the rest scaled by how little fog covers it (fog dims lights behind it too): the sky band is at 208, the ground 2 % above no bloom, glows and lit snow still bloom. The enhanced sky ambient was balanced against the legacy fill on average over directions, which made upward-facing ground a tenth brighter under bright domes; it is now balanced straight up, so upward surfaces keep the legacy brightness and the sky only reshapes the light on slopes (ground 176 with it, 177 without). `--sky-ambient` and `--sky-visibility` switch the enhanced sky lighting from the command line. Engine choices; captures change in the land scenes; GPU validation clean. Bone billboards (2026-11-13, the owner's report of a line across planets; compatibility-research.md, "Bone billboards"): meshes on a bone with a billboard mode (236 stock meshes: planet glows, tree shadow cards, sky-dome suns, flags) keep their vertices relative to the bone (`VisualMaterial::billboard`, `billboard_anchor`), and the vertex shader turns them about the bone's position: toward the camera, about the vertical toward the camera, light, or wind, or, for sun glows and suns, at the bone's offset turned toward the light and facing the camera. A planet's glow is now a halo instead of a disc through the globe. `inspect` shows a bone's mode and `texture-audit` counts meshes by mode. Captures change in the space scenes; GPU validation clean. Anti-aliasing keeps particles (2026-11-13, the owner's report: the T2B's red bolts nearly vanished under FXAA and TAA): particles mark a reactive mask, the blue channel of the motion target (now RGBA16F; opaque models write only its red and green), each raising it to its own strength (added light by its brightest channel, blended particles by their opacity; modulating smoke not at all). TAA weighs the new frame up to 0.85 where the mask is set, and the edge pass (FXAA, and its run after TAA in hybrid) keeps those pixels as they are, so thin, fast bolts and sparks are neither averaged away nor blurred into the ground (engine choices). Measured on Kamino at 1080p: the bolts' peak brightness under TAA went from 157 to 180 (199 without anti-aliasing). Captures change only where particles meet edges (the rain in the Mon Calamari scenes, 0.18 %); GPU validation clean in all four modes. Weather (2026-11-13, legacy; compatibility-research.md, "Particle systems", Weather): a land map's active environment names a weather scenario from WeatherScenarios.xml (`WeatherScenarioCatalog`, `sample_weather` in the asset layer), and the sandbox plays it (`MapWeather` in presentation): the phases' timeline on the world clock, looping, each phase easing into the next over its ease-out; the scenario's effect (rain, snow, ash, sandstorm) played once per tile of a world-aligned grid over the ground in view (a tile as wide as the effect's spawn volume, hanging high enough that its particles reach the ground; at most 16 x 16 tiles, the rate thinned to keep them under 40,000 particles; tiles leaving the view stop and their particles live out; the owner's report of rain in one small square when zoomed out), emitting at the phase's intensity (`ParticleWorld::set_emission_rate`); lightning as flashes of the ambient and key light, as often as the phase's lightning intensity says. Weather emitters are no longer skipped. Placement, the ease-out reading, and the lightning flash are engine choices; the cube size, fade-out distance, and fog-plane value are unused, their meaning unknown. Presentation only: the weather kind does not yet reach gameplay (WeatherModifiers.xml) or sound (WeatherAudio.xml). Captures change only where a capture scene has weather (the Mon Calamari water scenes); battle hash unchanged; GPU validation clean. Soft particles (2026-11-13, enhanced, off by default: `--soft-particles`, Graphics panel): the transparent pass binds the depth buffer read-only (nothing in it writes depth), and depth-tested particles read the scene depth under each pixel and fade out as the surface behind them comes within 20 world units (an engine choice): alpha particles by opacity, additive ones by brightness, modulating ones toward no change. Particles drawn without a depth test are untouched. Nothing in the legacy look changes (captures unchanged with it off); whether the original cut particles hard into the ground is not in question, so this is purely an enhanced option. GPU validation clean. Enhanced heat distortion (2026-11-13, the owner's choice from heat-research.md; `--heat enhanced`, Graphics panel; legacy stays the default): heat particles add signed shifts into an RG16F buffer cleared to 0 (overlapping heat adds up, no 8-bit steps), each shift sized in world units (2 at full bend) and turned into a screen shift by the particle's distance (zooming out no longer makes heat swim), capped at 12 pixels, with a faint second layer of the particle's own texture drifting over it (shimmer, a third as strong); the apply pass fades the shift near the screen's edges (3 %) and where the shifted sample shows something nearer than the pixel (foreground no longer dragged into the heat, softly over 4 world units); and TAA weighs the new frame up to 0.6 where heat shifts the image (a reactive mask), so it neither smears the distortion nor averages its shimmer away. The research proposed applying heat after the TAA resolve instead; the hybrid mode's edge pass reads TAA's history directly and the back buffer has no shader view, so the reactive mask was the simpler way to the same end. All constants engine choices. A fix to the legacy pass in a6a1404 (the 8-bit buffer's 0.5 is exactly no shift) changed the legacy Kuat references slightly. GPU validation clean with TAA, FXAA, and hybrid. Heat distortion (2026-11-13, the next special material; 170 stock heat-particle emitters, the engine exhaust and explosion shimmer, and 3 heat meshes): heat particles are emitted again (`VisualParticleBlend::heat`; the transparent pass skips them) and, after the transparent part, a `heat` pass blends their textures' bump colors by their opacity into a heat buffer cleared to "no shift" (depth tested against the scene, as the legacy heat shaders blend into their distortion texture); the scene is copied, and a `heat apply` pass redraws it shifted by the buffer, a bump color of 1 or 0 moving the sample by 1.5 % of the screen height (how far the original shifted is not known: an engine choice). Only when the scene renders into its own target (bloom or anti-aliasing on). Heat meshes (`MeshHeat`, 3 uses) are still skipped. Captures change around ships' engines and explosions in the space battles; GPU validation clean. Occlusion silhouettes (2026-11-13, the next special material: the legacy OccludedUnit shaders, chosen by the engine): a unit whose type sets `Occlusion_Silhouette_Enabled` (86 stock objects; `VisualInstance::silhouette`, through the looks) shows through what hides it as its team color at half strength (the legacy default color's alpha; which color the original used for players is not established). A `silhouettes` pass after the water draws the opaque and alpha-tested draws again into a mask (max blend, so a unit's overlapping parts never stack), keeping only front faces (by the normal: models are drawn two-sided) where the pixel shows another object (the pick target, read through a new integer view: the unit's own pixels never count, as the legacy stencil ensured) at least 0.5 units nearer (the depth buffer, reconstructed to a distance); a composite pass blends the mask over the scene before the transparent part. A hardware depth-greater test, as the legacy shader used, let every visible unit through (redrawn geometry does not reproduce its stored depth exactly), hence the shader test. Graphics panel switch, on by default (GameConstants' `Occlusion_Silhouettes_Enabled` is on). The root signature gained a one-view table (t9). Reference captures unchanged; GPU validation clean. Sky visibility (2026-11-13, the global-illumination track's second step): `render_core`'s `compute_sky_visibility` finds, for each terrain height sample, the horizon's angle in 16 directions out to 600 world units and averages cos^2 of it (the share of the cosine-weighted sky a flat patch facing up sees; engine choices), once per map in scene building, which hands it to the renderer as a one-texel-per-sample texture over the terrain (`VisualTerrain::sky_visibility_texture`, identified by its texels; `eaw_scene` now links `eaw_render_core`). With sky visibility on (Graphics panel, enhanced, off by default) the fill light of every world surface, terrain and units, is multiplied by the visibility under it: crater floors and walls, canyons, and cliff feet lose fill light, open ground and peaks keep it. A first version read the texture's size after its data had moved into the streaming queue and so never applied (caught by comparing captures, fixed before commit). Legacy captures unchanged; GPU validation clean with it on. Sky capture, sky light, and horizon fog (2026-11-13, the agreed sky plan's second and third steps, and the first step of global illumination; the owner chose capturing on the GPU each frame): a `sky capture` pass draws the frame's background draws (land sky domes, space backdrops and nebulae) into six 64-texel cube faces laid out three by two in a sky atlas (single-target variants of the background pipelines, both faces drawn; each face's matrix in the frame constants, chosen by the draw's pass index, which the scene passes now reset to 0), and a `sky light` compute pass projects the atlas to second-order spherical harmonics (nine colors, each texel weighted by its solid angle). Uses: enhanced water reflects the captured sky in the reflected direction where planar reflections find nothing (instead of the guessed sky color); enhanced fog leans halfway toward the sky just above the horizon in the view's direction; and sky ambient (Graphics panel, enhanced, off by default) blends three quarters of the fill light toward the sky's irradiance for the surface's normal, scaled to the map's average fill brightness (the sky gives color and direction; ground facing up still gets more than the average, so the map turns somewhat brighter as well as warmer on Dantooine). Frame constants grew to 2 KiB; the root signature gained `SRV(t8)`. Legacy captures unchanged; GPU validation clean with sky ambient on and off, on land and in space. Next on the global-illumination track: sky visibility from the terrain heightfield. Cloud shadows (2026-11-13, the first step of the agreed sky plan, and a legacy feature: the legacy terrain-mesh shaders multiply their lighting by a cloud texture mapped over the world's X and Y): the TED reader decodes each environment's cloud layer (0x2f texture, 0x2d its repeat in world units, 0x2e its drift speed; the drift follows the wind's direction 0x2b, and the terrain chunk's 0x10 velocity, speed x (cos, sin) of that direction on the stock maps, supports the reading), the scene hands it to the renderer with the lights (`VisualCloudShadow`), and the terrain and the terrain-mesh materials (`VisualMaterial::cloud_shadow`) multiply their lit color by the drifting cloud texture before fog. On by default (Graphics panel: Cloud shadows). Open: the stock W_Clouds00 averages 0.74 and reaches black, so the terrain darkens by about a quarter on average under the literal formula; whether the original weakened it (an undecoded environment field, perhaps 0x24) is not known. Units do not take cloud shadows in legacy; enhanced may add them. Sky domes and nebulae, legacy (2026-11-13, the fourth special material; `Skydome` 19, `Nebula` 15 stock uses): sky domes render as `VisualLightingModel::sky` (`VisualSky`: cloud texture, scale, scroll): lit by every map light through the turned-around normal, times the vertex color, plus `Emissive`, with the cloud layer (scrolled along U, then scaled) over the base by cloud alpha x vertex alpha, never shadowed. A fault found on the way: land skies were black, since the unlit path multiplied the dome texture by its vertex color, which the legacy shader uses only as a lighting multiplier; land maps show their skies again (map edges, the free camera; the horizon dome's band is bright, as the formula makes it). Nebulae render as `VisualLightingModel::nebula` (`VisualNebula`): their vertices wobble in model space by a wave of world position and time, and their brightness is 2 x (view-space normal z)^8 + 0.1, as the legacy shader shapes them. Research for the enhanced sky is in sky-research.md, with a proposed plan for the owner. Shield flashes (2026-11-13): a shot an entity's shields absorb now shows its model's hidden `shield` mesh (capital ships, base shield generators): scene building appends it once per model as a mesh of its own (`ModelPart::shield_flash`, named after the model so it takes no rig or effects and is drawn in rest pose), looks carry it (`shield_mesh`), the simulation's impact snapshots name the entity they struck (`ImpactSnapshot::target`, not hashed), and scene presentation draws the mesh after its entity, growing through 1.0, 1.1, and 1.25 for 0.1 s each: GameConstants' `Shield_Flash_Scale` and `Shield_Flash_Duration`, read as one step per scale (an interpretation; the stock values are written in, not read from the file yet). Grass correction, found on the way: the stock grass files leave their second texture-coordinate set empty, so the clump centers the 215df11 change read from it were zero and every clump turned about its model's origin; the model loader now computes each billboard's center (`assign_billboard_centers`: the mean x, y of each connected piece of a billboard submesh, as the legacy shader's comment describes), and grass stands where it was authored. `inspect` prints each submesh's second-UV range. Shield material (2026-11-13, the third special material; `MeshShield` 27 uses): shield materials render as `VisualLightingModel::shield` with a `VisualShield` block (wave and distortion textures, each layer's UV scale and V scroll, edge brightness): the energy texture shifted by a quarter of the distortion texture, times the wave texture, times the vertex color softened toward vertical edges (saturate(object normal z + edge brightness), per vertex as the legacy shader did) and the material color, added to the frame unlit. The legacy shader samples its distortion layer with the scale and scroll named for the wave and the other way round; the contract names layers by what they do and the translation keeps the observed pairing. The planet's GPU fields became generic layer fields (`layer_a`, `layer_b`, two layer textures) that planets and shields read by lighting model, so `GpuMaterial` did not grow. Who uses it: the hidden `shield` meshes of capital ships and base shield generators (flashed on hits, below), the `stealth` meshes of the FoC stealth ships (visible in their models; when the original shows them is not established), and always-visible energy spheres (the Gungan projectile, the droideka's shield). Grass (2026-11-13, the owner's choice of a second UV set): `VisualVertex` gained `texture_coordinates_1` (ALO TEXCOORD1, read by the model loader; one more GPU input element at the end of the vertex, so existing offsets are unchanged), which holds the grass clumps' centers. Grass materials (`Grass.fx`: ground cover on Felucia, Utapau, Mon Calamari, and others) turn each vertex about its clump's center to face the camera around the model's up axis, wave the clump's top with the map's wind (the legacy shader's wave: faster and further in a stronger wind, phase-shifted across the map), swing their color between `Diffuse` and `Diffuse1` with the wave, and are lit as facing up. How far the legacy wind vector reached is not known: `GRASS_SWAY_SCALE` (0.15) keeps the sway to a few units, an engine choice. The legacy distance fade (engine-supplied values) is not done. Captures change only at the ground plants. Wind bend (2026-11-13, the second special material; `Tree` 185 stock uses): the TED reader decodes each environment's wind (0x2b direction in degrees, 0x2c speed on the editor's 1-10 scale, a reading of the stock values), the scene hands it to the renderer with the lights (`VisualWind`), and Tree materials carry their `BendScale` (`VisualMaterial::bend_scale`). The vertex shaders (scene and shadow casting) move each tree vertex by BendScale x the bend offset x its height above the model's origin squared / 40^2, as the legacy Tree shader shapes it; `render_core`'s `wind_bend` sets the offset (6 units in a strong wind, in proportion to the speed, leaning downwind and swelling and easing by half over a 4 s gust; how the original animated it is unknown, so these are engine choices for the owner to judge). Last frame's bend moves the motion vectors. A 42-unit Dantooine tree in the default wind leans about 1 unit at the top. Grass (`Grass.fx`, 14 uses: camera-facing clumps that wave with the wind) needs its clump-center vertex attribute decoded first and comes next. `inspect` on an ALO now prints every shader parameter, and on a TED the active environment's fields. Water reflections (2026-11-13, the agreed planar screen-space reflections): the renderer's first compute pass, `water reflections`, runs between the scene copy and the water: one compute shader clears a buffer of one source per screen pixel, the next mirrors every opaque pixel above the water plane (its height from the water mesh) across it and projects it back, and the pixel it lands on keeps the source lowest on the screen (`InterlockedMax` on the row: seen from above, the one nearest the water along the reflected ray). Enhanced water reads the source (shifted by the bent normal; one-pixel holes filled from the rows beside) and mirrors the scene copy there, or the sky color where nothing landed, weighted by Fresnel. The frame graph gained `common` (buffers return to it after every submission), `compute_read`, and `unordered_access`; the root signature gained `SRV(t7)`. At the tactical camera's pitch reflectance is 2-6 %, so the reference captures are unchanged; a low free camera over Mon Calamari 02 shows the towers and platform walls in the water. Only with refraction (bloom or anti-aliasing on); GPU validation clean. Water foam (2026-11-13): enhanced water lays foam within 6 units of depth along the shore, broken up by the two normal layers, at 35 % over a flat bottom and full strength where the bottom is steep (the slope from the screen derivatives of the position beneath; breakers on steep shores, calm flat shallows, as the 0 A.D. developers found), with lines rolling in toward the shore every 2.5 units of depth; lit like the surface (all engine choices). At overview distance it covers too few pixels to change the reference capture; it shows close up. Water refraction (2026-11-13): when enhanced water is on and the scene renders into its color target (bloom or anti-aliasing on, the defaults), a `scene copy` pass copies the opaque scene (new `GraphAccess::copy_dest`, post slot 7) and the water samples it shifted by the bent normal (2 % of the screen height at full strength, growing over the first 4 units of depth; engine choices), falling back to the unshifted pixel where the shifted one shows something standing above the water; the depth color then blends from the refracted bottom toward the water's color, and the shore fade is the surface's only transparency. Without bloom and anti-aliasing the water blends over the frame as before. `check-captures.ps1` gained Mon Calamari 02's water without fog, legacy and enhanced (the reference scenes had no water, which is how its loss went unnoticed). Water, first steps (2026-11-13, the owner's plan in water-research.md). A fault found on the way: since presentation moved onto battle entities, the map's own surfaces that no entity draws, the water plane and the TED terrain tracks (rivers, shoreline waves, lights), were never drawn; scene presentation now keeps them as scenery after the backgrounds (every non-background instance no entity look or decoration claims), so water maps show their water again and tracks their ribbons. The scene is drawn in three frame-graph passes: the opaque part (backgrounds, opaque and alpha-tested surfaces, the terrain), the water (materials marked `VisualMaterial::water`, testing against the opaque depth through a read-only depth view while the frame graph's new `depth_read` access lets enhanced water sample it), and the transparent part (blended surfaces from the farthest, then particles). Legacy water (`--water legacy`, the default) keeps its look; reference captures unchanged. Enhanced water (`--water enhanced`, Graphics panel) takes its color and opacity from the view ray's path through the water down to the opaque depth (Beer-Lambert: clear shallows, the water's color when deep), fades in over the first 3 units of depth at the shore, bends the light with two layers of the map's bump map (the second finer, turned, drifting another way), reflects a sky color by Schlick's Fresnel, and takes a sharp key-light glint; every constant an engine choice for the owner to tune. Still to come: the meanings of the TED water fields 0x17-0x22 (the editor's labels or game captures needed), refraction from a copy of the opaque scene, foam, planar screen-space reflections. GPU validation clean in both modes. Planets (2026-11-13, the first special material; `Planet` is the most used, 296 stock instances): planet materials render as `VisualLightingModel::planet` with a `VisualPlanet` block in the render contract (cloud texture and its normal map, atmosphere color and strength, atmosphere power, city-light color, cloud scroll; `GpuMaterial` grew to 144 bytes): the surface lit through its normal map and brightened toward the atmosphere color at the rim, city lights (base alpha) switching on past the terminator under the clouds, and a cloud layer scrolling along U, lit by its own normal map, blended over all by its alpha (behavior from the published Planet shader, written anew). Before, planets drew their base texture through the generic lit path. Look for the owner to judge; GPU validation clean. Graphics panel (2026-11-13, the owner's request): the sandbox's Panels menu has a Graphics panel (`--panel graphics`) that switches v-sync, anti-aliasing (off, FXAA, TAA, both), bloom with its threshold and strength, shadows and their cascade count, fog (off, legacy, enhanced), terrain decals, and the detail-level policy and mesh detail while the sandbox runs. The renderer's per-frame switches moved into `D3d12GraphicsSettings` (`D3d12RendererOptions::graphics`), replaced through `set_graphics_settings` before a frame (the panel is drawn inside one, so the session applies its changes before the next); shadow maps are created the first time shadows are on, so a sandbox started with `--shadows off` can turn them on. Shadow resolution and particle fidelity stay as started. Defaults unchanged; a run switching every feature each second under GPU validation reported nothing. Dynamic tracks (2026-11-13): `assets/dynamic_tracks` reads `DynamicTrackFX.xml` (`DynamicTrackCatalog`: texture, mode, width, opacity, segment length, fade distances and fade per second; C-style "20.0f" numbers accepted; a track without texture, width, or segment length reported and left out), and SurfaceFX keeps each surface's `Dynamic_Track_Name` and its `_Left_Bone`/`_Right_Bone`. Scene building gives each land type whose `SurfaceFX_Name` list names a track a layer per tread bone (one under the unit without bones), its texture loaded like particle textures. `BattleEffects::lay_tracks` adds a trail point under the bone whenever the unit has moved a segment length, a jump of more than four segments starts a new trail, a trail keeps at most 256 points (engine choices); each point pair is drawn as a terrain decal with the whole texture over it (owner's report 2026-11-13: repeated once per width, the footprint texture's left-right stride came every 3 units, about 38 cm at a trooper's scale, and the prints ran into a bumpy line; per segment the stride is 6 units, and the prints read as steps; a reading, not observed), faded from the fade begin to the fade end behind the head and further, at the fade rate, while the unit stands still. In the stock data the tracks are bump decals: infantry leave `Footprint_Bump` (3 units wide), the T4-B, Juggernaut, and Pulse Tank `Track_Bump`, the MPTL and TIE Crawler `Track_Bump_Half`; at overview zoom they are a pixel or two wide and only show up close, as faint dents in the lighting (forced to opaque diffuse in a probe, every soldier's trail ran back along his path). Units on platform models (Utapau's landing pads) lay trails on the terrain beneath, hidden. Grid cells hold at most 64 decals (was 32) to leave room for trails. The sandbox prints the trails at exit beside the marks. Footprints (2026-11-13): animation cues now name the instance that played them, and `UnitAnimator::bone_position` finds a bone's world position from the frame's instances and palette; battle audio and battle effects walk the events cues pass through one function (`visit_cue_events`). On land the scene build hands battle effects a `FootprintSource` (the animation events, SurfaceFX, and TerrainDecalFX), and every surface event a cue passes (an AT-AT's `AT_AT_FOOTPRINT` at `P_FootPuff_*`) leaves its trigger's default-surface decal at the event's bone, its +X along the event bone's X axis on the ground (fixed 2026-11-13 after the owner saw the AT-ST's prints turned a quarter when they followed the unit's facing; the unit's facing remains the fallback), as a bump decal that dents the ground's lighting. Infantry foot plants name no decal in the stock data and leave none. An AT-AT in the sandbox's Fondor runs leaves four per stride cycle; the walk must actually play (a unit that stays idle leaves none). Terrain decals, drawn (2026-11-13, the owner's option A of three): decals are applied inside the terrain shader, clustered-decal style: each frame the renderer sorts the live `VisualDecal`s into a 64x64 grid over the terrain (at most 32 per cell, 64 since tracks), uploads them and the grid (root views 7 and 8), and the terrain pixel applies the decals of its cell before lighting: diffuse ones blend the albedo (the black scorches darken), bump ones bend the normal (footprints dent under the key light and its shadows), additive ones add light; fog applies as to the ground. The atlas's top level is sampled (a marked shortcut). Scorch marks: scene building resolves an explosion object's `Explosion_Scorch_Mark` through SurfaceFX's default surface to its decal and loads the atlas; `BattleEffects` leaves the mark where the object plays on land within 40 units of the ground (random cell, turn, and size as the decal says; fades 2 s after its `Fadeout_Time` unless permanent; at most 2048 marks; engine choices). The sandbox reports the marks at exit (51 after the Fondor reference battle). Footprints follow. The upload buffers of particles and decals share one helper (`ensure_upload_buffer`). Option B (screen-space decals) waits for a decision on a deferred pipeline. Terrain decals, first step (2026-11-13): `assets/terrain_decals` reads `TerrainDecalFX.xml` (`TerrainDecalCatalog`: mode, opacity, size, angle and randomness, fade, permanence, atlas cells and span, malformed fields and cells outside the 4x4 atlas reported); the atlas layout is in compatibility-research.md. Not drawn yet. Enhanced fog and particle fog (2026-11-13, `--fog off|legacy|enhanced`, legacy the default): enhanced fog is exponential height fog integrated in closed form along each view ray beyond the map's start distance, its density at the floor (the terrain's lowest point; the scene's on maps without terrain) set so level fog reaches 95 % at the map's end distance, constant below the floor (pits fill without turning opaque without end) and thinning by e per 400 units above it, brightening toward the key light; the same map color and range, so every map keeps its mood (all numbers engine choices). Particles are fogged in both modes: alpha particles blend toward the fog, modulate ones lose their darkening, and additive light (particles and additive surfaces) is left alone in legacy, as the legacy shaders do, and dimmed in enhanced. Legacy captures unchanged. The owner's question whether the original's fog was an optimization: its land camera (460 units away, pitch 50, far clip 7000, objects faded out at 1100-1300) saw only about 1000 units (an estimate), so fog starting at 500 tinted the top of the view without hiding the far plane: atmosphere and color, with the close camera and the object fade as the optimizations. Volumetric fog (light shafts, smoke) is for later. Fog (2026-11-13): the TED reader decodes each environment's fog (color 0x0f, switch 0x10, start 0x11, end 0x12; evidence in compatibility-research.md), the scene builder hands it to the renderer with the lights (`VisualFog`), and models and terrain blend toward it linearly with view distance; additive surfaces and backgrounds are not fogged, as in the legacy shaders. On by default, `--fog off` reproduces every earlier capture. Particles are not fogged yet. The ranges were authored for the original's camera limits (TacticalCameras.xml, postponed): zoomed out farther, as the sandbox's overview camera is, distant ground fades into the fog (the Utapau capture's crater floor). `map-audit` reports every environment field by type, size, and value range for land and space. Backdrops (`In_Background`: planets, nebulas, ring stations) and background instances receive no shadows (owner, 2026-11-13: no reason for shadows on planets for now; `VisualInstance::receives_shadows`). Shadows (2026-11-13): a frame-graph pass draws every cascade's depth map (typeless D32, read through a float view) before the scene: the terrain (its uncovered holes, such as crater openings, cast nothing, as they draw nothing) and every opaque and alpha-tested model (alpha-tested ones cut their holes), skinned, with a slope-scaled bias; backgrounds and blended parts do not cast. Models and terrain receive in the shared lighting: the cascade by view depth, a normal offset of 1.5 texels, a 12-tap Poisson PCF of 1.5 texels turned per pixel and frame (temporal anti-aliasing averages it), dithered into the next cascade over the last tenth of each slice and faded out at the far end (engine choices). Shadows take away only the key light's diffuse and highlight, as the original's shadow volumes did. `--shadows off` reproduces every earlier capture exactly. Frame constants grew to 1 KiB; draw constants carry the cascade index; the root signature gains a comparison sampler. Every caster is drawn into every cascade (marked shortcut). GPU validation clean on land, space, and the model view. Shadow cascades (2026-11-13, the first step of shadows): `render_core`'s `shadow_cascades` computes stable cascaded shadow maps for the key light: the camera's view from its near plane to the scene's far edge along the view (rounded up to a step of sqrt 2, so panning changes it only now and then), split between even and logarithmic spacing (3 cascades, blend 0.75, 2048 texels, at most 20000 units: engine choices); each cascade a bounding sphere of its slice (radius rounded to 1/16) with its origin snapped to whole texels, and depth over the whole scene along the light so casters outside the view still shadow it. Tested without a device; not drawn yet. Motion vectors (2026-11-13): the scene pass writes each pixel's screen motion since the last frame into a third target (`motion_format`, two half floats), from the unjittered current and previous clip positions; instances carry their last transform and palette offset (kept per instance key; new or keyless instances use their current ones), and last frame's palette is uploaded after the current one in this frame's bone buffer (so nothing reads a buffer the CPU may rewrite). Opaque and alpha-tested models write motion; backgrounds, blended parts, terrain, and particles leave a no-motion marker, and TAA reprojects those by depth and camera as before. Rotating planets, turning turrets, animated parts, and moving units now reproject by their own motion. Captures without TAA unchanged; GPU validation clean with TAA, hybrid, and off, on maps and the skinned model view. Hybrid anti-aliasing (2026-11-13, `--aa hybrid`, the owner's request): TAA, then the edge pass over its result (read from the history TAA just wrote) into the back buffer; the history keeps TAA's own result, so the edge pass's softening never accumulates. Temporal anti-aliasing (2026-11-13, `--aa taa`; FXAA stays the default until the owner compares them): the scene is drawn with a sub-pixel jitter (8 points of the Halton (2, 3) sequence, a clip-space translation), and a resolve pass blends each frame into a ping-ponged history at 10 % (engine choices). Each pixel reprojects by the depth buffer (now typeless, with a float view) and the previous unjittered camera, using the nearest depth of its 3x3 block; the history is clipped to the block's colour spread (mean +/- 1.25 sigma in YCoCg). Camera motion only: moving units and particles rely on the clip and may ghost until per-object motion vectors exist. Debug lines use the unjittered camera. The history resets after a resize and in frames without TAA. Captures with TAA keep detail (a first version that left the jitter out of the reprojection blurred every frame and was fixed before commit); GPU validation is clean with and without bloom. Edge anti-aliasing (2026-11-13): an FXAA-style post pass written for the engine (edges found by local luma contrast, walked to their ends, resampled across by the pixel's place on the stair step, plus a sub-pixel term), on by default, `--no-aa` to turn it off (owner's choice: no MSAA; TAA later). With it the scene renders into `scene_color`, the bloom composite into a new `post_color`, and the pass fills the back buffer; its thresholds are engine choices. With `--no-aa` the captures are unchanged; with it every capture changes along edges. Depth-sorted transparency (2026-11-13): blended model parts (alpha and additive, which write no depth) are drawn after the opaque and alpha-tested ones, instance by instance from the farthest bounding-sphere center, each model's parts in their own order; backgrounds keep scene order, particles still follow in their own back-to-front order. One draw per blended part and instance (147 instances at Kuat, 384 at Utapau). Captures unchanged. Renderer structure (2026-11-13): the render contract is split by subject (`visual_vertex`, `visual_texture`, `visual_material`, `visual_mesh`, `visual_camera`, `visual_frame`, `visual_scene`), rules without a graphics API live in the new `eaw_render_core` (`lod_selection`, `gpu_resource_lifetime`, `frame_graph`), and `render()` builds its frame as graph passes (scene, bloom extract, two blur rounds, composite, capture, debug lines and overlay, picks) whose declared uses place every barrier; passes run in declared order and targets stay persistent. Captures unchanged; hardware GPU-validation runs with and without bloom report nothing. Damage states (2026-11-13, render feature 1's second part): on land, an entity draws the `_ALT<n>` state its health fraction reaches in `Land_Damage_Thresholds`/`_Alternates` (`presentation/damage_states`: the last threshold the fraction is at or below, so build pads' `1`/`3` show ALT3 always), its `_ALT<n>` proxy effects play only in their state (placed after the intact ones, so existing effects keep their seeds), entering a state on the way down plays its `Land_Damage_SFX`, and a wreck shows the state for no health. A dead mesh without a DIE clip but in a damage state stays as rubble at rest pose, for its `Death_Persistence_Duration` or for good (an engine choice; the original's rubble lasts as far as remembered). Space types have no damage states. Hardpoint damage visuals (`Damage_Particles`, `Damage_Decal`, removing a destroyed part's model) are combat presentation's, not yet done. Idles (2026-11-13): a type with `Loop_Idle_Anim_00` loops IDLE_00; any other unit plays a random IDLE variant each time one ends (the owner's recollection), and one whose model has a single IDLE clip plays it again after a random 2-4 s pause, holding the clip's first frame meanwhile (the owner's choice; constants in `unit_animation.cpp`). Before, each unit looped one variant chosen by its id. Wreck ends (2026-11-13): a wreck plays its `Death_Explosions_End` Particle object where it lay when its persistence ends. Both tags come from the death clone, or, for the five stock types that leave none (AT-AA, the Dark Troopers, the MPTL spotter, the gas droid), from the type itself, so those wrecks now stay their own `Death_Persistence_Duration` instead of the 4 s default. Turret motors (2026-11-13): a unit's `SFXEvent_Turret_Rotating_Loop` plays among its loops while its turret's direction changed in the last tick (a developer comment: while the turret turns to aim), and stops once the turret holds still; hardpoint turrets do not turn yet, so theirs stay silent. Unit voice and ambient sounds (2026-11-12): `SFXEvent_Ambient_Moving` plays only for types whose behaviors (`Behavior`, `LandBehavior`, `SpaceBehavior`, through the variant chain) include `AMBIENT_SFX`, as a developer comment requires; a unit's `SFXEvent_Health_Low_Warning` and `_Critical_Warning` play once as its health falls to a third and to a tenth (the stock GameConstants thresholds, fixed in the engine for now; played for every unit until the player layer decides whose voice is heard); and a unit that starts spinning away plays its `Spin_Away_On_Death_SFXEvent_Start_Die` (`SimSnapshot::spins`, not hashed). The stop response (`SFXEvent_Stop`) waits for a stop order in the sandbox; the advisor lines (`SFXEvent_Unit_Lost`, `_Unit_Under_Attack`) for the player layer.
-
-Projectile flight shapes (2026-11-12, presentation only: shots still home on their target along a straight path in the simulation): bolts and model projectiles are placed by one function (`projectile_pose`, replacing two copies of the between-ticks placement), which adds a lob to grenades (a ballistic height g/2 t (T - t) over the straight path, g = XML `Projectile_Grenade_Gravity` x `_Lob_Mod` per frame squared, scaled like accelerations: a guess) and a sideways sway to rockets (straight for `Projectile_Rocket_Straight_Distance`, then up to `Projectile_Rocket_Curve_Offset` in a half sine, the side alternating by shot, at most 50 units: one stock 180 is of unknown unit), turning the bolt or nose along the shape. Snapshots carry each shot's flown and remaining distance (not hashed). Not yet: bombs' fall (`Projectile_Bomb_Fall_Accel_Rate`, bombing runs do not exist), `Projectile_Rocket_Curve_Distance`, and sticky grenades.
-
-Projectile flight rules (2026-11-12): a shot is lost after its XML `Projectile_Max_Lifetime` (14 grenades and slow blobs; the hashed `lifetime_ticks`, setting off its blast like the flight limit); a guided shot whose target dies takes the nearest hostile within its `Projectile_Max_Scan_Range` of itself (19 projectiles); `Projectile_Damages_Random_Hard_Points` (the hypervelocity gun) hits a random intact hardpoint drawn from the combat stream; a blast's `Friendly_Damage_Amount` (only the remote bomb: 200) hurts the shooter's own entities, which supports blasts sparing friends otherwise; the shooter's `Projectile_Appearance_Delay_Frames` (27 units; the first of "15,20" forms; frames of 1/30 s, a guess) holds each burst's first shot for its fire animation; and `Projectile_Object_Creation_Particle` plays at the muzzle (`ShotSnapshot::effect`). Spin-away explosions are now loaded with the other effects (they were never played before). The reference battle's hash is now 0x5b9e51ca1e7d7cf3.
-
-Company teams in formations (2026-11-12, from the owner's recording: infantry move as loose teams of about eight, the teams in a block): a company splits into teams of its XML `Max_Squad_Size` (stormtroopers 9, rebel troopers 5; teams of one are none), each member carrying its team (`FormationTeam`: id, arrangement, spacing, raggedness; hashed). `formation_slots` places a team as one unit of the formation (its pitch from its members' layout and the team container's `FormationSpacing`) and its members around the team's slot by the container's `ContainerArrangement` (Rows: a near-square grid; Dartboard, the default: a center and rings of 6, 12, ...), each moved by its type's `FormationRaggedness` times its slot pitch in a deterministic direction from its id (the scale is an engine choice to tune). Placed companies, spawn orders, and group moves all lay teams out this way; team ids come from the map build and continue in the battle. Not yet: a team as one selectable unit with one ring and health bar (UI), and `Create_Team` (single units wrapped in a team). The reference battle's hash is now 0xf2e4966b7b4a11a3.
-
-Spawn placement (2026-11-12, seen in the owner's comparison: sandbox spawns stood inside buildings and off the map): spawn orders put ground units on the ground grid and, when their cell is one their class may not enter (stamped building and wall footprints included), on the nearest cell it may (`open_ground` over the pathfinder's `nearest_enterable`, now public). Headless battles gather at the open ground nearest the map's middle: Utapau's middle is ground no unit may enter, where the reference battle used to spawn its units stuck and fighting; it now fights in the open (427 shots, 132 hits, 26 kills, 19 crushed) and its hash is 0xf1c77ca722f95b91. The low land hit rate reported with inaccuracy (94 of 415) came partly from that.
-
-Turning on the move (2026-11-12, from the owner's recording of the original: an AT-AT swings 90 degrees and back while walking): a ground unit turns in place only when it starts from rest (its locomotor speed is 0); on the move it turns while walking, slowed by how far it faces away, so a corner sharper than 90 degrees still brings it to a stop first. Before, it stopped to turn at every corner beyond its angle. This also narrows the conflict with GameConstants' `CloseEnoughAngleForMoveStart` (180) to starts from rest.
-
-Markers (2026-11-12, after comparing with the owner's recording of the original): placed objects of XML `Is_Marker` types (flag models such as `w_flag_marker_white.alo`, script points, skirmish base positions) are no longer drawn; they stay entities, so scripts still find them (`MapEntityLook::hidden`: the presentation keeps no template for them).
-
-Spinning away (2026-11-11): a type with XML `Spin_Away_On_Death` (22: fighters, corvettes) whose health runs out spins away with its `_Chance` (0.2 or 0.4, rolled on the hashed combat stream) instead of dying at once: it loses its orders and target, stops firing, takes no further damage, and dies after `_Time` (1 or 2 s), playing `Spin_Away_On_Death_Explosion` instead of its death effect (`CombatProfile::spin_*`, the hashed `spin_ticks`). Not yet: the spin itself (the craft flies on, unrolled) and `Spin_Away_On_Death_SFXEvent_Start_Die`. The reference battle's hash is now 0x93ced81ee52c8ea3 (the counter).
-
-Area blasts (2026-11-11): a shot with XML `Projectile_Blast_Area_Damage` and `_Range` (63 projectiles: rockets, grenades, bombs, bombardments, self-destruct blasts) damages, where it ends (hit, miss, or flight limit), every hostile damageable entity whose footprint comes within the range; with `Projectile_Blast_Area_Dropoff` the damage falls off in `_Dropoff_Tiers` equal rings (the n-th of N rings from the center takes (N - n) / N; `AreaBlast`, `area_blast`). The direct victim takes the blast besides the shot (sticky bombs and self-destruct blasts deal no shot damage). Friendly units are spared (`Friendly_Damage_Amount` and `Projectile_Blast_Area_Immune_Faction` are not read); the reading of the tiers is an inference. A type's XML `Death_Projectiles` (four stations and a prop) sets off that projectile's blast where it dies (`CombatProfile::death_blast`). The reference battle's hash is now 0xfc2121a49b4073a3 (projectiles carry their blast; its combat is unchanged); AT-STs now kill infantry groups by splash (Hoth: 43 kills from 34 hits).
-
-Destruction survivors (2026-11-11): an object with XML `Destruction_Survivors` ("type, weight" lines: prisons, barracks, skiffs; `type_survivors`, `Survivors`) leaves those units where it died, owned as it was: map builds make the listed types spawnable, deaths report their type (`DeathSnapshot::type_key`), and `Battle::step` orders the spawn for the next tick as a script order (replays reproduce it unrecorded). Every stock weight is 1.0, so each listed type spawns once; the one count range (`Minimum_`/`Maximum_Destruction_Survivor_Count`, a prison: 4 to 8) spawns its minimum (engine choices). Types added at runtime only leave survivors whose types the battle already has.
-
-Second muzzles (2026-11-11): a weapon hardpoint with an XML `Fire_Bone_B` alternates its shots between its two fire bones, the first from `Fire_Bone_A` (`WeaponProfile::extra_mounts`, the hashed per-weapon shot count; the alternation is an inference from the name). Its firing arc stays measured from bone A. The reference battle's hash is now 0x6ad3e61ed3aedba3 (the counter).
-
-Unit muzzles (2026-11-12, the owner's request: twin guns must not fire from one barrel): a unit's own weapon fires from its model's `MuzzleA_nn` bones, one shot each in number order (the T4-B's two barrels, the T2-B's four guns, the TIE Crawler's three, an X-wing's four; `WeaponProfile::extra_mounts` after `mount`), else from a turret's `Barrel_Bone_Name`, else from the body at `Ranged_Target_Z_Adjust`. The XML names no muzzles; the reading rests on the stock models (see compatibility-research.md "Muzzles"). Infantry and land heroes keep the body: their bind pose spreads the arms, so their muzzle bones lie far to the side (an engine choice until shots leave from the animated pose; walking robots typed as vehicles, the Droideka and the Phase III dark trooper, do use their bind-pose muzzles). `MuzzleB_nn` bones serve hardpoints and are not cycled. The reference battle's hash is unchanged (muzzles a few units apart change no shot's arrival tick there).
-
-Hardpoint destruction effects (2026-11-11): a destroyed hardpoint plays its XML `Death_Explosion_Particles` object (the first entry; 259 hardpoints, mostly `Large_Explosion_Space(_Empire)`) at its position (`HardpointProfile::death_effect`, `HardpointDeathSnapshot::effect`, presentation only; map builds and spawn packages load them with the death effects).
-
-Target stickiness (2026-11-11): a target an entity chose itself is weighed against the others again once it has held it for its XML `Targeting_Stickiness_Time_Threshold` (5 s in 113 of 125 uses), and replaced when the targeting priorities prefer another (`CombatProfile::stickiness_seconds`, the hashed `target_ticks`); without the tag the target is kept while valid, as before. The reference battle's hash is now 0xbad152faff92df9e (the counter; its combat is unchanged).
-
-Engagement ranges (2026-11-11): an attack-mover reacts to hostiles within its XML `Attack_Move_Response_Range` and a guard chases at most its `Guard_Chase_Range` from its anchor (`CombatProfile::attack_move_response_range`, `guard_chase_range`; world units, read as given); types without them keep the engine's defaults (1.25 times the weapon range; the leash). `Idle_Chase_Range` waits for idle units that chase attackers (the engine's idle units only fire at what is in range).
-
-Corpses (2026-11-11): a type with XML `Remove_Upon_Death` (fighters, debris, satellites, most props; 281 of 286 uses are true) leaves no corpse (`DeathStyle::removed`, presentation only). Not yet: `Death_Fade_Time` (corpses fade out; the renderer has no per-instance fade), and death clones as wrecks the simulation knows (`Death_Clone_Is_Obstacle`, `IsDeathCloneObstacle`: corpses are presentation only).
-
-Target validity (2026-11-11): XML `Is_Valid_Target` No (ambient creatures, markers, transports) keeps an object from ever being chosen or kept as a target; `Immune_To_Damage` (build pads, markers) makes it take no damage (`CombatProfile::targetable`, `immune`). Weapons skip targets of their excluded categories (`WeaponProfile::excluded_categories`: a weapon hardpoint's `Fire_Category_Restrictions` plus its unit's `Fire_Category_Restrictions` and `Attack_Category_Restrictions`; torpedoes at fighters, the anti-air turret at infantry) and, for a unit's own weapon, targets inside `Targeting_Min_Attack_Distance` (`min_range`: artillery); target choice passes over hostiles none of a unit's weapons may fire at (`engages`). The reference battle's hash is unchanged.
-
-Crushing (2026-11-11): after movement and before separation, a moving ground crusher kills each hostile entity it may crush whose center lies within its footprint radius (`run_crushing`, `CrushProfile`, hashed; `Stats::crushed`, printed by battles). Supercrushers are XML `Is_Supercrusher` types (both AT-ATs, the Gargantuan, the HTT) and crush `Is_Squashable` and `Is_Squashable_By_Supercrusher` entities (infantry, vehicles, walls); other types crush only `Is_Squashable` ones (infantry) when their `UnitCollisionClass` is Vehicle, Large Vehicle, or Giant Vehicle. Who crushes infantry, and that friendly units are spared, are engine choices. The kill goes through `wound`, so invulnerable and unkillable entities survive. In the reference battle the T2B tanks crush 9 rebel infantry (13 kills, 5 before); its hash is now 0xaf063cf737e4cfce. `Squash_Damage_Type` (one indigenous unit) is not read.
-
-Bank limit (2026-11-11): a flyer banks in a turn at most its XML `Bank_Turn_Angle` (degrees: fighters 40, capital ships 5; `type_bank_limit`, presentation only), 60 degrees without one (`default_bank_limit`, an engine choice, as is the bank per turn rate). Capital ships do not bank yet (only flyers report a yaw rate), and `Max_Rate_Of_Roll` is not read (the bank follows the turn rate at once).
-
-Move-start angle (2026-11-11): a ground type's XML `Close_Enough_Angle_For_Move_Start` (degrees; the AT-AT 30, the AT-ST and rancor 45, the dust devil 180, at most 180) replaces the 45-degree stop-and-turn angle; types without one keep 45. GameConstants' `CloseEnoughAngleForMoveStart` is 180, which would never stop a unit to turn, against the owner's observation that land units do not turn while moving off; the engine keeps the observation and the conflict is on the roadmap's verification list. Runtime spawn packages (scripted and reinforcement spawns) now take GameConstants' speed multiplier too (they missed it).
-
-Solo units (2026-11-11): types with XML `FormationGrouping` Solo (AT-ATs, the Gargantuan, the Juggernaut, snowspeeders, the Lancet, the HTT, rancors, wampas) take no slot in a formation move: they go to the ordered point on their own, at their own speed, outside the group (`EntitySpawn::formation_solo`, hashed: the reference battle's hash is now 0xfd58596858cf2196 without a solo unit in it). The reading rests on the tag name and its users. `FormationRaggedness` (0 to 2.5) is not read: its scale is unknown. `WaitsForFormationFormup` and `Formation_Formup_Wait_Style` need nothing, since the engine has no formup step and GameConstants skips land formup (`ShouldSkipLandFormup`).
-
-Space obstacles (2026-11-11): on space maps, immobile objects take a radius that space avoidance steers around: XML `Space_Obstacle_Radius` for `SPACE_OBSTACLE` types other than asteroid fields, nebulae, and ion storms (`type_space_obstacle_radius`), else `Custom_Soft_Footprint_Radius` (starbases); the sandbox's object line counts them (Kuat 55, Hoth 25). Small craft without a soft radius separate by `Custom_Footprint_Radius`. Battles on space maps changed hashes. XML booleans are read through one helper (`parse_xml_bool`, replacing three copies).
-
-Space avoidance, second version (2026-11-10, after the owner saw ships pass through each other when they started close together): the first version steered around the single nearest ship ahead, so ships alongside, a second ship behind the first, and ships converging on one point were never avoided (measured: down to 0.07 of two radii apart). Now each moving ship tries a fixed, ordered set of courses each tick (`avoid_course_candidates`, 11.25 degrees apart, the side it already faces first, else right) against every neighbour's predicted motion (toward its target at its travel speed, slowed while it turns) and flies the first that keeps its clearance until it arrives or for 3 s, else one clear of contact, else the latest contact; `keep_apart` (locomotion) removes the part of a step that would take a ship deeper into one it touches, so ships slide along each other and never overlap; a destination inside a stopped ship's clearance (or a moving ship's with a lower id, so ships sent to one point stop side by side) moves to the nearest free point of that clearance; a detouring ship arrives at its target; ships in space keep formation slots at least 4.5 radii apart (`space_formation_spacing`) so late ships can pass between stopped ones. `test_space_crowds` covers four crowd cases with turning ships (no overlap, all arrive). Land battles are unchanged (the reference hash holds); space battles and space captures change. Known limit: in a ten-ship formation move through idle ships one ship may take minutes to reach its slot (a local planner has no global route around a crowd).
-
-Owner's requests of 2026-11-10: space ships no longer push each other (the original avoids contact): the separation pass leaves them out (ground units and same-owner flyers keep theirs), and navigation gives each moving ship a detour point for the tick (`plan_space_avoidance`, `SimulationWorld::detours_`, not hashed) around the nearest ship ahead whose widened footprint crosses its course, ignoring units at another height (more than both radii apart) and much smaller ones (below a fifth of its radius), passing on the side away from it (right when dead ahead), beside it while still a clearance away and ahead of it once alongside; a move onto another ship ends at that ship's clearance. Land battle hashes are unchanged; space battles and the capital-ship capture change. The sandbox draws selected units' routes on space maps too (in 3D, through the detour). Relative mod paths resolve as the game's MODPATH (`resolve_mod_path`: under the runtime root, then as given), and EAWDevLauncher refreshes its asset and spawn lists a second after the game, installation, or mods change. The missing mod units had another cause: a mod folder entered as the launcher's game root was not an installation, so discovery silently fell back to the Steam installation without the mod. `check_installation_root` now refuses an explicit root that is not an installation (and names a mod folder as one) in EAWDevLauncher, EAWEngine, EAWLauncher, and EAWAssetInspector; the launcher's root field is labelled, and a mod path it cannot convert is logged instead of dropped. `EAWAssetInspector spawn-types` lists the spawnable types as the launcher and sandbox do (stock FoC 2,710; with New_Order_Mod_Dev 6,063, with Republic at War 10,092).;
-    4. combat presentation and the player layer are not started (combat presentation is in M3; the player layer moved to M4); sound's first stage is done (Audio, below).
-
-## Audio — first stage done (2026-11-10)
-
-- Data: the sound archives mount under `DATA/AUDIO/SFX/` for each layer with the `--language` archive only (archive discovery skips their folder; before, every language's archive was mounted at the VFS root as an unlisted archive); `read_wav` (`eaw_formats`) keeps every chunk; `decode_sound` (`eaw_assets`) recognizes the format from the first bytes and converts PCM of 8 to 32 bits and 32-bit float to the engine-native 16-bit `Sound` (MP3 and Ogg are recognized and reported as not supported yet); `ResourceLoader<Sound>` caches sounds; `SoundEventCatalog` reads the XML `SFXEvent`s with presets; `resolve_sound_sample` finds samples under SFX or the language's speech folder, trying `.MP3`. `EAWAssetInspector sound-audit` resolves and decodes every sample: on stock FoC 3,073 events, 9,539 of 9,610 samples decoded, 71 missing from the stock data, none undecodable.
-- Playback: `eaw_audio` holds `Sound`, the `AudioDevice` interface (voices with category, volume, pitch, pan, loop; categories effects, voice, music, interface), equal-power panning and the distance curve (`spatial_audio`), and the null device; `eaw_audio_devices` holds XAudio2 (the default, a submix voice per category) and FMOD (built only with `EAW_AUDIO_FMOD=ON` and `FMOD_ROOT`; written but not built or tested on this machine, which has no SDK).
-- Battles: `BattleAudio` (`presentation/battle_audio.*`) plays weapon fire (each shot in the snapshot's `shots` carries its weapon's sound: a hardpoint's `Fire_SFXEvent`, else the type's `SFXEvent_Fire`; one play per shooter and sound per tick), deaths and death explosions, loops on the units nearest the listener (16 at most: `SFXEvent_Engine_Moving_Loop` while moving, `SFXEvent_Engine_Idle_Loop` while still, `SFXEvent_Ambient_Loop` either way), shot impacts (the projectile's `Projectile_SFXEvent_Detonate`, or `_Reduced_By_Armor` when armor reduced the hit; lapsed shots play nothing, an engine choice), `SFXEvent_Ambient_Moving` every min..max seconds while a unit moves, unit responses to the sandbox's selections and orders (select, move, attack, guard), and the sounds scripts ask for (`GameObject.Play_SFX_Event`, through `BattleScripts::sound_requests()`, played at the object), with the events' chance, instance limit (a new one-shot replaces the oldest), overlap groups, sample order, volume and pitch ranges, predelays, and chains; voices follow their sources and the camera. Presentation only: the battle hash is unchanged. The sandbox takes `--audio xaudio2|fmod|none`, `--no-audio`, `--volume` (master, default 0.2, an engine choice after the owner found full volume too loud), and `--language`, has a sound panel (F1 menu, `--panel sound`) with master and per-category volume sliders, falls back to silence when a backend cannot start, and reports sounds played, skipped, and missing.
-- Animation sounds: `read_animation_sfx_map` (`eaw_formats`) reads `DATA/XML/ANIMATIONSFXMAPS.TXT` as rows of fields; `AnimationEventTable` (`eaw_assets`) turns its SOUND and SURFACE rows into events by animation stem (times in hundredths of a frame, an inference; NONE left out); `SurfaceEffectCatalog` reads the XML `SurfaceFX` with their `Surface_Settings`. `UnitAnimator::cues()` reports each frame which frames of which clip a unit played (its leading locomotion clip, an ATTACK that plays, a corpse's DIE), and `BattleAudio::play_animation_cues` plays the sounds those frames pass: footsteps (a SURFACE trigger's sound for the `default` surface until terrain surface kinds are read), walker hydraulics, death falls. On stock FoC all 1,152 rows read and every name resolves; only some models have rows (stormtroopers, heroes, walkers, creatures; not rebel soldiers).
-- Not yet: the surface kind under a unit (footsteps use each effect's default settings), the particles and decals of surface effects, hardpoint-destroyed reports (spoken per hardpoint kind, for the owning player), the group and fleet response variants (`SFXEvent_Fleet_Move` is presumably galactic, the owner's guess), `Death_SFXEvent_End_Die`, `Land_Damage_SFX`, turret rotation loops, weapons firing from their models' muzzle bones with muzzle flashes (the TIE Crawler fires from three `MuzzleA_nn` bones with hidden `_flash` meshes; the engine fires from the hull's centre, so its shots appear after their sound), loop intros and outros and fades, priorities and voice stealing, `Kills_Previous_Object_SFX`, impact and ambient sounds, volume options, music and speech (MP3), and a check of the distance curve against the original (its constants are engine choices).
-
-## Cross-cutting engineering work (planned)
-
-- The job system, step 1 of work order 2d (2026-11-15, [ecs-design.md](ecs-design.md) section 7): `eaw_jobs` runs jobs on fibers (`CreateFiberEx`, `SwitchToFiber`) over N-1 worker threads plus the creating thread, with counters as the only synchronization and no OS mutexes: jobs go into one bounded lock-free queue per priority (simulation, frame, background; Vyukov's ring), `wait` parks the calling fiber on its counter and switches the thread to a pool fiber that goes on running jobs, and the job that brings the counter to zero moves the parked fibers to a ready queue (the creating thread's own fiber is pinned to it, for window and Direct3D calls). Every switch hands its "after the switch" work (park the previous fiber, or return it to the pool) to the fiber switched to, so no fiber is published while it still runs; a counter tracks jobs still touching it after their decrement, so it may be destroyed as soon as `wait` returns. Idle workers spin briefly, then sleep on an atomic epoch (`std::atomic::wait`). A full queue runs the remaining jobs on the calling fiber; running out of fibers or of counter waiter slots is a fatal error naming the limit. `parallel_for(jobs, count, grain, function)` cuts chunks from the count and the grain only. Tests (module `jobs`): every job runs once with 0, 1, and 3 workers; a float sum merged in chunk order is identical bit for bit with 0, 1, 2, and 7 workers; jobs waiting on their own jobs park and resume (also with no worker); a full queue loses nothing; 1,000 Release and 200 Debug runs without a failure (an earlier version lost 4 of 300 to a counter destroyed while its last job still read it). `EAWBenchmarks` and `scripts/benchmark.ps1` time workloads serially and on the job system and compare runs ([tools.md](tools.md#benchmarks)): float math 6.6 times faster with 7 workers on 8 hardware threads, 384 A* searches 5.2 times, a job about 43 ns on one thread and 90-110 ns with workers sharing one queue (per-worker queues only if a profile asks). The build adds `/GT` (fiber-safe thread-local storage); no client uses the job system yet (next: presentation's pose sampling, a background lane in place of the sandbox's `std::async` calls).
-- The job system's first client (2026-11-15): presentation's pose sampling. `UnitAnimator::place` reserves a new pose's palette range and queues it; at the end of `animate` the queued poses are sampled with `parallel_for` (4 to a job, `JobPriority::frame`), each into its own output, then copied into the palette and the pose cache in the order they were asked for, so the frame is the same with or without jobs (`test_presentation`). The sandbox creates the `JobSystem` on its frame thread (`sandbox_app.cpp`) and passes it through `BattlePresenters::jobs`; tests and tools without one sample on the calling thread. `EAWBenchmarks poses` (256 new 40-bone poses, an empty cache): 4.7 ms serially, 2.3 ms with 7 workers; the rest of `animate` is serial, and frames whose poses are cached gain nothing. Not yet: the background lane in place of the sandbox's `std::async` calls (content builds must first be split into short jobs, ecs-design.md 7.4).
-- The tick's schedule, step 4 of the simulation's migration, first slice (2026-11-15): `SimulationWorld::step` runs one table, `schedule_` (`simulation/src/simulation_schedule.cpp`), of nine systems, each with the tick layer it is timed under and the data it reads and writes (`SimData`). The new `DebugValidation` build configuration (`build.ps1 -Configuration DebugValidation`, files with `_dv`) checks the writes: before each system it copies every kind of data the system does not declare as written and compares it afterwards (defaulted `operator==` on the simulation's types), stopping with the system's and the data's names. It costs about 17 times a Debug tick, so plain Debug does not run it. The test suite and the reference battle pass under it; state hashes unchanged. Then the world's resources became named structs, each with its `SimData` id (`GroundState`, `PathQueue`, `ProjectileState`, `TickEvents`, `SlotTable`, and `Rules` for the damage table and hostility), and the two per-tick arrays shared between systems became columns (`MotionColumns::starts`, `RouteColumns::remaining`), so every kind of data a system uses has a type of its own: the ground for the typed system views to come. The check then found one more undeclared write (separation measures the remaining routes again after movement). Then the first system over a typed view (`simulation/system_view.hpp`; [ecs-design.md](ecs-design.md), step 4): `SimulationWorld::ContactSystem` (`simulation_contact.cpp`) does crushing, separation, and the measured speeds, the old crushing, separation, and motion systems in one; it reaches only what `ContactSystem::View` declares (`view.get<T>()`: const for `Read`, mutable for `Write`, undeclared data does not compile), its scratch and counters are its own, and its schedule entry takes its masks from the view. The tick layers are now commands, behavior, navigation, movement, contact, combat, and publish. Shared helpers became static functions on the data they use (`wound` on a `CombatState`, `measure_remaining_routes` on the route and placement columns, `crush_profile_in` on the crush pool). The previous commit's `for_each_data` visited the members of the ground, path-queue, and projectile structs instead of the structs (the rename reached the new lines), so the check skipped the two serial counters; fixed. State hashes unchanged. Before movement moves onto a view: the space-avoidance detours became a route column (`RouteColumns::detours`), and the grid navigation plans space avoidance with became a resource (`SpaceAvoidance`, with the largest ship radius), since movement keeps ships apart against that same grid, built before anything moved (a coupling the shared `grid_` hid). `check-battle.ps1 -Extended` runs four more battles with their expected hashes. Then movement moved onto its view (`MovementSystem`, its functions in `simulation_locomotion.cpp` and `simulation_walk.cpp` with its query scratch and replan counter as its own); the helpers it shares with other systems (`travel_speed`, `keeps`, `hardpoint_alive`, `turn_point`, `turning_as_clips`, `plan_move`, `slot_of`) became static templates over any data with `get<T>()` (in `simulation_internal.hpp`), which the member-function systems call with the world. Its view's compile check found one write the hand-written declaration missed (a stopping unit leaves its group). Then navigation (`NavigationSystem`, `simulation_navigation.cpp`): route searches under the budget, the remaining routes, group cohesion, and space avoidance, with its pathfinders, scratch, and search and cohesion counters as its own (the world tells it when the ground changes, `ground_changed`); `dense_index` became a template too. Its view reads the combat columns through the travel speed it uses (`keeps`: an engine knocked out slows a unit), as the old declaration had it; the converter had to learn to follow calls into helpers converted in earlier steps. The tick counter and length became the `Clock` resource (`SimData::clock`), so systems read world time through their views. Then behavior (`BehaviorSystem`, `simulation_behavior.cpp`), with its own target grid and query scratch; `choose_target` takes the grid and scratch of its caller, and the helpers behavior shares with combat (`aim_hardpoint`, `aim_point`, `attack_victim`, `damageable`, `engages`, `world_point`) became templates. Its view found two writes the hand-written declaration lacked and DebugValidation's runs never reached: starting an engagement and sending a flyer to loiter clear the unit's group speed limit and its group (`LocomotorColumns`, `GroupColumns`), which the typed view checks on every line at compile time where the copy check sees only the branches a run takes. Then combat (`CombatSystem`, `simulation_combat.cpp`: shield refresh, targeting, turrets, weapons, projectiles, damage), with its own target grid and scratch; removing the dead is a separate member-function system after it (`removal`, still writing everything until step 6 queues removals), so the table has eight systems. The damage helpers it shares with removal (`apply_damage`, `area_blast`, `hull_share_of_parts`, `parts_all_destroyed`, `target_size`, `ticks_for`) became templates; the combat counters became the `CombatCounters` resource and the combat random stream the `CombatRandom` resource (a core `Pcg32` has no `SimData` id), and `hull_floor_share` moved to the internal header with the helper that uses it. The world's own grid and query scratch are gone: every system has its own. Then publish (`PublishSystem`): the snapshot is its own output (`SimulationWorld::snapshot` reads it), so `SimData::snapshot` went. Six of the eight systems are on typed views; commands and removal stay member functions with full access, since they spawn and remove entities, until step 6 queues structural changes for the barrier. With no system left for it, the copy check was then removed; `DebugValidation` stays, empty, for later time-consuming checks.
-- Recipes, step 5 of the simulation's migration, first part (2026-11-15, [ecs-design.md](ecs-design.md) section 8): one construction path for entities from XML types. `TypeRecipe` (`battle/type_recipe.hpp`) holds what a type gives every entity of it, read once from its XML and model (`build_type_recipe`, `type_recipe.cpp`); `make_spawn(recipe, instance)` makes the `EntitySpawn` from it and the per-instance values (position, heading, owner, look, whether there is a ground, and a placed object's transform). `Battle::spawn_of` and the map builder both use it: placed objects read a type's XML once per type and model instead of once per placement, and its warnings appear once. Where the two paths differed, a type now behaves the same however it appears (the owner's choice): a building spawned at runtime blocks the ground like a placed one (`type_obstacle_shape` and `place_obstacle` split the XML rectangle from its placement), an immobile object spawned in space keeps ships clear by its radius, and following the ground needs a valid ground for placed objects too. `placement_transform` gives a runtime spawn the transform a placement would have. State hashes unchanged (the reference battles spawn mobile units only); `test_type_recipe` covers the footprint, the space radius, and the radius through a placement's scale. Then the simulation's side (the owner's decision): `EntityRecipe` holds a type's data and `EntitySpawn` is a recipe id plus the instance's values; `SimulationWorld::add_recipe` validates a recipe once and keeps equal recipes as one (a company member with its team's speed, or a placement scaled differently, is a variant recipe of its own); entities point at their recipe's combat and movement profiles instead of copying them (`CombatState::profile`, `LocomotorColumns::movements`), and their type name is their recipe's. `make_spawn` returns the recipe and the instance (`PreparedSpawn`); `Battle` registers recipes as it builds the map and as spawn orders come (`spawn_of` returns a `Result`), and `MapEntity` carries the recipe beside the instance. Tests describe entities in one flat list (`TestSpawn`, the old field layout) that `test_spawn` registers and spawns. State hashes unchanged; the 3,300-entity battle ticks in 3.2-3.4 ms against 3.4-3.7 ms before, measured in turns on a quiet machine.
-- Damage queue, compacting removal, and per-component hashing, steps 6 and 7 of the simulation's migration (2026-11-15, the owner's choice of one declared hash change; [ecs-design.md](ecs-design.md), section 8): combat and contact queue their damage (`DamageQueue`: hits and misses with their blasts, crushes), and a resolution system after combat (its own tick layer, `resolution`) applies it in queue order; a shot whose victim died earlier in the tick strikes the body without damage (the owner's rule: two units firing at once both hit). Deaths follow in dense order, each entity once per tick, in rounds until a round kills nothing, so a death blast kills in the tick it goes off and so do the blasts it sets off. The dead leave at the end of the tick in one stable pass (`remove_entities`), so the dense order is the spawn order; a script's destroy command uses the same pass at once. The state hash goes component by component, pooled components only for their members, recipes once each. Every expected hash in `check-battle.ps1` changed once (reference 0xbed05879a9bfff2c); outcomes stay close (the reference battle 471 shots and 10 kills against 472 and 10, the capital ships the same 3,789 shots with 50 more hits) and tick times unchanged. The crushed counter moved from contact to the combat counters. `test_damage_resolution` covers the shot at a body, a chain of death blasts, and the survivors' order.
-- The simulation ticks at 60 Hz (2026-11-15, the owner's decision, with the budget of 60 frames per second; it was 30 Hz, an engine choice). The rate is one constant, `default_ticks_per_second` (`simulation/simulation.hpp`), which the clock, the world, `Battle`, and `BattleRuntime` take as their default; XML values per 30 Hz frame of the original are converted apart (`assets/legacy_units.hpp`) and are unchanged. Durations the simulation counted in ticks are now seconds turned into ticks by the clock: the retarget interval (1/3 s), the chase replan (1 s), the group cohesion stall (3 s), all hash-neutral at 30 Hz; and separation's push limit, 15 radii per second (half a radius per tick at 30 Hz; not bit-identical, so the large Utapau battle's hash moved with it). `BattleRuntime` now passes its tick length to the scripts' host, which had kept 1/30 s whatever the battle's rate, so Lua `Sleep` and game time would have run at double speed. `EAWEngine battle --tick-rate <hz>` runs a headless battle at another rate (a log replays only at the rate it was recorded at, which the log does not record yet); the headless default is 6000 ticks (100 s), and `check-battle.ps1` runs twice the ticks, the same game time (reference 0x5e486b97af004368). On one binary, 30 Hz and 60 Hz agree in the space battles and the large land battle (hit rates 80.4% and 80.6%); the small land battles differ (the reference 471 shots and 10 kills at 30 Hz, 416 and 14 at 60 Hz), and a sweep of its rate (30 to 120 Hz) moves to a plateau from about 60 Hz on, so the change looks like the coarser 30 Hz step's error (walkers crush more at finer steps), not a remaining per-tick rule. Tick times per tick are unchanged, so a second of battle costs twice as much: the large battle averages 3.0 ms a tick, 6.0 ms per 60 Hz frame. The two test battles counted in 30 Hz ticks now count seconds. `lua-survey` runs 600 ticks by default (10 s of script time, as before).
-- Battle frame benchmark (2026-11-15, the owner's request): `EAWEngine battle --stress-orders` gives the spawned units a new order every second per group of eight (move, attack-move, attack, guard, to fixed-seed random points or hostile targets, staggered over the ticks; `sandbox/src/battle_stress.*`), and they cannot be killed so the load stays constant; every headless battle prints its frames against the 60 FPS budget (over budget, average, 99th percentile, worst; the spawn tick not measured). `scripts/benchmark-battle.ps1` runs it 10 seconds at 10, 50, 100, and 500 units and fails on any frame over 16.7 ms: today 10 and 50 units pass, 100 go over once on the first tick of fighting, 500 (4,400 entities) average 15.3 ms with 110 of 600 frames over (route searches and separation about 6 ms each a tick, the first tick's target search about 125 ms). The three copies of an entity-id ordering (formation, the headless auto-move, the stress orders) became `EntityId`'s defaulted `operator<=>`; state hashes unchanged.
-- The remaining pools, step 3's rest after the declared change (2026-11-15, the owner's choice: each a declared hash change, the battles' outcomes unchanged). Flight: the minimum speed and cruise height left the core table and joined the flight manoeuvres in one pool, `FlightColumns`, for flyers only (a recipe minimum speed above 0); `flies(data, index)` is the flyer test. The hash covers flyers only (reference 0xd6af1ea5b889a0e3); every check battle's shots, hits, kills, and crushes are as before. Formation: a type's formation order, spacing, and moving alone are read from its recipe (hashed once per recipe) instead of three per-entity copies, and a company member's team is a pool (`FormationColumns`, entities spawned with a team other than the default; the rest form up with the default team); outcomes unchanged. Group cohesion: a pool (`GroupColumns`) its members join with a formation move of more than one unit and leave when the move ends, is broken off, or stalls (`leave_group`; `waits` is false for others); outcomes unchanged. The entity-table check (`check_entity_table`) caught the table's new last group. The route-search budget is 15,000 nodes a tick (was 30,000, set for 30 Hz; the owner's choice): `benchmark-battle.ps1` at 500 units averages 11.0 ms against 13.6 ms, 42 frames over budget against 75, with 9,040 routes planned in 10 seconds against 13,107; only the large Utapau check battle changes (5,712 shots, 198 kills against 5,599 and 209); a formation's one shared route may now finish on its second tick (`test_path_budget_and_shared_routes`). Combat: a pool (`CombatColumns`, one `CombatState` per member, which now holds the stance, whether the body aims, and the last shot's tick) of the entities whose recipe has health, a shield, weapons, or hardpoints; the others read `no_combat()` through `combat_state`, and scripted conditions, damage, and stances reach members only (`test_simulation`'s stance case now uses a unit with health); outcomes unchanged, and a 500-unit tick costs the same as before once the target search looks each candidate up once (A/B, 12.0 against 12.2 ms).
-- Squads, step 1 of [pathfinding-design.md](pathfinding-design.md), the simulation's part (2026-11-15; the owner's choices: a team entity, and attacks on a team meaning any of its members). A team is an entity whose recipe says so (`EntityRecipe::team`, its ring's arrangement; XML Create_Team_Type containers carry TEAM, SELECTABLE, and UNIT_AI and their own Max_Speed), without a body: no footprint, no combat, never hit. Members are spawned naming their team (`EntitySpawn::squad`, the index of the team's spawn earlier in the same list, resolved by whoever spawns it) and stand in its ring (`team_shape`, now shared with formation slots, so the shape lives in one place). Orders to a member go to its team, each team once, and an attack on a member is an attack on its team; a stance set on a team reaches its members (`for_squads`). The team plans the route and chases an ordered target until its members' shortest weapon reaches it (`pursue_squad_target`); members walk straight to their slots each tick and never chase on their own; the team waits for members more than its extent plus 40 units behind, for at most 2 s at a stretch, and under a standing order while its members fight (engine choices). An attack ordered on a team has each attacker take the nearest living member, and it ends with the team (`CombatState::ordered_squad`). A team leaves with its last member, without a death; destroying a team destroys its members; the rings of teams that lose members close up. Snapshots name a member's team (`EntitySnapshot::squad`). Pools `SquadColumns` and `SquadMemberColumns`; `test_squads`. Then the battle layer: a company with a team container spawns, at runtime and as placed on a map, a team entity per `Max_Squad_Size` members (`build_team_recipe`: the container's speed, turn rate, acceleration, movement class, and formation fields; the team at its members' center, spawned before them in its list), and its members join it, not selectable on their own; `TeamMovement`, which gave each member the container's speed, went (members keep their own speed and the team moves at the container's: Stormtrooper_Team .8 against 1), and one lookup finds a company's container (`type_team_container`). Members walk straight to their slots and keep a way they planned around a blockage until their slot moves 4 units (an engine choice; without it a member whose slot lies on ground it cannot enter planned every tick). The reference battle now fights as squads (1,004 shots, 15 kills against 416 and 14), the large Utapau and AT-AT battles change too, the space battles are as before; `test_company_squads`. Measured with `benchmark-battle.ps1`: 10 to 100 units pass (100 units' worst frame 13.5 ms), 500 units average 16.8 ms against about 12 before, with separation at 9.3 ms (53,683 touching pairs a tick against 28,670: teams have no body, so two teams' rings can stand on one spot) and the crush scan at 4.8 ms (every moving crusher against every entity); design steps 3 (the shared index) and 7 (avoidance with the team as one body) take these on. In the sandbox a click on a soldier selects its team (the soldier answers; the team has no voice), a box over any of a team's soldiers selects the team once (`entities_in_rectangle`), and a selected team's soldiers are highlighted (`ScenePresentation::build`); its look is for the owner to check.
-- The pathfinding audit, step 2 of [pathfinding-design.md](pathfinding-design.md) (2026-11-15): `EAWEngine path-audit` plans seeded start and goal pairs per movement class on every stock land map (on the battle's ground, footprints stamped) and reports reach, nodes, time, and length (`sandbox/path_audit.*`); `scripts/compare-path-audit.ps1` compares two runs pair by pair. The baseline of the grid A*: 76 maps, 98,800 pairs, 82% reached, 1,385 nodes and 0.25 ms a search on average (95th percentile 6,722 and 1.1 ms); [tools.md](tools.md#path-audit).
-- Contact's grid by footprint, step 3 of [pathfinding-design.md](pathfinding-design.md), first part (2026-11-15): `SpatialGrid` can be built with radii, an item lying in every cell its circle covers and reported once (from the first cell its cells share with the query's), and `query_overlapping` finds the items whose circles reach a query's; contact builds one such grid after movement (16-unit cells, an engine choice) for crushing and separation, so a separation query reaches only its own footprint (it reached its own plus the largest on the map) and crushing asks the grid instead of scanning every entity for every moving crusher. State hashes unchanged (the pairs found are the same). Measured against the previous build, alternating, at 500 units: contact 12.8 ms a tick against 14.2, frames over budget 113-127 of 600 against 240-263. The worst tick got slower (contact 57-80 ms against 29-37): `benchmark-battle.ps1` spawns its four armies over each other (each `--spawn` a grid of 125 groups 160 units apart, the requests 180 apart), so its first ticks separate about 465,000 overlapping pairs; spawning on free ground (design step 4) removes that. Then the staggered target searches (step 3's second part, a declared hash change): a unit's first search waits for a phase from its slot (as standing-order scans and shield refreshes do), so a battle's first tick no longer searches for every unit at once, and a weapon its unit's target is out of reach of looks for its own victim on the unit's retarget beat, not every tick (`retarget_due`). Against the previous build: combat's slowest tick 3.9 ms against 19.9 in the large Utapau battle, 8.3 against 38 at 500 units on the benchmark. Three combat tests counted the ticks to a first shot and now wait for the shots, or order the attack.
-- Clearance, step 4 of [pathfinding-design.md](pathfinding-design.md) (2026-11-15). The owner's decision after the stock data showed `UnitCollisionClass` does not measure size: each unit plans and moves with its own footprint radius. `ClearanceField` (`simulation/pathfinding.*`) holds, per movement class, how far each cell's center lies from ground the class may not enter and from the map's edge; a unit fits where the clearance is at least its radius. `Footing` (a mask, a field, a radius; a plain mask converts to one without clearance) is what searches, straight-line checks, and nearest-cell searches take; region labels are cached per whole-unit radius. The world keeps a field per movement class its ground units use, up to their largest radius and at least 65 (`refresh_clearance` at the start barrier; a footprint stamp recomputes only the cells it can affect), and a battle builds the fields of its spawnable types while the map loads (`reserve_clearance`), so no tick builds a whole field. Movement, walk clips, and separation's pushes never step onto ground a unit does not fit (`stands_at`); a shared formation route fits its largest member. Spawns and teleports land on free ground (`free_ground`: ground the unit fits and off every other ground unit, the nearest point on rings around it, through an occupancy grid built at the tick's first spawn). `benchmark-battle.ps1` now measures from the tick after the spawns land (it counted the spawn tick). At 500 units: 15 of 600 frames over budget against 112, average 11.8 ms, worst 28.9 ms against about 110; the spawn overlaps of its first ticks are gone. `path-audit` audits each movement class at the size buckets (radius 7, 20, 35, 65). `test_clearance`; the narrow-passage test's gap is three cells, room for its tank-sized units; the separation test spawns its overlapping units before the ground exists.
-- Destinations placed at the order, finer size buckets, routes off walls (2026-11-15, the owner's model of movement: the destination fits the unit, the route respects its size). Size buckets every 2 units from 2 to 68 (`footing_buckets`, from 7, 20, 35, 65). A squad's team stands and plans with its largest soldier's footprint (`GroundMoverColumns::footing_radii`, hashed, kept by `reshape_squad`; `footing_of` reads it). Orders place their destinations: a move's point moves to the nearest place the unit fits (`place_destination`: room for it as a whole, a squad by its extent, off standing units but those of the order and their soldiers), a group's block first shifts to where all of it fits, then single slots move (`place_block`); `free_ground` and `place_destination` share the ring search (`nearest_free_point`) and the occupancy check (`overlaps_unit`). Route searches add a cost to cells within 5 units beyond the unit's radius of a wall and smoothing keeps that margin where it can (the finer buckets made routes hug corners: 112 of the 150 units of the budget test arrived in time, against 150 with the old buckets). Arrival: the crowd at a goal is allies that stopped short of their own goals (or that reached theirs where the unit's goal is occupied, or after 3 s without progress near its goal); a unit held a second within its diameter of its goal has arrived. Tests: a move onto a standing unit ends beside it; a group ordered against impassable ground keeps its block's spacing (failed without the block shift: members 10.2 apart). Not tested: a squad's route by its soldiers' size (no grid gap separates a radius-2 soldier from a point at 10-unit cells). Measured (Release): large Utapau 6.1 ms a tick (2 of 1,798 frames over, one 44 ms spike), the 500-unit benchmark 8.0 ms (0 of 600 over); a route search on Utapau 0.21 ms on average over all 34 sizes (0.17 over the old four). A declared hash change in all five battles (space outcomes unchanged; the new column is hashed).
-- Detours (2026-11-15; the owner's report: an AT-ST stopped for good at a line of stormtrooper squads, which could not make way, packed side by side; the owner's rule: a unit with an order reaches its destination or the closest point). A unit held up for 2 s beside a standing unit plans around the standing units near it (`NavigationSystem::plan_detours`; `GridPathfinder::set_obstacles`, which the cell search and the smoothing respect; a pathfinder of its own without chunks, at most 16,384 nodes; at most 4 detours a tick, the marked cells cleared after each), follows the detour waypoint by waypoint (`RouteColumns::detoured`, `blocked_ticks`, hashed), and stops where a detour ends where it stands. A goal among standing units is left to the arrival rules, and moving jams do not detour (both broke the budget test's crowds at first). `test_group_move`: a large unit sent through a line of allies too packed to pass between gets around it and arrives, touching no one (it stopped at the line before). Measured (Release): large Utapau 5.4 ms a tick (2 of 1,798 frames over; the slowest navigation tick 18 ms, a detour search), the 500-unit benchmark 7.7 ms (1 of 600 over). A declared hash change (the large battle; the others keep theirs). Chained giving way followed: see the next entry.
-- Giving way in any direction, and lanes (2026-11-15, the owner: units may step diagonally and in other directions where the way is free, then go back; lines open). The point aside is the shortest step out of the passer's corridor in 16 directions, shortest first, then the unit's own side (`NavigationSystem::make_way`); the point must be free, standable, reached on its ground, and the way there must pass no unit closer than contact (`way_clear`; a step back past the passer jammed the narrow-passage test). Where only one standing ally holds the point, it steps on the same way, up to three allies deep (`shift_on`, `blockers_at`, `may_shift`). A moving unit that was turned aside or slowed asks a standing ally ahead before it is held (a unit going straight at 95% of its speed asks no one). A unit held on its way aside walks back instead of forgetting its place (it was asked again from where it stood and drifted). `test_group_move`: a walker at a block of allies three deep goes straight through the lane they open (it slid around the block before, 68 units off its line) and every ally returns to its place. Measured (Release): the 500-unit benchmark 8.2 ms a tick (3 to 10 of 600 frames over), against 7.3 ms (1 over) before; the price of asking and of units actually stepping aside. A declared hash change in the reference and the large battle.
-- Giving way cheaper, and detours that cannot start end (2026-11-16, measured before step 8 of the ECS migration: route searches averaged 0.16 ms a tick in the 500-unit benchmark, ground avoidance 4.3 ms, 2.5 ms of it giving way: 73 asks a tick, nearly all failing, each trying its candidates again every tick). A unit whose ask found no place waits a quarter of a second before asking again (`RouteColumns::ask_waits`, hashed); each candidate is checked once, the cheap checks first. Giving way fell to 0.7 ms a tick, navigation from 4.5 to 2.8 ms. A unit held up again before passing a waypoint of its detour has reached the closest point and stops (`detour_fresh`, `detour_under_way`): in the budget test a unit in contact with standing units planned the same detour every 2 s and never stopped. Measured (Release): the 500-unit benchmark 7.5 ms a tick, 0 of 600 frames over (worst 15.2 ms); 100 units 1.4 ms. A declared hash change in all five battles (the new column is hashed; the space battles' outcomes are unchanged).
-- Death clones' own models (2026-11-16, combat presentation): 184 stock types die into a death clone with a model of its own (every capital ship, station, and transport: `EV_STARDESTROYER_D.ALO`, `RV_CORVETTE_D.ALO`, the stations' `_BREAK` models), which breaks apart in its DIE clip. Before, the wreck kept the unit's model, which has no DIE clip, so such ships vanished on death. The scene build loads the normal clone's model with its clips when it is not the type's own (`death_clone_mesh`, beside debris models in the same mesh table; `normal_death_clone` is the one place the clone is chosen) into `DeathStyle::mesh`, and `ScenePresentation::corpse_instance` draws the wreck with it (state 0: the clone's model has none of the unit's damage states). Presentation only. Wrecks' proxy effects (same day): wrecks are drawn without an entity, so attached effects, which follow entities, never played on them: the break-apart models' proxies (41 on the Star Destroyer's, 46 on a station's) and land rubble's `_ALT` fire. `BattleEffects` now keeps a third attached-effects set for wrecks, keyed by the dead unit's id (`UnitAnimator::first_wreck` and `wreck_keys`), apart from the units' set, so picking and tracks still never see a wreck.
-- A wreck's end sound (2026-11-16, combat presentation): `Death_SFXEvent_End_Die` (18 stock types: the AT-AT, AT-ST, AT-AA, SPMAT, and MPTL death clones, Veers' AT-AT, the pod walker, the Gargantuan, the Dark Troopers) plays where the wreck lay when its persistence ends, with its `Death_Explosions_End`. Every stock user has both and names a large explosion sound, so it is read as the final explosion's sound (an inference). `DeathStyle::end_sound`, `UnitAnimator::EndedCorpse::sound`, played by the battle frame. The tag status's debris rows (`Death_Breakoff_Prop`, `Debris_*`), done on 2026-11-13, were still marked as gaps and are corrected.
-- Input load (2026-11-16, the roadmap's Platform and input stage 2): the sandbox times `poll_events` and counts the raw input records each frame (`InputLoad`, `engine_app/sandbox_overlay.hpp`), shows them in the Statistics panel, and prints the run's average and worst frame at exit. `scripts/check-input-load.ps1` floods the sandbox with synthetic relative mouse moves (8,000 a second by default) and fails above 2 ms for the worst frame's read. Without input the read averages 0.005 ms, the worst frame (window startup) 0.8 ms; the flood run needs the window to hold the focus, so it has not run unattended yet.
-- Key rebinding (2026-11-16, the roadmap's Platform and input stage 2, the owner's choices: an action table, a bindings file, and a panel ahead of the in-game UI; no controllers yet). `Key` (now in `platform/keys.hpp`) covers the whole keyboard (letters, digits, F1-F12, navigation, modifiers, punctuation), each with a name for text (`key_name`, `key_from_name`); the window maps letters, digits, and function keys by offset. `InputBindings` (`platform/input_bindings.hpp`) holds a caller's actions with up to two keys each, answers down and pressed from the input, and reads and writes `action = key, key` text (each line it cannot read is reported and leaves that action as it was). The sandbox's 22 actions (`engine_app/sandbox_actions.hpp`: camera pan, fast, rise and sink, reset, mode; the attack-move, guard, and formation modifiers of a right-click; spawn, owner, and type cycling; pause, bounds, passability, model animations) replace its key reads; Escape, F1, and the panels' text-editing keys stay fixed. `input_bindings.txt` next to the executable is read at start (problems logged) and written after each change; the Controls panel (`--panel controls`) rebinds a key slot with the next key pressed (Escape cancels, Backspace or Delete clears) and resets to the defaults, which are the sandbox's keys until the original's hotkeys are transcribed from the owner's screenshots. Tests: `test_input` (every key's name reads back; bindings read, report, and write back).
-- Ocean waves, first slice (2026-11-16, the roadmap's item h). Water is drawn as a grid (cells of about 12 units, at most 512 a side; `scene_terrain.cpp`, `append_water`; lava and ice stay one quad) whose vertices keep the depth beneath them (level less ground height, the second texture coordinates' x). With enhanced water the vertex shader moves them by four Gerstner waves around the map's wind (wavelengths 170, 97, 61, 37 units, amplitudes 4.5, 2.6, 1.6, 0.9, deep-water speeds under a gravity of 30 units per second squared, steepness bounded below folding; `ocean_waves` in `sandbox.hlsl`), faded from none at 6 units of depth to full at 40, so shores, shore foam, and units in the shallows keep the flat plane, which the simulation keeps too; the surface normal follows the waves, and where a crest pinches the surface, foam shows (`OCEAN_CREST_FOAM_START`). All values are engine choices for the owner to tune by eye. Legacy water is unchanged (Kamino from the same camera: 2 of 1.44 million pixels differ, from rounding along the grid's edges); enhanced water at Kamino differs in 4.8% of the frame, on the water. Sliders (same day): with enhanced water, the Graphics panel tunes the waves (`VisualOceanWaves` in `D3d12GraphicsSettings`, passed as `ocean_shape` and `ocean_shore` in the frame constants): height scale (at most 1.25, which keeps the waves within the mesh's bounds), length and speed scales, crest sharpness (each wave's share stays bounded for the largest height, so no setting folds a crest), the calm and full depths, where crest foam starts, and Defaults; at the defaults the picture is the first slice's (no pixel differs by more than 1 of 255). The owner's values became the defaults (2026-11-16: speed 1.4, crest sharpness 0.2, calm below 4, full from 10, crest foam from 0.12). With foam on most crests the deep ocean showed a regular lattice (the owner's screenshot): the four waves' crests repeat and the foam's breakup sampled the tiling normal map (with crest foam off it vanished). Crest foam now gathers in patches: a broad two-octave value noise of about 420-unit cells drifting with the wind decides where crests may foam, and a fine one of about 7-unit cells breaks it up, both procedural in world space (`ocean_crest_foam`), so nothing repeats; shore foam is unchanged. With waves full from 10 units of depth, a shelf in the sea floor shows as a sharp line between calm and waves. The owner's second tuning, for bigger waves, became the defaults the same day: height 1.15, length 1.77, speed 2.04, crest sharpness 0.2, calm below 4, full from 3 (below the calm depth: the waves start at full height just past 4), crest foam from 0.3. Waves run only where the water is open sea (the owner, 2026-11-16): `ocean_map` (scene layer, one place) names the ocean planets matched in the map's file name, Kamino and Manaan as the owner chose, and sets `VisualLightRig::ocean`; elsewhere the frame passes no height and no steepness, so the water lies flat without crest foam. A corpus survey showed why a measure cannot decide it: the share of the map under water puts the MP Dagobah swamp (57% at least 5 deep) beside Kamino (60%, none 20 deep) and Mon Calamari (61%). The Graphics panel's waves setting is ocean maps (default), on, or off. Tests: `test_ocean_maps`. Not yet: wave motion in the motion vectors (water is blended, so TAA reprojects it by depth; ghosting is for the owner to judge).
-- Combat's target choice and turrets on the job system (2026-11-16, ECS step 8, measured next after route searches: at 500 units target choice took about 0.4 ms a tick and turrets 0.4, weapons 0.3). Combat's loop is split: every armed entity first picks its target and turns its turret (`update_target`, `aim_turret`, reading the others' state, which nothing changes in this phase since damage waits in its queue, and writing its own), in chunks of 8 (`aim_grain`) with a query scratch per chunk; then the weapons fire in entity order, as they draw from the one combat random stream. Each entity's weapons used to fire right after its own aim; split serially first, every battle's hash stayed the same, and so they do in parallel. Measured (Release, 500 units, 7 workers against none): combat 1.2 to 0.82 ms a tick, its slowest tick (the opening target search) 6.2 to 2.3 ms; the tick 5.7-5.8 ms. Rebuilding only the chunks a ground change touches was measured and left for base building (two resets in the large battle's 1,800 ticks, 25 ms in all). Hashes unchanged.
-- The sandbox replays order logs (2026-11-16, the owner: to see a recorded battle's end, not only its numbers). `sandbox --replay <file>` takes the log's map (unless `--map`) and makes its spawned types spawnable without spawning any, gives each order at its tick as the headless replay does, pauses at the log's end (it does not run on), and prints the state hash against the recording's; the player's orders and spawns are refused meanwhile (`SandboxSession::give_order`, the one way the sandbox's input reaches the battle); with `--capture` it runs there 240 ticks a frame and captures the end. The Kamino recording ends in the same state in the sandbox as headless (0x5e34e8af31380a76). `format_hex` moved to `sandbox/text_format` (the battle runner had its own).
-- Packed group moves, route repair, and detours around held movers (2026-11-16, the owner's Kamino recording: of 10 Canderous tanks ordered across the map, 7 stood still for good, and a group stopped 200-350 units from the ordered point). Group moves on the ground pack the members' footprints around the ordered point (`place_group`: members nearest the point first, each on the free point nearest it on rings of its size, on that ring the one nearest the member, `group_slot_gap` 0.25 of a radius apart; `nearest_free_point_toward`); formation spacing applies only to formation moves (the Canderous tank's `FormationSpacing` 2.75 had made slots 169 units apart). A unit held up that can no longer see its next waypoint across its ground (avoidance pushed it around a corner) plans a short leg back to it (`repair_routes`, at most 8 a tick). Detours count held movers as obstacles besides standing units (a knot of movers held between a pillar and a wall never detoured), at most 3 times a route (`RouteColumns::mover_detours`, hashed), not where standing units already take the goal (a crowd at the goal is the arrival rules'); a way closed only by held movers no longer ends the order (a second search around standing units alone decides), and a detour that reaches the goal no longer keeps the goal's cell center as its last waypoint (held short of it in a crowd, a unit never came to its last leg and stood "moving" for good). Flow priority in avoidance (the unit further along leaving the avoidance to the other) was tried and dropped: the recording settled the same without it. Not the cause: the unit circles (a Canderous tank's radius 22.6 against a half-length of about 26 lets hulls look overlapped by up to 7 units; circle sizes are their own change). The recording replayed: all 10 arrive (6 exactly, 4 at the crowd's edge, 26 to 51 units off). Tests: `test_group_move` packs ten tanks with spacing 2.75 within two rings of the point; the block-shift case now checks packed members beside impassable ground. Measured (Release, 500 units): 5.9-6.3 ms a tick, 0 to 3 of 600 frames over between runs of the same battle (this machine's noise), route searches 9,672 against 4,731 (repairs and detours). A declared hash change in all five battles (the new column is hashed).
-- Route searches in batches on the job system (2026-11-16, research plan item 2, second half). Single-unit requests at the front of the queue and the members of a shared request are planned `route_batch` (8) at a time (`plan_route`, `plan_member`: they read the state only, into `PlannedRoute`), then given in order under the same budget check as one by one (`give_route`); routes the budget does not reach are dropped and planned again in a later tick, so the result is the serial one (every hash unchanged; check-battle compares parallel and serial). A full batch runs on the job system, one search a chunk with its own scratch (`RouteScratch`: a route and a leg pathfinder, about 16 bytes a ground cell each, made only when a batch runs in parallel); smaller ones and every batch without the job system run serially, one route at a time (planning ahead serially only searched what the budget might not reach). Navigation data is prepared for each batch's footings and frozen while it runs. Measured (Release, 7 workers): the large Utapau order's worst route-search tick 18 to 10-12 ms, navigation's worst tick 17-24 to about 13 ms; the 500-unit stress battle 0.1 ms a tick slower (6.0 against 5.87, A/B; its requests are small). What remains of the spike is serial: the group's shared search and chunk graphs built the first time a size appears.
-- Navigation data shared (2026-11-16, research plan item 2, first half). A ground's region labels and chunk graphs live in `NavigationData` (`simulation/pathfinding.hpp`), which searches read and `GridPathfinder::prepare` builds ahead (regions as well as chunk graphs now); building while it is frozen (searches running in parallel) is a programming error. Navigation's three pathfinders (routes, short legs, detours) search with one `NavigationSystem::navigation_data_`, passed to `find` and `prepare` (each kept its own copy before, built three times after every footprint change); a pathfinder given none keeps its own, so the benchmarks, the path audit, and the tests are unchanged. Hashes unchanged.
-- Job system: cheaper loops and wakes (2026-11-16, research plan item 1). `parallel_for` runs one chunk on the caller; otherwise it queues a helper job per worker (at most one per chunk beyond the caller's, at most `max_parallel_helpers` 64, on the stack: no allocation per call), and the helpers and the caller take chunks in turn from a shared atomic index; chunk boundaries still come from the count and grain alone, so results are unchanged. `wake(count)` calls the OS only when a worker sleeps (`State::sleeping`, counted with sequentially consistent operations against the epoch) and wakes `count` of them, not all; a ready home fiber (only its own thread may resume it) still wakes every sleeper (a single wake reached another worker and the waiting thread slept on: the test suite hung until this was fixed). Measured (A/B, 7 workers): `jobs-loops` (new suite) 80.1 to 67.7 ms, `jobs-tiny` 23.5 to 20.0 ms, `jobs-math` unchanged; the 500-unit battle unchanged within noise (5.97 against 6.04 ms a tick; the job system is not a measurable part of today's tick). Hashes unchanged.
-- Profiling with Tracy (2026-11-16, the owner: Tracy as the main profiler). Tracy 0.14.1 (BSD-3-Clause; 0.15.0 was ten days old) is pinned by archive hash in `third_party/tracy` and fetched and built only with `EAW_PROFILE` (`build.ps1 -Profile`); its client collects on demand and listens on localhost only. `core/profile.hpp` is the only place that names it (`EAW_PROFILE_ZONE`, `_ZONE_TEXT`, `_FRAME`, `_PLOT`, `_FIBER_ENTER`/`_LEAVE`, `_THREAD_NAME`; nothing without the option). Marked: the simulation's layers and tick, navigation's route searches, giving way, detours, and ground avoidance, every job (the job system names its fibers and enters them on every switch, so zones follow a job across threads), the worker threads, and the sandbox frame. Checked: the default build fetches nothing; the profiling build compiles with the project's exception settings, passes the tests and the reference battle, listens on port 8086, and costs nothing measurable without a viewer (5.9 ms a tick at 500 units). Not checked here: a capture with the viewer (no viewer on this machine; the owner's).
-- Parallel systems, first: ground avoidance on the job system (2026-11-16, ECS migration step 8). The simulation takes an optional job system (`SimulationWorld::set_job_system`, not owned, not state; null runs serially with the same results; `eaw_simulation` now links `eaw_jobs`). ORCA velocities are planned for the steering units in chunks of 4 (`avoidance_grain`), each chunk with its own scratch (`AvoidanceScratch`), each unit writing only its own entry; chunks over the whole entity table left nearly all the work to one chunk (spawned units of a type are neighbours in dense order). The headless battle creates a job system (`--workers`, default the hardware threads less one), and `--check-determinism` runs its second run serially, so `check-battle.ps1` compares parallel against serial in every battle; the sandbox gives its job system to the world. Test: `test_parallel_avoidance` (two crossing groups of 48, serial and on 3 workers, the same hash every tick). Measured (Release, 8 hardware threads): ORCA 1.48 ms a tick serially, 0.43 ms on 7 workers; the 500-unit benchmark 6.0 ms a tick (7.5 serially), worst 13.9 ms, 0 of 600 frames over. Hashes unchanged. Route searches were measured first (0.16 ms a tick on average in that benchmark, budget-limited) and come next only where their spikes matter.
-- Giving way and stopping fixed after the owner's tests of the default move (2026-11-15: units stopped while others had not finished giving way; units that gave way did not return). A unit returning from giving way waits for its way back to clear (up to the giving-way limit) instead of giving up at the first blocked tick; the crowd rule stops a unit only when a standing unit occupies its own goal, and units giving way count neither as standing nor as a crowd. `test_squads` now sends a squad through a squad standing in a corridor (it failed on the previous code: the standing squad stayed 17 units aside); the corridor case of `test_group_move` checks the return to within a unit, and a new case moves a column of six through a corridor. The stopping could not be reproduced in a test (the passing squad arrived on the previous code too): its fix follows from the rule and is the owner's to check. Measured (Release): large Utapau 5.3 ms a tick, the 500-unit benchmark 7.5 ms (3 of 600 frames over, one spike of 48.7 ms not looked into). A declared hash change (the large and AT-AT battles).
-- Formation moves fixed after the owner's tests (2026-11-15; Alt + right-click: stopping short, standing for seconds, far gathering points, companies apart). The formation forms on the move (`GroupColumns::start_ahead`, `start_aside`; `FormationFrame::travelled`, `forming`, hashed: slots blend from where members stood into the formation over the first 150 units), so it neither waits for the block nor sends members back; its route is planned for the largest vehicle's or soldier's footprint, not a squad's circle (which ended routes short); files take members in the order they stand; a final slot a member cannot stand on moves to the nearest point it can. Members of a moving frame do not give way to each other, arrival rules and progress leave them to the frame (`in_moving_frame`, one helper for the three places), and `record_stop` records only where a move ends. Two arrival fixes for every unit: on its last leg the preferred speed reaches the goal within the horizon (ORCA had held a unit ten units short, fearing a standing unit beyond its goal), and a unit that came no closer for a second within its radius of its goal has arrived; the crowd at a goal counts allies whose stops lie within six summed radii (from four) and two footprints' widths beyond contact (from one). Tests: the cohesion test checks that nobody waits at the start; the passage test that all are through (x > 170, past the wall). Measured (Release): large Utapau 6.7 ms (2 of 1,798 frames over), the 500-unit benchmark 9.5 ms (2 of 600 over, worst 20 ms, from 8.6 and none). A declared hash change on land (the reference, large, and AT-AT battles); space unchanged. Not checked in the sandbox (the owner's to try).
-- Group moves after the owner's tests (2026-11-15). Reported: companies did not give way (stormtroopers, dark troopers phase 1 and 2) and stopped at a squad standing in their way; groups stopped short or ended far apart; companies stood for seconds before moving off, gathered far from where some stood, and drew routes a few units long. Changes: the default move is now `SimCommandKind::group_move` (`BattleOrder::move`; each member from where it stands to its own slot on its own route at the slowest member's speed, Solo units at their own; attack-moves to a point too); the frame is `formation_move` (`BattleOrder::formation_move`, logged `formation_move`; Alt + right-click in the sandbox; `Key::alt`, a lone Alt release no longer opens the system menu). A unit stops at a crowd of standing allies only when they stopped at the end of the same order or at destinations within four summed radii of its own (`RouteColumns::last_goals`, hashed); giving way no longer depends on size. A frame member's drawn route continues along the frame's route to its final slot. `test_group_move` (members from their own places, at the slowest speed, into their slots; a unit past a standing ally in a corridor). Measured (Release): large Utapau 6.1 ms a tick (2 of 1,798 frames over), the 500-unit benchmark 8.6 ms (0 over). A declared hash change; the space capital-ship battle changed too (auto-move is a group move there, without the shared route and waiting): 4,230 shots and 32 kills against 3,798 and 31. Reference 3 kills and none crushed, large 1,412 kills, AT-AT 3,414 shots. Not checked against the reported cases in the sandbox (the owner's to try).
-- Formation frames, step 7 of [pathfinding-design.md](pathfinding-design.md) (2026-11-15): a ground formation on land moves as one body. `form_frames` splits the selection by distance and gives each part a `FormationFrame` (`SimData::frames`, hashed): one route for the part (the path queue, `PathRequest::frame`), a point and facing moving along it at 0.9 of the slowest member's speed, waiting for laggers (at most 5 s at a stretch; a lagger that comes no closer for 3 s leaves). Members' offsets live in `GroupColumns` (`ahead`, `aside`, `sent`); `follow_frames` (behavior, `simulation_frames.cpp`) lays the slots out each tick, in files where the ground at the frame or any member is narrower than the formation, and sends the members by `follow_slot`, now shared with squads (it keeps a detour path until the slot moved 40 units). On arrival members take the final slots by where they stand. Squad soldiers whose slot lies where they cannot stand head for their team instead (they replanned partial paths over and over: the large battle's searches fell from 10,400 to 2,000). `unit_radius` replaces four copies of "a squad's extent, else the footprint"; `nearest_to_centroid` the commander search of two places. Measured (Release): the large Utapau battle 8.2 ms a tick (2.0 before frames; the whole army now walks in formation instead of most of it arriving early; 4 of 1,798 frames over budget, worst 18.3 ms), the 500-unit benchmark 7.8 ms (0 over). A declared hash change (space outcomes unchanged): the reference battle 20 kills and 17 crushed against 4 and 0, the large battle 1,253 kills against 1,471, the AT-AT battle 3,181 shots and 7 kills against 2,546 and 29. Tests: the formation's searches in the shared-route test 37 against 22 (members rounding the wall's end plan detours), bound under two per member; the formation and cohesion tests check forming up, moving abreast, and arrival at the destination; a new case splits two far parts. Not yet: companies queueing each other at a narrow place; the navigation and movement cost of whole armies in formation (avoidance and giving way among frame members) is not profiled.
-- Avoidance without overlap, step 6 of [pathfinding-design.md](pathfinding-design.md) (2026-11-15; the owner's rules: no pushing, allies give way, enemies never do). Ground separation is gone (flyers of one owner still push apart). Navigation picks each moving agent's velocity by ORCA (`simulation/orca.*`, the solver alone, `test_orca`; `simulation_avoidance.cpp`), asks allies in a held-up unit's way to step aside (`RouteColumns::give_ways`, hashed), and movement never ends a step inside another agent (`keep_apart`, now on land too). A squad is one agent, the circle of its extent; its soldiers hold their places in it. A unit stops at a standing unit on its destination or, after a second without progress, at a crowd of its allies standing there (`closest_approaches`, `stalled_ticks`, hashed). Last tick's velocities are hashed state (`MotionColumns::velocities`). The rules and their engine choices are in the design's 4.4; each came from a deadlock a test showed (head-on pairs stopping nose to nose, a unit stopping in front of a standing one, a queue's leader standing aside for those behind, units frozen giving way in a crowd, a jam at one corner waypoint). Measured (Release): the large Utapau battle 7.0 ms a tick to 2.0, the 500-unit benchmark 15.0 ms (62 of 600 frames over budget) to 8.0 (1 over, 18.5 ms); with every soldier an agent the large battle cost 39 ms, hence squads as agents. Outcomes changed (a declared hash change; space battles keep their outcomes, only the hashed columns changed): the large battle 1,471 kills against 413 (squads no longer jam at their spawns), the reference battle no crushed infantry against 4, the AT-AT battle 2,546 shots against 494; the look and feel of these are the owner's to judge. Tests: the formation in the shared-route test plans 22 searches against 12 (members off their line replan); 150 units to 24 points all arrive. Not yet: blocked-unit replans around units, soldiers kept apart from units outside their squad when they lag behind it.
-- Chunks, step 5 of [pathfinding-design.md](pathfinding-design.md) (2026-11-15). `ChunkGraph` (`simulation/chunk_graph.*`): the ground in squares of cells, per square the connected parts a footing fits, and which neighbouring parts touch; `chunk_route` plans over the parts. With a chunk layout, `GridPathfinder::find` routes over the graph of the footing's size bucket first and holds the cell search to the corridor of parts found (every corridor cell has room for the bucket, so the search always finds the way). Both layouts the owner asked for were compared with `path-audit --layout` over the 76 stock land maps (395,200 searches, reach unchanged in every one): one level of 16-cell squares expands 0.52 of the plain search's nodes, time 0.61, paths 0.5% longer (10% of them longer by more than 1%); two levels (32-cell squares over the 16-cell ones) 0.55, 0.69, and 1.2% longer, and fewer nodes than one level on no map. One level was the battles' layout (a declared hash change); it is slightly worse than the plain search on two small maps (Polus 02 1.10, Kuat Kidnapping 1.02). Refinement (2026-11-15, the owner's meaning of two levels): `ChunkLayout::refined` routes over the 32-cell parts, then over the 16-cell parts inside that corridor, then searches cells part by part, each search held to its part (`search_cells`) and ending at the crossing into the next part that is nearest the line to the goal; smoothing straightens the result. On the same audit: nodes 0.12 of the plain search, first stretch (`PathResult::first_stretch_expanded`, the nodes up to the first `refined_first_chunks` (2) parts) 0.035, time 0.38, paths 1.5% longer (21% longer by more than 1%), reach unchanged; least gain on Kuat Kidnapping (0.40). Refined is the battles' layout (a declared hash change: only the large Utapau battle, 0x37f1b2eb854364ff to 0xc0509bb692e38d6); at 500 units navigation took 0.22 ms a tick against one level's 0.30 in alternating runs. Every part is still searched when the route is planned: navigation does not yet plan only the first stretch and refine the rest as the unit advances (the first-stretch count measures what that would save). A battle builds its spawnable types' graphs while the map loads (`GridPathfinder::prepare`, 4 ms a graph on Utapau's 97,000 cells); a footprint change still drops them, and the next search rebuilds one in its tick (rebuilding only the squares a change touches is still to do). The cell search's window is not built (see the design). In battles navigation was already small: the benchmark at 500 units is as before (13 frames over budget, 11.8 ms); a formation in the shared-route test now replans members whose straightened leg grazes a corner (11 searches against 3 with one level, 12 refined; every member arrives), a corridor path hugging corners more often. `clearance.*` holds the clearance field and `Footing` (moved out of the pathfinder, so the chunk graph uses them without it); `test_chunks`. Before the battle layer: no stock content made teams, the check battles' outcomes unchanged and their hashes changed once for the new combat field (reference 0x458377bd9e75ba1f).
-- Pools, step 3 of the simulation's migration, first slice (2026-11-15): `ComponentPool<Columns>` (`simulation/component_pool.hpp`) keeps an optional component's columns for its members only, packed, with a sparse index from the entity's slot to its row; queries still walk the dense table and look a member up by slot (`find` returns nothing for others, `get` asserts membership), so the pool's packed order never decides an iteration order. The walk and turn plans played as clips are the first pools: an entity joins at spawn when its movement profile has such clips and leaves when it is destroyed. Then flight manoeuvres (yaw rate, half-loop, roll; flyers only), footprints (obstacles only; the column no longer needs an optional), and crush profiles (entities whose profile is not the default; `crush_profile_of` gives the default to the rest). The minimum speed, cruise height, formation, and combat columns stay in the core table until migration step 7, since the hash covers them for every entity with each entity's own values; group cohesion waits for step 6, since moves change its membership mid-tick. State hashes unchanged (the reference battle, the large Utapau battle, the Kuat space battle, and an AT-AT battle on Utapau whose four walkers are members of both pools, each checked against the code before); `test_component_pool` covers rows, defaults, swap-removal, and a slot joining again.
-- Components as column groups, step 2 of the simulation's migration (2026-11-15, [ecs-design.md](ecs-design.md) section 8): `SimulationWorld`'s 48 per-entity arrays are 16 component groups of columns (`IdentityColumns`, `PlacementColumns`, `LocomotorColumns`, `RouteColumns`, `FlightColumns`, `CombatColumns`, and the rest; `placement_.positions` was `positions_`), one array per field as before, so the memory layout, the broad-phase grid's position span, and every state hash are unchanged (the reference battle, the large Utapau battle, and a Kuat space battle checked against the code before). Swap-removal is one loop over `for_each_column` instead of 48 assignments and 48 `pop_back` calls; spawn checks that every column grew by one, and the constructor checks that the column and group lists name every member (`check_entity_table`).
-- Per-layer tick timings, step 0 of the simulation's migration (2026-11-15): `SimulationWorld::step` times its layers (commands, behavior, navigation, which now runs on its own before movement, movement, crushing, separation, combat, publishing) into `Stats::phase_seconds` and `slowest_phase_seconds`, and `battle` prints them. In the large Utapau battle (80 + 80 squads, 60 T2-B, 40 AT-ST, 3,300 entities) separation was 3.4 of the 4.5 ms of an average tick: each unit's neighbor query returned about 50 candidates that were sorted before most were found not to touch. Separation now drops the pairs that do not touch before it sorts, on a finer grid of its own (twice the largest footprint, at least 16 units): 1.9 ms, the average tick 3.05 ms, the state hash unchanged. The opening tick's 51 ms is mostly combat (38 ms: every entity searches for a target on the first tick; postponed to the pathfinding rework, roadmap work order 2g) and route searches (8 ms). Sub-hashes: `SimulationWorld::state_hashes` hashes the state's fields by subject (`StateSubject`: bodies, routes, combat, clips, flight, formations, orders, projectiles, random) in the same pass and order as `state_hash`, whose value is unchanged; `battle --check-determinism --hash-trace` keeps them after every tick of both runs and names the first tick and the subjects where the runs differ.
-
-- The sandbox has a frame watchdog: a background thread logs a warning (stderr, log file) when one frame step (camera, orders, picks, content, a simulation tick, presentation, unit animation, rendering, events) runs longer than 5 s (60 s on WARP or with GPU validation), naming the step and the simulation tick, and repeats every 5 s while it lasts, so a frozen window leaves a diagnosis.
-- Raw input is done: `src/platform` registers the mouse and keyboard for `WM_INPUT`. `InputState::raw_mouse_delta_x/y` carry unaccelerated device movement (absolute devices such as tablets and remote desktop are converted to deltas), and keys come from raw input with left/right Shift and Ctrl folded. Cursor position, buttons, and wheel stay on window messages so clicks outside the client area never reach the scene. Queued raw input is read in batches with `GetRawInputBuffer` each frame (high polling rate mice), and the overlay shows raw events per frame. `--no-raw-input` (`WindowDescription::raw_input`) falls back to window messages. GameInput (controllers) remains a later option.
-- Planned (engine extension, opt-in): explicit asset metadata. Legacy mode identifies the role of model parts by naming and placement (`pe_*` proxies are engine effects, `_ALT<n>`/`_LOD<n>` tags, proxies under `Damage_Particles` bones, `Damage_Decal` scorch bones, an emitter's mesh on its proxy's parent bone); optional namespaced fields (XML or a sidecar beside the asset) will declare these categories explicitly, overriding the inference, for effects first and then other parts. Keep new name-based role rules funnelled toward one place so both paths produce the same engine-native categories ([docs/roadmap.md](roadmap.md), "Engine extensions").
-- No exceptions: every target compiles with exceptions disabled (`/EHs-c-`, `_HAS_EXCEPTIONS=0`), and `src`/`tests` contain no `throw`, `try`, or `catch`. Recoverable failures (malformed game or mod data, missing assets, a map or model that cannot be built, invalid command lines or user input, a window or GPU device that cannot be created at startup) return `eaw::Status` or `eaw::Result<T>` (`core/status.hpp`) with a contextual `eaw::Error` message; propagate with `EAW_TRY` / `EAW_TRY_ASSIGN`. Callers that continue report the failure as a warning through the log (`core/log.hpp`: `log_warning(category, error)`), which reaches stderr, the debugger output window, and a per-run file in `logs/` next to the executable (`--log-dir`), and fall back (the sandbox shows the validation triangle, hot reload keeps the current view, a map skips the object). Programming errors and violated API preconditions are `EAW_ASSERT_MSG`; unrecoverable runtime failures (a failed D3D12 call after startup, device removal, failed fence waits) are `eaw::fatal_error` with their diagnostics; allocation failure is fatal. `install_crash_handlers` turns these, `std::terminate`, and hardware faults into one report on stderr, in the log file, and in an error window. Use non-throwing standard-library forms for data and user input (`std::from_chars`, `std::error_code` filesystem overloads, checked indexing).
-
-## Legacy-mode render backlog
-
-Moved to the Rendering track of [roadmap.md](roadmap.md#rendering); the later milestones are
-described there too.
+- `eaw_battle`, `eaw_presentation`, `eaw_scene`, `eaw_control`, `eaw_sandbox`: battles, the
+  presented battle, scene building, cameras and RTS control, and the sandbox's testable parts, each
+  included by its directory (`"battle/battle.hpp"`). A library includes only what it links, so the
+  build enforces the direction: scene building depends on presentation and battles, presentation
+  on battles, the sandbox on all; the battle library includes no render header and reaches the
+  render contract only through the asset layer, which uses it for vertex data.
+- Gameplay reads of XML types and models are on the battle side (`object_types.*`: the cached
+  catalog, movement classes, combat content loaders, type fields, model footprints, hardpoint
+  models; `battle_map_build.hpp`, the shared map walk; `spawnable_types`; `grid_targets`); the look
+  fields of types are with scene building (`type_looks.cpp`); rigs, clips, palettes, and looks are
+  in presentation (`visual_rig.*`, `entity_look.hpp`).
+- Build: `build.ps1` (configuration, clean, tests switch, C++20 at configure); Debug libraries and
+  executables carry the `_d` suffix, `DebugValidation` ones `_dv`, and the launchers start the
+  engine by its built file name.
+
+## Game asset layer
+
+- **Typed type fields** (`assets/type_fields.hpp`, `TypeFields`): a game object type's fields read
+  through its variant chain with one number rule (like C's atof, the stock "2.0f" suffix accepted,
+  other trailing text reported), comma lists, and yes/no values; diagnostics name the type, field,
+  value, and the variant that declared it. Combat content, object type properties, and projectile
+  visuals read through it. XML booleans go through one helper (`parse_xml_bool`).
+- **Legacy units** (`assets/legacy_units.hpp`): the original's per-frame values are converted in
+  one place (`speed_per_frame`, `acceleration_per_frame`, `degrees_per_frame`, `frames`, at
+  `frames_per_second` 30, a guess), keeping the readers' order of operations. Plain degree-to-radian
+  conversions are units, not guesses, and stay where they are.
+- **Game object catalog**: `GameObjectCatalog` resolves TED placed-object CRCs (CRC-32 of the
+  uppercased type name) to XML definitions and models through `Variant_Of_Existing_Type`
+  (`EAWAssetInspector map-objects`: 99.7% of stock placed objects reach an existing model);
+  `build_map_object_layout` adds per-object world transforms.
+- **Spawn catalog** (`assets/spawn_catalog`, `list_spawn_types`): the unit types with a model, plus
+  companies and squadrons without a model of their own where a member has one (the hero companies
+  such as `Darth_Team`, `Han_Solo_Team`; 36 in FoC). Death clones (types a `Death_Clone` entry names,
+  or that carry `Specific_Death_Anim_Index` or `Death_Persistence_Duration`) are wrecks, not units,
+  and are left out (770 land types became 494). `EAWAssetInspector spawn-types` lists them as the
+  launcher and sandbox do (stock FoC 2,710; with New_Order_Mod_Dev 6,063; with Republic at War
+  10,092).
+- **Models** (`Model`, `Skeleton`): every `_ALT<n>` damage state and `_LOD<n>` detail level kept
+  (`ModelMesh::damage_state`, `detail_level`); `drawn_model_bounds` (`assets/model_geometry.hpp`:
+  drawn meshes and submeshes, rigid meshes on their bone, hardpoint attachments intact) is the one
+  model extent gameplay and the scene use; `has_drawn_geometry` (a drawn submesh with a whole
+  triangle) decides whether a placement or spawnable type exists (on the stock maps 59 placements do
+  not: 42 particle files placed as props, 16 swamp bug swarms, one traffic shadow).
+  `assign_billboard_centers` computes each grass billboard's center (the mean x, y of each connected
+  piece of a billboard submesh), since the stock grass files leave their second UV set empty.
+- **Animations**: `sample_local_pose`, `blend_pose` (normalized-lerp rotations, linear translation
+  and scale), and `compose_pose` blend in bone space (`decompose_transform` splits bind transforms).
+  Clip roles, `parse_clip_name`, and `clip_file_stem` are in `assets/clip_names`; clips follow XML
+  `Land_Model_Anim_Override_Name` (27 stock uses through the variant chain: civilians, slaves, and
+  field commanders play RI_INFANTRY, EI_TROOPER, or NI_GMale_Urban_A clips), retargeted by bone name
+  (`ala_retarget_by_bone_name`); land models without clips: 290 (buildings and props).
+- **Particles**: `particle_rules` normalizes each particle system into a `ParticleEffect` of
+  `ParticleEmitterDesc`s under a `ParticleFidelity` profile ([Particles](#particles)).
+- **Effect catalogs**: `TerrainDecalCatalog` (`assets/terrain_decals`, `TerrainDecalFX.xml`: mode,
+  opacity, size, angle and randomness, fade, permanence, atlas cells and span; malformed fields and
+  cells outside the 4x4 atlas reported; the atlas layout is in compatibility-research.md);
+  `DynamicTrackCatalog` (`assets/dynamic_tracks`, `DynamicTrackFX.xml`: texture, mode, width,
+  opacity, segment length, fade distances and fade per second; a track without texture, width, or
+  segment length reported and left out); `SurfaceEffectCatalog` (XML `SurfaceFX` with their
+  `Surface_Settings`, each surface's `Dynamic_Track_Name` and its `_Left_Bone`/`_Right_Bone`);
+  `WeatherScenarioCatalog` and `sample_weather` (`WeatherScenarios.xml`).
+- **Sound**: `decode_sound` recognizes the format from the first bytes and converts PCM of 8 to 32
+  bits and 32-bit float to the engine-native 16-bit `Sound` (MP3 and Ogg are recognized and
+  reported as not supported yet); `ResourceLoader<Sound>` caches sounds; `SoundEventCatalog` reads
+  the XML `SFXEvent`s with presets; `resolve_sound_sample` finds samples under SFX or the language's
+  speech folder, trying `.MP3`; `AnimationEventTable` turns ANIMATIONSFXMAPS' SOUND and SURFACE
+  rows into events by animation stem (times in hundredths of a frame, an inference; NONE left out).
+  On stock FoC all 1,152 rows read and every name resolves.
+
+## Rendering
+
+The Direct3D 12 sandbox renders maps and models in **legacy mode**: rendering that approximates
+Alamo, driven by `LegacyMaterial` reference profiles and newly written shaders. A modern
+physically based pipeline with engine-native materials comes after legacy mode is stable; the
+profiles will then be conversion input for it. Features marked **enhanced** are the engine's own
+improvements, off or optional unless stated; legacy is the default.
+
+### Device, frames, and resources
+
+- A Win32 window, triple-buffered frame contexts, and a waitable flip-model swap chain; optional
+  tearing, WARP, the debug layer, and GPU validation.
+- Independent direct and copy queues with monotonic per-queue fences; copy-to-direct
+  synchronization on the GPU; uploads retired by fence value.
+- DRED in every build and device-removal diagnostics: a failed call on the device or any of its
+  objects reports the removal reason, each unfinished command list with its last completed
+  operation, and the page-fault address (`check_device_hresult`). Resources retired before the
+  render that records their upload transitions drop those transitions (`retire_uploaded`), so a
+  resize flush in between cannot free a resource a barrier names.
+- The render contract is split by subject (`visual_vertex`, `visual_texture`, `visual_material`,
+  `visual_mesh`, `visual_camera`, `visual_frame`, `visual_scene`); rules without a graphics API live
+  in `eaw_render_core` (`lod_selection`, `gpu_resource_lifetime`, `frame_graph`, `shadow_cascades`,
+  `compute_sky_visibility`, `wind_bend`), tested without a device.
+- `render()` builds its frame as frame-graph passes whose declared uses place every barrier;
+  passes run in declared order and targets stay persistent. The graph knows `common` (buffers
+  return to it after every submission), `copy_dest`, `depth_read`, `compute_read`, and
+  `unordered_access`.
+- Textures live in a generation-checked handle pool, take texture-table slots from a fence-deferred
+  allocator, and stream in under a per-frame byte budget (`--upload-budget`), drawn with
+  role-appropriate fallbacks through a frame-buffered logical-texture residency table. Replaced
+  buffers, textures, and bone palettes retire on the direct-queue timeline
+  (`gpu_resource_lifetime.hpp`; `sandbox --reload-every` exercises it). Geometry, instance, and
+  material buffers are per scene, and the renderer holds one scene at a time.
+- Runtime mesh registration: `D3d12Renderer::add_meshes` appends a mesh fragment (vertices,
+  indices, textures, materials, draws, meshes; no instances or terrain) as a geometry block of its
+  own (the draw loop rebinds per block), rebuilds the material buffer from a CPU copy, streams new
+  textures and shares those whose identity is already present, and returns the first new mesh
+  index; existing indices stay valid, and `load_scene` drops added blocks. Not yet: removing meshes.
+- Instances: `set_instances` submits each frame's instances (any count) through a growable
+  frame-buffered buffer, one `DrawIndexedInstanced` per mesh draw. The bone palette is set per frame
+  (`set_bone_transforms` before `set_instances`, up to `max_bone_transforms()`, 262,144 matrices;
+  frame buffers grow on demand); last frame's palette is uploaded after the current one in the same
+  buffer for motion vectors.
+- Shaders are newly written HLSL under `src/render/shaders` (DXC, shader model 6.0, root signature
+  declared in the HLSL) and `src/tools_gui/shaders` (D3D11 tools, FXC, shader model 5.0), compiled
+  at build time into embedded bytecode. Shader reflection metadata is not generated; the
+  pipeline-state cache is opt-in (`--pipeline-cache <dir>`).
+- The descriptor and bone capacities are temporary implementation limits, not format limits. A
+  complete renderer-agnostic RHI has not been extracted.
+
+### World and cameras
+
+- The world is right-handed with Z up; the view and the CPU camera math (`camera_math`) are
+  right-handed, matched to the owner's screenshots of the original's editor. Background parallax
+  and sky-dome scaling are inferred, not measured.
+- Alamo models face -Y (muzzle and fire bones, compatibility-research.md): an entity heading is the
+  direction of its model's -Y axis (`model_forward_heading`, `identity_model_heading`). A placed
+  object's Z rotation is its facing (counter-clockwise from +X, as the simulation's headings), so
+  `placed_object_transform` turns the model a quarter first (`placed_model_facing`); squadron offsets
+  are in the facing frame (+X ahead) and take the inverse turn.
+- Cameras are engine-owned (`eaw_control`): a `VisualCamera` from the fixed RTS camera (fixed pitch
+  and heading, zoom, keyboard pan along the true right; the pitch and heading are provisional), the
+  debug camera, and a free flying camera (`FlyCamera`).
+
+### Materials and lighting
+
+- `LegacyMaterial` holds reference profiles for all 39 readable effects of the shader sources
+  published with Petroglyph's official mod tools (kept locally in `Reference Materials/Shaders/`):
+  render phase, depth, cull, and alpha-test state, lighting model, texture-channel roles, UV and
+  vertex animation, vertex requirements ([legacy-shader-mapping.md](legacy-shader-mapping.md)).
+  Unreferenced names keep tagged name heuristics. Material translation is conservative.
+- Shading: fill plus key-light lighting (2x diffuse convention, exponent-16 highlight per pixel),
+  normal maps, gloss from base or normal alpha or a gloss texture's red, team-color masks,
+  self-illumination masks, material Diffuse/Specular/Emissive/Color, alpha test, blend, and
+  additive, UV scrolling, and vertex colors where the legacy profile reads them. Maps use their
+  active TED environment's key, two fill lights, specular, and ambient; team colors come from the
+  type's affiliated faction `Color` (player-slot palette fallback).
+- Bone billboards (236 stock meshes: planet glows, tree shadow cards, sky-dome suns, flags; see
+  compatibility-research.md, "Bone billboards"): meshes on a bone with a billboard mode keep their
+  vertices relative to the bone (`VisualMaterial::billboard`, `billboard_anchor`), and the vertex
+  shader turns them about the bone: toward the camera, about the vertical toward the camera, light,
+  or wind, or, for sun glows and suns, at the bone's offset turned toward the light and facing the
+  camera. `texture-audit` counts meshes by mode.
+- Transparency: blended parts (alpha and additive, which write no depth) are drawn after the opaque
+  and alpha-tested ones, instance by instance from the farthest bounding-sphere center, each model's
+  parts in their own order; backgrounds keep scene order and particles follow in their own
+  back-to-front order. One draw per blended part and instance.
+- Detail levels: the renderer picks each instance's `_LOD<n>` level by the `--lod` policy
+  (`distance`, `screen`, `hybrid` by default, or `off`), scaled by the type's `LOD_Bias` and
+  `--mesh-detail`, with hysteresis, and cross-fades level changes of keyed instances over 0.25 s
+  with complementary dither masks. Distances, pixel sizes, the hysteresis, and the fade time are
+  engine choices. Damage states are chosen by presentation ([Damage states](#damage-states)).
+
+### Special materials
+
+- **Planets** (`VisualLightingModel::planet`, 296 stock instances): the surface lit through its
+  normal map and brightened toward the atmosphere color at the rim, city lights (base alpha)
+  switching on past the terminator under the clouds, and a cloud layer scrolling along U, lit by its
+  own normal map, blended over all by its alpha (behavior from the published Planet shader, written
+  anew). Planets and shields share generic layer fields in `GpuMaterial` (144 bytes).
+- **Shields** (`VisualLightingModel::shield`, `MeshShield`, 27 uses): the energy texture shifted
+  by a quarter of the distortion texture, times the wave texture, times the vertex color softened
+  toward vertical edges (saturate(object normal z + edge brightness), per vertex) and the material
+  color, added unlit. The legacy shader samples its distortion layer with the scale and scroll named
+  for the wave and the other way round; the contract names layers by what they do and the
+  translation keeps the observed pairing. Used by the hidden `shield` meshes of capital ships and
+  base shield generators (flashed by the shield abilities), the `stealth` meshes of the FoC stealth
+  ships (visible in their models; when the original shows them is not established), and
+  always-visible energy spheres (the Gungan projectile, the droideka's shield).
+- **Sky domes** (`VisualLightingModel::sky`, `Skydome`, 19 uses): lit by every map light through the
+  turned-around normal, times the vertex color, plus `Emissive`, with the cloud layer (scrolled
+  along U, then scaled) over the base by cloud alpha x vertex alpha, never shadowed.
+- **Nebulae** (`VisualLightingModel::nebula`, 15 uses): vertices wobble in model space by a wave of
+  world position and time; brightness 2 x (view-space normal z)^8 + 0.1.
+- **Trees, wind bend** (`Tree`, 185 uses): tree vertices move by BendScale x the bend offset x their
+  height above the model's origin squared / 40^2, as the legacy Tree shader shapes it, in the scene
+  and shadow vertex shaders; `wind_bend` sets the offset (6 units in a strong wind, in proportion to
+  the speed, leaning downwind and swelling and easing by half over a 4 s gust: engine choices; a
+  42-unit Dantooine tree in the default wind leans about 1 unit at the top). Last frame's bend moves
+  the motion vectors.
+- **Grass** (`Grass.fx`, 14 uses): each vertex turns about its clump's center to face the camera
+  around the model's up axis, the clump's top waves with the map's wind (faster and further in a
+  stronger wind, phase-shifted across the map), the color swings between `Diffuse` and `Diffuse1`
+  with the wave, lit as facing up. `GRASS_SWAY_SCALE` (0.15) keeps the sway to a few units, an engine
+  choice. The legacy distance fade is not done.
+- **Occlusion silhouettes** (the legacy OccludedUnit shaders, on by default, Graphics panel): a unit
+  whose type sets `Occlusion_Silhouette_Enabled` (86 stock objects) shows through what hides it in
+  its team color at half strength (the legacy default color's alpha; which color the original used
+  for players is not established). A `silhouettes` pass redraws opaque and alpha-tested draws into a
+  mask (max blend), keeping front faces where the pick target shows another object at least 0.5
+  units nearer; a composite blends it before the transparent part. A hardware depth-greater test let
+  every visible unit through (redrawn geometry does not reproduce its stored depth exactly), hence
+  the shader test.
+- **Heat distortion** (170 stock heat-particle emitters, 3 heat meshes): legacy (the default) blends
+  heat particles' bump colors by opacity into a heat buffer cleared to "no shift" (depth tested), and
+  a `heat apply` pass redraws the scene copy shifted by it, a bump color of 1 or 0 moving the sample
+  1.5% of the screen height (an engine choice). Enhanced (`--heat enhanced`, the owner's choice from
+  heat-research.md): signed shifts into an RG16F buffer, sized in world units (2 at full bend) and
+  turned into a screen shift by distance, capped at 12 pixels, with a faint drifting second layer
+  (shimmer, a third as strong); the apply pass fades near the screen's edges (3%) and where the
+  shifted sample is nearer than the pixel (over 4 units); TAA weighs the new frame up to 0.6 where
+  heat shifts the image. Only when the scene renders into its own target (bloom or anti-aliasing
+  on). Heat meshes (`MeshHeat`) are still skipped. All constants engine choices.
+- Not yet: cube reflections, fog of war, and the materials the roadmap's Rendering track lists.
+
+### Terrain, water, and tracks
+
+- Land terrain renders as a textured heightfield: per-vertex layer index, three-layer blending,
+  layer tiling, normal maps; layers without a color texture are not drawn (an inference from Cloud
+  City and Kamino). TED tracks render as unlit, alpha-blended ribbons draped on the terrain with
+  start, middle, and end opacity and texture scroll. TED map decals (one stock map, no established
+  texture link) are not rendered.
+- Cloud shadows (legacy, on by default): the terrain and terrain-mesh materials
+  (`VisualMaterial::cloud_shadow`) multiply their lit color by the drifting cloud texture before
+  fog. The stock W_Clouds00 averages 0.74 and reaches black, so the terrain darkens by about a
+  quarter under the literal formula; whether the original weakened it is not known. Units take no
+  cloud shadows in legacy.
+- Water, lava, and ice surfaces render at the map's liquid level. Water is a grid (cells of about 12
+  units, at most 512 a side; `append_water`; lava and ice stay one quad) whose vertices keep the
+  depth beneath them. The scene is drawn in three passes: the opaque part, the water (materials
+  marked `VisualMaterial::water`, reading the opaque depth through a read-only view), and the
+  transparent part. The map's own surfaces no entity draws (the water plane, TED tracks) are kept
+  as scenery by scene presentation.
+- **Legacy water** (`--water legacy`, the default) resembles the original's low-end fallback, since
+  reflection and refraction are not modeled. Its bump map and base color repeat every 200 world
+  units (an engine choice; the TED water fields may hold the original's repeat), with a broad layer
+  of both at about five times the repeat and an unrelated angle so no grid lines up (`water_broad_*`
+  in sandbox.hlsl).
+- **Enhanced water** (`--water enhanced`, the owner's plan in water-research.md; every constant an
+  engine choice): color and opacity from the view ray's path down to the opaque depth (Beer-Lambert),
+  a shore fade over the first 3 units of depth, light bent by two layers of the bump map, Schlick
+  Fresnel, a sharp key-light glint; refraction from a copy of the opaque scene (2% of the screen
+  height at full strength, growing over the first 4 units of depth, unshifted where the shifted
+  pixel shows something above the water); planar screen-space reflections (a compute pass mirrors
+  every opaque pixel above the water plane and keeps, per pixel, the source lowest on the screen
+  through `InterlockedMax`; one-pixel holes filled from neighbouring rows), the captured sky where
+  nothing landed; shore foam within 6 units of depth, 35% over a flat bottom and full where the
+  bottom is steep, with lines rolling in every 2.5 units of depth. Refraction and reflections only
+  when the scene renders into its own target (bloom or anti-aliasing on). At the tactical camera's
+  pitch reflectance is 2-6%.
+- **Ocean waves** (enhanced water): four Gerstner waves around the map's wind (wavelengths 170, 97,
+  61, 37 units, amplitudes 4.5, 2.6, 1.6, 0.9, deep-water speeds under a gravity of 30 units per
+  second squared, steepness bounded below folding; `ocean_waves`), faded in from the calm depth to
+  the full depth so shores and units in the shallows keep the flat plane, which the simulation keeps
+  too; the normal follows the waves, and pinched crests foam in patches (a broad two-octave value
+  noise of about 420-unit cells drifting with the wind decides where, a fine one of about 7-unit
+  cells breaks it up, procedural in world space, so nothing repeats). The Graphics panel tunes the
+  waves (`VisualOceanWaves`: height at most 1.25 times, length, speed, crest sharpness, calm and full
+  depths, crest-foam start, Defaults); the defaults are the owner's tuning on Kamino (height 1.15,
+  length 1.77, speed 2.04, crest sharpness 0.2, calm below 4, full from 3, crest foam from 0.3).
+  Waves run only on open sea (the owner's choice): `ocean_map` names the ocean planets by the map's
+  file name, Kamino and Manaan, and sets `VisualLightRig::ocean`; the panel's setting is ocean maps
+  (default), on, or off. A corpus survey showed why a measure cannot decide it: the share under water
+  puts the MP Dagobah swamp (57% at least 5 deep) beside Kamino (60%) and Mon Calamari (61%). With
+  waves full from shallow depths, a shelf in the sea floor shows as a sharp line between calm and
+  waves. Not yet: wave motion in the motion vectors (water is blended, so TAA reprojects it by
+  depth; ghosting is the owner's to judge).
+
+### Sky, fog, and global illumination
+
+- Land maps draw the active environment's sky dome and backdrop as a camera-centered background
+  layer; backdrops (`In_Background`: planets, nebulae, ring stations) and background instances
+  receive no shadows (the owner's choice; `VisualInstance::receives_shadows`).
+- **Fog** (`--fog off|legacy|enhanced`, legacy the default): legacy blends models and terrain toward
+  the environment's fog color linearly with view distance; additive surfaces and backgrounds are not
+  fogged, as in the legacy shaders. Particles are fogged in both modes: alpha particles blend toward
+  the fog, modulate ones lose their darkening, and additive light is left alone in legacy and dimmed
+  in enhanced. Enhanced fog is exponential height fog integrated in closed form beyond the map's
+  start distance, its density at the floor (the terrain's lowest point) set so level fog reaches 95%
+  at the map's end distance, constant below the floor and thinning by e per 400 units above,
+  brightening toward the key light and leaning halfway toward the captured sky just above the
+  horizon (engine choices). The ranges were authored for the original's camera limits
+  (TacticalCameras.xml, not read yet): zoomed out farther, as the sandbox's overview camera is,
+  distant ground fades into the fog. The original's land camera (460 units away, pitch 50, far clip
+  7000, objects faded out at 1100-1300) saw only about 1000 units (an estimate), so its fog was
+  atmosphere and color, not the optimization. Volumetric fog is for later.
+- **Sky capture and sky light**: each frame a `sky capture` pass draws the background draws into six
+  64-texel cube faces in a sky atlas, and a `sky light` compute pass projects it to second-order
+  spherical harmonics. Enhanced water reflects it; enhanced fog leans toward it; **sky ambient**
+  (enhanced, off by default, `--sky-ambient`) blends three quarters of the fill light toward the
+  sky's irradiance for the surface's normal, balanced straight up against the legacy fill, so
+  upward surfaces keep the legacy brightness and the sky reshapes the light on slopes.
+- **Sky visibility** (enhanced, off by default, `--sky-visibility`): `compute_sky_visibility` finds,
+  for each terrain height sample, the horizon's angle in 16 directions out to 600 units and averages
+  cos^2 of it, once per map in scene building (`VisualTerrain::sky_visibility_texture`); the fill
+  light of every world surface is multiplied by the visibility under it. Engine choices.
+
+### Shadows
+
+Cascaded shadow maps for the key light: `shadow_cascades` covers the view from the near plane to
+the scene's far edge (rounded up to a step of sqrt 2), split between even and logarithmic spacing (3
+cascades, blend 0.75, 2048 texels, at most 20000 units), each cascade a bounding sphere of its slice
+(radius rounded to 1/16) with its origin snapped to whole texels, and depth over the whole scene
+along the light. A pass draws every cascade's depth map before the scene: the terrain (holes such as
+crater openings cast nothing) and every opaque and alpha-tested model, skinned, with a slope-scaled
+bias; backgrounds and blended parts do not cast. Receivers pick the cascade by view depth, with a
+normal offset of 1.5 texels, a 12-tap Poisson PCF of 1.5 texels turned per pixel and frame, dithered
+into the next cascade over the last tenth of each slice and faded out at the far end. Shadows take
+away only the key light's diffuse and highlight, as the original's shadow volumes did. All numbers
+engine choices; `--shadows off` reproduces the unshadowed look. Every caster is drawn into every
+cascade (a marked shortcut).
+
+### Post-processing and anti-aliasing
+
+- **Bloom** (on by default; `bloom_threshold` 0.6, `bloom_strength` 0.8, an engine stand-in for the
+  original's glow option tuned by eye; `--bloom <strength>`, `--no-bloom`): the scene renders into
+  its own target; a bright pass thresholds each texel of a 4x4 block with a soft knee and mixes the
+  block mean half and half with its brightest texel (so glows a few pixels wide still bloom) into a
+  quarter-resolution `R11G11B10_FLOAT` target; two rounds of separable nine-tap Gaussian blur; a
+  composite writes scene plus bloom before debug lines and the overlay. Bloom ignores the sky
+  (backgrounds at the far plane) and takes the rest scaled by how little fog covers it.
+- **Anti-aliasing** (`--aa`, FXAA by default; the owner's choice: no MSAA): FXAA-style edge pass
+  written for the engine; TAA (sub-pixel jitter from 8 points of the Halton (2, 3) sequence, history
+  at 10%, reprojection by depth and motion vectors using the nearest depth of the 3x3 block, history
+  clipped to the block's color spread, mean +/- 1.25 sigma in YCoCg; the history resets after a
+  resize and in frames without TAA); hybrid (TAA, then the edge pass over its result, the history
+  keeping TAA's own result). Debug lines use the unjittered camera. Thresholds and weights are
+  engine choices.
+- **Motion vectors**: a third scene target (RGBA16F) holds each pixel's screen motion from the
+  unjittered current and previous clip positions; instances carry their last transform and palette
+  offset (per instance key). Opaque and alpha-tested models write motion; backgrounds, blended
+  parts, terrain, and particles leave a no-motion marker and are reprojected by depth and camera.
+- **Reactive mask**: particles raise the motion target's blue channel to their strength (added light
+  by its brightest channel, blended particles by opacity, modulating smoke not at all); TAA weighs
+  the new frame up to 0.85 there and the edge pass leaves those pixels alone, so thin, fast bolts and
+  sparks are neither averaged away nor blurred (measured on Kamino at 1080p: the bolts' peak under
+  TAA 180 against 199 without anti-aliasing).
+
+### Particles
+
+- `ParticleWorld` (`presentation/particle_effects.*`, presentation only, a seeded PCG32 stream per
+  effect, never reading file fields) plays `ParticleEffect`s on the frame clock, following the
+  MIT-licensed GlyphX particle editor where it differs from alo-viewer: bursts and continuous
+  emission, initial delay, skip and freeze time, lifetime and size variances that only shorten and
+  shrink, color, scale, texture-cell, and rotation tracks, gravity, acceleration, inward speed and
+  acceleration, link to system (rigid: translation and rotation), ground collision, trail and death
+  children, and an explicit live-particle capacity with drops counted. Emission is sub-frame: each
+  particle spawns where the emitter was at its emission time and lives only the rest of the update,
+  so fast movers leave even trails. The stock data has no separate trail system: engine and missile
+  trails are world-space particles of moving emitters.
+- Fidelity (`sandbox --particles legacy|enhanced`, `MapBuildOptions::particle_fidelity`): legacy, the
+  default, draws additive ignoring alpha and effects with emitters in list order; enhanced scales
+  additive by alpha and sorts every particle back to front. Linked particles follow their emitter's
+  position and rotation under both (the editors' "position only" reflects previews that never
+  rotate).
+- The renderer draws `VisualParticle`s (`set_particles`): billboard, ground-plane, and
+  velocity-stretched kite quads expanded in `particle.hlsl` from a growable frame-buffered structured
+  buffer; additive, alpha, modulate, and heat blends, depth-tested or not, no depth or pick writes;
+  textures from the scene's logical texture table (`add_textures`).
+- **Soft particles** (enhanced, off by default, `--soft-particles`): depth-tested particles fade out
+  as the surface behind them comes within 20 world units (an engine choice).
+- Not yet: wind acting on particles.
+
+### Decals
+
+Terrain decals are applied inside the terrain shader, clustered-decal style (the owner's option A
+of three): each frame the renderer sorts the live `VisualDecal`s into a 64x64 grid over the terrain
+(at most 64 a cell), and the terrain pixel applies its cell's decals before lighting: diffuse ones
+blend the albedo, bump ones bend the normal, additive ones add light; fog applies as to the ground.
+The atlas's top level is sampled (a marked shortcut). Screen-space decals (option B) wait for a
+decision on a deferred pipeline. What leaves decals is in [Battle effects](#battle-effects).
+
+### Picking, debug lines, captures, and the overlay
+
+- Picking uses a GPU pick target (`R32_UINT`, scene instance index + 1, terrain reserved) written by
+  opaque, alpha-tested, and terrain surfaces; each request copies one texel (up to eight per frame;
+  the rest wait, none are dropped) into the frame's readback buffer, read after that frame's fence,
+  so results arrive a frame or two later without a CPU wait. Blended effects and backgrounds are not
+  pickable.
+- Debug lines (`set_debug_lines`, helpers in `presentation/debug_draw.*`) draw depth-tested over the
+  scene from a frame-buffered, persistently mapped buffer with a temporary capacity of 32,768 lines
+  a frame; lines beyond it are counted in `stats().dropped_debug_lines`.
+- Captures: `request_capture`/`take_capture` copy the back buffer after the scene and
+  post-processing, before debug lines and the overlay, into a per-frame readback (no CPU wait). With
+  the sandbox's `presentation_now()` clock (wall clock, or `--fixed-frame-time`) held until textures
+  are resident, a `--capture` run repeats bit for bit (checked on WARP with a Kuat battle, particles
+  and bloom included). `EAWEngine compare-images` reports mean and largest differences and the
+  changed share, with a diff image. Comparison with the original is by measured features from
+  ordinary screenshots, not recreated scenes (see the roadmap).
+- The Dear ImGui overlay: engine panels are submitted through `set_overlay_ui` (a callback inside the
+  overlay's ImGui frame; button presses come back as actions applied next frame); typed characters
+  and editing keys come through `set_overlay_input`, and while the overlay wants the keyboard or
+  mouse (`overlay_wants_keyboard`, `overlay_wants_mouse`) the scene gets none. ImGui's textures (its
+  font atlas grows when new glyphs appear) upload through the renderer's own path (copy queue, a GPU
+  wait on the direct queue, slots and resources retired by fence value; the backend gets no texture
+  requests). Documented exception for this debug overlay: it compiles its two shaders at startup
+  (`D3DCompile`) and reuses its vertex and index buffers by frame index; an overlay renderer of our
+  own would remove both.
+
+### Known limitations
+
+- Alpha ordering is per instance, not per triangle; material translation is conservative.
+- The model view (`sandbox --model`) lists every `<MODEL>_*.ALA`, and Left/Right step through the bind
+  pose and them; it shows the intact `_ALT0` state and the highest `_LOD<n>` level. Model scenes
+  animate rigid attachments' bone visibility through a second, visibility-collapsed palette half
+  (map meshes carry the same half); skinned-mesh visibility and gameplay-driven visibility are not
+  modeled. A validation-triangle fallback stands in for a scene that cannot be built.
+- The rest of the legacy-mode render backlog is the Rendering track of
+  [roadmap.md](roadmap.md#rendering).
+
+## Scene building and hot reload
+
+- Scene builders (`eaw_scene`) read through the `AssetReader` interface and the `AssetCache` behind
+  the `ResourceManager` (decoded models, textures, maps, the XML object catalog); every cached asset
+  records fingerprints of the files it consulted (failed lookups and listings included).
+- The sandbox builds a map or model on a worker thread while the window renders; `load_scene` may
+  replace the scene at any time. Geometry and materials upload at once, textures stream. Decoded
+  textures carry an identity (a fresh serial per decode; the process-wide texture identity counter),
+  and `load_scene` keeps every resident texture the replacement names again, so a reload uploads
+  only changed textures.
+- `sandbox --hot-reload` polls the fingerprints and the MEG archives once a second on a worker,
+  remounts rebuilt archives between builds, and rebuilds the scene from the cache; it waits for
+  spawn package builds, and rebuilds keep runtime types. MEG archives added to or removed from a
+  layer need a restart.
+- The battle side and the look are built by one walk: `build_battle_map` (`battle_map_builder.cpp`)
+  builds a `BattleMapAsset` (entities, spawnable types, ground, damage table, counts, warnings, and
+  the placed models' extent, the frame of a map without ground) from the TED, the XML types, and the
+  models without a scene builder; `build_visual_map` runs the same walk and then draws what it built
+  (`VisualMapAsset::battle` beside the looks), so the two cannot drift. `MapEntity` and
+  `SpawnableType` (`battle/battle_map.hpp`) hold gameplay data, `MapEntityLook` and `SpawnableLook`
+  the look (scene instance or mesh, team color, scale, death, bank limit, animation, hidden), at the
+  same index. An entity whose model has geometry but cannot be added to the scene stays in the battle,
+  hidden, with a warning.
+- Headless builds skip textures and animation clips (`MapBuildOptions`; Utapau builds in 0.45 s) but
+  attach hardpoint models (`Model_To_Attach`), which existence and model-derived footprints measure.
+  Nothing the simulation reads depends on drawing: the ground's liquid level comes from map data (a
+  liquid type at or above the lowest ground), and placed entities carry no mesh index (the
+  presentation finds them by id).
+- Spawn packages: `scene_build::add_spawnable_type` (a `SpawnableBuild` context) is shared between
+  map builds and `build_spawnable_package`, which builds one type (with its company or squadron
+  members) into a `SpawnablePackage` (mesh fragment, rigs and rest palette, types with
+  fragment-relative meshes, the requested type last). Not yet: sharing meshes between packages (a
+  member type already loaded is built again).
+- Map builds attach models' visible proxies' effects (`VisualRig::effects`), hardpoint models
+  (`Model_To_Attach` at `Attachment_Bone`, 226 stock uses) merged into the host's mesh at their bone,
+  rigid on its palette entry (`type_hardpoint_models`, `attached_mesh_key`), and the effects,
+  projectile visuals and models, debris types, death-clone models, decal atlases, tracks, and weather
+  the battle presents. Placed objects of XML `Is_Marker` types (flag models, script points, skirmish
+  base positions) are not drawn (`MapEntityLook::hidden`) but stay entities.
+- Unit `Scale_Factor` is applied (`type_scale_factor`, `scaled_model_transform`): models are drawn at
+  it; model-derived separation radii, obstacle footprints, and hardpoint positions scale with it; and
+  attached effects take the unit's scale, particle sizes included.
+
+## Simulation
+
+`eaw_simulation` is the deterministic tactical simulation: no graphics, platform, or file access.
+Its structure follows [ecs-design.md](ecs-design.md); the migration's steps and what remains are
+there and in the roadmap.
+
+### Tick, schedule, and storage
+
+- Entities have stable generation-checked ids. The simulation ticks at 60 Hz (the owner's
+  decision, with the budget of 60 frames a second): one constant, `default_ticks_per_second`
+  (`simulation/simulation.hpp`), the default of the clock, the world, `Battle`, and `BattleRuntime`.
+  XML values per 30 Hz frame of the original are converted apart ([Game asset
+  layer](#game-asset-layer)). Durations are seconds turned into ticks by the clock (the retarget
+  interval 1/3 s, the chase replan 1 s, the group cohesion stall 3 s, separation's push limit 15
+  radii a second).
+- `SimulationWorld::step` runs one table, `schedule_` (`simulation_schedule.cpp`), of nine systems,
+  each with its tick layer and the data it reads and writes (`SimData`): commands, behavior,
+  navigation, movement, contact, combat, resolution, removal, publish. Behavior, navigation,
+  movement, contact, combat, and publish are systems over typed views (`simulation/system_view.hpp`:
+  `view.get<T>()` is const for `Read`, mutable for `Write`, and undeclared data does not compile),
+  each with its own scratch, grids, and counters; commands, resolution, and removal keep full
+  access, since they spawn and remove entities. Helpers shared between systems are static templates
+  over any data with `get<T>()` (`simulation_internal.hpp`).
+- Storage: 16 component groups of columns (`IdentityColumns`, `PlacementColumns`,
+  `LocomotorColumns`, `RouteColumns`, and the rest), one array per field; swap-removal is one loop
+  over `for_each_column`; spawn checks that every column grew by one, and `check_entity_table` that
+  the column and group lists name every member. Optional components are pools
+  (`ComponentPool<Columns>`: packed columns with a sparse index from slot to row; queries walk the
+  dense table and look a member up by slot, so the pool's order never decides an iteration order):
+  walk and turn plans played as clips, flight (`FlightColumns`: minimum speed, cruise height,
+  manoeuvres; `flies(data, index)` is the flyer test), footprints, crush profiles, formation teams
+  (`FormationColumns`), group cohesion (`GroupColumns`), combat (`CombatColumns`, one `CombatState`
+  per entity with health, a shield, weapons, or hardpoints; others read `no_combat()`), and squads
+  (`SquadColumns`, `SquadMemberColumns`). World resources are named structs with their `SimData` id
+  (`GroundState`, `PathQueue`, `ProjectileState`, `TickEvents`, `SlotTable`, `Rules`, `Clock`,
+  `SpaceAvoidance`, `CombatCounters`, `CombatRandom`).
+- Recipes: `EntityRecipe` holds a type's data and `EntitySpawn` is a recipe id plus the instance's
+  values; `SimulationWorld::add_recipe` validates a recipe once and keeps equal recipes as one (a
+  company member with its team's speed, or a placement scaled differently, is a variant recipe).
+  Entities point at their recipe's combat and movement profiles, and their type name is their
+  recipe's.
+- Structural changes: combat and contact queue their damage (`DamageQueue`: hits and misses with
+  their blasts, crushes), and the resolution system applies it in queue order; a shot whose victim
+  died earlier in the tick strikes the body without damage (the owner's rule: two units firing at
+  once both hit). Deaths follow in dense order, each entity once per tick, in rounds until a round
+  kills nothing, so a death blast and the blasts it sets off kill in the tick it goes off. The dead
+  leave at the end of the tick in one stable pass (`remove_entities`), so the dense order is the
+  spawn order; a script's destroy command uses the same pass at once.
+- The state hash goes component by component, pooled components only for their members, recipes
+  once each. It leaves out presentation keys and derived outputs (snapshot speeds, the fields marked
+  "not hashed" below). `SimulationWorld::state_hashes` hashes by subject (`StateSubject`: bodies,
+  routes, combat, clips, flight, formations, orders, projectiles, random) in the same pass;
+  `battle --check-determinism --hash-trace` names the first tick and subjects where two runs differ.
+- Timing: `step` times its layers into `Stats::phase_seconds` and `slowest_phase_seconds`, which
+  `battle` prints.
+- `DebugValidation` (`build.ps1 -Configuration DebugValidation`) is kept, empty, for checks too slow
+  for Debug; the typed views replaced its former data-access copy check.
+- Snapshots are immutable outputs for presentation: entities (position, heading, pitch, roll, yaw
+  rate, speed, turret yaw, the order serial they follow, their squad, walk and turn clip state),
+  shots with their weapon's sound and creation effect, projectiles (speed, serial, flown and
+  remaining distance), impacts, deaths, hardpoint deaths, and spins; everything only presentation
+  reads is not hashed.
+
+### Parallel systems
+
+The simulation takes an optional job system (`SimulationWorld::set_job_system`, not owned, not
+state; without one everything runs serially with the same results). Parallel today, each chunk
+with its own scratch and writing only its own entries:
+
+- ground avoidance: ORCA velocities in chunks of 4 (`avoidance_grain`; chunks over the whole entity
+  table left nearly all the work to one chunk, since spawned units of a type are neighbours in dense
+  order). Measured: 1.48 ms a tick serially, 0.43 ms on 7 workers at 500 units;
+- combat's target choice and turrets (`update_target`, `aim_turret`, in chunks of 8, `aim_grain`),
+  which read the others' state (unchanged in this phase, since damage waits in its queue); the
+  weapons then fire serially in entity order, since they draw from the one combat stream. Measured:
+  combat 1.2 to 0.82 ms a tick, its slowest tick 6.2 to 2.3 ms;
+- route searches in batches of `route_batch` (8): single-unit requests at the front of the queue and
+  a shared request's members are planned into `PlannedRoute`s reading the state only, then given in
+  order under the same budget check (`give_route`); routes the budget does not reach are dropped and
+  planned again later, so the result is the serial one. A full batch runs on the job system, one
+  search a chunk (`RouteScratch`, about 16 bytes a ground cell each, made only when needed); smaller
+  batches run serially. The large Utapau order's worst route-search tick fell from 18 to 10-12 ms; the
+  remaining spike is serial (the group's shared search and chunk graphs built the first time a size
+  appears).
+
+The headless battle creates a job system (`--workers`, default the hardware threads less one) and
+`--check-determinism` runs its second run serially, so `check-battle.ps1` compares parallel against
+serial in every battle (`test_parallel_avoidance`).
+
+### Spawning and the ground
+
+- Placed TED objects become entities built from their XML types (owner, position, heading, speeds);
+  runtime spawning is the `spawn` command (`SimCommand::spawns`, rejected spawns counted).
+  `make_spawn(recipe, instance)` is the one construction path from XML types
+  ([Battles](#battles)).
+- Placed objects whose type sets `Is_Decoration` are not simulation entities (the XML comment:
+  decorations are idle and unsynchronized); presentation draws and animates them under ids from
+  `decoration_id_base`, and they count toward the map's extent.
+- `GroundMap` carries the heightfield, liquid level, and raw TED passability. Units whose XML
+  `Space_Layer` is `Land` or `None` follow the surface on land maps; flyers keep their altitude.
+  Passability bits by `MovementClass` (`MovementClassTypeDefs.xml`): 0x1 Clear, 0x2 Steep, 0x20 Water,
+  0x80 InfantryOnly, 0x100 Impassable, 0x4 Obstacle with medium confidence; runtime walls and shields
+  have unverified bits. Sandbox G draws the types.
+- Immobile obstacles on land (structure kinds, and types whose `UnitCollisionClass` names an
+  obstacle) carry a `GroundFootprint`: their XML rectangle (`Obstacle_Width`/`_Height` from the
+  `Obstacle_X`/`_Y_Offset` corner, else the `Custom_Hard_X`/`_YExtent` half extents around their
+  offsets, through `Obstacle_Proxy_Type`; axes and units in compatibility-research.md), else their
+  model bounds as a rotated rectangle (an engine choice). The simulation stamps it into its copy of
+  the passability with the XML `OverridePassability` type (walls: RebelWall, EmpireWall) or Obstacle,
+  and removes it when the entity is destroyed; a footprint moves and turns with a teleport. A building
+  spawned at runtime blocks the ground like a placed one. Units use XML `Custom_Soft_Footprint_Radius`
+  (infantry 3.5) when present, else their model's extent.
+- Spawns and teleports land on free ground (`free_ground`: ground the unit fits and off every other
+  ground unit, the nearest point on rings around it, through an occupancy grid built at the tick's
+  first spawn).
+
+### Pathfinding
+
+The design is [pathfinding-design.md](pathfinding-design.md) (agreed: units never overlap, allies
+give way); research in [pathfinding-research.md](pathfinding-research.md). This is an engine-native
+navigation, not a reproduction of the original's.
+
+- `GridPathfinder` (`simulation/pathfinding.*`) runs A* over the TED passability cells
+  (8-connected, integer costs, no corner cutting, fully ordered ties, so it is deterministic), then
+  drops waypoints a straight line can skip. Connected regions are labeled per footing, so a goal the
+  unit cannot reach moves to the nearest cell of its region; a unit standing where it may not be
+  first leaves for the nearest enterable cell. Plain A* stays as the reference implementation.
+- Clearance (the owner's decision after the stock data showed `UnitCollisionClass` does not measure
+  size): each unit plans and moves with its own footprint radius. `ClearanceField` (`clearance.*`)
+  holds, per movement class, how far each cell's center lies from ground the class may not enter and
+  from the map's edge; a unit fits where the clearance is at least its radius. `Footing` (mask,
+  field, radius) is what searches, straight-line checks, and nearest-cell searches take; size
+  buckets run every 2 units from 2 to 68 (`footing_buckets`). The world keeps a field per movement
+  class its ground units use (`refresh_clearance` at the start barrier; a footprint stamp recomputes
+  only the cells it can affect), and a battle builds its spawnable types' fields while the map loads
+  (`reserve_clearance`). Movement, walk clips, and pushes never step onto ground a unit does not fit
+  (`stands_at`). Route searches add a cost to cells within 5 units beyond the unit's radius of a wall,
+  and smoothing keeps that margin where it can.
+- Chunks (`ChunkGraph`, `simulation/chunk_graph.*`): the ground in squares of cells, per square the
+  connected parts a footing fits and which neighbouring parts touch. The battles' layout is
+  `ChunkLayout::refined`: route over the 32-cell parts, then over the 16-cell parts inside that
+  corridor, then search cells part by part, each search held to its part (`search_cells`) and ending
+  at the crossing into the next part nearest the line to the goal; smoothing straightens the result.
+  Over the 76 stock land maps (`path-audit --layout`, 395,200 searches): nodes 0.12 of the plain
+  search, the first stretch (`first_stretch_expanded`, the first 2 parts) 0.035, time 0.38, paths
+  1.5% longer (21% longer by more than 1%), reach unchanged; least gain on Kuat Kidnapping (0.40).
+  A single 16-cell level gives nodes 0.52, time 0.61, paths 0.5% longer; two unrefined levels are
+  worse than one on every map.
+- Navigation data shared: a ground's region labels and chunk graphs live in `NavigationData`, which
+  searches read and `GridPathfinder::prepare` builds ahead (4 ms a graph on Utapau's 97,000 cells);
+  building while it is frozen (parallel searches) is a programming error. Navigation's three
+  pathfinders (routes, short legs, detours) share one `navigation_data_`; a pathfinder given none
+  keeps its own.
+- Route requests (orders, chases, replans) wait in a FIFO queue planned up to 15,000 nodes a tick
+  (`path_budget_per_tick`, the owner's choice; at least one request a tick); a unit waiting for its
+  route holds still, a newer request supersedes. A formation plans one shared search per movement
+  class for its largest member, then per member a straight or short (4,096-node) leg; a shared
+  request resumes over several ticks when it exceeds the budget. Intermediate waypoints are passed
+  once the next one is in straight reach.
+- Not yet: planning only the first stretch and refining the rest as the unit advances; rebuilding only
+  the chunk squares a footprint change touches (a change drops the graphs and the next search
+  rebuilds one in its tick; measured and left for base building); the cell search's window.
+
+### Group movement and avoidance
+
+- **Group moves** (the default move, `SimCommandKind::group_move`, `BattleOrder::move`; attack-moves
+  to a point too): members are packed around the ordered point (`place_group`: members nearest the
+  point first, each on the free point nearest it on rings of its size, the one nearest the member on
+  that ring, `group_slot_gap` 0.25 of a radius apart) and each goes from where it stands to its own
+  slot on its own route at the slowest member's speed. Formation spacing applies only to formation
+  moves.
+- **Formation moves** (`formation_move`, Alt + right-click in the sandbox): `formation_slots` lays
+  the units out in ranked rows (lower XML `FormationOrder` in front, pitch from footprint and
+  `FormationSpacing`, about twice as wide as deep, centered on the target, slots assigned by where
+  units stand across the facing so paths do not cross). On land a formation moves as one body:
+  `form_frames` splits the selection by distance and gives each part a `FormationFrame` (hashed): one
+  route for the part (`PathRequest::frame`) planned for its largest vehicle's or soldier's footprint,
+  a point and facing moving along it at 0.9 of the slowest member's speed, waiting for laggers (at most
+  5 s at a stretch; a lagger that comes no closer for 3 s leaves). The formation forms on the move:
+  slots blend from where members stood into the formation over the first 150 units
+  (`GroupColumns::start_ahead`, `start_aside`). `follow_frames` (behavior, `simulation_frames.cpp`)
+  lays the slots out each tick, in files where the ground at the frame or any member is narrower than
+  the formation, and sends the members by `follow_slot` (shared with squads; it keeps a detour path
+  until the slot moved 40 units). On arrival members take the final slots by where they stand; a
+  final slot a member cannot stand on moves to the nearest point it can. Members of a moving frame do
+  not give way to each other (`in_moving_frame`).
+- Solo units: types with XML `FormationGrouping` Solo (AT-ATs, the Gargantuan, the Juggernaut,
+  snowspeeders, the Lancet, the HTT, rancors, wampas) take no slot: they go to the ordered point on
+  their own, at their own speed (a reading of the tag name and its users). `WaitsForFormationFormup`
+  and `Formation_Formup_Wait_Style` need nothing: the engine has no formup step, and GameConstants
+  skips land formup (`ShouldSkipLandFormup`).
+- Group cohesion (`GroupColumns`): members of a formation group whose progress stalls for 3 s leave
+  it.
+- **Squads** (the owner's choices: a team entity, and attacks on a team meaning any of its members):
+  a team is an entity whose recipe says so (`EntityRecipe::team`), without a body: no footprint, no
+  combat, never hit. A company with a team container (XML `Create_Team_Type`, which carries TEAM,
+  SELECTABLE, and UNIT_AI and its own Max_Speed) spawns a team per `Max_Squad_Size` members
+  (`build_team_recipe`: the container's speed, turn rate, acceleration, movement class, and
+  formation fields; the team at its members' center, spawned before them), and its members join it
+  (`EntitySpawn::squad`), not selectable on their own. Members stand in the team's ring
+  (`team_shape`, shared with formation slots: by the container's `ContainerArrangement`, Rows a
+  near-square grid, Dartboard, the default, a center and rings of 6, 12, ...; each moved by its type's
+  `FormationRaggedness` times its slot pitch in a direction from its id, the scale an engine choice).
+  Orders to a member go to its team, each team once; a stance set on a team reaches its members
+  (`for_squads`). The team plans the route and chases an ordered target until its members' shortest
+  weapon reaches it (`pursue_squad_target`); members walk straight to their slots and keep a way they
+  planned around a blockage until their slot moves 4 units; soldiers whose slot lies where they
+  cannot stand head for their team. The team waits for members more than its extent plus 40 units
+  behind, at most 2 s at a stretch, and under a standing order while its members fight (engine
+  choices). An attack on a team has each attacker take the nearest living member and ends with the
+  team (`CombatState::ordered_squad`). A team leaves with its last member, without a death; destroying
+  a team destroys its members; the rings of teams that lose members close up. A squad's team stands
+  and plans with its largest soldier's footprint (`GroundMoverColumns::footing_radii`). Not yet:
+  `Create_Team` (single units wrapped in a team).
+- **Avoidance without overlap** (the owner's rules: no pushing, allies give way, enemies never do;
+  the design's 4.4): nothing pushes a ground unit. Navigation picks each moving ground agent's
+  velocity by ORCA (`simulation/orca.*`, `simulation_avoidance.cpp`), from the state at the start of
+  the tick, and movement never ends a step inside another agent (`keep_apart`). A squad is one agent,
+  the circle of its extent; its soldiers hold their places in it. Crushers and what they can crush (a
+  living hostile unit squashable by its kind, `can_crush`) ignore each other, so a walker walks over
+  standing infantry and infantry may stand at a still walker's feet, as in the original. Last tick's
+  velocities are hashed (`MotionColumns::velocities`).
+- **Giving way**: a held-up unit asks allies in its way to step aside (`make_way`): the point aside
+  is the shortest step out of the passer's corridor in 16 directions, then the unit's own side; it
+  must be free, standable, reached on its ground, with no unit closer than contact on the way there
+  (`way_clear`). Where one standing ally holds the point, it steps on the same way, up to three allies
+  deep (`shift_on`). A moving unit turned aside or slowed asks a standing ally ahead before it is held
+  (one going straight at 95% of its speed asks no one). A unit whose ask found no place waits a quarter
+  of a second before asking again (`RouteColumns::ask_waits`); each candidate is checked once, cheap
+  checks first. A unit that gave way walks back when the way is clear, waiting up to the giving-way
+  limit.
+- **Detours**: a unit held up for 2 s beside standing units, or held movers, plans around them
+  (`plan_detours`; `GridPathfinder::set_obstacles`; its own pathfinder without chunks, at most 16,384
+  nodes, at most 4 detours a tick; detours around held movers at most 3 times a route,
+  `RouteColumns::mover_detours`) and follows the detour waypoint by waypoint. A unit held up again
+  before passing a detour waypoint has reached the closest point and stops; a way closed only by held
+  movers does not end the order (a second search around standing units decides). A goal among
+  standing units is left to the arrival rules, and moving jams do not detour. A unit that can no
+  longer see its next waypoint (avoidance pushed it around a corner) plans a short leg back to it
+  (`repair_routes`, at most 8 a tick).
+- **Placing destinations and arrival** (the owner's model: the destination fits the unit, the route
+  respects its size): a move's point moves to the nearest place the unit fits (`place_destination`,
+  a squad by its extent, off standing units but those of the order); a group's block first shifts to
+  where all of it fits, then single slots move (`place_block`). A unit stops at a standing unit on its
+  destination, or, after a second without progress, at a crowd of standing allies there: allies that
+  stopped at the end of the same order or at destinations within six summed radii of its own and two
+  footprints' widths beyond contact (`RouteColumns::last_goals`); units giving way count neither as
+  standing nor as a crowd. A unit held a second within its radius of its goal has arrived; on its last
+  leg the preferred speed reaches the goal within the horizon.
+- Known limits: companies do not queue each other at a narrow place; soldiers lagging behind their
+  squad are not kept apart from units outside it; the navigation and movement cost of whole armies in
+  formation is not profiled. The sandbox's `--auto-move` orders every mobile unit of an owner,
+  placed units included, as one group.
+
+### Space movement
+
+- Space ships do not push each other (the original avoids contact). Each moving ship tries a fixed,
+  ordered set of courses each tick (`avoid_course_candidates`, 11.25 degrees apart, the side it
+  already faces first, else right) against every neighbour's predicted motion (toward its target at
+  its travel speed, slowed while it turns), ignoring units at another height (more than both radii
+  apart) and much smaller ones, and flies the first that keeps its clearance until it arrives or for
+  3 s, else one clear of contact, else the latest contact. `keep_apart` removes the part of a step
+  that would take a ship deeper into one it touches, so ships slide along each other and never
+  overlap. A destination inside a stopped ship's clearance (or a moving ship's with a lower id) moves
+  to the nearest free point of it; formation slots in space are at least 4.5 radii apart
+  (`space_formation_spacing`). `test_space_crowds` covers four crowd cases. Known limit: in a ten-ship
+  formation move through idle ships one ship may take minutes to reach its slot (a local planner has
+  no global route around a crowd).
+- Space obstacles: immobile objects take a radius ships steer around: XML `Space_Obstacle_Radius` for
+  `SPACE_OBSTACLE` types other than asteroid fields, nebulae, and ion storms
+  (`type_space_obstacle_radius`), else `Custom_Soft_Footprint_Radius` (starbases); small craft without
+  a soft radius use `Custom_Footprint_Radius`. An immobile object spawned at runtime keeps ships clear
+  the same way.
+- Units spawned in space take their type's `Layer_Z_Adjust` as height.
+
+### Locomotion
+
+- Speeds: XML `Max_Speed` through the legacy units, times GameConstants' per-mode multipliers
+  `Object_Max_Speed_Multiplier_Land`/`_Space` (1.56, 1.2; stated by developer comments); in space the
+  multiplier also scales acceleration, deceleration, and turn rates (land: not observed). Projectile
+  speeds are unscaled (an open question).
+- Acceleration: movers carry a `MovementProfile` (hashed): they accelerate and brake at XML
+  `OverrideAcceleration`/`OverrideDeceleration` (also the team containers' `Override_` spelling; read
+  as Max_Speed units per 30 Hz frame per frame, a guess; types without them change speed at once) and
+  brake ahead of their destination so they stop on it. A Stop order brings a ground unit that brakes
+  to a halt over its braking distance straight ahead.
+- Turning: units turn at XML `Max_Rate_Of_Turn` (per 30 Hz frame), slowing while facing away. Below
+  `Min_Speed_Fraction_For_Turn` of their speed, ground units turn at `Stopped_Rate_Of_Turn` (walkers;
+  else their turn rate) and space ships cannot turn; a mover keeps at least that fraction of its speed
+  in a turn, so a ship that cannot turn while slow gathers speed straight ahead and slides onto its
+  destination only within twice its slowest turn radius. Space ships that name no fraction take 1,
+  turning only at full speed (`default_space_turn_speed_fraction`, from recordings). A ship without a
+  move order turns in place at its rate divided by the TurnInPlaceSlowdown of its Space_Layer (corvette
+  2 recorded; frigate 3, capital 4 from data; `MovementProfile::turn_in_place_rate`).
+- Ground units turn in place only when they start from rest: when their way is more than their
+  type's `Close_Enough_Angle_For_Move_Start` off (degrees: the AT-AT 30, the AT-ST and rancor 45, the
+  dust devil 180), else 45 (`ground_turn_in_place_angle`, an engine choice). On the move they turn
+  while walking, slowed by how far they face away, so a corner sharper than 90 degrees still brings
+  them to a stop first (from the owner's recording of an AT-AT swinging 90 degrees while walking).
+  GameConstants' `CloseEnoughAngleForMoveStart` is 180, against the owner's observation that land units
+  do not turn while moving off; the engine keeps the observation, and the conflict is on the roadmap's
+  verification list.
+- Not yet: braking ahead of a sharp corner (a heavy unit slides a little past it), `Max_Thrust`,
+  `Begin_Turn_Towards_Distance`, a secondary locomotor (`Secondary_Locomotor_Name`, the jetpacks), and
+  acceleration in the avoidance planner's predictions.
+- **Flyers**: types whose `SpaceBehavior` names `FIGHTER_LOCOMOTOR` have a minimum flight speed
+  (`Min_Speed` on the `Max_Speed` scale, else half of it) and never stop: they fly along their heading
+  at their turn rate toward their target, destination, or the point they circle when idle or arrived,
+  and make attack runs (inside a third of their weapon range they hold their heading, pass, and turn
+  back outside). Flight is 3D: flyers pitch (at most 60 degrees) toward the behavior layer's point,
+  which keeps them at their cruise height (their spawn height), and push apart from overlapping flyers
+  of their owner sideways (3D overlap, in-plane push). A goal more than 135 degrees behind and more
+  than four turn circles away starts a half-loop (through the vertical, out heading back, unwinding the
+  half roll); flyers return to their plane within a few turn circles. Against any flyer (by minimum
+  speed, never by name) a flyer dogfights: it steers at the target in 3D, weaving 60 units above and
+  below it on an 8 s period with a per-unit phase, within 150 units of its plane, and loops when the
+  target is far behind; against anything else it keeps attack runs in its plane. All values are engine
+  choices pending measurement.
+
+### Walkers played as clips
+
+Walkers whose start, stop, and turn clips carry their motion are planned in the simulation by those
+clips (`simulation_walk.cpp`; the owner's decision). That is every walker with transition clips: XML
+`Locomotor_Has_Animation_Priority` (the AT-ATs and Veers', the AT-ST, the Scavenger droid, the two pod
+walkers, the Destroyer droid, which has no transition clips and gets only the overlay attack), plus
+the 24 stock types with `Walk_Transition` or `Has_Pre_Turn_Anim` (the Rancor, SPMAT, AT-AA, Night
+Sister, speeder bike, Juggernaut, Tauntaun, ground beetle): battle's `apply_animation_locomotion`
+plans walks for Walk_Transition and turns for Has_Pre_Turn_Anim (or the priority) whenever the clips
+exist, reading clip lengths by role, with the clips at their own rate when `Movement_Animation_Speed`
+or `Rotation_Animation_Speed` is absent. Evidence (`EAWAssetInspector gait`, `clip-joins`) is in
+compatibility-research.md, "Walker clip joins" and "The pod walker's raised leg".
+
+- **Walks** (`MovementProfile::walk_start_seconds`, `walk_stride_seconds`, `walk_stop_seconds`,
+  `walk_stop_parts`, from MOVESTART_00, MOVE_00, and the MOVE_END clips at the walk's playback): the
+  walker speeds up over MOVESTART, tracks its stride phase by the distance walked (a stride is top
+  speed times its MOVE time), decides a stop only where a stride's part begins (as MOVESTART ends, or
+  at each 1/n of the stride, n the model's MOVE_END count: the AT-AT's four MOVE_END clips start at the
+  quarters of its stride, the AT-ST's three at its thirds, within 0.0007 units), taking the part that
+  lands closest to the destination (within half a part, 4.4 units on the AT-AT) and playing variant
+  (part mod n), and brakes linearly over one whole MOVE_END clip, straight ahead. Nothing turns or sets
+  off during a stop; a stop order or a group's wait walks on to the next part and stops there; waiting
+  for a route walks on. A walk shorter than its start and stop at travel speed goes at a lower speed
+  with the clips at their rate (an engine choice; the feet slide a little). Walks walk on MOVE_00 and
+  settle into IDLE_00 from its first frame (the clips the timing and the joins were measured on).
+- **Clip rates**: `Movement_Animation_Speed` is the ground speed at which the move clip plays at its
+  own rate (the AT-AT's planted feet move 0.137 units a frame in MOVE against 0.1366; the stormtrooper
+  and Bantha agree once their Scale_Factor is counted); walk transitions play at the move clip's rate at
+  top speed (the AT-AT 3.7x: MOVESTART in 1.5 s). Turn clips play at the turn rate over
+  `Rotation_Animation_Speed` (read by analogy, an inference: the turn clips' planted feet do not show
+  the body's turn), both within 0.25x to 6x.
+- **A new way**: a new destination while a walk is under way decides the turn once, on its first way
+  (`WalkPlan::new_way`, not for a route planned again): more than the type's turn-in-place angle off,
+  the walker holds its heading, stops at its stride's next part, and turns in place with its clips; a
+  route's corners it turns while walking. Which angle the original uses for types without
+  `Close_Enough_Angle_For_Move_Start` (AT-AA, AT-ST, pod walker, Rancor; the engine's 45) is not
+  observed.
+- **The pod walker's leg**: its walk and turn clips keep its middle leg raised and IDLE keeps it down,
+  so it raises the leg (IDLE_LEGLIFT_00) before it sets off or turns from standing and lowers it
+  (IDLE_LEGDROP_00) once it stands with nothing to do (`MovementProfile::walk_raise_seconds`,
+  `walk_lower_seconds`; clip roles `idle_leg_lift`, `idle_leg_drop`). Its walk joins show a constant
+  offset of about 13 units on one foot bone, probably an artifact of that bone, so its stops are
+  unverified.
+- Snapshots carry the walk clip, the stop's MOVE_END clip, the turn clip, its side, and the progress
+  through each (`EntitySnapshot::turn_clip`, `turn_left`, `turn_progress`, interpolated between
+  ticks), and presentation plays exactly that, with no transition fades. Presentation keeps only the
+  turn loop of units whose turns are not planned (infantry, the Juggernaut, which has loops but no
+  BEGIN or END), told by `EntitySnapshot::turns_as_clips`.
+- Open: the simulation settles onto its destination in its last ticks, so a stop's END can outlast
+  the braking slightly; types with several IDLE clips may leave the stop into an IDLE other than
+  IDLE_00; `Rotation_Animation_Speed` for turn clips is an inference.
+
+### Turns composed of cycles
+
+A turn in place played as clips is BEGIN, whole loops, then at most one HALF and one QUARTER cycle,
+and END (`MovementProfile::turn_begin_seconds`, `turn_loop_seconds`, `turn_end_seconds`,
+`turn_half_seconds`, `turn_quarter_seconds`, per side, from TURNL/TURNR_BEGIN, the loop, _HALF_00,
+_QUARTER_00, and END; clip roles `turn_left_half` and the like): the cycles that come closest to the
+turn at the stopped rate in quarters of a loop (a coin change). Each cycle turns at its nominal rate
+(the loop at the stopped rate, HALF and QUARTER through a half and a quarter of the loop's angle in
+their own time: an inference from their names, the foot sweeps agreeing in order); BEGIN winds up to
+the first cycle's rate and END down from the last one's, and one scale makes the turn end exactly on
+the way (`turn_as_clips`, `turn_point`). Every clip starts from its first frame, where the last one
+ended (`clip-joins` showed TURN_END meets the loop only at the loop's end). Traced on Hoth (the
+Rancor: TURNR_BEGIN, loop, HALF, QUARTER, END, MOVESTART, MOVE_ENDONE, IDLE_00) and Utapau (the AT-AA
+and SPMAT; the pod walker: IDLE, IDLE_LEGLIFT, TURNR_BEGIN, loop, QUARTER, END, MOVESTART, MOVE,
+MOVE_ENDTHREE, IDLE_LEGDROP, IDLE_00). A ground unit turning in place for 3 s counts as a group
+cohesion stall (to be reworked with group movement).
+
+### Behavior, stances, and standing orders
+
+- Behavior is a layer of its own: each tick, after commands, `run_behavior` turns every unit's order,
+  stance, and target into a chase move request or a flyer's steering intent, before navigation,
+  locomotion, and combat. Decisions belong here; locomotion and combat never decide where a unit goes.
+- `Stance` (aggressive, hold_position, hold_fire; `EntitySpawn::stance`, `set_stance`) decides
+  whether a unit picks targets and moves for them; orders always apply. Engine-native; the original's
+  stances are not mapped, and the sandbox has no stance control.
+- Standing orders (`StandingOrder`: none, attack_move, guard, with a point or a followed entity),
+  decided in `run_standing_order`: a hostile scan every target-search interval, staggered by entity
+  index; engagement as an ordered attack, a leash, a resume, and the end of the order (an attack-move
+  on arrival or when its object is gone, a guard when its object dies); every move, stop, attack, and
+  formation move clears it. An attack-mover reacts within its XML `Attack_Move_Response_Range` and a
+  guard chases at most its `Guard_Chase_Range` from its anchor (world units, as given); without them
+  the engine's tuning applies (`acquire_range_factor` 1.25 of the weapon range, `leash_range_factor`
+  2, `minimum_guard_radius` 150, `follow_tolerance` 50; engine choices to check in play).
+  `Idle_Chase_Range` waits for idle units that chase attackers (idle units only fire at what is in
+  range).
+- Body aiming: ground units whose behaviors (`LandBehavior`, `Behavior`) do not name TURRET (stock
+  infantry) turn to face their target while standing, and fire only while they stand and face it
+  within `body_aim_tolerance` (20 degrees, after the stock `Crouch_Move_Fire_Angle_Cutoff`), pausing a
+  burst while they move or turn away.
+- A space ship with an attack order and its target in range turns in place toward the target's
+  nearest live hardpoint; idle ships keep their heading.
+- Scripted conditions: commands `set_invulnerable`, `set_cannot_be_killed`, `suspend_locomotor`,
+  `damage` (past shields and armor), and `teleport` (optional heading). All combat damage goes
+  through `wound`, which applies invulnerability and the health floor (`unkillable_health_floor` 1,
+  or `unkillable_health_fraction` of the health).
+
+### Combat
+
+- Engine-native combat data (`simulation/combat.hpp`): health, shields, armor and shield armor
+  types, aim height, any number of weapons each with its range, recharge, pulse bursts, damage type,
+  speed, and flight limit; a `DamageTable` of damage-versus-armor multipliers; a symmetric
+  `Hostility` over owner slots (map owner slot 3 is provisionally neutral, all others hostile).
+  `combat_content` (`src/battle`) translates the XML and `GameConstants.xml` damage modifiers.
+  Object and hardpoint health are multiplied by `Object_Max_Health_Multiplier_*` (1.0 land, 1.5
+  space; stated by developer comments).
+- Each tick after movement: shields refresh in steps, `Shield_Refresh_Rate` once per GameConstants'
+  `ShieldRechargeIntervalInSecs` (3 s) on a per-unit phase from the entity id (recorded from the FoC
+  debug build); armed entities choose targets, fire bursts, shots fly, shields then armor take damage,
+  and the dead are removed at the end of the tick. Losing every shield generator stops shield refresh;
+  losing every engine slows a unit to a quarter (provisional).
+- **Targets** go through one rule (`choose_target`): a type's `Targeting_Priority_Set` ranks targets
+  by category or property (lower first), exclusions apply to unranked targets only, the rest rank
+  last; the AI-only `Hard_Point_Priorities` are not read. A self-chosen target is weighed again after
+  its XML `Targeting_Stickiness_Time_Threshold` (5 s in 113 of 125 uses) and replaced when the
+  priorities prefer another; without the tag it is kept while valid (as recorded: S-02, S-03, pinned
+  by a test). A unit's first search waits for a phase from its slot, and a weapon its unit's target is
+  out of reach of looks for its own victim on the retarget beat (`retarget_due`). `Is_Valid_Target`
+  No keeps an object from being chosen or kept; `Immune_To_Damage` makes it take no damage. Weapons
+  skip targets of their excluded categories (a weapon hardpoint's `Fire_Category_Restrictions` plus
+  its unit's `Fire_Category_Restrictions` and `Attack_Category_Restrictions`) and, for a unit's own
+  weapon, targets inside `Targeting_Min_Attack_Distance` (artillery); target choice passes over
+  hostiles no weapon may fire at (`engages`). Entities carry their `CategoryMask` and
+  `Property_Flags` bits (from `Data/XML/Enum`).
+- **Weapons**: a unit's own weapons from `Projectile_Types`; a shooter without its own
+  `Projectile_Fire_*` cadence takes its projectile's (Bossk, MAL, the Disruptor merc); a second
+  `Projectile_Types` entry waits for the SWAP_WEAPONS ability. Ship weapons come from `HardPoints`
+  (every weapon entry: `Fire_Projectile_Type`, `Fire_Range_Distance`, `Fire_Pulse_Count`/
+  `Fire_Pulse_Delay_Seconds`, recharge the midpoint of `Fire_Min/Max_Recharge_Seconds`, hardpoint
+  `Damage_Type` overriding the projectile's). Targeting uses the longest range; each weapon fires at
+  the entity's target when in its range and arc, else at the nearest hostile within them. The
+  shooter's `Projectile_Appearance_Delay_Frames` (27 units; the first of "15,20" forms; frames of 1/30
+  s, a guess) holds each burst's first shot for its fire animation.
+- **Inaccuracy**: weapons carry their inaccuracy by target category (`Targeting_Fire_Inaccuracy`,
+  else `Fire_Inaccuracy_Distance`, then `Targeting_Fire_Inaccuracy_Fixed_Radius`; hardpoints their
+  own `Fire_Inaccuracy_Distance`); each shot lands uniformly within that radius of its aim point from
+  a seeded stream that is part of the state (`combat_random_seed`); it misses when that lies outside
+  the target's footprint and then hits the nearest hostile collidable entity it lands on
+  (`Collidable_By_Projectile_Living`). That reading is inference: it fits the data (infantry blasters
+  miss air units, turbolasers fighters) but is unverified.
+- **Muzzles**: a unit's own weapon fires from its model's `MuzzleA_nn` bones, one shot each in number
+  order (the T4-B's two barrels, the T2-B's four guns, an X-wing's four), else from a turret's
+  `Barrel_Bone_Name`, else from the body at `Ranged_Target_Z_Adjust` (compatibility-research.md,
+  "Muzzles"). Infantry and land heroes keep the body: their bind pose spreads the arms (an engine
+  choice until shots leave from the animated pose; the Droideka and the Phase III dark trooper use
+  their bind-pose muzzles). `MuzzleB_nn` bones serve hardpoints and are not cycled. A weapon hardpoint
+  with `Fire_Bone_B` alternates its shots between its two fire bones (an inference from the name), its
+  arc measured from bone A.
+- **Hardpoints**: every `HardPoints` entry is a part (`HardpointProfile`: kind from `Type`, `Health`
+  unless `Is_Destroyable` No, `Is_Targetable`, offset from the model's `Attachment_Bone` in the
+  entity's frame, scaled with the unit). Weapon hardpoints fire from `Fire_Bone_A` within
+  `Fire_Cone_Width` about that bone's X axis; a destroyed weapon hardpoint silences its weapon. Shots
+  aim at the victim's nearest live targetable hardpoint; a shot at a destroyable hardpoint damages
+  only the part, the hull follows the parts at min(1, S/T + 0.2) of its health, and the entity dies
+  with its last part (`Should_Be_Destroyed_When_All_Hardpoints_Destroyed`; recorded from the FoC debug
+  build). `Projectile_Damages_Random_Hard_Points` (the hypervelocity gun) hits a random intact
+  hardpoint from the combat stream. The hardpoint list is resolved once for the engine and the tools
+  (`type_hardpoints`).
+- **Turrets** (the owner's request: no firing backwards or sideways): a type with XML
+  `Turret_Bone_Name` (41 types: T2B, AT-ST, AT-AT, turbolaser towers, anti-air turrets, the MPTL)
+  carries a `TurretProfile` (`Turret_Rotate_Speed` per frame, scaled like turn rates, a guess, 5
+  without it; half of `Turret_Rotate_Extent_Degrees` each way; `Should_Cause_Limited_Turrets_To_Turn`,
+  default yes). Its direction relative to the hull (`CombatState::turret_yaw`, hashed) turns toward
+  what its own weapon can reach (its burst victim, else the entity's target in range, else the nearest
+  hostile in it; `turret_victim`) within the arc, and the weapon starts a burst and fires each pulse
+  only while the turret points at the victim within 5 degrees (`turret_aim_tolerance`, an engine
+  choice). The turret's weapon fires from its barrel bone turned with the turret; hardpoint weapons
+  whose fire bone hangs under the turret bone (the T4-B's missiles) turn with it
+  (`WeaponProfile::on_turret`). A target outside a limited arc turns the standing hull toward it,
+  unless the type's turret does not turn it (snowspeeder, Lancet, HTT). Hardpoint turrets
+  (`Is_Turret`) and `Turret_Rest_Angle` are not turned yet.
+- **Projectiles**: shots home at their speed. A shot is lost after its XML `Projectile_Max_Lifetime`
+  (14 grenades and slow blobs; `lifetime_ticks`), setting off its blast like the flight limit; a guided
+  shot whose target dies takes the nearest hostile within its `Projectile_Max_Scan_Range` (19
+  projectiles).
+- **Area blasts**: a shot with `Projectile_Blast_Area_Damage` and `_Range` (63 projectiles) damages,
+  where it ends (hit, miss, or flight limit), every hostile damageable entity whose footprint comes
+  within the range; with `Projectile_Blast_Area_Dropoff` the damage falls off in `_Dropoff_Tiers`
+  equal rings (the n-th of N from the center takes (N - n) / N, an inference). The direct victim takes
+  the blast besides the shot. Friendly units are spared except by a blast's `Friendly_Damage_Amount`
+  (only the remote bomb: 200), which supports blasts sparing friends otherwise;
+  `Projectile_Blast_Area_Immune_Faction` is not read. A type's `Death_Projectiles` (four stations and
+  a prop) sets off that projectile's blast where it dies.
+- **Crushing**: in contact, a moving ground crusher kills each hostile entity it may crush whose
+  center lies within its footprint radius (`CrushProfile`; counted in the combat counters). XML
+  `Is_Supercrusher` types (both AT-ATs, the Gargantuan, the HTT) crush `Is_Squashable` and
+  `Is_Squashable_By_Supercrusher` entities; other types crush only `Is_Squashable` ones when their
+  `UnitCollisionClass` is Vehicle, Large Vehicle, or Giant Vehicle. Who crushes infantry and that
+  friendly units are spared are engine choices; the kill goes through `wound`. `Squash_Damage_Type`
+  is not read.
+- **Spinning away**: a type with `Spin_Away_On_Death` (22: fighters, corvettes) spins away with its
+  `_Chance` (0.2 or 0.4, on the combat stream) instead of dying: it loses its orders and target, stops
+  firing, takes no further damage, and dies after `_Time` (1 or 2 s), playing
+  `Spin_Away_On_Death_Explosion` instead of its death effect. Not yet: the spin itself (the craft flies
+  on, unrolled).
+- **Survivors**: an object with `Destruction_Survivors` ("type, weight" lines: prisons, barracks,
+  skiffs) leaves those units where it died, owned as it was: `Battle::step` orders the spawn for the
+  next tick as a script order (replays reproduce it unrecorded). Every stock weight is 1.0, so each
+  listed type spawns once; the one count range (a prison: 4 to 8) spawns its minimum (engine
+  choices). Types added at runtime leave only survivors whose types the battle already has.
+- Not yet: garrisons, abilities (SWAP_WEAPONS, ROCKET_ATTACK, the shield abilities), AI behavior,
+  ground detonations, death clones as wrecks the simulation knows (`Death_Clone_Is_Obstacle`), bombs'
+  fall, and instant-hit beams.
+
+## Battles
+
+`eaw_battle` holds battles above the simulation.
+
+- `Battle` owns the `SimulationWorld`. It sets the world up from a `BattleMap` (ground, damage table,
+  hostility, the placed entities in order, then one tick) and takes `BattleCommand`s in replayable
+  terms (spawn TYPE COUNT OWNER at a point, move, formation move, attack, attack-move, guard, stop,
+  set stance, remove, and the scripted conditions; type names, owner slots, points, entity ids),
+  validating them, translating them into simulation commands for the next tick, and recording each
+  with its tick in a `BattleLog`. `Battle::submit` returns each order's serial, and snapshots carry
+  the serial each entity follows (`EntitySnapshot::command_serial`, not hashed).
+- `BattleRuntime` (`battle_runtime.*`) owns a battle, its game-object scripts, and the fixed clock;
+  its `step` is the battle's tick and then the script phase, timed, and it passes its tick length to
+  the script host. The sandbox and the headless runner both step through it.
+- Recipes: `TypeRecipe` (`battle/type_recipe.hpp`, `build_type_recipe`) holds what a type gives
+  every entity of it, read once per type and model, so its warnings appear once; `make_spawn(recipe,
+  instance)` returns the simulation recipe and the instance (`PreparedSpawn`; position, heading,
+  owner, look, whether there is a ground, a placed object's transform; `placement_transform` gives a
+  runtime spawn the transform a placement would have). A type behaves the same however it appears
+  (the owner's choice). `Battle` registers recipes as it builds the map and as spawn orders come.
+- Companies and squadrons: land companies (`Company_Units`: GroundCompany, HeroCompany,
+  SlaveCompany) expand into their members even when the company names a model of its own (4,665
+  members on the stock maps), with their teams ([Group movement](#group-movement-and-avoidance)). A
+  repeated `Squadron_Units` continues the list (1,474 squadron members on the stock maps); a squadron
+  without `Squadron_Offsets` takes its team container's, the rest lining up astern 40 units apart (an
+  engine choice). Type-name lists split on commas and whitespace (one stock FoC list has no commas).
+- Spawn placement: spawn orders put ground units on free ground ([Spawning](#spawning-and-the-ground));
+  headless battles gather at the open ground nearest the map's middle (Utapau's middle is ground no
+  unit may enter).
+- What scripts read of a type is one `ScriptTypeInfo` (Lua_Script, the folded CategoryMask names,
+  `AI_Combat_Power`) on `SpawnableType` and `MapEntity`, kept by `Battle::type_info`.
+
+### Headless battles, logs, and checks
+
+- `EAWEngine battle` (`battle_runner.*`) builds only the battle side of the map with the types its
+  orders name, spawns the `--spawn TYPE[:N][@OWNER]` groups at the center, optionally orders every
+  mobile unit there (`--auto-move`), runs `--ticks` ticks (default 6000, 100 s at 60 Hz) without a
+  window, and prints the state hash, tick timing per layer, combat, path, and script statistics, and
+  frames against the 60 FPS budget (over budget, average, 99th percentile, worst; the spawn tick not
+  measured). `--tick-rate <hz>` runs at another rate (a log replays only at the rate it was recorded
+  at, which the log does not record yet); `--no-scripts` turns the script phase off.
+- Order logs (`battle_log.*`): one order per line with its tick, shortest exact float text that
+  reads back bit-identically, an `end` line with the final tick and state hash. `--record` writes them
+  from battle and sandbox runs, `--replay` runs one and checks its hash (exit 4 on a mismatch), and
+  `--check-determinism` runs twice (the second serially). Replays build every type their log names, so
+  a sandbox session with runtime types replays headless with a matching hash. Not yet: logs carry no
+  game or mod identity (a replay must use the same data).
+- `scripts/check-battle.ps1` runs the reference battle (Utapau, two opposing groups ordered to the
+  center, 3000 ticks, 50 s at 60 Hz) and, with `-Extended`, a large Utapau battle (3,300 entities),
+  fighters at Kuat, capital ships at Kuat, and AT-ATs on Utapau, each twice; the script holds the
+  expected state hashes, which a change that alters them on purpose updates and explains.
+- `--stress-orders` (`sandbox/src/battle_stress.*`) gives the spawned units a new order every second
+  per group of eight (move, attack-move, attack, guard, to fixed-seed random points or hostile
+  targets, staggered), and they cannot be killed, so the load stays constant;
+  `scripts/benchmark-battle.ps1` runs it 10 seconds at 10, 50, 100, and 500 units (4,400 entities at
+  500) and fails on any frame over 16.7 ms.
+- `EAWEngine path-audit` plans seeded start and goal pairs per movement class and size bucket on
+  every stock land map (`sandbox/path_audit.*`); `scripts/compare-path-audit.ps1` compares two runs
+  pair by pair ([tools.md](tools.md#path-audit)). The plain grid A* baseline: 76 maps, 98,800 pairs,
+  82% reached, 1,385 nodes and 0.25 ms a search on average (95th percentile 6,722 and 1.1 ms).
+
+### Performance
+
+Measured in Release on 8 hardware threads (7 workers), late in the current work:
+
+- the 500-unit stress benchmark: about 6 ms a tick, 0 to 3 of 600 frames over budget between runs
+  of the same battle (this machine's noise); route searches about 0.16 ms a tick on average,
+  budget-limited; giving way 0.7 ms; 100 units about 1.4 ms;
+- the large Utapau battle: about 5-6 ms a tick, 2 of 1,798 frames over budget, its worst navigation
+  tick about 13 ms (the group's shared search);
+
+Each simulation change's measurements are in [history.md](history.md).
+
+## Presentation
+
+`eaw_presentation` presents a running battle; it depends on battles and never feeds back into them.
+
+### Battle frames
+
+`present_tick` plays a tick's events (the scripts' sound requests, corpses, impact and death
+effects, battle sounds), and `build_battle_frame` builds a `BattleFrame` (instances, their entities
+and clip profiles, shots drawn as models, the bone palette, animation cues, attached effects) from
+the runtime's interpolated snapshots through `BattlePresenters` (the scene presentation and
+optionally the unit animator and battle audio, which the sandbox owns). A test builds a frame
+without a window. `ScenePresentation` re-poses instances from interpolated snapshots, draws
+command-spawned entities by their spawnable visual, highlights a selected team's soldiers, and keeps
+the map's own surfaces no entity draws as scenery.
+
+### Unit animation
+
+- Map meshes get a `VisualRig` each (model, inverse bind pose, rest palette range, role clips by the
+  stock naming `<MODEL>_<ROLE>_<NN>.ALA`); the scene palette starts as every mesh's rest pose.
+  `UnitAnimator` (`presentation/unit_animation.*`) runs each entity's frame in five stages in files
+  of their own: state and idles; locomotion by speed with the stride
+  (`unit_animation_locomotion.cpp`); aiming and firing (`unit_animation_attack.cpp`); the frame's
+  animation cues and walkers' transitions (`unit_animation_transitions.cpp`); the pose key with the
+  turret (`unit_animation_pose.cpp`).
+- Poses are keyed by mesh, up to three (clip, slot, weight in eighths) layers, sampled at pose
+  slots (the clip's frames, at least 30 a second) shared by every entity at the same key and cached
+  across frames; units beyond the palette budget stay at rest. New poses are sampled with
+  `parallel_for` (4 to a job, `JobPriority::frame`) and copied in request order, so the frame is the
+  same with or without jobs (`EAWBenchmarks poses`: 256 new 40-bone poses 4.7 ms serially, 2.3 ms on
+  7 workers).
+- Locomotion: the snapshot speed is smoothed (0.15 s) and placed on IDLE - WALKMOVE (40% of top
+  speed) - MOVE (top speed), or IDLE - MOVE by a quarter of top speed without WALKMOVE, WALKMOVE and
+  MOVE on one shared phase played 0.5x to 1.5x by speed. Per type (`AnimationProfile`): move and walk
+  clips play at their own rate at XML `Movement_Animation_Speed` and `Walk_Animation_Speed` in
+  `Max_Speed`'s units (an inference from the corpus, compatibility-research.md "Clip speeds"); the
+  idle clip at `Idle_Anim_00_Rate_Mod` (the huge asteroid masses spin at 8); a type with neither a
+  move nor a walk clip keeps its idle while moving when `Allow_Idle_When_Moving` (birds). Whether the
+  original bounds the resulting rate is not known. Walkers played as clips show the simulation's clip
+  ([Walkers played as clips](#walkers-played-as-clips)).
+- Idles: a type with `Loop_Idle_Anim_00` loops IDLE_00; any other unit plays a random IDLE variant
+  each time one ends (the owner's recollection); a model with a single IDLE clip plays it again after
+  a random 2-4 s pause, holding its first frame (the owner's choice).
+- Attacks: snapshots carry each entity's last shot tick; the animator fades ATTACKIDLE in and out
+  over 0.2 s while a standing unit has a target, plays ATTACK from its start on every shot (each pulse
+  of a burst), and fades back over 0.15 s after it ends. A mesh without ATTACKIDLE shows no aiming
+  pose (the T4-B has only ATTACK_00, its gun recoil). XML `Attack_Animation_Is_Overlay` plays ATTACK
+  and ATTACKIDLE over the locomotion as additive overlays: each animated bone's change since the
+  clip's first frame is added at the layer's weight (`conjugate` in `math/quaternion.hpp`), and bones
+  a moving locomotion clip below moves are left alone, so a walking pod walker keeps only its guns'
+  recoil and a standing one the whole attack.
+- Turret aiming: a turret's bone subtree turns about the model's up axis to the simulation's
+  direction (`EntitySnapshot::turret_yaw`), and its `Barrel_Bone_Name` subtree pitches toward the
+  target within half of `Turret_Elevate_Extent_Degrees` (presentation only, a guess), back to rest
+  without a target. The aim joins the pose key in steps of about 2.8 degrees. The axis tags
+  (`Apply_Y_Turret_Rotate_To_Axis`, `Apply_Z_Turret_Rotate_To_Axis`) are not read.
+- Flight poses: pitch from the snapshot, a bank from the yaw rate (`flight_bank`) at most the type's
+  XML `Bank_Turn_Angle` (fighters 40, capital ships 5), 60 degrees without one (`default_bank_limit`,
+  an engine choice, as is the bank per turn rate), and the loop's roll. Capital ships do not bank yet
+  (only flyers report a yaw rate); `Max_Rate_Of_Roll` is not read.
+- Not yet: directional and ability deaths (FW_DIE, FL_DIE, FIRE_DIE, FTK_DIE wait for the abilities
+  and damage types that cause them), flinch and crouch animations, `_QUARTER`/`_HALF` turn clips for
+  units whose turns are not planned, and Lua `Play_Animation`.
+
+### Deaths and wrecks
+
+- Snapshots list the entities combat destroyed in their tick (`SimSnapshot::deaths`: id, position,
+  heading, pitch, visual, owner, type, death effect, whether crushed); destroy commands are not deaths.
+  The sandbox turns each into a corpse (`ScenePresentation::corpse_instance`) that
+  `UnitAnimator::add_corpse` keeps (at most 4,096) when the mesh has a DIE clip: the DIE variant its
+  normal death clone names (`DeathStyle` from `Death_Clone "Damage_Normal, <clone>"`: the clone's
+  `Specific_Death_Anim_Index`, else a variant by id), for the clone's `Death_Persistence_Duration`
+  (the AT-ST's 30 s), else holding the last frame 4 s; drawn after the living with an invalid entity
+  id (not pickable).
+- A unit run over plays its `Damage_Crush` death clone's clip (`Specific_Death_Anim_Type` Crushed or
+  DIE; `CRUSHED_nn` clips) when its model has it.
+- 184 stock types die into a death clone with a model of its own (every capital ship, station, and
+  transport: `EV_STARDESTROYER_D.ALO`, `RV_CORVETTE_D.ALO`, the stations' `_BREAK` models), which
+  breaks apart in its DIE clip: the scene build loads it with its clips (`death_clone_mesh`;
+  `normal_death_clone` is the one place the clone is chosen) into `DeathStyle::mesh`, and the wreck
+  is drawn with it in state 0. A third attached-effects set keyed by the dead unit's id plays wrecks'
+  proxy effects (41 on the Star Destroyer's break-apart model, 46 on a station's; land rubble's `_ALT`
+  fire), apart from the units' set.
+- A type with `Remove_Upon_Death` (281 of 286 uses are true) leaves no corpse. A dead mesh without a
+  DIE clip but in a damage state stays as rubble at rest pose for its `Death_Persistence_Duration` or
+  for good (an engine choice). When its persistence ends, a wreck plays its `Death_Explosions_End`
+  Particle object and `Death_SFXEvent_End_Die` (18 stock types; read as the final explosion's sound,
+  an inference). Both come from the death clone or, for the five stock types that leave none (AT-AA,
+  the Dark Troopers, the MPTL spotter, the gas droid), from the type itself.
+- Not yet: `Death_Fade_Time` (the renderer has no per-instance fade).
+
+### Damage states
+
+On land, an entity draws the `_ALT<n>` state its health fraction reaches in
+`Land_Damage_Thresholds`/`_Alternates` (`presentation/damage_states`: the last threshold the fraction
+is at or below, so build pads' `1`/`3` show ALT3 always); its `_ALT<n>` proxy effects play only in
+their state (placed after the intact ones, so existing effects keep their seeds); entering a state on
+the way down plays its `Land_Damage_SFX`; a wreck shows the state for no health. Space types have no
+damage states.
+
+Destroyed hardpoints (`HardpointDeathSnapshot`, through the type's `HardpointLook`) change the
+entity's bone mask (`UnitAnimator::destroy_hardpoint`): the scorch meshes (its `Damage_Decal` bone and
+below, 237 stock hardpoints), hidden while intact, appear; the attachment bone itself collapses (the
+attached model is bound to it alone; on the Star Destroyer the scorch and damage-emitter bones hang
+under it); the damage effects (proxies under its `Damage_Particles` bone, hidden while intact) start.
+Such an entity draws with a palette of its own; its pose key carries the mask's content hash, so
+ships damaged alike share.
+
+### Particles and attached effects
+
+- Map builds attach the effects of models' visible proxies; `_ALT1`+ proxies are damage states.
+  Emitters with `emit_from_mesh` spawn on the mesh on the proxy bone's parent (the Star Destroyer's
+  `pe_stardestroyerengines` glows at the three vertices of its `engines_big` triangle), on every
+  vertex, a random vertex, or a random surface point, pushed out along the normal. `AttachedEffects`
+  keeps them at their bones from the animated palette (hidden bones stop emission) and stops them when
+  the entity is no longer drawn.
+- Engine effects (proxies named `pe_*` or under a hardpoint's `Engine_Particles` bone) follow their
+  unit's speed: speed smoothed over 0.5 s, size from 50% and opacity from 15% at rest to full at top
+  speed (engine choices fitted to the owner's screenshots of the original).
+- `sandbox --effect NAME` plays an effect at the map center.
+
+### Projectile visuals
+
+- Shots carry a presentation-only `projectile_visual` key (the CRC-32 of the projectile type name).
+  `projectile_visuals.*` reads `Projectile_Custom_Render` 1 or 2, `Projectile_Width`,
+  `Projectile_Length`, `Projectile_Texture_Slot` (column,row of the 4x4 `W_LASER_PILL` atlas), and
+  `Projectile_Laser_Color`. Render 1 draws as a `beam` particle (the diagonal pill along the flight);
+  render 2 as a procedural `teardrop` in the laser color, `Projectile_Length` widths long (inferred
+  from a modder's description and the owner's screenshot).
+- Model projectiles (no custom render: 62 of the 115 fired stock projectiles) draw their model
+  (`Space_Model_Name`, else `Land_Model_Name`, the reverse on land) at the projectile's
+  `Scale_Factor`, nose along the flight, never picked, in rest pose; missile trails are the model's
+  proxies (`BattleEffects::follow_projectiles`, keyed by shot serial), and projectiles whose model is
+  a particle file play it along the flight.
+- Flight shapes (presentation only; shots fly straight in the simulation): `projectile_pose` adds a
+  lob to grenades (g/2 t (T - t), g = `Projectile_Grenade_Gravity` x `_Lob_Mod` per frame squared,
+  scaled like accelerations, a guess) and a sideways sway to rockets (straight for
+  `Projectile_Rocket_Straight_Distance`, then up to `Projectile_Rocket_Curve_Offset` in a half sine,
+  the side alternating by shot, at most 50 units: one stock 180 is of unknown unit). Not yet: bombs'
+  fall, `Projectile_Rocket_Curve_Distance`, sticky grenades.
+- `Projectile_Object_Creation_Particle` plays at the muzzle. Headless builds skip all of it.
+
+### Battle effects
+
+`BattleEffects` (`presentation/battle_effects.*`) keeps attached effects, bolts, debris, decals, and
+tracks.
+
+- Impacts and deaths: gameplay effects are XML `Particle` objects (`Space_Model_Name`/
+  `Land_Model_Name`, `Scale_Factor`). Snapshots list each tick's impacts (position, direction,
+  projectile key, the entity struck, `ImpactKind` shield, hull, hull_reduced (armor modifier below 1,
+  provisional), or expired); builds resolve the projectiles' `Projectile_Absorbed_By_Shields_Particle`,
+  `_Object_Detonation_`, `_Object_Armor_Reduced_Detonation_`, and `_Lifetime_Detonation_Particle`
+  objects and the types' death explosions (the first `Death_Explosions` entry; one naming a
+  Projectile plays its detonation particle) and spin-away explosions (`load_effect_objects`); each
+  plays once at its point, upright, sized by `Scale_Factor`. Objects that cannot play are reported.
+- Shield hits show the projectile's absorb particle; the shield-mesh flash (growing through 1.0, 1.1,
+  and 1.25 for 0.1 s each: GameConstants' `Shield_Flash_Scale` and `Shield_Flash_Duration`, read as
+  one step per scale, an interpretation, values written in) is kept for the shield abilities
+  (SHIELD_FLARE, MISSILE_SHIELD, DEFEND; not implemented yet), the owner's reading of the original.
+- Hardpoints: a destroyed hardpoint plays its `Death_Explosion_Particles` object (259 hardpoints) at
+  its position, and 169 stock hardpoints break off their `Death_Breakoff_Prop` (a SpaceProp with
+  SpaceBehavior DEBRIS whose model is the hardpoint's attached model, with `Debris_Movement_Vector`,
+  `Debris_Facing_Rotate_Vector`, a 15-25 s lifetime, a trailing `Debris_Attached_Particle`, and
+  `Death_Explosions`): `BattleDebris` draws it at its unit's transform, drifting and tumbling about the
+  hardpoint, trailing its fire, exploding when its life ends; never picked, never seen by the
+  simulation. The vectors' units are engine choices (world units, and degrees per 30 Hz frame, in the
+  unit's frame).
+- Scorch marks: an explosion object's `Explosion_Scorch_Mark` resolves through SurfaceFX's default
+  surface to its decal; the mark is left where the object plays on land within 40 units of the ground
+  (random cell, turn, and size as the decal says; fades 2 s after its `Fadeout_Time` unless permanent;
+  at most 2,048 marks; engine choices).
+- Footprints: every surface event an animation cue passes (an AT-AT's `AT_AT_FOOTPRINT` at
+  `P_FootPuff_*`) leaves its trigger's default-surface decal at the event's bone, its +X along the
+  bone's X axis on the ground (the unit's facing the fallback), as a bump decal. Infantry foot plants
+  name no decal in the stock data. Cues name the instance that played them
+  (`UnitAnimator::bone_position`, `visit_cue_events`).
+- Dynamic tracks: each land type whose `SurfaceFX_Name` list names a track gets a layer per tread
+  bone (one under the unit without bones); `BattleEffects::lay_tracks` adds a point under the bone
+  each segment length, a jump of more than four segments starts a new trail, at most 256 points a
+  trail (engine choices); each point pair is a terrain decal with the whole texture over it (a
+  reading: repeated once per width, the footprints ran into a bumpy line), faded from the fade begin
+  to the fade end and at the fade rate while the unit stands. In the stock data the tracks are bump
+  decals (`Footprint_Bump`, 3 units wide; `Track_Bump`, `Track_Bump_Half`), a pixel or two wide at
+  overview zoom. Units on platform models lay trails on the hidden terrain beneath.
+- The sandbox prints the marks and trails at exit.
+
+### Weather
+
+A land map's active environment names a weather scenario (`WeatherScenarioCatalog`), and `MapWeather`
+plays it: the phases' timeline on the world clock, looping, each phase easing into the next over its
+ease-out; the scenario's effect (rain, snow, ash, sandstorm) played once per tile of a world-aligned
+grid over the ground in view (a tile as wide as the effect's spawn volume, hanging high enough for its
+particles to reach the ground; at most 16 x 16 tiles, the rate thinned to stay under 40,000 particles;
+tiles leaving the view stop and their particles live out), at the phase's intensity
+(`ParticleWorld::set_emission_rate`); lightning as flashes of the ambient and key light. Placement, the
+ease-out reading, and the flash are engine choices; the cube size, fade-out distance, and fog-plane
+value are unused, their meaning unknown. The weather does not yet reach gameplay (WeatherModifiers.xml)
+or sound (WeatherAudio.xml).
+
+## Script host
+
+`eaw_script` (research in [lua-runtime-research.md](lua-runtime-research.md)).
+
+- **Runtime**: Lua 5.0.3 builds as C with only base, string, table, and math. One sandboxed state per
+  script: no io, os, debug, or file loaders; `print` to the log; `math.random` and `GameRandom`
+  (call, `Get_Float`, `Free_Random`) from a seeded stream; `require` through the VFS (inside a
+  thread it runs within its resume); compiled chunks refused (Lua 5.0 does not verify bytecode).
+- **Limits** (engine choices; none trips on the stock scripts): every call and resume under an
+  instruction budget, coroutines included, and sticky (`pcall`, `xpcall`, and `coroutine.resume`
+  re-raise a spent budget or a memory error); 64 MiB per state through `l_realloc`; pattern matching at
+  5,000,000 matcher steps (a checked configure-time copy of `lstrlib.c`); `string.rep` results 16 MiB,
+  patterns 1,024 characters, script threads 256; script output `max_script_output` lines with a count.
+  `newproxy` is gone and engine objects' metatables are locked (`__metatable`), so a script can neither
+  forge an engine object nor give one a `__gc`; `object_method` checks its object, kind, and method;
+  `collectgarbage` only collects; a script out of memory is stopped for good. Not yet bounded: the stub
+  metatables and callbacks a script can create, and small leaks where a Lua error unwinds over C++
+  frames.
+- **Framework primitives**: the stock framework (`PGBase.lua`, `PGBaseDefinitions.lua`,
+  `PGStateMachine.lua`) builds `Sleep`, `ScriptExit`, and `PumpEvents` in Lua on engine primitives the
+  host implements: `Create_Thread` (a table with `Kill`, which ends a running thread at its next yield,
+  and `Is_Thread_Active`), `GetThreadID`, `_ScriptExit`, `GetCurrentTime`, `ThreadValue` (`Set`,
+  `Reset`), and `GetEvent` (`Params`, `Reset`). Threads are coroutines serviced every `ServiceRate`
+  seconds; yielding false ends one. The message sinks (`_ScriptMessage`, `_MessagePopup`,
+  `_OuputDebug`) write to the script's output; the `Script` object's `tostring` names the script file,
+  and `Debug_Should_Issue_Event_Alert` is false.
+- **Values and calls**: the engine talks to scripts through `ScriptValue` (nil, boolean, number,
+  string, engine object, function, table): `ScriptHost::set_global`, `global` (nesting and size limits,
+  keys sorted), and `queue_event`/`queue_callback`, drained by the framework's `PumpEvents` through
+  `GetEvent` (argument tables carry `n`, so nil arguments survive `unpack`); script functions passed to
+  engine stubs become callbacks, once per function. Engine objects (`ScriptObject`: kind, index,
+  generation, point; `ScriptCall` reads arguments from and pushes results onto the Lua stack without
+  conversion or allocation; `ScriptCall::truthy`) are userdata with one metatable per kind (method names
+  resolved once; bound closures, since scripts call with a dot), interned per kind in a weak table with
+  a generation check. Everything not implemented is a recording stub (callable and indexable); names any
+  stock script defines are script names, never stubs. The recorder is optional
+  (`ScriptHostOptions::recorder`); `run_definitions` is the creation call shared by the survey and
+  battles.
+- **Scripts in battles** (`BattleScripts`, `battle/battle_scripts.*`): a `BattleScriptView` rebuilt
+  after each tick (snapshot, slot table, entities by type, type ids in first-seen order); one provider
+  context per script with its own order buffer and a ring of 4,096 blocks; orders merged in script
+  order through `Battle::submit(command, BattleOrigin::script)` (not logged); phase timing
+  (`BattleScriptStats`). `run` starts the `Lua_Script` of every entity that appears whose type names
+  one (`Object` bound to it; `type_lua_script` through the variant chain), ends scripts whose object is
+  gone, and reports a script that cannot start once per name. Starting a script costs about 20 ms
+  (loading the framework libraries); a script tick about 2.3 microseconds per script on average.
+- **Implemented calls**: `Find_Object_Type`, `Find_First_Object`, `Find_All_Objects_Of_Type` (type
+  name or object type, optional player), `Find_Hint`, `Find_All_Objects_With_Hint`, `Get_Game_Mode`
+  ("Land" or "Space" by whether the battle has ground). Game objects: `Is_Valid`, `Get_ID`, `Get_Type`,
+  `Get_Owner`, `Get_Position`, `Get_Hull`, `Get_Shield` (the shield's share), `Get_Distance` (ground
+  plane), `Is_Category` (a `|` list matches any), `Move_To`, `Attack_Target`, `Attack_Move`,
+  `Guard_Target`, `Stop`, `Despawn` (the `remove` order: the object leaves without dying),
+  `Prevent_Opportunity_Fire` (the hold_fire or aggressive stance, a mapping), `Make_Invulnerable`,
+  `Set_Cannot_Be_Killed`, `Suspend_Locomotor`, `Take_Damage`, `Teleport_And_Face`, `Teleport`,
+  `Play_SFX_Event`, `Event_Object_In_Range` (a callback with a range and an optional real player as
+  filter), `Cancel_Event_Object_In_Range`, and `Service_Wrapper` (queues the handler with (self,
+  other) for every object in range in the ground plane). Object types: `Get_Name`, `Is_Hero` (a hero
+  category, an inference), `Get_Combat_Rating` (`AI_Combat_Power`, an inference). Players: `Get_ID`
+  (the owner slot). Blocks: `IsFinished`, `Result` (an attack-move's ends with the order, a guard's
+  only when it ends). Stub destinations are dropped with a warning.
+- **Survey**: `EAWEngine lua-survey` runs all 370 stock scripts headless (load, `Base_Definitions`,
+  `main` for 600 ticks, 10 s of script time; game-object scripts get `Object` bound to a stub) and
+  drives AI plans (task force objects and `<Name>_Thread`, task force events with the `Default_`
+  fallback), story events through `Story_Event_Trigger`, and callbacks, binding `PlayerObject` and
+  `Target` by script kind: about 2,900 events, 167 engine functions and 129 methods called, 317 of
+  370 scripts without errors; most remaining errors come from story states fired out of campaign
+  order and stubs where numbers are expected. The 3,074-name upper bound is far above what runs.
+- Not yet: `Find_Player` and `Spawn_Unit` wait for the player layer (`Spawn_Unit` will return
+  provisional objects mapped to the spawned entities at the merge); story, cinematic, and task force
+  calls wait for their systems.
+
+## Audio
+
+- `eaw_audio` holds `Sound`, the `AudioDevice` interface (voices with category, volume, pitch, pan,
+  loop; categories effects, voice, music, interface), equal-power panning and the distance curve
+  (`spatial_audio`, engine choices), and the null device; `eaw_audio_devices` holds XAudio2 (the
+  default, a submix voice per category) and FMOD (built only with `EAW_AUDIO_FMOD=ON` and `FMOD_ROOT`;
+  written but not built or tested here, without an SDK).
+- `EAWAssetInspector sound-audit` resolves and decodes every sample: on stock FoC 3,073 events, 9,539
+  of 9,610 samples decoded, 71 missing from the stock data, none undecodable.
+- `BattleAudio` (`presentation/battle_audio.*`, presentation only) plays, with the events' chance,
+  instance limit (a new one-shot replaces the oldest), overlap groups, sample order, volume and pitch
+  ranges, predelays, and chains, voices following their sources and the camera:
+  - weapon fire (a hardpoint's `Fire_SFXEvent`, else the type's `SFXEvent_Fire`; one play per shooter
+    and sound per tick), deaths and death explosions, shot impacts (`Projectile_SFXEvent_Detonate`, or
+    `_Reduced_By_Armor`; lapsed shots play nothing, an engine choice), destroyed hardpoints'
+    `Death_Explosion_SFXEvent`, spin-away starts (`Spin_Away_On_Death_SFXEvent_Start_Die`), damage-state
+    sounds, and wreck ends;
+  - loops on the 16 units nearest the listener: `SFXEvent_Engine_Moving_Loop` while moving (for a type
+    with a secondary locomotor only on that locomotor, which the engine lacks, so Boba Fett's and the
+    Dark Troopers' jetpack loops are silent; a developer comment marks Boba's loop as the jet pack's),
+    `SFXEvent_Engine_Idle_Loop` while still, `SFXEvent_Ambient_Loop` either way, and
+    `SFXEvent_Turret_Rotating_Loop` while the turret's direction changed in the last tick;
+  - `SFXEvent_Ambient_Moving` every min..max seconds while a unit moves, only for types whose behaviors
+    include `AMBIENT_SFX` (a developer comment requires it);
+  - `SFXEvent_Health_Low_Warning` and `_Critical_Warning` once as health falls to a third and a tenth
+    (the stock GameConstants thresholds, fixed for now), and hardpoint loss reports
+    (`SFXEvent_Hardpoint_Destroyed` entries "HARD_POINT_<kind>, event" for the hardpoint's `Type`;
+    empty entries silent); both for every owner until the player layer decides whose voice is heard;
+  - unit responses to the sandbox's selections and orders (select, move, attack, guard); for an order to
+    more than one unit, a member whose type has a group line answers (`SFXEvent_Group_Move`,
+    `SFXEvent_Group_Attack`), else the first unit (who speaks is an engine choice); then the first unit
+    of another type in the order with an assist line (`SFXEvent_Assist_Move`, `_Assist_Attack`) answers
+    0.2 s after the response has finished (`play_assist_response`: the pause restarts while any answer
+    to the order plays or waits, or a voice of its own overlap name plays; dropped after 5 s; from the
+    owner's account of the original);
+  - sounds scripts ask for (`Play_SFX_Event`, through `BattleScripts::sound_requests()`, at the
+    object);
+  - animation sounds: `UnitAnimator::cues()` reports which frames of which clip a unit played (its
+    leading locomotion clip, an ATTACK, a corpse's DIE), and `play_animation_cues` plays the sounds
+    those frames pass (footsteps through a SURFACE trigger's `default` surface, walker hydraulics,
+    death falls). Only some models have rows (stormtroopers, heroes, walkers, creatures; not rebel
+    soldiers).
+- The sandbox takes `--audio xaudio2|fmod|none`, `--no-audio`, `--volume` (master, default 0.2, an
+  engine choice after the owner found full volume too loud), and `--language`; its sound panel has
+  master and per-category volume sliders; it falls back to silence when a backend cannot start and
+  reports sounds played, skipped, and missing.
+- Not yet: the surface kind under a unit, the particles of surface effects, the stop response
+  (`SFXEvent_Stop`, waiting for a stop order in the sandbox), advisor lines (`SFXEvent_Unit_Lost`,
+  `_Unit_Under_Attack`, for the player layer), `SFXEvent_Fleet_Move` (presumably galactic, the owner's
+  guess), muzzle flashes (hidden `_flash` meshes), loop intros, outros, and fades, priorities and voice
+  stealing, `Kills_Previous_Object_SFX`, music and speech (MP3), and a check of the distance curve
+  against the original.
+
+## Platform and input
+
+- `src/platform`: the Win32 window, input, crash handling, and log sinks.
+- Raw input: the mouse and keyboard are registered for `WM_INPUT`; `InputState::raw_mouse_delta_x/y`
+  carry unaccelerated movement (absolute devices such as tablets and remote desktop converted to
+  deltas), keys come from raw input with left and right Shift and Ctrl folded, and queued input is read
+  in batches with `GetRawInputBuffer` each frame (high polling rate mice). Cursor position, buttons,
+  and the wheel stay on window messages, so clicks outside the client area never reach the scene.
+  Button and key edges latch within a frame, so a quick click registers both press and release.
+  `--no-raw-input` (`WindowDescription::raw_input`) falls back to window messages. A lone Alt release
+  does not open the system menu. GameInput (controllers) remains a later option.
+- Input load: the sandbox times `poll_events` and counts the raw input records each frame
+  (`InputLoad`), shows them in the Statistics panel, and prints the run's average and worst frame.
+  Without input the read averages 0.005 ms, the worst frame (window startup) 0.8 ms.
+  `scripts/check-input-load.ps1` floods the sandbox with synthetic relative mouse moves (8,000 a second
+  by default) and fails above 2 ms for the worst frame's read; it needs the window to hold the focus,
+  so it has not run unattended yet.
+- Key rebinding (the owner's choices: an action table, a bindings file, and a panel ahead of the
+  in-game UI; no controllers yet): `Key` (`platform/keys.hpp`) covers the whole keyboard, each with a
+  name (`key_name`, `key_from_name`). `InputBindings` (`platform/input_bindings.hpp`) holds a caller's
+  actions with up to two keys each, answers down and pressed, and reads and writes `action = key, key`
+  text (a line it cannot read is reported and leaves that action as it was). The sandbox's 22 actions
+  (`engine_app/sandbox_actions.hpp`) replace its key reads; Escape, F1, and text-editing keys stay
+  fixed. `input_bindings.txt` next to the executable is read at start and written after each change;
+  the Controls panel (`--panel controls`) rebinds a slot with the next key pressed (Escape cancels,
+  Backspace or Delete clears) and resets to the defaults, the sandbox's keys until the original's
+  hotkeys are transcribed from the owner's screenshots.
+- Errors: no exceptions anywhere (AGENTS.md, "Error handling"). Callers that continue after a
+  recoverable failure log a warning (`log_warning(category, error)`), which reaches stderr, the
+  debugger output, and a per-run file in `logs/` next to the executable (`--log-dir`), and fall back
+  (the sandbox shows the validation triangle, hot reload keeps the current view, a map skips the
+  object). `install_crash_handlers` turns fatal errors, `std::terminate`, and hardware faults into one
+  report on stderr, in the log file, and in an error window.
+
+## Sandbox
+
+`EAWEngine sandbox` (options in [tools.md](tools.md)) runs a map or model in a window with a battle.
+
+- Interface: a bar pinned to the top (F1 shows or hides it) with Panels and View menus; panels open
+  below the bar and are then freely moved and resized, kept between runs in `sandbox_imgui.ini` next
+  to the executable (`D3d12RendererOptions::overlay_settings_file`). Panels (`--panel ...`):
+  Statistics (FPS, CPU and GPU frame time from timestamp queries read after the frame's fence, draw
+  calls, triangles, instances, video memory against the DXGI budget, texture residency and slots,
+  input load, scene, camera, animation, selection, hot-reload status), Spawn, Camera, Graphics, Sound,
+  and Controls.
+- Graphics panel (`--panel graphics`): v-sync, anti-aliasing, bloom with threshold and strength,
+  shadows and their cascade count, fog, water and waves, heat, cloud shadows, sky ambient and
+  visibility, silhouettes, soft particles, terrain decals, and the detail-level policy and mesh detail,
+  switched while running through `D3d12GraphicsSettings` (`set_graphics_settings` before a frame).
+  Shadow maps are created the first time shadows are on. Shadow resolution and particle fidelity stay
+  as started.
+- Cameras: maps start with the RTS camera; C switches between it, the debug camera, and the free
+  flying camera (`--free-camera` places it; `--camera` frames a map view).
+- Selection and orders: left-drag box-selects mobile units, a click selects any object (a soldier's
+  click or box selects its team once, `entities_in_rectangle`); right-click moves selected units to the
+  ground under the cursor, found on the CPU in the same frame (`TerrainHeightField` ray-marched by
+  `intersect_terrain`, liquid surfaces included; the z = 0 plane in space), or attacks a hostile under
+  it (resolved through a pick against the entity list of the frame that drew it); Ctrl + right-click
+  attack-moves, Shift + right-click guards a point or object, Alt + right-click makes a formation move.
+  The selection is tinted and outlined by its bounds; selected units' routes are drawn, in 3D through
+  the detour in space. Every order goes through `SandboxSession::give_order`.
+- Spawning: the spawn panel filters by category (infantry, vehicles, heroes, structures, space units,
+  props, other) and faction (XML `Affiliation`), has a search field, lists squads, companies,
+  squadrons, and props, marks types not loaded yet, and sets type, count, and owner; N spawns at the
+  cursor, Tab/Shift+Tab (Ctrl for ten) cycles types, O cycles the owner. N on an unloaded type builds
+  its package on a worker, registers it (`add_meshes`, `ScenePresentation::add_meshes`/
+  `add_spawnable`, `UnitAnimator::add_rigs`, `Battle::add_spawnable`), then gives the waiting spawns.
+  `--spawn TYPE[:N][@OWNER]` and `--spawn-later` automate it; `--auto-move` waits for the tick after
+  its spawn orders.
+- Other keys: P pauses the world (no ticks; animation, particles, and texture scroll read a frozen
+  presentation clock) while the cameras keep working; B toggles every object's bounds and world axes
+  (`--show-bounds`); G draws passability and stamped footprints.
+- Replays: `sandbox --replay <file>` takes the log's map (unless `--map`), makes its spawned types
+  spawnable, gives each order at its tick, pauses at the log's end, and prints the state hash against
+  the recording's; the player's orders are refused meanwhile; with `--capture` it runs 240 ticks a
+  frame and captures the end.
+- Frame watchdog: a background thread logs a warning (stderr, log file) when one frame step (camera,
+  orders, picks, content, simulation and presentation, rendering, events) runs longer than 5 s (60 s on
+  WARP or with GPU validation), naming the step and tick, and repeats every 5 s while it lasts.
+- The sandbox creates the job system on its frame thread (`sandbox_app.cpp`) and passes it to the
+  world and to presentation. Content builds still use `std::async`; a background lane waits for
+  content builds split into short jobs (ecs-design.md 7.4).
+- `EAWDevLauncher` refreshes its asset and spawn lists a second after the game, installation, or mods
+  change; its root field is labelled, and a mod path it cannot convert is logged.
+
+## Tools
+
+The command-line tools and audits are described in [tools.md](tools.md). Implementation notes:
+
+- `EAWAssetInspector`, `EAWDatEditor`, and the Dear ImGui/Direct3D 11 `EAWTools` workbench use the same
+  format readers and VFS as the engine.
+- `EAWTools` stays on Direct3D 11; its preview is not the production renderer. Its model preview
+  selects a damage state and detail level through the engine's rule (`alo_mesh_visibility`,
+  `alo_model_variants`), lists the XML types that use the model, and toggles each hardpoint of the
+  chosen type (a marker by kind, the `Model_To_Attach` model at its bone, or destroyed: its
+  `Damage_Decal` scorch meshes, which `bones_in_subtrees` hides while intact); its map previews draw
+  the resolved models.
+- Repeated checks are scripts under `scripts/` (`check-battle.ps1`, `check-captures.ps1`,
+  `check-input-load.ps1`, `benchmark.ps1`, `benchmark-battle.ps1`, `compare-path-audit.ps1`).
+  `check-captures.ps1` includes Mon Calamari 02's water without fog, legacy and enhanced.
+
+## Job system and profiling
+
+- `eaw_jobs` ([ecs-design.md](ecs-design.md), section 7) runs jobs on fibers (`CreateFiberEx`,
+  `SwitchToFiber`) over N-1 worker threads plus the creating thread, with counters as the only
+  synchronization and no OS mutexes. Jobs go into one bounded lock-free queue per priority
+  (simulation, frame, background; Vyukov's ring); `wait` parks the calling fiber on its counter and
+  switches the thread to a pool fiber that runs jobs, and the job that brings the counter to zero moves
+  the parked fibers to a ready queue (the creating thread's own fiber is pinned to it, for window and
+  Direct3D calls). Every switch hands its "after the switch" work (park the previous fiber, or return it
+  to the pool) to the fiber switched to, so no fiber is published while it still runs; a counter tracks
+  jobs still touching it after their decrement, so it may be destroyed as soon as `wait` returns. Idle
+  workers spin briefly, then sleep on an atomic epoch (`std::atomic::wait`); `wake(count)` calls the OS
+  only when a worker sleeps and wakes `count` of them, while a ready home fiber (only its own thread may
+  resume it) wakes every sleeper. A full queue runs the remaining jobs on the calling fiber; running out
+  of fibers or counter waiter slots is a fatal error naming the limit. The build uses `/GT`.
+- `parallel_for(jobs, count, grain, function)` cuts chunks from the count and the grain only; it runs a
+  single chunk on the caller, otherwise it queues a helper job per worker (at most one per chunk beyond
+  the caller's, at most `max_parallel_helpers` 64, on the stack: no allocation per call), and helpers
+  and caller take chunks from a shared atomic index.
+- Tests (module `jobs`): every job runs once with 0, 1, and 3 workers; a float sum merged in chunk
+  order is identical bit for bit with 0, 1, 2, and 7 workers; jobs waiting on their own jobs park and
+  resume (also with no worker); a full queue loses nothing; 1,000 Release and 200 Debug runs without a
+  failure.
+- `EAWBenchmarks` and `scripts/benchmark.ps1` time workloads serially and on the job system
+  ([tools.md](tools.md#benchmarks)): float math 6.6 times faster with 7 workers on 8 hardware threads,
+  384 A* searches 5.2 times; a job about 43 ns on one thread, 90-110 ns with workers sharing one queue
+  (per-worker queues only if a profile asks); `jobs-loops` 67.7 ms, `jobs-tiny` 20.0 ms. The job
+  system is not a measurable part of today's battle tick.
+- Clients: presentation's pose sampling and the simulation's parallel systems ([Parallel
+  systems](#parallel-systems)).
+- Profiling: Tracy 0.14.1 (BSD-3-Clause) is pinned by archive hash in `third_party/tracy` and fetched and
+  built only with `EAW_PROFILE` (`build.ps1 -Profile`); its client collects on demand and listens on
+  localhost only (port 8086). `core/profile.hpp` is the only place that names it (`EAW_PROFILE_ZONE`,
+  `_ZONE_TEXT`, `_FRAME`, `_PLOT`, `_FIBER_ENTER`/`_LEAVE`, `_THREAD_NAME`; nothing without the
+  option). Marked: the simulation's layers and tick, navigation's route searches, giving way, detours,
+  and ground avoidance, every job (the job system names its fibers and enters them on every switch, so
+  zones follow a job across threads), the worker threads, and the sandbox frame. The default build
+  fetches nothing; the profiling build passes the tests and the reference battle and costs nothing
+  measurable without a viewer. Not checked here: a capture with the viewer.
+
+## Engine extensions
+
+None implemented. Explicit asset metadata (declaring the roles legacy mode infers from naming and
+placement) is planned in the roadmap's "Engine extensions"; new name-based role rules stay funnelled
+to one place per subject so both paths produce the same engine-native categories.

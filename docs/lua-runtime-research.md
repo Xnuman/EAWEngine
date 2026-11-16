@@ -1,8 +1,9 @@
 # Lua runtime research
 
-Which Lua virtual machines exist (November 2026), what they cost in speed, and what each would mean
-for EAWEngine's script host (`src/script`, [compatibility-research.md](compatibility-research.md#lua-host-protocol)).
-The host currently embeds Lua 5.0.3, the version the original's scripts are written for.
+Which Lua virtual machines exist (as of November 2026), what they cost in speed, and what each
+would mean for EAWEngine's script host (`src/script`,
+[compatibility-research.md](compatibility-research.md#lua-host-protocol)). The host embeds Lua
+5.0.3, the version the original's scripts are written for.
 
 ## The candidates
 
@@ -24,59 +25,67 @@ are slower than the C implementations and do not fit a C++ engine; they are not 
   the LuaAOT suite (from the Computer Language Benchmarks Game: binary-trees, fannkuch-redux,
   fasta, k-nucleotide, mandelbrot, n-body, spectral-norm), ten runs each, on one laptop (Intel
   i7-8550U, Ubuntu 24.04). Runtime relative to LuaJIT 2.0.4 (Table I): LuaJIT 2.1.1 1.006, Lua
-  5.4.7 6.978, Lua 5.4.8 7.083, Lua 5.4.4 7.807, Lua 5.3.4 10.842, Lua 5.3.0 12.531. Energy follows
-  runtime. **Lua 5.0, 5.1, and 5.2 are not in the study**; no published measurement of 5.0 against
-  current versions was found.
+  5.4.7 6.978, Lua 5.4.8 7.083, Lua 5.4.4 7.807, Lua 5.3.4 10.842, Lua 5.3.0 12.531. Energy
+  follows runtime. **Lua 5.0, 5.1, and 5.2 are not in the study**; no published measurement of 5.0
+  against current versions was found.
 - **Luau** figures come from Luau's own performance page (the interpreter is faster than Lua 5.x,
   including 5.4, and can match LuaJIT's interpreter on some workloads) and from community reports
-  (one informal comment puts Luau with native code about 1.6x slower than LuaJIT 2.1 with its JIT).
-  Neither is an independent benchmark.
+  (one informal comment puts Luau with native code about 1.6x slower than LuaJIT 2.1 with its
+  JIT). Neither is an independent benchmark.
 - **Lua 5.5**: its release notes and press coverage stress memory and garbage collection (compact
   arrays, reported about 60% smaller for large tables; a generational mode; incremental major
   collections) and global declarations, not raw speed. No independent speed benchmark was found.
 
+## The host's own cost
+
+Measured with `EAWEngine lua-survey` ([tools.md](tools.md)), Release build, on Lua 5.0 with the
+host's recording stubs:
+
+- All 370 stock scripts for 300 ticks each in 2.2 s, loading included: at most about
+  20 microseconds per script per tick.
+- With AI plans, story events, and callbacks: 2.3 microseconds per script and tick on average,
+  recorder included; the slowest single tick of a normal script 0.75 ms.
+- One runaway resume ran into the instruction budget (5,000,000 instructions,
+  `ScriptHostOptions::instruction_budget`) in about 73 ms, so the budget bounds a hung script to a
+  few frames rather than to a fraction of one. Whether to lower it is open.
+
 ## What the script host needs from a runtime
 
-1. **Speed is not the constraint at the original's scale.** `EAWEngine lua-survey` ran all 370
-   stock scripts for 300 ticks each in 2.2 s (Release build, loading included): at most about
-   20 microseconds per script per tick, on Lua 5.0 with recording stubs. The framework services
-   scripts five times a second (`ServiceRate = 0.2`). Even hundreds of active scripts would cost a
-   few percent of one core; real gameplay time will go into the engine functions the scripts call,
-   not the VM. This is an estimate from stub runs; per-resume timing in the survey would measure it.
+1. **Speed is not the constraint at the original's scale.** The framework services scripts five
+   times a second (`ServiceRate = 0.2`). Even hundreds of active scripts would cost a few percent
+   of one core; real gameplay time will go into the engine functions the scripts call, not the VM.
+   This is an estimate from stub runs; per-resume timing in the survey would measure it.
 2. **Compatibility is the cost of switching.** The stock library is Lua 5.0: it uses the implicit
-   `arg` table for varargs and `unpack` as a global, alongside `table.getn` and `string.gfind`. Lua
-   5.1 keeps `arg`, `table.getn`, and `string.gfind` only behind compatibility switches; 5.2 and
-   later remove `setfenv`, `loadstring`, and global `unpack` (among others); LuaJIT and Luau follow
-   5.1 and drop or change parts of it. Any other runtime needs a shim layer, and the survey must
-   show the 370 scripts behave the same on it.
-3. **The sandbox relies on an instruction budget.** LuaJIT does not call debug hooks from
-   compiled code (confirmed by its author in 2011; Tarantool's tests and the Garry's Mod
+   `arg` table for varargs and `unpack` as a global, alongside `table.getn` and `string.gfind`.
+   Lua 5.1 keeps `arg`, `table.getn`, and `string.gfind` only behind compatibility switches; 5.2
+   and later remove `setfenv`, `loadstring`, and global `unpack` (among others); LuaJIT and Luau
+   follow 5.1 and drop or change parts of it. Any other runtime needs a shim layer, and the survey
+   must show the 370 scripts behave the same on it.
+3. **The sandbox relies on an instruction budget.** LuaJIT does not call debug hooks from compiled
+   code (confirmed by its author on lua-l in 2011; Tarantool's tests and the Garry's Mod
    documentation say the same), so a runaway loop escapes a count-hook budget unless the JIT is
    turned off, which gives up most of its speed. Luau has an interrupt callback for exactly this;
    PUC Lua's hooks fire everywhere.
-4. **Error handling must fit the no-exceptions rule.** PUC Lua built as C uses `setjmp`/`longjmp`.
-   Luau is C++ and raises errors with C++ exceptions by default; it has a `longjmp` build option,
-   which would be required here (not yet verified against current Luau sources).
-5. **Bytecode.** Lua 5.0 does not verify bytecode, so the host refuses compiled chunks. Any runtime
-   that loads bytecode from mods needs the same rule or a verifier.
+4. **Error handling must fit the no-exceptions rule.** PUC Lua built as C uses
+   `setjmp`/`longjmp`. Luau is C++ and raises errors with C++ exceptions by default; it has a
+   `longjmp` build option, which would be required here (not yet verified against current Luau
+   sources).
+5. **Bytecode.** Lua 5.0 does not verify bytecode, so the host refuses compiled chunks. Any
+   runtime that loads bytecode from mods needs the same rule or a verifier.
 
 ## Conclusion
 
 Keep Lua 5.0.3 for the original's and mods' scripts: it runs them exactly as they were written,
 its hooks make the instruction budget reliable, and the measured cost is small. If performance
 becomes a measured problem, or for scripts written for EAWEngine itself, the candidates are Luau
-(the strongest sandbox and good speed, if its `longjmp` build holds up) and Lua 5.4/5.5 (modern and
-simple to embed), as an opt-in runtime chosen per script beside the 5.0 path, in the spirit of the
-legacy and enhanced fidelity profiles ([architecture.md](architecture.md#content-contract-versus-legacy-implementation)),
-not as a replacement. LuaJIT's speed comes with a sandbox gap that rules it out for untrusted mod
-scripts.
+(the strongest sandbox and good speed, if its `longjmp` build holds up) and Lua 5.4/5.5 (modern
+and simple to embed), as an opt-in runtime chosen per script beside the 5.0 path, in the spirit of
+the legacy and enhanced fidelity profiles
+([architecture.md](architecture.md#content-contract-versus-legacy-implementation)), not as a
+replacement. LuaJIT's speed comes with a sandbox gap that rules it out for untrusted mod scripts.
 
-Measured (2026-11-10, Release, `lua-survey` with AI plans, story events, and callbacks): script
-ticks cost 2.3 microseconds per script and tick on average, recorder included, and the slowest
-single tick of a normal script 0.75 ms. One runaway resume ran into the 5,000,000-instruction budget
-in about 73 ms, so the budget bounds a hung script to a few frames rather than to a fraction of one;
-whether to lower it is open. Open: check Luau's `longjmp` build and its interrupt callback against
-current sources before any prototype.
+Open: check Luau's `longjmp` build and its interrupt callback against current sources before any
+prototype.
 
 ## Sources
 

@@ -26,9 +26,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 187 |
-| `partial` | 24 |
-| `gap` | 181 |
+| `done` | 189 |
+| `partial` | 25 |
+| `gap` | 178 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -902,7 +902,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Production, economy, tech, galactic play, AI, visibility, and identity
 
-4 done, 2 partial, 5 gap, 225 needs, 4 n/a.
+5 done, 2 partial, 4 gap, 225 needs, 4 n/a.
 
 ### Faction, identity, and scripts
 
@@ -1203,7 +1203,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Is_Impassable_Asteroid` | `needs space hazards` |  |
 | `Is_Ion_Storm` | `needs space hazards` |  |
 | `Is_Nebula` | `needs space hazards` |  |
-| `Permanent` | `gap` |  |
+| `Permanent` | `done` | the terrain decal never fades |
 | `Tactical_Model_Name` | `n/a` | probably ignored legacy model field (2 uses) |
 
 ### Tactical overview camera
@@ -1221,16 +1221,16 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Models, rendering, animation, user interface, and text
 
-26 done, 7 partial, 74 gap, 83 needs, 3 n/a.
+27 done, 8 partial, 72 gap, 83 needs, 3 n/a.
 
 ### Core structure (summary; see the overview chapters)
 
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Variant_Of_Existing_Type` | `done` |  |
-| `Behavior` | `partial` | read for flight and body aiming; other behaviors unused |
-| `LandBehavior` | `partial` | read for flight and body aiming; other behaviors unused |
-| `SpaceBehavior` | `partial` | read for flight and body aiming; other behaviors unused |
+| `Behavior` | `partial` | TURRET (body aiming), SPACE_OBSTACLE, and AMBIENT_SFX; other behaviors unused |
+| `LandBehavior` | `partial` | TURRET (body aiming) and AMBIENT_SFX; other behaviors unused |
+| `SpaceBehavior` | `partial` | FIGHTER_LOCOMOTOR (flight), SPACE_OBSTACLE, and AMBIENT_SFX; other behaviors unused |
 | `TacticalBehavior` | `gap` |  |
 | `CategoryMask` | `done` |  |
 | `Property_Flags` | `done` |  |
@@ -1247,7 +1247,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Model_Name` | `n/a` | stray spelling, used once |
 | `Land_Terrain_Model_Mapping` | `gap` |  |
 | `Scale_Factor` | `done` |  |
-| `Scale` | `gap` | decal size (the code literal is unrelated) |
+| `Scale` | `done` | decal width and height; not read on the two props that also set Scale_Factor |
 | `LOD_Bias` | `done` |  |
 | `Facing_Adjust` | `gap` |  |
 | `Camera_Aligned` | `gap` |  |
@@ -1457,7 +1457,7 @@ Postponed by the owner (2026-11-13): battles use the engine's own cameras for no
 | Tag | Status | Note |
 | --- | --- | --- |
 | `Diffuse` | `gap` | light colour (the code literal is a material parameter) |
-| `Intensity` | `gap` |  |
+| `Intensity` | `partial` | decal opacity; the light's brightness is not read |
 | `Radius` | `gap` |  |
 | `Falloff_Start` | `gap` |  |
 | `Blob_Radius` | `gap` |  |

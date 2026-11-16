@@ -372,8 +372,8 @@ These tags set how an object moves (speed, turning, acceleration, flight attitud
 | `Alternate_Max_Speed` | heroes 8, vehicles 2 (10) | float 1.8..2.7 | Top speed while using the secondary locomotor (jetpack heroes Boba Fett, Bossk, IG-88, Silri, Tyber Zann; Dark Trooper phases) (data). |
 | `OverrideAcceleration` | units 139, props 5, containers 1 (145) | float .02..2.0; .1 typical ground, .02 capitals | Acceleration replacing a derived default (name, data). Engine: speed per frame per frame (x900, a guess); absent means instant speed change. |
 | `OverrideDeceleration` | units 139, props 5, containers 1 (145) | float .02..2.0; .1/.25 typical | Braking counterpart of OverrideAcceleration (name, data). Engine: as OverrideAcceleration. |
-| `Override_Acceleration` | containers 40 (infantry team containers such as Stormtrooper_Team) | float .08 or .1 | Alternate spelling of the acceleration override, used only on land team containers (data). Whether the original reads both spellings is unknown. Engine: not read. |
-| `Override_Deceleration` | containers 40 (same team containers) | float .08 or .1 | Alternate spelling of OverrideDeceleration on team containers (data). Engine: not read. |
+| `Override_Acceleration` | containers 40 (infantry team containers such as Stormtrooper_Team) | float .08 or .1 | Alternate spelling of the acceleration override, used only on land team containers (data). Whether the original reads both spellings is unknown. Engine: reads it. |
+| `Override_Deceleration` | containers 40 (same team containers) | float .08 or .1 | Alternate spelling of OverrideDeceleration on team containers (data). Engine: reads it. |
 | `Max_Thrust` | space units 67, unique 40, transports 8, flying indigenous 6, bombers 3, vehicles 2, props 2 (128) | float .02..4.5; .05 frigates, 1.0 fighters | Thrust limit of the flight model (name). Comments on the Death Star use it for moving into range and accelerating or decelerating there (comment). Relation to OverrideAcceleration unknown. |
 | `LateralAcceleration` | infantry 1 (Scout_Trooper) | .15 | Sideways acceleration of the speeder bike (name, data). Single use. |
 | `Mass` | units 219, structures 168, planets 65, props 16, containers 2, projectile 1 (471; 15 repeats) | float .98..1.3; 1.0 for 400 uses; .98-.9995 on fighters, flyers, ships | Despite the name, values near 1 on moving flyers and ships look like a per-frame velocity retention (inertia/damping) factor (data, guess); structures and planets carry the default 1.0. One 1.3 (UC_U_Ground_Arms_Depot) is an outlier. |
@@ -551,7 +551,7 @@ This family covers what makes an object damageable and dangerous: hull health, s
 | `Energy_Capacity` | units 132, structures 126, props 13 (271) | int 0..999999; 0 76, 1000 40 | Energy pool size (name). Related constants: `EnergyRechargeIntervalInSecs` 5.0, `EnergyToShieldExchangeRate` 5.0 (data). Not read by the engine. |
 | `Energy_Refresh_Rate` | the same 271 objects | int 0..99999 | Energy regeneration per recharge interval (name). Not read. |
 | `Autoresolve_Health` | containers 129, units 113, structures 80, props 7 (329) | int/float 5..25000 | Health used in galactic auto-resolve, not tactical (name; a comment says the values were changed to track real unit health). Not read. |
-| `Immune_To_Damage` | GroundBuildable 40, props 5 (45) | always True | Takes no damage (name); used on build pads and markers. Not read. |
+| `Immune_To_Damage` | GroundBuildable 40, props 5 (45) | always True | Takes no damage (name); used on build pads and markers. Engine: reads it. |
 | `GUI_Hide_Health_Bar` | GroundStructure 13, prop 1 (14) | bool (true 12, false 3); repeated once | Hides the health bar (name); walls. Not read. |
 | `Out_Of_Combat_Defense_Adjustment` | SpaceUnit 18, UniqueUnit 1 (19) | always -1.0 | Unknown defense modifier outside combat (name only); fighters and freighters. Not read. |
 | `Defend_Mode_Shield_Regen_Multiplier` | 2 (Hutt_Refurbished_Venator, Jedi_Cruiser) | 5.0 | Shield-regen multiplier while the defend ability is active (name). |
@@ -588,8 +588,8 @@ This family covers what makes an object damageable and dangerous: hull health, s
 | `Is_Targetable` | HardPoint 355 | Yes 258, No 97 | The player and AI can target the part (name). Engine: read, default Yes; shots aim at the nearest live targetable part. |
 | `Damage_Particles` | HardPoint 260 | bone names, mostly `HP_*_EMITDAMAGE`, `HP_E_EMITDAMAGE` 18 | Bone where damage fire and smoke play once the part is damaged (data). Engine: resolved to a bone; particle proxies at or below it are held back as damage effects. |
 | `Damage_Decal` | HardPoint 255 | bone names `HP_*_BLAST`; 18 empty | Bone of the scorch mesh shown when the part is destroyed (data). Engine: resolved to a bone and hidden until hardpoint damage is presented. |
-| `Death_Explosion_Particles` | HardPoint 259 | 6 explosion particles (Large_Explosion_Space_Empire 134, Large_Explosion_Space 98) | Explosion when the part is destroyed (name, data). Not read. |
-| `Death_Breakoff_Prop` | HardPoint 167 | `Hardpoint_Breakoff_*` SpaceProps (147 distinct) | Debris prop spawned when the part is destroyed (data). A comment says break-off props are left out on land because the debris behavior has no gravity. Not read. |
+| `Death_Explosion_Particles` | HardPoint 259 | 6 explosion particles (Large_Explosion_Space_Empire 134, Large_Explosion_Space 98) | Explosion when the part is destroyed (name, data). Engine: reads it (the first entry). |
+| `Death_Breakoff_Prop` | HardPoint 167 | `Hardpoint_Breakoff_*` SpaceProps (147 distinct) | Debris prop spawned when the part is destroyed (data). A comment says break-off props are left out on land because the debris behavior has no gravity. Engine: reads it (debris broken off a destroyed hardpoint, presentation only (also on land, where the original is said to leave it out)). |
 | `Repair_Amount_Per_Frame` | HardPoint 87 | .50 46, 2.0 23, .53 18 | Health restored per frame while repairing (name). Not read. |
 | `Repair_Cost_Per_Frame` | HardPoint 87 | 1.0..1.8 | Credit cost per frame of repair (name). Not read. |
 | `Should_Be_Destroyed_When_All_Hardpoints_Destroyed` | 1 (U_Ground_Palace) | No | Whether the host dies once all its parts are gone (name); the default is presumably Yes (inference). FoC only. |
@@ -607,11 +607,11 @@ This family covers what makes an object damageable and dangerous: hull health, s
 | `Fire_Pulse_Count` | HardPoint 279 | 1..10 | Shots per burst (name). Engine: read, clamped to at least 1. |
 | `Fire_Pulse_Delay_Seconds` | HardPoint 279 | 0.1..1.0; 0.2 208 | Delay between shots of a burst (name). Engine: read. |
 | `Fire_Bone_A` | HardPoint 280 | muzzle/fire-point bones (`MuzzleA_00`, `FP_F-R_00`...) | First fire bone (data). A comment states that only bones A and B exist, with no C or D. Engine: the muzzle position, and the cone's center is this bone's X axis. |
-| `Fire_Bone_B` | HardPoint 279 | bones; 7 empty; repeated 3 times in 2 station hardpoints | Second fire bone, presumably alternated with A (inference). The two repeating hardpoints list B three times, apparently where C and D were intended; probably only one of them counts (inference). Not read. |
+| `Fire_Bone_B` | HardPoint 279 | bones; 7 empty; repeated 3 times in 2 station hardpoints | Second fire bone, presumably alternated with A (inference). The two repeating hardpoints list B three times, apparently where C and D were intended; probably only one of them counts (inference). Engine: reads it (alternates with A (inference)). |
 | `Fire_Cone_Width` | HardPoint 279, TransportUnit 4 | 1..364 degrees; 180, 160, 170 most common | Horizontal firing arc in degrees (data; a comment reads a value as a half-angle on each side). Engine: half the value about the fire bone's X axis; 360 or more means no cone. |
 | `Fire_Cone_Height` | HardPoint 279, TransportUnit 4 | 3..450 degrees | Vertical firing arc (name). 450 appears once, outside any sensible angle. Not read. |
-| `Fire_Inaccuracy_Distance` | HardPoint 227, units 30, structures 7, prop 1 (265) | "category, distance" pairs, repeated per category (1761 uses, up to 14 per object): space categories Fighter/Bomber/Transport/Corvette/Frigate/Capital/Super about 244 each, ground Infantry/Vehicle/Air/Structure 21..28 | How far shots miss, by target category (name, data: small craft get 70, capital ships and supers 1..30). `Millennium_Falcon` lists one category twice. The dump marks the category words as Priority_Set references because the names coincide; they are `GameObjectCategoryType` values. Not read. |
-| `Fire_Category_Restrictions` | HardPoint 62, units 26 (88) | category lists (Air 51, Transport 42...); 8 empty; repeated in 3 hardpoints | Categories the weapon will not fire at (data: torpedo hardpoints exclude Fighter, Bomber, Transport; melee creatures exclude Air and Structure). Not read. |
+| `Fire_Inaccuracy_Distance` | HardPoint 227, units 30, structures 7, prop 1 (265) | "category, distance" pairs, repeated per category (1761 uses, up to 14 per object): space categories Fighter/Bomber/Transport/Corvette/Frigate/Capital/Super about 244 each, ground Infantry/Vehicle/Air/Structure 21..28 | How far shots miss, by target category (name, data: small craft get 70, capital ships and supers 1..30). `Millennium_Falcon` lists one category twice. The dump marks the category words as Priority_Set references because the names coincide; they are `GameObjectCategoryType` values. Engine: reads it. |
+| `Fire_Category_Restrictions` | HardPoint 62, units 26 (88) | category lists (Air 51, Transport 42...); 8 empty; repeated in 3 hardpoints | Categories the weapon will not fire at (data: torpedo hardpoints exclude Fighter, Bomber, Transport; melee creatures exclude Air and Structure). Engine: reads it (on hardpoints and units). |
 | `Randomize_Between_Fire_Bones` | HardPoint 9 | always No | Fire bones are used in order rather than at random (name). FoC only. |
 | `Full_Salvo_Weapon_Delay_Multiplier` | 1 (HP_Interceptor_Frigate_00) | .18 | Recharge multiplier while the full-salvo ability is active (name). FoC only. |
 | `Requires_Manual_Target_Assignment` | 1 (HP_Underworld_L3_Station_Main_Cannon) | Yes | Fires only at a target the player assigns, used like a special ability; it fires one burst per assignment (comment). FoC only. |
@@ -636,27 +636,27 @@ This family covers what makes an object damageable and dangerous: hull health, s
 | Tag | Used by | Values | Meaning |
 |---|---|---|---|
 | `Targeting_Max_Attack_Distance` | units 184, containers 45, structures 40, props 7 (276) | 5..20000; repeated in 7 objects with different values (Corellian_Corvette 2000 then 800) | The object's attack range (name). A comment says it must be shorter than the ranges of its hardpoints. Engine: the range of the type's own weapon and the fallback range of hardpoint weapons; the last repeat wins. |
-| `Targeting_Min_Attack_Distance` | units 10, structures 4 (14) | 2..220 | Minimum range, so a unit can give up a target that gets too close to turn onto (comment). Not read. |
+| `Targeting_Min_Attack_Distance` | units 10, structures 4 (14) | 2..220 | Minimum range, so a unit can give up a target that gets too close to turn onto (comment). Engine: reads it (the unit's own weapon, not hardpoints). |
 | `Ranged_Target_Z_Adjust` | units 155, structures 143, props 12 (310) | -5..70; repeated in 2 | Height above the origin that shooters aim at (name, data). Engine: aim height (a negative value is allowed). |
 | `Target_Bones` | 4 (AT_AT_Walker, Nebulon_B_Frigate, Veers AT-AT, Eclipse) | bone lists (`MISSILE_TARGET00`...) | Bones that incoming shots, apparently missiles, aim at (name, data). Not read. |
-| `Targeting_Priority_Set` | units 165, structures 15, props 4 (184) | 31 set names (AntiInfantry 69...); repeated in 2 | Names a `Priority_Set` from Turret/Space/GroundUnitTargetingPriorities.xml (47 sets, all values resolve). A set lists category priorities, exclusions, and (in space) the order of hardpoint types to attack (data). Not read. |
-| `Targeting_Fire_Inaccuracy` | units 87, structures 17, prop 1 (105) | "category, value" pairs repeated per category (424 uses, up to 5): Air/Infantry/Vehicle/Structure about 107 each, LandHero 3, Corvette 1 | Ground counterpart of `Fire_Inaccuracy_Distance`: miss distance by target category (name, data: Air 70 is the most common). The dump attaches "9999 means will not target" comments here, but they belong to nearby turret-priority tags. Not read. |
-| `Targeting_Fire_Inaccuracy_Fixed_Radius` | 5 (MPTL, MAL, Broadside, Marauder, a defense satellite) | 40..220 | A fixed scatter radius for artillery-like weapons (comment, data). Not read. |
-| `Targeting_Stickiness_Time_Threshold` | units 113, structures 9, props 3 (125) | 3..30; 5.0 in 113 | Seconds a unit stays on its current target before switching (name only). Not read. |
+| `Targeting_Priority_Set` | units 165, structures 15, props 4 (184) | 31 set names (AntiInfantry 69...); repeated in 2 | Names a `Priority_Set` from Turret/Space/GroundUnitTargetingPriorities.xml (47 sets, all values resolve). A set lists category priorities, exclusions, and (in space) the order of hardpoint types to attack (data). Engine: reads it. |
+| `Targeting_Fire_Inaccuracy` | units 87, structures 17, prop 1 (105) | "category, value" pairs repeated per category (424 uses, up to 5): Air/Infantry/Vehicle/Structure about 107 each, LandHero 3, Corvette 1 | Ground counterpart of `Fire_Inaccuracy_Distance`: miss distance by target category (name, data: Air 70 is the most common). The dump attaches "9999 means will not target" comments here, but they belong to nearby turret-priority tags. Engine: reads it. |
+| `Targeting_Fire_Inaccuracy_Fixed_Radius` | 5 (MPTL, MAL, Broadside, Marauder, a defense satellite) | 40..220 | A fixed scatter radius for artillery-like weapons (comment, data). Engine: reads it. |
+| `Targeting_Stickiness_Time_Threshold` | units 113, structures 9, props 3 (125) | 3..30; 5.0 in 113 | Seconds a unit stays on its current target before switching (name only). Engine: reads it (re-weighs automatic targets). |
 | `Targeting_Land_Model_Stay_Horiz_Flat` | 1 (TIE_Crawler) | No | Whether a land model keeps itself level instead of tilting with the terrain while it targets (name; a nearby comment says this does not apply to turreted units). Not read. |
 | `Target_Stealth_Units` | units 14, structures 3 (17) | always Yes | Can see and target stealthed units (name). FoC only. |
-| `Is_Valid_Target` | units 39, props 30, structure 1 (70) | No 56, False 11, Yes 3, false 1; repeated once (Sarlacc) | Whether the object can be targeted at all (name); used on ambient creatures, markers, transports. Not read. |
-| `Collidable_By_Projectile_Living` | structures 253, units 197, props 32, projectile 1 (483) | Yes 429, No 57; repeated in 3 | Projectiles collide with the object while it is alive (name). Not read. |
+| `Is_Valid_Target` | units 39, props 30, structure 1 (70) | No 56, False 11, Yes 3, false 1; repeated once (Sarlacc) | Whether the object can be targeted at all (name); used on ambient creatures, markers, transports. Engine: reads it (never chosen or kept as a target). |
+| `Collidable_By_Projectile_Living` | structures 253, units 197, props 32, projectile 1 (483) | Yes 429, No 57; repeated in 3 | Projectiles collide with the object while it is alive (name). Engine: reads it. |
 | `Collidable_By_Projectile_Dead` | units 30, props 15, projectile 1 (46) | No 25, Yes 23; repeated in 2 | Projectiles collide with the wreck or corpse (name). Not read. |
-| `Attack_Category_Restrictions` | GroundStructure 5, GroundVehicle 1 (6) | categories joined with `\|`; repeated twice on the abstract turrets | Target categories the object may not attack (data: the AA turret excludes Infantry, Vehicle, and LandHero, the anti-infantry turret excludes Air). Uses `\|` where `Fire_Category_Restrictions` uses commas. Not read. |
-| `Attack_Animation_Is_Overlay` | GroundVehicle 6, UniqueUnit 1 (7) | yes | The attack animation is layered over movement (name); walkers and droids. Not read. |
+| `Attack_Category_Restrictions` | GroundStructure 5, GroundVehicle 1 (6) | categories joined with `\|`; repeated twice on the abstract turrets | Target categories the object may not attack (data: the AA turret excludes Infantry, Vehicle, and LandHero, the anti-infantry turret excludes Air). Uses `\|` where `Fire_Category_Restrictions` uses commas. Engine: reads it (applies to all the unit's weapons). |
+| `Attack_Animation_Is_Overlay` | GroundVehicle 6, UniqueUnit 1 (7) | yes | The attack animation is layered over movement (name); walkers and droids. Engine: reads it (ATTACK and ATTACKIDLE add their bones' change since their first frame to the locomotion, an engine reading: the pod walker's attack recoils its whole body). |
 
 #### Turrets
 
 | Tag | Used by | Values | Meaning |
 |---|---|---|---|
-| `Turret_Bone_Name` | units 17, structures 15, HardPoint 7, props 2 (41) | bones (`B_Turret` 13, `Turret_00` 10, `b_turret` 5...) | Bone that yaws toward the target (name, data). Not read. |
-| `Barrel_Bone_Name` | units 14, structures 11, HardPoint 7, prop 1 (33) | bones (`B_Barrel`, `Barrel_00`, `MuzzleA_00`...) | Bone that pitches toward the target (name, data). Not read. |
+| `Turret_Bone_Name` | units 17, structures 15, HardPoint 7, props 2 (41) | bones (`B_Turret` 13, `Turret_00` 10, `b_turret` 5...) | Bone that yaws toward the target (name, data). Engine: reads it (unit turrets; hardpoint turrets not yet). |
+| `Barrel_Bone_Name` | units 14, structures 11, HardPoint 7, prop 1 (33) | bones (`B_Barrel`, `Barrel_00`, `MuzzleA_00`...) | Bone that pitches toward the target (name, data). Engine: reads it (barrel pitch; the turret weapon fires from it). |
 | `Apply_Y_Turret_Rotate_To_Axis` | structures 17, units 14, props 2 (33) | 1 (31), 0 (2) | Which local axis the turret's yaw drives (name, data: an axis index). Not read. |
 | `Apply_Z_Turret_Rotate_To_Axis` | the same 33 | always 2 | Which local axis the barrel's pitch drives (name, data). Not read. |
 | `Turret_Rest_Angle` | HardPoint 7, structures 5, unit 1, prop 1 (14) | vector3, all 0,0,0 except one 0,-45,0 | Orientation the turret returns to when idle (name). Not read. |
@@ -676,9 +676,9 @@ This family covers what makes an object damageable and dangerous: hull health, s
 
 | Tag | Used by | Values | Meaning |
 |---|---|---|---|
-| `Guard_Chase_Range` | units 145, containers 73, props 7 (225) | 0..1500; 200 112, 1000 64 | How far a guarding unit chases (name). Not read. |
+| `Guard_Chase_Range` | units 145, containers 73, props 7 (225) | 0..1500; 200 112, 1000 64 | How far a guarding unit chases (name). Engine: reads it (the guard leash). |
 | `Idle_Chase_Range` | the same 225 | -1..1500; 50 66, 0 44 | How far an idle unit chases an attacker (name; comments keep it small for units with no tether). One value is -1. Not read. |
-| `Attack_Move_Response_Range` | units 141, containers 73, props 7 (221) | 0..1500; repeated in 3 | Range at which a unit on attack-move responds to enemies (name). Not read. |
+| `Attack_Move_Response_Range` | units 141, containers 73, props 7 (221) | 0..1500; repeated in 3 | Range at which a unit on attack-move responds to enemies (name). Engine: reads it. |
 | `Harass_Enemy_Exclusion_Range` | 2 (Sand_Person_Sniper_A, Imperial_Elite_Guard) | 100 | Distance a harassing unit keeps from enemies (name only). |
 | `Is_Escort` | containers 129, units 60, props 2 (191) | yes/no, plus typos `Nos` 4 and `np` 1 | The unit escorts and guards others, used for AI and formations (name). Not read. |
 | `Space_Escort_Unit_Types` | 2 (Death_Star, Death_Star_II) | lists of SpaceUnit and Squadron names | Escorts that come with the super weapon (name, data). Not read. |
@@ -695,16 +695,16 @@ This family covers what makes an object damageable and dangerous: hull health, s
 | `IsDeathCloneObstacle` | units 15, prop 1, projectile 1 (17) | true 15, Yes 2 | Apparently a second spelling of `Death_Clone_Is_Obstacle`; both appear on the same AT-AT clones (data). Which one the game reads is unknown. |
 | `Death_Persistence_Duration` | units 113, structures 17, props 2 (132) | -1..40 seconds; 0.0 84, 34 15 | How long the corpse or wreck stays (data). `GameConstants` has `Override_Death_Persistence_Duration` 30. Engine: read for death clones, and on types that leave none; it ignores values of 0 or below, including the one -1 (on an indigenous creature, possibly meaning forever). |
 | `Death_Fade_Time` | units 94, props 2 (96) | 0.05..5; 0.25 in 88 | Fade-out time of the corpse (name). Not read. |
-| `Remove_Upon_Death` | props 164, units 97, structures 24, projectile 1 (286) | true 281, false 4, Yes/yes 4; repeated in 3 | The object is deleted at death without leaving its model or wreck (name, data: debris, fighters, satellites). Not read. |
+| `Remove_Upon_Death` | props 164, units 97, structures 24, projectile 1 (286) | true 281, false 4, Yes/yes 4; repeated in 3 | The object is deleted at death without leaving its model or wreck (name, data: debris, fighters, satellites). Engine: reads it (no corpse). |
 | `Death_Leave_Hulk_Behind` | SpaceUnit 7 | always No | No hulk remains after death (name); set only on frigates. Not read. |
-| `Death_Projectiles` | SpaceStructure 3, prop 1 (4) | Proj_*_Detonation | Projectile spawned at death, an area-damage blast (name, data). Not read. |
+| `Death_Projectiles` | SpaceStructure 3, prop 1 (4) | Proj_*_Detonation | Projectile spawned at death, an area-damage blast (name, data). Engine: reads it (the projectile's blast where it dies). |
 | `Retreat_Self_Destruct_Explosion` | StarBase 15, prop 1 (16) | `Self_Destruct_Star_Base_Level_*` projectiles | Blast when a star base self-destructs on retreat (name, data). Not read. |
-| `Spin_Away_On_Death` | units 22 (SpaceUnit 14...) | always Yes | The craft may spin away out of control instead of exploding at once (name). Not read. |
+| `Spin_Away_On_Death` | units 22 (SpaceUnit 14...) | always Yes | The craft may spin away out of control instead of exploding at once (name). Engine: reads it (delayed death out of control; the spin is not drawn). |
 | `Spin_Away_On_Death_Chance` | the same 22 | 0.2, 0.4 | Probability of spinning away (name). |
 | `Spin_Away_On_Death_Time` | the same 22 | `2.0f`, `1.0f` (C float suffix) | Duration of the spin before the final explosion (name). |
 | `Spin_Away_On_Death_Explosion` | the same 22 | Small_Explosion_Space(_Empire), Medium_Explosion_Land | Explosion at the end of the spin (name). |
 | `Damaged_Smoke_Asset_Name` | GroundVehicle 4, LandBombingUnit 3 (7) | `P_Smoke_Small02.alo` | Smoke model attached when the craft is damaged (name). Not read. |
-| `Destruction_Survivors` | structures 32, units 6 (38) | "type, weight/chance" lines; 5 empty; repeated once | Units spawned when the object is destroyed, such as crews and prisoners (data). Not read. |
+| `Destruction_Survivors` | structures 32, units 6 (38) | "type, weight/chance" lines; 5 empty; repeated once | Units spawned when the object is destroyed, such as crews and prisoners (data). Engine: reads it (each listed type once (all stock weights are 1.0)). |
 | `Minimum_Destruction_Survivor_Count` | 1 (Secondary_Prison_E) | 4 | Lower bound of survivors spawned (name). |
 | `Maximum_Destruction_Survivor_Count` | 1 (Secondary_Prison_E) | 8 | Upper bound of survivors spawned (name). |
 | `Death_By_TSW_Replacements` | SpaceProp 37, Props_Generic 1 (38) | always `Destroyed_Planet_Remains_Part_1, _Part_2` | Props that replace a planet backdrop destroyed by the tactical super weapon (Death Star) (comment, data). Not read. |
@@ -713,10 +713,10 @@ This family covers what makes an object damageable and dangerous: hull health, s
 
 | Tag | Used by | Values | Meaning |
 |---|---|---|---|
-| `Debris_Attached_Particle` | SpaceProp 149 | 5 `Space_Debris_Fire_*` particles | Fire effect attached to the flying debris (name). Not read. |
-| `Debris_Facing_Rotate_Vector` | SpaceProp 149 | vector3, components 0.1..1.0 | Tumble rotation of the debris (name). Not read. |
-| `Debris_Min_Lifetime_Seconds` | SpaceProp 149 | 15 (139), 1 (10) | Lower bound of the debris lifetime (name). Not read. |
-| `Debris_Max_Lifetime_Seconds` | SpaceProp 149 | 25 (139), 1 (10) | Upper bound of the debris lifetime (name). Not read. |
+| `Debris_Attached_Particle` | SpaceProp 149 | 5 `Space_Debris_Fire_*` particles | Fire effect attached to the flying debris (name). Engine: reads it (the trail of the debris piece). |
+| `Debris_Facing_Rotate_Vector` | SpaceProp 149 | vector3, components 0.1..1.0 | Tumble rotation of the debris (name). Engine: reads it (degrees per 30 Hz frame (an engine choice)). |
+| `Debris_Min_Lifetime_Seconds` | SpaceProp 149 | 15 (139), 1 (10) | Lower bound of the debris lifetime (name). Engine: reads it. |
+| `Debris_Max_Lifetime_Seconds` | SpaceProp 149 | 25 (139), 1 (10) | Upper bound of the debris lifetime (name). Engine: reads it. |
 
 #### Other single-purpose tags
 
@@ -758,7 +758,7 @@ These tags describe what a weapon shot is and what it does: they live mostly on 
 | `Projectile_Fire_Recharge_Seconds` | units 143, structures 25, props 17, projectiles 6 (191) | seconds 0..45, typically 1.5..2; one object repeats it | Time between volleys (data); a comment warns it must match the unit ability's recharge or the original asserts. engine: reads from the shooter only |
 | `Projectile_Fire_Pulse_Count` | units 115, structures 24, projectiles 6, props 2 (147) | int 1..14, mostly 1, 2, 4, 8 | Shots per volley (data). engine: reads from the shooter, clamped to 1..1000 |
 | `Projectile_Fire_Pulse_Delay_Seconds` | same 147 objects | seconds 0.02..1.0, mostly 0.2 | Delay between shots of a volley (data). engine: reads from the shooter |
-| `Projectile_Appearance_Delay_Frames` | units 27, hardpoints 2, props 1 (30) | frames 6..56; 4 uses are two numbers (`2,1`, `15,20`) | Delay from fire start until the projectile appears, to sync with the fire animation (name, data); the two-number form is unexplained (unknown: min/max or per-barrel). Not read |
+| `Projectile_Appearance_Delay_Frames` | units 27, hardpoints 2, props 1 (30) | frames 6..56; 4 uses are two numbers (`2,1`, `15,20`) | Delay from fire start until the projectile appears, to sync with the fire animation (name, data); the two-number form is unexplained (unknown: min/max or per-barrel). Engine: reads it (first number of the two-number form) |
 
 #### Damage and damage type
 | Tag | Used by | Values | Meaning |
@@ -769,8 +769,8 @@ These tags describe what a weapon shot is and what it does: they live mostly on 
 | `Projectile_Does_Shield_Damage` | projectiles 124 | bool, 81 Yes / 43 No | Whether the hit reduces shields (comment, data). engine: reads, default true |
 | `Projectile_Does_Energy_Damage` | projectiles 123 | bool, 114 No / 9 Yes | Whether the hit drains the target's energy/shields (comment says it knocks shields down). Not read |
 | `Projectile_Energy_Per_Shot` | projectiles 126 | 0..500, mostly 0; 5/10/20 on ship lasers | Energy the shooter's pool spends per shot (name, data; GameConstants has `EnergyRechargeIntervalInSecs` 5 and `EnergyToShieldExchangeRate` 5). Not read |
-| `Projectile_Damages_Random_Hard_Points` | projectiles 1 (Proj_Hypervelocity_Gun) | yes | Hit lands on random hardpoints rather than the aimed one (name). Not read |
-| `Friendly_Damage_Amount` | projectiles 1 (Proj_Remote_Bomb) | 200 | Damage dealt to friendly units (name). FoC only. Not read |
+| `Projectile_Damages_Random_Hard_Points` | projectiles 1 (Proj_Hypervelocity_Gun) | yes | Hit lands on random hardpoints rather than the aimed one (name). Engine: reads it |
+| `Friendly_Damage_Amount` | projectiles 1 (Proj_Remote_Bomb) | 200 | Damage dealt to friendly units (name). FoC only. Engine: reads it (the blast's damage to the shooter's own entities) |
 | `Projectile_Damage_Delay_Secs` | projectiles 3 | 0.5, 0.7 | Delay between detonation and damage application (name, data: barrel, construction pod, concussion blast). Not read |
 | `Max_Secs_For_AE_Delayed_Damage` | projectiles 53; 2 objects repeat it | always 0 | Upper bound of a delay for area-effect damage (name); every stock value is 0. FoC only. Not read |
 | `Damage` | units 210, containers 157, structures 55, props 8 (430) | int 1..50000 | Obsolete strength rating kept so the AI treats the object as a combatant (comment). The dump's engine_reads flag is a false positive (only an order word "damage" matches); not read |
@@ -781,10 +781,10 @@ These tags describe what a weapon shot is and what it does: they live mostly on 
 #### Area blast
 | Tag | Used by | Values | Meaning |
 |---|---|---|---|
-| `Projectile_Blast_Area_Damage` | projectiles 63 | 1..3000 | Damage dealt in the blast area (comment: scatter radius and damage). Not read |
-| `Projectile_Blast_Area_Range` | projectiles 62 | 10..2000 | Blast radius; comments ask artists to size the detonation particle to it (comment). Not read |
-| `Projectile_Blast_Area_Dropoff` | projectiles 10 | always True | Blast damage falls off with distance (name). Not read |
-| `Projectile_Blast_Area_Dropoff_Tiers` | projectiles 10 | 3, 4, 5 | Number of discrete falloff steps (name). Not read |
+| `Projectile_Blast_Area_Damage` | projectiles 63 | 1..3000 | Damage dealt in the blast area (comment: scatter radius and damage). Engine: reads it (hostiles only) |
+| `Projectile_Blast_Area_Range` | projectiles 62 | 10..2000 | Blast radius; comments ask artists to size the detonation particle to it (comment). Engine: reads it (measured to the footprint) |
+| `Projectile_Blast_Area_Dropoff` | projectiles 10 | always True | Blast damage falls off with distance (name). Engine: reads it |
+| `Projectile_Blast_Area_Dropoff_Tiers` | projectiles 10 | 3, 4, 5 | Number of discrete falloff steps (name). Engine: reads it (equal rings (inference)) |
 | `Projectile_Blast_Area_Immune_Faction` | projectiles 3 | faction (Rebel, Underworld) | Faction unharmed by the blast (name, data: construction pods, exploding barrel). A commented-out max-victims tag sits beside them. Not read |
 
 #### Flight and guidance
@@ -792,16 +792,16 @@ These tags describe what a weapon shot is and what it does: they live mostly on 
 |---|---|---|---|
 | `Projectile_Category` | projectiles 105 | Laser 47 (+LASER 4, laser 1), DEFAULT 20, MISSILE 9, GRENADE 8, ROCKET 7, BOMB 4, STATIC_BOMB 2, LIGHT_SABER, MPTL_Rocket, CLUSTER_BOMB | Flight model: straight laser, homing missile, lobbed grenade, curved rocket, falling bomb (data; `docs/compatibility-research.md` records a third-party fork's account). Case varies; MPTL_Rocket is likely not a known category (data). Not read |
 | `Projectile_Max_Flight_Distance` | projectiles 119 | 0..150000, mostly 400, 2200, 1200; 19 are 0 | Distance after which the shot expires and plays its lifetime particle (data). 0 marks instant-detonation ability/death projectiles (comment). engine: reads; 0 means unlimited, which is harmless only because no stock weapon fires a 0 projectile |
-| `Projectile_Max_Lifetime` | projectiles 14 | seconds 0..900 | Time limit for slow or parked shots (grenades, magnepulse blobs), used instead of a flight distance (comment, data). Not read |
+| `Projectile_Max_Lifetime` | projectiles 14 | seconds 0..900 | Time limit for slow or parked shots (grenades, magnepulse blobs), used instead of a flight distance (comment, data). Engine: reads it |
 | `Projectile_Acceleration_Per_Frame` | projectiles 2 | 0.0 | Per-frame acceleration; comments state it must stay 0 because target interception assumes constant speed (comment). Not read |
-| `Projectile_Max_Scan_Range` | projectiles 19 | 0..2000 | Range in which a guided shot may reacquire a target; lowered to stop retargeting (comment). Not read |
+| `Projectile_Max_Scan_Range` | projectiles 19 | 0..2000 | Range in which a guided shot may reacquire a target; lowered to stop retargeting (comment). Engine: reads it (retargets when the target dies) |
 | `Projectile_Target_Point_On_Terrain` | projectiles 6 | bool, 3 True / 3 False | Aim at the ground point instead of the target object (name). Not read |
 | `Explode_When_Reached_Target_Radius` | projectiles 6 | True/Yes | Detonate on arriving at the target point rather than on contact; tied to bombard-style rockets (comment, name). Not read |
-| `Projectile_Rocket_Straight_Distance` | projectiles 10 | 0..500 | Straight run before the rocket starts curving (name). Not read |
+| `Projectile_Rocket_Straight_Distance` | projectiles 10 | 0..500 | Straight run before the rocket starts curving (name). Engine: reads it (drawn sway (presentation)) |
 | `Projectile_Rocket_Curve_Distance` | projectiles 9 | 50..500, mostly 50 | Spacing of the rocket path's curve points (name; fork claims spacing x 1.1). Not read |
-| `Projectile_Rocket_Curve_Offset` | projectiles 9 | 0..180, mostly 5..15 | Maximum sideways displacement of curve points (name); one value of 180 (unknown unit). Not read |
-| `Projectile_Grenade_Gravity` | projectiles 11 | 0.5..1.64 | Gravity of the lob arc (name). Not read |
-| `Projectile_Grenade_Gravity_Lob_Mod` | projectiles 11 | 0.5..1.0 | Gravity multiplier for the lob (name). Not read |
+| `Projectile_Rocket_Curve_Offset` | projectiles 9 | 0..180, mostly 5..15 | Maximum sideways displacement of curve points (name); one value of 180 (unknown unit). Engine: reads it (half-sine sway, at most 50) |
+| `Projectile_Grenade_Gravity` | projectiles 11 | 0.5..1.64 | Gravity of the lob arc (name). Engine: reads it (drawn lob (presentation)) |
+| `Projectile_Grenade_Gravity_Lob_Mod` | projectiles 11 | 0.5..1.0 | Gravity multiplier for the lob (name). Engine: reads it |
 | `Projectile_Grenade_Can_Lob_Slower` | projectiles 11 | always yes | Grenade may be thrown slower than `Max_Speed` to reach near targets (name). Not read |
 | `Projectile_Grenade_Sticks_On_Collision` | projectiles 4 | yes 2 (sticky, remote bomb), no 2 | Grenade attaches to what it hits (name). Not read |
 | `Projectile_Bomb_Fall_Accel_Rate` | projectiles 4 (bombing-run bombs) | 0.20 | Per-frame fall acceleration of bombs (name). Not read |
@@ -861,9 +861,9 @@ These tags describe what a weapon shot is and what it does: they live mostly on 
 | `Projectile_Ground_Detonation_Particle` | projectiles 107 | Particle name; 37 empty | Effect when the shot hits terrain (name, data). engine: reads only as the third fallback for `Death_Explosions` projectiles; ground hits of shots are not played |
 | `Projectile_Lifetime_Detonation_Particle` | projectiles 118 | Particle name; 64 empty | Effect when the shot expires at its flight limit; also the visible blast of instant-detonation projectiles (data). engine: reads, played on expiry; first choice for `Death_Explosions` projectiles |
 | `Projectile_Ground_Detonation_SurfaceFX` | projectiles 28 | PROJECTILE_INFANTRY 15, PROJECTILE 10, 3 empty | Surface-effect family whose terrain-dependent effect plays on ground hits (name, data). Not read |
-| `Projectile_Object_Creation_Particle` | projectiles 1 (Tyber Zann shotgun) | Particle | Effect spawned when the projectile is created, a muzzle effect (name). FoC only. Not read |
+| `Projectile_Object_Creation_Particle` | projectiles 1 (Tyber Zann shotgun) | Particle | Effect spawned when the projectile is created, a muzzle effect (name). FoC only. Engine: reads it |
 | `Explosion_Jitter_Factor` | Particle objects 27 (explosions) | int 1..4, growing with explosion size | Unknown; probably random placement or shake of the explosion (name). Not read |
-| `Explosion_Scorch_Mark` | Particle objects 37 | EXPLOSION_SCORCH_MARK_TINY..MASSIVE(_DARK); 2 empty | Ground scorch mark an explosion leaves (name). Not read |
+| `Explosion_Scorch_Mark` | Particle objects 37 | EXPLOSION_SCORCH_MARK_TINY..MASSIVE(_DARK); 2 empty | Ground scorch mark an explosion leaves (name). Engine: reads it (through SurfaceFX's default surface to its decal, on land within 40 units of the ground) |
 
 #### Custom bolt rendering
 | Tag | Used by | Values | Meaning |
@@ -1346,7 +1346,6 @@ All FoC only, on HeroUnit 3 (`Cuddles_The_Rancor` and death clones), Particle 1 
 
 #### Findings
 
-- **Stale research note.** `docs/compatibility-research.md` (around line 139) still says the engine takes the last `Squadron_Units` occurrence. Its later "Squadron lists" bullet, and the code, concatenate the repeats. The earlier paragraph should be corrected.
 - **Squadrons without their own offsets.** `Darth_Vader_TIE_Fighter_Squadron`, `TIE_Fighter_Squadron_E3`, and `TIE_Bomber_Squadron_E3` have `Squadron_Units` but no `Squadron_Offsets`. In the Vader case the offsets are on the team container (`Darth_Vader_TIE_Fighter_Container`, 6 offsets) named by `Create_Team_Type`. EAWEngine stacks these members at the origin with a diagnostic. It should fall back to the `Create_Team_Type` container's offsets; the E3 squadrons need a formation default.
 - **Offsets on containers.** `Red_Squadron_Container`, `Darth_Vader_TIE_Fighter_Container`, `Rogue_Squadron_Space_Container`, and `StarViper_Team` carry offsets without `Squadron_Units`. They are layout templates for the team, not expandable lists.
 - **Companies become teams, which the engine skips.** A company is split into teams of `Max_Squad_Size` (18 `Squad_Stormtrooper` with 9 gives two teams of nine; `Rebel_Infantry_Squad` gives 15 in teams of 5). The teams use the `Create_Team_Type` container's movement, arrangement (`ContainerArrangement` Dartboard or Rows), and garrison category. EAWEngine expands only `Company_Units`, so selection grouping and team formations are missing. `Create_Team_Type` and `Max_Squad_Size` are the next tags to read. GameConstants `ShouldInfantryTeamsSplitAcrossFormations` (true) is the related global.
@@ -1709,7 +1708,7 @@ This family holds the tags that decide how an object looks and how the interface
 | `SpaceBehavior` | 322 objects: props 145, units 81, structures 67 | comma list (16 distinct; `DEBRIS` 139) | Behaviors added in space battles (data). Engine: `FIGHTER_LOCOMOTOR` in it enables the minimum flight speed. |
 | `TacticalBehavior` | 9 units (8 transports, 1 unique) | `SELECTABLE` only | Behaviors for both tactical modes (name); used only on transports. |
 | `CategoryMask` | 831 objects: structures 304, units 214, upgrades 187, containers 88, props 37 | `\|`-separated category words (50 distinct; `Structure` 274, `Upgrade` 187, `Infantry` 87) | Targeting and AI categories (data); a comment says a category is needed for an object to be a land bombing-run target (comment). Engine: parsed (separators `\|`, comma, space) into script type categories. |
-| `Property_Flags` | 112 objects: structures 43, units 32, containers 27, props 10 | `\|` list (15 distinct; `SmallShip` 43, `InBase` 32, `NotOpportunityTarget` 12) | Gameplay/AI property flags (data). Not read by the engine. |
+| `Property_Flags` | 112 objects: structures 43, units 32, containers 27, props 10 | `\|` list (15 distinct; `SmallShip` 43, `InBase` 32, `NotOpportunityTarget` 12) | Gameplay/AI property flags (data). Engine: reads it. |
 | `Type` | 418 objects: hardpoints 355, units 61, props 2 | hardpoints: `HARD_POINT_*` (laser 168, ion 37, missile 35...); units: `Walk` 50, also `Fly`, `Hover`, `Tracked` | Two meanings by kind: a hardpoint's kind (data), and on units a movement style word (name; probably for presentation such as footsteps or move animations, unknown). The same tag name is also used inside ability blocks and GUI files (outside this count). Engine: reads the hardpoint `Type` only (weapon, engine, shield... in `combat_content.cpp`). |
 | `Weather_Category` | 93 objects (units 92, prop 1); 2 repeat it | `Infantry` 55, `Walker` 11, `Hover` 10, `Flying` 9, `Tracked` 5, `LargeWalker` 3, `Speeder` 2 | Class used to pick weather effects on a unit (name). Not read. |
 
@@ -1723,7 +1722,7 @@ This family holds the tags that decide how an object looks and how the interface
 | `Model_Name` | 1 object (`MiscObject` barrage target dummy) | `w_smallbomb.alo` | Probably a stray generic spelling of a model tag (data, used once); likely ignored by the game (inference). |
 | `Land_Terrain_Model_Mapping` | 3 infantry (`Stormtrooper`, `Plex_Soldier`, `Rebel_Trooper`) | list of pairs: terrain type, model (Temperate, Urban, Arctic, Volcanic, Desert, Forest, Swamp) | Choose a model variant by the map's terrain type, such as snow or sand troopers (data). Not read; the engine always draws `Land_Model_Name`. |
 | `Scale_Factor` | 1,939 objects: props 913, structures 322, units 308, effects 155, projectiles 120, other 116; 9 repeat it | float 0.05-500 (`1.0` 870, `1.5` 143, `2.0` 79; `500.0` 34 for skydome/backdrop art) | Uniform model scale (data). Engine: `type_scale_factor` scales the model, attached effects, and model-derived footprints; non-positive values warn and draw at 1; projectiles and particle objects read their own. |
-| `Scale` | 21 objects: decals 19, space props 2 | decals: two numbers (width, height; `25, 25` most); props: one float | On decals the decal size (data). On the two `Destroyed_Planet_Remains` props it sits beside `Scale_Factor` and is probably ignored (inference). Engine: not read as an XML tag (the engine_reads hit is an unrelated particle track name). |
+| `Scale` | 21 objects: decals 19, space props 2 | decals: two numbers (width, height; `25, 25` most); props: one float | On decals the decal size (data). On the two `Destroyed_Planet_Remains` props it sits beside `Scale_Factor` and is probably ignored (inference). Engine: the decal's width and height; not read on the two props. |
 | `LOD_Bias` | 79 objects: units 54, containers 24, structure 1 | 0.5-10 (`5` 40, `4` 13, `1` 9, `10` 7) | Bias on distance-based mesh detail selection, higher keeping detailed meshes longer (data). FoC only. Engine: `type_lod_bias` (default 1, non-positive becomes 1) feeds `VisualInstance::lod_bias`, used by the renderer's detail-level position; how the original applies it is unverified. |
 | `Facing_Adjust` | 82 objects: planets 64, structures 12, props 6 | always `0.0, 0.0, 0.0` | Rotation correction applied to the model (name); all stock values are zero, so its units and order are unknown. |
 | `Camera_Aligned` | 65 planets | `yes` 64, `No` 1 (galaxy core art) | Galactic planet model turned to face the camera (name). |
@@ -1745,7 +1744,7 @@ This family holds the tags that decide how an object looks and how the interface
 | `Blob_Shadow_Below_Detail_Level` | 295 objects: units 147, props 144, structures 4; 9 repeat it | int 1-99 (`2` 112, `3` 89, `1` 76, `99` 27) | Use the blob shadow when shadow detail is below this level, real shadows above it (name); matches the presets' `ShadowDetail` 0-3, 99 meaning always blob (data). Not read. |
 | `Exclude_From_Distance_Fade` | 345 objects: props 255, other (skydomes) 51, units 18, structures 12, effects 9; one repeats it | bool (`true` 335, `No` 9) | Keep the object from fading out with camera distance (name); skydomes, backdrops, build pads. Related to the camera's `Object_Fade_Begin`/`End` (data). Not read. |
 | `Allow_Particle_Model_Culling` | 8 particle objects (explosions, bombs) | `yes` | Let the particle object be culled when off-screen (name). Not read. |
-| `Occlusion_Silhouette_Enabled` | 95 objects: units 74, structures 18, props 3 | `1` 86, `0` 9 | Draw a silhouette when the object is hidden behind others (name); GameConstants holds a global `Occlusion_Silhouettes_Enabled` switch (data). Not read. |
+| `Occlusion_Silhouette_Enabled` | 95 objects: units 74, structures 18, props 3 | `1` 86, `0` 9 | Draw a silhouette when the object is hidden behind others (name); GameConstants holds a global `Occlusion_Silhouettes_Enabled` switch (data). Engine: reads it (team-colored silhouette where hidden; the global GameConstants switch is a Graphics setting). |
 
 #### Shadows, selection blobs, and ground marks
 
@@ -1756,7 +1755,7 @@ This family holds the tags that decide how an object looks and how the interface
 | `Blob_Shadow_Bone_Name` | 84 objects (units 83) | always `B_Chest` | Bone the blob shadow follows, for animated infantry and heroes (name, data). Not read. |
 | `Selection_Blob_Material_Name` | 22 objects (heroes 21) | `Selection_Empire_Hero` 14, `Selection_Rebel_Hero` 8 | Ground material drawn under a selected hero (name). Not read. |
 | `Highlight_Blob_Material_Name` | 22 objects (heroes 21) | `Highlight_Rebel_Hero` 8, `Highlight_Empire_Hero` 7, `Highlight_Underworld_Hero` 7 | Ground highlight drawn under a hero (name). Not read. Note Underworld heroes use the Empire selection blob. |
-| `SurfaceFX_Name` | 101 objects (units 99) | list: `Generic_Footprint, Infantry_Terrain_Modifier` 80, `Hover` 14, `Generic_Track` 3 | Surface effects the unit leaves while moving: footprints, tracks, hover wash (data); a comment marks repulsorlift units (comment). Needs the `SURFACE_FX` behavior. Not read (the audio track plays footsteps from animation events instead). |
+| `SurfaceFX_Name` | 101 objects (units 99) | list: `Generic_Footprint, Infantry_Terrain_Modifier` 80, `Hover` 14, `Generic_Track` 3 | Surface effects the unit leaves while moving: footprints, tracks, hover wash (data); a comment marks repulsorlift units (comment). Needs the `SURFACE_FX` behavior. Engine: dynamic tracks and walkers' footprints; sounds, particles, and hover effects not yet (footstep sounds come from animation events). |
 | `Terrain_Texture_Modifier_Material` | 92 objects (structures 91) | always `62` | Terrain texture index painted under a structure (name, data). Pairs with the `TERRAIN_TEXTURE_MODIFICATION` behavior. Not read. |
 | `Terrain_Texture_Modifier_Square` | 102 objects (structures 101); 2 repeat it | bool (`false` 71, `true` 32) | Paint the modified terrain as a square rather than the footprint shape (name). Not read. |
 | `Terrain_Texture_Modifier_Join_Distance` | 92 objects (structures 91) | `500.0` 64, `1.0` 28 | Distance within which neighbouring modified areas join (name). Not read. |
@@ -1782,11 +1781,11 @@ This family holds the tags that decide how an object looks and how the interface
 | Tag | Used by | Values | Meaning |
 |---|---|---|---|
 | `Loop_Idle_Anim_00` | 356 objects: other 116 (planets, skydomes), units 86, props 78, structures 61, projectiles 15; one repeats it | bool (`Yes` 197, `No` 160) | Loop the first idle clip continuously instead of playing idles at intervals (name, data). Survey (2026-11-13, by the model's `<model>_IDLE_nn` clips): no Yes user has more than one IDLE clip (98 none, 175 one); of the No users, 309 have several, 40 exactly one (repair facilities, sensor nodes, AA turrets, the royal guard, Vader, Obi-Wan, the Lancet, the F9TZ), 101 none. So Yes marks single-idle models, and No may mean the one clip plays now and then rather than always. Engine: Yes loops IDLE_00; otherwise each idle that ends is followed by a random IDLE variant (the owner's recollection), and a lone IDLE clip plays again after a random 2-4 s pause (the owner's choice); both to observe. |
-| `Idle_Anim_00_Rate_Mod` | 66 props (space props 63); 2 repeat it | `1.0` 64, `0.25` 2, `8.0` 2 | Playback rate multiplier of the first idle clip (name). The two repeating objects (huge asteroid masses) give `8.0` then `1.0`, so which wins decides the look (data). Not read. |
-| `Allow_Idle_When_Moving` | 8 fauna (birds, sketto) | `Yes` | Keep playing the idle clip while moving, for flyers without a move clip (name, data). Not read. |
+| `Idle_Anim_00_Rate_Mod` | 66 props (space props 63); 2 repeat it | `1.0` 64, `0.25` 2, `8.0` 2 | Playback rate multiplier of the first idle clip (name). The two repeating objects (huge asteroid masses) give `8.0` then `1.0`, so which wins decides the look (data). Engine: reads it (the last occurrence wins on the two repeating asteroid masses). |
+| `Allow_Idle_When_Moving` | 8 fauna (birds, sketto) | `Yes` | Keep playing the idle clip while moving, for flyers without a move clip (name, data). Engine: reads it. |
 | `Land_Model_Anim_Override_Name` | 26 objects: units 22, props 4 | model name with or without `.ALO` (`NI_GMale_Urban_A.ALO` 9, `RI_INFANTRY.ALO` 6; 5 without extension, mixed case such as `.ALo`) | Model whose animation clips the type plays instead of its own (data; recorded). Engine: `type_animation_source`, inherited through variants; clips are matched to the model's bones by name. The engine also checks a `Space_Model_Anim_Override_Name`, which stock does not use. |
 | `Specific_Death_Anim_Index` | 102 death-clone units | int 0-2; 79 empty | DIE clip variant a death clone plays (data). Engine: read from the `Damage_Normal` death clone as `DeathStyle::die_variant`; its presence also marks a type as a death clone. An empty value reads as variant 0. |
-| `Specific_Death_Anim_Type` | 96 objects (death clones: units 95) | `FW_DIE` 30, `FL_DIE` 30, `Crushed` 13, `DIE` 11, `FIRE_DIE` 4, `FTK_DIE` 2; 4 empty | Clip role a death clone plays: force whirlwind, force lightning, crushed, fire, telekinesis... (data). Not read: the engine always uses DIE. |
+| `Specific_Death_Anim_Type` | 96 objects (death clones: units 95) | `FW_DIE` 30, `FL_DIE` 30, `Crushed` 13, `DIE` 11, `FIRE_DIE` 4, `FTK_DIE` 2; 4 empty | Clip role a death clone plays: force whirlwind, force lightning, crushed, fire, telekinesis... (data). Engine: Crushed (and DIE) for crushing; the Force and fire types wait for abilities. |
 | `Should_Death_Clone_Play_Idle` | 17 structures (space station death clones) | `true` | The death clone keeps playing its idle clip while dying (name). Not read. |
 | `Cinematic_Anim_Index` | 4 objects (2 infantry, 2 story props) | `00` | Clip index played when the object is in a cinematic (name). Not read. |
 | `Cinematic_Anim_Blend_Seconds` | same 4 | `1.0` | Blend time into the cinematic clip (name). Not read. |
@@ -1797,7 +1796,7 @@ This family holds the tags that decide how an object looks and how the interface
 
 | Tag | Used by | Values | Meaning |
 |---|---|---|---|
-| `Layer_Z_Adjust` | 262 objects: units 99, props 78, skydomes 51, structures 33 | float -2,500 to 100 (`0.0` 55, `-330.0` 52, `-2500.0` 39) | Depth offset that moves the object between render layers (name); large negatives on backdrops push them behind (data). Not read. |
+| `Layer_Z_Adjust` | 262 objects: units 99, props 78, skydomes 51, structures 33 | float -2,500 to 100 (`0.0` 55, `-330.0` 52, `-2500.0` 39) | Depth offset that moves the object between render layers (name); large negatives on backdrops push them behind (data). Engine: reads it (height of units spawned in space (recorded); placements and render layers not yet). |
 | `In_Background` | 109 objects: skydomes 52, props 45, particles 10, units 2 | bool (`Yes`/`yes` 68, `no`/`No` 41) | Draw in the background layer behind the battle (name). Engine: such objects (planets, nebulas, ring stations) receive no key-light shadows (owner's choice); the layer itself is not modeled. |
 | `In_Midground` | 2 particles (galactic corruption) | `true` | Draw in a middle layer (name). FoC only. |
 | `In_Midforeground` | 1 particle (galactic corruption line) | `true` | Draw in a layer in front of the midground (name). FoC only. |
@@ -1936,7 +1935,7 @@ All on `TacticalCamera` objects (`Land_Mode`, `Space_Mode`, `Unlocked`) in `Tact
 | Tag | Used by | Values | Meaning |
 |---|---|---|---|
 | `Diffuse` | 1 light source | RGB 0-1 (`0,1,0`) | Light color (data). The engine_reads hit is the unrelated material parameter of the same name; the XML light is not read. |
-| `Intensity` | 20 effects: decals 19, light 1 | 0.15-1.0 | Light brightness, or decal opacity (data). Not read. |
+| `Intensity` | 20 effects: decals 19, light 1 | 0.15-1.0 | Light brightness, or decal opacity (data). Engine: decal opacity; the light's brightness is not read. |
 | `Radius` | 1 light | 40 | Light range (name). Not read. |
 | `Falloff_Start` | 1 light | 20 | Distance where light starts to fall off (name). Not read. |
 | `Blob_Radius` | 1 light | 30 | Radius of the additive terrain glow under the light, often smaller than the light (comment). Not read. |
@@ -1944,13 +1943,13 @@ All on `TacticalCamera` objects (`Land_Mode`, `Space_Mode`, `Unlocked`) in `Tact
 | `Blob_Intensity` | 1 light | 0.15 | Strength of that glow, meant to be subtle (comment). Not read. |
 | `Flare` | 1 lens flare, repeated 12 times | element with nested `Diffuse` (RGB), `Radius` (0.1-2.0), `Fraction` (-0.1 to 2.0, position along the sun-to-centre line), `Slot_X`/`Slot_Y` (0-1) and `Num_Slots` (2, a 2x2 texture atlas cell) | One flare element per repeat (data; comments group them into thirds and end rings). FoC only. The engine_reads hit for `Flare/Diffuse` is the material parameter, not this. Not read. |
 | `Category` | 19 decals | `Footprints` 18, `DEFAULT` 1 | Decal category, probably sharing a budget or atlas (name). Not read. Despite the name, not the object category system. |
-| `Render_Mode` | 19 decals | `DECAL_BUMP_ALPHA` 11, `DIFFUSE_ALPHA` 7, `ADDITIVE` 1 | Blend and shading mode of the decal (name, data). Not read. |
-| `UV_Slot` | 19 decals | 2 or 4 ints (`0,0`; `0,3, 1,3` lists alternatives) | Atlas cell(s) the decal texture comes from; four values give two cells to pick from (data). Not read. |
+| `Render_Mode` | 19 decals | `DECAL_BUMP_ALPHA` 11, `DIFFUSE_ALPHA` 7, `ADDITIVE` 1 | Blend and shading mode of the decal (name, data). Engine: reads it (diffuse, bump, and additive, in the terrain shader). |
+| `UV_Slot` | 19 decals | 2 or 4 ints (`0,0`; `0,3, 1,3` lists alternatives) | Atlas cell(s) the decal texture comes from; four values give two cells to pick from (data). Engine: reads it (a random cell of those listed). |
 | `Slot_Scale` | 1 decal (`EXPLOSION_SCORCH_MASSIVE`) | `2` | Cell spans 2x2 atlas slots (name). FoC only. |
 | `Z_Angle` | 19 decals | `0` | Fixed rotation of the decal (name). |
-| `Random_Rotate` | 7 decals (explosion scorches) | `Yes` | Randomize the decal rotation (name). Not read. |
-| `Random_Size_Offset` | 7 decals | 0.1-0.2 | Random size variation fraction (name). Not read. |
-| `Fadeout_Time` | 19 decals | int 0-99 (`30` 8) | Time before the decal fades, likely seconds (name). Not read. |
+| `Random_Rotate` | 7 decals (explosion scorches) | `Yes` | Randomize the decal rotation (name). Engine: reads it. |
+| `Random_Size_Offset` | 7 decals | 0.1-0.2 | Random size variation fraction (name). Engine: reads it. |
+| `Fadeout_Time` | 19 decals | int 0-99 (`30` 8) | Time before the decal fades, likely seconds (name). Engine: reads it (then a 2 s fade (an engine choice)). |
 
 #### Wind disturbance
 
@@ -1977,7 +1976,7 @@ These are not presentation tags; they appear here because the classifier grouped
 
 #### Findings
 
-- Engine reads in this family: `Land_Model_Name`, `Space_Model_Name`, `Variant_Of_Existing_Type`, `Scale_Factor`, `LOD_Bias`, `Land_Model_Anim_Override_Name`, `Specific_Death_Anim_Index`, `CategoryMask`, `Behavior`/`LandBehavior`/`SpaceBehavior` (narrow checks), and the hardpoint tags `Model_To_Attach`, `Attachment_Bone`, `Engine_Particles`, `Type`. The engine_reads flags on `Diffuse`, `Flare/Diffuse`, and `Scale` are false positives: the engine has those words as a material parameter and a particle track name, not as XML tags.
+- Engine reads in this family: `Land_Model_Name`, `Space_Model_Name`, `Variant_Of_Existing_Type`, `Scale_Factor`, `LOD_Bias`, `Land_Model_Anim_Override_Name`, `Specific_Death_Anim_Index`, `CategoryMask`, `Behavior`/`LandBehavior`/`SpaceBehavior` (narrow checks), and the hardpoint tags `Model_To_Attach`, `Attachment_Bone`, `Engine_Particles`, `Type`, and the terrain decal tags (`Render_Mode`, `Intensity`, `Scale`, `Z_Angle`, `Random_Rotate`, `Random_Size_Offset`, `Fadeout_Time`, `Permanent`, `UV_Slot`, `Slot_Scale`). The engine_reads flags on `Diffuse` and `Flare/Diffuse` are false positives: the engine has that word as a material parameter, not as an XML tag.
 - `Engine_Particles` holds a bone name (`HP_E_MAINENGINES`), not a particle type; the engine already reads it as a bone, which matches the data.
 - Disabled tags: `xxxSpace_Model_Name` (17 death clones) is a model switched off by renaming. The tag reader must not match it loosely, or clones would get wrecked models the authors disabled.
 - Likely ignored stray spellings: `Model_Name` (1, a MiscObject), `GUI_Model` (1, beside the 119 `GUI_Model_Name`), `Scale` on 2 space props that also set `Scale_Factor`, and one `Radar_Range_Icon_Name` with a doubled `.tga.tga`. One `Asteroid_Damage_Hit_Particles` writes `large_Damage_Space` in lower case, which is harmless because names are case-insensitive.
@@ -2166,16 +2165,16 @@ EAWEngine reads about 95 of the 1,005 tags (2026-11-11). By area:
 - **Audio:** the death, engine, ambient, response, fire, and detonation events listed in the
   audio section.
 
-The literal-match survey also flagged `Damage`, `Terrain`, `Scale`, `Faction`, and `Diffuse`;
-those are false matches (the same words as a definition kind, a shader parameter, or a particle
-track), not tag reads. Numbers are read with `std::from_chars` without requiring the whole value
+The literal-match survey also flagged `Damage`, `Terrain`, `Faction`, and `Diffuse`;
+those are false matches (the same words as a definition kind or a shader parameter), not tag
+reads. `Scale` is read, as the terrain decal size. Numbers are read with `std::from_chars` without requiring the whole value
 to parse, so the C float suffix (`0.5f`) is accepted already.
 
 ## Implications for EAWEngine
 
 Collected from the sections above, most consequential first. Each is a proposal to check and
-schedule, not a decided change; several rest on inference marked in their rows. Done on
-2026-11-11 (see [status.md](status.md)): items 1 (without the shield interval), 2 (the fire
+schedule, not a decided change; several rest on inference marked in their rows. Done (see [status.md](status.md); dates in
+[history.md](history.md)): items 1 (without the shield interval), 2 (the fire
 cadence; second weapons wait for SWAP_WEAPONS), 3, 4, 5, and the inaccuracy and
 `Targeting_Priority_Set` parts of 2.
 

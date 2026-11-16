@@ -181,11 +181,12 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
                 const auto& material = submesh.material;
                 if (!drawn_submesh(submesh))
                 {
-                    // Heat distortion and occluded-unit overlays target dedicated passes (a distortion
-                    // buffer and a depth-greater silhouette) that the sandbox does not implement yet.
+                    // Heat-distortion meshes and ALO occluded materials are not drawn: the renderer's
+                    // heat buffer takes heat particles, and its occluded silhouettes come from a mask
+                    // pass over units, not from these meshes.
                     if (!submesh.vertices.empty() && !submesh.indices.empty() && (material.family == LegacyMaterialFamily::heat || material.family == LegacyMaterialFamily::occluded))
                     {
-                        scene.warnings.push_back(mesh.name + ": skipped " + material.source_shader + " (" + std::string(to_string(material.family)) + " pass is not implemented)");
+                        scene.warnings.push_back(mesh.name + ": skipped " + material.source_shader + " (" + std::string(to_string(material.family)) + " meshes are not drawn)");
                     }
                     continue;
                 }
