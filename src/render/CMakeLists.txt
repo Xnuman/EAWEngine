@@ -39,6 +39,7 @@ set(EAW_RENDER_CORE_HEADERS
     ${HEADERS_DIR}/frame_graph.hpp
     ${HEADERS_DIR}/gpu_resource_lifetime.hpp
     ${HEADERS_DIR}/lod_selection.hpp
+    ${HEADERS_DIR}/ocean_spectrum.hpp
     ${HEADERS_DIR}/shadow_cascades.hpp
     ${HEADERS_DIR}/sky_visibility.hpp
     ${HEADERS_DIR}/wind_bend.hpp
@@ -47,6 +48,7 @@ set(EAW_RENDER_CORE_HEADERS
 set(EAW_RENDER_CORE_SOURCES
     ${SOURCES_DIR}/frame_graph.cpp
     ${SOURCES_DIR}/lod_selection.cpp
+    ${SOURCES_DIR}/ocean_spectrum.cpp
     ${SOURCES_DIR}/shadow_cascades.cpp
     ${SOURCES_DIR}/sky_visibility.cpp
     ${SOURCES_DIR}/wind_bend.cpp

@@ -848,3 +848,12 @@ rewritten to describe the current state; the source document is noted in bracket
   binding is transcribed in compatibility-research.md (orders and camera are plain keys, abilities
   Ctrl, Shift, or Alt chords; an order key arms the next click, the owner's account). The owner
   chose to record them only: the sandbox's bindings change with the in-game UI and the player layer.
+- The ocean resumed (the owner's call after research into game oceans: out/reports/Ocean waves in
+  games.md, local). The owner decided waves stay on ocean maps, lakes and rivers need another
+  approach, legacy maps keep the engine's table and a future map editor would mark water kinds by
+  brush. The plan, in water-research.md: fading normal detail, FFT cascades, persistent foam, baked
+  depth, the rest. Stage 1 (fading normal detail) was built and captured on Kamino; the fine speckle
+  gave way to the broad layer's own larger patches, so it lands with stage 2 (the owner's choice).
+  Stage 2 began with the spectrum (render/ocean_spectrum, JONSWAP/TMA, Hasselmann spreading, swell;
+  default fetch 600,000 units for a peak wavelength near 300 and a significant height near 7, close
+  to the Gerstner waves) and Pcg32::gaussian.

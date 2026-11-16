@@ -1,5 +1,8 @@
 #include "core/random.hpp"
 
+#include <cmath>
+#include <numbers>
+
 namespace eaw {
 
 Pcg32::Pcg32(const std::uint64_t seed) noexcept
@@ -27,6 +30,13 @@ float Pcg32::unit() noexcept
 float Pcg32::range(const float low, const float high) noexcept
 {
     return low + (high - low) * unit();
+}
+
+float Pcg32::gaussian() noexcept
+{
+    // 1 - unit() lies in (0, 1], so the logarithm is finite.
+    const auto radius = std::sqrt(-2.0F * std::log(1.0F - unit()));
+    return radius * std::cos(2.0F * std::numbers::pi_v<float> * unit());
 }
 
 std::uint32_t Pcg32::below(const std::uint32_t count) noexcept

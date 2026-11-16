@@ -19,6 +19,8 @@ public:
     // Uniform in [0, 1).
     float unit() noexcept;
     float range(float low, float high) noexcept;
+    // Standard normal (mean 0, deviation 1), by the Box-Muller transform of two uniform draws.
+    float gaussian() noexcept;
     // Uniform in [0, count); 0 when count is 0.
     std::uint32_t below(std::uint32_t count) noexcept;
     // The stream position, for state hashes.

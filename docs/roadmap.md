@@ -129,7 +129,9 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
       38-47 ms with 3,300 entities) are in its section 1.
    h. Enhanced water as an ocean on ocean maps (Kamino, Manaan): the first slice is done (Gerstner
       waves, crest foam, tuning sliders, an ocean-maps/on/off setting; status.md). The owner judges
-      the ocean far from done; the rest waits for Rendering stage 5.
+      the ocean far from done; in progress: the five stages of water-research.md, "The ocean plan"
+      (fading normal detail, FFT cascades, persistent foam, baked depth, the rest), on ocean maps
+      only (the owner).
    This closes M2.
 3. Input bindings (Platform and input stage 2).
 4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).
@@ -200,9 +202,7 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
 5. The physically based material path, with a documented conversion from the legacy profiles, once
    legacy mode is stable (also an engine extension for new content), starting the enhanced lighting
    profile with HDR and linear lighting; general screen-space reflections join it, and water then
-   moves onto them. With it, the ocean's remaining work: less visible tiling of the water's normal
-   maps (fading their detail with distance), a richer wave spectrum than four Gerstner waves, wave
-   motion in the motion vectors if TAA ghosts, and ocean maps declared in metadata for new content.
+   moves onto them.
 
 ### Simulation
 

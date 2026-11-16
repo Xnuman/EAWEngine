@@ -2,11 +2,14 @@
 
 #include "render/frame_graph.hpp"
 #include "render/lod_selection.hpp"
+#include "render/ocean_spectrum.hpp"
 #include "render/shadow_cascades.hpp"
 #include "render/sky_visibility.hpp"
 #include "render/wind_bend.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace {
 
@@ -175,6 +178,49 @@ void test_frame_graph()
 // Shadow cascades: slices from the camera's near plane to the scene's far edge (rounded up), each
 // slice inside its map, the scene's depth inside every map, and a pan smaller than a texel moving
 // the map by whole texels only; degenerate input gives none.
+// The ocean's spectrum: JONSWAP peaks at its peak frequency, the spreading integrates to 1 and
+// favors the wind, a cascade keeps only its band, and a seed replays the same sea.
+void test_ocean_spectrum()
+{
+    const eaw::OceanSeaState state;
+    const auto peak = eaw::ocean_peak_frequency(state);
+    require(peak > 0.0F && eaw::ocean_frequency_spectrum(peak, state) > eaw::ocean_frequency_spectrum(peak * 0.7F, state) &&
+                eaw::ocean_frequency_spectrum(peak, state) > eaw::ocean_frequency_spectrum(peak * 1.5F, state) && eaw::ocean_frequency_spectrum(0.0F, state) == 0.0F,
+            "the frequency spectrum must peak at the peak frequency");
+    for (const auto omega : {peak * 0.5F, peak, peak * 3.0F})
+    {
+        constexpr int steps = 2048;
+        float total = 0.0F;
+        for (int step = 0; step < steps; ++step)
+        {
+            const auto theta = -std::numbers::pi_v<float> + (static_cast<float>(step) + 0.5F) * 2.0F * std::numbers::pi_v<float> / steps;
+            total += eaw::ocean_directional_spread(omega, theta, state) * 2.0F * std::numbers::pi_v<float> / steps;
+        }
+        require(std::abs(total - 1.0F) < 0.02F, "the directional spreading must integrate to one");
+        require(eaw::ocean_directional_spread(omega, 0.0F, state) > eaw::ocean_directional_spread(omega, 1.5F, state), "waves must favor the wind's direction");
+    }
+    constexpr std::uint32_t size = 64;
+    const eaw::OceanCascadeBand band{.patch_size = 1000.0F, .min_wavelength = 100.0F, .max_wavelength = 1000.0F};
+    const auto cells = eaw::ocean_initial_spectrum(state, band, size, 7U);
+    const auto again = eaw::ocean_initial_spectrum(state, band, size, 7U);
+    const auto other = eaw::ocean_initial_spectrum(state, band, size, 8U);
+    require(cells.size() == size * size &&
+                std::ranges::equal(cells, again,
+                                   [](const eaw::OceanSpectrumCell& a, const eaw::OceanSpectrumCell& b)
+                                   {
+                                       return a.real == b.real && a.imaginary == b.imaginary && a.minus_real == b.minus_real && a.minus_imaginary == b.minus_imaginary;
+                                   }) &&
+                cells[size * size / 2 + size / 2 + 3].real != other[size * size / 2 + size / 2 + 3].real,
+            "a seed must replay its sea, another seed give another");
+    const auto at = [&](const int column, const int row) -> const eaw::OceanSpectrumCell&
+    {
+        return cells[static_cast<std::size_t>(row + static_cast<int>(size / 2)) * size + static_cast<std::size_t>(column + static_cast<int>(size / 2))];
+    };
+    // Wavelength 1000 / n: n = 1 is the patch itself (out of band), n = 20 is 50 (out), n = 5 is 200 (in).
+    require(at(0, 0).real == 0.0F && at(1, 0).real == 0.0F && at(20, 0).real == 0.0F && (at(5, 0).real != 0.0F || at(5, 0).imaginary != 0.0F), "a cascade must keep only its band");
+    require(at(-5, 0).minus_real == at(5, 0).real && at(-5, 0).minus_imaginary == -at(5, 0).imaginary, "each cell must carry the conjugate of its opposite");
+}
+
 void test_shadow_cascades()
 {
     eaw::VisualCamera camera;
@@ -289,6 +335,7 @@ const ModuleRegistrar registrar("render", {
                                               {"test_gpu_resource_lifetime", &test_gpu_resource_lifetime},
                                               {"test_lod_selection", &test_lod_selection},
                                               {"test_lod_tracking", &test_lod_tracking},
+                                              {"test_ocean_spectrum", &test_ocean_spectrum},
                                               {"test_shadow_cascades", &test_shadow_cascades},
                                               {"test_wind_bend", &test_wind_bend},
                                               {"test_sky_visibility", &test_sky_visibility},

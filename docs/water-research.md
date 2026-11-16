@@ -162,11 +162,72 @@ choices.
   sits beside Kamino (60%, none 20 deep) and Mon Calamari (61%). The waves setting is ocean maps
   (default), on, or off. Test: `test_ocean_maps`.
 
-The owner's verdict: the ocean needs a lot more work. It is deferred to Rendering stage 5 (the
-physically based material path; [roadmap.md](roadmap.md)): less visible tiling of the water's normal
-maps (fading their detail with distance), a richer wave spectrum than four Gerstner waves, wave
-motion in the motion vectors if TAA ghosts (water is blended, so TAA reprojects it by depth), and
-ocean maps declared in metadata for new content.
+The owner's verdict: the ocean needs a lot more work (strong tiling and patterns). The plan below
+follows from research into how games build oceans.
+
+## The ocean plan
+
+### What causes the tiling
+
+- Four fixed Gerstner waves are a four-line spectrum: their crests interfere in a pattern that
+  repeats, which the eye reads as a lattice whatever their tuning. GPU Gems 1 (Finch, 2004) already
+  paired four vertex waves with about fifteen more in the normals, with randomized parameters;
+  Unreal's water plugin sums sixteen spectrum-sampled waves by default.
+- The three normal-map layers (repeats at 1, 2.7, and 0.19 times the base's 200 units) keep their
+  full strength at every distance, so from an RTS camera hundreds of repeats show at once.
+- The crest foam is computed per frame from the same four waves and has no memory, so it can only
+  move the pattern, not break it.
+
+### What shipped oceans do
+
+- Several small FFT cascades instead of one patch or a few waves: War Thunder (2015) four from 5 m
+  to 1 km, Atlas (GDC 2019) four bands, Unity HDRP three, Crest moved from Gerstner waves to an
+  FFT; the patch sizes share no common factor, so the cascades' repeats never line up. One large
+  FFT patch tiles visibly when the view spans a few patches (Tessendorf, "Simulating Ocean Water",
+  2002): the RTS camera is the worst case.
+- An empirical spectrum: JONSWAP, TMA for finite depth, with Hasselmann's directional spreading and
+  a swell term (Horvath, "Empirical directional wave spectra for computer graphics", DigiPro 2015);
+  the Phillips spectrum spreads energy too evenly across wavelengths and looks wrong. Atlas uses a
+  local wind sea plus a separate swell.
+- Normals, slopes, and a foam signal from the same data: the FFT's derivatives, and the Jacobian of
+  its horizontal displacement (folding where it drops below a threshold, 0.3-0.5 in War Thunder).
+- Foam in a texture that persists: energy injected where the surface folds, faded and blurred each
+  update (Crest at 30 Hz, Atlas, Sea of Thieves), used as a mask over a detail texture; distant
+  whitecap coverage filtered from the Jacobian's mean and variance (Dupuy and Bruneton 2012).
+- Detail fades with distance: each band leaves when its wavelength nears the pixel size, and its
+  slopes move into the specular roughness (Bruneton et al. 2010; Toksvig; LEAN mapping); Atlas fades
+  a band's displacement from about thirty wave periods away.
+- Costs: Atlas's wave simulation 0.5 ms on 2019 GPUs; four 256-square cascades about 0.1 ms on a
+  2023 GPU (one 2026 measurement); the cost that matters is the surface's geometry and shading.
+- No strategy game publishes its ocean (Supreme Commander's, per an outside frame analysis, is one
+  quad with scrolling normal maps), so how well this suits a camera high above is reasoned, not
+  observed.
+
+The full report, with sources, is a local research file (`out/reports/Ocean waves in games.md`,
+not committed); this section keeps what the engine acts on.
+
+### The stages
+
+Decided by the owner: enhanced waves stay on ocean maps (lakes and rivers need another approach);
+legacy maps keep the engine's own table of ocean maps (`ocean_map`), and a future map editor of the
+engine's would mark water kinds by brush.
+
+1. Normal detail fades with distance on open sea: each layer fades as its repeat shrinks on screen,
+   and the faded slopes widen the glint (`water_layer_presence` in `sandbox.hlsl`). Built; it lands
+   with stage 2, since alone it leaves the broad layer's own pattern showing (the owner's choice,
+   seeing both captures).
+2. Three FFT cascades replace the four Gerstner waves on ocean maps: the spectrum
+   (`render/ocean_spectrum.hpp`: JONSWAP with TMA, Hasselmann spreading, swell; a seeded patch per
+   cascade, each keeping its band), then a compute pass evolving it and running the inverse FFTs
+   into displacement and derivative textures, the long cascades moving the 12-unit grid (only
+   wavelengths of four cells or more) and all of them bending the normals; a sea-state setting
+   replaces the wave sliders.
+3. Foam that builds up and fades, injected from the cascades' Jacobian, in place of the procedural
+   crest patches.
+4. Each map's depth beneath the water and distance to the coast, baked at load, so waves die down
+   over shelves by their wavelength instead of by a fixed depth.
+5. The rest: the water grid culled by tiles, wave motion in the motion vectors if TAA ghosts, ocean
+   maps from metadata for new content, one sea-state control.
 
 ## Sources
 
